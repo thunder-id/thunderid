@@ -22,27 +22,25 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/thunder-id/thunderid/internal/actorprovider"
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the PAR handler and registers its routes.
 // Returns the PARServiceInterface so the authorization endpoint can resolve request_uri parameters.
 func Initialize(
 	mux *http.ServeMux,
-	actorProvider actorprovider.ActorProviderInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	actorProvider providers.ActorProvider,
+	authnProvider providers.AuthnProviderManager,
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
-	resourceService resource.ResourceServiceInterface,
+	resourceService providers.ResourceServerProvider,
 	dpopVerifier dpop.VerifierInterface,
 	cfg oauthconfig.Config,
 ) PARServiceInterface {
@@ -67,8 +65,8 @@ func initializePARStore(cfg oauthconfig.Config) parStoreInterface {
 func registerRoutes(
 	mux *http.ServeMux,
 	handler parHandlerInterface,
-	actorProvider actorprovider.ActorProviderInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	actorProvider providers.ActorProvider,
+	authnProvider providers.AuthnProviderManager,
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 ) {

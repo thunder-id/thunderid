@@ -19,21 +19,20 @@
 package core
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // Define core flow errors
 
 // ErrExecutorPrerequisiteNotMet is returned when an executor prerequisite is not met.
-var ErrExecutorPrerequisiteNotMet = serviceerror.ServiceError{
-	Type: serviceerror.ClientErrorType,
+var ErrExecutorPrerequisiteNotMet = tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
 	Code: "FLC-1001",
-	Error: core.I18nMessage{
+	Error: tidcommon.I18nMessage{
 		Key:          "error.flow.core.executor_prerequisite_not_met",
 		DefaultValue: "A prerequisite for the executor was not met",
 	},
-	ErrorDescription: core.I18nMessage{
+	ErrorDescription: tidcommon.I18nMessage{
 		Key: "error.flow.core.executor_prerequisite_not_met_description",
 		DefaultValue: "One or more prerequisites required for the executor were not satisfied. " +
 			"Please check the inputs and try again.",
@@ -41,14 +40,14 @@ var ErrExecutorPrerequisiteNotMet = serviceerror.ServiceError{
 }
 
 // ErrInvalidActionProvided is returned when an invalid action is provided in a prompt node.
-var ErrInvalidActionProvided = serviceerror.ServiceError{
-	Type: serviceerror.ClientErrorType,
+var ErrInvalidActionProvided = tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
 	Code: "FLC-1002",
-	Error: core.I18nMessage{
+	Error: tidcommon.I18nMessage{
 		Key:          "error.flow.core.prompt_invalid_action",
 		DefaultValue: "Invalid action provided",
 	},
-	ErrorDescription: core.I18nMessage{
+	ErrorDescription: tidcommon.I18nMessage{
 		Key:          "error.flow.core.prompt_invalid_action_description",
 		DefaultValue: "The action provided is not valid for the current flow step",
 	},

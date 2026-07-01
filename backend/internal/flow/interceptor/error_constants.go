@@ -19,33 +19,32 @@
 package interceptor
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // ErrorInterceptorFailed defines the error for interceptor validation failures.
-var ErrorInterceptorFailed = serviceerror.ServiceError{
+var ErrorInterceptorFailed = tidcommon.ServiceError{
 	Code: "ICS-1001",
-	Type: serviceerror.ClientErrorType,
-	Error: core.I18nMessage{
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
 		Key:          "error.interceptor.failed",
 		DefaultValue: "Interceptor validation failed",
 	},
-	ErrorDescription: core.I18nMessage{
+	ErrorDescription: tidcommon.I18nMessage{
 		Key:          "error.interceptor.failed_description",
 		DefaultValue: "A flow interceptor rejected the request",
 	},
 }
 
 // ErrorChallengeTokenInvalid defines the error when a challenge token is not provided.
-var ErrorChallengeTokenInvalid = serviceerror.ServiceError{
+var ErrorChallengeTokenInvalid = tidcommon.ServiceError{
 	Code: "ICS-1002",
-	Type: serviceerror.ClientErrorType,
-	Error: core.I18nMessage{
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
 		Key:          "error.interceptor.challenge_token_invalid",
 		DefaultValue: "Invalid challenge token",
 	},
-	ErrorDescription: core.I18nMessage{
+	ErrorDescription: tidcommon.I18nMessage{
 		Key:          "error.interceptor.challenge_token_invalid_description",
 		DefaultValue: "The challenge token is missing or invalid",
 	},

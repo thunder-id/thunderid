@@ -22,11 +22,12 @@ import (
 	"context"
 	"fmt"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"gopkg.in/yaml.v3"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -58,7 +59,7 @@ func (e *roleExporter) GetParameterizerType() string {
 
 // GetAllResourceIDs retrieves all role IDs from the database store.
 // In composite mode, this excludes declarative (YAML-based) roles.
-func (e *roleExporter) GetAllResourceIDs(ctx context.Context) ([]string, *serviceerror.ServiceError) {
+func (e *roleExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
 	offset := 0
 	limit := serverconst.MaxPageSize
 	ids := []string{}
@@ -92,7 +93,7 @@ func (e *roleExporter) GetAllResourceIDs(ctx context.Context) ([]string, *servic
 
 // GetResourceByID retrieves a role by its ID.
 func (e *roleExporter) GetResourceByID(
-	ctx context.Context, id string) (interface{}, string, *serviceerror.ServiceError) {
+	ctx context.Context, id string) (interface{}, string, *tidcommon.ServiceError) {
 	roleWithPermissions, err := e.service.GetRoleWithPermissions(ctx, id)
 	if err != nil {
 		return nil, "", err
@@ -297,7 +298,7 @@ func validateRoleWrapper(
 func (e *roleExporter) getAllRoleAssignments(
 	ctx context.Context,
 	roleID string,
-) ([]RoleAssignment, *serviceerror.ServiceError) {
+) ([]RoleAssignment, *tidcommon.ServiceError) {
 	offset := 0
 	limit := serverconst.MaxPageSize
 	assignments := []RoleAssignment{}

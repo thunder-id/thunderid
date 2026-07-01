@@ -901,7 +901,7 @@
                       "label": "Mobile Number",
                       "required": true,
                       "placeholder": "Enter your mobile number",
-                      "ref": "mobileNumber"
+                      "ref": "mobile_number"
                     },
                     {
                       "id": "{{ID}}",

@@ -25,8 +25,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 const (
@@ -36,7 +36,7 @@ const (
 
 type AuthzValidationTestSuite struct {
 	suite.Suite
-	oauthApp *inboundmodel.OAuthClient
+	oauthApp *providers.OAuthClient
 }
 
 func TestAuthzValidationTestSuite(t *testing.T) {
@@ -44,18 +44,18 @@ func TestAuthzValidationTestSuite(t *testing.T) {
 }
 
 func (suite *AuthzValidationTestSuite) SetupTest() {
-	suite.oauthApp = &inboundmodel.OAuthClient{
+	suite.oauthApp = &providers.OAuthClient{
 		ClientID:                "test-client-id",
 		RedirectURIs:            []string{"https://client.example.com/callback"},
-		GrantTypes:              []constants.GrantType{constants.GrantTypeAuthorizationCode},
-		ResponseTypes:           []constants.ResponseType{constants.ResponseTypeCode},
-		TokenEndpointAuthMethod: constants.TokenEndpointAuthMethodClientSecretPost,
+		GrantTypes:              []providers.GrantType{providers.GrantTypeAuthorizationCode},
+		ResponseTypes:           []providers.ResponseType{providers.ResponseTypeCode},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
 	}
 }
 
 func (suite *AuthzValidationTestSuite) validParams() map[string]string {
 	return map[string]string{
-		constants.RequestParamResponseType: string(constants.ResponseTypeCode),
+		constants.RequestParamResponseType: string(providers.ResponseTypeCode),
 	}
 }
 
@@ -89,12 +89,12 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_UnsupportedResponseTyp
 }
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_GrantTypeNotAllowed() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ClientID:                "test-client-id",
 		RedirectURIs:            []string{"https://client.example.com/callback"},
-		GrantTypes:              []constants.GrantType{constants.GrantTypeClientCredentials},
-		ResponseTypes:           []constants.ResponseType{constants.ResponseTypeCode},
-		TokenEndpointAuthMethod: constants.TokenEndpointAuthMethodClientSecretPost,
+		GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
+		ResponseTypes:           []providers.ResponseType{providers.ResponseTypeCode},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
 	}
 	params := suite.validParams()
 
@@ -104,12 +104,12 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_GrantTypeNotAllowed() 
 }
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_PKCERequired_MissingCodeChallenge() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ClientID:                "test-client-id",
 		RedirectURIs:            []string{"https://client.example.com/callback"},
-		GrantTypes:              []constants.GrantType{constants.GrantTypeAuthorizationCode},
-		ResponseTypes:           []constants.ResponseType{constants.ResponseTypeCode},
-		TokenEndpointAuthMethod: constants.TokenEndpointAuthMethodClientSecretPost,
+		GrantTypes:              []providers.GrantType{providers.GrantTypeAuthorizationCode},
+		ResponseTypes:           []providers.ResponseType{providers.ResponseTypeCode},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
 		PKCERequired:            true,
 	}
 	params := suite.validParams()
@@ -121,12 +121,12 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_PKCERequired_MissingCo
 }
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_PKCERequired_InvalidCodeChallenge() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ClientID:                "test-client-id",
 		RedirectURIs:            []string{"https://client.example.com/callback"},
-		GrantTypes:              []constants.GrantType{constants.GrantTypeAuthorizationCode},
-		ResponseTypes:           []constants.ResponseType{constants.ResponseTypeCode},
-		TokenEndpointAuthMethod: constants.TokenEndpointAuthMethodClientSecretPost,
+		GrantTypes:              []providers.GrantType{providers.GrantTypeAuthorizationCode},
+		ResponseTypes:           []providers.ResponseType{providers.ResponseTypeCode},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
 		PKCERequired:            true,
 	}
 	params := suite.validParams()
@@ -139,12 +139,12 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_PKCERequired_InvalidCo
 }
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_PKCERequired_ValidPKCE() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ClientID:                "test-client-id",
 		RedirectURIs:            []string{"https://client.example.com/callback"},
-		GrantTypes:              []constants.GrantType{constants.GrantTypeAuthorizationCode},
-		ResponseTypes:           []constants.ResponseType{constants.ResponseTypeCode},
-		TokenEndpointAuthMethod: constants.TokenEndpointAuthMethodClientSecretPost,
+		GrantTypes:              []providers.GrantType{providers.GrantTypeAuthorizationCode},
+		ResponseTypes:           []providers.ResponseType{providers.ResponseTypeCode},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
 		PKCERequired:            true,
 	}
 	params := suite.validParams()

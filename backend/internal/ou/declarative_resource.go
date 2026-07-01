@@ -23,11 +23,14 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"gopkg.in/yaml.v3"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -67,7 +70,7 @@ func (e *ouExporter) GetParameterizerType() string {
 // GetAllResourceIDs retrieves all organization unit IDs from the database store.
 // Note: This only exports DB-backed OUs (runtime OUs). YAML-based declarative resources
 // are not included in the export as they are already defined in YAML files.
-func (e *ouExporter) GetAllResourceIDs(ctx context.Context) ([]string, *serviceerror.ServiceError) {
+func (e *ouExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
 	// Get all OUs by requesting a large limit from the service
 	// In composite mode, this returns OUs from both file-based and database stores
 	ous, err := e.service.GetOrganizationUnitList(ctx, serverconst.MaxPageSize, 0, nil)
@@ -107,7 +110,7 @@ func (e *ouExporter) GetAllResourceIDs(ctx context.Context) ([]string, *servicee
 }
 
 // getAllChildIDs recursively retrieves all child OU IDs (excluding immutable ones).
-func (e *ouExporter) getAllChildIDs(ctx context.Context, parentID string) ([]string, *serviceerror.ServiceError) {
+func (e *ouExporter) getAllChildIDs(ctx context.Context, parentID string) ([]string, *tidcommon.ServiceError) {
 	children, err := e.service.GetOrganizationUnitChildren(ctx, parentID, serverconst.MaxPageSize, 0, nil)
 	if err != nil {
 		return nil, err
@@ -131,7 +134,7 @@ func (e *ouExporter) getAllChildIDs(ctx context.Context, parentID string) ([]str
 
 // GetResourceByID retrieves an organization unit by its ID.
 func (e *ouExporter) GetResourceByID(
-	ctx context.Context, id string) (interface{}, string, *serviceerror.ServiceError) {
+	ctx context.Context, id string) (interface{}, string, *tidcommon.ServiceError) {
 	ou, err := e.service.GetOrganizationUnit(ctx, id)
 	if err != nil {
 		return nil, "", err
@@ -143,7 +146,7 @@ func (e *ouExporter) GetResourceByID(
 func (e *ouExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
-	ou, ok := resource.(*OrganizationUnit)
+	ou, ok := resource.(*providers.OrganizationUnit)
 	if !ok {
 		return "", declarativeresource.CreateTypeError(resourceTypeOU, id)
 	}
@@ -182,7 +185,7 @@ func loadDeclarativeResources(fileStore organizationUnitStoreInterface, dbStore 
 			return validateOUWrapper(data, store, dbStore)
 		},
 		IDExtractor: func(data interface{}) string {
-			return data.(*OrganizationUnit).ID
+			return data.(*providers.OrganizationUnit).ID
 		},
 	}
 
@@ -199,9 +202,9 @@ func parseToOUWrapper(data []byte) (interface{}, error) {
 	return parseToOU(data)
 }
 
-// parseToOU parses YAML data to OrganizationUnit.
-func parseToOU(data []byte) (*OrganizationUnit, error) {
-	var ou OrganizationUnit
+// parseToOU parses YAML data to providers.OrganizationUnit.
+func parseToOU(data []byte) (*providers.OrganizationUnit, error) {
+	var ou providers.OrganizationUnit
 	err := yaml.Unmarshal(data, &ou)
 	if err != nil {
 		return nil, err
@@ -215,9 +218,9 @@ func parseToOU(data []byte) (*OrganizationUnit, error) {
 // In declarative mode, dbStore is nil and only file store is checked.
 // In composite mode, both stores are checked to prevent conflicts.
 func validateOUWrapper(data interface{}, fileStore *fileBasedStore, dbStore organizationUnitStoreInterface) error {
-	ou, ok := data.(*OrganizationUnit)
+	ou, ok := data.(*providers.OrganizationUnit)
 	if !ok {
-		return fmt.Errorf("invalid type: expected *OrganizationUnit")
+		return fmt.Errorf("invalid type: expected *providers.OrganizationUnit")
 	}
 
 	if ou.ID == "" {

@@ -21,8 +21,9 @@ package inboundclient
 import (
 	"errors"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/cert"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 var (
@@ -91,6 +92,8 @@ var (
 	ErrOAuthInvalidTokenEndpointAuthMethod = errors.New("invalid token endpoint auth method")
 	// ErrOAuthPrivateKeyJWTRequiresCertificate is returned when private_key_jwt is used without a certificate.
 	ErrOAuthPrivateKeyJWTRequiresCertificate = errors.New("private_key_jwt requires a certificate")
+	// ErrOAuthCertificateRequiresClientID is returned when a certificate is provided without an OAuth client ID.
+	ErrOAuthCertificateRequiresClientID = errors.New("certificate requires an OAuth client ID")
 	// ErrOAuthPrivateKeyJWTCannotHaveClientSecret is returned when private_key_jwt is used with a client secret.
 	ErrOAuthPrivateKeyJWTCannotHaveClientSecret = errors.New("private_key_jwt cannot have a client secret")
 	// ErrOAuthClientSecretCannotHaveCertificate is returned when client-secret auth is used with a certificate.
@@ -181,7 +184,7 @@ const (
 type CertOperationError struct {
 	Operation  string
 	RefType    cert.CertificateReferenceType
-	Underlying *serviceerror.ServiceError
+	Underlying *tidcommon.ServiceError
 }
 
 // Error implements the error interface.
@@ -194,13 +197,13 @@ func (e *CertOperationError) Error() string {
 
 // IsClientError reports whether the underlying cert service error is a client error.
 func (e *CertOperationError) IsClientError() bool {
-	return e.Underlying != nil && e.Underlying.Type == serviceerror.ClientErrorType
+	return e.Underlying != nil && e.Underlying.Type == tidcommon.ClientErrorType
 }
 
 // ConsentSyncError wraps an underlying ServiceError from the consent service, allowing callers
 // to translate it into their own error vocabulary.
 type ConsentSyncError struct {
-	Underlying *serviceerror.ServiceError
+	Underlying *tidcommon.ServiceError
 }
 
 // Error implements the error interface. Falls back through (description → code → generic) so
@@ -219,5 +222,5 @@ func (e *ConsentSyncError) Error() string {
 
 // IsClientError reports whether the underlying error is a client error.
 func (e *ConsentSyncError) IsClientError() bool {
-	return e.Underlying != nil && e.Underlying.Type == serviceerror.ClientErrorType
+	return e.Underlying != nil && e.Underlying.Type == tidcommon.ClientErrorType
 }

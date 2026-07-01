@@ -59,7 +59,7 @@ func (suite *CacheBackedStoreTestSuite) SetupTest() {
 func (suite *CacheBackedStoreTestSuite) createTestCertificate() *Certificate {
 	return &Certificate{
 		ID:      "test-cert-id",
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKS,
 		Value:   "test-certificate-value",
@@ -161,12 +161,12 @@ func (suite *CacheBackedStoreTestSuite) TestGetCertificateByID_CacheMiss_CacheSe
 
 func (suite *CacheBackedStoreTestSuite) TestGetCertificateByReference_CacheHit() {
 	cert := suite.createTestCertificate()
-	cacheKey := getCertByReferenceCacheKey(CertificateReferenceTypeApplication, "test-app-id")
+	cacheKey := getCertByReferenceCacheKey(CertificateReferenceTypeIDP, "test-app-id")
 
 	suite.mockCertByRefCache.On("Get", mock.Anything, cacheKey).Return(cert, true)
 
 	result, err := suite.cacheBackedStore.GetCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-app-id")
+		CertificateReferenceTypeIDP, "test-app-id")
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -177,17 +177,17 @@ func (suite *CacheBackedStoreTestSuite) TestGetCertificateByReference_CacheHit()
 
 func (suite *CacheBackedStoreTestSuite) TestGetCertificateByReference_CacheMiss_Success() {
 	cert := suite.createTestCertificate()
-	cacheKey := getCertByReferenceCacheKey(CertificateReferenceTypeApplication, "test-app-id")
+	cacheKey := getCertByReferenceCacheKey(CertificateReferenceTypeIDP, "test-app-id")
 	idCacheKey := cache.CacheKey{Key: cert.ID}
 
 	suite.mockCertByRefCache.On("Get", mock.Anything, cacheKey).Return(nil, false)
 	suite.mockStore.On("GetCertificateByReference", mock.Anything,
-		CertificateReferenceTypeApplication, "test-app-id").Return(cert, nil)
+		CertificateReferenceTypeIDP, "test-app-id").Return(cert, nil)
 	suite.mockCertByIDCache.On("Set", mock.Anything, idCacheKey, cert).Return(nil)
 	suite.mockCertByRefCache.On("Set", mock.Anything, cacheKey, cert).Return(nil)
 
 	result, err := suite.cacheBackedStore.GetCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-app-id")
+		CertificateReferenceTypeIDP, "test-app-id")
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -495,17 +495,17 @@ func (suite *CacheBackedStoreTestSuite) TestDeleteCertificateByID_StoreDeleteErr
 
 func (suite *CacheBackedStoreTestSuite) TestDeleteCertificateByReference_CacheHit() {
 	cert := suite.createTestCertificate()
-	refCacheKey := getCertByReferenceCacheKey(CertificateReferenceTypeApplication, "test-app-id")
+	refCacheKey := getCertByReferenceCacheKey(CertificateReferenceTypeIDP, "test-app-id")
 	idCacheKey := cache.CacheKey{Key: cert.ID}
 
 	suite.mockCertByRefCache.On("Get", mock.Anything, refCacheKey).Return(cert, true)
 	suite.mockStore.On("DeleteCertificateByReference", mock.Anything,
-		CertificateReferenceTypeApplication, "test-app-id").Return(nil)
+		CertificateReferenceTypeIDP, "test-app-id").Return(nil)
 	suite.mockCertByIDCache.On("Delete", mock.Anything, idCacheKey).Return(nil)
 	suite.mockCertByRefCache.On("Delete", mock.Anything, refCacheKey).Return(nil)
 
 	err := suite.cacheBackedStore.DeleteCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-app-id")
+		CertificateReferenceTypeIDP, "test-app-id")
 
 	assert.Nil(suite.T(), err)
 	suite.mockCertByRefCache.AssertExpectations(suite.T())
@@ -515,19 +515,19 @@ func (suite *CacheBackedStoreTestSuite) TestDeleteCertificateByReference_CacheHi
 
 func (suite *CacheBackedStoreTestSuite) TestDeleteCertificateByReference_CacheMiss_FetchFromStore() {
 	cert := suite.createTestCertificate()
-	refCacheKey := getCertByReferenceCacheKey(CertificateReferenceTypeApplication, "test-app-id")
+	refCacheKey := getCertByReferenceCacheKey(CertificateReferenceTypeIDP, "test-app-id")
 	idCacheKey := cache.CacheKey{Key: cert.ID}
 
 	suite.mockCertByRefCache.On("Get", mock.Anything, refCacheKey).Return(nil, false)
 	suite.mockStore.On("GetCertificateByReference", mock.Anything,
-		CertificateReferenceTypeApplication, "test-app-id").Return(cert, nil)
+		CertificateReferenceTypeIDP, "test-app-id").Return(cert, nil)
 	suite.mockStore.On("DeleteCertificateByReference", mock.Anything,
-		CertificateReferenceTypeApplication, "test-app-id").Return(nil)
+		CertificateReferenceTypeIDP, "test-app-id").Return(nil)
 	suite.mockCertByIDCache.On("Delete", mock.Anything, idCacheKey).Return(nil)
 	suite.mockCertByRefCache.On("Delete", mock.Anything, refCacheKey).Return(nil)
 
 	err := suite.cacheBackedStore.DeleteCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-app-id")
+		CertificateReferenceTypeIDP, "test-app-id")
 
 	assert.Nil(suite.T(), err)
 	suite.mockStore.AssertExpectations(suite.T())
@@ -553,15 +553,15 @@ func (suite *CacheBackedStoreTestSuite) TestDeleteCertificateByReference_CertNot
 }
 
 func (suite *CacheBackedStoreTestSuite) TestDeleteCertificateByReference_GetError() {
-	refCacheKey := getCertByReferenceCacheKey(CertificateReferenceTypeApplication, "test-id")
+	refCacheKey := getCertByReferenceCacheKey(CertificateReferenceTypeIDP, "test-id")
 
 	suite.mockCertByRefCache.On("Get", mock.Anything, refCacheKey).Return(nil, false)
 	suite.mockStore.On("GetCertificateByReference", mock.Anything,
-		CertificateReferenceTypeApplication, "test-id").
+		CertificateReferenceTypeIDP, "test-id").
 		Return(nil, errors.New("store error"))
 
 	err := suite.cacheBackedStore.DeleteCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-id")
+		CertificateReferenceTypeIDP, "test-id")
 
 	assert.NotNil(suite.T(), err)
 	suite.mockStore.AssertExpectations(suite.T())
@@ -580,9 +580,9 @@ func (suite *CacheBackedStoreTestSuite) TestGetCertByReferenceCacheKey() {
 	}{
 		{
 			name:     "Application reference",
-			refType:  CertificateReferenceTypeApplication,
+			refType:  CertificateReferenceTypeIDP,
 			refID:    "app-123",
-			expected: "APPLICATION:app-123",
+			expected: "IDP:app-123",
 		},
 		{
 			name:     "IDP reference",

@@ -119,17 +119,21 @@ func (s *runtimeCryptoService) Decrypt(
 }
 
 func (s *runtimeCryptoService) Sign(
-	ctx context.Context, keyRef kmprovider.KeyRef, algorithm cryptolib.SignAlgorithm, content []byte,
+	ctx context.Context, keyRef kmprovider.KeyRef, alg string, content []byte,
 ) ([]byte, error) {
 	if s.pkiService == nil {
 		return nil, errors.New("PKI service not initialized")
+	}
+	signAlg, err := cryptolib.SignAlgorithmFor(cryptolib.Algorithm(alg))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %q", kmprovider.ErrUnsupportedAlgorithm, alg)
 	}
 	privKey, svcErr := s.pkiService.GetPrivateKey(ctx, keyRef.KeyID)
 	if svcErr != nil {
 		return nil, fmt.Errorf("key not found for id %s: [%s] %s",
 			keyRef.KeyID, svcErr.Code, svcErr.Error.DefaultValue)
 	}
-	return cryptolib.Generate(content, algorithm, privKey)
+	return cryptolib.Generate(content, signAlg, privKey)
 }
 
 func (s *runtimeCryptoService) GetPublicKeys(
@@ -190,6 +194,28 @@ func (s *runtimeCryptoService) GetPublicKeys(
 	}
 
 	return keys, nil
+}
+
+func (s *runtimeCryptoService) Verify(
+	ctx context.Context, kid string, alg string, content []byte, signature []byte,
+) error {
+	if s.pkiService == nil {
+		return errors.New("PKI service not initialized")
+	}
+	signAlg, err := cryptolib.SignAlgorithmFor(cryptolib.Algorithm(alg))
+	if err != nil {
+		return fmt.Errorf("%w: %q", kmprovider.ErrUnsupportedAlgorithm, alg)
+	}
+	keys, err := s.GetPublicKeys(ctx, kmprovider.PublicKeyFilter{})
+	if err != nil {
+		return fmt.Errorf("failed to retrieve public keys: %w", err)
+	}
+	for _, key := range keys {
+		if key.Thumbprint == kid {
+			return cryptolib.Verify(content, signature, signAlg, key.PublicKey)
+		}
+	}
+	return fmt.Errorf("%w: kid=%s", kmprovider.ErrKeyNotFound, kid)
 }
 
 func (s *runtimeCryptoService) GetTLSMaterial(

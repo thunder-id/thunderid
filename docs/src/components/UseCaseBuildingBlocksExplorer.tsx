@@ -155,7 +155,7 @@ export function UseCaseBuildingBlocksExplorer({
     window.addEventListener('resize', handleResize);
 
     return () => window.removeEventListener('resize', handleResize);
-  }, [scrollableGroupKey]);
+  }, [scrollableGroupKey, scrollableGroupIds]);
 
   return (
     <section className={`uc-building-blocks${compact ? ' uc-building-blocks--compact' : ''}${scrollableGroupIds.length > 0 ? ' uc-building-blocks--scrollable' : ''}`} aria-label={ariaLabel}>

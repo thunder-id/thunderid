@@ -22,9 +22,9 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 var (
@@ -57,7 +57,7 @@ var (
 				"type":     "string",
 				"required": true,
 			},
-			"mobileNumber": map[string]interface{}{
+			"mobile_number": map[string]interface{}{
 				"type": "string",
 			},
 		},
@@ -586,8 +586,8 @@ func (ts *BasicRegistrationFlowTestSuite) TestSchemaDriverInputs_DynamicPromptFo
 		"email, given_name, family_name must be dynamically prompted")
 	ts.Require().False(common.HasInput(flowStep.Data.Inputs, "username"),
 		"username should not appear again — it was already provided")
-	ts.Require().False(common.HasInput(flowStep.Data.Inputs, "mobileNumber"),
-		"optional mobileNumber should not be prompted when not in node inputs")
+	ts.Require().False(common.HasInput(flowStep.Data.Inputs, "mobile_number"),
+		"optional mobile_number should not be prompted when not in node inputs")
 
 	// Step 3: Submit schema attrs and complete.
 	inputs = map[string]string{
@@ -632,10 +632,10 @@ func (ts *BasicRegistrationFlowTestSuite) TestSchemaDriverInputs_NoPromptWhenAll
 }
 
 // TestSchemaDriverInputs_OptionalAttrProvisionedWhenInNodeInputs verifies that an optional
-// schema attribute (mobileNumber) is collected and stored when it is explicitly listed as a
+// schema attribute (mobile_number) is collected and stored when it is explicitly listed as a
 // node input in the provisioning executor configuration.
 func (ts *BasicRegistrationFlowTestSuite) TestSchemaDriverInputs_OptionalAttrProvisionedWhenInNodeInputs() {
-	// Create a custom flow that adds mobileNumber as a node input on the provisioning executor.
+	// Create a custom flow that adds mobile_number as a node input on the provisioning executor.
 	optionalAttrFlow := testutils.Flow{
 		Name:     "Optional Attr Registration Flow",
 		Handle:   "optional-attr-reg-flow",
@@ -702,7 +702,7 @@ func (ts *BasicRegistrationFlowTestSuite) TestSchemaDriverInputs_OptionalAttrPro
 					"inputs": []map[string]interface{}{
 						{"ref": "input_001", "identifier": "username", "type": "TEXT_INPUT", "required": true},
 						{"ref": "input_002", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
-						{"ref": "input_003", "identifier": "mobileNumber", "type": "TEXT_INPUT", "required": false},
+						{"ref": "input_003", "identifier": "mobile_number", "type": "TEXT_INPUT", "required": false},
 					},
 				},
 				"onSuccess":    "auth_assert",
@@ -771,26 +771,26 @@ func (ts *BasicRegistrationFlowTestSuite) TestSchemaDriverInputs_OptionalAttrPro
 	flowStep, err = common.CompleteFlow(flowStep.ExecutionID, inputs, "action_credentials", flowStep.ChallengeToken)
 	ts.Require().NoError(err)
 
-	// Submit schema-required attrs and the optional mobileNumber.
+	// Submit schema-required attrs and the optional mobile_number.
 	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
 	inputs = map[string]string{
-		"email":        username + "@example.com",
-		"given_name":   "Optional",
-		"family_name":  "User",
-		"mobileNumber": mobile,
+		"email":         username + "@example.com",
+		"given_name":    "Optional",
+		"family_name":   "User",
+		"mobile_number": mobile,
 	}
 	flowStep, err = common.CompleteFlow(flowStep.ExecutionID, inputs, "action_schema_attrs", flowStep.ChallengeToken)
 	ts.Require().NoError(err)
 	ts.Require().Equal("COMPLETE", flowStep.FlowStatus)
 
-	// Verify mobileNumber was stored.
+	// Verify mobile_number was stored.
 	user, err := testutils.FindUserByAttribute("username", username)
 	ts.Require().NoError(err)
 	ts.Require().NotNil(user)
 	userAttrs, err := testutils.GetUserAttributes(*user)
 	ts.Require().NoError(err)
-	ts.Require().Equal(mobile, userAttrs["mobileNumber"],
-		"optional mobileNumber should be provisioned when listed in node inputs")
+	ts.Require().Equal(mobile, userAttrs["mobile_number"],
+		"optional mobile_number should be provisioned when listed in node inputs")
 	ts.config.CreatedUserIDs = append(ts.config.CreatedUserIDs, user.ID)
 }
 

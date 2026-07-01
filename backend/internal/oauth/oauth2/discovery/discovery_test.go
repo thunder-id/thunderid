@@ -26,6 +26,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -60,24 +63,24 @@ func TestDiscoverySuite(t *testing.T) {
 
 func (suite *DiscoveryTestSuite) SetupTest() {
 	testConfig := &config.Config{
-		Server: config.ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Hostname: "localhost",
 			Port:     8080,
 			HTTPOnly: false,
 		},
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://auth.example.com",
 			ValidityPeriod: 3600,
 		},
-		OAuth: config.OAuthConfig{
-			DPoP: config.DPoPConfig{
+		OAuth: engineconfig.OAuthConfig{
+			DPoP: engineconfig.DPoPConfig{
 				Required:     false,
 				IatWindow:    60,
 				Leeway:       5,
 				AllowedAlgs:  []string{"ES256", "PS256", "ES384", "ES512", "EdDSA", "RS256"},
 				MaxJTILength: 256,
 			},
-			AuthClass: config.AuthClassConfig{
+			AuthClass: engineconfig.AuthClassConfig{
 				Amrs: []string{"PWD", "OTP"},
 				AcrAMR: map[string][]string{
 					"urn:thunder:acr:password":       {"PWD"},
@@ -138,7 +141,7 @@ func (suite *DiscoveryTestSuite) TestOAuth2AuthorizationServerMetadata() {
 func (suite *DiscoveryTestSuite) TestCIBAMetadataAdvertised() {
 	metadata := suite.discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background())
 
-	assert.Contains(suite.T(), metadata.GrantTypesSupported, string(constants.GrantTypeCIBA))
+	assert.Contains(suite.T(), metadata.GrantTypesSupported, string(providers.GrantTypeCIBA))
 	assert.NotEmpty(suite.T(), metadata.BackchannelAuthenticationEndpoint)
 	assert.Contains(suite.T(), metadata.BackchannelAuthenticationEndpoint, constants.OAuth2BackchannelAuthEndpoint)
 	assert.Equal(suite.T(), []string{"poll"}, metadata.BackchannelTokenDeliveryModesSupported)
@@ -198,8 +201,8 @@ func (suite *DiscoveryTestSuite) TestDPoPSigningAlgValuesAdvertised() {
 func (suite *DiscoveryTestSuite) TestDPoPSigningAlgValuesOmittedWhenUnconfigured() {
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
-		Server: config.ServerConfig{Hostname: "localhost", Port: 8080},
-		JWT:    config.JWTConfig{Issuer: "https://auth.example.com"},
+		Server: engineconfig.ServerConfig{Hostname: "localhost", Port: 8080},
+		JWT:    engineconfig.JWTConfig{Issuer: "https://auth.example.com"},
 	}
 	_ = config.InitializeServerRuntime("test", testConfig)
 	defer config.ResetServerRuntime()
@@ -217,43 +220,43 @@ func (suite *DiscoveryTestSuite) TestDPoPSigningAlgValuesOmittedWhenUnconfigured
 // This is a standalone test for constants - doesn't require discovery service setup
 func TestGrantTypeIsValid(t *testing.T) {
 	// Test valid grant types
-	assert.True(t, constants.GrantTypeAuthorizationCode.IsValid())
-	assert.True(t, constants.GrantTypeClientCredentials.IsValid())
-	assert.True(t, constants.GrantTypeRefreshToken.IsValid())
+	assert.True(t, providers.GrantTypeAuthorizationCode.IsValid())
+	assert.True(t, providers.GrantTypeClientCredentials.IsValid())
+	assert.True(t, providers.GrantTypeRefreshToken.IsValid())
 
 	// Test invalid grant types
-	assert.False(t, constants.GrantType("invalid").IsValid())
-	assert.False(t, constants.GrantType("password").IsValid())
-	assert.False(t, constants.GrantType("").IsValid())
-	assert.False(t, constants.GrantType("implicit").IsValid())
+	assert.False(t, providers.GrantType("invalid").IsValid())
+	assert.False(t, providers.GrantType("password").IsValid())
+	assert.False(t, providers.GrantType("").IsValid())
+	assert.False(t, providers.GrantType("implicit").IsValid())
 }
 
 // TestResponseTypeIsValid tests the ResponseType.IsValid() method
 // This is a standalone test for constants - doesn't require discovery service setup
 func TestResponseTypeIsValid(t *testing.T) {
 	// Test valid response types
-	assert.True(t, constants.ResponseTypeCode.IsValid())
+	assert.True(t, providers.ResponseTypeCode.IsValid())
 
 	// Test invalid response types
-	assert.False(t, constants.ResponseType("invalid").IsValid())
-	assert.False(t, constants.ResponseType("token").IsValid())
-	assert.False(t, constants.ResponseType("id_token").IsValid())
-	assert.False(t, constants.ResponseType("").IsValid())
+	assert.False(t, providers.ResponseType("invalid").IsValid())
+	assert.False(t, providers.ResponseType("token").IsValid())
+	assert.False(t, providers.ResponseType("id_token").IsValid())
+	assert.False(t, providers.ResponseType("").IsValid())
 }
 
 // TestTokenEndpointAuthMethodIsValid tests the TokenEndpointAuthMethod.IsValid() method
 // This is a standalone test for constants - doesn't require discovery service setup
 func TestTokenEndpointAuthMethodIsValid(t *testing.T) {
 	// Test valid authentication methods
-	assert.True(t, constants.TokenEndpointAuthMethodClientSecretBasic.IsValid())
-	assert.True(t, constants.TokenEndpointAuthMethodClientSecretPost.IsValid())
-	assert.True(t, constants.TokenEndpointAuthMethodNone.IsValid())
-	assert.True(t, constants.TokenEndpointAuthMethodPrivateKeyJWT.IsValid())
+	assert.True(t, providers.TokenEndpointAuthMethodClientSecretBasic.IsValid())
+	assert.True(t, providers.TokenEndpointAuthMethodClientSecretPost.IsValid())
+	assert.True(t, providers.TokenEndpointAuthMethodNone.IsValid())
+	assert.True(t, providers.TokenEndpointAuthMethodPrivateKeyJWT.IsValid())
 
 	// Test invalid authentication methods
-	assert.False(t, constants.TokenEndpointAuthMethod("invalid").IsValid())
-	assert.False(t, constants.TokenEndpointAuthMethod("client_secret_jwt").IsValid())
-	assert.False(t, constants.TokenEndpointAuthMethod("").IsValid())
+	assert.False(t, providers.TokenEndpointAuthMethod("invalid").IsValid())
+	assert.False(t, providers.TokenEndpointAuthMethod("client_secret_jwt").IsValid())
+	assert.False(t, providers.TokenEndpointAuthMethod("").IsValid())
 }
 
 // TestGetSupportedResponseTypes tests the GetSupportedResponseTypes function
@@ -359,12 +362,12 @@ func (suite *DiscoveryTestSuite) TestInitialize() {
 func (suite *DiscoveryTestSuite) TestGetBaseURL_WithPublicHostname() {
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
-		Server: config.ServerConfig{
+		Server: engineconfig.ServerConfig{
 			PublicURL: "https://public.thunder.io",
 			Hostname:  "localhost",
 			Port:      8080,
 		},
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer: "https://auth.example.com",
 		},
 	}
@@ -379,12 +382,12 @@ func (suite *DiscoveryTestSuite) TestGetBaseURL_WithPublicHostname() {
 func (suite *DiscoveryTestSuite) TestGetBaseURL_WithHTTPOnly() {
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
-		Server: config.ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Hostname: "localhost",
 			Port:     8080,
 			HTTPOnly: true,
 		},
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer: "https://auth.example.com",
 		},
 	}

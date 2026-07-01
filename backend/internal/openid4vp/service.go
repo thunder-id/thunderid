@@ -24,14 +24,25 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"time"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/openid4vp/definition"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
+	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 )
+
+// definitionReader resolves a managed presentation definition by handle.
+type definitionReader interface {
+	GetPresentationDefinitionByHandle(
+		ctx context.Context, handle string,
+	) (*definition.PresentationDefinitionDTO, *tidcommon.ServiceError)
+}
 
 const defaultStateTTL = 5 * time.Minute
 
@@ -43,38 +54,40 @@ type requestSigner interface {
 
 // OpenID4VPServiceInterface is the contract for the OpenID4VP verifier service.
 // It is implemented by *service and consumed by the HTTP handler and in-process
-// callers such as flow executors (which depend only on Initiate and Result).
+// callers such as flow executors (which depend only on Initiate and GetResult).
 type OpenID4VPServiceInterface interface {
-	Initiate(ctx context.Context, definitionID string) (*Initiation, error)
-	Result(ctx context.Context, state string) (*RequestState, error)
-	RequestObject(ctx context.Context, state string) (string, error)
-	SubmitResponse(ctx context.Context, state string, body []byte) (*VerifiedPresentation, error)
-	ResultRedirectURI(state string) string
-	InitiateForRP(ctx context.Context, definitionID, rpID string) (*Initiation, error)
-	LookupState(ctx context.Context, state string) (*RequestState, error)
-	Authenticate(ctx context.Context, state string) (*authncommon.AuthnResult, *serviceerror.ServiceError)
+	Initiate(ctx context.Context, definitionID string) (*Initiation, *tidcommon.ServiceError)
+	GetResult(ctx context.Context, state string) (*RequestState, *tidcommon.ServiceError)
+	GetRequestObject(ctx context.Context, state string) (string, *tidcommon.ServiceError)
+	SubmitResponse(ctx context.Context, state string, body []byte) (*VerifiedPresentation, *tidcommon.ServiceError)
+	SubmitError(ctx context.Context, state, code, description string) *tidcommon.ServiceError
+	GetResultRedirectURI(state string) string
+	InitiateForRP(ctx context.Context, definitionID, rpID string) (*Initiation, *tidcommon.ServiceError)
+	LookupState(ctx context.Context, state string) (*RequestState, *tidcommon.ServiceError)
+	Authenticate(ctx context.Context, state string) (*authncommon.AuthnResult, *tidcommon.ServiceError)
+	GetTrustAnchors() []TrustAnchorInfo
 }
 
 var _ OpenID4VPServiceInterface = (*service)(nil)
 
-// service drives the OpenID4VP verifier: it issues signed requests with a
-// fresh nonce and ephemeral encryption key, and verifies the encrypted
-// responses. Per-credential behavior is plugged in via the registry.
+// service drives the OpenID4VP verifier: issues signed requests, verifies encrypted responses.
 type service struct {
 	cfg      serviceConfig
-	store    stateStore
-	registry *registry
+	store    openID4VPStoreInterface
+	defStore definitionReader
 	clientID string
 	signer   requestSigner
+	// trust is the shared engine-wide trust anchor store; nil when unconfigured.
+	trust *trustAnchorStore
 }
 
-// newService creates an OpenID4VP verifier engine. clientID is the verifier
-// identifier (e.g. "x509_hash:<hash>") and signer signs the JAR request object.
-func newService(
-	cfg serviceConfig, store stateStore, clientID string, signer requestSigner,
-) (*service, error) {
-	if store == nil || clientID == "" || signer == nil {
-		return nil, fmt.Errorf("%w: store, client id and signer are required", ErrPolicy)
+// newOpenID4VPService creates an OpenID4VP verifier engine.
+func newOpenID4VPService(
+	cfg serviceConfig, store openID4VPStoreInterface, clientID string, signer requestSigner,
+	trust *trustAnchorStore, defStore definitionReader,
+) (OpenID4VPServiceInterface, error) {
+	if store == nil || clientID == "" || signer == nil || defStore == nil {
+		return nil, fmt.Errorf("%w: store, client id, signer and definition store are required", ErrPolicy)
 	}
 	if cfg.RequestURIBase == "" || cfg.ResponseURIBase == "" {
 		return nil, fmt.Errorf("%w: request_uri and response_uri base URLs are required", ErrPolicy)
@@ -85,29 +98,39 @@ func newService(
 	return &service{
 		cfg:      cfg,
 		store:    store,
-		registry: newRegistry(),
+		defStore: defStore,
 		clientID: clientID,
 		signer:   signer,
+		trust:    trust,
 	}, nil
 }
 
-// InitiateForRP is the RP-facing variant of Initiate: it stores the calling
-// relying party's identifier on the state so the result-token audience matches
-// the RP that initiated the transaction.
-func (s *service) InitiateForRP(ctx context.Context, definitionID, rpID string) (*Initiation, error) {
-	init, err := s.Initiate(ctx, definitionID)
+// InitiateForRP is the RP-facing variant of Initiate; stores rpID so the result token audience matches.
+func (s *service) InitiateForRP(
+	ctx context.Context, definitionID, rpID string,
+) (*Initiation, *tidcommon.ServiceError) {
+	init, err := s.initiateForRP(ctx, definitionID, rpID)
+	if err != nil {
+		return nil, toServiceError(err)
+	}
+	return init, nil
+}
+
+// initiateForRP initiates a request for definitionID and records rpID on the resulting request state.
+func (s *service) initiateForRP(ctx context.Context, definitionID, rpID string) (*Initiation, error) {
+	init, err := s.initiate(ctx, definitionID)
 	if err != nil {
 		return nil, err
 	}
 	if rpID == "" {
 		return init, nil
 	}
-	rs, ok := s.store.Get(ctx, init.State)
+	rs, ok := s.store.GetRequestState(ctx, init.State)
 	if !ok || rs == nil {
 		return init, nil
 	}
 	rs.RPID = rpID
-	if err := s.store.Save(ctx, rs); err != nil {
+	if err := s.store.SaveRequestState(ctx, rs); err != nil {
 		return nil, fmt.Errorf("failed to persist rp_id on request state: %w", err)
 	}
 	return init, nil
@@ -115,10 +138,19 @@ func (s *service) InitiateForRP(ctx context.Context, definitionID, rpID string) 
 
 // Initiate creates a fresh request for definitionID: a random state and nonce
 // and an ephemeral encryption keypair, stored pending under a short TTL.
-func (s *service) Initiate(ctx context.Context, definitionID string) (*Initiation, error) {
-	def, ok := s.registry.get(definitionID)
-	if !ok {
-		return nil, fmt.Errorf("%w: no presentation definition registered for %q", ErrPolicy, definitionID)
+func (s *service) Initiate(ctx context.Context, definitionID string) (*Initiation, *tidcommon.ServiceError) {
+	init, err := s.initiate(ctx, definitionID)
+	if err != nil {
+		return nil, toServiceError(err)
+	}
+	return init, nil
+}
+
+// initiate creates a fresh request for definitionID with a random state, nonce, and ephemeral key, stored pending.
+func (s *service) initiate(ctx context.Context, definitionID string) (*Initiation, error) {
+	def, err := s.resolveDefinition(ctx, definitionID)
+	if err != nil {
+		return nil, err
 	}
 
 	state, err := randomToken()
@@ -144,7 +176,7 @@ func (s *service) Initiate(ctx context.Context, definitionID string) (*Initiatio
 		Status:       StatusPending,
 		ExpiresAt:    time.Now().Add(s.cfg.TTL),
 	}
-	if err := s.store.Save(ctx, rs); err != nil {
+	if err := s.store.SaveRequestState(ctx, rs); err != nil {
 		return nil, fmt.Errorf("failed to store request state: %w", err)
 	}
 
@@ -155,35 +187,48 @@ func (s *service) Initiate(ctx context.Context, definitionID string) (*Initiatio
 	}, nil
 }
 
-// RequestObject builds and signs the request object (JAR) for state. The
+// GetRequestObject builds and signs the request object (JAR) for state. The
 // definition recorded on the state drives DCQL, encryption advertisement and
 // signing.
-func (s *service) RequestObject(ctx context.Context, state string) (string, error) {
+func (s *service) GetRequestObject(ctx context.Context, state string) (string, *tidcommon.ServiceError) {
+	jar, err := s.requestObject(ctx, state)
+	if err != nil {
+		return "", toServiceError(err)
+	}
+	return jar, nil
+}
+
+// requestObject builds and signs the request object (JAR) for the given state.
+func (s *service) requestObject(ctx context.Context, state string) (string, error) {
 	rs, err := s.load(ctx, state)
 	if err != nil {
 		return "", err
 	}
-	def, err := s.resolveDefinition(rs)
+	def, err := s.resolveDefinition(ctx, rs.DefinitionID)
 	if err != nil {
 		return "", err
 	}
 
+	dcql := def.DCQL
+	if s.trust != nil {
+		dcql.TrustedAuthorityKeyIDs = s.trust.skisFor(dcql.TrustedAuthorities)
+	}
+
 	cfg := requestConfig{
 		ClientID:          s.clientID,
-		ClientIDScheme:    s.cfg.ClientIDScheme,
 		ResponseURI:       s.responseURI(state),
 		ResponseMode:      ResponseModeDirectPostJWT,
 		Audience:          s.cfg.RequestAudience,
-		Validity:          firstNonZeroDuration(def.RequestValidity, s.cfg.RequestValidity),
-		DCQL:              def.DCQL,
-		ResponseEncValues: firstNonEmptyStringSlice(def.ResponseEncValues, s.cfg.ResponseEncValues),
+		Validity:          s.cfg.RequestValidity,
+		DCQL:              dcql,
+		ResponseEncValues: s.cfg.ResponseEncValues,
 		VerifierInfo:      s.cfg.VerifierInfo,
 	}
 	params := requestParams{
 		Nonce:          rs.Nonce,
 		State:          state,
 		EphemeralKey:   &rs.EphemeralKey.PublicKey,
-		EphemeralKeyID: firstNonEmptyString(def.EphemeralKeyID, s.cfg.EphemeralKeyID),
+		EphemeralKeyID: s.cfg.EphemeralKeyID,
 		IssuedAt:       time.Now(),
 	}
 
@@ -196,12 +241,23 @@ func (s *service) RequestObject(ctx context.Context, state string) (string, erro
 
 // SubmitResponse decrypts and verifies a wallet response for state, recording
 // the outcome. It returns the verified presentation on success.
-func (s *service) SubmitResponse(ctx context.Context, state string, body []byte) (*VerifiedPresentation, error) {
+func (s *service) SubmitResponse(
+	ctx context.Context, state string, body []byte,
+) (*VerifiedPresentation, *tidcommon.ServiceError) {
+	vp, err := s.submitResponse(ctx, state, body)
+	if err != nil {
+		return nil, toServiceError(err)
+	}
+	return vp, nil
+}
+
+// submitResponse decrypts and verifies the wallet response body for state, recording the outcome.
+func (s *service) submitResponse(ctx context.Context, state string, body []byte) (*VerifiedPresentation, error) {
 	rs, err := s.load(ctx, state)
 	if err != nil {
 		return nil, err
 	}
-	def, err := s.resolveDefinition(rs)
+	def, err := s.resolveDefinition(ctx, rs.DefinitionID)
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +278,7 @@ func (s *service) SubmitResponse(ctx context.Context, state string, body []byte)
 	if resp.State != "" && resp.State != state {
 		return nil, s.fail(ctx, rs, ErrStateMismatch)
 	}
-	presentation, err := resp.presentation(def.DCQL.CredentialID)
+	candidates, err := resp.presentationsFor(def.DCQL.CredentialID)
 	if err != nil {
 		return nil, s.fail(ctx, rs, err)
 	}
@@ -235,15 +291,28 @@ func (s *service) SubmitResponse(ctx context.Context, state string, body []byte)
 		policy.KeyBindingMaxAge = s.cfg.KeyBindingMaxAge
 	}
 
-	cred, err := verifySDJWTPresentation(
-		ctx, presentation, def.Trust, policy.Audience, rs.Nonce, policy.Leeway, policy.KeyBindingMaxAge,
-		policy.EnforceTrustedIssuer, policy.EnforceKeyBinding)
-	if err != nil {
-		return nil, s.fail(ctx, rs, err)
+	// A holder may return several matching credentials for a single query; accept
+	// the first that verifies and satisfies the policy, otherwise report the last error.
+	var vp *VerifiedPresentation
+	var lastErr error
+	for _, presentation := range candidates {
+		cred, verr := verifySDJWTPresentation(
+			presentation, s.trust, policy.Audience, rs.Nonce, policy.Leeway, policy.KeyBindingMaxAge,
+			policy.EnforceTrustedIssuer, policy.EnforceKeyBinding, policy.TrustedAuthorities)
+		if verr != nil {
+			lastErr = verr
+			continue
+		}
+		candidate, verr := finalizePresentation(cred, policy)
+		if verr != nil {
+			lastErr = verr
+			continue
+		}
+		vp = candidate
+		break
 	}
-	vp, err := finalizePresentation(cred, policy)
-	if err != nil {
-		return nil, s.fail(ctx, rs, err)
+	if vp == nil {
+		return nil, s.fail(ctx, rs, lastErr)
 	}
 	if def.DeriveSubject != nil {
 		if subject := def.DeriveSubject(vp); subject != "" {
@@ -253,89 +322,127 @@ func (s *service) SubmitResponse(ctx context.Context, state string, body []byte)
 
 	rs.Status = StatusCompleted
 	rs.Result = vp
-	if err := s.store.Save(ctx, rs); err != nil {
+	if err := s.store.SaveRequestState(ctx, rs); err != nil {
 		return nil, fmt.Errorf("failed to persist verification result: %w", err)
 	}
 	return vp, nil
 }
 
-// Result returns the current state record for polling. It returns
-// ErrUnknownState when the state is unknown or expired.
-func (s *service) Result(ctx context.Context, state string) (*RequestState, error) {
-	return s.load(ctx, state)
+// SubmitError records a wallet-reported error (e.g. access_denied) and marks the transaction failed.
+func (s *service) SubmitError(ctx context.Context, state, code, description string) *tidcommon.ServiceError {
+	rs, err := s.load(ctx, state)
+	if err != nil {
+		return toServiceError(err)
+	}
+	reason := code
+	if description != "" {
+		reason = code + ": " + description
+	}
+	_ = s.fail(ctx, rs, fmt.Errorf("wallet reported error: %s", reason))
+	return nil
 }
 
-// LookupState returns the raw state record without auto-evicting expired
-// entries. Expired entries are returned with ErrExpiredState so callers (the
-// RP-facing status endpoint) can report EXPIRED distinctly from a truly
-// unknown state. Missing entries return ErrUnknownState.
-func (s *service) LookupState(ctx context.Context, state string) (*RequestState, error) {
-	rs, ok := s.store.Get(ctx, state)
-	if !ok || rs == nil {
-		return nil, ErrUnknownState
-	}
-	if time.Now().After(rs.ExpiresAt) {
-		return rs, ErrExpiredState
+// GetResult returns the current state record for polling.
+func (s *service) GetResult(ctx context.Context, state string) (*RequestState, *tidcommon.ServiceError) {
+	rs, err := s.load(ctx, state)
+	if err != nil {
+		return nil, toServiceError(err)
 	}
 	return rs, nil
 }
 
-// Authenticate retrieves the completed verified presentation for the given state
-// and converts it to an AuthnResult for use by the authn provider chain.
-// It returns an error when the state is unknown, expired, or the presentation
-// has not yet reached StatusCompleted.
+// LookupState returns the state record without evicting expired entries; returns ErrExpiredState vs ErrUnknownState.
+func (s *service) LookupState(ctx context.Context, state string) (*RequestState, *tidcommon.ServiceError) {
+	rs, ok := s.store.GetRequestState(ctx, state)
+	if !ok || rs == nil {
+		return nil, toServiceError(ErrUnknownState)
+	}
+	if time.Now().After(rs.ExpiresAt) {
+		return rs, toServiceError(ErrExpiredState)
+	}
+	return rs, nil
+}
+
+// Authenticate retrieves the completed verified presentation and converts it to an AuthnResult.
 func (s *service) Authenticate(ctx context.Context, state string) (
-	*authncommon.AuthnResult, *serviceerror.ServiceError) {
-	rs, err := s.Result(ctx, state)
-	if err != nil {
-		return nil, &ErrorUnknownState
+	*authncommon.AuthnResult, *tidcommon.ServiceError) {
+	rs, svcErr := s.GetResult(ctx, state)
+	if svcErr != nil {
+		return nil, svcErr
 	}
 	if rs.Status != StatusCompleted {
 		return nil, &ErrorVerificationFailed
 	}
 	vp := rs.Result
 	if vp == nil {
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
-	token := make(map[string]interface{}, len(vp.Claims)+3)
+	claims := make(map[string]interface{}, len(vp.Claims)+3)
 	for k, v := range vp.Claims {
-		token[k] = v
+		claims[k] = v
 	}
-	token["openid4vp_issuer"] = vp.Issuer
-	token["openid4vp_vct"] = vp.VCT
+	claims["openid4vp_issuer"] = vp.Issuer
+	claims["openid4vp_vct"] = vp.VCT
 	if vp.Subject != "" {
-		token["sub"] = vp.Subject
+		claims["sub"] = vp.Subject
+	}
+
+	// Identification must key on the stable subject only, like the OIDC executor.
+	// Passing the full claim set (disclosed attributes, holder key-binding material
+	// under cnf.*, and openid4vp_* metadata) makes IdentifyEntity AND over fields
+	// no user carries, so a returning holder never matches. AuthenticatedClaims
+	// still carries the full set for attribute provisioning and runtime data.
+	identification := map[string]interface{}{}
+	if vp.Subject != "" {
+		identification["sub"] = vp.Subject
 	}
 
 	return &authncommon.AuthnResult{
-		Token:               token,
-		AuthenticatedClaims: token,
+		Token:               identification,
+		AuthenticatedClaims: claims,
 	}, nil
 }
 
-// ResultRedirectURIBase returns the engine-configured result-redirect base URL
-// (empty when none is configured).
-func (s *service) resultRedirectURIBase() string { return s.cfg.ResultRedirectURIBase }
-
-// resolveDefinition resolves the definition pinned on the state, erroring when
-// the registry no longer carries it.
-func (s *service) resolveDefinition(rs *RequestState) (*presentationDefinition, error) {
-	def, ok := s.registry.get(rs.DefinitionID)
-	if !ok {
-		return nil, fmt.Errorf("%w: presentation definition %q no longer registered", ErrPolicy, rs.DefinitionID)
+// GetTrustAnchors returns the configured trust anchors (root CAs).
+func (s *service) GetTrustAnchors() []TrustAnchorInfo {
+	if s.trust == nil {
+		return []TrustAnchorInfo{}
 	}
-	return def, nil
+	anchors := s.trust.list()
+	out := make([]TrustAnchorInfo, 0, len(anchors))
+	for _, a := range anchors {
+		out = append(out, TrustAnchorInfo{
+			Name:     a.Name,
+			Subject:  a.Subject,
+			SKI:      a.SKI,
+			NotAfter: a.NotAfter,
+		})
+	}
+	return out
+}
+
+// resolveDefinition fetches the presentation definition by handle and builds its engine representation.
+func (s *service) resolveDefinition(ctx context.Context, definitionID string) (*presentationDefinition, error) {
+	dto, svcErr := s.defStore.GetPresentationDefinitionByHandle(ctx, definitionID)
+	if svcErr != nil {
+		if svcErr.Code == definition.ErrorDefinitionNotFound.Code {
+			return nil, fmt.Errorf("%w: no presentation definition registered for %q",
+				ErrUnknownDefinition, definitionID)
+		}
+		return nil, fmt.Errorf("failed to resolve presentation definition %q", definitionID)
+	}
+	return dtoToDefinition(*dto, s.clientID, s.cfg.EnforceKeyBinding), nil
 }
 
 // load fetches non-expired state, deleting and rejecting expired entries.
 func (s *service) load(ctx context.Context, state string) (*RequestState, error) {
-	rs, ok := s.store.Get(ctx, state)
+	rs, ok := s.store.GetRequestState(ctx, state)
 	if !ok || rs == nil {
 		return nil, ErrUnknownState
 	}
 	if time.Now().After(rs.ExpiresAt) {
-		_ = s.store.Delete(ctx, state)
+		_ = s.store.DeleteRequestState(ctx, state)
 		return nil, ErrUnknownState
 	}
 	return rs, nil
@@ -345,43 +452,27 @@ func (s *service) load(ctx context.Context, state string) (*RequestState, error)
 func (s *service) fail(ctx context.Context, rs *RequestState, reason error) error {
 	rs.Status = StatusFailed
 	rs.FailureReason = reason.Error()
-	_ = s.store.Save(ctx, rs)
+	_ = s.store.SaveRequestState(ctx, rs)
 	return reason
 }
 
-// ResultRedirectURI returns the URL the wallet should follow after posting its
+// GetResultRedirectURI returns the URL the wallet should follow after posting its
 // response, or an empty string when none is configured.
-func (s *service) ResultRedirectURI(state string) string {
+func (s *service) GetResultRedirectURI(state string) string {
 	if s.cfg.ResultRedirectURIBase == "" {
 		return ""
 	}
 	return withState(s.cfg.ResultRedirectURIBase, state)
 }
 
+// requestURI builds the request URI for the given state from the configured base.
 func (s *service) requestURI(state string) string {
 	return withState(s.cfg.RequestURIBase, state)
 }
 
+// responseURI builds the response URI for the given state from the configured base.
 func (s *service) responseURI(state string) string {
 	return withState(s.cfg.ResponseURIBase, state)
-}
-
-// withState appends the state query parameter to a base URL.
-func withState(base, state string) string {
-	sep := "?"
-	if u, err := url.Parse(base); err == nil && u.RawQuery != "" {
-		sep = "&"
-	}
-	return base + sep + "state=" + url.QueryEscape(state)
-}
-
-// randomToken returns 32 cryptographically random bytes, base64url-encoded.
-func randomToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
 // WalletAuthorizationURI builds the openid4vp:// deep link the wallet scans,
@@ -394,29 +485,237 @@ func WalletAuthorizationURI(clientID, requestURI string) string {
 	return "openid4vp://?" + v.Encode()
 }
 
-func firstNonEmptyString(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
-		}
+// OpenID4VP request object constants.
+const (
+	ResponseTypeVPToken       = "vp_token"
+	ResponseModeDirectPostJWT = "direct_post.jwt"
+	DefaultResponseEncValue   = "A128GCM"
+	defaultRequestValidity    = 5 * time.Minute
+)
+
+// buildRequestObject assembles the OpenID4VP signed-request (JAR) claims.
+func buildRequestObject(cfg requestConfig, params requestParams) (map[string]interface{}, error) {
+	if cfg.ClientID == "" {
+		return nil, fmt.Errorf("%w: client_id is required", ErrPolicy)
 	}
-	return ""
+	if cfg.ResponseURI == "" {
+		return nil, fmt.Errorf("%w: response_uri is required", ErrPolicy)
+	}
+	if params.Nonce == "" || params.State == "" {
+		return nil, fmt.Errorf("%w: nonce and state are required", ErrPolicy)
+	}
+	if params.EphemeralKey == nil {
+		return nil, fmt.Errorf("%w: ephemeral encryption key is required", ErrPolicy)
+	}
+
+	clientMetadata, err := buildClientMetadata(cfg, params)
+	if err != nil {
+		return nil, err
+	}
+
+	query, err := buildQuery(cfg.DCQL)
+	if err != nil {
+		return nil, err
+	}
+
+	validity := cfg.Validity
+	if validity == 0 {
+		validity = defaultRequestValidity
+	}
+	responseMode := cfg.ResponseMode
+	if responseMode == "" {
+		responseMode = ResponseModeDirectPostJWT
+	}
+	iat := params.IssuedAt
+	if iat.IsZero() {
+		iat = time.Now()
+	}
+
+	request := map[string]interface{}{
+		"iss":             cfg.ClientID,
+		"response_type":   ResponseTypeVPToken,
+		"response_mode":   responseMode,
+		"client_id":       cfg.ClientID,
+		"response_uri":    cfg.ResponseURI,
+		"nonce":           params.Nonce,
+		"state":           params.State,
+		"iat":             iat.Unix(),
+		"exp":             iat.Add(validity).Unix(),
+		"dcql_query":      query,
+		"client_metadata": clientMetadata,
+	}
+	// Omit SIOP audience for a pure vp_token request; some wallets treat it as SIOP if present.
+	if cfg.Audience != "" {
+		request["aud"] = cfg.Audience
+	}
+	if len(cfg.VerifierInfo) > 0 {
+		request["verifier_info"] = cfg.VerifierInfo
+	}
+
+	return request, nil
 }
 
-func firstNonEmptyStringSlice(values ...[]string) []string {
-	for _, v := range values {
-		if len(v) > 0 {
-			return v
-		}
+// buildClientMetadata advertises the ephemeral encryption key and supported response enc algorithms.
+func buildClientMetadata(cfg requestConfig, params requestParams) (map[string]interface{}, error) {
+	jwk, err := ecdsaPublicKeyToEncJWK(params.EphemeralKey, params.EphemeralKeyID)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+
+	encValues := cfg.ResponseEncValues
+	if len(encValues) == 0 {
+		encValues = []string{DefaultResponseEncValue}
+	}
+
+	vpFormats := map[string]interface{}{
+		FormatSDJWTVC: map[string]interface{}{
+			"kb-jwt_alg_values": []string{"ES256", "EdDSA"},
+			"sd-jwt_alg_values": []string{"ES256", "EdDSA"},
+		},
+	}
+
+	return map[string]interface{}{
+		"jwks": map[string]interface{}{
+			"keys": []interface{}{jwk},
+		},
+		"vp_formats_supported":                    vpFormats,
+		"encrypted_response_enc_values_supported": encValues,
+	}, nil
 }
 
-func firstNonZeroDuration(values ...time.Duration) time.Duration {
-	for _, v := range values {
-		if v != 0 {
-			return v
-		}
+// ecdsaPublicKeyToEncJWK encodes an EC public key as an encryption-use JWK.
+func ecdsaPublicKeyToEncJWK(pub *ecdsa.PublicKey, kid string) (map[string]interface{}, error) {
+	raw, err := pub.Bytes()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrPolicy, err)
 	}
-	return 0
+
+	var crv string
+	var coordLen int
+	switch len(raw) {
+	case 65:
+		crv, coordLen = "P-256", 32
+	case 97:
+		crv, coordLen = "P-384", 48
+	case 133:
+		crv, coordLen = "P-521", 66
+	default:
+		return nil, fmt.Errorf("%w: unsupported EC public key length %d", ErrPolicy, len(raw))
+	}
+
+	jwk := map[string]interface{}{
+		"kty": "EC",
+		"crv": crv,
+		"x":   base64.RawURLEncoding.EncodeToString(raw[1 : 1+coordLen]),
+		"y":   base64.RawURLEncoding.EncodeToString(raw[1+coordLen:]),
+		"use": "enc",
+		"alg": "ECDH-ES",
+	}
+	if kid != "" {
+		jwk["kid"] = kid
+	}
+	return jwk, nil
+}
+
+// ParseAuthorizationResponse parses the decrypted OpenID4VP response body.
+func parseAuthorizationResponse(body []byte) (*authorizationResponse, error) {
+	var raw struct {
+		State   string          `json:"state"`
+		VPToken json.RawMessage `json:"vp_token"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidResponse, err)
+	}
+	if len(raw.VPToken) == 0 {
+		return nil, fmt.Errorf("%w: missing vp_token", ErrInvalidResponse)
+	}
+
+	// vp_token is a DCQL object mapping each credential query id to its presentation(s).
+	var byID map[string]json.RawMessage
+	if err := json.Unmarshal(raw.VPToken, &byID); err != nil {
+		return nil, fmt.Errorf("%w: vp_token must be a DCQL object keyed by credential id: %w", ErrInvalidResponse, err)
+	}
+	presentations := make(map[string][]string, len(byID))
+	for id, val := range byID {
+		list, err := decodePresentationValue(val)
+		if err != nil {
+			return nil, fmt.Errorf("%w: credential %q: %w", ErrInvalidResponse, id, err)
+		}
+		presentations[id] = list
+	}
+	return &authorizationResponse{State: raw.State, Presentations: presentations}, nil
+}
+
+// presentationsFor returns the presentations the wallet supplied for credentialID;
+// errors if none. A single credential query may yield several when the holder owns
+// multiple matching credentials; the caller verifies each and accepts the first
+// that satisfies the policy.
+func (r *authorizationResponse) presentationsFor(credentialID string) ([]string, error) {
+	list, ok := r.Presentations[credentialID]
+	if !ok || len(list) == 0 {
+		return nil, fmt.Errorf("%w: no presentation for credential %q", ErrInvalidResponse, credentialID)
+	}
+	return list, nil
+}
+
+// decodePresentationValue accepts either a single presentation string or an
+// array of them.
+func decodePresentationValue(raw json.RawMessage) ([]string, error) {
+	var single string
+	if err := json.Unmarshal(raw, &single); err == nil {
+		return []string{single}, nil
+	}
+	var list []string
+	if err := json.Unmarshal(raw, &list); err == nil {
+		return list, nil
+	}
+	return nil, fmt.Errorf("presentation must be a string or array of strings")
+}
+
+// resultTokenIssuer issues a signed result token for a completed verification.
+type resultTokenIssuer interface {
+	issueResultToken(ctx context.Context, rpID string, rs *RequestState, validitySeconds int64) (string, error)
+}
+
+// jwtResultTokenIssuer signs result tokens with the server's JWT service so
+// the token is verifiable against Thunder's published JWKS.
+type jwtResultTokenIssuer struct {
+	jwt      jwt.JWTServiceInterface
+	issuer   string
+	clientID string
+}
+
+// newJWTresultTokenIssuer constructs a JWT-based result token issuer with the given issuer and client ID.
+func newJWTresultTokenIssuer(svc jwt.JWTServiceInterface, issuer, clientID string) resultTokenIssuer {
+	return &jwtResultTokenIssuer{jwt: svc, issuer: issuer, clientID: clientID}
+}
+
+// issueResultToken issues a signed JWT result token for a completed verification addressed to rpID.
+func (i *jwtResultTokenIssuer) issueResultToken(
+	ctx context.Context, rpID string, rs *RequestState, validitySeconds int64,
+) (string, error) {
+	if rs == nil {
+		return "", fmt.Errorf("%w: request state is required to issue a result token", ErrPolicy)
+	}
+	if rs.Status != StatusCompleted || rs.Result == nil {
+		return "", fmt.Errorf("%w: result token can only be issued for completed verifications", ErrPolicy)
+	}
+	if i.jwt == nil {
+		return "", fmt.Errorf("%w: jwt service is not configured", ErrPolicy)
+	}
+
+	claims := map[string]interface{}{
+		"aud":             rpID,
+		"txn":             rs.State,
+		"definition_id":   rs.DefinitionID,
+		"subject":         rs.Result.Subject,
+		"verified_claims": rs.Result.Claims,
+		"verifier":        i.clientID,
+	}
+
+	token, _, svcErr := i.jwt.GenerateJWT(ctx, rs.Result.Subject, i.issuer, validitySeconds, claims, "JWT", "")
+	if svcErr != nil {
+		return "", fmt.Errorf("failed to sign result token: %s", svcErr.Code)
+	}
+	return token, nil
 }

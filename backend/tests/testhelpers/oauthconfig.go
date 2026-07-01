@@ -21,7 +21,7 @@ package testhelpers
 
 import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
-	"github.com/thunder-id/thunderid/internal/system/config"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 // OAuthConfig returns a minimal OAuth configuration for unit tests.
@@ -30,31 +30,31 @@ func OAuthConfig() oauthconfig.Config {
 		DeploymentID:  "test-deployment",
 		RuntimeDBType: "sqlite",
 		BaseURL:       "https://thunder.io",
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 			Audience:       "https://thunder.io",
 			Leeway:         60,
 		},
-		OAuth: config.OAuthConfig{
-			RefreshToken: config.RefreshTokenConfig{
+		OAuth: engineconfig.OAuthConfig{
+			RefreshToken: engineconfig.RefreshTokenConfig{
 				RenewOnGrant:   false,
 				ValidityPeriod: 86400,
 			},
-			AuthorizationCode: config.AuthorizationCodeConfig{
+			AuthorizationCode: engineconfig.AuthorizationCodeConfig{
 				ValidityPeriod: 300,
 			},
-			PAR: config.PARConfig{
+			PAR: engineconfig.PARConfig{
 				ExpiresIn: 600,
 			},
-			DPoP: config.DPoPConfig{
+			DPoP: engineconfig.DPoPConfig{
 				AllowedAlgs: []string{"ES256"},
 			},
-			CIBA: config.CIBAConfig{
+			CIBA: engineconfig.CIBAConfig{
 				IDTokenHintMaxAgeDays: 30,
 			},
 		},
-		GateClient: config.GateClientConfig{
+		GateClient: engineconfig.GateClientConfig{
 			Scheme:    "https",
 			Hostname:  "localhost",
 			Port:      3000,

@@ -1,4 +1,5 @@
 {
+  "private": true,
   "name": "@thunderid/test-utils",
   "version": "0.0.0",
   "description": "Shared testing utilities for ⚡️ ThunderID applications",

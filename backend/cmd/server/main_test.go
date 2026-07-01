@@ -39,6 +39,8 @@ import (
 	"testing"
 	"time"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
@@ -188,7 +190,7 @@ func TestCreateHTTPServer_WithHTTPOnly(t *testing.T) {
 	}()
 
 	cfg := &config.Config{
-		Server: config.ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Hostname: "localhost",
 			Port:     0,
 			HTTPOnly: true,

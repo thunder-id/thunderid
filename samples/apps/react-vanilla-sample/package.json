@@ -1,7 +1,7 @@
 {
   "name": "@thunderid/react-vanilla-sample",
   "private": true,
-  "version": "0.44.0",
+  "version": "0.46.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -18,7 +18,7 @@
     "@mui/system": "7.1.0",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-router-dom": "7.15.0"
+    "react-router-dom": "7.15.1"
   },
   "devDependencies": {
     "@eslint/js": "9.27.0",

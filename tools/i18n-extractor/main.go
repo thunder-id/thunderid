@@ -28,23 +28,29 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 )
 
 func main() {
-	sourceDir := flag.String("source", "./internal", "Source directory to scan for core.Message literals")
+	sourceDirs := flag.String("source", "./internal", "Comma-separated source directories to scan for I18nMessage literals")
 	outputFile := flag.String("output", "./internal/system/i18n/core/defaults.go", "Output file path for generated defaults")
 	verbose := flag.Bool("verbose", false, "Enable verbose output")
 
 	flag.Parse()
 
 	if *verbose {
-		fmt.Printf("Scanning directory: %s\n", *sourceDir)
+		fmt.Printf("Scanning directories: %s\n", *sourceDirs)
 		fmt.Printf("Output file: %s\n", *outputFile)
 	}
 
-	// Extract all core.Message literals from source files
+	dirs := strings.Split(*sourceDirs, ",")
+	for i := range dirs {
+		dirs[i] = strings.TrimSpace(dirs[i])
+	}
+
+	// Extract all I18nMessage literals from source files
 	extractor := NewExtractor(*verbose)
-	messages, err := extractor.ExtractFromDirectory(*sourceDir)
+	messages, err := extractor.ExtractFromDirectories(dirs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error extracting messages: %v\n", err)
 		os.Exit(1)

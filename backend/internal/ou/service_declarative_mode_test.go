@@ -22,6 +22,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/system/config"
 
 	"github.com/stretchr/testify/assert"
@@ -63,7 +65,7 @@ func (suite *DeclarativeModeServiceTestSuite) TearDownTest() {
 }
 
 func (suite *DeclarativeModeServiceTestSuite) TestCreateOrganizationUnit_FailsInDeclarativeMode() {
-	request := OrganizationUnitRequestWithID{
+	request := providers.OrganizationUnitRequestWithID{
 		Name:        "Test OU",
 		Handle:      "test-ou",
 		Description: "Test Description",
@@ -74,11 +76,11 @@ func (suite *DeclarativeModeServiceTestSuite) TestCreateOrganizationUnit_FailsIn
 	// Should fail with immutable resource error
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), ErrorCannotModifyDeclarativeResource.Code, err.Code)
-	assert.Equal(suite.T(), OrganizationUnit{}, ou)
+	assert.Equal(suite.T(), providers.OrganizationUnit{}, ou)
 }
 
 func (suite *DeclarativeModeServiceTestSuite) TestUpdateOrganizationUnit_FailsInDeclarativeMode() {
-	suite.store.On("GetOrganizationUnit", mock.Anything, "ou-1").Return(OrganizationUnit{
+	suite.store.On("GetOrganizationUnit", mock.Anything, "ou-1").Return(providers.OrganizationUnit{
 		ID:          "ou-1",
 		Name:        "Existing OU",
 		Handle:      "existing-ou",
@@ -86,7 +88,7 @@ func (suite *DeclarativeModeServiceTestSuite) TestUpdateOrganizationUnit_FailsIn
 	}, nil).Once()
 	suite.store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").Return(true).Once()
 
-	request := OrganizationUnitRequestWithID{
+	request := providers.OrganizationUnitRequestWithID{
 		Name:        "Updated OU",
 		Handle:      "updated-ou",
 		Description: "Updated Description",
@@ -97,19 +99,21 @@ func (suite *DeclarativeModeServiceTestSuite) TestUpdateOrganizationUnit_FailsIn
 	// Should fail with immutable resource error
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), ErrorCannotModifyDeclarativeResource.Code, err.Code)
-	assert.Equal(suite.T(), OrganizationUnit{}, ou)
+	assert.Equal(suite.T(), providers.OrganizationUnit{}, ou)
 }
 
 func (suite *DeclarativeModeServiceTestSuite) TestUpdateOrganizationUnitByPath_FailsInDeclarativeMode() {
-	suite.store.On("GetOrganizationUnitByPath", mock.Anything, []string{"path", "to", "ou"}).Return(OrganizationUnit{
-		ID:          "ou-1",
-		Name:        "Existing OU",
-		Handle:      "existing-ou",
-		Description: "Existing Description",
-	}, nil).Once()
+	suite.store.On("GetOrganizationUnitByPath", mock.Anything, []string{"path", "to", "ou"}).
+		Return(providers.OrganizationUnit{
+			ID:          "ou-1",
+			Name:        "Existing OU",
+			Handle:      "existing-ou",
+			Description: "Existing Description",
+		}, nil).
+		Once()
 	suite.store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").Return(true).Once()
 
-	request := OrganizationUnitRequestWithID{
+	request := providers.OrganizationUnitRequestWithID{
 		Name:        "Updated OU",
 		Handle:      "updated-ou",
 		Description: "Updated Description",
@@ -119,7 +123,7 @@ func (suite *DeclarativeModeServiceTestSuite) TestUpdateOrganizationUnitByPath_F
 
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), ErrorCannotModifyDeclarativeResource.Code, err.Code)
-	assert.Equal(suite.T(), OrganizationUnit{}, ou)
+	assert.Equal(suite.T(), providers.OrganizationUnit{}, ou)
 }
 
 func (suite *DeclarativeModeServiceTestSuite) TestDeleteOrganizationUnit_FailsInDeclarativeMode() {
@@ -134,9 +138,11 @@ func (suite *DeclarativeModeServiceTestSuite) TestDeleteOrganizationUnit_FailsIn
 }
 
 func (suite *DeclarativeModeServiceTestSuite) TestDeleteOrganizationUnitByPath_FailsInDeclarativeMode() {
-	suite.store.On("GetOrganizationUnitByPath", mock.Anything, []string{"path", "to", "ou"}).Return(OrganizationUnit{
-		ID: "ou-1",
-	}, nil).Once()
+	suite.store.On("GetOrganizationUnitByPath", mock.Anything, []string{"path", "to", "ou"}).
+		Return(providers.OrganizationUnit{
+			ID: "ou-1",
+		}, nil).
+		Once()
 	suite.store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").Return(true).Once()
 
 	err := suite.service.DeleteOrganizationUnitByPath(context.Background(), "/path/to/ou")

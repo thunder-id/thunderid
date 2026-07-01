@@ -1,4 +1,5 @@
 {
+  "private": true,
   "name": "@thunderid/i18n",
   "version": "0.0.0",
   "description": "Translation resources for ThunderID applications",
@@ -29,7 +30,7 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@thunderid/react": "workspace:^",
+    "@thunderid/react": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@thunderid/contexts": "workspace:^",
     "i18next": "catalog:",
@@ -38,6 +39,7 @@
     "react-i18next": "catalog:"
   },
   "devDependencies": {
+    "@thunderid/contexts": "workspace:^",
     "@thunderid/eslint-plugin": "workspace:^",
     "@thunderid/prettier-config": "workspace:^",
     "@vitest/browser-playwright": "catalog:",

@@ -25,11 +25,10 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
-	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // ParseScopes parses a space-separated scope string into a slice of scope strings.
@@ -56,7 +55,7 @@ func JoinScopes(scopes []string) string {
 }
 
 // ResolveTokenConfig resolves the token configuration from the OAuth app or falls back to global config.
-func ResolveTokenConfig(cfg oauthconfig.Config, oauthApp *inboundmodel.OAuthClient, tokenType TokenType) *TokenConfig {
+func ResolveTokenConfig(cfg oauthconfig.Config, oauthApp *providers.OAuthClient, tokenType TokenType) *TokenConfig {
 	tokenConfig := &TokenConfig{
 		Issuer:         cfg.JWT.Issuer,
 		ValidityPeriod: cfg.JWT.ValidityPeriod,
@@ -423,8 +422,8 @@ func buildClaimsFromRequest(
 // to an access token for the given OAuth application.
 func BuildClientAttributes(
 	ctx context.Context,
-	oauthApp *inboundmodel.OAuthClient,
-	ouService ou.OrganizationUnitServiceInterface,
+	oauthApp *providers.OAuthClient,
+	ouService providers.OrganizationUnitProvider,
 ) (map[string]interface{}, error) {
 	claims := make(map[string]interface{})
 
@@ -446,8 +445,8 @@ func BuildClientAttributes(
 // (ouId, ouName, ouHandle) when the app has an associated OU.
 func resolveClientOUAttributes(
 	ctx context.Context,
-	oauthApp *inboundmodel.OAuthClient,
-	ouService ou.OrganizationUnitServiceInterface,
+	oauthApp *providers.OAuthClient,
+	ouService providers.OrganizationUnitProvider,
 ) (map[string]interface{}, error) {
 	if oauthApp == nil || oauthApp.OUID == "" {
 		return nil, nil

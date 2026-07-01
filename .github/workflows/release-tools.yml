@@ -15,6 +15,12 @@ on:
           - major
         default: patch
 
+      confirm_major:
+        description: 'Check to confirm intentional major bump (required when bump_type is major)'
+        required: false
+        type: boolean
+        default: false
+
       npx:
         description: 'Release npx tool'
         required: false
@@ -33,9 +39,20 @@ env:
   PNPM_VERSION: "latest"
 
 jobs:
+  validate:
+    name: ✅ Validate Inputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard against accidental major bump
+        if: github.event.inputs.bump_type == 'major' && github.event.inputs.confirm_major != 'true'
+        run: |
+          echo "❌ bump_type is 'major' but confirm_major is not checked. Enable confirm_major to proceed."
+          exit 1
+
   release-npx-thunderid:
     name: ⚡ Release thunderid (npx-thunderid)
-    if: ${{ github.event.inputs.npx == 'true' }}
+    needs: [validate]
+    if: needs.validate.result == 'success' && github.event.inputs.npx == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout Code
@@ -44,9 +61,10 @@ jobs:
           token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
 
       - name: 🚀 Release
-        uses: ./.github/actions/release-tool/npm
+        uses: ./.github/actions/release-npm
         with:
-          tool: npx
+          package-dir: tools/npx
+          tag-convention: 'tool/{name}/v{version}'
           bump-type: ${{ github.event.inputs.bump_type }}
           git-user-name: ${{ env.RELEASE_GIT_USER_NAME }}
           git-user-email: ${{ env.RELEASE_GIT_USER_EMAIL }}

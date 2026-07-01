@@ -175,16 +175,19 @@ Protect the encryption key with the same level of care as a database password. I
 
 ## Configure a CORS Allowlist
 
-Cross-Origin Resource Sharing (CORS) controls which origins can make requests to <ProductName /> from a browser. The default configuration allows only `https://localhost:3000`. In production, you must explicitly list every origin that legitimately needs access.
+Cross-Origin Resource Sharing (CORS) controls which browser origins can call <ProductName />. Origins are stored in the server-config `cors` section. No origins are allowed by default, so list each production app explicitly.
 
-Update `deployment.yaml` with your allowed origins:
+Create `config/resources/server_configs/cors.yaml`:
 
 ```yaml
-cors:
-  allowed_origins:
+name: cors
+value:
+  allowedOrigins:
     - "https://app.example.com"
     - "https://admin.example.com"
 ```
+
+To change origins without a restart, update the same section with `PUT /server-config/cors`. Runtime values are merged with the declarative file.
 
 **Guidelines:**
 
@@ -193,13 +196,14 @@ cors:
 - If your domain follows a consistent pattern, you can use a regular expression:
 
   ```yaml
-  cors:
-    allowed_origins:
+  name: cors
+  value:
+    allowedOrigins:
       - "https://app.example.com"
       - regex: '^https://[a-z0-9-]+\.example\.com$'
   ```
 
-  Regex patterns must be fully anchored — start with `^` and end with `$`. ThunderID logs a warning at startup for any pattern that is not fully anchored, because unanchored patterns match more origins than intended.
+  Anchor regex patterns with `^` and `$`. <ProductName /> logs a startup warning for unanchored patterns because they can match unintended origins.
 
 ## Configure Caching
 

@@ -89,20 +89,11 @@ Each subdirectory has its own README with the environment variables it reads.
   - Anthropic API key from [console.anthropic.com](https://console.anthropic.com), **or**
   - Google Gemini API key from [aistudio.google.com](https://aistudio.google.com).
 
-### Allow the frontend origin in Thunder
+### CORS for the frontend origin
 
-The Wayfinder web app runs on `http://localhost:5173` and calls Thunder directly for `/oauth2/authorize`, `/oauth2/token`, and `/users/me`. Browsers block these cross-origin calls unless Thunder's CORS allow-list includes the frontend origin.
+The Wayfinder web app runs on `http://localhost:5173` and calls Thunder directly for `/oauth2/authorize`, `/oauth2/token`, and `/users/me`. Browsers block these calls unless the CORS allow-list includes the frontend origin.
 
-Edit `backend/cmd/server/deployment.yaml` and add `http://localhost:5173` under `cors.allowed_origins`. Leave any existing entries in place — they belong to other samples.
-
-```yaml
-cors:
-  allowed_origins:
-    # ...existing entries...
-    - "http://localhost:5173"
-```
-
-Restart the ThunderID server after the change. If you serve the frontend from a different host or port, add that origin instead.
+The importable bundle already adds `http://localhost:5173` to the server-config `cors` section. If you serve the frontend from a different host or port, update the `# resource_type: server_config` document in `thunderid-config/thunderid-config.yaml` before importing, or use `PUT /server-config/cors` after startup.
 
 ## ThunderID Setup
 
@@ -119,7 +110,7 @@ The import creates:
 
 | Resource | Type | What it creates |
 |----------|------|-----------------|
-| `Customer` | User type | Consumer schema (`username`, `email`, `password`, `given_name`, `family_name`, `mobileNumber`, `sub`) with self-registration enabled |
+| `Customer` | User type | Consumer schema (`username`, `email`, `password`, `given_name`, `family_name`, `mobile_number`, `sub`) with self-registration enabled |
 | `Staff` | User type | Internal team schema (`username`, `email`, `password`, `displayName`) |
 | `wayfinder-agent` | Resource server | `agent:access` permission |
 | `wayfinder-booking` | Resource server | `booking:read`, `booking:create`, `booking:cancel`, `booking:recommend`, `booking:upgrade`, `upgrade:read`, `upgrade:search`, `upgrade:process` permissions. Protects both `/api/*` (REST) and `/mcp` (MCP tools) on the Wayfinder server. |
@@ -207,7 +198,7 @@ ThunderID can deliver notifications — including CIBA upgrade approvals — via
 
 2. In the ThunderID Console, go to **Applications → WAYFINDER-UPGRADE-AGENT** and change the Authentication Flow to `wayfinder-ciba-sms-flow`. Save.
 
-3. Update `john.doe`'s `mobileNumber` field in the Console (E.164 format, for example `+15550101`).
+3. Update `john.doe`'s `mobile_number` field in the Console (E.164 format, for example `+15550101`).
 
 Notifications now arrive as SMS. If you already approved the consent during the email flow, the consent screen is skipped on future approvals.
 

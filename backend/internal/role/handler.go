@@ -20,13 +20,15 @@ package role
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -93,6 +95,11 @@ func (rh *roleHandler) HandleRolePostRequest(w http.ResponseWriter, r *http.Requ
 
 	createRequest, err := sysutils.DecodeJSONBody[CreateRoleRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
@@ -144,6 +151,11 @@ func (rh *roleHandler) HandleRolePutRequest(w http.ResponseWriter, r *http.Reque
 	id := r.PathValue("id")
 	updateRequest, err := sysutils.DecodeJSONBody[UpdateRoleRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
@@ -298,9 +310,9 @@ func (rh *roleHandler) HandleRoleRemoveAssignmentsRequest(w http.ResponseWriter,
 
 // handleError handles service errors and returns appropriate HTTP responses.
 func handleError(ctx context.Context, w http.ResponseWriter,
-	svcErr *serviceerror.ServiceError) {
+	svcErr *tidcommon.ServiceError) {
 	statusCode := http.StatusInternalServerError
-	if svcErr.Type == serviceerror.ClientErrorType {
+	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
 		case ErrorRoleNotFound.Code:
 			statusCode = http.StatusNotFound
@@ -404,7 +416,7 @@ func (rh *roleHandler) sanitizeAssignmentsRequest(request *AssignmentsRequest) A
 }
 
 // parsePaginationParams parses limit and offset query parameters from the request.
-func parsePaginationParams(query url.Values) (int, int, *serviceerror.ServiceError) {
+func parsePaginationParams(query url.Values) (int, int, *tidcommon.ServiceError) {
 	limit := 0
 	offset := 0
 

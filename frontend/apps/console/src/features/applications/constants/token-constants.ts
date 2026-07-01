@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -34,6 +34,41 @@ const TokenConstants = {
    * Additional system attributes that can be configured as user attributes
    */
   ADDITIONAL_USER_ATTRIBUTES: ['groups', 'ouHandle', 'ouId', 'ouName', 'roles', 'userType'],
+
+  /**
+   * Supported UserInfo response types
+   */
+  /**
+   * Supported ID token response types
+   */
+  ID_TOKEN_RESPONSE_TYPES: ['JWT', 'JWE', 'NESTED_JWT'],
+
+  /**
+   * Supported JWE key-management algorithms for ID token encryption
+   */
+  ID_TOKEN_ENCRYPTION_ALGS: ['RSA-OAEP', 'RSA-OAEP-256'],
+
+  /**
+   * Supported JWE content-encryption algorithms for ID token encryption
+   */
+  ID_TOKEN_ENCRYPTION_ENCS: ['A128CBC-HS256', 'A256GCM'],
+
+  USER_INFO_RESPONSE_TYPES: ['JSON', 'JWS', 'JWE', 'NESTED_JWT'],
+
+  /**
+   * Supported JWS signing algorithms for UserInfo responses
+   */
+  USER_INFO_SIGNING_ALGS: ['RS256', 'RS512', 'PS256', 'ES256', 'ES384', 'ES512', 'EdDSA'],
+
+  /**
+   * Supported JWE key-management algorithms for UserInfo responses
+   */
+  USER_INFO_ENCRYPTION_ALGS: ['RSA-OAEP', 'RSA-OAEP-256'],
+
+  /**
+   * Supported JWE content-encryption algorithms for UserInfo responses
+   */
+  USER_INFO_ENCRYPTION_ENCS: ['A128CBC-HS256', 'A256GCM'],
 } as const;
 
 export default TokenConstants;

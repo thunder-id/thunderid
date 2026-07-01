@@ -22,8 +22,8 @@ package granthandlers
 import (
 	"context"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // GrantHandlerInterface defines the interface for handling OAuth 2.0 grants.
@@ -31,9 +31,9 @@ type GrantHandlerInterface interface {
 	ValidateGrant(
 		ctx context.Context,
 		tokenRequest *model.TokenRequest,
-		oauthApp *inboundmodel.OAuthClient,
+		oauthApp *providers.OAuthClient,
 	) *model.ErrorResponse
-	HandleGrant(ctx context.Context, tokenRequest *model.TokenRequest, oauthApp *inboundmodel.OAuthClient) (
+	HandleGrant(ctx context.Context, tokenRequest *model.TokenRequest, oauthApp *providers.OAuthClient) (
 		*model.TokenResponseDTO, *model.ErrorResponse)
 }
 
@@ -43,7 +43,7 @@ type RefreshTokenGrantHandlerInterface interface {
 	IssueRefreshToken(
 		ctx context.Context,
 		tokenResponse *model.TokenResponseDTO,
-		oauthApp *inboundmodel.OAuthClient,
+		oauthApp *providers.OAuthClient,
 		subject string, audiences []string, grantType string,
 		scopes []string,
 		claimsRequest *model.ClaimsRequest,

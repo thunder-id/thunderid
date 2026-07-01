@@ -22,10 +22,13 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
@@ -44,7 +47,7 @@ func Initialize(
 	flowFactory core.FlowFactoryInterface,
 	executorRegistry executor.ExecutorRegistryInterface,
 	interceptorRegistry interceptor.InterceptorRegistryInterface,
-	graphCache core.GraphCacheInterface,
+	graphBuilder graphbuilder.GraphBuilderInterface,
 ) (FlowMgtServiceInterface, declarativeresource.ResourceExporter, error) {
 	store, compositeStore, transactioner, err := initializeStore(cacheManager)
 	if err != nil {
@@ -52,7 +55,6 @@ func Initialize(
 	}
 
 	inferenceService := newFlowInferenceService()
-	graphBuilder := newGraphBuilder(flowFactory, executorRegistry, interceptorRegistry, graphCache)
 	service := newFlowMgtService(
 		store, inferenceService, graphBuilder, executorRegistry,
 		interceptorRegistry, compositeStore, transactioner,
@@ -96,8 +98,8 @@ func initializeStore(cacheManager cache.CacheManagerInterface) (
 
 	storeMode := getFlowStoreMode()
 
-	flowByIDCache := cache.GetCache[*CompleteFlowDefinition](cacheManager, "FlowByIDCache")
-	flowByHandleCache := cache.GetCache[*CompleteFlowDefinition](cacheManager, "FlowByHandleCache")
+	flowByIDCache := cache.GetCache[*providers.CompleteFlowDefinition](cacheManager, "FlowByIDCache")
+	flowByHandleCache := cache.GetCache[*providers.CompleteFlowDefinition](cacheManager, "FlowByHandleCache")
 
 	switch storeMode {
 	case serverconst.StoreModeComposite:

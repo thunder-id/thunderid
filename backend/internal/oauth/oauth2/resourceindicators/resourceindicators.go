@@ -25,10 +25,11 @@ import (
 	"net/url"
 	"sort"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
-	"github.com/thunder-id/thunderid/internal/resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // ValidateResourceURIs returns an error response when any resource URI is not absolute
@@ -57,17 +58,17 @@ func ValidateResourceURIs(resources []string) *model.ErrorResponse {
 // The returned slice preserves the order of the input identifiers.
 func ResolveResourceServers(
 	ctx context.Context,
-	resourceService resource.ResourceServiceInterface,
+	resourceService providers.ResourceServerProvider,
 	resources []string,
-) ([]*resource.ResourceServer, *model.ErrorResponse) {
+) ([]*providers.ResourceServer, *model.ErrorResponse) {
 	if len(resources) == 0 {
 		return nil, nil
 	}
-	resolved := make([]*resource.ResourceServer, 0, len(resources))
+	resolved := make([]*providers.ResourceServer, 0, len(resources))
 	for _, identifier := range resources {
 		rs, svcErr := resourceService.GetResourceServerByIdentifier(ctx, identifier)
 		if svcErr != nil {
-			if svcErr.Type == serviceerror.ServerErrorType {
+			if svcErr.Type == tidcommon.ServerErrorType {
 				return nil, &model.ErrorResponse{
 					Error:            constants.ErrorServerError,
 					ErrorDescription: "Failed to resolve resource server",
@@ -91,10 +92,10 @@ func ResolveResourceServers(
 // unchanged.
 func ResolveAndDownscope(
 	ctx context.Context,
-	resourceService resource.ResourceServiceInterface,
+	resourceService providers.ResourceServerProvider,
 	resources []string,
 	requestedScopes []string,
-) ([]*resource.ResourceServer, []string, *model.ErrorResponse) {
+) ([]*providers.ResourceServer, []string, *model.ErrorResponse) {
 	resolvedRSes, errResp := ResolveResourceServers(ctx, resourceService, resources)
 	if errResp != nil {
 		return nil, nil, errResp
@@ -127,8 +128,8 @@ func ResolveAndDownscope(
 // from the union of the per-RS slices (downscoping per RFC 6749 §3.3).
 func ComputeRSValidScopes(
 	ctx context.Context,
-	resourceService resource.ResourceServiceInterface,
-	resolvedRSes []*resource.ResourceServer,
+	resourceService providers.ResourceServerProvider,
+	resolvedRSes []*providers.ResourceServer,
 	requestedScopes []string,
 ) (map[string][]string, *model.ErrorResponse) {
 	rsValidScopes := make(map[string][]string, len(resolvedRSes))
@@ -187,9 +188,9 @@ func UnionScopes(rsValidScopes map[string][]string) []string {
 // audience. If clientID is also empty, an empty slice is returned.
 func ComposeAudiences(
 	ctx context.Context,
-	resourceService resource.ResourceServiceInterface,
+	resourceService providers.ResourceServerProvider,
 	clientID string,
-	resolvedRSes []*resource.ResourceServer,
+	resolvedRSes []*providers.ResourceServer,
 	grantedScopes []string,
 ) ([]string, *model.ErrorResponse) {
 	var rsIdentifiers []string
@@ -233,12 +234,12 @@ func ComposeAudiences(
 
 // FilterByIdentifiers returns the subset of resolvedRSes whose Identifier is in identifiers.
 // Preserves the order of resolvedRSes.
-func FilterByIdentifiers(resolvedRSes []*resource.ResourceServer, identifiers []string) []*resource.ResourceServer {
+func FilterByIdentifiers(resolvedRSes []*providers.ResourceServer, identifiers []string) []*providers.ResourceServer {
 	idSet := make(map[string]struct{}, len(identifiers))
 	for _, id := range identifiers {
 		idSet[id] = struct{}{}
 	}
-	filtered := make([]*resource.ResourceServer, 0, len(identifiers))
+	filtered := make([]*providers.ResourceServer, 0, len(identifiers))
 	for _, rs := range resolvedRSes {
 		if _, ok := idSet[rs.Identifier]; ok {
 			filtered = append(filtered, rs)
@@ -251,7 +252,7 @@ func FilterByIdentifiers(resolvedRSes []*resource.ResourceServer, identifiers []
 // When the client explicitly requests resource targets, those targets form the token audience.
 // Preserves the order of resolvedRSes.
 func ContributingAudiences(
-	resolvedRSes []*resource.ResourceServer,
+	resolvedRSes []*providers.ResourceServer,
 ) []string {
 	if len(resolvedRSes) == 0 {
 		return nil

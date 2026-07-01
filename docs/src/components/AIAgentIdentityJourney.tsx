@@ -16,132 +16,120 @@
  * under the License.
  */
 
+import {Box} from '@wso2/oxygen-ui';
+import {ArrowLeftRight, Bell, KeyRound, Network, ShieldCheck, UserCheck, Workflow} from '@wso2/oxygen-ui-icons-react';
 import React from 'react';
 
 interface RoadmapNode {
   href: string;
-  label: string;
   icon: React.ReactNode;
+  label: string;
 }
 
 const roadmapNodes: RoadmapNode[] = [
-  {
-    href: '#protect-your-agent',
-    label: 'Protect Your Agent',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path d="M12 3 4 7v5c0 4.42 3.36 8.56 8 9.56 4.64-1 8-5.14 8-9.56V7z" />
-        <path d="m9 12 2 2 4-4" />
-      </svg>
-    ),
-  },
-  {
-    href: '#connect-to-services',
-    label: 'Connect to Services',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <circle cx="6" cy="12" r="2" />
-        <circle cx="18" cy="6" r="2" />
-        <circle cx="18" cy="18" r="2" />
-        <path d="M8 12h6" />
-        <path d="m14 7-2 3" />
-        <path d="m14 17-2-3" />
-      </svg>
-    ),
-  },
-  {
-    href: '#multi-agent-workflows',
-    label: 'Multi-Agent Workflows',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <circle cx="5" cy="12" r="2" />
-        <circle cx="12" cy="5" r="2" />
-        <circle cx="19" cy="12" r="2" />
-        <circle cx="12" cy="19" r="2" />
-        <path d="M7 12h3" />
-        <path d="M14 12h3" />
-        <path d="M12 7v3" />
-        <path d="M12 14v3" />
-      </svg>
-    ),
-  },
+  {href: '#protect-your-agent',    icon: <ShieldCheck size={28} />, label: 'Protect Your Agent'},
+  {href: '#connect-to-services',   icon: <Network size={28} />,     label: 'Connect to Services'},
+  {href: '#multi-agent-workflows', icon: <Workflow size={28} />,    label: 'Multi-Agent Workflows'},
 ];
 
 const solutionPatternNodes: RoadmapNode[] = [
-  {
-    href: '#client-credentials-grant',
-    label: 'Client Credentials',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path d="M7 11V9a5 5 0 0 1 10 0v2" />
-        <rect x="5" y="11" width="14" height="9" rx="2" />
-        <circle cx="12" cy="16" r="1" />
-      </svg>
-    ),
-  },
-  {
-    href: '#authorization-code-with-obo',
-    label: 'Interactive Delegation',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <circle cx="8" cy="8" r="3" />
-        <path d="M4 20v-2a4 4 0 0 1 4-4h1" />
-        <path d="M14 14h6" />
-        <path d="m17 11 3 3-3 3" />
-      </svg>
-    ),
-  },
-  {
-    href: '#backchannel-authorization-ciba',
-    label: 'Background Delegation',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-        <circle cx="18" cy="6" r="3" />
-      </svg>
-    ),
-  },
-  {
-    href: '#token-exchange',
-    label: 'Token Exchange',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path d="M4 8h14" />
-        <path d="m15 5 3 3-3 3" />
-        <path d="M20 16H6" />
-        <path d="m9 19-3-3 3-3" />
-      </svg>
-    ),
-  },
+  {href: '#client-credentials-grant',       icon: <KeyRound size={28} />,        label: 'Client Credentials'},
+  {href: '#authorization-code-with-obo',    icon: <UserCheck size={28} />,       label: 'Interactive Delegation'},
+  {href: '#backchannel-authorization-ciba', icon: <Bell size={28} />,            label: 'Background Delegation'},
+  {href: '#token-exchange',                 icon: <ArrowLeftRight size={28} />,  label: 'Token Exchange'},
 ];
 
-export function AIAgentIdentityRoadmap() {
+const roadmapSx = {
+  '--uc-node-w': '9rem',
+  '--uc-node-h': '5rem',
+  '--uc-icon-size': '4rem',
+  alignItems: 'flex-start',
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '1.25rem 1.4rem',
+  justifyContent: 'center',
+  margin: '1.5rem 0 2rem',
+  padding: '0.5rem 0.2rem',
+};
+
+const nodeSx = {
+  alignItems: 'center',
+  background: 'transparent',
+  border: 0,
+  color: 'var(--ifm-font-color-base)',
+  cursor: 'pointer',
+  display: 'flex',
+  flexDirection: 'column',
+  fontSize: '0.82rem',
+  fontWeight: 700,
+  gap: '0.55rem',
+  justifyContent: 'flex-start',
+  lineHeight: 1.2,
+  minHeight: 'var(--uc-node-h)',
+  textAlign: 'center',
+  textDecoration: 'none',
+  transition: 'transform 160ms ease',
+  width: 'var(--uc-node-w)',
+  '&:hover': {
+    textDecoration: 'none',
+    transform: 'translateY(-2px)',
+  },
+  '&:hover .ai-roadmap-icon': {
+    borderColor: 'color-mix(in srgb, #ffffff 56%, var(--ifm-color-primary))',
+    boxShadow: 'inset 0 0 0 1px color-mix(in srgb, #fff 32%, transparent), 0 12px 24px color-mix(in srgb, var(--ifm-color-primary) 34%, transparent)',
+  },
+  '&:focus-visible': {
+    borderRadius: '6px',
+    outline: '2px solid color-mix(in srgb, var(--ifm-color-primary) 58%, white)',
+    outlineOffset: '4px',
+  },
+};
+
+const iconSx = {
+  alignItems: 'center',
+  background: `
+    radial-gradient(80px 80px at 28% 18%, color-mix(in srgb, var(--ifm-color-primary) 24%, transparent), transparent),
+    linear-gradient(160deg, color-mix(in srgb, var(--ifm-color-primary) 72%, #091629), color-mix(in srgb, var(--ifm-color-primary) 44%, #030712))
+  `,
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 38%, var(--ifm-color-emphasis-300))',
+  borderRadius: '999px',
+  boxShadow: 'inset 0 0 0 1px color-mix(in srgb, #fff 24%, transparent), 0 8px 18px color-mix(in srgb, var(--ifm-color-primary) 24%, transparent)',
+  color: '#fff',
+  display: 'inline-flex',
+  height: 'var(--uc-icon-size)',
+  justifyContent: 'center',
+  minWidth: 'var(--uc-icon-size)',
+  width: 'var(--uc-icon-size)',
+  '& svg': {
+    fill: 'none',
+    height: '1.75rem !important',
+    stroke: 'currentColor',
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    strokeWidth: 1.8,
+    width: '1.75rem !important',
+  },
+};
+
+const labelSx = {display: 'block', maxWidth: '9.4rem'};
+
+function Roadmap({nodes, ariaLabel}: {nodes: RoadmapNode[]; ariaLabel: string}) {
   return (
-    <nav className="uc-b2c-roadmap" aria-label="AI agent identity use case roadmap">
-      {roadmapNodes.map((node) => (
-        <a key={node.href} href={node.href} className="uc-b2c-roadmap__node">
-          <span className="uc-b2c-roadmap__icon" aria-hidden>
-            {node.icon}
-          </span>
-          <span className="uc-b2c-roadmap__label">{node.label}</span>
-        </a>
+    <Box component="nav" aria-label={ariaLabel} sx={roadmapSx}>
+      {nodes.map(({href, icon, label}) => (
+        <Box component="a" href={href} key={href} sx={nodeSx}>
+          <Box className="ai-roadmap-icon" component="span" aria-hidden sx={iconSx}>{icon}</Box>
+          <Box component="span" sx={labelSx}>{label}</Box>
+        </Box>
       ))}
-    </nav>
+    </Box>
   );
 }
 
+export function AIAgentIdentityRoadmap() {
+  return <Roadmap nodes={roadmapNodes} ariaLabel="AI agent identity use case roadmap" />;
+}
+
 export function AIAgentSolutionPatternsRoadmap() {
-  return (
-    <nav className="uc-b2c-roadmap" aria-label="AI agent solution pattern roadmap">
-      {solutionPatternNodes.map((node) => (
-        <a key={node.href} href={node.href} className="uc-b2c-roadmap__node">
-          <span className="uc-b2c-roadmap__icon" aria-hidden>
-            {node.icon}
-          </span>
-          <span className="uc-b2c-roadmap__label">{node.label}</span>
-        </a>
-      ))}
-    </nav>
-  );
+  return <Roadmap nodes={solutionPatternNodes} ariaLabel="AI agent solution pattern roadmap" />;
 }

@@ -22,6 +22,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/suite"
 )
 
@@ -49,7 +51,7 @@ func (s *ModelTestSuite) TestNodeExecutionRecord_GetDuration() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			record := NodeExecutionRecord{StartTime: tt.startTime, EndTime: tt.endTime}
+			record := providers.NodeExecutionRecord{StartTime: tt.startTime, EndTime: tt.endTime}
 			duration := record.GetDuration()
 			s.Equal(tt.expected, duration)
 		})
@@ -59,13 +61,14 @@ func (s *ModelTestSuite) TestNodeExecutionRecord_GetDuration() {
 func (s *ModelTestSuite) TestInput_IsSensitive() {
 	tests := []struct {
 		name     string
-		input    Input
+		input    providers.Input
 		expected bool
 	}{
-		{"Password input is sensitive", Input{Identifier: "password", Type: InputTypePassword}, true},
-		{"OTP input is sensitive", Input{Identifier: "otp", Type: InputTypeOTP}, true},
-		{"Text input is not sensitive", Input{Identifier: "username", Type: InputTypeText}, false},
-		{"Empty type is not sensitive", Input{Identifier: "field", Type: ""}, false},
+		{"Password input is sensitive",
+			providers.Input{Identifier: "password", Type: providers.InputTypePassword}, true},
+		{"OTP input is sensitive", providers.Input{Identifier: "otp", Type: providers.InputTypeOTP}, true},
+		{"Text input is not sensitive", providers.Input{Identifier: "username", Type: providers.InputTypeText}, false},
+		{"Empty type is not sensitive", providers.Input{Identifier: "field", Type: ""}, false},
 	}
 
 	for _, tt := range tests {
@@ -76,10 +79,10 @@ func (s *ModelTestSuite) TestInput_IsSensitive() {
 }
 
 func (s *ModelTestSuite) TestInput_DisplayName_ExcludedFromJSON() {
-	input := Input{
+	input := providers.Input{
 		Ref:         "ref_email",
 		Identifier:  "email",
-		Type:        InputTypeText,
+		Type:        providers.InputTypeText,
 		Required:    true,
 		DisplayName: "Email Address",
 	}
@@ -93,7 +96,7 @@ func (s *ModelTestSuite) TestInput_DisplayName_ExcludedFromJSON() {
 	s.NotContains(jsonStr, "Email Address", "DisplayName value must not appear in JSON")
 	s.Contains(jsonStr, "email", "Identifier must still be serialized")
 
-	var decoded Input
+	var decoded providers.Input
 	s.Require().NoError(json.Unmarshal(data, &decoded))
 	s.Equal("", decoded.DisplayName, "DisplayName must remain empty after unmarshalling")
 	s.Equal("email", decoded.Identifier)
@@ -116,7 +119,7 @@ func (s *ModelTestSuite) TestExecutionAttempt_GetDuration() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			attempt := ExecutionAttempt{StartTime: tt.startTime, EndTime: tt.endTime}
+			attempt := providers.ExecutionAttempt{StartTime: tt.startTime, EndTime: tt.endTime}
 			duration := attempt.GetDuration()
 			s.Equal(tt.expected, duration)
 		})

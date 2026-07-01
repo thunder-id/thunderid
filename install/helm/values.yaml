@@ -385,11 +385,6 @@ configuration:
     # Leave empty to register all built-in interceptors.
     interceptors: []
 
-  # CORS configuration
-  cors:
-    allowedOrigins:
-      - "https://localhost:3000"
-
   # Passkey configuration
   passkey:
     allowedOrigins:
@@ -420,6 +415,46 @@ configuration:
       max_open_conns: 500
       max_idle_conns: 100
       conn_max_lifetime: "3600s"
+
+  # OpenID4VP (verifiable presentation / verifier) configuration.
+  # Leave signingKeyId empty to keep the verifier signing engine disabled.
+  openid4vp:
+    # Verifier client_id, scheme-prefixed (e.g. "x509_san_dns:<host>" or "x509_hash:<hash>").
+    clientId: "x509_san_dns:localhost"
+    # Key ID (from crypto.keys) used to sign the request object. Empty disables OpenID4VP.
+    signingKeyId: ""
+    # Ephemeral key ID (from crypto.keys) used for response encryption.
+    ephemeralKeyId: "vp-enc"
+    # Supported response encryption (JWE enc) values.
+    responseEncValues:
+      - "A128GCM"
+      - "A256GCM"
+      - "A128CBC-HS256"
+      - "A256CBC-HS512"
+    requestValiditySeconds: 300
+    stateTtlSeconds: 300
+    leewaySeconds: 30
+    keyBindingMaxAgeSeconds: 300
+    resultTokenValiditySeconds: 300
+    # Enforce holder key binding on presentations.
+    enforceKeyBinding: true
+    # Optional verifier registration certificate (EUDI) file path. Empty to disable.
+    registrationCertFile: ""
+    # Trusted issuer anchors (root CAs) used to validate credential issuer chains.
+    # Each entry: { name, certFile }.
+    trustedAnchors: []
+
+  # OpenID4VCI (verifiable credential issuance / issuer) configuration.
+  # Leave signingKeyId empty to keep the issuer engine disabled.
+  openid4vci:
+    # Key ID (from crypto.keys) used to sign issued SD-JWT credentials. Empty disables OpenID4VCI.
+    signingKeyId: ""
+    nonceTtlSeconds: 300
+    proofMaxAgeSeconds: 300
+    credentialValiditySeconds: 2592000
+    batchSize: 5
+    # Require the credential_configuration_id scope on the issuance token.
+    enforceScope: false
 
 
 # Persistence configuration for SQLite databases

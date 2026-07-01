@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
 )
@@ -148,6 +149,24 @@ func IsVersionSkipped(version string) bool {
 		}
 	}
 	return false
+}
+
+// ListInstalledVersions returns all versions that have completed setup and a recorded
+// install path, sorted in ascending order. Pass exceptVersion to exclude one entry
+// (e.g. the currently active version).
+func ListInstalledVersions(exceptVersion string) []string {
+	s := load()
+	var versions []string
+	for v, state := range s.Versions {
+		if v == exceptVersion {
+			continue
+		}
+		if state.SetupComplete && state.InstallPath != "" {
+			versions = append(versions, v)
+		}
+	}
+	sort.Strings(versions)
+	return versions
 }
 
 // MarkVersionSkipped records that the user skipped upgrading to version.

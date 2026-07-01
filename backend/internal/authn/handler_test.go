@@ -25,14 +25,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/authn/common"
-	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 )
 
 type AuthenticationHandlerTestSuite struct {
@@ -62,7 +62,7 @@ func (suite *AuthenticationHandlerTestSuite) TestNewAuthenticationHandler() {
 }
 
 func (suite *AuthenticationHandlerTestSuite) testIDPAuthFinishSuccess(
-	idpType idp.IDPType, endpoint string, handlerFunc func(http.ResponseWriter, *http.Request)) {
+	idpType providers.IDPType, endpoint string, handlerFunc func(http.ResponseWriter, *http.Request)) {
 	authRequest := IDPAuthFinishRequestDTO{
 		SessionToken:  testSessionTkn,
 		SkipAssertion: false,
@@ -217,7 +217,7 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleCredentialsAuthRequestSer
 	cases := []struct {
 		name               string
 		authRequest        map[string]interface{}
-		serviceError       *serviceerror.ServiceError
+		serviceError       *tidcommon.ServiceError
 		expectedStatusCode int
 		expectedErrorCode  string
 	}{
@@ -259,11 +259,11 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleCredentialsAuthRequestSer
 					"password": "testpass",
 				},
 			},
-			serviceError: &serviceerror.ServiceError{
-				Type:  serviceerror.ClientErrorType,
+			serviceError: &tidcommon.ServiceError{
+				Type:  tidcommon.ClientErrorType,
 				Code:  "CUSTOM_ERROR",
-				Error: core.I18nMessage{Key: "error.test.custom_error", DefaultValue: "Custom error"},
-				ErrorDescription: core.I18nMessage{
+				Error: tidcommon.I18nMessage{Key: "error.test.custom_error", DefaultValue: "Custom error"},
+				ErrorDescription: tidcommon.I18nMessage{
 					Key: "error.test.custom_error_description", DefaultValue: "Custom error description",
 				},
 			},
@@ -280,11 +280,11 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleCredentialsAuthRequestSer
 					"password": "testpass",
 				},
 			},
-			serviceError: &serviceerror.ServiceError{
-				Type:  serviceerror.ServerErrorType,
+			serviceError: &tidcommon.ServiceError{
+				Type:  tidcommon.ServerErrorType,
 				Code:  "INTERNAL_ERROR",
-				Error: core.I18nMessage{Key: "error.test.internal_error", DefaultValue: "Internal error"},
-				ErrorDescription: core.I18nMessage{
+				Error: tidcommon.I18nMessage{Key: "error.test.internal_error", DefaultValue: "Internal error"},
+				ErrorDescription: tidcommon.I18nMessage{
 					Key: "error.test.internal_error_description", DefaultValue: "Internal error description",
 				},
 			},
@@ -358,11 +358,13 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleSendSMSOTPRequestServiceE
 		SenderID:  "sender123",
 		Recipient: "+1234567890",
 	}
-	serviceError := &serviceerror.ServiceError{
-		Type:             serviceerror.ClientErrorType,
-		Code:             "OTP_ERROR",
-		Error:            core.I18nMessage{Key: "error.test.otp_error", DefaultValue: "OTP error"},
-		ErrorDescription: core.I18nMessage{Key: "error.test.failed_to_send_otp", DefaultValue: "Failed to send OTP"},
+	serviceError := &tidcommon.ServiceError{
+		Type:  tidcommon.ClientErrorType,
+		Code:  "OTP_ERROR",
+		Error: tidcommon.I18nMessage{Key: "error.test.otp_error", DefaultValue: "OTP error"},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.test.failed_to_send_otp", DefaultValue: "Failed to send OTP",
+		},
 	}
 
 	suite.mockService.On("SendOTP", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("", serviceError)
@@ -430,13 +432,13 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleVerifySMSOTPRequestServic
 		SkipAssertion: false,
 		OTP:           "123456",
 	}
-	serviceError := &serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	serviceError := &tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: ErrorOTPAuthenticationFailed.Code,
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key: "error.test.authentication_failed", DefaultValue: "Authentication failed",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.test.the_provided_otp_is_incorrect_or_has_expired",
 			DefaultValue: "The provided OTP is incorrect or has expired",
 		},
@@ -467,7 +469,7 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleGoogleAuthStartRequestSuc
 		SessionToken: testSessionTkn,
 	}
 
-	suite.mockService.On("StartIDPAuthentication", mock.Anything, idp.IDPTypeGoogle, authRequest.IDPID).
+	suite.mockService.On("StartIDPAuthentication", mock.Anything, providers.IDPTypeGoogle, authRequest.IDPID).
 		Return(authResponse, nil)
 
 	body, _ := json.Marshal(authRequest)
@@ -499,7 +501,7 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleGoogleAuthStartRequestSer
 	}
 	serviceError := &common.ErrorInvalidIDPID
 
-	suite.mockService.On("StartIDPAuthentication", mock.Anything, idp.IDPTypeGoogle, authRequest.IDPID).
+	suite.mockService.On("StartIDPAuthentication", mock.Anything, providers.IDPTypeGoogle, authRequest.IDPID).
 		Return(nil, serviceError)
 
 	body, _ := json.Marshal(authRequest)
@@ -516,7 +518,7 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleGoogleAuthStartRequestSer
 }
 
 func (suite *AuthenticationHandlerTestSuite) TestHandleGoogleAuthFinishRequestSuccess() {
-	suite.testIDPAuthFinishSuccess(idp.IDPTypeGoogle, "/authenticate/google/finish",
+	suite.testIDPAuthFinishSuccess(providers.IDPTypeGoogle, "/authenticate/google/finish",
 		suite.handler.HandleGoogleAuthFinishRequest)
 }
 
@@ -537,8 +539,9 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleGoogleAuthFinishRequestSe
 	}
 	serviceError := &common.ErrorInvalidSessionToken
 
-	suite.mockService.On("FinishIDPAuthentication", mock.Anything, idp.IDPTypeGoogle, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).Return(nil, serviceError)
+	suite.mockService.On("FinishIDPAuthentication", mock.Anything, providers.IDPTypeGoogle,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, serviceError)
 
 	body, _ := json.Marshal(authRequest)
 	req := httptest.NewRequest(http.MethodPost, "/authenticate/google/finish", bytes.NewReader(body))
@@ -562,7 +565,7 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleGithubAuthStartRequestSuc
 		SessionToken: testSessionTkn,
 	}
 
-	suite.mockService.On("StartIDPAuthentication", mock.Anything, idp.IDPTypeGitHub, authRequest.IDPID).
+	suite.mockService.On("StartIDPAuthentication", mock.Anything, providers.IDPTypeGitHub, authRequest.IDPID).
 		Return(authResponse, nil)
 
 	body, _ := json.Marshal(authRequest)
@@ -593,7 +596,7 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleGithubAuthStartRequestSer
 	}
 	serviceError := &common.ErrorClientErrorWhileRetrievingIDP
 
-	suite.mockService.On("StartIDPAuthentication", mock.Anything, idp.IDPTypeGitHub, authRequest.IDPID).
+	suite.mockService.On("StartIDPAuthentication", mock.Anything, providers.IDPTypeGitHub, authRequest.IDPID).
 		Return(nil, serviceError)
 
 	body, _ := json.Marshal(authRequest)
@@ -617,7 +620,7 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleGithubAuthFinishRequestSu
 		OUID: "test-ou",
 	}
 
-	suite.mockService.On("FinishIDPAuthentication", mock.Anything, idp.IDPTypeGitHub, authRequest.SessionToken,
+	suite.mockService.On("FinishIDPAuthentication", mock.Anything, providers.IDPTypeGitHub, authRequest.SessionToken,
 		authRequest.SkipAssertion, authRequest.Assertion, authRequest.Code).Return(authResponse, nil)
 
 	body, _ := json.Marshal(authRequest)
@@ -649,17 +652,18 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleGithubAuthFinishRequestSe
 		SkipAssertion: false,
 		Code:          "auth_code_123",
 	}
-	serviceError := &serviceerror.ServiceError{
-		Type:  serviceerror.ServerErrorType,
+	serviceError := &tidcommon.ServiceError{
+		Type:  tidcommon.ServerErrorType,
 		Code:  "INTERNAL_ERROR",
-		Error: core.I18nMessage{Key: "error.test.internal_error", DefaultValue: "Internal error"},
-		ErrorDescription: core.I18nMessage{
+		Error: tidcommon.I18nMessage{Key: "error.test.internal_error", DefaultValue: "Internal error"},
+		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.test.internal_error_description", DefaultValue: "Internal error description",
 		},
 	}
 
-	suite.mockService.On("FinishIDPAuthentication", mock.Anything, idp.IDPTypeGitHub, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).Return(nil, serviceError)
+	suite.mockService.On("FinishIDPAuthentication", mock.Anything, providers.IDPTypeGitHub,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, serviceError)
 
 	body, _ := json.Marshal(authRequest)
 	req := httptest.NewRequest(http.MethodPost, "/authenticate/github/finish", bytes.NewReader(body))
@@ -679,7 +683,7 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleStandardOAuthStartRequest
 		SessionToken: testSessionTkn,
 	}
 
-	suite.mockService.On("StartIDPAuthentication", mock.Anything, idp.IDPTypeOAuth, authRequest.IDPID).
+	suite.mockService.On("StartIDPAuthentication", mock.Anything, providers.IDPTypeOAuth, authRequest.IDPID).
 		Return(authResponse, nil)
 
 	body, _ := json.Marshal(authRequest)
@@ -710,7 +714,7 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleStandardOAuthStartRequest
 	}
 	serviceError := &common.ErrorInvalidIDPType
 
-	suite.mockService.On("StartIDPAuthentication", mock.Anything, idp.IDPTypeOAuth, authRequest.IDPID).
+	suite.mockService.On("StartIDPAuthentication", mock.Anything, providers.IDPTypeOAuth, authRequest.IDPID).
 		Return(nil, serviceError)
 
 	body, _ := json.Marshal(authRequest)
@@ -723,7 +727,7 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleStandardOAuthStartRequest
 }
 
 func (suite *AuthenticationHandlerTestSuite) TestHandleStandardOAuthFinishRequestSuccess() {
-	suite.testIDPAuthFinishSuccess(idp.IDPTypeOAuth, "/authenticate/oauth/finish",
+	suite.testIDPAuthFinishSuccess(providers.IDPTypeOAuth, "/authenticate/oauth/finish",
 		suite.handler.HandleStandardOAuthFinishRequest)
 }
 
@@ -744,7 +748,7 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleStandardOAuthFinishReques
 	}
 	serviceError := &common.ErrorEmptyAuthCode
 
-	suite.mockService.On("FinishIDPAuthentication", mock.Anything, idp.IDPTypeOAuth, mock.Anything, mock.Anything,
+	suite.mockService.On("FinishIDPAuthentication", mock.Anything, providers.IDPTypeOAuth, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything).Return(nil, serviceError)
 
 	body, _ := json.Marshal(authRequest)
@@ -904,11 +908,11 @@ func (suite *AuthenticationHandlerTestSuite) TestHandlePasskeyRegisterFinishRequ
 		},
 		SessionToken: testSessionTkn,
 	}
-	serviceError := &serviceerror.ServiceError{
-		Type:  serviceerror.ClientErrorType,
+	serviceError := &tidcommon.ServiceError{
+		Type:  tidcommon.ClientErrorType,
 		Code:  "INVALID_ATTESTATION",
-		Error: core.I18nMessage{Key: "error.test.invalid_attestation", DefaultValue: "Invalid attestation"},
-		ErrorDescription: core.I18nMessage{
+		Error: tidcommon.I18nMessage{Key: "error.test.invalid_attestation", DefaultValue: "Invalid attestation"},
+		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.test.failed_to_verify_attestation", DefaultValue: "Failed to verify attestation",
 		},
 	}
@@ -1074,11 +1078,11 @@ func (suite *AuthenticationHandlerTestSuite) TestHandlePasskeyFinishRequestServi
 		},
 		SessionToken: testSessionTkn,
 	}
-	serviceError := &serviceerror.ServiceError{
-		Type:  serviceerror.ClientErrorType,
+	serviceError := &tidcommon.ServiceError{
+		Type:  tidcommon.ClientErrorType,
 		Code:  "INVALID_SIGNATURE",
-		Error: core.I18nMessage{Key: "error.test.invalid_signature", DefaultValue: "Invalid signature"},
-		ErrorDescription: core.I18nMessage{
+		Error: tidcommon.I18nMessage{Key: "error.test.invalid_signature", DefaultValue: "Invalid signature"},
+		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.test.failed_to_verify_signature", DefaultValue: "Failed to verify signature",
 		},
 	}

@@ -19,7 +19,6 @@
 package granthandlers
 
 import (
-	"github.com/thunder-id/thunderid/internal/actorprovider"
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	rbacauthz "github.com/thunder-id/thunderid/internal/authz"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
@@ -27,14 +26,13 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
-	"github.com/thunder-id/thunderid/internal/ou"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // GrantHandlerProviderInterface defines the interface for the grant handler provider.
 type GrantHandlerProviderInterface interface {
-	GetGrantHandler(grantType constants.GrantType) (GrantHandlerInterface, error)
+	GetGrantHandler(grantType providers.GrantType) (GrantHandlerInterface, error)
 }
 
 // GrantHandlerProvider implements the GrantHandlerProviderInterface.
@@ -53,10 +51,10 @@ func newGrantHandlerProvider(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	tokenValidator tokenservice.TokenValidatorInterface,
 	attrCacheService attributecache.AttributeCacheServiceInterface,
-	ouService ou.OrganizationUnitServiceInterface,
+	ouService providers.OrganizationUnitProvider,
 	rbacAuthzService rbacauthz.AuthorizationServiceInterface,
-	actorProvider actorprovider.ActorProviderInterface,
-	resourceService resource.ResourceServiceInterface,
+	actorProvider providers.ActorProvider,
+	resourceService providers.ResourceServerProvider,
 	cibaService ciba.CIBAServiceInterface,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {
@@ -74,17 +72,17 @@ func newGrantHandlerProvider(
 }
 
 // GetGrantHandler returns the appropriate grant handler for the given grant type.
-func (p *GrantHandlerProvider) GetGrantHandler(grantType constants.GrantType) (GrantHandlerInterface, error) {
+func (p *GrantHandlerProvider) GetGrantHandler(grantType providers.GrantType) (GrantHandlerInterface, error) {
 	switch grantType {
-	case constants.GrantTypeClientCredentials:
+	case providers.GrantTypeClientCredentials:
 		return p.clientCredentialsGrantHandler, nil
-	case constants.GrantTypeAuthorizationCode:
+	case providers.GrantTypeAuthorizationCode:
 		return p.authorizationCodeGrantHandler, nil
-	case constants.GrantTypeRefreshToken:
+	case providers.GrantTypeRefreshToken:
 		return p.refreshTokenGrantHandler, nil
-	case constants.GrantTypeTokenExchange:
+	case providers.GrantTypeTokenExchange:
 		return p.tokenExchangeGrantHandler, nil
-	case constants.GrantTypeCIBA:
+	case providers.GrantTypeCIBA:
 		return p.cibaGrantHandler, nil
 	default:
 		return nil, constants.UnSupportedGrantTypeError

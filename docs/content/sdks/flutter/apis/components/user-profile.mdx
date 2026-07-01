@@ -1,0 +1,97 @@
+---
+title: ThunderIDUserProfile
+description: Editable profile form widget for the {{ProductName}} Flutter SDK
+---
+
+# `ThunderIDUserProfile`
+
+`ThunderIDUserProfile` is a pre-built form widget for viewing and editing the authenticated user's profile. It loads the user's profile from `/scim2/Me` on mount, renders editable fields, and saves changes via `updateUserProfile`.
+
+```dart
+import 'package:thunderid_flutter/thunderid_flutter.dart';
+
+ThunderIDUserProfile(
+  onSaved: (updatedUser) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Profile updated')),
+    );
+  },
+  onError: (error) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Failed to update: $error')),
+    );
+  },
+)
+```
+
+## `ThunderIDUserProfile` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `onSaved` | `void Function(User)` | ✅ | Called with the updated `User` after a successful profile save. |
+| `onError` | `void Function(dynamic)?` | | Called if loading or saving the profile fails. |
+
+## `BaseThunderIDUserProfile`
+
+`BaseThunderIDUserProfile` exposes the profile state and save action to a `builder` function, giving full control over the form layout.
+
+```dart
+BaseThunderIDUserProfile(
+  onSaved: (user) => print('Saved: ${user.displayName}'),
+  builder: (context, state) {
+    if (state.isLoading && state.firstName == null) {
+      return const CircularProgressIndicator();
+    }
+
+    return Column(
+      children: [
+        TextFormField(
+          initialValue: state.firstName,
+          decoration: const InputDecoration(labelText: 'First Name'),
+          onChanged: (v) => state.firstName = v,
+        ),
+        TextFormField(
+          initialValue: state.lastName,
+          decoration: const InputDecoration(labelText: 'Last Name'),
+          onChanged: (v) => state.lastName = v,
+        ),
+        TextFormField(
+          initialValue: state.email,
+          decoration: const InputDecoration(labelText: 'Email'),
+          onChanged: (v) => state.email = v,
+        ),
+        ElevatedButton(
+          onPressed: state.isLoading ? null : state.save,
+          child: state.isLoading
+              ? const CircularProgressIndicator()
+              : const Text('Save'),
+        ),
+        if (state.error != null) Text(state.error!),
+      ],
+    );
+  },
+)
+```
+
+### `BaseThunderIDUserProfile` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `onSaved` | `void Function(User)` | ✅ | Called after a successful save. |
+| `onError` | `void Function(dynamic)?` | | Called on error. |
+| `builder` | `Widget Function(BuildContext, ProfileState)` | ✅ | Builder receiving the current `ProfileState`. |
+
+### `ProfileState`
+
+`ProfileState` is passed to the `BaseThunderIDUserProfile` builder on every update.
+
+| Property/Method | Type | Description |
+| :--- | :--- | :--- |
+| `firstName` | `String?` | Mutable. First name from the user's profile. |
+| `lastName` | `String?` | Mutable. Last name from the user's profile. |
+| `email` | `String?` | Mutable. Email address. |
+| `username` | `String?` | Read-only. Username (cannot be changed via this form). |
+| `profilePicture` | `String?` | URL of the user's profile picture. |
+| `isLoading` | `bool` | `true` while loading the profile or saving changes. |
+| `error` | `String?` | Human-readable error. `null` on success. |
+| `save()` | `Future<void>` | Submits the current field values to `updateUserProfile`. |

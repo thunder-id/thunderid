@@ -25,15 +25,15 @@ vi.mock('@monaco-editor/react', () => ({
 }));
 
 describe('JwtPreview', () => {
-  it('renders the title text', () => {
-    render(<JwtPreview title="Access Token" payload={{sub: 'user-123'}} />);
+  it('renders the JWT logo SVG element', () => {
+    const {container} = render(<JwtPreview payload={{sub: 'user-123'}} />);
 
-    expect(screen.getByText('Access Token')).toBeInTheDocument();
+    expect(container.querySelector('svg')).toBeInTheDocument();
   });
 
   it('renders the payload as JSON in the editor', () => {
     const payload = {sub: 'user-123', iss: 'https://example.com'};
-    render(<JwtPreview title="Access Token" payload={payload} />);
+    render(<JwtPreview payload={payload} />);
 
     const editor = screen.getByTestId('monaco-editor');
     const content = editor.textContent ?? '';
@@ -46,27 +46,40 @@ describe('JwtPreview', () => {
 
   it('renders without errors when defaultClaims prop is provided', () => {
     expect(() =>
-      render(
-        <JwtPreview
-          title="ID Token"
-          payload={{sub: 'user-123', iss: 'https://example.com'}}
-          defaultClaims={['sub', 'iss']}
-        />,
-      ),
+      render(<JwtPreview payload={{sub: 'user-123', iss: 'https://example.com'}} defaultClaims={['sub', 'iss']} />),
     ).not.toThrow();
   });
 
-  it('renders the JWT logo SVG element', () => {
-    const {container} = render(<JwtPreview title="Access Token" payload={{sub: 'user-123'}} />);
-
-    expect(container.querySelector('svg')).toBeInTheDocument();
-  });
-
   it('renders an empty JSON object when payload is empty', () => {
-    render(<JwtPreview title="Access Token" payload={{}} />);
+    render(<JwtPreview payload={{}} />);
 
     const editor = screen.getByTestId('monaco-editor');
 
     expect(editor.textContent).toContain('{}');
+  });
+
+  it('renders header section when header prop is provided', () => {
+    const header = {alg: 'RS256', typ: 'JWT'};
+    render(<JwtPreview payload={{sub: 'user-123'}} header={header} />);
+
+    const editors = screen.getAllByTestId('monaco-editor');
+    expect(editors).toHaveLength(2);
+    expect(editors[0].textContent).toContain('"alg"');
+    expect(editors[0].textContent).toContain('"RS256"');
+  });
+
+  it('renders Header and Payload labels when header is provided', () => {
+    const header = {alg: 'RS256', typ: 'JWT'};
+    render(<JwtPreview payload={{sub: 'user-123'}} header={header} />);
+
+    expect(screen.getByText('Decoded Header')).toBeInTheDocument();
+    expect(screen.getByText('Decoded Payload')).toBeInTheDocument();
+  });
+
+  it('does not render Header label when header is not provided', () => {
+    render(<JwtPreview payload={{sub: 'user-123'}} />);
+
+    expect(screen.queryByText('Decoded Header')).not.toBeInTheDocument();
+    expect(screen.queryByText('Decoded Payload')).not.toBeInTheDocument();
   });
 });

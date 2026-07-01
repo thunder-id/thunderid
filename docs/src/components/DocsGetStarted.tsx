@@ -22,70 +22,24 @@ import {JSX} from 'react';
 import UseCaseBranchCards from './UseCaseBranchCards';
 import useScrollAnimation from '../hooks/useScrollAnimation';
 
-// ─── Step cards ──────────────────────────────────────────────────────────────
+// ─── Capability cards ─────────────────────────────────────────────────────────
 
-const STEP_CARDS = [
+const CAPABILITIES = [
   {
-    number: '01',
-    title: 'Run ThunderID',
-    description: 'Start ThunderID locally with Docker or download the release artifact.',
-    href: '/docs/next/guides/getting-started/get-thunderid',
+    title: 'Works with your stack',
+    description: 'Native SDKs for React, Vue, Next.js, Node.js, iOS, Android, Flutter, and more.',
     icon: (
-      <svg
-        width="20"
-        height="20"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-        <polyline points="7 10 12 15 17 10" />
-        <line x1="12" x2="12" y1="15" y2="3" />
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="16 18 22 12 16 6" />
+        <polyline points="8 6 2 12 8 18" />
       </svg>
     ),
   },
   {
-    number: '02',
-    title: 'Register an application',
-    description: 'Create an application in the Console and get your client credentials.',
-    href: '/docs/next/guides/quick-start/register-an-application',
+    title: 'Visual flow designer',
+    description: 'Build and iterate on sign-in flows without touching app code. Add MFA, passkeys, or social login from the Console.',
     icon: (
-      <svg
-        width="20"
-        height="20"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <rect width="7" height="7" x="3" y="3" rx="1" />
-        <rect width="7" height="7" x="14" y="3" rx="1" />
-        <rect width="7" height="7" x="14" y="14" rx="1" />
-        <rect width="7" height="7" x="3" y="14" rx="1" />
-      </svg>
-    ),
-  },
-  {
-    number: '03',
-    title: 'Build a sign-in flow',
-    description: 'Use the visual flow designer to configure how users authenticate.',
-    href: '/docs/next/guides/guides/flows/build-a-flow',
-    icon: (
-      <svg
-        width="20"
-        height="20"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="18" cy="18" r="3" />
         <circle cx="6" cy="6" r="3" />
         <path d="M13 6h3a2 2 0 0 1 2 2v7" />
@@ -94,92 +48,16 @@ const STEP_CARDS = [
     ),
   },
   {
-    number: '04',
-    title: 'Connect your app',
-    description: 'Add sign-in to a React app with the Asgardeo SDK in a few lines of code.',
-    href: '/docs/next/guides/quick-start/connect-your-application',
+    title: 'Full identity stack',
+    description: 'Users, organizations, SSO, MFA, social login, and API security — all in one lightweight, self-hostable server.',
     icon: (
-      <svg
-        width="20"
-        height="20"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <polyline points="16 18 22 12 16 6" />
-        <polyline points="8 6 2 12 8 18" />
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
       </svg>
     ),
   },
 ];
-
-interface StepItemProps {
-  step: (typeof STEP_CARDS)[number];
-  index: number;
-  isVisible: boolean;
-}
-
-function StepItem({step, index, isVisible}: StepItemProps): JSX.Element {
-  const theme = useTheme();
-  return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 1.25,
-        p: 2.5,
-        borderRadius: '12px',
-        border: '1px solid',
-        borderColor: 'divider',
-        bgcolor: `rgba(${theme.vars?.palette.primary.main} / 0.02)`,
-        opacity: isVisible ? 1 : 0,
-        transform: isVisible ? 'translateY(0)' : 'translateY(16px)',
-        transitionProperty: 'opacity, transform',
-        transitionDuration: '0.45s',
-        transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
-        transitionDelay: isVisible ? `${index * 0.07}s` : '0s',
-      }}
-    >
-      <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 36,
-            height: 36,
-            borderRadius: '8px',
-            bgcolor: `rgba(${theme.vars?.palette.primary.main} / 0.1)`,
-            color: 'primary.main',
-          }}
-        >
-          {step.icon}
-        </Box>
-        <Typography
-          component="span"
-          sx={{
-            fontFamily: 'monospace',
-            fontSize: '1.1rem',
-            fontWeight: 700,
-            color: 'text.disabled',
-            letterSpacing: '0.02em',
-          }}
-        >
-          {step.number}
-        </Typography>
-      </Box>
-      <Typography variant="body2" sx={{fontWeight: 700, fontSize: '0.9rem', color: 'text.primary'}}>
-        {step.title}
-      </Typography>
-      <Typography variant="body2" sx={{fontSize: '0.8rem', lineHeight: 1.55, color: 'text.secondary'}}>
-        {step.description}
-      </Typography>
-    </Box>
-  );
-}
 
 function QuickstartPanel({isVisible}: {isVisible: boolean}): JSX.Element {
   const theme = useTheme();
@@ -198,46 +76,67 @@ function QuickstartPanel({isVisible}: {isVisible: boolean}): JSX.Element {
       <Typography
         component="h2"
         variant="h4"
-        sx={{
-          fontWeight: 800,
-          mb: 0.25,
-          mt: 0,
-          fontSize: {xs: '1.4rem', md: '1.6rem'},
-          color: 'text.primary',
-          letterSpacing: '-0.01em',
-        }}
+        sx={{fontWeight: 800, mb: 0.25, mt: 0, fontSize: {xs: '1.4rem', md: '1.6rem'}, color: 'text.primary', letterSpacing: '-0.01em'}}
       >
         New to ThunderID?
       </Typography>
       <Typography variant="body1" sx={{fontWeight: 500, mb: 2.5, fontSize: '0.95rem', color: 'text.secondary'}}>
-        Follow the step-by-step guide to go from zero to your first working integration.
+        ThunderID is a self-hostable identity server. Add sign-in, manage users and organizations, and secure APIs — without building auth from scratch.
       </Typography>
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: {xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)'},
-          gap: {xs: 2, lg: 2.5},
+          gridTemplateColumns: {xs: '1fr', sm: 'repeat(3, 1fr)'},
+          gap: {xs: 1.5, md: 2},
         }}
       >
-        {STEP_CARDS.map((step, index) => (
-          <StepItem key={step.number} step={step} index={index} isVisible={isVisible} />
+        {CAPABILITIES.map(({title, description, icon}, index) => (
+          <Box
+            key={title}
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1,
+              p: 2.5,
+              borderRadius: '12px',
+              border: '1px solid',
+              borderColor: 'divider',
+              opacity: isVisible ? 1 : 0,
+              transform: isVisible ? 'translateY(0)' : 'translateY(16px)',
+              transitionProperty: 'opacity, transform',
+              transitionDuration: '0.45s',
+              transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+              transitionDelay: isVisible ? `${index * 0.08}s` : '0s',
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 36, height: 36, borderRadius: '8px',
+                bgcolor: `rgba(${theme.vars?.palette.primary.main} / 0.1)`,
+                color: 'primary.main', flexShrink: 0,
+              }}
+            >
+              {icon}
+            </Box>
+            <Typography variant="body2" sx={{fontWeight: 700, fontSize: '0.9rem', color: 'text.primary'}}>
+              {title}
+            </Typography>
+            <Typography variant="body2" sx={{fontSize: '0.8rem', lineHeight: 1.55, color: 'text.secondary'}}>
+              {description}
+            </Typography>
+          </Box>
         ))}
       </Box>
-      <Box sx={{mt: 2}}>
+      <Box sx={{mt: 2.5}}>
         <Box
           component={Link}
           to="/docs/next/guides/getting-started/get-thunderid"
           sx={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 0.75,
-            px: 3,
-            py: 1.25,
-            borderRadius: '8px',
+            display: 'inline-flex', alignItems: 'center', gap: 0.75,
+            px: 3, py: 1.25, borderRadius: '8px',
             background: `linear-gradient(135deg, ${theme.vars?.palette.primary.dark} 0%, ${theme.vars?.palette.primary.main} 100%)`,
-            color: '#ffffff !important',
-            fontWeight: 700,
-            fontSize: '0.925rem',
+            color: '#ffffff !important', fontWeight: 700, fontSize: '0.925rem',
             textDecoration: 'none !important',
             transition: 'transform 0.2s, box-shadow 0.2s',
             '&:hover': {

@@ -22,8 +22,9 @@ import (
 	"context"
 	"net/http"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -60,7 +61,7 @@ func (dh *dcrHandler) HandleDCRRegistration(w http.ResponseWriter, r *http.Reque
 
 	dcrResponse, svcErr := dh.dcrService.RegisterClient(ctx, dcrRequest)
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ServerErrorType {
+		if svcErr.Type == tidcommon.ServerErrorType {
 			logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "DCRHandler"))
 			logger.Error(ctx, "Internal server error processing DCR registration request",
 				log.MaskedString("client_name", dcrRequest.ClientName),
@@ -90,13 +91,13 @@ func (dh *dcrHandler) checkDCRAuthorization(r *http.Request, w http.ResponseWrit
 func (
 	dh *dcrHandler) writeServiceErrorResponse(ctx context.Context,
 	w http.ResponseWriter,
-	svcErr *serviceerror.ServiceError) {
+	svcErr *tidcommon.ServiceError) {
 	var statusCode int
 
 	switch svcErr.Type {
-	case serviceerror.ClientErrorType:
+	case tidcommon.ClientErrorType:
 		statusCode = http.StatusBadRequest
-	case serviceerror.ServerErrorType:
+	case tidcommon.ServerErrorType:
 		statusCode = http.StatusInternalServerError
 	default:
 		statusCode = http.StatusBadRequest

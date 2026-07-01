@@ -21,8 +21,8 @@ package observability
 import (
 	"context"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 // Initialize creates and initializes a new observability service instance.
@@ -40,7 +40,7 @@ import (
 //
 // Returns:
 //   - ObservabilityServiceInterface: A new observability service instance
-func Initialize() ObservabilityServiceInterface {
+func Initialize(config engineconfig.ObservabilityConfig) ObservabilityServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
 	// Service construction runs during application startup, outside any request.
@@ -48,20 +48,17 @@ func Initialize() ObservabilityServiceInterface {
 
 	logger.Debug(ctx, "Initializing observability service")
 
-	// Get configuration
-	cfg := config.GetServerRuntime().Config.Observability
-
-	if !cfg.Enabled {
+	if !config.Enabled {
 		logger.Debug(ctx, "Observability is disabled in configuration")
 		// Return a disabled service (handles all operations as no-ops)
 		return &Service{
 			logger: logger,
-			config: cfg,
+			config: config,
 		}
 	}
 
 	// Create the service with full initialization
-	svc := newServiceWithConfig()
+	svc := newServiceWithConfig(config)
 
 	// Log initialization status
 	activeSubscribers := svc.GetActiveSubscribers()

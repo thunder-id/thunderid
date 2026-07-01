@@ -61,6 +61,15 @@ packages:
       pkgname: cachemock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/system/cors:
+    interfaces:
+      MergedConfigReader:
+        config:
+          dir: tests/mocks/corsmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: corsmock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/cert:
     config:
       all: true
@@ -277,15 +286,6 @@ packages:
       pkgname: commonmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/thunder-id/thunderid/internal/authn/consent:
-    interfaces:
-      ConsentEnforcerServiceInterface:
-        config:
-          dir: tests/mocks/authn/consentenforcermock
-          structname: '{{.InterfaceName}}Mock'
-          pkgname: consentenforcermock
-          filename: "{{.InterfaceName}}_mock.go"
-
   github.com/thunder-id/thunderid/internal/idp:
     config:
       all: true
@@ -302,12 +302,12 @@ packages:
       pkgname: notificationmock
       filename: "{{.InterfaceName}}_mock.go"
   
-  github.com/thunder-id/thunderid/internal/notification/message:
+  github.com/thunder-id/thunderid/internal/notification/client:
     config:
       all: true
-      dir: tests/mocks/notification/messagemock
+      dir: tests/mocks/notification/clientmock
       structname: '{{.InterfaceName}}Mock'
-      pkgname: messagemock
+      pkgname: clientmock
       filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/system/http:
@@ -521,13 +521,32 @@ packages:
       pkgname: entityprovidermock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/thunder-id/thunderid/internal/actorprovider:
-    config:
-      all: true
-      dir: tests/mocks/actorprovidermock
-      structname: '{{.InterfaceName}}Mock'
-      pkgname: actorprovidermock
-      filename: "{{.InterfaceName}}_mock.go"
+  github.com/thunder-id/thunderid/pkg/thunderidengine/providers:
+    interfaces:
+      AuthnProviderManager:
+        config:
+          dir: tests/mocks/authnprovider/managermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: managermock
+          filename: "{{.InterfaceName}}_mock.go"
+      ActorProvider:
+        config:
+          dir: tests/mocks/actorprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: actorprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      FlowProvider:
+        config:
+          dir: tests/mocks/flow/flowexecmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: flowexecmock
+          filename: "{{.InterfaceName}}_mock.go"
+      ConsentProvider:
+        config:
+          dir: tests/mocks/consentprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: consentprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/authnprovider/provider:
     config:
@@ -535,14 +554,6 @@ packages:
       dir: tests/mocks/authnprovider/providermock
       structname: '{{.InterfaceName}}Mock'
       pkgname: providermock
-      filename: "{{.InterfaceName}}_mock.go"
-
-  github.com/thunder-id/thunderid/internal/authnprovider/manager:
-    config:
-      all: true
-      dir: tests/mocks/authnprovider/managermock
-      structname: '{{.InterfaceName}}Mock'
-      pkgname: managermock
       filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/system/sysauthz:

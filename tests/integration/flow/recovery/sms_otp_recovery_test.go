@@ -24,9 +24,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 const (
@@ -50,7 +50,7 @@ var (
 				"type":       "string",
 				"credential": true,
 			},
-			"mobileNumber": map[string]interface{}{
+			"mobile_number": map[string]interface{}{
 				"type": "string",
 			},
 		},
@@ -61,18 +61,18 @@ var (
 // SMSOTPRecoveryFlowTestSuite tests the SMS OTP password recovery flow.
 type SMSOTPRecoveryFlowTestSuite struct {
 	suite.Suite
-	config          *common.TestSuiteConfig
-	mockSMSServer   *testutils.MockNotificationServer
-	userSchemaID    string
-	testOUID        string
-	testAppID       string
-	smsFlowID       string
-	authFlowID      string
-	testUserID      string
-	testUsername    string
-	testMobile      string
-	testPassword    string
-	smsSenderID     string
+	config        *common.TestSuiteConfig
+	mockSMSServer *testutils.MockNotificationServer
+	userSchemaID  string
+	testOUID      string
+	testAppID     string
+	smsFlowID     string
+	authFlowID    string
+	testUserID    string
+	testUsername  string
+	testMobile    string
+	testPassword  string
+	smsSenderID   string
 }
 
 func TestSMSOTPRecoveryFlowTestSuite(t *testing.T) {
@@ -103,7 +103,7 @@ func (ts *SMSOTPRecoveryFlowTestSuite) SetupSuite() {
 		Attributes: json.RawMessage(`{
 			"username":     "` + ts.testUsername + `",
 			"password":     "` + ts.testPassword + `",
-			"mobileNumber": "` + ts.testMobile + `"
+			"mobile_number": "` + ts.testMobile + `"
 		}`),
 	})
 	ts.Require().NoError(err, "Failed to create test user")
@@ -343,10 +343,10 @@ func (ts *SMSOTPRecoveryFlowTestSuite) TestSMSOTPRecoveryFlow_InvalidOTP() {
 		"After invalid OTP, flow must restart at prompt_username")
 }
 
-// TestSMSOTPRecoveryFlow_MissingMobileNumber tests that a user without a mobileNumber
+// TestSMSOTPRecoveryFlow_MissingMobileNumber tests that a user without a mobile_number
 // attribute causes the send_otp step to fail gracefully.
 func (ts *SMSOTPRecoveryFlowTestSuite) TestSMSOTPRecoveryFlow_MissingMobileNumber() {
-	// Create a user without mobileNumber.
+	// Create a user without mobile_number.
 	usernameNoMobile := common.GenerateUniqueUsername("nomobile")
 	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
 		OUID: ts.testOUID,

@@ -1126,7 +1126,10 @@ paths:
       tags:
         - Actions
       summary: List actions at resource server level
-      description: Returns all actions defined at the resource server level
+      description: |
+        Returns all actions defined at the resource server level. Use the optional `kind` query
+        parameter to filter to a specific MCP primitive type. Omitting `kind` returns all actions
+        regardless of kind (the default, backward-compatible behavior).
       parameters:
         - in: path
           name: rsId
@@ -1135,6 +1138,16 @@ paths:
             type: string
             format: uuid
           description: Resource server ID
+        - in: query
+          name: kind
+          required: false
+          schema:
+            type: string
+            enum: [tool, resource]
+          description: |
+            Filter actions by MCP primitive kind. Only `tool` and `resource` are valid values;
+            any other value (including future kinds) results in a 400 response. Omit the parameter
+            to return all actions regardless of kind.
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
       responses:
@@ -1144,24 +1157,47 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ActionListResponse'
-              example:
-                totalResults: 5
-                startIndex: 1
-                count: 2
-                actions:
-                  - id: "9c6d3g0g-7e8b-4d82-b454-4d2ccg87gh5e"
-                    name: "Create Booking"
-                    description: "Create a new booking"
-                    handle: "create"
-                    permission: "create"
-                  - id: "ad7e4h1h-8f9c-4e93-c565-5e3ddf98hi6f"
-                    name: "List Bookings"
-                    description: "List all bookings"
-                    handle: "list"
-                    permission: "list"
-                links:
-                  - href: "resource-servers/3fa85f64-5717-4562-b3fc-2c963f66afa6/actions?offset=2&limit=2"
-                    rel: "next"
+              examples:
+                unfiltered:
+                  summary: All actions (no kind filter)
+                  value:
+                    totalResults: 5
+                    startIndex: 1
+                    count: 2
+                    actions:
+                      - id: "9c6d3g0g-7e8b-4d82-b454-4d2ccg87gh5e"
+                        name: "Create Booking"
+                        description: "Create a new booking"
+                        handle: "create"
+                        permission: "create"
+                      - id: "ad7e4h1h-8f9c-4e93-c565-5e3ddf98hi6f"
+                        name: "List Bookings"
+                        description: "List all bookings"
+                        handle: "list"
+                        permission: "list"
+                    links:
+                      - href: "resource-servers/3fa85f64-5717-4562-b3fc-2c963f66afa6/actions?offset=2&limit=2"
+                        rel: "next"
+                kind-tool-filter:
+                  summary: MCP tools only (kind=tool)
+                  value:
+                    totalResults: 2
+                    startIndex: 1
+                    count: 2
+                    actions:
+                      - id: "9c6d3g0g-7e8b-4d82-b454-4d2ccg87gh5e"
+                        name: "Create User"
+                        description: "Creates a new user account"
+                        handle: "create_user"
+                        permission: "booking-mcp:create_user"
+                        kind: "tool"
+                      - id: "ad7e4h1h-8f9c-4e93-c565-5e3ddf98hi6f"
+                        name: "Delete User"
+                        description: "Deletes a user account"
+                        handle: "delete_user"
+                        permission: "booking-mcp:delete_user"
+                        kind: "tool"
+                    links: []
         "400":
           description: Bad request
           content:
@@ -1199,6 +1235,16 @@ paths:
                     description:
                       key: "error.resourceservice.result_limit_exceeded_in_composite_mode_description"
                       defaultValue: "The total number of records exceeds the maximum limit in composite mode"
+                invalid-kind:
+                  summary: Invalid kind parameter value
+                  value:
+                    code: "RES-1001"
+                    message:
+                      key: "error.resourceservice.invalid_request_format"
+                      defaultValue: "Invalid request format"
+                    description:
+                      key: "error.resourceservice.invalid_request_format_description"
+                      defaultValue: "The request body is malformed or contains invalid data"
         "404":
           description: Resource server not found
           content:
@@ -1623,7 +1669,10 @@ paths:
       tags:
         - Actions
       summary: List actions at resource level
-      description: Returns all actions defined for a specific resource
+      description: |
+        Returns all actions defined for a specific resource. Use the optional `kind` query
+        parameter to filter to a specific MCP primitive type. Omitting `kind` returns all actions
+        regardless of kind (the default, backward-compatible behavior).
       parameters:
         - in: path
           name: rsId
@@ -1639,6 +1688,16 @@ paths:
             type: string
             format: uuid
           description: Resource ID
+        - in: query
+          name: kind
+          required: false
+          schema:
+            type: string
+            enum: [tool, resource]
+          description: |
+            Filter actions by MCP primitive kind. Only `tool` and `resource` are valid values;
+            any other value (including future kinds) results in a 400 response. Omit the parameter
+            to return all actions regardless of kind.
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
       responses:
@@ -1648,24 +1707,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ActionListResponse'
-              example:
-                totalResults: 6
-                startIndex: 1
-                count: 2
-                actions:
-                  - id: "be8f5i2i-9g0d-5fa4-d676-6f4eeg09ij7g"
-                    name: "Create Reservation"
-                    description: "Create a new reservation"
-                    handle: "create"
-                    permission: "reservations:create"
-                  - id: "cf9g6j3j-0h1e-6gb5-e787-7g5ffh10jk8h"
-                    name: "Read Reservation"
-                    description: "Read reservation details"
-                    handle: "read"
-                    permission: "reservations:read"
-                links:
-                  - href: "resource-servers/3fa85f64-5717-4562-b3fc-2c963f66afa6/resources/7a4b1f8e-5c69-4b60-9232-2b0aaf65ef3c/actions?offset=2&limit=2"
-                    rel: "next"
+              examples:
+                unfiltered:
+                  summary: All actions (no kind filter)
+                  value:
+                    totalResults: 6
+                    startIndex: 1
+                    count: 2
+                    actions:
+                      - id: "be8f5i2i-9g0d-5fa4-d676-6f4eeg09ij7g"
+                        name: "Create Reservation"
+                        description: "Create a new reservation"
+                        handle: "create"
+                        permission: "reservations:create"
+                      - id: "cf9g6j3j-0h1e-6gb5-e787-7g5ffh10jk8h"
+                        name: "Read Reservation"
+                        description: "Read reservation details"
+                        handle: "read"
+                        permission: "reservations:read"
+                    links:
+                      - href: "resource-servers/3fa85f64-5717-4562-b3fc-2c963f66afa6/resources/7a4b1f8e-5c69-4b60-9232-2b0aaf65ef3c/actions?offset=2&limit=2"
+                        rel: "next"
+                kind-resource-filter:
+                  summary: MCP resources only (kind=resource)
+                  value:
+                    totalResults: 1
+                    startIndex: 1
+                    count: 1
+                    actions:
+                      - id: "cf9g6j3j-0h1e-6gb5-e787-7g5ffh10jk8h"
+                        name: "User List"
+                        description: "Read-only list of users"
+                        handle: "user_list"
+                        permission: "booking-mcp:user-mgmt:user_list"
+                        kind: "resource"
+                    links: []
         "400":
           description: Bad request
           content:
@@ -1703,6 +1779,16 @@ paths:
                     description:
                       key: "error.resourceservice.result_limit_exceeded_in_composite_mode_description"
                       defaultValue: "The total number of records exceeds the maximum limit in composite mode"
+                invalid-kind:
+                  summary: Invalid kind parameter value
+                  value:
+                    code: "RES-1001"
+                    message:
+                      key: "error.resourceservice.invalid_request_format"
+                      defaultValue: "Invalid request format"
+                    description:
+                      key: "error.resourceservice.invalid_request_format_description"
+                      defaultValue: "The request body is malformed or contains invalid data"
         "404":
           description: Resource or resource server not found
           content:
@@ -2384,6 +2470,15 @@ components:
         permission:
           type: string
           description: Derived permission string based on handle hierarchy
+        kind:
+          type: string
+          enum: [tool, resource]
+          description: >
+            MCP primitive kind. "tool" represents a callable MCP tool (model-controlled); "resource"
+            represents a read-only MCP resource (application-controlled). Always present for type=MCP
+            actions (defaults to "tool" when omitted on create). For API and CUSTOM resource server
+            actions it is present only when a kind was provided on create, otherwise omitted.
+            Immutable after creation.
 
     CreateActionRequest:
       type: object
@@ -2394,10 +2489,19 @@ components:
           description: Display name of the action
         handle:
           type: string
-          description: Immutable and unique under resource server or resource. Identifier used for permission derivation
+          maxLength: 100
+          description: Immutable and unique under resource server or resource. Identifier used for permission derivation. Maximum length is 100 characters.
         description:
           type: string
           description: Optional description of the action
+        kind:
+          type: string
+          enum: [tool, resource]
+          description: >
+            MCP primitive kind. Optional for all resource server types; when provided it must be
+            "tool" or "resource". For type=MCP it defaults to "tool" when omitted. For API and
+            CUSTOM resource servers it is optional and, when omitted, stays empty. Immutable after
+            creation; omit on update requests (kind cannot be changed).
 
     UpdateActionRequest:
       type: object

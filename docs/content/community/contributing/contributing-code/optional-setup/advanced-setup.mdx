@@ -1,0 +1,125 @@
+---
+title: Advanced Setup (Manual Mode)
+description: Manually run frontend components without make run commands.
+sidebar_position: 4
+hide_table_of_contents: false
+---
+
+# Advanced Setup (Manual Mode)
+
+For developers who want to run frontend components separately without using `make run` commands.
+
+### Installing Dependencies
+
+1. Navigate to the <ProductName /> frontend directory.
+
+```bash
+cd frontend
+```
+
+2. Install the dependencies using `pnpm`.
+
+```bash
+pnpm install
+```
+
+### Building the Project
+
+Execute the build command to compile the project. This will build all the necessary packages and applications.
+
+```bash
+pnpm build
+```
+
+### Seed Data (Optional)
+
+**Note**: This step is only necessary if you are running the backend server manually and have not yet set up the initial data.
+
+If you have not already created the `Console` application and the default admin user, you can do so by running the following command:
+
+```bash
+SKIP_SECURITY=true \
+API_BASE="https://localhost:8090" \
+  backend/cmd/server/bootstrap/01-default-resources.sh \
+  --console-redirect-uris "https://localhost:5191/console"
+```
+
+### Setting up the <ProductName /> Gate Application
+
+1. Point the `gate_client` in `deployment.yaml` to the local <ProductName /> Gate application.
+
+   - If you are running `make run`, change the `gate_client` section in `backend/cmd/server/deployment.yaml`
+   - If you are running the backend server manually, change the `gate_client` section in `<THUNDERID_HOME>/deployment.yaml`
+
+```yaml
+gate_client:
+  port: 5190
+```
+
+2. Add the local Gate origin (`https://localhost:5190`) to the CORS resource. In a source checkout, use `backend/cmd/server/config/resources/server_configs/cors.yaml`; in a packaged distribution, use `<THUNDERID_HOME>/config/resources/server_configs/cors.yaml`.
+
+```yaml
+name: cors
+value:
+  allowedOrigins:
+    - "https://localhost:5190"
+```
+
+3. Run the <ProductName /> Gate application.
+
+```bash
+cd frontend
+pnpm --filter @thunderid/gate dev
+```
+
+### Setting up the <ProductName /> Console Application
+
+**IMPORTANT**: This section assumes that you have already created the `Console` application using the initial data setup script. If not, please refer to the [Seed Data](#seed-data-optional) section above.
+
+1. First, retrieve the application ID of the **Console** application from the <ProductName /> server. This will be the application with the `client_id` **CONSOLE**.
+
+```bash
+curl -k -X GET "https://localhost:8090/applications"
+```
+
+2. Then, get the current **Console** application configuration:
+
+```bash
+curl -k -X GET "https://localhost:8090/applications/<console-application-id>"
+```
+
+**Note**: Replace `<console-application-id>` with the actual application ID (e.g., `6100bc91-ba99-4ce9-87dd-6d4d80178c38`) obtained from the previous step. The `-k` flag allows curl to work with self-signed SSL certificates in development.
+
+3. Copy the response from step 2 and update the `redirectUris` in the JSON object to include the local development URL (ex: https://localhost:5191/console). Locate the `inboundAuthConfig > config` section and update the `redirectUris` array:
+
+```json
+"redirectUris": [
+  "https://localhost:8090/console",
+  "https://localhost:5191/console"
+]
+```
+
+4. Update the **Console** application with the modified configuration by passing the updated JSON directly:
+
+```bash
+curl -k -X PUT "https://localhost:8090/applications/<console-application-id>" \
+  -H "Content-Type: application/json" \
+  -d '<paste-the-modified-json-here>'
+```
+
+5. Add the local Console origin (`https://localhost:5191`) to the CORS resource. In a source checkout, use `backend/cmd/server/config/resources/server_configs/cors.yaml`; in a packaged distribution, use `<THUNDERID_HOME>/config/resources/server_configs/cors.yaml`.
+
+```yaml
+name: cors
+value:
+  allowedOrigins:
+    - "https://localhost:5191"
+```
+
+6. Run the <ProductName /> Console application.
+
+```bash
+pnpm --filter @thunderid/console dev
+```
+
+This will run the <ProductName /> Console application on `https://localhost:5191/console`.

@@ -16,24 +16,24 @@
  * under the License.
  */
 
+// Package manager coordinates authentication provider registration and dispatch.
 package manager
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 var (
 	// ErrorAuthenticationFailed is returned when the underlying provider rejects the authentication
 	// attempt due to a client-side reason (e.g. invalid credentials).
-	ErrorAuthenticationFailed = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorAuthenticationFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AUTHN-MGR-1001",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authnmgrservice.authentication_failed",
 			DefaultValue: "Authentication failed",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authnmgrservice.authentication_failed_description",
 			DefaultValue: "The authentication attempt failed",
 		},
@@ -41,14 +41,14 @@ var (
 
 	// ErrorGetAttributesClientError is returned when the underlying provider rejects the
 	// attribute fetch due to a client-side reason (e.g. invalid or expired token).
-	ErrorGetAttributesClientError = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorGetAttributesClientError = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AUTHN-MGR-1004",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authnmgrservice.failed_to_get_attributes",
 			DefaultValue: "Failed to get attributes",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authnmgrservice.failed_to_get_attributes_description",
 			DefaultValue: "The attribute fetch was rejected by the provider",
 		},
@@ -56,14 +56,14 @@ var (
 
 	// ErrorUserNotFound is returned when the underlying provider indicates no user was found
 	// matching the provided identifiers.
-	ErrorUserNotFound = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorUserNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AUTHN-MGR-1007",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authnmgrservice.user_not_found",
 			DefaultValue: "User not found",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authnmgrservice.user_not_found_description",
 			DefaultValue: "No user found matching the provided identifiers",
 		},
@@ -71,14 +71,14 @@ var (
 
 	// ErrorInvalidRequest is returned when the underlying provider rejects the authentication
 	// request as invalid.
-	ErrorInvalidRequest = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorInvalidRequest = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AUTHN-MGR-1008",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authnmgrservice.invalid_request",
 			DefaultValue: "Invalid request",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authnmgrservice.invalid_request_description",
 			DefaultValue: "The authentication request is invalid",
 		},
@@ -86,14 +86,14 @@ var (
 
 	// ErrorAmbiguousUser is returned when the underlying provider finds multiple users
 	// matching the provided identifiers.
-	ErrorAmbiguousUser = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorAmbiguousUser = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AUTHN-MGR-1009",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authnmgrservice.ambiguous_user",
 			DefaultValue: "Ambiguous user",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authnmgrservice.ambiguous_user_description",
 			DefaultValue: "Multiple users found matching the provided identifiers",
 		},
@@ -101,14 +101,14 @@ var (
 
 	// ErrorGetEntityReferenceClientError is returned when the underlying provider rejects the
 	// entity reference fetch due to a client-side reason.
-	ErrorGetEntityReferenceClientError = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorGetEntityReferenceClientError = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AUTHN-MGR-1010",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authnmgrservice.get_entity_reference_client_error",
 			DefaultValue: "Failed to get entity reference",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authnmgrservice.get_entity_reference_client_error_description",
 			DefaultValue: "The entity reference fetch was rejected by the provider",
 		},

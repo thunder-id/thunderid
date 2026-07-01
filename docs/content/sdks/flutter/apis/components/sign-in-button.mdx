@@ -1,0 +1,64 @@
+---
+title: SignInButton
+description: Pre-styled sign-in button widget for the {{ProductName}} Flutter SDK
+---
+
+# `SignInButton`
+
+`SignInButton` is a pre-styled `ElevatedButton` widget that triggers your sign-in flow when tapped.
+
+```dart
+import 'package:thunderid_flutter/thunderid_flutter.dart';
+
+SignInButton(
+  onTap: () {
+    // Navigate to your sign-in screen
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const AuthScreen()),
+    );
+  },
+)
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `onTap` | `VoidCallback` | ✅ | Called when the button is tapped. Implement your navigation or sign-in logic here. |
+| `label` | `String?` | | Override the button label. Defaults to the localized `"Sign In"` string. |
+| `style` | `ButtonStyle?` | | Override the `ElevatedButton` style. |
+
+## `BaseSignInButton`
+
+`BaseSignInButton` gives you complete control over the button UI while keeping the same semantic intent.
+
+```dart
+BaseSignInButton(
+  onTap: () => Navigator.of(context).push(
+    MaterialPageRoute(builder: (_) => const AuthScreen()),
+  ),
+  builder: (context, onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primary,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Text(
+          'Sign In',
+          style: TextStyle(color: Colors.white),
+        ),
+      ),
+    );
+  },
+)
+```
+
+### `BaseSignInButton` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `onTap` | `VoidCallback` | ✅ | Called when your custom button is tapped. |
+| `builder` | `Widget Function(BuildContext, VoidCallback)` | ✅ | Builder receiving the resolved tap handler. |

@@ -22,7 +22,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -34,7 +35,7 @@ func getDefaultRequiredScope() string {
 
 // permissionValidator validates that the request has the required permission/scope to access the next node.
 type permissionValidator struct {
-	core.ExecutorInterface
+	providers.Executor
 	logger *log.Logger
 }
 
@@ -43,21 +44,21 @@ func newPermissionValidator(flowFactory core.FlowFactoryInterface) *permissionVa
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "PermissionValidator"))
 	base := flowFactory.CreateExecutor(
 		ExecutorNamePermissionValidator,
-		common.ExecutorTypeUtility,
-		[]common.Input{},
-		[]common.Input{},
+		providers.ExecutorTypeUtility,
+		[]providers.Input{},
+		[]providers.Input{},
 	)
 	return &permissionValidator{
-		ExecutorInterface: base,
-		logger:            logger,
+		Executor: base,
+		logger:   logger,
 	}
 }
 
 // Execute validates that the request has the required permission/scope to access the next node.
-func (e *permissionValidator) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+func (e *permissionValidator) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	execResp := &common.ExecutorResponse{
+	execResp := &providers.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 	}
@@ -70,7 +71,7 @@ func (e *permissionValidator) Execute(ctx *core.NodeContext) (*common.ExecutorRe
 	// Check if context exists
 	if ctx.Context == nil {
 		logger.Debug(ctx.Context, "No context available - blocking access")
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrInsufficientPermissions
 		return execResp, nil
 	}
@@ -87,18 +88,18 @@ func (e *permissionValidator) Execute(ctx *core.NodeContext) (*common.ExecutorRe
 	}) {
 		logger.Debug(ctx.Context, "Request lacks required scope",
 			log.Any("requiredScopes", requiredScopes))
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrInsufficientPermissions
 		return execResp, nil
 	}
 
 	logger.Debug(ctx.Context, "Scope protection passed", log.Any("requiredScopes", requiredScopes))
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 	return execResp, nil
 }
 
 // getRequiredScopes retrieves the required scopes from the node context properties.
-func (e *permissionValidator) getRequiredScopes(ctx *core.NodeContext) []string {
+func (e *permissionValidator) getRequiredScopes(ctx *providers.NodeContext) []string {
 	requiredScopes := []string{getDefaultRequiredScope()}
 
 	if ctx.NodeProperties != nil {

@@ -25,9 +25,9 @@ import (
 	"errors"
 	"fmt"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -36,12 +36,12 @@ const loggerComponentName = "ThemeMgtService"
 
 // ThemeMgtServiceInterface defines the interface for the theme management service.
 type ThemeMgtServiceInterface interface {
-	GetThemeList(ctx context.Context, limit, offset int) (*ThemeList, *serviceerror.ServiceError)
-	CreateTheme(ctx context.Context, theme CreateThemeRequestWithID) (*Theme, *serviceerror.ServiceError)
-	GetTheme(ctx context.Context, id string) (*Theme, *serviceerror.ServiceError)
-	UpdateTheme(ctx context.Context, id string, theme UpdateThemeRequest) (*Theme, *serviceerror.ServiceError)
-	DeleteTheme(ctx context.Context, id string) *serviceerror.ServiceError
-	IsThemeExist(ctx context.Context, id string) (bool, *serviceerror.ServiceError)
+	GetThemeList(ctx context.Context, limit, offset int) (*ThemeList, *tidcommon.ServiceError)
+	CreateTheme(ctx context.Context, theme CreateThemeRequestWithID) (*Theme, *tidcommon.ServiceError)
+	GetTheme(ctx context.Context, id string) (*Theme, *tidcommon.ServiceError)
+	UpdateTheme(ctx context.Context, id string, theme UpdateThemeRequest) (*Theme, *tidcommon.ServiceError)
+	DeleteTheme(ctx context.Context, id string) *tidcommon.ServiceError
+	IsThemeExist(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 }
 
 // themeMgtService is the default implementation of the ThemeMgtServiceInterface.
@@ -61,7 +61,7 @@ func newThemeMgtService(themeMgtStore themeMgtStoreInterface) ThemeMgtServiceInt
 
 // GetThemeList retrieves a list of theme configurations.
 func (ts *themeMgtService) GetThemeList(
-	ctx context.Context, limit, offset int) (*ThemeList, *serviceerror.ServiceError) {
+	ctx context.Context, limit, offset int) (*ThemeList, *tidcommon.ServiceError) {
 	if err := validatePaginationParams(limit, offset); err != nil {
 		return nil, err
 	}
@@ -69,13 +69,13 @@ func (ts *themeMgtService) GetThemeList(
 	totalCount, err := ts.themeMgtStore.GetThemeListCount()
 	if err != nil {
 		ts.logger.Error(ctx, "Failed to get theme count", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	themes, err := ts.themeMgtStore.GetThemeList(limit, offset)
 	if err != nil {
 		ts.logger.Error(ctx, "Failed to list themes", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	response := &ThemeList{
@@ -91,7 +91,7 @@ func (ts *themeMgtService) GetThemeList(
 
 // CreateTheme creates a new theme configuration.
 func (ts *themeMgtService) CreateTheme(
-	ctx context.Context, theme CreateThemeRequestWithID) (*Theme, *serviceerror.ServiceError) {
+	ctx context.Context, theme CreateThemeRequestWithID) (*Theme, *tidcommon.ServiceError) {
 	ts.logger.Debug(ctx, "Creating theme configuration")
 
 	if theme.DisplayName == "" {
@@ -110,7 +110,7 @@ func (ts *themeMgtService) CreateTheme(
 	conflict, err := ts.themeMgtStore.IsThemeHandleConflict(theme.Handle, "")
 	if err != nil {
 		ts.logger.Error(ctx, "Failed to check theme handle conflict", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	if conflict {
 		return nil, &ErrorDuplicateThemeHandle
@@ -126,7 +126,7 @@ func (ts *themeMgtService) CreateTheme(
 		id, err = utils.GenerateUUIDv7()
 		if err != nil {
 			ts.logger.Error(ctx, "Failed to generate UUID", log.Error(err))
-			return nil, &serviceerror.InternalServerError
+			return nil, &tidcommon.InternalServerError
 		}
 	}
 
@@ -139,7 +139,7 @@ func (ts *themeMgtService) CreateTheme(
 
 	if err := ts.themeMgtStore.CreateTheme(id, storeReq); err != nil {
 		ts.logger.Error(ctx, "Failed to create theme", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	createdTheme := &Theme{
@@ -155,7 +155,7 @@ func (ts *themeMgtService) CreateTheme(
 }
 
 // GetTheme retrieves a specific theme configuration by its id.
-func (ts *themeMgtService) GetTheme(ctx context.Context, id string) (*Theme, *serviceerror.ServiceError) {
+func (ts *themeMgtService) GetTheme(ctx context.Context, id string) (*Theme, *tidcommon.ServiceError) {
 	ts.logger.Debug(ctx, "Retrieving theme", log.String("id", id))
 
 	if id == "" {
@@ -169,7 +169,7 @@ func (ts *themeMgtService) GetTheme(ctx context.Context, id string) (*Theme, *se
 			return nil, &ErrorThemeNotFound
 		}
 		ts.logger.Error(ctx, "Failed to retrieve theme", log.String("id", id), log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	ts.logger.Debug(ctx, "Successfully retrieved theme", log.String("id", theme.ID))
@@ -178,7 +178,7 @@ func (ts *themeMgtService) GetTheme(ctx context.Context, id string) (*Theme, *se
 
 // UpdateTheme updates an existing theme configuration.
 func (ts *themeMgtService) UpdateTheme(
-	ctx context.Context, id string, theme UpdateThemeRequest) (*Theme, *serviceerror.ServiceError) {
+	ctx context.Context, id string, theme UpdateThemeRequest) (*Theme, *tidcommon.ServiceError) {
 	ts.logger.Debug(ctx, "Updating theme", log.String("id", id))
 
 	if id == "" {
@@ -201,7 +201,7 @@ func (ts *themeMgtService) UpdateTheme(
 			return nil, &ErrorThemeNotFound
 		}
 		ts.logger.Error(ctx, "Failed to retrieve theme", log.String("id", id), log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	// Handle is immutable; reject if a different value is provided
@@ -215,7 +215,7 @@ func (ts *themeMgtService) UpdateTheme(
 
 	if err := ts.themeMgtStore.UpdateTheme(id, theme); err != nil {
 		ts.logger.Error(ctx, "Failed to update theme", log.String("id", id), log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	updatedTheme := &Theme{
@@ -231,7 +231,7 @@ func (ts *themeMgtService) UpdateTheme(
 }
 
 // DeleteTheme deletes a theme configuration.
-func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *serviceerror.ServiceError {
+func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *tidcommon.ServiceError {
 	ts.logger.Debug(ctx, "Deleting theme", log.String("id", id))
 
 	if id == "" {
@@ -247,7 +247,7 @@ func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *servicee
 	exists, err := ts.themeMgtStore.IsThemeExist(id)
 	if err != nil {
 		ts.logger.Error(ctx, "Failed to check theme existence", log.String("id", id), log.Error(err))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	if !exists {
@@ -260,7 +260,7 @@ func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *servicee
 	if err != nil {
 		ts.logger.Error(ctx, "Failed to check applications using theme",
 			log.String("id", id), log.Error(err))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	if count > 0 {
@@ -269,7 +269,7 @@ func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *servicee
 
 	if err := ts.themeMgtStore.DeleteTheme(id); err != nil {
 		ts.logger.Error(ctx, "Failed to delete theme", log.String("id", id), log.Error(err))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	ts.logger.Debug(ctx, "Successfully deleted theme", log.String("id", id))
@@ -277,7 +277,7 @@ func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *servicee
 }
 
 // IsThemeExist checks if a theme exists.
-func (ts *themeMgtService) IsThemeExist(ctx context.Context, id string) (bool, *serviceerror.ServiceError) {
+func (ts *themeMgtService) IsThemeExist(ctx context.Context, id string) (bool, *tidcommon.ServiceError) {
 	if id == "" {
 		return false, &ErrorInvalidThemeID
 	}
@@ -285,7 +285,7 @@ func (ts *themeMgtService) IsThemeExist(ctx context.Context, id string) (bool, *
 	exists, err := ts.themeMgtStore.IsThemeExist(id)
 	if err != nil {
 		ts.logger.Error(ctx, "Failed to check theme existence", log.String("id", id), log.Error(err))
-		return false, &serviceerror.InternalServerError
+		return false, &tidcommon.InternalServerError
 	}
 
 	return exists, nil
@@ -293,7 +293,7 @@ func (ts *themeMgtService) IsThemeExist(ctx context.Context, id string) (bool, *
 
 // validateThemePreferences validates the theme JSON.
 func (ts *themeMgtService) validateThemePreferences(
-	ctx context.Context, theme json.RawMessage) *serviceerror.ServiceError {
+	ctx context.Context, theme json.RawMessage) *tidcommon.ServiceError {
 	if len(theme) == 0 {
 		return &ErrorMissingTheme
 	}
@@ -308,9 +308,9 @@ func (ts *themeMgtService) validateThemePreferences(
 }
 
 // validatePaginationParams validates limit and offset parameters.
-func validatePaginationParams(limit, offset int) *serviceerror.ServiceError {
+func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
 	if limit < 1 || limit > serverconst.MaxPageSize {
-		return serviceerror.CustomServiceError(ErrorInvalidLimitValue, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidLimitValue, tidcommon.I18nMessage{
 			Key:          "error.themeservice.invalid_limit_value_description",
 			DefaultValue: fmt.Sprintf("Limit must be between 1 and %d", serverconst.MaxPageSize),
 		})

@@ -22,86 +22,9 @@
 package model
 
 import (
-	"context"
-	"fmt"
-	"net/url"
-	"slices"
-	"strings"
-
-	"github.com/thunder-id/thunderid/internal/entity"
-	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jws"
-	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/utils"
-)
-
-// InboundAuthType identifies the kind of inbound authentication configured for an entity.
-type InboundAuthType string
-
-const (
-	// OAuthInboundAuthType is the OAuth 2.0 inbound authentication type.
-	OAuthInboundAuthType InboundAuthType = "oauth2"
-)
-
-// OAuthTokenConfig wraps access and ID token configs.
-type OAuthTokenConfig struct {
-	AccessToken  *AccessTokenConfig  `json:"accessToken,omitempty" yaml:"accessToken,omitempty" jsonschema:"Access token configuration."`
-	IDToken      *IDTokenConfig      `json:"idToken,omitempty"    yaml:"idToken,omitempty"     jsonschema:"ID token configuration."`
-	RefreshToken *RefreshTokenConfig `json:"refreshToken,omitempty" yaml:"refreshToken,omitempty" jsonschema:"Refresh token configuration."`
-}
-
-// AccessTokenConfig is the access token configuration.
-type AccessTokenConfig struct {
-	ValidityPeriod int64    `json:"validityPeriod,omitempty" yaml:"validityPeriod,omitempty" jsonschema:"Access token validity period in seconds."`
-	UserAttributes []string `json:"userAttributes,omitempty" yaml:"userAttributes,omitempty" jsonschema:"User attributes to embed in the access token."`
-}
-
-// IDTokenConfig is the ID token configuration.
-type IDTokenConfig struct {
-	ValidityPeriod int64               `json:"validityPeriod,omitempty" yaml:"validityPeriod,omitempty" jsonschema:"ID token validity period in seconds."`
-	UserAttributes []string            `json:"userAttributes,omitempty" yaml:"userAttributes,omitempty" jsonschema:"User attributes to embed in the ID token."`
-	ResponseType   IDTokenResponseType `json:"responseType,omitempty"   yaml:"responseType,omitempty"   jsonschema:"ID token response type (JWT, JWE, NESTED_JWT). Defaults to JWT."`
-	EncryptionAlg  string              `json:"encryptionAlg,omitempty"  yaml:"encryptionAlg,omitempty"  jsonschema:"JWE key-management algorithm. Required when responseType is JWE or NESTED_JWT."`
-	EncryptionEnc  string              `json:"encryptionEnc,omitempty"  yaml:"encryptionEnc,omitempty"  jsonschema:"JWE content-encryption algorithm. Required when responseType is JWE or NESTED_JWT."`
-}
-
-// RefreshTokenConfig is the refresh token configuration.
-type RefreshTokenConfig struct {
-	ValidityPeriod int64 `json:"validityPeriod,omitempty" yaml:"validityPeriod,omitempty" jsonschema:"Refresh token validity period in seconds."`
-}
-
-// IDTokenResponseType is the response format of the ID token.
-type IDTokenResponseType string
-
-const (
-	// IDTokenResponseTypeJWT is the standard signed JWT response type (default).
-	IDTokenResponseTypeJWT IDTokenResponseType = "JWT"
-	// IDTokenResponseTypeJWE is the encrypted JWT response type.
-	IDTokenResponseTypeJWE IDTokenResponseType = "JWE"
-	// IDTokenResponseTypeNESTEDJWT is the sign-then-encrypt (Nested JWT) response type.
-	IDTokenResponseTypeNESTEDJWT IDTokenResponseType = "NESTED_JWT" //nolint:gosec // not a credential
-)
-
-// UserInfoConfig is the user info endpoint configuration.
-type UserInfoConfig struct {
-	ResponseType   UserInfoResponseType `json:"responseType,omitempty"   yaml:"responseType,omitempty"   jsonschema:"UserInfo response type (JSON, JWS, JWE, NESTED_JWT). Required algorithm fields must match the selected response type."`
-	UserAttributes []string             `json:"userAttributes,omitempty" yaml:"userAttributes,omitempty" jsonschema:"User attributes to include in the userinfo response."`
-	SigningAlg     string               `json:"signingAlg,omitempty"     yaml:"signingAlg,omitempty"     jsonschema:"JWS algorithm for signed userinfo responses (e.g. RS256)."`
-	EncryptionAlg  string               `json:"encryptionAlg,omitempty"  yaml:"encryptionAlg,omitempty"  jsonschema:"JWE key-management algorithm for encrypted userinfo responses (e.g. RSA-OAEP-256)."`
-	EncryptionEnc  string               `json:"encryptionEnc,omitempty"  yaml:"encryptionEnc,omitempty"  jsonschema:"JWE content-encryption algorithm (e.g. A256GCM). Required when encryptionAlg is set."`
-}
-
-// UserInfoResponseType is the response format of the UserInfo endpoint.
-type UserInfoResponseType string
-
-// Supported response formats for the UserInfo endpoint.
-const (
-	UserInfoResponseTypeJSON      UserInfoResponseType = "JSON"
-	UserInfoResponseTypeJWS       UserInfoResponseType = "JWS"
-	UserInfoResponseTypeJWE       UserInfoResponseType = "JWE"
-	UserInfoResponseTypeNESTEDJWT UserInfoResponseType = "NESTED_JWT"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Supported JOSE algorithms for userinfo responses.
@@ -115,67 +38,26 @@ var (
 	SupportedUserInfoEncryptionEncs = []string{string(jwe.A128CBCHS256), string(jwe.A256GCM)}
 )
 
-// OAuthProfile is the persistence shape (OAUTH_PROFILE JSONB column).
-type OAuthProfile struct {
-	RedirectURIs                       []string            `json:"redirectUris"`
-	GrantTypes                         []string            `json:"grantTypes"`
-	ResponseTypes                      []string            `json:"responseTypes"`
-	TokenEndpointAuthMethod            string              `json:"tokenEndpointAuthMethod"`
-	PKCERequired                       bool                `json:"pkceRequired"`
-	PublicClient                       bool                `json:"publicClient"`
-	RequirePushedAuthorizationRequests bool                `json:"requirePushedAuthorizationRequests"`
-	DPoPBoundAccessTokens              bool                `json:"dpopBoundAccessTokens"`
-	IncludeActClaim                    bool                `json:"includeActClaim"`
-	Token                              *OAuthTokenConfig   `json:"token,omitempty"`
-	Scopes                             []string            `json:"scopes,omitempty"`
-	UserInfo                           *UserInfoConfig     `json:"userInfo,omitempty"`
-	ScopeClaims                        map[string][]string `json:"scopeClaims,omitempty"`
-	Certificate                        *Certificate        `json:"certificate,omitempty"`
-	AcrValues                          []string            `json:"acrValues,omitempty"`
-}
-
-// OAuthConfigWithSecret is the wire input shape and the create/update echo response shape.
-// Carries ClientSecret (omitempty) so it appears only when freshly issued.
-type OAuthConfigWithSecret struct {
-	ClientID                           string                              `json:"clientId,omitempty"                          yaml:"clientId,omitempty"                          jsonschema:"OAuth client ID (auto-generated if not provided)"`
-	ClientSecret                       string                              `json:"clientSecret,omitempty"                      yaml:"clientSecret,omitempty"                      jsonschema:"OAuth client secret (auto-generated if not provided)"`
-	RedirectURIs                       []string                            `json:"redirectUris,omitempty"                      yaml:"redirectUris,omitempty"                      jsonschema:"Allowed redirect URIs. Required for Public (SPA/Mobile) and Confidential (Server) clients. Omit for M2M."`
-	GrantTypes                         []oauth2const.GrantType             `json:"grantTypes,omitempty"                        yaml:"grantTypes,omitempty"                        jsonschema:"OAuth grant types. Common: [authorization_code, refresh_token] for user apps, [client_credentials] for M2M."`
-	ResponseTypes                      []oauth2const.ResponseType          `json:"responseTypes,omitempty"                     yaml:"responseTypes,omitempty"                     jsonschema:"OAuth response types. Common: [code] for user apps. Omit for M2M."`
-	TokenEndpointAuthMethod            oauth2const.TokenEndpointAuthMethod `json:"tokenEndpointAuthMethod,omitempty"           yaml:"tokenEndpointAuthMethod,omitempty"         jsonschema:"Client authentication method. Use 'none' for Public clients, 'client_secret_basic' for Confidential/M2M."`
-	PKCERequired                       bool                                `json:"pkceRequired"                                yaml:"pkceRequired"                                jsonschema:"Require PKCE for security. Recommended for all user-interactive flows."`
-	PublicClient                       bool                                `json:"publicClient"                                yaml:"publicClient"                                jsonschema:"Identify if client is public (cannot store secrets). Set true for SPA/Mobile."`
-	RequirePushedAuthorizationRequests bool                                `json:"requirePushedAuthorizationRequests"          yaml:"requirePushedAuthorizationRequests"        jsonschema:"Require Pushed Authorization Requests (PAR) per RFC 9126."`
-	DPoPBoundAccessTokens              bool                                `json:"dpopBoundAccessTokens"                       yaml:"dpopBoundAccessTokens"                     jsonschema:"Require DPoP-bound access tokens (RFC 9449)."`
-	IncludeActClaim                    bool                                `json:"includeActClaim"                             yaml:"includeActClaim"                            jsonschema:"Include an implicit on-behalf-of 'act' claim (identifying the application entity) in access tokens issued through this client's authorization code flow. Agents always include it regardless of this setting."`
-	Token                              *OAuthTokenConfig                   `json:"token,omitempty"                             yaml:"token,omitempty"                              jsonschema:"Token configuration for access tokens and ID tokens"`
-	Scopes                             []string                            `json:"scopes,omitempty"                            yaml:"scopes,omitempty"                             jsonschema:"Allowed OAuth scopes. Add custom scopes as needed for your application."`
-	UserInfo                           *UserInfoConfig                     `json:"userInfo,omitempty"                          yaml:"userInfo,omitempty"                          jsonschema:"UserInfo endpoint configuration. Configure user attributes returned from the OIDC userinfo endpoint."`
-	ScopeClaims                        map[string][]string                 `json:"scopeClaims,omitempty"                       yaml:"scopeClaims,omitempty"                       jsonschema:"Scope-to-claims mapping. Maps OAuth scopes to user claims for both ID token and userinfo."`
-	Certificate                        *Certificate                        `json:"certificate,omitempty"                       yaml:"certificate,omitempty"                        jsonschema:"Application certificate. Optional. For certificate-based authentication or JWT validation."`
-	AcrValues                          []string                            `json:"acrValues,omitempty"                         yaml:"acrValues,omitempty"                         jsonschema:"Default ACR values applied when the request does not specify acr_values."`
-}
-
 // OAuthConfig is the wire output shape (GET responses). ClientSecret is structurally absent.
 // Empty slice/map fields are omitted; booleans are always serialized in both JSON and YAML for
 // explicit semantics.
 type OAuthConfig struct {
-	ClientID                           string                              `json:"clientId,omitempty"                 yaml:"clientId,omitempty"`
-	RedirectURIs                       []string                            `json:"redirectUris,omitempty"             yaml:"redirectUris,omitempty"`
-	GrantTypes                         []oauth2const.GrantType             `json:"grantTypes,omitempty"               yaml:"grantTypes,omitempty"`
-	ResponseTypes                      []oauth2const.ResponseType          `json:"responseTypes,omitempty"            yaml:"responseTypes,omitempty"`
-	TokenEndpointAuthMethod            oauth2const.TokenEndpointAuthMethod `json:"tokenEndpointAuthMethod,omitempty"  yaml:"tokenEndpointAuthMethod,omitempty"`
-	PKCERequired                       bool                                `json:"pkceRequired"                       yaml:"pkceRequired"`
-	PublicClient                       bool                                `json:"publicClient"                       yaml:"publicClient"`
-	RequirePushedAuthorizationRequests bool                                `json:"requirePushedAuthorizationRequests" yaml:"requirePushedAuthorizationRequests"`
-	DPoPBoundAccessTokens              bool                                `json:"dpopBoundAccessTokens"              yaml:"dpopBoundAccessTokens"`
-	IncludeActClaim                    bool                                `json:"includeActClaim"                    yaml:"includeActClaim"`
-	Token                              *OAuthTokenConfig                   `json:"token,omitempty"                    yaml:"token,omitempty"`
-	Scopes                             []string                            `json:"scopes,omitempty"                   yaml:"scopes,omitempty"`
-	UserInfo                           *UserInfoConfig                     `json:"userInfo,omitempty"                 yaml:"userInfo,omitempty"`
-	ScopeClaims                        map[string][]string                 `json:"scopeClaims,omitempty"              yaml:"scopeClaims,omitempty"`
-	Certificate                        *Certificate                        `json:"certificate,omitempty"              yaml:"certificate,omitempty"`
-	AcrValues                          []string                            `json:"acrValues,omitempty"                yaml:"acrValues,omitempty"`
+	ClientID                           string                            `json:"clientId,omitempty"                 yaml:"clientId,omitempty"`
+	RedirectURIs                       []string                          `json:"redirectUris,omitempty"             yaml:"redirectUris,omitempty"`
+	GrantTypes                         []providers.GrantType             `json:"grantTypes,omitempty"               yaml:"grantTypes,omitempty"`
+	ResponseTypes                      []providers.ResponseType          `json:"responseTypes,omitempty"            yaml:"responseTypes,omitempty"`
+	TokenEndpointAuthMethod            providers.TokenEndpointAuthMethod `json:"tokenEndpointAuthMethod,omitempty"  yaml:"tokenEndpointAuthMethod,omitempty"`
+	PKCERequired                       bool                              `json:"pkceRequired"                       yaml:"pkceRequired"`
+	PublicClient                       bool                              `json:"publicClient"                       yaml:"publicClient"`
+	RequirePushedAuthorizationRequests bool                              `json:"requirePushedAuthorizationRequests" yaml:"requirePushedAuthorizationRequests"`
+	DPoPBoundAccessTokens              bool                              `json:"dpopBoundAccessTokens"              yaml:"dpopBoundAccessTokens"`
+	IncludeActClaim                    bool                              `json:"includeActClaim"                    yaml:"includeActClaim"`
+	Token                              *providers.OAuthTokenConfig       `json:"token,omitempty"                    yaml:"token,omitempty"`
+	Scopes                             []string                          `json:"scopes,omitempty"                   yaml:"scopes,omitempty"`
+	UserInfo                           *providers.UserInfoConfig         `json:"userInfo,omitempty"                 yaml:"userInfo,omitempty"`
+	ScopeClaims                        map[string][]string               `json:"scopeClaims,omitempty"              yaml:"scopeClaims,omitempty"`
+	Certificate                        *providers.Certificate            `json:"certificate,omitempty"              yaml:"certificate,omitempty"`
+	AcrValues                          []string                          `json:"acrValues,omitempty"                yaml:"acrValues,omitempty"`
 }
 
 // SupportedIDTokenEncryptionAlgs lists JWE key-management algorithms supported for ID token encryption.
@@ -184,152 +66,14 @@ var SupportedIDTokenEncryptionAlgs = []string{string(jwe.RSAOAEP), string(jwe.RS
 // SupportedIDTokenEncryptionEncs lists JWE content-encryption algorithms supported for ID token encryption.
 var SupportedIDTokenEncryptionEncs = []string{string(jwe.A128CBCHS256), string(jwe.A256GCM)}
 
-// OAuthClient is the resolved runtime view.
-type OAuthClient struct {
-	ID                                 string                              `yaml:"id,omitempty"`
-	OUID                               string                              `yaml:"ouId,omitempty"`
-	ClientID                           string                              `yaml:"clientId,omitempty"`
-	RedirectURIs                       []string                            `yaml:"redirectUris,omitempty"`
-	GrantTypes                         []oauth2const.GrantType             `yaml:"grantTypes,omitempty"`
-	ResponseTypes                      []oauth2const.ResponseType          `yaml:"responseTypes,omitempty"`
-	TokenEndpointAuthMethod            oauth2const.TokenEndpointAuthMethod `yaml:"tokenEndpointAuthMethod,omitempty"`
-	PKCERequired                       bool                                `yaml:"pkceRequired,omitempty"`
-	PublicClient                       bool                                `yaml:"publicClient,omitempty"`
-	RequirePushedAuthorizationRequests bool                                `yaml:"requirePushedAuthorizationRequests,omitempty"`
-	DPoPBoundAccessTokens              bool                                `yaml:"dpopBoundAccessTokens,omitempty"`
-	IncludeActClaim                    bool                                `yaml:"includeActClaim,omitempty"`
-	EntityCategory                     entity.EntityCategory               `yaml:"entityCategory,omitempty"`
-	Token                              *OAuthTokenConfig                   `yaml:"token,omitempty"`
-	Scopes                             []string                            `yaml:"scopes,omitempty"`
-	UserInfo                           *UserInfoConfig                     `yaml:"userInfo,omitempty"`
-	ScopeClaims                        map[string][]string                 `yaml:"scopeClaims,omitempty"`
-	Certificate                        *Certificate                        `yaml:"certificate,omitempty"`
-	AcrValues                          []string                            `yaml:"acrValues,omitempty"`
-}
-
-// IsAllowedGrantType reports whether the given grant type is allowed for this client.
-func (o *OAuthClient) IsAllowedGrantType(grantType oauth2const.GrantType) bool {
-	return IsAllowedGrantType(o.GrantTypes, grantType)
-}
-
-// IsAllowedResponseType reports whether the given response type is allowed for this client.
-func (o *OAuthClient) IsAllowedResponseType(responseType string) bool {
-	return IsAllowedResponseType(o.ResponseTypes, responseType)
-}
-
-// IsAllowedTokenEndpointAuthMethod reports whether the given auth method is the one configured for this client.
-func (o *OAuthClient) IsAllowedTokenEndpointAuthMethod(method oauth2const.TokenEndpointAuthMethod) bool {
-	return o.TokenEndpointAuthMethod == method
-}
-
-// ValidateRedirectURI validates the given redirect URI against this client's registered URIs.
-func (o *OAuthClient) ValidateRedirectURI(ctx context.Context, redirectURI string) error {
-	return ValidateRedirectURI(ctx, o.RedirectURIs, redirectURI)
-}
-
-// RequiresPKCE reports whether PKCE is required for this client.
-func (o *OAuthClient) RequiresPKCE() bool {
-	return o.PKCERequired || o.PublicClient
-}
-
-// RequiresPAR reports whether pushed authorization requests are required for this client.
-func (o *OAuthClient) RequiresPAR() bool {
-	return o.RequirePushedAuthorizationRequests || config.GetServerRuntime().Config.OAuth.PAR.RequirePAR
-}
-
-// ShouldAppendActorClaim reports whether an implicit OBO act claim should be added to
-// user access tokens issued through this client. Agents always do; applications opt in.
-func (o *OAuthClient) ShouldAppendActorClaim() bool {
-	return o.EntityCategory == entity.EntityCategoryAgent ||
-		(o.EntityCategory == entity.EntityCategoryApp && o.IncludeActClaim)
-}
-
-// InboundAuthConfigWithSecret is the wire input wrapper and create/update echo response wrapper.
-type InboundAuthConfigWithSecret struct {
-	Type        InboundAuthType        `json:"type"             yaml:"type"             jsonschema:"Inbound authentication type. Use 'oauth2' for OAuth/OIDC applications."`
-	OAuthConfig *OAuthConfigWithSecret `json:"config,omitempty" yaml:"config,omitempty" jsonschema:"OAuth/OIDC configuration. Required when type is 'oauth2'. Defines OAuth grant types, redirect URIs, client authentication, and PKCE settings."`
-}
-
 // InboundAuthConfig is the wire output wrapper (GET responses).
 type InboundAuthConfig struct {
-	Type        InboundAuthType `json:"type"             yaml:"type"`
-	OAuthConfig *OAuthConfig    `json:"config,omitempty" yaml:"config,omitempty"`
+	Type        providers.InboundAuthType `json:"type"             yaml:"type"`
+	OAuthConfig *OAuthConfig              `json:"config,omitempty" yaml:"config,omitempty"`
 }
 
 // InboundAuthConfigProcessed is the runtime wrapper.
 type InboundAuthConfigProcessed struct {
-	Type        InboundAuthType `json:"type"             yaml:"type,omitempty"`
-	OAuthConfig *OAuthClient    `json:"config,omitempty" yaml:"config,omitempty"`
-}
-
-// IsAllowedGrantType reports whether the given grant type is in the allowed list.
-func IsAllowedGrantType(grantTypes []oauth2const.GrantType, grantType oauth2const.GrantType) bool {
-	if grantType == "" {
-		return false
-	}
-	return slices.Contains(grantTypes, grantType)
-}
-
-// IsAllowedResponseType reports whether the given response type is in the allowed list.
-func IsAllowedResponseType(responseTypes []oauth2const.ResponseType, responseType string) bool {
-	if responseType == "" {
-		return false
-	}
-	return slices.Contains(responseTypes, oauth2const.ResponseType(responseType))
-}
-
-// ValidateRedirectURI validates the provided redirect URI against the registered list.
-func ValidateRedirectURI(ctx context.Context, redirectURIs []string, redirectURI string) error {
-	logger := log.GetLogger()
-
-	if redirectURI == "" {
-		if len(redirectURIs) != 1 {
-			return fmt.Errorf("redirect URI is required in the authorization request")
-		}
-		// AC-12: a wildcard pattern cannot serve as a concrete redirect target.
-		if strings.Contains(redirectURIs[0], "*") {
-			return fmt.Errorf("redirect URI is required in the authorization request")
-		}
-		parsed, err := url.Parse(redirectURIs[0])
-		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-			return fmt.Errorf("registered redirect URI is not fully qualified")
-		}
-		return nil
-	}
-
-	if !matchAnyRedirectURIPattern(redirectURIs, redirectURI) {
-		return fmt.Errorf("your application's redirect URL does not match with the registered redirect URLs")
-	}
-
-	parsedRedirectURI, err := utils.ParseURL(redirectURI)
-	if err != nil {
-		logger.Error(ctx, "Failed to parse redirect URI", log.Error(err))
-		return fmt.Errorf("invalid redirect URI: %s", err.Error())
-	}
-	if parsedRedirectURI.Fragment != "" {
-		return fmt.Errorf("redirect URI must not contain a fragment component")
-	}
-
-	return nil
-}
-
-// matchAnyRedirectURIPattern compares incoming against each registered URI/pattern. AC-11: first match wins.
-func matchAnyRedirectURIPattern(patterns []string, redirectURI string) bool {
-	wildcardEnabled := config.GetServerRuntime().Config.OAuth.AllowWildcardRedirectURI
-	for _, pattern := range patterns {
-		if !wildcardEnabled || !strings.Contains(pattern, "*") {
-			if pattern == redirectURI {
-				return true
-			}
-			continue
-		}
-		matched, err := utils.MatchURIPattern(pattern, redirectURI)
-		if err != nil {
-			continue
-		}
-		if matched {
-			return true
-		}
-	}
-	return false
+	Type        providers.InboundAuthType `json:"type"             yaml:"type,omitempty"`
+	OAuthConfig *providers.OAuthClient    `json:"config,omitempty" yaml:"config,omitempty"`
 }

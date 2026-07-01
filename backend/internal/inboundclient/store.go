@@ -29,6 +29,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // inboundClientJSONBlob is the internal structure for marshaling/unmarshaling the
@@ -45,14 +46,14 @@ type inboundClientJSONBlob struct {
 // any future principal category. OAuth methods accept typed OAuthProfile; the store
 // handles JSON marshaling internally so callers never need to know the wire format.
 type inboundClientStoreInterface interface {
-	CreateInboundClient(ctx context.Context, client inboundmodel.InboundClient) error
-	CreateOAuthProfile(ctx context.Context, entityID string, oauthProfile *inboundmodel.OAuthProfile) error
-	GetInboundClientByEntityID(ctx context.Context, entityID string) (*inboundmodel.InboundClient, error)
-	GetOAuthProfileByEntityID(ctx context.Context, entityID string) (*inboundmodel.OAuthProfile, error)
-	GetInboundClientList(ctx context.Context, limit int) ([]inboundmodel.InboundClient, error)
+	CreateInboundClient(ctx context.Context, client providers.InboundClient) error
+	CreateOAuthProfile(ctx context.Context, entityID string, oauthProfile *providers.OAuthProfile) error
+	GetInboundClientByEntityID(ctx context.Context, entityID string) (*providers.InboundClient, error)
+	GetOAuthProfileByEntityID(ctx context.Context, entityID string) (*providers.OAuthProfile, error)
+	GetInboundClientList(ctx context.Context, limit int) ([]providers.InboundClient, error)
 	GetTotalInboundClientCount(ctx context.Context) (int, error)
-	UpdateInboundClient(ctx context.Context, client inboundmodel.InboundClient) error
-	UpdateOAuthProfile(ctx context.Context, entityID string, oauthProfile *inboundmodel.OAuthProfile) error
+	UpdateInboundClient(ctx context.Context, client providers.InboundClient) error
+	UpdateOAuthProfile(ctx context.Context, entityID string, oauthProfile *providers.OAuthProfile) error
 	DeleteInboundClient(ctx context.Context, entityID string) error
 	DeleteOAuthProfile(ctx context.Context, entityID string) error
 	InboundClientExists(ctx context.Context, entityID string) (bool, error)
@@ -161,7 +162,7 @@ func (st *store) CreateInboundClient(ctx context.Context, client inboundmodel.In
 // CreateOAuthProfile creates a new OAuth inbound profile entry. The typed profile is
 // marshaled to JSON internally.
 func (st *store) CreateOAuthProfile(ctx context.Context, entityID string,
-	oauthProfile *inboundmodel.OAuthProfile) error {
+	oauthProfile *providers.OAuthProfile) error {
 	dbClient, err := st.dbProvider.GetConfigDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
@@ -197,7 +198,7 @@ func (st *store) GetInboundClientByEntityID(ctx context.Context, entityID string
 }
 
 // GetOAuthProfileByEntityID retrieves an OAuth profile by entity ID.
-func (st *store) GetOAuthProfileByEntityID(ctx context.Context, entityID string) (*inboundmodel.OAuthProfile, error) {
+func (st *store) GetOAuthProfileByEntityID(ctx context.Context, entityID string) (*providers.OAuthProfile, error) {
 	dbClient, err := st.dbProvider.GetConfigDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
@@ -214,7 +215,7 @@ func (st *store) GetOAuthProfileByEntityID(ctx context.Context, entityID string)
 }
 
 // GetInboundClientList retrieves all inbound clients.
-func (st *store) GetInboundClientList(ctx context.Context, limit int) ([]inboundmodel.InboundClient, error) {
+func (st *store) GetInboundClientList(ctx context.Context, limit int) ([]providers.InboundClient, error) {
 	dbClient, err := st.dbProvider.GetConfigDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
@@ -285,7 +286,7 @@ func (st *store) UpdateInboundClient(ctx context.Context, client inboundmodel.In
 // UpdateOAuthProfile updates an OAuth profile for an entity. The typed profile is marshaled
 // to JSON internally.
 func (st *store) UpdateOAuthProfile(ctx context.Context, entityID string,
-	oauthProfile *inboundmodel.OAuthProfile) error {
+	oauthProfile *providers.OAuthProfile) error {
 	dbClient, err := st.dbProvider.GetConfigDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
@@ -309,7 +310,7 @@ func (st *store) UpdateOAuthProfile(ctx context.Context, entityID string,
 
 // marshalOAuthProfile serializes an OAuthProfile to the OAUTH_CONFIG JSON format.
 // Returns nil bytes for nil input.
-func marshalOAuthProfile(p *inboundmodel.OAuthProfile) (json.RawMessage, error) {
+func marshalOAuthProfile(p *providers.OAuthProfile) (json.RawMessage, error) {
 	if p == nil {
 		return nil, nil
 	}
@@ -421,12 +422,12 @@ func buildInboundClientFromRow(ctx context.Context, row map[string]interface{}) 
 
 // buildOAuthProfileFromRow constructs an OAuthProfile from a database result row.
 // Returns nil when the row has no oauth_config payload.
-func buildOAuthProfileFromRow(row map[string]interface{}) (*inboundmodel.OAuthProfile, error) {
+func buildOAuthProfileFromRow(row map[string]interface{}) (*providers.OAuthProfile, error) {
 	profileStr := parseJSONColumnString(row, "oauth_config")
 	if profileStr == "" {
 		return nil, nil
 	}
-	var p inboundmodel.OAuthProfile
+	var p providers.OAuthProfile
 	if err := json.Unmarshal([]byte(profileStr), &p); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal OAuth profile JSON: %w", err)
 	}

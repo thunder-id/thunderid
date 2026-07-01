@@ -22,8 +22,9 @@ import (
 	"context"
 	"net/http"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -57,9 +58,9 @@ func (h *jwksHandler) HandleJWKSRequest(w http.ResponseWriter, r *http.Request) 
 
 // logAndWriteError logs server errors and writes an appropriate error response to the HTTP response writer.
 func (h *jwksHandler) logAndWriteError(ctx context.Context, w http.ResponseWriter, logger *log.Logger,
-	svcErr *serviceerror.ServiceError) {
+	svcErr *tidcommon.ServiceError) {
 	statusCode := http.StatusBadRequest
-	if svcErr.Type == serviceerror.ServerErrorType {
+	if svcErr.Type == tidcommon.ServerErrorType {
 		statusCode = http.StatusInternalServerError
 		logger.Error(ctx, "Failed to retrieve JWKS", log.String("error_code", svcErr.Code))
 	}

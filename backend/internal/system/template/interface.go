@@ -22,7 +22,7 @@ package template
 import (
 	"context"
 
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // TemplateServiceInterface defines the interface for template operations.
@@ -32,7 +32,7 @@ type TemplateServiceInterface interface {
 		ctx context.Context,
 		scenario ScenarioType,
 		tmplType TemplateType,
-	) (*TemplateDTO, *serviceerror.ServiceError)
+	) (*TemplateDTO, *tidcommon.ServiceError)
 
 	// Render renders a template with the provided data.
 	Render(
@@ -40,5 +40,5 @@ type TemplateServiceInterface interface {
 		scenario ScenarioType,
 		tmplType TemplateType,
 		data TemplateData,
-	) (*RenderedTemplate, *serviceerror.ServiceError)
+	) (*RenderedTemplate, *tidcommon.ServiceError)
 }

@@ -1,0 +1,72 @@
+---
+title: Configuration
+description: ThunderIDConfig options for the Flutter SDK
+---
+
+# Configuration
+
+`ThunderIDConfig` is the configuration class passed to `ThunderIDProvider` and to `ThunderIDClient.initialize()`.
+
+## Example
+
+```dart
+import 'package:thunderid_flutter/thunderid_flutter.dart';
+
+final config = ThunderIDConfig(
+  baseUrl: 'https://localhost:8090',
+  clientId: '<your-client-id>',
+  scopes: const ['openid', 'profile', 'email'],
+  afterSignInUrl: 'dev.thunderid.app://callback',
+  afterSignOutUrl: 'dev.thunderid.app://logout',
+  applicationId: '<your-application-id>',
+);
+```
+
+## Parameters
+
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `baseUrl` | `String` | — | **Required.** Your <ProductName /> instance URL. Must use HTTPS (e.g., `https://localhost:8090`). |
+| `clientId` | `String?` | `null` | The Client ID from your <ProductName /> application. Required for redirect-based authentication and token operations. |
+| `scopes` | `List<String>` | `['openid']` | OAuth 2.0 scopes to request. Include `'profile'` and `'email'` to receive user identity claims. |
+| `afterSignInUrl` | `String?` | `null` | The redirect URI to return to after sign-in. Must match an **Allowed Redirect URI** registered in the console. |
+| `afterSignOutUrl` | `String?` | `null` | The redirect URI to return to after sign-out. Must match an **Allowed Post-Logout Redirect URI** in the console. |
+| `signInUrl` | `String?` | `null` | Override the sign-in URL. Defaults to the <ProductName /> hosted sign-in page. |
+| `signUpUrl` | `String?` | `null` | Override the sign-up URL. |
+| `applicationId` | `String?` | `null` | The Application ID used for app-native (embedded) sign-in flows via the Flow Execution API. |
+| `organizationHandle` | `String?` | `null` | The organization handle for multi-tenant deployments. |
+| `tokenValidation` | `TokenValidationConfig?` | see below | Controls ID token validation behavior. |
+| `preferences` | `ThunderIDPreferences?` | `null` | UI theme and localization preferences. |
+
+## TokenValidationConfig
+
+Controls how the SDK validates ID tokens.
+
+```dart
+ThunderIDConfig(
+  baseUrl: 'https://localhost:8090',
+  clientId: '<your-client-id>',
+  tokenValidation: TokenValidationConfig(
+    validate: true,
+    validateIssuer: true,
+    clockTolerance: 30,
+  ),
+)
+```
+
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `validate` | `bool` | `true` | Whether to validate ID token signatures and claims. Set to `false` only during local development. |
+| `validateIssuer` | `bool` | `true` | Whether to validate the `iss` claim against `baseUrl`. |
+| `clockTolerance` | `int` | `0` | Allowed clock skew in seconds when validating token expiry. |
+
+## Native Token Storage
+
+Token storage is handled by the native platform SDKs:
+
+| Platform | Storage | Description |
+| :--- | :--- | :--- |
+| iOS | iOS Keychain | Tokens persist across app restarts and are encrypted by the system. |
+| Android | EncryptedSharedPreferences | Tokens are encrypted with AES-256-GCM backed by the Android Keystore. |
+
+Storage is always handled natively for maximum security — no Dart-level `StorageAdapter` to configure.

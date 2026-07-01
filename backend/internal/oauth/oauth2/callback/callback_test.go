@@ -26,6 +26,8 @@ import (
 	"strings"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
@@ -55,10 +57,10 @@ func (suite *CallbackDispatcherTestSuite) SetupTest() {
 	suite.dispatcher = newCallbackDispatcher(testhelpers.OAuthConfig(), suite.mockAuthZ, suite.mockCIBA)
 
 	_ = config.InitializeServerRuntime("test", &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer: "https://localhost:8090/oauth2",
 		},
-		GateClient: config.GateClientConfig{
+		GateClient: engineconfig.GateClientConfig{
 			Scheme:    "https",
 			Hostname:  "localhost",
 			Port:      3000,

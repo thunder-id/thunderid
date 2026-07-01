@@ -21,6 +21,8 @@ package core
 import (
 	"testing"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
@@ -66,7 +68,7 @@ func (s *RepresentationNodeTestSuite) TestExecuteWithOnSuccess() {
 	s.True(ok)
 	repNode.SetOnSuccess("next_node")
 
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID: "test-flow",
 	}
 
@@ -83,7 +85,7 @@ func (s *RepresentationNodeTestSuite) TestExecuteWithOnSuccess() {
 func (s *RepresentationNodeTestSuite) TestExecuteWithoutOnSuccess() {
 	node := newRepresentationNode("end", common.NodeTypeEnd, nil, false, true)
 
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID: "test-flow",
 	}
 
@@ -121,7 +123,7 @@ func (s *RepresentationNodeTestSuite) TestGetAndSetOnSuccess() {
 func (s *RepresentationNodeTestSuite) TestShouldExecuteWithoutCondition() {
 	node := newRepresentationNode("test", common.NodeTypeStart, nil, true, false)
 
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID: "test-flow",
 		RuntimeData: map[string]string{},
 	}
@@ -137,7 +139,7 @@ func (s *RepresentationNodeTestSuite) TestShouldExecuteWithConditionMet() {
 		OnSkip: "skip_node",
 	})
 
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID: "test-flow",
 		RuntimeData: map[string]string{
 			"key1": "value1",
@@ -155,7 +157,7 @@ func (s *RepresentationNodeTestSuite) TestShouldExecuteWithConditionNotMet() {
 		OnSkip: "skip_node",
 	})
 
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID: "test-flow",
 		RuntimeData: map[string]string{
 			"key1": "different_value",

@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 
@@ -771,4 +772,56 @@ func (suite *AuthorizationRequestStoreTestSuite) testGetRequestWithInvalidScopes
 
 	suite.mockdbProvider.AssertExpectations(suite.T())
 	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+// TestRoundTrip_VerifiedClaims verifies that a claims request carrying userinfo.verified_claims
+// survives serialization to the store JSON and reconstruction faithfully.
+func (suite *AuthorizationRequestStoreTestSuite) TestRoundTrip_VerifiedClaims() {
+	claimsParam := `{
+		"userinfo": {
+			"email": {"essential": true},
+			"verified_claims": {
+				"verification": {"trust_framework": {"value": "eidas"}, "evidence": [{"type": "document"}]},
+				"claims": {"given_name": null, "address": {"essential": true}}
+			}
+		}
+	}`
+	claimsRequest, err := oauth2utils.ParseClaimsRequest(claimsParam)
+	suite.Require().NoError(err)
+
+	original := authRequestContext{
+		OAuthParameters: model.OAuthParameters{
+			ClientID:       "test-client-id",
+			ResponseType:   "code",
+			StandardScopes: []string{"openid"},
+			ClaimsRequest:  claimsRequest,
+		},
+	}
+
+	// Serialize as the store would when persisting.
+	jsonDataBytes, err := suite.store.getJSONDataBytes(original)
+	suite.Require().NoError(err)
+
+	// Reconstruct as the store would when reading back from the database.
+	row := map[string]interface{}{
+		dbColumnRequestData: string(jsonDataBytes),
+	}
+	reconstructed, err := suite.store.buildAuthRequestContextFromResultRow(row)
+	suite.Require().NoError(err)
+
+	reloaded := reconstructed.OAuthParameters.ClaimsRequest
+	suite.Require().NotNil(reloaded)
+
+	// verified_claims is reconstructed as a single normalized entry (unmodeled members dropped).
+	suite.Require().Len(reloaded.VerifiedUserInfo, 1)
+	verifiedEntry := reloaded.VerifiedUserInfo[0]
+	assert.Equal(suite.T(), "eidas", verifiedEntry.Verification.TrustFramework.Value)
+	assert.Len(suite.T(), verifiedEntry.Claims, 2)
+	assert.True(suite.T(), verifiedEntry.Claims["address"].Essential)
+
+	// Normal claims are preserved and resolvable.
+	normalClaims := reloaded.UserInfo
+	assert.Len(suite.T(), normalClaims, 1)
+	assert.NotNil(suite.T(), normalClaims["email"])
+	assert.True(suite.T(), normalClaims["email"].Essential)
 }

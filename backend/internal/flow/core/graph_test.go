@@ -21,6 +21,8 @@ package core
 import (
 	"testing"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
@@ -38,7 +40,7 @@ func TestGraphTestSuite(t *testing.T) {
 
 func (s *GraphTestSuite) SetupTest() {
 	s.factory = newFlowFactory()
-	s.graph = s.factory.CreateGraph("test-graph", common.FlowTypeAuthentication)
+	s.graph = s.factory.CreateGraph("test-graph", providers.FlowTypeAuthentication, 1)
 }
 
 func (s *GraphTestSuite) TestGetID() {
@@ -46,8 +48,17 @@ func (s *GraphTestSuite) TestGetID() {
 }
 
 func (s *GraphTestSuite) TestGetType() {
-	graph := s.factory.CreateGraph("test-graph", common.FlowTypeRegistration)
-	s.Equal(common.FlowTypeRegistration, graph.GetType())
+	graph := s.factory.CreateGraph("test-graph", providers.FlowTypeRegistration, 1)
+	s.Equal(providers.FlowTypeRegistration, graph.GetType())
+}
+
+func (s *GraphTestSuite) TestGetVersion() {
+	s.Equal(1, s.graph.GetVersion())
+}
+
+func (s *GraphTestSuite) TestSetAndGetVersion() {
+	s.graph.SetVersion(5)
+	s.Equal(5, s.graph.GetVersion())
 }
 
 func (s *GraphTestSuite) TestAddNodeSuccess() {
@@ -382,7 +393,7 @@ func (s *GraphTestSuite) TestToJSON() {
 
 	if execNode, ok := node1.(ExecutorBackedNodeInterface); ok {
 		execNode.SetExecutorName("test-executor")
-		execNode.SetInputs([]common.Input{
+		execNode.SetInputs([]providers.Input{
 			{Identifier: "username", Type: "string", Required: true,
 				DisplayName: "User Name"},
 		})

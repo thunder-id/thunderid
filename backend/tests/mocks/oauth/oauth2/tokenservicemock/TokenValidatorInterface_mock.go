@@ -8,8 +8,8 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewTokenValidatorInterfaceMock creates a new instance of TokenValidatorInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -182,7 +182,7 @@ func (_c *TokenValidatorInterfaceMock_ValidateRefreshToken_Call) RunAndReturn(ru
 }
 
 // ValidateSubjectToken provides a mock function for the type TokenValidatorInterfaceMock
-func (_mock *TokenValidatorInterfaceMock) ValidateSubjectToken(ctx context.Context, token string, oauthApp *model.OAuthClient) (*tokenservice.SubjectTokenClaims, error) {
+func (_mock *TokenValidatorInterfaceMock) ValidateSubjectToken(ctx context.Context, token string, oauthApp *providers.OAuthClient) (*tokenservice.SubjectTokenClaims, error) {
 	ret := _mock.Called(ctx, token, oauthApp)
 
 	if len(ret) == 0 {
@@ -191,17 +191,17 @@ func (_mock *TokenValidatorInterfaceMock) ValidateSubjectToken(ctx context.Conte
 
 	var r0 *tokenservice.SubjectTokenClaims
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *model.OAuthClient) (*tokenservice.SubjectTokenClaims, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *providers.OAuthClient) (*tokenservice.SubjectTokenClaims, error)); ok {
 		return returnFunc(ctx, token, oauthApp)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *model.OAuthClient) *tokenservice.SubjectTokenClaims); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *providers.OAuthClient) *tokenservice.SubjectTokenClaims); ok {
 		r0 = returnFunc(ctx, token, oauthApp)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*tokenservice.SubjectTokenClaims)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *model.OAuthClient) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *providers.OAuthClient) error); ok {
 		r1 = returnFunc(ctx, token, oauthApp)
 	} else {
 		r1 = ret.Error(1)
@@ -217,12 +217,12 @@ type TokenValidatorInterfaceMock_ValidateSubjectToken_Call struct {
 // ValidateSubjectToken is a helper method to define mock.On call
 //   - ctx context.Context
 //   - token string
-//   - oauthApp *model.OAuthClient
+//   - oauthApp *providers.OAuthClient
 func (_e *TokenValidatorInterfaceMock_Expecter) ValidateSubjectToken(ctx interface{}, token interface{}, oauthApp interface{}) *TokenValidatorInterfaceMock_ValidateSubjectToken_Call {
 	return &TokenValidatorInterfaceMock_ValidateSubjectToken_Call{Call: _e.mock.On("ValidateSubjectToken", ctx, token, oauthApp)}
 }
 
-func (_c *TokenValidatorInterfaceMock_ValidateSubjectToken_Call) Run(run func(ctx context.Context, token string, oauthApp *model.OAuthClient)) *TokenValidatorInterfaceMock_ValidateSubjectToken_Call {
+func (_c *TokenValidatorInterfaceMock_ValidateSubjectToken_Call) Run(run func(ctx context.Context, token string, oauthApp *providers.OAuthClient)) *TokenValidatorInterfaceMock_ValidateSubjectToken_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -232,9 +232,9 @@ func (_c *TokenValidatorInterfaceMock_ValidateSubjectToken_Call) Run(run func(ct
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 *model.OAuthClient
+		var arg2 *providers.OAuthClient
 		if args[2] != nil {
-			arg2 = args[2].(*model.OAuthClient)
+			arg2 = args[2].(*providers.OAuthClient)
 		}
 		run(
 			arg0,
@@ -250,7 +250,7 @@ func (_c *TokenValidatorInterfaceMock_ValidateSubjectToken_Call) Return(subjectT
 	return _c
 }
 
-func (_c *TokenValidatorInterfaceMock_ValidateSubjectToken_Call) RunAndReturn(run func(ctx context.Context, token string, oauthApp *model.OAuthClient) (*tokenservice.SubjectTokenClaims, error)) *TokenValidatorInterfaceMock_ValidateSubjectToken_Call {
+func (_c *TokenValidatorInterfaceMock_ValidateSubjectToken_Call) RunAndReturn(run func(ctx context.Context, token string, oauthApp *providers.OAuthClient) (*tokenservice.SubjectTokenClaims, error)) *TokenValidatorInterfaceMock_ValidateSubjectToken_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -25,9 +25,8 @@ import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Prism as SyntaxHighlighter} from 'react-syntax-highlighter';
 import {vscDarkPlus} from 'react-syntax-highlighter/dist/esm/styles/prism';
-import TemplateConstants from '../../../constants/template-constants';
-import {ApplicationCreateFlowSignInApproach} from '../../../models/application-create-flow';
 import type {IntegrationGuides, IntegrationStep} from '../../../models/application-templates';
+import {getIntegrationGuideVariantKey} from '../../../utils/getIntegrationGuidesForTemplate';
 import GradientBorderButton from '../../GradientBorderButton';
 
 /**
@@ -92,14 +91,10 @@ export default function TechnologyGuide({
     return null;
   }
 
-  // Get the guide key based on template ID - check if it contains embedded suffix
-  // Templates with -embedded suffix (e.g., react-embedded) → use 'embedded' guide
-  // Templates without -embedded suffix (e.g., react) → use 'inbuilt' guide
-  const isEmbedded = templateId?.includes(TemplateConstants.EMBEDDED_SUFFIX) ?? false;
-  const guideKey = isEmbedded
-    ? ApplicationCreateFlowSignInApproach.EMBEDDED
-    : ApplicationCreateFlowSignInApproach.INBUILT;
-  const selectedGuide = guides[guideKey];
+  // Select the guide for the variant determined by the template ID.
+  // Templates with the -embedded suffix (e.g., react-embedded) use the EMBEDDED guide;
+  // all others use the INBUILT guide.
+  const selectedGuide = guides[getIntegrationGuideVariantKey(templateId)];
 
   if (!selectedGuide) {
     return null;

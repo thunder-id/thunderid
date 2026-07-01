@@ -27,10 +27,10 @@ import (
 	"net/url"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // Test Suite
@@ -44,37 +44,37 @@ func TestThemeHandlerTestSuite(t *testing.T) {
 
 // mockThemeService implements ThemeMgtServiceInterface for handler tests
 type mockThemeService struct {
-	getThemeListFunc func(limit, offset int) (*ThemeList, *serviceerror.ServiceError)
-	createThemeFunc  func(theme CreateThemeRequestWithID) (*Theme, *serviceerror.ServiceError)
-	getThemeFunc     func(id string) (*Theme, *serviceerror.ServiceError)
-	updateThemeFunc  func(id string, theme UpdateThemeRequest) (*Theme, *serviceerror.ServiceError)
-	deleteThemeFunc  func(id string) *serviceerror.ServiceError
-	isThemeExistFunc func(id string) (bool, *serviceerror.ServiceError)
+	getThemeListFunc func(limit, offset int) (*ThemeList, *tidcommon.ServiceError)
+	createThemeFunc  func(theme CreateThemeRequestWithID) (*Theme, *tidcommon.ServiceError)
+	getThemeFunc     func(id string) (*Theme, *tidcommon.ServiceError)
+	updateThemeFunc  func(id string, theme UpdateThemeRequest) (*Theme, *tidcommon.ServiceError)
+	deleteThemeFunc  func(id string) *tidcommon.ServiceError
+	isThemeExistFunc func(id string) (bool, *tidcommon.ServiceError)
 }
 
-func (m *mockThemeService) GetThemeList(_ context.Context, limit, offset int) (*ThemeList, *serviceerror.ServiceError) {
+func (m *mockThemeService) GetThemeList(_ context.Context, limit, offset int) (*ThemeList, *tidcommon.ServiceError) {
 	return m.getThemeListFunc(limit, offset)
 }
 
 func (m *mockThemeService) CreateTheme(
-	_ context.Context, theme CreateThemeRequestWithID) (*Theme, *serviceerror.ServiceError) {
+	_ context.Context, theme CreateThemeRequestWithID) (*Theme, *tidcommon.ServiceError) {
 	return m.createThemeFunc(theme)
 }
 
-func (m *mockThemeService) GetTheme(_ context.Context, id string) (*Theme, *serviceerror.ServiceError) {
+func (m *mockThemeService) GetTheme(_ context.Context, id string) (*Theme, *tidcommon.ServiceError) {
 	return m.getThemeFunc(id)
 }
 
 func (m *mockThemeService) UpdateTheme(
-	_ context.Context, id string, theme UpdateThemeRequest) (*Theme, *serviceerror.ServiceError) {
+	_ context.Context, id string, theme UpdateThemeRequest) (*Theme, *tidcommon.ServiceError) {
 	return m.updateThemeFunc(id, theme)
 }
 
-func (m *mockThemeService) DeleteTheme(_ context.Context, id string) *serviceerror.ServiceError {
+func (m *mockThemeService) DeleteTheme(_ context.Context, id string) *tidcommon.ServiceError {
 	return m.deleteThemeFunc(id)
 }
 
-func (m *mockThemeService) IsThemeExist(_ context.Context, id string) (bool, *serviceerror.ServiceError) {
+func (m *mockThemeService) IsThemeExist(_ context.Context, id string) (bool, *tidcommon.ServiceError) {
 	return m.isThemeExistFunc(id)
 }
 
@@ -92,7 +92,7 @@ func (suite *ThemeHandlerTestSuite) TestHandleThemeListRequest_Success() {
 	}
 
 	mockSvc := &mockThemeService{
-		getThemeListFunc: func(limit, offset int) (*ThemeList, *serviceerror.ServiceError) {
+		getThemeListFunc: func(limit, offset int) (*ThemeList, *tidcommon.ServiceError) {
 			return themeList, nil
 		},
 	}
@@ -135,7 +135,7 @@ func (suite *ThemeHandlerTestSuite) TestHandleThemeListRequest_ColorFieldsPopula
 	}
 
 	mockSvc := &mockThemeService{
-		getThemeListFunc: func(limit, offset int) (*ThemeList, *serviceerror.ServiceError) {
+		getThemeListFunc: func(limit, offset int) (*ThemeList, *tidcommon.ServiceError) {
 			return themeList, nil
 		},
 	}
@@ -169,7 +169,7 @@ func (suite *ThemeHandlerTestSuite) TestHandleThemeListRequest_EmptyColorFieldsW
 	}
 
 	mockSvc := &mockThemeService{
-		getThemeListFunc: func(limit, offset int) (*ThemeList, *serviceerror.ServiceError) {
+		getThemeListFunc: func(limit, offset int) (*ThemeList, *tidcommon.ServiceError) {
 			return themeList, nil
 		},
 	}
@@ -215,8 +215,8 @@ func (suite *ThemeHandlerTestSuite) TestHandleThemeListRequest_InvalidOffset() {
 // Test HandleThemeListRequest - Service error
 func (suite *ThemeHandlerTestSuite) TestHandleThemeListRequest_ServiceError() {
 	mockSvc := &mockThemeService{
-		getThemeListFunc: func(limit, offset int) (*ThemeList, *serviceerror.ServiceError) {
-			return nil, &serviceerror.InternalServerError
+		getThemeListFunc: func(limit, offset int) (*ThemeList, *tidcommon.ServiceError) {
+			return nil, &tidcommon.InternalServerError
 		},
 	}
 
@@ -239,7 +239,7 @@ func (suite *ThemeHandlerTestSuite) TestHandleThemePostRequest_Success() {
 	}
 
 	mockSvc := &mockThemeService{
-		createThemeFunc: func(theme CreateThemeRequestWithID) (*Theme, *serviceerror.ServiceError) {
+		createThemeFunc: func(theme CreateThemeRequestWithID) (*Theme, *tidcommon.ServiceError) {
 			return createdTheme, nil
 		},
 	}
@@ -279,8 +279,8 @@ func (suite *ThemeHandlerTestSuite) TestHandleThemePostRequest_InvalidJSON() {
 // Test HandleThemePostRequest - Service error
 func (suite *ThemeHandlerTestSuite) TestHandleThemePostRequest_ServiceError() {
 	mockSvc := &mockThemeService{
-		createThemeFunc: func(theme CreateThemeRequestWithID) (*Theme, *serviceerror.ServiceError) {
-			return nil, &serviceerror.InternalServerError
+		createThemeFunc: func(theme CreateThemeRequestWithID) (*Theme, *tidcommon.ServiceError) {
+			return nil, &tidcommon.InternalServerError
 		},
 	}
 
@@ -308,7 +308,7 @@ func (suite *ThemeHandlerTestSuite) TestHandleThemeGetRequest_Success() {
 	}
 
 	mockSvc := &mockThemeService{
-		getThemeFunc: func(id string) (*Theme, *serviceerror.ServiceError) {
+		getThemeFunc: func(id string) (*Theme, *tidcommon.ServiceError) {
 			return theme, nil
 		},
 	}
@@ -332,7 +332,7 @@ func (suite *ThemeHandlerTestSuite) TestHandleThemeGetRequest_Success() {
 // Test HandleThemeGetRequest - Not found
 func (suite *ThemeHandlerTestSuite) TestHandleThemeGetRequest_NotFound() {
 	mockSvc := &mockThemeService{
-		getThemeFunc: func(id string) (*Theme, *serviceerror.ServiceError) {
+		getThemeFunc: func(id string) (*Theme, *tidcommon.ServiceError) {
 			return nil, &ErrorThemeNotFound
 		},
 	}
@@ -358,7 +358,7 @@ func (suite *ThemeHandlerTestSuite) TestHandleThemePutRequest_Success() {
 	}
 
 	mockSvc := &mockThemeService{
-		updateThemeFunc: func(id string, theme UpdateThemeRequest) (*Theme, *serviceerror.ServiceError) {
+		updateThemeFunc: func(id string, theme UpdateThemeRequest) (*Theme, *tidcommon.ServiceError) {
 			return updatedTheme, nil
 		},
 	}
@@ -397,7 +397,7 @@ func (suite *ThemeHandlerTestSuite) TestHandleThemePutRequest_InvalidJSON() {
 // Test HandleThemeDeleteRequest - Success
 func (suite *ThemeHandlerTestSuite) TestHandleThemeDeleteRequest_Success() {
 	mockSvc := &mockThemeService{
-		deleteThemeFunc: func(id string) *serviceerror.ServiceError {
+		deleteThemeFunc: func(id string) *tidcommon.ServiceError {
 			return nil
 		},
 	}
@@ -416,7 +416,7 @@ func (suite *ThemeHandlerTestSuite) TestHandleThemeDeleteRequest_Success() {
 // Test HandleThemeDeleteRequest - Not found (idempotent delete returns 204)
 func (suite *ThemeHandlerTestSuite) TestHandleThemeDeleteRequest_NotFound() {
 	mockSvc := &mockThemeService{
-		deleteThemeFunc: func(id string) *serviceerror.ServiceError {
+		deleteThemeFunc: func(id string) *tidcommon.ServiceError {
 			return nil
 		},
 	}
@@ -435,7 +435,7 @@ func (suite *ThemeHandlerTestSuite) TestHandleThemeDeleteRequest_NotFound() {
 // Test HandleThemeDeleteRequest - Conflict (theme in use)
 func (suite *ThemeHandlerTestSuite) TestHandleThemeDeleteRequest_Conflict() {
 	mockSvc := &mockThemeService{
-		deleteThemeFunc: func(id string) *serviceerror.ServiceError {
+		deleteThemeFunc: func(id string) *tidcommon.ServiceError {
 			return &ErrorThemeInUse
 		},
 	}
@@ -513,7 +513,7 @@ func (suite *ThemeHandlerTestSuite) TestToHTTPLinks_Empty() {
 func (suite *ThemeHandlerTestSuite) TestHandleError_StatusCodeMapping() {
 	tests := []struct {
 		name           string
-		svcErr         *serviceerror.ServiceError
+		svcErr         *tidcommon.ServiceError
 		expectedStatus int
 	}{
 		{
@@ -538,13 +538,13 @@ func (suite *ThemeHandlerTestSuite) TestHandleError_StatusCodeMapping() {
 		},
 		{
 			name:           "InternalServerError",
-			svcErr:         &serviceerror.InternalServerError,
+			svcErr:         &tidcommon.InternalServerError,
 			expectedStatus: http.StatusInternalServerError,
 		},
 		{
 			name: "UnknownClientError",
-			svcErr: &serviceerror.ServiceError{
-				Type: serviceerror.ClientErrorType,
+			svcErr: &tidcommon.ServiceError{
+				Type: tidcommon.ClientErrorType,
 				Code: "UNKNOWN",
 			},
 			expectedStatus: http.StatusBadRequest,

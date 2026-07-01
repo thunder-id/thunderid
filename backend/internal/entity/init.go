@@ -24,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the entity service.
@@ -53,7 +54,7 @@ func initializeStore(cacheManager cache.CacheManagerInterface) (
 	if err != nil {
 		return nil, nil, err
 	}
-	entityByIDCache := cache.GetCache[*Entity](cacheManager, "EntityByIDCache")
+	entityByIDCache := cache.GetCache[*providers.Entity](cacheManager, "EntityByIDCache")
 	entityWithCredsByIDCache := cache.GetCache[*entityWithCredentials](cacheManager,
 		"EntityWithCredentialsByIDCache")
 	entityIDByIdentifierCache := cache.GetCache[*string](cacheManager,

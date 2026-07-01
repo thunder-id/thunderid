@@ -18,27 +18,37 @@
 
 import {Helmet} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
-import {useColorScheme} from '@wso2/oxygen-ui';
+
+/**
+ * Resolves a configured favicon path against the Vite base URL so it loads
+ * correctly when the console is served under a sub-path such as `/console`.
+ * Already-resolved values (absolute, protocol-relative or root-relative URLs,
+ * and `data:` URIs) are returned untouched.
+ */
+function resolveFaviconHref(path: string): string {
+  if (/^([a-z]+:|\/)/i.test(path)) {
+    return path;
+  }
+  return `${import.meta.env.BASE_URL.replace(/\/$/, '')}/${path}`;
+}
 
 /**
  * Manages document head metadata, specifically the favicon, with support for
- * separate light and dark mode variants.
+ * separate light and dark variants.
  *
- * The resolved favicon switches automatically based on the active OxygenUI color scheme,
- * correctly handling the `"system"` mode by falling back to the OS-resolved value.
- *
- * Must be rendered inside an `OxygenUIThemeProvider` so that `useColorScheme`
- * reads from the correct context.
+ * Both variants are registered with a `prefers-color-scheme` media query so the
+ * browser picks the matching favicon based on the operating system / browser
+ * color scheme. This is independent of the in-app color scheme toggle — the tab
+ * icon tracks the OS theme, switching live when the OS theme changes.
  */
 export default function Head() {
   const {config} = useConfig();
-  const {mode, systemMode} = useColorScheme();
-  const resolvedMode = mode === 'system' ? systemMode : mode;
-  const resolvedFavicon = resolvedMode === 'dark' ? config.brand.favicon.dark : config.brand.favicon.light;
+  const {favicon} = config.brand;
 
   return (
     <Helmet>
-      <link rel="icon" href={resolvedFavicon} />
+      <link rel="icon" href={resolveFaviconHref(favicon.light)} media="(prefers-color-scheme: light)" />
+      <link rel="icon" href={resolveFaviconHref(favicon.dark)} media="(prefers-color-scheme: dark)" />
     </Helmet>
   );
 }

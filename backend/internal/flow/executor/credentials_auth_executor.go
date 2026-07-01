@@ -23,41 +23,42 @@ package executor
 import (
 	"errors"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
-	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 // credentialsAuthExecutor implements the ExecutorInterface for credentials-based authentication.
 type credentialsAuthExecutor struct {
-	core.ExecutorInterface
+	providers.Executor
 	identifyingExecutorInterface
 	entityProvider entityprovider.EntityProviderInterface
-	authnProvider  authnprovidermgr.AuthnProviderManagerInterface
+	authnProvider  providers.AuthnProviderManager
 	logger         *log.Logger
 }
 
-var _ core.ExecutorInterface = (*credentialsAuthExecutor)(nil)
+var _ providers.Executor = (*credentialsAuthExecutor)(nil)
 var _ identifyingExecutorInterface = (*credentialsAuthExecutor)(nil)
 
 // newCredentialsAuthExecutor creates a new instance of CredentialsAuthExecutor.
 func newCredentialsAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) *credentialsAuthExecutor {
-	defaultInputs := []common.Input{
+	defaultInputs := []providers.Input{
 		{
 			Identifier: userAttributeUsername,
-			Type:       common.InputTypeText,
+			Type:       providers.InputTypeText,
 			Required:   true,
 		},
 		{
 			Identifier: userAttributePassword,
-			Type:       common.InputTypePassword,
+			Type:       providers.InputTypePassword,
 			Required:   true,
 		},
 	}
@@ -65,13 +66,13 @@ func newCredentialsAuthExecutor(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CredentialsAuthExecutor"),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameCredentialsAuth))
 
-	identifyExec := newIdentifyingExecutor(ExecutorNameCredentialsAuth, defaultInputs, []common.Input{},
+	identifyExec := newIdentifyingExecutor(ExecutorNameCredentialsAuth, defaultInputs, []providers.Input{},
 		flowFactory, entityProvider)
-	base := flowFactory.CreateExecutor(ExecutorNameCredentialsAuth, common.ExecutorTypeAuthentication,
-		defaultInputs, []common.Input{})
+	base := flowFactory.CreateExecutor(ExecutorNameCredentialsAuth, providers.ExecutorTypeAuthentication,
+		defaultInputs, []providers.Input{})
 
 	return &credentialsAuthExecutor{
-		ExecutorInterface:            base,
+		Executor:                     base,
 		identifyingExecutorInterface: identifyExec,
 		entityProvider:               entityProvider,
 		authnProvider:                authnProvider,
@@ -80,11 +81,11 @@ func newCredentialsAuthExecutor(
 }
 
 // Execute executes the credentials authentication logic.
-func (b *credentialsAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+func (b *credentialsAuthExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := b.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing credentials authentication executor")
 
-	execResp := &common.ExecutorResponse{
+	execResp := &providers.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 		AuthUser:       ctx.AuthUser,
@@ -103,13 +104,13 @@ func (b *credentialsAuthExecutor) Execute(ctx *core.NodeContext) (*common.Execut
 			}
 		}
 		if hasMissingCredentials {
-			execResp.Status = common.ExecUserInputRequired
+			execResp.Status = providers.ExecUserInputRequired
 			execResp.Inputs = credentialInputs
 			return execResp, nil
 		}
 	} else if !b.HasRequiredInputs(ctx, execResp) {
 		logger.Debug(ctx.Context, "Required inputs for credentials authentication executor is not provided")
-		execResp.Status = common.ExecUserInputRequired
+		execResp.Status = providers.ExecUserInputRequired
 		return execResp, nil
 	}
 
@@ -118,15 +119,15 @@ func (b *credentialsAuthExecutor) Execute(ctx *core.NodeContext) (*common.Execut
 	//  For the moment handling returned error as a authentication failure.
 	err := b.authenticateUser(ctx, execResp)
 	if err != nil {
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrUserAuthFailed
 		return execResp, nil
 	}
-	if execResp.Status == common.ExecFailure || execResp.Status == common.ExecUserInputRequired {
+	if execResp.Status == providers.ExecFailure || execResp.Status == providers.ExecUserInputRequired {
 		return execResp, nil
 	}
-	if !execResp.AuthUser.IsAuthenticated() && ctx.FlowType != common.FlowTypeRegistration {
-		execResp.Status = common.ExecUserInputRequired
+	if !execResp.AuthUser.IsAuthenticated() && ctx.FlowType != providers.FlowTypeRegistration {
+		execResp.Status = providers.ExecUserInputRequired
 		if hasPreResolvedUser {
 			execResp.Inputs = b.getCredentialInputs(ctx)
 		} else {
@@ -136,7 +137,7 @@ func (b *credentialsAuthExecutor) Execute(ctx *core.NodeContext) (*common.Execut
 		return execResp, nil
 	}
 
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 
 	logger.Debug(ctx.Context, "Credentials authentication executor execution completed",
 		log.String("status", string(execResp.Status)),
@@ -146,8 +147,8 @@ func (b *credentialsAuthExecutor) Execute(ctx *core.NodeContext) (*common.Execut
 }
 
 // getCredentialInputs returns the sensitive (credential) inputs from the node's required inputs.
-func (b *credentialsAuthExecutor) getCredentialInputs(ctx *core.NodeContext) []common.Input {
-	var credentials []common.Input
+func (b *credentialsAuthExecutor) getCredentialInputs(ctx *providers.NodeContext) []providers.Input {
+	var credentials []providers.Input
 	for _, input := range b.GetRequiredInputs(ctx) {
 		if input.IsSensitive() {
 			credentials = append(credentials, input)
@@ -158,8 +159,8 @@ func (b *credentialsAuthExecutor) getCredentialInputs(ctx *core.NodeContext) []c
 
 // authenticateUser perform authentication based on the provided identifying and
 // credential attributes and returns the authenticated user details.
-func (b *credentialsAuthExecutor) authenticateUser(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) error {
+func (b *credentialsAuthExecutor) authenticateUser(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) error {
 	logger := b.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	userIdentifiers := map[string]interface{}{}
@@ -181,22 +182,22 @@ func (b *credentialsAuthExecutor) authenticateUser(ctx *core.NodeContext,
 	}
 
 	// For registration flows, only check if user exists.
-	if ctx.FlowType == common.FlowTypeRegistration {
+	if ctx.FlowType == providers.FlowTypeRegistration {
 		_, err := b.IdentifyUser(ctx.Context, userIdentifiers, execResp)
 		if err != nil {
 			return err
 		}
-		if execResp.Status == common.ExecFailure {
+		if execResp.Status == providers.ExecFailure {
 			if execResp.Error != nil && execResp.Error.Code == ErrUserNotFound.Code {
 				logger.Debug(ctx.Context,
 					"User not found for the provided attributes. Proceeding with registration flow.")
-				execResp.Status = common.ExecComplete
+				execResp.Status = providers.ExecComplete
 				return nil
 			}
 			return nil
 		}
 		// User found - fail registration.
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrUserAlreadyExists
 		return nil
 	}
@@ -207,8 +208,8 @@ func (b *credentialsAuthExecutor) authenticateUser(ctx *core.NodeContext,
 		userCredentials, nil, metadata, execResp.AuthUser)
 	execResp.AuthUser = authUser
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ClientErrorType {
-			execResp.Status = common.ExecUserInputRequired
+		if svcErr.Type == tidcommon.ClientErrorType {
+			execResp.Status = providers.ExecUserInputRequired
 			execResp.Inputs = b.GetRequiredInputs(ctx)
 
 			switch svcErr.Code {

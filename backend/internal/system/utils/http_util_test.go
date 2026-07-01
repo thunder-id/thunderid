@@ -30,13 +30,23 @@ import (
 	"strings"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 )
+
+type mockFieldError struct {
+	tag   string
+	field string
+	param string
+}
+
+func (m mockFieldError) Tag() string   { return m.tag }
+func (m mockFieldError) Field() string { return m.field }
+func (m mockFieldError) Param() string { return m.param }
 
 type HTTPUtilTestSuite struct {
 	suite.Suite
@@ -337,40 +347,69 @@ func (suite *HTTPUtilTestSuite) TestGetURIWithQueryParams() {
 }
 
 type testStruct struct {
-	Name  string `json:"name"`
-	Value int    `json:"value"`
+	Name  string `json:"name"  native:"required,min=3"`
+	Value int    `json:"value" native:"required"`
 }
 
+func (ts *testStruct) Validate() map[string]string {
+	fieldErrors := make(map[string]string)
+
+	if ts.Name == "" {
+		fieldErrors["Name"] = "The field 'Name' is missing but is strictly required."
+	} else if len(ts.Name) < 3 {
+		fieldErrors["Name"] = "The field 'Name' must be at least 3 characters long."
+	}
+
+	if ts.Value == 0 {
+		fieldErrors["Value"] = "The field 'Value' is missing but is strictly required."
+	}
+
+	if len(fieldErrors) > 0 {
+		return fieldErrors
+	}
+	return nil
+}
 func (suite *HTTPUtilTestSuite) TestDecodeJSONBody() {
 	testCases := []struct {
-		name        string
-		jsonBody    string
-		expected    testStruct
-		expectError bool
+		name              string
+		jsonBody          string
+		expected          testStruct
+		expectError       bool
+		isValidationError bool
 	}{
 		{
-			name:        "ValidJSON",
-			jsonBody:    `{"name":"test","value":123}`,
-			expected:    testStruct{Name: "test", Value: 123},
-			expectError: false,
+			name:              "ValidJSON",
+			jsonBody:          `{"name":"test","value":123}`,
+			expected:          testStruct{Name: "test", Value: 123},
+			expectError:       false,
+			isValidationError: false,
 		},
 		{
-			name:        "EmptyJSON",
-			jsonBody:    `{}`,
-			expected:    testStruct{},
-			expectError: false,
+			name:              "EmptyJSON",
+			jsonBody:          `{}`,
+			expected:          testStruct{},
+			expectError:       true,
+			isValidationError: true,
 		},
 		{
-			name:        "InvalidJSON",
-			jsonBody:    `{"name":"test","value":}`,
-			expected:    testStruct{},
-			expectError: true,
+			name:              "InvalidJSON",
+			jsonBody:          `{"name":"test","value":}`,
+			expected:          testStruct{},
+			expectError:       true,
+			isValidationError: false,
+		},
+		{
+			name:              "ValidationFailure_StringTooShort",
+			jsonBody:          `{"name":"to","value":123}`,
+			expected:          testStruct{},
+			expectError:       true,
+			isValidationError: true,
 		},
 	}
 
 	for _, tc := range testCases {
 		suite.T().Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(tc.jsonBody))
+			req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tc.jsonBody))
 			req.Header.Set("Content-Type", "application/json")
 
 			result, err := DecodeJSONBody[testStruct](req)
@@ -378,6 +417,14 @@ func (suite *HTTPUtilTestSuite) TestDecodeJSONBody() {
 			if tc.expectError {
 				assert.Error(t, err)
 				assert.Nil(t, result)
+				if tc.isValidationError {
+					if assert.NotNil(t, err) { // Safe guard block against nil dereference panics
+						var valErr *ValidationError
+						ok := errors.As(err, &valErr)
+						assert.True(t, ok, "Expected error type to be *utils.ValidationError")
+						assert.NotEmpty(t, valErr.Errors)
+					}
+				}
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, result)
@@ -693,9 +740,9 @@ func (suite *HTTPUtilTestSuite) TestWriteSuccessResponse_EncodingError() {
 		var resp apierror.ErrorResponse
 		err := json.Unmarshal(w.Body.Bytes(), &resp)
 		assert.NoError(t, err)
-		assert.Equal(t, serviceerror.ErrorEncodingError.Code, resp.Code)
-		assert.Equal(t, serviceerror.ErrorEncodingError.Error.Key, resp.Message.Key)
-		assert.Equal(t, serviceerror.ErrorEncodingError.ErrorDescription.Key, resp.Description.Key)
+		assert.Equal(t, tidcommon.ErrorEncodingError.Code, resp.Code)
+		assert.Equal(t, tidcommon.ErrorEncodingError.Error.Key, resp.Message.Key)
+		assert.Equal(t, tidcommon.ErrorEncodingError.ErrorDescription.Key, resp.Description.Key)
 	})
 }
 
@@ -721,8 +768,8 @@ func (suite *HTTPUtilTestSuite) TestWriteErrorResponse_EncodingFallback() {
 
 		errorResp := apierror.ErrorResponse{
 			Code:        "test_error",
-			Message:     core.I18nMessage{Key: "error.test", DefaultValue: "Test error"},
-			Description: core.I18nMessage{Key: "error.test_desc", DefaultValue: "A test error"},
+			Message:     tidcommon.I18nMessage{Key: "error.test", DefaultValue: "Test error"},
+			Description: tidcommon.I18nMessage{Key: "error.test_desc", DefaultValue: "A test error"},
 		}
 		WriteErrorResponse(context.Background(), w, http.StatusBadRequest, errorResp)
 
@@ -730,9 +777,9 @@ func (suite *HTTPUtilTestSuite) TestWriteErrorResponse_EncodingFallback() {
 		var resp apierror.ErrorResponse
 		err := json.Unmarshal(rec.Body.Bytes(), &resp)
 		assert.NoError(t, err)
-		assert.Equal(t, serviceerror.ErrorEncodingError.Code, resp.Code)
-		assert.Equal(t, serviceerror.ErrorEncodingError.Error.Key, resp.Message.Key)
-		assert.Equal(t, serviceerror.ErrorEncodingError.ErrorDescription.Key, resp.Description.Key)
+		assert.Equal(t, tidcommon.ErrorEncodingError.Code, resp.Code)
+		assert.Equal(t, tidcommon.ErrorEncodingError.Error.Key, resp.Message.Key)
+		assert.Equal(t, tidcommon.ErrorEncodingError.ErrorDescription.Key, resp.Description.Key)
 	})
 }
 
@@ -747,8 +794,8 @@ func (suite *HTTPUtilTestSuite) TestWriteI18nErrorResponse() {
 			statusCode: http.StatusBadRequest,
 			errorResp: apierror.ErrorResponse{
 				Code:    "invalid_request",
-				Message: core.I18nMessage{Key: "error.invalid_request", DefaultValue: "Invalid Request"},
-				Description: core.I18nMessage{
+				Message: tidcommon.I18nMessage{Key: "error.invalid_request", DefaultValue: "Invalid Request"},
+				Description: tidcommon.I18nMessage{
 					Key:          "error.invalid_request_desc",
 					DefaultValue: "The request is missing required parameters",
 				},
@@ -759,8 +806,8 @@ func (suite *HTTPUtilTestSuite) TestWriteI18nErrorResponse() {
 			statusCode: http.StatusUnauthorized,
 			errorResp: apierror.ErrorResponse{
 				Code:    "unauthorized",
-				Message: core.I18nMessage{Key: "error.unauthorized", DefaultValue: "Unauthorized"},
-				Description: core.I18nMessage{
+				Message: tidcommon.I18nMessage{Key: "error.unauthorized", DefaultValue: "Unauthorized"},
+				Description: tidcommon.I18nMessage{
 					Key:          "error.unauthorized_desc",
 					DefaultValue: "Authentication is required",
 				},
@@ -771,8 +818,8 @@ func (suite *HTTPUtilTestSuite) TestWriteI18nErrorResponse() {
 			statusCode: http.StatusNotFound,
 			errorResp: apierror.ErrorResponse{
 				Code:    "not_found",
-				Message: core.I18nMessage{Key: "error.not_found", DefaultValue: "Not Found"},
-				Description: core.I18nMessage{
+				Message: tidcommon.I18nMessage{Key: "error.not_found", DefaultValue: "Not Found"},
+				Description: tidcommon.I18nMessage{
 					Key:          "error.not_found_desc",
 					DefaultValue: "The requested resource was not found",
 				},
@@ -782,9 +829,11 @@ func (suite *HTTPUtilTestSuite) TestWriteI18nErrorResponse() {
 			name:       "InternalServerError",
 			statusCode: http.StatusInternalServerError,
 			errorResp: apierror.ErrorResponse{
-				Code:        "internal_error",
-				Message:     core.I18nMessage{Key: "error.internal", DefaultValue: "Internal Server Error"},
-				Description: core.I18nMessage{Key: "error.internal_desc", DefaultValue: "An unexpected error occurred"},
+				Code:    "internal_error",
+				Message: tidcommon.I18nMessage{Key: "error.internal", DefaultValue: "Internal Server Error"},
+				Description: tidcommon.I18nMessage{
+					Key: "error.internal_desc", DefaultValue: "An unexpected error occurred",
+				},
 			},
 		},
 	}
@@ -1122,4 +1171,104 @@ func (suite *HTTPUtilTestSuite) TestMatchURIPattern() {
 			}
 		})
 	}
+}
+
+func (suite *HTTPUtilTestSuite) TestValidationCustomErrorsAndStructuredResponse() {
+	suite.T().Run("TranslateAndWriteValidationMap", func(t *testing.T) {
+		urlFieldError := mockFieldError{tag: "url", field: "URLField"}
+		minFieldError := mockFieldError{tag: "min", field: "MinField", param: "5"}
+
+		fieldErrorsMap := make(map[string]string)
+
+		msgURL := GetCustomErrorMessage(urlFieldError)
+		assert.Contains(t, msgURL, "must be a valid, well-formed URL")
+		fieldErrorsMap[urlFieldError.Field()] = msgURL
+
+		msgMin := GetCustomErrorMessage(minFieldError)
+		assert.Contains(t, msgMin, "must be at least")
+		fieldErrorsMap[minFieldError.Field()] = msgMin
+
+		w := httptest.NewRecorder()
+		WriteStructuredErrorResponse(w, http.StatusBadRequest, "Payload Error", fieldErrorsMap)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+		var body map[string]interface{}
+		jsonErr := json.Unmarshal(w.Body.Bytes(), &body)
+		assert.NoError(t, jsonErr)
+
+		assert.Equal(t, "INVALID_INPUT_METADATA", body["code"])
+		assert.Equal(t, "Payload Error", body["message"])
+
+		errorsBlock, exists := body["errors"].(map[string]interface{})
+		assert.True(t, exists)
+		assert.Contains(t, errorsBlock["URLField"], "must be a valid, well-formed URL")
+		assert.Contains(t, errorsBlock["MinField"], "must be at least")
+	})
+}
+
+func (suite *HTTPUtilTestSuite) TestValidationError_Error() {
+	e := &ValidationError{Errors: map[string]string{"field": "required"}}
+	assert.Equal(suite.T(), "Validation Failed", e.Error())
+}
+
+func (suite *HTTPUtilTestSuite) TestGetCustomErrorMessage_RemainingTags() {
+	tests := []struct {
+		tag      string
+		field    string
+		param    string
+		contains string
+	}{
+		{tag: "required", field: "Email", param: "", contains: "is missing but is strictly required"},
+		{tag: "max", field: "Name", param: "50", contains: "exceeds its maximum allowed size of 50"},
+		{tag: "oneof", field: "Status", param: "active inactive", contains: "must be one of"},
+		{tag: "json", field: "Config", param: "", contains: "malformed or unparseable JSON"},
+		{tag: "unknown_rule", field: "Field", param: "p", contains: "failed validation"},
+	}
+	for _, tt := range tests {
+		fe := mockFieldError{tag: tt.tag, field: tt.field, param: tt.param}
+		assert.Contains(suite.T(), GetCustomErrorMessage(fe), tt.contains)
+	}
+}
+
+func (suite *HTTPUtilTestSuite) TestDecodeJSONBody_MaxConstraintViolated() {
+	type boundedStruct struct {
+		Handle string `json:"handle" native:"max=5"`
+	}
+	req := httptest.NewRequest(
+		http.MethodPost, "/", strings.NewReader(`{"handle":"toolongvalue"}`),
+	)
+	result, err := DecodeJSONBody[boundedStruct](req)
+	assert.Nil(suite.T(), result)
+	var valErr *ValidationError
+	assert.True(suite.T(), errors.As(err, &valErr))
+	assert.Contains(suite.T(), valErr.Errors["handle"], "exceeds its maximum")
+}
+
+func (suite *HTTPUtilTestSuite) TestValidateStructNatively_NonStruct() {
+	assert.Nil(suite.T(), validateStructNatively("not a struct"))
+}
+
+func (suite *HTTPUtilTestSuite) TestValidateStructNatively_PointerInput() {
+	type ptrStruct struct {
+		Name string `json:"name" native:"required"`
+	}
+	result := validateStructNatively(&ptrStruct{})
+	assert.NotNil(suite.T(), result)
+	assert.Contains(suite.T(), result, "name")
+}
+
+func (suite *HTTPUtilTestSuite) TestIsZeroValue_EmptySlice() {
+	type sliceStruct struct {
+		Items []string `json:"items" native:"required"`
+	}
+	req := httptest.NewRequest(
+		http.MethodPost, "/", strings.NewReader(`{"items":[]}`),
+	)
+	result, err := DecodeJSONBody[sliceStruct](req)
+	assert.Nil(suite.T(), result)
+	var valErr *ValidationError
+	assert.True(suite.T(), errors.As(err, &valErr))
+	assert.Contains(suite.T(), valErr.Errors, "items")
 }

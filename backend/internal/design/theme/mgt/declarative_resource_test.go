@@ -26,11 +26,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 
 	"github.com/stretchr/testify/mock"
@@ -123,7 +123,7 @@ func (s *ThemeDeclarativeSuite) TestThemeExporter_GetAllResourceIDs_Success() {
 
 func (s *ThemeDeclarativeSuite) TestThemeExporter_GetAllResourceIDs_ServiceError() {
 	// Arrange
-	serviceErr := &serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "Database error"}}
+	serviceErr := &tidcommon.ServiceError{Error: tidcommon.I18nMessage{DefaultValue: "Database error"}}
 	mockService := NewThemeMgtServiceInterfaceMock(s.T())
 	mockService.EXPECT().GetThemeList(mock.Anything, 100, 0).Return(&ThemeList{}, serviceErr).Once()
 	exporter := &themeExporter{service: mockService}
@@ -181,7 +181,7 @@ func (s *ThemeDeclarativeSuite) TestThemeExporter_GetResourceByID_Success() {
 
 func (s *ThemeDeclarativeSuite) TestThemeExporter_GetResourceByID_NotFound() {
 	// Arrange
-	serviceErr := &serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "Theme not found"}}
+	serviceErr := &tidcommon.ServiceError{Error: tidcommon.I18nMessage{DefaultValue: "Theme not found"}}
 	mockService := NewThemeMgtServiceInterfaceMock(s.T())
 	mockService.EXPECT().GetTheme(mock.Anything, "non-existent").Return(&Theme{}, serviceErr).Once()
 	exporter := &themeExporter{service: mockService}

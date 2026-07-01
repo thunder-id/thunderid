@@ -24,11 +24,11 @@ import (
 	"net/http"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -68,7 +68,7 @@ func (h *messageNotificationSenderHandler) HandleSenderListRequest(w http.Respon
 			h.handleError(
 				ctx,
 				w,
-				&serviceerror.InternalServerError,
+				&tidcommon.InternalServerError,
 				"Failed to convert sender to response: "+err.Error())
 			return
 		}
@@ -91,7 +91,7 @@ func (h *messageNotificationSenderHandler) HandleSenderCreateRequest(w http.Resp
 	senderDTO, err := getDTOFromSenderRequest(sender)
 	if err != nil {
 		logger.Error(ctx, "Failed to process sender request", log.Error(err))
-		h.handleError(ctx, w, &serviceerror.InternalServerError, "Failed to process sender request: "+err.Error())
+		h.handleError(ctx, w, &tidcommon.InternalServerError, "Failed to process sender request: "+err.Error())
 		return
 	}
 
@@ -116,7 +116,7 @@ func (h *messageNotificationSenderHandler) HandleSenderCreateRequest(w http.Resp
 	if err != nil {
 		logger.Error(ctx, "Failed to convert sender to response",
 			log.String("sender", createdSender.Name), log.Error(err))
-		h.handleError(ctx, w, &serviceerror.InternalServerError, "Failed to convert sender to response: "+err.Error())
+		h.handleError(ctx, w, &tidcommon.InternalServerError, "Failed to convert sender to response: "+err.Error())
 		return
 	}
 
@@ -151,7 +151,7 @@ func (h *messageNotificationSenderHandler) HandleSenderGetRequest(w http.Respons
 	if err != nil {
 		logger.Error(ctx, "Failed to convert sender to response",
 			log.String("sender", sender.Name), log.Error(err))
-		h.handleError(ctx, w, &serviceerror.InternalServerError, "Failed to convert sender to response: "+err.Error())
+		h.handleError(ctx, w, &tidcommon.InternalServerError, "Failed to convert sender to response: "+err.Error())
 		return
 	}
 
@@ -176,7 +176,7 @@ func (h *messageNotificationSenderHandler) HandleSenderUpdateRequest(w http.Resp
 	senderDTO, err := getDTOFromSenderRequest(sender)
 	if err != nil {
 		logger.Error(ctx, "Failed to process sender request", log.Error(err))
-		h.handleError(ctx, w, &serviceerror.InternalServerError, "Failed to process sender request: "+err.Error())
+		h.handleError(ctx, w, &tidcommon.InternalServerError, "Failed to process sender request: "+err.Error())
 		return
 	}
 
@@ -190,7 +190,7 @@ func (h *messageNotificationSenderHandler) HandleSenderUpdateRequest(w http.Resp
 	if err != nil {
 		logger.Error(ctx, "Failed to convert sender to response",
 			log.String("sender", updatedSender.Name), log.Error(err))
-		h.handleError(ctx, w, &serviceerror.InternalServerError, "Failed to convert sender to response: "+err.Error())
+		h.handleError(ctx, w, &tidcommon.InternalServerError, "Failed to convert sender to response: "+err.Error())
 		return
 	}
 
@@ -263,10 +263,10 @@ func (h *messageNotificationSenderHandler) HandleOTPVerifyRequest(w http.Respons
 
 // handleError handles service errors and returns appropriate HTTP responses.
 func (h *messageNotificationSenderHandler) handleError(ctx context.Context, w http.ResponseWriter,
-	svcErr *serviceerror.ServiceError, customErrDesc string) {
+	svcErr *tidcommon.ServiceError, customErrDesc string) {
 	errDesc := svcErr.ErrorDescription
 	if customErrDesc != "" {
-		errDesc = core.I18nMessage{
+		errDesc = tidcommon.I18nMessage{
 			Key:          svcErr.ErrorDescription.Key,
 			DefaultValue: customErrDesc,
 		}
@@ -278,7 +278,7 @@ func (h *messageNotificationSenderHandler) handleError(ctx context.Context, w ht
 	}
 
 	statusCode := http.StatusInternalServerError
-	if svcErr.Type == serviceerror.ClientErrorType {
+	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
 		case ErrorSenderNotFound.Code:
 			statusCode = http.StatusNotFound

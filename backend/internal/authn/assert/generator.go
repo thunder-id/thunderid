@@ -23,8 +23,9 @@ package assert
 import (
 	"context"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -35,12 +36,12 @@ const loggerComponentName = "AuthAssertGenerator"
 // AuthAssertGeneratorInterface defines the interface for generating auth assertion claims.
 type AuthAssertGeneratorInterface interface {
 	GenerateAssertion(ctx context.Context, authenticators []authncm.AuthenticatorReference) (*AssertionResult,
-		*serviceerror.ServiceError)
+		*tidcommon.ServiceError)
 	UpdateAssertion(ctx context.Context, context *AssuranceContext, authenticator authncm.AuthenticatorReference) (
-		*AssertionResult, *serviceerror.ServiceError)
+		*AssertionResult, *tidcommon.ServiceError)
 	VerifyAssurance(ctx context.Context,
 		context *AssuranceContext, requiredAAL AssuranceLevel, requiredIAL AssuranceLevel) (
-		bool, *serviceerror.ServiceError)
+		bool, *tidcommon.ServiceError)
 }
 
 // authAssertGenerator implements the AuthAssertGeneratorInterface.
@@ -53,7 +54,7 @@ func newAuthAssertGenerator() AuthAssertGeneratorInterface {
 
 // GenerateAssertion generates authenticator assertion based on the provided authenticators.
 func (ag *authAssertGenerator) GenerateAssertion(ctx context.Context,
-	authenticators []authncm.AuthenticatorReference) (*AssertionResult, *serviceerror.ServiceError) {
+	authenticators []authncm.AuthenticatorReference) (*AssertionResult, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Generating authentication assertion")
 
@@ -77,7 +78,7 @@ func (ag *authAssertGenerator) GenerateAssertion(ctx context.Context,
 
 // UpdateAssertion updates existing assurance context with the provided authenticator.
 func (ag *authAssertGenerator) UpdateAssertion(ctx context.Context, context *AssuranceContext,
-	authenticator authncm.AuthenticatorReference) (*AssertionResult, *serviceerror.ServiceError) {
+	authenticator authncm.AuthenticatorReference) (*AssertionResult, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Updating authentication assertion with new authenticator")
 
@@ -104,7 +105,7 @@ func (ag *authAssertGenerator) UpdateAssertion(ctx context.Context, context *Ass
 // VerifyAssurance verifies if actual assurance meets the required assurance level.
 func (ag *authAssertGenerator) VerifyAssurance(
 	ctx context.Context, context *AssuranceContext, requiredAAL AssuranceLevel,
-	requiredIAL AssuranceLevel) (bool, *serviceerror.ServiceError) {
+	requiredIAL AssuranceLevel) (bool, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Verifying assurance levels")
 

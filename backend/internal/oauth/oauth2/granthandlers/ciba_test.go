@@ -24,16 +24,17 @@ import (
 	"testing"
 	"time"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/cibamock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
@@ -45,7 +46,7 @@ type CIBAGrantHandlerTestSuite struct {
 	mockCIBAService      *cibamock.CIBAServiceInterfaceMock
 	mockTokenBuilder     *tokenservicemock.TokenBuilderInterfaceMock
 	mockAttrCacheService *attributecachemock.AttributeCacheServiceInterfaceMock
-	oauthApp             *inboundmodel.OAuthClient
+	oauthApp             *providers.OAuthClient
 	tokenReq             *model.TokenRequest
 }
 
@@ -59,9 +60,9 @@ func (suite *CIBAGrantHandlerTestSuite) SetupTest() {
 	suite.mockAttrCacheService = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 	suite.handler = newCIBAGrantHandler(suite.mockCIBAService, suite.mockTokenBuilder,
 		suite.mockAttrCacheService)
-	suite.oauthApp = &inboundmodel.OAuthClient{ClientID: "client-1"}
+	suite.oauthApp = &providers.OAuthClient{ClientID: "client-1"}
 	suite.tokenReq = &model.TokenRequest{
-		GrantType: string(constants.GrantTypeCIBA),
+		GrantType: string(providers.GrantTypeCIBA),
 		ClientID:  "client-1",
 		AuthReqID: "auth-req-1",
 	}
@@ -86,14 +87,14 @@ func (suite *CIBAGrantHandlerTestSuite) TestValidateGrant_Success() {
 }
 
 func (suite *CIBAGrantHandlerTestSuite) TestValidateGrant_WrongGrantType() {
-	req := &model.TokenRequest{GrantType: string(constants.GrantTypeRefreshToken), AuthReqID: "x"}
+	req := &model.TokenRequest{GrantType: string(providers.GrantTypeRefreshToken), AuthReqID: "x"}
 	errResp := suite.handler.ValidateGrant(context.Background(), req, suite.oauthApp)
 	suite.NotNil(errResp)
 	suite.Equal(constants.ErrorUnsupportedGrantType, errResp.Error)
 }
 
 func (suite *CIBAGrantHandlerTestSuite) TestValidateGrant_MissingAuthReqID() {
-	req := &model.TokenRequest{GrantType: string(constants.GrantTypeCIBA)}
+	req := &model.TokenRequest{GrantType: string(providers.GrantTypeCIBA)}
 	errResp := suite.handler.ValidateGrant(context.Background(), req, suite.oauthApp)
 	suite.NotNil(errResp)
 	suite.Equal(constants.ErrorInvalidRequest, errResp.Error)
@@ -210,7 +211,7 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_IssuesToke
 	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.MatchedBy(
 		func(ctx *tokenservice.AccessTokenBuildContext) bool {
 			return ctx.Subject == "user-1" && ctx.ClientID == "client-1" &&
-				ctx.GrantType == string(constants.GrantTypeCIBA)
+				ctx.GrantType == string(providers.GrantTypeCIBA)
 		})).Return(&model.TokenDTO{Token: "access-token", TokenType: "Bearer", ExpiresIn: 3600}, nil)
 	suite.mockTokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.MatchedBy(
 		func(ctx *tokenservice.IDTokenBuildContext) bool {
@@ -262,7 +263,7 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_AttributeC
 	record.AttributeCacheID = "cache-1"
 	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
 	suite.mockAttrCacheService.EXPECT().GetAttributeCache(mock.Anything, "cache-1").Return(nil,
-		&serviceerror.ServiceError{Code: "AC-1"})
+		&tidcommon.ServiceError{Code: "AC-1"})
 
 	resp, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenReq, suite.oauthApp)
 	suite.Nil(resp)

@@ -22,8 +22,9 @@ import (
 	"fmt"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
-	"github.com/thunder-id/thunderid/internal/system/filter"
 )
 
 // ouFilterableColumns maps API attribute names to ORGANIZATION_UNIT table column names.
@@ -48,7 +49,7 @@ var ouTextColumns = map[string]bool{
 // startParamIdx is the positional parameter index for the first filter value.
 // Returns an empty string and no args when g is nil.
 // For multi-clause groups the fragment is wrapped in AND (...); single-clause groups omit the parens.
-func buildOUFilterGroup(g *filter.FilterGroup, startParamIdx int) (cond string, args []interface{}, err error) {
+func buildOUFilterGroup(g *tidcommon.FilterGroup, startParamIdx int) (cond string, args []interface{}, err error) {
 	if g == nil || len(g.Clauses) == 0 {
 		return "", nil, nil
 	}
@@ -64,15 +65,15 @@ func buildOUFilterGroup(g *filter.FilterGroup, startParamIdx int) (cond string, 
 
 		var clauseCond string
 		switch clause.Expr.Operator {
-		case filter.OperatorEq:
+		case tidcommon.OperatorEq:
 			if ouTextColumns[col] {
 				clauseCond = fmt.Sprintf("LOWER(%s) = LOWER($%d)", col, idx)
 			} else {
 				clauseCond = fmt.Sprintf("%s = $%d", col, idx)
 			}
-		case filter.OperatorGt:
+		case tidcommon.OperatorGt:
 			clauseCond = fmt.Sprintf("%s > $%d", col, idx)
-		case filter.OperatorLt:
+		case tidcommon.OperatorLt:
 			clauseCond = fmt.Sprintf("%s < $%d", col, idx)
 		default:
 			return "", nil, fmt.Errorf("unsupported operator %q", clause.Expr.Operator)
@@ -98,7 +99,7 @@ func buildOUFilterGroup(g *filter.FilterGroup, startParamIdx int) (cond string, 
 
 // buildRootOUCountQuery constructs a count query for root-level OUs with an optional filter group.
 // Args order: deploymentID=$1 [, filterArgs...]
-func buildRootOUCountQuery(g *filter.FilterGroup) (dbmodel.DBQuery, []interface{}, error) {
+func buildRootOUCountQuery(g *tidcommon.FilterGroup) (dbmodel.DBQuery, []interface{}, error) {
 	query := `SELECT COUNT(*) as total FROM "ORGANIZATION_UNIT" WHERE PARENT_ID IS NULL AND DEPLOYMENT_ID = $1`
 
 	filterArgs := []interface{}{}
@@ -116,7 +117,7 @@ func buildRootOUCountQuery(g *filter.FilterGroup) (dbmodel.DBQuery, []interface{
 
 // buildRootOUListQuery constructs the paginated root-OU list query with an optional filter group.
 // Args order: limit=$1, offset=$2, deploymentID=$3 [, filterArgs...]
-func buildRootOUListQuery(g *filter.FilterGroup) (dbmodel.DBQuery, []interface{}, error) {
+func buildRootOUListQuery(g *tidcommon.FilterGroup) (dbmodel.DBQuery, []interface{}, error) {
 	query := `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, PARENT_ID, METADATA, CREATED_AT, UPDATED_AT ` +
 		`FROM "ORGANIZATION_UNIT" ` +
 		`WHERE PARENT_ID IS NULL AND DEPLOYMENT_ID = $3`
@@ -137,7 +138,7 @@ func buildRootOUListQuery(g *filter.FilterGroup) (dbmodel.DBQuery, []interface{}
 
 // buildChildrenOUCountQuery constructs a count query for child OUs under a parent with an optional filter group.
 // Args order: parentID=$1, deploymentID=$2 [, filterArgs...]
-func buildChildrenOUCountQuery(g *filter.FilterGroup) (dbmodel.DBQuery, []interface{}, error) {
+func buildChildrenOUCountQuery(g *tidcommon.FilterGroup) (dbmodel.DBQuery, []interface{}, error) {
 	query := `SELECT COUNT(*) as total FROM "ORGANIZATION_UNIT" WHERE PARENT_ID = $1 AND DEPLOYMENT_ID = $2`
 
 	filterArgs := []interface{}{}
@@ -155,7 +156,7 @@ func buildChildrenOUCountQuery(g *filter.FilterGroup) (dbmodel.DBQuery, []interf
 
 // buildChildrenOUListQuery constructs the paginated child-OU list query with an optional filter group.
 // Args order: parentID=$1, limit=$2, offset=$3, deploymentID=$4 [, filterArgs...]
-func buildChildrenOUListQuery(g *filter.FilterGroup) (dbmodel.DBQuery, []interface{}, error) {
+func buildChildrenOUListQuery(g *tidcommon.FilterGroup) (dbmodel.DBQuery, []interface{}, error) {
 	query := `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT FROM "ORGANIZATION_UNIT" ` +
 		`WHERE PARENT_ID = $1 AND DEPLOYMENT_ID = $4`
 

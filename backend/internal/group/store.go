@@ -23,10 +23,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 const storeLoggerComponentName = "GroupStore"
@@ -55,7 +55,7 @@ type groupStoreInterface interface {
 	RemoveGroupMembers(ctx context.Context, groupID string, members []Member) error
 	GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]GroupBasicDAO, error)
 	IsGroupDeclarative(ctx context.Context, id string) (bool, error)
-	GetTransitiveGroupsForEntity(ctx context.Context, entityID string) ([]entity.EntityGroup, error)
+	GetTransitiveGroupsForEntity(ctx context.Context, entityID string) ([]providers.EntityGroup, error)
 }
 
 // groupStore is the default implementation of groupStoreInterface.
@@ -564,7 +564,7 @@ func (s *groupStore) IsGroupDeclarative(ctx context.Context, id string) (bool, e
 // inherited through nested group membership, using a recursive CTE.
 func (s *groupStore) GetTransitiveGroupsForEntity(
 	ctx context.Context, entityID string,
-) ([]entity.EntityGroup, error) {
+) ([]providers.EntityGroup, error) {
 	dbClient, err := s.dbProvider.GetUserDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
@@ -575,7 +575,7 @@ func (s *groupStore) GetTransitiveGroupsForEntity(
 		return nil, fmt.Errorf("failed to get transitive groups for entity: %w", err)
 	}
 
-	groups := make([]entity.EntityGroup, 0, len(results))
+	groups := make([]providers.EntityGroup, 0, len(results))
 	for _, row := range results {
 		groupID, ok := row["id"].(string)
 		if !ok {
@@ -589,7 +589,7 @@ func (s *groupStore) GetTransitiveGroupsForEntity(
 		if !ok {
 			return nil, fmt.Errorf("failed to parse group ou_id as string")
 		}
-		groups = append(groups, entity.EntityGroup{ID: groupID, Name: name, OUID: ouID})
+		groups = append(groups, providers.EntityGroup{ID: groupID, Name: name, OUID: ouID})
 	}
 	return groups, nil
 }

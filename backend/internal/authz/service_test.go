@@ -23,11 +23,12 @@ import (
 	"errors"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/authz/engine"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	enginemock "github.com/thunder-id/thunderid/tests/mocks/authz/engine"
 )
 
@@ -201,7 +202,7 @@ func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessBatchEngineError()
 
 	suite.Nil(response)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessEmptyEngineResponse() {

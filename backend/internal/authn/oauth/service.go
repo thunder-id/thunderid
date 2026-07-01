@@ -23,13 +23,14 @@ import (
 	"context"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/idp"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -40,21 +41,21 @@ const (
 
 // OAuthAuthnCoreServiceInterface defines the core contract for OAuth based authenticator services.
 type OAuthAuthnCoreServiceInterface interface {
-	BuildAuthorizeURL(ctx context.Context, idpID string) (string, *serviceerror.ServiceError)
+	BuildAuthorizeURL(ctx context.Context, idpID string) (string, *tidcommon.ServiceError)
 	ExchangeCodeForToken(ctx context.Context, idpID, code string, validateResponse bool) (
-		*TokenResponse, *serviceerror.ServiceError)
+		*TokenResponse, *tidcommon.ServiceError)
 	FetchUserInfo(ctx context.Context, idpID, accessToken string) (
-		map[string]interface{}, *serviceerror.ServiceError)
-	GetOAuthClientConfig(ctx context.Context, idpID string) (*OAuthClientConfig, *serviceerror.ServiceError)
-	Authenticate(ctx context.Context, idpID, code string) (*common.AuthnResult, *serviceerror.ServiceError)
+		map[string]interface{}, *tidcommon.ServiceError)
+	GetOAuthClientConfig(ctx context.Context, idpID string) (*OAuthClientConfig, *tidcommon.ServiceError)
+	Authenticate(ctx context.Context, idpID, code string) (*common.AuthnResult, *tidcommon.ServiceError)
 }
 
 // OAuthAuthnServiceInterface defines the contract for OAuth based authenticator services.
 type OAuthAuthnServiceInterface interface {
 	OAuthAuthnCoreServiceInterface
-	ValidateTokenResponse(ctx context.Context, idpID string, tokenResp *TokenResponse) *serviceerror.ServiceError
+	ValidateTokenResponse(ctx context.Context, idpID string, tokenResp *TokenResponse) *tidcommon.ServiceError
 	FetchUserInfoWithClientConfig(ctx context.Context, oAuthClientConfig *OAuthClientConfig, accessToken string) (
-		map[string]interface{}, *serviceerror.ServiceError)
+		map[string]interface{}, *tidcommon.ServiceError)
 }
 
 // oAuthAuthnService is the default implementation of OAuthAuthnServiceInterface.
@@ -79,7 +80,7 @@ func newOAuthAuthnService(httpClient syshttp.HTTPClientInterface,
 
 // GetOAuthClientConfig retrieves the OAuth client configuration for the given identity provider ID.
 func (s *oAuthAuthnService) GetOAuthClientConfig(ctx context.Context, idpID string) (
-	*OAuthClientConfig, *serviceerror.ServiceError) {
+	*OAuthClientConfig, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("idpId", idpID))
 	if strings.TrimSpace(idpID) == "" {
 		return nil, &ErrorEmptyIdpID
@@ -87,15 +88,15 @@ func (s *oAuthAuthnService) GetOAuthClientConfig(ctx context.Context, idpID stri
 
 	idp, svcErr := s.idpService.GetIdentityProvider(ctx, idpID)
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ClientErrorType {
-			return nil, serviceerror.CustomServiceError(ErrorClientErrorWhileRetrievingIDP, core.I18nMessage{
+		if svcErr.Type == tidcommon.ClientErrorType {
+			return nil, tidcommon.CustomServiceError(ErrorClientErrorWhileRetrievingIDP, tidcommon.I18nMessage{
 				Key:          "error.oauthauthnservice.error_retrieving_idp_description",
 				DefaultValue: "Error while retrieving identity provider: " + svcErr.ErrorDescription.DefaultValue,
 			})
 		}
 		logger.Error(ctx, "Error while retrieving identity provider", log.String("errorCode", svcErr.Code),
 			log.String("description", svcErr.ErrorDescription.DefaultValue))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	if idp == nil {
 		return nil, &ErrorInvalidIDP
@@ -104,7 +105,7 @@ func (s *oAuthAuthnService) GetOAuthClientConfig(ctx context.Context, idpID stri
 	oAuthClientConfig, err := parseIDPConfig(idp)
 	if err != nil {
 		logger.Error(ctx, "Failed to parse identity provider configurations", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return oAuthClientConfig, nil
@@ -112,7 +113,7 @@ func (s *oAuthAuthnService) GetOAuthClientConfig(ctx context.Context, idpID stri
 
 // BuildAuthorizeURL constructs the authorization request URL for the external identity provider.
 func (s *oAuthAuthnService) BuildAuthorizeURL(
-	ctx context.Context, idpID string) (string, *serviceerror.ServiceError) {
+	ctx context.Context, idpID string) (string, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("idpId", idpID))
 	logger.Debug(ctx, "Building authorize URL")
 
@@ -122,7 +123,7 @@ func (s *oAuthAuthnService) BuildAuthorizeURL(
 	}
 	if oAuthClientConfig.OAuthEndpoints.AuthorizationEndpoint == "" {
 		logger.Error(ctx, "Authorization endpoint is not configured for the identity provider")
-		return "", &serviceerror.InternalServerError
+		return "", &tidcommon.InternalServerError
 	}
 
 	queryParams := map[string]string{
@@ -145,7 +146,7 @@ func (s *oAuthAuthnService) BuildAuthorizeURL(
 		queryParams)
 	if err != nil {
 		logger.Error(ctx, "Failed to build authorize URL", log.Error(err))
-		return "", &serviceerror.InternalServerError
+		return "", &tidcommon.InternalServerError
 	}
 
 	return authZURL, nil
@@ -154,7 +155,7 @@ func (s *oAuthAuthnService) BuildAuthorizeURL(
 // ExchangeCodeForToken exchanges the authorization code for a token with the external identity provider
 // and validates the token response if validateResponse is true.
 func (s *oAuthAuthnService) ExchangeCodeForToken(ctx context.Context, idpID, code string, validateResponse bool) (
-	*TokenResponse, *serviceerror.ServiceError) {
+	*TokenResponse, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("idpId", idpID))
 	logger.Debug(ctx, "Exchanging authorization code for token")
 
@@ -168,7 +169,7 @@ func (s *oAuthAuthnService) ExchangeCodeForToken(ctx context.Context, idpID, cod
 	}
 	if oAuthClientConfig.OAuthEndpoints.TokenEndpoint == "" {
 		logger.Error(ctx, "Token endpoint is not configured for the identity provider")
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	httpReq, svcErr := buildTokenRequest(ctx, oAuthClientConfig, code, logger)
@@ -195,7 +196,7 @@ func (s *oAuthAuthnService) ExchangeCodeForToken(ctx context.Context, idpID, cod
 // ExchangeCodeForToken method calls this method to validate the token response if validateResponse is set
 // to true. Hence generally you may not need to call this method explicitly.
 func (s *oAuthAuthnService) ValidateTokenResponse(ctx context.Context,
-	idpID string, tokenResp *TokenResponse) *serviceerror.ServiceError {
+	idpID string, tokenResp *TokenResponse) *tidcommon.ServiceError {
 	logger := s.logger.With(log.String("idpId", idpID))
 	logger.Debug(ctx, "Validating token response")
 
@@ -213,7 +214,7 @@ func (s *oAuthAuthnService) ValidateTokenResponse(ctx context.Context,
 
 // FetchUserInfo retrieves user information from the external identity provider.
 func (s *oAuthAuthnService) FetchUserInfo(ctx context.Context, idpID, accessToken string) (
-	map[string]interface{}, *serviceerror.ServiceError) {
+	map[string]interface{}, *tidcommon.ServiceError) {
 	oAuthClientConfig, svcErr := s.GetOAuthClientConfig(ctx, idpID)
 	if svcErr != nil {
 		return nil, svcErr
@@ -224,7 +225,7 @@ func (s *oAuthAuthnService) FetchUserInfo(ctx context.Context, idpID, accessToke
 
 // FetchUserInfoWithClientConfig retrieves user information using the provided OAuth client configuration.
 func (s *oAuthAuthnService) FetchUserInfoWithClientConfig(ctx context.Context, oAuthClientConfig *OAuthClientConfig,
-	accessToken string) (map[string]interface{}, *serviceerror.ServiceError) {
+	accessToken string) (map[string]interface{}, *tidcommon.ServiceError) {
 	logger := s.logger
 	logger.Debug(ctx, "Fetching user info")
 
@@ -234,7 +235,7 @@ func (s *oAuthAuthnService) FetchUserInfoWithClientConfig(ctx context.Context, o
 
 	if oAuthClientConfig.OAuthEndpoints.UserInfoEndpoint == "" {
 		logger.Error(ctx, "User info endpoint is not configured for the identity provider")
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	httpReq, svcErr := buildUserInfoRequest(ctx, oAuthClientConfig.OAuthEndpoints.UserInfoEndpoint,
@@ -254,7 +255,7 @@ func (s *oAuthAuthnService) FetchUserInfoWithClientConfig(ctx context.Context, o
 
 // GetInternalUser retrieves the internal user based on the external subject identifier.
 func (s *oAuthAuthnService) GetInternalUser(
-	ctx context.Context, sub string) (*entityprovider.Entity, *serviceerror.ServiceError) {
+	ctx context.Context, sub string) (*providers.Entity, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.MaskedString("sub", sub))
 	logger.Debug(ctx, "Retrieving internal user for the given sub claim")
 
@@ -277,7 +278,7 @@ func (s *oAuthAuthnService) GetInternalUser(
 		}
 		logger.Error(ctx, "Error while identifying user", log.String("errorCode", string(upErr.Code)),
 			log.String("description", upErr.Description))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	if userID == nil {
@@ -292,7 +293,7 @@ func (s *oAuthAuthnService) GetInternalUser(
 		}
 		logger.Error(ctx, "Error while retrieving user", log.String("errorCode", string(upErr.Code)),
 			log.String("description", upErr.Description))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return user, nil
@@ -302,7 +303,7 @@ func (s *oAuthAuthnService) GetInternalUser(
 // fetches user info, extracts the subject claim, and resolves the internal user.
 // A missing internal user is NOT an error — the caller decides how to handle it.
 func (s *oAuthAuthnService) Authenticate(ctx context.Context, idpID, code string) (
-	*common.AuthnResult, *serviceerror.ServiceError) {
+	*common.AuthnResult, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("idpId", idpID))
 	logger.Debug(ctx, "Performing federated OAuth authentication")
 
@@ -343,18 +344,18 @@ func (s *oAuthAuthnService) Authenticate(ctx context.Context, idpID, code string
 // resolveAttributeMappings loads the identity provider and applies its configured attribute mappings to
 // claims. IDP-retrieval errors are wrapped in the authn domain so the IDP error code is not leaked.
 func (s *oAuthAuthnService) resolveAttributeMappings(ctx context.Context, idpID string,
-	claims map[string]interface{}) (map[string]interface{}, *serviceerror.ServiceError) {
+	claims map[string]interface{}) (map[string]interface{}, *tidcommon.ServiceError) {
 	idpDTO, svcErr := s.idpService.GetIdentityProvider(ctx, idpID)
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ClientErrorType {
-			return nil, serviceerror.CustomServiceError(ErrorClientErrorWhileRetrievingIDP, core.I18nMessage{
+		if svcErr.Type == tidcommon.ClientErrorType {
+			return nil, tidcommon.CustomServiceError(ErrorClientErrorWhileRetrievingIDP, tidcommon.I18nMessage{
 				Key:          "error.oauthauthnservice.error_retrieving_idp_description",
 				DefaultValue: "Error while retrieving identity provider: " + svcErr.ErrorDescription.DefaultValue,
 			})
 		}
 		s.logger.Error(ctx, "Error while retrieving identity provider", log.String("errorCode", svcErr.Code),
 			log.String("description", svcErr.ErrorDescription.DefaultValue))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	if idpDTO == nil {
 		return nil, &ErrorInvalidIDP

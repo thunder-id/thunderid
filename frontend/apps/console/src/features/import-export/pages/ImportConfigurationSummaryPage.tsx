@@ -36,18 +36,24 @@ import {
   Bell,
   Bot,
   Building,
+  IdCard,
+  Key,
   Languages,
   LayoutGrid,
   Layout as LayoutIcon,
   Layers,
   Palette,
+  Server,
+  ShieldCheck,
   Upload,
   UserRoundCog,
+  Users,
   UsersRound,
   Workflow,
   X,
 } from '@wso2/oxygen-ui-icons-react';
-import type {JSX} from 'react';
+import type {TFunction} from 'i18next';
+import type {ComponentType, JSX} from 'react';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate, useLocation} from 'react-router';
@@ -142,6 +148,278 @@ function collectTemplateVariables(value: unknown, variables: Set<string>): void 
   }
 }
 
+interface ResourceItem {
+  id?: string;
+  name?: string;
+  handle?: string;
+  description?: string;
+  url?: string;
+  type?: string;
+  flowType?: string;
+  locale?: string;
+  namespace?: string;
+  allow_self_registration?: boolean;
+  displayName?: string;
+  vct?: string;
+  display?: {name?: string};
+  attributes?: {username?: string; email?: string; name?: string};
+  inbound_auth_config?: {type?: string; config?: {client_id?: string}}[];
+}
+
+interface ResourceView {
+  type: string;
+  id: string;
+  icon: ComponentType<{size?: number}>;
+  getLabel: (t: TFunction) => string;
+  getKey: (item: ResourceItem, idx: number) => string;
+  getName: (item: ResourceItem, t: TFunction, idx: number) => string;
+  renderChip?: (item: ResourceItem, t: TFunction) => JSX.Element | null;
+  renderDetails?: (item: ResourceItem, t: TFunction, envData: string | null) => JSX.Element | null;
+}
+
+function detailLine(text: string, mono = false): JSX.Element {
+  return (
+    <Typography variant="caption" color="text.secondary" sx={mono ? {pl: 2.5, fontFamily: 'monospace'} : {pl: 2.5}}>
+      {text}
+    </Typography>
+  );
+}
+
+function smallChip(label: string): JSX.Element {
+  return <Chip label={label} size="small" sx={{height: 18, fontSize: '0.65rem'}} />;
+}
+
+function getClientId(item: ResourceItem): string | undefined {
+  return item.inbound_auth_config?.find((cfg) => cfg.type === 'oauth2')?.config?.client_id;
+}
+
+const RESOURCE_VIEWS: ResourceView[] = [
+  {
+    type: 'application',
+    id: 'applications',
+    icon: LayoutGrid,
+    getLabel: (t) => t('export.table.applications'),
+    getKey: (item, idx) => item.name ?? getClientId(item) ?? `app-${idx}`,
+    getName: (item, t) => item.name ?? t('configureExport.fallback.unnamedApplication'),
+    renderDetails: (item, t, envData) => {
+      const clientId = getClientId(item);
+      return (
+        <>
+          {item.description && detailLine(item.description)}
+          {clientId && (
+            <Box sx={{pl: 2.5}}>
+              <TemplateVariableDisplay text={clientId} envData={envData} label={t('export.app.clientId')} />
+            </Box>
+          )}
+          {item.url && (
+            <Typography variant="caption" color="primary.main" sx={{pl: 2.5}}>
+              {item.url}
+            </Typography>
+          )}
+        </>
+      );
+    },
+  },
+  {
+    type: 'credential_configuration',
+    id: 'credential-configurations',
+    icon: IdCard,
+    getLabel: (t) => t('summary.labels.credentialConfigurations'),
+    getKey: (item, idx) => item.handle ?? item.id ?? `credential-config-${idx}`,
+    getName: (item, t) =>
+      item.display?.name ?? item.handle ?? t('configureExport.fallback.unnamedCredentialConfiguration'),
+    renderChip: (item) => (item.vct ? smallChip(item.vct) : null),
+    renderDetails: (item) => (item.handle && item.display?.name !== item.handle ? detailLine(item.handle, true) : null),
+  },
+  {
+    type: 'presentation_definition',
+    id: 'presentation-definitions',
+    icon: ShieldCheck,
+    getLabel: (t) => t('summary.labels.presentationDefinitions'),
+    getKey: (item, idx) => item.handle ?? item.id ?? `presentation-definition-${idx}`,
+    getName: (item, t) =>
+      item.displayName ?? item.handle ?? t('configureExport.fallback.unnamedPresentationDefinition'),
+    renderChip: (item) => (item.vct ? smallChip(item.vct) : null),
+    renderDetails: (item) => (item.handle && item.displayName !== item.handle ? detailLine(item.handle, true) : null),
+  },
+  {
+    type: 'flow',
+    id: 'flows',
+    icon: Workflow,
+    getLabel: (t) => t('export.table.flows'),
+    getKey: (item, idx) => item.handle ?? item.name ?? `flow-${idx}`,
+    getName: (item, t, idx) => item.name ?? item.handle ?? t('summary.fallback.flow', {index: idx + 1}),
+    renderChip: (item) => (item.flowType ? smallChip(item.flowType) : null),
+    renderDetails: (item) => (item.handle && item.name !== item.handle ? detailLine(item.handle, true) : null),
+  },
+  {
+    type: 'identity_provider',
+    id: 'integrations',
+    icon: Layers,
+    getLabel: (t) => t('summary.labels.identityProviders'),
+    getKey: (item, idx) => item.handle ?? item.name ?? `idp-${idx}`,
+    getName: (item, t) => item.name ?? t('configureExport.fallback.unnamedProvider'),
+    renderChip: (item) => (item.type ? smallChip(item.type) : null),
+  },
+  {
+    type: 'layout',
+    id: 'layouts',
+    icon: LayoutIcon,
+    getLabel: (t) => t('configureExport.labels.layouts'),
+    getKey: (item, idx) => item.handle ?? item.name ?? `layout-${idx}`,
+    getName: (item, t) => item.name ?? item.handle ?? t('configureExport.fallback.unnamedLayout'),
+    renderDetails: (item) => (item.description ? detailLine(item.description) : null),
+  },
+  {
+    type: 'notification_sender',
+    id: 'notification-senders',
+    icon: Bell,
+    getLabel: (t) => t('configureExport.labels.notificationSenders'),
+    getKey: (item, idx) => item.handle ?? item.name ?? `sender-${idx}`,
+    getName: (item, t) => item.name ?? t('configureExport.fallback.unnamedSender'),
+    renderChip: (item) => (item.type ? smallChip(item.type) : null),
+  },
+  {
+    type: 'organization_unit',
+    id: 'organization-units',
+    icon: Building,
+    getLabel: (t) => t('configureExport.labels.organizationUnits'),
+    getKey: (item, idx) => item.handle ?? item.name ?? `org-${idx}`,
+    getName: (item, t) => item.name ?? item.handle ?? t('configureExport.fallback.unnamedOrganization'),
+    renderDetails: (item) => (
+      <>
+        {item.description && detailLine(item.description)}
+        {item.handle && item.name !== item.handle && detailLine(item.handle, true)}
+      </>
+    ),
+  },
+  {
+    type: 'theme',
+    id: 'themes',
+    icon: Palette,
+    getLabel: (t) => t('configureExport.labels.themes'),
+    getKey: (item, idx) => item.handle ?? item.name ?? `theme-${idx}`,
+    getName: (item, t, idx) => item.name ?? item.handle ?? t('summary.fallback.theme', {index: idx + 1}),
+    renderDetails: (item) => (
+      <>
+        {item.description && detailLine(item.description)}
+        {item.handle && item.name !== item.handle && detailLine(item.handle, true)}
+      </>
+    ),
+  },
+  {
+    type: 'translation',
+    id: 'translations',
+    icon: Languages,
+    getLabel: (t) => t('configureExport.labels.translations'),
+    getKey: (item, idx) => item.locale ?? `translation-${idx}`,
+    getName: (item, t) => item.locale ?? t('configureExport.fallback.unnamedTranslation'),
+    renderChip: (item) =>
+      item.namespace ? (
+        <Chip label={item.namespace} size="small" variant="outlined" sx={{height: 18, fontSize: '0.65rem'}} />
+      ) : null,
+  },
+  {
+    type: 'user',
+    id: 'users',
+    icon: UsersRound,
+    getLabel: (t) => t('configureExport.labels.users'),
+    getKey: (item, idx) => item.attributes?.username ?? item.attributes?.email ?? `user-${idx}`,
+    getName: (item, t, idx) =>
+      item.attributes?.name ??
+      item.attributes?.username ??
+      item.attributes?.email ??
+      t('summary.fallback.user', {index: idx + 1}),
+    renderChip: (item) => (item.type ? smallChip(item.type) : null),
+    renderDetails: (item) => (
+      <>
+        {item.attributes?.username && item.attributes.name !== item.attributes.username && (
+          <Typography variant="caption" color="text.secondary" sx={{pl: 2.5}}>
+            @{item.attributes.username}
+          </Typography>
+        )}
+        {item.attributes?.email && detailLine(item.attributes.email)}
+      </>
+    ),
+  },
+  {
+    type: 'user_type',
+    id: 'user-types',
+    icon: UserRoundCog,
+    getLabel: (t) => t('configureExport.labels.userTypes'),
+    getKey: (item, idx) => item.handle ?? item.name ?? `schema-${idx}`,
+    getName: (item, t, idx) => item.name ?? item.handle ?? t('summary.fallback.schema', {index: idx + 1}),
+    renderChip: (item, t) =>
+      item.allow_self_registration ? (
+        <Chip
+          label={t('configureExport.labels.selfRegistration')}
+          size="small"
+          color="success"
+          variant="outlined"
+          sx={{height: 18, fontSize: '0.65rem'}}
+        />
+      ) : null,
+  },
+  {
+    type: 'agent',
+    id: 'agents',
+    icon: Bot,
+    getLabel: (t) => t('configureExport.labels.agents'),
+    getKey: (item, idx) => item.id ?? item.name ?? `agent-${idx}`,
+    getName: (item, t) => item.name ?? t('configureExport.fallback.unnamedAgent'),
+    renderDetails: (item, t, envData) => {
+      const clientId = getClientId(item);
+      return (
+        <>
+          {item.description && detailLine(item.description)}
+          {clientId && (
+            <Box sx={{pl: 2.5}}>
+              <TemplateVariableDisplay text={clientId} envData={envData} label={t('export.app.clientId')} />
+            </Box>
+          )}
+        </>
+      );
+    },
+  },
+  {
+    type: 'resource_server',
+    id: 'resource-servers',
+    icon: Server,
+    getLabel: (t) => t('configureExport.labels.resourceServers'),
+    getKey: (item, idx) => item.handle ?? item.name ?? `rs-${idx}`,
+    getName: (item, t) => item.name ?? item.handle ?? t('configureExport.fallback.unnamedResourceServer'),
+    renderDetails: (item) => (
+      <>
+        {item.description && detailLine(item.description)}
+        {item.handle && item.name !== item.handle && detailLine(item.handle, true)}
+      </>
+    ),
+  },
+  {
+    type: 'role',
+    id: 'roles',
+    icon: Key,
+    getLabel: (t) => t('configureExport.labels.roles'),
+    getKey: (item, idx) => item.handle ?? item.name ?? `role-${idx}`,
+    getName: (item, t) => item.name ?? item.handle ?? t('configureExport.fallback.unnamedRole'),
+    renderDetails: (item) => (
+      <>
+        {item.description && detailLine(item.description)}
+        {item.handle && item.name !== item.handle && detailLine(item.handle, true)}
+      </>
+    ),
+  },
+  {
+    type: 'group',
+    id: 'groups',
+    icon: Users,
+    getLabel: (t) => t('configureExport.labels.groups'),
+    getKey: (item, idx) => item.id ?? item.name ?? `group-${idx}`,
+    getName: (item, t) => item.name ?? t('configureExport.fallback.unnamedGroup'),
+    renderDetails: (item) => (item.description ? detailLine(item.description) : null),
+  },
+];
+
 export default function ImportConfigurationSummaryPage(): JSX.Element {
   const {t} = useTranslation('importExport');
   const navigate = useNavigate();
@@ -177,33 +455,8 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
   const [dryRunFailedResults, setDryRunFailedResults] = useState<ImportItemOutcome[]>([]);
   const [lastDryRunSignature, setLastDryRunSignature] = useState<string | null>(null);
 
-  // Expand/collapse state for each resource type
-  const [expandedApplications, setExpandedApplications] = useState(false);
-  const [expandedFlows, setExpandedFlows] = useState(false);
-  const [expandedIdps, setExpandedIdps] = useState(false);
-  const [expandedLayouts, setExpandedLayouts] = useState(false);
-  const [expandedSenders, setExpandedSenders] = useState(false);
-  const [expandedOrgUnits, setExpandedOrgUnits] = useState(false);
-  const [expandedThemes, setExpandedThemes] = useState(false);
-  const [expandedTranslations, setExpandedTranslations] = useState(false);
-  const [expandedUsers, setExpandedUsers] = useState(false);
-  const [expandedSchemas, setExpandedSchemas] = useState(false);
-  const [expandedAgents, setExpandedAgents] = useState(false);
-
-  // Extract data from configuration
-  const applicationsCount = Array.isArray(configData?.application) ? configData.application.length : 0;
-  const usersCount = Array.isArray(configData?.user) ? configData.user.length : 0;
-  const flowsCount = Array.isArray(configData?.flow) ? configData.flow.length : 0;
-  const themesCount = Array.isArray(configData?.theme) ? configData.theme.length : 0;
-  const orgUnitsCount = Array.isArray(configData?.organization_unit) ? configData.organization_unit.length : 0;
-  const userTypesCount = Array.isArray(configData?.user_type) ? configData.user_type.length : 0;
-  const translationsCount = Array.isArray(configData?.translation) ? configData.translation.length : 0;
-  const identityProvidersCount = Array.isArray(configData?.identity_provider) ? configData.identity_provider.length : 0;
-  const notificationSendersCount = Array.isArray(configData?.notification_sender)
-    ? configData.notification_sender.length
-    : 0;
-  const layoutsCount = Array.isArray(configData?.layout) ? configData.layout.length : 0;
-  const agentsCount = Array.isArray(configData?.agent) ? configData.agent.length : 0;
+  // Expand/collapse state keyed by resource type
+  const [expandedTypes, setExpandedTypes] = useState<Record<string, boolean>>({});
 
   const envVariables = useMemo(() => parseEnvData(envData), [envData]);
 
@@ -380,111 +633,31 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
 
   const summaryItems: ConfigSummaryItem[] = [];
 
-  // Resources in alphabetical order
+  const buildSummaryItem = (view: ResourceView, items: ResourceItem[]): ConfigSummaryItem => {
+    const isExpanded = expandedTypes[view.type] ?? false;
+    const displayed = isExpanded ? items : items.slice(0, 5);
+    const remainingCount = items.length - 5;
+    const Icon = view.icon;
 
-  // 1. Applications
-  if (applicationsCount > 0) {
-    const apps =
-      (configData?.application as {
-        name?: string;
-        description?: string;
-        url?: string;
-        inbound_auth_config?: {type?: string; config?: {client_id?: string}}[];
-      }[]) ?? [];
-    const displayedApps = expandedApplications ? apps : apps.slice(0, 5);
-    const remainingCount = apps.length - 5;
-
-    summaryItems.push({
-      id: 'applications',
-      icon: <LayoutGrid size={16} />,
-      label: t('export.table.applications'),
-      value: applicationsCount,
+    return {
+      id: view.id,
+      icon: <Icon size={16} />,
+      label: view.getLabel(t),
+      value: items.length,
       content: (
         <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
           <Stack spacing={2}>
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
-              {displayedApps.map((app, idx) => {
-                const clientId = app.inbound_auth_config?.find((cfg) => cfg.type === 'oauth2')?.config?.client_id;
-                const appKey = app.name ?? clientId ?? `app-${idx}`;
-                return (
-                  <Stack key={appKey} spacing={0.5}>
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      <LayoutGrid size={14} />
-                      <Typography variant="body2" fontWeight={600}>
-                        {app.name ?? t('configureExport.fallback.unnamedApplication')}
-                      </Typography>
-                    </Stack>
-                    {app.description && (
-                      <Typography variant="caption" color="text.secondary" sx={{pl: 2.5}}>
-                        {app.description}
-                      </Typography>
-                    )}
-                    {clientId && (
-                      <Box sx={{pl: 2.5}}>
-                        <TemplateVariableDisplay text={clientId} envData={envData} label={t('export.app.clientId')} />
-                      </Box>
-                    )}
-                    {app.url && (
-                      <Typography variant="caption" color="primary.main" sx={{pl: 2.5}}>
-                        {app.url}
-                      </Typography>
-                    )}
-                  </Stack>
-                );
-              })}
-            </Stack>
-            {remainingCount > 0 && (
-              <Box sx={{pt: 1, textAlign: 'center'}}>
-                <Chip
-                  label={
-                    expandedApplications
-                      ? t('configureExport.actions.showLess')
-                      : t('configureExport.actions.more', {count: remainingCount})
-                  }
-                  size="small"
-                  variant="outlined"
-                  onClick={() => setExpandedApplications(!expandedApplications)}
-                  sx={{cursor: 'pointer'}}
-                />
-              </Box>
-            )}
-          </Stack>
-        </Box>
-      ),
-    });
-  }
-
-  // 2. Flows
-  if (flowsCount > 0) {
-    const flows = (configData?.flow as {name?: string; flowType?: string; handle?: string}[]) ?? [];
-    const displayedFlows = expandedFlows ? flows : flows.slice(0, 5);
-    const remainingCount = flows.length - 5;
-
-    summaryItems.push({
-      id: 'flows',
-      icon: <Workflow size={16} />,
-      label: t('export.table.flows'),
-      value: flowsCount,
-      content: (
-        <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
-          <Stack spacing={2}>
-            <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
-              {displayedFlows.map((flow, idx) => (
-                <Stack key={flow.handle ?? flow.name ?? `flow-${idx}`} spacing={0.5}>
+              {displayed.map((item, idx) => (
+                <Stack key={view.getKey(item, idx)} spacing={0.5}>
                   <Stack direction="row" alignItems="center" spacing={1}>
-                    <Workflow size={14} />
+                    <Icon size={14} />
                     <Typography variant="body2" fontWeight={600}>
-                      {flow.name ?? flow.handle ?? t('summary.fallback.flow', {index: idx + 1})}
+                      {view.getName(item, t, idx)}
                     </Typography>
-                    {flow.flowType && (
-                      <Chip label={flow.flowType} size="small" sx={{height: 18, fontSize: '0.65rem'}} />
-                    )}
+                    {view.renderChip?.(item, t)}
                   </Stack>
-                  {flow.handle && flow.name !== flow.handle && (
-                    <Typography variant="caption" color="text.secondary" sx={{pl: 2.5, fontFamily: 'monospace'}}>
-                      {flow.handle}
-                    </Typography>
-                  )}
+                  {view.renderDetails?.(item, t, envData)}
                 </Stack>
               ))}
             </Stack>
@@ -492,13 +665,13 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
               <Box sx={{pt: 1, textAlign: 'center'}}>
                 <Chip
                   label={
-                    expandedFlows
+                    isExpanded
                       ? t('configureExport.actions.showLess')
                       : t('configureExport.actions.more', {count: remainingCount})
                   }
                   size="small"
                   variant="outlined"
-                  onClick={() => setExpandedFlows(!expandedFlows)}
+                  onClick={() => setExpandedTypes((prev) => ({...prev, [view.type]: !isExpanded}))}
                   sx={{cursor: 'pointer'}}
                 />
               </Box>
@@ -506,520 +679,18 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
           </Stack>
         </Box>
       ),
-    });
-  }
+    };
+  };
 
-  // 3. Identity Providers (Integrations)
-  if (identityProvidersCount > 0) {
-    const idps = (configData?.identity_provider as {name?: string; handle?: string; type?: string}[]) ?? [];
-    const displayedIdps = expandedIdps ? idps : idps.slice(0, 5);
-    const remainingCount = idps.length - 5;
+  const toResourceItems = (value: unknown): ResourceItem[] => (Array.isArray(value) ? (value as ResourceItem[]) : []);
 
-    summaryItems.push({
-      id: 'integrations',
-      icon: <Layers size={16} />,
-      label: t('summary.labels.identityProviders'),
-      value: identityProvidersCount,
-      content: (
-        <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
-          <Stack spacing={2}>
-            <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
-              {displayedIdps.map((idp, idx) => (
-                <Stack key={idp.handle ?? idp.name ?? `idp-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <Layers size={14} />
-                    <Typography variant="body2" fontWeight={600}>
-                      {idp.name ?? t('configureExport.fallback.unnamedProvider')}
-                    </Typography>
-                    {idp.type && <Chip label={idp.type} size="small" sx={{height: 18, fontSize: '0.65rem'}} />}
-                  </Stack>
-                </Stack>
-              ))}
-            </Stack>
-            {remainingCount > 0 && (
-              <Box sx={{pt: 1, textAlign: 'center'}}>
-                <Chip
-                  label={
-                    expandedIdps
-                      ? t('configureExport.actions.showLess')
-                      : t('configureExport.actions.more', {count: remainingCount})
-                  }
-                  size="small"
-                  variant="outlined"
-                  onClick={() => setExpandedIdps(!expandedIdps)}
-                  sx={{cursor: 'pointer'}}
-                />
-              </Box>
-            )}
-          </Stack>
-        </Box>
-      ),
-    });
-  }
-
-  // 4. Layouts
-  if (layoutsCount > 0) {
-    const layouts = (configData?.layout as {name?: string; handle?: string; description?: string}[]) ?? [];
-    const displayedLayouts = expandedLayouts ? layouts : layouts.slice(0, 5);
-    const remainingCount = layouts.length - 5;
-
-    summaryItems.push({
-      id: 'layouts',
-      icon: <LayoutIcon size={16} />,
-      label: t('configureExport.labels.layouts'),
-      value: layoutsCount,
-      content: (
-        <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
-          <Stack spacing={2}>
-            <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
-              {displayedLayouts.map((layout, idx) => (
-                <Stack key={layout.handle ?? layout.name ?? `layout-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <LayoutIcon size={14} />
-                    <Typography variant="body2" fontWeight={600}>
-                      {layout.name ?? layout.handle ?? t('configureExport.fallback.unnamedLayout')}
-                    </Typography>
-                  </Stack>
-                  {layout.description && (
-                    <Typography variant="caption" color="text.secondary" sx={{pl: 2.5}}>
-                      {layout.description}
-                    </Typography>
-                  )}
-                </Stack>
-              ))}
-            </Stack>
-            {remainingCount > 0 && (
-              <Box sx={{pt: 1, textAlign: 'center'}}>
-                <Chip
-                  label={
-                    expandedLayouts
-                      ? t('configureExport.actions.showLess')
-                      : t('configureExport.actions.more', {count: remainingCount})
-                  }
-                  size="small"
-                  variant="outlined"
-                  onClick={() => setExpandedLayouts(!expandedLayouts)}
-                  sx={{cursor: 'pointer'}}
-                />
-              </Box>
-            )}
-          </Stack>
-        </Box>
-      ),
-    });
-  }
-
-  // 5. Notification Senders
-  if (notificationSendersCount > 0) {
-    const senders = (configData?.notification_sender as {name?: string; handle?: string; type?: string}[]) ?? [];
-    const displayedSenders = expandedSenders ? senders : senders.slice(0, 5);
-    const remainingCount = senders.length - 5;
-
-    summaryItems.push({
-      id: 'notification-senders',
-      icon: <Bell size={16} />,
-      label: t('configureExport.labels.notificationSenders'),
-      value: notificationSendersCount,
-      content: (
-        <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
-          <Stack spacing={2}>
-            <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
-              {displayedSenders.map((sender, idx) => (
-                <Stack key={sender.handle ?? sender.name ?? `sender-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <Bell size={14} />
-                    <Typography variant="body2" fontWeight={600}>
-                      {sender.name ?? t('configureExport.fallback.unnamedSender')}
-                    </Typography>
-                    {sender.type && <Chip label={sender.type} size="small" sx={{height: 18, fontSize: '0.65rem'}} />}
-                  </Stack>
-                </Stack>
-              ))}
-            </Stack>
-            {remainingCount > 0 && (
-              <Box sx={{pt: 1, textAlign: 'center'}}>
-                <Chip
-                  label={
-                    expandedSenders
-                      ? t('configureExport.actions.showLess')
-                      : t('configureExport.actions.more', {count: remainingCount})
-                  }
-                  size="small"
-                  variant="outlined"
-                  onClick={() => setExpandedSenders(!expandedSenders)}
-                  sx={{cursor: 'pointer'}}
-                />
-              </Box>
-            )}
-          </Stack>
-        </Box>
-      ),
-    });
-  }
-
-  // 6. Organization Units
-  if (orgUnitsCount > 0) {
-    const orgUnits = (configData?.organization_unit as {name?: string; handle?: string; description?: string}[]) ?? [];
-    const displayedOrgUnits = expandedOrgUnits ? orgUnits : orgUnits.slice(0, 5);
-    const remainingCount = orgUnits.length - 5;
-
-    summaryItems.push({
-      id: 'organization-units',
-      icon: <Building size={16} />,
-      label: t('configureExport.labels.organizationUnits'),
-      value: orgUnitsCount,
-      content: (
-        <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
-          <Stack spacing={2}>
-            <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
-              {displayedOrgUnits.map((org, idx) => (
-                <Stack key={org.handle ?? org.name ?? `org-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <Building size={14} />
-                    <Typography variant="body2" fontWeight={600}>
-                      {org.name ?? org.handle ?? t('configureExport.fallback.unnamedOrganization')}
-                    </Typography>
-                  </Stack>
-                  {org.description && (
-                    <Typography variant="caption" color="text.secondary" sx={{pl: 2.5}}>
-                      {org.description}
-                    </Typography>
-                  )}
-                  {org.handle && org.name !== org.handle && (
-                    <Typography variant="caption" color="text.secondary" sx={{pl: 2.5, fontFamily: 'monospace'}}>
-                      {org.handle}
-                    </Typography>
-                  )}
-                </Stack>
-              ))}
-            </Stack>
-            {remainingCount > 0 && (
-              <Box sx={{pt: 1, textAlign: 'center'}}>
-                <Chip
-                  label={
-                    expandedOrgUnits
-                      ? t('configureExport.actions.showLess')
-                      : t('configureExport.actions.more', {count: remainingCount})
-                  }
-                  size="small"
-                  variant="outlined"
-                  onClick={() => setExpandedOrgUnits(!expandedOrgUnits)}
-                  sx={{cursor: 'pointer'}}
-                />
-              </Box>
-            )}
-          </Stack>
-        </Box>
-      ),
-    });
-  }
-
-  // 7. Themes
-  if (themesCount > 0) {
-    const themes = (configData?.theme as {name?: string; handle?: string; description?: string}[]) ?? [];
-    const displayedThemes = expandedThemes ? themes : themes.slice(0, 5);
-    const remainingCount = themes.length - 5;
-
-    summaryItems.push({
-      id: 'themes',
-      icon: <Palette size={16} />,
-      label: t('configureExport.labels.themes'),
-      value: themesCount,
-      content: (
-        <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
-          <Stack spacing={2}>
-            <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
-              {displayedThemes.map((theme, idx) => (
-                <Stack key={theme.handle ?? theme.name ?? `theme-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <Palette size={14} />
-                    <Typography variant="body2" fontWeight={600}>
-                      {theme.name ?? theme.handle ?? t('summary.fallback.theme', {index: idx + 1})}
-                    </Typography>
-                  </Stack>
-                  {theme.description && (
-                    <Typography variant="caption" color="text.secondary" sx={{pl: 2.5}}>
-                      {theme.description}
-                    </Typography>
-                  )}
-                  {theme.handle && theme.name !== theme.handle && (
-                    <Typography variant="caption" color="text.secondary" sx={{pl: 2.5, fontFamily: 'monospace'}}>
-                      {theme.handle}
-                    </Typography>
-                  )}
-                </Stack>
-              ))}
-            </Stack>
-            {remainingCount > 0 && (
-              <Box sx={{pt: 1, textAlign: 'center'}}>
-                <Chip
-                  label={
-                    expandedThemes
-                      ? t('configureExport.actions.showLess')
-                      : t('configureExport.actions.more', {count: remainingCount})
-                  }
-                  size="small"
-                  variant="outlined"
-                  onClick={() => setExpandedThemes(!expandedThemes)}
-                  sx={{cursor: 'pointer'}}
-                />
-              </Box>
-            )}
-          </Stack>
-        </Box>
-      ),
-    });
-  }
-
-  // 8. Translations
-  if (translationsCount > 0) {
-    const translations = (configData?.translation as {locale?: string; namespace?: string}[]) ?? [];
-    const displayedTranslations = expandedTranslations ? translations : translations.slice(0, 5);
-    const remainingCount = translations.length - 5;
-
-    summaryItems.push({
-      id: 'translations',
-      icon: <Languages size={16} />,
-      label: t('configureExport.labels.translations'),
-      value: translationsCount,
-      content: (
-        <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
-          <Stack spacing={2}>
-            <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
-              {displayedTranslations.map((trans, idx) => (
-                <Stack key={trans.locale ?? `translation-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <Languages size={14} />
-                    <Typography variant="body2" fontWeight={600}>
-                      {trans.locale ?? t('configureExport.fallback.unnamedTranslation')}
-                    </Typography>
-                    {trans.namespace && (
-                      <Chip
-                        label={trans.namespace}
-                        size="small"
-                        variant="outlined"
-                        sx={{height: 18, fontSize: '0.65rem'}}
-                      />
-                    )}
-                  </Stack>
-                </Stack>
-              ))}
-            </Stack>
-            {remainingCount > 0 && (
-              <Box sx={{pt: 1, textAlign: 'center'}}>
-                <Chip
-                  label={
-                    expandedTranslations
-                      ? t('configureExport.actions.showLess')
-                      : t('configureExport.actions.more', {count: remainingCount})
-                  }
-                  size="small"
-                  variant="outlined"
-                  onClick={() => setExpandedTranslations(!expandedTranslations)}
-                  sx={{cursor: 'pointer'}}
-                />
-              </Box>
-            )}
-          </Stack>
-        </Box>
-      ),
-    });
-  }
-
-  // 9. Users
-  if (usersCount > 0) {
-    const users =
-      (configData?.user as {
-        type?: string;
-        attributes?: {
-          username?: string;
-          email?: string;
-          name?: string;
-          given_name?: string;
-          family_name?: string;
-        };
-      }[]) ?? [];
-    const displayedUsers = expandedUsers ? users : users.slice(0, 5);
-    const remainingCount = users.length - 5;
-
-    summaryItems.push({
-      id: 'users',
-      icon: <UsersRound size={16} />,
-      label: t('configureExport.labels.users'),
-      value: usersCount,
-      content: (
-        <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
-          <Stack spacing={2}>
-            <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
-              {displayedUsers.map((user, idx) => (
-                <Stack key={user.attributes?.username ?? user.attributes?.email ?? `user-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <UsersRound size={14} />
-                    <Typography variant="body2" fontWeight={600}>
-                      {user.attributes?.name ??
-                        user.attributes?.username ??
-                        user.attributes?.email ??
-                        t('summary.fallback.user', {index: idx + 1})}
-                    </Typography>
-                    {user.type && <Chip label={user.type} size="small" sx={{height: 18, fontSize: '0.65rem'}} />}
-                  </Stack>
-                  {user.attributes?.username && user.attributes.name !== user.attributes.username && (
-                    <Typography variant="caption" color="text.secondary" sx={{pl: 2.5}}>
-                      @{user.attributes.username}
-                    </Typography>
-                  )}
-                  {user.attributes?.email && (
-                    <Typography variant="caption" color="text.secondary" sx={{pl: 2.5}}>
-                      {user.attributes.email}
-                    </Typography>
-                  )}
-                </Stack>
-              ))}
-            </Stack>
-            {remainingCount > 0 && (
-              <Box sx={{pt: 1, textAlign: 'center'}}>
-                <Chip
-                  label={
-                    expandedUsers
-                      ? t('configureExport.actions.showLess')
-                      : t('configureExport.actions.more', {count: remainingCount})
-                  }
-                  size="small"
-                  variant="outlined"
-                  onClick={() => setExpandedUsers(!expandedUsers)}
-                  sx={{cursor: 'pointer'}}
-                />
-              </Box>
-            )}
-          </Stack>
-        </Box>
-      ),
-    });
-  }
-
-  // 10. User Types
-  if (userTypesCount > 0) {
-    const schemas =
-      (configData?.user_type as {name?: string; handle?: string; allow_self_registration?: boolean}[]) ?? [];
-    const displayedSchemas = expandedSchemas ? schemas : schemas.slice(0, 5);
-    const remainingCount = schemas.length - 5;
-
-    summaryItems.push({
-      id: 'user-types',
-      icon: <UserRoundCog size={16} />,
-      label: t('configureExport.labels.userTypes'),
-      value: userTypesCount,
-      content: (
-        <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
-          <Stack spacing={2}>
-            <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
-              {displayedSchemas.map((schema, idx) => (
-                <Stack key={schema.handle ?? schema.name ?? `schema-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <UserRoundCog size={14} />
-                    <Typography variant="body2" fontWeight={600}>
-                      {schema.name ?? schema.handle ?? t('summary.fallback.schema', {index: idx + 1})}
-                    </Typography>
-                    {schema.allow_self_registration && (
-                      <Chip
-                        label={t('configureExport.labels.selfRegistration')}
-                        size="small"
-                        color="success"
-                        variant="outlined"
-                        sx={{height: 18, fontSize: '0.65rem'}}
-                      />
-                    )}
-                  </Stack>
-                </Stack>
-              ))}
-            </Stack>
-            {remainingCount > 0 && (
-              <Box sx={{pt: 1, textAlign: 'center'}}>
-                <Chip
-                  label={
-                    expandedSchemas
-                      ? t('configureExport.actions.showLess')
-                      : t('configureExport.actions.more', {count: remainingCount})
-                  }
-                  size="small"
-                  variant="outlined"
-                  onClick={() => setExpandedSchemas(!expandedSchemas)}
-                  sx={{cursor: 'pointer'}}
-                />
-              </Box>
-            )}
-          </Stack>
-        </Box>
-      ),
-    });
-  }
-
-  // 11. Agents
-  if (agentsCount > 0) {
-    const agents =
-      (configData?.agent as {
-        id?: string;
-        name?: string;
-        description?: string;
-        inbound_auth_config?: {type?: string; config?: {client_id?: string}}[];
-      }[]) ?? [];
-    const displayedAgents = expandedAgents ? agents : agents.slice(0, 5);
-    const remainingCount = agents.length - 5;
-
-    summaryItems.push({
-      id: 'agents',
-      icon: <Bot size={16} />,
-      label: t('configureExport.labels.agents'),
-      value: agentsCount,
-      content: (
-        <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
-          <Stack spacing={2}>
-            <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
-              {displayedAgents.map((agent, idx) => {
-                const clientId = agent.inbound_auth_config?.find((cfg) => cfg.type === 'oauth2')?.config?.client_id;
-                const agentKey = agent.id ?? agent.name ?? `agent-${idx}`;
-                return (
-                  <Stack key={agentKey} spacing={0.5}>
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      <Bot size={14} />
-                      <Typography variant="body2" fontWeight={600}>
-                        {agent.name ?? t('configureExport.fallback.unnamedAgent')}
-                      </Typography>
-                    </Stack>
-                    {agent.description && (
-                      <Typography variant="caption" color="text.secondary" sx={{pl: 2.5}}>
-                        {agent.description}
-                      </Typography>
-                    )}
-                    {clientId && (
-                      <Box sx={{pl: 2.5}}>
-                        <TemplateVariableDisplay text={clientId} envData={envData} label={t('export.app.clientId')} />
-                      </Box>
-                    )}
-                  </Stack>
-                );
-              })}
-            </Stack>
-            {remainingCount > 0 && (
-              <Box sx={{pt: 1, textAlign: 'center'}}>
-                <Chip
-                  label={
-                    expandedAgents
-                      ? t('configureExport.actions.showLess')
-                      : t('configureExport.actions.more', {count: remainingCount})
-                  }
-                  size="small"
-                  variant="outlined"
-                  onClick={() => setExpandedAgents(!expandedAgents)}
-                  sx={{cursor: 'pointer'}}
-                />
-              </Box>
-            )}
-          </Stack>
-        </Box>
-      ),
-    });
-  }
+  // Render every known resource type with its tailored view, in declaration order.
+  RESOURCE_VIEWS.forEach((view) => {
+    const items = toResourceItems(configData?.[view.type]);
+    if (items.length > 0) {
+      summaryItems.push(buildSummaryItem(view, items));
+    }
+  });
 
   const handleClose = (): void => {
     void navigate('/home');

@@ -21,6 +21,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -100,16 +101,11 @@ func Run(verbose, forceSetup bool) {
 		ui.Note("Already running",
 			fmt.Sprintf("%s is already running on port %d.\nAttaching to the existing instance.",
 				product.Name, health.DefaultPort))
-		upgradeRequested, err := ui.RunREPL(runVersion, nil, path, verbose, isFirstRun, newVersion)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "\nREPL error: %v\n", err)
-			os.Exit(1)
-		}
-		if upgradeRequested {
-			runUpgrade(verbose)
-		}
+		replLoop(runVersion, path, nil, verbose, isFirstRun, newVersion, 0)
 		return
 	}
+
+	port := health.DefaultPort
 
 	if alreadyInstalled && !forceSetup {
 		ui.Note("Starting "+product.Name, fmt.Sprintf("%s v%s is ready\n%s", product.Name, runVersion, path))
@@ -128,6 +124,7 @@ func Run(verbose, forceSetup bool) {
 		} else {
 			ui.Note("First-time setup", fmt.Sprintf("Setting up %s v%s\n%s", product.Name, runVersion, path))
 		}
+		port = resolvePort(path)
 		runSetupPhase(runVersion, path, verbose)
 	} else {
 		// If the previously-active version is no longer in the manifest we'd need
@@ -147,6 +144,7 @@ func Run(verbose, forceSetup bool) {
 			os.Exit(1)
 		}
 		path = absPath
+		port = resolvePort(path)
 		runSetupPhase(runVersion, path, verbose)
 		if err := config.WriteActiveVersion(runVersion); err != nil {
 			ui.Fatal("Failed to record active version: " + err.Error())
@@ -154,13 +152,13 @@ func Run(verbose, forceSetup bool) {
 		}
 	}
 
-	if !setup.WaitForPortFree(health.DefaultPort, 10*time.Second) {
-		setup.KillPort(health.DefaultPort)
-		setup.WaitForPortFree(health.DefaultPort, 5*time.Second)
+	if !setup.WaitForPortFree(port, 10*time.Second) {
+		setup.KillPort(port)
+		setup.WaitForPortFree(port, 5*time.Second)
 	}
 
 	fmt.Print(ui.Dim("\n  Starting " + product.Name + " in the background..."))
-	proc, err := setup.StartBackground(path, verbose)
+	proc, err := setup.StartBackgroundOnPort(path, verbose, port)
 	if err != nil {
 		fmt.Println()
 		ui.Fatal("Failed to start " + product.Name + ": " + err.Error())
@@ -168,19 +166,73 @@ func Run(verbose, forceSetup bool) {
 	}
 	fmt.Printf("\r\033[2K  %s %s started  %s\n", ui.Green("✓"), product.Name, ui.Dim("logs: "+setup.LogDir(path)))
 
-	upgradeRequested, err := ui.RunREPL(runVersion, proc, path, verbose, isFirstRun, newVersion)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "\nREPL error: %v\n", err)
-		os.Exit(1)
-	}
-	if upgradeRequested {
-		runUpgrade(verbose)
+	replLoop(runVersion, path, proc, verbose, isFirstRun, newVersion, port)
+}
+
+// replLoop runs the REPL repeatedly, re-entering after no-op upgrades or version switches.
+// An actual upgrade or normal exit breaks the loop.
+func replLoop(version, installPath string, proc *exec.Cmd, verbose, isFirstRun bool, newVersion string, port int) {
+	for {
+		upgradeRequested, switchRequested, err := ui.RunREPL(version, proc, installPath, verbose, isFirstRun, newVersion, port)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "\nREPL error: %v\n", err)
+			os.Exit(1)
+		}
+		isFirstRun = false
+		newVersion = ""
+
+		if upgradeRequested {
+			upgraded, err := upgrade.Run(BaseDir(), upgrade.Opts{Verbose: verbose})
+			if err != nil {
+				os.Exit(1)
+			}
+			if upgraded {
+				return // upgrade ran its own REPL internally
+			}
+			// Already latest or cancelled — Thunder is still running; reattach.
+			continue
+		}
+
+		if switchRequested {
+			switched, err := upgrade.Switch(BaseDir(), version, verbose)
+			if err != nil {
+				os.Exit(1)
+			}
+			if switched {
+				return // Switch ran its own REPL internally
+			}
+			// Cancelled — reattach to the still-running instance.
+			continue
+		}
+
+		return // normal exit
 	}
 }
 
-func runUpgrade(verbose bool) {
-	if err := upgrade.Run(BaseDir(), upgrade.Opts{Verbose: verbose}); err != nil {
-		os.Exit(1)
+// resolvePort checks whether the default port is available and, if not, prompts
+// the user to either kill the occupying process or switch to a free alternate port.
+func resolvePort(installPath string) int {
+	if !setup.IsPortInUse(health.DefaultPort) {
+		return health.DefaultPort
+	}
+	altPort := setup.FindFreePort(health.DefaultPort + 1)
+	choice, selectedPort := ui.PromptPortConflict(health.DefaultPort, altPort)
+	switch choice {
+	case ui.KillAndUsePort:
+		setup.KillPort(health.DefaultPort)
+		setup.WaitForPortFree(health.DefaultPort, 5*time.Second)
+		return health.DefaultPort
+	case ui.UseAlternatePort:
+		if err := setup.UpdateServerPort(installPath, selectedPort); err != nil {
+			ui.Warn("Could not update port configuration: " + err.Error())
+			setup.KillPort(health.DefaultPort)
+			setup.WaitForPortFree(health.DefaultPort, 5*time.Second)
+			return health.DefaultPort
+		}
+		return selectedPort
+	default: // ui.AbortSetup
+		os.Exit(0)
+		return 0
 	}
 }
 

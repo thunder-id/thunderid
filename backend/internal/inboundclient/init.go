@@ -30,6 +30,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	dre "github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the inbound client service.
@@ -60,7 +61,7 @@ func initializeStore(cacheManager cache.CacheManagerInterface) (
 		return nil, nil, err
 	}
 	inboundClientCache := cache.GetCache[*inboundmodel.InboundClient](cacheManager, inboundClientCacheName)
-	oauthProfileCache := cache.GetCache[*inboundmodel.OAuthProfile](cacheManager, oauthProfileCacheName)
+	oauthProfileCache := cache.GetCache[*providers.OAuthProfile](cacheManager, oauthProfileCacheName)
 	cached := newCachedBackStore(dbStore, inboundClientCache, oauthProfileCache)
 	return newCompositeStore(fileStore, cached), transactioner, nil
 }

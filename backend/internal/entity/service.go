@@ -31,17 +31,18 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // EntityServiceInterface is the interface for managing entities.
 type EntityServiceInterface interface {
 	// Core CRUD
-	CreateEntity(ctx context.Context, entity *Entity,
-		systemCredentials json.RawMessage) (*Entity, error)
-	GetEntity(ctx context.Context, entityID string) (*Entity, error)
+	CreateEntity(ctx context.Context, entity *providers.Entity,
+		systemCredentials json.RawMessage) (*providers.Entity, error)
+	GetEntity(ctx context.Context, entityID string) (*providers.Entity, error)
 	GetCredentialsByType(ctx context.Context, entityID string,
 		credType string) ([]StoredCredential, error)
-	UpdateEntity(ctx context.Context, entityID string, entity *Entity) (*Entity, error)
+	UpdateEntity(ctx context.Context, entityID string, entity *providers.Entity) (*providers.Entity, error)
 	DeleteEntity(ctx context.Context, entityID string) error
 
 	// Partial updates
@@ -54,27 +55,27 @@ type EntityServiceInterface interface {
 
 	// Identification
 	IdentifyEntity(ctx context.Context, filters map[string]interface{}) (*string, error)
-	SearchEntities(ctx context.Context, filters map[string]interface{}) ([]Entity, error)
+	SearchEntities(ctx context.Context, filters map[string]interface{}) ([]providers.Entity, error)
 
 	// Lists (category-scoped)
-	GetEntityListCount(ctx context.Context, category EntityCategory,
+	GetEntityListCount(ctx context.Context, category providers.EntityCategory,
 		filters map[string]interface{}) (int, error)
-	GetEntityList(ctx context.Context, category EntityCategory,
-		limit, offset int, filters map[string]interface{}) ([]Entity, error)
-	GetEntityListCountByOUIDs(ctx context.Context, category EntityCategory,
+	GetEntityList(ctx context.Context, category providers.EntityCategory,
+		limit, offset int, filters map[string]interface{}) ([]providers.Entity, error)
+	GetEntityListCountByOUIDs(ctx context.Context, category providers.EntityCategory,
 		ouIDs []string, filters map[string]interface{}) (int, error)
-	GetEntityListByOUIDs(ctx context.Context, category EntityCategory,
-		ouIDs []string, limit, offset int, filters map[string]interface{}) ([]Entity, error)
+	GetEntityListByOUIDs(ctx context.Context, category providers.EntityCategory,
+		ouIDs []string, limit, offset int, filters map[string]interface{}) ([]providers.Entity, error)
 
 	// Bulk
 	ValidateEntityIDs(ctx context.Context, entityIDs []string) ([]string, error)
-	GetEntitiesByIDs(ctx context.Context, entityIDs []string) ([]Entity, error)
+	GetEntitiesByIDs(ctx context.Context, entityIDs []string) ([]providers.Entity, error)
 	ValidateEntityIDsInOUs(ctx context.Context, entityIDs []string, ouIDs []string) ([]string, error)
 
 	// Groups
 	GetGroupCountForEntity(ctx context.Context, entityID string) (int, error)
-	GetEntityGroups(ctx context.Context, entityID string, limit, offset int) ([]EntityGroup, error)
-	GetTransitiveEntityGroups(ctx context.Context, entityID string) ([]EntityGroup, error)
+	GetEntityGroups(ctx context.Context, entityID string, limit, offset int) ([]providers.EntityGroup, error)
+	GetTransitiveEntityGroups(ctx context.Context, entityID string) ([]providers.EntityGroup, error)
 
 	// Authentication
 	AuthenticateEntity(ctx context.Context, identifiers map[string]interface{},
@@ -97,7 +98,7 @@ type EntityServiceInterface interface {
 // package's store and injected after group initialization to avoid a circular import.
 // Covers both DB-backed and declarative (YAML) group memberships.
 type GroupMembershipProvider interface {
-	GetTransitiveGroupsForEntity(ctx context.Context, entityID string) ([]EntityGroup, error)
+	GetTransitiveGroupsForEntity(ctx context.Context, entityID string) ([]providers.EntityGroup, error)
 }
 
 // entityService is the default implementation of EntityServiceInterface.
@@ -113,8 +114,8 @@ type entityService struct {
 
 // usesEntityType reports whether entities of the given category route through the entity type
 // infrastructure for attribute validation, credential extraction, and uniqueness checks.
-func usesEntityType(category EntityCategory) bool {
-	return category == EntityCategoryUser || category == EntityCategoryAgent
+func usesEntityType(category providers.EntityCategory) bool {
+	return category == providers.EntityCategoryUser || category == providers.EntityCategoryAgent
 }
 
 // newEntityService creates a new entity service.
@@ -137,8 +138,8 @@ func newEntityService(
 
 // CreateEntity creates a new entity.
 // Uses a transaction to ensure the entity row and its indexed identifiers are created atomically.
-func (s *entityService) CreateEntity(ctx context.Context, entity *Entity,
-	systemCredentials json.RawMessage) (*Entity, error) {
+func (s *entityService) CreateEntity(ctx context.Context, entity *providers.Entity,
+	systemCredentials json.RawMessage) (*providers.Entity, error) {
 	if entity == nil {
 		return nil, ErrEntityNotFound
 	}
@@ -169,7 +170,7 @@ func (s *entityService) CreateEntity(ctx context.Context, entity *Entity,
 		return nil, fmt.Errorf("failed to hash system credentials: %w", err)
 	}
 
-	var created Entity
+	var created providers.Entity
 	err = s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if err := s.store.CreateEntity(txCtx, *entity, schemaCredsJSON, hashedSysCreds); err != nil {
 			return err
@@ -190,7 +191,7 @@ func (s *entityService) CreateEntity(ctx context.Context, entity *Entity,
 }
 
 // GetEntity retrieves an entity by ID.
-func (s *entityService) GetEntity(ctx context.Context, entityID string) (*Entity, error) {
+func (s *entityService) GetEntity(ctx context.Context, entityID string) (*providers.Entity, error) {
 	entity, err := s.store.GetEntity(ctx, entityID)
 	if err != nil {
 		return nil, err
@@ -231,7 +232,9 @@ func (s *entityService) GetCredentialsByType(
 
 // UpdateEntity updates an entity.
 // Uses a transaction to ensure the entity update and identifier re-sync are atomic.
-func (s *entityService) UpdateEntity(ctx context.Context, entityID string, entity *Entity) (*Entity, error) {
+func (s *entityService) UpdateEntity(
+	ctx context.Context, entityID string, entity *providers.Entity,
+) (*providers.Entity, error) {
 	if entity == nil {
 		return nil, ErrEntityNotFound
 	}
@@ -249,7 +252,7 @@ func (s *entityService) UpdateEntity(ctx context.Context, entityID string, entit
 		return nil, fmt.Errorf("failed to extract schema credentials: %w", err)
 	}
 
-	var updated Entity
+	var updated providers.Entity
 	err = s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		entity.ID = entityID
 		if err := s.store.UpdateEntity(txCtx, entity); err != nil {
@@ -311,7 +314,7 @@ func (s *entityService) UpdateAttributes(ctx context.Context, entityID string, a
 	}
 
 	// Extract and hash any schema-defined credential fields from the attributes.
-	entityForExtraction := &Entity{
+	entityForExtraction := &providers.Entity{
 		Category:   existing.Category,
 		Type:       existing.Type,
 		Attributes: attributes,
@@ -364,7 +367,7 @@ func (s *entityService) IdentifyEntity(ctx context.Context,
 // SearchEntities searches for all entities matching the provided filters. The returned
 // entities have their OUHandle populated for presentation/disambiguation consumers.
 func (s *entityService) SearchEntities(ctx context.Context,
-	filters map[string]interface{}) ([]Entity, error) {
+	filters map[string]interface{}) ([]providers.Entity, error) {
 	entities, err := s.store.SearchEntities(ctx, filters)
 	if err != nil {
 		return nil, err
@@ -374,26 +377,26 @@ func (s *entityService) SearchEntities(ctx context.Context,
 }
 
 // GetEntityListCount retrieves the total count of entities by category.
-func (s *entityService) GetEntityListCount(ctx context.Context, category EntityCategory,
+func (s *entityService) GetEntityListCount(ctx context.Context, category providers.EntityCategory,
 	filters map[string]interface{}) (int, error) {
 	return s.store.GetEntityListCount(ctx, string(category), filters)
 }
 
 // GetEntityList retrieves a list of entities by category.
-func (s *entityService) GetEntityList(ctx context.Context, category EntityCategory,
-	limit, offset int, filters map[string]interface{}) ([]Entity, error) {
+func (s *entityService) GetEntityList(ctx context.Context, category providers.EntityCategory,
+	limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
 	return s.store.GetEntityList(ctx, string(category), limit, offset, filters)
 }
 
 // GetEntityListCountByOUIDs retrieves the total count of entities scoped to OU IDs.
-func (s *entityService) GetEntityListCountByOUIDs(ctx context.Context, category EntityCategory,
+func (s *entityService) GetEntityListCountByOUIDs(ctx context.Context, category providers.EntityCategory,
 	ouIDs []string, filters map[string]interface{}) (int, error) {
 	return s.store.GetEntityListCountByOUIDs(ctx, string(category), ouIDs, filters)
 }
 
 // GetEntityListByOUIDs retrieves a list of entities scoped to OU IDs.
-func (s *entityService) GetEntityListByOUIDs(ctx context.Context, category EntityCategory,
-	ouIDs []string, limit, offset int, filters map[string]interface{}) ([]Entity, error) {
+func (s *entityService) GetEntityListByOUIDs(ctx context.Context, category providers.EntityCategory,
+	ouIDs []string, limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
 	return s.store.GetEntityListByOUIDs(ctx, string(category), ouIDs, limit, offset, filters)
 }
 
@@ -403,7 +406,7 @@ func (s *entityService) ValidateEntityIDs(ctx context.Context, entityIDs []strin
 }
 
 // GetEntitiesByIDs retrieves entities by a list of IDs.
-func (s *entityService) GetEntitiesByIDs(ctx context.Context, entityIDs []string) ([]Entity, error) {
+func (s *entityService) GetEntitiesByIDs(ctx context.Context, entityIDs []string) ([]providers.Entity, error) {
 	return s.store.GetEntitiesByIDs(ctx, entityIDs)
 }
 
@@ -420,7 +423,7 @@ func (s *entityService) GetGroupCountForEntity(ctx context.Context, entityID str
 
 // GetEntityGroups retrieves groups that an entity belongs to with pagination.
 func (s *entityService) GetEntityGroups(ctx context.Context, entityID string,
-	limit, offset int) ([]EntityGroup, error) {
+	limit, offset int) ([]providers.EntityGroup, error) {
 	return s.store.GetEntityGroups(ctx, entityID, limit, offset)
 }
 
@@ -431,9 +434,11 @@ func (s *entityService) SetGroupMembershipProvider(provider GroupMembershipProvi
 
 // GetTransitiveEntityGroups retrieves all groups an entity belongs to, including nested group membership.
 // Delegates entirely to the group membership provider which covers both DB and declarative groups.
-func (s *entityService) GetTransitiveEntityGroups(ctx context.Context, entityID string) ([]EntityGroup, error) {
+func (s *entityService) GetTransitiveEntityGroups(
+	ctx context.Context, entityID string,
+) ([]providers.EntityGroup, error) {
 	if s.groupMembershipProvider == nil {
-		return []EntityGroup{}, nil
+		return []providers.EntityGroup{}, nil
 	}
 	return s.groupMembershipProvider.GetTransitiveGroupsForEntity(ctx, entityID)
 }
@@ -480,7 +485,7 @@ func (s *entityService) AuthenticateEntityByID(
 		return nil, err
 	}
 
-	if result.Entity.State != EntityStateActive {
+	if result.Entity.State != providers.EntityStateActive {
 		return nil, ErrEntityNotFound
 	}
 
@@ -648,7 +653,7 @@ func (s *entityService) UpdateCredentials(ctx context.Context, entityID string,
 // validateCredentialKeys rejects any payload key that isn't declared as a credential field
 // in the entity's schema. Non-user categories are skipped until they get schema validation.
 func (s *entityService) validateCredentialKeys(
-	ctx context.Context, category EntityCategory, entityType string, updates map[string]interface{},
+	ctx context.Context, category providers.EntityCategory, entityType string, updates map[string]interface{},
 ) error {
 	if !usesEntityType(category) || s.entityTypeService == nil {
 		return nil
@@ -742,7 +747,7 @@ func (s *entityService) UpdateSystemCredentials(ctx context.Context, entityID st
 }
 
 // populateOUHandles resolves OU handles for a slice of entities in-place.
-func (s *entityService) populateOUHandles(ctx context.Context, entities []Entity) {
+func (s *entityService) populateOUHandles(ctx context.Context, entities []providers.Entity) {
 	if s.ouService == nil || len(entities) == 0 {
 		return
 	}
@@ -775,7 +780,7 @@ func (s *entityService) populateOUHandles(ctx context.Context, entities []Entity
 // credential fields are required (false for creates, true for updates).
 func (s *entityService) validateEntityType(
 	ctx context.Context,
-	category EntityCategory,
+	category providers.EntityCategory,
 	entityType string,
 	attributes json.RawMessage,
 	excludeEntityID string,
@@ -859,7 +864,9 @@ func mergeCredentialJSON(existing, updates json.RawMessage) json.RawMessage {
 
 // extractAndHashSchemaCredentials extracts schema-defined credential fields from entity.Attributes,
 // hashes them, and returns the hashed credentials.
-func (s *entityService) extractAndHashSchemaCredentials(ctx context.Context, entity *Entity) (json.RawMessage, error) {
+func (s *entityService) extractAndHashSchemaCredentials(
+	ctx context.Context, entity *providers.Entity,
+) (json.RawMessage, error) {
 	// User and agent entities both use schema-defined credentials for now.
 	if !usesEntityType(entity.Category) {
 		return nil, nil

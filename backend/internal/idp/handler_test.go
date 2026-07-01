@@ -26,12 +26,16 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 const (
@@ -69,17 +73,17 @@ func (s *IDPHandlerTestSuite) TestHandleIDPPostRequest_Success() {
 
 	prop1, _ := cmodels.NewProperty("client_id", "test-client", false)
 
-	createdIDP := &IDPDTO{
+	createdIDP := &providers.IDPDTO{
 		ID:          "idp-123",
 		Name:        testIdpName,
 		Description: "Test Description",
-		Type:        IDPTypeOIDC,
+		Type:        providers.IDPTypeOIDC,
 		Properties:  []cmodels.Property{*prop1},
 	}
 
-	s.mockService.On("CreateIdentityProvider", mock.Anything, mock.MatchedBy(func(dto *IDPDTO) bool {
-		return dto.Name == testIdpName && dto.Type == IDPTypeOIDC && len(dto.Properties) == 1
-	})).Return(createdIDP, (*serviceerror.ServiceError)(nil))
+	s.mockService.On("CreateIdentityProvider", mock.Anything, mock.MatchedBy(func(dto *providers.IDPDTO) bool {
+		return dto.Name == testIdpName && dto.Type == providers.IDPTypeOIDC && len(dto.Properties) == 1
+	})).Return(createdIDP, (*tidcommon.ServiceError)(nil))
 
 	s.handler.HandleIDPPostRequest(rr, req)
 
@@ -107,7 +111,7 @@ func (s *IDPHandlerTestSuite) TestHandleIDPPostRequest_InvalidJSON() {
 func (s *IDPHandlerTestSuite) TestHandleIDPPostRequest_ServiceError() {
 	testCases := []struct {
 		name           string
-		serviceError   serviceerror.ServiceError
+		serviceError   tidcommon.ServiceError
 		expectedStatus int
 	}{
 		{
@@ -122,7 +126,7 @@ func (s *IDPHandlerTestSuite) TestHandleIDPPostRequest_ServiceError() {
 		},
 		{
 			name:           "Internal server error",
-			serviceError:   serviceerror.InternalServerError,
+			serviceError:   tidcommon.InternalServerError,
 			expectedStatus: http.StatusInternalServerError,
 		},
 	}
@@ -139,9 +143,9 @@ func (s *IDPHandlerTestSuite) TestHandleIDPPostRequest_ServiceError() {
 
 			mockService := NewIDPServiceInterfaceMock(s.T())
 			handler := newIDPHandler(mockService)
-			mockService.On("CreateIdentityProvider", mock.Anything, mock.MatchedBy(func(dto *IDPDTO) bool {
-				return dto.Name == testIdpName && dto.Type == IDPTypeOIDC
-			})).Return((*IDPDTO)(nil), &tc.serviceError)
+			mockService.On("CreateIdentityProvider", mock.Anything, mock.MatchedBy(func(dto *providers.IDPDTO) bool {
+				return dto.Name == testIdpName && dto.Type == providers.IDPTypeOIDC
+			})).Return((*providers.IDPDTO)(nil), &tc.serviceError)
 
 			handler.HandleIDPPostRequest(rr, req)
 
@@ -157,11 +161,11 @@ func (s *IDPHandlerTestSuite) TestHandleIDPListRequest_Success() {
 	rr := httptest.NewRecorder()
 
 	idpList := []BasicIDPDTO{
-		{ID: "idp-1", Name: "IDP 1", Type: IDPTypeOIDC},
-		{ID: "idp-2", Name: "IDP 2", Type: IDPTypeGoogle},
+		{ID: "idp-1", Name: "IDP 1", Type: providers.IDPTypeOIDC},
+		{ID: "idp-2", Name: "IDP 2", Type: providers.IDPTypeGoogle},
 	}
 
-	s.mockService.On("GetIdentityProviderList", mock.Anything).Return(idpList, (*serviceerror.ServiceError)(nil))
+	s.mockService.On("GetIdentityProviderList", mock.Anything).Return(idpList, (*tidcommon.ServiceError)(nil))
 
 	s.handler.HandleIDPListRequest(rr, req)
 
@@ -182,12 +186,12 @@ func (s *IDPHandlerTestSuite) TestHandleIDPListRequest_WithReadOnlyIDPs() {
 	rr := httptest.NewRecorder()
 
 	idpList := []BasicIDPDTO{
-		{ID: "idp-1", Name: "IDP 1", Type: IDPTypeOIDC, IsReadOnly: false},
-		{ID: "idp-2", Name: "IDP 2", Type: IDPTypeGoogle, IsReadOnly: true},
-		{ID: "idp-3", Name: "IDP 3", Type: IDPTypeOIDC, IsReadOnly: false},
+		{ID: "idp-1", Name: "IDP 1", Type: providers.IDPTypeOIDC, IsReadOnly: false},
+		{ID: "idp-2", Name: "IDP 2", Type: providers.IDPTypeGoogle, IsReadOnly: true},
+		{ID: "idp-3", Name: "IDP 3", Type: providers.IDPTypeOIDC, IsReadOnly: false},
 	}
 
-	s.mockService.On("GetIdentityProviderList", mock.Anything).Return(idpList, (*serviceerror.ServiceError)(nil))
+	s.mockService.On("GetIdentityProviderList", mock.Anything).Return(idpList, (*tidcommon.ServiceError)(nil))
 
 	s.handler.HandleIDPListRequest(rr, req)
 
@@ -210,7 +214,7 @@ func (s *IDPHandlerTestSuite) TestHandleIDPListRequest_EmptyList() {
 	rr := httptest.NewRecorder()
 
 	s.mockService.On("GetIdentityProviderList", mock.Anything).
-		Return([]BasicIDPDTO{}, (*serviceerror.ServiceError)(nil))
+		Return([]BasicIDPDTO{}, (*tidcommon.ServiceError)(nil))
 
 	s.handler.HandleIDPListRequest(rr, req)
 
@@ -227,12 +231,12 @@ func (s *IDPHandlerTestSuite) TestHandleIDPListRequest_ServiceError() {
 	rr := httptest.NewRecorder()
 
 	s.mockService.On("GetIdentityProviderList", mock.Anything).
-		Return([]BasicIDPDTO(nil), &serviceerror.InternalServerError)
+		Return([]BasicIDPDTO(nil), &tidcommon.InternalServerError)
 
 	s.handler.HandleIDPListRequest(rr, req)
 
 	s.Equal(http.StatusInternalServerError, rr.Code)
-	s.Contains(rr.Body.String(), serviceerror.InternalServerError.Code)
+	s.Contains(rr.Body.String(), tidcommon.InternalServerError.Code)
 }
 
 // TestHandleIDPGetRequest_Success tests successful IDP retrieval
@@ -241,14 +245,14 @@ func (s *IDPHandlerTestSuite) TestHandleIDPGetRequest_Success() {
 	req.SetPathValue("id", "idp-123")
 	rr := httptest.NewRecorder()
 
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		ID:          "idp-123",
 		Name:        testIdpName,
 		Description: "Test Description",
-		Type:        IDPTypeOIDC,
+		Type:        providers.IDPTypeOIDC,
 	}
 
-	s.mockService.On("GetIdentityProvider", mock.Anything, "idp-123").Return(idp, (*serviceerror.ServiceError)(nil))
+	s.mockService.On("GetIdentityProvider", mock.Anything, "idp-123").Return(idp, (*tidcommon.ServiceError)(nil))
 
 	s.handler.HandleIDPGetRequest(rr, req)
 
@@ -278,7 +282,8 @@ func (s *IDPHandlerTestSuite) TestHandleIDPGetRequest_IDPNotFound() {
 	req.SetPathValue("id", "non-existent")
 	rr := httptest.NewRecorder()
 
-	s.mockService.On("GetIdentityProvider", mock.Anything, "non-existent").Return((*IDPDTO)(nil), &ErrorIDPNotFound)
+	s.mockService.On("GetIdentityProvider", mock.Anything, "non-existent").
+		Return((*providers.IDPDTO)(nil), &ErrorIDPNotFound)
 
 	s.handler.HandleIDPGetRequest(rr, req)
 
@@ -298,21 +303,21 @@ func (s *IDPHandlerTestSuite) TestHandleIDPPutRequest_Success() {
 	req.SetPathValue("id", "idp-123")
 	rr := httptest.NewRecorder()
 
-	updatedIDP := &IDPDTO{
+	updatedIDP := &providers.IDPDTO{
 		ID:          "idp-123",
 		Name:        "Updated IDP",
 		Description: "Updated Description",
-		Type:        IDPTypeOIDC,
+		Type:        providers.IDPTypeOIDC,
 		Properties:  []cmodels.Property{},
 	}
 
-	s.mockService.On("UpdateIdentityProvider", mock.Anything, "idp-123", &IDPDTO{
+	s.mockService.On("UpdateIdentityProvider", mock.Anything, "idp-123", &providers.IDPDTO{
 		ID:          "idp-123",
 		Name:        "Updated IDP",
 		Description: "Updated Description",
-		Type:        IDPTypeOIDC,
+		Type:        providers.IDPTypeOIDC,
 		Properties:  []cmodels.Property{},
-	}).Return(updatedIDP, (*serviceerror.ServiceError)(nil))
+	}).Return(updatedIDP, (*tidcommon.ServiceError)(nil))
 
 	s.handler.HandleIDPPutRequest(rr, req)
 
@@ -355,7 +360,7 @@ func (s *IDPHandlerTestSuite) TestHandleIDPDeleteRequest_Success() {
 	req.SetPathValue("id", "idp-123")
 	rr := httptest.NewRecorder()
 
-	s.mockService.On("DeleteIdentityProvider", mock.Anything, "idp-123").Return((*serviceerror.ServiceError)(nil))
+	s.mockService.On("DeleteIdentityProvider", mock.Anything, "idp-123").Return((*tidcommon.ServiceError)(nil))
 
 	s.handler.HandleIDPDeleteRequest(rr, req)
 
@@ -447,28 +452,28 @@ func (s *IDPHandlerTestSuite) TestGetSanitizedProperties() {
 func (s *IDPHandlerTestSuite) TestGetIDPResponse() {
 	testCases := []struct {
 		name        string
-		idp         IDPDTO
+		idp         providers.IDPDTO
 		expectError bool
 	}{
 		{
 			name: "IDP with regular properties",
-			idp: IDPDTO{
+			idp: providers.IDPDTO{
 				ID:          "idp-1",
 				Name:        "Test",
 				Description: "Desc",
-				Type:        IDPTypeOIDC,
+				Type:        providers.IDPTypeOIDC,
 				Properties:  []cmodels.Property{},
 			},
 			expectError: false,
 		},
 		{
 			name: "IDP with non-secret properties",
-			idp: func() IDPDTO {
+			idp: func() providers.IDPDTO {
 				prop, _ := cmodels.NewProperty("client_id", "value", false)
-				return IDPDTO{
+				return providers.IDPDTO{
 					ID:         "idp-1",
 					Name:       "Test",
-					Type:       IDPTypeOIDC,
+					Type:       providers.IDPTypeOIDC,
 					Properties: []cmodels.Property{*prop},
 				}
 			}(),
@@ -494,7 +499,7 @@ func (s *IDPHandlerTestSuite) TestGetIDPResponse() {
 func (s *IDPHandlerTestSuite) TestWriteServiceErrorResponse() {
 	testCases := []struct {
 		name           string
-		serviceError   serviceerror.ServiceError
+		serviceError   tidcommon.ServiceError
 		expectedStatus int
 	}{
 		{
@@ -504,7 +509,7 @@ func (s *IDPHandlerTestSuite) TestWriteServiceErrorResponse() {
 		},
 		{
 			name:           "Server error",
-			serviceError:   serviceerror.InternalServerError,
+			serviceError:   tidcommon.InternalServerError,
 			expectedStatus: http.StatusInternalServerError,
 		},
 	}
@@ -525,7 +530,7 @@ func initConfigWithTestCryptoKey() {
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("/tmp/test", &config.Config{
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},
@@ -550,12 +555,12 @@ func (s *IDPHandlerTestSuite) TestHandleIDPPostRequest_WithSecretProperty() {
 	secretProp, err := cmodels.NewProperty("client_secret", "s3cret", true)
 	s.NoError(err)
 	s.mockService.On("CreateIdentityProvider", mock.Anything, mock.Anything).
-		Return(&IDPDTO{
+		Return(&providers.IDPDTO{
 			ID:         "idp-123",
 			Name:       "Secret IDP",
-			Type:       IDPTypeOIDC,
+			Type:       providers.IDPTypeOIDC,
 			Properties: []cmodels.Property{*secretProp},
-		}, (*serviceerror.ServiceError)(nil))
+		}, (*tidcommon.ServiceError)(nil))
 
 	s.handler.HandleIDPPostRequest(rr, req)
 
@@ -573,8 +578,8 @@ func (s *IDPHandlerTestSuite) TestSanitizeAttributeConfiguration_Nil() {
 }
 
 func (s *IDPHandlerTestSuite) TestSanitizeAttributeConfiguration_NoMappings() {
-	result := sanitizeAttributeConfiguration(&AttributeConfiguration{
-		UserTypeResolution: &UserTypeResolution{Default: "  person  "},
+	result := sanitizeAttributeConfiguration(&providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{Default: "  person  "},
 	})
 	s.Require().NotNil(result.UserTypeResolution)
 	s.Equal("person", result.UserTypeResolution.Default)
@@ -582,12 +587,12 @@ func (s *IDPHandlerTestSuite) TestSanitizeAttributeConfiguration_NoMappings() {
 }
 
 func (s *IDPHandlerTestSuite) TestSanitizeAttributeConfiguration_TrimsMappings() {
-	am := &AttributeConfiguration{
-		UserTypeResolution: &UserTypeResolution{Default: " person "},
-		UserTypeAttributeMappings: []UserTypeAttributeMapping{
+	am := &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{Default: " person "},
+		UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{
 			{
 				UserType: " person ",
-				Attributes: []AttributeMapping{
+				Attributes: []providers.AttributeMapping{
 					{ExternalAttribute: " given_name ", LocalAttribute: " firstName "},
 				},
 			},

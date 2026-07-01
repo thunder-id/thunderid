@@ -54,7 +54,7 @@ func (suite *StoreTestSuite) SetupTest() {
 func (suite *StoreTestSuite) createTestResultRow() map[string]interface{} {
 	return map[string]interface{}{
 		"id":       "test-cert-id",
-		"ref_type": "APPLICATION",
+		"ref_type": "IDP",
 		"ref_id":   "test-app-id",
 		"type":     "JWKS",
 		"value":    "test-certificate-value",
@@ -78,7 +78,7 @@ func (suite *StoreTestSuite) TestGetCertificateByID_Success() {
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), "test-cert-id", result.ID)
-	assert.Equal(suite.T(), CertificateReferenceTypeApplication, result.RefType)
+	assert.Equal(suite.T(), CertificateReferenceTypeIDP, result.RefType)
 	suite.mockDBProvider.AssertExpectations(suite.T())
 	suite.mockDBClient.AssertExpectations(suite.T())
 }
@@ -153,11 +153,11 @@ func (suite *StoreTestSuite) TestGetCertificateByReference_Success() {
 
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetCertificateByReference,
-		CertificateReferenceTypeApplication, "test-app-id", mock.Anything).
+		CertificateReferenceTypeIDP, "test-app-id", mock.Anything).
 		Return(results, nil)
 
 	result, err := suite.store.GetCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-app-id")
+		CertificateReferenceTypeIDP, "test-app-id")
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -195,7 +195,7 @@ func (suite *StoreTestSuite) TestBuildCertificateFromResultRow_Success() {
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), "test-cert-id", result.ID)
-	assert.Equal(suite.T(), CertificateReferenceTypeApplication, result.RefType)
+	assert.Equal(suite.T(), CertificateReferenceTypeIDP, result.RefType)
 	assert.Equal(suite.T(), "test-app-id", result.RefID)
 	assert.Equal(suite.T(), CertificateTypeJWKS, result.Type)
 	assert.Equal(suite.T(), "test-certificate-value", result.Value)
@@ -263,7 +263,7 @@ func (suite *StoreTestSuite) TestBuildCertificateFromResultRow_InvalidValue() {
 func (suite *StoreTestSuite) TestCreateCertificate_Success() {
 	cert := &Certificate{
 		ID:      "test-cert-id",
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKS,
 		Value:   "test-certificate-value",
@@ -284,7 +284,7 @@ func (suite *StoreTestSuite) TestCreateCertificate_Success() {
 func (suite *StoreTestSuite) TestCreateCertificate_DBProviderError() {
 	cert := &Certificate{
 		ID:      "test-cert-id",
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKS,
 		Value:   "test-certificate-value",
@@ -303,7 +303,7 @@ func (suite *StoreTestSuite) TestCreateCertificate_DBProviderError() {
 func (suite *StoreTestSuite) TestCreateCertificate_ExecuteError() {
 	cert := &Certificate{
 		ID:      "test-cert-id",
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKS,
 		Value:   "test-certificate-value",
@@ -325,7 +325,7 @@ func (suite *StoreTestSuite) TestCreateCertificate_ExecuteError() {
 func (suite *StoreTestSuite) TestCreateCertificate_NoRowsAffected() {
 	cert := &Certificate{
 		ID:      "test-cert-id",
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKS,
 		Value:   "test-certificate-value",
@@ -351,14 +351,14 @@ func (suite *StoreTestSuite) TestCreateCertificate_NoRowsAffected() {
 func (suite *StoreTestSuite) TestUpdateCertificateByID_Success() {
 	existingCert := &Certificate{
 		ID:      "test-cert-id",
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKS,
 		Value:   "old-value",
 	}
 	updatedCert := &Certificate{
 		ID:      "test-cert-id",
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKSURI,
 		Value:   "new-value",
@@ -431,13 +431,13 @@ func (suite *StoreTestSuite) TestUpdateCertificateByID_NoRowsAffected() {
 func (suite *StoreTestSuite) TestUpdateCertificateByReference_Success() {
 	existingCert := &Certificate{
 		ID:      "test-cert-id",
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKS,
 		Value:   "old-value",
 	}
 	updatedCert := &Certificate{
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKSURI,
 		Value:   "new-value",
@@ -457,7 +457,7 @@ func (suite *StoreTestSuite) TestUpdateCertificateByReference_Success() {
 
 func (suite *StoreTestSuite) TestUpdateCertificateByReference_NoRowsAffected() {
 	existingCert := &Certificate{
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 	}
 	updatedCert := &Certificate{
@@ -538,11 +538,11 @@ func (suite *StoreTestSuite) TestDeleteCertificateByID_NoRowsAffected() {
 func (suite *StoreTestSuite) TestDeleteCertificateByReference_Success() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteCertificateByReference,
-		CertificateReferenceTypeApplication, "test-app-id", mock.Anything).
+		CertificateReferenceTypeIDP, "test-app-id", mock.Anything).
 		Return(int64(1), nil)
 
 	err := suite.store.DeleteCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-app-id")
+		CertificateReferenceTypeIDP, "test-app-id")
 
 	assert.Nil(suite.T(), err)
 	suite.mockDBProvider.AssertExpectations(suite.T())
@@ -568,11 +568,11 @@ func (suite *StoreTestSuite) TestDeleteCertificateByReference_NoRowsAffected() {
 	// Delete operations should not fail even if no rows are affected
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteCertificateByReference,
-		CertificateReferenceTypeApplication, "non-existent", mock.Anything).
+		CertificateReferenceTypeIDP, "non-existent", mock.Anything).
 		Return(int64(0), nil)
 
 	err := suite.store.DeleteCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "non-existent")
+		CertificateReferenceTypeIDP, "non-existent")
 
 	assert.Nil(suite.T(), err)
 	suite.mockDBProvider.AssertExpectations(suite.T())

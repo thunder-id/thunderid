@@ -47,6 +47,7 @@ vi.mock('../../../api/useUpdateResourceServer', () => ({
 const mockResourceServer: ResourceServer = {
   id: 'rs-1',
   name: 'Test API',
+  description: 'Existing API description',
   handle: 'test-api',
   identifier: 'https://api.example.com',
   ouId: 'ou-1',
@@ -95,7 +96,15 @@ describe('AdvancedTab', () => {
     fireEvent.click(screen.getByRole('button', {name: /Save/i}));
 
     expect(mockUpdateMutate).toHaveBeenCalledWith(
-      {id: 'rs-1', data: {identifier: 'https://new-api.example.com'}},
+      {
+        id: 'rs-1',
+        data: {
+          name: 'Test API',
+          description: 'Existing API description',
+          identifier: 'https://new-api.example.com',
+          ouId: 'ou-1',
+        },
+      },
       expect.any(Object),
     );
   });

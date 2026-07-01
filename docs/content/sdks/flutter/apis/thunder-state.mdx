@@ -1,0 +1,161 @@
+---
+title: ThunderIDState
+description: Reactive authentication state for Flutter applications
+---
+
+# `ThunderIDState`
+
+`ThunderIDState` is the reactive authentication state object provided by `ThunderIDProvider`. It holds the current user, loading state, and initialization status, and exposes the underlying `ThunderIDClient` for direct API calls.
+
+Access `ThunderIDState` from any widget using `ThunderIDProvider.of(context)`.
+
+## Setup
+
+Wrap your app's root widget with `ThunderIDProvider`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:thunderid_flutter/thunderid_flutter.dart';
+
+void main() {
+  runApp(
+    ThunderIDProvider(
+      config: ThunderIDConfig(
+        baseUrl: 'https://localhost:8090',
+        clientId: '<your-client-id>',
+        afterSignInUrl: 'dev.thunderid.app://callback',
+        afterSignOutUrl: 'dev.thunderid.app://logout',
+      ),
+      child: const MyApp(),
+    ),
+  );
+}
+```
+
+Access `ThunderIDState` in any descendant widget:
+
+```dart
+class ProfileView extends StatelessWidget {
+  const ProfileView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final thunder = ThunderIDProvider.of(context);
+    return Text(thunder.user?.displayName ?? 'Not signed in');
+  }
+}
+```
+
+## Properties
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `user` | `User?` | The currently authenticated user. `null` when not signed in. |
+| `isSignedIn` | `bool` | `true` when `user` is not `null`. |
+| `isLoading` | `bool` | `true` while the SDK is initializing or a sign-in/sign-out operation is in progress. |
+| `initialized` | `bool` | `true` after the SDK has completed initialization (whether or not sign-in succeeded). |
+| `error` | `String?` | A human-readable error message if initialization or the last auth operation failed. `null` on success. |
+| `client` | `ThunderIDClient` | The underlying `ThunderIDClient` instance for direct API calls. |
+
+## Methods
+
+### `refresh()`
+
+Re-fetches the current sign-in state from the token store and updates `user`. Call this after a sign-in or sign-out operation that you perform manually via `thunder.client`.
+
+```dart
+Future<void> refresh()
+```
+
+```dart
+final thunder = ThunderIDProvider.of(context);
+await thunder.client.signOut();
+await thunder.refresh();
+```
+
+:::note
+`SignOutButton` and `SignIn` call `refresh()` automatically. You only need to call it directly when driving auth operations through `thunder.client` yourself.
+:::
+
+---
+
+### `setLocale(locale)`
+
+Changes the active locale for all `thunderid_flutter` widgets.
+
+```dart
+void setLocale(String locale)
+```
+
+```dart
+final thunder = ThunderIDProvider.of(context);
+thunder.setLocale('fr-FR');
+```
+
+## Example: Conditional Rendering
+
+Use `thunder.initialized`, `thunder.isLoading`, and `thunder.isSignedIn` to drive your root navigation:
+
+```dart
+class RootScreen extends StatelessWidget {
+  const RootScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final thunder = ThunderIDProvider.of(context);
+
+    if (!thunder.initialized || thunder.isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (thunder.error != null) {
+      return Scaffold(
+        body: Center(
+          child: Text('Configuration error: ${thunder.error}'),
+        ),
+      );
+    }
+
+    return thunder.isSignedIn ? const HomeScreen() : const AuthScreen();
+  }
+}
+```
+
+## Example: Accessing the Client Directly
+
+Use `thunder.client` to call any `ThunderIDClient` method:
+
+```dart
+class TokenDebugView extends StatefulWidget {
+  const TokenDebugView({super.key});
+
+  @override
+  State<TokenDebugView> createState() => _TokenDebugViewState();
+}
+
+class _TokenDebugViewState extends State<TokenDebugView> {
+  String _claims = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadClaims();
+  }
+
+  Future<void> _loadClaims() async {
+    final thunder = ThunderIDProvider.of(context);
+    try {
+      final token = await thunder.client.getAccessToken();
+      final claims = thunder.client.decodeJwtToken(token);
+      setState(() => _claims = claims.toString());
+    } catch (e) {
+      setState(() => _claims = 'Error: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Text(_claims);
+}
+```

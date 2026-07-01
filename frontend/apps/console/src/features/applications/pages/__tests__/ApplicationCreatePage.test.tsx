@@ -240,10 +240,12 @@ vi.mock('../../components/create-application/ConfigureExperience', () => ({
     onReadyChange,
     onApproachChange,
     selectedApproach,
+    allowEmbeddedApproach,
   }: {
     onReadyChange: (ready: boolean) => void;
     onApproachChange: (approach: string) => void;
     selectedApproach: string;
+    allowEmbeddedApproach: boolean;
     userTypes: {name: string}[];
     selectedUserTypes: string[];
     onUserTypesChange: (types: string[]) => void;
@@ -252,6 +254,7 @@ vi.mock('../../components/create-application/ConfigureExperience', () => ({
     return (
       <div data-testid="application-configure-experience">
         <span data-testid="current-approach">{selectedApproach}</span>
+        <span data-testid="allow-embedded-approach">{String(allowEmbeddedApproach)}</span>
         <button type="button" data-testid="select-embedded-approach" onClick={() => onApproachChange('EMBEDDED')}>
           Select Embedded
         </button>
@@ -282,11 +285,47 @@ vi.mock('../../components/create-application/ConfigureStack', async () => {
         });
       };
 
+      const handleSelectWallet = () => {
+        setSelectedPlatform('WALLET');
+        setSelectedTemplateConfig({
+          id: 'wallet',
+          defaults: {
+            inboundAuthConfig: [
+              {
+                type: 'oauth2',
+                config: {grantTypes: ['authorization_code'], responseTypes: ['code'], publicClient: true},
+              },
+            ],
+          },
+        });
+      };
+
+      const handleSelectBrowser = () => {
+        setSelectedPlatform('BROWSER');
+        setSelectedTemplateConfig({
+          id: 'browser',
+          defaults: {
+            inboundAuthConfig: [
+              {
+                type: 'oauth2',
+                config: {grantTypes: ['authorization_code'], responseTypes: ['code'], publicClient: true},
+              },
+            ],
+          },
+        });
+      };
+
       return (
         <div data-testid="application-configure-stack">
           Configure Stack
           <button type="button" data-testid="select-backend-platform" onClick={handleSelectBackend}>
             Select Backend
+          </button>
+          <button type="button" data-testid="select-wallet-platform" onClick={handleSelectWallet}>
+            Select Wallet
+          </button>
+          <button type="button" data-testid="select-browser-platform" onClick={handleSelectBrowser}>
+            Select Browser
           </button>
         </div>
       );
@@ -852,6 +891,46 @@ describe('ApplicationCreatePage', () => {
         expect(screen.queryByTestId('application-configure-details')).not.toBeInTheDocument();
         expect(mockCreateApplication).toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('Embedded Approach Availability', () => {
+    const goToExperienceStep = async () => {
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
+      });
+      // OPTIONS → EXPERIENCE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
+      });
+    };
+
+    it('should offer the embedded approach for the wallet platform', async () => {
+      renderWithProviders();
+
+      await user.click(screen.getByTestId('select-wallet-platform'));
+      await goToExperienceStep();
+
+      expect(screen.getByTestId('allow-embedded-approach')).toHaveTextContent('true');
+    });
+
+    it('should not offer the embedded approach for browser-based SPAs', async () => {
+      renderWithProviders();
+
+      await user.click(screen.getByTestId('select-browser-platform'));
+      await goToExperienceStep();
+
+      expect(screen.getByTestId('allow-embedded-approach')).toHaveTextContent('false');
     });
   });
 

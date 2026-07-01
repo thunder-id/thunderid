@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/jose/jws"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 )
@@ -38,9 +37,7 @@ const requestObjectType = "oauth-authz-req+jwt"
 type cryptoProviderSigner struct {
 	cryptoProvider kmprovider.RuntimeCryptoProvider
 	keyRef         kmprovider.KeyRef
-	signAlg        cryptolib.SignAlgorithm
 	jwsAlg         string
-	kid            string
 	x5c            []string
 }
 
@@ -60,8 +57,7 @@ func newRequestSigner(
 	}
 	key := keys[0]
 
-	signAlg, err := jws.MapAlgorithmToSignAlg(jws.Algorithm(key.Algorithm))
-	if err != nil {
+	if _, err := jws.MapAlgorithmToSignAlg(jws.Algorithm(key.Algorithm)); err != nil {
 		return nil, fmt.Errorf("%w: unsupported signing algorithm for key %q", ErrPolicy, keyID)
 	}
 	if len(key.CertificateDER) == 0 {
@@ -79,21 +75,20 @@ func newRequestSigner(
 	return &cryptoProviderSigner{
 		cryptoProvider: cryptoProvider,
 		keyRef:         kmprovider.KeyRef{KeyID: keyID},
-		signAlg:        signAlg,
 		jwsAlg:         string(key.Algorithm),
-		kid:            key.Thumbprint,
 		x5c:            x5c,
 	}, nil
 }
 
+// signRequestObject signs the request object claims into a compact JWS using the crypto provider.
 func (s *cryptoProviderSigner) signRequestObject(ctx context.Context, claims map[string]interface{}) (string, error) {
+	// No kid header: for the x509_san_dns client scheme the wallet authenticates
+	// the request via the x5c certificate. A stray kid (a JWK thumbprint) alongside
+	// x5c trips strict wallets that try to resolve it first, so it is omitted.
 	header := map[string]interface{}{
 		"alg": s.jwsAlg,
 		"typ": requestObjectType,
 		"x5c": s.x5c,
-	}
-	if s.kid != "" {
-		header["kid"] = s.kid
 	}
 
 	headerJSON, err := json.Marshal(header)
@@ -107,28 +102,28 @@ func (s *cryptoProviderSigner) signRequestObject(ctx context.Context, claims map
 
 	signingInput := base64.RawURLEncoding.EncodeToString(headerJSON) + "." +
 		base64.RawURLEncoding.EncodeToString(payloadJSON)
-	derSig, err := s.cryptoProvider.Sign(ctx, s.keyRef, s.signAlg, []byte(signingInput))
+	derSig, err := s.cryptoProvider.Sign(ctx, s.keyRef, s.jwsAlg, []byte(signingInput))
 	if err != nil {
 		return "", fmt.Errorf("failed to sign request object: %w", err)
 	}
-	jwsSig := ecdsaDERToJWS(derSig, s.signAlg)
+	jwsSig := ecdsaDERToJWS(derSig, s.jwsAlg)
 	return signingInput + "." + base64.RawURLEncoding.EncodeToString(jwsSig), nil
 }
 
 // ecdsaDERToJWS converts a DER-encoded ASN.1 ECDSA signature to the raw r||s
 // fixed-size format required by JWS (RFC 7518 §3.4).
-func ecdsaDERToJWS(derSig []byte, alg cryptolib.SignAlgorithm) []byte {
+func ecdsaDERToJWS(derSig []byte, alg string) []byte {
 	var sig struct{ R, S *big.Int }
 	if _, err := asn1.Unmarshal(derSig, &sig); err != nil {
 		return derSig // not DER (e.g. Ed25519): return as-is
 	}
 	var coordLen int
-	switch alg {
-	case cryptolib.ECDSASHA256:
+	switch jws.Algorithm(alg) {
+	case jws.ES256:
 		coordLen = 32
-	case cryptolib.ECDSASHA384:
+	case jws.ES384:
 		coordLen = 48
-	case cryptolib.ECDSASHA512:
+	case jws.ES512:
 		coordLen = 66
 	default:
 		return derSig

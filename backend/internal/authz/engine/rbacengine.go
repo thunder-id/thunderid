@@ -26,13 +26,13 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/thunder-id/thunderid/internal/role"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // rbacEngine implements Role-Based Access Control (RBAC) authorization.
 // It delegates authorization decisions to the role service.
 type rbacEngine struct {
-	roleService role.RoleServiceInterface
+	roleService providers.RoleProvider
 }
 
 // evaluationGroup groups access evaluations that can be checked in one role service call.
@@ -43,7 +43,7 @@ type evaluationGroup struct {
 }
 
 // NewRBACEngine creates a new RBAC authorization engine.
-func NewRBACEngine(roleService role.RoleServiceInterface) AuthorizationEngine {
+func NewRBACEngine(roleService providers.RoleProvider) AuthorizationEngine {
 	return &rbacEngine{
 		roleService: roleService,
 	}

@@ -25,9 +25,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/entity"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 const (
@@ -127,7 +128,7 @@ func resolveWebAuthnName(entityID string, attributes map[string]interface{}) str
 
 // extractWebAuthnIdentity derives a WebAuthn display name and username from any entity's
 // attributes, falling back to the entity ID when no name attributes are present.
-func extractWebAuthnIdentity(e *entity.Entity) (displayName, name string) {
+func extractWebAuthnIdentity(e *providers.Entity) (displayName, name string) {
 	attributes := parseEntityAttributes(e.Attributes)
 	displayName = buildWebAuthnDisplayName(e.ID, attributes)
 	name = resolveWebAuthnName(e.ID, attributes)
@@ -153,7 +154,7 @@ func decodeBase64(s string) ([]byte, error) {
 }
 
 // validateRegistrationStartRequest validates the registration start request.
-func validateRegistrationStartRequest(req *PasskeyRegistrationStartRequest) *serviceerror.ServiceError {
+func validateRegistrationStartRequest(req *PasskeyRegistrationStartRequest) *tidcommon.ServiceError {
 	if strings.TrimSpace(req.UserID) == "" {
 		return &ErrorEmptyUserIdentifier
 	}
@@ -164,7 +165,7 @@ func validateRegistrationStartRequest(req *PasskeyRegistrationStartRequest) *ser
 }
 
 // validateRegistrationFinishRequest validates the registration finish request.
-func validateRegistrationFinishRequest(req *PasskeyRegistrationFinishRequest) *serviceerror.ServiceError {
+func validateRegistrationFinishRequest(req *PasskeyRegistrationFinishRequest) *tidcommon.ServiceError {
 	if req == nil {
 		return &ErrorInvalidFinishData
 	}
@@ -184,7 +185,7 @@ func validateRegistrationFinishRequest(req *PasskeyRegistrationFinishRequest) *s
 }
 
 // validateAuthenticationStartRequest validates the authentication start request.
-func validateAuthenticationStartRequest(req *PasskeyAuthenticationStartRequest) *serviceerror.ServiceError {
+func validateAuthenticationStartRequest(req *PasskeyAuthenticationStartRequest) *tidcommon.ServiceError {
 	if req == nil {
 		return &ErrorInvalidFinishData
 	}
@@ -195,7 +196,7 @@ func validateAuthenticationStartRequest(req *PasskeyAuthenticationStartRequest) 
 }
 
 // validateAuthenticationFinishRequest validates the authentication finish request.
-func validateAuthenticationFinishRequest(req *PasskeyAuthenticationFinishRequest) *serviceerror.ServiceError {
+func validateAuthenticationFinishRequest(req *PasskeyAuthenticationFinishRequest) *tidcommon.ServiceError {
 	if req == nil {
 		return &ErrorInvalidFinishData
 	}

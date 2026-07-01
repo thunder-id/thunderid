@@ -21,11 +21,11 @@ package executor
 import (
 	"testing"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
 
@@ -43,7 +43,7 @@ func (suite *ExecutorRegistryTestSuite) SetupTest() {
 }
 
 func createMockExecutorForRegistry(t *testing.T, name string,
-	executorType common.ExecutorType) core.ExecutorInterface {
+	executorType providers.ExecutorType) providers.Executor {
 	mockExec := coremock.NewExecutorInterfaceMock(t)
 	mockExec.On("GetName").Return(name).Maybe()
 	mockExec.On("GetType").Return(executorType).Maybe()
@@ -59,7 +59,7 @@ func (suite *ExecutorRegistryTestSuite) TestnewExecutorRegistry_CreatesEmptyRegi
 
 func (suite *ExecutorRegistryTestSuite) TestRegisterExecutor_SuccessfulRegistration() {
 	mockExecutor := createMockExecutorForRegistry(suite.T(), "test-executor",
-		common.ExecutorTypeAuthentication)
+		providers.ExecutorTypeAuthentication)
 
 	suite.registry.RegisterExecutor("test-executor", mockExecutor)
 
@@ -68,7 +68,7 @@ func (suite *ExecutorRegistryTestSuite) TestRegisterExecutor_SuccessfulRegistrat
 
 func (suite *ExecutorRegistryTestSuite) TestRegisterExecutor_EmptyName() {
 	mockExecutor := createMockExecutorForRegistry(suite.T(), "test-executor",
-		common.ExecutorTypeAuthentication)
+		providers.ExecutorTypeAuthentication)
 
 	suite.registry.RegisterExecutor("", mockExecutor)
 
@@ -83,9 +83,9 @@ func (suite *ExecutorRegistryTestSuite) TestRegisterExecutor_NilExecutor() {
 
 func (suite *ExecutorRegistryTestSuite) TestRegisterExecutor_DuplicateRegistration() {
 	mockExecutor1 := createMockExecutorForRegistry(suite.T(), "test-executor",
-		common.ExecutorTypeAuthentication)
+		providers.ExecutorTypeAuthentication)
 	mockExecutor2 := createMockExecutorForRegistry(suite.T(), "test-executor",
-		common.ExecutorTypeUtility)
+		providers.ExecutorTypeUtility)
 
 	suite.registry.RegisterExecutor("test-executor", mockExecutor1)
 	suite.registry.RegisterExecutor("test-executor", mockExecutor2)
@@ -93,16 +93,16 @@ func (suite *ExecutorRegistryTestSuite) TestRegisterExecutor_DuplicateRegistrati
 	retrieved, err := suite.registry.GetExecutor("test-executor")
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "test-executor", retrieved.GetName())
-	assert.Equal(suite.T(), common.ExecutorTypeAuthentication, retrieved.GetType())
+	assert.Equal(suite.T(), providers.ExecutorTypeAuthentication, retrieved.GetType())
 }
 
 func (suite *ExecutorRegistryTestSuite) TestRegisterExecutor_MultipleExecutors() {
 	executor1 := createMockExecutorForRegistry(suite.T(), "executor1",
-		common.ExecutorTypeAuthentication)
+		providers.ExecutorTypeAuthentication)
 	executor2 := createMockExecutorForRegistry(suite.T(), "executor2",
-		common.ExecutorTypeUtility)
+		providers.ExecutorTypeUtility)
 	executor3 := createMockExecutorForRegistry(suite.T(), "executor3",
-		common.ExecutorTypeRegistration)
+		providers.ExecutorTypeRegistration)
 
 	suite.registry.RegisterExecutor("executor1", executor1)
 	suite.registry.RegisterExecutor("executor2", executor2)
@@ -115,7 +115,7 @@ func (suite *ExecutorRegistryTestSuite) TestRegisterExecutor_MultipleExecutors()
 
 func (suite *ExecutorRegistryTestSuite) TestGetExecutor_ExistingExecutor() {
 	mockExecutor := createMockExecutorForRegistry(suite.T(), "test-executor",
-		common.ExecutorTypeAuthentication)
+		providers.ExecutorTypeAuthentication)
 	suite.registry.RegisterExecutor("test-executor", mockExecutor)
 
 	retrieved, err := suite.registry.GetExecutor("test-executor")
@@ -123,7 +123,7 @@ func (suite *ExecutorRegistryTestSuite) TestGetExecutor_ExistingExecutor() {
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), retrieved)
 	assert.Equal(suite.T(), "test-executor", retrieved.GetName())
-	assert.Equal(suite.T(), common.ExecutorTypeAuthentication, retrieved.GetType())
+	assert.Equal(suite.T(), providers.ExecutorTypeAuthentication, retrieved.GetType())
 }
 
 func (suite *ExecutorRegistryTestSuite) TestGetExecutor_NonExistentExecutor() {
@@ -143,7 +143,7 @@ func (suite *ExecutorRegistryTestSuite) TestGetExecutor_EmptyName() {
 
 func (suite *ExecutorRegistryTestSuite) TestIsRegistered_RegisteredExecutor() {
 	mockExecutor := createMockExecutorForRegistry(suite.T(), "test-executor",
-		common.ExecutorTypeAuthentication)
+		providers.ExecutorTypeAuthentication)
 	suite.registry.RegisterExecutor("test-executor", mockExecutor)
 
 	isRegistered := suite.registry.IsRegistered("test-executor")
@@ -168,7 +168,7 @@ func (suite *ExecutorRegistryTestSuite) TestRegistryIsolation() {
 	registry2 := newExecutorRegistry()
 
 	executor := createMockExecutorForRegistry(suite.T(), "test-executor",
-		common.ExecutorTypeAuthentication)
+		providers.ExecutorTypeAuthentication)
 	registry1.RegisterExecutor("test-executor", executor)
 
 	assert.True(suite.T(), registry1.IsRegistered("test-executor"))
@@ -177,9 +177,9 @@ func (suite *ExecutorRegistryTestSuite) TestRegistryIsolation() {
 
 func (suite *ExecutorRegistryTestSuite) TestConcurrentRegistration() {
 	executor1 := createMockExecutorForRegistry(suite.T(), "executor1",
-		common.ExecutorTypeAuthentication)
+		providers.ExecutorTypeAuthentication)
 	executor2 := createMockExecutorForRegistry(suite.T(), "executor2",
-		common.ExecutorTypeUtility)
+		providers.ExecutorTypeUtility)
 
 	done := make(chan bool)
 
@@ -202,10 +202,10 @@ func (suite *ExecutorRegistryTestSuite) TestConcurrentRegistration() {
 
 func (suite *ExecutorRegistryTestSuite) TestConcurrentRetrieval() {
 	executor := createMockExecutorForRegistry(suite.T(), "test-executor",
-		common.ExecutorTypeAuthentication)
+		providers.ExecutorTypeAuthentication)
 	suite.registry.RegisterExecutor("test-executor", executor)
 
-	results := make(chan core.ExecutorInterface, 2)
+	results := make(chan providers.Executor, 2)
 	errors := make(chan error, 2)
 
 	go func() {
@@ -232,11 +232,11 @@ func (suite *ExecutorRegistryTestSuite) TestConcurrentRetrieval() {
 func (suite *ExecutorRegistryTestSuite) TestRegisterExecutor_DifferentExecutorTypes() {
 	tests := []struct {
 		name     string
-		execType common.ExecutorType
+		execType providers.ExecutorType
 	}{
-		{"auth_executor", common.ExecutorTypeAuthentication},
-		{"utility_executor", common.ExecutorTypeUtility},
-		{"registration_executor", common.ExecutorTypeRegistration},
+		{"auth_executor", providers.ExecutorTypeAuthentication},
+		{"utility_executor", providers.ExecutorTypeUtility},
+		{"registration_executor", providers.ExecutorTypeRegistration},
 	}
 
 	for _, tt := range tests {
@@ -251,7 +251,7 @@ func (suite *ExecutorRegistryTestSuite) TestRegisterExecutor_DifferentExecutorTy
 
 func (suite *ExecutorRegistryTestSuite) TestGetExecutor_NonExistentAfterRegistration() {
 	executor1 := createMockExecutorForRegistry(suite.T(), "executor1",
-		common.ExecutorTypeAuthentication)
+		providers.ExecutorTypeAuthentication)
 	suite.registry.RegisterExecutor("executor1", executor1)
 
 	retrieved, err := suite.registry.GetExecutor("executor2")

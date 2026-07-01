@@ -26,10 +26,13 @@ import (
 	"strings"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/suite"
 
 	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 type HandlerTestSuite struct {
@@ -38,25 +41,25 @@ type HandlerTestSuite struct {
 
 type testService struct {
 	evaluateAccess func(context.Context, AccessEvaluationRequest) (
-		*AccessEvaluationResponse, *serviceerror.ServiceError)
+		*AccessEvaluationResponse, *tidcommon.ServiceError)
 	evaluateAccessBatch func(context.Context, AccessEvaluationsRequest) (
-		*AccessEvaluationsResponse, *serviceerror.ServiceError)
+		*AccessEvaluationsResponse, *tidcommon.ServiceError)
 	searchActions func(context.Context, AccessActionSearchRequest) (
-		*AccessSearchResponse, *serviceerror.ServiceError)
+		*AccessSearchResponse, *tidcommon.ServiceError)
 }
 
 func (s *testService) EvaluateAccess(ctx context.Context, request AccessEvaluationRequest) (
-	*AccessEvaluationResponse, *serviceerror.ServiceError) {
+	*AccessEvaluationResponse, *tidcommon.ServiceError) {
 	return s.evaluateAccess(ctx, request)
 }
 
 func (s *testService) EvaluateAccessBatch(ctx context.Context, request AccessEvaluationsRequest) (
-	*AccessEvaluationsResponse, *serviceerror.ServiceError) {
+	*AccessEvaluationsResponse, *tidcommon.ServiceError) {
 	return s.evaluateAccessBatch(ctx, request)
 }
 
 func (s *testService) SearchActions(ctx context.Context, request AccessActionSearchRequest) (
-	*AccessSearchResponse, *serviceerror.ServiceError) {
+	*AccessSearchResponse, *tidcommon.ServiceError) {
 	return s.searchActions(ctx, request)
 }
 
@@ -67,7 +70,7 @@ func TestHandlerTestSuite(t *testing.T) {
 func (s *HandlerTestSuite) TestHandleMetadataRequestSuccess() {
 	sysconfig.ResetServerRuntime()
 	s.Require().NoError(sysconfig.InitializeServerRuntime("/tmp/test", &sysconfig.Config{
-		Server: sysconfig.ServerConfig{
+		Server: engineconfig.ServerConfig{
 			PublicURL: "https://pdp.example.com",
 		},
 	}))
@@ -91,7 +94,7 @@ func (s *HandlerTestSuite) TestHandleMetadataRequestSuccess() {
 func (s *HandlerTestSuite) TestHandleAccessEvaluationRequestSuccess() {
 	h := newHandler(&testService{
 		evaluateAccess: func(_ context.Context, request AccessEvaluationRequest) (
-			*AccessEvaluationResponse, *serviceerror.ServiceError) {
+			*AccessEvaluationResponse, *tidcommon.ServiceError) {
 			s.Equal("user1", request.Subject.ID)
 			return &AccessEvaluationResponse{Decision: true}, nil
 		},
@@ -127,7 +130,7 @@ func (s *HandlerTestSuite) TestHandleAccessEvaluationRequestInvalidJSON() {
 func (s *HandlerTestSuite) TestHandleAccessEvaluationRequestServiceError() {
 	h := newHandler(&testService{
 		evaluateAccess: func(_ context.Context, _ AccessEvaluationRequest) (
-			*AccessEvaluationResponse, *serviceerror.ServiceError) {
+			*AccessEvaluationResponse, *tidcommon.ServiceError) {
 			return nil, &ErrorMissingAction
 		},
 	})
@@ -146,7 +149,7 @@ func (s *HandlerTestSuite) TestHandleAccessEvaluationRequestServiceError() {
 func (s *HandlerTestSuite) TestHandleAccessEvaluationsRequestSuccess() {
 	h := newHandler(&testService{
 		evaluateAccessBatch: func(_ context.Context, request AccessEvaluationsRequest) (
-			*AccessEvaluationsResponse, *serviceerror.ServiceError) {
+			*AccessEvaluationsResponse, *tidcommon.ServiceError) {
 			s.Len(request.Evaluations, 2)
 			return &AccessEvaluationsResponse{
 				Evaluations: []AccessEvaluationResponse{
@@ -177,7 +180,7 @@ func (s *HandlerTestSuite) TestHandleAccessEvaluationsRequestSuccess() {
 func (s *HandlerTestSuite) TestHandleActionSearchRequestSuccess() {
 	h := newHandler(&testService{
 		searchActions: func(_ context.Context, request AccessActionSearchRequest) (
-			*AccessSearchResponse, *serviceerror.ServiceError) {
+			*AccessSearchResponse, *tidcommon.ServiceError) {
 			s.Equal("user1", request.Subject.ID)
 			return &AccessSearchResponse{
 				Results: []Action{{Name: "read"}},
@@ -214,7 +217,7 @@ func (s *HandlerTestSuite) TestHandleActionSearchRequestInvalidJSON() {
 func (s *HandlerTestSuite) TestHandleActionSearchRequestServiceError() {
 	h := newHandler(&testService{
 		searchActions: func(_ context.Context, _ AccessActionSearchRequest) (
-			*AccessSearchResponse, *serviceerror.ServiceError) {
+			*AccessSearchResponse, *tidcommon.ServiceError) {
 			return nil, &ErrorMissingResource
 		},
 	})

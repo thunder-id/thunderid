@@ -24,21 +24,20 @@ import (
 	"fmt"
 	"slices"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"encoding/json"
 
 	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/cert"
-	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
-	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -47,17 +46,17 @@ import (
 // ApplicationServiceInterface defines the interface for the application service.
 type ApplicationServiceInterface interface {
 	CreateApplication(
-		ctx context.Context, app *model.ApplicationDTO) (*model.ApplicationDTO, *serviceerror.ServiceError)
+		ctx context.Context, app *model.ApplicationDTO) (*model.ApplicationDTO, *tidcommon.ServiceError)
 	ValidateApplication(ctx context.Context, app *model.ApplicationDTO) (
-		*model.ApplicationProcessedDTO, *inboundmodel.InboundAuthConfigWithSecret, *serviceerror.ServiceError)
-	GetApplicationList(ctx context.Context) (*model.ApplicationListResponse, *serviceerror.ServiceError)
+		*model.ApplicationProcessedDTO, *providers.InboundAuthConfigWithSecret, *tidcommon.ServiceError)
+	GetApplicationList(ctx context.Context) (*model.ApplicationListResponse, *tidcommon.ServiceError)
 	GetOAuthApplication(
-		ctx context.Context, clientID string) (*inboundmodel.OAuthClient, *serviceerror.ServiceError)
-	GetApplication(ctx context.Context, appID string) (*model.Application, *serviceerror.ServiceError)
+		ctx context.Context, clientID string) (*providers.OAuthClient, *tidcommon.ServiceError)
+	GetApplication(ctx context.Context, appID string) (*providers.Application, *tidcommon.ServiceError)
 	UpdateApplication(
 		ctx context.Context, appID string, app *model.ApplicationDTO) (
-		*model.ApplicationDTO, *serviceerror.ServiceError)
-	DeleteApplication(ctx context.Context, appID string) *serviceerror.ServiceError
+		*model.ApplicationDTO, *tidcommon.ServiceError)
+	DeleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError
 }
 
 // ApplicationService is the default implementation of the ApplicationServiceInterface.
@@ -94,7 +93,7 @@ func (as *applicationService) deleteEntityCompensation(ctx context.Context, appI
 
 // CreateApplication creates the application.
 func (as *applicationService) CreateApplication(ctx context.Context, app *model.ApplicationDTO) (*model.ApplicationDTO,
-	*serviceerror.ServiceError) {
+	*tidcommon.ServiceError) {
 	if app == nil {
 		return nil, &ErrorApplicationNil
 	}
@@ -129,7 +128,7 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 	appEntity, sysCredsJSON, buildErr := buildAppEntity(appID, app, clientID, clientSecret)
 	if buildErr != nil {
 		as.logger.Error(ctx, "Failed to build entity for create", log.Error(buildErr))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	_, epErr := as.entityProvider.CreateEntity(appEntity, sysCredsJSON)
@@ -139,11 +138,11 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 		}
 		as.logger.Error(ctx, "Failed to create application entity",
 			log.String("appID", appID), log.Error(epErr))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	// Create config (with compensation if it fails).
-	if err := as.inboundClientService.CreateInboundClient(ctx, &inboundClient, app.Certificate, oauthProfile,
+	if err := as.inboundClientService.CreateInboundClient(ctx, &inboundClient, oauthProfile,
 		clientSecret != "", app.Name); err != nil {
 		// Compensate: delete entity since config creation failed.
 		as.deleteEntityCompensation(ctx, appID)
@@ -151,18 +150,15 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 			return nil, svcErr
 		}
 		as.logger.Error(ctx, "Failed to create application", log.Error(err), log.String("appID", appID))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	appForReturn := *app
 	appForReturn.AuthFlowID = inboundClient.AuthFlowID
 	appForReturn.RegistrationFlowID = inboundClient.RegistrationFlowID
 	appForReturn.RecoveryFlowID = inboundClient.RecoveryFlowID
-	if app.Certificate == nil || app.Certificate.Type == "" {
-		appForReturn.Certificate = nil
-	}
-	var oauthToken *inboundmodel.OAuthTokenConfig
-	var userInfo *inboundmodel.UserInfoConfig
+	var oauthToken *providers.OAuthTokenConfig
+	var userInfo *providers.UserInfoConfig
 	var scopeClaims map[string][]string
 	if inboundAuthConfig != nil && oauthProfile != nil {
 		oauthToken = oauthProfile.Token
@@ -180,7 +176,7 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 
 // ValidateApplication validates the application data transfer object.
 func (as *applicationService) ValidateApplication(ctx context.Context, app *model.ApplicationDTO) (
-	*model.ApplicationProcessedDTO, *inboundmodel.InboundAuthConfigWithSecret, *serviceerror.ServiceError) {
+	*model.ApplicationProcessedDTO, *providers.InboundAuthConfigWithSecret, *tidcommon.ServiceError) {
 	if app == nil {
 		return nil, nil, &ErrorApplicationNil
 	}
@@ -210,7 +206,7 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 		appID, err = sysutils.GenerateUUIDv7()
 		if err != nil {
 			as.logger.Error(ctx, "Failed to generate UUID", log.Error(err))
-			return nil, nil, &serviceerror.InternalServerError
+			return nil, nil, &tidcommon.InternalServerError
 		}
 	}
 	processedDTO := buildBaseApplicationProcessedDTO(appID, app, app.Assertion)
@@ -235,7 +231,7 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 			return nil, nil, svcErr
 		}
 		as.logger.Error(ctx, "Inbound client validation failed", log.Error(err))
-		return nil, nil, &serviceerror.InternalServerError
+		return nil, nil, &tidcommon.InternalServerError
 	}
 	processedDTO.AuthFlowID = inboundClient.AuthFlowID
 	processedDTO.RegistrationFlowID = inboundClient.RegistrationFlowID
@@ -246,18 +242,18 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 
 // GetApplicationList list the applications.
 func (as *applicationService) GetApplicationList(
-	ctx context.Context) (*model.ApplicationListResponse, *serviceerror.ServiceError) {
-	totalResults, epErr := as.entityProvider.GetEntityListCount(entityprovider.EntityCategoryApp, nil)
+	ctx context.Context) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
+	totalResults, epErr := as.entityProvider.GetEntityListCount(providers.EntityCategoryApp, nil)
 	if epErr != nil {
 		as.logger.Error(ctx, "Failed to count application entities", log.Error(epErr))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	entities, epErr := as.entityProvider.GetEntityList(
-		entityprovider.EntityCategoryApp, serverconst.MaxCompositeStoreRecords, 0, nil)
+		providers.EntityCategoryApp, serverconst.MaxCompositeStoreRecords, 0, nil)
 	if epErr != nil {
 		as.logger.Error(ctx, "Failed to list application entities", log.Error(epErr))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	if len(entities) == 0 {
 		return &model.ApplicationListResponse{
@@ -274,7 +270,7 @@ func (as *applicationService) GetApplicationList(
 			return nil, &ErrorResultLimitExceeded
 		}
 		as.logger.Error(ctx, "Failed to list inbound clients", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	appIDs := make(map[string]struct{}, len(entities))
@@ -308,7 +304,7 @@ func (as *applicationService) GetApplicationList(
 
 // GetOAuthApplication retrieves the OAuth application based on the client id.
 func (as *applicationService) GetOAuthApplication(
-	ctx context.Context, clientID string) (*inboundmodel.OAuthClient, *serviceerror.ServiceError) {
+	ctx context.Context, clientID string) (*providers.OAuthClient, *tidcommon.ServiceError) {
 	if clientID == "" {
 		return nil, &ErrorInvalidClientID
 	}
@@ -317,7 +313,7 @@ func (as *applicationService) GetOAuthApplication(
 	if err != nil {
 		as.logger.Error(ctx, "Failed to retrieve OAuth client", log.Error(err),
 			log.MaskedString("clientID", clientID))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	if client == nil {
 		return nil, &ErrorApplicationNotFound
@@ -327,17 +323,17 @@ func (as *applicationService) GetOAuthApplication(
 	if epErr != nil && epErr.Code != entityprovider.ErrorCodeEntityNotFound {
 		as.logger.Error(ctx, "Failed to load entity for OAuth client",
 			log.String("entityID", client.ID), log.Error(epErr))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
-	if entity == nil || entity.Category != entityprovider.EntityCategoryApp {
+	if entity == nil || entity.Category != providers.EntityCategoryApp {
 		return nil, &ErrorApplicationNotFound
 	}
 	return client, nil
 }
 
 // GetApplication get the application for given app id.
-func (as *applicationService) GetApplication(ctx context.Context, appID string) (*model.Application,
-	*serviceerror.ServiceError) {
+func (as *applicationService) GetApplication(ctx context.Context, appID string) (*providers.Application,
+	*tidcommon.ServiceError) {
 	if appID == "" {
 		return nil, &ErrorInvalidApplicationID
 	}
@@ -352,7 +348,7 @@ func (as *applicationService) GetApplication(ctx context.Context, appID string) 
 
 // UpdateApplication update the application for given app id.
 func (as *applicationService) UpdateApplication(ctx context.Context, appID string, app *model.ApplicationDTO) (
-	*model.ApplicationDTO, *serviceerror.ServiceError) {
+	*model.ApplicationDTO, *tidcommon.ServiceError) {
 	if appID == "" {
 		return nil, &ErrorInvalidApplicationID
 	}
@@ -380,13 +376,13 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 	// Update config first, while entity attributes still hold the previous client_id so the
 	// inbound client service can clean up the old OAuth-app cert.
 	if err := as.inboundClientService.UpdateInboundClient(
-		ctx, &inboundClient, app.Certificate, oauthProfile, oauthSecretSupplied, newOAuthClientID, app.Name,
+		ctx, &inboundClient, oauthProfile, oauthSecretSupplied, newOAuthClientID, app.Name,
 	); err != nil {
 		if svcErr := as.translateInboundClientError(ctx, err); svcErr != nil {
 			return nil, svcErr
 		}
 		as.logger.Error(ctx, "Failed to update application", log.Error(err), log.String("appID", appID))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	if svcErr := as.updateEntityDataForApplicationUpdate(ctx, appID, app, inboundAuthConfig); svcErr != nil {
@@ -401,11 +397,8 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 	appForReturn.AuthFlowID = inboundClient.AuthFlowID
 	appForReturn.RegistrationFlowID = inboundClient.RegistrationFlowID
 	appForReturn.RecoveryFlowID = inboundClient.RecoveryFlowID
-	if app.Certificate == nil || app.Certificate.Type == "" {
-		appForReturn.Certificate = nil
-	}
-	var oauthToken *inboundmodel.OAuthTokenConfig
-	var userInfo *inboundmodel.UserInfoConfig
+	var oauthToken *providers.OAuthTokenConfig
+	var userInfo *providers.UserInfoConfig
 	var scopeClaims map[string][]string
 	if oauthProfile != nil {
 		oauthToken = oauthProfile.Token
@@ -425,8 +418,8 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.Context,
 	appID string,
 	app *model.ApplicationDTO,
-	inboundAuthConfig *inboundmodel.InboundAuthConfigWithSecret,
-) *serviceerror.ServiceError {
+	inboundAuthConfig *providers.InboundAuthConfigWithSecret,
+) *tidcommon.ServiceError {
 	var clientID string
 	if inboundAuthConfig != nil && inboundAuthConfig.OAuthConfig != nil {
 		clientID = inboundAuthConfig.OAuthConfig.ClientID
@@ -435,7 +428,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 	sysAttrsJSON, marshalErr := buildSystemAttributes(app, clientID)
 	if marshalErr != nil {
 		as.logger.Error(ctx, "Failed to build entity system attributes for update", log.Error(marshalErr))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	if epErr := as.entityProvider.UpdateSystemAttributes(appID, sysAttrsJSON); epErr != nil {
@@ -444,7 +437,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 		}
 		as.logger.Error(ctx, "Failed to update entity system attributes",
 			log.String("appID", appID), log.Error(epErr))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	// Decide credential disposition:
@@ -459,7 +452,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 			}
 			as.logger.Error(ctx, "Failed to clear entity system credentials",
 				log.String("appID", appID), log.Error(epErr))
-			return &serviceerror.InternalServerError
+			return &tidcommon.InternalServerError
 		}
 		return nil
 	}
@@ -470,7 +463,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 	sysCredsJSON, marshalErr := buildSystemCredentials(inboundAuthConfig.OAuthConfig.ClientSecret)
 	if marshalErr != nil {
 		as.logger.Error(ctx, "Failed to build entity system credentials for update", log.Error(marshalErr))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	if epErr := as.entityProvider.UpdateSystemCredentials(appID, sysCredsJSON); epErr != nil {
@@ -479,14 +472,14 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 		}
 		as.logger.Error(ctx, "Failed to update entity system credentials",
 			log.String("appID", appID), log.Error(epErr))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	return nil
 }
 
 // appRequiresClientSecret reports whether the OAuth config implies a confidential client requiring a secret.
-func appRequiresClientSecret(cfg *inboundmodel.OAuthConfigWithSecret) bool {
+func appRequiresClientSecret(cfg *providers.OAuthConfigWithSecret) bool {
 	if cfg == nil {
 		return false
 	}
@@ -494,11 +487,11 @@ func appRequiresClientSecret(cfg *inboundmodel.OAuthConfigWithSecret) bool {
 		return false
 	}
 	switch cfg.TokenEndpointAuthMethod {
-	case oauth2const.TokenEndpointAuthMethodClientSecretBasic,
-		oauth2const.TokenEndpointAuthMethodClientSecretPost:
+	case providers.TokenEndpointAuthMethodClientSecretBasic,
+		providers.TokenEndpointAuthMethodClientSecretPost:
 		return true
-	case oauth2const.TokenEndpointAuthMethodNone,
-		oauth2const.TokenEndpointAuthMethodPrivateKeyJWT:
+	case providers.TokenEndpointAuthMethodNone,
+		providers.TokenEndpointAuthMethodPrivateKeyJWT:
 		return false
 	}
 	// Default to requiring a secret when method is unspecified.
@@ -506,7 +499,7 @@ func appRequiresClientSecret(cfg *inboundmodel.OAuthConfigWithSecret) bool {
 }
 
 // DeleteApplication delete the application for given app id.
-func (as *applicationService) DeleteApplication(ctx context.Context, appID string) *serviceerror.ServiceError {
+func (as *applicationService) DeleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError {
 	if appID == "" {
 		return &ErrorInvalidApplicationID
 	}
@@ -515,9 +508,9 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 		if epErr.Code != entityprovider.ErrorCodeEntityNotFound {
 			as.logger.Error(ctx, "Failed to load entity before delete",
 				log.String("appID", appID), log.Error(epErr))
-			return &serviceerror.InternalServerError
+			return &tidcommon.InternalServerError
 		}
-	} else if existing != nil && existing.Category != entityprovider.EntityCategoryApp {
+	} else if existing != nil && existing.Category != providers.EntityCategoryApp {
 		return &ErrorApplicationNotFound
 	}
 
@@ -530,7 +523,7 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 			return svcErr
 		}
 		as.logger.Error(ctx, "Failed to delete application", log.Error(appErr), log.String("appID", appID))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	// Delete entity.
@@ -540,7 +533,7 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 		}
 		as.logger.Error(ctx, "Failed to delete application entity",
 			log.String("appID", appID), log.Error(epErr))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	return as.deleteLocalizedVariants(ctx, appID)
@@ -550,7 +543,7 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 // If excludeID is non-empty, the entity with that ID is excluded from the check
 // (used during declarative loading and updates where the entity already exists).
 func (as *applicationService) isIdentifierTaken(
-	ctx context.Context, key, value, excludeID string) (bool, *serviceerror.ServiceError) {
+	ctx context.Context, key, value, excludeID string) (bool, *tidcommon.ServiceError) {
 	entityID, epErr := as.entityProvider.IdentifyEntity(map[string]interface{}{key: value})
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
@@ -558,7 +551,7 @@ func (as *applicationService) isIdentifierTaken(
 		}
 		as.logger.Error(ctx, "Failed to check identifier availability",
 			log.String("key", key), log.String("value", value), log.Error(epErr))
-		return false, &serviceerror.InternalServerError
+		return false, &tidcommon.InternalServerError
 	}
 	if entityID == nil {
 		return false, nil
@@ -572,7 +565,7 @@ func (as *applicationService) isIdentifierTaken(
 // getApplication loads entity + config + OAuth config and merges into ApplicationProcessedDTO.
 func (as *applicationService) getApplication(
 	ctx context.Context, appID string,
-) (*model.ApplicationProcessedDTO, *serviceerror.ServiceError) {
+) (*model.ApplicationProcessedDTO, *tidcommon.ServiceError) {
 	inboundClient, err := as.inboundClientService.GetInboundClientByEntityID(ctx, appID)
 	if err != nil {
 		return nil, as.mapStoreError(ctx, err)
@@ -588,11 +581,11 @@ func (as *applicationService) getApplication(
 		} else {
 			as.logger.Error(ctx, "Failed to get entity for application",
 				log.String("appID", appID), log.Error(epErr))
-			return nil, &serviceerror.InternalServerError
+			return nil, &tidcommon.InternalServerError
 		}
 	}
 
-	if entity != nil && entity.Category != entityprovider.EntityCategoryApp {
+	if entity != nil && entity.Category != providers.EntityCategoryApp {
 		return nil, &ErrorApplicationNotFound
 	}
 
@@ -600,7 +593,7 @@ func (as *applicationService) getApplication(
 	if err != nil && !errors.Is(err, inboundclient.ErrInboundClientNotFound) {
 		as.logger.Error(ctx, "Failed to get OAuth profile for application",
 			log.String("appID", appID), log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	dto := toProcessedDTO(entity, inboundClient, oauthProfile)
@@ -608,7 +601,7 @@ func (as *applicationService) getApplication(
 }
 
 // mapEntityProviderError maps entity provider error codes to application service errors.
-func mapEntityProviderError(epErr *entityprovider.EntityProviderError) *serviceerror.ServiceError {
+func mapEntityProviderError(epErr *entityprovider.EntityProviderError) *tidcommon.ServiceError {
 	if epErr == nil {
 		return nil
 	}
@@ -669,11 +662,11 @@ func toInboundClient(dto *model.ApplicationProcessedDTO) inboundmodel.InboundCli
 // toProcessedDTO merges entity identity data with store config into a full
 // ApplicationProcessedDTO.
 func toProcessedDTO(
-	e *entityprovider.Entity, dao *inboundmodel.InboundClient, oauthProfile *inboundmodel.OAuthProfile,
+	e *providers.Entity, dao *inboundmodel.InboundClient, oauthProfile *providers.OAuthProfile,
 ) *model.ApplicationProcessedDTO {
 	dto := &model.ApplicationProcessedDTO{
 		ID: dao.ID,
-		InboundAuthProfile: inboundmodel.InboundAuthProfile{
+		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                dao.AuthFlowID,
 			RegistrationFlowID:        dao.RegistrationFlowID,
 			IsRegistrationFlowEnabled: dao.IsRegistrationFlowEnabled,
@@ -755,9 +748,10 @@ func toProcessedDTO(
 		if e != nil {
 			ouID = e.OUID
 		}
-		oauthProcessed := inboundclient.BuildOAuthClient(dao.ID, clientID, ouID, entity.EntityCategoryApp, oauthProfile)
+		oauthProcessed := inboundclient.BuildOAuthClient(
+			dao.ID, clientID, ouID, providers.EntityCategoryApp, oauthProfile)
 		dto.InboundAuthConfig = []inboundmodel.InboundAuthConfigProcessed{
-			{Type: inboundmodel.OAuthInboundAuthType, OAuthConfig: oauthProcessed},
+			{Type: providers.OAuthInboundAuthType, OAuthConfig: oauthProcessed},
 		}
 	}
 
@@ -766,7 +760,7 @@ func toProcessedDTO(
 
 // toOAuthProfile builds the typed OAuth config from a processed DTO for store persistence.
 // Returns nil when no OAuth inbound config is present.
-func toOAuthProfile(processedDTO *model.ApplicationProcessedDTO) *inboundmodel.OAuthProfile {
+func toOAuthProfile(processedDTO *model.ApplicationProcessedDTO) *providers.OAuthProfile {
 	oauthProcessed := getOAuthInboundAuthConfigProcessedDTO(processedDTO.InboundAuthConfig)
 	if oauthProcessed == nil || oauthProcessed.OAuthConfig == nil {
 		return nil
@@ -776,12 +770,12 @@ func toOAuthProfile(processedDTO *model.ApplicationProcessedDTO) *inboundmodel.O
 
 // buildOAuthProfileFromProcessed builds a typed OAuthProfile from an InboundAuthConfigProcessed.
 // Returns nil if the inbound auth config has no OAuth application config.
-func buildOAuthProfileFromProcessed(inboundAuth inboundmodel.InboundAuthConfigProcessed) *inboundmodel.OAuthProfile {
+func buildOAuthProfileFromProcessed(inboundAuth inboundmodel.InboundAuthConfigProcessed) *providers.OAuthProfile {
 	if inboundAuth.OAuthConfig == nil {
 		return nil
 	}
 	oa := inboundAuth.OAuthConfig
-	return &inboundmodel.OAuthProfile{
+	return &providers.OAuthProfile{
 		RedirectURIs:                       oa.RedirectURIs,
 		GrantTypes:                         sysutils.ConvertToStringSlice(oa.GrantTypes),
 		ResponseTypes:                      sysutils.ConvertToStringSlice(oa.ResponseTypes),
@@ -816,7 +810,7 @@ func buildSystemAttributes(app *model.ApplicationDTO, clientID string) (json.Raw
 
 // buildAppEntity constructs an entity and system credentials for entity creation.
 func buildAppEntity(appID string, app *model.ApplicationDTO, clientID string, plaintextSecret string) (
-	*entityprovider.Entity, json.RawMessage, error) {
+	*providers.Entity, json.RawMessage, error) {
 	sysAttrsJSON, err := buildSystemAttributes(app, clientID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build entity system attributes: %w", err)
@@ -827,11 +821,11 @@ func buildAppEntity(appID string, app *model.ApplicationDTO, clientID string, pl
 		return nil, nil, fmt.Errorf("failed to build entity system credentials: %w", err)
 	}
 
-	e := &entityprovider.Entity{
+	e := &providers.Entity{
 		ID:               appID,
-		Category:         entityprovider.EntityCategoryApp,
+		Category:         providers.EntityCategoryApp,
 		Type:             "application",
-		State:            entityprovider.EntityStateActive,
+		State:            providers.EntityStateActive,
 		OUID:             app.OUID,
 		SystemAttributes: sysAttrsJSON,
 	}
@@ -852,11 +846,11 @@ func buildSystemCredentials(clientSecret string) (json.RawMessage, error) {
 // getOAuthInboundAuthConfigDTO returns the single OAuth InboundAuthConfigDTO.
 // It returns an error if multiple OAuth configs are found, nil if none exist.
 func getOAuthInboundAuthConfigDTO(
-	configs []inboundmodel.InboundAuthConfigWithSecret,
-) (*inboundmodel.InboundAuthConfigWithSecret, *serviceerror.ServiceError) {
-	var cfg *inboundmodel.InboundAuthConfigWithSecret
+	configs []providers.InboundAuthConfigWithSecret,
+) (*providers.InboundAuthConfigWithSecret, *tidcommon.ServiceError) {
+	var cfg *providers.InboundAuthConfigWithSecret
 	for i := range configs {
-		if configs[i].Type == inboundmodel.OAuthInboundAuthType {
+		if configs[i].Type == providers.OAuthInboundAuthType {
 			if cfg != nil {
 				return nil, &ErrorInvalidInboundAuthConfig
 			}
@@ -871,7 +865,7 @@ func getOAuthInboundAuthConfigProcessedDTO(
 	configs []inboundmodel.InboundAuthConfigProcessed,
 ) *inboundmodel.InboundAuthConfigProcessed {
 	for i := range configs {
-		if configs[i].Type == inboundmodel.OAuthInboundAuthType {
+		if configs[i].Type == providers.OAuthInboundAuthType {
 			return &configs[i]
 		}
 	}
@@ -880,7 +874,7 @@ func getOAuthInboundAuthConfigProcessedDTO(
 
 func (as *applicationService) validateApplicationForUpdate(
 	ctx context.Context, appID string, app *model.ApplicationDTO) (
-	*model.ApplicationProcessedDTO, *inboundmodel.InboundAuthConfigWithSecret, *serviceerror.ServiceError) {
+	*model.ApplicationProcessedDTO, *providers.InboundAuthConfigWithSecret, *tidcommon.ServiceError) {
 	if appID == "" {
 		return nil, nil, &ErrorInvalidApplicationID
 	}
@@ -921,7 +915,7 @@ func (as *applicationService) validateApplicationForUpdate(
 
 // validateApplicationFields validates application fields that are common to both create and update operations.
 func (as *applicationService) validateApplicationFields(
-	ctx context.Context, app *model.ApplicationDTO) *serviceerror.ServiceError {
+	ctx context.Context, app *model.ApplicationDTO) *tidcommon.ServiceError {
 	// Resolve ou_handle to an ID when the direct ID is absent.
 	// If both are provided, ou_id wins and a warning is logged.
 	if app.OUID != "" && app.OUHandle != "" {
@@ -956,7 +950,7 @@ func (as *applicationService) validateApplicationFields(
 	// inbound auth config per protocol per application is allowed.
 	isOAuthConfig := false
 	for i := range app.InboundAuthConfig {
-		if app.InboundAuthConfig[i].Type != inboundmodel.OAuthInboundAuthType {
+		if app.InboundAuthConfig[i].Type != providers.OAuthInboundAuthType {
 			continue
 		}
 		if isOAuthConfig {
@@ -984,8 +978,8 @@ func (as *applicationService) validateConsentConfig(appDTO *model.ApplicationDTO
 }
 
 // validateOAuthParamsForCreateAndUpdate validates the OAuth parameters for creating or updating an application.
-func validateOAuthParamsForCreateAndUpdate(app *model.ApplicationDTO) (*inboundmodel.InboundAuthConfigWithSecret,
-	*serviceerror.ServiceError) {
+func validateOAuthParamsForCreateAndUpdate(app *model.ApplicationDTO) (*providers.InboundAuthConfigWithSecret,
+	*tidcommon.ServiceError) {
 	if len(app.InboundAuthConfig) == 0 {
 		return nil, nil
 	}
@@ -1004,15 +998,22 @@ func validateOAuthParamsForCreateAndUpdate(app *model.ApplicationDTO) (*inboundm
 	oauthAppConfig := inboundAuthConfig.OAuthConfig
 
 	if len(oauthAppConfig.GrantTypes) == 0 {
-		oauthAppConfig.GrantTypes = []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode}
+		oauthAppConfig.GrantTypes = []providers.GrantType{providers.GrantTypeAuthorizationCode}
+	}
+	// Browser-based SPAs (public clients) must use the redirect-based authorization_code flow.
+	// A public client without the authorization_code grant is configured for direct (native)
+	// flow execution, which is not permitted for single-page applications.
+	if oauthAppConfig.PublicClient &&
+		!slices.Contains(oauthAppConfig.GrantTypes, providers.GrantTypeAuthorizationCode) {
+		return nil, &ErrorNativeFlowNotAllowedForSPA
 	}
 	if len(oauthAppConfig.ResponseTypes) == 0 {
-		if slices.Contains(oauthAppConfig.GrantTypes, oauth2const.GrantTypeAuthorizationCode) {
-			oauthAppConfig.ResponseTypes = []oauth2const.ResponseType{oauth2const.ResponseTypeCode}
+		if slices.Contains(oauthAppConfig.GrantTypes, providers.GrantTypeAuthorizationCode) {
+			oauthAppConfig.ResponseTypes = []providers.ResponseType{providers.ResponseTypeCode}
 		}
 	}
 	if oauthAppConfig.TokenEndpointAuthMethod == "" {
-		oauthAppConfig.TokenEndpointAuthMethod = oauth2const.TokenEndpointAuthMethodClientSecretBasic
+		oauthAppConfig.TokenEndpointAuthMethod = providers.TokenEndpointAuthMethodClientSecretBasic
 	}
 
 	if err := validateAcrValues(oauthAppConfig.AcrValues); err != nil {
@@ -1030,10 +1031,10 @@ func isValidACR(acr string) bool {
 }
 
 // validateAcrValues rejects acr values not registered in the ACR-AMR mapping.
-func validateAcrValues(acrValues []string) *serviceerror.ServiceError {
+func validateAcrValues(acrValues []string) *tidcommon.ServiceError {
 	for _, acr := range acrValues {
 		if !isValidACR(acr) {
-			return serviceerror.CustomServiceError(ErrorInvalidAcrValues, core.I18nMessage{
+			return tidcommon.CustomServiceError(ErrorInvalidAcrValues, tidcommon.I18nMessage{
 				Key:          "error.applicationservice.invalid_acr_values_unrecognized",
 				DefaultValue: fmt.Sprintf("ACR value %q is not recognized by the system", acr),
 			})
@@ -1045,7 +1046,7 @@ func validateAcrValues(acrValues []string) *serviceerror.ServiceError {
 // translateInboundClientError maps inbound-client sentinel errors and typed wrappers to
 // application-service errors. Returns nil when the input does not correspond to a known
 // inbound-client error, allowing the caller to log and fall back to InternalServerError.
-func (as *applicationService) translateInboundClientError(ctx context.Context, err error) *serviceerror.ServiceError {
+func (as *applicationService) translateInboundClientError(ctx context.Context, err error) *tidcommon.ServiceError {
 	if err == nil {
 		return nil
 	}
@@ -1080,18 +1081,18 @@ func (as *applicationService) translateInboundClientError(ctx context.Context, e
 
 // translateOAuthValidationError maps OAuth redirect URI, grant/response type, token endpoint
 // auth method, and public client validation sentinels to application-service errors.
-func translateOAuthValidationError(err error) *serviceerror.ServiceError {
+func translateOAuthValidationError(err error) *tidcommon.ServiceError {
 	switch {
 	// OAuth: redirect URI
 	case errors.Is(err, inboundclient.ErrOAuthInvalidRedirectURI):
 		return &ErrorInvalidRedirectURI
 	case errors.Is(err, inboundclient.ErrOAuthRedirectURIFragmentNotAllowed):
-		return serviceerror.CustomServiceError(ErrorInvalidRedirectURI, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidRedirectURI, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.redirect_uri_fragment_not_allowed_description",
 			DefaultValue: "Redirect URIs must not contain a fragment component",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthAuthCodeRequiresRedirectURIs):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.auth_code_requires_redirect_uris_description",
 			DefaultValue: "authorization_code grant type requires redirect URIs",
 		})
@@ -1102,27 +1103,27 @@ func translateOAuthValidationError(err error) *serviceerror.ServiceError {
 	case errors.Is(err, inboundclient.ErrOAuthInvalidResponseType):
 		return &ErrorInvalidResponseType
 	case errors.Is(err, inboundclient.ErrOAuthClientCredentialsCannotUseResponseTypes):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.client_credentials_cannot_use_response_types_description",
 			DefaultValue: "client_credentials grant type cannot be used with response types",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthAuthCodeRequiresCodeResponseType):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.auth_code_requires_code_response_type_description",
 			DefaultValue: "authorization_code grant type requires 'code' response type",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthRefreshTokenCannotBeSoleGrant):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.refresh_token_cannot_be_sole_grant_description",
 			DefaultValue: "refresh_token grant type cannot be used without another grant type",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthPKCERequiresAuthCode):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.pkce_requires_authorization_code_description",
 			DefaultValue: "PKCE can only be enabled when the authorization_code grant type is selected",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthResponseTypesRequireAuthCode):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.response_types_require_authorization_code_description",
 			DefaultValue: "Response types can only be configured with the authorization_code grant type",
 		})
@@ -1131,44 +1132,49 @@ func translateOAuthValidationError(err error) *serviceerror.ServiceError {
 	case errors.Is(err, inboundclient.ErrOAuthInvalidTokenEndpointAuthMethod):
 		return &ErrorInvalidTokenEndpointAuthMethod
 	case errors.Is(err, inboundclient.ErrOAuthPrivateKeyJWTRequiresCertificate):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.private_key_jwt_requires_certificate_description",
 			DefaultValue: "private_key_jwt authentication method requires a certificate",
 		})
+	case errors.Is(err, inboundclient.ErrOAuthCertificateRequiresClientID):
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
+			Key:          "error.applicationservice.certificate_requires_client_id_description",
+			DefaultValue: "certificate configuration requires an OAuth client ID",
+		})
 	case errors.Is(err, inboundclient.ErrOAuthPrivateKeyJWTCannotHaveClientSecret):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.private_key_jwt_cannot_have_client_secret_description",
 			DefaultValue: "private_key_jwt authentication method cannot have a client secret",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthClientSecretCannotHaveCertificate):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.client_secret_cannot_have_certificate_description",
 			DefaultValue: "client_secret authentication methods cannot have a certificate",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthNoneAuthRequiresPublicClient):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.none_auth_method_requires_public_client_description",
 			DefaultValue: "'none' authentication method requires the client to be a public client",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthNoneAuthCannotHaveCertOrSecret):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.none_auth_method_cannot_have_cert_or_secret_description",
 			DefaultValue: "'none' authentication method cannot have a certificate or client secret",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthClientCredentialsCannotUseNoneAuth):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.client_credentials_cannot_use_none_auth_description",
 			DefaultValue: "client_credentials grant type cannot use 'none' authentication method",
 		})
 
 	// OAuth: public client
 	case errors.Is(err, inboundclient.ErrOAuthPublicClientMustUseNoneAuth):
-		return serviceerror.CustomServiceError(ErrorInvalidPublicClientConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidPublicClientConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.public_client_must_use_none_auth_description",
 			DefaultValue: "Public clients must use 'none' as token endpoint authentication method",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthPublicClientMustHavePKCE):
-		return serviceerror.CustomServiceError(ErrorInvalidPublicClientConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidPublicClientConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.public_client_must_have_pkce_description",
 			DefaultValue: "Public clients must have PKCE required set to true",
 		})
@@ -1178,66 +1184,66 @@ func translateOAuthValidationError(err error) *serviceerror.ServiceError {
 
 // translateUserInfoValidationError maps OAuth userinfo validation sentinels to
 // application-service errors.
-func translateUserInfoValidationError(err error) *serviceerror.ServiceError {
+func translateUserInfoValidationError(err error) *tidcommon.ServiceError {
 	switch {
 	case errors.Is(err, inboundclient.ErrOAuthUserInfoUnsupportedSigningAlg):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.userinfo_unsupported_signing_alg_description",
 			DefaultValue: "userinfo signing algorithm is not supported",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthUserInfoUnsupportedEncryptionAlg):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.userinfo_unsupported_encryption_alg_description",
 			DefaultValue: "userinfo encryption algorithm is not supported",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthUserInfoUnsupportedEncryptionEnc):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.userinfo_unsupported_encryption_enc_description",
 			DefaultValue: "userinfo content-encryption algorithm is not supported",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthUserInfoEncryptionAlgRequiresEnc):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.userinfo_encryption_alg_requires_enc_description",
 			DefaultValue: "userinfo encryptionEnc is required when encryptionAlg is set",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthUserInfoEncryptionEncRequiresAlg):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.userinfo_encryption_enc_requires_alg_description",
 			DefaultValue: "userinfo encryptionAlg is required when encryptionEnc is set",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthUserInfoEncryptionRequiresCertificate):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.userinfo_encryption_requires_certificate_description",
 			DefaultValue: "a certificate (JWKS or JWKS_URI) is required when userinfo encryption is configured",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthUserInfoJWKSURINotSSRFSafe):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.userinfo_jwks_uri_not_ssrf_safe_description",
 			DefaultValue: "userinfo JWKS URI must be a publicly reachable HTTPS URL",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthUserInfoUnsupportedResponseType):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.userinfo_unsupported_response_type_description",
 			DefaultValue: "userinfo responseType is not supported",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthUserInfoJWSRequiresSigningAlg):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.userinfo_jws_requires_signing_alg_description",
 			DefaultValue: "signingAlg is required when userinfo responseType is JWS",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthUserInfoJWERequiresEncryption):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.userinfo_jwe_requires_encryption_description",
 			DefaultValue: "encryptionAlg and encryptionEnc are required when userinfo responseType is JWE",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthUserInfoNestedJWTRequiresAll):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key: "error.applicationservice.userinfo_nested_jwt_requires_all_description",
 			DefaultValue: "signingAlg, encryptionAlg, and encryptionEnc are required " +
 				"when userinfo responseType is NESTED_JWT",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthUserInfoAlgRequiresResponseType):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.userinfo_alg_requires_response_type_description",
 			DefaultValue: "userinfo responseType is required when signingAlg or encryptionAlg is set",
 		})
@@ -1247,45 +1253,45 @@ func translateUserInfoValidationError(err error) *serviceerror.ServiceError {
 
 // translateIDTokenValidationError maps OAuth ID token validation sentinels to
 // application-service errors.
-func translateIDTokenValidationError(err error) *serviceerror.ServiceError {
+func translateIDTokenValidationError(err error) *tidcommon.ServiceError {
 	switch {
 	case errors.Is(err, inboundclient.ErrOAuthIDTokenEncryptionFieldsNotAllowed):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.idtoken_encryption_fields_not_allowed_description",
 			DefaultValue: "idToken encryptionAlg and encryptionEnc must not be set when responseType is JWT",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthIDTokenUnsupportedResponseType):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.idtoken_unsupported_response_type_description",
 			DefaultValue: "ID token responseType is not supported",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthIDTokenUnsupportedEncryptionAlg):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.idtoken_unsupported_encryption_alg_description",
 			DefaultValue: "ID token encryption algorithm is not supported",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthIDTokenUnsupportedEncryptionEnc):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.idtoken_unsupported_encryption_enc_description",
 			DefaultValue: "ID token content-encryption algorithm is not supported",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthIDTokenEncryptionAlgRequiresEnc):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.idtoken_encryption_alg_requires_enc_description",
 			DefaultValue: "idToken encryptionEnc is required when encryptionAlg is set",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthIDTokenEncryptionEncRequiresAlg):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.idtoken_encryption_enc_requires_alg_description",
 			DefaultValue: "idToken encryptionAlg is required when encryptionEnc is set",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthIDTokenEncryptionRequiresCertificate):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.idtoken_encryption_requires_certificate_description",
 			DefaultValue: "a certificate (JWKS or JWKS_URI) is required when ID token encryption is configured",
 		})
 	case errors.Is(err, inboundclient.ErrOAuthIDTokenJWKSURINotSSRFSafe):
-		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.idtoken_jwks_uri_not_ssrf_safe_description",
 			DefaultValue: "idToken JWKS URI must be a publicly reachable HTTPS URL",
 		})
@@ -1295,7 +1301,7 @@ func translateIDTokenValidationError(err error) *serviceerror.ServiceError {
 
 // translateInboundClientFKError maps inbound-client foreign-key sentinel errors to
 // application-service errors.
-func translateInboundClientFKError(err error) *serviceerror.ServiceError {
+func translateInboundClientFKError(err error) *tidcommon.ServiceError {
 	switch {
 	case errors.Is(err, inboundclient.ErrFKInvalidAuthFlow):
 		return &ErrorInvalidAuthFlowID
@@ -1306,7 +1312,7 @@ func translateInboundClientFKError(err error) *serviceerror.ServiceError {
 	case errors.Is(err, inboundclient.ErrFKFlowDefinitionRetrievalFailed):
 		return &ErrorWhileRetrievingFlowDefinition
 	case errors.Is(err, inboundclient.ErrFKFlowServerError):
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	case errors.Is(err, inboundclient.ErrFKThemeNotFound):
 		return &ErrorThemeNotFound
 	case errors.Is(err, inboundclient.ErrFKLayoutNotFound):
@@ -1314,7 +1320,7 @@ func translateInboundClientFKError(err error) *serviceerror.ServiceError {
 	case errors.Is(err, inboundclient.ErrFKInvalidUserType):
 		return &ErrorInvalidUserType
 	case errors.Is(err, inboundclient.ErrUserSchemaLookupFailed):
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	case errors.Is(err, inboundclient.ErrInvalidUserAttribute):
 		return &ErrorInvalidUserAttribute
 	}
@@ -1323,7 +1329,7 @@ func translateInboundClientFKError(err error) *serviceerror.ServiceError {
 
 // translateCertValidationError maps inbound-client certificate validation sentinels to
 // application-service errors.
-func translateCertValidationError(err error) *serviceerror.ServiceError {
+func translateCertValidationError(err error) *tidcommon.ServiceError {
 	switch {
 	case errors.Is(err, inboundclient.ErrCertValueRequired):
 		return &ErrorInvalidCertificateValue
@@ -1340,13 +1346,13 @@ func translateCertValidationError(err error) *serviceerror.ServiceError {
 // InternalServerError; client-side failures are wrapped in ErrorCertificateClientError with an
 // operation-specific description.
 func (as *applicationService) translateCertOperationError(ctx context.Context,
-	err *inboundclient.CertOperationError) *serviceerror.ServiceError {
+	err *inboundclient.CertOperationError) *tidcommon.ServiceError {
 	if !err.IsClientError() {
 		as.logger.Error(ctx, "Certificate operation failed",
 			log.Any("operation", err.Operation),
 			log.Any("refType", err.RefType),
 			log.Any("serviceError", err.Underlying))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 	var key, prefix string
 	switch err.Operation {
@@ -1368,9 +1374,9 @@ func (as *applicationService) translateCertOperationError(ctx context.Context,
 				"Failed to delete application certificate: "
 		}
 	default:
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
-	return serviceerror.CustomServiceError(ErrorCertificateClientError, core.I18nMessage{
+	return tidcommon.CustomServiceError(ErrorCertificateClientError, tidcommon.I18nMessage{
 		Key:          key,
 		DefaultValue: prefix + err.Underlying.ErrorDescription.DefaultValue,
 	})
@@ -1379,9 +1385,9 @@ func (as *applicationService) translateCertOperationError(ctx context.Context,
 // translateConsentSyncError maps a typed consent sync error from the inbound-client layer into
 // an application-service ServiceError. Client-side failures are wrapped in ErrorConsentSyncFailed;
 // server-side failures collapse to InternalServerError.
-func translateConsentSyncError(err *inboundclient.ConsentSyncError) *serviceerror.ServiceError {
+func translateConsentSyncError(err *inboundclient.ConsentSyncError) *tidcommon.ServiceError {
 	if err.IsClientError() {
-		return serviceerror.CustomServiceError(ErrorConsentSyncFailed, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorConsentSyncFailed, tidcommon.I18nMessage{
 			Key: "error.applicationservice.consent_sync_failed_description",
 			DefaultValue: fmt.Sprintf(
 				ErrorConsentSyncFailed.ErrorDescription.DefaultValue+" : code - %s",
@@ -1389,12 +1395,12 @@ func translateConsentSyncError(err *inboundclient.ConsentSyncError) *serviceerro
 			),
 		})
 	}
-	return &serviceerror.InternalServerError
+	return &tidcommon.InternalServerError
 }
 
 func (as *applicationService) processInboundAuthConfig(ctx context.Context, app *model.ApplicationDTO,
 	existingApp *model.ApplicationProcessedDTO) (
-	*inboundmodel.InboundAuthConfigWithSecret, *serviceerror.ServiceError) {
+	*providers.InboundAuthConfigWithSecret, *tidcommon.ServiceError) {
 	inboundAuthConfig, err := validateOAuthParamsForCreateAndUpdate(app)
 	if err != nil {
 		return nil, err
@@ -1449,12 +1455,12 @@ func (as *applicationService) processInboundAuthConfig(ctx context.Context, app 
 
 // generateAndAssignClientID generates an OAuth 2.0 compliant client ID and assigns it to the inbound auth config.
 func generateAndAssignClientID(
-	ctx context.Context, inboundAuthConfig *inboundmodel.InboundAuthConfigWithSecret,
-) *serviceerror.ServiceError {
+	ctx context.Context, inboundAuthConfig *providers.InboundAuthConfigWithSecret,
+) *tidcommon.ServiceError {
 	generatedClientID, err := oauthutils.GenerateOAuth2ClientID()
 	if err != nil {
 		log.GetLogger().Error(ctx, "Failed to generate OAuth client ID", log.Error(err))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 	inboundAuthConfig.OAuthConfig.ClientID = generatedClientID
 	return nil
@@ -1462,13 +1468,13 @@ func generateAndAssignClientID(
 
 func resolveClientSecret(
 	ctx context.Context,
-	inboundAuthConfig *inboundmodel.InboundAuthConfigWithSecret,
+	inboundAuthConfig *providers.InboundAuthConfigWithSecret,
 	existingApp *model.ApplicationProcessedDTO,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	if (inboundAuthConfig.OAuthConfig.TokenEndpointAuthMethod !=
-		oauth2const.TokenEndpointAuthMethodClientSecretBasic &&
+		providers.TokenEndpointAuthMethodClientSecretBasic &&
 		inboundAuthConfig.OAuthConfig.TokenEndpointAuthMethod !=
-			oauth2const.TokenEndpointAuthMethodClientSecretPost) ||
+			providers.TokenEndpointAuthMethodClientSecretPost) ||
 		inboundAuthConfig.OAuthConfig.ClientSecret != "" {
 		return nil
 	}
@@ -1478,8 +1484,8 @@ func resolveClientSecret(
 			existingApp.InboundAuthConfig); existingInboundAuth != nil {
 			existingOAuth := existingInboundAuth.OAuthConfig
 			if existingOAuth != nil && !existingOAuth.PublicClient &&
-				(existingOAuth.TokenEndpointAuthMethod == oauth2const.TokenEndpointAuthMethodClientSecretBasic ||
-					existingOAuth.TokenEndpointAuthMethod == oauth2const.TokenEndpointAuthMethodClientSecretPost) {
+				(existingOAuth.TokenEndpointAuthMethod == providers.TokenEndpointAuthMethodClientSecretBasic ||
+					existingOAuth.TokenEndpointAuthMethod == providers.TokenEndpointAuthMethodClientSecretPost) {
 				return nil
 			}
 		}
@@ -1488,36 +1494,27 @@ func resolveClientSecret(
 	generatedClientSecret, err := oauthutils.GenerateOAuth2ClientSecret()
 	if err != nil {
 		log.GetLogger().Error(ctx, "Failed to generate OAuth client secret", log.Error(err))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	inboundAuthConfig.OAuthConfig.ClientSecret = generatedClientSecret
 	return nil
 }
 
-// enrichApplicationWithCertificate retrieves and adds the certificate to the application.
-func (as *applicationService) enrichApplicationWithCertificate(ctx context.Context, application *model.Application) (
-	*model.Application, *serviceerror.ServiceError) {
-	appCert, opErr := as.inboundClientService.GetCertificate(
-		ctx, cert.CertificateReferenceTypeApplication, application.ID)
-	if opErr != nil {
-		if mapped := as.translateCertOperationError(ctx, opErr); mapped != nil {
-			return nil, mapped
-		}
-		return nil, &serviceerror.InternalServerError
-	}
-	application.Certificate = appCert
-
-	// Enrich OAuth config certificate for each inbound auth config.
+// enrichApplicationWithCertificate retrieves and adds OAuth certificates to the application.
+func (as *applicationService) enrichApplicationWithCertificate(
+	ctx context.Context, application *providers.Application,
+) (
+	*providers.Application, *tidcommon.ServiceError) {
 	for i, inboundAuthConfig := range application.InboundAuthConfig {
-		if inboundAuthConfig.Type == inboundmodel.OAuthInboundAuthType && inboundAuthConfig.OAuthConfig != nil {
+		if inboundAuthConfig.Type == providers.OAuthInboundAuthType && inboundAuthConfig.OAuthConfig != nil {
 			oauthCert, oauthCertOpErr := as.inboundClientService.GetCertificate(ctx,
 				cert.CertificateReferenceTypeOAuthApp, inboundAuthConfig.OAuthConfig.ClientID)
 			if oauthCertOpErr != nil {
 				if mapped := as.translateCertOperationError(ctx, oauthCertOpErr); mapped != nil {
 					return nil, mapped
 				}
-				return nil, &serviceerror.InternalServerError
+				return nil, &tidcommon.InternalServerError
 			}
 			application.InboundAuthConfig[i].OAuthConfig.Certificate = oauthCert
 		}
@@ -1527,14 +1524,13 @@ func (as *applicationService) enrichApplicationWithCertificate(ctx context.Conte
 }
 
 // buildApplicationResponse maps an ApplicationProcessedDTO to an Application response.
-// The returned application's Certificate field is populated separately by enrichApplicationWithCertificate.
-func buildApplicationResponse(dto *model.ApplicationProcessedDTO) *model.Application {
-	application := &model.Application{
+func buildApplicationResponse(dto *model.ApplicationProcessedDTO) *providers.Application {
+	application := &providers.Application{
 		ID:          dto.ID,
 		OUID:        dto.OUID,
 		Name:        dto.Name,
 		Description: dto.Description,
-		InboundAuthProfile: inboundmodel.InboundAuthProfile{
+		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                dto.AuthFlowID,
 			RegistrationFlowID:        dto.RegistrationFlowID,
 			IsRegistrationFlowEnabled: dto.IsRegistrationFlowEnabled,
@@ -1554,13 +1550,13 @@ func buildApplicationResponse(dto *model.ApplicationProcessedDTO) *model.Applica
 		Contacts:  dto.Contacts,
 		Metadata:  dto.Metadata,
 	}
-	inboundAuthConfigs := make([]inboundmodel.InboundAuthConfigWithSecret, 0, len(dto.InboundAuthConfig))
+	inboundAuthConfigs := make([]providers.InboundAuthConfigWithSecret, 0, len(dto.InboundAuthConfig))
 	for _, config := range dto.InboundAuthConfig {
-		if config.Type == inboundmodel.OAuthInboundAuthType && config.OAuthConfig != nil {
+		if config.Type == providers.OAuthInboundAuthType && config.OAuthConfig != nil {
 			oauthAppConfig := config.OAuthConfig
-			inboundAuthConfigs = append(inboundAuthConfigs, inboundmodel.InboundAuthConfigWithSecret{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+			inboundAuthConfigs = append(inboundAuthConfigs, providers.InboundAuthConfigWithSecret{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID:                           oauthAppConfig.ClientID,
 					RedirectURIs:                       oauthAppConfig.RedirectURIs,
 					GrantTypes:                         oauthAppConfig.GrantTypes,
@@ -1586,7 +1582,7 @@ func buildApplicationResponse(dto *model.ApplicationProcessedDTO) *model.Applica
 
 // buildBasicApplicationResponse builds a BasicApplicationResponse by merging config + entity data.
 func buildBasicApplicationResponse(
-	cfg inboundmodel.InboundClient, e *entityprovider.Entity,
+	cfg inboundmodel.InboundClient, e *providers.Entity,
 ) model.BasicApplicationResponse {
 	resp := model.BasicApplicationResponse{
 		ID:                        cfg.ID,
@@ -1637,7 +1633,7 @@ func buildBaseApplicationProcessedDTO(appID string, app *model.ApplicationDTO,
 		OUID:        app.OUID,
 		Name:        app.Name,
 		Description: app.Description,
-		InboundAuthProfile: inboundmodel.InboundAuthProfile{
+		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                app.AuthFlowID,
 			RegistrationFlowID:        app.RegistrationFlowID,
 			IsRegistrationFlowEnabled: app.IsRegistrationFlowEnabled,
@@ -1662,7 +1658,7 @@ func buildBaseApplicationProcessedDTO(appID string, app *model.ApplicationDTO,
 // buildProcessedDTOForUpdate constructs the ApplicationProcessedDTO for an application
 // update operation.
 func (as *applicationService) buildProcessedDTOForUpdate(appID string, app *model.ApplicationDTO,
-	inboundAuthConfig *inboundmodel.InboundAuthConfigWithSecret) *model.ApplicationProcessedDTO {
+	inboundAuthConfig *providers.InboundAuthConfigWithSecret) *model.ApplicationProcessedDTO {
 	processedDTO := buildBaseApplicationProcessedDTO(appID, app, app.Assertion)
 
 	if inboundAuthConfig != nil {
@@ -1678,13 +1674,13 @@ func (as *applicationService) buildProcessedDTOForUpdate(appID string, app *mode
 
 // buildOAuthInboundAuthConfigProcessedDTO constructs the InboundAuthConfigProcessedDTO for an OAuth application.
 func buildOAuthInboundAuthConfigProcessedDTO(
-	appID string, inboundAuthConfig *inboundmodel.InboundAuthConfigWithSecret,
-	oauthToken *inboundmodel.OAuthTokenConfig, userInfo *inboundmodel.UserInfoConfig,
+	appID string, inboundAuthConfig *providers.InboundAuthConfigWithSecret,
+	oauthToken *providers.OAuthTokenConfig, userInfo *providers.UserInfoConfig,
 	scopeClaims map[string][]string, certificate *inboundmodel.Certificate,
 ) inboundmodel.InboundAuthConfigProcessed {
 	return inboundmodel.InboundAuthConfigProcessed{
-		Type: inboundmodel.OAuthInboundAuthType,
-		OAuthConfig: &inboundmodel.OAuthClient{
+		Type: providers.OAuthInboundAuthType,
+		OAuthConfig: &providers.OAuthClient{
 			ID:                                 appID,
 			ClientID:                           inboundAuthConfig.OAuthConfig.ClientID,
 			RedirectURIs:                       inboundAuthConfig.OAuthConfig.RedirectURIs,
@@ -1709,15 +1705,15 @@ func buildOAuthInboundAuthConfigProcessedDTO(
 // buildReturnApplicationDTO constructs the ApplicationDTO returned from create and update operations.
 func buildReturnApplicationDTO(
 	appID string, app *model.ApplicationDTO, assertion *inboundmodel.AssertionConfig,
-	metadata map[string]any, inboundAuthConfig *inboundmodel.InboundAuthConfigWithSecret,
-	oauthToken *inboundmodel.OAuthTokenConfig, userInfo *inboundmodel.UserInfoConfig,
+	metadata map[string]any, inboundAuthConfig *providers.InboundAuthConfigWithSecret,
+	oauthToken *providers.OAuthTokenConfig, userInfo *providers.UserInfoConfig,
 	scopeClaims map[string][]string) *model.ApplicationDTO {
 	returnApp := &model.ApplicationDTO{
 		ID:          appID,
 		OUID:        app.OUID,
 		Name:        app.Name,
 		Description: app.Description,
-		InboundAuthProfile: inboundmodel.InboundAuthProfile{
+		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                app.AuthFlowID,
 			RegistrationFlowID:        app.RegistrationFlowID,
 			IsRegistrationFlowEnabled: app.IsRegistrationFlowEnabled,
@@ -1726,7 +1722,6 @@ func buildReturnApplicationDTO(
 			ThemeID:                   app.ThemeID,
 			LayoutID:                  app.LayoutID,
 			Assertion:                 assertion,
-			Certificate:               app.Certificate,
 			AllowedUserTypes:          app.AllowedUserTypes,
 			LoginConsent:              app.LoginConsent,
 		},
@@ -1743,9 +1738,9 @@ func buildReturnApplicationDTO(
 		if inboundAuthConfig.OAuthConfig != nil {
 			oauthCert = inboundAuthConfig.OAuthConfig.Certificate
 		}
-		returnInboundAuthConfig := inboundmodel.InboundAuthConfigWithSecret{
-			Type: inboundmodel.OAuthInboundAuthType,
-			OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+		returnInboundAuthConfig := providers.InboundAuthConfigWithSecret{
+			Type: providers.OAuthInboundAuthType,
+			OAuthConfig: &providers.OAuthConfigWithSecret{
 				ClientID:                           inboundAuthConfig.OAuthConfig.ClientID,
 				ClientSecret:                       inboundAuthConfig.OAuthConfig.ClientSecret,
 				RedirectURIs:                       inboundAuthConfig.OAuthConfig.RedirectURIs,
@@ -1765,23 +1760,23 @@ func buildReturnApplicationDTO(
 				AcrValues:                          inboundAuthConfig.OAuthConfig.AcrValues,
 			},
 		}
-		returnApp.InboundAuthConfig = []inboundmodel.InboundAuthConfigWithSecret{returnInboundAuthConfig}
+		returnApp.InboundAuthConfig = []providers.InboundAuthConfigWithSecret{returnInboundAuthConfig}
 	}
 	return returnApp
 }
 
 // mapStoreError maps inbound client store errors to application service errors.
-func (as *applicationService) mapStoreError(ctx context.Context, err error) *serviceerror.ServiceError {
+func (as *applicationService) mapStoreError(ctx context.Context, err error) *tidcommon.ServiceError {
 	if errors.Is(err, inboundclient.ErrInboundClientNotFound) {
 		return &ErrorApplicationNotFound
 	}
 	as.logger.Error(ctx, "Failed to retrieve application", log.Error(err))
-	return &serviceerror.InternalServerError
+	return &tidcommon.InternalServerError
 }
 
 // deleteLocalizedVariants removes all i18n translations for an application's fields.
 // All fields are attempted; returns an internal server error if any deletion fails.
-func (as *applicationService) deleteLocalizedVariants(ctx context.Context, appID string) *serviceerror.ServiceError {
+func (as *applicationService) deleteLocalizedVariants(ctx context.Context, appID string) *tidcommon.ServiceError {
 	if as.i18nService == nil {
 		return nil
 	}
@@ -1797,7 +1792,7 @@ func (as *applicationService) deleteLocalizedVariants(ctx context.Context, appID
 		}
 	}
 	if hasErr {
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 	return nil
 }
@@ -1807,7 +1802,7 @@ func (as *applicationService) deleteLocalizedVariants(ctx context.Context, appID
 func (as *applicationService) cleanupStaleI18nKeys(
 	ctx context.Context, appID string,
 	existing *model.ApplicationProcessedDTO, updated *model.ApplicationDTO,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	if as.i18nService == nil {
 		return nil
 	}
@@ -1832,7 +1827,7 @@ func (as *applicationService) cleanupStaleI18nKeys(
 		}
 	}
 	if hasErr {
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 	return nil
 }

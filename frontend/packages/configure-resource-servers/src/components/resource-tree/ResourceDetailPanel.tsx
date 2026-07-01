@@ -93,7 +93,10 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
   const handleSave = (): void => {
     if (selectedNode.type === 'server') {
       updateRs.mutate(
-        {id: resourceServer.id, data: {name, description: description || null, identifier: identifier || null}},
+        {
+          id: resourceServer.id,
+          data: {name, description: description || null, identifier: identifier || null, ouId: resourceServer.ouId},
+        },
         {
           onSuccess: () => {
             showToast(t('resourceServers:detail.saved', 'Changes saved.'), 'success');

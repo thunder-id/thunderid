@@ -23,10 +23,11 @@ import (
 	"errors"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -122,7 +123,7 @@ func (suite *SessionServiceTestSuite) TestStoreSessionData_StoreSessionError() {
 	sessionKey, err := suite.service.storeSessionData(context.Background(), sessionData)
 
 	suite.NotNil(err)
-	suite.Equal(&serviceerror.InternalServerError, err)
+	suite.Equal(&tidcommon.InternalServerError, err)
 	suite.Empty(sessionKey)
 	suite.mockSessionStore.AssertExpectations(suite.T())
 }
@@ -176,7 +177,7 @@ func (suite *SessionServiceTestSuite) TestRetrieveSessionData_RetrieveError() {
 		context.Background(), sessionKey)
 
 	suite.NotNil(err)
-	suite.Equal(&serviceerror.InternalServerError, err)
+	suite.Equal(&tidcommon.InternalServerError, err)
 	suite.Nil(session)
 	suite.Empty(userID)
 	suite.Empty(relyingPartyID)
@@ -211,7 +212,7 @@ func (suite *SessionServiceTestSuite) TestRetrieveSessionData_ExpiredSession() {
 		context.Background(), sessionKey)
 
 	suite.NotNil(err)
-	suite.Equal(&serviceerror.InternalServerError, err)
+	suite.Equal(&tidcommon.InternalServerError, err)
 	suite.Nil(session)
 	suite.Empty(userID)
 	suite.Empty(relyingPartyID)

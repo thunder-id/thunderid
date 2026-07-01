@@ -23,13 +23,13 @@ import (
 	"encoding/json"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
-	"github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 )
 
@@ -48,31 +48,31 @@ func TestExecutorTestSuite(t *testing.T) {
 }
 
 func (s *ExecutorTestSuite) TestNewExecutor() {
-	defaultInputs := []common.Input{{Identifier: testInputName, Required: true}}
-	prerequisites := []common.Input{{Identifier: userAttributeUserID, Required: true}}
+	defaultInputs := []providers.Input{{Identifier: testInputName, Required: true}}
+	prerequisites := []providers.Input{{Identifier: userAttributeUserID, Required: true}}
 
-	exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, defaultInputs, prerequisites)
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, defaultInputs, prerequisites)
 
 	s.NotNil(exec)
 	s.Equal(testExecutorName, exec.GetName())
-	s.Equal(common.ExecutorTypeAuthentication, exec.GetType())
+	s.Equal(providers.ExecutorTypeAuthentication, exec.GetType())
 	s.Equal(defaultInputs, exec.GetDefaultInputs())
 	s.Equal(prerequisites, exec.GetPrerequisites())
 }
 
 func (s *ExecutorTestSuite) TestGetName() {
-	exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, nil, nil)
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
 	s.Equal(testExecutorName, exec.GetName())
 }
 
 func (s *ExecutorTestSuite) TestGetType() {
-	exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, nil, nil)
-	s.Equal(common.ExecutorTypeAuthentication, exec.GetType())
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+	s.Equal(providers.ExecutorTypeAuthentication, exec.GetType())
 }
 
 func (s *ExecutorTestSuite) TestExecute() {
-	exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, nil, nil)
-	ctx := &NodeContext{ExecutionID: "test-flow"}
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+	ctx := &providers.NodeContext{ExecutionID: "test-flow"}
 
 	resp, err := exec.Execute(ctx)
 
@@ -81,11 +81,11 @@ func (s *ExecutorTestSuite) TestExecute() {
 }
 
 func (s *ExecutorTestSuite) TestGetDefaultInputs() {
-	defaultInputs := []common.Input{
+	defaultInputs := []providers.Input{
 		{Identifier: testInputName, Required: true},
 		{Identifier: "password", Required: true},
 	}
-	exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, defaultInputs, nil)
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, defaultInputs, nil)
 
 	result := exec.GetDefaultInputs()
 
@@ -93,8 +93,8 @@ func (s *ExecutorTestSuite) TestGetDefaultInputs() {
 }
 
 func (s *ExecutorTestSuite) TestGetPrerequisites() {
-	prerequisites := []common.Input{{Identifier: userAttributeUserID, Required: true}}
-	exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, nil, prerequisites)
+	prerequisites := []providers.Input{{Identifier: userAttributeUserID, Required: true}}
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, prerequisites)
 
 	result := exec.GetPrerequisites()
 
@@ -104,7 +104,7 @@ func (s *ExecutorTestSuite) TestGetPrerequisites() {
 func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 	tests := []struct {
 		name              string
-		defaultInputs     []common.Input
+		defaultInputs     []providers.Input
 		userInputs        map[string]string
 		runtimeData       map[string]string
 		expectedHasInputs bool
@@ -112,7 +112,7 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 	}{
 		{
 			"No inputs provided",
-			[]common.Input{{Identifier: testInputName, Required: true}},
+			[]providers.Input{{Identifier: testInputName, Required: true}},
 			map[string]string{},
 			map[string]string{},
 			false,
@@ -120,7 +120,7 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 		},
 		{
 			"All data in user input",
-			[]common.Input{{Identifier: testInputName, Required: true}},
+			[]providers.Input{{Identifier: testInputName, Required: true}},
 			map[string]string{testInputName: testInputValue},
 			map[string]string{},
 			true,
@@ -128,7 +128,7 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 		},
 		{
 			"Data in runtime data",
-			[]common.Input{{Identifier: testInputName, Required: true}},
+			[]providers.Input{{Identifier: testInputName, Required: true}},
 			map[string]string{},
 			map[string]string{testInputName: testInputValue},
 			true,
@@ -136,7 +136,7 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 		},
 		{
 			"Partial data in user input",
-			[]common.Input{
+			[]providers.Input{
 				{Identifier: testInputName, Required: true},
 				{Identifier: "password", Required: true},
 			},
@@ -147,7 +147,7 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 		},
 		{
 			"Empty inputs and empty context",
-			[]common.Input{},
+			[]providers.Input{},
 			map[string]string{},
 			map[string]string{},
 			false,
@@ -155,7 +155,7 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 		},
 		{
 			"Data in forwarded data (string)",
-			[]common.Input{{Identifier: testInputName, Required: true}},
+			[]providers.Input{{Identifier: testInputName, Required: true}},
 			map[string]string{},
 			map[string]string{},
 			true,
@@ -163,7 +163,7 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 		},
 		{
 			"Data in forwarded data (non-string)",
-			[]common.Input{{Identifier: testInputName, Required: true}},
+			[]providers.Input{{Identifier: testInputName, Required: true}},
 			map[string]string{},
 			map[string]string{},
 			false,
@@ -171,7 +171,7 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 		},
 		{
 			"Partial data with forwarded data",
-			[]common.Input{
+			[]providers.Input{
 				{Identifier: testInputName, Required: true},
 				{Identifier: "password", Required: true},
 			},
@@ -182,7 +182,7 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 		},
 		{
 			"All sources empty",
-			[]common.Input{{Identifier: testInputName, Required: true}},
+			[]providers.Input{{Identifier: testInputName, Required: true}},
 			map[string]string{},
 			map[string]string{},
 			false,
@@ -190,7 +190,7 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 		},
 		{
 			"Optional input prompts once",
-			[]common.Input{{Identifier: "nickname", Required: false}},
+			[]providers.Input{{Identifier: "nickname", Required: false}},
 			map[string]string{},
 			map[string]string{},
 			false,
@@ -198,7 +198,7 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 		},
 		{
 			"Optional input already prompted",
-			[]common.Input{{Identifier: "nickname", Required: false}},
+			[]providers.Input{{Identifier: "nickname", Required: false}},
 			map[string]string{},
 			map[string]string{common.RuntimeKeyPresentedOptionalInputs: "nickname"},
 			true,
@@ -208,8 +208,8 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, tt.defaultInputs, nil)
-			ctx := &NodeContext{
+			exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, tt.defaultInputs, nil)
+			ctx := &providers.NodeContext{
 				ExecutionID: "test-flow",
 				UserInputs:  tt.userInputs,
 				RuntimeData: tt.runtimeData,
@@ -231,7 +231,7 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 				ctx.ForwardedData = map[string]interface{}{}
 			}
 
-			execResp := &common.ExecutorResponse{}
+			execResp := &providers.ExecutorResponse{}
 
 			result := exec.HasRequiredInputs(ctx, execResp)
 
@@ -241,9 +241,9 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 	}
 }
 
-func (s *ExecutorTestSuite) newAuthenticatedAuthUser() manager.AuthUser {
+func (s *ExecutorTestSuite) newAuthenticatedAuthUser() providers.AuthUser {
 	raw := `{"entityReferenceToken":"tok","entityReference":{"entityId":"user-123","entityCategory":"","entityType":"","ouId":""},"attributeToken":"atok","attributes":{"attributes":{"email":{"value":"test@example.com"}}}}` //nolint:lll
-	var authUser manager.AuthUser
+	var authUser providers.AuthUser
 	err := json.Unmarshal([]byte(raw), &authUser)
 	s.Require().NoError(err)
 	return authUser
@@ -252,20 +252,20 @@ func (s *ExecutorTestSuite) newAuthenticatedAuthUser() manager.AuthUser {
 func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 	tests := []struct {
 		name           string
-		prerequisites  []common.Input
-		authUser       manager.AuthUser
-		setupMock      func(*managermock.AuthnProviderManagerInterfaceMock)
+		prerequisites  []providers.Input
+		authUser       providers.AuthUser
+		setupMock      func(*managermock.AuthnProviderManagerMock)
 		userInputs     map[string]string
 		runtimeData    map[string]string
 		forwardedData  map[string]interface{}
 		expectedValid  bool
-		expectedStatus common.ExecutorStatus
+		expectedStatus providers.ExecutorStatus
 		expectError    bool
 	}{
 		{
 			"No prerequisites",
-			[]common.Input{},
-			manager.AuthUser{},
+			[]providers.Input{},
+			providers.AuthUser{},
 			nil,
 			map[string]string{},
 			map[string]string{},
@@ -276,13 +276,13 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		},
 		{
 			"UserID prerequisite met via authenticated user",
-			[]common.Input{{Identifier: userAttributeUserID, Required: true}},
-			manager.AuthUser{},
-			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+			[]providers.Input{{Identifier: userAttributeUserID, Required: true}},
+			providers.AuthUser{},
+			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
-					Return(manager.AuthUser{}, &authnprovidercm.EntityReference{EntityID: "user-123"}, nil)
+					Return(providers.AuthUser{}, &providers.EntityReference{EntityID: "user-123"}, nil)
 				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return(manager.AuthUser{}, &authnprovidercm.AttributesResponse{}, nil)
+					Return(providers.AuthUser{}, &providers.AttributesResponse{}, nil)
 			},
 			map[string]string{},
 			map[string]string{},
@@ -293,20 +293,20 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		},
 		{
 			"UserID prerequisite not met - no authn provider",
-			[]common.Input{{Identifier: userAttributeUserID, Required: true}},
-			manager.AuthUser{},
+			[]providers.Input{{Identifier: userAttributeUserID, Required: true}},
+			providers.AuthUser{},
 			nil,
 			map[string]string{},
 			map[string]string{},
 			nil,
 			false,
-			common.ExecFailure,
+			providers.ExecFailure,
 			true,
 		},
 		{
 			"Other prerequisite met via user input",
-			[]common.Input{{Identifier: "email", Required: true}},
-			manager.AuthUser{},
+			[]providers.Input{{Identifier: "email", Required: true}},
+			providers.AuthUser{},
 			nil,
 			map[string]string{"email": "test@example.com"},
 			map[string]string{},
@@ -317,8 +317,8 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		},
 		{
 			"Other prerequisite met via runtime data",
-			[]common.Input{{Identifier: "token", Required: true}},
-			manager.AuthUser{},
+			[]providers.Input{{Identifier: "token", Required: true}},
+			providers.AuthUser{},
 			nil,
 			map[string]string{},
 			map[string]string{"token": "abc123"},
@@ -329,20 +329,20 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		},
 		{
 			"Prerequisite not met",
-			[]common.Input{{Identifier: "apiKey", Required: true}},
-			manager.AuthUser{},
+			[]providers.Input{{Identifier: "apiKey", Required: true}},
+			providers.AuthUser{},
 			nil,
 			map[string]string{},
 			map[string]string{},
 			nil,
 			false,
-			common.ExecFailure,
+			providers.ExecFailure,
 			true,
 		},
 		{
 			"Optional prerequisite not met",
-			[]common.Input{{Identifier: "optionalKey", Required: false}},
-			manager.AuthUser{},
+			[]providers.Input{{Identifier: "optionalKey", Required: false}},
+			providers.AuthUser{},
 			nil,
 			map[string]string{},
 			map[string]string{},
@@ -353,8 +353,8 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		},
 		{
 			"Prerequisite met via forwarded data (string)",
-			[]common.Input{{Identifier: "email", Required: true}},
-			manager.AuthUser{},
+			[]providers.Input{{Identifier: "email", Required: true}},
+			providers.AuthUser{},
 			nil,
 			map[string]string{},
 			map[string]string{},
@@ -365,26 +365,26 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		},
 		{
 			"Prerequisite not met via forwarded data (non-string)",
-			[]common.Input{{Identifier: "email", Required: true}},
-			manager.AuthUser{},
+			[]providers.Input{{Identifier: "email", Required: true}},
+			providers.AuthUser{},
 			nil,
 			map[string]string{},
 			map[string]string{},
 			map[string]interface{}{"email": 12345},
 			false,
-			common.ExecFailure,
+			providers.ExecFailure,
 			true,
 		},
 		{
 			"UserID prerequisite met via authenticated user attributes",
-			[]common.Input{{Identifier: "email", Required: true}},
-			manager.AuthUser{},
-			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+			[]providers.Input{{Identifier: "email", Required: true}},
+			providers.AuthUser{},
+			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
-					Return(manager.AuthUser{}, &authnprovidercm.EntityReference{EntityID: "user-123"}, nil)
+					Return(providers.AuthUser{}, &providers.EntityReference{EntityID: "user-123"}, nil)
 				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return(manager.AuthUser{}, &authnprovidercm.AttributesResponse{
-						Attributes: map[string]*authnprovidercm.AttributeResponse{
+					Return(providers.AuthUser{}, &providers.AttributesResponse{
+						Attributes: map[string]*providers.AttributeResponse{
 							"email": {Value: "test@example.com"},
 						},
 					}, nil)
@@ -398,30 +398,30 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		},
 		{
 			"GetEntityReference fails - prerequisite not met",
-			[]common.Input{{Identifier: userAttributeUserID, Required: true}},
-			manager.AuthUser{},
-			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+			[]providers.Input{{Identifier: userAttributeUserID, Required: true}},
+			providers.AuthUser{},
+			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
-					Return(manager.AuthUser{}, nil, &serviceerror.InternalServerError)
+					Return(providers.AuthUser{}, nil, &tidcommon.InternalServerError)
 				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return(manager.AuthUser{}, &authnprovidercm.AttributesResponse{}, nil)
+					Return(providers.AuthUser{}, &providers.AttributesResponse{}, nil)
 			},
 			map[string]string{},
 			map[string]string{},
 			nil,
 			false,
-			common.ExecFailure,
+			providers.ExecFailure,
 			true,
 		},
 		{
 			"GetUserAttributes fails - falls back to other sources",
-			[]common.Input{{Identifier: "email", Required: true}},
-			manager.AuthUser{},
-			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+			[]providers.Input{{Identifier: "email", Required: true}},
+			providers.AuthUser{},
+			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
-					Return(manager.AuthUser{}, &authnprovidercm.EntityReference{EntityID: "user-123"}, nil)
+					Return(providers.AuthUser{}, &providers.EntityReference{EntityID: "user-123"}, nil)
 				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return(manager.AuthUser{}, nil, &serviceerror.InternalServerError)
+					Return(providers.AuthUser{}, nil, &tidcommon.InternalServerError)
 			},
 			map[string]string{"email": "test@example.com"},
 			map[string]string{},
@@ -432,37 +432,37 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		},
 		{
 			"Entity reference empty ID - attribute still checked",
-			[]common.Input{{Identifier: userAttributeUserID, Required: true}},
-			manager.AuthUser{},
-			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+			[]providers.Input{{Identifier: userAttributeUserID, Required: true}},
+			providers.AuthUser{},
+			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
-					Return(manager.AuthUser{}, &authnprovidercm.EntityReference{EntityID: ""}, nil)
+					Return(providers.AuthUser{}, &providers.EntityReference{EntityID: ""}, nil)
 				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return(manager.AuthUser{}, &authnprovidercm.AttributesResponse{}, nil)
+					Return(providers.AuthUser{}, &providers.AttributesResponse{}, nil)
 			},
 			map[string]string{},
 			map[string]string{},
 			nil,
 			false,
-			common.ExecFailure,
+			providers.ExecFailure,
 			true,
 		},
 	}
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, nil, tt.prerequisites)
+			exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, tt.prerequisites)
 
-			var authnProvider manager.AuthnProviderManagerInterface
+			var authnProvider providers.AuthnProviderManager
 			if tt.setupMock != nil {
 				authUser := s.newAuthenticatedAuthUser()
 				tt.authUser = authUser
-				mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+				mockProvider := managermock.NewAuthnProviderManagerMock(s.T())
 				tt.setupMock(mockProvider)
 				authnProvider = mockProvider
 			}
 
-			ctx := &NodeContext{
+			ctx := &providers.NodeContext{
 				Context:       context.Background(),
 				ExecutionID:   "test-flow",
 				AuthUser:      tt.authUser,
@@ -471,7 +471,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 				ForwardedData: tt.forwardedData,
 			}
 
-			execResp := &common.ExecutorResponse{}
+			execResp := &providers.ExecutorResponse{}
 
 			result := exec.ValidatePrerequisites(ctx, execResp, authnProvider)
 
@@ -485,15 +485,15 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 	tests := []struct {
 		name           string
-		authUser       manager.AuthUser
-		setupMock      func(*managermock.AuthnProviderManagerInterfaceMock)
+		authUser       providers.AuthUser
+		setupMock      func(*managermock.AuthnProviderManagerMock)
 		runtimeData    map[string]string
 		userInputs     map[string]string
 		expectedUserID string
 	}{
 		{
 			"UserID from runtime data",
-			manager.AuthUser{},
+			providers.AuthUser{},
 			nil,
 			map[string]string{userAttributeUserID: "user-456"},
 			map[string]string{},
@@ -501,10 +501,10 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 		},
 		{
 			"UserID from authenticated user via authn provider",
-			manager.AuthUser{},
-			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+			providers.AuthUser{},
+			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
-					Return(manager.AuthUser{}, &authnprovidercm.EntityReference{EntityID: "user-123"}, nil)
+					Return(providers.AuthUser{}, &providers.EntityReference{EntityID: "user-123"}, nil)
 			},
 			map[string]string{},
 			map[string]string{},
@@ -512,7 +512,7 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 		},
 		{
 			"Priority: runtime data over authenticated user",
-			manager.AuthUser{},
+			providers.AuthUser{},
 			nil,
 			map[string]string{userAttributeUserID: "user-runtime"},
 			map[string]string{},
@@ -520,7 +520,7 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 		},
 		{
 			"No userID available - no authn provider",
-			manager.AuthUser{},
+			providers.AuthUser{},
 			nil,
 			map[string]string{},
 			map[string]string{},
@@ -528,10 +528,10 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 		},
 		{
 			"GetEntityReference fails - returns empty",
-			manager.AuthUser{},
-			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+			providers.AuthUser{},
+			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
-					Return(manager.AuthUser{}, nil, &serviceerror.InternalServerError)
+					Return(providers.AuthUser{}, nil, &tidcommon.InternalServerError)
 			},
 			map[string]string{},
 			map[string]string{},
@@ -539,10 +539,10 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 		},
 		{
 			"Entity reference with empty ID - returns empty",
-			manager.AuthUser{},
-			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+			providers.AuthUser{},
+			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
-					Return(manager.AuthUser{}, &authnprovidercm.EntityReference{EntityID: ""}, nil)
+					Return(providers.AuthUser{}, &providers.EntityReference{EntityID: ""}, nil)
 			},
 			map[string]string{},
 			map[string]string{},
@@ -550,7 +550,7 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 		},
 		{
 			"Nil authn provider with unauthenticated user",
-			manager.AuthUser{},
+			providers.AuthUser{},
 			nil,
 			map[string]string{},
 			map[string]string{},
@@ -560,18 +560,18 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, nil, nil)
+			exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
 
-			var authnProvider manager.AuthnProviderManagerInterface
+			var authnProvider providers.AuthnProviderManager
 			if tt.setupMock != nil {
 				authUser := s.newAuthenticatedAuthUser()
 				tt.authUser = authUser
-				mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+				mockProvider := managermock.NewAuthnProviderManagerMock(s.T())
 				tt.setupMock(mockProvider)
 				authnProvider = mockProvider
 			}
 
-			ctx := &NodeContext{
+			ctx := &providers.NodeContext{
 				Context:     context.Background(),
 				ExecutionID: "test-flow",
 				AuthUser:    tt.authUser,
@@ -579,7 +579,7 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 				UserInputs:  tt.userInputs,
 			}
 
-			execResp := &common.ExecutorResponse{}
+			execResp := &providers.ExecutorResponse{}
 
 			result := exec.GetUserIDFromContext(ctx, execResp, authnProvider)
 
@@ -591,36 +591,36 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 func (s *ExecutorTestSuite) TestGetRequiredInputs() {
 	tests := []struct {
 		name              string
-		defaultInputs     []common.Input
-		nodeInputs        []common.Input
+		defaultInputs     []providers.Input
+		nodeInputs        []providers.Input
 		expectedDataCount int
 		expectedContains  []string
 	}{
 		{
 			"No node input, use default only",
-			[]common.Input{{Identifier: testInputName, Required: true}},
-			[]common.Input{},
+			[]providers.Input{{Identifier: testInputName, Required: true}},
+			[]providers.Input{},
 			1,
 			[]string{testInputName},
 		},
 		{
 			"Node input provided, replaces default",
-			[]common.Input{{Identifier: testInputName, Required: true}},
-			[]common.Input{{Identifier: "email", Required: true}},
+			[]providers.Input{{Identifier: testInputName, Required: true}},
+			[]providers.Input{{Identifier: "email", Required: true}},
 			1,
 			[]string{"email"},
 		},
 		{
 			"Duplicate in node input, no duplication in result",
-			[]common.Input{{Identifier: testInputName, Required: true}},
-			[]common.Input{{Identifier: testInputName, Required: true}},
+			[]providers.Input{{Identifier: testInputName, Required: true}},
+			[]providers.Input{{Identifier: testInputName, Required: true}},
 			1,
 			[]string{testInputName},
 		},
 		{
 			"No default inputs, use node input",
-			[]common.Input{},
-			[]common.Input{{Identifier: "custom", Required: false}},
+			[]providers.Input{},
+			[]providers.Input{{Identifier: "custom", Required: false}},
 			1,
 			[]string{"custom"},
 		},
@@ -628,8 +628,8 @@ func (s *ExecutorTestSuite) TestGetRequiredInputs() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, tt.defaultInputs, nil)
-			ctx := &NodeContext{ExecutionID: "test-flow", NodeInputs: tt.nodeInputs}
+			exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, tt.defaultInputs, nil)
+			ctx := &providers.NodeContext{ExecutionID: "test-flow", NodeInputs: tt.nodeInputs}
 
 			result := exec.GetRequiredInputs(ctx)
 
@@ -649,7 +649,7 @@ func (s *ExecutorTestSuite) TestGetRequiredInputs() {
 }
 
 func (s *ExecutorTestSuite) TestGetExecutionPolicy() {
-	exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, nil, nil)
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
 
 	s.Nil(exec.GetExecutionPolicy("default"))
 	s.Nil(exec.GetExecutionPolicy(""))

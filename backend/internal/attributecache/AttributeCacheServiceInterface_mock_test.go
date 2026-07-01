@@ -8,7 +8,7 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewAttributeCacheServiceInterfaceMock creates a new instance of AttributeCacheServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -39,7 +39,7 @@ func (_m *AttributeCacheServiceInterfaceMock) EXPECT() *AttributeCacheServiceInt
 }
 
 // CreateAttributeCache provides a mock function for the type AttributeCacheServiceInterfaceMock
-func (_mock *AttributeCacheServiceInterfaceMock) CreateAttributeCache(ctx context.Context, cache *AttributeCache) (*AttributeCache, *serviceerror.ServiceError) {
+func (_mock *AttributeCacheServiceInterfaceMock) CreateAttributeCache(ctx context.Context, cache *AttributeCache) (*AttributeCache, *common.ServiceError) {
 	ret := _mock.Called(ctx, cache)
 
 	if len(ret) == 0 {
@@ -47,8 +47,8 @@ func (_mock *AttributeCacheServiceInterfaceMock) CreateAttributeCache(ctx contex
 	}
 
 	var r0 *AttributeCache
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *AttributeCache) (*AttributeCache, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *AttributeCache) (*AttributeCache, *common.ServiceError)); ok {
 		return returnFunc(ctx, cache)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, *AttributeCache) *AttributeCache); ok {
@@ -58,11 +58,11 @@ func (_mock *AttributeCacheServiceInterfaceMock) CreateAttributeCache(ctx contex
 			r0 = ret.Get(0).(*AttributeCache)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *AttributeCache) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *AttributeCache) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, cache)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -98,30 +98,30 @@ func (_c *AttributeCacheServiceInterfaceMock_CreateAttributeCache_Call) Run(run 
 	return _c
 }
 
-func (_c *AttributeCacheServiceInterfaceMock_CreateAttributeCache_Call) Return(attributeCache *AttributeCache, serviceError *serviceerror.ServiceError) *AttributeCacheServiceInterfaceMock_CreateAttributeCache_Call {
+func (_c *AttributeCacheServiceInterfaceMock_CreateAttributeCache_Call) Return(attributeCache *AttributeCache, serviceError *common.ServiceError) *AttributeCacheServiceInterfaceMock_CreateAttributeCache_Call {
 	_c.Call.Return(attributeCache, serviceError)
 	return _c
 }
 
-func (_c *AttributeCacheServiceInterfaceMock_CreateAttributeCache_Call) RunAndReturn(run func(ctx context.Context, cache *AttributeCache) (*AttributeCache, *serviceerror.ServiceError)) *AttributeCacheServiceInterfaceMock_CreateAttributeCache_Call {
+func (_c *AttributeCacheServiceInterfaceMock_CreateAttributeCache_Call) RunAndReturn(run func(ctx context.Context, cache *AttributeCache) (*AttributeCache, *common.ServiceError)) *AttributeCacheServiceInterfaceMock_CreateAttributeCache_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // DeleteAttributeCache provides a mock function for the type AttributeCacheServiceInterfaceMock
-func (_mock *AttributeCacheServiceInterfaceMock) DeleteAttributeCache(ctx context.Context, id string) *serviceerror.ServiceError {
+func (_mock *AttributeCacheServiceInterfaceMock) DeleteAttributeCache(ctx context.Context, id string) *common.ServiceError {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteAttributeCache")
 	}
 
-	var r0 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
 		r0 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*serviceerror.ServiceError)
+			r0 = ret.Get(0).(*common.ServiceError)
 		}
 	}
 	return r0
@@ -157,30 +157,30 @@ func (_c *AttributeCacheServiceInterfaceMock_DeleteAttributeCache_Call) Run(run 
 	return _c
 }
 
-func (_c *AttributeCacheServiceInterfaceMock_DeleteAttributeCache_Call) Return(serviceError *serviceerror.ServiceError) *AttributeCacheServiceInterfaceMock_DeleteAttributeCache_Call {
+func (_c *AttributeCacheServiceInterfaceMock_DeleteAttributeCache_Call) Return(serviceError *common.ServiceError) *AttributeCacheServiceInterfaceMock_DeleteAttributeCache_Call {
 	_c.Call.Return(serviceError)
 	return _c
 }
 
-func (_c *AttributeCacheServiceInterfaceMock_DeleteAttributeCache_Call) RunAndReturn(run func(ctx context.Context, id string) *serviceerror.ServiceError) *AttributeCacheServiceInterfaceMock_DeleteAttributeCache_Call {
+func (_c *AttributeCacheServiceInterfaceMock_DeleteAttributeCache_Call) RunAndReturn(run func(ctx context.Context, id string) *common.ServiceError) *AttributeCacheServiceInterfaceMock_DeleteAttributeCache_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ExtendAttributeCacheTTL provides a mock function for the type AttributeCacheServiceInterfaceMock
-func (_mock *AttributeCacheServiceInterfaceMock) ExtendAttributeCacheTTL(ctx context.Context, id string, ttlSeconds int) *serviceerror.ServiceError {
+func (_mock *AttributeCacheServiceInterfaceMock) ExtendAttributeCacheTTL(ctx context.Context, id string, ttlSeconds int) *common.ServiceError {
 	ret := _mock.Called(ctx, id, ttlSeconds)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ExtendAttributeCacheTTL")
 	}
 
-	var r0 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int) *serviceerror.ServiceError); ok {
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int) *common.ServiceError); ok {
 		r0 = returnFunc(ctx, id, ttlSeconds)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*serviceerror.ServiceError)
+			r0 = ret.Get(0).(*common.ServiceError)
 		}
 	}
 	return r0
@@ -222,18 +222,18 @@ func (_c *AttributeCacheServiceInterfaceMock_ExtendAttributeCacheTTL_Call) Run(r
 	return _c
 }
 
-func (_c *AttributeCacheServiceInterfaceMock_ExtendAttributeCacheTTL_Call) Return(serviceError *serviceerror.ServiceError) *AttributeCacheServiceInterfaceMock_ExtendAttributeCacheTTL_Call {
+func (_c *AttributeCacheServiceInterfaceMock_ExtendAttributeCacheTTL_Call) Return(serviceError *common.ServiceError) *AttributeCacheServiceInterfaceMock_ExtendAttributeCacheTTL_Call {
 	_c.Call.Return(serviceError)
 	return _c
 }
 
-func (_c *AttributeCacheServiceInterfaceMock_ExtendAttributeCacheTTL_Call) RunAndReturn(run func(ctx context.Context, id string, ttlSeconds int) *serviceerror.ServiceError) *AttributeCacheServiceInterfaceMock_ExtendAttributeCacheTTL_Call {
+func (_c *AttributeCacheServiceInterfaceMock_ExtendAttributeCacheTTL_Call) RunAndReturn(run func(ctx context.Context, id string, ttlSeconds int) *common.ServiceError) *AttributeCacheServiceInterfaceMock_ExtendAttributeCacheTTL_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetAttributeCache provides a mock function for the type AttributeCacheServiceInterfaceMock
-func (_mock *AttributeCacheServiceInterfaceMock) GetAttributeCache(ctx context.Context, id string) (*AttributeCache, *serviceerror.ServiceError) {
+func (_mock *AttributeCacheServiceInterfaceMock) GetAttributeCache(ctx context.Context, id string) (*AttributeCache, *common.ServiceError) {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
@@ -241,8 +241,8 @@ func (_mock *AttributeCacheServiceInterfaceMock) GetAttributeCache(ctx context.C
 	}
 
 	var r0 *AttributeCache
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*AttributeCache, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*AttributeCache, *common.ServiceError)); ok {
 		return returnFunc(ctx, id)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *AttributeCache); ok {
@@ -252,11 +252,11 @@ func (_mock *AttributeCacheServiceInterfaceMock) GetAttributeCache(ctx context.C
 			r0 = ret.Get(0).(*AttributeCache)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -292,12 +292,12 @@ func (_c *AttributeCacheServiceInterfaceMock_GetAttributeCache_Call) Run(run fun
 	return _c
 }
 
-func (_c *AttributeCacheServiceInterfaceMock_GetAttributeCache_Call) Return(attributeCache *AttributeCache, serviceError *serviceerror.ServiceError) *AttributeCacheServiceInterfaceMock_GetAttributeCache_Call {
+func (_c *AttributeCacheServiceInterfaceMock_GetAttributeCache_Call) Return(attributeCache *AttributeCache, serviceError *common.ServiceError) *AttributeCacheServiceInterfaceMock_GetAttributeCache_Call {
 	_c.Call.Return(attributeCache, serviceError)
 	return _c
 }
 
-func (_c *AttributeCacheServiceInterfaceMock_GetAttributeCache_Call) RunAndReturn(run func(ctx context.Context, id string) (*AttributeCache, *serviceerror.ServiceError)) *AttributeCacheServiceInterfaceMock_GetAttributeCache_Call {
+func (_c *AttributeCacheServiceInterfaceMock_GetAttributeCache_Call) RunAndReturn(run func(ctx context.Context, id string) (*AttributeCache, *common.ServiceError)) *AttributeCacheServiceInterfaceMock_GetAttributeCache_Call {
 	_c.Call.Return(run)
 	return _c
 }

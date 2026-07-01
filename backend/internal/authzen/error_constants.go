@@ -19,124 +19,123 @@
 package authzen
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 var (
 	// ErrorInvalidRequestFormat is returned when the request JSON is malformed.
-	ErrorInvalidRequestFormat = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorInvalidRequestFormat = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AZN-1001",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authzen.invalid_request_format",
 			DefaultValue: "Invalid request format",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authzen.invalid_request_format_description",
 			DefaultValue: "The request body is malformed or contains invalid data",
 		},
 	}
 	// ErrorMissingSubject is returned when subject id is not provided.
-	ErrorMissingSubject = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorMissingSubject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AZN-1002",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authzen.missing_subject",
 			DefaultValue: "Missing subject",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authzen.missing_subject_description",
 			DefaultValue: "Subject id is required",
 		},
 	}
 	// ErrorMissingResource is returned when resource type is not provided.
-	ErrorMissingResource = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorMissingResource = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AZN-1003",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authzen.missing_resource",
 			DefaultValue: "Missing resource",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authzen.missing_resource_description",
 			DefaultValue: "Resource type is required",
 		},
 	}
 	// ErrorMissingResourceID is returned when resource id is not provided.
-	ErrorMissingResourceID = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorMissingResourceID = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AZN-1004",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authzen.missing_resource_id",
 			DefaultValue: "Missing resource id",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authzen.missing_resource_id_description",
 			DefaultValue: "Resource id is required",
 		},
 	}
 	// ErrorMissingAction is returned when action name is not provided.
-	ErrorMissingAction = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorMissingAction = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AZN-1005",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authzen.missing_action",
 			DefaultValue: "Missing action",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authzen.missing_action_description",
 			DefaultValue: "Action name is required",
 		},
 	}
 	// ErrorMissingEvaluations is returned when batch request has no evaluations.
-	ErrorMissingEvaluations = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorMissingEvaluations = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AZN-1006",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authzen.missing_evaluations",
 			DefaultValue: "Missing evaluations",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authzen.missing_evaluations_description",
 			DefaultValue: "At least one evaluation is required",
 		},
 	}
 	// ErrorInvalidSubject is returned when subject type does not match subject id.
-	ErrorInvalidSubject = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorInvalidSubject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AZN-1007",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authzen.invalid_subject",
 			DefaultValue: "Invalid subject",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authzen.invalid_subject_description",
 			DefaultValue: "Subject id does not match subject type",
 		},
 	}
 	// ErrorInvalidAction is returned when action is not registered on the resource server.
-	ErrorInvalidAction = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorInvalidAction = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AZN-1008",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authzen.invalid_action",
 			DefaultValue: "Invalid action",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authzen.invalid_action_description",
 			DefaultValue: "Action name is not registered on the resource server",
 		},
 	}
 	// ErrorInvalidResource is returned when resource type does not resolve to a resource server.
-	ErrorInvalidResource = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorInvalidResource = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AZN-1009",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authzen.invalid_resource",
 			DefaultValue: "Invalid resource",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authzen.invalid_resource_description",
 			DefaultValue: "Resource type is not registered as a resource server",
 		},

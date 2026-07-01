@@ -8,7 +8,7 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewThemeMgtServiceInterfaceMock creates a new instance of ThemeMgtServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -39,7 +39,7 @@ func (_m *ThemeMgtServiceInterfaceMock) EXPECT() *ThemeMgtServiceInterfaceMock_E
 }
 
 // CreateTheme provides a mock function for the type ThemeMgtServiceInterfaceMock
-func (_mock *ThemeMgtServiceInterfaceMock) CreateTheme(ctx context.Context, theme CreateThemeRequestWithID) (*Theme, *serviceerror.ServiceError) {
+func (_mock *ThemeMgtServiceInterfaceMock) CreateTheme(ctx context.Context, theme CreateThemeRequestWithID) (*Theme, *common.ServiceError) {
 	ret := _mock.Called(ctx, theme)
 
 	if len(ret) == 0 {
@@ -47,8 +47,8 @@ func (_mock *ThemeMgtServiceInterfaceMock) CreateTheme(ctx context.Context, them
 	}
 
 	var r0 *Theme
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, CreateThemeRequestWithID) (*Theme, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, CreateThemeRequestWithID) (*Theme, *common.ServiceError)); ok {
 		return returnFunc(ctx, theme)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, CreateThemeRequestWithID) *Theme); ok {
@@ -58,11 +58,11 @@ func (_mock *ThemeMgtServiceInterfaceMock) CreateTheme(ctx context.Context, them
 			r0 = ret.Get(0).(*Theme)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, CreateThemeRequestWithID) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, CreateThemeRequestWithID) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, theme)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -98,30 +98,30 @@ func (_c *ThemeMgtServiceInterfaceMock_CreateTheme_Call) Run(run func(ctx contex
 	return _c
 }
 
-func (_c *ThemeMgtServiceInterfaceMock_CreateTheme_Call) Return(theme1 *Theme, serviceError *serviceerror.ServiceError) *ThemeMgtServiceInterfaceMock_CreateTheme_Call {
+func (_c *ThemeMgtServiceInterfaceMock_CreateTheme_Call) Return(theme1 *Theme, serviceError *common.ServiceError) *ThemeMgtServiceInterfaceMock_CreateTheme_Call {
 	_c.Call.Return(theme1, serviceError)
 	return _c
 }
 
-func (_c *ThemeMgtServiceInterfaceMock_CreateTheme_Call) RunAndReturn(run func(ctx context.Context, theme CreateThemeRequestWithID) (*Theme, *serviceerror.ServiceError)) *ThemeMgtServiceInterfaceMock_CreateTheme_Call {
+func (_c *ThemeMgtServiceInterfaceMock_CreateTheme_Call) RunAndReturn(run func(ctx context.Context, theme CreateThemeRequestWithID) (*Theme, *common.ServiceError)) *ThemeMgtServiceInterfaceMock_CreateTheme_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // DeleteTheme provides a mock function for the type ThemeMgtServiceInterfaceMock
-func (_mock *ThemeMgtServiceInterfaceMock) DeleteTheme(ctx context.Context, id string) *serviceerror.ServiceError {
+func (_mock *ThemeMgtServiceInterfaceMock) DeleteTheme(ctx context.Context, id string) *common.ServiceError {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteTheme")
 	}
 
-	var r0 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
 		r0 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*serviceerror.ServiceError)
+			r0 = ret.Get(0).(*common.ServiceError)
 		}
 	}
 	return r0
@@ -157,18 +157,18 @@ func (_c *ThemeMgtServiceInterfaceMock_DeleteTheme_Call) Run(run func(ctx contex
 	return _c
 }
 
-func (_c *ThemeMgtServiceInterfaceMock_DeleteTheme_Call) Return(serviceError *serviceerror.ServiceError) *ThemeMgtServiceInterfaceMock_DeleteTheme_Call {
+func (_c *ThemeMgtServiceInterfaceMock_DeleteTheme_Call) Return(serviceError *common.ServiceError) *ThemeMgtServiceInterfaceMock_DeleteTheme_Call {
 	_c.Call.Return(serviceError)
 	return _c
 }
 
-func (_c *ThemeMgtServiceInterfaceMock_DeleteTheme_Call) RunAndReturn(run func(ctx context.Context, id string) *serviceerror.ServiceError) *ThemeMgtServiceInterfaceMock_DeleteTheme_Call {
+func (_c *ThemeMgtServiceInterfaceMock_DeleteTheme_Call) RunAndReturn(run func(ctx context.Context, id string) *common.ServiceError) *ThemeMgtServiceInterfaceMock_DeleteTheme_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetTheme provides a mock function for the type ThemeMgtServiceInterfaceMock
-func (_mock *ThemeMgtServiceInterfaceMock) GetTheme(ctx context.Context, id string) (*Theme, *serviceerror.ServiceError) {
+func (_mock *ThemeMgtServiceInterfaceMock) GetTheme(ctx context.Context, id string) (*Theme, *common.ServiceError) {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
@@ -176,8 +176,8 @@ func (_mock *ThemeMgtServiceInterfaceMock) GetTheme(ctx context.Context, id stri
 	}
 
 	var r0 *Theme
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*Theme, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*Theme, *common.ServiceError)); ok {
 		return returnFunc(ctx, id)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *Theme); ok {
@@ -187,11 +187,11 @@ func (_mock *ThemeMgtServiceInterfaceMock) GetTheme(ctx context.Context, id stri
 			r0 = ret.Get(0).(*Theme)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -227,18 +227,18 @@ func (_c *ThemeMgtServiceInterfaceMock_GetTheme_Call) Run(run func(ctx context.C
 	return _c
 }
 
-func (_c *ThemeMgtServiceInterfaceMock_GetTheme_Call) Return(theme *Theme, serviceError *serviceerror.ServiceError) *ThemeMgtServiceInterfaceMock_GetTheme_Call {
+func (_c *ThemeMgtServiceInterfaceMock_GetTheme_Call) Return(theme *Theme, serviceError *common.ServiceError) *ThemeMgtServiceInterfaceMock_GetTheme_Call {
 	_c.Call.Return(theme, serviceError)
 	return _c
 }
 
-func (_c *ThemeMgtServiceInterfaceMock_GetTheme_Call) RunAndReturn(run func(ctx context.Context, id string) (*Theme, *serviceerror.ServiceError)) *ThemeMgtServiceInterfaceMock_GetTheme_Call {
+func (_c *ThemeMgtServiceInterfaceMock_GetTheme_Call) RunAndReturn(run func(ctx context.Context, id string) (*Theme, *common.ServiceError)) *ThemeMgtServiceInterfaceMock_GetTheme_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetThemeList provides a mock function for the type ThemeMgtServiceInterfaceMock
-func (_mock *ThemeMgtServiceInterfaceMock) GetThemeList(ctx context.Context, limit int, offset int) (*ThemeList, *serviceerror.ServiceError) {
+func (_mock *ThemeMgtServiceInterfaceMock) GetThemeList(ctx context.Context, limit int, offset int) (*ThemeList, *common.ServiceError) {
 	ret := _mock.Called(ctx, limit, offset)
 
 	if len(ret) == 0 {
@@ -246,8 +246,8 @@ func (_mock *ThemeMgtServiceInterfaceMock) GetThemeList(ctx context.Context, lim
 	}
 
 	var r0 *ThemeList
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) (*ThemeList, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) (*ThemeList, *common.ServiceError)); ok {
 		return returnFunc(ctx, limit, offset)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) *ThemeList); ok {
@@ -257,11 +257,11 @@ func (_mock *ThemeMgtServiceInterfaceMock) GetThemeList(ctx context.Context, lim
 			r0 = ret.Get(0).(*ThemeList)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, limit, offset)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -303,18 +303,18 @@ func (_c *ThemeMgtServiceInterfaceMock_GetThemeList_Call) Run(run func(ctx conte
 	return _c
 }
 
-func (_c *ThemeMgtServiceInterfaceMock_GetThemeList_Call) Return(themeList *ThemeList, serviceError *serviceerror.ServiceError) *ThemeMgtServiceInterfaceMock_GetThemeList_Call {
+func (_c *ThemeMgtServiceInterfaceMock_GetThemeList_Call) Return(themeList *ThemeList, serviceError *common.ServiceError) *ThemeMgtServiceInterfaceMock_GetThemeList_Call {
 	_c.Call.Return(themeList, serviceError)
 	return _c
 }
 
-func (_c *ThemeMgtServiceInterfaceMock_GetThemeList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int) (*ThemeList, *serviceerror.ServiceError)) *ThemeMgtServiceInterfaceMock_GetThemeList_Call {
+func (_c *ThemeMgtServiceInterfaceMock_GetThemeList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int) (*ThemeList, *common.ServiceError)) *ThemeMgtServiceInterfaceMock_GetThemeList_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // IsThemeExist provides a mock function for the type ThemeMgtServiceInterfaceMock
-func (_mock *ThemeMgtServiceInterfaceMock) IsThemeExist(ctx context.Context, id string) (bool, *serviceerror.ServiceError) {
+func (_mock *ThemeMgtServiceInterfaceMock) IsThemeExist(ctx context.Context, id string) (bool, *common.ServiceError) {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
@@ -322,8 +322,8 @@ func (_mock *ThemeMgtServiceInterfaceMock) IsThemeExist(ctx context.Context, id 
 	}
 
 	var r0 bool
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, *common.ServiceError)); ok {
 		return returnFunc(ctx, id)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
@@ -331,11 +331,11 @@ func (_mock *ThemeMgtServiceInterfaceMock) IsThemeExist(ctx context.Context, id 
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -371,18 +371,18 @@ func (_c *ThemeMgtServiceInterfaceMock_IsThemeExist_Call) Run(run func(ctx conte
 	return _c
 }
 
-func (_c *ThemeMgtServiceInterfaceMock_IsThemeExist_Call) Return(b bool, serviceError *serviceerror.ServiceError) *ThemeMgtServiceInterfaceMock_IsThemeExist_Call {
+func (_c *ThemeMgtServiceInterfaceMock_IsThemeExist_Call) Return(b bool, serviceError *common.ServiceError) *ThemeMgtServiceInterfaceMock_IsThemeExist_Call {
 	_c.Call.Return(b, serviceError)
 	return _c
 }
 
-func (_c *ThemeMgtServiceInterfaceMock_IsThemeExist_Call) RunAndReturn(run func(ctx context.Context, id string) (bool, *serviceerror.ServiceError)) *ThemeMgtServiceInterfaceMock_IsThemeExist_Call {
+func (_c *ThemeMgtServiceInterfaceMock_IsThemeExist_Call) RunAndReturn(run func(ctx context.Context, id string) (bool, *common.ServiceError)) *ThemeMgtServiceInterfaceMock_IsThemeExist_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UpdateTheme provides a mock function for the type ThemeMgtServiceInterfaceMock
-func (_mock *ThemeMgtServiceInterfaceMock) UpdateTheme(ctx context.Context, id string, theme UpdateThemeRequest) (*Theme, *serviceerror.ServiceError) {
+func (_mock *ThemeMgtServiceInterfaceMock) UpdateTheme(ctx context.Context, id string, theme UpdateThemeRequest) (*Theme, *common.ServiceError) {
 	ret := _mock.Called(ctx, id, theme)
 
 	if len(ret) == 0 {
@@ -390,8 +390,8 @@ func (_mock *ThemeMgtServiceInterfaceMock) UpdateTheme(ctx context.Context, id s
 	}
 
 	var r0 *Theme
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, UpdateThemeRequest) (*Theme, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, UpdateThemeRequest) (*Theme, *common.ServiceError)); ok {
 		return returnFunc(ctx, id, theme)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, UpdateThemeRequest) *Theme); ok {
@@ -401,11 +401,11 @@ func (_mock *ThemeMgtServiceInterfaceMock) UpdateTheme(ctx context.Context, id s
 			r0 = ret.Get(0).(*Theme)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, UpdateThemeRequest) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, UpdateThemeRequest) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, id, theme)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -447,12 +447,12 @@ func (_c *ThemeMgtServiceInterfaceMock_UpdateTheme_Call) Run(run func(ctx contex
 	return _c
 }
 
-func (_c *ThemeMgtServiceInterfaceMock_UpdateTheme_Call) Return(theme1 *Theme, serviceError *serviceerror.ServiceError) *ThemeMgtServiceInterfaceMock_UpdateTheme_Call {
+func (_c *ThemeMgtServiceInterfaceMock_UpdateTheme_Call) Return(theme1 *Theme, serviceError *common.ServiceError) *ThemeMgtServiceInterfaceMock_UpdateTheme_Call {
 	_c.Call.Return(theme1, serviceError)
 	return _c
 }
 
-func (_c *ThemeMgtServiceInterfaceMock_UpdateTheme_Call) RunAndReturn(run func(ctx context.Context, id string, theme UpdateThemeRequest) (*Theme, *serviceerror.ServiceError)) *ThemeMgtServiceInterfaceMock_UpdateTheme_Call {
+func (_c *ThemeMgtServiceInterfaceMock_UpdateTheme_Call) RunAndReturn(run func(ctx context.Context, id string, theme UpdateThemeRequest) (*Theme, *common.ServiceError)) *ThemeMgtServiceInterfaceMock_UpdateTheme_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -23,16 +23,17 @@ Get <ProductName /> running locally. Follow [Get <ProductName />](/docs/next/gui
 
 ### Configure the Server
 
-Edit `deployment.yaml` and add the Wayfinder origin under `cors.allowed_origins`. Leave any existing entries in place.
+Add the Wayfinder origin to the server-config `cors` section. Create or update `config/resources/server_configs/cors.yaml`, or use `PUT /server-config/cors` after startup.
 
 ```yaml
-cors:
-  allowed_origins:
+name: cors
+value:
+  allowedOrigins:
     # ...existing entries...
     - "{{WayFinderSampleUrl}}"
 ```
 
-Restart <ProductName /> after the change.
+Restart <ProductName /> after editing the declarative resource.
 
 ### Get the Wayfinder Sample
 

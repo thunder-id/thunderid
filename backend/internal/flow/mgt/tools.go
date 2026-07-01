@@ -22,10 +22,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	flowCommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
 )
 
@@ -122,7 +123,7 @@ func (t *flowTools) listFlows(
 		limit = 30
 	}
 
-	flowType := flowCommon.FlowType(input.FlowType)
+	flowType := providers.FlowType(input.FlowType)
 
 	listResponse, svcErr := t.flowService.ListFlows(ctx, limit, input.Offset, flowType)
 	if svcErr != nil {
@@ -140,8 +141,8 @@ func (t *flowTools) getFlowByHandle(
 	ctx context.Context,
 	req *mcp.CallToolRequest,
 	input getFlowByHandleInput,
-) (*mcp.CallToolResult, *CompleteFlowDefinition, error) {
-	flowType := flowCommon.FlowType(input.FlowType)
+) (*mcp.CallToolResult, *providers.CompleteFlowDefinition, error) {
+	flowType := providers.FlowType(input.FlowType)
 
 	flow, svcErr := t.flowService.GetFlowByHandle(ctx, input.Handle, flowType)
 	if svcErr != nil {
@@ -156,7 +157,7 @@ func (t *flowTools) getFlowByID(
 	ctx context.Context,
 	req *mcp.CallToolRequest,
 	input tool.IDInput,
-) (*mcp.CallToolResult, *CompleteFlowDefinition, error) {
+) (*mcp.CallToolResult, *providers.CompleteFlowDefinition, error) {
 	flow, svcErr := t.flowService.GetFlow(ctx, input.ID)
 	if svcErr != nil {
 		return nil, nil, fmt.Errorf("failed to get flow: %s", svcErr.ErrorDescription)
@@ -170,7 +171,7 @@ func (t *flowTools) createFlow(
 	ctx context.Context,
 	req *mcp.CallToolRequest,
 	input FlowDefinition,
-) (*mcp.CallToolResult, *CompleteFlowDefinition, error) {
+) (*mcp.CallToolResult, *providers.CompleteFlowDefinition, error) {
 	createdFlow, svcErr := t.flowService.CreateFlow(ctx, &input)
 	if svcErr != nil {
 		return nil, nil, fmt.Errorf("failed to create flow: %s", svcErr.ErrorDescription)
@@ -184,7 +185,7 @@ func (t *flowTools) updateFlow(
 	ctx context.Context,
 	req *mcp.CallToolRequest,
 	input updateFlowInput,
-) (*mcp.CallToolResult, *CompleteFlowDefinition, error) {
+) (*mcp.CallToolResult, *providers.CompleteFlowDefinition, error) {
 	// Get current flow to retrieve immutable fields (handle, flowType)
 	currentFlow, svcErr := t.flowService.GetFlow(ctx, input.ID)
 	if svcErr != nil {
@@ -212,7 +213,7 @@ func (t *flowTools) updateFlow(
 func getListFlowsSchema() *jsonschema.Schema {
 	return tool.GenerateSchema[listFlowsInput](
 		tool.WithEnum("", "flow_type",
-			[]string{string(flowCommon.FlowTypeAuthentication), string(flowCommon.FlowTypeRegistration)}),
+			[]string{string(providers.FlowTypeAuthentication), string(providers.FlowTypeRegistration)}),
 		tool.WithDefault("", "limit", 30),
 		tool.WithDefault("", "offset", 0),
 	)
@@ -222,7 +223,7 @@ func getListFlowsSchema() *jsonschema.Schema {
 func getFlowByHandleSchema() *jsonschema.Schema {
 	return tool.GenerateSchema[getFlowByHandleInput](
 		tool.WithEnum("", "flow_type",
-			[]string{string(flowCommon.FlowTypeAuthentication), string(flowCommon.FlowTypeRegistration)}),
+			[]string{string(providers.FlowTypeAuthentication), string(providers.FlowTypeRegistration)}),
 		tool.WithRequired("", "handle", "flow_type"),
 	)
 }
@@ -238,7 +239,7 @@ func getFlowByIDSchema() *jsonschema.Schema {
 func getCreateFlowSchema() *jsonschema.Schema {
 	return tool.GenerateSchema[FlowDefinition](
 		tool.WithEnum("", "flowType",
-			[]string{string(flowCommon.FlowTypeAuthentication), string(flowCommon.FlowTypeRegistration)}),
+			[]string{string(providers.FlowTypeAuthentication), string(providers.FlowTypeRegistration)}),
 	)
 }
 

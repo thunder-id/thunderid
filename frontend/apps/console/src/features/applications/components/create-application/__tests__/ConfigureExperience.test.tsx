@@ -80,6 +80,32 @@ describe('ConfigureExperience', () => {
       const embeddedRadio = screen.getAllByRole('radio')[1];
       expect(embeddedRadio).toBeChecked();
     });
+
+    it('should hide the embedded approach when allowEmbeddedApproach is false', () => {
+      render(
+        <ConfigureExperience
+          selectedApproach={ApplicationCreateFlowSignInApproach.INBUILT}
+          onApproachChange={mockOnApproachChange}
+          allowEmbeddedApproach={false}
+        />,
+      );
+
+      expect(screen.getByText('applications:onboarding.configure.approach.inbuilt.title')).toBeInTheDocument();
+      expect(screen.queryByText('applications:onboarding.configure.approach.native.title')).not.toBeInTheDocument();
+      expect(screen.getAllByRole('radio')).toHaveLength(1);
+    });
+
+    it('should reset to INBUILT when embedded is selected but not allowed', () => {
+      render(
+        <ConfigureExperience
+          selectedApproach={ApplicationCreateFlowSignInApproach.EMBEDDED}
+          onApproachChange={mockOnApproachChange}
+          allowEmbeddedApproach={false}
+        />,
+      );
+
+      expect(mockOnApproachChange).toHaveBeenCalledWith(ApplicationCreateFlowSignInApproach.INBUILT);
+    });
   });
 
   describe('User Interactions', () => {

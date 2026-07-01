@@ -21,25 +21,10 @@ package openid4vp
 
 import (
 	"crypto/ecdsa"
-	"errors"
-	"fmt"
-	"sort"
-	"sync"
+	"slices"
 	"time"
-)
 
-// Sentinel errors returned by the verifier. HTTP-facing service errors live in error_constants.go.
-var (
-	ErrUntrustedIssuer       = errors.New("openid4vp: untrusted credential issuer")
-	ErrUnexpectedVCT         = errors.New("openid4vp: unexpected credential type (vct)")
-	ErrUnrequestedClaim      = errors.New("openid4vp: disclosed claim was not requested")
-	ErrMissingMandatoryClaim = errors.New("openid4vp: mandatory claim missing")
-	ErrInvalidPresentation   = errors.New("openid4vp: invalid presentation")
-	ErrInvalidResponse       = errors.New("openid4vp: invalid authorization response")
-	ErrPolicy                = errors.New("openid4vp: invalid verification policy")
-	ErrUnknownState          = errors.New("openid4vp: unknown or expired request state")
-	ErrExpiredState          = errors.New("openid4vp: request state expired")
-	ErrStateMismatch         = errors.New("openid4vp: response state mismatch")
+	"github.com/thunder-id/thunderid/internal/openid4vp/definition"
 )
 
 // policy is the verification policy applied to a presentation.
@@ -51,29 +36,33 @@ type policy struct {
 	Leeway          time.Duration
 	// KeyBindingMaxAge rejects KB-JWTs older than this (replay protection). 0 = disabled.
 	KeyBindingMaxAge time.Duration
-	// EnforceTrustedIssuer requires the credential issuer to be pinned in the
-	// trust store and its signature to be valid. Defaults to false (skip).
+	// EnforceTrustedIssuer requires the issuer to be in the trust store.
 	EnforceTrustedIssuer bool
+	// TrustedAuthorities restricts acceptable trust anchors by name; empty means any.
+	TrustedAuthorities []string
 	// EnforceKeyBinding requires a Key Binding JWT proving holder possession.
-	// Defaults to false (skip).
 	EnforceKeyBinding bool
+	// ClaimValues constrains specific claims to an allowed set of values.
+	ClaimValues map[string][]string
 }
 
 // verifiedCredential is the raw output of an SD-JWT VC verification, before policy enforcement.
 type verifiedCredential struct {
-	Issuer         string
-	VCT            string
-	Claims         map[string]interface{}
-	DisclosedPaths []string
+	Issuer               string
+	VCT                  string
+	Claims               map[string]interface{}
+	DisclosedPaths       []string
+	KeyBindingThumbprint string
 }
 
 // VerifiedPresentation is the result of a successful presentation verification.
 type VerifiedPresentation struct {
-	Subject        string
-	Issuer         string
-	VCT            string
-	Claims         map[string]interface{}
-	DisclosedPaths []string
+	Subject              string
+	Issuer               string
+	VCT                  string
+	Claims               map[string]interface{}
+	DisclosedPaths       []string
+	KeyBindingThumbprint string
 }
 
 // subjectDeriver produces the authenticated subject for a verified presentation.
@@ -82,68 +71,45 @@ type subjectDeriver func(*VerifiedPresentation) string
 // presentationDefinition describes a single, named presentation request the verifier can serve.
 // Optional fields fall back to the engine defaults supplied by the Service.
 type presentationDefinition struct {
-	ID                string
-	DisplayName       string
-	DCQL              dcqlConfig
-	policy            policy
-	Trust             *staticTrustStore
-	DeriveSubject     subjectDeriver
-	SubjectClaims     []string
-	AttributeMapper   func(*VerifiedPresentation) map[string]interface{}
-	EphemeralKeyID    string
-	ResponseEncValues []string
-	RequestValidity   time.Duration
-	StateTTL          time.Duration
-	Leeway            time.Duration
+	ID            string
+	DCQL          dcqlConfig
+	policy        policy
+	DeriveSubject subjectDeriver
 }
 
-// registry is a thread-safe map of presentation definitions keyed by ID.
-type registry struct {
-	mu   sync.RWMutex
-	defs map[string]*presentationDefinition
-}
-
-// newRegistry returns an empty registry.
-func newRegistry() *registry {
-	return &registry{defs: map[string]*presentationDefinition{}}
-}
-
-// register adds a definition. It errors when the definition is nil, has an
-// empty ID, or collides with an existing entry.
-func (r *registry) register(def *presentationDefinition) error {
-	if def == nil {
-		return fmt.Errorf("%w: presentation definition is nil", ErrPolicy)
+// dtoToDefinition converts a managed presentation definition DTO into the verifier engine's representation.
+func dtoToDefinition(
+	dto definition.PresentationDefinitionDTO, clientID string, enforceKB bool,
+) *presentationDefinition {
+	allClaims := dto.RequestedClaims
+	if len(allClaims) == 0 {
+		allClaims = slices.Concat(dto.MandatoryClaims, dto.OptionalClaims)
 	}
-	if def.ID == "" {
-		return fmt.Errorf("%w: presentation definition requires an ID", ErrPolicy)
+	enforceTrustedIssuer := false
+	if dto.EnforceTrustedIssuer != nil {
+		enforceTrustedIssuer = *dto.EnforceTrustedIssuer
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if _, exists := r.defs[def.ID]; exists {
-		return fmt.Errorf("%w: presentation definition %q is already registered", ErrPolicy, def.ID)
+	return &presentationDefinition{
+		ID: dto.Handle,
+		DCQL: dcqlConfig{
+			CredentialID:       dto.Handle,
+			VCT:                dto.VCT,
+			Claims:             allClaims,
+			ClaimValues:        dto.ClaimValues,
+			TrustedAuthorities: dto.TrustedAuthorities,
+		},
+		policy: policy{
+			ExpectedVCT:          dto.VCT,
+			Audience:             clientID,
+			RequestedClaims:      allClaims,
+			MandatoryClaims:      dto.MandatoryClaims,
+			EnforceTrustedIssuer: enforceTrustedIssuer,
+			TrustedAuthorities:   dto.TrustedAuthorities,
+			EnforceKeyBinding:    enforceKB,
+			ClaimValues:          dto.ClaimValues,
+		},
+		DeriveSubject: defaultSubjectDeriver(),
 	}
-	r.defs[def.ID] = def
-	return nil
-}
-
-// get returns the definition registered under id.
-func (r *registry) get(id string) (*presentationDefinition, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	def, ok := r.defs[id]
-	return def, ok
-}
-
-// list returns the IDs of all registered definitions in lexicographic order.
-func (r *registry) list() []string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	out := make([]string, 0, len(r.defs))
-	for id := range r.defs {
-		out = append(out, id)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // dcqlConfig describes the credential query to build.
@@ -151,20 +117,32 @@ type dcqlConfig struct {
 	CredentialID string
 	VCT          string
 	Claims       []string
+	// ClaimValues maps a claim path to its allowed values (DCQL "values").
+	ClaimValues map[string][]string
+	// TrustedAuthorities names the trust anchors this definition restricts to.
+	TrustedAuthorities []string
+	// TrustedAuthorityKeyIDs holds the resolved base64url SubjectKeyIds, emitted as DCQL trusted_authorities.
+	TrustedAuthorityKeyIDs []string
 }
 
 // dcqlQuery is the OpenID4VP Digital Credentials Query Language query object.
 type dcqlQuery struct {
-	Credentials    []dcqlCredential    `json:"credentials"`
-	CredentialSets []dcqlCredentialSet `json:"credential_sets,omitempty"`
+	Credentials []dcqlCredential `json:"credentials"`
 }
 
 // dcqlCredential is a single credential query.
 type dcqlCredential struct {
-	ID     string      `json:"id"`
-	Format string      `json:"format"`
-	Meta   *dcqlMeta   `json:"meta,omitempty"`
-	Claims []dcqlClaim `json:"claims,omitempty"`
+	ID                 string             `json:"id"`
+	Format             string             `json:"format"`
+	Meta               *dcqlMeta          `json:"meta,omitempty"`
+	Claims             []dcqlClaim        `json:"claims,omitempty"`
+	TrustedAuthorities []trustedAuthority `json:"trusted_authorities,omitempty"`
+}
+
+// trustedAuthority is a per-credential-query trust constraint (OpenID4VP 1.0).
+type trustedAuthority struct {
+	Type   string   `json:"type"`
+	Values []string `json:"values"`
 }
 
 // dcqlMeta carries format-specific matching metadata.
@@ -174,18 +152,13 @@ type dcqlMeta struct {
 
 // dcqlClaim selects a single claim by its path.
 type dcqlClaim struct {
-	Path []interface{} `json:"path"`
-}
-
-// dcqlCredentialSet groups credential options that together satisfy the request.
-type dcqlCredentialSet struct {
-	Options [][]string `json:"options"`
+	Path   []interface{} `json:"path"`
+	Values []interface{} `json:"values,omitempty"`
 }
 
 // requestConfig is the static (config-driven) part of the OpenID4VP request.
 type requestConfig struct {
 	ClientID          string
-	ClientIDScheme    string
 	ResponseURI       string
 	ResponseMode      string
 	Audience          string
@@ -206,7 +179,6 @@ type requestParams struct {
 }
 
 // authorizationResponse is the decrypted direct_post.jwt body returned by the wallet.
-// With DCQL, vp_token is a JSON object mapping each credential query id to one or more presentations.
 type authorizationResponse struct {
 	State         string
 	Presentations map[string][]string
@@ -217,7 +189,6 @@ type authorizationResponse struct {
 type serviceConfig struct {
 	RequestURIBase        string
 	ResponseURIBase       string
-	ClientIDScheme        string
 	EphemeralKeyID        string
 	ResponseEncValues     []string
 	RequestAudience       string
@@ -226,11 +197,9 @@ type serviceConfig struct {
 	Leeway                time.Duration
 	KeyBindingMaxAge      time.Duration
 	ResultRedirectURIBase string
-	// VerifierInfo is the engine-wide verifier_attestations array attached to every signed
-	// request object (e.g. a trust-framework registration certificate JWT). Optional per spec.
-	VerifierInfo         []interface{}
-	EnforceTrustedIssuer bool
-	EnforceKeyBinding    bool
+	// VerifierInfo is attached to every signed request object (e.g. a registration certificate JWT).
+	VerifierInfo      []interface{}
+	EnforceKeyBinding bool
 }
 
 // Initiation is what the client needs to render the QR / deep link.
@@ -240,11 +209,19 @@ type Initiation struct {
 	RequestURI string
 }
 
-// trustedIssuer pins a trusted credential issuer's signing certificate.
-type trustedIssuer struct {
-	Issuer string
-	// CertFile is a path to a PEM CERTIFICATE or PUBLIC KEY, resolved before passing.
+// trustAnchor is a configured trust anchor (root CA) certificate file.
+type trustAnchor struct {
+	Name string
+	// CertFile is a path to a PEM CERTIFICATE, resolved before passing.
 	CertFile string
+}
+
+// TrustAnchorInfo is the public view of a configured trust anchor.
+type TrustAnchorInfo struct {
+	Name     string    `json:"name"`
+	Subject  string    `json:"subject"`
+	SKI      string    `json:"ski"`
+	NotAfter time.Time `json:"not_after"`
 }
 
 // Status is the lifecycle status of an OpenID4VP request.

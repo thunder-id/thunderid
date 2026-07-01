@@ -26,7 +26,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -194,21 +195,21 @@ var DefaultInterceptors []core.InterceptorUnitInterface
 var DefaultInterceptorNames map[string]struct{}
 
 // DefaultInterceptorsByMode holds default interceptor units pre-grouped by mode.
-var DefaultInterceptorsByMode map[common.InterceptorMode][]core.InterceptorUnitInterface
+var DefaultInterceptorsByMode map[providers.InterceptorMode][]core.InterceptorUnitInterface
 
 // initDefaultInterceptorUnits builds the default interceptor execution units using the flow factory
 // and groups them by mode for efficient lookup.
 func initDefaultInterceptorUnits(factory core.FlowFactoryInterface) {
 	defaults := []core.InterceptorUnitInterface{
 		factory.CreateInterceptorUnit(
-			ChallengeTokenInterceptor, common.InterceptorModePreRequest, "", nil, nil),
+			ChallengeTokenInterceptor, providers.InterceptorModePreRequest, "", nil, nil),
 		factory.CreateInterceptorUnit(
-			ChallengeTokenInterceptor, common.InterceptorModePostRequest, "", nil, nil),
+			ChallengeTokenInterceptor, providers.InterceptorModePostRequest, "", nil, nil),
 	}
 
 	DefaultInterceptors = defaults
 	DefaultInterceptorNames = make(map[string]struct{}, len(defaults))
-	DefaultInterceptorsByMode = make(map[common.InterceptorMode][]core.InterceptorUnitInterface)
+	DefaultInterceptorsByMode = make(map[providers.InterceptorMode][]core.InterceptorUnitInterface)
 	for _, d := range defaults {
 		DefaultInterceptorNames[d.GetName()] = struct{}{}
 		DefaultInterceptorsByMode[d.GetMode()] = append(DefaultInterceptorsByMode[d.GetMode()], d)
@@ -217,7 +218,7 @@ func initDefaultInterceptorUnits(factory core.FlowFactoryInterface) {
 
 // GetDefaultInterceptorUnits returns cloned copies of default interceptor units for the given mode.
 // Each call creates new instances so concurrent requests do not share mutable state.
-func GetDefaultInterceptorUnits(mode common.InterceptorMode) []core.InterceptorUnitInterface {
+func GetDefaultInterceptorUnits(mode providers.InterceptorMode) []core.InterceptorUnitInterface {
 	units := DefaultInterceptorsByMode[mode]
 	cloned := make([]core.InterceptorUnitInterface, len(units))
 	for i, u := range units {

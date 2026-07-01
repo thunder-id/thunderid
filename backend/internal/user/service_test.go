@@ -24,18 +24,19 @@ import (
 	"errors"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	entitypkg "github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
@@ -74,10 +75,10 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 		ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 		ouServiceMock.On("IsOrganizationUnitExists",
 			mock.Anything, "d9e12416-58d3-4c17-a4e4-cc4d96122598").
-			Return(true, (*serviceerror.ServiceError)(nil)).
+			Return(true, (*tidcommon.ServiceError)(nil)).
 			Once()
 		ouServiceMock.On("IsParent", mock.Anything, parentOU,
-			"d9e12416-58d3-4c17-a4e4-cc4d96122598").Return(false, &serviceerror.ServiceError{
+			"d9e12416-58d3-4c17-a4e4-cc4d96122598").Return(false, &tidcommon.ServiceError{
 			Code: errCode,
 		}).Once()
 
@@ -86,7 +87,7 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 			On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
 			Return(&entitytype.EntityType{
 				OUID: parentOU,
-			}, (*serviceerror.ServiceError)(nil)).
+			}, (*tidcommon.ServiceError)(nil)).
 			Once()
 
 		return &userService{
@@ -103,7 +104,7 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 		userType    string
 		ouID        string
 		setup       func(t *testing.T) (*userService, testMocks)
-		expectedErr *serviceerror.ServiceError
+		expectedErr *tidcommon.ServiceError
 	}{
 		{
 			name:     "ReturnsErrorWhenIDEmpty",
@@ -121,7 +122,7 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 			setup: func(t *testing.T) (*userService, testMocks) {
 				return &userService{}, testMocks{}
 			},
-			expectedErr: &serviceerror.InternalServerError,
+			expectedErr: &tidcommon.InternalServerError,
 		},
 		{
 			name:     "ReturnsErrorWhenOrganizationUnitMissing",
@@ -131,7 +132,7 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.On("IsOrganizationUnitExists",
 					mock.Anything, "4d8b40d6-3a17-4c19-9a94-5866df9b6bf5").
-					Return(false, (*serviceerror.ServiceError)(nil)).
+					Return(false, (*tidcommon.ServiceError)(nil)).
 					Once()
 
 				return &userService{
@@ -149,8 +150,8 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 			setup: func(t *testing.T) (*userService, testMocks) {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.On("IsOrganizationUnitExists",
-					mock.Anything, "6c8f5afd-8884-4ea0-a317-3d8579346d86").Return(false, &serviceerror.ServiceError{
-					Type: serviceerror.ClientErrorType,
+					mock.Anything, "6c8f5afd-8884-4ea0-a317-3d8579346d86").Return(false, &tidcommon.ServiceError{
+					Type: tidcommon.ClientErrorType,
 					Code: oupkg.ErrorOrganizationUnitNotFound.Code,
 				}).Once()
 
@@ -169,8 +170,8 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 			setup: func(t *testing.T) (*userService, testMocks) {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.On("IsOrganizationUnitExists",
-					mock.Anything, "8d0c2f4e-8bb1-40bc-a0e1-ca5c4aacff63").Return(false, &serviceerror.ServiceError{
-					Type: serviceerror.ClientErrorType,
+					mock.Anything, "8d0c2f4e-8bb1-40bc-a0e1-ca5c4aacff63").Return(false, &tidcommon.ServiceError{
+					Type: tidcommon.ClientErrorType,
 					Code: oupkg.ErrorInvalidRequestFormat.Code,
 				}).Once()
 
@@ -191,11 +192,11 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.On("IsOrganizationUnitExists",
 					mock.Anything, "f4e7c7b2-0b11-46a4-83be-4b43a7f69c7e").
-					Return(true, (*serviceerror.ServiceError)(nil)).
+					Return(true, (*tidcommon.ServiceError)(nil)).
 					Once()
 				ouServiceMock.
 					On("IsParent", mock.Anything, parentOU, "f4e7c7b2-0b11-46a4-83be-4b43a7f69c7e").
-					Return(false, (*serviceerror.ServiceError)(nil)).
+					Return(false, (*tidcommon.ServiceError)(nil)).
 					Once()
 
 				entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
@@ -203,7 +204,7 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 					On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{
 						OUID: parentOU,
-					}, (*serviceerror.ServiceError)(nil)).
+					}, (*tidcommon.ServiceError)(nil)).
 					Once()
 
 				return &userService{
@@ -225,17 +226,17 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.On("IsOrganizationUnitExists",
 					mock.Anything, "1b5c7208-0d6f-4d5d-8fb9-6e8573549533").
-					Return(true, (*serviceerror.ServiceError)(nil)).
+					Return(true, (*tidcommon.ServiceError)(nil)).
 					Once()
 				ouServiceMock.On("IsParent", mock.Anything, parentOU,
-					"1b5c7208-0d6f-4d5d-8fb9-6e8573549533").Return(true, (*serviceerror.ServiceError)(nil)).Once()
+					"1b5c7208-0d6f-4d5d-8fb9-6e8573549533").Return(true, (*tidcommon.ServiceError)(nil)).Once()
 
 				entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 				entityTypeMock.
 					On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{
 						OUID: parentOU,
-					}, (*serviceerror.ServiceError)(nil)).
+					}, (*tidcommon.ServiceError)(nil)).
 					Once()
 
 				return &userService{
@@ -262,9 +263,9 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 			userType: testUserType,
 			ouID:     "d9e12416-58d3-4c17-a4e4-cc4d96122598",
 			setup: func(t *testing.T) (*userService, testMocks) {
-				return setupParentCheckError(t, serviceerror.InternalServerError.Code)
+				return setupParentCheckError(t, tidcommon.InternalServerError.Code)
 			},
-			expectedErr: &serviceerror.InternalServerError,
+			expectedErr: &tidcommon.InternalServerError,
 		},
 		{
 			name:     "ReturnsNilWhenValid",
@@ -274,7 +275,7 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.On("IsOrganizationUnitExists",
 					mock.Anything, "e5c3aa8a-d7df-46f8-9f3f-bb3245c95d7c").
-					Return(true, (*serviceerror.ServiceError)(nil)).
+					Return(true, (*tidcommon.ServiceError)(nil)).
 					Once()
 
 				entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
@@ -282,7 +283,7 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 					On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{
 						OUID: "e5c3aa8a-d7df-46f8-9f3f-bb3245c95d7c",
-					}, (*serviceerror.ServiceError)(nil)).
+					}, (*tidcommon.ServiceError)(nil)).
 					Once()
 
 				return &userService{
@@ -319,7 +320,7 @@ func TestUserService_GetUsersByPath_HandlesOUServiceErrors(t *testing.T) {
 	testCases := []struct {
 		name        string
 		setup       func(t *testing.T) *userService
-		expectedErr *serviceerror.ServiceError
+		expectedErr *tidcommon.ServiceError
 	}{
 		{
 			name: "ReturnsInvalidHandlePathWhenResolverFails",
@@ -327,8 +328,8 @@ func TestUserService_GetUsersByPath_HandlesOUServiceErrors(t *testing.T) {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.
 					On("GetOrganizationUnitByPath", mock.Anything, "root").
-					Return(oupkg.OrganizationUnit{}, &serviceerror.ServiceError{
-						Type: serviceerror.ClientErrorType,
+					Return(providers.OrganizationUnit{}, &tidcommon.ServiceError{
+						Type: tidcommon.ClientErrorType,
 						Code: oupkg.ErrorInvalidHandlePath.Code,
 					}).
 					Once()
@@ -345,12 +346,12 @@ func TestUserService_GetUsersByPath_HandlesOUServiceErrors(t *testing.T) {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.
 					On("GetOrganizationUnitByPath", mock.Anything, "root").
-					Return(oupkg.OrganizationUnit{ID: "ou-id"}, (*serviceerror.ServiceError)(nil)).
+					Return(providers.OrganizationUnit{ID: "ou-id"}, (*tidcommon.ServiceError)(nil)).
 					Once()
 				ouServiceMock.
 					On("GetOrganizationUnitUsers", mock.Anything, "ou-id", 10, 0, false).
-					Return((*oupkg.UserListResponse)(nil), &serviceerror.ServiceError{
-						Type: serviceerror.ClientErrorType,
+					Return((*oupkg.UserListResponse)(nil), &tidcommon.ServiceError{
+						Type: tidcommon.ClientErrorType,
 						Code: oupkg.ErrorInvalidLimit.Code,
 					}).
 					Once()
@@ -381,8 +382,8 @@ func TestUserService_CreateUserByPath_HandlesOUServiceErrors(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.
 		On("GetOrganizationUnitByPath", mock.Anything, "root/engineering").
-		Return(oupkg.OrganizationUnit{}, &serviceerror.ServiceError{
-			Type: serviceerror.ClientErrorType,
+		Return(providers.OrganizationUnit{}, &tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType,
 			Code: oupkg.ErrorInvalidHandlePath.Code,
 		}).
 		Once()
@@ -402,21 +403,21 @@ func TestUserService_CreateUserByPath_HandlesOUServiceErrors(t *testing.T) {
 func TestUserService_CreateUser_CallsCreateEntity(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
-		Return(true, (*serviceerror.ServiceError)(nil)).
+		Return(true, (*tidcommon.ServiceError)(nil)).
 		Once()
 
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
-		Return(&entitytype.EntityType{OUID: testOrgID}, (*serviceerror.ServiceError)(nil)).
+		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).
 		Once()
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	storeMock.
-		On("CreateEntity", mock.Anything, mock.MatchedBy(func(e *entitypkg.Entity) bool {
+		On("CreateEntity", mock.Anything, mock.MatchedBy(func(e *providers.Entity) bool {
 			return e.OUID == testOrgID && e.Type == testUserType && e.ID != ""
 		}), mock.Anything).
-		Return(&entitypkg.Entity{
+		Return(&providers.Entity{
 			OUID: testOrgID, Type: testUserType,
 			Attributes: json.RawMessage(`{}`),
 		}, nil).
@@ -447,11 +448,11 @@ func TestUserService_CreateUser_CallsCreateEntity(t *testing.T) {
 func TestUserService_CreateUser_UUIDGenerationError(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
-		Return(true, (*serviceerror.ServiceError)(nil)).Once()
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
 
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
-		Return(&entitytype.EntityType{OUID: testOrgID}, (*serviceerror.ServiceError)(nil)).Once()
+		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{
 		ouService:         ouServiceMock,
@@ -467,7 +468,7 @@ func TestUserService_CreateUser_UUIDGenerationError(t *testing.T) {
 	created, svcErr := service.CreateUser(context.Background(), user)
 	require.Nil(t, created)
 	require.NotNil(t, svcErr)
-	require.Equal(t, serviceerror.InternalServerError.Code, svcErr.Code)
+	require.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func TestUserService_CreateUser_PropagatesStoreError(t *testing.T) {
@@ -475,19 +476,19 @@ func TestUserService_CreateUser_PropagatesStoreError(t *testing.T) {
 
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
-		Return(true, (*serviceerror.ServiceError)(nil)).
+		Return(true, (*tidcommon.ServiceError)(nil)).
 		Once()
 
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
-		Return(&entitytype.EntityType{OUID: testOrgID}, (*serviceerror.ServiceError)(nil)).
+		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).
 		Once()
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	storeMock.
 		On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
-		Return((*entitypkg.Entity)(nil), storeErr).
+		Return((*providers.Entity)(nil), storeErr).
 		Once()
 
 	service := &userService{
@@ -507,7 +508,7 @@ func TestUserService_CreateUser_PropagatesStoreError(t *testing.T) {
 	created, svcErr := service.CreateUser(context.Background(), user)
 	require.Nil(t, created)
 	require.NotNil(t, svcErr)
-	require.Equal(t, serviceerror.InternalServerError, *svcErr)
+	require.Equal(t, tidcommon.InternalServerError, *svcErr)
 	storeMock.AssertNumberOfCalls(t, "CreateEntity", 1)
 }
 
@@ -541,8 +542,8 @@ func TestUserService_UpdateUserCredentials_Validation(t *testing.T) {
 		userStoreMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 		userStoreMock.
 			On("GetEntity", mock.Anything, svcTestUserID1).
-			Return(&entitypkg.Entity{
-				Category: entitypkg.EntityCategoryUser, ID: svcTestUserID1, Type: "Person",
+			Return(&providers.Entity{
+				Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: "Person",
 			}, nil).
 			Once()
 		userStoreMock.
@@ -575,7 +576,7 @@ func TestUserService_UpdateUserCredentials_UserNotFound(t *testing.T) {
 	userStoreMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	userStoreMock.
 		On("GetEntity", mock.Anything, svcTestUserID1).
-		Return((*entitypkg.Entity)(nil), entitypkg.ErrEntityNotFound).
+		Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).
 		Once()
 
 	service := &userService{
@@ -594,8 +595,8 @@ func TestUserService_UpdateUserCredentials_Succeeds(t *testing.T) {
 	userStoreMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	userStoreMock.
 		On("GetEntity", mock.Anything, svcTestUserID1).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: svcTestUserID1, Type: "Person",
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: "Person",
 		}, nil).
 		Once()
 
@@ -656,8 +657,8 @@ func TestUserService_UpdateUserCredentials_Rejections(t *testing.T) {
 			userStoreMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 			userStoreMock.
 				On("GetEntity", mock.Anything, svcTestUserID1).
-				Return(&entitypkg.Entity{
-					Category: entitypkg.EntityCategoryUser, ID: svcTestUserID1, Type: "Person",
+				Return(&providers.Entity{
+					Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: "Person",
 				}, nil).
 				Once()
 			if tc.mockEntityErr != nil {
@@ -698,7 +699,7 @@ func TestUserService_UpdateUserAttributes_UserNotFound(t *testing.T) {
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).
-		Return((*entitypkg.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
+		Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
 
 	service := &userService{
 		entityService: storeMock,
@@ -717,8 +718,8 @@ func TestUserService_UpdateUserAttributes_SchemaValidationFails(t *testing.T) {
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	storeMock.
 		On("GetEntity", mock.Anything, svcTestUserID1).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType,
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType,
 			Attributes: json.RawMessage(`{"email":"old"}`),
 		}, nil)
 	storeMock.
@@ -728,7 +729,7 @@ func TestUserService_UpdateUserAttributes_SchemaValidationFails(t *testing.T) {
 
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	schemaMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType, true, false, false).
-		Return([]entitytype.AttributeInfo{{Attribute: "password"}}, (*serviceerror.ServiceError)(nil)).Once()
+		Return([]entitytype.AttributeInfo{{Attribute: "password"}}, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{
 		entityService:     storeMock,
@@ -748,7 +749,7 @@ func TestUserService_UpdateUserAttributes_Succeeds(t *testing.T) {
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	storeMock.
 		On("GetEntity", mock.Anything, svcTestUserID1).
-		Return(&entitypkg.Entity{Category: entitypkg.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType,
+		Return(&providers.Entity{Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType,
 			Attributes: json.RawMessage(`{"email":"old@example.com"}`)}, nil)
 	storeMock.
 		On("UpdateAttributes", mock.Anything, svcTestUserID1, mock.Anything).
@@ -757,7 +758,7 @@ func TestUserService_UpdateUserAttributes_Succeeds(t *testing.T) {
 
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	schemaMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType, true, false, false).
-		Return([]entitytype.AttributeInfo{{Attribute: "password"}}, (*serviceerror.ServiceError)(nil)).Once()
+		Return([]entitytype.AttributeInfo{{Attribute: "password"}}, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{
 		entityService:     storeMock,
@@ -778,12 +779,12 @@ func TestUserService_UpdateUserAttributes_RejectsCredentialAttributes(t *testing
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	storeMock.
 		On("GetEntity", mock.Anything, svcTestUserID1).
-		Return(&entitypkg.Entity{Category: entitypkg.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType,
+		Return(&providers.Entity{Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType,
 			Attributes: json.RawMessage(`{"email":"old@example.com"}`)}, nil).Once()
 
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	schemaMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType, true, false, false).
-		Return([]entitytype.AttributeInfo{{Attribute: "password"}}, (*serviceerror.ServiceError)(nil)).Once()
+		Return([]entitytype.AttributeInfo{{Attribute: "password"}}, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{
 		entityService:     storeMock,
@@ -803,7 +804,7 @@ func TestUserService_UpdateUserAttributes_NilSchemaService(t *testing.T) {
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	storeMock.
 		On("GetEntity", mock.Anything, svcTestUserID1).
-		Return(&entitypkg.Entity{Category: entitypkg.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType,
+		Return(&providers.Entity{Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType,
 			Attributes: json.RawMessage(`{"email":"old@example.com"}`)}, nil).Once()
 
 	service := &userService{
@@ -815,13 +816,13 @@ func TestUserService_UpdateUserAttributes_NilSchemaService(t *testing.T) {
 		json.RawMessage(`{"email":"new@example.com"}`))
 	require.Nil(t, resp)
 	require.NotNil(t, err)
-	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 }
 
 func TestUserService_GetUser_ReturnsUser(t *testing.T) {
 	userID := svcTestUserID1
-	expectedEntity := &entitypkg.Entity{
-		Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+	expectedEntity := &providers.Entity{
+		Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 	}
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
@@ -841,8 +842,8 @@ func TestUserService_GetUser_ReturnsUser(t *testing.T) {
 
 func TestUserService_GetUser_WithIncludeDisplay(t *testing.T) {
 	userID := svcTestUserID1
-	expectedEntity := &entitypkg.Entity{
-		Category:   entitypkg.EntityCategoryUser,
+	expectedEntity := &providers.Entity{
+		Category:   providers.EntityCategoryUser,
 		ID:         userID,
 		OUID:       testOrgID,
 		Type:       "employee",
@@ -880,8 +881,8 @@ func TestUserService_DeleteUser(t *testing.T) {
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	storeMock.On("GetEntity", mock.Anything, userID).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 		}, nil).Once()
 	storeMock.On("DeleteEntity", mock.Anything, userID).Return(nil).Once()
 
@@ -905,23 +906,23 @@ func TestUserService_UpdateUser(t *testing.T) {
 
 	// Mock GetUser pre-fetch for authz check
 	storeMock.On("GetEntity", mock.Anything, userID).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID, Type: testUserType,
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID, Type: testUserType,
 		}, nil).Once()
 
 	// Mock UpdateEntity call
-	storeMock.On("UpdateEntity", mock.Anything, userID, mock.MatchedBy(func(e *entitypkg.Entity) bool {
+	storeMock.On("UpdateEntity", mock.Anything, userID, mock.MatchedBy(func(e *providers.Entity) bool {
 		return e.ID == userID
-	})).Return((*entitypkg.Entity)(nil), nil).Once()
+	})).Return((*providers.Entity)(nil), nil).Once()
 
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
-		Return(true, (*serviceerror.ServiceError)(nil)).
+		Return(true, (*tidcommon.ServiceError)(nil)).
 		Once()
 
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
-		Return(&entitytype.EntityType{OUID: testOrgID}, (*serviceerror.ServiceError)(nil)).
+		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).
 		Once()
 
 	service := &userService{
@@ -955,20 +956,20 @@ func TestUserService_UpdateUser_WithCredentials(t *testing.T) {
 
 	// Mock GetUser pre-fetch for authz check
 	storeMock.On("GetEntity", mock.Anything, userID).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID, Type: testUserType,
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID, Type: testUserType,
 		}, nil).Once()
 
 	// Mock validation calls
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
-		Return(true, (*serviceerror.ServiceError)(nil)).Once()
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
 	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
-		Return(&entitytype.EntityType{OUID: testOrgID}, (*serviceerror.ServiceError)(nil)).Once()
+		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Once()
 
 	// Mock UpdateEntity - entity service handles credential extraction internally
-	storeMock.On("UpdateEntity", mock.Anything, userID, mock.MatchedBy(func(e *entitypkg.Entity) bool {
+	storeMock.On("UpdateEntity", mock.Anything, userID, mock.MatchedBy(func(e *providers.Entity) bool {
 		return e.ID == userID
-	})).Return((*entitypkg.Entity)(nil), nil).Once()
+	})).Return((*providers.Entity)(nil), nil).Once()
 
 	service := &userService{
 		entityService:     storeMock,
@@ -1002,7 +1003,7 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 			ouServiceMock *oumock.OrganizationUnitServiceInterfaceMock,
 			entityTypeMock *entitytypemock.EntityTypeServiceInterfaceMock,
 		)
-		expectedError *serviceerror.ServiceError
+		expectedError *tidcommon.ServiceError
 	}{
 		{
 			name:       "UpdateEntity_EntityNotFound",
@@ -1013,19 +1014,19 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 				entityTypeMock *entitytypemock.EntityTypeServiceInterfaceMock,
 			) {
 				ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
-					Return(true, (*serviceerror.ServiceError)(nil)).Maybe()
+					Return(true, (*tidcommon.ServiceError)(nil)).Maybe()
 				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{OUID: testOrgID},
-						(*serviceerror.ServiceError)(nil)).Maybe()
+						(*tidcommon.ServiceError)(nil)).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return(&entitypkg.Entity{
-						Category: entitypkg.EntityCategoryUser,
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser,
 						ID:       userID,
 						OUID:     testOrgID,
 						Type:     testUserType,
 					}, nil).Once()
 				storeMock.On("UpdateEntity", mock.Anything, userID, mock.Anything).
-					Return((*entitypkg.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
+					Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
 			},
 			expectedError: &ErrorUserNotFound,
 		},
@@ -1038,21 +1039,21 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 				entityTypeMock *entitytypemock.EntityTypeServiceInterfaceMock,
 			) {
 				ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
-					Return(true, (*serviceerror.ServiceError)(nil)).Maybe()
+					Return(true, (*tidcommon.ServiceError)(nil)).Maybe()
 				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{OUID: testOrgID},
-						(*serviceerror.ServiceError)(nil)).Maybe()
+						(*tidcommon.ServiceError)(nil)).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return(&entitypkg.Entity{
-						Category: entitypkg.EntityCategoryUser,
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser,
 						ID:       userID,
 						OUID:     testOrgID,
 						Type:     testUserType,
 					}, nil).Once()
 				storeMock.On("UpdateEntity", mock.Anything, userID, mock.Anything).
-					Return((*entitypkg.Entity)(nil), errors.New("db connection lost")).Once()
+					Return((*providers.Entity)(nil), errors.New("db connection lost")).Once()
 			},
-			expectedError: &serviceerror.InternalServerError,
+			expectedError: &tidcommon.InternalServerError,
 		},
 		{
 			name:       "UpdateUser_WithoutCredentials_Success",
@@ -1063,19 +1064,19 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 				entityTypeMock *entitytypemock.EntityTypeServiceInterfaceMock,
 			) {
 				ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
-					Return(true, (*serviceerror.ServiceError)(nil)).Once()
+					Return(true, (*tidcommon.ServiceError)(nil)).Once()
 				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{OUID: testOrgID},
-						(*serviceerror.ServiceError)(nil)).Once()
+						(*tidcommon.ServiceError)(nil)).Once()
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return(&entitypkg.Entity{
-						Category: entitypkg.EntityCategoryUser,
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser,
 						ID:       userID,
 						OUID:     testOrgID,
 						Type:     testUserType,
 					}, nil).Once()
 				storeMock.On("UpdateEntity", mock.Anything, userID, mock.Anything).
-					Return((*entitypkg.Entity)(nil), nil).Once()
+					Return((*providers.Entity)(nil), nil).Once()
 			},
 			expectedError: nil,
 		},
@@ -1088,7 +1089,7 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 				_ *entitytypemock.EntityTypeServiceInterfaceMock,
 			) {
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return((*entitypkg.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
+					Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
 			},
 			expectedError: &ErrorUserNotFound,
 		},
@@ -1101,9 +1102,9 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 				_ *entitytypemock.EntityTypeServiceInterfaceMock,
 			) {
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return((*entitypkg.Entity)(nil), errors.New("db connection lost")).Once()
+					Return((*providers.Entity)(nil), errors.New("db connection lost")).Once()
 			},
-			expectedError: &serviceerror.InternalServerError,
+			expectedError: &tidcommon.InternalServerError,
 		},
 	}
 
@@ -1173,7 +1174,7 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 						ResourceID:   userID,
 					}).Return(false, nil).Once()
 			},
-			expectedErrorCode: serviceerror.ErrorUnauthorized.Code,
+			expectedErrorCode: tidcommon.ErrorUnauthorized.Code,
 		},
 		{
 			name:   "Authz_service_error_on_existing_user_OU",
@@ -1185,9 +1186,9 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 						ResourceType: security.ResourceTypeUser,
 						OUID:         existingOU,
 						ResourceID:   userID,
-					}).Return(false, &serviceerror.InternalServerError).Once()
+					}).Return(false, &tidcommon.InternalServerError).Once()
 			},
-			expectedErrorCode: serviceerror.InternalServerError.Code,
+			expectedErrorCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name:   "Same_OU_skips_destination_check",
@@ -1266,7 +1267,7 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 						ResourceID:   userID,
 					}).Return(false, nil).Once()
 			},
-			expectedErrorCode: serviceerror.ErrorUnauthorized.Code,
+			expectedErrorCode: tidcommon.ErrorUnauthorized.Code,
 		},
 		{
 			name:   "Different_OU_destination_authz_error",
@@ -1285,9 +1286,9 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 						ResourceType: security.ResourceTypeUser,
 						OUID:         destinationOU,
 						ResourceID:   userID,
-					}).Return(false, &serviceerror.InternalServerError).Once()
+					}).Return(false, &tidcommon.InternalServerError).Once()
 			},
-			expectedErrorCode: serviceerror.InternalServerError.Code,
+			expectedErrorCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name:   "Different_OU_both_allowed",
@@ -1315,7 +1316,7 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 			) {
 				// Destination OU differs from the schema OU, so IsParent is called.
 				ouMock.On("IsParent", mock.Anything, existingOU, destinationOU).
-					Return(true, (*serviceerror.ServiceError)(nil)).Maybe()
+					Return(true, (*tidcommon.ServiceError)(nil)).Maybe()
 			},
 			expectedErrorCode: "", // success path
 		},
@@ -1330,8 +1331,8 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 			authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 			// The existing user always lives in existingOU.
 			storeMock.On("GetEntity", mock.Anything, userID).
-				Return(&entitypkg.Entity{
-					Category: entitypkg.EntityCategoryUser, ID: userID,
+				Return(&providers.Entity{
+					Category: providers.EntityCategoryUser, ID: userID,
 					OUID: existingOU, Type: testUserType,
 				}, nil).Once()
 
@@ -1340,12 +1341,12 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 			// For success-path cases, set up the remaining mocks so the method completes.
 			if tt.expectedErrorCode == "" {
 				ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, mock.Anything).
-					Return(true, (*serviceerror.ServiceError)(nil)).Maybe()
+					Return(true, (*tidcommon.ServiceError)(nil)).Maybe()
 				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{OUID: existingOU},
-						(*serviceerror.ServiceError)(nil)).Maybe()
+						(*tidcommon.ServiceError)(nil)).Maybe()
 				storeMock.On("UpdateEntity", mock.Anything, userID, mock.Anything).
-					Return((*entitypkg.Entity)(nil), nil).Maybe()
+					Return((*providers.Entity)(nil), nil).Maybe()
 			}
 
 			if tt.setupExtraMocks != nil {
@@ -1410,27 +1411,27 @@ func TestUserService_UpdateUser_PreservesMultipleCredentials(t *testing.T) {
 
 	// Mock GetUser pre-fetch for authz check
 	storeMock.On("GetEntity", mock.Anything, userID).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOU, Type: testUserType,
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: userID, OUID: testOU, Type: testUserType,
 		}, nil).Once()
 
 	// Mock OU validation
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOU).
-		Return(true, (*serviceerror.ServiceError)(nil)).Once()
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
 	ouServiceMock.On("IsParent", mock.Anything, testOU).
-		Return(true, (*serviceerror.ServiceError)(nil)).Maybe()
+		Return(true, (*tidcommon.ServiceError)(nil)).Maybe()
 
 	// Mock schema validation
 	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
 		Return(&entitytype.EntityType{
 			Name: testUserType,
 			OUID: testOU,
-		}, (*serviceerror.ServiceError)(nil)).Once()
+		}, (*tidcommon.ServiceError)(nil)).Once()
 
 	// Mock UpdateEntity — entity service handles credential extraction, hashing, and merging internally
-	storeMock.On("UpdateEntity", mock.Anything, userID, mock.MatchedBy(func(e *entitypkg.Entity) bool {
+	storeMock.On("UpdateEntity", mock.Anything, userID, mock.MatchedBy(func(e *providers.Entity) bool {
 		return e.ID == userID
-	})).Return((*entitypkg.Entity)(nil), nil).Once()
+	})).Return((*providers.Entity)(nil), nil).Once()
 
 	// Create service
 	service := &userService{
@@ -1461,9 +1462,9 @@ func TestUserService_GetUserList(t *testing.T) {
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-	storeMock.On("GetEntityListCount", mock.Anything, entitypkg.EntityCategoryUser, filters).Return(5, nil).Once()
-	storeMock.On("GetEntityList", mock.Anything, entitypkg.EntityCategoryUser, limit, offset, filters).
-		Return([]entitypkg.Entity{{ID: svcTestUserID1}}, nil).
+	storeMock.On("GetEntityListCount", mock.Anything, providers.EntityCategoryUser, filters).Return(5, nil).Once()
+	storeMock.On("GetEntityList", mock.Anything, providers.EntityCategoryUser, limit, offset, filters).
+		Return([]providers.Entity{{ID: svcTestUserID1}}, nil).
 		Once()
 
 	service := &userService{
@@ -1486,10 +1487,10 @@ func TestUserService_GetUserList_ScopedByOUIDs(t *testing.T) {
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-	storeMock.On("GetEntityListCountByOUIDs", mock.Anything, entitypkg.EntityCategoryUser, ouIDs, filters).
+	storeMock.On("GetEntityListCountByOUIDs", mock.Anything, providers.EntityCategoryUser, ouIDs, filters).
 		Return(3, nil).Once()
-	storeMock.On("GetEntityListByOUIDs", mock.Anything, entitypkg.EntityCategoryUser, ouIDs, limit, offset, filters).
-		Return([]entitypkg.Entity{{ID: svcTestUserID1, OUID: testOrgID}}, nil).
+	storeMock.On("GetEntityListByOUIDs", mock.Anything, providers.EntityCategoryUser, ouIDs, limit, offset, filters).
+		Return([]providers.Entity{{ID: svcTestUserID1, OUID: testOrgID}}, nil).
 		Once()
 
 	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
@@ -1536,12 +1537,12 @@ func TestUserService_GetUserGroups(t *testing.T) {
 	limit, offset := 10, 0
 
 	mockStore.On("GetEntity", mock.Anything, userID).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 		}, nil).Once()
 	mockStore.On("GetGroupCountForEntity", mock.Anything, userID).Return(5, nil)
 	mockStore.On("GetEntityGroups", mock.Anything, userID, limit, offset).
-		Return([]entitypkg.EntityGroup{{ID: "g1", Name: "Group 1"}}, nil)
+		Return([]providers.EntityGroup{{ID: "g1", Name: "Group 1"}}, nil)
 
 	service := &userService{
 		entityService: mockStore,
@@ -1577,29 +1578,29 @@ func TestUserService_GetUserGroups_ErrorCases(t *testing.T) {
 
 	t.Run("UserNotFound", func(t *testing.T) {
 		mockStore.On("GetEntity", mock.Anything, "u1").
-			Return((*entitypkg.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
+			Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
 		_, err := service.GetUserGroups(ctx, "u1", 10, 0)
 		require.NotNil(t, err)
 		require.Equal(t, ErrorUserNotFound.Code, err.Code)
 	})
 
 	t.Run("StoreErrorOnGetUser", func(t *testing.T) {
-		mockStore.On("GetEntity", mock.Anything, "u1").Return((*entitypkg.Entity)(nil), errors.New("db error")).Once()
+		mockStore.On("GetEntity", mock.Anything, "u1").Return((*providers.Entity)(nil), errors.New("db error")).Once()
 		_, err := service.GetUserGroups(ctx, "u1", 10, 0)
 		require.NotNil(t, err)
-		require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+		require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 	})
 
 	t.Run("StoreErrorOnCount", func(t *testing.T) {
 		mockStore.On("GetEntity", mock.Anything, "u1").
-			Return(&entitypkg.Entity{
-				Category: entitypkg.EntityCategoryUser, ID: "u1", OUID: testOrgID,
+			Return(&providers.Entity{
+				Category: providers.EntityCategoryUser, ID: "u1", OUID: testOrgID,
 			}, nil).Once()
 		mockStore.On("GetGroupCountForEntity", mock.Anything, "u1").
 			Return(0, errors.New("db error")).Once()
 		_, err := service.GetUserGroups(ctx, "u1", 10, 0)
 		require.NotNil(t, err)
-		require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+		require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 	})
 }
 
@@ -1641,7 +1642,7 @@ func TestUserService_CRUD_ErrorCases(t *testing.T) {
 
 	t.Run("GetUser_NotFound", func(t *testing.T) {
 		mockStore.On("GetEntity", mock.Anything, "u1").
-			Return((*entitypkg.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
+			Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
 		_, err := service.GetUser(ctx, "u1", false)
 		require.NotNil(t, err)
 		require.Equal(t, ErrorUserNotFound.Code, err.Code)
@@ -1655,7 +1656,7 @@ func TestUserService_CRUD_ErrorCases(t *testing.T) {
 
 	t.Run("DeleteUser_NotFound", func(t *testing.T) {
 		mockStore.On("GetEntity", mock.Anything, "u1").
-			Return((*entitypkg.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
+			Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
 		err := service.DeleteUser(ctx, "u1")
 		require.NotNil(t, err)
 		require.Equal(t, ErrorUserNotFound.Code, err.Code)
@@ -1679,7 +1680,9 @@ func TestUserService_GetUsersByPath(t *testing.T) {
 	service := &userService{ouService: mockOU, authzService: newAllowAllAuthz(t)}
 	ctx := context.Background()
 
-	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "root").Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).Once()
+	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "root").
+		Return(providers.OrganizationUnit{ID: "ou-1"}, nil).
+		Once()
 	mockOU.On("GetOrganizationUnitUsers", mock.Anything, "ou-1", 10, 0, false).Return(&oupkg.UserListResponse{
 		TotalResults: 20,
 		Users:        []oupkg.User{{ID: "u1"}},
@@ -1704,14 +1707,14 @@ func TestUserService_GetUsersByPath_WithIncludeDisplay(t *testing.T) {
 	ctx := context.Background()
 
 	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "root").
-		Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).Once()
+		Return(providers.OrganizationUnit{ID: "ou-1"}, nil).Once()
 	mockOU.On("GetOrganizationUnitUsers", mock.Anything, "ou-1", 10, 0, false).
 		Return(&oupkg.UserListResponse{
 			TotalResults: 2,
 			Users:        []oupkg.User{{ID: "u1"}},
 		}, nil).Once()
 	mockStore.On("GetEntitiesByIDs", mock.Anything, []string{"u1"}).
-		Return([]entitypkg.Entity{{
+		Return([]providers.Entity{{
 			ID:         "u1",
 			Type:       "employee",
 			Attributes: json.RawMessage(`{"email":"alice@example.com"}`),
@@ -1736,7 +1739,7 @@ func TestUserService_GetUsersByPath_WithIncludeDisplay_BatchFetchError(t *testin
 	ctx := context.Background()
 
 	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "root").
-		Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).Once()
+		Return(providers.OrganizationUnit{ID: "ou-1"}, nil).Once()
 	mockOU.On("GetOrganizationUnitUsers", mock.Anything, "ou-1", 10, 0, false).
 		Return(&oupkg.UserListResponse{
 			TotalResults: 1,
@@ -1745,7 +1748,7 @@ func TestUserService_GetUsersByPath_WithIncludeDisplay_BatchFetchError(t *testin
 			Users:        []oupkg.User{{ID: "u1"}},
 		}, nil).Once()
 	mockStore.On("GetEntitiesByIDs", mock.Anything, []string{"u1"}).
-		Return([]entitypkg.Entity(nil), errors.New("db connection lost")).Once()
+		Return([]providers.Entity(nil), errors.New("db connection lost")).Once()
 
 	resp, svcErr := service.GetUsersByPath(ctx, "root", 10, 0, nil, true)
 	require.Nil(t, svcErr)
@@ -1770,7 +1773,7 @@ func TestUserService_Validation_EdgeCases(t *testing.T) {
 	t.Run("ValidateOU_InvalidUUID", func(t *testing.T) {
 		err := service.validateOrganizationUnitForUserType(context.Background(), "customer", "invalid-uuid", logger)
 		require.NotNil(t, err)
-		require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+		require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 	})
 
 	t.Run("ValidateOU_EmptyOU", func(t *testing.T) {
@@ -1797,15 +1800,15 @@ func TestUserService_MoreErrorCases(t *testing.T) {
 	t.Run("UpdateUser_StoreError", func(t *testing.T) {
 		userIn := &User{Type: "customer", OUID: testOrgID}
 		storeMock.On("GetEntity", mock.Anything, "u1").
-			Return(&entitypkg.Entity{
-				Category: entitypkg.EntityCategoryUser, ID: "u1", OUID: testOrgID,
+			Return(&providers.Entity{
+				Category: providers.EntityCategoryUser, ID: "u1", OUID: testOrgID,
 			}, nil).Once()
 		storeMock.On("UpdateEntity", mock.Anything, "u1", mock.Anything).
-			Return((*entitypkg.Entity)(nil), errors.New("db error")).Once()
+			Return((*providers.Entity)(nil), errors.New("db error")).Once()
 
 		// Mock all validation steps with broad matches to ensure they hit
 		entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, mock.Anything, true, false, false).
-			Return([]entitytype.AttributeInfo{}, (*serviceerror.ServiceError)(nil)).Maybe()
+			Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Maybe()
 		ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, mock.Anything).Return(true, nil).Maybe()
 		ouServiceMock.On("IsParent", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
 		entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, mock.Anything).
@@ -1822,18 +1825,18 @@ func TestUserService_MoreErrorCases(t *testing.T) {
 
 		_, err := service.UpdateUser(ctx, "u1", userIn)
 		require.NotNil(t, err)
-		require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+		require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 	})
 
 	t.Run("DeleteUser_StoreError", func(t *testing.T) {
 		storeMock.On("GetEntity", mock.Anything, "u1").
-			Return(&entitypkg.Entity{
-				Category: entitypkg.EntityCategoryUser, ID: "u1", OUID: testOrgID,
+			Return(&providers.Entity{
+				Category: providers.EntityCategoryUser, ID: "u1", OUID: testOrgID,
 			}, nil).Once()
 		storeMock.On("DeleteEntity", mock.Anything, "u1").Return(errors.New("db error")).Once()
 		err := service.DeleteUser(ctx, "u1")
 		require.NotNil(t, err)
-		require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+		require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 	})
 
 	t.Run("CreateUserByPath_MissingPath", func(t *testing.T) {
@@ -1861,7 +1864,7 @@ func TestUserService_CreateUser_EntityErrors(t *testing.T) {
 	tests := []struct {
 		name        string
 		entityErr   error
-		expectedErr serviceerror.ServiceError
+		expectedErr tidcommon.ServiceError
 	}{
 		{"SchemaNotFound", entitypkg.ErrSchemaValidationFailed, ErrorSchemaValidationFailed},
 		{"AttributeConflict", entitypkg.ErrAttributeConflict, ErrorAttributeConflict},
@@ -1870,15 +1873,15 @@ func TestUserService_CreateUser_EntityErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 			ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
-				Return(true, (*serviceerror.ServiceError)(nil)).Once()
+				Return(true, (*tidcommon.ServiceError)(nil)).Once()
 
 			entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 			entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
-				Return(&entitytype.EntityType{OUID: testOrgID}, (*serviceerror.ServiceError)(nil)).Once()
+				Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Once()
 
 			storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 			storeMock.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
-				Return((*entitypkg.Entity)(nil), tc.entityErr).Once()
+				Return((*providers.Entity)(nil), tc.entityErr).Once()
 
 			service := &userService{
 				entityService:     storeMock,
@@ -1906,8 +1909,8 @@ func TestUserService_UpdateUser_NilSchemaService(t *testing.T) {
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: svcTestUserID1,
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: svcTestUserID1,
 			OUID: testOrgID, Type: testUserType,
 		}, nil).Once()
 
@@ -1926,21 +1929,21 @@ func TestUserService_UpdateUser_NilSchemaService(t *testing.T) {
 	resp, svcErr := service.UpdateUser(context.Background(), svcTestUserID1, user)
 	require.Nil(t, resp)
 	require.NotNil(t, svcErr)
-	require.Equal(t, serviceerror.InternalServerError, *svcErr)
+	require.Equal(t, tidcommon.InternalServerError, *svcErr)
 }
 
 func TestUserService_UpdateUser_SchemaNotFound(t *testing.T) {
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: svcTestUserID1,
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: svcTestUserID1,
 			OUID: testOrgID, Type: testUserType,
 		}, nil).Once()
 
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
-		Return(true, (*serviceerror.ServiceError)(nil)).Once()
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
 
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
@@ -1971,15 +1974,15 @@ func TestUserService_UpdateUser_SchemaNotFound(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestUserService_CheckUserAccess(t *testing.T) {
-	someAuthzErr := &serviceerror.ServiceError{
+	someAuthzErr := &tidcommon.ServiceError{
 		Code:  "SVC-5000",
-		Error: i18ncore.I18nMessage{DefaultValue: "authz error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "authz error"},
 	}
 
 	tests := []struct {
 		name        string
 		isAllowed   bool
-		authzSvcErr *serviceerror.ServiceError
+		authzSvcErr *tidcommon.ServiceError
 		wantErrCode string
 	}{
 		{
@@ -1992,13 +1995,13 @@ func TestUserService_CheckUserAccess(t *testing.T) {
 			name:        "Denied_ReturnsUnauthorized",
 			isAllowed:   false,
 			authzSvcErr: nil,
-			wantErrCode: serviceerror.ErrorUnauthorized.Code,
+			wantErrCode: tidcommon.ErrorUnauthorized.Code,
 		},
 		{
 			name:        "AuthzServiceError_ReturnsInternalServerError",
 			isAllowed:   false,
 			authzSvcErr: someAuthzErr,
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 	}
 
@@ -2030,9 +2033,9 @@ func TestUserService_GetUserList_ErrorCases(t *testing.T) {
 	filters := map[string]interface{}{}
 	ouIDs := []string{testOrgID}
 	storeErr := errors.New("db error")
-	authzErr := &serviceerror.ServiceError{
+	authzErr := &tidcommon.ServiceError{
 		Code:  "SVC-5000",
-		Error: i18ncore.I18nMessage{DefaultValue: "authz error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "authz error"},
 	}
 
 	tests := []struct {
@@ -2051,44 +2054,44 @@ func TestUserService_GetUserList_ErrorCases(t *testing.T) {
 					authzService:  authzMock,
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name: "AllAllowed_GetUserListCount_Error_ReturnsInternalServerError",
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntityListCount", mock.Anything, entitypkg.EntityCategoryUser, filters).
+				storeMock.On("GetEntityListCount", mock.Anything, providers.EntityCategoryUser, filters).
 					Return(0, storeErr).Once()
 				return &userService{
 					entityService: storeMock,
 					authzService:  newAllowAllAuthz(t),
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name: "AllAllowed_GetUserList_Error_ReturnsInternalServerError",
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntityListCount", mock.Anything, entitypkg.EntityCategoryUser, filters).
+				storeMock.On("GetEntityListCount", mock.Anything, providers.EntityCategoryUser, filters).
 					Return(5, nil).Once()
-				storeMock.On("GetEntityList", mock.Anything, entitypkg.EntityCategoryUser, limit, offset, filters).
-					Return([]entitypkg.Entity(nil), storeErr).Once()
+				storeMock.On("GetEntityList", mock.Anything, providers.EntityCategoryUser, limit, offset, filters).
+					Return([]providers.Entity(nil), storeErr).Once()
 				return &userService{
 					entityService: storeMock,
 					authzService:  newAllowAllAuthz(t),
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name: "ScopedOUIDs_GetUserListCountByOUIDs_Error_ReturnsInternalServerError",
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntityListCountByOUIDs", mock.Anything, entitypkg.EntityCategoryUser, ouIDs, filters).
+				storeMock.On("GetEntityListCountByOUIDs", mock.Anything, providers.EntityCategoryUser, ouIDs, filters).
 					Return(0, storeErr).Once()
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 				authzMock.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
@@ -2098,18 +2101,18 @@ func TestUserService_GetUserList_ErrorCases(t *testing.T) {
 					authzService:  authzMock,
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name: "ScopedOUIDs_GetUserListByOUIDs_Error_ReturnsInternalServerError",
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntityListCountByOUIDs", mock.Anything, entitypkg.EntityCategoryUser, ouIDs, filters).
+				storeMock.On("GetEntityListCountByOUIDs", mock.Anything, providers.EntityCategoryUser, ouIDs, filters).
 					Return(3, nil).Once()
 				storeMock.On("GetEntityListByOUIDs",
-					mock.Anything, entitypkg.EntityCategoryUser, ouIDs, limit, offset, filters).
-					Return([]entitypkg.Entity(nil), storeErr).Once()
+					mock.Anything, providers.EntityCategoryUser, ouIDs, limit, offset, filters).
+					Return([]providers.Entity(nil), storeErr).Once()
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 				authzMock.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
 					Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: ouIDs}, nil).Once()
@@ -2118,7 +2121,7 @@ func TestUserService_GetUserList_ErrorCases(t *testing.T) {
 					authzService:  authzMock,
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 	}
 
@@ -2139,9 +2142,9 @@ func TestUserService_GetUserList_ErrorCases(t *testing.T) {
 
 func TestUserService_GetUsersByPath_AuthzChecks(t *testing.T) {
 	ouID := "ou-1"
-	authzErr := &serviceerror.ServiceError{
+	authzErr := &tidcommon.ServiceError{
 		Code:  "SVC-5000",
-		Error: i18ncore.I18nMessage{DefaultValue: "authz error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "authz error"},
 	}
 
 	tests := []struct {
@@ -2154,25 +2157,25 @@ func TestUserService_GetUsersByPath_AuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "root").
-					Return(oupkg.OrganizationUnit{ID: ouID}, (*serviceerror.ServiceError)(nil)).Once()
+					Return(providers.OrganizationUnit{ID: ouID}, (*tidcommon.ServiceError)(nil)).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
-					Return(false, (*serviceerror.ServiceError)(nil)).Once()
+					Return(false, (*tidcommon.ServiceError)(nil)).Once()
 
 				return &userService{
 					ouService:    ouServiceMock,
 					authzService: authzMock,
 				}
 			},
-			wantErrCode: serviceerror.ErrorUnauthorized.Code,
+			wantErrCode: tidcommon.ErrorUnauthorized.Code,
 		},
 		{
 			name: "AuthzServiceError_ReturnsInternalServerError",
 			setup: func(t *testing.T) *userService {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "root").
-					Return(oupkg.OrganizationUnit{ID: ouID}, (*serviceerror.ServiceError)(nil)).Once()
+					Return(providers.OrganizationUnit{ID: ouID}, (*tidcommon.ServiceError)(nil)).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
@@ -2183,7 +2186,7 @@ func TestUserService_GetUsersByPath_AuthzChecks(t *testing.T) {
 					authzService: authzMock,
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 	}
 
@@ -2203,9 +2206,9 @@ func TestUserService_GetUsersByPath_AuthzChecks(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestUserService_CreateUser_AuthzChecks(t *testing.T) {
-	authzErr := &serviceerror.ServiceError{
+	authzErr := &tidcommon.ServiceError{
 		Code:  "SVC-5000",
-		Error: i18ncore.I18nMessage{DefaultValue: "authz error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "authz error"},
 	}
 
 	tests := []struct {
@@ -2218,10 +2221,10 @@ func TestUserService_CreateUser_AuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
-					Return(false, (*serviceerror.ServiceError)(nil)).Once()
+					Return(false, (*tidcommon.ServiceError)(nil)).Once()
 				return &userService{authzService: authzMock}
 			},
-			wantErrCode: serviceerror.ErrorUnauthorized.Code,
+			wantErrCode: tidcommon.ErrorUnauthorized.Code,
 		},
 		{
 			name: "AuthzServiceError_ReturnsInternalServerError",
@@ -2231,7 +2234,7 @@ func TestUserService_CreateUser_AuthzChecks(t *testing.T) {
 					Return(false, authzErr).Once()
 				return &userService{authzService: authzMock}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 	}
 
@@ -2254,9 +2257,9 @@ func TestUserService_CreateUser_AuthzChecks(t *testing.T) {
 func TestUserService_GetUser_ErrorCases(t *testing.T) {
 	userID := svcTestUserID1
 	storeErr := errors.New("db error")
-	authzErr := &serviceerror.ServiceError{
+	authzErr := &tidcommon.ServiceError{
 		Code:  "SVC-5000",
-		Error: i18ncore.I18nMessage{DefaultValue: "authz error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "authz error"},
 	}
 
 	tests := []struct {
@@ -2280,13 +2283,13 @@ func TestUserService_GetUser_ErrorCases(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).Return((*entitypkg.Entity)(nil), storeErr).Once()
+				storeMock.On("GetEntity", mock.Anything, userID).Return((*providers.Entity)(nil), storeErr).Once()
 				return &userService{
 					entityService: storeMock,
 					authzService:  newAllowAllAuthz(t),
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name: "AuthzDenied_ReturnsUnauthorized",
@@ -2294,20 +2297,20 @@ func TestUserService_GetUser_ErrorCases(t *testing.T) {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return(&entitypkg.Entity{
-						Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
-					Return(false, (*serviceerror.ServiceError)(nil)).Once()
+					Return(false, (*tidcommon.ServiceError)(nil)).Once()
 
 				return &userService{
 					entityService: storeMock,
 					authzService:  authzMock,
 				}
 			},
-			wantErrCode: serviceerror.ErrorUnauthorized.Code,
+			wantErrCode: tidcommon.ErrorUnauthorized.Code,
 		},
 		{
 			name: "AuthzServiceError_ReturnsInternalServerError",
@@ -2315,8 +2318,8 @@ func TestUserService_GetUser_ErrorCases(t *testing.T) {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return(&entitypkg.Entity{
-						Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
@@ -2328,7 +2331,7 @@ func TestUserService_GetUser_ErrorCases(t *testing.T) {
 					authzService:  authzMock,
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 	}
 
@@ -2353,9 +2356,9 @@ func TestUserService_GetUser_ErrorCases(t *testing.T) {
 
 func TestUserService_GetUserGroups_AuthzChecks(t *testing.T) {
 	userID := svcTestUserID1
-	authzErr := &serviceerror.ServiceError{
+	authzErr := &tidcommon.ServiceError{
 		Code:  "SVC-5000",
-		Error: i18ncore.I18nMessage{DefaultValue: "authz error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "authz error"},
 	}
 
 	tests := []struct {
@@ -2369,20 +2372,20 @@ func TestUserService_GetUserGroups_AuthzChecks(t *testing.T) {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return(&entitypkg.Entity{
-						Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
-					Return(false, (*serviceerror.ServiceError)(nil)).Once()
+					Return(false, (*tidcommon.ServiceError)(nil)).Once()
 
 				return &userService{
 					entityService: storeMock,
 					authzService:  authzMock,
 				}
 			},
-			wantErrCode: serviceerror.ErrorUnauthorized.Code,
+			wantErrCode: tidcommon.ErrorUnauthorized.Code,
 		},
 		{
 			name: "AuthzServiceError_ReturnsInternalServerError",
@@ -2390,8 +2393,8 @@ func TestUserService_GetUserGroups_AuthzChecks(t *testing.T) {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return(&entitypkg.Entity{
-						Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
@@ -2403,7 +2406,7 @@ func TestUserService_GetUserGroups_AuthzChecks(t *testing.T) {
 					authzService:  authzMock,
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 	}
 
@@ -2425,9 +2428,9 @@ func TestUserService_GetUserGroups_AuthzChecks(t *testing.T) {
 func TestUserService_UpdateUser_PreFetchAndAuthzChecks(t *testing.T) {
 	userID := svcTestUserID1
 	storeErr := errors.New("db error")
-	authzErr := &serviceerror.ServiceError{
+	authzErr := &tidcommon.ServiceError{
 		Code:  "SVC-5000",
-		Error: i18ncore.I18nMessage{DefaultValue: "authz error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "authz error"},
 	}
 	updatedUser := &User{Type: testUserType, OUID: testOrgID,
 		Attributes: json.RawMessage(`{"email":"test@example.com"}`)}
@@ -2443,7 +2446,7 @@ func TestUserService_UpdateUser_PreFetchAndAuthzChecks(t *testing.T) {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return((*entitypkg.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
+					Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
 				return &userService{
 					entityService: storeMock,
 					authzService:  newAllowAllAuthz(t),
@@ -2456,13 +2459,13 @@ func TestUserService_UpdateUser_PreFetchAndAuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).Return((*entitypkg.Entity)(nil), storeErr).Once()
+				storeMock.On("GetEntity", mock.Anything, userID).Return((*providers.Entity)(nil), storeErr).Once()
 				return &userService{
 					entityService: storeMock,
 					authzService:  newAllowAllAuthz(t),
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name: "AuthzDenied_ReturnsUnauthorized",
@@ -2470,20 +2473,20 @@ func TestUserService_UpdateUser_PreFetchAndAuthzChecks(t *testing.T) {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return(&entitypkg.Entity{
-						Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
-					Return(false, (*serviceerror.ServiceError)(nil)).Once()
+					Return(false, (*tidcommon.ServiceError)(nil)).Once()
 
 				return &userService{
 					entityService: storeMock,
 					authzService:  authzMock,
 				}
 			},
-			wantErrCode: serviceerror.ErrorUnauthorized.Code,
+			wantErrCode: tidcommon.ErrorUnauthorized.Code,
 		},
 		{
 			name: "AuthzServiceError_ReturnsInternalServerError",
@@ -2491,8 +2494,8 @@ func TestUserService_UpdateUser_PreFetchAndAuthzChecks(t *testing.T) {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return(&entitypkg.Entity{
-						Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
@@ -2504,7 +2507,7 @@ func TestUserService_UpdateUser_PreFetchAndAuthzChecks(t *testing.T) {
 					authzService:  authzMock,
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 	}
 
@@ -2526,9 +2529,9 @@ func TestUserService_UpdateUser_PreFetchAndAuthzChecks(t *testing.T) {
 func TestUserService_UpdateUserAttributes_PreFetchAndAuthzChecks(t *testing.T) {
 	userID := svcTestUserID1
 	storeErr := errors.New("db error")
-	authzErr := &serviceerror.ServiceError{
+	authzErr := &tidcommon.ServiceError{
 		Code:  "SVC-5000",
-		Error: i18ncore.I18nMessage{DefaultValue: "authz error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "authz error"},
 	}
 	attrs := json.RawMessage(`{"email":"new@example.com"}`)
 
@@ -2543,13 +2546,13 @@ func TestUserService_UpdateUserAttributes_PreFetchAndAuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).Return((*entitypkg.Entity)(nil), storeErr).Once()
+				storeMock.On("GetEntity", mock.Anything, userID).Return((*providers.Entity)(nil), storeErr).Once()
 				return &userService{
 					entityService: storeMock,
 					authzService:  newAllowAllAuthz(t),
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			// GetUser succeeds → authz check reuses the pre-fetched user's OU → authz denies.
@@ -2558,18 +2561,18 @@ func TestUserService_UpdateUserAttributes_PreFetchAndAuthzChecks(t *testing.T) {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return(&entitypkg.Entity{
-						Category: entitypkg.EntityCategoryUser, ID: userID,
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser, ID: userID,
 						Type: testUserType, OUID: testOrgID,
 					}, nil).Once()
 
 				schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 				schemaMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType, true, false, false).
-					Return([]entitytype.AttributeInfo{}, (*serviceerror.ServiceError)(nil)).Once()
+					Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
-					Return(false, (*serviceerror.ServiceError)(nil)).Once()
+					Return(false, (*tidcommon.ServiceError)(nil)).Once()
 
 				return &userService{
 					entityService:     storeMock,
@@ -2577,7 +2580,7 @@ func TestUserService_UpdateUserAttributes_PreFetchAndAuthzChecks(t *testing.T) {
 					authzService:      authzMock,
 				}
 			},
-			wantErrCode: serviceerror.ErrorUnauthorized.Code,
+			wantErrCode: tidcommon.ErrorUnauthorized.Code,
 		},
 		{
 			// Same flow as above but authz service returns an error.
@@ -2586,14 +2589,14 @@ func TestUserService_UpdateUserAttributes_PreFetchAndAuthzChecks(t *testing.T) {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return(&entitypkg.Entity{
-						Category: entitypkg.EntityCategoryUser, ID: userID,
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser, ID: userID,
 						Type: testUserType, OUID: testOrgID,
 					}, nil).Once()
 
 				schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 				schemaMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType, true, false, false).
-					Return([]entitytype.AttributeInfo{}, (*serviceerror.ServiceError)(nil)).Once()
+					Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
@@ -2605,7 +2608,7 @@ func TestUserService_UpdateUserAttributes_PreFetchAndAuthzChecks(t *testing.T) {
 					authzService:      authzMock,
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 	}
 
@@ -2627,9 +2630,9 @@ func TestUserService_UpdateUserAttributes_PreFetchAndAuthzChecks(t *testing.T) {
 func TestUserService_UpdateUserCredentials_PreFetchAndAuthzChecks(t *testing.T) {
 	userID := svcTestUserID1
 	storeErr := errors.New("db error")
-	authzErr := &serviceerror.ServiceError{
+	authzErr := &tidcommon.ServiceError{
 		Code:  "SVC-5000",
-		Error: i18ncore.I18nMessage{DefaultValue: "authz error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "authz error"},
 	}
 	creds := json.RawMessage(`{"password":"newPass"}`)
 
@@ -2643,13 +2646,13 @@ func TestUserService_UpdateUserCredentials_PreFetchAndAuthzChecks(t *testing.T) 
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).Return((*entitypkg.Entity)(nil), storeErr).Once()
+				storeMock.On("GetEntity", mock.Anything, userID).Return((*providers.Entity)(nil), storeErr).Once()
 				return &userService{
 					entityService: storeMock,
 					authzService:  newAllowAllAuthz(t),
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name: "AuthzDenied_ReturnsUnauthorized",
@@ -2657,20 +2660,20 @@ func TestUserService_UpdateUserCredentials_PreFetchAndAuthzChecks(t *testing.T) 
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return(&entitypkg.Entity{
-						Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
-					Return(false, (*serviceerror.ServiceError)(nil)).Once()
+					Return(false, (*tidcommon.ServiceError)(nil)).Once()
 
 				return &userService{
 					entityService: storeMock,
 					authzService:  authzMock,
 				}
 			},
-			wantErrCode: serviceerror.ErrorUnauthorized.Code,
+			wantErrCode: tidcommon.ErrorUnauthorized.Code,
 		},
 		{
 			name: "AuthzServiceError_ReturnsInternalServerError",
@@ -2678,8 +2681,8 @@ func TestUserService_UpdateUserCredentials_PreFetchAndAuthzChecks(t *testing.T) 
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return(&entitypkg.Entity{
-						Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
@@ -2691,7 +2694,7 @@ func TestUserService_UpdateUserCredentials_PreFetchAndAuthzChecks(t *testing.T) 
 					authzService:  authzMock,
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 	}
 
@@ -2712,9 +2715,9 @@ func TestUserService_UpdateUserCredentials_PreFetchAndAuthzChecks(t *testing.T) 
 func TestUserService_DeleteUser_PreFetchAndAuthzChecks(t *testing.T) {
 	userID := svcTestUserID1
 	storeErr := errors.New("db error")
-	authzErr := &serviceerror.ServiceError{
+	authzErr := &tidcommon.ServiceError{
 		Code:  "SVC-5000",
-		Error: i18ncore.I18nMessage{DefaultValue: "authz error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "authz error"},
 	}
 
 	tests := []struct { //nolint:dupl
@@ -2727,13 +2730,13 @@ func TestUserService_DeleteUser_PreFetchAndAuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).Return((*entitypkg.Entity)(nil), storeErr).Once()
+				storeMock.On("GetEntity", mock.Anything, userID).Return((*providers.Entity)(nil), storeErr).Once()
 				return &userService{
 					entityService: storeMock,
 					authzService:  newAllowAllAuthz(t),
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name: "AuthzDenied_ReturnsUnauthorized",
@@ -2741,20 +2744,20 @@ func TestUserService_DeleteUser_PreFetchAndAuthzChecks(t *testing.T) {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return(&entitypkg.Entity{
-						Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
-					Return(false, (*serviceerror.ServiceError)(nil)).Once()
+					Return(false, (*tidcommon.ServiceError)(nil)).Once()
 
 				return &userService{
 					entityService: storeMock,
 					authzService:  authzMock,
 				}
 			},
-			wantErrCode: serviceerror.ErrorUnauthorized.Code,
+			wantErrCode: tidcommon.ErrorUnauthorized.Code,
 		},
 		{
 			name: "AuthzServiceError_ReturnsInternalServerError",
@@ -2762,8 +2765,8 @@ func TestUserService_DeleteUser_PreFetchAndAuthzChecks(t *testing.T) {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
-					Return(&entitypkg.Entity{
-						Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
@@ -2775,7 +2778,7 @@ func TestUserService_DeleteUser_PreFetchAndAuthzChecks(t *testing.T) {
 					authzService:  authzMock,
 				}
 			},
-			wantErrCode: serviceerror.InternalServerError.Code,
+			wantErrCode: tidcommon.InternalServerError.Code,
 		},
 	}
 
@@ -2803,8 +2806,8 @@ func TestUpdateUser_DeclarativeResource(t *testing.T) {
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	// Mock GetUser for pre-fetch
 	storeMock.On("GetEntity", mock.Anything, userID).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
 		}, nil).Once()
 
 	// Mock IsUserDeclarative to return true
@@ -2833,8 +2836,8 @@ func TestUpdateUser_DeclarativeCheckError(t *testing.T) {
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	// Mock GetUser for pre-fetch
 	storeMock.On("GetEntity", mock.Anything, userID).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
 		}, nil).Once()
 
 	// Mock IsUserDeclarative to return an error
@@ -2848,7 +2851,7 @@ func TestUpdateUser_DeclarativeCheckError(t *testing.T) {
 
 	_, err := service.UpdateUser(context.Background(), userID, &updatedUser)
 	require.NotNil(t, err)
-	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 }
 
 // TestUpdateUser_DeclarativeCheckUserNotFound tests that UpdateUser returns ErrorUserNotFound
@@ -2865,8 +2868,8 @@ func TestUpdateUser_DeclarativeCheckUserNotFound(t *testing.T) {
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	// Mock GetUser for pre-fetch
 	storeMock.On("GetEntity", mock.Anything, userID).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
 		}, nil).Once()
 
 	// Mock IsUserDeclarative to return ErrEntityNotFound
@@ -2891,8 +2894,8 @@ func TestUpdateUserAttributes_DeclarativeResource(t *testing.T) {
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	// Mock GetUser for pre-fetch
 	storeMock.On("GetEntity", mock.Anything, userID).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
 		}, nil).Once()
 
 	// Mock IsUserDeclarative to return true
@@ -2900,7 +2903,7 @@ func TestUpdateUserAttributes_DeclarativeResource(t *testing.T) {
 
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	schemaMock.On("GetAttributes", mock.Anything, mock.Anything, "employee", true, false, false).
-		Return([]entitytype.AttributeInfo{}, (*serviceerror.ServiceError)(nil)).Once()
+		Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{
 		entityService:     storeMock,
@@ -2922,8 +2925,8 @@ func TestUpdateUserAttributes_DeclarativeCheckError(t *testing.T) {
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	// Mock GetUser for pre-fetch
 	storeMock.On("GetEntity", mock.Anything, userID).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
 		}, nil).Once()
 
 	// Mock IsUserDeclarative to return an error
@@ -2932,7 +2935,7 @@ func TestUpdateUserAttributes_DeclarativeCheckError(t *testing.T) {
 
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	schemaMock.On("GetAttributes", mock.Anything, mock.Anything, "employee", true, false, false).
-		Return([]entitytype.AttributeInfo{}, (*serviceerror.ServiceError)(nil)).Once()
+		Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{
 		entityService:     storeMock,
@@ -2942,7 +2945,7 @@ func TestUpdateUserAttributes_DeclarativeCheckError(t *testing.T) {
 
 	_, err := service.UpdateUserAttributes(context.Background(), userID, attributes)
 	require.NotNil(t, err)
-	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 }
 
 // TestUpdateUserCredentials_DeclarativeResource tests that UpdateUserCredentials returns
@@ -2954,8 +2957,8 @@ func TestUpdateUserCredentials_DeclarativeResource(t *testing.T) {
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	// Mock GetUser for pre-fetch
 	storeMock.On("GetEntity", mock.Anything, userID).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
 		}, nil).Once()
 
 	// Mock IsUserDeclarative to return true
@@ -2983,8 +2986,8 @@ func TestUpdateUserCredentials_DeclarativeCheckError(t *testing.T) {
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	// Mock GetUser for pre-fetch
 	storeMock.On("GetEntity", mock.Anything, userID).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
 		}, nil).Once()
 
 	// Mock IsUserDeclarative to return an error
@@ -3001,7 +3004,7 @@ func TestUpdateUserCredentials_DeclarativeCheckError(t *testing.T) {
 
 	err := service.UpdateUserCredentials(context.Background(), userID, credentials)
 	require.NotNil(t, err)
-	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 }
 
 // TestDeleteUser_DeclarativeResource tests that DeleteUser returns ErrorCannotModifyDeclarativeResource
@@ -3012,8 +3015,8 @@ func TestDeleteUser_DeclarativeResource(t *testing.T) {
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	// Mock GetUser for pre-fetch
 	storeMock.On("GetEntity", mock.Anything, userID).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
 		}, nil).Once()
 
 	// Mock IsUserDeclarative to return true
@@ -3036,8 +3039,8 @@ func TestDeleteUser_DeclarativeCheckError(t *testing.T) {
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	// Mock GetUser for pre-fetch
 	storeMock.On("GetEntity", mock.Anything, userID).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
 		}, nil).Once()
 
 	// Mock IsUserDeclarative to return an error
@@ -3051,7 +3054,7 @@ func TestDeleteUser_DeclarativeCheckError(t *testing.T) {
 
 	err := service.DeleteUser(context.Background(), userID)
 	require.NotNil(t, err)
-	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 }
 
 // populateUserDisplayNames Tests
@@ -3059,7 +3062,7 @@ func TestDeleteUser_DeclarativeCheckError(t *testing.T) {
 func TestPopulateUserDisplayNames_Success(t *testing.T) {
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, []string{"employee"}).
-		Return(map[string]string{"employee": "name"}, (*serviceerror.ServiceError)(nil)).Once()
+		Return(map[string]string{"employee": "name"}, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{entityTypeService: schemaMock}
 	users := []User{
@@ -3075,7 +3078,7 @@ func TestPopulateUserDisplayNames_Success(t *testing.T) {
 func TestPopulateUserDisplayNames_FallbackToID(t *testing.T) {
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, []string{"employee"}).
-		Return(map[string]string{"employee": "missing"}, (*serviceerror.ServiceError)(nil)).Once()
+		Return(map[string]string{"employee": "missing"}, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{entityTypeService: schemaMock}
 
@@ -3110,9 +3113,9 @@ func TestPopulateUserDisplayNames_NilSchemaService(t *testing.T) {
 func TestPopulateUserDisplayNames_SchemaServiceError(t *testing.T) {
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, []string{"employee"}).
-		Return(map[string]string(nil), &serviceerror.ServiceError{
+		Return(map[string]string(nil), &tidcommon.ServiceError{
 			Code:  "ERR",
-			Error: i18ncore.I18nMessage{DefaultValue: "err"},
+			Error: tidcommon.I18nMessage{DefaultValue: "err"},
 		}).Once()
 
 	service := &userService{entityTypeService: schemaMock}
@@ -3142,7 +3145,7 @@ func TestPopulateUserDisplayNames_MultipleTypes(t *testing.T) {
 		Return(map[string]string{
 			"employee": "name",
 			"customer": "email",
-		}, (*serviceerror.ServiceError)(nil)).Once()
+		}, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{entityTypeService: schemaMock}
 
@@ -3164,9 +3167,9 @@ func TestUserService_GetUserList_WithIncludeDisplay(t *testing.T) {
 	filters := map[string]interface{}{}
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
-	storeMock.On("GetEntityListCount", mock.Anything, entitypkg.EntityCategoryUser, filters).Return(2, nil).Once()
-	storeMock.On("GetEntityList", mock.Anything, entitypkg.EntityCategoryUser, limit, offset, filters).
-		Return([]entitypkg.Entity{
+	storeMock.On("GetEntityListCount", mock.Anything, providers.EntityCategoryUser, filters).Return(2, nil).Once()
+	storeMock.On("GetEntityList", mock.Anything, providers.EntityCategoryUser, limit, offset, filters).
+		Return([]providers.Entity{
 			{
 				ID: "user-1", OUID: "ou-1", Type: "employee",
 				Attributes: json.RawMessage(`{"name":"Alice"}`),
@@ -3179,7 +3182,7 @@ func TestUserService_GetUserList_WithIncludeDisplay(t *testing.T) {
 
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, []string{"employee"}).
-		Return(map[string]string{"employee": "name"}, (*serviceerror.ServiceError)(nil)).Once()
+		Return(map[string]string{"employee": "name"}, (*tidcommon.ServiceError)(nil)).Once()
 
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("GetOrganizationUnitHandlesByIDs", mock.Anything,
@@ -3214,7 +3217,7 @@ func TestUserService_GetUserList_WithIncludeDisplay(t *testing.T) {
 func TestResolveUserOUHandle_OUHandleResolved(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "default").
-		Return(oupkg.OrganizationUnit{ID: "ou-resolved"}, (*serviceerror.ServiceError)(nil)).Once()
+		Return(providers.OrganizationUnit{ID: "ou-resolved"}, (*tidcommon.ServiceError)(nil)).Once()
 
 	svc := &userService{ouService: ouServiceMock}
 	u := &User{OUHandle: "default"}
@@ -3257,7 +3260,7 @@ func TestResolveUserOUHandle_BothProvided(t *testing.T) {
 func TestResolveUserOUHandle_OUHandleNotFound(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "missing").
-		Return(oupkg.OrganizationUnit{}, &oupkg.ErrorOrganizationUnitNotFound).Once()
+		Return(providers.OrganizationUnit{}, &oupkg.ErrorOrganizationUnitNotFound).Once()
 
 	svc := &userService{ouService: ouServiceMock}
 	u := &User{OUHandle: "missing"}
@@ -3289,15 +3292,15 @@ func TestResolveUserOUHandle_NilOUService(t *testing.T) {
 	svcErr := svc.ResolveUserOUHandle(context.Background(), u)
 
 	require.NotNil(t, svcErr)
-	require.Equal(t, serviceerror.InternalServerError.Code, svcErr.Code)
+	require.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 // TestUserService_GetUser_DisplayOUHandleError verifies that GetUser falls back gracefully
 // when resolving the OU handle for display fails.
 func TestUserService_GetUser_DisplayOUHandleError(t *testing.T) {
 	userID := svcTestUserID1
-	expectedEntity := &entitypkg.Entity{
-		Category:   entitypkg.EntityCategoryUser,
+	expectedEntity := &providers.Entity{
+		Category:   providers.EntityCategoryUser,
 		ID:         userID,
 		OUID:       testOrgID,
 		Type:       "employee",
@@ -3309,11 +3312,11 @@ func TestUserService_GetUser_DisplayOUHandleError(t *testing.T) {
 
 	mockSchema := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	mockSchema.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, []string{"employee"}).
-		Return(map[string]string{"employee": "email"}, (*serviceerror.ServiceError)(nil)).Once()
+		Return(map[string]string{"employee": "email"}, (*tidcommon.ServiceError)(nil)).Once()
 
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("GetOrganizationUnitHandlesByIDs", mock.Anything, []string{testOrgID}).
-		Return(map[string]string(nil), &serviceerror.InternalServerError).Once()
+		Return(map[string]string(nil), &tidcommon.InternalServerError).Once()
 
 	service := &userService{
 		entityService:     storeMock,
@@ -3336,12 +3339,12 @@ func TestUserService_GetUserGroups_GroupsStoreError(t *testing.T) {
 
 	mockStore := entitymock.NewEntityServiceInterfaceMock(t)
 	mockStore.On("GetEntity", mock.Anything, userID).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 		}, nil).Once()
 	mockStore.On("GetGroupCountForEntity", mock.Anything, userID).Return(5, nil).Once()
 	mockStore.On("GetEntityGroups", mock.Anything, userID, limit, offset).
-		Return(([]entitypkg.EntityGroup)(nil), errors.New("db error")).Once()
+		Return(([]providers.EntityGroup)(nil), errors.New("db error")).Once()
 
 	service := &userService{
 		entityService: mockStore,
@@ -3350,7 +3353,7 @@ func TestUserService_GetUserGroups_GroupsStoreError(t *testing.T) {
 
 	_, err := service.GetUserGroups(context.Background(), userID, limit, offset)
 	require.NotNil(t, err)
-	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 }
 
 // TestUserService_DeleteUser_NotFoundOnDelete verifies that a not-found error from the
@@ -3361,8 +3364,8 @@ func TestUserService_DeleteUser_NotFoundOnDelete(t *testing.T) {
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	storeMock.On("GetEntity", mock.Anything, userID).
-		Return(&entitypkg.Entity{
-			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 		}, nil).Once()
 	storeMock.On("DeleteEntity", mock.Anything, userID).Return(entitypkg.ErrEntityNotFound).Once()
 
@@ -3381,7 +3384,7 @@ func TestUserService_DeleteUser_NotFoundOnDelete(t *testing.T) {
 func TestPopulateOUHandles_HandleResolutionError(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("GetOrganizationUnitHandlesByIDs", mock.Anything, []string{testOrgID}).
-		Return(map[string]string(nil), &serviceerror.InternalServerError).Once()
+		Return(map[string]string(nil), &tidcommon.InternalServerError).Once()
 
 	service := &userService{ouService: ouServiceMock}
 	users := []User{{ID: "user-1", OUID: testOrgID}}
@@ -3396,13 +3399,13 @@ func TestValidateOrganizationUnitForUserType_NilEntityTypeService(t *testing.T) 
 	ouID := "2b4f9c1e-2222-4c19-9a94-5866df9b6bf5"
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, ouID).
-		Return(true, (*serviceerror.ServiceError)(nil)).Once()
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{ouService: ouServiceMock, entityTypeService: nil}
 
 	err := service.validateOrganizationUnitForUserType(context.Background(), testUserType, ouID, log.GetLogger())
 	require.NotNil(t, err)
-	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 }
 
 // TestValidateOrganizationUnitForUserType_EntityTypeLookupError verifies that an unexpected
@@ -3411,17 +3414,17 @@ func TestValidateOrganizationUnitForUserType_EntityTypeLookupError(t *testing.T)
 	ouID := "3c5fa02d-3333-4ea0-a317-3d8579346d86"
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, ouID).
-		Return(true, (*serviceerror.ServiceError)(nil)).Once()
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
 
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
-		Return((*entitytype.EntityType)(nil), &serviceerror.InternalServerError).Once()
+		Return((*entitytype.EntityType)(nil), &tidcommon.InternalServerError).Once()
 
 	service := &userService{ouService: ouServiceMock, entityTypeService: entityTypeMock}
 
 	err := service.validateOrganizationUnitForUserType(context.Background(), testUserType, ouID, log.GetLogger())
 	require.NotNil(t, err)
-	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 }
 
 // TestValidateOrganizationUnitForUserType_NilEntityType verifies that a nil entity type
@@ -3430,32 +3433,32 @@ func TestValidateOrganizationUnitForUserType_NilEntityType(t *testing.T) {
 	ouID := "4d60b13e-4444-4ea0-a317-3d8579346d86"
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, ouID).
-		Return(true, (*serviceerror.ServiceError)(nil)).Once()
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
 
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
-		Return((*entitytype.EntityType)(nil), (*serviceerror.ServiceError)(nil)).Once()
+		Return((*entitytype.EntityType)(nil), (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{ouService: ouServiceMock, entityTypeService: entityTypeMock}
 
 	err := service.validateOrganizationUnitForUserType(context.Background(), testUserType, ouID, log.GetLogger())
 	require.NotNil(t, err)
-	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 }
 
 // TestMapOUServiceError_UnmappedClientError verifies that an unmapped client-type OU error is
 // logged and mapped to an internal server error.
 func TestMapOUServiceError_UnmappedClientError(t *testing.T) {
-	clientErr := &serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	clientErr := &tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "OU-UNMAPPED-1",
 	}
 
 	result := mapOUServiceError(context.Background(), clientErr, log.GetLogger(),
-		"performing an operation", map[string]*serviceerror.ServiceError{})
+		"performing an operation", map[string]*tidcommon.ServiceError{})
 
 	require.NotNil(t, result)
-	require.Equal(t, serviceerror.InternalServerError.Code, result.Code)
+	require.Equal(t, tidcommon.InternalServerError.Code, result.Code)
 }
 
 // TestUserDeclarativeYAML_OUHandleParsed verifies that ou_handle is parsed off the YAML

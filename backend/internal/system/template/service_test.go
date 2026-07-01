@@ -23,10 +23,10 @@ import (
 	"errors"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 type TemplateServiceTestSuite struct {
@@ -88,7 +88,7 @@ func (suite *TemplateServiceTestSuite) TestRender_StoreError() {
 
 	res, err := suite.service.Render(context.Background(), ScenarioUserInvite, TemplateTypeEmail, TemplateData{})
 	suite.NotNil(err)
-	suite.Equal(&serviceerror.InternalServerError, err)
+	suite.Equal(&tidcommon.InternalServerError, err)
 	suite.Nil(res)
 }
 

@@ -24,10 +24,10 @@ import (
 	"slices"
 	"strings"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/pkce"
 	"github.com/thunder-id/thunderid/internal/system/jose/jws"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // ValidateAuthorizationRequestParams validates the common authorization request parameters
@@ -46,7 +46,7 @@ import (
 //
 // Returns (errorCode, errorDescription). Empty errorCode means validation passed.
 func ValidateAuthorizationRequestParams(
-	params map[string]string, oauthApp *inboundmodel.OAuthClient, dpopHeaderJkt string,
+	params map[string]string, oauthApp *providers.OAuthClient, dpopHeaderJkt string,
 ) (string, string) {
 	responseType := params[constants.RequestParamResponseType]
 
@@ -59,7 +59,7 @@ func ValidateAuthorizationRequestParams(
 	}
 
 	// Validate grant type is allowed.
-	if !oauthApp.IsAllowedGrantType(constants.GrantTypeAuthorizationCode) {
+	if !oauthApp.IsAllowedGrantType(providers.GrantTypeAuthorizationCode) {
 		return constants.ErrorUnauthorizedClient,
 			"Authorization code grant type is not allowed for the client"
 	}
@@ -73,7 +73,7 @@ func ValidateAuthorizationRequestParams(
 	}
 
 	// Validate PKCE parameters.
-	if responseType == string(constants.ResponseTypeCode) {
+	if responseType == string(providers.ResponseTypeCode) {
 		codeChallenge := params[constants.RequestParamCodeChallenge]
 		codeChallengeMethod := params[constants.RequestParamCodeChallengeMethod]
 

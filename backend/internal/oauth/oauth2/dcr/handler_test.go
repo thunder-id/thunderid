@@ -26,14 +26,16 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/tests/testhelpers"
 )
@@ -52,7 +54,7 @@ func TestDCRHandlerTestSuite(t *testing.T) {
 func (s *DCRHandlerTestSuite) SetupTest() {
 	s.mockService = NewDCRServiceInterfaceMock(s.T())
 	_ = config.InitializeServerRuntime("test", &config.Config{
-		OAuth: config.OAuthConfig{DCR: config.DCRConfig{Insecure: true}},
+		OAuth: engineconfig.OAuthConfig{DCR: engineconfig.DCRConfig{Insecure: true}},
 	})
 	cfg := testhelpers.OAuthConfig()
 	cfg.OAuth.DCR.Insecure = true
@@ -84,7 +86,7 @@ func (s *DCRHandlerTestSuite) TestHandleDCRRegistration_InvalidRequestFormat() {
 func (s *DCRHandlerTestSuite) TestHandleDCRRegistration_ServiceError() {
 	request := &DCRRegistrationRequest{
 		RedirectURIs: []string{"https://client.example.com/callback"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 	}
 
 	serviceErr := &ErrorInvalidRedirectURI
@@ -105,14 +107,14 @@ func (s *DCRHandlerTestSuite) TestHandleDCRRegistration_ServiceError() {
 func (s *DCRHandlerTestSuite) TestHandleDCRRegistration_ClientError() {
 	request := &DCRRegistrationRequest{
 		RedirectURIs: []string{"not-a-valid-uri"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 	}
 
-	serviceErr := &serviceerror.ServiceError{
-		Type:             serviceerror.ClientErrorType,
+	serviceErr := &tidcommon.ServiceError{
+		Type:             tidcommon.ClientErrorType,
 		Code:             "invalid_client_metadata",
-		Error:            i18ncore.I18nMessage{DefaultValue: "Invalid client metadata"},
-		ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Invalid grant type"},
+		Error:            tidcommon.I18nMessage{DefaultValue: "Invalid client metadata"},
+		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "Invalid grant type"},
 	}
 	s.mockService.On("RegisterClient", mock.Anything, request).Return(nil, serviceErr)
 
@@ -135,7 +137,7 @@ func (s *DCRHandlerTestSuite) TestHandleDCRRegistration_ClientError() {
 func (s *DCRHandlerTestSuite) TestHandleDCRRegistration_ServerError() {
 	request := &DCRRegistrationRequest{
 		RedirectURIs: []string{"https://client.example.com/callback"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 	}
 
 	serviceErr := &ErrorServerError
@@ -160,14 +162,14 @@ func (s *DCRHandlerTestSuite) TestHandleDCRRegistration_ServerError() {
 func (s *DCRHandlerTestSuite) TestHandleDCRRegistration_UnknownErrorType() {
 	request := &DCRRegistrationRequest{
 		RedirectURIs: []string{"https://client.example.com/callback"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 	}
 
-	serviceErr := &serviceerror.ServiceError{
+	serviceErr := &tidcommon.ServiceError{
 		Type:             "UnknownErrorType",
 		Code:             "unknown_error",
-		Error:            i18ncore.I18nMessage{DefaultValue: "Unknown error"},
-		ErrorDescription: i18ncore.I18nMessage{DefaultValue: "An unknown error occurred"},
+		Error:            tidcommon.I18nMessage{DefaultValue: "Unknown error"},
+		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "An unknown error occurred"},
 	}
 	s.mockService.On("RegisterClient", mock.Anything, request).Return(nil, serviceErr)
 
@@ -187,7 +189,7 @@ func (s *DCRHandlerTestSuite) TestHandleDCRRegistration_UnknownErrorType() {
 func (s *DCRHandlerTestSuite) TestHandleDCRRegistration_Success() {
 	request := &DCRRegistrationRequest{
 		RedirectURIs: []string{"https://client.example.com/callback"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		ClientName:   "Test Client",
 	}
 
@@ -196,10 +198,10 @@ func (s *DCRHandlerTestSuite) TestHandleDCRRegistration_Success() {
 		ClientSecret: "test-client-secret",
 		ClientName:   "Test Client",
 		RedirectURIs: []string{"https://client.example.com/callback"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 	}
 
-	s.mockService.On("RegisterClient", mock.Anything, request).Return(response, (*serviceerror.ServiceError)(nil))
+	s.mockService.On("RegisterClient", mock.Anything, request).Return(response, (*tidcommon.ServiceError)(nil))
 
 	requestJSON, _ := json.Marshal(request)
 	req := httptest.NewRequest(http.MethodPost, "/oauth2/dcr", bytes.NewReader(requestJSON))
@@ -249,36 +251,36 @@ func TestWriteServiceErrorResponse_DirectCall(t *testing.T) {
 
 	testCases := []struct {
 		name           string
-		serviceError   *serviceerror.ServiceError
+		serviceError   *tidcommon.ServiceError
 		expectedStatus int
 	}{
 		{
 			name: "Client Error",
-			serviceError: &serviceerror.ServiceError{
-				Type:             serviceerror.ClientErrorType,
+			serviceError: &tidcommon.ServiceError{
+				Type:             tidcommon.ClientErrorType,
 				Code:             "test_code",
-				Error:            i18ncore.I18nMessage{DefaultValue: "Test error"},
-				ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Test description"},
+				Error:            tidcommon.I18nMessage{DefaultValue: "Test error"},
+				ErrorDescription: tidcommon.I18nMessage{DefaultValue: "Test description"},
 			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name: "Server Error",
-			serviceError: &serviceerror.ServiceError{
-				Type:             serviceerror.ServerErrorType,
+			serviceError: &tidcommon.ServiceError{
+				Type:             tidcommon.ServerErrorType,
 				Code:             "test_code",
-				Error:            i18ncore.I18nMessage{DefaultValue: "Test error"},
-				ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Test description"},
+				Error:            tidcommon.I18nMessage{DefaultValue: "Test error"},
+				ErrorDescription: tidcommon.I18nMessage{DefaultValue: "Test description"},
 			},
 			expectedStatus: http.StatusInternalServerError,
 		},
 		{
 			name: "Unknown Error Type",
-			serviceError: &serviceerror.ServiceError{
+			serviceError: &tidcommon.ServiceError{
 				Type:             "UnknownType",
 				Code:             "test_code",
-				Error:            i18ncore.I18nMessage{DefaultValue: "Test error"},
-				ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Test description"},
+				Error:            tidcommon.I18nMessage{DefaultValue: "Test error"},
+				ErrorDescription: tidcommon.I18nMessage{DefaultValue: "Test description"},
 			},
 			expectedStatus: http.StatusBadRequest,
 		},
@@ -364,10 +366,10 @@ func TestHandleDCRRegistration_ClosedDCR_WithSystemPermission(t *testing.T) {
 
 	request := &DCRRegistrationRequest{
 		RedirectURIs: []string{"https://client.example.com/callback"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 	}
 	response := &DCRRegistrationResponse{ClientID: "new-client"}
-	mockService.On("RegisterClient", mock.Anything, request).Return(response, (*serviceerror.ServiceError)(nil))
+	mockService.On("RegisterClient", mock.Anything, request).Return(response, (*tidcommon.ServiceError)(nil))
 
 	requestJSON, _ := json.Marshal(request)
 	req := httptest.NewRequest(http.MethodPost, "/oauth2/dcr/register", bytes.NewReader(requestJSON))

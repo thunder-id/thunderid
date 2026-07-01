@@ -22,6 +22,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type ModelTestSuite struct {
@@ -33,10 +35,10 @@ func TestModelTestSuite(t *testing.T) {
 }
 
 func (s *ModelTestSuite) TestEntityCategoryString() {
-	s.Equal("user", EntityCategoryUser.String())
-	s.Equal("app", EntityCategoryApp.String())
+	s.Equal("user", providers.EntityCategoryUser.String())
+	s.Equal("app", providers.EntityCategoryApp.String())
 }
 
 func (s *ModelTestSuite) TestEntityStateString() {
-	s.Equal("ACTIVE", EntityStateActive.String())
+	s.Equal("ACTIVE", providers.EntityStateActive.String())
 }

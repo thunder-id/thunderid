@@ -19,7 +19,8 @@
 package google
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
 	"context"
 	"encoding/base64"
@@ -36,7 +37,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/oauth"
 	"github.com/thunder-id/thunderid/internal/authn/oidc"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
@@ -70,7 +70,7 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) SetupTest() {
 
 	// Initialize config with leeway for tests
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Leeway: 30, // 30 seconds leeway for clock skew
 		},
 	}
@@ -138,7 +138,7 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestExchangeCodeForTokenWithValida
 
 func (suite *GoogleOIDCAuthnServiceTestSuite) TestExchangeCodeForTokenFailure() {
 	suite.mockOIDCService.On("ExchangeCodeForToken", mock.Anything, testGoogleIDPID, testAuthCode, false).
-		Return(nil, &serviceerror.ServiceError{Code: "TOKEN-001"})
+		Return(nil, &tidcommon.ServiceError{Code: "TOKEN-001"})
 
 	result, err := suite.service.ExchangeCodeForToken(context.Background(), testGoogleIDPID, testAuthCode, false)
 	suite.Nil(result)
@@ -219,7 +219,7 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestValidateTokenResponseInternalV
 	}
 
 	suite.mockOIDCService.On("ValidateTokenResponse", mock.Anything, testGoogleIDPID, tokenResp, false).
-		Return(&serviceerror.ServiceError{Code: "VALIDATION-001"})
+		Return(&tidcommon.ServiceError{Code: "VALIDATION-001"})
 
 	err := suite.service.ValidateTokenResponse(context.Background(), testGoogleIDPID, tokenResp)
 	suite.NotNil(err)
@@ -472,7 +472,7 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestValidateIDTokenWithFailure() {
 			expectedErrorCode: "CONFIG-001",
 			setupMocks: func(idToken string, config *oauth.OAuthClientConfig) {
 				suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).
-					Return(nil, &serviceerror.ServiceError{Code: "CONFIG-001"}).Once()
+					Return(nil, &tidcommon.ServiceError{Code: "CONFIG-001"}).Once()
 			},
 		},
 		{
@@ -499,14 +499,14 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestValidateIDTokenWithFailure() {
 					mock.Anything,
 					idToken,
 					config.OAuthEndpoints.JwksEndpoint).
-					Return(&serviceerror.ServiceError{
-						Type: serviceerror.ServerErrorType,
+					Return(&tidcommon.ServiceError{
+						Type: tidcommon.ServerErrorType,
 						Code: "SIGNATURE_VERIFICATION_FAILED",
-						Error: core.I18nMessage{
+						Error: tidcommon.I18nMessage{
 							Key:          "error.test.signature_verification_failed",
 							DefaultValue: "Signature verification failed",
 						},
-						ErrorDescription: core.I18nMessage{
+						ErrorDescription: tidcommon.I18nMessage{
 							Key:          "error.test.signature_verification_failed",
 							DefaultValue: "signature verification failed",
 						},
@@ -825,7 +825,7 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestGetOAuthClientConfigSuccess() 
 
 func (suite *GoogleOIDCAuthnServiceTestSuite) TestGetOAuthClientConfigFailure() {
 	suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).
-		Return(nil, &serviceerror.ServiceError{Code: "CONFIG-001"})
+		Return(nil, &tidcommon.ServiceError{Code: "CONFIG-001"})
 
 	result, err := suite.service.GetOAuthClientConfig(context.Background(), testGoogleIDPID)
 	suite.Nil(result)
@@ -872,7 +872,7 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateSuccess() {
 
 func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateExchangeCodeFailure() {
 	suite.mockOIDCService.On("ExchangeCodeForToken", mock.Anything, testGoogleIDPID, testAuthCode, false).
-		Return(nil, &serviceerror.ServiceError{Code: "TOKEN-001"})
+		Return(nil, &tidcommon.ServiceError{Code: "TOKEN-001"})
 
 	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID, testAuthCode)
 	suite.Nil(result)
@@ -909,7 +909,7 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateGetIDTokenClaimsFa
 		Return(nil)
 	suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).Return(oAuthConfig, nil)
 	suite.mockOIDCService.On("GetIDTokenClaims", mock.Anything, idToken).
-		Return(nil, &serviceerror.ServiceError{Code: "CLAIMS-001"})
+		Return(nil, &tidcommon.ServiceError{Code: "CLAIMS-001"})
 
 	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID, testAuthCode)
 	suite.Nil(result)
@@ -1149,7 +1149,7 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestValidateIDToken_Leeway_ZeroLee
 	// Reset and reinitialize with zero leeway
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Leeway: 0, // No leeway
 		},
 	}
@@ -1184,7 +1184,7 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestValidateIDToken_Leeway_IatExac
 	// Reset and reinitialize with 30 second leeway
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Leeway: 30, // 30 seconds leeway
 		},
 	}
@@ -1219,7 +1219,7 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestValidateIDToken_Leeway_IatJust
 	// Reset and reinitialize with 30 second leeway
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Leeway: 30, // 30 seconds leeway
 		},
 	}

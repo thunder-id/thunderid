@@ -1032,6 +1032,622 @@ func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_NullClaimRequest() {
 	assert.Nil(suite.T(), claimsRequest.UserInfo["name"])
 }
 
+// verified_claims (OIDC Identity Assurance) tests
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_ObjectValid() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": {
+				"verification": {"trust_framework": null},
+				"claims": {"given_name": null, "family_name": null}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), claimsRequest)
+	// verified_claims is retained in the parsed request...
+	assert.NotEmpty(suite.T(), claimsRequest.VerifiedUserInfo)
+	// ...but excluded from normal-claim resolution.
+	assert.Empty(suite.T(), claimsRequest.UserInfo)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_ArrayValid() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": [
+				{"verification": {"trust_framework": {"value": "eidas"}}, "claims": {"given_name": null}},
+				{"verification": {"trust_framework": {"value": "de_aml"}}, "claims": {"birthdate": null}}
+			]
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), claimsRequest)
+	assert.NotEmpty(suite.T(), claimsRequest.VerifiedUserInfo)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_AlongsideNormalClaims() {
+	jsonStr := `{
+		"userinfo": {
+			"email": {"essential": true},
+			"verified_claims": {
+				"verification": {"trust_framework": null},
+				"claims": {"given_name": null}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), claimsRequest)
+	// Normal claims are still decoded and resolvable.
+	normalClaims := claimsRequest.UserInfo
+	assert.Len(suite.T(), normalClaims, 1)
+	assert.NotNil(suite.T(), normalClaims["email"])
+	assert.True(suite.T(), normalClaims["email"].Essential)
+	// verified_claims is excluded from the normal-claim view.
+	assert.NotContains(suite.T(), normalClaims, model.VerifiedClaimsMember)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_MissingVerification() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": {"claims": {"given_name": null}}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "verification")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_MissingTrustFramework() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": {"verification": {}, "claims": {"given_name": null}}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "trust_framework")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_TrustFrameworkValuesValid() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": {
+				"verification": {"trust_framework": {"values": ["eidas", "de_aml"]}},
+				"claims": {"given_name": null}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), claimsRequest)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_TrustFrameworkNotObject() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": {
+				"verification": {"trust_framework": "eidas"},
+				"claims": {"given_name": null}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "trust_framework")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_TrustFrameworkValueAndValues() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": {
+				"verification": {"trust_framework": {"value": "eidas", "values": ["eidas", "de_aml"]}},
+				"claims": {"given_name": null}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "trust_framework")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_MissingClaims() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": {"verification": {"trust_framework": null}}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "claims")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_EmptyArray() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": []
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_NotAnObject() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": "not-an-object"
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_ArrayEntryInvalid() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": [
+				{"verification": {"trust_framework": null}, "claims": {"given_name": null}},
+				{"claims": {"birthdate": null}}
+			]
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "verification")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_ArrayNullEntry() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": [
+				{"verification": {"trust_framework": null}, "claims": {"given_name": null}},
+				null
+			]
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "null entries")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_ClaimEntryConstraintAllowed() {
+	// purpose and other IDA-specific members are ignored, not rejected.
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": {
+				"verification": {"trust_framework": null},
+				"claims": {
+					"given_name": null,
+					"email": {"essential": true, "purpose": "to contact you"}
+				}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), claimsRequest)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_ClaimEntryNotObject() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": {
+				"verification": {"trust_framework": null},
+				"claims": {"given_name": "not-an-object"}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "verified_claims.claims")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_ClaimEntryValueAndValues() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": {
+				"verification": {"trust_framework": null},
+				"claims": {
+					"given_name": {"value": "Alice", "values": ["Alice", "Bob"]}
+				}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "verified_claims.claims")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_TimeMaxAgeValid() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": {
+				"verification": {
+					"trust_framework": null,
+					"time": {"max_age": 63113852}
+				},
+				"claims": {"given_name": null}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), claimsRequest)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_TimeNull() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": {
+				"verification": {"trust_framework": null, "time": null},
+				"claims": {"given_name": null}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), claimsRequest)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_TimeNotObject() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": {
+				"verification": {"trust_framework": null, "time": "yesterday"},
+				"claims": {"given_name": null}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "verified_claims.verification.time")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_MaxAgeNegative() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": {
+				"verification": {"trust_framework": null, "time": {"max_age": -5}},
+				"claims": {"given_name": null}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "max_age")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_MaxAgeNotInteger() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": {
+				"verification": {"trust_framework": null, "time": {"max_age": "soon"}},
+				"claims": {"given_name": null}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "max_age")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_VerifiedClaims_MaxAgeFractional() {
+	jsonStr := `{
+		"userinfo": {
+			"verified_claims": {
+				"verification": {"trust_framework": null, "time": {"max_age": 3.9}},
+				"claims": {"given_name": null}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "max_age")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestSerializeClaimsRequest_RoundTrip_VerifiedClaims() {
+	jsonStr := `{
+		"userinfo": {
+			"email": {"essential": true},
+			"verified_claims": {
+				"verification": {"trust_framework": {"value": "eidas"}, "evidence": [{"type": "document"}]},
+				"claims": {"given_name": null, "address": {"essential": true}}
+			}
+		}
+	}`
+
+	original, err := ParseClaimsRequest(jsonStr)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), original)
+
+	// Round-trip through serialization and re-parse (the store persistence path).
+	serialized, err := SerializeClaimsRequest(original)
+	assert.NoError(suite.T(), err)
+	assert.NotEmpty(suite.T(), serialized)
+
+	reloaded, err := ParseClaimsRequest(serialized)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), reloaded)
+
+	// verified_claims survives as a single normalized entry; unmodeled IDA members (evidence) are
+	// dropped while the modeled fields are reconstructed.
+	suite.Require().Len(reloaded.VerifiedUserInfo, 1)
+	entry := reloaded.VerifiedUserInfo[0]
+	assert.Equal(suite.T(), "eidas", entry.Verification.TrustFramework.Value)
+	assert.Len(suite.T(), entry.Claims, 2)
+	givenName, hasGivenName := entry.Claims["given_name"]
+	assert.True(suite.T(), hasGivenName)
+	assert.Nil(suite.T(), givenName)
+	assert.True(suite.T(), entry.Claims["address"].Essential)
+}
+
+// verified_claims in the id_token section (OIDC Identity Assurance) tests
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_IDTokenVerifiedClaims_ObjectValid() {
+	jsonStr := `{
+		"id_token": {
+			"verified_claims": {
+				"verification": {"trust_framework": null},
+				"claims": {"given_name": null, "family_name": null}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), claimsRequest)
+	// verified_claims is retained in the parsed request...
+	assert.NotEmpty(suite.T(), claimsRequest.VerifiedIDToken)
+	// ...but excluded from normal-claim resolution.
+	assert.Empty(suite.T(), claimsRequest.IDToken)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_IDTokenVerifiedClaims_ArrayValid() {
+	jsonStr := `{
+		"id_token": {
+			"verified_claims": [
+				{"verification": {"trust_framework": {"value": "eidas"}}, "claims": {"given_name": null}},
+				{"verification": {"trust_framework": {"value": "de_aml"}}, "claims": {"birthdate": null}}
+			]
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), claimsRequest)
+	assert.NotEmpty(suite.T(), claimsRequest.VerifiedIDToken)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_IDTokenVerifiedClaims_AlongsideNormalClaims() {
+	jsonStr := `{
+		"id_token": {
+			"auth_time": {"essential": true},
+			"verified_claims": {
+				"verification": {"trust_framework": null},
+				"claims": {"given_name": null}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), claimsRequest)
+	// Normal claims are still decoded and resolvable.
+	normalClaims := claimsRequest.IDToken
+	assert.Len(suite.T(), normalClaims, 1)
+	assert.NotNil(suite.T(), normalClaims["auth_time"])
+	assert.True(suite.T(), normalClaims["auth_time"].Essential)
+	// verified_claims is excluded from the normal-claim view.
+	assert.NotContains(suite.T(), normalClaims, model.VerifiedClaimsMember)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_IDTokenVerifiedClaims_MissingVerification() {
+	jsonStr := `{
+		"id_token": {
+			"verified_claims": {"claims": {"given_name": null}}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "verification")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_IDTokenVerifiedClaims_MissingTrustFramework() {
+	jsonStr := `{
+		"id_token": {
+			"verified_claims": {"verification": {}, "claims": {"given_name": null}}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "trust_framework")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_IDTokenVerifiedClaims_MissingClaims() {
+	jsonStr := `{
+		"id_token": {
+			"verified_claims": {"verification": {"trust_framework": null}}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "claims")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_IDTokenVerifiedClaims_EmptyArray() {
+	jsonStr := `{
+		"id_token": {
+			"verified_claims": []
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_IDTokenVerifiedClaims_NotAnObject() {
+	jsonStr := `{
+		"id_token": {
+			"verified_claims": "not-an-object"
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_IDTokenVerifiedClaims_ClaimEntryValueAndValues() {
+	jsonStr := `{
+		"id_token": {
+			"verified_claims": {
+				"verification": {"trust_framework": null},
+				"claims": {
+					"given_name": {"value": "Alice", "values": ["Alice", "Bob"]}
+				}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "verified_claims.claims")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_IDTokenVerifiedClaims_MaxAgeNegative() {
+	jsonStr := `{
+		"id_token": {
+			"verified_claims": {
+				"verification": {"trust_framework": null, "time": {"max_age": -5}},
+				"claims": {"given_name": null}
+			}
+		}
+	}`
+
+	claimsRequest, err := ParseClaimsRequest(jsonStr)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), claimsRequest)
+	assert.Contains(suite.T(), err.Error(), "max_age")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestSerializeClaimsRequest_RoundTrip_IDTokenVerifiedClaims() {
+	jsonStr := `{
+		"id_token": {
+			"auth_time": {"essential": true},
+			"verified_claims": {
+				"verification": {"trust_framework": {"value": "eidas"}, "evidence": [{"type": "document"}]},
+				"claims": {"given_name": null, "address": {"essential": true}}
+			}
+		}
+	}`
+
+	original, err := ParseClaimsRequest(jsonStr)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), original)
+
+	// Round-trip through serialization and re-parse (the store persistence path).
+	serialized, err := SerializeClaimsRequest(original)
+	assert.NoError(suite.T(), err)
+	assert.NotEmpty(suite.T(), serialized)
+
+	reloaded, err := ParseClaimsRequest(serialized)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), reloaded)
+
+	// The normal id_token claim survives the round trip.
+	assert.True(suite.T(), reloaded.IDToken["auth_time"].Essential)
+
+	// verified_claims survives as a single normalized entry; unmodeled IDA members (evidence) are
+	// dropped while the modeled fields are reconstructed.
+	suite.Require().Len(reloaded.VerifiedIDToken, 1)
+	entry := reloaded.VerifiedIDToken[0]
+	assert.Equal(suite.T(), "eidas", entry.Verification.TrustFramework.Value)
+	assert.Len(suite.T(), entry.Claims, 2)
+	givenName, hasGivenName := entry.Claims["given_name"]
+	assert.True(suite.T(), hasGivenName)
+	assert.Nil(suite.T(), givenName)
+	assert.True(suite.T(), entry.Claims["address"].Essential)
+}
+
 // buildTestAssertion builds a minimal (unsigned) JWT string from the given payload map.
 // The signature segment is a placeholder; DecodeFlowAssertionClaims only base64-decodes the payload.
 func buildTestAssertion(payload map[string]interface{}) string {

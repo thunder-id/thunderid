@@ -23,10 +23,8 @@ import (
 	"context"
 	"time"
 
-	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
-	"github.com/thunder-id/thunderid/internal/idp"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // AuthenticatedUser represents the user information of an authenticated user.
@@ -36,7 +34,7 @@ type AuthenticatedUser struct {
 	OUID                string
 	UserType            string
 	Attributes          map[string]interface{}
-	AvailableAttributes *authnprovidercm.AttributesResponse
+	AvailableAttributes *providers.AttributesResponse
 	Token               string
 }
 
@@ -64,7 +62,7 @@ type AuthenticatorMeta struct {
 	// Factors represents the authentication factors this authenticator validates
 	Factors []AuthenticationFactor
 	// AssociatedIDP is the optional identity provider type this authenticator is associated with.
-	AssociatedIDP idp.IDPType
+	AssociatedIDP providers.IDPType
 }
 
 // AuthenticatorReference represents an engaged authenticator in the authentication flow.
@@ -80,7 +78,7 @@ type AuthenticatorReference struct {
 // FederatedAuthCredential carries the credential data for federated authentication.
 type FederatedAuthCredential struct {
 	IDPID   string
-	IDPType idp.IDPType
+	IDPType providers.IDPType
 	Code    string
 }
 
@@ -94,7 +92,7 @@ type OpenID4VPCredential struct {
 type FederatedAuthResult struct {
 	Sub             string
 	Claims          map[string]interface{}
-	InternalEntity  *entityprovider.Entity
+	InternalEntity  *providers.Entity
 	IsAmbiguousUser bool
 }
 
@@ -102,7 +100,7 @@ type FederatedAuthResult struct {
 // Authenticate performs the full flow (code exchange, claims extraction, internal user lookup).
 // It returns an error only for actual failures; a missing internal user is NOT an error.
 type FederatedAuthenticator interface {
-	Authenticate(ctx context.Context, idpID, code string) (*AuthnResult, *serviceerror.ServiceError)
+	Authenticate(ctx context.Context, idpID, code string) (*AuthnResult, *tidcommon.ServiceError)
 }
 
 // AuthnResult represents the result of an authentication attempt,

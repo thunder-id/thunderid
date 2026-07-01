@@ -21,16 +21,16 @@ package authz
 import (
 	"context"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz/requestvalidator"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // AuthorizationValidatorInterface defines the interface for validating OAuth2 authorization requests.
 type AuthorizationValidatorInterface interface {
-	validateInitialAuthorizationRequest(ctx context.Context, msg *OAuthMessage, oauthApp *inboundmodel.OAuthClient) (
+	validateInitialAuthorizationRequest(ctx context.Context, msg *OAuthMessage, oauthApp *providers.OAuthClient) (
 		bool, string, string)
 }
 
@@ -44,7 +44,7 @@ func newAuthorizationValidator() AuthorizationValidatorInterface {
 
 // validateInitialAuthorizationRequest validates the initial authorization request parameters.
 func (av *authorizationValidator) validateInitialAuthorizationRequest(ctx context.Context, msg *OAuthMessage,
-	oauthApp *inboundmodel.OAuthClient) (bool, string, string) {
+	oauthApp *providers.OAuthClient) (bool, string, string) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthorizationValidator"))
 
 	clientID := msg.RequestQueryParams[constants.RequestParamClientID]

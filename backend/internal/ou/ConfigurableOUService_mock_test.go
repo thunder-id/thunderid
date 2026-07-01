@@ -8,8 +8,8 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/filter"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewConfigurableOUServiceMock creates a new instance of ConfigurableOUServiceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -40,28 +40,28 @@ func (_m *ConfigurableOUServiceMock) EXPECT() *ConfigurableOUServiceMock_Expecte
 }
 
 // CreateOrganizationUnit provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) CreateOrganizationUnit(ctx context.Context, request OrganizationUnitRequestWithID) (OrganizationUnit, *serviceerror.ServiceError) {
+func (_mock *ConfigurableOUServiceMock) CreateOrganizationUnit(ctx context.Context, request providers.OrganizationUnitRequestWithID) (providers.OrganizationUnit, *common.ServiceError) {
 	ret := _mock.Called(ctx, request)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateOrganizationUnit")
 	}
 
-	var r0 OrganizationUnit
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, OrganizationUnitRequestWithID) (OrganizationUnit, *serviceerror.ServiceError)); ok {
+	var r0 providers.OrganizationUnit
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.OrganizationUnitRequestWithID) (providers.OrganizationUnit, *common.ServiceError)); ok {
 		return returnFunc(ctx, request)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, OrganizationUnitRequestWithID) OrganizationUnit); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.OrganizationUnitRequestWithID) providers.OrganizationUnit); ok {
 		r0 = returnFunc(ctx, request)
 	} else {
-		r0 = ret.Get(0).(OrganizationUnit)
+		r0 = ret.Get(0).(providers.OrganizationUnit)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, OrganizationUnitRequestWithID) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, providers.OrganizationUnitRequestWithID) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, request)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -74,20 +74,20 @@ type ConfigurableOUServiceMock_CreateOrganizationUnit_Call struct {
 
 // CreateOrganizationUnit is a helper method to define mock.On call
 //   - ctx context.Context
-//   - request OrganizationUnitRequestWithID
+//   - request providers.OrganizationUnitRequestWithID
 func (_e *ConfigurableOUServiceMock_Expecter) CreateOrganizationUnit(ctx interface{}, request interface{}) *ConfigurableOUServiceMock_CreateOrganizationUnit_Call {
 	return &ConfigurableOUServiceMock_CreateOrganizationUnit_Call{Call: _e.mock.On("CreateOrganizationUnit", ctx, request)}
 }
 
-func (_c *ConfigurableOUServiceMock_CreateOrganizationUnit_Call) Run(run func(ctx context.Context, request OrganizationUnitRequestWithID)) *ConfigurableOUServiceMock_CreateOrganizationUnit_Call {
+func (_c *ConfigurableOUServiceMock_CreateOrganizationUnit_Call) Run(run func(ctx context.Context, request providers.OrganizationUnitRequestWithID)) *ConfigurableOUServiceMock_CreateOrganizationUnit_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 OrganizationUnitRequestWithID
+		var arg1 providers.OrganizationUnitRequestWithID
 		if args[1] != nil {
-			arg1 = args[1].(OrganizationUnitRequestWithID)
+			arg1 = args[1].(providers.OrganizationUnitRequestWithID)
 		}
 		run(
 			arg0,
@@ -97,30 +97,30 @@ func (_c *ConfigurableOUServiceMock_CreateOrganizationUnit_Call) Run(run func(ct
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_CreateOrganizationUnit_Call) Return(organizationUnit OrganizationUnit, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_CreateOrganizationUnit_Call {
+func (_c *ConfigurableOUServiceMock_CreateOrganizationUnit_Call) Return(organizationUnit providers.OrganizationUnit, serviceError *common.ServiceError) *ConfigurableOUServiceMock_CreateOrganizationUnit_Call {
 	_c.Call.Return(organizationUnit, serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_CreateOrganizationUnit_Call) RunAndReturn(run func(ctx context.Context, request OrganizationUnitRequestWithID) (OrganizationUnit, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_CreateOrganizationUnit_Call {
+func (_c *ConfigurableOUServiceMock_CreateOrganizationUnit_Call) RunAndReturn(run func(ctx context.Context, request providers.OrganizationUnitRequestWithID) (providers.OrganizationUnit, *common.ServiceError)) *ConfigurableOUServiceMock_CreateOrganizationUnit_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // DeleteOrganizationUnit provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) DeleteOrganizationUnit(ctx context.Context, id string) *serviceerror.ServiceError {
+func (_mock *ConfigurableOUServiceMock) DeleteOrganizationUnit(ctx context.Context, id string) *common.ServiceError {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteOrganizationUnit")
 	}
 
-	var r0 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
 		r0 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*serviceerror.ServiceError)
+			r0 = ret.Get(0).(*common.ServiceError)
 		}
 	}
 	return r0
@@ -156,30 +156,30 @@ func (_c *ConfigurableOUServiceMock_DeleteOrganizationUnit_Call) Run(run func(ct
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_DeleteOrganizationUnit_Call) Return(serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_DeleteOrganizationUnit_Call {
+func (_c *ConfigurableOUServiceMock_DeleteOrganizationUnit_Call) Return(serviceError *common.ServiceError) *ConfigurableOUServiceMock_DeleteOrganizationUnit_Call {
 	_c.Call.Return(serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_DeleteOrganizationUnit_Call) RunAndReturn(run func(ctx context.Context, id string) *serviceerror.ServiceError) *ConfigurableOUServiceMock_DeleteOrganizationUnit_Call {
+func (_c *ConfigurableOUServiceMock_DeleteOrganizationUnit_Call) RunAndReturn(run func(ctx context.Context, id string) *common.ServiceError) *ConfigurableOUServiceMock_DeleteOrganizationUnit_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // DeleteOrganizationUnitByPath provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) DeleteOrganizationUnitByPath(ctx context.Context, handlePath string) *serviceerror.ServiceError {
+func (_mock *ConfigurableOUServiceMock) DeleteOrganizationUnitByPath(ctx context.Context, handlePath string) *common.ServiceError {
 	ret := _mock.Called(ctx, handlePath)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteOrganizationUnitByPath")
 	}
 
-	var r0 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
 		r0 = returnFunc(ctx, handlePath)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*serviceerror.ServiceError)
+			r0 = ret.Get(0).(*common.ServiceError)
 		}
 	}
 	return r0
@@ -215,39 +215,39 @@ func (_c *ConfigurableOUServiceMock_DeleteOrganizationUnitByPath_Call) Run(run f
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_DeleteOrganizationUnitByPath_Call) Return(serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_DeleteOrganizationUnitByPath_Call {
+func (_c *ConfigurableOUServiceMock_DeleteOrganizationUnitByPath_Call) Return(serviceError *common.ServiceError) *ConfigurableOUServiceMock_DeleteOrganizationUnitByPath_Call {
 	_c.Call.Return(serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_DeleteOrganizationUnitByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string) *serviceerror.ServiceError) *ConfigurableOUServiceMock_DeleteOrganizationUnitByPath_Call {
+func (_c *ConfigurableOUServiceMock_DeleteOrganizationUnitByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string) *common.ServiceError) *ConfigurableOUServiceMock_DeleteOrganizationUnitByPath_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetOrganizationUnit provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) GetOrganizationUnit(ctx context.Context, id string) (OrganizationUnit, *serviceerror.ServiceError) {
+func (_mock *ConfigurableOUServiceMock) GetOrganizationUnit(ctx context.Context, id string) (providers.OrganizationUnit, *common.ServiceError) {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOrganizationUnit")
 	}
 
-	var r0 OrganizationUnit
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (OrganizationUnit, *serviceerror.ServiceError)); ok {
+	var r0 providers.OrganizationUnit
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (providers.OrganizationUnit, *common.ServiceError)); ok {
 		return returnFunc(ctx, id)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) OrganizationUnit); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) providers.OrganizationUnit); ok {
 		r0 = returnFunc(ctx, id)
 	} else {
-		r0 = ret.Get(0).(OrganizationUnit)
+		r0 = ret.Get(0).(providers.OrganizationUnit)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -283,39 +283,39 @@ func (_c *ConfigurableOUServiceMock_GetOrganizationUnit_Call) Run(run func(ctx c
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnit_Call) Return(organizationUnit OrganizationUnit, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnit_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnit_Call) Return(organizationUnit providers.OrganizationUnit, serviceError *common.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnit_Call {
 	_c.Call.Return(organizationUnit, serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnit_Call) RunAndReturn(run func(ctx context.Context, id string) (OrganizationUnit, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnit_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnit_Call) RunAndReturn(run func(ctx context.Context, id string) (providers.OrganizationUnit, *common.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnit_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetOrganizationUnitByPath provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitByPath(ctx context.Context, handlePath string) (OrganizationUnit, *serviceerror.ServiceError) {
+func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitByPath(ctx context.Context, handlePath string) (providers.OrganizationUnit, *common.ServiceError) {
 	ret := _mock.Called(ctx, handlePath)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOrganizationUnitByPath")
 	}
 
-	var r0 OrganizationUnit
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (OrganizationUnit, *serviceerror.ServiceError)); ok {
+	var r0 providers.OrganizationUnit
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (providers.OrganizationUnit, *common.ServiceError)); ok {
 		return returnFunc(ctx, handlePath)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) OrganizationUnit); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) providers.OrganizationUnit); ok {
 		r0 = returnFunc(ctx, handlePath)
 	} else {
-		r0 = ret.Get(0).(OrganizationUnit)
+		r0 = ret.Get(0).(providers.OrganizationUnit)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, handlePath)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -351,41 +351,41 @@ func (_c *ConfigurableOUServiceMock_GetOrganizationUnitByPath_Call) Run(run func
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitByPath_Call) Return(organizationUnit OrganizationUnit, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitByPath_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitByPath_Call) Return(organizationUnit providers.OrganizationUnit, serviceError *common.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitByPath_Call {
 	_c.Call.Return(organizationUnit, serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string) (OrganizationUnit, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitByPath_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string) (providers.OrganizationUnit, *common.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitByPath_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetOrganizationUnitChildren provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitChildren(ctx context.Context, id string, limit int, offset int, f *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError) {
+func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitChildren(ctx context.Context, id string, limit int, offset int, f *common.FilterGroup) (*providers.OrganizationUnitListResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, id, limit, offset, f)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOrganizationUnitChildren")
 	}
 
-	var r0 *OrganizationUnitListResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError)); ok {
+	var r0 *providers.OrganizationUnitListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, *common.FilterGroup) (*providers.OrganizationUnitListResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, id, limit, offset, f)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, *filter.FilterGroup) *OrganizationUnitListResponse); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, *common.FilterGroup) *providers.OrganizationUnitListResponse); ok {
 		r0 = returnFunc(ctx, id, limit, offset, f)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*OrganizationUnitListResponse)
+			r0 = ret.Get(0).(*providers.OrganizationUnitListResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int, *filter.FilterGroup) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int, *common.FilterGroup) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, id, limit, offset, f)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -401,12 +401,12 @@ type ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call struct {
 //   - id string
 //   - limit int
 //   - offset int
-//   - f *filter.FilterGroup
+//   - f *common.FilterGroup
 func (_e *ConfigurableOUServiceMock_Expecter) GetOrganizationUnitChildren(ctx interface{}, id interface{}, limit interface{}, offset interface{}, f interface{}) *ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call {
 	return &ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call{Call: _e.mock.On("GetOrganizationUnitChildren", ctx, id, limit, offset, f)}
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call) Run(run func(ctx context.Context, id string, limit int, offset int, f *filter.FilterGroup)) *ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call) Run(run func(ctx context.Context, id string, limit int, offset int, f *common.FilterGroup)) *ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -424,9 +424,9 @@ func (_c *ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call) Run(run fu
 		if args[3] != nil {
 			arg3 = args[3].(int)
 		}
-		var arg4 *filter.FilterGroup
+		var arg4 *common.FilterGroup
 		if args[4] != nil {
-			arg4 = args[4].(*filter.FilterGroup)
+			arg4 = args[4].(*common.FilterGroup)
 		}
 		run(
 			arg0,
@@ -439,41 +439,41 @@ func (_c *ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call) Run(run fu
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call) Return(organizationUnitListResponse *OrganizationUnitListResponse, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call) Return(organizationUnitListResponse *providers.OrganizationUnitListResponse, serviceError *common.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call {
 	_c.Call.Return(organizationUnitListResponse, serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call) RunAndReturn(run func(ctx context.Context, id string, limit int, offset int, f *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call) RunAndReturn(run func(ctx context.Context, id string, limit int, offset int, f *common.FilterGroup) (*providers.OrganizationUnitListResponse, *common.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitChildren_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetOrganizationUnitChildrenByPath provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitChildrenByPath(ctx context.Context, handlePath string, limit int, offset int, f *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError) {
+func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitChildrenByPath(ctx context.Context, handlePath string, limit int, offset int, f *common.FilterGroup) (*providers.OrganizationUnitListResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, handlePath, limit, offset, f)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOrganizationUnitChildrenByPath")
 	}
 
-	var r0 *OrganizationUnitListResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError)); ok {
+	var r0 *providers.OrganizationUnitListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, *common.FilterGroup) (*providers.OrganizationUnitListResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, handlePath, limit, offset, f)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, *filter.FilterGroup) *OrganizationUnitListResponse); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, *common.FilterGroup) *providers.OrganizationUnitListResponse); ok {
 		r0 = returnFunc(ctx, handlePath, limit, offset, f)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*OrganizationUnitListResponse)
+			r0 = ret.Get(0).(*providers.OrganizationUnitListResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int, *filter.FilterGroup) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int, *common.FilterGroup) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, handlePath, limit, offset, f)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -489,12 +489,12 @@ type ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call struct {
 //   - handlePath string
 //   - limit int
 //   - offset int
-//   - f *filter.FilterGroup
+//   - f *common.FilterGroup
 func (_e *ConfigurableOUServiceMock_Expecter) GetOrganizationUnitChildrenByPath(ctx interface{}, handlePath interface{}, limit interface{}, offset interface{}, f interface{}) *ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call {
 	return &ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call{Call: _e.mock.On("GetOrganizationUnitChildrenByPath", ctx, handlePath, limit, offset, f)}
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call) Run(run func(ctx context.Context, handlePath string, limit int, offset int, f *filter.FilterGroup)) *ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call) Run(run func(ctx context.Context, handlePath string, limit int, offset int, f *common.FilterGroup)) *ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -512,9 +512,9 @@ func (_c *ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call) Run(
 		if args[3] != nil {
 			arg3 = args[3].(int)
 		}
-		var arg4 *filter.FilterGroup
+		var arg4 *common.FilterGroup
 		if args[4] != nil {
-			arg4 = args[4].(*filter.FilterGroup)
+			arg4 = args[4].(*common.FilterGroup)
 		}
 		run(
 			arg0,
@@ -527,18 +527,18 @@ func (_c *ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call) Run(
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call) Return(organizationUnitListResponse *OrganizationUnitListResponse, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call) Return(organizationUnitListResponse *providers.OrganizationUnitListResponse, serviceError *common.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call {
 	_c.Call.Return(organizationUnitListResponse, serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string, limit int, offset int, f *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string, limit int, offset int, f *common.FilterGroup) (*providers.OrganizationUnitListResponse, *common.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitChildrenByPath_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetOrganizationUnitGroups provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitGroups(ctx context.Context, id string, limit int, offset int) (*GroupListResponse, *serviceerror.ServiceError) {
+func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitGroups(ctx context.Context, id string, limit int, offset int) (*GroupListResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, id, limit, offset)
 
 	if len(ret) == 0 {
@@ -546,8 +546,8 @@ func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitGroups(ctx context.Co
 	}
 
 	var r0 *GroupListResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*GroupListResponse, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*GroupListResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, id, limit, offset)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) *GroupListResponse); ok {
@@ -557,11 +557,11 @@ func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitGroups(ctx context.Co
 			r0 = ret.Get(0).(*GroupListResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, id, limit, offset)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -609,18 +609,18 @@ func (_c *ConfigurableOUServiceMock_GetOrganizationUnitGroups_Call) Run(run func
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitGroups_Call) Return(groupListResponse *GroupListResponse, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitGroups_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitGroups_Call) Return(groupListResponse *GroupListResponse, serviceError *common.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitGroups_Call {
 	_c.Call.Return(groupListResponse, serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitGroups_Call) RunAndReturn(run func(ctx context.Context, id string, limit int, offset int) (*GroupListResponse, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitGroups_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitGroups_Call) RunAndReturn(run func(ctx context.Context, id string, limit int, offset int) (*GroupListResponse, *common.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitGroups_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetOrganizationUnitGroupsByPath provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitGroupsByPath(ctx context.Context, handlePath string, limit int, offset int) (*GroupListResponse, *serviceerror.ServiceError) {
+func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitGroupsByPath(ctx context.Context, handlePath string, limit int, offset int) (*GroupListResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, handlePath, limit, offset)
 
 	if len(ret) == 0 {
@@ -628,8 +628,8 @@ func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitGroupsByPath(ctx cont
 	}
 
 	var r0 *GroupListResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*GroupListResponse, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*GroupListResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, handlePath, limit, offset)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) *GroupListResponse); ok {
@@ -639,11 +639,11 @@ func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitGroupsByPath(ctx cont
 			r0 = ret.Get(0).(*GroupListResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, handlePath, limit, offset)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -691,18 +691,18 @@ func (_c *ConfigurableOUServiceMock_GetOrganizationUnitGroupsByPath_Call) Run(ru
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitGroupsByPath_Call) Return(groupListResponse *GroupListResponse, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitGroupsByPath_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitGroupsByPath_Call) Return(groupListResponse *GroupListResponse, serviceError *common.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitGroupsByPath_Call {
 	_c.Call.Return(groupListResponse, serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitGroupsByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string, limit int, offset int) (*GroupListResponse, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitGroupsByPath_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitGroupsByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string, limit int, offset int) (*GroupListResponse, *common.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitGroupsByPath_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetOrganizationUnitHandlesByIDs provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitHandlesByIDs(ctx context.Context, ids []string) (map[string]string, *serviceerror.ServiceError) {
+func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitHandlesByIDs(ctx context.Context, ids []string) (map[string]string, *common.ServiceError) {
 	ret := _mock.Called(ctx, ids)
 
 	if len(ret) == 0 {
@@ -710,8 +710,8 @@ func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitHandlesByIDs(ctx cont
 	}
 
 	var r0 map[string]string
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) (map[string]string, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) (map[string]string, *common.ServiceError)); ok {
 		return returnFunc(ctx, ids)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) map[string]string); ok {
@@ -721,11 +721,11 @@ func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitHandlesByIDs(ctx cont
 			r0 = ret.Get(0).(map[string]string)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, ids)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -761,41 +761,41 @@ func (_c *ConfigurableOUServiceMock_GetOrganizationUnitHandlesByIDs_Call) Run(ru
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitHandlesByIDs_Call) Return(stringToString map[string]string, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitHandlesByIDs_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitHandlesByIDs_Call) Return(stringToString map[string]string, serviceError *common.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitHandlesByIDs_Call {
 	_c.Call.Return(stringToString, serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitHandlesByIDs_Call) RunAndReturn(run func(ctx context.Context, ids []string) (map[string]string, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitHandlesByIDs_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitHandlesByIDs_Call) RunAndReturn(run func(ctx context.Context, ids []string) (map[string]string, *common.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitHandlesByIDs_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetOrganizationUnitList provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitList(ctx context.Context, limit int, offset int, f *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError) {
+func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitList(ctx context.Context, limit int, offset int, f *common.FilterGroup) (*providers.OrganizationUnitListResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, limit, offset, f)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOrganizationUnitList")
 	}
 
-	var r0 *OrganizationUnitListResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError)); ok {
+	var r0 *providers.OrganizationUnitListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, *common.FilterGroup) (*providers.OrganizationUnitListResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, limit, offset, f)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, *filter.FilterGroup) *OrganizationUnitListResponse); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, *common.FilterGroup) *providers.OrganizationUnitListResponse); ok {
 		r0 = returnFunc(ctx, limit, offset, f)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*OrganizationUnitListResponse)
+			r0 = ret.Get(0).(*providers.OrganizationUnitListResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int, *filter.FilterGroup) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int, *common.FilterGroup) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, limit, offset, f)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -810,12 +810,12 @@ type ConfigurableOUServiceMock_GetOrganizationUnitList_Call struct {
 //   - ctx context.Context
 //   - limit int
 //   - offset int
-//   - f *filter.FilterGroup
+//   - f *common.FilterGroup
 func (_e *ConfigurableOUServiceMock_Expecter) GetOrganizationUnitList(ctx interface{}, limit interface{}, offset interface{}, f interface{}) *ConfigurableOUServiceMock_GetOrganizationUnitList_Call {
 	return &ConfigurableOUServiceMock_GetOrganizationUnitList_Call{Call: _e.mock.On("GetOrganizationUnitList", ctx, limit, offset, f)}
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitList_Call) Run(run func(ctx context.Context, limit int, offset int, f *filter.FilterGroup)) *ConfigurableOUServiceMock_GetOrganizationUnitList_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitList_Call) Run(run func(ctx context.Context, limit int, offset int, f *common.FilterGroup)) *ConfigurableOUServiceMock_GetOrganizationUnitList_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -829,9 +829,9 @@ func (_c *ConfigurableOUServiceMock_GetOrganizationUnitList_Call) Run(run func(c
 		if args[2] != nil {
 			arg2 = args[2].(int)
 		}
-		var arg3 *filter.FilterGroup
+		var arg3 *common.FilterGroup
 		if args[3] != nil {
-			arg3 = args[3].(*filter.FilterGroup)
+			arg3 = args[3].(*common.FilterGroup)
 		}
 		run(
 			arg0,
@@ -843,18 +843,18 @@ func (_c *ConfigurableOUServiceMock_GetOrganizationUnitList_Call) Run(run func(c
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitList_Call) Return(organizationUnitListResponse *OrganizationUnitListResponse, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitList_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitList_Call) Return(organizationUnitListResponse *providers.OrganizationUnitListResponse, serviceError *common.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitList_Call {
 	_c.Call.Return(organizationUnitListResponse, serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int, f *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitList_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int, f *common.FilterGroup) (*providers.OrganizationUnitListResponse, *common.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitList_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetOrganizationUnitUsers provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitUsers(ctx context.Context, id string, limit int, offset int, includeDisplay bool) (*UserListResponse, *serviceerror.ServiceError) {
+func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitUsers(ctx context.Context, id string, limit int, offset int, includeDisplay bool) (*UserListResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, id, limit, offset, includeDisplay)
 
 	if len(ret) == 0 {
@@ -862,8 +862,8 @@ func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitUsers(ctx context.Con
 	}
 
 	var r0 *UserListResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, bool) (*UserListResponse, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, bool) (*UserListResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, id, limit, offset, includeDisplay)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, bool) *UserListResponse); ok {
@@ -873,11 +873,11 @@ func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitUsers(ctx context.Con
 			r0 = ret.Get(0).(*UserListResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int, bool) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int, bool) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, id, limit, offset, includeDisplay)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -931,18 +931,18 @@ func (_c *ConfigurableOUServiceMock_GetOrganizationUnitUsers_Call) Run(run func(
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitUsers_Call) Return(userListResponse *UserListResponse, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitUsers_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitUsers_Call) Return(userListResponse *UserListResponse, serviceError *common.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitUsers_Call {
 	_c.Call.Return(userListResponse, serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitUsers_Call) RunAndReturn(run func(ctx context.Context, id string, limit int, offset int, includeDisplay bool) (*UserListResponse, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitUsers_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitUsers_Call) RunAndReturn(run func(ctx context.Context, id string, limit int, offset int, includeDisplay bool) (*UserListResponse, *common.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitUsers_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetOrganizationUnitUsersByPath provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitUsersByPath(ctx context.Context, handlePath string, limit int, offset int, includeDisplay bool) (*UserListResponse, *serviceerror.ServiceError) {
+func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitUsersByPath(ctx context.Context, handlePath string, limit int, offset int, includeDisplay bool) (*UserListResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, handlePath, limit, offset, includeDisplay)
 
 	if len(ret) == 0 {
@@ -950,8 +950,8 @@ func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitUsersByPath(ctx conte
 	}
 
 	var r0 *UserListResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, bool) (*UserListResponse, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, bool) (*UserListResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, handlePath, limit, offset, includeDisplay)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, bool) *UserListResponse); ok {
@@ -961,11 +961,11 @@ func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitUsersByPath(ctx conte
 			r0 = ret.Get(0).(*UserListResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int, bool) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int, bool) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, handlePath, limit, offset, includeDisplay)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -1019,12 +1019,12 @@ func (_c *ConfigurableOUServiceMock_GetOrganizationUnitUsersByPath_Call) Run(run
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitUsersByPath_Call) Return(userListResponse *UserListResponse, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitUsersByPath_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitUsersByPath_Call) Return(userListResponse *UserListResponse, serviceError *common.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitUsersByPath_Call {
 	_c.Call.Return(userListResponse, serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_GetOrganizationUnitUsersByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string, limit int, offset int, includeDisplay bool) (*UserListResponse, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitUsersByPath_Call {
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitUsersByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string, limit int, offset int, includeDisplay bool) (*UserListResponse, *common.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitUsersByPath_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1087,7 +1087,7 @@ func (_c *ConfigurableOUServiceMock_IsOrganizationUnitDeclarative_Call) RunAndRe
 }
 
 // IsOrganizationUnitExists provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) IsOrganizationUnitExists(ctx context.Context, id string) (bool, *serviceerror.ServiceError) {
+func (_mock *ConfigurableOUServiceMock) IsOrganizationUnitExists(ctx context.Context, id string) (bool, *common.ServiceError) {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
@@ -1095,8 +1095,8 @@ func (_mock *ConfigurableOUServiceMock) IsOrganizationUnitExists(ctx context.Con
 	}
 
 	var r0 bool
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, *common.ServiceError)); ok {
 		return returnFunc(ctx, id)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
@@ -1104,11 +1104,11 @@ func (_mock *ConfigurableOUServiceMock) IsOrganizationUnitExists(ctx context.Con
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -1144,18 +1144,18 @@ func (_c *ConfigurableOUServiceMock_IsOrganizationUnitExists_Call) Run(run func(
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_IsOrganizationUnitExists_Call) Return(b bool, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_IsOrganizationUnitExists_Call {
+func (_c *ConfigurableOUServiceMock_IsOrganizationUnitExists_Call) Return(b bool, serviceError *common.ServiceError) *ConfigurableOUServiceMock_IsOrganizationUnitExists_Call {
 	_c.Call.Return(b, serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_IsOrganizationUnitExists_Call) RunAndReturn(run func(ctx context.Context, id string) (bool, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_IsOrganizationUnitExists_Call {
+func (_c *ConfigurableOUServiceMock_IsOrganizationUnitExists_Call) RunAndReturn(run func(ctx context.Context, id string) (bool, *common.ServiceError)) *ConfigurableOUServiceMock_IsOrganizationUnitExists_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // IsParent provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) IsParent(ctx context.Context, parentID string, childID string) (bool, *serviceerror.ServiceError) {
+func (_mock *ConfigurableOUServiceMock) IsParent(ctx context.Context, parentID string, childID string) (bool, *common.ServiceError) {
 	ret := _mock.Called(ctx, parentID, childID)
 
 	if len(ret) == 0 {
@@ -1163,8 +1163,8 @@ func (_mock *ConfigurableOUServiceMock) IsParent(ctx context.Context, parentID s
 	}
 
 	var r0 bool
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (bool, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (bool, *common.ServiceError)); ok {
 		return returnFunc(ctx, parentID, childID)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) bool); ok {
@@ -1172,11 +1172,11 @@ func (_mock *ConfigurableOUServiceMock) IsParent(ctx context.Context, parentID s
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, parentID, childID)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -1218,12 +1218,12 @@ func (_c *ConfigurableOUServiceMock_IsParent_Call) Run(run func(ctx context.Cont
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_IsParent_Call) Return(b bool, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_IsParent_Call {
+func (_c *ConfigurableOUServiceMock_IsParent_Call) Return(b bool, serviceError *common.ServiceError) *ConfigurableOUServiceMock_IsParent_Call {
 	_c.Call.Return(b, serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_IsParent_Call) RunAndReturn(run func(ctx context.Context, parentID string, childID string) (bool, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_IsParent_Call {
+func (_c *ConfigurableOUServiceMock_IsParent_Call) RunAndReturn(run func(ctx context.Context, parentID string, childID string) (bool, *common.ServiceError)) *ConfigurableOUServiceMock_IsParent_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1309,28 +1309,28 @@ func (_c *ConfigurableOUServiceMock_SetOUUserResolver_Call) RunAndReturn(run fun
 }
 
 // UpdateOrganizationUnit provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) UpdateOrganizationUnit(ctx context.Context, id string, request OrganizationUnitRequestWithID) (OrganizationUnit, *serviceerror.ServiceError) {
+func (_mock *ConfigurableOUServiceMock) UpdateOrganizationUnit(ctx context.Context, id string, request providers.OrganizationUnitRequestWithID) (providers.OrganizationUnit, *common.ServiceError) {
 	ret := _mock.Called(ctx, id, request)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateOrganizationUnit")
 	}
 
-	var r0 OrganizationUnit
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, OrganizationUnitRequestWithID) (OrganizationUnit, *serviceerror.ServiceError)); ok {
+	var r0 providers.OrganizationUnit
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.OrganizationUnitRequestWithID) (providers.OrganizationUnit, *common.ServiceError)); ok {
 		return returnFunc(ctx, id, request)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, OrganizationUnitRequestWithID) OrganizationUnit); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.OrganizationUnitRequestWithID) providers.OrganizationUnit); ok {
 		r0 = returnFunc(ctx, id, request)
 	} else {
-		r0 = ret.Get(0).(OrganizationUnit)
+		r0 = ret.Get(0).(providers.OrganizationUnit)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, OrganizationUnitRequestWithID) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, providers.OrganizationUnitRequestWithID) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, id, request)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -1344,12 +1344,12 @@ type ConfigurableOUServiceMock_UpdateOrganizationUnit_Call struct {
 // UpdateOrganizationUnit is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-//   - request OrganizationUnitRequestWithID
+//   - request providers.OrganizationUnitRequestWithID
 func (_e *ConfigurableOUServiceMock_Expecter) UpdateOrganizationUnit(ctx interface{}, id interface{}, request interface{}) *ConfigurableOUServiceMock_UpdateOrganizationUnit_Call {
 	return &ConfigurableOUServiceMock_UpdateOrganizationUnit_Call{Call: _e.mock.On("UpdateOrganizationUnit", ctx, id, request)}
 }
 
-func (_c *ConfigurableOUServiceMock_UpdateOrganizationUnit_Call) Run(run func(ctx context.Context, id string, request OrganizationUnitRequestWithID)) *ConfigurableOUServiceMock_UpdateOrganizationUnit_Call {
+func (_c *ConfigurableOUServiceMock_UpdateOrganizationUnit_Call) Run(run func(ctx context.Context, id string, request providers.OrganizationUnitRequestWithID)) *ConfigurableOUServiceMock_UpdateOrganizationUnit_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -1359,9 +1359,9 @@ func (_c *ConfigurableOUServiceMock_UpdateOrganizationUnit_Call) Run(run func(ct
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 OrganizationUnitRequestWithID
+		var arg2 providers.OrganizationUnitRequestWithID
 		if args[2] != nil {
-			arg2 = args[2].(OrganizationUnitRequestWithID)
+			arg2 = args[2].(providers.OrganizationUnitRequestWithID)
 		}
 		run(
 			arg0,
@@ -1372,39 +1372,39 @@ func (_c *ConfigurableOUServiceMock_UpdateOrganizationUnit_Call) Run(run func(ct
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_UpdateOrganizationUnit_Call) Return(organizationUnit OrganizationUnit, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_UpdateOrganizationUnit_Call {
+func (_c *ConfigurableOUServiceMock_UpdateOrganizationUnit_Call) Return(organizationUnit providers.OrganizationUnit, serviceError *common.ServiceError) *ConfigurableOUServiceMock_UpdateOrganizationUnit_Call {
 	_c.Call.Return(organizationUnit, serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_UpdateOrganizationUnit_Call) RunAndReturn(run func(ctx context.Context, id string, request OrganizationUnitRequestWithID) (OrganizationUnit, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_UpdateOrganizationUnit_Call {
+func (_c *ConfigurableOUServiceMock_UpdateOrganizationUnit_Call) RunAndReturn(run func(ctx context.Context, id string, request providers.OrganizationUnitRequestWithID) (providers.OrganizationUnit, *common.ServiceError)) *ConfigurableOUServiceMock_UpdateOrganizationUnit_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UpdateOrganizationUnitByPath provides a mock function for the type ConfigurableOUServiceMock
-func (_mock *ConfigurableOUServiceMock) UpdateOrganizationUnitByPath(ctx context.Context, handlePath string, request OrganizationUnitRequestWithID) (OrganizationUnit, *serviceerror.ServiceError) {
+func (_mock *ConfigurableOUServiceMock) UpdateOrganizationUnitByPath(ctx context.Context, handlePath string, request providers.OrganizationUnitRequestWithID) (providers.OrganizationUnit, *common.ServiceError) {
 	ret := _mock.Called(ctx, handlePath, request)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateOrganizationUnitByPath")
 	}
 
-	var r0 OrganizationUnit
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, OrganizationUnitRequestWithID) (OrganizationUnit, *serviceerror.ServiceError)); ok {
+	var r0 providers.OrganizationUnit
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.OrganizationUnitRequestWithID) (providers.OrganizationUnit, *common.ServiceError)); ok {
 		return returnFunc(ctx, handlePath, request)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, OrganizationUnitRequestWithID) OrganizationUnit); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.OrganizationUnitRequestWithID) providers.OrganizationUnit); ok {
 		r0 = returnFunc(ctx, handlePath, request)
 	} else {
-		r0 = ret.Get(0).(OrganizationUnit)
+		r0 = ret.Get(0).(providers.OrganizationUnit)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, OrganizationUnitRequestWithID) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, providers.OrganizationUnitRequestWithID) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, handlePath, request)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -1418,12 +1418,12 @@ type ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call struct {
 // UpdateOrganizationUnitByPath is a helper method to define mock.On call
 //   - ctx context.Context
 //   - handlePath string
-//   - request OrganizationUnitRequestWithID
+//   - request providers.OrganizationUnitRequestWithID
 func (_e *ConfigurableOUServiceMock_Expecter) UpdateOrganizationUnitByPath(ctx interface{}, handlePath interface{}, request interface{}) *ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call {
 	return &ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call{Call: _e.mock.On("UpdateOrganizationUnitByPath", ctx, handlePath, request)}
 }
 
-func (_c *ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call) Run(run func(ctx context.Context, handlePath string, request OrganizationUnitRequestWithID)) *ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call {
+func (_c *ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call) Run(run func(ctx context.Context, handlePath string, request providers.OrganizationUnitRequestWithID)) *ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -1433,9 +1433,9 @@ func (_c *ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call) Run(run f
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 OrganizationUnitRequestWithID
+		var arg2 providers.OrganizationUnitRequestWithID
 		if args[2] != nil {
-			arg2 = args[2].(OrganizationUnitRequestWithID)
+			arg2 = args[2].(providers.OrganizationUnitRequestWithID)
 		}
 		run(
 			arg0,
@@ -1446,12 +1446,12 @@ func (_c *ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call) Run(run f
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call) Return(organizationUnit OrganizationUnit, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call {
+func (_c *ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call) Return(organizationUnit providers.OrganizationUnit, serviceError *common.ServiceError) *ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call {
 	_c.Call.Return(organizationUnit, serviceError)
 	return _c
 }
 
-func (_c *ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string, request OrganizationUnitRequestWithID) (OrganizationUnit, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call {
+func (_c *ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string, request providers.OrganizationUnitRequestWithID) (providers.OrganizationUnit, *common.ServiceError)) *ConfigurableOUServiceMock_UpdateOrganizationUnitByPath_Call {
 	_c.Call.Return(run)
 	return _c
 }

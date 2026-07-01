@@ -21,9 +21,9 @@ package user
 import (
 	"encoding/json"
 
-	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // User represents a user in the system.
@@ -68,19 +68,19 @@ type UserGroup struct {
 
 // UserGroupListResponse represents the response for listing groups that a user belongs to.
 type UserGroupListResponse struct {
-	TotalResults int                  `json:"totalResults"`
-	StartIndex   int                  `json:"startIndex"`
-	Count        int                  `json:"count"`
-	Groups       []entity.EntityGroup `json:"groups"`
-	Links        []utils.Link         `json:"links"`
+	TotalResults int                     `json:"totalResults"`
+	StartIndex   int                     `json:"startIndex"`
+	Count        int                     `json:"count"`
+	Groups       []providers.EntityGroup `json:"groups"`
+	Links        []utils.Link            `json:"links"`
 }
 
 // CreateUserRequest represents the request body for creating a user.
 type CreateUserRequest struct {
-	OUID       string          `json:"ouId"`
-	Type       string          `json:"type"`
+	OUID       string          `json:"ouId"                 native:"required"`
+	Type       string          `json:"type"                 native:"required"`
 	Groups     []string        `json:"groups,omitempty"`
-	Attributes json.RawMessage `json:"attributes,omitempty"`
+	Attributes json.RawMessage `json:"attributes,omitempty" native:"omitempty"`
 }
 
 // UpdateUserRequest represents the request body for updating a user.
@@ -98,13 +98,13 @@ type UpdateSelfUserRequest struct {
 
 // CreateUserByPathRequest represents the request body for creating a user under a handle path.
 type CreateUserByPathRequest struct {
-	Type       string          `json:"type"`
+	Type       string          `json:"type"                 native:"required"`
 	Groups     []string        `json:"groups,omitempty"`
 	Attributes json.RawMessage `json:"attributes,omitempty"`
 }
 
 // entityToUser converts an Entity to a User.
-func entityToUser(e *entity.Entity) User {
+func entityToUser(e *providers.Entity) User {
 	return User{
 		ID:         e.ID,
 		OUID:       e.OUID,
@@ -115,7 +115,7 @@ func entityToUser(e *entity.Entity) User {
 }
 
 // entitiesToUsers converts a slice of Entity to a slice of User.
-func entitiesToUsers(entities []entity.Entity) []User {
+func entitiesToUsers(entities []providers.Entity) []User {
 	users := make([]User, len(entities))
 	for i := range entities {
 		users[i] = entityToUser(&entities[i])
@@ -124,13 +124,13 @@ func entitiesToUsers(entities []entity.Entity) []User {
 }
 
 // userToEntity converts a User to an Entity for storage.
-func userToEntity(u *User) *entity.Entity {
-	return &entity.Entity{
+func userToEntity(u *User) *providers.Entity {
+	return &providers.Entity{
 		ID:         u.ID,
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       u.Type,
 		OUID:       u.OUID,
-		State:      entity.EntityStateActive,
+		State:      providers.EntityStateActive,
 		Attributes: u.Attributes,
 	}
 }

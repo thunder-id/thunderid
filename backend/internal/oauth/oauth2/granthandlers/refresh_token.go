@@ -24,8 +24,10 @@ import (
 	"strings"
 	"time"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/attributecache"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -33,8 +35,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
-	"github.com/thunder-id/thunderid/internal/resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -46,7 +46,7 @@ type refreshTokenGrantHandler struct {
 	tokenBuilder     tokenservice.TokenBuilderInterface
 	tokenValidator   tokenservice.TokenValidatorInterface
 	attrCacheService attributecache.AttributeCacheServiceInterface
-	resourceService  resource.ResourceServiceInterface
+	resourceService  providers.ResourceServerProvider
 }
 
 // newRefreshTokenGrantHandler creates a new instance of RefreshTokenGrantHandler.
@@ -55,7 +55,7 @@ func newRefreshTokenGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	tokenValidator tokenservice.TokenValidatorInterface,
 	attrCacheService attributecache.AttributeCacheServiceInterface,
-	resourceService resource.ResourceServiceInterface,
+	resourceService providers.ResourceServerProvider,
 	cfg oauthconfig.Config,
 ) RefreshTokenGrantHandlerInterface {
 	return &refreshTokenGrantHandler{
@@ -70,8 +70,8 @@ func newRefreshTokenGrantHandler(
 
 // ValidateGrant validates the refresh token grant request.
 func (h *refreshTokenGrantHandler) ValidateGrant(ctx context.Context, tokenRequest *model.TokenRequest,
-	oauthApp *inboundmodel.OAuthClient) *model.ErrorResponse {
-	if constants.GrantType(tokenRequest.GrantType) != constants.GrantTypeRefreshToken {
+	oauthApp *providers.OAuthClient) *model.ErrorResponse {
+	if providers.GrantType(tokenRequest.GrantType) != providers.GrantTypeRefreshToken {
 		return &model.ErrorResponse{
 			Error:            constants.ErrorUnsupportedGrantType,
 			ErrorDescription: "Unsupported grant type",
@@ -99,7 +99,7 @@ func (h *refreshTokenGrantHandler) ValidateGrant(ctx context.Context, tokenReque
 
 // HandleGrant processes the refresh token grant request and generates a new token response.
 func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest *model.TokenRequest,
-	oauthApp *inboundmodel.OAuthClient) (
+	oauthApp *providers.OAuthClient) (
 	*model.TokenResponseDTO, *model.ErrorResponse) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RefreshTokenGrantHandler"))
 
@@ -167,7 +167,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	// cacheEntry is kept so its current TTLSeconds can be compared later.
 	attrs := make(map[string]interface{})
 	var cacheEntry *attributecache.AttributeCache
-	var fetchErr *serviceerror.ServiceError
+	var fetchErr *tidcommon.ServiceError
 	if refreshTokenClaims.AttributeCacheID != "" {
 		cacheEntry, fetchErr = h.attrCacheService.GetAttributeCache(ctx, refreshTokenClaims.AttributeCacheID)
 		if fetchErr != nil {
@@ -277,7 +277,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 func (h *refreshTokenGrantHandler) IssueRefreshToken(
 	ctx context.Context,
 	tokenResponse *model.TokenResponseDTO,
-	oauthApp *inboundmodel.OAuthClient,
+	oauthApp *providers.OAuthClient,
 	subject string, audiences []string, grantType string,
 	scopes []string,
 	claimsRequest *model.ClaimsRequest,
@@ -318,7 +318,7 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 
 // dpopJktForRefresh returns the DPoP jkt to bind onto a newly issued refresh token.
 // Confidential clients receive unbound refresh tokens.
-func dpopJktForRefresh(ctx context.Context, oauthApp *inboundmodel.OAuthClient) string {
+func dpopJktForRefresh(ctx context.Context, oauthApp *providers.OAuthClient) string {
 	if oauthApp == nil || !oauthApp.PublicClient {
 		return ""
 	}
@@ -335,7 +335,7 @@ func dpopJktForRefresh(ctx context.Context, oauthApp *inboundmodel.OAuthClient) 
 func (h *refreshTokenGrantHandler) extendCacheTTL(
 	ctx context.Context,
 	cacheEntry *attributecache.AttributeCache,
-	oauthApp *inboundmodel.OAuthClient,
+	oauthApp *providers.OAuthClient,
 	refreshIat, accessExpiresIn int64,
 	renewRefreshToken bool,
 	cacheID string,

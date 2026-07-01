@@ -28,8 +28,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
-	"github.com/thunder-id/thunderid/internal/resource"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Helper to convert local resourceRules to declarativeresource.ResourceRules for testing
@@ -1891,7 +1891,7 @@ func TestEntityTypeExportFormat(t *testing.T) {
 // GetResourceRules() returns nil, the identifier and ou_id fields are emitted as
 // literal values and NOT replaced with Go template placeholders ({{.…}}).
 func TestResourceServerExport_IdentifierAndOUIDNotParameterized(t *testing.T) {
-	rs := &resource.ResourceServer{
+	rs := &providers.ResourceServer{
 		ID:         "019ddcf3-c67c-7521-a3a1-6744abb241a7",
 		Name:       "System",
 		Identifier: "system",
@@ -1923,7 +1923,7 @@ func TestResourceServerExport_IdentifierAndOUIDNotParameterized(t *testing.T) {
 // TestResourceServerExport_DelimiterIsQuoted verifies that the delimiter field is
 // wrapped in double quotes in the exported YAML (yamlfmt:"quoted" tag).
 func TestResourceServerExport_DelimiterIsQuoted(t *testing.T) {
-	rs := &resource.ResourceServer{
+	rs := &providers.ResourceServer{
 		ID:         "019ddcf3-c67c-7521-a3a1-6744abb241a7",
 		Name:       "System",
 		Identifier: "system",
@@ -1942,7 +1942,7 @@ func TestResourceServerExport_DelimiterIsQuoted(t *testing.T) {
 		"bare unquoted colon must not appear as the delimiter value")
 
 	// Verify the output round-trips: the parsed delimiter value must equal ":"
-	var parsed resource.ResourceServer
+	var parsed providers.ResourceServer
 	require.NoError(t, yaml.Unmarshal([]byte(result), &parsed))
 	assert.Equal(t, ":", parsed.Delimiter,
 		"round-tripped delimiter should equal \":\"")

@@ -37,8 +37,8 @@ ARG CERT_FILE
 ARG KEY_FILE
 
 # Modify the hostname in the deployment configuration
-RUN sed -i 's/hostname: "localhost"/hostname: "0.0.0.0"/' backend/cmd/server/repository/conf/deployment.yaml && \
-    sed -i '/hostname: "0.0.0.0"/a\  public_url: "https://localhost:8090"' backend/cmd/server/repository/conf/deployment.yaml
+RUN sed -i 's/hostname: "localhost"/hostname: "0.0.0.0"/' backend/cmd/server/deployment.yaml && \
+    sed -i '/hostname: "0.0.0.0"/a\  public_url: "https://localhost:8090"' backend/cmd/server/deployment.yaml
 
 # Handle shared certificates - use provided certificates or generate new ones
 RUN if [ -n "$CERT_FILE" ] && [ -n "$KEY_FILE" ] && [ -f "$CERT_FILE" ] && [ -f "$KEY_FILE" ]; then \

@@ -67,6 +67,10 @@ Select the sign-in methods users will use to authenticate with this application 
 - **Redirect to <ProductName /> sign-in/sign-up handling pages** (recommended) — users are redirected to <ProductName />-hosted sign-in pages. You can customize these pages with the Flow Designer and integrate with SDKs.
 - **Embedded sign-in/sign-up components in your app** — the sign-in experience renders inside your application using <ProductName />'s UI components or APIs. No redirect occurs.
 
+:::note
+**Browser App** applications (SPAs) support only the **Redirect** approach. Because they run entirely in the browser as public clients, they cannot drive embedded (app-native) flow execution securely, so the embedded option is not offered for them. Other application types, such as **Mobile App** and **Full-stack App**, continue to support the embedded approach.
+:::
+
 **User Access** controls which user types can register with this application. Select one or more of the allowed user types (for example, **Customer** or **Person**).
 Learn more about user types in [User Types](../../users/user-types).
 

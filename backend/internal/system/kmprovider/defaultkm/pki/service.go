@@ -33,19 +33,20 @@ import (
 	"path"
 	"slices"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/jose/jws"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 // PKIServiceInterface defines the interface for PKI key/certificate operations.
 type PKIServiceInterface interface {
-	GetPrivateKey(ctx context.Context, id string) (crypto.PrivateKey, *serviceerror.ServiceError)
+	GetPrivateKey(ctx context.Context, id string) (crypto.PrivateKey, *tidcommon.ServiceError)
 	GetCertThumbprint(id string) string
-	GetX509Certificate(ctx context.Context, id string) (*x509.Certificate, *serviceerror.ServiceError)
-	GetAllX509Certificates(ctx context.Context) (map[string]*x509.Certificate, *serviceerror.ServiceError)
+	GetX509Certificate(ctx context.Context, id string) (*x509.Certificate, *tidcommon.ServiceError)
+	GetAllX509Certificates(ctx context.Context) (map[string]*x509.Certificate, *tidcommon.ServiceError)
 	GetCertificateChain(id string) [][]byte
 	GetSupportedSigningAlgorithms() []string
 	GetTLSConfig() (*tls.Config, error)
@@ -113,11 +114,11 @@ func newPKIService() (PKIServiceInterface, error) {
 }
 
 // GetPrivateKey retrieves the private key associated with the given ID.
-func (s *pkiService) GetPrivateKey(ctx context.Context, id string) (crypto.PrivateKey, *serviceerror.ServiceError) {
+func (s *pkiService) GetPrivateKey(ctx context.Context, id string) (crypto.PrivateKey, *tidcommon.ServiceError) {
 	cert, exists := s.certificates[id]
 	if !exists || cert.PrivateKey == nil {
 		s.logger.Error(ctx, "Private key not found for certificate ID: "+id)
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	return cert.PrivateKey, nil
 }
@@ -142,37 +143,37 @@ func (s *pkiService) GetCertThumbprint(id string) string {
 
 // GetX509Certificate retrieves the x509 certificate associated with the given ID.
 func (s *pkiService) GetX509Certificate(
-	ctx context.Context, id string) (*x509.Certificate, *serviceerror.ServiceError) {
+	ctx context.Context, id string) (*x509.Certificate, *tidcommon.ServiceError) {
 	cert, exists := s.certificates[id]
 	if !exists {
 		s.logger.Error(ctx, "Certificate not found for certificate ID: "+id)
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	if len(cert.Certificate.Certificate) == 0 {
 		s.logger.Error(ctx, "Certificate data is empty for certificate ID: "+id)
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	parsedCert, err := x509.ParseCertificate(cert.Certificate.Certificate[0])
 	if err != nil {
 		s.logger.Error(ctx, "Failed to parse x509 certificate for ID: "+id+" Error: "+err.Error())
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	return parsedCert, nil
 }
 
 // GetAllX509Certificates retrieves all x509 certificates as a map indexed by their ID.
 func (s *pkiService) GetAllX509Certificates(
-	ctx context.Context) (map[string]*x509.Certificate, *serviceerror.ServiceError) {
+	ctx context.Context) (map[string]*x509.Certificate, *tidcommon.ServiceError) {
 	result := make(map[string]*x509.Certificate)
 	for id, cert := range s.certificates {
 		if len(cert.Certificate.Certificate) == 0 {
 			s.logger.Error(ctx, "Certificate data is empty for certificate ID: "+id)
-			return nil, &serviceerror.InternalServerError
+			return nil, &tidcommon.InternalServerError
 		}
 		parsedCert, err := x509.ParseCertificate(cert.Certificate.Certificate[0])
 		if err != nil {
 			s.logger.Error(ctx, "Failed to parse x509 certificate for ID: "+id+" Error: "+err.Error())
-			return nil, &serviceerror.InternalServerError
+			return nil, &tidcommon.InternalServerError
 		}
 		result[id] = parsedCert
 	}

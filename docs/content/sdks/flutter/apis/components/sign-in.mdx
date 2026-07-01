@@ -1,0 +1,95 @@
+---
+title: SignIn
+description: Embedded sign-in widget for the {{ProductName}} Flutter SDK
+---
+
+# `SignIn`
+
+`SignIn` is a pre-built Flutter widget that drives the full sign-in loop using the <ProductName /> Flow Execution API. It renders the appropriate input form for each authentication step (username/password, TOTP, email OTP, etc.) and automatically advances through the flow until completion.
+
+```dart
+import 'package:thunderid_flutter/thunderid_flutter.dart';
+
+SignIn(
+  applicationId: '<your-application-id>',
+  onComplete: () {
+    // Refresh state after sign-in
+    ThunderIDProvider.of(context).refresh();
+  },
+  onError: (error) => print('Sign in failed: $error'),
+)
+```
+
+## `SignIn` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `applicationId` | `String` | ✅ | The Application ID from the <ProductName /> console. Used to initiate the Flow Execution API. |
+| `onComplete` | `VoidCallback?` | | Called when the sign-in flow completes successfully. |
+| `onError` | `void Function(dynamic)?` | | Called if the flow fails or an error occurs. Receives the raw error. |
+
+## `BaseSignIn`
+
+`BaseSignIn` exposes the raw `SignInState` to your `builder` function, allowing full control over the form UI while the SDK manages the flow execution loop.
+
+```dart
+BaseSignIn(
+  applicationId: '<your-application-id>',
+  onComplete: () => ThunderIDProvider.of(context).refresh(),
+  builder: (context, state) {
+    return Column(
+      children: [
+        for (final input in state.inputs)
+          TextField(
+            decoration: InputDecoration(labelText: input.label),
+            obscureText: input.type == 'password',
+            onChanged: (value) => state.setValue(input.name, value),
+          ),
+        ElevatedButton(
+          onPressed: state.isLoading ? null : state.submit,
+          child: state.isLoading
+              ? const CircularProgressIndicator()
+              : const Text('Sign In'),
+        ),
+        if (state.error != null) Text(state.error!),
+      ],
+    );
+  },
+)
+```
+
+### `BaseSignIn` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `applicationId` | `String` | ✅ | The Application ID for the flow. |
+| `onComplete` | `VoidCallback?` | | Called on successful completion. |
+| `onError` | `void Function(dynamic)?` | | Called on failure. |
+| `builder` | `Widget Function(BuildContext, SignInState)` | ✅ | Builder receiving the current `SignInState`. Called on every state change. |
+
+### `SignInState`
+
+`SignInState` is passed to the `BaseSignIn` builder on every update.
+
+#### Inputs
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `inputs` | `List<FlowInput>` | Form fields for the current step. Each has `name`, `label`, `type` (`'text'`, `'password'`, `'otp'`), `required`, and `value`. |
+| `actions` | `List<FlowAction>` | Available actions for the current step (e.g., "Forgot Password"). Each has `name`, `label`, and `type`. |
+
+#### State
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `isLoading` | `bool` | `true` while a flow step is executing. |
+| `error` | `String?` | Human-readable error from the last step. `null` when no error. |
+| `flowStatus` | `FlowStatus` | Current flow status: `idle`, `promptOnly`, `complete`, or `error`. |
+
+#### Methods
+
+| Method | Description |
+| :--- | :--- |
+| `setValue(name, value)` | Set a field value. Binds the input named `name` to `value`. |
+| `submit()` | Submit the current step. Advances the flow. |
+| `executeAction(action)` | Execute a `FlowAction` (e.g., trigger a "Resend OTP" action). |

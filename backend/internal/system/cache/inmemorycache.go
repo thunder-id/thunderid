@@ -26,8 +26,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 // lfuHeapItem represents an item in the LFU heap.
@@ -101,7 +101,7 @@ type inMemoryCache[T any] struct {
 }
 
 // getEvictionPolicy retrieves the eviction policy from the cache configuration.
-func getEvictionPolicy(cacheConfig config.CacheConfig, cacheProperty config.CacheProperty) evictionPolicy {
+func getEvictionPolicy(cacheConfig engineconfig.CacheConfig, cacheProperty engineconfig.CacheProperty) evictionPolicy {
 	evictionPolicy := cacheProperty.EvictionPolicy
 	if evictionPolicy == "" {
 		evictionPolicy = cacheConfig.EvictionPolicy
@@ -123,7 +123,7 @@ func getEvictionPolicy(cacheConfig config.CacheConfig, cacheProperty config.Cach
 }
 
 // getCacheTTL retrieves the cache TTL as a Duration from the cache configuration.
-func getCacheTTL(cacheConfig config.CacheConfig, cacheProperty config.CacheProperty) time.Duration {
+func getCacheTTL(cacheConfig engineconfig.CacheConfig, cacheProperty engineconfig.CacheProperty) time.Duration {
 	ttl := cacheProperty.TTL
 	if ttl <= 0 {
 		ttl = cacheConfig.TTL
@@ -132,7 +132,7 @@ func getCacheTTL(cacheConfig config.CacheConfig, cacheProperty config.CachePrope
 }
 
 // getCacheSize retrieves the cache size from the cache configuration.
-func getCacheSize(cacheConfig config.CacheConfig, cacheProperty config.CacheProperty) int {
+func getCacheSize(cacheConfig engineconfig.CacheConfig, cacheProperty engineconfig.CacheProperty) int {
 	size := cacheProperty.Size
 	if size <= 0 {
 		size = cacheConfig.Size
@@ -142,7 +142,7 @@ func getCacheSize(cacheConfig config.CacheConfig, cacheProperty config.CacheProp
 
 // newInMemoryCache creates a new instance of InMemoryCache.
 func newInMemoryCache[T any](name string, enabled bool,
-	cacheConfig config.CacheConfig, cacheProperty config.CacheProperty) CacheInterface[T] {
+	cacheConfig engineconfig.CacheConfig, cacheProperty engineconfig.CacheProperty) CacheInterface[T] {
 	// Cache infrastructure logging has no request scope, so context.Background() is used.
 	ctx := context.Background()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "InMemoryCache"),

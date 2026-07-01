@@ -178,7 +178,7 @@
               "id": "input_mobile",
               "label": "Mobile Number",
               "placeholder": "Enter your mobile number (e.g., +94771234567)",
-              "ref": "mobileNumber",
+              "ref": "mobile_number",
               "required": true,
               "type": "TEXT_INPUT"
             },
@@ -219,7 +219,7 @@
           {
             "ref": "input_mobile",
             "type": "TEXT_INPUT",
-            "identifier": "mobileNumber",
+            "identifier": "mobile_number",
             "required": true
           }
         ],
@@ -269,7 +269,7 @@
         {
           "ref": "input_mobile",
           "type": "TEXT_INPUT",
-          "identifier": "mobileNumber",
+          "identifier": "mobile_number",
           "required": true
         }
       ]

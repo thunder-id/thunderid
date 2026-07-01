@@ -28,6 +28,7 @@ import (
 	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type FileBasedStoreTestSuite struct {
@@ -82,7 +83,7 @@ func (suite *FileBasedStoreTestSuite) TestCreateOAuthProfile_NotSupported() {
 	store := newFileBasedStoreForTest()
 	ctx := context.Background()
 
-	err := store.CreateOAuthProfile(ctx, "app-1", &inboundmodel.OAuthProfile{})
+	err := store.CreateOAuthProfile(ctx, "app-1", &providers.OAuthProfile{})
 	suite.Error(err)
 }
 
@@ -99,7 +100,7 @@ func (suite *FileBasedStoreTestSuite) TestGetOAuthProfileByEntityID_EmbeddedValu
 	store := newFileBasedStoreForTest()
 	ctx := context.Background()
 
-	profileData := inboundmodel.OAuthProfile{
+	profileData := providers.OAuthProfile{
 		GrantTypes: []string{"authorization_code"},
 	}
 	client := inboundmodel.InboundClient{
@@ -120,7 +121,7 @@ func (suite *FileBasedStoreTestSuite) TestGetOAuthProfileByEntityID_EmbeddedPoin
 	store := newFileBasedStoreForTest()
 	ctx := context.Background()
 
-	profileData := &inboundmodel.OAuthProfile{
+	profileData := &providers.OAuthProfile{
 		GrantTypes: []string{"client_credentials"},
 	}
 	client := inboundmodel.InboundClient{
@@ -141,7 +142,7 @@ func (suite *FileBasedStoreTestSuite) TestGetOAuthProfileByEntityID_NilPointer()
 	store := newFileBasedStoreForTest()
 	ctx := context.Background()
 
-	var nilProfile *inboundmodel.OAuthProfile
+	var nilProfile *providers.OAuthProfile
 	client := inboundmodel.InboundClient{
 		ID: "app-nil",
 		Properties: map[string]interface{}{
@@ -273,7 +274,7 @@ func (suite *FileBasedStoreTestSuite) TestUpdateOAuthProfile_NotSupported() {
 	store := newFileBasedStoreForTest()
 	ctx := context.Background()
 
-	err := store.UpdateOAuthProfile(ctx, "c1", &inboundmodel.OAuthProfile{})
+	err := store.UpdateOAuthProfile(ctx, "c1", &providers.OAuthProfile{})
 	suite.Error(err)
 }
 

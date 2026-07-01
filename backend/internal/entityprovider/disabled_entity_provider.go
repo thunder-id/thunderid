@@ -20,6 +20,8 @@ package entityprovider
 
 import (
 	"encoding/json"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // errNotImplemented is the error returned when a method is not implemented.
@@ -43,22 +45,22 @@ func (p *disabledEntityProvider) IdentifyEntity(
 }
 
 func (p *disabledEntityProvider) SearchEntities(
-	_ map[string]interface{}) ([]*Entity, *EntityProviderError) {
+	_ map[string]interface{}) ([]*providers.Entity, *EntityProviderError) {
 	return nil, errNotImplemented
 }
 
 func (p *disabledEntityProvider) GetEntity(
-	_ string) (*Entity, *EntityProviderError) {
+	_ string) (*providers.Entity, *EntityProviderError) {
 	return nil, errNotImplemented
 }
 
-func (p *disabledEntityProvider) CreateEntity(_ *Entity,
-	_ json.RawMessage) (*Entity, *EntityProviderError) {
+func (p *disabledEntityProvider) CreateEntity(_ *providers.Entity,
+	_ json.RawMessage) (*providers.Entity, *EntityProviderError) {
 	return nil, errNotImplemented
 }
 
 func (p *disabledEntityProvider) UpdateEntity(_ string,
-	_ *Entity) (*Entity, *EntityProviderError) {
+	_ *providers.Entity) (*providers.Entity, *EntityProviderError) {
 	return nil, errNotImplemented
 }
 
@@ -87,7 +89,7 @@ func (p *disabledEntityProvider) UpdateSystemCredentials(_ string,
 }
 
 func (p *disabledEntityProvider) GetTransitiveEntityGroups(
-	_ string) ([]EntityGroup, *EntityProviderError) {
+	_ string) ([]providers.EntityGroup, *EntityProviderError) {
 	return nil, errNotImplemented
 }
 
@@ -97,16 +99,16 @@ func (p *disabledEntityProvider) ValidateEntityIDs(
 }
 
 func (p *disabledEntityProvider) GetEntitiesByIDs(
-	_ []string) ([]Entity, *EntityProviderError) {
+	_ []string) ([]providers.Entity, *EntityProviderError) {
 	return nil, errNotImplemented
 }
 
 func (p *disabledEntityProvider) GetEntityListCount(
-	_ EntityCategory, _ map[string]interface{}) (int, *EntityProviderError) {
+	_ providers.EntityCategory, _ map[string]interface{}) (int, *EntityProviderError) {
 	return 0, errNotImplemented
 }
 
 func (p *disabledEntityProvider) GetEntityList(
-	_ EntityCategory, _, _ int, _ map[string]interface{}) ([]Entity, *EntityProviderError) {
+	_ providers.EntityCategory, _, _ int, _ map[string]interface{}) ([]providers.Entity, *EntityProviderError) {
 	return nil, errNotImplemented
 }

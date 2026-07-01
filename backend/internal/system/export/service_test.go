@@ -24,21 +24,22 @@ import (
 	"strings"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/application"
 	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/entitytype"
-	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	"github.com/thunder-id/thunderid/internal/idp"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/notification/common"
-	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowmgtmock"
@@ -83,7 +84,7 @@ func (suite *ExportServiceTestSuite) SetupTest() {
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: "0579f866ac7c9273580d0ff163fa01a7b2401a7ff3ddc3e3b14ae3136fa6025e",
 			},
 		},
@@ -152,7 +153,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_DefaultOptions() {
 		Applications: []string{appID},
 	}
 
-	mockApp := &appmodel.Application{
+	mockApp := &providers.Application{
 		ID:          appID,
 		Name:        "Test App",
 		Description: "Test Description",
@@ -191,9 +192,9 @@ func (suite *ExportServiceTestSuite) TestExportResources_ApplicationNotFound() {
 		},
 	}
 
-	appError := &serviceerror.ServiceError{
+	appError := &tidcommon.ServiceError{
 		Code:  "APP_NOT_FOUND",
-		Error: i18ncore.I18nMessage{DefaultValue: "Application not found"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Application not found"},
 	}
 
 	suite.appServiceMock.EXPECT().GetApplication(mock.Anything, appID).Return(nil, appError)
@@ -219,21 +220,21 @@ func (suite *ExportServiceTestSuite) TestExportResources_CompleteOAuthApplicatio
 		},
 	}
 
-	mockOAuthConfig := &inboundmodel.OAuthConfigWithSecret{
+	mockOAuthConfig := &providers.OAuthConfigWithSecret{
 		ClientID:                "client123",
 		RedirectURIs:            []string{"http://localhost:3000/callback"},
-		GrantTypes:              []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
-		ResponseTypes:           []oauth2const.ResponseType{oauth2const.ResponseTypeCode},
-		TokenEndpointAuthMethod: oauth2const.TokenEndpointAuthMethodClientSecretPost,
+		GrantTypes:              []providers.GrantType{providers.GrantTypeAuthorizationCode},
+		ResponseTypes:           []providers.ResponseType{providers.ResponseTypeCode},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
 		PKCERequired:            true,
 		PublicClient:            false,
 		Scopes:                  []string{"openid", "profile"},
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
 				ValidityPeriod: 3600,
 				UserAttributes: []string{"email", "username"},
 			},
-			IDToken: &inboundmodel.IDTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				ValidityPeriod: 1800,
 				UserAttributes: []string{"email"},
 			},
@@ -243,18 +244,18 @@ func (suite *ExportServiceTestSuite) TestExportResources_CompleteOAuthApplicatio
 		},
 	}
 
-	mockApp := &appmodel.Application{
+	mockApp := &providers.Application{
 		ID:          appID,
 		Name:        "OAuth Test App",
 		Description: "OAuth Test Description",
 		URL:         "https://example.com",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
-				Type:        inboundmodel.OAuthInboundAuthType,
+				Type:        providers.OAuthInboundAuthType,
 				OAuthConfig: mockOAuthConfig,
 			},
 		},
-		InboundAuthProfile: inboundmodel.InboundAuthProfile{
+		InboundAuthProfile: providers.InboundAuthProfile{
 			Assertion: &inboundmodel.AssertionConfig{
 				UserAttributes: []string{"email", "username"},
 			},
@@ -297,13 +298,13 @@ func (suite *ExportServiceTestSuite) TestExportResources_MultipleApplications() 
 		},
 	}
 
-	mockApp1 := &appmodel.Application{
+	mockApp1 := &providers.Application{
 		ID:          testApp1ID,
 		Name:        "App One",
 		Description: "First App",
 	}
 
-	mockApp2 := &appmodel.Application{
+	mockApp2 := &providers.Application{
 		ID:          testApp2ID,
 		Name:        "App Two",
 		Description: "Second App",
@@ -332,14 +333,14 @@ func (suite *ExportServiceTestSuite) TestExportResources_PartialFailure() {
 		},
 	}
 
-	mockApp1 := &appmodel.Application{
+	mockApp1 := &providers.Application{
 		ID:   app1ID,
 		Name: "Valid App",
 	}
 
-	appError := &serviceerror.ServiceError{
+	appError := &tidcommon.ServiceError{
 		Code:  "APP_NOT_FOUND",
-		Error: i18ncore.I18nMessage{DefaultValue: "Application not found"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Application not found"},
 	}
 
 	suite.appServiceMock.EXPECT().GetApplication(mock.Anything, app1ID).Return(mockApp1, nil)
@@ -376,19 +377,19 @@ func (suite *ExportServiceTestSuite) TestExportResources_WildcardApplications() 
 		},
 	}
 
-	mockApp1 := &appmodel.Application{
+	mockApp1 := &providers.Application{
 		ID:          testApp1ID,
 		Name:        "Application One",
 		Description: "First App",
 	}
 
-	mockApp2 := &appmodel.Application{
+	mockApp2 := &providers.Application{
 		ID:          testApp2ID,
 		Name:        "Application Two",
 		Description: "Second App",
 	}
 
-	mockApp3 := &appmodel.Application{
+	mockApp3 := &providers.Application{
 		ID:          testApp3ID,
 		Name:        "Application Three",
 		Description: "Third App",
@@ -418,9 +419,9 @@ func (suite *ExportServiceTestSuite) TestExportResources_WildcardApplications_Li
 		},
 	}
 
-	listError := &serviceerror.ServiceError{
+	listError := &tidcommon.ServiceError{
 		Code:  "LIST_FAILED",
-		Error: i18ncore.I18nMessage{DefaultValue: "Failed to list applications"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Failed to list applications"},
 	}
 
 	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything).Return(nil, listError)
@@ -477,21 +478,21 @@ func (suite *ExportServiceTestSuite) TestExportResources_WildcardApplications_Pa
 		},
 	}
 
-	mockApp1 := &appmodel.Application{
+	mockApp1 := &providers.Application{
 		ID:          testApp1ID,
 		Name:        "Application One",
 		Description: "First App",
 	}
 
-	mockApp3 := &appmodel.Application{
+	mockApp3 := &providers.Application{
 		ID:          testApp3ID,
 		Name:        "Application Three",
 		Description: "Third App",
 	}
 
-	appError := &serviceerror.ServiceError{
+	appError := &tidcommon.ServiceError{
 		Code:  "APP_NOT_FOUND",
-		Error: i18ncore.I18nMessage{DefaultValue: "Application not found"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Application not found"},
 	}
 
 	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything).Return(mockAppList, nil)
@@ -522,11 +523,11 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Succes
 	}
 
 	mockProperty, _ := cmodels.NewProperty("client_id", "test-client-id", false)
-	mockIDP := &idp.IDPDTO{
+	mockIDP := &providers.IDPDTO{
 		ID:          idpID,
 		Name:        "Test IDP",
 		Description: "Test Identity Provider",
-		Type:        idp.IDPTypeGoogle,
+		Type:        providers.IDPTypeGoogle,
 		Properties:  []cmodels.Property{*mockProperty},
 	}
 
@@ -549,18 +550,18 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Succes
 // nolint:dupl // Similar test pattern for different resource types
 func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Multiple() {
 	mockProperty1, _ := cmodels.NewProperty("client_id", "client1", false)
-	mockIDP1 := &idp.IDPDTO{
+	mockIDP1 := &providers.IDPDTO{
 		ID:         "idp1",
 		Name:       "Google IDP",
-		Type:       idp.IDPTypeGoogle,
+		Type:       providers.IDPTypeGoogle,
 		Properties: []cmodels.Property{*mockProperty1},
 	}
 
 	mockProperty2, _ := cmodels.NewProperty("client_id", "client2", false)
-	mockIDP2 := &idp.IDPDTO{
+	mockIDP2 := &providers.IDPDTO{
 		ID:         "idp2",
 		Name:       "GitHub IDP",
-		Type:       idp.IDPTypeGitHub,
+		Type:       providers.IDPTypeGitHub,
 		Properties: []cmodels.Property{*mockProperty2},
 	}
 
@@ -591,18 +592,18 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Wildca
 	}
 
 	mockProperty1, _ := cmodels.NewProperty("client_id", "client1", false)
-	mockIDP1 := &idp.IDPDTO{
+	mockIDP1 := &providers.IDPDTO{
 		ID:         "idp1",
 		Name:       "Google IDP",
-		Type:       idp.IDPTypeGoogle,
+		Type:       providers.IDPTypeGoogle,
 		Properties: []cmodels.Property{*mockProperty1},
 	}
 
 	mockProperty2, _ := cmodels.NewProperty("client_id", "client2", false)
-	mockIDP2 := &idp.IDPDTO{
+	mockIDP2 := &providers.IDPDTO{
 		ID:         "idp2",
 		Name:       "GitHub IDP",
-		Type:       idp.IDPTypeGitHub,
+		Type:       providers.IDPTypeGitHub,
 		Properties: []cmodels.Property{*mockProperty2},
 	}
 
@@ -629,17 +630,17 @@ func (suite *ExportServiceTestSuite) TestExportResources_Mixed_ApplicationsAndID
 		},
 	}
 
-	mockApp := &appmodel.Application{
+	mockApp := &providers.Application{
 		ID:          testAppID,
 		Name:        "Test App",
 		Description: "Test Description",
 	}
 
 	mockProperty, _ := cmodels.NewProperty("client_id", "test-client-id", false)
-	mockIDP := &idp.IDPDTO{
+	mockIDP := &providers.IDPDTO{
 		ID:         testIDPID,
 		Name:       "Test IDP",
-		Type:       idp.IDPTypeGoogle,
+		Type:       providers.IDPTypeGoogle,
 		Properties: []cmodels.Property{*mockProperty},
 	}
 
@@ -668,9 +669,9 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_NotFou
 		},
 	}
 
-	idpError := &serviceerror.ServiceError{
+	idpError := &tidcommon.ServiceError{
 		Code:  "IDP_NOT_FOUND",
-		Error: i18ncore.I18nMessage{DefaultValue: "Identity provider not found"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Identity provider not found"},
 	}
 
 	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "non-existent-idp").Return(nil, idpError)
@@ -699,24 +700,24 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Wildca
 	}
 
 	mockProperty1, _ := cmodels.NewProperty("client_id", "client1", false)
-	mockIDP1 := &idp.IDPDTO{
+	mockIDP1 := &providers.IDPDTO{
 		ID:         "idp1",
 		Name:       "Google IDP",
-		Type:       idp.IDPTypeGoogle,
+		Type:       providers.IDPTypeGoogle,
 		Properties: []cmodels.Property{*mockProperty1},
 	}
 
 	mockProperty3, _ := cmodels.NewProperty("client_id", "client3", false)
-	mockIDP3 := &idp.IDPDTO{
+	mockIDP3 := &providers.IDPDTO{
 		ID:         "idp3",
 		Name:       "OIDC IDP",
-		Type:       idp.IDPTypeOIDC,
+		Type:       providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{*mockProperty3},
 	}
 
-	idpError := &serviceerror.ServiceError{
+	idpError := &tidcommon.ServiceError{
 		Code:  "IDP_NOT_FOUND",
-		Error: i18ncore.I18nMessage{DefaultValue: "Identity provider not found"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Identity provider not found"},
 	}
 
 	suite.idpServiceMock.EXPECT().GetIdentityProviderList(mock.Anything).Return(mockIDPList, nil)
@@ -758,10 +759,10 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_NoProp
 	}
 
 	// IDP with no properties
-	mockIDP := &idp.IDPDTO{
+	mockIDP := &providers.IDPDTO{
 		ID:         "idp-no-props",
 		Name:       "Empty IDP",
-		Type:       idp.IDPTypeOIDC,
+		Type:       providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{}, // Empty properties
 	}
 
@@ -780,10 +781,10 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_EmptyN
 	}
 
 	mockProperty, _ := cmodels.NewProperty("key", "value", false)
-	mockIDP := &idp.IDPDTO{
+	mockIDP := &providers.IDPDTO{
 		ID:         "idp-no-name",
 		Name:       "", // Empty name
-		Type:       idp.IDPTypeOIDC,
+		Type:       providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{*mockProperty},
 	}
 
@@ -813,11 +814,11 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Proper
 	clientSecretProp, _ := cmodels.NewProperty("client_secret", "super-secret", true)
 	redirectURIProp, _ := cmodels.NewProperty("redirect_uri", "http://localhost:3000", false)
 
-	mockIDP := &idp.IDPDTO{
+	mockIDP := &providers.IDPDTO{
 		ID:          idpID,
 		Name:        "Export Test IDP",
 		Description: "Test IDP for parameterization",
-		Type:        idp.IDPTypeGoogle,
+		Type:        providers.IDPTypeGoogle,
 		Properties: []cmodels.Property{
 			*clientIDProp,
 			*clientSecretProp,
@@ -871,11 +872,11 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Proper
 	apiKeyProp, _ := cmodels.NewProperty("api_key", "api-key-xyz", true)
 	callbackURLProp, _ := cmodels.NewProperty("callback_url", "https://example.com/callback", false)
 
-	mockIDP := &idp.IDPDTO{
+	mockIDP := &providers.IDPDTO{
 		ID:          idpID,
 		Name:        "Property Structure Test",
 		Description: "Test IDP for property YAML structure validation",
-		Type:        idp.IDPTypeOIDC,
+		Type:        providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{
 			*clientIDProp,
 			*clientSecretProp,
@@ -933,14 +934,14 @@ func (suite *ExportServiceTestSuite) TestExportResources_PartialFailure_Detailed
 		},
 	}
 
-	mockApp1 := &appmodel.Application{
+	mockApp1 := &providers.Application{
 		ID:   app1ID,
 		Name: "Valid App",
 	}
 
-	appError := &serviceerror.ServiceError{
+	appError := &tidcommon.ServiceError{
 		Code:  "APP_NOT_FOUND",
-		Error: i18ncore.I18nMessage{DefaultValue: "Application not found"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Application not found"},
 	}
 
 	suite.appServiceMock.EXPECT().GetApplication(mock.Anything, app1ID).Return(mockApp1, nil)
@@ -977,24 +978,24 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Partia
 	}
 
 	mockProperty1, _ := cmodels.NewProperty("client_id", "client1", false)
-	mockIDP1 := &idp.IDPDTO{
+	mockIDP1 := &providers.IDPDTO{
 		ID:         "idp1",
 		Name:       "Google IDP",
-		Type:       idp.IDPTypeGoogle,
+		Type:       providers.IDPTypeGoogle,
 		Properties: []cmodels.Property{*mockProperty1},
 	}
 
 	mockProperty3, _ := cmodels.NewProperty("client_id", "client3", false)
-	mockIDP3 := &idp.IDPDTO{
+	mockIDP3 := &providers.IDPDTO{
 		ID:         "idp3",
 		Name:       "GitHub IDP",
-		Type:       idp.IDPTypeGitHub,
+		Type:       providers.IDPTypeGitHub,
 		Properties: []cmodels.Property{*mockProperty3},
 	}
 
-	idpError := &serviceerror.ServiceError{
+	idpError := &tidcommon.ServiceError{
 		Code:  "IDP_NOT_FOUND",
-		Error: i18ncore.I18nMessage{DefaultValue: "Identity provider not found"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Identity provider not found"},
 	}
 
 	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "idp1").Return(mockIDP1, nil)
@@ -1036,30 +1037,30 @@ func (suite *ExportServiceTestSuite) TestExportResources_MixedResources_WithErro
 	}
 
 	// Setup successful app
-	mockApp1 := &appmodel.Application{
+	mockApp1 := &providers.Application{
 		ID:   "app1",
 		Name: "Valid App",
 	}
 
 	// Setup app error
-	appError := &serviceerror.ServiceError{
+	appError := &tidcommon.ServiceError{
 		Code:  "APP_NOT_FOUND",
-		Error: i18ncore.I18nMessage{DefaultValue: "Application not found"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Application not found"},
 	}
 
 	// Setup successful IDP
 	mockProperty1, _ := cmodels.NewProperty("client_id", "client1", false)
-	mockIDP1 := &idp.IDPDTO{
+	mockIDP1 := &providers.IDPDTO{
 		ID:         "idp1",
 		Name:       "Google IDP",
-		Type:       idp.IDPTypeGoogle,
+		Type:       providers.IDPTypeGoogle,
 		Properties: []cmodels.Property{*mockProperty1},
 	}
 
 	// Setup IDP error
-	idpError := &serviceerror.ServiceError{
+	idpError := &tidcommon.ServiceError{
 		Code:  "IDP_NOT_FOUND",
-		Error: i18ncore.I18nMessage{DefaultValue: "Identity provider not found"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Identity provider not found"},
 	}
 
 	suite.appServiceMock.EXPECT().GetApplication(mock.Anything, "app1").Return(mockApp1, nil)
@@ -1111,13 +1112,13 @@ func (suite *ExportServiceTestSuite) TestExportResources_FileSizeCalculation() {
 		},
 	}
 
-	mockApp1 := &appmodel.Application{
+	mockApp1 := &providers.Application{
 		ID:          testApp1ID,
 		Name:        "Application One",
 		Description: "First application",
 	}
 
-	mockApp2 := &appmodel.Application{
+	mockApp2 := &providers.Application{
 		ID:          testApp2ID,
 		Name:        "Application Two",
 		Description: "Second application with longer description",
@@ -1171,12 +1172,12 @@ func (suite *ExportServiceTestSuite) TestExportResources_TemplateGenerationError
 		},
 	}
 
-	mockApp1 := &appmodel.Application{
+	mockApp1 := &providers.Application{
 		ID:   testApp1ID,
 		Name: "Valid App",
 	}
 
-	mockApp2 := &appmodel.Application{
+	mockApp2 := &providers.Application{
 		ID:   testApp2ID,
 		Name: "App That Fails Template Generation",
 	}
@@ -1225,7 +1226,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_WithCustomFolderStructu
 		},
 	}
 
-	mockApp := &appmodel.Application{
+	mockApp := &providers.Application{
 		ID:   testApp1ID,
 		Name: "Test Application",
 	}
@@ -1255,21 +1256,21 @@ func (suite *ExportServiceTestSuite) TestExportResources_WithGroupByTypeStructur
 		},
 	}
 
-	mockApp1 := &appmodel.Application{
+	mockApp1 := &providers.Application{
 		ID:   testApp1ID,
 		Name: "Application One",
 	}
 
-	mockApp2 := &appmodel.Application{
+	mockApp2 := &providers.Application{
 		ID:   testApp2ID,
 		Name: "Application Two",
 	}
 
 	mockProperty, _ := cmodels.NewProperty("client_id", "test-client", false)
-	mockIDP := &idp.IDPDTO{
+	mockIDP := &providers.IDPDTO{
 		ID:         "idp1",
 		Name:       "Test IDP",
-		Type:       idp.IDPTypeGoogle,
+		Type:       providers.IDPTypeGoogle,
 		Properties: []cmodels.Property{*mockProperty},
 	}
 
@@ -1413,9 +1414,9 @@ func (suite *ExportServiceTestSuite) TestExportNotificationSenders_NotFound() {
 		},
 	}
 
-	senderError := &serviceerror.ServiceError{
+	senderError := &tidcommon.ServiceError{
 		Code:  "SENDER_NOT_FOUND",
-		Error: i18ncore.I18nMessage{DefaultValue: "Notification sender not found"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Notification sender not found"},
 	}
 
 	suite.mockNotificationService.EXPECT().GetSender(mock.Anything, "non-existent-sender").Return(nil, senderError)
@@ -1650,9 +1651,9 @@ func (suite *ExportServiceTestSuite) TestExportEntityTypes_NotFound() {
 		},
 	}
 
-	schemaError := &serviceerror.ServiceError{
+	schemaError := &tidcommon.ServiceError{
 		Code:  "SCHEMA_NOT_FOUND",
-		Error: i18ncore.I18nMessage{DefaultValue: "User type not found"},
+		Error: tidcommon.I18nMessage{DefaultValue: "User type not found"},
 	}
 
 	suite.mockEntityTypeService.EXPECT().
@@ -1763,9 +1764,9 @@ func (suite *ExportServiceTestSuite) TestExportEntityTypes_WildcardPartialFailur
 		},
 	}
 
-	schemaError := &serviceerror.ServiceError{
+	schemaError := &tidcommon.ServiceError{
 		Code:  "SCHEMA_NOT_FOUND",
-		Error: i18ncore.I18nMessage{DefaultValue: "User type not found"},
+		Error: tidcommon.I18nMessage{DefaultValue: "User type not found"},
 	}
 
 	suite.mockEntityTypeService.EXPECT().
@@ -1796,7 +1797,7 @@ func (suite *ExportServiceTestSuite) TestExportEntityTypes_WildcardPartialFailur
 
 // assertMultipleResourcesExport is a helper function to assert multiple resource export results.
 func (suite *ExportServiceTestSuite) assertMultipleResourcesExport(
-	result *ExportResponse, err *serviceerror.ServiceError, expectedCount int, resourceTypeKey string) {
+	result *ExportResponse, err *tidcommon.ServiceError, expectedCount int, resourceTypeKey string) {
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Len(suite.T(), result.Files, expectedCount)
@@ -1813,7 +1814,7 @@ func (suite *ExportServiceTestSuite) assertMultipleResourcesExport(
 // TestExportResourcesWithExporter_Success tests successful export with a valid exporter.
 func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_Success() {
 	appID := testAppTestID
-	mockApp := &appmodel.Application{
+	mockApp := &providers.Application{
 		ID:          appID,
 		Name:        "Test Application",
 		Description: "Test Description",
@@ -1847,19 +1848,19 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_MultipleRes
 	app2ID := "app-2"
 	app3ID := "app-3"
 
-	mockApp1 := &appmodel.Application{
+	mockApp1 := &providers.Application{
 		ID:          app1ID,
 		Name:        "Application One",
 		Description: "First App",
 	}
 
-	mockApp2 := &appmodel.Application{
+	mockApp2 := &providers.Application{
 		ID:          app2ID,
 		Name:        "Application Two",
 		Description: "Second App",
 	}
 
-	mockApp3 := &appmodel.Application{
+	mockApp3 := &providers.Application{
 		ID:          app3ID,
 		Name:        "Application Three",
 		Description: "Third App",
@@ -1886,9 +1887,9 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_MultipleRes
 // TestExportResourcesWithExporter_ResourceNotFound tests when a resource is not found.
 func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_ResourceNotFound() {
 	appID := "non-existent-app"
-	appError := &serviceerror.ServiceError{
+	appError := &tidcommon.ServiceError{
 		Code:  "APP_NOT_FOUND",
-		Error: i18ncore.I18nMessage{DefaultValue: "Application not found"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Application not found"},
 	}
 
 	suite.appServiceMock.EXPECT().GetApplication(mock.Anything, appID).Return(nil, appError)
@@ -1913,15 +1914,15 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_PartialSucc
 	validAppID := "valid-app"
 	invalidAppID := "invalid-app"
 
-	mockApp := &appmodel.Application{
+	mockApp := &providers.Application{
 		ID:          validAppID,
 		Name:        "Valid Application",
 		Description: "Valid Description",
 	}
 
-	appError := &serviceerror.ServiceError{
+	appError := &tidcommon.ServiceError{
 		Code:  "APP_NOT_FOUND",
-		Error: i18ncore.I18nMessage{DefaultValue: "Application not found"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Application not found"},
 	}
 
 	suite.appServiceMock.EXPECT().GetApplication(mock.Anything, validAppID).Return(mockApp, nil)
@@ -1952,13 +1953,13 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardSuc
 		},
 	}
 
-	mockApp1 := &appmodel.Application{
+	mockApp1 := &providers.Application{
 		ID:          testApp1ID,
 		Name:        "App One",
 		Description: "First App",
 	}
 
-	mockApp2 := &appmodel.Application{
+	mockApp2 := &providers.Application{
 		ID:          testApp2ID,
 		Name:        "App Two",
 		Description: "Second App",
@@ -1983,9 +1984,9 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardSuc
 
 // TestExportResourcesWithExporter_WildcardFailure tests wildcard when GetAllResourceIDs fails.
 func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardFailure() {
-	listError := &serviceerror.ServiceError{
+	listError := &tidcommon.ServiceError{
 		Code:  "LIST_FAILED",
-		Error: i18ncore.I18nMessage{DefaultValue: "Failed to list applications"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Failed to list applications"},
 	}
 
 	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything).Return(nil, listError)
@@ -2025,7 +2026,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardEmp
 // TestExportResourcesWithExporter_WithGroupByType tests export with GroupByType option.
 func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WithGroupByType() {
 	appID := testAppTestID
-	mockApp := &appmodel.Application{
+	mockApp := &providers.Application{
 		ID:          appID,
 		Name:        "Test App",
 		Description: "Test Description",
@@ -2053,7 +2054,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WithGroupBy
 // TestExportResourcesWithExporter_WithCustomFileNaming tests export with custom file naming pattern.
 func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WithCustomFileNaming() {
 	appID := "app-123"
-	mockApp := &appmodel.Application{
+	mockApp := &providers.Application{
 		ID:          appID,
 		Name:        "My Application",
 		Description: "Test Description",
@@ -2081,7 +2082,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WithCustomF
 // TestExportResourcesWithExporter_IdentityProvider tests export with IDP exporter.
 func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_IdentityProvider() {
 	idpID := "idp-test-id"
-	mockIDP := &idp.IDPDTO{
+	mockIDP := &providers.IDPDTO{
 		ID:          idpID,
 		Name:        "Test IDP",
 		Description: "Test IDP Description",
@@ -2182,7 +2183,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_EmptyResour
 // TestExportResourcesWithExporter_JSONFormatFallback tests that JSON format falls back to YAML.
 func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_JSONFormatFallback() {
 	appID := testAppTestID
-	mockApp := &appmodel.Application{
+	mockApp := &providers.Application{
 		ID:          appID,
 		Name:        "Test App",
 		Description: "Test Description",
@@ -2209,13 +2210,13 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_JSONFormatF
 // TestExportResourcesWithExporter_Flow tests export with flow exporter.
 func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_Flow() {
 	flowID := testFlowID
-	mockFlow := &flowmgt.CompleteFlowDefinition{
+	mockFlow := &providers.CompleteFlowDefinition{
 		ID:            flowID,
 		Handle:        "basic-auth-flow",
 		Name:          "Basic Authentication Flow",
-		FlowType:      flowcommon.FlowType("AUTHENTICATION"),
+		FlowType:      providers.FlowType("AUTHENTICATION"),
 		ActiveVersion: 1,
-		Nodes: []flowmgt.NodeDefinition{
+		Nodes: []providers.NodeDefinition{
 			{
 				ID:        "start",
 				Type:      "START",
@@ -2294,13 +2295,13 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_FlowWithCom
 		},
 	}
 
-	mockFlow := &flowmgt.CompleteFlowDefinition{
+	mockFlow := &providers.CompleteFlowDefinition{
 		ID:            flowID,
 		Handle:        "prompt-flow",
 		Name:          "Flow with Complex Meta",
-		FlowType:      flowcommon.FlowType("AUTHENTICATION"),
+		FlowType:      providers.FlowType("AUTHENTICATION"),
 		ActiveVersion: 1,
-		Nodes: []flowmgt.NodeDefinition{
+		Nodes: []providers.NodeDefinition{
 			{
 				ID:        "start",
 				Type:      "START",
@@ -2310,13 +2311,13 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_FlowWithCom
 				ID:   "prompt",
 				Type: "PROMPT",
 				Meta: complexMeta,
-				Prompts: []flowmgt.PromptDefinition{
+				Prompts: []providers.PromptDefinition{
 					{
-						Inputs: []flowmgt.InputDefinition{
+						Inputs: []providers.InputDefinition{
 							{Ref: "input_001", Type: "TEXT_INPUT", Identifier: "username", Required: true},
 							{Ref: "input_002", Type: "PASSWORD_INPUT", Identifier: "password", Required: true},
 						},
-						Action: &flowmgt.ActionDefinition{Ref: "action_001", NextNode: "end"},
+						Action: &providers.ActionDefinition{Ref: "action_001", NextNode: "end"},
 					},
 				},
 			},
@@ -2351,25 +2352,25 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_FlowWithCom
 
 // TestExportResourcesWithExporter_MultipleFlows tests exporting multiple flows.
 func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_MultipleFlows() {
-	flow1 := &flowmgt.CompleteFlowDefinition{
+	flow1 := &providers.CompleteFlowDefinition{
 		ID:            testFlow1ID,
 		Handle:        "flow-1",
 		Name:          "Flow One",
-		FlowType:      flowcommon.FlowType("AUTHENTICATION"),
+		FlowType:      providers.FlowType("AUTHENTICATION"),
 		ActiveVersion: 1,
-		Nodes: []flowmgt.NodeDefinition{
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
 		},
 	}
 
-	flow2 := &flowmgt.CompleteFlowDefinition{
+	flow2 := &providers.CompleteFlowDefinition{
 		ID:            testFlow2ID,
 		Handle:        "flow-2",
 		Name:          "Flow Two",
-		FlowType:      flowcommon.FlowType("AUTHORIZATION"),
+		FlowType:      providers.FlowType("AUTHORIZATION"),
 		ActiveVersion: 2,
-		Nodes: []flowmgt.NodeDefinition{
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "check", Type: "AUTHORIZATION_CHECK"},
 			{ID: "end", Type: "END"},
@@ -2395,9 +2396,9 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_MultipleFlo
 // TestExportResourcesWithExporter_FlowNotFound tests export when flow is not found.
 func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_FlowNotFound() {
 	flowID := "non-existent-flow"
-	flowError := &serviceerror.ServiceError{
+	flowError := &tidcommon.ServiceError{
 		Code:  "FLOW_NOT_FOUND",
-		Error: i18ncore.I18nMessage{DefaultValue: "Flow not found"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Flow not found"},
 	}
 	suite.mockFlowService.EXPECT().GetFlow(mock.Anything, flowID).Return(nil, flowError)
 
@@ -2426,44 +2427,44 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardFlo
 				ID:            testFlow1ID,
 				Handle:        "flow-1",
 				Name:          "Flow One",
-				FlowType:      flowcommon.FlowType("AUTHENTICATION"),
+				FlowType:      providers.FlowType("AUTHENTICATION"),
 				ActiveVersion: 1,
 			},
 			{
 				ID:            testFlow2ID,
 				Handle:        "flow-2",
 				Name:          "Flow Two",
-				FlowType:      flowcommon.FlowType("AUTHORIZATION"),
+				FlowType:      providers.FlowType("AUTHORIZATION"),
 				ActiveVersion: 1,
 			},
 		},
 	}
 
-	flow1Complete := &flowmgt.CompleteFlowDefinition{
+	flow1Complete := &providers.CompleteFlowDefinition{
 		ID:            testFlow1ID,
 		Handle:        "flow-1",
 		Name:          "Flow One",
-		FlowType:      flowcommon.FlowType("AUTHENTICATION"),
+		FlowType:      providers.FlowType("AUTHENTICATION"),
 		ActiveVersion: 1,
-		Nodes: []flowmgt.NodeDefinition{
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
 		},
 	}
 
-	flow2Complete := &flowmgt.CompleteFlowDefinition{
+	flow2Complete := &providers.CompleteFlowDefinition{
 		ID:            testFlow2ID,
 		Handle:        "flow-2",
 		Name:          "Flow Two",
-		FlowType:      flowcommon.FlowType("AUTHORIZATION"),
+		FlowType:      providers.FlowType("AUTHORIZATION"),
 		ActiveVersion: 1,
-		Nodes: []flowmgt.NodeDefinition{
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
 		},
 	}
 
-	suite.mockFlowService.EXPECT().ListFlows(mock.Anything, 10000, 0, flowcommon.FlowType("")).Return(flowList, nil)
+	suite.mockFlowService.EXPECT().ListFlows(mock.Anything, 10000, 0, providers.FlowType("")).Return(flowList, nil)
 	suite.mockFlowService.EXPECT().GetFlow(mock.Anything, testFlow1ID).Return(flow1Complete, nil)
 	suite.mockFlowService.EXPECT().GetFlow(mock.Anything, testFlow2ID).Return(flow2Complete, nil)
 
@@ -2480,11 +2481,11 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardFlo
 
 // TestExportResourcesWithExporter_WildcardFlows_ListFailure tests wildcard when ListFlows fails.
 func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardFlows_ListFailure() {
-	dbError := &serviceerror.ServiceError{
+	dbError := &tidcommon.ServiceError{
 		Code:  "DB_ERROR",
-		Error: i18ncore.I18nMessage{DefaultValue: "Database error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Database error"},
 	}
-	suite.mockFlowService.EXPECT().ListFlows(mock.Anything, 10000, 0, flowcommon.FlowType("")).Return(nil, dbError)
+	suite.mockFlowService.EXPECT().ListFlows(mock.Anything, 10000, 0, providers.FlowType("")).Return(nil, dbError)
 
 	exporter, _ := suite.exportService.(*exportService).registry.Get("flow")
 	options := &ExportOptions{Format: formatYAML}
@@ -2500,13 +2501,13 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardFlo
 // TestExportResources_FlowOnly tests exporting only flows via main ExportResources method.
 func (suite *ExportServiceTestSuite) TestExportResources_FlowOnly() {
 	flowID := testFlowID
-	mockFlow := &flowmgt.CompleteFlowDefinition{
+	mockFlow := &providers.CompleteFlowDefinition{
 		ID:            flowID,
 		Handle:        "test-flow",
 		Name:          "Test Flow",
-		FlowType:      flowcommon.FlowType("AUTHENTICATION"),
+		FlowType:      providers.FlowType("AUTHENTICATION"),
 		ActiveVersion: 1,
-		Nodes: []flowmgt.NodeDefinition{
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
 		},
@@ -2539,19 +2540,19 @@ func (suite *ExportServiceTestSuite) TestExportResources_MixedWithFlows() {
 	appID := testAppID
 	flowID := testFlowID
 
-	mockApp := &appmodel.Application{
+	mockApp := &providers.Application{
 		ID:          appID,
 		Name:        "Test App",
 		Description: "Test Description",
 	}
 
-	mockFlow := &flowmgt.CompleteFlowDefinition{
+	mockFlow := &providers.CompleteFlowDefinition{
 		ID:            flowID,
 		Handle:        "test-flow",
 		Name:          "Test Flow",
-		FlowType:      flowcommon.FlowType("AUTHENTICATION"),
+		FlowType:      providers.FlowType("AUTHENTICATION"),
 		ActiveVersion: 1,
-		Nodes: []flowmgt.NodeDefinition{
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
 		},

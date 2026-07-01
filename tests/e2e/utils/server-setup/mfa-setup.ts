@@ -41,7 +41,7 @@ export interface SetupConfig {
     username: string;
     password: string;
     email: string;
-    mobileNumber: string;
+    mobile_number: string;
     given_name: string;
   };
 }
@@ -446,7 +446,7 @@ export class MFASetup {
           password: this.config.testUser.password,
           given_name: this.config.testUser.given_name,
           email: this.config.testUser.email,
-          mobileNumber: this.config.testUser.mobileNumber,
+          mobile_number: this.config.testUser.mobile_number,
         },
       },
       headers: {

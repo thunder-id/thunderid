@@ -24,11 +24,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/observability/publisher"
 	"github.com/thunder-id/thunderid/internal/system/observability/subscriber"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 const loggerComponentName = "ObservabilityService"
@@ -47,14 +47,14 @@ const loggerComponentName = "ObservabilityService"
 type Service struct {
 	publisher publisher.CategoryPublisherInterface
 	logger    *log.Logger
-	config    config.ObservabilityConfig
+	config    engineconfig.ObservabilityConfig
 }
 
 // Ensure Service implements ObservabilityServiceInterface
 var _ ObservabilityServiceInterface = (*Service)(nil)
 
 // newServiceWithConfig creates and initializes a new observability service.
-func newServiceWithConfig() *Service {
+func newServiceWithConfig(config engineconfig.ObservabilityConfig) *Service {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
 	// Service construction runs during application startup, outside any request.
@@ -63,7 +63,6 @@ func newServiceWithConfig() *Service {
 	// Check if observability is disabled
 
 	logger.Debug(ctx, "Initializing observability service")
-	config := config.GetServerRuntime().Config.Observability
 	if !config.Enabled {
 		logger.Debug(ctx, "Observability is disabled in configuration")
 		return &Service{
@@ -174,7 +173,7 @@ func (s *Service) IsEnabled() bool {
 }
 
 // GetConfig returns the current configuration.
-func (s *Service) GetConfig() *config.ObservabilityConfig {
+func (s *Service) GetConfig() *engineconfig.ObservabilityConfig {
 	return &s.config
 }
 

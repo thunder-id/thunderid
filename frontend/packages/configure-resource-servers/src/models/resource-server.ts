@@ -84,9 +84,10 @@ export interface CreateResourceServerRequest {
 }
 
 export interface UpdateResourceServerRequest {
-  name?: string;
+  name: string;
   description?: string | null;
   identifier?: string | null;
+  ouId: string;
 }
 
 export interface CreateResourceRequest {

@@ -22,36 +22,32 @@ import (
 	"context"
 	"slices"
 
-	"github.com/thunder-id/thunderid/internal/actorprovider"
 	"github.com/thunder-id/thunderid/internal/authz"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
-	"github.com/thunder-id/thunderid/internal/ou"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // clientCredentialsGrantHandler handles the client credentials grant type.
 type clientCredentialsGrantHandler struct {
 	tokenBuilder    tokenservice.TokenBuilderInterface
-	ouService       ou.OrganizationUnitServiceInterface
+	ouService       providers.OrganizationUnitProvider
 	authzService    authz.AuthorizationServiceInterface
-	actorProvider   actorprovider.ActorProviderInterface
-	resourceService resource.ResourceServiceInterface
+	actorProvider   providers.ActorProvider
+	resourceService providers.ResourceServerProvider
 }
 
 // newClientCredentialsGrantHandler creates a new instance of ClientCredentialsGrantHandler.
 func newClientCredentialsGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
-	ouService ou.OrganizationUnitServiceInterface,
+	ouService providers.OrganizationUnitProvider,
 	authzService authz.AuthorizationServiceInterface,
-	actorProvider actorprovider.ActorProviderInterface,
-	resourceService resource.ResourceServiceInterface,
+	actorProvider providers.ActorProvider,
+	resourceService providers.ResourceServerProvider,
 ) GrantHandlerInterface {
 	return &clientCredentialsGrantHandler{
 		tokenBuilder:    tokenBuilder,
@@ -64,8 +60,8 @@ func newClientCredentialsGrantHandler(
 
 // ValidateGrant validates the client credentials grant type.
 func (h *clientCredentialsGrantHandler) ValidateGrant(ctx context.Context, tokenRequest *model.TokenRequest,
-	oauthApp *inboundmodel.OAuthClient) *model.ErrorResponse {
-	if constants.GrantType(tokenRequest.GrantType) != constants.GrantTypeClientCredentials {
+	oauthApp *providers.OAuthClient) *model.ErrorResponse {
+	if providers.GrantType(tokenRequest.GrantType) != providers.GrantTypeClientCredentials {
 		return &model.ErrorResponse{
 			Error:            constants.ErrorUnsupportedGrantType,
 			ErrorDescription: "Unsupported grant type",
@@ -81,7 +77,7 @@ func (h *clientCredentialsGrantHandler) ValidateGrant(ctx context.Context, token
 
 // HandleGrant handles the client credentials grant type.
 func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRequest *model.TokenRequest,
-	oauthApp *inboundmodel.OAuthClient) (
+	oauthApp *providers.OAuthClient) (
 	*model.TokenResponseDTO, *model.ErrorResponse) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ClientCredentialsGrantHandler"))
 
@@ -111,14 +107,11 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		if h.actorProvider != nil {
 			groups, groupErr := h.actorProvider.GetActorGroups(oauthApp.ID)
 			if groupErr != nil {
-				// Ignore unimplemented providers to preserve existing behavior.
-				if groupErr.Code != entityprovider.ErrorCodeNotImplemented {
-					logger.Error(ctx, "Failed to resolve app group memberships",
-						log.String("appID", oauthApp.ID), log.String("error", groupErr.Error()))
-					return nil, &model.ErrorResponse{
-						Error:            constants.ErrorServerError,
-						ErrorDescription: "Failed to generate token",
-					}
+				logger.Error(ctx, "Failed to resolve app group memberships",
+					log.String("appID", oauthApp.ID), log.String("error", groupErr.Error.DefaultValue))
+				return nil, &model.ErrorResponse{
+					Error:            constants.ErrorServerError,
+					ErrorDescription: "Failed to generate token",
 				}
 			} else {
 				for _, group := range groups {
@@ -165,7 +158,7 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		ClientID:         tokenRequest.ClientID,
 		Scopes:           scopes,
 		UserAttributes:   make(map[string]interface{}),
-		GrantType:        string(constants.GrantTypeClientCredentials),
+		GrantType:        string(providers.GrantTypeClientCredentials),
 		OAuthApp:         oauthApp,
 		ClientAttributes: clientAttributes,
 		DPoPJkt:          dpop.GetJkt(ctx),

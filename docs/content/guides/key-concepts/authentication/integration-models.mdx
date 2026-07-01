@@ -48,7 +48,11 @@ App-native authentication uses the Flow Execution API to drive authentication fr
 The core principle is **shared responsibility**: <ProductName /> enforces authentication logic and policies server-side, while your application controls the user experience. Authentication flow changes, such as adding MFA or conditional steps, take effect immediately on <ProductName /> without modifying or redeploying your application. 
 
 ###  When to Use
-Choose this approach when your application must render its own authentication screens (no redirects to hosted pages) while <ProductName /> enforces authentication logic, MFA, and policies server-side. This model suits mobile apps, single-page applications, or any context where a redirect-based flow would disrupt the user experience.
+Choose this approach when your application must render its own authentication screens (no redirects to hosted pages) while <ProductName /> enforces authentication logic, MFA, and policies server-side. This model suits native mobile and desktop apps, or confidential server-side applications, where the client can be trusted to drive the flow directly.
+
+:::warning
+App-native flow execution is **not supported for browser-based single-page applications (SPAs)** such as React, Angular, or Vue apps. SPAs are public clients that cannot be verified when calling the Flow Execution API directly, so they must use the [Redirect-Based](#redirect-based) model with the OAuth 2.0 Authorization Code grant and PKCE.
+:::
 
 :::note[Grant Type Requirement]
 The Flow Execution API only accepts new flow initiation requests from applications that do **not** have the `authorization_code` grant type configured. Applications registered with `authorization_code` must initiate authentication through the [Authorization endpoint](/docs/next/apis/#tag/authorization) (`GET /oauth2/authorize`), which then drives the flow internally. Continuation requests that carry a valid `executionId` are always accepted regardless of grant type.

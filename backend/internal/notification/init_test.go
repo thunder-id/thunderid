@@ -25,6 +25,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/notification/common"
@@ -52,12 +54,12 @@ func TestInitTestSuite(t *testing.T) {
 func (suite *InitTestSuite) SetupSuite() {
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "test-issuer",
 			ValidityPeriod: 3600,
 		},
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},
@@ -158,12 +160,12 @@ properties:
 	// Reset and initialize config with declarative resources enabled
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "test-issuer",
 			ValidityPeriod: 3600,
 		},
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},
@@ -204,12 +206,12 @@ properties:
 	// Clean up - reset config and reinitialize with suite's test config
 	config.ResetServerRuntime()
 	suiteConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "test-issuer",
 			ValidityPeriod: 3600,
 		},
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},
@@ -539,12 +541,12 @@ func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesEnabled_Inval
 
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "test-issuer",
 			ValidityPeriod: 3600,
 		},
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},
@@ -571,12 +573,12 @@ func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesEnabled_Inval
 	// Clean up
 	config.ResetServerRuntime()
 	suiteConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "test-issuer",
 			ValidityPeriod: 3600,
 		},
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},
@@ -620,12 +622,12 @@ properties:
 
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "test-issuer",
 			ValidityPeriod: 3600,
 		},
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},
@@ -652,12 +654,12 @@ properties:
 	// Clean up
 	config.ResetServerRuntime()
 	suiteConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "test-issuer",
 			ValidityPeriod: 3600,
 		},
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},

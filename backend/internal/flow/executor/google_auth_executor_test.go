@@ -21,10 +21,11 @@ package executor
 import (
 	"testing"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/suite"
 
 	authnoidc "github.com/thunder-id/thunderid/internal/authn/oidc"
-	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/googlemock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -38,7 +39,7 @@ type GoogleAuthExecutorTestSuite struct {
 	mockIDPService    *idpmock.IDPServiceInterfaceMock
 	mockGoogleService *googlemock.GoogleOIDCAuthnServiceInterfaceMock
 	mockOIDCService   *oidcmock.OIDCAuthnCoreServiceInterfaceMock
-	mockAuthnProvider *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider *managermock.AuthnProviderManagerMock
 }
 
 func TestGoogleAuthExecutorTestSuite(t *testing.T) {
@@ -50,11 +51,11 @@ func (suite *GoogleAuthExecutorTestSuite) SetupTest() {
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
 	suite.mockGoogleService = googlemock.NewGoogleOIDCAuthnServiceInterfaceMock(suite.T())
 	suite.mockOIDCService = oidcmock.NewOIDCAuthnCoreServiceInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 }
 
 func (suite *GoogleAuthExecutorTestSuite) TestNewGoogleOIDCAuthExecutor_Success() {
-	defaultInputs := []common.Input{
+	defaultInputs := []providers.Input{
 		{
 			Identifier: "code",
 			Type:       "string",
@@ -68,7 +69,7 @@ func (suite *GoogleAuthExecutorTestSuite) TestNewGoogleOIDCAuthExecutor_Success(
 	}
 	baseExec := coremock.NewExecutorInterfaceMock(suite.T())
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameGoogleAuth,
-		common.ExecutorTypeAuthentication, defaultInputs, []common.Input{}).
+		providers.ExecutorTypeAuthentication, defaultInputs, []providers.Input{}).
 		Return(baseExec).Once()
 
 	mockGoogleSvc := &mockGoogleServiceWithOIDC{

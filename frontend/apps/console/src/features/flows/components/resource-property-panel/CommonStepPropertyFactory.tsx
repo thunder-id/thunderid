@@ -19,6 +19,7 @@
 import {Checkbox, FormControl, FormControlLabel, FormLabel, TextField} from '@wso2/oxygen-ui';
 import startCase from 'lodash-es/startCase';
 import type {ChangeEvent, ReactElement, SyntheticEvent} from 'react';
+import PresentationDefinitionSelect from './PresentationDefinitionSelect';
 import RichTextWithTranslation from './rich-text/RichTextWithTranslation';
 import {ElementTypes} from '../../models/elements';
 import type {Resource} from '../../models/resources';
@@ -119,6 +120,16 @@ function CommonStepPropertyFactory({
           {...rest}
         />
       </FormControl>
+    );
+  }
+
+  if (displayKey === 'presentation_definition_id') {
+    return (
+      <PresentationDefinitionSelect
+        propertyKey={propertyKey}
+        value={typeof propertyValue === 'string' ? propertyValue : ''}
+        onChange={(newValue: string) => onChange(propertyKey, newValue, resource, true)}
+      />
     );
   }
 

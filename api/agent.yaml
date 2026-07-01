@@ -163,9 +163,6 @@ paths:
                     userAttributes: ["email", "username"]
                   loginConsent:
                     validityPeriod: 86400
-                  certificate:
-                    type: "JWKS_URI"
-                    value: "https://calendar-agent.example.com/.well-known/jwks"
               agent-cc-oauth:
                 summary: Agent with client_credentials OAuth (M2M)
                 value:
@@ -210,9 +207,6 @@ paths:
                     userAttributes: ["email", "username"]
                   loginConsent:
                     validityPeriod: 86400
-                  certificate:
-                    type: "JWKS_URI"
-                    value: "https://calendar-agent.example.com/.well-known/jwks"
                   inboundAuthConfig:
                     - type: "oauth2"
                       config:
@@ -279,9 +273,6 @@ paths:
                   userAttributes: ["email", "username"]
                 loginConsent:
                   validityPeriod: 86400
-                certificate:
-                  type: "JWKS_URI"
-                  value: "https://calendar-agent.example.com/.well-known/jwks"
                 inboundAuthConfig:
                   - type: "oauth2"
                     config:
@@ -687,9 +678,6 @@ paths:
                   userAttributes: ["email", "username"]
                 loginConsent:
                   validityPeriod: 86400
-                certificate:
-                  type: "JWKS_URI"
-                  value: "https://calendar-agent.example.com/.well-known/jwks"
                 inboundAuthConfig:
                   - type: "oauth2"
                     config:
@@ -800,9 +788,6 @@ paths:
                     userAttributes: ["email", "username"]
                   loginConsent:
                     validityPeriod: 86400
-                  certificate:
-                    type: "JWKS_URI"
-                    value: "https://calendar-agent.example.com/.well-known/jwks"
                   inboundAuthConfig:
                     - type: "oauth2"
                       config:
@@ -871,9 +856,6 @@ paths:
                   userAttributes: ["email", "username"]
                 loginConsent:
                   validityPeriod: 86400
-                certificate:
-                  type: "JWKS_URI"
-                  value: "https://calendar-agent.example.com/.well-known/jwks"
                 inboundAuthConfig:
                   - type: "oauth2"
                     config:
@@ -1998,8 +1980,6 @@ components:
             type: string
           description: User types allowed to authenticate against this agent.
           example: ["employee", "contractor"]
-        certificate:
-          $ref: '#/components/schemas/Certificate'
         inboundAuthConfig:
           type: array
           items:
@@ -2069,8 +2049,6 @@ components:
           items:
             type: string
           example: ["employee", "contractor"]
-        certificate:
-          $ref: '#/components/schemas/Certificate'
         inboundAuthConfig:
           type: array
           items:
@@ -2141,8 +2119,6 @@ components:
           items:
             type: string
           example: ["employee", "contractor"]
-        certificate:
-          $ref: '#/components/schemas/Certificate'
         inboundAuthConfig:
           type: array
           items:
@@ -2216,8 +2192,6 @@ components:
           items:
             type: string
           example: ["employee", "contractor"]
-        certificate:
-          $ref: '#/components/schemas/Certificate'
         inboundAuthConfig:
           type: array
           items:

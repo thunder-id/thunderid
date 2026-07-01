@@ -23,7 +23,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type AuthenticatorTestSuite struct {
@@ -48,22 +48,22 @@ func (suite *AuthenticatorTestSuite) SetupTest() {
 	RegisterAuthenticator(AuthenticatorMeta{
 		Name:          AuthenticatorGoogle,
 		Factors:       []AuthenticationFactor{FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeGoogle,
+		AssociatedIDP: providers.IDPTypeGoogle,
 	})
 	RegisterAuthenticator(AuthenticatorMeta{
 		Name:          AuthenticatorGithub,
 		Factors:       []AuthenticationFactor{FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeGitHub,
+		AssociatedIDP: providers.IDPTypeGitHub,
 	})
 	RegisterAuthenticator(AuthenticatorMeta{
 		Name:          AuthenticatorOAuth,
 		Factors:       []AuthenticationFactor{FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeOAuth,
+		AssociatedIDP: providers.IDPTypeOAuth,
 	})
 	RegisterAuthenticator(AuthenticatorMeta{
 		Name:          AuthenticatorOIDC,
 		Factors:       []AuthenticationFactor{FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeOIDC,
+		AssociatedIDP: providers.IDPTypeOIDC,
 	})
 }
 
@@ -208,31 +208,31 @@ func (suite *AuthenticatorTestSuite) TestGetAuthenticatorFactors() {
 func (suite *AuthenticatorTestSuite) TestGetAuthenticatorNameForIDPType() {
 	testCases := []struct {
 		name             string
-		idpType          idp.IDPType
+		idpType          providers.IDPType
 		expectedAuthName string
 		expectError      bool
 	}{
 		{
 			name:             "Google IDP type",
-			idpType:          idp.IDPTypeGoogle,
+			idpType:          providers.IDPTypeGoogle,
 			expectedAuthName: AuthenticatorGoogle,
 			expectError:      false,
 		},
 		{
 			name:             "GitHub IDP type",
-			idpType:          idp.IDPTypeGitHub,
+			idpType:          providers.IDPTypeGitHub,
 			expectedAuthName: AuthenticatorGithub,
 			expectError:      false,
 		},
 		{
 			name:             "OAuth IDP type",
-			idpType:          idp.IDPTypeOAuth,
+			idpType:          providers.IDPTypeOAuth,
 			expectedAuthName: AuthenticatorOAuth,
 			expectError:      false,
 		},
 		{
 			name:             "OIDC IDP type",
-			idpType:          idp.IDPTypeOIDC,
+			idpType:          providers.IDPTypeOIDC,
 			expectedAuthName: AuthenticatorOIDC,
 			expectError:      false,
 		},

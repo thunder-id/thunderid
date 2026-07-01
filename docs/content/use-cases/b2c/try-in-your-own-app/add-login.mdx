@@ -23,16 +23,17 @@ In the redirect-based pattern, your app redirects the user to <ProductName /> fo
 
 **1. Allow your app origin**
 
-Add your app's origin to `cors.allowed_origins` in `deployment.yaml`. Leave any existing entries in place.
+Add your app's origin to the server-config `cors` section. Create or update `config/resources/server_configs/cors.yaml`, or use `PUT /server-config/cors` after startup.
 
 ```yaml
-cors:
-  allowed_origins:
+name: cors
+value:
+  allowedOrigins:
     # ...existing entries...
     - "http://localhost:5173"   # replace with your app's origin
 ```
 
-Restart <ProductName /> after the change.
+Restart <ProductName /> after editing the declarative resource.
 
 **2. Register your application**
 

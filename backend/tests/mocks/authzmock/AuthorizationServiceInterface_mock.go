@@ -9,7 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/authz"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewAuthorizationServiceInterfaceMock creates a new instance of AuthorizationServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -40,7 +40,7 @@ func (_m *AuthorizationServiceInterfaceMock) EXPECT() *AuthorizationServiceInter
 }
 
 // EvaluateAccess provides a mock function for the type AuthorizationServiceInterfaceMock
-func (_mock *AuthorizationServiceInterfaceMock) EvaluateAccess(ctx context.Context, request authz.AccessEvaluationRequest) (*authz.AccessEvaluationResponse, *serviceerror.ServiceError) {
+func (_mock *AuthorizationServiceInterfaceMock) EvaluateAccess(ctx context.Context, request authz.AccessEvaluationRequest) (*authz.AccessEvaluationResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, request)
 
 	if len(ret) == 0 {
@@ -48,8 +48,8 @@ func (_mock *AuthorizationServiceInterfaceMock) EvaluateAccess(ctx context.Conte
 	}
 
 	var r0 *authz.AccessEvaluationResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, authz.AccessEvaluationRequest) (*authz.AccessEvaluationResponse, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, authz.AccessEvaluationRequest) (*authz.AccessEvaluationResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, request)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, authz.AccessEvaluationRequest) *authz.AccessEvaluationResponse); ok {
@@ -59,11 +59,11 @@ func (_mock *AuthorizationServiceInterfaceMock) EvaluateAccess(ctx context.Conte
 			r0 = ret.Get(0).(*authz.AccessEvaluationResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, authz.AccessEvaluationRequest) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, authz.AccessEvaluationRequest) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, request)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -99,18 +99,18 @@ func (_c *AuthorizationServiceInterfaceMock_EvaluateAccess_Call) Run(run func(ct
 	return _c
 }
 
-func (_c *AuthorizationServiceInterfaceMock_EvaluateAccess_Call) Return(accessEvaluationResponse *authz.AccessEvaluationResponse, serviceError *serviceerror.ServiceError) *AuthorizationServiceInterfaceMock_EvaluateAccess_Call {
+func (_c *AuthorizationServiceInterfaceMock_EvaluateAccess_Call) Return(accessEvaluationResponse *authz.AccessEvaluationResponse, serviceError *common.ServiceError) *AuthorizationServiceInterfaceMock_EvaluateAccess_Call {
 	_c.Call.Return(accessEvaluationResponse, serviceError)
 	return _c
 }
 
-func (_c *AuthorizationServiceInterfaceMock_EvaluateAccess_Call) RunAndReturn(run func(ctx context.Context, request authz.AccessEvaluationRequest) (*authz.AccessEvaluationResponse, *serviceerror.ServiceError)) *AuthorizationServiceInterfaceMock_EvaluateAccess_Call {
+func (_c *AuthorizationServiceInterfaceMock_EvaluateAccess_Call) RunAndReturn(run func(ctx context.Context, request authz.AccessEvaluationRequest) (*authz.AccessEvaluationResponse, *common.ServiceError)) *AuthorizationServiceInterfaceMock_EvaluateAccess_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // EvaluateAccessBatch provides a mock function for the type AuthorizationServiceInterfaceMock
-func (_mock *AuthorizationServiceInterfaceMock) EvaluateAccessBatch(ctx context.Context, request authz.AccessEvaluationsRequest) (*authz.AccessEvaluationsResponse, *serviceerror.ServiceError) {
+func (_mock *AuthorizationServiceInterfaceMock) EvaluateAccessBatch(ctx context.Context, request authz.AccessEvaluationsRequest) (*authz.AccessEvaluationsResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, request)
 
 	if len(ret) == 0 {
@@ -118,8 +118,8 @@ func (_mock *AuthorizationServiceInterfaceMock) EvaluateAccessBatch(ctx context.
 	}
 
 	var r0 *authz.AccessEvaluationsResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, authz.AccessEvaluationsRequest) (*authz.AccessEvaluationsResponse, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, authz.AccessEvaluationsRequest) (*authz.AccessEvaluationsResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, request)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, authz.AccessEvaluationsRequest) *authz.AccessEvaluationsResponse); ok {
@@ -129,11 +129,11 @@ func (_mock *AuthorizationServiceInterfaceMock) EvaluateAccessBatch(ctx context.
 			r0 = ret.Get(0).(*authz.AccessEvaluationsResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, authz.AccessEvaluationsRequest) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, authz.AccessEvaluationsRequest) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, request)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -169,12 +169,12 @@ func (_c *AuthorizationServiceInterfaceMock_EvaluateAccessBatch_Call) Run(run fu
 	return _c
 }
 
-func (_c *AuthorizationServiceInterfaceMock_EvaluateAccessBatch_Call) Return(accessEvaluationsResponse *authz.AccessEvaluationsResponse, serviceError *serviceerror.ServiceError) *AuthorizationServiceInterfaceMock_EvaluateAccessBatch_Call {
+func (_c *AuthorizationServiceInterfaceMock_EvaluateAccessBatch_Call) Return(accessEvaluationsResponse *authz.AccessEvaluationsResponse, serviceError *common.ServiceError) *AuthorizationServiceInterfaceMock_EvaluateAccessBatch_Call {
 	_c.Call.Return(accessEvaluationsResponse, serviceError)
 	return _c
 }
 
-func (_c *AuthorizationServiceInterfaceMock_EvaluateAccessBatch_Call) RunAndReturn(run func(ctx context.Context, request authz.AccessEvaluationsRequest) (*authz.AccessEvaluationsResponse, *serviceerror.ServiceError)) *AuthorizationServiceInterfaceMock_EvaluateAccessBatch_Call {
+func (_c *AuthorizationServiceInterfaceMock_EvaluateAccessBatch_Call) RunAndReturn(run func(ctx context.Context, request authz.AccessEvaluationsRequest) (*authz.AccessEvaluationsResponse, *common.ServiceError)) *AuthorizationServiceInterfaceMock_EvaluateAccessBatch_Call {
 	_c.Call.Return(run)
 	return _c
 }

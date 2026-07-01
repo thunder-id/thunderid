@@ -119,6 +119,7 @@ export default function ResourceServerEditPage(): JSX.Element {
                 ? editedFields.description
                 : null
               : (resourceServer.description ?? null),
+          ouId: resourceServer.ouId,
         },
       },
       {

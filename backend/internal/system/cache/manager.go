@@ -26,8 +26,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 // CacheManagerInterface defines the interface for managing caches.
@@ -37,7 +37,7 @@ type CacheManagerInterface interface {
 	getMutex() *sync.RWMutex
 	getCache(cacheKey string) (interface{}, bool)
 	addCache(cacheKey string, cacheInstance interface{})
-	getCacheConfig() config.CacheConfig
+	getCacheConfig() engineconfig.CacheConfig
 	getDeploymentID() string
 	getRedisClient() *redis.Client
 	startCleanupRoutine()
@@ -52,7 +52,7 @@ type CacheManager struct {
 	enabled         bool
 	cleanupInterval time.Duration
 	redisClient     *redis.Client
-	cacheConfig     config.CacheConfig
+	cacheConfig     engineconfig.CacheConfig
 	deploymentID    string
 }
 
@@ -61,7 +61,7 @@ type CacheManager struct {
 // context.Background() is used (there is no request trace ID to propagate).
 
 // Initialize creates, configures, and returns a ready-to-use CacheManagerInterface.
-func Initialize(cacheConfig config.CacheConfig, deploymentID string) CacheManagerInterface {
+func Initialize(cacheConfig engineconfig.CacheConfig, deploymentID string) CacheManagerInterface {
 	// Cache infrastructure logging has no request scope, so context.Background() is used.
 	ctx := context.Background()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CacheManager"))
@@ -162,7 +162,7 @@ func (cm *CacheManager) addCache(cacheKey string, cacheInstance interface{}) {
 }
 
 // getCacheConfig returns the cache configuration used by the manager.
-func (cm *CacheManager) getCacheConfig() config.CacheConfig {
+func (cm *CacheManager) getCacheConfig() engineconfig.CacheConfig {
 	return cm.cacheConfig
 }
 
@@ -422,7 +422,7 @@ func GetCache[T any](cm CacheManagerInterface, cacheName string) CacheInterface[
 }
 
 // getCacheType retrieves the cache type from the configuration.
-func getCacheType(cacheConfig config.CacheConfig) cacheType {
+func getCacheType(cacheConfig engineconfig.CacheConfig) cacheType {
 	if cacheConfig.Type == "" {
 		return cacheTypeInMemory
 	}
@@ -439,17 +439,17 @@ func getCacheType(cacheConfig config.CacheConfig) cacheType {
 }
 
 // getCacheProperty retrieves the cache property for the specified cache name.
-func getCacheProperty(cacheConfig config.CacheConfig, cacheName string) config.CacheProperty {
+func getCacheProperty(cacheConfig engineconfig.CacheConfig, cacheName string) engineconfig.CacheProperty {
 	for _, property := range cacheConfig.Properties {
 		if property.Name == cacheName {
 			return property
 		}
 	}
-	return config.CacheProperty{}
+	return engineconfig.CacheProperty{}
 }
 
 // getCleanupInterval retrieves the cleanup interval from the cache configuration.
-func getCleanupInterval(cacheConfig config.CacheConfig) time.Duration {
+func getCleanupInterval(cacheConfig engineconfig.CacheConfig) time.Duration {
 	cleanupIntervalInt := cacheConfig.CleanupInterval
 	return time.Duration(cleanupIntervalInt) * time.Second
 }

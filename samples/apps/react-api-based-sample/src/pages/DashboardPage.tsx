@@ -114,9 +114,9 @@ function DashboardPage() {
                   typeof attributes.family_name === "string"
                     ? (attributes.family_name as string)
                     : undefined;
-                const mobileNumber =
-                  typeof attributes.mobileNumber === "string"
-                    ? (attributes.mobileNumber as string)
+                const mobile_number =
+                  typeof attributes.mobile_number === "string"
+                    ? (attributes.mobile_number as string)
                     : undefined;
                 return {
                   id: user.id,
@@ -124,7 +124,7 @@ function DashboardPage() {
                   email,
                   given_name,
                   family_name,
-                  mobileNumber,
+                  mobile_number,
                   type: user.type,
                   ouId: user.ouId,
                 };

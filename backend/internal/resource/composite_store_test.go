@@ -26,6 +26,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 const (
@@ -56,7 +58,7 @@ func (s *CompositeResourceStoreTestSuite) SetupTest() {
 // Resource Server tests
 
 func (s *CompositeResourceStoreTestSuite) TestCreateResourceServer_DelegatesToDB() {
-	rs := ResourceServer{
+	rs := providers.ResourceServer{
 		ID:   "rs1",
 		Name: "Test Server",
 	}
@@ -71,7 +73,7 @@ func (s *CompositeResourceStoreTestSuite) TestCreateResourceServer_DelegatesToDB
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetResourceServer_FoundInDB() {
-	rs := ResourceServer{
+	rs := providers.ResourceServer{
 		ID:   "rs1",
 		Name: "DB Server",
 	}
@@ -88,12 +90,13 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServer_FoundInDB() {
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetResourceServer_FoundInFile() {
-	fileRS := ResourceServer{
+	fileRS := providers.ResourceServer{
 		ID:   "rs-file",
 		Name: "File Server",
 	}
 
-	s.dbStoreMock.On("GetResourceServer", s.ctx, "rs-file").Return(ResourceServer{}, errResourceServerNotFound)
+	s.dbStoreMock.On("GetResourceServer", s.ctx, "rs-file").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
 	s.fileStoreMock.On("GetResourceServer", s.ctx, "rs-file").Return(fileRS, nil)
 
 	result, err := s.compositeStore.GetResourceServer(s.ctx, "rs-file")
@@ -106,13 +109,15 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServer_FoundInFile() {
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetResourceServer_NotFound() {
-	s.dbStoreMock.On("GetResourceServer", s.ctx, "nonexistent").Return(ResourceServer{}, errResourceServerNotFound)
-	s.fileStoreMock.On("GetResourceServer", s.ctx, "nonexistent").Return(ResourceServer{}, errResourceServerNotFound)
+	s.dbStoreMock.On("GetResourceServer", s.ctx, "nonexistent").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	s.fileStoreMock.On("GetResourceServer", s.ctx, "nonexistent").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
 
 	result, err := s.compositeStore.GetResourceServer(s.ctx, "nonexistent")
 
 	assert.Error(s.T(), err)
-	assert.Equal(s.T(), ResourceServer{}, result)
+	assert.Equal(s.T(), providers.ResourceServer{}, result)
 	s.dbStoreMock.AssertExpectations(s.T())
 	s.fileStoreMock.AssertExpectations(s.T())
 }
@@ -120,19 +125,19 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServer_NotFound() {
 func (s *CompositeResourceStoreTestSuite) TestGetResourceServer_DBError() {
 	dbErr := errors.New("database error")
 
-	s.dbStoreMock.On("GetResourceServer", s.ctx, "rs1").Return(ResourceServer{}, dbErr)
+	s.dbStoreMock.On("GetResourceServer", s.ctx, "rs1").Return(providers.ResourceServer{}, dbErr)
 
 	result, err := s.compositeStore.GetResourceServer(s.ctx, "rs1")
 
 	assert.Error(s.T(), err)
 	assert.Equal(s.T(), dbErr, err)
-	assert.Equal(s.T(), ResourceServer{}, result)
+	assert.Equal(s.T(), providers.ResourceServer{}, result)
 	s.dbStoreMock.AssertExpectations(s.T())
 	s.fileStoreMock.AssertNotCalled(s.T(), "GetResourceServer")
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetResourceServerByHandle_FoundInDB() {
-	rs := ResourceServer{
+	rs := providers.ResourceServer{
 		ID:     "rs1",
 		Name:   "DB Server",
 		Handle: "test-handle",
@@ -150,14 +155,14 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServerByHandle_FoundInD
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetResourceServerByHandle_FoundInFile() {
-	fileRS := ResourceServer{
+	fileRS := providers.ResourceServer{
 		ID:     "rs-file",
 		Name:   "File Server",
 		Handle: "test-handle",
 	}
 
 	s.dbStoreMock.On("GetResourceServerByHandle", s.ctx, "test-handle").
-		Return(ResourceServer{}, errResourceServerNotFound)
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
 	s.fileStoreMock.On("GetResourceServerByHandle", s.ctx, "test-handle").Return(fileRS, nil)
 
 	result, err := s.compositeStore.GetResourceServerByHandle(s.ctx, "test-handle")
@@ -170,11 +175,11 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServerByHandle_FoundInF
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetResourceServerList_MergesBothStores() {
-	dbServers := []ResourceServer{
+	dbServers := []providers.ResourceServer{
 		{ID: "rs-db1", Name: "DB Server 1"},
 		{ID: "rs-db2", Name: "DB Server 2"},
 	}
-	fileServers := []ResourceServer{
+	fileServers := []providers.ResourceServer{
 		{ID: "rs-file1", Name: "File Server 1"},
 	}
 
@@ -192,11 +197,11 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServerList_MergesBothSt
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetResourceServerList_WithPagination() {
-	dbServers := []ResourceServer{
+	dbServers := []providers.ResourceServer{
 		{ID: "rs1", Name: "Server 1"},
 		{ID: "rs2", Name: "Server 2"},
 	}
-	fileServers := []ResourceServer{
+	fileServers := []providers.ResourceServer{
 		{ID: "rs3", Name: "Server 3"},
 	}
 
@@ -217,11 +222,11 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServerList_WithPaginati
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetResourceServerList_DeduplicatesDuplicates() {
-	dbServers := []ResourceServer{
+	dbServers := []providers.ResourceServer{
 		{ID: testRS1ID, Name: "Server 1"},
 		{ID: "rs2", Name: "Server 2"},
 	}
-	fileServers := []ResourceServer{
+	fileServers := []providers.ResourceServer{
 		{ID: testRS1ID, Name: "Server 1 File"}, // Duplicate ID
 		{ID: "rs3", Name: "Server 3"},
 	}
@@ -246,11 +251,11 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServerList_Deduplicates
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetResourceServerList_VerifiesIsReadOnlyFlags() {
-	dbServers := []ResourceServer{
+	dbServers := []providers.ResourceServer{
 		{ID: "rs-db1", Name: "DB Server 1"},
 		{ID: "rs-db2", Name: "DB Server 2"},
 	}
-	fileServers := []ResourceServer{
+	fileServers := []providers.ResourceServer{
 		{ID: "rs-file1", Name: "File Server 1"},
 	}
 
@@ -278,11 +283,11 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServerList_VerifiesIsRe
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetResourceServerList_DeduplicatesAndSetsIsReadOnly() {
-	dbServers := []ResourceServer{
+	dbServers := []providers.ResourceServer{
 		{ID: testRS1ID, Name: "Server 1"},
 		{ID: "rs2", Name: "Server 2"},
 	}
-	fileServers := []ResourceServer{
+	fileServers := []providers.ResourceServer{
 		{ID: testRS1ID, Name: "Server 1 File"}, // Duplicate ID
 		{ID: "rs3", Name: "Server 3"},
 	}
@@ -327,14 +332,14 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServerList_HandlesEmpty
 	s.dbStoreMock.ExpectedCalls = nil
 	s.fileStoreMock.ExpectedCalls = nil
 
-	dbServers := []ResourceServer{
+	dbServers := []providers.ResourceServer{
 		{ID: "rs-db1", Name: "DB Server 1"},
 	}
 
 	s.dbStoreMock.On("GetResourceServerListCount", s.ctx).Return(len(dbServers), nil)
 	s.fileStoreMock.On("GetResourceServerListCount", s.ctx).Return(0, nil)
 	s.dbStoreMock.On("GetResourceServerList", s.ctx, mock.Anything, 0).Return(dbServers, nil)
-	s.fileStoreMock.On("GetResourceServerList", s.ctx, mock.Anything, 0).Return([]ResourceServer{}, nil)
+	s.fileStoreMock.On("GetResourceServerList", s.ctx, mock.Anything, 0).Return([]providers.ResourceServer{}, nil)
 
 	result, err = s.compositeStore.GetResourceServerList(s.ctx, 10, 0)
 
@@ -346,13 +351,13 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServerList_HandlesEmpty
 	s.dbStoreMock.ExpectedCalls = nil
 	s.fileStoreMock.ExpectedCalls = nil
 
-	fileServers := []ResourceServer{
+	fileServers := []providers.ResourceServer{
 		{ID: "rs-file1", Name: "File Server 1"},
 	}
 
 	s.dbStoreMock.On("GetResourceServerListCount", s.ctx).Return(0, nil)
 	s.fileStoreMock.On("GetResourceServerListCount", s.ctx).Return(len(fileServers), nil)
-	s.dbStoreMock.On("GetResourceServerList", s.ctx, mock.Anything, 0).Return([]ResourceServer{}, nil)
+	s.dbStoreMock.On("GetResourceServerList", s.ctx, mock.Anything, 0).Return([]providers.ResourceServer{}, nil)
 	s.fileStoreMock.On("GetResourceServerList", s.ctx, mock.Anything, 0).Return(fileServers, nil)
 
 	result, err = s.compositeStore.GetResourceServerList(s.ctx, 10, 0)
@@ -363,11 +368,11 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServerList_HandlesEmpty
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListCount_SumsBothStores() {
-	dbServers := []ResourceServer{
+	dbServers := []providers.ResourceServer{
 		{ID: "rs1", Name: "Server 1"},
 		{ID: "rs2", Name: "Server 2"},
 	}
-	fileServers := []ResourceServer{
+	fileServers := []providers.ResourceServer{
 		{ID: "rs2", Name: "File Server 2"},
 		{ID: "rs3", Name: "Server 3"},
 	}
@@ -387,7 +392,7 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListCount_SumsBot
 }
 
 func (s *CompositeResourceStoreTestSuite) TestUpdateResourceServer_DelegatesToDB() {
-	rs := ResourceServer{
+	rs := providers.ResourceServer{
 		ID:   "rs1",
 		Name: "Updated Server",
 	}
@@ -493,7 +498,7 @@ func (s *CompositeResourceStoreTestSuite) TestCheckResourceServerHasDependencies
 }
 
 func (s *CompositeResourceStoreTestSuite) TestIsResourceServerDeclarative_FileServer() {
-	s.fileStoreMock.On("GetResourceServer", mock.Anything, "rs-file").Return(ResourceServer{}, nil)
+	s.fileStoreMock.On("GetResourceServer", mock.Anything, "rs-file").Return(providers.ResourceServer{}, nil)
 
 	result := s.compositeStore.IsResourceServerDeclarative("rs-file")
 
@@ -503,7 +508,7 @@ func (s *CompositeResourceStoreTestSuite) TestIsResourceServerDeclarative_FileSe
 
 func (s *CompositeResourceStoreTestSuite) TestIsResourceServerDeclarative_DBServer() {
 	s.fileStoreMock.On("GetResourceServer", mock.Anything, "rs-db").
-		Return(ResourceServer{}, errResourceServerNotFound)
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
 
 	result := s.compositeStore.IsResourceServerDeclarative("rs-db")
 
@@ -514,7 +519,7 @@ func (s *CompositeResourceStoreTestSuite) TestIsResourceServerDeclarative_DBServ
 // Resource tests
 
 func (s *CompositeResourceStoreTestSuite) TestCreateResource_DelegatesToDB() {
-	res := Resource{
+	res := providers.Resource{
 		Name:   "Test Resource",
 		Handle: "test",
 	}
@@ -529,7 +534,7 @@ func (s *CompositeResourceStoreTestSuite) TestCreateResource_DelegatesToDB() {
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetResource_FoundInDB() {
-	res := Resource{
+	res := providers.Resource{
 		ID:     "res-db",
 		Name:   "DB Resource",
 		Handle: "db",
@@ -546,13 +551,13 @@ func (s *CompositeResourceStoreTestSuite) TestGetResource_FoundInDB() {
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetResource_FoundInFile() {
-	fileRes := Resource{
+	fileRes := providers.Resource{
 		ID:     "res-file",
 		Name:   "File Resource",
 		Handle: "file",
 	}
 
-	s.dbStoreMock.On("GetResource", s.ctx, "res-file", "rs1").Return(Resource{}, errResourceNotFound)
+	s.dbStoreMock.On("GetResource", s.ctx, "res-file", "rs1").Return(providers.Resource{}, errResourceNotFound)
 	s.fileStoreMock.On("GetResource", s.ctx, "res-file", "rs1").Return(fileRes, nil)
 
 	result, err := s.compositeStore.GetResource(s.ctx, "res-file", "rs1")
@@ -564,10 +569,10 @@ func (s *CompositeResourceStoreTestSuite) TestGetResource_FoundInFile() {
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetResourceList_MergesBothStores() {
-	dbResources := []Resource{
+	dbResources := []providers.Resource{
 		{ID: "res-db1", Name: "DB Resource 1"},
 	}
-	fileResources := []Resource{
+	fileResources := []providers.Resource{
 		{ID: "res-file1", Name: "File Resource 1"},
 	}
 
@@ -586,10 +591,10 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceList_MergesBothStores()
 
 func (s *CompositeResourceStoreTestSuite) TestGetResourceListByParent_MergesBothStores() {
 	parentID := testParentID
-	dbResources := []Resource{
+	dbResources := []providers.Resource{
 		{ID: "res-db1", Name: "DB Resource 1"},
 	}
-	fileResources := []Resource{
+	fileResources := []providers.Resource{
 		{ID: "res-file1", Name: "File Resource 1"},
 	}
 
@@ -642,11 +647,11 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceListByParent_FileError(
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetResourceListCount_SumsBothStores() {
-	dbResources := []Resource{
+	dbResources := []providers.Resource{
 		{ID: "res1", Name: "Resource 1"},
 		{ID: "res2", Name: "Resource 2"},
 	}
-	fileResources := []Resource{
+	fileResources := []providers.Resource{
 		{ID: "res2", Name: "File Resource 2"},
 		{ID: "res3", Name: "Resource 3"},
 	}
@@ -694,11 +699,11 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceListCount_FileError() {
 
 func (s *CompositeResourceStoreTestSuite) TestGetResourceListCountByParent_SumsBothStores() {
 	parentID := "parent-2"
-	dbResources := []Resource{
+	dbResources := []providers.Resource{
 		{ID: "res1", Name: "Resource 1"},
 		{ID: "res2", Name: "Resource 2"},
 	}
-	fileResources := []Resource{
+	fileResources := []providers.Resource{
 		{ID: "res2", Name: "File Resource 2"},
 		{ID: "res3", Name: "Resource 3"},
 	}
@@ -721,7 +726,7 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceListCountByParent_SumsB
 }
 
 func (s *CompositeResourceStoreTestSuite) TestUpdateResource_DelegatesToDB() {
-	res := Resource{
+	res := providers.Resource{
 		Name: "Updated Resource",
 	}
 
@@ -815,7 +820,7 @@ func (s *CompositeResourceStoreTestSuite) TestCheckCircularDependency_DelegatesT
 // Action tests
 
 func (s *CompositeResourceStoreTestSuite) TestCreateAction_DelegatesToDB() {
-	action := Action{
+	action := providers.Action{
 		Name:   "Test Action",
 		Handle: "test",
 	}
@@ -831,7 +836,7 @@ func (s *CompositeResourceStoreTestSuite) TestCreateAction_DelegatesToDB() {
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetAction_FoundInDB() {
-	action := Action{
+	action := providers.Action{
 		ID:     "act-db",
 		Name:   "DB Action",
 		Handle: "db",
@@ -848,13 +853,14 @@ func (s *CompositeResourceStoreTestSuite) TestGetAction_FoundInDB() {
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetAction_FoundInFile() {
-	fileAction := Action{
+	fileAction := providers.Action{
 		ID:     "act-file",
 		Name:   "File Action",
 		Handle: "file",
 	}
 
-	s.dbStoreMock.On("GetAction", s.ctx, "act-file", "rs1", (*string)(nil)).Return(Action{}, errActionNotFound)
+	s.dbStoreMock.On("GetAction", s.ctx, "act-file", "rs1", (*string)(nil)).
+		Return(providers.Action{}, errActionNotFound)
 	s.fileStoreMock.On("GetAction", s.ctx, "act-file", "rs1", (*string)(nil)).Return(fileAction, nil)
 
 	result, err := s.compositeStore.GetAction(s.ctx, "act-file", "rs1", nil)
@@ -866,19 +872,48 @@ func (s *CompositeResourceStoreTestSuite) TestGetAction_FoundInFile() {
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetActionList_MergesBothStores() {
-	dbActions := []Action{
+	dbActions := []providers.Action{
 		{ID: "act-db1", Name: "DB Action 1"},
 	}
-	fileActions := []Action{
+	fileActions := []providers.Action{
 		{ID: "act-file1", Name: "File Action 1"},
 	}
 
-	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(len(dbActions), nil)
-	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(len(fileActions), nil)
-	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), mock.Anything, 0).Return(dbActions, nil)
-	s.fileStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), mock.Anything, 0).Return(fileActions, nil)
+	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).
+		Return(len(dbActions), nil)
+	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).
+		Return(len(fileActions), nil)
+	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKind(""), mock.Anything, 0).
+		Return(dbActions, nil)
+	s.fileStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKind(""), mock.Anything, 0).
+		Return(fileActions, nil)
 
-	result, err := s.compositeStore.GetActionList(s.ctx, "rs1", nil, 10, 0)
+	result, err := s.compositeStore.GetActionList(s.ctx, "rs1", nil, "", 10, 0)
+
+	assert.NoError(s.T(), err)
+	assert.Len(s.T(), result, 2)
+	s.dbStoreMock.AssertExpectations(s.T())
+	s.fileStoreMock.AssertExpectations(s.T())
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetActionList_ThreadsKindToBothStores() {
+	dbActions := []providers.Action{
+		{ID: "act-db1", Name: "DB Tool", Kind: providers.ActionKindTool},
+	}
+	fileActions := []providers.Action{
+		{ID: "act-file1", Name: "File Tool", Kind: providers.ActionKindTool},
+	}
+
+	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKindTool).
+		Return(len(dbActions), nil)
+	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKindTool).
+		Return(len(fileActions), nil)
+	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKindTool, mock.Anything, 0).
+		Return(dbActions, nil)
+	s.fileStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKindTool, mock.Anything, 0).
+		Return(fileActions, nil)
+
+	result, err := s.compositeStore.GetActionList(s.ctx, "rs1", nil, providers.ActionKindTool, 10, 0)
 
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), result, 2)
@@ -888,11 +923,12 @@ func (s *CompositeResourceStoreTestSuite) TestGetActionList_MergesBothStores() {
 
 func (s *CompositeResourceStoreTestSuite) TestGetActionList_DBError() {
 	dbErr := errors.New("db error")
-	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(1, nil)
-	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(0, nil)
-	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), mock.Anything, 0).Return(nil, dbErr)
+	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).Return(1, nil)
+	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).Return(0, nil)
+	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKind(""), mock.Anything, 0).
+		Return(nil, dbErr)
 
-	result, err := s.compositeStore.GetActionList(s.ctx, "rs1", nil, 10, 0)
+	result, err := s.compositeStore.GetActionList(s.ctx, "rs1", nil, "", 10, 0)
 
 	assert.Error(s.T(), err)
 	assert.Nil(s.T(), result)
@@ -902,12 +938,14 @@ func (s *CompositeResourceStoreTestSuite) TestGetActionList_DBError() {
 
 func (s *CompositeResourceStoreTestSuite) TestGetActionList_FileError() {
 	fileErr := errors.New("file error")
-	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(0, nil)
-	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(1, nil)
-	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), mock.Anything, 0).Return([]Action{}, nil)
-	s.fileStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), mock.Anything, 0).Return(nil, fileErr)
+	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).Return(0, nil)
+	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).Return(1, nil)
+	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKind(""), mock.Anything, 0).
+		Return([]providers.Action{}, nil)
+	s.fileStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKind(""), mock.Anything, 0).
+		Return(nil, fileErr)
 
-	result, err := s.compositeStore.GetActionList(s.ctx, "rs1", nil, 10, 0)
+	result, err := s.compositeStore.GetActionList(s.ctx, "rs1", nil, "", 10, 0)
 
 	assert.Error(s.T(), err)
 	assert.Nil(s.T(), result)
@@ -916,21 +954,25 @@ func (s *CompositeResourceStoreTestSuite) TestGetActionList_FileError() {
 }
 
 func (s *CompositeResourceStoreTestSuite) TestGetActionListCount_SumsBothStores() {
-	dbActions := []Action{
+	dbActions := []providers.Action{
 		{ID: "act1", Name: "Action 1"},
 		{ID: "act2", Name: "Action 2"},
 	}
-	fileActions := []Action{
+	fileActions := []providers.Action{
 		{ID: "act2", Name: "File Action 2"},
 		{ID: "act3", Name: "Action 3"},
 	}
 
-	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(len(dbActions), nil)
-	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(len(fileActions), nil)
-	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), mock.Anything, 0).Return(dbActions, nil)
-	s.fileStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), mock.Anything, 0).Return(fileActions, nil)
+	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).
+		Return(len(dbActions), nil)
+	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).
+		Return(len(fileActions), nil)
+	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKind(""), mock.Anything, 0).
+		Return(dbActions, nil)
+	s.fileStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKind(""), mock.Anything, 0).
+		Return(fileActions, nil)
 
-	count, err := s.compositeStore.GetActionListCount(s.ctx, "rs1", nil)
+	count, err := s.compositeStore.GetActionListCount(s.ctx, "rs1", nil, "")
 
 	assert.NoError(s.T(), err)
 	// Should return deduplicated count: act1, act2 (from db), act3
@@ -939,11 +981,36 @@ func (s *CompositeResourceStoreTestSuite) TestGetActionListCount_SumsBothStores(
 	s.fileStoreMock.AssertExpectations(s.T())
 }
 
+func (s *CompositeResourceStoreTestSuite) TestGetActionListCount_FilteredByKind() {
+	dbActions := []providers.Action{
+		{ID: "act1", Name: "DB Tool", Kind: providers.ActionKindTool},
+	}
+	fileActions := []providers.Action{
+		{ID: "act2", Name: "File Tool", Kind: providers.ActionKindTool},
+	}
+
+	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKindTool).
+		Return(len(dbActions), nil)
+	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKindTool).
+		Return(len(fileActions), nil)
+	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKindTool, mock.Anything, 0).
+		Return(dbActions, nil)
+	s.fileStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKindTool, mock.Anything, 0).
+		Return(fileActions, nil)
+
+	count, err := s.compositeStore.GetActionListCount(s.ctx, "rs1", nil, providers.ActionKindTool)
+
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), 2, count)
+	s.dbStoreMock.AssertExpectations(s.T())
+	s.fileStoreMock.AssertExpectations(s.T())
+}
+
 func (s *CompositeResourceStoreTestSuite) TestGetActionListCount_DBError() {
 	dbErr := errors.New("db error")
-	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(0, dbErr)
+	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).Return(0, dbErr)
 
-	count, err := s.compositeStore.GetActionListCount(s.ctx, "rs1", nil)
+	count, err := s.compositeStore.GetActionListCount(s.ctx, "rs1", nil, "")
 
 	assert.Error(s.T(), err)
 	assert.Equal(s.T(), 0, count)
@@ -953,10 +1020,10 @@ func (s *CompositeResourceStoreTestSuite) TestGetActionListCount_DBError() {
 
 func (s *CompositeResourceStoreTestSuite) TestGetActionListCount_FileError() {
 	fileErr := errors.New("file error")
-	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(0, nil)
-	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(0, fileErr)
+	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).Return(0, nil)
+	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).Return(0, fileErr)
 
-	count, err := s.compositeStore.GetActionListCount(s.ctx, "rs1", nil)
+	count, err := s.compositeStore.GetActionListCount(s.ctx, "rs1", nil, "")
 
 	assert.Error(s.T(), err)
 	assert.Equal(s.T(), 0, count)
@@ -967,7 +1034,7 @@ func (s *CompositeResourceStoreTestSuite) TestGetActionListCount_FileError() {
 }
 
 func (s *CompositeResourceStoreTestSuite) TestUpdateAction_DelegatesToDB() {
-	action := Action{
+	action := providers.Action{
 		Name: "Updated Action",
 	}
 
@@ -1115,11 +1182,11 @@ func (s *CompositeResourceStoreTestSuite) TestValidatePermissions_SomeInvalid() 
 
 // TestMergeAndDeduplicateResourceServers tests the merge helper function for resource servers.
 func (s *CompositeResourceStoreTestSuite) TestMergeAndDeduplicateResourceServers_MarksCorrectIsReadOnly() {
-	dbServers := []ResourceServer{
+	dbServers := []providers.ResourceServer{
 		{ID: "rs-db1", Name: "DB 1"},
 		{ID: "rs-db2", Name: "DB 2"},
 	}
-	fileServers := []ResourceServer{
+	fileServers := []providers.ResourceServer{
 		{ID: "rs-file1", Name: "File 1"},
 		{ID: "rs-file2", Name: "File 2"},
 	}
@@ -1139,10 +1206,10 @@ func (s *CompositeResourceStoreTestSuite) TestMergeAndDeduplicateResourceServers
 }
 
 func (s *CompositeResourceStoreTestSuite) TestMergeAndDeduplicateResourceServers_DBTakesPrecedenceAndIsNotReadOnly() {
-	dbServers := []ResourceServer{
+	dbServers := []providers.ResourceServer{
 		{ID: "duplicate", Name: "DB Server"},
 	}
-	fileServers := []ResourceServer{
+	fileServers := []providers.ResourceServer{
 		{ID: "duplicate", Name: "File Server"},
 	}
 
@@ -1155,18 +1222,18 @@ func (s *CompositeResourceStoreTestSuite) TestMergeAndDeduplicateResourceServers
 
 func (s *CompositeResourceStoreTestSuite) TestMergeAndDeduplicateResourceServers_HandlesEmptySlices() {
 	// Both empty
-	result := mergeAndDeduplicateResourceServers([]ResourceServer{}, []ResourceServer{})
+	result := mergeAndDeduplicateResourceServers([]providers.ResourceServer{}, []providers.ResourceServer{})
 	assert.Empty(s.T(), result)
 
 	// DB has servers, file is empty
-	dbServers := []ResourceServer{{ID: "rs-db1", Name: "DB 1"}}
-	result = mergeAndDeduplicateResourceServers(dbServers, []ResourceServer{})
+	dbServers := []providers.ResourceServer{{ID: "rs-db1", Name: "DB 1"}}
+	result = mergeAndDeduplicateResourceServers(dbServers, []providers.ResourceServer{})
 	assert.Len(s.T(), result, 1)
 	assert.False(s.T(), result[0].IsReadOnly, "DB resource server should have IsReadOnly=false")
 
 	// File has servers, DB is empty
-	fileServers := []ResourceServer{{ID: "rs-file1", Name: "File 1"}}
-	result = mergeAndDeduplicateResourceServers([]ResourceServer{}, fileServers)
+	fileServers := []providers.ResourceServer{{ID: "rs-file1", Name: "File 1"}}
+	result = mergeAndDeduplicateResourceServers([]providers.ResourceServer{}, fileServers)
 	assert.Len(s.T(), result, 1)
 	assert.True(s.T(), result[0].IsReadOnly, "File resource server should have IsReadOnly=true")
 }

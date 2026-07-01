@@ -47,7 +47,20 @@ func NewExtractor(verbose bool) *Extractor {
 	return &Extractor{verbose: verbose}
 }
 
-// ExtractFromDirectory scans all Go files in the given directory and extracts core.Message literals.
+// ExtractFromDirectories scans all Go files in the given directories and extracts I18nMessage literals.
+func (e *Extractor) ExtractFromDirectories(dirs []string) ([]ExtractedMessage, error) {
+	var messages []ExtractedMessage
+	for _, dir := range dirs {
+		dirMessages, err := e.ExtractFromDirectory(dir)
+		if err != nil {
+			return nil, err
+		}
+		messages = append(messages, dirMessages...)
+	}
+	return messages, nil
+}
+
+// ExtractFromDirectory scans all Go files in the given directory and extracts I18nMessage literals.
 func (e *Extractor) ExtractFromDirectory(dir string) ([]ExtractedMessage, error) {
 	var messages []ExtractedMessage
 
@@ -133,9 +146,12 @@ func (e *Extractor) extractFromFile(filePath string) ([]ExtractedMessage, error)
 	return messages, nil
 }
 
-// isI18nMessage checks if the type expression represents core.Message.
+// isI18nMessage checks if the type expression represents an I18nMessage literal.
 func (e *Extractor) isI18nMessage(typeExpr ast.Expr) bool {
-	// Check for selector expression: core.Message
+	if ident, ok := typeExpr.(*ast.Ident); ok {
+		return ident.Name == "I18nMessage"
+	}
+
 	sel, ok := typeExpr.(*ast.SelectorExpr)
 	if !ok {
 		return false

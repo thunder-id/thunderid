@@ -8,10 +8,10 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/observability/publisher"
 	"github.com/thunder-id/thunderid/internal/system/observability/subscriber"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 // NewObservabilityServiceInterfaceMock creates a new instance of ObservabilityServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

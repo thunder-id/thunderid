@@ -1,7 +1,8 @@
 {
+  "private": false,
   "name": "@thunderid/prettier-config",
-  "version": "0.0.0",
-  "description": "Sharable Prettier configuration for ⚡️ ThunderID projects.",
+  "version": "0.0.5",
+  "description": "Sharable Prettier configuration for ThunderID projects",
   "keywords": [
     "thunderid",
     "prettier",
@@ -36,13 +37,6 @@
     "type": "git",
     "url": "https://github.com/thunder-id/thunderid",
     "directory": "frontend/packages/prettier-config"
-  },
-  "nx": {
-    "targets": {
-      "build": {
-        "dependsOn": []
-      }
-    }
   },
   "scripts": {
     "build": "pnpm clean:dist && rolldown -c rolldown.config.js && tsc -p tsconfig.lib.json --emitDeclarationOnly --outDir dist",

@@ -24,6 +24,9 @@ import (
 	"errors"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -31,7 +34,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 )
@@ -40,7 +43,7 @@ type UtilsTestSuite struct {
 	suite.Suite
 	mockInbound *inboundclientmock.InboundClientServiceInterfaceMock
 	mockEntity  *entityprovidermock.EntityProviderInterfaceMock
-	provider    ActorProviderInterface
+	provider    providers.ActorProvider
 }
 
 func TestUtilsTestSuite(t *testing.T) {
@@ -61,7 +64,7 @@ func (s *UtilsTestSuite) TestBuildApplication_Success() {
 		},
 	}
 	attrs, _ := json.Marshal(map[string]interface{}{"name": "My App", "clientId": "public-client"})
-	entity := &entityprovider.Entity{ID: "app-1", SystemAttributes: attrs}
+	entity := &providers.Entity{ID: "app-1", SystemAttributes: attrs}
 
 	s.mockInbound.On("GetInboundClientByEntityID", mock.Anything, "app-1").Return(client, nil)
 	s.mockEntity.On("GetEntity", "app-1").Return(entity, (*entityprovider.EntityProviderError)(nil))
@@ -77,9 +80,9 @@ func (s *UtilsTestSuite) TestBuildApplication_Success() {
 }
 
 func (s *UtilsTestSuite) TestBuildApplication_NilClient() {
-	mockProvider := NewActorProviderInterfaceMock(s.T())
+	mockProvider := actorprovidermock.NewActorProviderMock(s.T())
 	mockProvider.EXPECT().GetInboundClientByID(mock.Anything, "app-1").
-		Return((*inboundmodel.InboundClient)(nil), (*serviceerror.ServiceError)(nil))
+		Return((*providers.InboundClient)(nil), (*tidcommon.ServiceError)(nil))
 
 	app, svcErr := BuildApplication(context.Background(), mockProvider, "app-1")
 
@@ -91,7 +94,7 @@ func (s *UtilsTestSuite) TestBuildApplication_EntityLoadError() {
 	client := &inboundmodel.InboundClient{ID: "app-1"}
 	s.mockInbound.On("GetInboundClientByEntityID", mock.Anything, "app-1").Return(client, nil)
 	s.mockEntity.On("GetEntity", "app-1").Return(
-		(*entityprovider.Entity)(nil),
+		(*providers.Entity)(nil),
 		entityprovider.NewEntityProviderError("INTERNAL_ERROR", "boom", ""))
 
 	app, svcErr := BuildApplication(context.Background(), s.provider, "app-1")
@@ -104,7 +107,7 @@ func (s *UtilsTestSuite) TestBuildApplication_EntityNotFound() {
 	client := &inboundmodel.InboundClient{ID: "app-1", AllowedUserTypes: []string{"customer"}}
 	s.mockInbound.On("GetInboundClientByEntityID", mock.Anything, "app-1").Return(client, nil)
 	s.mockEntity.On("GetEntity", "app-1").Return(
-		(*entityprovider.Entity)(nil),
+		(*providers.Entity)(nil),
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "missing", ""))
 
 	app, svcErr := BuildApplication(context.Background(), s.provider, "app-1")
@@ -121,14 +124,14 @@ func (s *UtilsTestSuite) TestBuildApplicationMetadata_NilEntityAndProps() {
 }
 
 func (s *UtilsTestSuite) TestBuildApplicationMetadata_InvalidEntityJSON() {
-	entity := &entityprovider.Entity{SystemAttributes: []byte("not-json")}
+	entity := &providers.Entity{SystemAttributes: []byte("not-json")}
 	meta := BuildApplicationMetadata("app-1", entity, nil)
 	s.Equal("app-1", meta.ID)
 	s.Empty(meta.Name)
 }
 
 func (s *UtilsTestSuite) TestAssembleApplication_NoClientID() {
-	client := &inboundmodel.InboundClient{ID: "app-1"}
+	client := &providers.InboundClient{ID: "app-1"}
 	app := assembleApplication(client, nil)
 	s.Equal("app-1", app.ID)
 	s.Empty(app.InboundAuthConfig)
@@ -157,7 +160,7 @@ func (s *UtilsTestSuite) TestBuildApplication_InboundClientError() {
 
 func (s *UtilsTestSuite) TestBuildApplicationMetadata() {
 	attrs, _ := json.Marshal(map[string]interface{}{"name": "App", "description": "Desc"})
-	entity := &entityprovider.Entity{SystemAttributes: attrs}
+	entity := &providers.Entity{SystemAttributes: attrs}
 	props := map[string]interface{}{
 		"logo_url":   "https://logo",
 		"url":        "https://app",
@@ -182,13 +185,13 @@ func (s *UtilsTestSuite) TestReadEntitySystemAttributes_NilEntity() {
 }
 
 func (s *UtilsTestSuite) TestReadEntitySystemAttributes_InvalidJSON() {
-	entity := &entityprovider.Entity{SystemAttributes: []byte("not-json")}
+	entity := &providers.Entity{SystemAttributes: []byte("not-json")}
 	attrs := readEntitySystemAttributes(entity)
 	s.Empty(attrs)
 }
 
 func (s *UtilsTestSuite) TestReadEntitySystemAttributes_EmptyAttributes() {
-	entity := &entityprovider.Entity{SystemAttributes: []byte{}}
+	entity := &providers.Entity{SystemAttributes: []byte{}}
 	attrs := readEntitySystemAttributes(entity)
 	s.Empty(attrs)
 }

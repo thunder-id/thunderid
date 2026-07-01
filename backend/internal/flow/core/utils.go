@@ -22,10 +22,9 @@ import (
 	"regexp"
 	"strings"
 
-	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // placeholderPattern matches {{ctx(key)}} with optional whitespace.
@@ -35,13 +34,13 @@ var placeholderPattern = regexp.MustCompile(`{{\s*ctx\(\s*(\w+)\s*\)\s*}}`)
 // ResolvePlaceholder resolves a single placeholder string using the "{{ctx(key)}}" syntax.
 // If no placeholder is found, the original value is returned.
 // If a placeholder is found but the key doesn't exist in any data source, the placeholder is kept as-is.
-func ResolvePlaceholder(ctx *NodeContext, value string, execResp *common.ExecutorResponse,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface, logger *log.Logger) string {
+func ResolvePlaceholder(ctx *providers.NodeContext, value string, execResp *providers.ExecutorResponse,
+	authnProvider providers.AuthnProviderManager, logger *log.Logger) string {
 	if ctx == nil {
 		return value
 	}
 
-	var contextUserRef *authnprovidercm.EntityReference
+	var contextUserRef *providers.EntityReference
 
 	return placeholderPattern.ReplaceAllStringFunc(value, func(match string) string {
 		submatches := placeholderPattern.FindStringSubmatch(match)
@@ -97,12 +96,12 @@ func ResolvePlaceholder(ctx *NodeContext, value string, execResp *common.Executo
 
 // fetchContextUserRef attempts to resolve the authenticated user's entity reference using the authn provider.
 func fetchContextUserRef(
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
-	ctx *NodeContext,
-	execResp *common.ExecutorResponse,
+	authnProvider providers.AuthnProviderManager,
+	ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse,
 	logger *log.Logger,
-	contextUserRef *authnprovidercm.EntityReference,
-) *authnprovidercm.EntityReference {
+	contextUserRef *providers.EntityReference,
+) *providers.EntityReference {
 	authUser, userRef, err := authnProvider.GetEntityReference(ctx.Context, ctx.AuthUser)
 	execResp.AuthUser = authUser
 	if err != nil {
@@ -153,9 +152,9 @@ func IsOptionalInputPrompted(presentedOptionalInputs map[string]struct{}, identi
 
 // collectMissingInputs returns inputs from requiredInputs that are not satisfied by user inputs,
 // runtime data, forwarded data, or already-presented optional inputs.
-func collectMissingInputs(ctx *NodeContext, presentedOptionalInputs map[string]struct{},
-	requiredInputs []common.Input, logger *log.Logger) []common.Input {
-	missing := make([]common.Input, 0, len(requiredInputs))
+func collectMissingInputs(ctx *providers.NodeContext, presentedOptionalInputs map[string]struct{},
+	requiredInputs []providers.Input, logger *log.Logger) []providers.Input {
+	missing := make([]providers.Input, 0, len(requiredInputs))
 	for _, input := range requiredInputs {
 		if _, ok := ctx.UserInputs[input.Identifier]; ok {
 			continue

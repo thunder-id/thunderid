@@ -28,6 +28,7 @@ import IdentifyingProperties from './execution-properties/IdentifyingProperties'
 import InviteProperties from './execution-properties/InviteProperties';
 import MagicLinkProperties from './execution-properties/MagicLinkProperties';
 import NoConfigProperties from './execution-properties/NoConfigProperties';
+import OpenID4VPProperties from './execution-properties/OpenID4VPProperties';
 import OUExecutorProperties from './execution-properties/OUExecutorProperties';
 import OUResolverProperties from './execution-properties/OUResolverProperties';
 import PasskeyProperties from './execution-properties/PasskeyProperties';
@@ -121,6 +122,9 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
       break;
     case ExecutionTypes.MagicLinkExecutor:
       executorSpecificProperties = <MagicLinkProperties resource={resource} onChange={onChange} />;
+      break;
+    case ExecutionTypes.OpenID4VPVerify:
+      executorSpecificProperties = <OpenID4VPProperties resource={resource} onChange={onChange} />;
       break;
     case ExecutionTypes.CredentialSetter:
     case ExecutionTypes.AttributeUniquenessValidator:

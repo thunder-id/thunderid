@@ -21,28 +21,27 @@ package granthandlers
 import (
 	"context"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // tokenExchangeGrantHandler handles the token exchange grant type.
 type tokenExchangeGrantHandler struct {
 	tokenBuilder    tokenservice.TokenBuilderInterface
 	tokenValidator  tokenservice.TokenValidatorInterface
-	resourceService resource.ResourceServiceInterface
+	resourceService providers.ResourceServerProvider
 }
 
 // newTokenExchangeGrantHandler creates a new instance of tokenExchangeGrantHandler.
 func newTokenExchangeGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	tokenValidator tokenservice.TokenValidatorInterface,
-	resourceService resource.ResourceServiceInterface,
+	resourceService providers.ResourceServerProvider,
 ) GrantHandlerInterface {
 	return &tokenExchangeGrantHandler{
 		tokenBuilder:    tokenBuilder,
@@ -53,8 +52,8 @@ func newTokenExchangeGrantHandler(
 
 // ValidateGrant validates the token exchange grant type request.
 func (h *tokenExchangeGrantHandler) ValidateGrant(ctx context.Context, tokenRequest *model.TokenRequest,
-	oauthApp *inboundmodel.OAuthClient) *model.ErrorResponse {
-	if constants.GrantType(tokenRequest.GrantType) != constants.GrantTypeTokenExchange {
+	oauthApp *providers.OAuthClient) *model.ErrorResponse {
+	if providers.GrantType(tokenRequest.GrantType) != providers.GrantTypeTokenExchange {
 		return &model.ErrorResponse{
 			Error:            constants.ErrorUnsupportedGrantType,
 			ErrorDescription: "Unsupported grant type",
@@ -132,7 +131,7 @@ func (h *tokenExchangeGrantHandler) ValidateGrant(ctx context.Context, tokenRequ
 
 // HandleGrant handles the token exchange grant type.
 func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenRequest *model.TokenRequest,
-	oauthApp *inboundmodel.OAuthClient) (
+	oauthApp *providers.OAuthClient) (
 	*model.TokenResponseDTO, *model.ErrorResponse) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "TokenExchangeGrantHandler"))
 
@@ -202,7 +201,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		ClientID:       tokenRequest.ClientID,
 		Scopes:         finalScopes,
 		UserAttributes: subjectClaims.UserAttributes,
-		GrantType:      string(constants.GrantTypeTokenExchange),
+		GrantType:      string(providers.GrantTypeTokenExchange),
 		OAuthApp:       oauthApp,
 		ActorClaims:    actorClaims,
 		DPoPJkt:        dpop.GetJkt(ctx),

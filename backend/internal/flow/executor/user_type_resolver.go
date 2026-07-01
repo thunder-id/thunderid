@@ -23,6 +23,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -42,13 +44,13 @@ type entityTypeWithOU struct {
 
 // userTypeResolver is a registration-flow executor that resolves the user type at flow start.
 type userTypeResolver struct {
-	core.ExecutorInterface
+	providers.Executor
 	entityTypeService entitytype.EntityTypeServiceInterface
 	ouService         ou.OrganizationUnitServiceInterface
 	logger            *log.Logger
 }
 
-var _ core.ExecutorInterface = (*userTypeResolver)(nil)
+var _ providers.Executor = (*userTypeResolver)(nil)
 
 // newUserTypeResolver creates a new instance of the UserTypeResolver executor.
 func newUserTypeResolver(
@@ -60,7 +62,7 @@ func newUserTypeResolver(
 		log.String(log.LoggerKeyComponentName, userTypeResolverLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameUserTypeResolver))
 
-	defaultInputs := []common.Input{
+	defaultInputs := []providers.Input{
 		{
 			Ref:        "usertype_input",
 			Identifier: userTypeKey,
@@ -69,11 +71,11 @@ func newUserTypeResolver(
 		},
 	}
 
-	base := flowFactory.CreateExecutor(ExecutorNameUserTypeResolver, common.ExecutorTypeRegistration,
-		defaultInputs, []common.Input{})
+	base := flowFactory.CreateExecutor(ExecutorNameUserTypeResolver, providers.ExecutorTypeRegistration,
+		defaultInputs, []providers.Input{})
 
 	return &userTypeResolver{
-		ExecutorInterface: base,
+		Executor:          base,
 		entityTypeService: entityTypeService,
 		ouService:         ouService,
 		logger:            logger,
@@ -81,51 +83,51 @@ func newUserTypeResolver(
 }
 
 // Execute resolves the user type from inputs or prompts the user to select one.
-func (u *userTypeResolver) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+func (u *userTypeResolver) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := u.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing user type resolver")
 
-	execResp := &common.ExecutorResponse{
+	execResp := &providers.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 		ForwardedData:  make(map[string]interface{}),
 	}
 
 	switch ctx.FlowType {
-	case common.FlowTypeAuthentication:
+	case providers.FlowTypeAuthentication:
 		return u.handleAuthenticationFlows(ctx, execResp)
-	case common.FlowTypeRegistration:
+	case providers.FlowTypeRegistration:
 		return u.handleRegistrationFlows(ctx, execResp)
-	case common.FlowTypeUserOnboarding:
+	case providers.FlowTypeUserOnboarding:
 		return u.handleUserOnboardingFlows(ctx, execResp)
 	default:
 		logger.Debug(ctx.Context, "User type resolver is not applicable for the flow type",
 			log.String("flowType", string(ctx.FlowType)))
-		execResp.Status = common.ExecComplete
+		execResp.Status = providers.ExecComplete
 		return execResp, nil
 	}
 }
 
 // handleAuthenticationFlows handles user type resolution for authentication flows.
-func (u *userTypeResolver) handleAuthenticationFlows(ctx *core.NodeContext, execResp *common.ExecutorResponse) (
-	*common.ExecutorResponse, error) {
+func (u *userTypeResolver) handleAuthenticationFlows(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) (
+	*providers.ExecutorResponse, error) {
 	logger := u.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	// Validate that allowed user types are defined
 	if len(ctx.Application.AllowedUserTypes) == 0 {
 		logger.Debug(ctx.Context, "No allowed user types configured for authentication")
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrAuthNotAvailableForApp
 		return execResp, nil
 	}
 
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 	return execResp, nil
 }
 
 // handleRegistrationFlows handles user type resolution for registration flows.
-func (u *userTypeResolver) handleRegistrationFlows(ctx *core.NodeContext, execResp *common.ExecutorResponse) (
-	*common.ExecutorResponse, error) {
+func (u *userTypeResolver) handleRegistrationFlows(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) (
+	*providers.ExecutorResponse, error) {
 	reqCtx := ctx.Context
 	logger := u.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	allowed := ctx.Application.AllowedUserTypes
@@ -137,7 +139,7 @@ func (u *userTypeResolver) handleRegistrationFlows(ctx *core.NodeContext, execRe
 		//  Also should check if self registration is enabled for the user type when the support is available.
 
 		logger.Debug(ctx.Context, "No allowed user types found for the application")
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrSelfRegNotAvailableForApp
 		return execResp, nil
 	}
@@ -155,7 +157,7 @@ func (u *userTypeResolver) handleRegistrationFlows(ctx *core.NodeContext, execRe
 		if len(filtered) == 0 {
 			logger.Debug(ctx.Context, "No valid user types after filtering with node allowedUserTypes",
 				log.Any("applicationAllowed", allowed), log.Any("nodeAllowed", nodeAllowedUserTypes))
-			execResp.Status = common.ExecFailure
+			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrNoValidUserTypes
 			return execResp, nil
 		}
@@ -182,8 +184,8 @@ func (u *userTypeResolver) handleRegistrationFlows(ctx *core.NodeContext, execRe
 }
 
 // handleUserOnboardingFlows handles user type resolution for user onboarding flows.
-func (u *userTypeResolver) handleUserOnboardingFlows(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) (*common.ExecutorResponse, error) {
+func (u *userTypeResolver) handleUserOnboardingFlows(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
 	logger := u.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	// Read optional allowedUserTypes from node properties
@@ -195,14 +197,14 @@ func (u *userTypeResolver) handleUserOnboardingFlows(ctx *core.NodeContext,
 		if len(allowedUserTypes) > 0 && !slices.Contains(allowedUserTypes, userType) {
 			logger.Debug(ctx.Context, "User type not in allowed list", log.String(userTypeKey, userType),
 				log.Any("allowedUserTypes", allowedUserTypes))
-			execResp.Status = common.ExecFailure
+			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrUserTypeNotAllowed
 			return execResp, nil
 		}
 
 		entityType, ouID, err := u.getEntityTypeAndOU(ctx.Context, userType)
 		if err != nil {
-			execResp.Status = common.ExecFailure
+			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrInvalidUserType
 			return execResp, nil
 		}
@@ -220,7 +222,7 @@ func (u *userTypeResolver) handleUserOnboardingFlows(ctx *core.NodeContext,
 			if !isValid {
 				logger.Debug(ctx.Context, "User type not valid for selected OU",
 					log.String(userTypeKey, userType), log.String(ouIDKey, selectedOUID))
-				execResp.Status = common.ExecFailure
+				execResp.Status = providers.ExecFailure
 				execResp.Error = &ErrUserTypeNotValidForOU
 				return execResp, nil
 			}
@@ -231,7 +233,7 @@ func (u *userTypeResolver) handleUserOnboardingFlows(ctx *core.NodeContext,
 		logger.Debug(ctx.Context, "User type resolved for user onboarding",
 			log.String(userTypeKey, userType),
 			log.String(ouIDKey, entityType.OUID))
-		execResp.Status = common.ExecComplete
+		execResp.Status = providers.ExecComplete
 		return execResp, nil
 	}
 
@@ -241,14 +243,14 @@ func (u *userTypeResolver) handleUserOnboardingFlows(ctx *core.NodeContext,
 	if svcErr != nil {
 		logger.Debug(ctx.Context, "Failed to list user types",
 			log.String("error", svcErr.Error.DefaultValue))
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrUserTypeRetrievalFailed
 		return execResp, nil
 	}
 
 	if len(schemas.Types) == 0 {
 		logger.Debug(ctx.Context, "No user types available")
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrNoUserTypesAvailable
 		return execResp, nil
 	}
@@ -270,7 +272,7 @@ func (u *userTypeResolver) handleUserOnboardingFlows(ctx *core.NodeContext,
 	if len(availableSchemas) == 0 {
 		logger.Debug(ctx.Context, "No valid user types found after filtering",
 			log.Any("allowedUserTypes", allowedUserTypes))
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrNoValidUserTypes
 		return execResp, nil
 	}
@@ -284,7 +286,7 @@ func (u *userTypeResolver) handleUserOnboardingFlows(ctx *core.NodeContext,
 
 		execResp.RuntimeData[userTypeKey] = schema.Name
 		execResp.RuntimeData[defaultOUIDKey] = schema.OUID
-		execResp.Status = common.ExecComplete
+		execResp.Status = providers.ExecComplete
 		return execResp, nil
 	}
 
@@ -298,7 +300,7 @@ func (u *userTypeResolver) handleUserOnboardingFlows(ctx *core.NodeContext,
 }
 
 // getAllowedUserTypesFromProperties reads the optional allowedUserTypes property from node properties.
-func (u *userTypeResolver) getAllowedUserTypesFromProperties(ctx *core.NodeContext) []string {
+func (u *userTypeResolver) getAllowedUserTypesFromProperties(ctx *providers.NodeContext) []string {
 	if ctx.NodeProperties == nil {
 		return nil
 	}
@@ -350,7 +352,7 @@ func (u *userTypeResolver) filterSchemasByAllowedTypes(
 
 // filterSchemasByOU filters schemas to only those valid for the given OU.
 // A schema is valid if its OUID is an ancestor of (or equal to) the selected OU.
-func (u *userTypeResolver) filterSchemasByOU(ctx *core.NodeContext,
+func (u *userTypeResolver) filterSchemasByOU(ctx *providers.NodeContext,
 	schemas []entitytype.EntityTypeListItem, selectedOUID string, logger *log.Logger,
 ) ([]entitytype.EntityTypeListItem, error) {
 	filtered := make([]entitytype.EntityTypeListItem, 0, len(schemas))
@@ -376,7 +378,7 @@ func (u *userTypeResolver) filterSchemasByOU(ctx *core.NodeContext,
 }
 
 // resolveUserTypeFromInput resolves the user type from input and updates the executor response.
-func (u *userTypeResolver) resolveUserTypeFromInput(ctx context.Context, execResp *common.ExecutorResponse,
+func (u *userTypeResolver) resolveUserTypeFromInput(ctx context.Context, execResp *providers.ExecutorResponse,
 	userType string, allowed []string) error {
 	logger := u.logger
 	if slices.Contains(allowed, userType) {
@@ -389,7 +391,7 @@ func (u *userTypeResolver) resolveUserTypeFromInput(ctx context.Context, execRes
 		if !entityType.AllowSelfRegistration {
 			logger.Debug(ctx, "Self registration not enabled for user type",
 				log.String(userTypeKey, userType))
-			execResp.Status = common.ExecFailure
+			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrSelfRegDisabledForUserType
 			return nil
 		}
@@ -398,17 +400,17 @@ func (u *userTypeResolver) resolveUserTypeFromInput(ctx context.Context, execRes
 		execResp.RuntimeData[userTypeKey] = userType
 		execResp.RuntimeData[defaultOUIDKey] = ouID
 
-		execResp.Status = common.ExecComplete
+		execResp.Status = providers.ExecComplete
 		return nil
 	}
 
-	execResp.Status = common.ExecFailure
+	execResp.Status = providers.ExecFailure
 	execResp.Error = &ErrUserTypeNotAllowed
 	return nil
 }
 
 // resolveUserTypeFromSingleAllowed resolves the user type when there is only a single allowed user type.
-func (u *userTypeResolver) resolveUserTypeFromSingleAllowed(ctx context.Context, execResp *common.ExecutorResponse,
+func (u *userTypeResolver) resolveUserTypeFromSingleAllowed(ctx context.Context, execResp *providers.ExecutorResponse,
 	allowedUserType string) error {
 	logger := u.logger
 	entityType, ouID, err := u.getEntityTypeAndOU(ctx, allowedUserType)
@@ -419,7 +421,7 @@ func (u *userTypeResolver) resolveUserTypeFromSingleAllowed(ctx context.Context,
 	if !entityType.AllowSelfRegistration {
 		logger.Debug(ctx, "Self registration not enabled for user type",
 			log.String(userTypeKey, allowedUserType))
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrSelfRegDisabledForUserType
 		return nil
 	}
@@ -430,12 +432,12 @@ func (u *userTypeResolver) resolveUserTypeFromSingleAllowed(ctx context.Context,
 	execResp.RuntimeData[userTypeKey] = allowedUserType
 	execResp.RuntimeData[defaultOUIDKey] = ouID
 
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 	return nil
 }
 
 // resolveUserTypeFromMultipleAllowed resolves the user type when multiple allowed user types exist.
-func (u *userTypeResolver) resolveUserTypeFromMultipleAllowed(ctx context.Context, execResp *common.ExecutorResponse,
+func (u *userTypeResolver) resolveUserTypeFromMultipleAllowed(ctx context.Context, execResp *providers.ExecutorResponse,
 	allowed []string) error {
 	logger := u.logger
 
@@ -457,7 +459,7 @@ func (u *userTypeResolver) resolveUserTypeFromMultipleAllowed(ctx context.Contex
 	// Fail if no user types have self registration enabled
 	if len(selfRegEnabledUserTypes) == 0 {
 		logger.Debug(ctx, "No user types with self registration enabled")
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrSelfRegNotAvailableForApp
 		return nil
 	}
@@ -471,7 +473,7 @@ func (u *userTypeResolver) resolveUserTypeFromMultipleAllowed(ctx context.Contex
 		execResp.RuntimeData[userTypeKey] = record.entityType.Name
 		execResp.RuntimeData[defaultOUIDKey] = record.ouID
 
-		execResp.Status = common.ExecComplete
+		execResp.Status = providers.ExecComplete
 		return nil
 	}
 
@@ -514,17 +516,17 @@ func (u *userTypeResolver) getEntityTypeAndOU(
 
 // promptUserSelection prompts the user to select a user type from the provided options.
 func (u *userTypeResolver) promptUserSelection(
-	ctx context.Context, execResp *common.ExecutorResponse, options []string) {
+	ctx context.Context, execResp *providers.ExecutorResponse, options []string) {
 	u.logger.Debug(ctx, "Prompting user for user type selection", log.Any("userTypes", options))
 
-	execResp.Status = common.ExecUserInputRequired
+	execResp.Status = providers.ExecUserInputRequired
 
 	// Use the default input configuration
 	inputs := u.GetDefaultInputs()
 	if len(inputs) > 0 {
 		input := inputs[0]
 		input.Options = options
-		execResp.Inputs = []common.Input{input}
+		execResp.Inputs = []providers.Input{input}
 
 		// Forward the input with options to the next node
 		execResp.ForwardedData[common.ForwardedDataKeyInputs] = execResp.Inputs

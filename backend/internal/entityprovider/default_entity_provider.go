@@ -16,6 +16,7 @@
  * under the License.
  */
 
+// Package entityprovider implements the gateway-to-directory boundary for entity operations.
 package entityprovider
 
 import (
@@ -25,6 +26,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type defaultEntityProvider struct {
@@ -57,13 +59,13 @@ func (p *defaultEntityProvider) IdentifyEntity(
 // resolve it on demand via the OU service.
 func (p *defaultEntityProvider) SearchEntities(
 	filters map[string]interface{},
-) ([]*Entity, *EntityProviderError) {
+) ([]*providers.Entity, *EntityProviderError) {
 	ctx := security.WithRuntimeContext(context.Background())
 	entities, err := p.entitySvc.SearchEntities(ctx, filters)
 	if err != nil {
 		return nil, mapEntityError(err)
 	}
-	result := make([]*Entity, 0, len(entities))
+	result := make([]*providers.Entity, 0, len(entities))
 	for i := range entities {
 		result = append(result, toProviderEntity(&entities[i]))
 	}
@@ -73,7 +75,7 @@ func (p *defaultEntityProvider) SearchEntities(
 // GetEntity retrieves an entity by ID.
 func (p *defaultEntityProvider) GetEntity(
 	entityID string,
-) (*Entity, *EntityProviderError) {
+) (*providers.Entity, *EntityProviderError) {
 	ctx := security.WithRuntimeContext(context.Background())
 	result, err := p.entitySvc.GetEntity(ctx, entityID)
 	if err != nil {
@@ -84,8 +86,8 @@ func (p *defaultEntityProvider) GetEntity(
 
 // CreateEntity creates a new entity.
 func (p *defaultEntityProvider) CreateEntity(
-	e *Entity, systemCredentials json.RawMessage,
-) (*Entity, *EntityProviderError) {
+	e *providers.Entity, systemCredentials json.RawMessage,
+) (*providers.Entity, *EntityProviderError) {
 	if e == nil {
 		return nil, NewEntityProviderError(ErrorCodeInvalidRequestFormat, "Invalid request",
 			"Entity cannot be nil")
@@ -101,8 +103,8 @@ func (p *defaultEntityProvider) CreateEntity(
 
 // UpdateEntity updates an existing entity.
 func (p *defaultEntityProvider) UpdateEntity(
-	entityID string, e *Entity,
-) (*Entity, *EntityProviderError) {
+	entityID string, e *providers.Entity,
+) (*providers.Entity, *EntityProviderError) {
 	if e == nil {
 		return nil, NewEntityProviderError(ErrorCodeInvalidRequestFormat, "Invalid request",
 			"Entity cannot be nil")
@@ -183,21 +185,15 @@ func (p *defaultEntityProvider) UpdateSystemCredentials(
 // GetTransitiveEntityGroups retrieves all groups an entity belongs to, including inherited groups.
 func (p *defaultEntityProvider) GetTransitiveEntityGroups(
 	entityID string,
-) ([]EntityGroup, *EntityProviderError) {
+) ([]providers.EntityGroup, *EntityProviderError) {
 	ctx := security.WithRuntimeContext(context.Background())
 	groups, err := p.entitySvc.GetTransitiveEntityGroups(ctx, entityID)
 	if err != nil {
 		return nil, mapEntityError(err)
 	}
 
-	result := make([]EntityGroup, len(groups))
-	for i, g := range groups {
-		result[i] = EntityGroup{
-			ID:   g.ID,
-			Name: g.Name,
-			OUID: g.OUID,
-		}
-	}
+	result := make([]providers.EntityGroup, len(groups))
+	copy(result, groups)
 	return result, nil
 }
 
@@ -216,14 +212,14 @@ func (p *defaultEntityProvider) ValidateEntityIDs(
 // GetEntitiesByIDs retrieves multiple entities by their IDs.
 func (p *defaultEntityProvider) GetEntitiesByIDs(
 	entityIDs []string,
-) ([]Entity, *EntityProviderError) {
+) ([]providers.Entity, *EntityProviderError) {
 	ctx := security.WithRuntimeContext(context.Background())
 	entities, err := p.entitySvc.GetEntitiesByIDs(ctx, entityIDs)
 	if err != nil {
 		return nil, mapEntityError(err)
 	}
 
-	result := make([]Entity, len(entities))
+	result := make([]providers.Entity, len(entities))
 	for i := range entities {
 		result[i] = *toProviderEntity(&entities[i])
 	}
@@ -232,10 +228,10 @@ func (p *defaultEntityProvider) GetEntitiesByIDs(
 
 // GetEntityListCount returns the total number of entities in the given category.
 func (p *defaultEntityProvider) GetEntityListCount(
-	category EntityCategory, filters map[string]interface{},
+	category providers.EntityCategory, filters map[string]interface{},
 ) (int, *EntityProviderError) {
 	ctx := security.WithRuntimeContext(context.Background())
-	count, err := p.entitySvc.GetEntityListCount(ctx, entity.EntityCategory(category), filters)
+	count, err := p.entitySvc.GetEntityListCount(ctx, category, filters)
 	if err != nil {
 		return 0, mapEntityError(err)
 	}
@@ -244,14 +240,14 @@ func (p *defaultEntityProvider) GetEntityListCount(
 
 // GetEntityList returns a page of entities in the given category.
 func (p *defaultEntityProvider) GetEntityList(
-	category EntityCategory, limit, offset int, filters map[string]interface{},
-) ([]Entity, *EntityProviderError) {
+	category providers.EntityCategory, limit, offset int, filters map[string]interface{},
+) ([]providers.Entity, *EntityProviderError) {
 	ctx := security.WithRuntimeContext(context.Background())
-	entities, err := p.entitySvc.GetEntityList(ctx, entity.EntityCategory(category), limit, offset, filters)
+	entities, err := p.entitySvc.GetEntityList(ctx, category, limit, offset, filters)
 	if err != nil {
 		return nil, mapEntityError(err)
 	}
-	result := make([]Entity, len(entities))
+	result := make([]providers.Entity, len(entities))
 	for i := range entities {
 		result[i] = *toProviderEntity(&entities[i])
 	}
@@ -259,15 +255,15 @@ func (p *defaultEntityProvider) GetEntityList(
 }
 
 // toProviderEntity converts an entity service Entity to a provider Entity.
-func toProviderEntity(e *entity.Entity) *Entity {
+func toProviderEntity(e *providers.Entity) *providers.Entity {
 	if e == nil {
 		return nil
 	}
-	return &Entity{
+	return &providers.Entity{
 		ID:               e.ID,
-		Category:         EntityCategory(e.Category.String()),
+		Category:         e.Category,
 		Type:             e.Type,
-		State:            EntityState(e.State.String()),
+		State:            e.State,
 		OUID:             e.OUID,
 		OUHandle:         e.OUHandle,
 		Attributes:       e.Attributes,
@@ -276,15 +272,15 @@ func toProviderEntity(e *entity.Entity) *Entity {
 }
 
 // toServiceEntity converts a provider Entity to an entity service Entity.
-func toServiceEntity(e *Entity) *entity.Entity {
+func toServiceEntity(e *providers.Entity) *providers.Entity {
 	if e == nil {
 		return nil
 	}
-	return &entity.Entity{
+	return &providers.Entity{
 		ID:               e.ID,
-		Category:         entity.EntityCategory(e.Category.String()),
+		Category:         e.Category,
 		Type:             e.Type,
-		State:            entity.EntityState(e.State.String()),
+		State:            e.State,
 		OUID:             e.OUID,
 		Attributes:       e.Attributes,
 		SystemAttributes: e.SystemAttributes,

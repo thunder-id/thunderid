@@ -38,6 +38,7 @@ import {
   FileOutput,
   Group,
   Home,
+  IdCard,
   Languages,
   Layers,
   LayoutGrid,
@@ -47,11 +48,12 @@ import {
   SquareArrowRightEnter,
   UserRoundCog,
   UsersRound,
+  Wallet,
   Workflow,
 } from '@wso2/oxygen-ui-icons-react';
-import {useMemo, type ReactNode} from 'react';
+import {useEffect, useMemo, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
-import {Link as NavigateLink, Outlet, useNavigate} from 'react-router';
+import {Link as NavigateLink, Outlet, useLocation, useNavigate} from 'react-router';
 
 const ICON_BUTTON_SX = {
   minWidth: 40,
@@ -69,6 +71,20 @@ const FULL_BUTTON_SX = {
   whiteSpace: 'nowrap',
   px: 2,
 } as const;
+
+/** A sidebar navigation entry. A leaf has a `path`; a parent has `children`. */
+interface NavRoute {
+  id: string;
+  text: string;
+  icon: JSX.Element;
+  path?: string;
+  children?: NavRoute[];
+}
+
+interface NavCategory {
+  category?: string;
+  routes: NavRoute[];
+}
 
 function SidebarFooterButtons(): ReactNode {
   const {t} = useTranslation();
@@ -144,7 +160,7 @@ export default function DashboardLayout(): ReactNode {
       });
   };
 
-  const appRoutes = useMemo(
+  const appRoutes: NavCategory[] = useMemo(
     () => [
       {
         routes: [
@@ -229,6 +245,25 @@ export default function DashboardLayout(): ReactNode {
             icon: <Layers />,
             path: '/integrations',
           },
+          {
+            id: 'verifiable-credentials',
+            text: t('navigation:pages.verifiableCredentials'),
+            icon: <Wallet />,
+            children: [
+              {
+                id: 'credentials',
+                text: t('navigation:pages.credentials'),
+                icon: <IdCard />,
+                path: '/verifiable-credentials',
+              },
+              {
+                id: 'presentations',
+                text: t('navigation:pages.presentations'),
+                icon: <ShieldCheck />,
+                path: '/verifiable-presentations',
+              },
+            ],
+          },
         ],
       },
       {
@@ -251,6 +286,37 @@ export default function DashboardLayout(): ReactNode {
     ],
     [t],
   );
+
+  const {pathname} = useLocation();
+
+  // Resolve the active leaf item by the longest matching path prefix, so nested
+  // routes (e.g. /verifiable-credentials/create) still highlight their menu item.
+  const activeItem = useMemo((): string | undefined => {
+    const leaves = appRoutes.flatMap((group) => group.routes.flatMap((route) => route.children ?? [route]));
+    const match = leaves
+      .filter(
+        (route): route is NavRoute & {path: string} =>
+          route.path !== undefined && (pathname === route.path || pathname.startsWith(`${route.path}/`)),
+      )
+      .sort((a, b) => b.path.length - a.path.length)[0];
+    return match?.id;
+  }, [appRoutes, pathname]);
+
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
+  const handleToggleExpand = (id: string): void => {
+    setExpandedMenus((prev) => ({...prev, [id]: !prev[id]}));
+  };
+
+  // Auto-expand a parent whose child is the active route.
+  useEffect(() => {
+    appRoutes.forEach((group) => {
+      group.routes.forEach((route) => {
+        if (route.children?.some((child) => child.id === activeItem)) {
+          setExpandedMenus((prev) => (prev[route.id] ? prev : {...prev, [route.id]: true}));
+        }
+      });
+    });
+  }, [appRoutes, activeItem]);
 
   return (
     <AppShell>
@@ -303,17 +369,30 @@ export default function DashboardLayout(): ReactNode {
       </AppShell.Navbar>
 
       <AppShell.Sidebar>
-        <Sidebar>
+        <Sidebar activeItem={activeItem} expandedMenus={expandedMenus} onToggleExpand={handleToggleExpand}>
           <Sidebar.Nav>
             {appRoutes.map((categoryGroup) => (
               <Sidebar.Category key={categoryGroup.category}>
                 {categoryGroup.category && <Sidebar.CategoryLabel>{categoryGroup.category}</Sidebar.CategoryLabel>}
-                {categoryGroup.routes.map((route) => (
-                  <Sidebar.Item key={route.id} id={route.id} link={<NavigateLink to={route.path} />}>
-                    <Sidebar.ItemIcon>{route.icon}</Sidebar.ItemIcon>
-                    <Sidebar.ItemLabel>{route.text}</Sidebar.ItemLabel>
-                  </Sidebar.Item>
-                ))}
+                {categoryGroup.routes.map((route) =>
+                  route.children ? (
+                    <Sidebar.Item key={route.id} id={route.id}>
+                      <Sidebar.ItemIcon>{route.icon}</Sidebar.ItemIcon>
+                      <Sidebar.ItemLabel>{route.text}</Sidebar.ItemLabel>
+                      {route.children.map((child) => (
+                        <Sidebar.Item key={child.id} id={child.id} link={<NavigateLink to={child.path ?? ''} />}>
+                          <Sidebar.ItemIcon>{child.icon}</Sidebar.ItemIcon>
+                          <Sidebar.ItemLabel>{child.text}</Sidebar.ItemLabel>
+                        </Sidebar.Item>
+                      ))}
+                    </Sidebar.Item>
+                  ) : (
+                    <Sidebar.Item key={route.id} id={route.id} link={<NavigateLink to={route.path ?? ''} />}>
+                      <Sidebar.ItemIcon>{route.icon}</Sidebar.ItemIcon>
+                      <Sidebar.ItemLabel>{route.text}</Sidebar.ItemLabel>
+                    </Sidebar.Item>
+                  ),
+                )}
               </Sidebar.Category>
             ))}
           </Sidebar.Nav>

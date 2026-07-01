@@ -6,7 +6,7 @@ package core
 
 import (
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewGraphInterfaceMock creates a new instance of GraphInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -235,7 +235,7 @@ func (_c *GraphInterfaceMock_GetID_Call) RunAndReturn(run func() string) *GraphI
 }
 
 // GetInterceptors provides a mock function for the type GraphInterfaceMock
-func (_mock *GraphInterfaceMock) GetInterceptors(mode common.InterceptorMode) []InterceptorUnitInterface {
+func (_mock *GraphInterfaceMock) GetInterceptors(mode providers.InterceptorMode) []InterceptorUnitInterface {
 	ret := _mock.Called(mode)
 
 	if len(ret) == 0 {
@@ -243,7 +243,7 @@ func (_mock *GraphInterfaceMock) GetInterceptors(mode common.InterceptorMode) []
 	}
 
 	var r0 []InterceptorUnitInterface
-	if returnFunc, ok := ret.Get(0).(func(common.InterceptorMode) []InterceptorUnitInterface); ok {
+	if returnFunc, ok := ret.Get(0).(func(providers.InterceptorMode) []InterceptorUnitInterface); ok {
 		r0 = returnFunc(mode)
 	} else {
 		if ret.Get(0) != nil {
@@ -259,16 +259,16 @@ type GraphInterfaceMock_GetInterceptors_Call struct {
 }
 
 // GetInterceptors is a helper method to define mock.On call
-//   - mode common.InterceptorMode
+//   - mode providers.InterceptorMode
 func (_e *GraphInterfaceMock_Expecter) GetInterceptors(mode interface{}) *GraphInterfaceMock_GetInterceptors_Call {
 	return &GraphInterfaceMock_GetInterceptors_Call{Call: _e.mock.On("GetInterceptors", mode)}
 }
 
-func (_c *GraphInterfaceMock_GetInterceptors_Call) Run(run func(mode common.InterceptorMode)) *GraphInterfaceMock_GetInterceptors_Call {
+func (_c *GraphInterfaceMock_GetInterceptors_Call) Run(run func(mode providers.InterceptorMode)) *GraphInterfaceMock_GetInterceptors_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 common.InterceptorMode
+		var arg0 providers.InterceptorMode
 		if args[0] != nil {
-			arg0 = args[0].(common.InterceptorMode)
+			arg0 = args[0].(providers.InterceptorMode)
 		}
 		run(
 			arg0,
@@ -282,7 +282,7 @@ func (_c *GraphInterfaceMock_GetInterceptors_Call) Return(interceptorUnitInterfa
 	return _c
 }
 
-func (_c *GraphInterfaceMock_GetInterceptors_Call) RunAndReturn(run func(mode common.InterceptorMode) []InterceptorUnitInterface) *GraphInterfaceMock_GetInterceptors_Call {
+func (_c *GraphInterfaceMock_GetInterceptors_Call) RunAndReturn(run func(mode providers.InterceptorMode) []InterceptorUnitInterface) *GraphInterfaceMock_GetInterceptors_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -647,18 +647,18 @@ func (_c *GraphInterfaceMock_GetStartNodeID_Call) RunAndReturn(run func() string
 }
 
 // GetType provides a mock function for the type GraphInterfaceMock
-func (_mock *GraphInterfaceMock) GetType() common.FlowType {
+func (_mock *GraphInterfaceMock) GetType() providers.FlowType {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetType")
 	}
 
-	var r0 common.FlowType
-	if returnFunc, ok := ret.Get(0).(func() common.FlowType); ok {
+	var r0 providers.FlowType
+	if returnFunc, ok := ret.Get(0).(func() providers.FlowType); ok {
 		r0 = returnFunc()
 	} else {
-		r0 = ret.Get(0).(common.FlowType)
+		r0 = ret.Get(0).(providers.FlowType)
 	}
 	return r0
 }
@@ -680,12 +680,56 @@ func (_c *GraphInterfaceMock_GetType_Call) Run(run func()) *GraphInterfaceMock_G
 	return _c
 }
 
-func (_c *GraphInterfaceMock_GetType_Call) Return(flowType common.FlowType) *GraphInterfaceMock_GetType_Call {
+func (_c *GraphInterfaceMock_GetType_Call) Return(flowType providers.FlowType) *GraphInterfaceMock_GetType_Call {
 	_c.Call.Return(flowType)
 	return _c
 }
 
-func (_c *GraphInterfaceMock_GetType_Call) RunAndReturn(run func() common.FlowType) *GraphInterfaceMock_GetType_Call {
+func (_c *GraphInterfaceMock_GetType_Call) RunAndReturn(run func() providers.FlowType) *GraphInterfaceMock_GetType_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetVersion provides a mock function for the type GraphInterfaceMock
+func (_mock *GraphInterfaceMock) GetVersion() int {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetVersion")
+	}
+
+	var r0 int
+	if returnFunc, ok := ret.Get(0).(func() int); ok {
+		r0 = returnFunc()
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	return r0
+}
+
+// GraphInterfaceMock_GetVersion_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetVersion'
+type GraphInterfaceMock_GetVersion_Call struct {
+	*mock.Call
+}
+
+// GetVersion is a helper method to define mock.On call
+func (_e *GraphInterfaceMock_Expecter) GetVersion() *GraphInterfaceMock_GetVersion_Call {
+	return &GraphInterfaceMock_GetVersion_Call{Call: _e.mock.On("GetVersion")}
+}
+
+func (_c *GraphInterfaceMock_GetVersion_Call) Run(run func()) *GraphInterfaceMock_GetVersion_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *GraphInterfaceMock_GetVersion_Call) Return(n int) *GraphInterfaceMock_GetVersion_Call {
+	_c.Call.Return(n)
+	return _c
+}
+
+func (_c *GraphInterfaceMock_GetVersion_Call) RunAndReturn(run func() int) *GraphInterfaceMock_GetVersion_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -832,7 +876,7 @@ func (_c *GraphInterfaceMock_SetEdges_Call) RunAndReturn(run func(edges map[stri
 }
 
 // SetInterceptors provides a mock function for the type GraphInterfaceMock
-func (_mock *GraphInterfaceMock) SetInterceptors(resolved map[common.InterceptorMode][]InterceptorUnitInterface) {
+func (_mock *GraphInterfaceMock) SetInterceptors(resolved map[providers.InterceptorMode][]InterceptorUnitInterface) {
 	_mock.Called(resolved)
 	return
 }
@@ -843,16 +887,16 @@ type GraphInterfaceMock_SetInterceptors_Call struct {
 }
 
 // SetInterceptors is a helper method to define mock.On call
-//   - resolved map[common.InterceptorMode][]InterceptorUnitInterface
+//   - resolved map[providers.InterceptorMode][]InterceptorUnitInterface
 func (_e *GraphInterfaceMock_Expecter) SetInterceptors(resolved interface{}) *GraphInterfaceMock_SetInterceptors_Call {
 	return &GraphInterfaceMock_SetInterceptors_Call{Call: _e.mock.On("SetInterceptors", resolved)}
 }
 
-func (_c *GraphInterfaceMock_SetInterceptors_Call) Run(run func(resolved map[common.InterceptorMode][]InterceptorUnitInterface)) *GraphInterfaceMock_SetInterceptors_Call {
+func (_c *GraphInterfaceMock_SetInterceptors_Call) Run(run func(resolved map[providers.InterceptorMode][]InterceptorUnitInterface)) *GraphInterfaceMock_SetInterceptors_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 map[common.InterceptorMode][]InterceptorUnitInterface
+		var arg0 map[providers.InterceptorMode][]InterceptorUnitInterface
 		if args[0] != nil {
-			arg0 = args[0].(map[common.InterceptorMode][]InterceptorUnitInterface)
+			arg0 = args[0].(map[providers.InterceptorMode][]InterceptorUnitInterface)
 		}
 		run(
 			arg0,
@@ -866,7 +910,7 @@ func (_c *GraphInterfaceMock_SetInterceptors_Call) Return() *GraphInterfaceMock_
 	return _c
 }
 
-func (_c *GraphInterfaceMock_SetInterceptors_Call) RunAndReturn(run func(resolved map[common.InterceptorMode][]InterceptorUnitInterface)) *GraphInterfaceMock_SetInterceptors_Call {
+func (_c *GraphInterfaceMock_SetInterceptors_Call) RunAndReturn(run func(resolved map[providers.InterceptorMode][]InterceptorUnitInterface)) *GraphInterfaceMock_SetInterceptors_Call {
 	_c.Run(run)
 	return _c
 }
@@ -999,6 +1043,46 @@ func (_c *GraphInterfaceMock_SetStartNode_Call) Return(err error) *GraphInterfac
 
 func (_c *GraphInterfaceMock_SetStartNode_Call) RunAndReturn(run func(startNodeID string) error) *GraphInterfaceMock_SetStartNode_Call {
 	_c.Call.Return(run)
+	return _c
+}
+
+// SetVersion provides a mock function for the type GraphInterfaceMock
+func (_mock *GraphInterfaceMock) SetVersion(version int) {
+	_mock.Called(version)
+	return
+}
+
+// GraphInterfaceMock_SetVersion_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetVersion'
+type GraphInterfaceMock_SetVersion_Call struct {
+	*mock.Call
+}
+
+// SetVersion is a helper method to define mock.On call
+//   - version int
+func (_e *GraphInterfaceMock_Expecter) SetVersion(version interface{}) *GraphInterfaceMock_SetVersion_Call {
+	return &GraphInterfaceMock_SetVersion_Call{Call: _e.mock.On("SetVersion", version)}
+}
+
+func (_c *GraphInterfaceMock_SetVersion_Call) Run(run func(version int)) *GraphInterfaceMock_SetVersion_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 int
+		if args[0] != nil {
+			arg0 = args[0].(int)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *GraphInterfaceMock_SetVersion_Call) Return() *GraphInterfaceMock_SetVersion_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *GraphInterfaceMock_SetVersion_Call) RunAndReturn(run func(version int)) *GraphInterfaceMock_SetVersion_Call {
+	_c.Run(run)
 	return _c
 }
 

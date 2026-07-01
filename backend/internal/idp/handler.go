@@ -24,9 +24,11 @@ import (
 	"net/http"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -62,14 +64,14 @@ func (ih *idpHandler) HandleIDPPostRequest(w http.ResponseWriter, r *http.Reques
 	properties, err := getSanitizedProperties(createRequest.Properties)
 	if err != nil {
 		logger.Error(ctx, "Failed to sanitize properties", log.Error(err))
-		writeServiceErrorResponse(ctx, w, &serviceerror.InternalServerError)
+		writeServiceErrorResponse(ctx, w, &tidcommon.InternalServerError)
 		return
 	}
 
-	idpDTO := &IDPDTO{
+	idpDTO := &providers.IDPDTO{
 		Name:                   sysutils.SanitizeString(createRequest.Name),
 		Description:            sysutils.SanitizeString(createRequest.Description),
-		Type:                   IDPType(sysutils.SanitizeString(createRequest.Type)),
+		Type:                   providers.IDPType(sysutils.SanitizeString(createRequest.Type)),
 		Properties:             properties,
 		AttributeConfiguration: sanitizeAttributeConfiguration(createRequest.AttributeConfiguration),
 	}
@@ -83,7 +85,7 @@ func (ih *idpHandler) HandleIDPPostRequest(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		logger.Error(ctx, "Failed to convert IDP to response",
 			log.String("idp", createdIDP.Name), log.Error(err))
-		writeServiceErrorResponse(ctx, w, &serviceerror.InternalServerError)
+		writeServiceErrorResponse(ctx, w, &tidcommon.InternalServerError)
 		return
 	}
 
@@ -138,7 +140,7 @@ func (ih *idpHandler) HandleIDPGetRequest(w http.ResponseWriter, r *http.Request
 	idpResponse, err := getIDPResponse(*idp)
 	if err != nil {
 		logger.Error(ctx, "Failed to convert IDP to response", log.String("idp", idp.Name), log.Error(err))
-		writeServiceErrorResponse(ctx, w, &serviceerror.InternalServerError)
+		writeServiceErrorResponse(ctx, w, &tidcommon.InternalServerError)
 		return
 	}
 
@@ -174,14 +176,14 @@ func (ih *idpHandler) HandleIDPPutRequest(w http.ResponseWriter, r *http.Request
 	properties, err := getSanitizedProperties(updateRequest.Properties)
 	if err != nil {
 		logger.Error(ctx, "Failed to sanitize properties", log.Error(err))
-		writeServiceErrorResponse(ctx, w, &serviceerror.InternalServerError)
+		writeServiceErrorResponse(ctx, w, &tidcommon.InternalServerError)
 		return
 	}
 
-	idpDTO := &IDPDTO{
+	idpDTO := &providers.IDPDTO{
 		Name:                   sysutils.SanitizeString(updateRequest.Name),
 		Description:            sysutils.SanitizeString(updateRequest.Description),
-		Type:                   IDPType(sysutils.SanitizeString(updateRequest.Type)),
+		Type:                   providers.IDPType(sysutils.SanitizeString(updateRequest.Type)),
 		Properties:             properties,
 		AttributeConfiguration: sanitizeAttributeConfiguration(updateRequest.AttributeConfiguration),
 	}
@@ -196,7 +198,7 @@ func (ih *idpHandler) HandleIDPPutRequest(w http.ResponseWriter, r *http.Request
 	idpResponse, err := getIDPResponse(*idp)
 	if err != nil {
 		logger.Error(ctx, "Failed to convert IDP to response", log.String("idp", idp.Name), log.Error(err))
-		writeServiceErrorResponse(ctx, w, &serviceerror.InternalServerError)
+		writeServiceErrorResponse(ctx, w, &tidcommon.InternalServerError)
 		return
 	}
 
@@ -227,9 +229,9 @@ func (ih *idpHandler) HandleIDPDeleteRequest(w http.ResponseWriter, r *http.Requ
 }
 
 // writeServiceErrorResponse writes the appropriate HTTP error response based on the service error.
-func writeServiceErrorResponse(ctx context.Context, w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
+func writeServiceErrorResponse(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.ServiceError) {
 	var statusCode int
-	if svcErr.Type == serviceerror.ClientErrorType {
+	if svcErr.Type == tidcommon.ClientErrorType {
 		statusCode = getClientErrorStatusCode(svcErr.Code)
 	} else {
 		statusCode = http.StatusInternalServerError
@@ -258,27 +260,27 @@ func getClientErrorStatusCode(errorCode string) int {
 
 // sanitizeAttributeConfiguration sanitizes the resolved user type and each user type's claim mappings
 // in the attribute configuration. Returns nil when no profile is provided.
-func sanitizeAttributeConfiguration(profile *AttributeConfiguration) *AttributeConfiguration {
+func sanitizeAttributeConfiguration(profile *providers.AttributeConfiguration) *providers.AttributeConfiguration {
 	if profile == nil {
 		return nil
 	}
-	sanitized := &AttributeConfiguration{}
+	sanitized := &providers.AttributeConfiguration{}
 	if profile.UserTypeResolution != nil {
-		sanitized.UserTypeResolution = &UserTypeResolution{
+		sanitized.UserTypeResolution = &providers.UserTypeResolution{
 			Default: sysutils.SanitizeString(profile.UserTypeResolution.Default),
 		}
 	}
 	if len(profile.UserTypeAttributeMappings) > 0 {
 		sanitized.UserTypeAttributeMappings = make(
-			[]UserTypeAttributeMapping, 0, len(profile.UserTypeAttributeMappings))
+			[]providers.UserTypeAttributeMapping, 0, len(profile.UserTypeAttributeMappings))
 		for _, entry := range profile.UserTypeAttributeMappings {
-			sanitizedEntry := UserTypeAttributeMapping{
+			sanitizedEntry := providers.UserTypeAttributeMapping{
 				UserType: sysutils.SanitizeString(entry.UserType),
 			}
 			if len(entry.Attributes) > 0 {
-				sanitizedEntry.Attributes = make([]AttributeMapping, 0, len(entry.Attributes))
+				sanitizedEntry.Attributes = make([]providers.AttributeMapping, 0, len(entry.Attributes))
 				for _, m := range entry.Attributes {
-					sanitizedEntry.Attributes = append(sanitizedEntry.Attributes, AttributeMapping{
+					sanitizedEntry.Attributes = append(sanitizedEntry.Attributes, providers.AttributeMapping{
 						ExternalAttribute: sysutils.SanitizeString(m.ExternalAttribute),
 						LocalAttribute:    sysutils.SanitizeString(m.LocalAttribute),
 					})
@@ -309,7 +311,7 @@ func getSanitizedProperties(propDTOs []cmodels.PropertyDTO) ([]cmodels.Property,
 }
 
 // getIDPResponse constructs the response for a identity provider.
-func getIDPResponse(idp IDPDTO) (idpResponse, error) {
+func getIDPResponse(idp providers.IDPDTO) (idpResponse, error) {
 	returnIDP := idpResponse{
 		ID:                     idp.ID,
 		Name:                   idp.Name,

@@ -22,8 +22,9 @@ import (
 	"context"
 	"net/http"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -93,7 +94,7 @@ func (h *flowMetaHandler) HandleGetFlowMetadata(w http.ResponseWriter, r *http.R
 }
 
 // handleServiceError converts service errors to appropriate HTTP responses.
-func handleServiceError(ctx context.Context, w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
+func handleServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.ServiceError) {
 	errResp := apierror.ErrorResponse{
 		Code:        svcErr.Code,
 		Message:     svcErr.Error,
@@ -101,7 +102,7 @@ func handleServiceError(ctx context.Context, w http.ResponseWriter, svcErr *serv
 	}
 
 	statusCode := http.StatusInternalServerError
-	if svcErr.Type == serviceerror.ClientErrorType {
+	if svcErr.Type == tidcommon.ClientErrorType {
 		// Determine specific client error status code
 		if svcErr.Code == ErrorApplicationNotFound.Code || svcErr.Code == ErrorOUNotFound.Code {
 			statusCode = http.StatusNotFound

@@ -22,7 +22,6 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/thunder-id/thunderid/internal/actorprovider"
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -33,6 +32,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the userinfo handler and registers its routes.
@@ -42,7 +42,7 @@ func Initialize(
 	jweService jwe.JWEServiceInterface,
 	resolver *jwksresolver.Resolver,
 	tokenValidator tokenservice.TokenValidatorInterface,
-	actorProvider actorprovider.ActorProviderInterface,
+	actorProvider providers.ActorProvider,
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	dpopVerifier dpop.VerifierInterface,

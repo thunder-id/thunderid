@@ -24,8 +24,11 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -41,8 +44,8 @@ type PromptNodeInterface interface {
 	GetMessage() string
 	SetMessage(message string)
 	IsDisplayOnly() bool
-	GetVariant() common.NodeVariant
-	SetVariant(variant common.NodeVariant)
+	GetVariant() providers.NodeVariant
+	SetVariant(variant providers.NodeVariant)
 }
 
 // promptNode represents a node that prompts for user input/ action in the flow execution.
@@ -52,7 +55,7 @@ type promptNode struct {
 	meta     interface{}
 	nextNode string
 	message  string
-	variant  common.NodeVariant
+	variant  providers.NodeVariant
 	logger   *log.Logger
 }
 
@@ -76,12 +79,12 @@ func newPromptNode(id string, properties map[string]interface{},
 }
 
 // Execute executes the prompt node logic based on the current context.
-func (n *promptNode) Execute(ctx *NodeContext) (*common.NodeResponse, *serviceerror.ServiceError) {
+func (n *promptNode) Execute(ctx *providers.NodeContext) (*common.NodeResponse, *tidcommon.ServiceError) {
 	logger := n.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing prompt node")
 
 	nodeResp := &common.NodeResponse{
-		Inputs:         make([]common.Input, 0),
+		Inputs:         make([]providers.Input, 0),
 		AdditionalData: make(map[string]string),
 		Actions:        make([]common.Action, 0),
 		RuntimeData:    make(map[string]string),
@@ -90,7 +93,7 @@ func (n *promptNode) Execute(ctx *NodeContext) (*common.NodeResponse, *serviceer
 	// Check if this prompt is handling a failure
 	if ctx.RuntimeData != nil {
 		if jsonStr, exists := ctx.RuntimeData["failureReasonJSON"]; exists && jsonStr != "" {
-			var errResp serviceerror.ServiceError
+			var errResp tidcommon.ServiceError
 			if err := json.Unmarshal([]byte(jsonStr), &errResp); err == nil {
 				nodeResp.Error = &errResp
 				logger.Debug(ctx.Context, "Prompt node is handling a failure",
@@ -125,7 +128,7 @@ func (n *promptNode) Execute(ctx *NodeContext) (*common.NodeResponse, *serviceer
 		return nodeResp, nil
 	}
 
-	if n.variant == common.NodeVariantLoginOptions {
+	if n.variant == providers.NodeVariantLoginOptions {
 		return n.executeLoginOptions(ctx, nodeResp)
 	}
 
@@ -178,7 +181,7 @@ func (n *promptNode) Execute(ctx *NodeContext) (*common.NodeResponse, *serviceer
 // applyValidationFailureRePrompt re-validates the current submission. When any rule
 // fails, it populates nodeResp with the initial-prompt field set and returns true;
 // otherwise it returns false and leaves nodeResp unchanged.
-func (n *promptNode) applyValidationFailureRePrompt(ctx *NodeContext, nodeResp *common.NodeResponse) bool {
+func (n *promptNode) applyValidationFailureRePrompt(ctx *providers.NodeContext, nodeResp *common.NodeResponse) bool {
 	actionInputs := n.getInputsForCurrentAction(ctx.CurrentAction)
 	fieldErrors := validateInputValues(actionInputs, ctx.UserInputs)
 	if len(fieldErrors) == 0 {
@@ -201,7 +204,7 @@ func (n *promptNode) applyValidationFailureRePrompt(ctx *NodeContext, nodeResp *
 	// Rebuild the initial-prompt set: the action's inputs minus those pre-satisfied
 	// via RuntimeData or ForwardedData. UserInputs holds the current submission and
 	// is excluded here because it was empty when the initial prompt was rendered.
-	rePromptInputs := make([]common.Input, 0, len(actionInputs))
+	rePromptInputs := make([]providers.Input, 0, len(actionInputs))
 	for _, input := range actionInputs {
 		if _, inRuntime := ctx.RuntimeData[input.Identifier]; inRuntime {
 			continue
@@ -246,8 +249,8 @@ func (n *promptNode) findActionByRef(ref string) *common.Action {
 }
 
 // executeLoginOptions handles the LOGIN_OPTIONS variant.
-func (n *promptNode) executeLoginOptions(ctx *NodeContext,
-	nodeResp *common.NodeResponse) (*common.NodeResponse, *serviceerror.ServiceError) {
+func (n *promptNode) executeLoginOptions(ctx *providers.NodeContext,
+	nodeResp *common.NodeResponse) (*common.NodeResponse, *tidcommon.ServiceError) {
 	logger := n.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	authClassToAction := n.authClassToActionMapping()
 
@@ -309,8 +312,8 @@ func (n *promptNode) executeLoginOptions(ctx *NodeContext,
 }
 
 // finalizeLoginOptionsAction completes the chooser once an action is selected and inputs are satisfied.
-func (n *promptNode) finalizeLoginOptionsAction(ctx *NodeContext, nodeResp *common.NodeResponse,
-	authClassToAction map[string]string) (*common.NodeResponse, *serviceerror.ServiceError) {
+func (n *promptNode) finalizeLoginOptionsAction(ctx *providers.NodeContext, nodeResp *common.NodeResponse,
+	authClassToAction map[string]string) (*common.NodeResponse, *tidcommon.ServiceError) {
 	logger := n.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	nextNode := n.getNextNodeForActionRef(ctx.Context, ctx.CurrentAction)
 	if nextNode == "" {
@@ -340,7 +343,7 @@ func (n *promptNode) finalizeLoginOptionsAction(ctx *NodeContext, nodeResp *comm
 
 // applyMetaForLoginOptions sets verbose-mode meta on the response, reordering it to match
 // effectivePrompts when provided.
-func (n *promptNode) applyMetaForLoginOptions(ctx *NodeContext, nodeResp *common.NodeResponse,
+func (n *promptNode) applyMetaForLoginOptions(ctx *providers.NodeContext, nodeResp *common.NodeResponse,
 	effectivePrompts []common.Prompt) {
 	if !ctx.Verbose || n.GetMeta() == nil {
 		return
@@ -400,12 +403,12 @@ func (n *promptNode) IsDisplayOnly() bool {
 }
 
 // GetVariant returns the variant of the prompt node
-func (n *promptNode) GetVariant() common.NodeVariant {
+func (n *promptNode) GetVariant() providers.NodeVariant {
 	return n.variant
 }
 
 // SetVariant sets the variant of the prompt node
-func (n *promptNode) SetVariant(variant common.NodeVariant) {
+func (n *promptNode) SetVariant(variant providers.NodeVariant) {
 	n.variant = variant
 }
 
@@ -413,7 +416,7 @@ func (n *promptNode) SetVariant(variant common.NodeVariant) {
 // It checks for missing required inputs, validates action selection, attempts auto-selection
 // if applicable, and enriches inputs with dynamic data from ForwardedData.
 // Returns true if all required inputs are available and a valid action is selected, otherwise false.
-func (n *promptNode) resolvePromptInputs(ctx *NodeContext, nodeResp *common.NodeResponse) bool {
+func (n *promptNode) resolvePromptInputs(ctx *providers.NodeContext, nodeResp *common.NodeResponse) bool {
 	// Check for required inputs and collect missing ones
 	hasAllInputs := n.hasRequiredInputs(ctx, nodeResp)
 
@@ -440,11 +443,11 @@ func (n *promptNode) resolvePromptInputs(ctx *NodeContext, nodeResp *common.Node
 
 // hasRequiredInputs checks if all required inputs are available in the context. Adds missing
 // inputs to the node response. Returns true if all required inputs are available, otherwise false.
-func (n *promptNode) hasRequiredInputs(ctx *NodeContext, nodeResp *common.NodeResponse) bool {
+func (n *promptNode) hasRequiredInputs(ctx *providers.NodeContext, nodeResp *common.NodeResponse) bool {
 	logger := n.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	if nodeResp.Inputs == nil {
-		nodeResp.Inputs = make([]common.Input, 0)
+		nodeResp.Inputs = make([]providers.Input, 0)
 	}
 
 	// Check if an action is selected
@@ -467,8 +470,8 @@ func (n *promptNode) hasRequiredInputs(ctx *NodeContext, nodeResp *common.NodeRe
 
 // appendMissingInputs appends the missing prompt inputs to the node response.
 // Returns true when the prompt should pause for user input.
-func (n *promptNode) appendMissingInputs(ctx *NodeContext, nodeResp *common.NodeResponse,
-	requiredInputs []common.Input) bool {
+func (n *promptNode) appendMissingInputs(ctx *providers.NodeContext, nodeResp *common.NodeResponse,
+	requiredInputs []providers.Input) bool {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	missing := collectMissingInputs(ctx, GetPresentedOptionalInputs(ctx.RuntimeData), requiredInputs, logger)
@@ -479,7 +482,7 @@ func (n *promptNode) appendMissingInputs(ctx *NodeContext, nodeResp *common.Node
 // enrichInputsFromForwardedData enriches the inputs in the node response with dynamic data
 // from ForwardedData. Inputs present in ForwardedData but absent from the node response are
 // appended (dynamically derived inputs). Options are propagated for all matched inputs.
-func (n *promptNode) enrichInputsFromForwardedData(ctx *NodeContext, nodeResp *common.NodeResponse) {
+func (n *promptNode) enrichInputsFromForwardedData(ctx *providers.NodeContext, nodeResp *common.NodeResponse) {
 	if ctx.ForwardedData == nil {
 		return
 	}
@@ -490,11 +493,11 @@ func (n *promptNode) enrichInputsFromForwardedData(ctx *NodeContext, nodeResp *c
 		return
 	}
 
-	// Type assert to []common.Input.
-	forwardedInputs, ok := forwardedInputsData.([]common.Input)
+	// Type assert to []providers.Input.
+	forwardedInputs, ok := forwardedInputsData.([]providers.Input)
 	if !ok {
 		n.logger.Debug(ctx.Context,
-			"ForwardedData contains 'inputs' key but value is not []common.Input, skipping enrichment")
+			"ForwardedData contains 'inputs' key but value is not []providers.Input, skipping enrichment")
 		return
 	}
 
@@ -513,14 +516,14 @@ func (n *promptNode) enrichInputsFromForwardedData(ctx *NodeContext, nodeResp *c
 				n.logger.Debug(ctx.Context, "Updated input required flag from ForwardedData",
 					log.String("identifier", fwdInput.Identifier))
 			}
-			if fwdInput.Type == common.InputTypePassword &&
-				nodeResp.Inputs[idx].Type != common.InputTypePassword {
-				nodeResp.Inputs[idx].Type = common.InputTypePassword
+			if fwdInput.Type == providers.InputTypePassword &&
+				nodeResp.Inputs[idx].Type != providers.InputTypePassword {
+				nodeResp.Inputs[idx].Type = providers.InputTypePassword
 				n.logger.Debug(ctx.Context, "Updated input type to password from ForwardedData",
 					log.String("identifier", fwdInput.Identifier))
 			}
-			if fwdInput.Type == common.InputTypeSelect &&
-				nodeResp.Inputs[idx].Type == common.InputTypeSelect &&
+			if fwdInput.Type == providers.InputTypeSelect &&
+				nodeResp.Inputs[idx].Type == providers.InputTypeSelect &&
 				len(fwdInput.Options) > 0 {
 				nodeResp.Inputs[idx].Options = fwdInput.Options
 				n.logger.Debug(ctx.Context, "Enriched input with options from ForwardedData",
@@ -550,7 +553,7 @@ func (n *promptNode) enrichInputsFromForwardedData(ctx *NodeContext, nodeResp *c
 // hasSelectedAction checks if a valid action has been selected when actions are defined. Adds actions
 // to the response if they haven't been selected yet.
 // Returns true if an action is already selected or no actions are defined, otherwise false.
-func (n *promptNode) hasSelectedAction(ctx *NodeContext, nodeResp *common.NodeResponse) bool {
+func (n *promptNode) hasSelectedAction(ctx *providers.NodeContext, nodeResp *common.NodeResponse) bool {
 	actions := n.getAllActions()
 	if len(actions) == 0 {
 		return true
@@ -575,7 +578,7 @@ func (n *promptNode) hasSelectedAction(ctx *NodeContext, nodeResp *common.NodeRe
 // (confirmation-only prompts), we should not auto-select as the prompt is meant to wait for
 // explicit user action.
 // Returns true if an action was auto-selected, otherwise false.
-func (n *promptNode) tryAutoSelectSingleAction(ctx *NodeContext) bool {
+func (n *promptNode) tryAutoSelectSingleAction(ctx *providers.NodeContext) bool {
 	actions := n.getAllActions()
 	allInputs := n.getAllInputs()
 
@@ -595,7 +598,7 @@ func (n *promptNode) tryAutoSelectSingleAction(ctx *NodeContext) bool {
 // the given actionRef. When no action is selected, or no prompt matches the given
 // ref, it falls back to getAllInputs() — preserving the historical behavior for
 // single-prompt nodes and the no-action-selected path.
-func (n *promptNode) getInputsForCurrentAction(actionRef string) []common.Input {
+func (n *promptNode) getInputsForCurrentAction(actionRef string) []providers.Input {
 	if actionRef == "" {
 		return n.getAllInputs()
 	}
@@ -608,9 +611,9 @@ func (n *promptNode) getInputsForCurrentAction(actionRef string) []common.Input 
 }
 
 // getAllInputs returns all unique inputs from prompts, deduplicated by Identifier.
-func (n *promptNode) getAllInputs() []common.Input {
+func (n *promptNode) getAllInputs() []providers.Input {
 	seen := make(map[string]struct{})
-	inputs := make([]common.Input, 0)
+	inputs := make([]providers.Input, 0)
 	for _, prompt := range n.prompts {
 		for _, input := range prompt.Inputs {
 			if _, exists := seen[input.Identifier]; !exists {
@@ -660,7 +663,7 @@ func (n *promptNode) getActionTypeForRef(actionRef string) string {
 // trimMetaToRequestedInputs returns a copy of meta with the "components" list trimmed to only
 // include components matching the given inputs and actions (plus structural components like TEXT
 // and BLOCK containers that are not themselves inputs or actions).
-func (n *promptNode) trimMetaToRequestedInputs(meta interface{}, inputs []common.Input,
+func (n *promptNode) trimMetaToRequestedInputs(meta interface{}, inputs []providers.Input,
 	actions []common.Action) interface{} {
 	metaMap, ok := meta.(map[string]interface{})
 	if !ok {
@@ -755,7 +758,7 @@ func cloneBlockWithChildren(compMap map[string]interface{}, children []interface
 // components and newly synthesized component definitions for inputs absent from
 // the meta tree.
 func (n *promptNode) buildSyntheticComponentList(
-	inputs []common.Input,
+	inputs []providers.Input,
 	metaCompByRef map[string]map[string]interface{},
 	nodeInputRefs map[string]struct{},
 ) (synthetic []interface{}, promotions map[string]map[string]interface{}) {
@@ -770,7 +773,7 @@ func (n *promptNode) buildSyntheticComponentList(
 		}
 		if inMeta {
 			needsRequired := input.Required && comp["required"] != true
-			needsPassword := input.Type == common.InputTypePassword && comp["type"] != common.InputTypePassword
+			needsPassword := input.Type == providers.InputTypePassword && comp["type"] != providers.InputTypePassword
 			if needsRequired || needsPassword {
 				cloned := make(map[string]interface{}, len(comp))
 				for k, v := range comp {
@@ -780,7 +783,7 @@ func (n *promptNode) buildSyntheticComponentList(
 					cloned["required"] = true
 				}
 				if needsPassword {
-					cloned["type"] = common.InputTypePassword
+					cloned["type"] = providers.InputTypePassword
 				}
 				promotions[ref] = cloned
 			}
@@ -795,7 +798,7 @@ func (n *promptNode) buildSyntheticComponentList(
 		}
 		inputType := input.Type
 		if inputType == "" {
-			inputType = common.InputTypeText
+			inputType = providers.InputTypeText
 		}
 		synthetic = append(synthetic, map[string]interface{}{
 			"id":       input.Identifier,
@@ -860,7 +863,7 @@ func applyComponentPromotions(comps []interface{}, promotions map[string]map[str
 // component is created and inserted into the first BLOCK before any ACTION. If no BLOCK
 // exists, a new one is appended.
 // The label uses DisplayName when set, falling back to Identifier.
-func (n *promptNode) appendSyntheticMetaComponents(trimmedMeta interface{}, inputs []common.Input) interface{} {
+func (n *promptNode) appendSyntheticMetaComponents(trimmedMeta interface{}, inputs []providers.Input) interface{} {
 	metaMap, ok := trimmedMeta.(map[string]interface{})
 	if !ok {
 		return trimmedMeta

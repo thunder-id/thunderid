@@ -109,6 +109,21 @@ type I18nMessage struct {
 	DefaultValue string `json:"defaultValue,omitempty"`
 }
 
+func (m *I18nMessage) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		m.DefaultValue = s
+		return nil
+	}
+	type alias I18nMessage
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	*m = I18nMessage(a)
+	return nil
+}
+
 // ErrorResponse represents an error response from the API
 type ErrorResponse struct {
 	Code        string      `json:"code"`

@@ -22,13 +22,13 @@ import (
 	"errors"
 	"fmt"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entitytype"
-	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/ou"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -38,23 +38,23 @@ const (
 
 // ouExecutor is responsible for creating organizational units (OUs) within the system.
 type ouExecutor struct {
-	core.ExecutorInterface
+	providers.Executor
 	ouService         ou.OrganizationUnitServiceInterface
-	authnProvider     authnprovidermgr.AuthnProviderManagerInterface
+	authnProvider     providers.AuthnProviderManager
 	entityTypeService entitytype.EntityTypeServiceInterface
 	logger            *log.Logger
 }
 
-var _ core.ExecutorInterface = (*ouExecutor)(nil)
+var _ providers.Executor = (*ouExecutor)(nil)
 
 // newOUExecutor creates a new instance of OUExecutor with the given parameters.
 func newOUExecutor(
 	flowFactory core.FlowFactoryInterface,
 	ouService ou.OrganizationUnitServiceInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 ) *ouExecutor {
-	defaultInputs := []common.Input{
+	defaultInputs := []providers.Input{
 		{
 			Identifier: userInputOuName,
 			Type:       "string",
@@ -70,11 +70,11 @@ func newOUExecutor(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, ouExecLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameOUCreation))
 
-	base := flowFactory.CreateExecutor(ExecutorNameOUCreation, common.ExecutorTypeRegistration,
-		defaultInputs, []common.Input{})
+	base := flowFactory.CreateExecutor(ExecutorNameOUCreation, providers.ExecutorTypeRegistration,
+		defaultInputs, []providers.Input{})
 
 	return &ouExecutor{
-		ExecutorInterface: base,
+		Executor:          base,
 		ouService:         ouService,
 		authnProvider:     authnProvider,
 		entityTypeService: entityTypeService,
@@ -83,11 +83,11 @@ func newOUExecutor(
 }
 
 // Execute executes the ou creation logic.
-func (o *ouExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+func (o *ouExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing OU creation executor")
 
-	execResp := &common.ExecutorResponse{
+	execResp := &providers.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 		AuthUser:       ctx.AuthUser,
@@ -95,7 +95,7 @@ func (o *ouExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, e
 
 	if !o.ValidatePrerequisites(ctx, execResp, o.authnProvider) {
 		logger.Debug(ctx.Context, "Prerequisites validation failed for OU creation")
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrOUCreationPrereqFailed
 		return execResp, nil
 	}
@@ -107,7 +107,7 @@ func (o *ouExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, e
 		if svcErr != nil {
 			if svcErr.Code != authnprovidermgr.ErrorUserNotFound.Code &&
 				svcErr.Code != authnprovidermgr.ErrorAmbiguousUser.Code {
-				execResp.Status = common.ExecFailure
+				execResp.Status = providers.ExecFailure
 				execResp.Error = &ErrFailedToIdentifyUser
 				return execResp, nil
 			}
@@ -116,14 +116,14 @@ func (o *ouExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, e
 		ctx.AuthUser = authUser
 		if entityRef != nil {
 			logger.Debug(ctx.Context, "User already has an entity reference, skipping OU creation")
-			execResp.Status = common.ExecComplete
+			execResp.Status = providers.ExecComplete
 			return execResp, nil
 		}
 	}
 
 	if !o.HasRequiredInputs(ctx, execResp) {
 		logger.Debug(ctx.Context, "Required inputs for OU creation is not provided")
-		execResp.Status = common.ExecUserInputRequired
+		execResp.Status = providers.ExecUserInputRequired
 		return execResp, nil
 	}
 
@@ -136,8 +136,8 @@ func (o *ouExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, e
 	}
 	createdOU, svcErr := o.ouService.CreateOrganizationUnit(ctx.Context, ouRequest)
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ClientErrorType {
-			execResp.Status = common.ExecUserInputRequired
+		if svcErr.Type == tidcommon.ClientErrorType {
+			execResp.Status = providers.ExecUserInputRequired
 			execResp.Inputs = o.GetRequiredInputs(ctx)
 
 			switch svcErr.Code {
@@ -146,7 +146,7 @@ func (o *ouExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, e
 			case ou.ErrorOrganizationUnitHandleConflict.Code:
 				execResp.Error = &ErrOUHandleConflict
 			default:
-				execResp.Error = serviceerror.CustomServiceError(ErrOUCreationFailed, i18ncore.I18nMessage{
+				execResp.Error = tidcommon.CustomServiceError(ErrOUCreationFailed, tidcommon.I18nMessage{
 					Key:          ErrOUCreationFailed.ErrorDescription.Key,
 					DefaultValue: "Failed to create organization unit:" + svcErr.ErrorDescription.DefaultValue,
 				})
@@ -170,13 +170,15 @@ func (o *ouExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, e
 	execResp.RuntimeData[ouIDKey] = createdOU.ID
 
 	logger.Debug(ctx.Context, "Organization unit created successfully", log.String(ouIDKey, createdOU.ID))
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 	return execResp, nil
 }
 
 // getOrganizationUnitRequest constructs an OrganizationUnitRequest from the NodeContext.
-func (o *ouExecutor) getOrganizationUnitRequest(ctx *core.NodeContext) (ou.OrganizationUnitRequestWithID, error) {
-	ouRequest := ou.OrganizationUnitRequestWithID{
+func (o *ouExecutor) getOrganizationUnitRequest(
+	ctx *providers.NodeContext,
+) (providers.OrganizationUnitRequestWithID, error) {
+	ouRequest := providers.OrganizationUnitRequestWithID{
 		Name:        ctx.UserInputs[userInputOuName],
 		Handle:      ctx.UserInputs[userInputOuHandle],
 		Description: ctx.UserInputs[userInputOuDesc],
@@ -207,7 +209,7 @@ func (o *ouExecutor) getOrganizationUnitRequest(ctx *core.NodeContext) (ou.Organ
 }
 
 // getDefaultOUID resolves the default OU ID from the application's allowed user types.
-func (o *ouExecutor) getDefaultOUID(ctx *core.NodeContext) (string, error) {
+func (o *ouExecutor) getDefaultOUID(ctx *providers.NodeContext) (string, error) {
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	if len(ctx.Application.AllowedUserTypes) == 0 {

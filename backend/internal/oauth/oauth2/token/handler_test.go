@@ -31,11 +31,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type TokenHandlerTestSuite struct {
@@ -65,7 +65,7 @@ func (suite *TokenHandlerTestSuite) buildRequest(formData url.Values) *http.Requ
 
 // withClientContext injects a fake OAuth client info into the request context.
 func (suite *TokenHandlerTestSuite) withClientContext(
-	req *http.Request, oauthApp *inboundmodel.OAuthClient,
+	req *http.Request, oauthApp *providers.OAuthClient,
 ) *http.Request {
 	clientInfo := &clientauth.OAuthClientInfo{
 		ClientID:     "test-client-id",
@@ -147,7 +147,7 @@ func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_ServiceErrors() {
 		suite.Run(tc.name, func() {
 			mockSvc := NewTokenServiceInterfaceMock(suite.T())
 			handler := newTokenHandler(mockSvc, nil).(*tokenHandler)
-			mockApp := &inboundmodel.OAuthClient{ClientID: "test-client-id"}
+			mockApp := &providers.OAuthClient{ClientID: "test-client-id"}
 			formData := url.Values{}
 			formData.Set("grant_type", tc.grantType)
 			req := suite.withClientContext(suite.buildRequest(formData), mockApp)
@@ -173,7 +173,7 @@ func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_ServiceErrors() {
 
 func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_ServiceErrorServerError() {
 	handler := suite.newHandler()
-	mockApp := &inboundmodel.OAuthClient{ClientID: "test-client-id"}
+	mockApp := &providers.OAuthClient{ClientID: "test-client-id"}
 	formData := url.Values{}
 	formData.Set("grant_type", "authorization_code")
 	formData.Set("code", "test-code")
@@ -198,7 +198,7 @@ func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_ServiceErrorServerErr
 
 func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_Success() {
 	handler := suite.newHandler()
-	mockApp := &inboundmodel.OAuthClient{ClientID: "test-client-id"}
+	mockApp := &providers.OAuthClient{ClientID: "test-client-id"}
 	formData := url.Values{}
 	formData.Set("grant_type", "authorization_code")
 	formData.Set("code", "test-code")
@@ -234,7 +234,7 @@ func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_Success() {
 
 func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_MultipleDPoPHeaders_Rejected() {
 	handler := suite.newHandler()
-	mockApp := &inboundmodel.OAuthClient{ClientID: "test-client-id"}
+	mockApp := &providers.OAuthClient{ClientID: "test-client-id"}
 	formData := url.Values{}
 	formData.Set("grant_type", "authorization_code")
 	req := suite.withClientContext(suite.buildRequest(formData), mockApp)
@@ -254,7 +254,7 @@ func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_MultipleDPoPHeaders_R
 
 func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_SingleDPoPHeader_PropagatedToService() {
 	handler := suite.newHandler()
-	mockApp := &inboundmodel.OAuthClient{ClientID: "test-client-id"}
+	mockApp := &providers.OAuthClient{ClientID: "test-client-id"}
 	formData := url.Values{}
 	formData.Set("grant_type", "authorization_code")
 	formData.Set("code", "test-code")
@@ -277,9 +277,9 @@ func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_SingleDPoPHeader_Prop
 
 func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_SuccessWithIssuedTokenType() {
 	handler := suite.newHandler()
-	mockApp := &inboundmodel.OAuthClient{ClientID: "test-client-id"}
+	mockApp := &providers.OAuthClient{ClientID: "test-client-id"}
 	formData := url.Values{}
-	formData.Set("grant_type", string(constants.GrantTypeTokenExchange))
+	formData.Set("grant_type", string(providers.GrantTypeTokenExchange))
 	formData.Set("requested_token_type", string(constants.TokenTypeIdentifierAccessToken))
 	req := suite.withClientContext(suite.buildRequest(formData), mockApp)
 

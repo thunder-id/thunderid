@@ -62,24 +62,11 @@ func DecodeHeader(token string) (map[string]interface{}, error) {
 
 // MapAlgorithmToSignAlg maps JWS alg header values to internal SignAlgorithm.
 func MapAlgorithmToSignAlg(jwsAlg Algorithm) (cryptolib.SignAlgorithm, error) {
-	switch jwsAlg {
-	case RS256:
-		return cryptolib.RSASHA256, nil
-	case RS512:
-		return cryptolib.RSASHA512, nil
-	case PS256:
-		return cryptolib.RSAPSSSHA256, nil
-	case ES256:
-		return cryptolib.ECDSASHA256, nil
-	case ES384:
-		return cryptolib.ECDSASHA384, nil
-	case ES512:
-		return cryptolib.ECDSASHA512, nil
-	case EdDSA:
-		return cryptolib.ED25519, nil
-	default:
+	signAlg, err := cryptolib.SignAlgorithmFor(cryptolib.Algorithm(jwsAlg))
+	if err != nil {
 		return "", fmt.Errorf("unsupported JWS alg: %s", jwsAlg)
 	}
+	return signAlg, nil
 }
 
 // JWKToPublicKey converts a JWK map to a crypto.PublicKey supporting RSA, EC, and Ed25519.

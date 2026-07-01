@@ -8,9 +8,9 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewSystemAuthorizationServiceInterfaceMock creates a new instance of SystemAuthorizationServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -41,7 +41,7 @@ func (_m *SystemAuthorizationServiceInterfaceMock) EXPECT() *SystemAuthorization
 }
 
 // GetAccessibleResources provides a mock function for the type SystemAuthorizationServiceInterfaceMock
-func (_mock *SystemAuthorizationServiceInterfaceMock) GetAccessibleResources(ctx context.Context, action security.Action, resourceType security.ResourceType) (*sysauthz.AccessibleResources, *serviceerror.ServiceError) {
+func (_mock *SystemAuthorizationServiceInterfaceMock) GetAccessibleResources(ctx context.Context, action security.Action, resourceType security.ResourceType) (*sysauthz.AccessibleResources, *common.ServiceError) {
 	ret := _mock.Called(ctx, action, resourceType)
 
 	if len(ret) == 0 {
@@ -49,8 +49,8 @@ func (_mock *SystemAuthorizationServiceInterfaceMock) GetAccessibleResources(ctx
 	}
 
 	var r0 *sysauthz.AccessibleResources
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, security.Action, security.ResourceType) (*sysauthz.AccessibleResources, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, security.Action, security.ResourceType) (*sysauthz.AccessibleResources, *common.ServiceError)); ok {
 		return returnFunc(ctx, action, resourceType)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, security.Action, security.ResourceType) *sysauthz.AccessibleResources); ok {
@@ -60,11 +60,11 @@ func (_mock *SystemAuthorizationServiceInterfaceMock) GetAccessibleResources(ctx
 			r0 = ret.Get(0).(*sysauthz.AccessibleResources)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, security.Action, security.ResourceType) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, security.Action, security.ResourceType) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, action, resourceType)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -106,18 +106,18 @@ func (_c *SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call) R
 	return _c
 }
 
-func (_c *SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call) Return(accessibleResources *sysauthz.AccessibleResources, serviceError *serviceerror.ServiceError) *SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call {
+func (_c *SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call) Return(accessibleResources *sysauthz.AccessibleResources, serviceError *common.ServiceError) *SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call {
 	_c.Call.Return(accessibleResources, serviceError)
 	return _c
 }
 
-func (_c *SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call) RunAndReturn(run func(ctx context.Context, action security.Action, resourceType security.ResourceType) (*sysauthz.AccessibleResources, *serviceerror.ServiceError)) *SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call {
+func (_c *SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call) RunAndReturn(run func(ctx context.Context, action security.Action, resourceType security.ResourceType) (*sysauthz.AccessibleResources, *common.ServiceError)) *SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // IsActionAllowed provides a mock function for the type SystemAuthorizationServiceInterfaceMock
-func (_mock *SystemAuthorizationServiceInterfaceMock) IsActionAllowed(ctx context.Context, action security.Action, actionCtx *sysauthz.ActionContext) (bool, *serviceerror.ServiceError) {
+func (_mock *SystemAuthorizationServiceInterfaceMock) IsActionAllowed(ctx context.Context, action security.Action, actionCtx *sysauthz.ActionContext) (bool, *common.ServiceError) {
 	ret := _mock.Called(ctx, action, actionCtx)
 
 	if len(ret) == 0 {
@@ -125,8 +125,8 @@ func (_mock *SystemAuthorizationServiceInterfaceMock) IsActionAllowed(ctx contex
 	}
 
 	var r0 bool
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, security.Action, *sysauthz.ActionContext) (bool, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, security.Action, *sysauthz.ActionContext) (bool, *common.ServiceError)); ok {
 		return returnFunc(ctx, action, actionCtx)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, security.Action, *sysauthz.ActionContext) bool); ok {
@@ -134,11 +134,11 @@ func (_mock *SystemAuthorizationServiceInterfaceMock) IsActionAllowed(ctx contex
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, security.Action, *sysauthz.ActionContext) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, security.Action, *sysauthz.ActionContext) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, action, actionCtx)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -180,12 +180,12 @@ func (_c *SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call) Run(run 
 	return _c
 }
 
-func (_c *SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call) Return(b bool, serviceError *serviceerror.ServiceError) *SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call {
+func (_c *SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call) Return(b bool, serviceError *common.ServiceError) *SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call {
 	_c.Call.Return(b, serviceError)
 	return _c
 }
 
-func (_c *SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call) RunAndReturn(run func(ctx context.Context, action security.Action, actionCtx *sysauthz.ActionContext) (bool, *serviceerror.ServiceError)) *SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call {
+func (_c *SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call) RunAndReturn(run func(ctx context.Context, action security.Action, actionCtx *sysauthz.ActionContext) (bool, *common.ServiceError)) *SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call {
 	_c.Call.Return(run)
 	return _c
 }

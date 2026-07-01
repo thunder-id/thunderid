@@ -24,10 +24,11 @@ import (
 	"strings"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 
 	"gopkg.in/yaml.v3"
@@ -67,7 +68,7 @@ func (e *notificationSenderExporter) GetParameterizerType() string {
 }
 
 // GetAllResourceIDs retrieves all notification sender IDs.
-func (e *notificationSenderExporter) GetAllResourceIDs(ctx context.Context) ([]string, *serviceerror.ServiceError) {
+func (e *notificationSenderExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
 	senders, err := e.service.ListSenders(ctx)
 	if err != nil {
 		return nil, err
@@ -81,7 +82,7 @@ func (e *notificationSenderExporter) GetAllResourceIDs(ctx context.Context) ([]s
 
 // GetResourceByID retrieves a notification sender by its ID.
 func (e *notificationSenderExporter) GetResourceByID(ctx context.Context, id string) (
-	interface{}, string, *serviceerror.ServiceError,
+	interface{}, string, *tidcommon.ServiceError,
 ) {
 	sender, err := e.service.GetSender(ctx, id)
 	if err != nil {

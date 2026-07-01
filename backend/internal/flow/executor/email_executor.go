@@ -22,6 +22,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -32,7 +34,7 @@ import (
 
 // emailExecutor sends emails based on the configured email template and runtime context data.
 type emailExecutor struct {
-	core.ExecutorInterface
+	providers.Executor
 	logger          *log.Logger
 	emailClient     email.EmailClientInterface
 	templateService template.TemplateServiceInterface
@@ -46,23 +48,23 @@ func newEmailExecutor(flowFactory core.FlowFactoryInterface, emailClient email.E
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "EmailExecutor"))
 	base := flowFactory.CreateExecutor(
 		ExecutorNameEmailExecutor,
-		common.ExecutorTypeUtility,
-		[]common.Input{
-			{Identifier: userAttributeEmail, Type: common.InputTypeEmail, Required: true},
+		providers.ExecutorTypeUtility,
+		[]providers.Input{
+			{Identifier: userAttributeEmail, Type: providers.InputTypeEmail, Required: true},
 		},
-		[]common.Input{},
+		[]providers.Input{},
 	)
 	return &emailExecutor{
-		ExecutorInterface: base,
-		logger:            logger,
-		emailClient:       emailClient,
-		templateService:   templateService,
-		entityProvider:    entityProvider,
+		Executor:        base,
+		logger:          logger,
+		emailClient:     emailClient,
+		templateService: templateService,
+		entityProvider:  entityProvider,
 	}
 }
 
 // Execute sends an email using the data from the runtime context.
-func (e *emailExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+func (e *emailExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	switch ctx.ExecutorMode {
 	case ExecutorModeSend:
 		return e.executeSend(ctx)
@@ -72,24 +74,24 @@ func (e *emailExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse
 }
 
 // executeSend resolves the email template, constructs the email, and sends it.
-func (e *emailExecutor) executeSend(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing email executor in send mode")
 
-	execResp := &common.ExecutorResponse{
+	execResp := &providers.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 	}
 
 	if skip, ok := ctx.RuntimeData[common.RuntimeKeySkipDelivery]; ok && skip == dataValueTrue {
 		logger.Debug(ctx.Context, "Delivery marked as skipped, completing without sending email")
-		execResp.Status = common.ExecComplete
+		execResp.Status = providers.ExecComplete
 		return execResp, nil
 	}
 
 	if e.emailClient == nil {
 		execResp.AdditionalData[common.DataEmailSent] = dataValueFalse
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrEmailServiceNotConfigured
 		logger.Debug(ctx.Context, "Email client not configured")
 		return execResp, nil
@@ -105,7 +107,7 @@ func (e *emailExecutor) executeSend(ctx *core.NodeContext) (*common.ExecutorResp
 	}
 	if recipient == "" {
 		logger.Debug(ctx.Context, "Email recipient not found")
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrEmailRecipientMissing
 		return execResp, nil
 	}
@@ -140,7 +142,7 @@ func (e *emailExecutor) executeSend(ctx *core.NodeContext) (*common.ExecutorResp
 	}
 
 	if err := e.emailClient.Send(ctx.Context, emailData); err != nil {
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrEmailSendFailed
 		return execResp, nil
 	}
@@ -148,13 +150,13 @@ func (e *emailExecutor) executeSend(ctx *core.NodeContext) (*common.ExecutorResp
 	logger.Debug(ctx.Context, "Email sent successfully", log.MaskedString("recipient", recipient))
 
 	execResp.AdditionalData[common.DataEmailSent] = dataValueTrue
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 	return execResp, nil
 }
 
 // resolveRecipientEmail retrieves the recipient email from user inputs, runtime data, or forwarded data.
-func (e *emailExecutor) resolveRecipientEmail(ctx *core.NodeContext, logger *log.Logger) (string, error) {
-	emailAttr := resolveInputIdentifierByType(ctx, common.InputTypeEmail, userAttributeEmail)
+func (e *emailExecutor) resolveRecipientEmail(ctx *providers.NodeContext, logger *log.Logger) (string, error) {
+	emailAttr := resolveInputIdentifierByType(ctx, providers.InputTypeEmail, userAttributeEmail)
 
 	if recipientEmail, ok := ctx.ForwardedData[emailAttr].(string); ok && recipientEmail != "" {
 		return recipientEmail, nil
@@ -190,7 +192,7 @@ func (e *emailExecutor) resolveRecipientEmail(ctx *core.NodeContext, logger *log
 }
 
 // resolveTemplateData extracts template data from RuntimeData, Context, and ForwardedData.
-func (e *emailExecutor) resolveTemplateData(ctx *core.NodeContext) template.TemplateData {
+func (e *emailExecutor) resolveTemplateData(ctx *providers.NodeContext) template.TemplateData {
 	templateData := template.TemplateData{}
 
 	if ctx.RuntimeData != nil {

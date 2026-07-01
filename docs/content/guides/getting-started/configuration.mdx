@@ -379,7 +379,7 @@ User management settings.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `user.indexed_attributes` | `["username", "email", "mobileNumber", "sub"]` | User attributes that are indexed for fast `lookups` |
+| `user.indexed_attributes` | `["username", "email", "mobile_number", "sub"]` | User attributes that are indexed for fast `lookups` |
 
 ## Declarative Resources
 
@@ -692,34 +692,56 @@ External authentication provider settings.
 | `authn_provider.type` | `default` | Provider type (`default` or `rest`) |
 | `authn_provider.rest.base_url` | `""` | Base URL for REST authentication provider |
 | `authn_provider.rest.timeout` | `10` | Request timeout in seconds |
+| `authn_provider.rest.correlation_id_header` | `X-Correlation-ID` | Header used to forward the request's correlation ID (trace ID) to the REST provider. Set a different name if the provider expects one. |
 | `authn_provider.rest.security.api_key` | `""` | API key for REST provider authentication |
+
+### Correlation ID Propagation
+
+Each request is assigned a correlation ID (trace ID), which the server generates when the client does not supply one. <ProductName /> forwards this ID on outbound HTTP calls so a request can be traced across services. The REST authentication provider, the consent service, the flow HTTP request executor, and the Vonage notification provider all set the `X-Correlation-ID` header when it is missing. For the REST authentication provider, the header name is configurable via `authn_provider.rest.correlation_id_header`.
+
+**Example** — forward the correlation ID under a custom header name:
+```yaml
+authn_provider:
+  type: rest
+  rest:
+    base_url: "https://my-authn-service"
+    correlation_id_header: "X-Trace-Token"
+```
 
 ## CORS Configuration
 
-Cross-Origin Resource Sharing settings (typically defined in `deployment.yaml`).
+Controls which browser origins may call the <ProductName /> API. Origins are stored in the server-config `cors` section, not in `deployment.yaml`. No origins are allowed by default.
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `cors.allowed_origins` | `[]` | List of allowed origins. Each entry is either a literal origin string (scheme and host are case-insensitive, trailing dots are stripped, IDN labels are Punycode-encoded, IPv6 hosts are bracketed, ports are preserved verbatim — list each port variant separately) or an object of the shape `{ regex: "..." }` whose RE2 pattern is matched against the raw `Origin` header. The special string `"null"` matches the CORS null origin. The literal `"*"` is rejected — list explicit origins or use a regex. Requests from any other origin are rejected. |
+| Field | Description |
+|-------|-------------|
+| `allowedOrigins` | List of allowed origins. Each entry is a literal origin (for example `https://app.example.com`) or a regex object (`{ regex: "^https://...$" }`) matched against the request `Origin` header. The literal `"*"` is rejected, and `"null"` matches the CORS null origin. Any origin not in the list is rejected. |
 
-The methods, headers, credentials, and preflight cache TTL applied to each allowed response are configured per route in code; only the allowed-origins list is operator-tunable. Preflight responses default to a 600-second `Access-Control-Max-Age`.
+Add origins in either of these ways:
 
-**Example:**
-```yaml
-cors:
-  allowed_origins:
-    - "https://app.example.com"
-    - "https://münchen.example"           # IDN — equal to its Punycode form
-    - "http://[::1]:8080"                 # IPv6 in bracketed form
-    - regex: '^https://[a-z0-9-]+\.staging\.example\.com(:[0-9]+)?$'
-```
+- **Declarative** - create `config/resources/server_configs/cors.yaml`, then restart:
+  ```yaml
+  name: cors
+  value:
+    allowedOrigins:
+      - "https://app.example.com"
+      - regex: '^https://[a-z0-9-]+\.staging\.example\.com(:[0-9]+)?$'
+  ```
+- **Runtime** - send the new value to `PUT /server-config/cors`; it is applied immediately and merged with the declarative file:
+  ```http
+  PUT /server-config/cors
+  Content-Type: application/json
+
+  { "allowedOrigins": ["https://app.example.com"] }
+  ```
+
+Literal origins are matched after the request `Origin` is normalized. Scheme and host are case-insensitive, a trailing host dot is ignored, and IPv6 hosts use bracket form. Internationalized domain names are compared in ASCII form. Ports must match exactly, so list each port separately. Methods, headers, credentials, and the preflight cache TTL are fixed per route in code; only the origin list is configurable.
 
 :::note
-Regex patterns are taken as-is and matched against the raw `Origin` header byte-for-byte. Make patterns strict (anchor with `^` and `$`, escape `.` literals) so that a hostile origin cannot match them. Invalid patterns cause the server to fail at startup, and patterns that lack `^`/`$` anchors are flagged with a startup warning because they permit partial matches.
+Anchor every regex with `^` and `$` and escape literal dots. Unanchored patterns produce a startup warning, and invalid patterns stop the server at startup.
 :::
 
 :::warning
-The `null` origin is shared by sandboxed iframes, `file://` and `data:` documents, and some cross-origin redirects. Because multiple unrelated contexts all emit it, allowing `"null"` cannot identify the caller. List it only when those contexts are intentionally trusted — combined with credentialed responses, it lets any sandboxed page in any browser tab issue authenticated requests.
+The `null` origin is shared by sandboxed iframes, `file://` and `data:` documents, and some redirects, so allowing `"null"` cannot identify the caller. List it only when you intend to trust those contexts — with credentialed responses, it lets any such page make authenticated requests.
 :::
 
 ## Passkey Configuration

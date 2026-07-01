@@ -26,6 +26,7 @@ export interface ParserOptions {
   projectService: {
     allowDefaultProject: string[];
     defaultProject?: string;
+    maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING?: number;
   };
   tsconfigRootDir?: string;
 }
@@ -90,13 +91,19 @@ export default function createParserOptions(
         additionalPatterns?: string[];
         tsconfigRootDir?: string;
         project?: string;
+        maximumDefaultProjectFileMatchCount?: number;
       }
     | string[] = [],
 ): ParserOptions {
   // Support both old array syntax and new options object for backward compatibility
   const normalizedOptions = Array.isArray(options) ? {additionalPatterns: options} : options;
 
-  const {additionalPatterns = [], tsconfigRootDir: manualTsconfigRootDir, project} = normalizedOptions;
+  const {
+    additionalPatterns = [],
+    tsconfigRootDir: manualTsconfigRootDir,
+    project,
+    maximumDefaultProjectFileMatchCount = 20,
+  } = normalizedOptions;
 
   const defaultPatterns: string[] = [
     'public/*.js',
@@ -121,6 +128,7 @@ export default function createParserOptions(
 
   const projectService: ParserOptions['projectService'] = {
     allowDefaultProject: [...defaultPatterns, ...additionalPatterns],
+    maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: maximumDefaultProjectFileMatchCount,
   };
 
   // If a specific project is specified, use it as the default project

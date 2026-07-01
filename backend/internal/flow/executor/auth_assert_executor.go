@@ -26,11 +26,12 @@ import (
 	"strconv"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/authn/assert"
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
-	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -38,7 +39,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -49,18 +49,18 @@ const (
 
 // authAssertExecutor is an executor that handles authentication assertions in the flow.
 type authAssertExecutor struct {
-	core.ExecutorInterface
+	providers.Executor
 	jwtService          jwt.JWTServiceInterface
 	ouService           ou.OrganizationUnitServiceInterface
 	authAssertGenerator assert.AuthAssertGeneratorInterface
-	authnProvider       authnprovidermgr.AuthnProviderManagerInterface
+	authnProvider       providers.AuthnProviderManager
 	entityProvider      entityprovider.EntityProviderInterface
 	attributeCacheSvc   attributecache.AttributeCacheServiceInterface
 	roleService         role.RoleServiceInterface
 	logger              *log.Logger
 }
 
-var _ core.ExecutorInterface = (*authAssertExecutor)(nil)
+var _ providers.Executor = (*authAssertExecutor)(nil)
 
 // newAuthAssertExecutor creates a new instance of AuthAssertExecutor.
 func newAuthAssertExecutor(
@@ -68,7 +68,7 @@ func newAuthAssertExecutor(
 	jwtService jwt.JWTServiceInterface,
 	ouService ou.OrganizationUnitServiceInterface,
 	assertGenerator assert.AuthAssertGeneratorInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 	entityProvider entityprovider.EntityProviderInterface,
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface,
 	roleService role.RoleServiceInterface,
@@ -76,11 +76,11 @@ func newAuthAssertExecutor(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, authAssertLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAuthAssert))
 
-	base := flowFactory.CreateExecutor(ExecutorNameAuthAssert, common.ExecutorTypeUtility,
-		[]common.Input{}, []common.Input{})
+	base := flowFactory.CreateExecutor(ExecutorNameAuthAssert, providers.ExecutorTypeUtility,
+		[]providers.Input{}, []providers.Input{})
 
 	return &authAssertExecutor{
-		ExecutorInterface:   base,
+		Executor:            base,
 		jwtService:          jwtService,
 		ouService:           ouService,
 		authAssertGenerator: assertGenerator,
@@ -93,11 +93,11 @@ func newAuthAssertExecutor(
 }
 
 // Execute executes the authentication assertion logic.
-func (a *authAssertExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+func (a *authAssertExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing authentication assertion executor")
 
-	execResp := &common.ExecutorResponse{
+	execResp := &providers.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 		AuthUser:       ctx.AuthUser,
@@ -111,13 +111,13 @@ func (a *authAssertExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRes
 
 		logger.Debug(ctx.Context, "Generated JWT token for authentication assertion")
 
-		execResp.Status = common.ExecComplete
+		execResp.Status = providers.ExecComplete
 		execResp.Assertion = token
 		if callbackType, ok := ctx.NodeProperties[propertyKeyCallbackType].(string); ok && callbackType != "" {
 			execResp.AdditionalData[propertyKeyCallbackType] = callbackType
 		}
 	} else {
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrUserNotAuthenticated
 	}
 
@@ -129,7 +129,7 @@ func (a *authAssertExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRes
 
 // generateAuthAssertion generates the authentication assertion token.
 func (a *authAssertExecutor) generateAuthAssertion(
-	ctx *core.NodeContext, execResp *common.ExecutorResponse, logger *log.Logger,
+	ctx *providers.NodeContext, execResp *providers.ExecutorResponse, logger *log.Logger,
 ) (string, error) {
 	tokenSub := ""
 
@@ -151,7 +151,7 @@ func (a *authAssertExecutor) generateAuthAssertion(
 	if len(authenticatorRefs) > 0 {
 		assertionResult, svcErr := a.authAssertGenerator.GenerateAssertion(ctx.Context, authenticatorRefs)
 		if svcErr != nil {
-			if svcErr.Type == serviceerror.ServerErrorType {
+			if svcErr.Type == tidcommon.ServerErrorType {
 				logger.Error(ctx.Context, "Failed to generate auth assertion",
 					log.String("error", svcErr.Error.DefaultValue))
 				return "", errors.New("something went wrong while generating auth assertion")
@@ -182,8 +182,8 @@ func (a *authAssertExecutor) generateAuthAssertion(
 	metadata := buildGetAttributesMetadata(ctx)
 
 	// Convert requested attributes from []string to *RequestedAttributes
-	reqAttrs := &authnprovidercm.RequestedAttributes{
-		Attributes:    make(map[string]*authnprovidercm.AttributeMetadataRequest),
+	reqAttrs := &providers.RequestedAttributes{
+		Attributes:    make(map[string]*providers.AttributeMetadataRequest),
 		Verifications: nil,
 	}
 	for _, attrName := range requiredAttributes {
@@ -193,7 +193,7 @@ func (a *authAssertExecutor) generateAuthAssertion(
 	authUser, entityRef, svcErr := a.authnProvider.GetEntityReference(ctx.Context, execResp.AuthUser)
 	execResp.AuthUser = authUser
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ServerErrorType {
+		if svcErr.Type == tidcommon.ServerErrorType {
 			return "", errors.New("something went wrong while fetching entity references")
 		}
 		return "", errors.New("failed to fetch entity references: " + svcErr.ErrorDescription.DefaultValue)
@@ -202,7 +202,7 @@ func (a *authAssertExecutor) generateAuthAssertion(
 	authUser, attrResp, svcErr := a.authnProvider.GetUserAttributes(ctx.Context, reqAttrs, metadata, execResp.AuthUser)
 	execResp.AuthUser = authUser
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ServerErrorType {
+		if svcErr.Type == tidcommon.ServerErrorType {
 			return "", errors.New("something went wrong while fetching user attributes")
 		}
 		return "", errors.New("failed to fetch user attributes: " + svcErr.ErrorDescription.DefaultValue)
@@ -270,15 +270,15 @@ func (a *authAssertExecutor) generateAuthAssertion(
 
 // extractAuthenticatorReferences extracts authenticator references from execution history.
 func (a *authAssertExecutor) extractAuthenticatorReferences(
-	history map[string]*common.NodeExecutionRecord) []authncm.AuthenticatorReference {
+	history map[string]*providers.NodeExecutionRecord) []authncm.AuthenticatorReference {
 	refs := make([]authncm.AuthenticatorReference, 0)
 	seenAuthenticators := make(map[string]bool)
 
 	for _, record := range history {
-		if record.ExecutorType != common.ExecutorTypeAuthentication {
+		if record.ExecutorType != providers.ExecutorTypeAuthentication {
 			continue
 		}
-		if record.Status != common.FlowStatusComplete {
+		if record.Status != providers.FlowStatusComplete {
 			continue
 		}
 
@@ -316,7 +316,7 @@ func (a *authAssertExecutor) extractAuthenticatorReferences(
 
 // getRequiredUserAttributes determines the list of user attribute keys that should be included in the
 // assertion based on runtime and application configuration.
-func (a *authAssertExecutor) getRequiredUserAttributes(ctx *core.NodeContext) (userAttributes []string) {
+func (a *authAssertExecutor) getRequiredUserAttributes(ctx *providers.NodeContext) (userAttributes []string) {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	// Check if consent was recorded in this flow. If recorded, we should only include consented attributes
@@ -370,7 +370,7 @@ func (a *authAssertExecutor) getRequiredUserAttributes(ctx *core.NodeContext) (u
 
 // resolveUserAttributes resolves the user attributes map from the requested attributes.
 func (a *authAssertExecutor) resolveUserAttributes(
-	ctx *core.NodeContext,
+	ctx *providers.NodeContext,
 	requestedAttributes []string,
 	fetchedAttributes map[string]interface{},
 	userID, userType, ouID string,
@@ -424,7 +424,7 @@ func (a *authAssertExecutor) resolveUserAttributes(
 
 // appendComputedAttributes appends computed/derived attributes (groups, roles, userType, OU details) to the claims.
 func (a *authAssertExecutor) appendComputedAttributes(
-	ctx *core.NodeContext,
+	ctx *providers.NodeContext,
 	requestedAttributes []string,
 	attributes map[string]interface{},
 	userID, userType, ouID string,
@@ -504,7 +504,7 @@ func (a *authAssertExecutor) appendOUDetailsToClaims(
 // fetchAllUserGroups retrieves all groups a user belongs to, including groups inherited through
 // nested group membership.
 func (a *authAssertExecutor) fetchAllUserGroups(
-	ctx context.Context, userID string) ([]entityprovider.EntityGroup, error) {
+	ctx context.Context, userID string) ([]providers.EntityGroup, error) {
 	if a.entityProvider == nil || userID == "" {
 		return nil, nil
 	}
@@ -521,7 +521,7 @@ func (a *authAssertExecutor) fetchAllUserGroups(
 
 // appendGroupsToClaims appends pre-fetched user groups to the JWT claims.
 func (a *authAssertExecutor) appendGroupsToClaims(
-	groups []entityprovider.EntityGroup, jwtClaims map[string]interface{}) {
+	groups []providers.EntityGroup, jwtClaims map[string]interface{}) {
 	userGroups := make([]string, 0, len(groups))
 	for _, group := range groups {
 		userGroups = append(userGroups, group.Name)
@@ -534,7 +534,7 @@ func (a *authAssertExecutor) appendGroupsToClaims(
 
 // appendRolesToClaims appends user roles to the JWT claims using pre-fetched groups for role resolution.
 func (a *authAssertExecutor) appendRolesToClaims(
-	ctx *core.NodeContext, groups []entityprovider.EntityGroup, jwtClaims map[string]interface{}, userID string) error {
+	ctx *providers.NodeContext, groups []providers.EntityGroup, jwtClaims map[string]interface{}, userID string) error {
 	logger := a.logger.With(log.MaskedString(log.LoggerKeyUserID, userID))
 
 	groupIDs := make([]string, 0, len(groups))
@@ -564,7 +564,7 @@ func (a *authAssertExecutor) appendRolesToClaims(
 // authz decision is available to intersect against). Otherwise the authorized set is returned
 // directly. Raw requested permissions are intentionally not used — the authz executor must
 // validate them first.
-func (a *authAssertExecutor) resolvePermissionsForClaim(ctx *core.NodeContext) string {
+func (a *authAssertExecutor) resolvePermissionsForClaim(ctx *providers.NodeContext) string {
 	if v, ok := ctx.RuntimeData[common.RuntimeKeyConsentedPermissions]; ok {
 		if authorized, hasAuthorized := ctx.RuntimeData["authorized_permissions"]; hasAuthorized {
 			return intersectPermissionSpaceList(v, authorized)

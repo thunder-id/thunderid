@@ -213,12 +213,6 @@ flow:
   {{- end }}
 {{- end }}
 
-cors:
-  allowed_origins:
-  {{- range .Values.configuration.cors.allowedOrigins }}
-    - {{ . | quote }}
-  {{- end }}
-
 passkey:
   allowed_origins:
   {{- range .Values.configuration.passkey.allowedOrigins }}
@@ -230,6 +224,35 @@ consent:
   base_url: {{ .Values.configuration.consent.baseUrl | quote }}
   timeout: {{ .Values.configuration.consent.timeout }}
   max_retries: {{ .Values.configuration.consent.maxRetries }}
+
+openid4vp:
+  client_id: {{ .Values.configuration.openid4vp.clientId | quote }}
+  signing_key_id: {{ .Values.configuration.openid4vp.signingKeyId | quote }}
+  ephemeral_key_id: {{ .Values.configuration.openid4vp.ephemeralKeyId | quote }}
+  response_enc_values:
+  {{- range .Values.configuration.openid4vp.responseEncValues }}
+    - {{ . | quote }}
+  {{- end }}
+  request_validity_seconds: {{ .Values.configuration.openid4vp.requestValiditySeconds }}
+  state_ttl_seconds: {{ .Values.configuration.openid4vp.stateTtlSeconds }}
+  leeway_seconds: {{ .Values.configuration.openid4vp.leewaySeconds }}
+  key_binding_max_age_seconds: {{ .Values.configuration.openid4vp.keyBindingMaxAgeSeconds }}
+  result_token_validity_seconds: {{ .Values.configuration.openid4vp.resultTokenValiditySeconds }}
+  enforce_key_binding: {{ .Values.configuration.openid4vp.enforceKeyBinding }}
+  registration_cert_file: {{ .Values.configuration.openid4vp.registrationCertFile | quote }}
+  trusted_anchors:
+  {{- range .Values.configuration.openid4vp.trustedAnchors }}
+    - name: {{ .name | quote }}
+      cert_file: {{ .certFile | quote }}
+  {{- end }}
+
+openid4vci:
+  signing_key_id: {{ .Values.configuration.openid4vci.signingKeyId | quote }}
+  nonce_ttl_seconds: {{ .Values.configuration.openid4vci.nonceTtlSeconds }}
+  proof_max_age_seconds: {{ .Values.configuration.openid4vci.proofMaxAgeSeconds }}
+  credential_validity_seconds: {{ .Values.configuration.openid4vci.credentialValiditySeconds | int64 }}
+  batch_size: {{ .Values.configuration.openid4vci.batchSize }}
+  enforce_scope: {{ .Values.configuration.openid4vci.enforceScope }}
 
 declarative_resources:
   enabled: {{ .Values.declarativeResources.enabled }}

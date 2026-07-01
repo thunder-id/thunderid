@@ -22,10 +22,11 @@ import (
 	"context"
 	"errors"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -40,7 +41,7 @@ type actorProvider struct {
 func newActorProvider(
 	inboundClient inboundclient.InboundClientServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
-) ActorProviderInterface {
+) providers.ActorProvider {
 	return &actorProvider{
 		inboundClient:  inboundClient,
 		entityProvider: entityProvider,
@@ -51,22 +52,22 @@ func newActorProvider(
 // GetOAuthClientByClientID returns the OAuth client registered for the given ID.
 func (p *actorProvider) GetOAuthClientByClientID(
 	ctx context.Context, clientID string,
-) (*inboundmodel.OAuthClient, *serviceerror.ServiceError) {
+) (*providers.OAuthClient, *tidcommon.ServiceError) {
 	client, err := p.inboundClient.GetOAuthClientByClientID(ctx, clientID)
 	if err != nil {
 		if errors.Is(err, inboundclient.ErrInboundClientNotFound) {
 			return nil, &ErrorActorNotFound
 		}
 		p.logger.Error(ctx, "Failed to fetch OAuth client", log.String("clientID", clientID), log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
-	return client, nil
+	return toProviderOAuthClient(client), nil
 }
 
 // GetOAuthProfileByID returns the stored OAuth profile for the given entity UUID.
 func (p *actorProvider) GetOAuthProfileByID(
 	ctx context.Context, id string,
-) (*inboundmodel.OAuthProfile, *serviceerror.ServiceError) {
+) (*providers.OAuthProfile, *tidcommon.ServiceError) {
 	profile, err := p.inboundClient.GetOAuthProfileByEntityID(ctx, id)
 	if err != nil {
 		if errors.Is(err, inboundclient.ErrInboundClientNotFound) {
@@ -74,7 +75,7 @@ func (p *actorProvider) GetOAuthProfileByID(
 		}
 		p.logger.Error(ctx, "Failed to fetch OAuth profile by entity ID",
 			log.String("id", id), log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	return profile, nil
 }
@@ -82,26 +83,77 @@ func (p *actorProvider) GetOAuthProfileByID(
 // GetInboundClientByID returns the inbound-client row for the given ID.
 func (p *actorProvider) GetInboundClientByID(
 	ctx context.Context, id string,
-) (*inboundmodel.InboundClient, *serviceerror.ServiceError) {
+) (*providers.InboundClient, *tidcommon.ServiceError) {
 	client, err := p.inboundClient.GetInboundClientByEntityID(ctx, id)
 	if err != nil {
 		if errors.Is(err, inboundclient.ErrInboundClientNotFound) {
 			return nil, &ErrorActorNotFound
 		}
 		p.logger.Error(ctx, "Failed to fetch inbound client", log.String("id", id), log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	return client, nil
 }
 
 // GetActor returns the backing entity record for the given actor ID.
-func (p *actorProvider) GetActor(actorID string) (*entityprovider.Entity, *entityprovider.EntityProviderError) {
-	return p.entityProvider.GetEntity(actorID)
+func (p *actorProvider) GetActor(actorID string) (*providers.Entity, *tidcommon.ServiceError) {
+	entity, epErr := p.entityProvider.GetEntity(actorID)
+	if epErr != nil {
+		return nil, mapEntityProviderError(epErr)
+	}
+	return entity, nil
 }
 
 // GetActorGroups returns transitive group memberships for the given actor ID.
 func (p *actorProvider) GetActorGroups(
 	actorID string,
-) ([]entityprovider.EntityGroup, *entityprovider.EntityProviderError) {
-	return p.entityProvider.GetTransitiveEntityGroups(actorID)
+) ([]providers.EntityGroup, *tidcommon.ServiceError) {
+	groups, epErr := p.entityProvider.GetTransitiveEntityGroups(actorID)
+	if epErr != nil {
+		if epErr.Code == entityprovider.ErrorCodeNotImplemented {
+			return nil, nil
+		}
+		return nil, mapEntityProviderError(epErr)
+	}
+	return groups, nil
+}
+
+func mapEntityProviderError(epErr *entityprovider.EntityProviderError) *tidcommon.ServiceError {
+	if epErr == nil {
+		return nil
+	}
+	switch epErr.Code {
+	case entityprovider.ErrorCodeEntityNotFound:
+		return &ErrorEntityNotFound
+	default:
+		return &tidcommon.InternalServerError
+	}
+}
+
+func toProviderOAuthClient(c *providers.OAuthClient) *providers.OAuthClient {
+	if c == nil {
+		return nil
+	}
+	client := &providers.OAuthClient{
+		ID:                                 c.ID,
+		OUID:                               c.OUID,
+		ClientID:                           c.ClientID,
+		RedirectURIs:                       c.RedirectURIs,
+		TokenEndpointAuthMethod:            c.TokenEndpointAuthMethod,
+		PKCERequired:                       c.PKCERequired,
+		PublicClient:                       c.PublicClient,
+		RequirePushedAuthorizationRequests: c.RequirePushedAuthorizationRequests,
+		DPoPBoundAccessTokens:              c.DPoPBoundAccessTokens,
+		IncludeActClaim:                    c.IncludeActClaim,
+		EntityCategory:                     c.EntityCategory,
+		Token:                              c.Token,
+		Scopes:                             c.Scopes,
+		UserInfo:                           c.UserInfo,
+		ScopeClaims:                        c.ScopeClaims,
+		Certificate:                        c.Certificate,
+		AcrValues:                          c.AcrValues,
+	}
+	client.GrantTypes = append(client.GrantTypes, c.GrantTypes...)
+	client.ResponseTypes = append(client.ResponseTypes, c.ResponseTypes...)
+	return client
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -46,18 +46,85 @@ interface MonacoLike {
  */
 interface JwtPreviewProps {
   /**
-   * The label displayed next to the JWT logo.
-   */
-  title: string;
-  /**
-   * The JWT payload object to render as formatted JSON.
+   * The payload object to render as formatted JSON.
    */
   payload: Record<string, string>;
   /**
    * Claims that are always present by default. These are highlighted with a
    * dotted underline and show a descriptive tooltip on hover (like jwt.io).
+   * Ignored when format is 'json'.
    */
   defaultClaims?: readonly string[];
+  /**
+   * Optional JOSE header to display above the payload.
+   * When provided, the preview shows a "HEADER" and "PAYLOAD" section.
+   * Ignored when format is 'json'.
+   */
+  header?: Record<string, string>;
+  /**
+   * Display format. 'jwt' (default) shows the JWT logo with optional header/payload
+   * sections and claim decorations. 'json' shows the JSON logo and renders the
+   * payload as a plain JSON object without JWT-specific annotations.
+   */
+  format?: 'jwt' | 'json';
+}
+
+/**
+ * JSON logo SVG — curly-brace icon with "JSON" wordmark.
+ */
+function JsonLogo() {
+  return (
+    <Box
+      component="svg"
+      viewBox="0 0 108 32"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      sx={{flexShrink: 0, height: 18, width: 'auto'}}
+    >
+      {/* Left curly brace */}
+      <path
+        d="M14 4C10 4 8 6 8 9L8 13C8 15 6 16 4 16C6 16 8 17 8 19L8 23C8 26 10 28 14 28"
+        stroke="#F89820"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Right curly brace */}
+      <path
+        d="M18 4C22 4 24 6 24 9L24 13C24 15 26 16 28 16C26 16 24 17 24 19L24 23C24 26 22 28 18 28"
+        stroke="#F89820"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* J */}
+      <path
+        d="M48 6 V21 C48 25 44 27 41 26"
+        stroke="currentColor"
+        strokeWidth="3.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* S */}
+      <path
+        d="M66 9 C66 7 64 6 61 6 C57 6 54 8 54 12 C54 16 66 16 66 20 C66 24 64 26 61 26 C57 26 54 25 54 22"
+        stroke="currentColor"
+        strokeWidth="3.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* O */}
+      <ellipse cx="77" cy="16" rx="6" ry="10" stroke="currentColor" strokeWidth="3.5" />
+      {/* N */}
+      <path
+        d="M88 26 L88 6 L103 26 L103 6"
+        stroke="currentColor"
+        strokeWidth="3.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Box>
+  );
 }
 
 /**
@@ -67,12 +134,10 @@ function JwtLogo() {
   return (
     <Box
       component="svg"
-      width="90"
-      height="32"
       viewBox="0 0 90 32"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      sx={{flexShrink: 0, height: 20}}
+      sx={{flexShrink: 0, height: 20, width: 'auto'}}
     >
       <path
         fillRule="evenodd"
@@ -155,7 +220,7 @@ function JwtLogo() {
  * @param props - Component props
  * @returns A bordered box containing the JWT logo, title, and annotated JSON preview
  */
-export default function JwtPreview({title, payload, defaultClaims = []}: JwtPreviewProps) {
+export default function JwtPreview({payload, defaultClaims = [], header = undefined, format = 'jwt'}: JwtPreviewProps) {
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<MonacoLike | null>(null);
   const decorationIdsRef = useRef<string[]>([]);
@@ -163,6 +228,7 @@ export default function JwtPreview({title, payload, defaultClaims = []}: JwtPrev
   const contentListenerRef = useRef<IDisposable | null>(null);
 
   const applyDecorations = () => {
+    if (format === 'json') return;
     const editorInstance = editorRef.current;
     const monacoInstance = monacoRef.current;
     if (!editorInstance || !monacoInstance) return;
@@ -230,9 +296,36 @@ export default function JwtPreview({title, payload, defaultClaims = []}: JwtPrev
     [],
   );
 
-  const jsonValue = JSON.stringify(payload, null, 2);
-  // Size the editor to fit content (capped at 600px to match the previous maxHeight)
-  const editorHeight = Math.min(600, Math.max(80, jsonValue.split('\n').length * 20 + 16));
+  const isJson = format === 'json';
+  const headerJson = !isJson && header ? JSON.stringify(header, null, 2) : null;
+  const payloadJson = JSON.stringify(payload, null, 2);
+  const headerHeight = headerJson ? Math.min(200, Math.max(60, headerJson.split('\n').length * 20 + 16)) : 0;
+  const payloadHeight = Math.min(600, Math.max(80, payloadJson.split('\n').length * 20 + 16));
+
+  const editorOptions = {
+    readOnly: true,
+    minimap: {enabled: false},
+    scrollBeyondLastLine: false,
+    automaticLayout: true,
+    fontSize: 14,
+    tabSize: 2,
+    lineNumbers: 'off' as const,
+    folding: false,
+    contextmenu: false,
+    renderLineHighlight: 'none' as const,
+    wordWrap: 'on' as const,
+    scrollbar: {
+      vertical: 'hidden' as const,
+      horizontal: 'hidden' as const,
+      verticalScrollbarSize: 0,
+      horizontalScrollbarSize: 0,
+      handleMouseWheel: false,
+      alwaysConsumeMouseWheel: false,
+    },
+    guides: {
+      indentation: false,
+    },
+  };
 
   return (
     <Box
@@ -246,43 +339,44 @@ export default function JwtPreview({title, payload, defaultClaims = []}: JwtPrev
       }}
     >
       {/* Styling for default claim annotations */}
-      <style>{`.jwt-default-claim { color: #C586C0 !important; text-decoration: underline dotted; text-decoration-color: #C586C0; cursor: help; }`}</style>
+      {!isJson && (
+        <style>{`.jwt-default-claim { color: #C586C0 !important; text-decoration: underline dotted; text-decoration-color: #C586C0; cursor: help; }`}</style>
+      )}
       <Stack spacing={2}>
         <Stack direction="row" spacing={1} alignItems="center">
-          <JwtLogo />
-          <Typography variant="body1">{title}</Typography>
+          {isJson ? <JsonLogo /> : <JwtLogo />}
         </Stack>
+
+        {headerJson && (
+          <>
+            <Typography variant="caption" color="text.secondary" sx={{textTransform: 'uppercase', letterSpacing: 1}}>
+              Decoded Header
+            </Typography>
+            <Box sx={{overflow: 'hidden', borderRadius: 1}}>
+              <Editor
+                height={headerHeight}
+                language="json"
+                theme="vs-dark"
+                value={headerJson}
+                options={editorOptions}
+              />
+            </Box>
+          </>
+        )}
+
+        {headerJson && (
+          <Typography variant="caption" color="text.secondary" sx={{textTransform: 'uppercase', letterSpacing: 1}}>
+            Decoded Payload
+          </Typography>
+        )}
         <Box sx={{overflow: 'hidden', borderRadius: 1}}>
           <Editor
-            height={editorHeight}
+            height={payloadHeight}
             language="json"
             theme="vs-dark"
-            value={jsonValue}
+            value={payloadJson}
             onMount={handleMount}
-            options={{
-              readOnly: true,
-              minimap: {enabled: false},
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              fontSize: 14,
-              tabSize: 2,
-              lineNumbers: 'off',
-              folding: false,
-              contextmenu: false,
-              renderLineHighlight: 'none',
-              wordWrap: 'on',
-              scrollbar: {
-                vertical: 'hidden',
-                horizontal: 'hidden',
-                verticalScrollbarSize: 0,
-                horizontalScrollbarSize: 0,
-                handleMouseWheel: false, // 🚫 disables wheel scroll
-                alwaysConsumeMouseWheel: false,
-              },
-              guides: {
-                indentation: false,
-              },
-            }}
+            options={editorOptions}
           />
         </Box>
       </Stack>

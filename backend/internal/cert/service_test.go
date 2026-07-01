@@ -23,11 +23,11 @@ import (
 	"errors"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 type ServiceTestSuite struct {
@@ -65,7 +65,7 @@ func (suite *ServiceTestSuite) SetupTest() {
 func (suite *ServiceTestSuite) createValidCertificate() *Certificate {
 	return &Certificate{
 		ID:      "test-cert-id",
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKS,
 		Value:   "valid-certificate-value-string",
@@ -127,7 +127,7 @@ func (suite *ServiceTestSuite) TestGetCertificateByID_StoreError() {
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, err.Code)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
 	suite.mockStore.AssertExpectations(suite.T())
 }
 
@@ -138,10 +138,10 @@ func (suite *ServiceTestSuite) TestGetCertificateByID_StoreError() {
 func (suite *ServiceTestSuite) TestGetCertificateByReference_Success() {
 	cert := suite.createValidCertificate()
 	suite.mockStore.On("GetCertificateByReference", mock.Anything,
-		CertificateReferenceTypeApplication, "test-app-id").Return(cert, nil)
+		CertificateReferenceTypeIDP, "test-app-id").Return(cert, nil)
 
 	result, err := suite.service.GetCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-app-id")
+		CertificateReferenceTypeIDP, "test-app-id")
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -160,7 +160,7 @@ func (suite *ServiceTestSuite) TestGetCertificateByReference_InvalidReferenceTyp
 
 func (suite *ServiceTestSuite) TestGetCertificateByReference_EmptyReferenceID() {
 	result, err := suite.service.GetCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "")
+		CertificateReferenceTypeIDP, "")
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -183,10 +183,10 @@ func (suite *ServiceTestSuite) TestGetCertificateByReference_NotFound() {
 
 func (suite *ServiceTestSuite) TestGetCertificateByReference_NilResult() {
 	suite.mockStore.On("GetCertificateByReference", mock.Anything,
-		CertificateReferenceTypeApplication, "test-id").Return(nil, nil)
+		CertificateReferenceTypeIDP, "test-id").Return(nil, nil)
 
 	result, err := suite.service.GetCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-id")
+		CertificateReferenceTypeIDP, "test-id")
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -196,15 +196,15 @@ func (suite *ServiceTestSuite) TestGetCertificateByReference_NilResult() {
 
 func (suite *ServiceTestSuite) TestGetCertificateByReference_StoreError() {
 	suite.mockStore.On("GetCertificateByReference", mock.Anything,
-		CertificateReferenceTypeApplication, "test-id").
+		CertificateReferenceTypeIDP, "test-id").
 		Return(nil, errors.New("database error"))
 
 	result, err := suite.service.GetCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-id")
+		CertificateReferenceTypeIDP, "test-id")
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, err.Code)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
 	suite.mockStore.AssertExpectations(suite.T())
 }
 
@@ -214,7 +214,7 @@ func (suite *ServiceTestSuite) TestGetCertificateByReference_StoreError() {
 
 func (suite *ServiceTestSuite) TestCreateCertificate_Success() {
 	cert := &Certificate{
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKS,
 		Value:   "valid-certificate-value-string",
@@ -242,7 +242,7 @@ func (suite *ServiceTestSuite) TestCreateCertificate_NilCertificate() {
 
 func (suite *ServiceTestSuite) TestCreateCertificate_EmptyReferenceID() {
 	cert := &Certificate{
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "",
 		Type:    CertificateTypeJWKS,
 		Value:   "valid-certificate-value-string",
@@ -272,7 +272,7 @@ func (suite *ServiceTestSuite) TestCreateCertificate_InvalidReferenceType() {
 
 func (suite *ServiceTestSuite) TestCreateCertificate_InvalidCertificateType() {
 	cert := &Certificate{
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-id",
 		Type:    CertificateType("INVALID"),
 		Value:   "valid-certificate-value-string",
@@ -287,7 +287,7 @@ func (suite *ServiceTestSuite) TestCreateCertificate_InvalidCertificateType() {
 
 func (suite *ServiceTestSuite) TestCreateCertificate_ValueTooShort() {
 	cert := &Certificate{
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-id",
 		Type:    CertificateTypeJWKS,
 		Value:   "short",
@@ -306,7 +306,7 @@ func (suite *ServiceTestSuite) TestCreateCertificate_ValueTooLong() {
 		longValue += "a"
 	}
 	cert := &Certificate{
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-id",
 		Type:    CertificateTypeJWKS,
 		Value:   longValue,
@@ -321,7 +321,7 @@ func (suite *ServiceTestSuite) TestCreateCertificate_ValueTooLong() {
 
 func (suite *ServiceTestSuite) TestCreateCertificate_AlreadyExists() {
 	cert := &Certificate{
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKS,
 		Value:   "valid-certificate-value-string",
@@ -341,7 +341,7 @@ func (suite *ServiceTestSuite) TestCreateCertificate_AlreadyExists() {
 
 func (suite *ServiceTestSuite) TestCreateCertificate_CheckExistingError() {
 	cert := &Certificate{
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKS,
 		Value:   "valid-certificate-value-string",
@@ -354,13 +354,13 @@ func (suite *ServiceTestSuite) TestCreateCertificate_CheckExistingError() {
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, err.Code)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
 	suite.mockStore.AssertExpectations(suite.T())
 }
 
 func (suite *ServiceTestSuite) TestCreateCertificate_StoreError() {
 	cert := &Certificate{
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKS,
 		Value:   "valid-certificate-value-string",
@@ -375,7 +375,7 @@ func (suite *ServiceTestSuite) TestCreateCertificate_StoreError() {
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, err.Code)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
 	suite.mockStore.AssertExpectations(suite.T())
 }
 
@@ -387,7 +387,7 @@ func (suite *ServiceTestSuite) TestUpdateCertificateByID_Success() {
 	existingCert := suite.createValidCertificate()
 	updatedCert := &Certificate{
 		ID:      "test-cert-id",
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKSURI,
 		Value:   "updated-certificate-value",
@@ -479,7 +479,7 @@ func (suite *ServiceTestSuite) TestUpdateCertificateByID_GetExistingError() {
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, err.Code)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
 	suite.mockStore.AssertExpectations(suite.T())
 }
 
@@ -487,7 +487,7 @@ func (suite *ServiceTestSuite) TestUpdateCertificateByID_UpdateError() {
 	existingCert := suite.createValidCertificate()
 	updatedCert := &Certificate{
 		ID:      "test-cert-id",
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKSURI,
 		Value:   "updated-certificate-value",
@@ -502,7 +502,7 @@ func (suite *ServiceTestSuite) TestUpdateCertificateByID_UpdateError() {
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, err.Code)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
 	suite.mockStore.AssertExpectations(suite.T())
 }
 
@@ -510,7 +510,7 @@ func (suite *ServiceTestSuite) TestUpdateCertificateByID_UpdateNotFoundError() {
 	existingCert := suite.createValidCertificate()
 	updatedCert := &Certificate{
 		ID:      "test-cert-id",
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKSURI,
 		Value:   "updated-certificate-value",
@@ -537,20 +537,20 @@ func (suite *ServiceTestSuite) TestUpdateCertificateByReference_Success() {
 	existingCert := suite.createValidCertificate()
 	updatedCert := &Certificate{
 		ID:      "test-cert-id",
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKSURI,
 		Value:   "updated-certificate-value",
 	}
 
 	suite.mockStore.On("GetCertificateByReference", mock.Anything,
-		CertificateReferenceTypeApplication, "test-app-id").
+		CertificateReferenceTypeIDP, "test-app-id").
 		Return(existingCert, nil)
 	suite.mockStore.On("UpdateCertificateByReference", mock.Anything, existingCert, updatedCert).
 		Return(nil)
 
 	result, err := suite.service.UpdateCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-app-id", updatedCert)
+		CertificateReferenceTypeIDP, "test-app-id", updatedCert)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -573,7 +573,7 @@ func (suite *ServiceTestSuite) TestUpdateCertificateByReference_EmptyReferenceID
 	cert := suite.createValidCertificate()
 
 	result, err := suite.service.UpdateCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "", cert)
+		CertificateReferenceTypeIDP, "", cert)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -582,7 +582,7 @@ func (suite *ServiceTestSuite) TestUpdateCertificateByReference_EmptyReferenceID
 
 func (suite *ServiceTestSuite) TestUpdateCertificateByReference_InvalidCertificate() {
 	result, err := suite.service.UpdateCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-id", nil)
+		CertificateReferenceTypeIDP, "test-id", nil)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -607,10 +607,10 @@ func (suite *ServiceTestSuite) TestUpdateCertificateByReference_NotFound() {
 func (suite *ServiceTestSuite) TestUpdateCertificateByReference_NilExisting() {
 	cert := suite.createValidCertificate()
 	suite.mockStore.On("GetCertificateByReference", mock.Anything,
-		CertificateReferenceTypeApplication, "test-id").Return(nil, nil)
+		CertificateReferenceTypeIDP, "test-id").Return(nil, nil)
 
 	result, err := suite.service.UpdateCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-id", cert)
+		CertificateReferenceTypeIDP, "test-id", cert)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -629,11 +629,11 @@ func (suite *ServiceTestSuite) TestUpdateCertificateByReference_ReferenceChanged
 	}
 
 	suite.mockStore.On("GetCertificateByReference", mock.Anything,
-		CertificateReferenceTypeApplication, "test-app-id").
+		CertificateReferenceTypeIDP, "test-app-id").
 		Return(existingCert, nil)
 
 	result, err := suite.service.UpdateCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-app-id", updatedCert)
+		CertificateReferenceTypeIDP, "test-app-id", updatedCert)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -644,15 +644,15 @@ func (suite *ServiceTestSuite) TestUpdateCertificateByReference_ReferenceChanged
 func (suite *ServiceTestSuite) TestUpdateCertificateByReference_GetExistingError() {
 	cert := suite.createValidCertificate()
 	suite.mockStore.On("GetCertificateByReference", mock.Anything,
-		CertificateReferenceTypeApplication, "test-id").
+		CertificateReferenceTypeIDP, "test-id").
 		Return(nil, errors.New("database error"))
 
 	result, err := suite.service.UpdateCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-id", cert)
+		CertificateReferenceTypeIDP, "test-id", cert)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, err.Code)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
 	suite.mockStore.AssertExpectations(suite.T())
 }
 
@@ -660,24 +660,24 @@ func (suite *ServiceTestSuite) TestUpdateCertificateByReference_UpdateError() {
 	existingCert := suite.createValidCertificate()
 	updatedCert := &Certificate{
 		ID:      "test-cert-id",
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKSURI,
 		Value:   "updated-certificate-value",
 	}
 
 	suite.mockStore.On("GetCertificateByReference", mock.Anything,
-		CertificateReferenceTypeApplication, "test-app-id").
+		CertificateReferenceTypeIDP, "test-app-id").
 		Return(existingCert, nil)
 	suite.mockStore.On("UpdateCertificateByReference", mock.Anything, existingCert, updatedCert).
 		Return(errors.New("database error"))
 
 	result, err := suite.service.UpdateCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-app-id", updatedCert)
+		CertificateReferenceTypeIDP, "test-app-id", updatedCert)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, err.Code)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
 	suite.mockStore.AssertExpectations(suite.T())
 }
 
@@ -685,20 +685,20 @@ func (suite *ServiceTestSuite) TestUpdateCertificateByReference_UpdateNotFoundEr
 	existingCert := suite.createValidCertificate()
 	updatedCert := &Certificate{
 		ID:      "test-cert-id",
-		RefType: CertificateReferenceTypeApplication,
+		RefType: CertificateReferenceTypeIDP,
 		RefID:   "test-app-id",
 		Type:    CertificateTypeJWKSURI,
 		Value:   "updated-certificate-value",
 	}
 
 	suite.mockStore.On("GetCertificateByReference", mock.Anything,
-		CertificateReferenceTypeApplication, "test-app-id").
+		CertificateReferenceTypeIDP, "test-app-id").
 		Return(existingCert, nil)
 	suite.mockStore.On("UpdateCertificateByReference", mock.Anything, existingCert, updatedCert).
 		Return(ErrCertificateNotFound)
 
 	result, err := suite.service.UpdateCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-app-id", updatedCert)
+		CertificateReferenceTypeIDP, "test-app-id", updatedCert)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -733,7 +733,7 @@ func (suite *ServiceTestSuite) TestDeleteCertificateByID_StoreError() {
 	err := suite.service.DeleteCertificateByID(context.Background(), "test-id")
 
 	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, err.Code)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
 	suite.mockStore.AssertExpectations(suite.T())
 }
 
@@ -743,10 +743,10 @@ func (suite *ServiceTestSuite) TestDeleteCertificateByID_StoreError() {
 
 func (suite *ServiceTestSuite) TestDeleteCertificateByReference_Success() {
 	suite.mockStore.On("DeleteCertificateByReference", mock.Anything,
-		CertificateReferenceTypeApplication, "test-app-id").Return(nil)
+		CertificateReferenceTypeIDP, "test-app-id").Return(nil)
 
 	err := suite.service.DeleteCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "test-app-id")
+		CertificateReferenceTypeIDP, "test-app-id")
 
 	assert.Nil(suite.T(), err)
 	suite.mockStore.AssertExpectations(suite.T())
@@ -762,7 +762,7 @@ func (suite *ServiceTestSuite) TestDeleteCertificateByReference_InvalidReference
 
 func (suite *ServiceTestSuite) TestDeleteCertificateByReference_EmptyReferenceID() {
 	err := suite.service.DeleteCertificateByReference(context.Background(),
-		CertificateReferenceTypeApplication, "")
+		CertificateReferenceTypeIDP, "")
 
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), ErrorInvalidReferenceID.Code, err.Code)
@@ -777,7 +777,7 @@ func (suite *ServiceTestSuite) TestDeleteCertificateByReference_StoreError() {
 		CertificateReferenceTypeIDP, "test-id")
 
 	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, err.Code)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
 	suite.mockStore.AssertExpectations(suite.T())
 }
 
@@ -791,7 +791,7 @@ func (suite *ServiceTestSuite) TestIsValidReferenceType() {
 		refType  CertificateReferenceType
 		expected bool
 	}{
-		{"Application type", CertificateReferenceTypeApplication, true},
+		{"OAuth app type", CertificateReferenceTypeOAuthApp, true},
 		{"IDP type", CertificateReferenceTypeIDP, true},
 		{"Invalid type", CertificateReferenceType("INVALID"), false},
 		{"Empty type", CertificateReferenceType(""), false},
@@ -829,7 +829,7 @@ func (suite *ServiceTestSuite) TestValidateCertificate() {
 	testCases := []struct {
 		name          string
 		cert          *Certificate
-		expectedError *serviceerror.ServiceError
+		expectedError *tidcommon.ServiceError
 	}{
 		{
 			name:          "Nil certificate",
@@ -840,7 +840,7 @@ func (suite *ServiceTestSuite) TestValidateCertificate() {
 			name: "Empty ID",
 			cert: &Certificate{
 				ID:      "",
-				RefType: CertificateReferenceTypeApplication,
+				RefType: CertificateReferenceTypeIDP,
 				RefID:   "test-id",
 				Type:    CertificateTypeJWKS,
 				Value:   "valid-certificate-value",
@@ -851,7 +851,7 @@ func (suite *ServiceTestSuite) TestValidateCertificate() {
 			name: "Empty RefID",
 			cert: &Certificate{
 				ID:      "test-id",
-				RefType: CertificateReferenceTypeApplication,
+				RefType: CertificateReferenceTypeIDP,
 				RefID:   "",
 				Type:    CertificateTypeJWKS,
 				Value:   "valid-certificate-value",
@@ -873,7 +873,7 @@ func (suite *ServiceTestSuite) TestValidateCertificate() {
 			name: "Invalid Type",
 			cert: &Certificate{
 				ID:      "test-id",
-				RefType: CertificateReferenceTypeApplication,
+				RefType: CertificateReferenceTypeIDP,
 				RefID:   "test-ref-id",
 				Type:    CertificateType("INVALID"),
 				Value:   "valid-certificate-value",
@@ -884,7 +884,7 @@ func (suite *ServiceTestSuite) TestValidateCertificate() {
 			name: "Value too short",
 			cert: &Certificate{
 				ID:      "test-id",
-				RefType: CertificateReferenceTypeApplication,
+				RefType: CertificateReferenceTypeIDP,
 				RefID:   "test-ref-id",
 				Type:    CertificateTypeJWKS,
 				Value:   "short",
@@ -895,7 +895,7 @@ func (suite *ServiceTestSuite) TestValidateCertificate() {
 			name: "Valid certificate",
 			cert: &Certificate{
 				ID:      "test-id",
-				RefType: CertificateReferenceTypeApplication,
+				RefType: CertificateReferenceTypeIDP,
 				RefID:   "test-ref-id",
 				Type:    CertificateTypeJWKS,
 				Value:   "valid-certificate-value",
@@ -921,7 +921,7 @@ func (suite *ServiceTestSuite) TestValidateCertificateForCreation() {
 	testCases := []struct {
 		name          string
 		cert          *Certificate
-		expectedError *serviceerror.ServiceError
+		expectedError *tidcommon.ServiceError
 	}{
 		{
 			name:          "Nil certificate",
@@ -931,7 +931,7 @@ func (suite *ServiceTestSuite) TestValidateCertificateForCreation() {
 		{
 			name: "Empty RefID",
 			cert: &Certificate{
-				RefType: CertificateReferenceTypeApplication,
+				RefType: CertificateReferenceTypeIDP,
 				RefID:   "",
 				Type:    CertificateTypeJWKS,
 				Value:   "valid-certificate-value",
@@ -951,7 +951,7 @@ func (suite *ServiceTestSuite) TestValidateCertificateForCreation() {
 		{
 			name: "Invalid Type",
 			cert: &Certificate{
-				RefType: CertificateReferenceTypeApplication,
+				RefType: CertificateReferenceTypeIDP,
 				RefID:   "test-ref-id",
 				Type:    CertificateType("INVALID"),
 				Value:   "valid-certificate-value",
@@ -961,7 +961,7 @@ func (suite *ServiceTestSuite) TestValidateCertificateForCreation() {
 		{
 			name: "Value too short",
 			cert: &Certificate{
-				RefType: CertificateReferenceTypeApplication,
+				RefType: CertificateReferenceTypeIDP,
 				RefID:   "test-ref-id",
 				Type:    CertificateTypeJWKS,
 				Value:   "short",
@@ -971,7 +971,7 @@ func (suite *ServiceTestSuite) TestValidateCertificateForCreation() {
 		{
 			name: "Valid certificate without ID",
 			cert: &Certificate{
-				RefType: CertificateReferenceTypeApplication,
+				RefType: CertificateReferenceTypeIDP,
 				RefID:   "test-ref-id",
 				Type:    CertificateTypeJWKS,
 				Value:   "valid-certificate-value",

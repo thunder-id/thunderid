@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {renderWithProviders, screen} from '@thunderid/test-utils';
+import {fireEvent, renderWithProviders, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {ResourceServer} from '../../../models/resource-server';
 import ResourceDetailPanel from '../ResourceDetailPanel';
@@ -39,8 +39,10 @@ vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => ({error: vi.fn(), info: vi.fn(), debug: vi.fn()}),
 }));
 
+const mockUpdateResourceServerMutate = vi.fn();
+
 vi.mock('../../../api/useUpdateResourceServer', () => ({
-  default: () => ({mutate: vi.fn(), isPending: false}),
+  default: () => ({mutate: mockUpdateResourceServerMutate, isPending: false}),
 }));
 
 vi.mock('../../../api/useUpdateResource', () => ({
@@ -147,6 +149,41 @@ describe('ResourceDetailPanel', () => {
     );
 
     expect(screen.getByDisplayValue('https://api.example.com')).toBeInTheDocument();
+  });
+
+  it('includes the resource server ouId when saving a server identifier change', async () => {
+    const selectedNode: SelectedNode = {
+      type: 'server',
+      id: 'rs-1',
+      data: mockResourceServer,
+    };
+
+    renderWithProviders(
+      <ResourceDetailPanel selectedNode={selectedNode} resourceServer={mockResourceServer} onRefresh={vi.fn()} />,
+    );
+
+    fireEvent.change(screen.getByDisplayValue('https://api.example.com'), {
+      target: {value: 'https://new-api.example.com'},
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', {name: /Save/i})).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: /Save/i}));
+
+    expect(mockUpdateResourceServerMutate).toHaveBeenCalledWith(
+      {
+        id: 'rs-1',
+        data: {
+          name: 'Dark Dodos Smash',
+          description: null,
+          identifier: 'https://new-api.example.com',
+          ouId: 'ou-1',
+        },
+      },
+      expect.any(Object),
+    );
   });
 
   it('renders the delimiter chip when a server node is selected', () => {

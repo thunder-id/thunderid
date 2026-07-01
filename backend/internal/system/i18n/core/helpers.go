@@ -16,6 +16,7 @@
  * under the License.
  */
 
+// Package core provides internationalization support.
 package core
 
 // GetDefault returns the default value for a given i18n key.

@@ -21,9 +21,9 @@ package core
 import (
 	"testing"
 
-	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
-	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/stretchr/testify/suite"
 )
 
 type NodeTestSuite struct {
@@ -37,7 +37,7 @@ func TestNodeTestSuite(t *testing.T) {
 func (s *NodeTestSuite) TestExecuteBaseNodeReturnsError() {
 	node := newTaskExecutionNode("node-1", nil, false, false)
 
-	resp, err := node.Execute(&NodeContext{ExecutionID: "f1"})
+	resp, err := node.Execute(&providers.NodeContext{ExecutionID: "f1"})
 
 	s.NotNil(err)
 	s.Nil(resp)
@@ -120,7 +120,7 @@ func (s *NodeTestSuite) TestInputsAndProperties() {
 	execNode, ok := node.(ExecutorBackedNodeInterface)
 	s.True(ok)
 
-	inputs := []common.Input{{Identifier: "i1", Required: true}}
+	inputs := []providers.Input{{Identifier: "i1", Required: true}}
 	execNode.SetInputs(inputs)
 	s.Equal(inputs, execNode.GetInputs())
 }

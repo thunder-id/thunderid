@@ -123,7 +123,8 @@ export default function AgentEditPage(): JSX.Element {
   const handleSave = useCallback(async () => {
     if (!agent || !agentId) return;
 
-    const updatedData = {...agent, ...editedAgent};
+    const {certificate, ...updatedData} = {...agent, ...editedAgent} as Agent & {certificate?: unknown};
+    void certificate;
 
     try {
       await updateAgent.mutateAsync({agentId, data: updatedData});

@@ -24,7 +24,8 @@ package model
 import (
 	"encoding/json"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -41,8 +42,8 @@ type AgentRequestWithID struct {
 	Owner       string                 `json:"owner,omitempty"       yaml:"owner,omitempty"`
 	Attributes  map[string]interface{} `json:"attributes,omitempty"  yaml:"attributes,omitempty"`
 
-	inboundmodel.InboundAuthProfile `yaml:",inline"`
-	InboundAuthConfig               []inboundmodel.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
+	providers.InboundAuthProfile `yaml:",inline"`
+	InboundAuthConfig            []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
 }
 
 // Agent is the service-level model for agent create operations.
@@ -56,22 +57,22 @@ type Agent struct {
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
 
-	inboundmodel.InboundAuthProfile
-	InboundAuthConfig []inboundmodel.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
+	providers.InboundAuthProfile
+	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
 }
 
 // CreateAgentRequest is the HTTP request body for creating an agent.
 type CreateAgentRequest struct {
-	OUID        string          `json:"ouId"`
+	OUID        string          `json:"ouId" native:"required"`
 	OUHandle    string          `json:"ouHandle,omitempty"`
-	Type        string          `json:"type"`
-	Name        string          `json:"name"`
+	Type        string          `json:"type" native:"required"`
+	Name        string          `json:"name" native:"required,min=3,max=100"`
 	Description string          `json:"description,omitempty"`
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
 
-	inboundmodel.InboundAuthProfile
-	InboundAuthConfig []inboundmodel.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
+	providers.InboundAuthProfile
+	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
 }
 
 // UpdateAgentRequest is the HTTP request body for updating an agent.
@@ -84,8 +85,8 @@ type UpdateAgentRequest struct {
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
 
-	inboundmodel.InboundAuthProfile
-	InboundAuthConfig []inboundmodel.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
+	providers.InboundAuthProfile
+	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
 }
 
 // AgentCompleteResponse is returned on create and update operations. Includes clientSecret
@@ -100,8 +101,8 @@ type AgentCompleteResponse struct {
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
 
-	inboundmodel.InboundAuthProfile
-	InboundAuthConfig []inboundmodel.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
+	providers.InboundAuthProfile
+	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
 }
 
 // AgentGetResponse is returned on read operations. Excludes secrets (no clientSecret).
@@ -119,8 +120,8 @@ type AgentGetResponse struct {
 	Attributes     json.RawMessage        `json:"attributes,omitempty" yaml:"-"`
 	AttributesYAML map[string]interface{} `json:"-"                    yaml:"attributes,omitempty"`
 
-	inboundmodel.InboundAuthProfile `yaml:",inline"`
-	InboundAuthConfig               []inboundmodel.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
+	providers.InboundAuthProfile `yaml:",inline"`
+	InboundAuthConfig            []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
 }
 
 // BasicAgentResponse is the summary view used in list responses.

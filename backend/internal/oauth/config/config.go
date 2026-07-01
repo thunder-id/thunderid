@@ -21,6 +21,7 @@ package oauthconfig
 
 import (
 	"github.com/thunder-id/thunderid/internal/system/config"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 // Config holds configuration values required by OAuth services.
@@ -28,9 +29,9 @@ type Config struct {
 	DeploymentID  string
 	RuntimeDBType string
 	BaseURL       string
-	JWT           config.JWTConfig
-	OAuth         config.OAuthConfig
-	GateClient    config.GateClientConfig
+	JWT           engineconfig.JWTConfig
+	OAuth         engineconfig.OAuthConfig
+	GateClient    engineconfig.GateClientConfig
 }
 
 // FromServerRuntime builds OAuth configuration from the global server runtime.

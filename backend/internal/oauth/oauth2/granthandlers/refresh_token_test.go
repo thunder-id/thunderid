@@ -24,21 +24,22 @@ import (
 	"testing"
 	"time"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
@@ -63,7 +64,7 @@ type RefreshTokenGrantHandlerTestSuite struct {
 	mockTokenValidator   *tokenservicemock.TokenValidatorInterfaceMock
 	mockAttrCacheService *attributecachemock.AttributeCacheServiceInterfaceMock
 	mockResourceService  *resourcemock.ResourceServiceInterfaceMock
-	oauthApp             *inboundmodel.OAuthClient
+	oauthApp             *providers.OAuthClient
 	validRefreshToken    string
 	validClaims          map[string]interface{}
 	testTokenReq         *model.TokenRequest
@@ -79,11 +80,11 @@ func (suite *RefreshTokenGrantHandlerTestSuite) SetupTest() {
 
 	// Initialize Runtime config with basic test config
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			ValidityPeriod: 3600,
 		},
-		OAuth: config.OAuthConfig{
-			RefreshToken: config.RefreshTokenConfig{
+		OAuth: engineconfig.OAuthConfig{
+			RefreshToken: engineconfig.RefreshTokenConfig{
 				ValidityPeriod: 86400,
 				RenewOnGrant:   false,
 			},
@@ -99,9 +100,9 @@ func (suite *RefreshTokenGrantHandlerTestSuite) SetupTest() {
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
-		Return(func(_ context.Context, identifier string) *resource.ResourceServer {
-			return &resource.ResourceServer{ID: identifier, Identifier: identifier}
-		}, func(_ context.Context, _ string) *serviceerror.ServiceError {
+		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
+			return &providers.ResourceServer{ID: identifier, Identifier: identifier}
+		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
@@ -109,12 +110,12 @@ func (suite *RefreshTokenGrantHandlerTestSuite) SetupTest() {
 
 	suite.rebuildHandlerWithConfig()
 
-	suite.oauthApp = &inboundmodel.OAuthClient{
+	suite.oauthApp = &providers.OAuthClient{
 		ClientID:                testRefreshTokenClientID,
-		GrantTypes:              []constants.GrantType{constants.GrantTypeRefreshToken},
-		TokenEndpointAuthMethod: constants.TokenEndpointAuthMethodClientSecretPost,
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{
+		GrantTypes:              []providers.GrantType{providers.GrantTypeRefreshToken},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
 				UserAttributes: []string{"email", "username"},
 			},
 		},
@@ -133,7 +134,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) SetupTest() {
 	}
 
 	suite.testTokenReq = &model.TokenRequest{
-		GrantType:    string(constants.GrantTypeRefreshToken),
+		GrantType:    string(providers.GrantTypeRefreshToken),
 		ClientID:     testRefreshTokenClientID,
 		RefreshToken: suite.validRefreshToken,
 		Scope:        "read",
@@ -185,7 +186,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestValidateGrant_InvalidGrantTy
 
 func (suite *RefreshTokenGrantHandlerTestSuite) TestValidateGrant_MissingRefreshToken() {
 	tokenReq := &model.TokenRequest{
-		GrantType: string(constants.GrantTypeRefreshToken),
+		GrantType: string(providers.GrantTypeRefreshToken),
 		ClientID:  testRefreshTokenClientID,
 	}
 
@@ -197,7 +198,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestValidateGrant_MissingRefresh
 
 func (suite *RefreshTokenGrantHandlerTestSuite) TestValidateGrant_MissingClientID() {
 	tokenReq := &model.TokenRequest{
-		GrantType:    string(constants.GrantTypeRefreshToken),
+		GrantType:    string(providers.GrantTypeRefreshToken),
 		RefreshToken: "token",
 	}
 
@@ -316,12 +317,12 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_WithClaims
 
 func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_AgentClientFreezesActorSub() {
 	const actAppID = "act-entity-id"
-	agentApp := &inboundmodel.OAuthClient{
+	agentApp := &providers.OAuthClient{
 		ID:                      actAppID,
 		ClientID:                testRefreshTokenClientID,
 		EntityCategory:          "agent",
-		GrantTypes:              []constants.GrantType{constants.GrantTypeRefreshToken},
-		TokenEndpointAuthMethod: constants.TokenEndpointAuthMethodClientSecretPost,
+		GrantTypes:              []providers.GrantType{providers.GrantTypeRefreshToken},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
 	}
 
 	var capturedActorSub string
@@ -344,13 +345,13 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_AgentClien
 }
 
 func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_AppClientWithoutFlagOmitsActorSub() {
-	appApp := &inboundmodel.OAuthClient{
+	appApp := &providers.OAuthClient{
 		ID:                      "app-entity-id",
 		ClientID:                testRefreshTokenClientID,
 		EntityCategory:          "app",
 		IncludeActClaim:         false,
-		GrantTypes:              []constants.GrantType{constants.GrantTypeRefreshToken},
-		TokenEndpointAuthMethod: constants.TokenEndpointAuthMethodClientSecretPost,
+		GrantTypes:              []providers.GrantType{providers.GrantTypeRefreshToken},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
 	}
 
 	var capturedActorSub string
@@ -409,13 +410,13 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_ReplaysActorSubF
 func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_NoActorSubMarker_OmitsActorEvenWhenFlagOn() {
 	// Freeze-at-issuance: a refresh token issued without the marker must not gain an act claim
 	// even if the client now opts into act claims.
-	appWithFlagOn := &inboundmodel.OAuthClient{
+	appWithFlagOn := &providers.OAuthClient{
 		ID:                      "app-entity-id",
 		ClientID:                testRefreshTokenClientID,
 		EntityCategory:          "app",
 		IncludeActClaim:         true,
-		GrantTypes:              []constants.GrantType{constants.GrantTypeRefreshToken},
-		TokenEndpointAuthMethod: constants.TokenEndpointAuthMethodClientSecretPost,
+		GrantTypes:              []providers.GrantType{providers.GrantTypeRefreshToken},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
 	}
 
 	suite.mockTokenValidator.
@@ -544,10 +545,10 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_GetAttributeCach
 			Iat:              int64(suite.validClaims["iat"].(float64)),
 		}, nil)
 
-	cacheErr := &serviceerror.ServiceError{
-		Type: serviceerror.ServerErrorType,
+	cacheErr := &tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
 		Code: "ACS-2001",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.attributecache.internal_server_error",
 			DefaultValue: "Internal server error",
 		},
@@ -739,7 +740,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_IDTokenGenerated
 	}, nil)
 
 	tokenReq := &model.TokenRequest{
-		GrantType:    string(constants.GrantTypeRefreshToken),
+		GrantType:    string(providers.GrantTypeRefreshToken),
 		ClientID:     testRefreshTokenClientID,
 		RefreshToken: suite.validRefreshToken,
 		Scope:        "openid read",
@@ -815,7 +816,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_IDTokenGeneratio
 		Return(nil, errors.New("failed to generate ID token"))
 
 	tokenReq := &model.TokenRequest{
-		GrantType:    string(constants.GrantTypeRefreshToken),
+		GrantType:    string(providers.GrantTypeRefreshToken),
 		ClientID:     testRefreshTokenClientID,
 		RefreshToken: suite.validRefreshToken,
 		Scope:        "openid read",
@@ -848,7 +849,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_NoRenewOnGrant_R
 
 	suite.mockAttrCacheService.On("GetAttributeCache", mock.Anything, testCacheID).
 		Return(&attributecache.AttributeCache{ID: testCacheID, Attributes: map[string]interface{}{}},
-			(*serviceerror.ServiceError)(nil)).Once()
+			(*tidcommon.ServiceError)(nil)).Once()
 
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
 		Token:    "new.access.token",
@@ -859,7 +860,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_NoRenewOnGrant_R
 	// TTL ≈ 82800 + buffer(60) = 82860; allow ±2 s for execution time between test setup and handler call.
 	suite.mockAttrCacheService.On("ExtendAttributeCacheTTL", mock.Anything, testCacheID,
 		mock.MatchedBy(func(ttl int) bool { return ttl >= 82858 && ttl <= 82862 })).
-		Return((*serviceerror.ServiceError)(nil))
+		Return((*tidcommon.ServiceError)(nil))
 
 	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
 
@@ -886,7 +887,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_ExtendsCache_Whe
 
 	suite.mockAttrCacheService.On("GetAttributeCache", mock.Anything, testCacheID).
 		Return(&attributecache.AttributeCache{ID: testCacheID, Attributes: map[string]interface{}{}},
-			(*serviceerror.ServiceError)(nil)).Once()
+			(*tidcommon.ServiceError)(nil)).Once()
 
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
 		Token:     "new.access.token",
@@ -897,7 +898,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_ExtendsCache_Whe
 
 	// Access token expiry (now+7200) > refresh token expiry (now+3400) → TTL = 7200 + buffer(60) = 7260.
 	suite.mockAttrCacheService.On("ExtendAttributeCacheTTL", mock.Anything, testCacheID, 7260).
-		Return((*serviceerror.ServiceError)(nil))
+		Return((*tidcommon.ServiceError)(nil))
 
 	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
 
@@ -925,7 +926,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_NoRenewOnGrant_E
 
 	suite.mockAttrCacheService.On("GetAttributeCache", mock.Anything, testCacheID).
 		Return(&attributecache.AttributeCache{ID: testCacheID, Attributes: map[string]interface{}{}},
-			(*serviceerror.ServiceError)(nil)).Once()
+			(*tidcommon.ServiceError)(nil)).Once()
 
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
 		Token:     "new.access.token",
@@ -934,10 +935,10 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_NoRenewOnGrant_E
 		Scopes:    []string{"read"},
 	}, nil)
 
-	extendErr := &serviceerror.ServiceError{
-		Type: serviceerror.ServerErrorType,
+	extendErr := &tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
 		Code: "ACS-2001",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.attributecache.internal_server_error",
 			DefaultValue: "Internal server error",
 		},
@@ -970,7 +971,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RenewOnGrant_Ext
 
 	suite.mockAttrCacheService.On("GetAttributeCache", mock.Anything, testCacheID).
 		Return(&attributecache.AttributeCache{ID: testCacheID, Attributes: map[string]interface{}{}},
-			(*serviceerror.ServiceError)(nil)).Once()
+			(*tidcommon.ServiceError)(nil)).Once()
 
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
 		Token:          "new.access.token",
@@ -989,7 +990,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RenewOnGrant_Ext
 
 	// Expect TTL to be extended to the refresh token validity period (86400 from config) + buffer(60) = 86460.
 	suite.mockAttrCacheService.On("ExtendAttributeCacheTTL", mock.Anything, testCacheID, 86460).
-		Return((*serviceerror.ServiceError)(nil))
+		Return((*tidcommon.ServiceError)(nil))
 
 	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
 
@@ -1017,7 +1018,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RenewOnGrant_Ext
 
 	suite.mockAttrCacheService.On("GetAttributeCache", mock.Anything, testCacheID).
 		Return(&attributecache.AttributeCache{ID: testCacheID, Attributes: map[string]interface{}{}},
-			(*serviceerror.ServiceError)(nil)).Once()
+			(*tidcommon.ServiceError)(nil)).Once()
 
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
 		Token:          "new.access.token",
@@ -1034,10 +1035,10 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RenewOnGrant_Ext
 		Scopes:    []string{"read"},
 	}, nil)
 
-	extendErr := &serviceerror.ServiceError{
-		Type: serviceerror.ServerErrorType,
+	extendErr := &tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
 		Code: "ACS-2001",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.attributecache.internal_server_error",
 			DefaultValue: "Internal server error",
 		},
@@ -1074,7 +1075,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_SkipsCacheExtend
 			ID:         testCacheID,
 			Attributes: map[string]interface{}{},
 			TTLSeconds: 100000,
-		}, (*serviceerror.ServiceError)(nil)).Once()
+		}, (*tidcommon.ServiceError)(nil)).Once()
 
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
 		Token:     "new.access.token",
@@ -1120,7 +1121,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestExtendCacheTTL_RefreshOutliv
 
 	suite.mockAttrCacheService.On("ExtendAttributeCacheTTL", mock.Anything, testCacheID,
 		mock.MatchedBy(func(ttl int) bool { return ttl >= 82858 && ttl <= 82862 })).
-		Return((*serviceerror.ServiceError)(nil))
+		Return((*tidcommon.ServiceError)(nil))
 
 	result := suite.handler.extendCacheTTL(
 		context.Background(), cacheEntry, suite.oauthApp,
@@ -1138,7 +1139,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestExtendCacheTTL_AccessOutlive
 	cacheEntry := &attributecache.AttributeCache{ID: testCacheID, TTLSeconds: 0}
 
 	suite.mockAttrCacheService.On("ExtendAttributeCacheTTL", mock.Anything, testCacheID, 7260).
-		Return((*serviceerror.ServiceError)(nil))
+		Return((*tidcommon.ServiceError)(nil))
 
 	result := suite.handler.extendCacheTTL(
 		context.Background(), cacheEntry, suite.oauthApp,
@@ -1155,7 +1156,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestExtendCacheTTL_RenewOnGrant_
 	cacheEntry := &attributecache.AttributeCache{ID: testCacheID, TTLSeconds: 0}
 
 	suite.mockAttrCacheService.On("ExtendAttributeCacheTTL", mock.Anything, testCacheID, 86460).
-		Return((*serviceerror.ServiceError)(nil))
+		Return((*tidcommon.ServiceError)(nil))
 
 	result := suite.handler.extendCacheTTL(
 		context.Background(), cacheEntry, suite.oauthApp,
@@ -1170,10 +1171,10 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestExtendCacheTTL_RenewOnGrant_
 func (suite *RefreshTokenGrantHandlerTestSuite) TestExtendCacheTTL_ExtendFails_ReturnsServerError() {
 	cacheEntry := &attributecache.AttributeCache{ID: testCacheID, TTLSeconds: 0}
 
-	extendErr := &serviceerror.ServiceError{
-		Type: serviceerror.ServerErrorType,
+	extendErr := &tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
 		Code: "ACS-2001",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.attributecache.internal_server_error",
 			DefaultValue: "Internal server error",
 		},
@@ -1240,7 +1241,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_IDTokenWithRenew
 	}, nil)
 
 	tokenReq := &model.TokenRequest{
-		GrantType:    string(constants.GrantTypeRefreshToken),
+		GrantType:    string(providers.GrantTypeRefreshToken),
 		ClientID:     testRefreshTokenClientID,
 		RefreshToken: suite.validRefreshToken,
 		Scope:        "openid read",
@@ -1261,7 +1262,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_IDTokenWithRenew
 
 func (suite *RefreshTokenGrantHandlerTestSuite) TestValidateGrant_MalformedResourceURI_ReturnsInvalidTarget() {
 	tokenReq := &model.TokenRequest{
-		GrantType:    string(constants.GrantTypeRefreshToken),
+		GrantType:    string(providers.GrantTypeRefreshToken),
 		ClientID:     testRefreshTokenClientID,
 		RefreshToken: suite.validRefreshToken,
 		Resources:    []string{"not-an-absolute-uri"},
@@ -1297,7 +1298,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_ResourceNarrowin
 	}, nil)
 
 	tokenReq := &model.TokenRequest{
-		GrantType:    string(constants.GrantTypeRefreshToken),
+		GrantType:    string(providers.GrantTypeRefreshToken),
 		ClientID:     testRefreshTokenClientID,
 		RefreshToken: suite.validRefreshToken,
 		Scope:        "read",
@@ -1325,7 +1326,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_ResourceNarrowin
 		}, nil)
 
 	tokenReq := &model.TokenRequest{
-		GrantType:    string(constants.GrantTypeRefreshToken),
+		GrantType:    string(providers.GrantTypeRefreshToken),
 		ClientID:     testRefreshTokenClientID,
 		RefreshToken: suite.validRefreshToken,
 		Scope:        "read",
@@ -1364,7 +1365,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_ResourceNarrowin
 	}, nil)
 
 	tokenReq := &model.TokenRequest{
-		GrantType:    string(constants.GrantTypeRefreshToken),
+		GrantType:    string(providers.GrantTypeRefreshToken),
 		ClientID:     testRefreshTokenClientID,
 		RefreshToken: suite.validRefreshToken,
 		Scope:        "read",
@@ -1403,7 +1404,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_NoResourceParam_
 	}, nil)
 
 	tokenReq := &model.TokenRequest{
-		GrantType:    string(constants.GrantTypeRefreshToken),
+		GrantType:    string(providers.GrantTypeRefreshToken),
 		ClientID:     testRefreshTokenClientID,
 		RefreshToken: suite.validRefreshToken,
 		Scope:        "read",
@@ -1456,7 +1457,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RenewOnGrant_Ori
 	}, nil)
 
 	tokenReq := &model.TokenRequest{
-		GrantType:    string(constants.GrantTypeRefreshToken),
+		GrantType:    string(providers.GrantTypeRefreshToken),
 		ClientID:     testRefreshTokenClientID,
 		RefreshToken: suite.validRefreshToken,
 		Scope:        "read",
@@ -1484,7 +1485,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_ResourceNarrowin
 		}, nil)
 
 	tokenReq := &model.TokenRequest{
-		GrantType:    string(constants.GrantTypeRefreshToken),
+		GrantType:    string(providers.GrantTypeRefreshToken),
 		ClientID:     testRefreshTokenClientID,
 		RefreshToken: suite.validRefreshToken,
 		Scope:        "read",
@@ -1504,7 +1505,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_ResourceNarrowin
 	// ValidatePermissions returns "write" as invalid for rs01, so access token must carry only "read".
 	suite.mockResourceService.ExpectedCalls = nil
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
-		Return(&resource.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
+		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testRS01URI, mock.Anything).
 		Return([]string{"write"}, nil)
 
@@ -1531,7 +1532,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_ResourceNarrowin
 	}, nil)
 
 	tokenReq := &model.TokenRequest{
-		GrantType:    string(constants.GrantTypeRefreshToken),
+		GrantType:    string(providers.GrantTypeRefreshToken),
 		ClientID:     testRefreshTokenClientID,
 		RefreshToken: suite.validRefreshToken,
 		Scope:        "read write",

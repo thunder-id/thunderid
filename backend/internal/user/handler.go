@@ -20,6 +20,7 @@ package user
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -27,10 +28,10 @@ import (
 	"strconv"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -97,12 +98,16 @@ func (uh *userHandler) HandleUserPostRequest(w http.ResponseWriter, r *http.Requ
 
 	createRequest, err := sysutils.DecodeJSONBody[CreateUserRequest](r)
 	if err != nil {
-		errResp := apierror.ErrorResponse{
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, apierror.ErrorResponse{
 			Code:        ErrorInvalidRequestFormat.Code,
 			Message:     ErrorInvalidRequestFormat.Error,
 			Description: ErrorInvalidRequestFormat.ErrorDescription,
-		}
-		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
+		})
 		return
 	}
 
@@ -158,9 +163,9 @@ func (uh *userHandler) HandleUserGetRequest(w http.ResponseWriter, r *http.Reque
 }
 
 // HandleUserGroupsGetRequest handles the get user groups request.
-func (ah *userHandler) HandleUserGroupsGetRequest(w http.ResponseWriter, r *http.Request) {
+func (uh *userHandler) HandleUserGroupsGetRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, handlerLoggerComponentName))
 
 	id := r.PathValue("id")
 	if id == "" {
@@ -178,7 +183,7 @@ func (ah *userHandler) HandleUserGroupsGetRequest(w http.ResponseWriter, r *http
 		limit = serverconst.DefaultPageSize
 	}
 
-	groupListResponse, svcErr := ah.userService.GetUserGroups(ctx, id, limit, offset)
+	groupListResponse, svcErr := uh.userService.GetUserGroups(ctx, id, limit, offset)
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -197,25 +202,28 @@ func (uh *userHandler) HandleUserPutRequest(w http.ResponseWriter, r *http.Reque
 	ctx := r.Context()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, handlerLoggerComponentName))
 
-	id := strings.TrimPrefix(r.URL.Path, "/users/")
+	id := r.PathValue("id")
 	if id == "" {
-		errResp := apierror.ErrorResponse{
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, apierror.ErrorResponse{
 			Code:        ErrorMissingUserID.Code,
 			Message:     ErrorMissingUserID.Error,
 			Description: ErrorMissingUserID.ErrorDescription,
-		}
-		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
+		})
 		return
 	}
 
 	updateRequest, err := sysutils.DecodeJSONBody[User](r)
 	if err != nil {
-		errResp := apierror.ErrorResponse{
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, apierror.ErrorResponse{
 			Code:        ErrorInvalidRequestFormat.Code,
 			Message:     ErrorInvalidRequestFormat.Error,
 			Description: ErrorInvalidRequestFormat.ErrorDescription,
-		}
-		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
+		})
 		return
 	}
 	updateRequest.ID = id
@@ -238,7 +246,7 @@ func (uh *userHandler) HandleUserDeleteRequest(w http.ResponseWriter, r *http.Re
 	ctx := r.Context()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, handlerLoggerComponentName))
 
-	id := strings.TrimPrefix(r.URL.Path, "/users/")
+	id := r.PathValue("id")
 	if id == "" {
 		errResp := apierror.ErrorResponse{
 			Code:        ErrorMissingUserID.Code,
@@ -318,15 +326,16 @@ func (uh *userHandler) HandleUserPostByPathRequest(w http.ResponseWriter, r *htt
 
 	createRequest, err := sysutils.DecodeJSONBody[CreateUserByPathRequest](r)
 	if err != nil {
-		errResp := apierror.ErrorResponse{
-			Code:    ErrorInvalidRequestFormat.Code,
-			Message: ErrorInvalidRequestFormat.Error,
-			Description: core.I18nMessage{
-				Key:          "error.userservice.invalid_request_format_description",
-				DefaultValue: "Failed to parse request body: " + err.Error(),
-			},
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
 		}
-		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, apierror.ErrorResponse{
+			Code:        ErrorInvalidRequestFormat.Code,
+			Message:     ErrorInvalidRequestFormat.Error,
+			Description: ErrorInvalidRequestFormat.ErrorDescription,
+		})
 		return
 	}
 
@@ -380,6 +389,11 @@ func (uh *userHandler) HandleSelfUserPutRequest(w http.ResponseWriter, r *http.R
 
 	updateRequest, err := sysutils.DecodeJSONBody[UpdateSelfUserRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
@@ -413,11 +427,20 @@ func (uh *userHandler) HandleSelfUserCredentialUpdateRequest(w http.ResponseWrit
 
 	updateRequest, err := sysutils.DecodeJSONBody[UpdateSelfUserRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
-
-	if updateRequest == nil || len(updateRequest.Attributes) == 0 || string(updateRequest.Attributes) == "{}" {
+	if updateRequest == nil {
+		handleError(ctx, w, &ErrorInvalidRequestFormat)
+		return
+	}
+	attrStr := strings.TrimSpace(string(updateRequest.Attributes))
+	if len(updateRequest.Attributes) == 0 || attrStr == "{}" {
 		handleError(ctx, w, &ErrorMissingCredentials)
 		return
 	}
@@ -433,7 +456,7 @@ func (uh *userHandler) HandleSelfUserCredentialUpdateRequest(w http.ResponseWrit
 }
 
 // parsePaginationParams parses limit and offset query parameters from the request.
-func parsePaginationParams(query url.Values) (int, int, *serviceerror.ServiceError) {
+func parsePaginationParams(query url.Values) (int, int, *tidcommon.ServiceError) {
 	limit := 0
 	offset := 0
 
@@ -461,9 +484,9 @@ func parsePaginationParams(query url.Values) (int, int, *serviceerror.ServiceErr
 }
 
 // handleError handles service errors and writes appropriate HTTP responses.
-func handleError(ctx context.Context, w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
+func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.ServiceError) {
 	var statusCode int
-	if svcErr.Type == serviceerror.ClientErrorType {
+	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
 		case ErrorMissingUserID.Code,
 			ErrorUserNotFound.Code,
@@ -479,7 +502,7 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *serviceerro
 			statusCode = http.StatusBadRequest
 		case ErrorAuthenticationFailed.Code:
 			statusCode = http.StatusUnauthorized
-		case serviceerror.ErrorUnauthorized.Code:
+		case tidcommon.ErrorUnauthorized.Code:
 			statusCode = http.StatusForbidden
 		default:
 			statusCode = http.StatusBadRequest
@@ -513,7 +536,7 @@ func extractAndValidatePath(w http.ResponseWriter, r *http.Request) (string, boo
 }
 
 // parseFilterParams parses and sanitizes filter query parameters from the request.
-func parseFilterParams(query url.Values) (map[string]interface{}, *serviceerror.ServiceError) {
+func parseFilterParams(query url.Values) (map[string]interface{}, *tidcommon.ServiceError) {
 	if !query.Has("filter") {
 		return make(map[string]interface{}), nil
 	}

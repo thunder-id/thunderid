@@ -29,19 +29,20 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 var getDBProvider = provider.GetDBProvider
 
 // idpStoreInterface defines the interface for identity provider store operations.
 type idpStoreInterface interface {
-	CreateIdentityProvider(ctx context.Context, idp IDPDTO) error
+	CreateIdentityProvider(ctx context.Context, idp providers.IDPDTO) error
 	GetIdentityProviderList(ctx context.Context) ([]BasicIDPDTO, error)
 	GetIdentityProviderListCount(ctx context.Context) (int, error)
-	GetIdentityProvider(ctx context.Context, idpID string) (*IDPDTO, error)
-	GetIdentityProviderByName(ctx context.Context, idpName string) (*IDPDTO, error)
-	GetIdentityProvidersByProperty(ctx context.Context, propertyKey, propertyValue string) ([]IDPDTO, error)
-	UpdateIdentityProvider(ctx context.Context, idp *IDPDTO) error
+	GetIdentityProvider(ctx context.Context, idpID string) (*providers.IDPDTO, error)
+	GetIdentityProviderByName(ctx context.Context, idpName string) (*providers.IDPDTO, error)
+	GetIdentityProvidersByProperty(ctx context.Context, propertyKey, propertyValue string) ([]providers.IDPDTO, error)
+	UpdateIdentityProvider(ctx context.Context, idp *providers.IDPDTO) error
 	DeleteIdentityProvider(ctx context.Context, idpID string) error
 }
 
@@ -69,7 +70,7 @@ func newIDPStore() (idpStoreInterface, transaction.Transactioner, error) {
 }
 
 // CreateIdentityProvider handles the IdP creation in the database.
-func (s *idpStore) CreateIdentityProvider(ctx context.Context, idp IDPDTO) error {
+func (s *idpStore) CreateIdentityProvider(ctx context.Context, idp providers.IDPDTO) error {
 	dbClient, err := s.dbProvider.GetConfigDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
@@ -157,18 +158,18 @@ func (s *idpStore) GetIdentityProviderListCount(ctx context.Context) (int, error
 }
 
 // GetIdentityProvider retrieves a specific idp by its ID from the database.
-func (s *idpStore) GetIdentityProvider(ctx context.Context, id string) (*IDPDTO, error) {
+func (s *idpStore) GetIdentityProvider(ctx context.Context, id string) (*providers.IDPDTO, error) {
 	return s.getIDP(ctx, queryGetIdentityProviderByID, id)
 }
 
 // GetIdentityProviderByName retrieves a specific idp by its name from the database.
-func (s *idpStore) GetIdentityProviderByName(ctx context.Context, name string) (*IDPDTO, error) {
+func (s *idpStore) GetIdentityProviderByName(ctx context.Context, name string) (*providers.IDPDTO, error) {
 	return s.getIDP(ctx, queryGetIdentityProviderByName, name)
 }
 
 // GetIdentityProvidersByProperty retrieves IDPs matching a given property key and value.
 func (s *idpStore) GetIdentityProvidersByProperty(ctx context.Context,
-	propertyKey, propertyValue string) ([]IDPDTO, error) {
+	propertyKey, propertyValue string) ([]providers.IDPDTO, error) {
 	dbClient, err := s.dbProvider.GetConfigDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
@@ -183,7 +184,7 @@ func (s *idpStore) GetIdentityProvidersByProperty(ctx context.Context,
 		return nil, ErrIDPNotFound
 	}
 
-	idps := make([]IDPDTO, 0, len(results))
+	idps := make([]providers.IDPDTO, 0, len(results))
 	for _, row := range results {
 		basicIDP, err := buildIDPFromResultRow(row)
 		if err != nil {
@@ -210,7 +211,7 @@ func (s *idpStore) GetIdentityProvidersByProperty(ctx context.Context,
 			return nil, err
 		}
 
-		idps = append(idps, IDPDTO{
+		idps = append(idps, providers.IDPDTO{
 			ID:                     basicIDP.ID,
 			Name:                   basicIDP.Name,
 			Description:            basicIDP.Description,
@@ -223,7 +224,7 @@ func (s *idpStore) GetIdentityProvidersByProperty(ctx context.Context,
 }
 
 // getIDP retrieves an IDP based on the provided query and identifier.
-func (s *idpStore) getIDP(ctx context.Context, query dbmodel.DBQuery, identifier string) (*IDPDTO, error) {
+func (s *idpStore) getIDP(ctx context.Context, query dbmodel.DBQuery, identifier string) (*providers.IDPDTO, error) {
 	dbClient, err := s.dbProvider.GetConfigDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
@@ -271,7 +272,7 @@ func (s *idpStore) getIDP(ctx context.Context, query dbmodel.DBQuery, identifier
 		return nil, err
 	}
 
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		ID:                     basicIDP.ID,
 		Name:                   basicIDP.Name,
 		Description:            basicIDP.Description,
@@ -284,7 +285,7 @@ func (s *idpStore) getIDP(ctx context.Context, query dbmodel.DBQuery, identifier
 }
 
 // UpdateIdentityProvider updates the idp in the database.
-func (s *idpStore) UpdateIdentityProvider(ctx context.Context, idp *IDPDTO) error {
+func (s *idpStore) UpdateIdentityProvider(ctx context.Context, idp *providers.IDPDTO) error {
 	dbClient, err := s.dbProvider.GetConfigDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
@@ -358,7 +359,7 @@ func buildIDPFromResultRow(row map[string]interface{}) (*BasicIDPDTO, error) {
 		ID:          idpID,
 		Name:        idpName,
 		Description: idpDescription,
-		Type:        IDPType(idpType),
+		Type:        providers.IDPType(idpType),
 	}
 
 	return &idp, nil
@@ -367,7 +368,7 @@ func buildIDPFromResultRow(row map[string]interface{}) (*BasicIDPDTO, error) {
 // serializeAttributeConfiguration marshals the attribute mapping to a JSON string. Returns nil when
 // no mapping is configured so the database column receives SQL NULL instead of an empty string
 // (required for PostgreSQL JSONB columns).
-func serializeAttributeConfiguration(am *AttributeConfiguration) (interface{}, error) {
+func serializeAttributeConfiguration(am *providers.AttributeConfiguration) (interface{}, error) {
 	if am == nil {
 		return nil, nil
 	}
@@ -379,8 +380,8 @@ func serializeAttributeConfiguration(am *AttributeConfiguration) (interface{}, e
 }
 
 // parseAttributeConfigurationFromRow deserializes the ATTRIBUTE_CONFIGURATION column (string or []byte) into
-// an AttributeConfiguration, returning nil when the column is empty.
-func parseAttributeConfigurationFromRow(row map[string]interface{}) (*AttributeConfiguration, error) {
+// an providers.AttributeConfiguration, returning nil when the column is empty.
+func parseAttributeConfigurationFromRow(row map[string]interface{}) (*providers.AttributeConfiguration, error) {
 	var raw string
 	switch v := row["attribute_configuration"].(type) {
 	case string:
@@ -392,7 +393,7 @@ func parseAttributeConfigurationFromRow(row map[string]interface{}) (*AttributeC
 		return nil, nil
 	}
 
-	var am AttributeConfiguration
+	var am providers.AttributeConfiguration
 	if err := json.Unmarshal([]byte(raw), &am); err != nil {
 		return nil, fmt.Errorf("failed to deserialize attribute mapping from JSON: %w", err)
 	}

@@ -25,6 +25,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // FileBasedResourceStoreTestSuite tests the fileBasedResourceStore.
@@ -59,7 +61,7 @@ func (s *FileBasedResourceStoreTestSuite) TestNewFileBasedResourceStore() {
 }
 
 func (s *FileBasedResourceStoreTestSuite) TestCreateResourceServer_ReturnsImmutableError() {
-	rs := ResourceServer{
+	rs := providers.ResourceServer{
 		ID:        "rs1",
 		Name:      "Test Server",
 		OUID:      "ou1",
@@ -72,7 +74,7 @@ func (s *FileBasedResourceStoreTestSuite) TestCreateResourceServer_ReturnsImmuta
 }
 
 func (s *FileBasedResourceStoreTestSuite) TestUpdateResourceServer_ReturnsImmutableError() {
-	rs := ResourceServer{
+	rs := providers.ResourceServer{
 		ID:   "rs1",
 		Name: "Updated Server",
 	}
@@ -92,7 +94,7 @@ func (s *FileBasedResourceStoreTestSuite) TestGetResourceServer_NotFound() {
 	rs, err := s.store.GetResourceServer(s.ctx, "nonexistent")
 
 	assert.Error(s.T(), err)
-	assert.Equal(s.T(), ResourceServer{}, rs)
+	assert.Equal(s.T(), providers.ResourceServer{}, rs)
 }
 
 func (s *FileBasedResourceStoreTestSuite) TestGetResourceServer_CorruptedData() {
@@ -105,7 +107,7 @@ func (s *FileBasedResourceStoreTestSuite) TestGetResourceServer_CorruptedData() 
 	rs, err := s.store.GetResourceServer(s.ctx, "rs-corrupt")
 
 	assert.Error(s.T(), err)
-	assert.Equal(s.T(), ResourceServer{}, rs)
+	assert.Equal(s.T(), providers.ResourceServer{}, rs)
 	assert.Contains(s.T(), err.Error(), "data corrupted")
 }
 
@@ -135,7 +137,7 @@ func (s *FileBasedResourceStoreTestSuite) TestIsResourceServerDeclarative_Exists
 	assert.True(s.T(), ok)
 
 	// Create a test resource server
-	rs := &ResourceServer{
+	rs := &providers.ResourceServer{
 		ID:        "rs-test-declarative",
 		Name:      "Test Server",
 		OUID:      "ou1",
@@ -192,7 +194,7 @@ func (s *FileBasedResourceStoreTestSuite) TestCheckResourceServerHasDependencies
 // Resource operations tests
 
 func (s *FileBasedResourceStoreTestSuite) TestCreateResource_ReturnsImmutableError() {
-	res := Resource{
+	res := providers.Resource{
 		Name:   "Test Resource",
 		Handle: "test",
 	}
@@ -203,7 +205,7 @@ func (s *FileBasedResourceStoreTestSuite) TestCreateResource_ReturnsImmutableErr
 }
 
 func (s *FileBasedResourceStoreTestSuite) TestUpdateResource_ReturnsImmutableError() {
-	res := Resource{
+	res := providers.Resource{
 		Name: "Updated Resource",
 	}
 
@@ -228,7 +230,7 @@ func (s *FileBasedResourceStoreTestSuite) TestCheckCircularDependency_AlwaysFals
 // Action operations tests
 
 func (s *FileBasedResourceStoreTestSuite) TestCreateAction_ReturnsImmutableError() {
-	action := Action{
+	action := providers.Action{
 		Name:   "Test Action",
 		Handle: "test",
 	}
@@ -239,7 +241,7 @@ func (s *FileBasedResourceStoreTestSuite) TestCreateAction_ReturnsImmutableError
 }
 
 func (s *FileBasedResourceStoreTestSuite) TestUpdateAction_ReturnsImmutableError() {
-	action := Action{
+	action := providers.Action{
 		Name: "Updated Action",
 	}
 
@@ -258,7 +260,7 @@ func (s *FileBasedResourceStoreTestSuite) TestGetAction_NotFound() {
 	action, err := s.store.GetAction(s.ctx, "nonexistent", "rs1", nil)
 
 	assert.Error(s.T(), err)
-	assert.Equal(s.T(), Action{}, action)
+	assert.Equal(s.T(), providers.Action{}, action)
 }
 
 func (s *FileBasedResourceStoreTestSuite) TestIsActionExist_NotFound() {
@@ -292,17 +294,17 @@ func (s *FileBasedResourceStoreTestSuite) TestGetResourceAndLists_WithData() {
 	assert.True(s.T(), ok)
 
 	parentID := "rs-data_root"
-	rs := &ResourceServer{
+	rs := &providers.ResourceServer{
 		ID:        "rs-data",
 		Name:      "Data Server",
 		OUID:      "ou1",
 		Delimiter: ":",
-		Resources: []Resource{
+		Resources: []providers.Resource{
 			{
 				Name:        "Root",
 				Handle:      "root",
 				Description: "Root resource",
-				Actions: []Action{
+				Actions: []providers.Action{
 					{Name: "Read", Handle: "read"},
 				},
 			},
@@ -312,7 +314,7 @@ func (s *FileBasedResourceStoreTestSuite) TestGetResourceAndLists_WithData() {
 				Description:  "Child resource",
 				Parent:       &parentID,
 				ParentHandle: "root",
-				Actions: []Action{
+				Actions: []providers.Action{
 					{Name: "Write", Handle: "write"},
 				},
 			},
@@ -359,16 +361,16 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionListAndCounts_WithData() 
 	assert.True(s.T(), ok)
 
 	parentID := "rs-data_root"
-	rs := &ResourceServer{
+	rs := &providers.ResourceServer{
 		ID:        "rs-data",
 		Name:      "Data Server",
 		OUID:      "ou1",
 		Delimiter: ":",
-		Resources: []Resource{
+		Resources: []providers.Resource{
 			{
 				Name:   "Root",
 				Handle: "root",
-				Actions: []Action{
+				Actions: []providers.Action{
 					{Name: "Read", Handle: "read"},
 				},
 			},
@@ -377,7 +379,7 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionListAndCounts_WithData() 
 				Handle:       "child",
 				Parent:       &parentID,
 				ParentHandle: "root",
-				Actions: []Action{
+				Actions: []providers.Action{
 					{Name: "Write", Handle: "write"},
 				},
 			},
@@ -394,37 +396,94 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionListAndCounts_WithData() 
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), rootActionID, action.ID)
 
-	actions, err := s.store.GetActionList(s.ctx, "rs-data", nil, 10, 0)
+	actions, err := s.store.GetActionList(s.ctx, "rs-data", nil, "", 10, 0)
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), actions, 2)
 
-	actions, err = s.store.GetActionList(s.ctx, "rs-data", &rootID, 10, 0)
+	actions, err = s.store.GetActionList(s.ctx, "rs-data", &rootID, "", 10, 0)
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), actions, 1)
 
-	count, err := s.store.GetActionListCount(s.ctx, "rs-data", nil)
+	count, err := s.store.GetActionListCount(s.ctx, "rs-data", nil, "")
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), 2, count)
 
-	count, err = s.store.GetActionListCount(s.ctx, "rs-data", &rootID)
+	count, err = s.store.GetActionListCount(s.ctx, "rs-data", &rootID, "")
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), 1, count)
+}
+
+func (s *FileBasedResourceStoreTestSuite) TestGetActionList_FilterByKind() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	assert.True(s.T(), ok)
+
+	rs := &providers.ResourceServer{
+		ID:        "rs-mcp",
+		Name:      "MCP Server",
+		OUID:      "ou1",
+		Delimiter: ":",
+		Resources: []providers.Resource{
+			{
+				Name:   "Root",
+				Handle: "root",
+				Actions: []providers.Action{
+					{Name: "Create User", Handle: "create_user", Kind: providers.ActionKindTool},
+					{Name: "User List", Handle: "user_list", Kind: providers.ActionKindResource},
+				},
+			},
+		},
+	}
+
+	err := fileStore.Create("rs-mcp", rs)
+	assert.NoError(s.T(), err)
+
+	// Empty kind returns all actions.
+	all, err := s.store.GetActionList(s.ctx, "rs-mcp", nil, "", 10, 0)
+	assert.NoError(s.T(), err)
+	assert.Len(s.T(), all, 2)
+
+	// Tool kind returns only the tool action.
+	tools, err := s.store.GetActionList(s.ctx, "rs-mcp", nil, providers.ActionKindTool, 10, 0)
+	assert.NoError(s.T(), err)
+	assert.Len(s.T(), tools, 1)
+	assert.Equal(s.T(), "create_user", tools[0].Handle)
+	assert.Equal(s.T(), providers.ActionKindTool, tools[0].Kind)
+
+	// Resource kind returns only the resource action.
+	resources, err := s.store.GetActionList(s.ctx, "rs-mcp", nil, providers.ActionKindResource, 10, 0)
+	assert.NoError(s.T(), err)
+	assert.Len(s.T(), resources, 1)
+	assert.Equal(s.T(), "user_list", resources[0].Handle)
+	assert.Equal(s.T(), providers.ActionKindResource, resources[0].Kind)
+
+	// The count honors the kind filter and matches the filtered list length.
+	allCount, err := s.store.GetActionListCount(s.ctx, "rs-mcp", nil, "")
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), len(all), allCount)
+
+	toolCount, err := s.store.GetActionListCount(s.ctx, "rs-mcp", nil, providers.ActionKindTool)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), len(tools), toolCount)
+
+	resourceCount, err := s.store.GetActionListCount(s.ctx, "rs-mcp", nil, providers.ActionKindResource)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), len(resources), resourceCount)
 }
 
 func (s *FileBasedResourceStoreTestSuite) TestCheckActionHandleExists_WithData() {
 	fileStore, ok := s.store.(*fileBasedResourceStore)
 	assert.True(s.T(), ok)
 
-	rs := &ResourceServer{
+	rs := &providers.ResourceServer{
 		ID:        "rs-data",
 		Name:      "Data Server",
 		OUID:      "ou1",
 		Delimiter: ":",
-		Resources: []Resource{
+		Resources: []providers.Resource{
 			{
 				Name:   "Root",
 				Handle: "root",
-				Actions: []Action{
+				Actions: []providers.Action{
 					{Name: "Read", Handle: "read"},
 				},
 			},
@@ -458,7 +517,7 @@ func (s *FileBasedResourceStoreTestSuite) TestCheckResourceHasDependencies_Alway
 
 func (s *FileBasedResourceStoreTestSuite) TestCreateAndGetResourceServer() {
 	// Use the internal Create method (implements Storer interface)
-	processedDTO := &ResourceServer{
+	processedDTO := &providers.ResourceServer{
 		ID:          "rs-test",
 		Name:        "Test Server",
 		Description: "A test server",
@@ -466,7 +525,7 @@ func (s *FileBasedResourceStoreTestSuite) TestCreateAndGetResourceServer() {
 		Identifier:  "test-server",
 		OUID:        "ou1",
 		Delimiter:   ":",
-		Resources:   []Resource{},
+		Resources:   []providers.Resource{},
 	}
 
 	fileStore, ok := s.store.(*fileBasedResourceStore)
@@ -497,13 +556,13 @@ func (s *FileBasedResourceStoreTestSuite) TestGetResourceServerList_WithData() {
 	assert.NoError(s.T(), err)
 
 	// Add test data
-	rs1 := &ResourceServer{
+	rs1 := &providers.ResourceServer{
 		ID:        "rs-test-1",
 		Name:      "Server Test 1",
 		OUID:      "ou1",
 		Delimiter: ":",
 	}
-	rs2 := &ResourceServer{
+	rs2 := &providers.ResourceServer{
 		ID:        "rs-test-2",
 		Name:      "Server Test 2",
 		OUID:      "ou1",
@@ -539,7 +598,7 @@ func (s *FileBasedResourceStoreTestSuite) TestCheckResourceServerNameExists_With
 	fileStore, ok := s.store.(*fileBasedResourceStore)
 	assert.True(s.T(), ok)
 
-	rs := &ResourceServer{
+	rs := &providers.ResourceServer{
 		ID:        "rs-test",
 		Name:      "Unique Server Name",
 		OUID:      "ou1",
@@ -564,7 +623,7 @@ func (s *FileBasedResourceStoreTestSuite) TestCheckResourceServerIdentifierExist
 	fileStore, ok := s.store.(*fileBasedResourceStore)
 	assert.True(s.T(), ok)
 
-	rs := &ResourceServer{
+	rs := &providers.ResourceServer{
 		ID:         "rs-test",
 		Name:       "Test Server",
 		Identifier: "unique-identifier",

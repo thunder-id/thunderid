@@ -9,7 +9,8 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // newGraphBuilderInterfaceMock creates a new instance of graphBuilderInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -40,7 +41,7 @@ func (_m *graphBuilderInterfaceMock) EXPECT() *graphBuilderInterfaceMock_Expecte
 }
 
 // GetGraph provides a mock function for the type graphBuilderInterfaceMock
-func (_mock *graphBuilderInterfaceMock) GetGraph(ctx context.Context, flow *CompleteFlowDefinition) (core.GraphInterface, *serviceerror.ServiceError) {
+func (_mock *graphBuilderInterfaceMock) GetGraph(ctx context.Context, flow *providers.CompleteFlowDefinition) (core.GraphInterface, *tidcommon.ServiceError) {
 	ret := _mock.Called(ctx, flow)
 
 	if len(ret) == 0 {
@@ -48,22 +49,22 @@ func (_mock *graphBuilderInterfaceMock) GetGraph(ctx context.Context, flow *Comp
 	}
 
 	var r0 core.GraphInterface
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *CompleteFlowDefinition) (core.GraphInterface, *serviceerror.ServiceError)); ok {
+	var r1 *tidcommon.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.CompleteFlowDefinition) (core.GraphInterface, *tidcommon.ServiceError)); ok {
 		return returnFunc(ctx, flow)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *CompleteFlowDefinition) core.GraphInterface); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.CompleteFlowDefinition) core.GraphInterface); ok {
 		r0 = returnFunc(ctx, flow)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(core.GraphInterface)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *CompleteFlowDefinition) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *providers.CompleteFlowDefinition) *tidcommon.ServiceError); ok {
 		r1 = returnFunc(ctx, flow)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*tidcommon.ServiceError)
 		}
 	}
 	return r0, r1
@@ -76,20 +77,20 @@ type graphBuilderInterfaceMock_GetGraph_Call struct {
 
 // GetGraph is a helper method to define mock.On call
 //   - ctx context.Context
-//   - flow *CompleteFlowDefinition
+//   - flow *providers.CompleteFlowDefinition
 func (_e *graphBuilderInterfaceMock_Expecter) GetGraph(ctx interface{}, flow interface{}) *graphBuilderInterfaceMock_GetGraph_Call {
 	return &graphBuilderInterfaceMock_GetGraph_Call{Call: _e.mock.On("GetGraph", ctx, flow)}
 }
 
-func (_c *graphBuilderInterfaceMock_GetGraph_Call) Run(run func(ctx context.Context, flow *CompleteFlowDefinition)) *graphBuilderInterfaceMock_GetGraph_Call {
+func (_c *graphBuilderInterfaceMock_GetGraph_Call) Run(run func(ctx context.Context, flow *providers.CompleteFlowDefinition)) *graphBuilderInterfaceMock_GetGraph_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *CompleteFlowDefinition
+		var arg1 *providers.CompleteFlowDefinition
 		if args[1] != nil {
-			arg1 = args[1].(*CompleteFlowDefinition)
+			arg1 = args[1].(*providers.CompleteFlowDefinition)
 		}
 		run(
 			arg0,
@@ -99,12 +100,12 @@ func (_c *graphBuilderInterfaceMock_GetGraph_Call) Run(run func(ctx context.Cont
 	return _c
 }
 
-func (_c *graphBuilderInterfaceMock_GetGraph_Call) Return(graphInterface core.GraphInterface, serviceError *serviceerror.ServiceError) *graphBuilderInterfaceMock_GetGraph_Call {
+func (_c *graphBuilderInterfaceMock_GetGraph_Call) Return(graphInterface core.GraphInterface, serviceError *tidcommon.ServiceError) *graphBuilderInterfaceMock_GetGraph_Call {
 	_c.Call.Return(graphInterface, serviceError)
 	return _c
 }
 
-func (_c *graphBuilderInterfaceMock_GetGraph_Call) RunAndReturn(run func(ctx context.Context, flow *CompleteFlowDefinition) (core.GraphInterface, *serviceerror.ServiceError)) *graphBuilderInterfaceMock_GetGraph_Call {
+func (_c *graphBuilderInterfaceMock_GetGraph_Call) RunAndReturn(run func(ctx context.Context, flow *providers.CompleteFlowDefinition) (core.GraphInterface, *tidcommon.ServiceError)) *graphBuilderInterfaceMock_GetGraph_Call {
 	_c.Call.Return(run)
 	return _c
 }

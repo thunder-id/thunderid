@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -27,8 +27,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -45,13 +45,13 @@ var smsOTPEntityType = testutils.UserType{
 			"type": "string",
 		},
 		"password": map[string]interface{}{
-			"type": "string",
+			"type":       "string",
 			"credential": true,
 		},
 		"email": map[string]interface{}{
 			"type": "string",
 		},
-		"mobileNumber": map[string]interface{}{
+		"mobile_number": map[string]interface{}{
 			"type": "string",
 		},
 	},
@@ -126,18 +126,18 @@ func (suite *SMSOTPAuthTestSuite) SetupSuite() {
 	suite.entityTypeID = schemaID
 
 	userAttributes := map[string]interface{}{
-		"username":     "smsotp_user",
-		"password":     "Test@1234",
-		"email":        "smsotp@example.com",
-		"mobileNumber": suite.mobileNumber,
+		"username":      "smsotp_user",
+		"password":      "Test@1234",
+		"email":         "smsotp@example.com",
+		"mobile_number": suite.mobileNumber,
 	}
 	userAttributesJSON, err := json.Marshal(userAttributes)
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:             smsOTPEntityType.Name,
-		OUID:             suite.ouID,
-		Attributes:       userAttributesJSON,
+		Type:       smsOTPEntityType.Name,
+		OUID:       suite.ouID,
+		Attributes: userAttributesJSON,
 	}
 	userID, err := testutils.CreateUser(user)
 	suite.Require().NoError(err, "Failed to create test user")
@@ -174,7 +174,7 @@ func (suite *SMSOTPAuthTestSuite) SetupTest() {
 
 func (suite *SMSOTPAuthTestSuite) TestSendOTPSuccess() {
 	sendRequest := map[string]interface{}{
-		"senderId": suite.senderID,
+		"senderId":  suite.senderID,
 		"recipient": suite.mobileNumber,
 	}
 	sendRequestJSON, err := json.Marshal(sendRequest)
@@ -208,7 +208,7 @@ func (suite *SMSOTPAuthTestSuite) TestSendOTPSuccess() {
 
 func (suite *SMSOTPAuthTestSuite) TestSendOTPInvalidSender() {
 	sendRequest := map[string]interface{}{
-		"senderId": "invalid-sender-id",
+		"senderId":  "invalid-sender-id",
 		"recipient": suite.mobileNumber,
 	}
 	sendRequestJSON, err := json.Marshal(sendRequest)
@@ -245,14 +245,14 @@ func (suite *SMSOTPAuthTestSuite) TestSendOTPMissingFields() {
 		{
 			name: "Empty sender_id",
 			request: map[string]interface{}{
-				"senderId": "",
+				"senderId":  "",
 				"recipient": suite.mobileNumber,
 			},
 		},
 		{
 			name: "Empty recipient",
 			request: map[string]interface{}{
-				"senderId": suite.senderID,
+				"senderId":  suite.senderID,
 				"recipient": "",
 			},
 		},
@@ -282,7 +282,7 @@ func (suite *SMSOTPAuthTestSuite) TestVerifyOTPSuccess() {
 
 	verifyRequest := map[string]interface{}{
 		"sessionToken": sessionToken,
-		"otp":           otp,
+		"otp":          otp,
 	}
 	verifyRequestJSON, err := json.Marshal(verifyRequest)
 	suite.Require().NoError(err)
@@ -313,7 +313,7 @@ func (suite *SMSOTPAuthTestSuite) TestVerifyOTPInvalidCode() {
 
 	verifyRequest := map[string]interface{}{
 		"sessionToken": sessionToken,
-		"otp":           "000000",
+		"otp":          "000000",
 	}
 	verifyRequestJSON, err := json.Marshal(verifyRequest)
 	suite.Require().NoError(err)
@@ -332,7 +332,7 @@ func (suite *SMSOTPAuthTestSuite) TestVerifyOTPInvalidCode() {
 func (suite *SMSOTPAuthTestSuite) TestVerifyOTPInvalidSessionToken() {
 	verifyRequest := map[string]interface{}{
 		"sessionToken": "invalid-session-token",
-		"otp":           "123456",
+		"otp":          "123456",
 	}
 	verifyRequestJSON, err := json.Marshal(verifyRequest)
 	suite.Require().NoError(err)
@@ -369,14 +369,14 @@ func (suite *SMSOTPAuthTestSuite) TestVerifyOTPMissingFields() {
 			name: "Empty session_token",
 			request: map[string]interface{}{
 				"sessionToken": "",
-				"otp":           "123456",
+				"otp":          "123456",
 			},
 		},
 		{
 			name: "Empty otp",
 			request: map[string]interface{}{
 				"sessionToken": "some-token",
-				"otp":           "",
+				"otp":          "",
 			},
 		},
 	}
@@ -402,7 +402,7 @@ func (suite *SMSOTPAuthTestSuite) TestVerifyOTPMissingFields() {
 
 func (suite *SMSOTPAuthTestSuite) TestCompleteOTPAuthFlow() {
 	sendRequest := map[string]interface{}{
-		"senderId": suite.senderID,
+		"senderId":  suite.senderID,
 		"recipient": suite.mobileNumber,
 	}
 	sendRequestJSON, err := json.Marshal(sendRequest)
@@ -434,7 +434,7 @@ func (suite *SMSOTPAuthTestSuite) TestCompleteOTPAuthFlow() {
 
 	verifyRequest := map[string]interface{}{
 		"sessionToken": sessionToken,
-		"otp":           otp,
+		"otp":          otp,
 	}
 	verifyRequestJSON, err := json.Marshal(verifyRequest)
 	suite.Require().NoError(err)
@@ -465,7 +465,7 @@ func (suite *SMSOTPAuthTestSuite) TestVerifyOTPWithSkipAssertionFalse() {
 
 	verifyRequest := map[string]interface{}{
 		"sessionToken":  sessionToken,
-		"otp":            otp,
+		"otp":           otp,
 		"skipAssertion": false,
 	}
 	verifyRequestJSON, err := json.Marshal(verifyRequest)
@@ -498,7 +498,7 @@ func (suite *SMSOTPAuthTestSuite) TestVerifyOTPWithSkipAssertionTrue() {
 
 	verifyRequest := map[string]interface{}{
 		"sessionToken":  sessionToken,
-		"otp":            otp,
+		"otp":           otp,
 		"skipAssertion": true,
 	}
 	verifyRequestJSON, err := json.Marshal(verifyRequest)
@@ -531,7 +531,7 @@ func (suite *SMSOTPAuthTestSuite) TestSMSOTPVerifyWithAssuranceLevelAAL1() {
 
 	verifyRequest := map[string]interface{}{
 		"sessionToken": sessionToken,
-		"otp":           otp,
+		"otp":          otp,
 	}
 	verifyRequestJSON, err := json.Marshal(verifyRequest)
 	suite.Require().NoError(err)
@@ -569,7 +569,7 @@ func (suite *SMSOTPAuthTestSuite) TestSMSOTPNoAssertionGeneration() {
 
 	verifyRequest := map[string]interface{}{
 		"sessionToken":  sessionToken,
-		"otp":            otp,
+		"otp":           otp,
 		"skipAssertion": true,
 	}
 	verifyRequestJSON, err := json.Marshal(verifyRequest)
@@ -628,8 +628,8 @@ func (suite *SMSOTPAuthTestSuite) TestSMSOTPWithCredentialsMultiFactorAAL2() {
 
 	verifyRequest := map[string]interface{}{
 		"sessionToken": sessionToken,
-		"otp":           otp,
-		"assertion":     credResp.Assertion,
+		"otp":          otp,
+		"assertion":    credResp.Assertion,
 	}
 	verifyJSON, err := json.Marshal(verifyRequest)
 	suite.Require().NoError(err)
@@ -663,7 +663,7 @@ func (suite *SMSOTPAuthTestSuite) TestSMSOTPWithCredentialsMultiFactorAAL2() {
 
 func (suite *SMSOTPAuthTestSuite) sendOTPAndExtract() (string, string) {
 	sendRequest := map[string]interface{}{
-		"senderId": suite.senderID,
+		"senderId":  suite.senderID,
 		"recipient": suite.mobileNumber,
 	}
 	sendRequestJSON, err := json.Marshal(sendRequest)

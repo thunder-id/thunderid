@@ -38,13 +38,6 @@ type SetTranslationRequest struct {
 	Value string `json:"value"`
 }
 
-// LanguageTranslationsResponse represents all translations for a language, organized by namespace.
-type LanguageTranslationsResponse struct {
-	Language     string                       `json:"language"`
-	TotalResults int                          `json:"totalResults,omitempty"`
-	Translations map[string]map[string]string `json:"translations"`
-}
-
 // SetTranslationsRequest represents the request body for setting custom translations for a language.
 type SetTranslationsRequest struct {
 	Translations map[string]map[string]string `json:"translations"`

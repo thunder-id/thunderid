@@ -49,20 +49,21 @@ type Opts struct {
 }
 
 // Run executes the upgrade workflow. baseDir is the parent thunderid directory (e.g. "./thunderid").
-func Run(baseDir string, opts Opts) error {
+// Returns (upgraded, err): upgraded is false when already on the latest version or the user cancelled.
+func Run(baseDir string, opts Opts) (bool, error) {
 	fmt.Print(ui.Dim("  Fetching latest " + product.Name + " release..."))
 	latestVersion, err := release.FetchLatestVersion()
 	if err != nil {
 		fmt.Println()
 		ui.Fatal("Could not fetch latest " + product.Name + " release: " + err.Error())
-		return err
+		return false, err
 	}
 	fmt.Printf("\r\033[2K  %s Latest %s release: v%s\n\n", ui.Green("✓"), product.Name, latestVersion)
 
 	activeVersion := config.ReadActiveVersion()
 	if activeVersion == latestVersion {
 		ui.Success(product.Name + " v" + latestVersion + " is already the latest version.")
-		return nil
+		return false, nil
 	}
 
 	if activeVersion != "" {
@@ -74,7 +75,7 @@ func Run(baseDir string, opts Opts) error {
 	}
 
 	if opts.Direct || activeVersion == "" {
-		return runDirect(baseDir, activeVersion, latestVersion, opts.Verbose)
+		return true, runDirect(baseDir, activeVersion, latestVersion, opts.Verbose)
 	}
 
 	var mode string
@@ -93,13 +94,71 @@ func Run(baseDir string, opts Opts) error {
 		).
 		Value(&mode).
 		Run(); err != nil {
-		return nil // cancelled
+		return false, nil // cancelled
 	}
 
 	if mode == "direct" {
-		return runDirect(baseDir, activeVersion, latestVersion, opts.Verbose)
+		return true, runDirect(baseDir, activeVersion, latestVersion, opts.Verbose)
 	}
-	return runSideBySide(baseDir, activeVersion, latestVersion, opts.Verbose)
+	return true, runSideBySide(baseDir, activeVersion, latestVersion, opts.Verbose)
+}
+
+// Switch stops the running ThunderID instance and starts the selected installed version.
+// It shows an interactive version picker and returns false if the user cancels or no other
+// versions are installed. On success it starts the new instance and runs a REPL for it.
+func Switch(baseDir, currentVersion string, verbose bool) (bool, error) {
+	versions := config.ListInstalledVersions(currentVersion)
+	if len(versions) == 0 {
+		ui.Warn("No other installed versions found. Use /upgrade to install a new version.")
+		return false, nil
+	}
+
+	options := make([]huh.Option[string], len(versions))
+	for i, v := range versions {
+		options[i] = huh.NewOption("v"+v, v)
+	}
+
+	var selected string
+	if err := huh.NewSelect[string]().
+		Title("Switch to version:").
+		Options(options...).
+		Value(&selected).
+		Run(); err != nil {
+		return false, nil // cancelled
+	}
+
+	installPath := config.ReadInstallPath(selected)
+	if installPath == "" {
+		ui.Fatal("Install path not found for v" + selected + ". Re-run setup to restore it.")
+		return false, nil
+	}
+
+	// Validate the install is launchable before touching the running instance.
+	if _, err := setup.FindThunderRoot(installPath); err != nil {
+		ui.Fatal(fmt.Sprintf("v%s is not usable (%s). The install may have been moved or deleted.", selected, err))
+		return false, nil
+	}
+
+	fmt.Print(ui.Dim("  Stopping " + product.Name + " v" + currentVersion + "..."))
+	setup.KillPort(health.DefaultPort)
+	setup.WaitForPortFree(health.DefaultPort, 10*time.Second)
+	fmt.Printf("\r\033[2K  %s Stopped v%s\n", ui.Green("✓"), currentVersion)
+
+	if err := config.WriteActiveVersion(selected); err != nil {
+		return false, fmt.Errorf("failed to update active version: %w", err)
+	}
+
+	fmt.Print(ui.Dim("\n  Starting " + product.Name + " v" + selected + "..."))
+	proc, err := setup.StartBackground(installPath, verbose)
+	if err != nil {
+		fmt.Println()
+		ui.Fatal("Failed to start v" + selected + ": " + err.Error())
+		return false, err
+	}
+	fmt.Printf("\r\033[2K  %s Switched to %s v%s  %s\n", ui.Green("✓"), product.Name, selected, ui.Dim("logs: "+setup.LogDir(installPath)))
+
+	_, _, err = ui.RunREPL(selected, proc, installPath, verbose, false, "", 0)
+	return true, err
 }
 
 func runDirect(baseDir, activeVersion, newVersion string, verbose bool) error {
@@ -145,7 +204,7 @@ func runDirect(baseDir, activeVersion, newVersion string, verbose bool) error {
 	}
 	fmt.Printf("\r\033[2K  %s %s v%s started  %s\n", ui.Green("✓"), product.Name, newVersion, ui.Dim("logs: "+setup.LogDir(newPath)))
 
-	_, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "")
+	_, _, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "", 0)
 	return err
 }
 
@@ -213,7 +272,7 @@ func performCutover(baseDir, activeVersion, newVersion, newPath string, stagingP
 	}
 	fmt.Printf("\r\033[2K  %s %s v%s is now live on port %d\n", ui.Green("✓"), product.Name, newVersion, health.DefaultPort)
 
-	_, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "")
+	_, _, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "", 0)
 	return err
 }
 

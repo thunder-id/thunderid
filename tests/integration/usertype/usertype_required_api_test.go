@@ -216,8 +216,7 @@ func (ts *UserTypeRequiredAPITestSuite) TestSchemaCreationRequiresOUID() {
 
 	var errorResp ErrorResponse
 	ts.Require().NoError(json.Unmarshal(bodyBytes, &errorResp))
-	ts.Assert().Equal("USRS-1004", errorResp.Code)
-	ts.Assert().Contains(errorResp.Description.DefaultValue, "organization unit id must not be empty")
+	ts.Assert().Equal("INVALID_INPUT_METADATA", errorResp.Code)
 }
 
 func (ts *UserTypeRequiredAPITestSuite) createSchemaHelper(schema CreateUserTypeRequest) string {

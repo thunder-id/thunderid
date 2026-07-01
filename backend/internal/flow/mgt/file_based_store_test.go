@@ -23,11 +23,12 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 )
 
@@ -49,7 +50,7 @@ func (s *FileBasedStoreTestSuite) createTestFlow(handle string) *FlowDefinition 
 		Handle:   handle,
 		Name:     "Test Flow",
 		FlowType: testFlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "login", Type: "BASIC_AUTHENTICATION"},
 			{ID: "end", Type: "END"},
@@ -66,7 +67,7 @@ func (s *FileBasedStoreTestSuite) TestCreateFlow_Success() {
 	assert.Equal(s.T(), "flow-001", completeFlow.ID)
 	assert.Equal(s.T(), "test-flow", completeFlow.Handle)
 	assert.Equal(s.T(), "Test Flow", completeFlow.Name)
-	assert.Equal(s.T(), common.FlowType("AUTHENTICATION"), completeFlow.FlowType)
+	assert.Equal(s.T(), providers.FlowType("AUTHENTICATION"), completeFlow.FlowType)
 	assert.Equal(s.T(), 1, completeFlow.ActiveVersion)
 	assert.Len(s.T(), completeFlow.Nodes, 3)
 }
@@ -252,13 +253,13 @@ func (s *FileBasedStoreTestSuite) TestRestoreFlowVersion_NotSupported() {
 }
 
 func (s *FileBasedStoreTestSuite) TestCreate_ImplementsStorer() {
-	completeFlow := &CompleteFlowDefinition{
+	completeFlow := &providers.CompleteFlowDefinition{
 		ID:            "flow-001",
 		Handle:        "test-flow",
 		Name:          "Test Flow",
 		FlowType:      "AUTHENTICATION",
 		ActiveVersion: 1,
-		Nodes: []NodeDefinition{
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "login", Type: "BASIC_AUTHENTICATION"},
 			{ID: "end", Type: "END"},
@@ -379,13 +380,13 @@ func (s *FileBasedStoreTestSuite) TestCreate_WithCompleteFlow() {
 	// Test the Create method which is used by the resource loader
 	fileStore := s.store.(*fileBasedStore)
 
-	completeFlow := &CompleteFlowDefinition{
+	completeFlow := &providers.CompleteFlowDefinition{
 		ID:            "flow-100",
 		Handle:        "complete-flow",
 		Name:          "Complete Flow",
 		FlowType:      testFlowTypeAuthentication,
 		ActiveVersion: 5,
-		Nodes: []NodeDefinition{
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
 		},

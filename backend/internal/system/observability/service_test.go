@@ -25,6 +25,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 // setupTestService creates a test service with controlled configuration.
@@ -34,11 +35,11 @@ func setupTestService(enabled bool) ObservabilityServiceInterface {
 
 	// Create a test config
 	cfg := &config.Config{
-		Observability: config.ObservabilityConfig{
+		Observability: engineconfig.ObservabilityConfig{
 			Enabled:     enabled,
 			FailureMode: "lenient",
-			Output: config.ObservabilityOutputConfig{
-				Console: config.ObservabilityConsoleConfig{
+			Output: engineconfig.ObservabilityOutputConfig{
+				Console: engineconfig.ObservabilityConsoleConfig{
 					Enabled: true,
 					Format:  "json",
 				},
@@ -53,7 +54,7 @@ func setupTestService(enabled bool) ObservabilityServiceInterface {
 	}
 
 	// Use Initialize to create a new instance (no singleton)
-	return Initialize()
+	return Initialize(cfg.Observability)
 }
 
 func TestInitialize(t *testing.T) {

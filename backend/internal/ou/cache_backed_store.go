@@ -21,24 +21,26 @@ package ou
 import (
 	"context"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/system/cache"
-	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 // cacheBackedOUStore wraps an organizationUnitStoreInterface with in-memory caching
 // for individual OU lookups by ID and by handle+parent.
 type cacheBackedOUStore struct {
-	ouByIDCache           cache.CacheInterface[*OrganizationUnit]
-	ouByHandleParentCache cache.CacheInterface[*OrganizationUnit]
+	ouByIDCache           cache.CacheInterface[*providers.OrganizationUnit]
+	ouByHandleParentCache cache.CacheInterface[*providers.OrganizationUnit]
 	store                 organizationUnitStoreInterface
 	logger                *log.Logger
 }
 
 // newCacheBackedOUStore creates a cache-backed wrapper around the given store.
 func newCacheBackedOUStore(store organizationUnitStoreInterface,
-	ouByIDCache cache.CacheInterface[*OrganizationUnit],
-	ouByHandleParentCache cache.CacheInterface[*OrganizationUnit]) organizationUnitStoreInterface {
+	ouByIDCache cache.CacheInterface[*providers.OrganizationUnit],
+	ouByHandleParentCache cache.CacheInterface[*providers.OrganizationUnit]) organizationUnitStoreInterface {
 	return &cacheBackedOUStore{
 		ouByIDCache:           ouByIDCache,
 		ouByHandleParentCache: ouByHandleParentCache,
@@ -48,7 +50,7 @@ func newCacheBackedOUStore(store organizationUnitStoreInterface,
 	}
 }
 
-func (s *cacheBackedOUStore) CreateOrganizationUnit(ctx context.Context, ou OrganizationUnit) error {
+func (s *cacheBackedOUStore) CreateOrganizationUnit(ctx context.Context, ou providers.OrganizationUnit) error {
 	if err := s.store.CreateOrganizationUnit(ctx, ou); err != nil {
 		return err
 	}
@@ -57,7 +59,7 @@ func (s *cacheBackedOUStore) CreateOrganizationUnit(ctx context.Context, ou Orga
 	return nil
 }
 
-func (s *cacheBackedOUStore) GetOrganizationUnit(ctx context.Context, id string) (OrganizationUnit, error) {
+func (s *cacheBackedOUStore) GetOrganizationUnit(ctx context.Context, id string) (providers.OrganizationUnit, error) {
 	cacheKey := cache.CacheKey{Key: id}
 	if cached, ok := s.ouByIDCache.Get(ctx, cacheKey); ok && cached != nil {
 		return *cached, nil
@@ -73,7 +75,7 @@ func (s *cacheBackedOUStore) GetOrganizationUnit(ctx context.Context, id string)
 }
 
 func (s *cacheBackedOUStore) GetOrganizationUnitByHandle(
-	ctx context.Context, handle string, parent *string) (OrganizationUnit, error) {
+	ctx context.Context, handle string, parent *string) (providers.OrganizationUnit, error) {
 	cacheKey := cache.CacheKey{Key: handleParentCacheKey(handle, parent)}
 	if cached, ok := s.ouByHandleParentCache.Get(ctx, cacheKey); ok && cached != nil {
 		return *cached, nil
@@ -89,7 +91,7 @@ func (s *cacheBackedOUStore) GetOrganizationUnitByHandle(
 	return ou, nil
 }
 
-func (s *cacheBackedOUStore) UpdateOrganizationUnit(ctx context.Context, ou OrganizationUnit) error {
+func (s *cacheBackedOUStore) UpdateOrganizationUnit(ctx context.Context, ou providers.OrganizationUnit) error {
 	// Capture old handle+parent key before the store call so we can invalidate it on success.
 	oldHandleParentKey := s.getHandleParentKey(ctx, ou.ID)
 
@@ -123,22 +125,22 @@ func (s *cacheBackedOUStore) DeleteOrganizationUnit(ctx context.Context, id stri
 // Pass-through methods.
 
 func (s *cacheBackedOUStore) GetOrganizationUnitListCount(
-	ctx context.Context, f *filter.FilterGroup) (int, error) {
+	ctx context.Context, f *tidcommon.FilterGroup) (int, error) {
 	return s.store.GetOrganizationUnitListCount(ctx, f)
 }
 
 func (s *cacheBackedOUStore) GetOrganizationUnitList(
-	ctx context.Context, limit, offset int, f *filter.FilterGroup) ([]OrganizationUnitBasic, error) {
+	ctx context.Context, limit, offset int, f *tidcommon.FilterGroup) ([]providers.OrganizationUnitBasic, error) {
 	return s.store.GetOrganizationUnitList(ctx, limit, offset, f)
 }
 
 func (s *cacheBackedOUStore) GetOrganizationUnitsByIDs(
-	ctx context.Context, ids []string) ([]OrganizationUnitBasic, error) {
+	ctx context.Context, ids []string) ([]providers.OrganizationUnitBasic, error) {
 	return s.store.GetOrganizationUnitsByIDs(ctx, ids)
 }
 
 func (s *cacheBackedOUStore) GetOrganizationUnitByPath(
-	ctx context.Context, handles []string) (OrganizationUnit, error) {
+	ctx context.Context, handles []string) (providers.OrganizationUnit, error) {
 	return s.store.GetOrganizationUnitByPath(ctx, handles)
 }
 
@@ -164,12 +166,16 @@ func (s *cacheBackedOUStore) CheckOrganizationUnitHandleConflict(
 }
 
 func (s *cacheBackedOUStore) GetOrganizationUnitChildrenCount(
-	ctx context.Context, id string, f *filter.FilterGroup) (int, error) {
+	ctx context.Context, id string, f *tidcommon.FilterGroup) (int, error) {
 	return s.store.GetOrganizationUnitChildrenCount(ctx, id, f)
 }
 
 func (s *cacheBackedOUStore) GetOrganizationUnitChildrenList(
-	ctx context.Context, id string, limit, offset int, f *filter.FilterGroup) ([]OrganizationUnitBasic, error) {
+	ctx context.Context,
+	id string,
+	limit, offset int,
+	f *tidcommon.FilterGroup,
+) ([]providers.OrganizationUnitBasic, error) {
 	return s.store.GetOrganizationUnitChildrenList(ctx, id, limit, offset, f)
 }
 
@@ -184,7 +190,7 @@ func handleParentCacheKey(handle string, parent *string) string {
 	return handle + ":" + *parent
 }
 
-func (s *cacheBackedOUStore) cacheOUByID(ctx context.Context, ou *OrganizationUnit) {
+func (s *cacheBackedOUStore) cacheOUByID(ctx context.Context, ou *providers.OrganizationUnit) {
 	if ou == nil || ou.ID == "" {
 		return
 	}
@@ -194,7 +200,7 @@ func (s *cacheBackedOUStore) cacheOUByID(ctx context.Context, ou *OrganizationUn
 	}
 }
 
-func (s *cacheBackedOUStore) cacheOUByHandleParent(ctx context.Context, ou *OrganizationUnit) {
+func (s *cacheBackedOUStore) cacheOUByHandleParent(ctx context.Context, ou *providers.OrganizationUnit) {
 	if ou == nil || ou.Handle == "" {
 		return
 	}
@@ -221,7 +227,7 @@ func (s *cacheBackedOUStore) getHandleParentKey(ctx context.Context, id string) 
 	if id == "" {
 		return ""
 	}
-	var ou *OrganizationUnit
+	var ou *providers.OrganizationUnit
 	if cached, ok := s.ouByIDCache.Get(ctx, cache.CacheKey{Key: id}); ok && cached != nil {
 		ou = cached
 	} else {

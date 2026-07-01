@@ -22,10 +22,10 @@ import (
 	"context"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
@@ -34,21 +34,21 @@ import (
 type stubPolicy struct {
 	// isActionAllowed response fields.
 	decision  policyDecision
-	actionErr *serviceerror.ServiceError
+	actionErr *tidcommon.ServiceError
 
 	// getAccessibleResources response fields.
 	applicable  bool
 	result      *AccessibleResources
-	resourceErr *serviceerror.ServiceError
+	resourceErr *tidcommon.ServiceError
 }
 
 func (p *stubPolicy) isActionAllowed(_ context.Context,
-	_ *ActionContext) (policyDecision, *serviceerror.ServiceError) {
+	_ *ActionContext) (policyDecision, *tidcommon.ServiceError) {
 	return p.decision, p.actionErr
 }
 
 func (p *stubPolicy) getAccessibleResources(_ context.Context, _ security.Action,
-	_ security.ResourceType) (bool, *AccessibleResources, *serviceerror.ServiceError) {
+	_ security.ResourceType) (bool, *AccessibleResources, *tidcommon.ServiceError) {
 	return p.applicable, p.result, p.resourceErr
 }
 
@@ -56,22 +56,22 @@ func (p *stubPolicy) getAccessibleResources(_ context.Context, _ security.Action
 type stubOUHierarchyResolver struct {
 	// IsAncestor response fields.
 	isAncestorResult bool
-	isAncestorErr    *serviceerror.ServiceError
+	isAncestorErr    *tidcommon.ServiceError
 
 	// GetAncestorOUIDs response fields.
 	ancestorIDs    []string
-	ancestorIDsErr *serviceerror.ServiceError
+	ancestorIDsErr *tidcommon.ServiceError
 }
 
 func (r *stubOUHierarchyResolver) IsAncestor(
 	_ context.Context, _, _ string,
-) (bool, *serviceerror.ServiceError) {
+) (bool, *tidcommon.ServiceError) {
 	return r.isAncestorResult, r.isAncestorErr
 }
 
 func (r *stubOUHierarchyResolver) GetAncestorOUIDs(
 	_ context.Context, _ string,
-) ([]string, *serviceerror.ServiceError) {
+) ([]string, *tidcommon.ServiceError) {
 	return r.ancestorIDs, r.ancestorIDsErr
 }
 
@@ -195,9 +195,9 @@ func TestOuMembershipPolicy_GetAccessibleResources(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestIsActionAllowedByPolicies(t *testing.T) {
-	errSvc := &serviceerror.ServiceError{
+	errSvc := &tidcommon.ServiceError{
 		Code:  "ERR-100",
-		Error: i18ncore.I18nMessage{DefaultValue: "policy evaluation error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "policy evaluation error"},
 	}
 
 	tests := []struct {
@@ -249,9 +249,9 @@ func TestIsActionAllowedByPolicies(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGetAccessibleResourcesByPolicies(t *testing.T) {
-	errSvc := &serviceerror.ServiceError{
+	errSvc := &tidcommon.ServiceError{
 		Code:  "ERR-200",
-		Error: i18ncore.I18nMessage{DefaultValue: "resource policy error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "resource policy error"},
 	}
 
 	tests := []struct {
@@ -308,9 +308,9 @@ func TestGetAccessibleResourcesByPolicies(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestOuInheritancePolicy_IsActionAllowed(t *testing.T) {
-	errSvc := &serviceerror.ServiceError{
+	errSvc := &tidcommon.ServiceError{
 		Code:  "ERR-300",
-		Error: i18ncore.I18nMessage{DefaultValue: "hierarchy resolver error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "hierarchy resolver error"},
 	}
 
 	tests := []struct {
@@ -396,9 +396,9 @@ func TestOuInheritancePolicy_IsActionAllowed(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestOuInheritancePolicy_GetAccessibleResources(t *testing.T) {
-	errSvc := &serviceerror.ServiceError{
+	errSvc := &tidcommon.ServiceError{
 		Code:  "ERR-400",
-		Error: i18ncore.I18nMessage{DefaultValue: "ancestor lookup error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "ancestor lookup error"},
 	}
 
 	tests := []struct {

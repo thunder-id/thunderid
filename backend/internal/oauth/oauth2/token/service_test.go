@@ -27,11 +27,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/scope"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/dpopmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/granthandlersmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/scopemock"
@@ -64,7 +64,7 @@ func (suite *TokenServiceTestSuite) SetupTest() {
 
 	// Common grant handler lookup; individual tests may override this.
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(suite.mockGrantHandler, nil).Maybe()
 }
 
@@ -75,10 +75,10 @@ func (suite *TokenServiceTestSuite) newService() TokenServiceInterface {
 }
 
 // defaultApp returns an OAuthClient that allows the authorization_code grant.
-func (suite *TokenServiceTestSuite) defaultApp() *inboundmodel.OAuthClient {
-	return &inboundmodel.OAuthClient{
+func (suite *TokenServiceTestSuite) defaultApp() *providers.OAuthClient {
+	return &providers.OAuthClient{
 		ClientID:   "test-client-id",
-		GrantTypes: []constants.GrantType{constants.GrantTypeAuthorizationCode},
+		GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode},
 	}
 }
 
@@ -113,12 +113,12 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_InvalidGrantType() {
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_UnsupportedGrantTypeError() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 	}
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(nil, constants.UnSupportedGrantTypeError)
 
 	svc := suite.newService()
@@ -131,12 +131,12 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_UnsupportedGrantType
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_GrantHandlerProviderError() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 	}
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(nil, errors.New("internal error"))
 
 	svc := suite.newService()
@@ -149,18 +149,18 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_GrantHandlerProvider
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_UnauthorizedClient() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeClientCredentials),
+		GrantType: string(providers.GrantTypeClientCredentials),
 	}
 	// App only allows authorization_code — client_credentials is not permitted.
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ClientID:   "test-client-id",
-		GrantTypes: []constants.GrantType{constants.GrantTypeAuthorizationCode},
+		GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode},
 	}
 
 	mockCCHandler := granthandlersmock.NewGrantHandlerInterfaceMock(suite.T())
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeClientCredentials).
+		On("GetGrantHandler", providers.GrantTypeClientCredentials).
 		Return(mockCCHandler, nil)
 
 	svc := suite.newService()
@@ -173,14 +173,14 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_UnauthorizedClient()
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_ValidateGrantError() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 		Code:      "test-code",
 	}
 	app := suite.defaultApp()
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(suite.mockGrantHandler, nil)
 
 	suite.mockGrantHandler.
@@ -201,7 +201,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_ValidateGrantError()
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_ScopeValidationError() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 		Code:      "test-code",
 		Scope:     "invalid_scope",
 	}
@@ -209,7 +209,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_ScopeValidationError
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(suite.mockGrantHandler, nil)
 
 	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
@@ -231,7 +231,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_ScopeValidationError
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_HandleGrantError() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 		Code:      "test-code",
 		Scope:     "openid",
 	}
@@ -239,7 +239,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_HandleGrantError() {
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(suite.mockGrantHandler, nil)
 
 	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
@@ -261,7 +261,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_HandleGrantError() {
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_HandleGrantServerError_NormalizesDescription() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 		Code:      "test-code",
 		Scope:     "openid",
 	}
@@ -269,7 +269,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_HandleGrantServerErr
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(suite.mockGrantHandler, nil)
 
 	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
@@ -292,7 +292,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_HandleGrantServerErr
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_Success() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 		Code:      "test-code",
 		Scope:     "openid profile",
 	}
@@ -300,7 +300,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_Success() {
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(suite.mockGrantHandler, nil)
 
 	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
@@ -333,7 +333,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_Success() {
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_DPoPProof_Verified_PropagatesJktToHandler() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 		Code:      "test-code",
 		Scope:     "openid",
 	}
@@ -344,7 +344,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_DPoPProof_Verified_P
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(suite.mockGrantHandler, nil)
 	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
 	suite.mockScopeValidator.On("ValidateScopes", mock.Anything, "openid", "test-client-id").Return("openid", nil)
@@ -376,7 +376,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_DPoPProof_Verified_P
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_DPoPProof_VerifyFails_InvalidDPoPProof() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 		Code:      "test-code",
 		Scope:     "openid",
 	}
@@ -384,7 +384,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_DPoPProof_VerifyFail
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(suite.mockGrantHandler, nil)
 	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
 	suite.mockScopeValidator.On("ValidateScopes", mock.Anything, "openid", "test-client-id").Return("openid", nil)
@@ -404,7 +404,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_DPoPProof_VerifyFail
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_NoDPoPProof_VerifierNotInvoked() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 		Code:      "test-code",
 		Scope:     "openid",
 	}
@@ -412,7 +412,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_NoDPoPProof_Verifier
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(suite.mockGrantHandler, nil)
 	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
 	suite.mockScopeValidator.On("ValidateScopes", mock.Anything, "openid", "test-client-id").Return("openid", nil)
@@ -433,19 +433,19 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_NoDPoPProof_Verifier
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_NoDPoPProof_PerClientFlag_Rejected() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 		Code:      "test-code",
 		Scope:     "openid",
 	}
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ClientID:              "test-client-id",
-		GrantTypes:            []constants.GrantType{constants.GrantTypeAuthorizationCode},
+		GrantTypes:            []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		DPoPBoundAccessTokens: true,
 	}
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(suite.mockGrantHandler, nil)
 	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
 	suite.mockScopeValidator.On("ValidateScopes", mock.Anything, "openid", "test-client-id").Return("openid", nil)
@@ -461,7 +461,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_NoDPoPProof_PerClien
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_NoDPoPProof_GlobalRequired_Rejected() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 		Code:      "test-code",
 		Scope:     "openid",
 	}
@@ -469,7 +469,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_NoDPoPProof_GlobalRe
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(suite.mockGrantHandler, nil)
 	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
 	suite.mockScopeValidator.On("ValidateScopes", mock.Anything, "openid", "test-client-id").Return("openid", nil)
@@ -486,27 +486,27 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_NoDPoPProof_GlobalRe
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_WithRefreshToken() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 		Code:      "test-code",
 		Scope:     "openid",
 	}
 	// App allows both authorization_code and refresh_token.
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ClientID: "test-client-id",
-		GrantTypes: []constants.GrantType{
-			constants.GrantTypeAuthorizationCode,
-			constants.GrantTypeRefreshToken,
+		GrantTypes: []providers.GrantType{
+			providers.GrantTypeAuthorizationCode,
+			providers.GrantTypeRefreshToken,
 		},
 	}
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(suite.mockGrantHandler, nil)
 
 	mockRefreshHandler := granthandlersmock.NewRefreshTokenGrantHandlerInterfaceMock(suite.T())
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeRefreshToken).
+		On("GetGrantHandler", providers.GrantTypeRefreshToken).
 		Return(mockRefreshHandler, nil)
 
 	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
@@ -542,26 +542,26 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_WithRefreshToken() {
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_RefreshTokenIssuanceError() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 		Code:      "test-code",
 		Scope:     "openid",
 	}
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ClientID: "test-client-id",
-		GrantTypes: []constants.GrantType{
-			constants.GrantTypeAuthorizationCode,
-			constants.GrantTypeRefreshToken,
+		GrantTypes: []providers.GrantType{
+			providers.GrantTypeAuthorizationCode,
+			providers.GrantTypeRefreshToken,
 		},
 	}
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(suite.mockGrantHandler, nil)
 
 	mockRefreshHandler := granthandlersmock.NewRefreshTokenGrantHandlerInterfaceMock(suite.T())
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeRefreshToken).
+		On("GetGrantHandler", providers.GrantTypeRefreshToken).
 		Return(mockRefreshHandler, nil)
 
 	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
@@ -600,24 +600,24 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_RefreshTokenIssuance
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_RefreshTokenHandlerNotFound() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 		Code:      "test-code",
 		Scope:     "openid",
 	}
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ClientID: "test-client-id",
-		GrantTypes: []constants.GrantType{
-			constants.GrantTypeAuthorizationCode,
-			constants.GrantTypeRefreshToken,
+		GrantTypes: []providers.GrantType{
+			providers.GrantTypeAuthorizationCode,
+			providers.GrantTypeRefreshToken,
 		},
 	}
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(suite.mockGrantHandler, nil)
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeRefreshToken).
+		On("GetGrantHandler", providers.GrantTypeRefreshToken).
 		Return(nil, errors.New("refresh handler not found"))
 
 	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
@@ -643,25 +643,25 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_RefreshTokenHandlerN
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_RefreshTokenHandlerCastFailure() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 		Code:      "test-code",
 		Scope:     "openid",
 	}
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ClientID: "test-client-id",
-		GrantTypes: []constants.GrantType{
-			constants.GrantTypeAuthorizationCode,
-			constants.GrantTypeRefreshToken,
+		GrantTypes: []providers.GrantType{
+			providers.GrantTypeAuthorizationCode,
+			providers.GrantTypeRefreshToken,
 		},
 	}
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(suite.mockGrantHandler, nil)
 	// Return a plain GrantHandlerInterfaceMock which does NOT implement RefreshTokenGrantHandlerInterface.
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeRefreshToken).
+		On("GetGrantHandler", providers.GrantTypeRefreshToken).
 		Return(suite.mockGrantHandler, nil)
 
 	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
@@ -687,19 +687,19 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_RefreshTokenHandlerC
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_TokenExchange() {
 	req := &model.TokenRequest{
 		ClientID:           "test-client-id",
-		GrantType:          string(constants.GrantTypeTokenExchange),
+		GrantType:          string(providers.GrantTypeTokenExchange),
 		SubjectToken:       "subject-token",
 		RequestedTokenType: string(constants.TokenTypeIdentifierAccessToken),
 	}
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ClientID:   "test-client-id",
-		GrantTypes: []constants.GrantType{constants.GrantTypeTokenExchange},
+		GrantTypes: []providers.GrantType{providers.GrantTypeTokenExchange},
 	}
 
 	mockTEHandler := granthandlersmock.NewGrantHandlerInterfaceMock(suite.T())
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeTokenExchange).
+		On("GetGrantHandler", providers.GrantTypeTokenExchange).
 		Return(mockTEHandler, nil)
 
 	mockTEHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
@@ -724,19 +724,19 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_TokenExchange() {
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_TokenExchangeWithJWTTokenType() {
 	req := &model.TokenRequest{
 		ClientID:           "test-client-id",
-		GrantType:          string(constants.GrantTypeTokenExchange),
+		GrantType:          string(providers.GrantTypeTokenExchange),
 		SubjectToken:       "subject-token",
 		RequestedTokenType: string(constants.TokenTypeIdentifierJWT),
 	}
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ClientID:   "test-client-id",
-		GrantTypes: []constants.GrantType{constants.GrantTypeTokenExchange},
+		GrantTypes: []providers.GrantType{providers.GrantTypeTokenExchange},
 	}
 
 	mockTEHandler := granthandlersmock.NewGrantHandlerInterfaceMock(suite.T())
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeTokenExchange).
+		On("GetGrantHandler", providers.GrantTypeTokenExchange).
 		Return(mockTEHandler, nil)
 
 	mockTEHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
@@ -762,26 +762,26 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_WithRefreshToken_Use
 	// issuance must receive the original full set, not the narrowed Audiences (RFC 8707 §5).
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
-		GrantType: string(constants.GrantTypeAuthorizationCode),
+		GrantType: string(providers.GrantTypeAuthorizationCode),
 		Code:      "test-code",
 		Scope:     "openid",
 	}
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ClientID: "test-client-id",
-		GrantTypes: []constants.GrantType{
-			constants.GrantTypeAuthorizationCode,
-			constants.GrantTypeRefreshToken,
+		GrantTypes: []providers.GrantType{
+			providers.GrantTypeAuthorizationCode,
+			providers.GrantTypeRefreshToken,
 		},
 	}
 
 	suite.mockGrantProvider.ExpectedCalls = nil
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		On("GetGrantHandler", providers.GrantTypeAuthorizationCode).
 		Return(suite.mockGrantHandler, nil)
 
 	mockRefreshHandler := granthandlersmock.NewRefreshTokenGrantHandlerInterfaceMock(suite.T())
 	suite.mockGrantProvider.
-		On("GetGrantHandler", constants.GrantTypeRefreshToken).
+		On("GetGrantHandler", providers.GrantTypeRefreshToken).
 		Return(mockRefreshHandler, nil)
 
 	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)

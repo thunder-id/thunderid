@@ -921,4 +921,142 @@ describe('AccessSection', () => {
       expect(screen.getByDisplayValue('https://initial.com/callback')).toBeInTheDocument();
     });
   });
+
+  describe('Wildcard URI Validation', () => {
+    it('should accept wildcard URI in host', async () => {
+      const user = userEvent.setup();
+      vi.mocked(useGetUserTypes).mockReturnValue({
+        data: mockUserTypes,
+        isLoading: false,
+      } as unknown as MockedUseGetUserTypes);
+
+      const configWithWildcard = {
+        ...mockOAuth2Config,
+        redirectUris: ['https://example.com/callback'],
+      };
+
+      render(
+        <AccessSection
+          application={mockApplication}
+          editedApp={{}}
+          oauth2Config={configWithWildcard}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      const uriInput = screen.getByDisplayValue('https://example.com/callback');
+      await user.clear(uriInput);
+      await user.type(uriInput, 'https://*.example.com/callback');
+      await user.tab();
+
+      await waitFor(() => {
+        expect(mockOnFieldChange).toHaveBeenCalledWith('inboundAuthConfig', expect.any(Array));
+      });
+    });
+
+    it('should accept wildcard URI in path', async () => {
+      const user = userEvent.setup();
+      vi.mocked(useGetUserTypes).mockReturnValue({
+        data: mockUserTypes,
+        isLoading: false,
+      } as unknown as MockedUseGetUserTypes);
+
+      const configWithUri = {
+        ...mockOAuth2Config,
+        redirectUris: ['https://example.com/callback'],
+      };
+
+      render(
+        <AccessSection
+          application={mockApplication}
+          editedApp={{}}
+          oauth2Config={configWithUri}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      const uriInput = screen.getByDisplayValue('https://example.com/callback');
+      await user.clear(uriInput);
+      await user.type(uriInput, 'https://example.com/*/callback');
+      await user.tab();
+
+      await waitFor(() => {
+        expect(mockOnFieldChange).toHaveBeenCalledWith('inboundAuthConfig', expect.any(Array));
+      });
+    });
+
+    it('should accept wildcard URI with no path', async () => {
+      const user = userEvent.setup();
+      vi.mocked(useGetUserTypes).mockReturnValue({
+        data: mockUserTypes,
+        isLoading: false,
+      } as unknown as MockedUseGetUserTypes);
+
+      const configWithUri = {
+        ...mockOAuth2Config,
+        redirectUris: ['https://example.com/callback'],
+      };
+
+      render(
+        <AccessSection
+          application={mockApplication}
+          editedApp={{}}
+          oauth2Config={configWithUri}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      const uriInput = screen.getByDisplayValue('https://example.com/callback');
+      await user.clear(uriInput);
+      await user.type(uriInput, 'https://*.example.com');
+      await user.tab();
+
+      await waitFor(() => {
+        expect(mockOnFieldChange).toHaveBeenCalledWith('inboundAuthConfig', expect.any(Array));
+      });
+    });
+  });
+
+  describe('Read-Only State', () => {
+    const readOnlyApplication: Application = {
+      ...mockApplication,
+      isReadOnly: true,
+    } as Application;
+
+    it('should disable all inputs when application.isReadOnly is true', () => {
+      vi.mocked(useGetUserTypes).mockReturnValue({
+        data: mockUserTypes,
+        isLoading: false,
+      } as unknown as MockedUseGetUserTypes);
+
+      render(
+        <AccessSection
+          application={readOnlyApplication}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      // Application URL input should be disabled
+      const urlInput = screen.getByLabelText('Application URL');
+      expect(urlInput).toBeDisabled();
+
+      // Redirect URI input should be disabled
+      const redirectUriInput = screen.getByDisplayValue('https://example.com/callback');
+      expect(redirectUriInput).toBeDisabled();
+
+      // Add URI button should be disabled
+      const addButton = screen.getByRole('button', {name: /Add URI/i});
+      expect(addButton).toBeDisabled();
+
+      // Delete button should be disabled
+      const deleteButton = screen.getByRole('button', {name: /delete/i});
+      expect(deleteButton).toBeDisabled();
+
+      // Allowed User Types autocomplete input should be disabled
+      const autocompleteInput = screen.getByLabelText('Allowed User Types');
+      expect(autocompleteInput).toBeDisabled();
+    });
+  });
 });

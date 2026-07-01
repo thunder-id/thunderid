@@ -27,8 +27,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 // redisCache implements the internalCacheInterface backed by Redis.
@@ -44,7 +44,7 @@ type redisCache[T any] struct {
 
 // newRedisCache creates a new instance of redisCache.
 func newRedisCache[T any](name string, enabled bool, client *redis.Client, keyPrefix string,
-	cacheConfig config.CacheConfig, cacheProperty config.CacheProperty) CacheInterface[T] {
+	cacheConfig engineconfig.CacheConfig, cacheProperty engineconfig.CacheProperty) CacheInterface[T] {
 	// Cache infrastructure logging has no request scope, so context.Background() is used.
 	ctx := context.Background()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RedisCache"),

@@ -20,13 +20,14 @@ package core
 
 import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NodeInterface defines the interface for nodes in the graph
 type NodeInterface interface {
-	Execute(ctx *NodeContext) (*common.NodeResponse, *serviceerror.ServiceError)
-	ShouldExecute(ctx *NodeContext) bool
+	Execute(ctx *providers.NodeContext) (*common.NodeResponse, *tidcommon.ServiceError)
+	ShouldExecute(ctx *providers.NodeContext) bool
 	GetID() string
 	GetType() common.NodeType
 	GetProperties() map[string]interface{}
@@ -44,7 +45,7 @@ type NodeInterface interface {
 	RemovePreviousNode(previousNodeID string)
 	GetCondition() *NodeCondition
 	SetCondition(condition *NodeCondition)
-	GetExecutionPolicy() *ExecutionPolicy
+	GetExecutionPolicy() *providers.ExecutionPolicy
 }
 
 // node implements the NodeInterface
@@ -62,13 +63,13 @@ type node struct {
 var _ NodeInterface = (*node)(nil)
 
 // Execute is a default implementation that should be overridden by specific node types
-func (n *node) Execute(ctx *NodeContext) (*common.NodeResponse, *serviceerror.ServiceError) {
+func (n *node) Execute(ctx *providers.NodeContext) (*common.NodeResponse, *tidcommon.ServiceError) {
 	return nil, nil
 }
 
 // ShouldExecute checks if the node's condition is satisfied and the node should execute.
 // Returns true if no condition is set or if the condition is met.
-func (n *node) ShouldExecute(ctx *NodeContext) bool {
+func (n *node) ShouldExecute(ctx *providers.NodeContext) bool {
 	if n.condition == nil {
 		return true
 	}
@@ -220,6 +221,6 @@ func (n *node) SetCondition(condition *NodeCondition) {
 
 // GetExecutionPolicy returns the execution policy for the node. By default, it returns nil, indicating
 // no special execution policy. Nodes that need special execution behavior should override this method.
-func (n *node) GetExecutionPolicy() *ExecutionPolicy {
+func (n *node) GetExecutionPolicy() *providers.ExecutionPolicy {
 	return nil
 }

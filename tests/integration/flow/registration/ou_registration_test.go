@@ -23,9 +23,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 const (
@@ -201,7 +201,7 @@ var (
 						"inputs": []map[string]interface{}{
 							{
 								"ref":        "input_001",
-								"identifier": "mobileNumber",
+								"identifier": "mobile_number",
 								"type":       "TEXT_INPUT",
 								"required":   true,
 							},
@@ -290,7 +290,7 @@ var (
 					"inputs": []map[string]interface{}{
 						{
 							"ref":        "input_006",
-							"identifier": "mobileNumber",
+							"identifier": "mobile_number",
 							"type":       "TEXT_INPUT",
 							"required":   true,
 						},
@@ -390,7 +390,7 @@ var (
 			"family_name": map[string]interface{}{
 				"type": "string",
 			},
-			"mobileNumber": map[string]interface{}{
+			"mobile_number": map[string]interface{}{
 				"type": "string",
 			},
 		},
@@ -747,7 +747,7 @@ func (ts *OURegistrationFlowTestSuite) TestSMSRegistrationFlowWithOUCreation() {
 
 			// Step 2: Submit mobile number with action to trigger SMS send
 			inputs := map[string]string{
-				"mobileNumber": mobileNumber,
+				"mobile_number": mobileNumber,
 			}
 
 			flowStep, err = common.CompleteFlow(flowStep.ExecutionID, inputs, "action_001",
@@ -785,10 +785,10 @@ func (ts *OURegistrationFlowTestSuite) TestSMSRegistrationFlowWithOUCreation() {
 
 			// Step 5: Submit user details
 			inputs = map[string]string{
-				"mobileNumber": mobileNumber,
-				"given_name":   "Test",
-				"family_name":  "User",
-				"email":        mobileNumber + "@example.com",
+				"mobile_number": mobileNumber,
+				"given_name":    "Test",
+				"family_name":   "User",
+				"email":         mobileNumber + "@example.com",
 			}
 
 			flowStep, err = common.CompleteFlow(flowStep.ExecutionID, inputs, "", flowStep.ChallengeToken)
@@ -801,7 +801,7 @@ func (ts *OURegistrationFlowTestSuite) TestSMSRegistrationFlowWithOUCreation() {
 			ts.Require().Equal(dynamicEntityType.Name, jwtClaims.UserType)
 			ts.Require().NotEmpty(jwtClaims.OUID)
 
-			user, err := testutils.FindUserByAttribute("mobileNumber", mobileNumber)
+			user, err := testutils.FindUserByAttribute("mobile_number", mobileNumber)
 			ts.Require().NoError(err)
 			ts.Require().NotNil(user)
 
@@ -877,12 +877,12 @@ func (ts *OURegistrationFlowTestSuite) TestSMSRegistrationFlowWithOUCreationDupl
 
 			// Step 2: Submit mobile number with action to trigger SMS send
 			inputs := map[string]string{
-				"mobileNumber": mobileNumber,
+				"mobile_number": mobileNumber,
 			}
 			// Wait for OTP to be sent
 			time.Sleep(1 * time.Second)
 
-			flowStep, err = 
+			flowStep, err =
 				common.CompleteFlow(flowStep.ExecutionID, inputs, "action_001", flowStep.ChallengeToken)
 			ts.Require().NoError(err)
 			ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)

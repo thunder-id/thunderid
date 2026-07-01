@@ -46,7 +46,7 @@ import IntegrationGuides from '../components/edit-application/integration-guides
 import EditTokenSettings from '../components/edit-application/token-settings/EditTokenSettings';
 import type {Application} from '../models/application';
 import type {OAuth2Config} from '../models/oauth';
-import getIntegrationGuidesForTemplate from '../utils/getIntegrationGuidesForTemplate';
+import {getIntegrationGuideForTemplate} from '../utils/getIntegrationGuidesForTemplate';
 import getTemplateFieldConstraints from '../utils/getTemplateFieldConstraints';
 import getTemplateMetadata from '../utils/getTemplateMetadata';
 
@@ -110,7 +110,7 @@ export default function ApplicationEditPage() {
   );
 
   const hasIntegrationGuides = useMemo(
-    () => application && getIntegrationGuidesForTemplate(application.template) !== null,
+    () => Boolean(application && getIntegrationGuideForTemplate(application.template)),
     [application],
   );
 
@@ -126,10 +126,11 @@ export default function ApplicationEditPage() {
   const handleSave = useCallback(async () => {
     if (!application || !applicationId) return;
 
-    const updatedData = {
+    const {certificate, ...updatedData} = {
       ...application,
       ...editedApp,
     };
+    void certificate;
 
     try {
       await updateApplication.mutateAsync({

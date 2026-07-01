@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -23,9 +23,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 const (
@@ -58,7 +58,7 @@ var (
 						"inputs": []map[string]interface{}{
 							{
 								"ref":        "input_001",
-								"identifier": "mobileNumber",
+								"identifier": "mobile_number",
 								"type":       "string",
 								"required":   true,
 							},
@@ -321,7 +321,7 @@ var (
 			"email": map[string]interface{}{
 				"type": "string",
 			},
-			"mobileNumber": map[string]interface{}{
+			"mobile_number": map[string]interface{}{
 				"type": "string",
 			},
 		},
@@ -333,19 +333,19 @@ var (
 			"username": "assurance_user",
 			"password": "testpassword123",
 			"email": "assurance@example.com",
-			"mobileNumber": "+1987654321"
+			"mobile_number": "+1987654321"
 		}`),
 	}
 )
 
 var (
-	assuranceTestAppID       string
-	assuranceEntityTypeID    string
-	assuranceTestSenderID    string
-	assuranceSMSOnlyFlowID   string
-	assuranceMFAFlowID       string
+	assuranceTestAppID             string
+	assuranceEntityTypeID          string
+	assuranceTestSenderID          string
+	assuranceSMSOnlyFlowID         string
+	assuranceMFAFlowID             string
 	assuranceCredentialsAuthFlowID string
-	assuranceTestOU          = testutils.OrganizationUnit{
+	assuranceTestOU                = testutils.OrganizationUnit{
 		Handle:      "assurance-test-ou",
 		Name:        "Assurance Test OU",
 		Description: "Organization unit for assurance testing",
@@ -498,7 +498,7 @@ func (ts *AssuranceTestSuite) TestAssurance_SMSOTPOnly() {
 	ts.Require().NoError(err)
 
 	inputs := map[string]string{
-		"mobileNumber": userAttrs["mobileNumber"].(string),
+		"mobile_number": userAttrs["mobile_number"].(string),
 	}
 
 	otpFlowStep, err := common.CompleteFlow(flowStep.ExecutionID, inputs, "action_001",

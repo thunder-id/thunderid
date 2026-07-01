@@ -23,12 +23,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-
-	"github.com/thunder-id/thunderid/internal/flow/common"
 )
 
 const (
@@ -54,14 +54,14 @@ func (s *CompositeStoreTestSuite) SetupTest() {
 }
 
 // Helper function to create a test flow
-func (s *CompositeStoreTestSuite) createTestFlow(id, name string) *CompleteFlowDefinition {
-	return &CompleteFlowDefinition{
+func (s *CompositeStoreTestSuite) createTestFlow(id, name string) *providers.CompleteFlowDefinition {
+	return &providers.CompleteFlowDefinition{
 		ID:            id,
 		Handle:        testFlowHandle,
 		Name:          name,
-		FlowType:      common.FlowTypeAuthentication,
+		FlowType:      providers.FlowTypeAuthentication,
 		ActiveVersion: 1,
-		Nodes: []NodeDefinition{
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
 		},
@@ -73,7 +73,7 @@ func (s *CompositeStoreTestSuite) createBasicTestFlow(id, handle, name string, r
 		ID:         id,
 		Handle:     handle,
 		Name:       name,
-		FlowType:   common.FlowTypeAuthentication,
+		FlowType:   providers.FlowTypeAuthentication,
 		IsReadOnly: readOnly,
 	}
 }
@@ -83,7 +83,7 @@ func (s *CompositeStoreTestSuite) TestCreateFlow_RoutedToDBOnly() {
 	flowDef := &FlowDefinition{
 		Handle:   testFlowHandle,
 		Name:     "Test Flow",
-		FlowType: common.FlowTypeAuthentication,
+		FlowType: providers.FlowTypeAuthentication,
 	}
 	expected := s.createTestFlow("flow-id", "Test Flow")
 	s.mockDBStore.EXPECT().CreateFlow(mock.Anything, "flow-id", flowDef).Return(expected, nil).Once()
@@ -139,7 +139,7 @@ func (s *CompositeStoreTestSuite) TestGetFlowByID_NotFound() {
 // GetFlowByHandle tests
 func (s *CompositeStoreTestSuite) TestGetFlowByHandle_FromDB() {
 	handle := testFlowHandle
-	flowType := common.FlowTypeAuthentication
+	flowType := providers.FlowTypeAuthentication
 	expected := s.createTestFlow(testFlowID, "Test Flow")
 	s.mockDBStore.EXPECT().GetFlowByHandle(mock.Anything, handle, flowType).Return(expected, nil).Once()
 
@@ -153,7 +153,7 @@ func (s *CompositeStoreTestSuite) TestGetFlowByHandle_FromDB() {
 
 func (s *CompositeStoreTestSuite) TestGetFlowByHandle_FallbackToFile() {
 	handle := testFlowHandle
-	flowType := common.FlowTypeAuthentication
+	flowType := providers.FlowTypeAuthentication
 	expected := s.createTestFlow(testFlowID, "Test Flow")
 	s.mockDBStore.EXPECT().GetFlowByHandle(mock.Anything, handle, flowType).Return(nil, errFlowNotFound).Once()
 	s.mockFileStore.EXPECT().GetFlowByHandle(mock.Anything, handle, flowType).Return(expected, nil).Once()
@@ -240,7 +240,7 @@ func (s *CompositeStoreTestSuite) TestUpdateFlow_RoutedToDBOnly() {
 	flowDef := &FlowDefinition{
 		Handle:   testFlowHandle,
 		Name:     "Updated Flow",
-		FlowType: common.FlowTypeAuthentication,
+		FlowType: providers.FlowTypeAuthentication,
 	}
 	expected := s.createTestFlow(flowID, "Updated Flow")
 	s.mockDBStore.EXPECT().UpdateFlow(mock.Anything, flowID, flowDef).Return(expected, nil).Once()
@@ -323,7 +323,7 @@ func (s *CompositeStoreTestSuite) TestListFlows_FileStoreError() {
 // GetFlowByHandle error handling tests
 func (s *CompositeStoreTestSuite) TestGetFlowByHandle_NotFound() {
 	handle := "non-existent"
-	flowType := common.FlowTypeAuthentication
+	flowType := providers.FlowTypeAuthentication
 
 	s.mockDBStore.EXPECT().GetFlowByHandle(mock.Anything, handle, flowType).Return(nil, errFlowNotFound).Once()
 	s.mockFileStore.EXPECT().GetFlowByHandle(mock.Anything, handle, flowType).Return(nil, errFlowNotFound).Once()
@@ -337,7 +337,7 @@ func (s *CompositeStoreTestSuite) TestGetFlowByHandle_NotFound() {
 
 func (s *CompositeStoreTestSuite) TestGetFlowByHandle_DBAndFileError() {
 	handle := testFlowHandle
-	flowType := common.FlowTypeAuthentication
+	flowType := providers.FlowTypeAuthentication
 	fileError := errors.New("file system error")
 
 	s.mockDBStore.EXPECT().GetFlowByHandle(mock.Anything, handle, flowType).Return(nil, errFlowNotFound).Once()
@@ -353,7 +353,7 @@ func (s *CompositeStoreTestSuite) TestGetFlowByHandle_DBAndFileError() {
 // IsFlowExistsByHandle error handling tests
 func (s *CompositeStoreTestSuite) TestIsFlowExistsByHandle_FileStoreError() {
 	handle := testFlowHandle
-	flowType := common.FlowTypeAuthentication
+	flowType := providers.FlowTypeAuthentication
 	fileError := errors.New("file read error")
 
 	s.mockFileStore.EXPECT().IsFlowExistsByHandle(mock.Anything, handle, flowType).Return(false, fileError).Once()
@@ -368,7 +368,7 @@ func (s *CompositeStoreTestSuite) TestIsFlowExistsByHandle_FileStoreError() {
 
 func (s *CompositeStoreTestSuite) TestIsFlowExistsByHandle_DBStoreError() {
 	handle := testFlowHandle
-	flowType := common.FlowTypeAuthentication
+	flowType := providers.FlowTypeAuthentication
 	dbError := errors.New("database error")
 
 	s.mockFileStore.EXPECT().IsFlowExistsByHandle(mock.Anything, handle, flowType).Return(false, nil).Once()
@@ -384,7 +384,7 @@ func (s *CompositeStoreTestSuite) TestIsFlowExistsByHandle_DBStoreError() {
 
 func (s *CompositeStoreTestSuite) TestIsFlowExistsByHandle_FileStoreOnly() {
 	handle := testFlowHandle
-	flowType := common.FlowTypeAuthentication
+	flowType := providers.FlowTypeAuthentication
 
 	s.mockFileStore.EXPECT().IsFlowExistsByHandle(mock.Anything, handle, flowType).Return(true, nil).Once()
 
@@ -397,7 +397,7 @@ func (s *CompositeStoreTestSuite) TestIsFlowExistsByHandle_FileStoreOnly() {
 
 func (s *CompositeStoreTestSuite) TestIsFlowExistsByHandle_Found() {
 	handle := testFlowHandle
-	flowType := common.FlowTypeAuthentication
+	flowType := providers.FlowTypeAuthentication
 
 	s.mockFileStore.EXPECT().IsFlowExistsByHandle(mock.Anything, handle, flowType).Return(false, nil).Once()
 	s.mockDBStore.EXPECT().IsFlowExistsByHandle(mock.Anything, handle, flowType).Return(true, nil).Once()
@@ -411,7 +411,7 @@ func (s *CompositeStoreTestSuite) TestIsFlowExistsByHandle_Found() {
 
 func (s *CompositeStoreTestSuite) TestIsFlowExistsByHandle_NotFoundBothStores() {
 	handle := testFlowHandle
-	flowType := common.FlowTypeAuthentication
+	flowType := providers.FlowTypeAuthentication
 
 	s.mockFileStore.EXPECT().IsFlowExistsByHandle(mock.Anything, handle, flowType).Return(false, nil).Once()
 	s.mockDBStore.EXPECT().IsFlowExistsByHandle(mock.Anything, handle, flowType).Return(false, nil).Once()
@@ -517,7 +517,7 @@ func (s *CompositeStoreTestSuite) TestCreateFlow_Error() {
 	flowDef := &FlowDefinition{
 		Handle:   testFlowHandle,
 		Name:     "Test Flow",
-		FlowType: common.FlowTypeAuthentication,
+		FlowType: providers.FlowTypeAuthentication,
 	}
 	createError := errors.New("database error")
 
@@ -536,7 +536,7 @@ func (s *CompositeStoreTestSuite) TestUpdateFlow_Error() {
 	flowDef := &FlowDefinition{
 		Handle:   testFlowHandle,
 		Name:     "Updated Flow",
-		FlowType: common.FlowTypeAuthentication,
+		FlowType: providers.FlowTypeAuthentication,
 	}
 	updateError := errors.New("database error")
 
@@ -581,7 +581,7 @@ func (s *CompositeStoreTestSuite) TestGetFlowByID_FileStoreReturnsNilFlow() {
 // Edge case: GetFlowByHandle with nil flow from file store
 func (s *CompositeStoreTestSuite) TestGetFlowByHandle_FileStoreReturnsNilFlow() {
 	handle := testFlowHandle
-	flowType := common.FlowTypeAuthentication
+	flowType := providers.FlowTypeAuthentication
 
 	s.mockDBStore.EXPECT().GetFlowByHandle(mock.Anything, handle, flowType).Return(nil, errFlowNotFound).Once()
 	// File store returns nil flow with no error (edge case)

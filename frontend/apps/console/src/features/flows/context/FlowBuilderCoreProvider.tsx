@@ -153,7 +153,6 @@ function FlowContextWrapper({
   const flowMetadata = undefined;
   const textPreference = null;
   const fallbackTextPreference = null;
-  const brandingPreference = null;
   const supportedLocales = undefined;
   const textPreferenceLoading = false;
   const fallbackTextPreferenceLoading = false;
@@ -179,14 +178,6 @@ function FlowContextWrapper({
 
     return merge({}, fallbackTextPreference, textPreference);
   }, [textPreference, fallbackTextPreference]);
-
-  /**
-   * Memoized branding enabled status based on the branding preference.
-   */
-  const isBrandingEnabled: boolean = useMemo(() => {
-    const preference = brandingPreference as {preference?: {configs?: {isBrandingEnabled?: boolean}}} | null;
-    return preference?.preference?.configs?.isBrandingEnabled ?? false;
-  }, [brandingPreference]);
 
   /**
    * Memoized primary i18n screen based on the screen types.
@@ -362,7 +353,6 @@ function FlowContextWrapper({
       isI18nSubmitting,
       isCustomI18nKey,
       supportedLocales,
-      isBrandingEnabled,
     }),
     [
       primaryI18nScreen,
@@ -375,7 +365,6 @@ function FlowContextWrapper({
       isI18nSubmitting,
       isCustomI18nKey,
       supportedLocales,
-      isBrandingEnabled,
     ],
   );
 

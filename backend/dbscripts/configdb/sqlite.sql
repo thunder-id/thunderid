@@ -320,3 +320,50 @@ CREATE TABLE "TRANSLATION" (
 
 -- Index for efficient language and namespace combination lookups
 CREATE INDEX idx_translation_lang_namespace ON "TRANSLATION" (DEPLOYMENT_ID, LANGUAGE_CODE, NAMESPACE);
+
+-- Table to store OpenID4VP presentation definitions.
+CREATE TABLE "PRESENTATION_DEFINITION" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    ID VARCHAR(36) PRIMARY KEY,
+    HANDLE VARCHAR(255) NOT NULL,
+    OU_ID VARCHAR(36) NOT NULL,
+    DISPLAY_NAME VARCHAR(255),
+    VCT VARCHAR(512) NOT NULL,
+    FORMAT VARCHAR(64) NOT NULL DEFAULT 'dc+sd-jwt',
+    CLAIMS TEXT,
+    ENFORCE_TRUSTED_ISSUER INTEGER,
+    TRUSTED_AUTHORITIES TEXT,
+    CREATED_AT TEXT DEFAULT (datetime('now')),
+    UPDATED_AT TEXT DEFAULT (datetime('now'))
+);
+
+-- Each presentation definition handle is unique per deployment.
+CREATE UNIQUE INDEX idx_openid4vp_pd_handle ON "PRESENTATION_DEFINITION" (DEPLOYMENT_ID, HANDLE);
+
+-- Table to store OpenID4VCI credential configurations.
+CREATE TABLE "CREDENTIAL_CONFIGURATION" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    ID VARCHAR(36) PRIMARY KEY,
+    HANDLE VARCHAR(255) NOT NULL,
+    OU_ID VARCHAR(36) NOT NULL,
+    FORMAT VARCHAR(64) NOT NULL DEFAULT 'dc+sd-jwt',
+    VCT VARCHAR(512) NOT NULL,
+    CLAIMS TEXT,
+    DISPLAY TEXT,
+    VALIDITY_SECONDS INTEGER,
+    CREATED_AT TEXT DEFAULT (datetime('now')),
+    UPDATED_AT TEXT DEFAULT (datetime('now'))
+);
+
+-- Each credential configuration handle is unique per deployment.
+CREATE UNIQUE INDEX idx_openid4vci_cc_handle ON "CREDENTIAL_CONFIGURATION" (DEPLOYMENT_ID, HANDLE);
+
+-- Table to store server-wide configuration
+CREATE TABLE "SERVER_CONFIG" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    NAME          VARCHAR(255) NOT NULL,
+    VALUE         TEXT         NOT NULL,
+    CREATED_AT    TEXT         DEFAULT (datetime('now')),
+    UPDATED_AT    TEXT         DEFAULT (datetime('now')),
+    PRIMARY KEY (DEPLOYMENT_ID, NAME)
+);

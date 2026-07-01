@@ -22,6 +22,9 @@ import (
 	"context"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -29,8 +32,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 )
@@ -82,9 +83,9 @@ func (s *IDPExporterTestSuite) TestGetAllResourceIDs_Success() {
 }
 
 func (s *IDPExporterTestSuite) TestGetAllResourceIDs_Error() {
-	expectedError := &serviceerror.ServiceError{
+	expectedError := &tidcommon.ServiceError{
 		Code:  "ERR_CODE",
-		Error: i18ncore.I18nMessage{DefaultValue: "test error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "test error"},
 	}
 
 	s.mockService.EXPECT().GetIdentityProviderList(mock.Anything).Return(nil, expectedError)
@@ -107,7 +108,7 @@ func (s *IDPExporterTestSuite) TestGetAllResourceIDs_EmptyList() {
 }
 
 func (s *IDPExporterTestSuite) TestGetResourceByID_Success() {
-	expectedIDP := &idp.IDPDTO{
+	expectedIDP := &providers.IDPDTO{
 		ID:   "idp1",
 		Name: "Test IDP",
 	}
@@ -122,9 +123,9 @@ func (s *IDPExporterTestSuite) TestGetResourceByID_Success() {
 }
 
 func (s *IDPExporterTestSuite) TestGetResourceByID_Error() {
-	expectedError := &serviceerror.ServiceError{
+	expectedError := &tidcommon.ServiceError{
 		Code:  "ERR_CODE",
-		Error: i18ncore.I18nMessage{DefaultValue: "test error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "test error"},
 	}
 
 	s.mockService.EXPECT().GetIdentityProvider(mock.Anything, "idp1").Return(nil, expectedError)
@@ -138,7 +139,7 @@ func (s *IDPExporterTestSuite) TestGetResourceByID_Error() {
 
 func (s *IDPExporterTestSuite) TestValidateResource_Success() {
 	prop, _ := cmodels.NewProperty("key1", "value1", false)
-	idpDTO := &idp.IDPDTO{
+	idpDTO := &providers.IDPDTO{
 		ID:         "idp1",
 		Name:       "Valid IDP",
 		Properties: []cmodels.Property{*prop},
@@ -163,7 +164,7 @@ func (s *IDPExporterTestSuite) TestValidateResource_InvalidType() {
 }
 
 func (s *IDPExporterTestSuite) TestValidateResource_EmptyName() {
-	idpDTO := &idp.IDPDTO{
+	idpDTO := &providers.IDPDTO{
 		ID:   "idp1",
 		Name: "",
 	}
@@ -179,7 +180,7 @@ func (s *IDPExporterTestSuite) TestValidateResource_EmptyName() {
 }
 
 func (s *IDPExporterTestSuite) TestValidateResource_NoProperties() {
-	idpDTO := &idp.IDPDTO{
+	idpDTO := &providers.IDPDTO{
 		ID:         "idp1",
 		Name:       "Test IDP",
 		Properties: []cmodels.Property{},

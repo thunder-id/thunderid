@@ -79,7 +79,7 @@ You can also configure the ID token response format via the API. These settings 
 | Setting | Description |
 |---------|-------------|
 | **Response Type** | `JWT` (signed only, default), `JWE` (encrypted), or `NESTED_JWT` (signed then encrypted). |
-| **Encryption Algorithm** | Key-management algorithm. Required for `JWE` and `NESTED_JWT`. Options: `RSA-OAEP`, `RSA-OAEP-256`. Requires a certificate on the application. |
+| **Encryption Algorithm** | Key-management algorithm. Required for `JWE` and `NESTED_JWT`. Options: `RSA-OAEP`, `RSA-OAEP-256`. Requires an OAuth client certificate. |
 | **Encryption Encoding** | Content-encryption algorithm. Required when Encryption Algorithm is set. Options: `A128CBC-HS256`, `A256GCM`. |
 
 **User Info** — configure what the `/userinfo` endpoint returns. User attributes are configurable from the Console. Response format settings are available via the API only.
@@ -88,8 +88,8 @@ You can also configure the ID token response format via the API. These settings 
 |---------|-------------|
 | **User Attributes** | Attributes returned by the `/userinfo` endpoint. Enable **Use same attributes as ID Token** to mirror your ID token selection, or define a separate set. |
 | **Response Type** | `JSON` (default), `JWS` (signed), `JWE` (encrypted), or `NESTED_JWT` (signed then encrypted). |
-| **Signing Algorithm** | Required for `JWS` and `NESTED_JWT`. Options: `RS256`, `RS512`, `PS256`, `ES256`, `ES384`, `ES512`, `EdDSA`. Requires a certificate on the application. |
-| **Encryption Algorithm** | Required for `JWE` and `NESTED_JWT`. Options: `RSA-OAEP`, `RSA-OAEP-256`. Requires a certificate. |
+| **Signing Algorithm** | Required for `JWS` and `NESTED_JWT`. Options: `RS256`, `RS512`, `PS256`, `ES256`, `ES384`, `ES512`, `EdDSA`. Requires an OAuth client certificate. |
+| **Encryption Algorithm** | Required for `JWE` and `NESTED_JWT`. Options: `RSA-OAEP`, `RSA-OAEP-256`. Requires an OAuth client certificate. |
 | **Encryption Encoding** | Required when Encryption Algorithm is set. Options: `A128CBC-HS256`, `A256GCM`. |
 
 ## Rotate the Client Secret

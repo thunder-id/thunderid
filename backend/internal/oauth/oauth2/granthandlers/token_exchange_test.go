@@ -27,18 +27,20 @@ import (
 	"testing"
 	"time"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
@@ -61,7 +63,7 @@ type TokenExchangeGrantHandlerTestSuite struct {
 	mockTokenValidator  *tokenservicemock.TokenValidatorInterfaceMock
 	mockResourceService *resourcemock.ResourceServiceInterfaceMock
 	handler             *tokenExchangeGrantHandler
-	oauthApp            *inboundmodel.OAuthClient
+	oauthApp            *providers.OAuthClient
 }
 
 func TestTokenExchangeGrantHandlerSuite(t *testing.T) {
@@ -70,7 +72,7 @@ func TestTokenExchangeGrantHandlerSuite(t *testing.T) {
 
 func (suite *TokenExchangeGrantHandlerTestSuite) SetupTest() {
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://auth.example.com",
 			ValidityPeriod: 3600,
 			Audience:       "application", // Default audience for tests
@@ -84,30 +86,30 @@ func (suite *TokenExchangeGrantHandlerTestSuite) SetupTest() {
 	suite.mockTokenValidator = tokenservicemock.NewTokenValidatorInterfaceMock(suite.T())
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
-		Return(func(_ context.Context, identifier string) *resource.ResourceServer {
-			return &resource.ResourceServer{ID: identifier, Identifier: identifier}
-		}, func(_ context.Context, _ string) *serviceerror.ServiceError {
+		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
+			return &providers.ResourceServer{ID: identifier, Identifier: identifier}
+		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil).Maybe()
 	suite.mockResourceService.On("FindResourceServersByPermissions", mock.Anything, mock.Anything).
-		Return([]resource.ResourceServer{}, nil).Maybe()
+		Return([]providers.ResourceServer{}, nil).Maybe()
 	suite.handler = &tokenExchangeGrantHandler{
 		tokenBuilder:    suite.mockTokenBuilder,
 		tokenValidator:  suite.mockTokenValidator,
 		resourceService: suite.mockResourceService,
 	}
 
-	suite.oauthApp = &inboundmodel.OAuthClient{
+	suite.oauthApp = &providers.OAuthClient{
 		ID:                      "app123",
 		ClientID:                testClientID,
 		RedirectURIs:            []string{"https://example.com/callback"},
-		GrantTypes:              []constants.GrantType{constants.GrantTypeTokenExchange},
-		ResponseTypes:           []constants.ResponseType{constants.ResponseTypeCode},
-		TokenEndpointAuthMethod: constants.TokenEndpointAuthMethodClientSecretBasic,
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{
+		GrantTypes:              []providers.GrantType{providers.GrantTypeTokenExchange},
+		ResponseTypes:           []providers.ResponseType{providers.ResponseTypeCode},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
 				ValidityPeriod: 7200,
 			},
 		},
@@ -148,7 +150,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) createTestJWT(claims map[string
 // Helper function to create a basic token request for testing
 func (suite *TokenExchangeGrantHandlerTestSuite) createBasicTokenRequest(subjectToken string) *model.TokenRequest {
 	return &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -228,7 +230,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestNewTokenExchangeGrantHandle
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_Success() {
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		ClientSecret:     "secret123",
 		SubjectToken:     "subject-token",
@@ -255,7 +257,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_WrongGrantTyp
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_MissingSubjectToken() {
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     "",
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -269,7 +271,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_MissingSubjec
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_MissingSubjectTokenType() {
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     "subject-token",
 		SubjectTokenType: "",
@@ -283,7 +285,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_MissingSubjec
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_UnsupportedSubjectTokenType() {
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     "subject-token",
 		SubjectTokenType: "urn:ietf:params:oauth:token-type:saml2",
@@ -297,7 +299,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_UnsupportedSu
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_MissingActorTokenType() {
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     "subject-token",
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -313,7 +315,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_MissingActorT
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_UnsupportedActorTokenType() {
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     "subject-token",
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -329,7 +331,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_UnsupportedAc
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_ActorTokenTypeWithoutActorToken() {
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     "subject-token",
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -345,7 +347,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_ActorTokenTyp
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_InvalidResourceURI() {
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     "subject-token",
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -360,7 +362,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_InvalidResour
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_ResourceURIWithFragment() {
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     "subject-token",
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -375,7 +377,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_ResourceURIWi
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_ValidResourceURI() {
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     "subject-token",
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -388,7 +390,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_ValidResource
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_UnsupportedRequestedTokenType() {
 	tokenRequest := &model.TokenRequest{
-		GrantType:          string(constants.GrantTypeTokenExchange),
+		GrantType:          string(providers.GrantTypeTokenExchange),
 		ClientID:           testClientID,
 		SubjectToken:       "subject-token",
 		SubjectTokenType:   string(constants.TokenTypeIdentifierAccessToken),
@@ -418,7 +420,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_Basic()
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -501,7 +503,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithAct
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -566,7 +568,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithAct
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -688,7 +690,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_Preserv
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -748,7 +750,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_InvalidSubjectT
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -775,7 +777,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_InvalidSubjectT
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -794,7 +796,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_InvalidSubjectT
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_InvalidSubjectToken_DecodeError() {
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     "invalid.jwt.format",
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -872,7 +874,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_InvalidActorTok
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -909,7 +911,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_InvalidScope() 
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -958,7 +960,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ScopeEscalation
 
 	// Request tries to add scopes
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -992,7 +994,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_JWTGenerationEr
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -1027,16 +1029,16 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_UsesDefaultConf
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
 	}
 
 	// Use app without custom token config
-	oauthAppNoConfig := &inboundmodel.OAuthClient{
+	oauthAppNoConfig := &providers.OAuthClient{
 		ClientID:   testClientID,
-		GrantTypes: []constants.GrantType{constants.GrantTypeTokenExchange},
+		GrantTypes: []providers.GrantType{providers.GrantTypeTokenExchange},
 	}
 
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, oauthAppNoConfig).
@@ -1073,7 +1075,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithJWT
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:          string(constants.GrantTypeTokenExchange),
+		GrantType:          string(providers.GrantTypeTokenExchange),
 		ClientID:           testClientID,
 		SubjectToken:       subjectToken,
 		SubjectTokenType:   string(constants.TokenTypeIdentifierAccessToken),
@@ -1108,7 +1110,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithJWT
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_UnsupportedIDTokenType() {
 	tokenRequest := &model.TokenRequest{
-		GrantType:          string(constants.GrantTypeTokenExchange),
+		GrantType:          string(providers.GrantTypeTokenExchange),
 		ClientID:           testClientID,
 		SubjectToken:       "subject-token",
 		SubjectTokenType:   string(constants.TokenTypeIdentifierAccessToken),
@@ -1124,7 +1126,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_UnsupportedID
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_UnsupportedRefreshTokenType() {
 	tokenRequest := &model.TokenRequest{
-		GrantType:          string(constants.GrantTypeTokenExchange),
+		GrantType:          string(providers.GrantTypeTokenExchange),
 		ClientID:           testClientID,
 		SubjectToken:       "subject-token",
 		SubjectTokenType:   string(constants.TokenTypeIdentifierAccessToken),
@@ -1154,7 +1156,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_CompleteTokenExchan
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:          string(constants.GrantTypeTokenExchange),
+		GrantType:          string(providers.GrantTypeTokenExchange),
 		ClientID:           testClientID,
 		SubjectToken:       subjectToken,
 		SubjectTokenType:   string(constants.TokenTypeIdentifierAccessToken),
@@ -1224,7 +1226,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_AudienceCombinedWit
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -1292,7 +1294,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_ActorDelegationChai
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -1375,7 +1377,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithAct
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -1451,7 +1453,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_ScopeDownscopingEnf
 
 	// Test 1: Valid downscoping (subset of scopes)
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -1488,7 +1490,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_ScopeDownscopingEnf
 func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_ResourceParameterValidation() {
 	// RFC 8693 Section 2.1: Resource must be absolute URI without fragment
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     "subject-token",
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -1511,7 +1513,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_NoTokenLinkage() {
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -1563,7 +1565,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_ClaimPreservation()
 	})
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
@@ -1672,7 +1674,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ServerAuthAsser
 	subjectToken := suite.createTestJWT(claims)
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierJWT),
@@ -1726,7 +1728,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ServerAuthAsser
 	subjectToken := suite.createTestJWT(claims)
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierJWT),
@@ -1757,7 +1759,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ServerAuthAsser
 	subjectToken := suite.createTestJWT(claims)
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierJWT),
@@ -1790,7 +1792,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ServerAuthAsser
 	subjectToken := suite.createTestJWT(claims)
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierJWT),
@@ -1838,7 +1840,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ServerAuthAsser
 	subjectToken := suite.createTestJWT(claims)
 
 	tokenRequest := &model.TokenRequest{
-		GrantType:        string(constants.GrantTypeTokenExchange),
+		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierJWT),
@@ -2126,12 +2128,12 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_Resourc
 	// the specific ValidatePermissions expectation.
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
-		Return(&resource.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
+		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
 	// RS only defines [read, write]; ValidatePermissions returns the invalid one (admin).
 	rsvc.On("ValidatePermissions", mock.Anything, testRS01URI, []string{"read", "write", "admin"}).
 		Return([]string{"admin"}, nil)
 	rsvc.On("FindResourceServersByPermissions", mock.Anything, mock.Anything).
-		Return([]resource.ResourceServer{}, nil).Maybe()
+		Return([]providers.ResourceServer{}, nil).Maybe()
 	h := &tokenExchangeGrantHandler{
 		tokenBuilder:    suite.mockTokenBuilder,
 		tokenValidator:  suite.mockTokenValidator,
@@ -2183,12 +2185,12 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_ScopeNo
 	// the specific ValidatePermissions expectation.
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
-		Return(&resource.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
+		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
 	// RS defines [read] only; ValidatePermissions returns [write] as invalid.
 	rsvc.On("ValidatePermissions", mock.Anything, testRS01URI, []string{"read", "write"}).
 		Return([]string{"write"}, nil)
 	rsvc.On("FindResourceServersByPermissions", mock.Anything, mock.Anything).
-		Return([]resource.ResourceServer{}, nil).Maybe()
+		Return([]providers.ResourceServer{}, nil).Maybe()
 	h := &tokenExchangeGrantHandler{
 		tokenBuilder:    suite.mockTokenBuilder,
 		tokenValidator:  suite.mockTokenValidator,
@@ -2412,9 +2414,9 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_Multipl
 	// not shadow the per-RS expectations.
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
-		Return(&resource.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
+		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
 	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS02URI).
-		Return(&resource.ResourceServer{ID: testRS02URI, Identifier: testRS02URI}, nil)
+		Return(&providers.ResourceServer{ID: testRS02URI, Identifier: testRS02URI}, nil)
 	// RS1 defines [read]: returns [write, admin] as invalid.
 	rsvc.On("ValidatePermissions", mock.Anything, testRS01URI, []string{"read", "write", "admin"}).
 		Return([]string{"write", "admin"}, nil)
@@ -2422,7 +2424,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_Multipl
 	rsvc.On("ValidatePermissions", mock.Anything, testRS02URI, []string{"read", "write", "admin"}).
 		Return([]string{"read", "admin"}, nil)
 	rsvc.On("FindResourceServersByPermissions", mock.Anything, mock.Anything).
-		Return([]resource.ResourceServer{}, nil).Maybe()
+		Return([]providers.ResourceServer{}, nil).Maybe()
 	h := &tokenExchangeGrantHandler{
 		tokenBuilder:    suite.mockTokenBuilder,
 		tokenValidator:  suite.mockTokenValidator,

@@ -21,11 +21,12 @@ package flowconfig
 
 import (
 	"github.com/thunder-id/thunderid/internal/system/config"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 // Config holds configuration values required by flow services.
 type Config struct {
-	Flow          config.FlowConfig
+	Flow          engineconfig.FlowConfig
 	DeploymentID  string
 	RuntimeDBType string
 }

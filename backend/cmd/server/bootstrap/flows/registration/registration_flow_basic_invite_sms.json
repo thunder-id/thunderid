@@ -108,7 +108,7 @@
             "components": [
               {
                 "id": "input_prompt_phone",
-                "ref": "mobileNumber",
+                "ref": "mobile_number",
                 "type": "PHONE_INPUT",
                 "label": "{{ t(signup:forms.phone.fields.phone.label) }}",
                 "required": true,
@@ -130,7 +130,7 @@
           "inputs": [
             {
               "ref": "input_prompt_phone",
-              "identifier": "mobileNumber",
+              "identifier": "mobile_number",
               "type": "PHONE_INPUT",
               "required": true
             }
@@ -341,7 +341,7 @@
       "inputs": [
         {
           "ref": "input_mobile_number",
-          "identifier": "mobileNumber",
+          "identifier": "mobile_number",
           "type": "PHONE_INPUT",
           "required": true
         },

@@ -24,6 +24,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -32,7 +34,6 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -140,7 +141,7 @@ func (suite *GroupExporterTestSuite) TestGetAllResourceIDs_Empty() {
 
 // Test GetAllResourceIDs - service error
 func (suite *GroupExporterTestSuite) TestGetAllResourceIDs_ServiceError() {
-	serviceErr := &serviceerror.ServiceError{Code: "500"}
+	serviceErr := &tidcommon.ServiceError{Code: "500"}
 	suite.mockService.On("GetGroupList", suite.ctx, serverconst.MaxPageSize, 0, false).Return(nil, serviceErr)
 
 	ids, err := suite.exporter.GetAllResourceIDs(suite.ctx)
@@ -249,7 +250,7 @@ func (suite *GroupExporterTestSuite) TestGetResourceByID_MembersPaginated() {
 
 // Test GetResourceByID - error on GetGroup
 func (suite *GroupExporterTestSuite) TestGetResourceByID_ErrorOnGetGroup() {
-	serviceErr := &serviceerror.ServiceError{Code: "GRP-1003"}
+	serviceErr := &tidcommon.ServiceError{Code: "GRP-1003"}
 	suite.mockService.On("GetGroup", suite.ctx, "nonexistent", false).Return(nil, serviceErr)
 
 	resource, name, err := suite.exporter.GetResourceByID(suite.ctx, "nonexistent")
@@ -264,7 +265,7 @@ func (suite *GroupExporterTestSuite) TestGetResourceByID_ErrorOnGetGroup() {
 // Test GetResourceByID - error on GetGroupMembers
 func (suite *GroupExporterTestSuite) TestGetResourceByID_ErrorOnGetGroupMembers() {
 	grp := &Group{ID: "group1", Name: "Admins", OUID: "ou1"}
-	serviceErr := &serviceerror.ServiceError{Code: "500"}
+	serviceErr := &tidcommon.ServiceError{Code: "500"}
 
 	suite.mockService.On("GetGroup", suite.ctx, "group1", false).Return(grp, nil)
 	suite.mockService.On("GetGroupMembers", suite.ctx, "group1", serverconst.MaxPageSize, 0, false).

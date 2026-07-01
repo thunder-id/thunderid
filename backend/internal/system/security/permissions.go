@@ -37,9 +37,21 @@ var publicPaths = []string{
 	"/flow/execute/**",
 	"/flow/meta",
 	"/oauth2/**",
-	"/openid4vp/**",
+	// OpenID4VP wallet- and RP-facing endpoints are public; management endpoints
+	// (e.g. /openid4vp/presentation-definitions) are deliberately excluded.
+	"/openid4vp/request",
+	"/openid4vp/response",
+	"/openid4vp/initiate",
+	"/openid4vp/status/**",
+	// OpenID4VCI wallet-facing endpoints are public; management endpoints
+	// (e.g. /openid4vci/credential-configurations) are deliberately excluded.
+	"/openid4vci/offer",
+	"/openid4vci/credential-offer/**",
+	"/openid4vci/nonce",
+	"/openid4vci/credential",
 	"/.well-known/authzen-configuration",
 	"/.well-known/openid-configuration/**",
+	"/.well-known/openid-credential-issuer",
 	"/.well-known/oauth-authorization-server/**",
 	"/.well-known/oauth-protected-resource",
 	"/gate/**",

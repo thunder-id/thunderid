@@ -28,13 +28,12 @@ import (
 	"testing"
 	"time"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 )
 
 const (
@@ -61,9 +60,9 @@ func (m *MockJWTService) GenerateJWT(
 	validityPeriod int64,
 	claims map[string]interface{},
 	typ, alg string,
-) (string, int64, *serviceerror.ServiceError) {
+) (string, int64, *tidcommon.ServiceError) {
 	args := m.Called(ctx, sub, iss, validityPeriod, claims, typ, alg)
-	return args.String(0), args.Get(1).(int64), args.Get(2).(*serviceerror.ServiceError)
+	return args.String(0), args.Get(1).(int64), args.Get(2).(*tidcommon.ServiceError)
 }
 
 func (m *MockJWTService) VerifyJWT(
@@ -71,12 +70,12 @@ func (m *MockJWTService) VerifyJWT(
 	jwtToken string,
 	expectedAud string,
 	expectedIss string,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	args := m.Called(ctx, jwtToken, expectedAud, expectedIss)
 	if args.Get(0) == nil {
 		return nil
 	}
-	return args.Get(0).(*serviceerror.ServiceError)
+	return args.Get(0).(*tidcommon.ServiceError)
 }
 
 func (m *MockJWTService) VerifyJWTWithPublicKey(
@@ -85,12 +84,12 @@ func (m *MockJWTService) VerifyJWTWithPublicKey(
 	jwtPublicKey crypto.PublicKey,
 	expectedAud string,
 	expectedIss string,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	args := m.Called(ctx, jwtToken, jwtPublicKey, expectedAud, expectedIss)
 	if args.Get(0) == nil {
 		return nil
 	}
-	return args.Get(0).(*serviceerror.ServiceError)
+	return args.Get(0).(*tidcommon.ServiceError)
 }
 
 func (m *MockJWTService) VerifyJWTWithJWKS(
@@ -99,43 +98,43 @@ func (m *MockJWTService) VerifyJWTWithJWKS(
 	jwksURL string,
 	expectedAud string,
 	expectedIss string,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	args := m.Called(ctx, jwtToken, jwksURL, expectedAud, expectedIss)
 	if args.Get(0) == nil {
 		return nil
 	}
-	return args.Get(0).(*serviceerror.ServiceError)
+	return args.Get(0).(*tidcommon.ServiceError)
 }
 
-func (m *MockJWTService) VerifyJWTSignature(ctx context.Context, jwtToken string) *serviceerror.ServiceError {
+func (m *MockJWTService) VerifyJWTSignature(ctx context.Context, jwtToken string) *tidcommon.ServiceError {
 	args := m.Called(ctx, jwtToken)
 	if args.Get(0) == nil {
 		return nil
 	}
-	return args.Get(0).(*serviceerror.ServiceError)
+	return args.Get(0).(*tidcommon.ServiceError)
 }
 
 func (m *MockJWTService) VerifyJWTSignatureWithPublicKey(
 	jwtToken string,
 	jwtPublicKey crypto.PublicKey,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	args := m.Called(jwtToken, jwtPublicKey)
 	if args.Get(0) == nil {
 		return nil
 	}
-	return args.Get(0).(*serviceerror.ServiceError)
+	return args.Get(0).(*tidcommon.ServiceError)
 }
 
 func (m *MockJWTService) VerifyJWTSignatureWithJWKS(
 	ctx context.Context,
 	jwtToken string,
 	jwksURL string,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	args := m.Called(ctx, jwtToken, jwksURL)
 	if args.Get(0) == nil {
 		return nil
 	}
-	return args.Get(0).(*serviceerror.ServiceError)
+	return args.Get(0).(*tidcommon.ServiceError)
 }
 
 type TokenVerifierTestSuite struct {
@@ -194,8 +193,8 @@ func (suite *TokenVerifierTestSuite) TestNewTokenVerifier_JWTVerificationFailed(
 	testToken := "invalid.token.here"
 
 	// Mock JWT verification to fail
-	mockJWTService.On("VerifyJWT", mock.Anything, testToken, mcpURL, issuer).Return(&serviceerror.ServiceError{
-		ErrorDescription: i18ncore.I18nMessage{DefaultValue: "invalid token"},
+	mockJWTService.On("VerifyJWT", mock.Anything, testToken, mcpURL, issuer).Return(&tidcommon.ServiceError{
+		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "invalid token"},
 	})
 
 	// Create token verifier

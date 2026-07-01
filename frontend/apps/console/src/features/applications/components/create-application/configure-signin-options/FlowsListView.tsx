@@ -88,7 +88,7 @@ export default function FlowsListView({
             disabled={disabled}
             options={selectableFlows}
             getOptionLabel={(option) => option.name}
-            value={selectableFlows.find((flow) => flow.id === selectedAuthFlow?.id)}
+            value={selectableFlows.find((flow) => flow.id === selectedAuthFlow?.id) ?? null}
             onChange={(_, newValue) => {
               if (newValue?.id) {
                 onFlowSelect(newValue.id);

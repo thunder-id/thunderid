@@ -21,6 +21,8 @@ package ou
 import (
 	"context"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"errors"
 	"testing"
 
@@ -60,7 +62,7 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetOrganizationUnit() {
 		ouID           string
 		setupFileStore func()
 		setupDBStore   func()
-		want           OrganizationUnit
+		want           providers.OrganizationUnit
 		wantErr        bool
 	}{
 		{
@@ -71,14 +73,14 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetOrganizationUnit() {
 			},
 			setupDBStore: func() {
 				suite.dbStoreMock.On("GetOrganizationUnit", mock.Anything, "db-ou-1").
-					Return(OrganizationUnit{
+					Return(providers.OrganizationUnit{
 						ID:     "db-ou-1",
 						Handle: "db-handle",
 						Name:   "DB OU",
 					}, nil).
 					Once()
 			},
-			want: OrganizationUnit{
+			want: providers.OrganizationUnit{
 				ID:     "db-ou-1",
 				Handle: "db-handle",
 				Name:   "DB OU",
@@ -89,7 +91,7 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetOrganizationUnit() {
 			ouID: "file-ou-1",
 			setupFileStore: func() {
 				// Add OU to file store
-				err := suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+				err := suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 					ID:     "file-ou-1",
 					Handle: "file-handle",
 					Name:   "File OU",
@@ -98,10 +100,10 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetOrganizationUnit() {
 			},
 			setupDBStore: func() {
 				suite.dbStoreMock.On("GetOrganizationUnit", mock.Anything, "file-ou-1").
-					Return(OrganizationUnit{}, ErrOrganizationUnitNotFound).
+					Return(providers.OrganizationUnit{}, ErrOrganizationUnitNotFound).
 					Once()
 			},
-			want: OrganizationUnit{
+			want: providers.OrganizationUnit{
 				ID:     "file-ou-1",
 				Handle: "file-handle",
 				Name:   "File OU",
@@ -115,7 +117,7 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetOrganizationUnit() {
 			},
 			setupDBStore: func() {
 				suite.dbStoreMock.On("GetOrganizationUnit", mock.Anything, "nonexistent").
-					Return(OrganizationUnit{}, ErrOrganizationUnitNotFound).
+					Return(providers.OrganizationUnit{}, ErrOrganizationUnitNotFound).
 					Once()
 			},
 			wantErr: true,
@@ -146,7 +148,7 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetOrganizationUnit() {
 // TestCompositeStore_CreateOrganizationUnit tests creating OUs.
 func (suite *CompositeStoreTestSuite) TestCompositeStore_CreateOrganizationUnit() {
 	suite.Run("creates in DB store", func() {
-		ou := OrganizationUnit{
+		ou := providers.OrganizationUnit{
 			ID:     "new-ou-1",
 			Handle: "new-handle",
 			Name:   "New OU",
@@ -164,7 +166,7 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_CreateOrganizationUnit(
 // TestCompositeStore_UpdateOrganizationUnit tests updating OUs.
 func (suite *CompositeStoreTestSuite) TestCompositeStore_UpdateOrganizationUnit() {
 	suite.Run("updates DB OU successfully", func() {
-		ou := OrganizationUnit{
+		ou := providers.OrganizationUnit{
 			ID:     "db-ou-1",
 			Handle: "updated-handle",
 			Name:   "Updated OU",
@@ -206,7 +208,7 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_IsOrganizationUnitExist
 
 	suite.Run("exists in file store", func() {
 		// Add OU to file store
-		err := suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err := suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     "file-ou-1",
 			Handle: "file-handle",
 			Name:   "File OU",
@@ -245,7 +247,7 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_ConflictChecks() {
 
 	suite.Run("detects name conflict in file store", func() {
 		// Add OU to file store
-		err := suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err := suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     "file-ou-1",
 			Handle: "file-handle",
 			Name:   "Conflict Name",
@@ -287,13 +289,13 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_ChildrenOperations() {
 			Once()
 
 		// Add parent and child to file store
-		err := suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err := suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     parentID,
 			Handle: "parent",
 			Name:   "Parent",
 		})
 		suite.NoError(err)
-		err = suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err = suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     "file-child-1",
 			Handle: "child1",
 			Name:   "Child 1",
@@ -311,10 +313,10 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_ChildrenOperations() {
 func (suite *CompositeStoreTestSuite) TestCompositeStore_ListOperations() {
 	suite.Run("GetOrganizationUnitListCount returns count from both stores", func() {
 		// Add OUs to file store
-		_ = suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		_ = suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID: "file-ou-1", Handle: "file-1", Name: "File OU 1",
 		})
-		_ = suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		_ = suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID: "file-ou-2", Handle: "file-2", Name: "File OU 2",
 		})
 
@@ -333,7 +335,7 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_ListOperations() {
 		suite.compositeStore = newCompositeOUStore(suite.fileStore, suite.dbStoreMock)
 
 		// Add 1 OU to file store
-		_ = suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		_ = suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID: "file-ou-1", Handle: "file-1", Name: "File OU 1",
 		})
 
@@ -343,7 +345,7 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_ListOperations() {
 		// Then fileCount from fileStore (real store) returns 1
 		// Total = 3, so it will try to fetch all 3 (dbCount=2, fileCount=1)
 		suite.dbStoreMock.On("GetOrganizationUnitList", mock.Anything, 2, 0, mock.Anything).
-			Return([]OrganizationUnitBasic{
+			Return([]providers.OrganizationUnitBasic{
 				{ID: "db-ou-1", Handle: "db-1", Name: "DB OU 1"},
 				{ID: "db-ou-2", Handle: "db-2", Name: "DB OU 2"},
 			}, nil).
@@ -393,7 +395,7 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_ListOperations() {
 func (suite *CompositeStoreTestSuite) TestCompositeStore_IsOrganizationUnitDeclarative() {
 	suite.Run("returns true for immutable OU (exists in file store)", func() {
 		// Add OU to file store
-		err := suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err := suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     "immutable-ou-1",
 			Handle: "immutable-handle",
 			Name:   "Declarative OU",
@@ -448,7 +450,7 @@ func (suite *CompositeStoreCoverageTestSuite) SetupTest() {
 // TestCompositeStore_GetOrganizationUnitList tests paginated list retrieval.
 func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganizationUnitList() {
 	suite.Run("retrieves paginated list from DB store only", func() {
-		expectedList := []OrganizationUnitBasic{
+		expectedList := []providers.OrganizationUnitBasic{
 			{ID: "ou-1", Handle: "handle-1", Name: "OU 1"},
 			{ID: "ou-2", Handle: "handle-2", Name: "OU 2"},
 		}
@@ -483,14 +485,14 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 	handles := []string{"level1", "level2"}
 
 	suite.Run("retrieves from DB store by path", func() {
-		expectedOU := OrganizationUnit{
+		expectedOU := providers.OrganizationUnit{
 			ID:     "ou-path-1",
 			Handle: "level2",
 			Name:   "Level 2 OU",
 		}
 
 		suite.dbStoreMock.On("GetOrganizationUnitByHandle", mock.Anything, "level1", (*string)(nil)).
-			Return(OrganizationUnit{ID: "db-root", Handle: "level1", Name: "Root"}, nil).
+			Return(providers.OrganizationUnit{ID: "db-root", Handle: "level1", Name: "Root"}, nil).
 			Once()
 		parentID := "db-root"
 		suite.dbStoreMock.On("GetOrganizationUnitByHandle", mock.Anything, "level2", &parentID).
@@ -507,14 +509,14 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 
 		// Create parent and child in file store
 		parentID := "file-parent"
-		err := suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err := suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     parentID,
 			Handle: "level1",
 			Name:   "Parent",
 		})
 		suite.NoError(err)
 
-		err = suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err = suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     "file-child",
 			Handle: "level2",
 			Name:   "Child",
@@ -523,10 +525,10 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 		suite.NoError(err)
 
 		suite.dbStoreMock.On("GetOrganizationUnitByHandle", mock.Anything, "level1", (*string)(nil)).
-			Return(OrganizationUnit{}, ErrOrganizationUnitNotFound).
+			Return(providers.OrganizationUnit{}, ErrOrganizationUnitNotFound).
 			Once()
 		suite.dbStoreMock.On("GetOrganizationUnitByHandle", mock.Anything, "level2", &parentID).
-			Return(OrganizationUnit{}, ErrOrganizationUnitNotFound).
+			Return(providers.OrganizationUnit{}, ErrOrganizationUnitNotFound).
 			Once()
 
 		result, err := suite.compositeStore.GetOrganizationUnitByPath(context.Background(), handles)
@@ -540,7 +542,7 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 
 		// Root in file store
 		rootID := "file-root"
-		err := suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err := suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     rootID,
 			Handle: "default",
 			Name:   "Default",
@@ -548,9 +550,14 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 		suite.NoError(err)
 
 		// Child in DB store under file root
-		dbChild := OrganizationUnit{ID: "db-child", Handle: "thin-ends-make", Name: "Thin Ends Make", Parent: &rootID}
+		dbChild := providers.OrganizationUnit{
+			ID:     "db-child",
+			Handle: "thin-ends-make",
+			Name:   "Thin Ends Make",
+			Parent: &rootID,
+		}
 		suite.dbStoreMock.On("GetOrganizationUnitByHandle", mock.Anything, "default", (*string)(nil)).
-			Return(OrganizationUnit{}, ErrOrganizationUnitNotFound).
+			Return(providers.OrganizationUnit{}, ErrOrganizationUnitNotFound).
 			Once()
 		suite.dbStoreMock.On("GetOrganizationUnitByHandle", mock.Anything, "thin-ends-make", &rootID).
 			Return(dbChild, nil).
@@ -569,7 +576,7 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 		handlesTest := []string{"nonexistent1", "nonexistent2"}
 
 		suite.dbStoreMock.On("GetOrganizationUnitByHandle", mock.Anything, "nonexistent1", (*string)(nil)).
-			Return(OrganizationUnit{}, ErrOrganizationUnitNotFound).
+			Return(providers.OrganizationUnit{}, ErrOrganizationUnitNotFound).
 			Once()
 
 		result, err := suite.compositeStore.GetOrganizationUnitByPath(context.Background(), handlesTest)
@@ -581,7 +588,7 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 	suite.Run("propagates DB errors other than not found", func() {
 		dbErr := errors.New("database connection error")
 		suite.dbStoreMock.On("GetOrganizationUnitByHandle", mock.Anything, "level1", (*string)(nil)).
-			Return(OrganizationUnit{}, dbErr).
+			Return(providers.OrganizationUnit{}, dbErr).
 			Once()
 
 		result, err := suite.compositeStore.GetOrganizationUnitByPath(context.Background(), handles)
@@ -608,7 +615,7 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_CheckOrganizati
 	})
 
 	suite.Run("detects handle conflict in file store", func() {
-		err := suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err := suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     "file-ou",
 			Handle: "conflict-handle",
 			Name:   "File OU",
@@ -661,19 +668,19 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 
 	suite.Run("merges children from both stores with pagination", func() {
 		// Setup DB children
-		dbChildren := []OrganizationUnitBasic{
+		dbChildren := []providers.OrganizationUnitBasic{
 			{ID: "db-child-1", Handle: "db1", Name: "DB Child 1"},
 			{ID: "db-child-2", Handle: "db2", Name: "DB Child 2"},
 		}
 
 		// Setup file store parent and children
-		err := suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err := suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     parentID,
 			Handle: "parent",
 			Name:   "Parent",
 		})
 		suite.NoError(err)
-		err = suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err = suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     "file-child-1",
 			Handle: "file1",
 			Name:   "File Child 1",
@@ -709,14 +716,14 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 	suite.Run("handles pagination with offset", func() {
 		suite.SetupTest() // Fresh setup
 		testParentID := "pagination-parent"
-		dbChildren := []OrganizationUnitBasic{
+		dbChildren := []providers.OrganizationUnitBasic{
 			{ID: "db-child-1", Handle: "db1", Name: "DB Child 1"},
 			{ID: "db-child-2", Handle: "db2", Name: "DB Child 2"},
 			{ID: "db-child-3", Handle: "db3", Name: "DB Child 3"},
 		}
 
 		// Setup file store parent
-		err := suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err := suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     testParentID,
 			Handle: "parent",
 			Name:   "Parent",
@@ -742,7 +749,7 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 	suite.Run("propagates DB count error", func() {
 		suite.SetupTest() // Fresh setup
 		testParentID := "count-error-parent"
-		err := suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err := suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     testParentID,
 			Handle: "parent",
 			Name:   "Parent",
@@ -766,7 +773,7 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 		suite.SetupTest() // Fresh setup
 		testParentID := "error-parent"
 		// Create parent in file store
-		err := suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err := suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     testParentID,
 			Handle: "parent",
 			Name:   "Parent",
@@ -778,7 +785,7 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 			Return(2, nil).
 			Once()
 		suite.dbStoreMock.On("GetOrganizationUnitChildrenList", mock.Anything, testParentID, 2, 0, mock.Anything).
-			Return([]OrganizationUnitBasic{}, dbErr).
+			Return([]providers.OrganizationUnitBasic{}, dbErr).
 			Once()
 
 		result, err := suite.compositeStore.GetOrganizationUnitChildrenList(
@@ -794,19 +801,19 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 		dedupeParentID := "dedupe-parent"
 
 		// Setup DB children
-		dbChildren := []OrganizationUnitBasic{
+		dbChildren := []providers.OrganizationUnitBasic{
 			{ID: "child-1", Handle: "db-handle", Name: "DB Child"},
 			{ID: "child-2", Handle: "db2", Name: "DB Child 2"},
 		}
 
 		// Setup file store with duplicate ID
-		err := suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err := suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     dedupeParentID,
 			Handle: "parent",
 			Name:   "Parent",
 		})
 		suite.NoError(err)
-		err = suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err = suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     "child-1", // Same ID as DB child
 			Handle: "file-handle",
 			Name:   "File Child",
@@ -842,11 +849,11 @@ func (suite *CompositeStoreCoverageTestSuite) TestMergeAndDeduplicateOUs() {
 		const db1 = "db-1"
 		const db2 = "db-2"
 		const file1 = "file-1"
-		dbOUs := []OrganizationUnitBasic{
+		dbOUs := []providers.OrganizationUnitBasic{
 			{ID: db1, Handle: "db1", Name: "DB 1"},
 			{ID: db2, Handle: "db2", Name: "DB 2"},
 		}
-		fileOUs := []OrganizationUnitBasic{
+		fileOUs := []providers.OrganizationUnitBasic{
 			{ID: file1, Handle: "file1", Name: "File 1"},
 			{ID: "file-2", Handle: "file2", Name: "File 2"},
 		}
@@ -865,10 +872,10 @@ func (suite *CompositeStoreCoverageTestSuite) TestMergeAndDeduplicateOUs() {
 	})
 
 	suite.Run("DB takes precedence for duplicate IDs and marks as mutable", func() {
-		dbOUs := []OrganizationUnitBasic{
+		dbOUs := []providers.OrganizationUnitBasic{
 			{ID: "duplicate", Handle: "db-handle", Name: "DB OU"},
 		}
-		fileOUs := []OrganizationUnitBasic{
+		fileOUs := []providers.OrganizationUnitBasic{
 			{ID: "duplicate", Handle: "file-handle", Name: "File OU"},
 		}
 
@@ -879,16 +886,16 @@ func (suite *CompositeStoreCoverageTestSuite) TestMergeAndDeduplicateOUs() {
 	})
 
 	suite.Run("handles empty slices and sets correct IsReadOnly", func() {
-		result := mergeAndDeduplicateOUs([]OrganizationUnitBasic{}, []OrganizationUnitBasic{})
+		result := mergeAndDeduplicateOUs([]providers.OrganizationUnitBasic{}, []providers.OrganizationUnitBasic{})
 		suite.Empty(result)
 
-		dbOUs := []OrganizationUnitBasic{{ID: "db-1", Handle: "db1", Name: "DB 1"}}
-		result = mergeAndDeduplicateOUs(dbOUs, []OrganizationUnitBasic{})
+		dbOUs := []providers.OrganizationUnitBasic{{ID: "db-1", Handle: "db1", Name: "DB 1"}}
+		result = mergeAndDeduplicateOUs(dbOUs, []providers.OrganizationUnitBasic{})
 		suite.Len(result, 1)
 		suite.False(result[0].IsReadOnly, "DB OU should have IsReadOnly=false")
 
-		fileOUs := []OrganizationUnitBasic{{ID: "file-1", Handle: "file1", Name: "File 1"}}
-		result = mergeAndDeduplicateOUs([]OrganizationUnitBasic{}, fileOUs)
+		fileOUs := []providers.OrganizationUnitBasic{{ID: "file-1", Handle: "file1", Name: "File 1"}}
+		result = mergeAndDeduplicateOUs([]providers.OrganizationUnitBasic{}, fileOUs)
 		suite.Len(result, 1)
 		suite.True(result[0].IsReadOnly, "File OU should have IsReadOnly=true")
 	})
@@ -897,11 +904,11 @@ func (suite *CompositeStoreCoverageTestSuite) TestMergeAndDeduplicateOUs() {
 // TestMergeAndDeduplicateChildren tests the merge helper function.
 func (suite *CompositeStoreCoverageTestSuite) TestMergeAndDeduplicateChildren() {
 	suite.Run("merges without duplicates and sets IsReadOnly flags", func() {
-		dbChildren := []OrganizationUnitBasic{
+		dbChildren := []providers.OrganizationUnitBasic{
 			{ID: "db-1", Handle: "db1", Name: "DB 1"},
 			{ID: "db-2", Handle: "db2", Name: "DB 2"},
 		}
-		fileChildren := []OrganizationUnitBasic{
+		fileChildren := []providers.OrganizationUnitBasic{
 			{ID: "file-1", Handle: "file1", Name: "File 1"},
 		}
 
@@ -919,10 +926,10 @@ func (suite *CompositeStoreCoverageTestSuite) TestMergeAndDeduplicateChildren() 
 	})
 
 	suite.Run("removes duplicates with DB taking precedence and marked as mutable", func() {
-		dbChildren := []OrganizationUnitBasic{
+		dbChildren := []providers.OrganizationUnitBasic{
 			{ID: "child-1", Handle: "db-handle", Name: "DB Child"},
 		}
-		fileChildren := []OrganizationUnitBasic{
+		fileChildren := []providers.OrganizationUnitBasic{
 			{ID: "child-1", Handle: "file-handle", Name: "File Child"},
 		}
 
@@ -933,26 +940,26 @@ func (suite *CompositeStoreCoverageTestSuite) TestMergeAndDeduplicateChildren() 
 	})
 
 	suite.Run("handles empty slices and sets correct IsReadOnly", func() {
-		result := mergeAndDeduplicateChildren([]OrganizationUnitBasic{}, []OrganizationUnitBasic{})
+		result := mergeAndDeduplicateChildren([]providers.OrganizationUnitBasic{}, []providers.OrganizationUnitBasic{})
 		suite.Empty(result)
 
-		dbChildren := []OrganizationUnitBasic{{ID: "db-1", Handle: "db1", Name: "DB 1"}}
-		result = mergeAndDeduplicateChildren(dbChildren, []OrganizationUnitBasic{})
+		dbChildren := []providers.OrganizationUnitBasic{{ID: "db-1", Handle: "db1", Name: "DB 1"}}
+		result = mergeAndDeduplicateChildren(dbChildren, []providers.OrganizationUnitBasic{})
 		suite.Len(result, 1)
 		suite.False(result[0].IsReadOnly, "DB child should have IsReadOnly=false")
 
-		fileChildren := []OrganizationUnitBasic{{ID: "file-1", Handle: "file1", Name: "File 1"}}
-		result = mergeAndDeduplicateChildren([]OrganizationUnitBasic{}, fileChildren)
+		fileChildren := []providers.OrganizationUnitBasic{{ID: "file-1", Handle: "file1", Name: "File 1"}}
+		result = mergeAndDeduplicateChildren([]providers.OrganizationUnitBasic{}, fileChildren)
 		suite.Len(result, 1)
 		suite.True(result[0].IsReadOnly, "File child should have IsReadOnly=true")
 	})
 
 	suite.Run("handles multiple duplicates with correct IsReadOnly flags", func() {
-		dbChildren := []OrganizationUnitBasic{
+		dbChildren := []providers.OrganizationUnitBasic{
 			{ID: "child-1", Handle: "db1", Name: "DB 1"},
 			{ID: "child-2", Handle: "db2", Name: "DB 2"},
 		}
-		fileChildren := []OrganizationUnitBasic{
+		fileChildren := []providers.OrganizationUnitBasic{
 			{ID: "child-1", Handle: "file1", Name: "File 1"},
 			{ID: "child-2", Handle: "file2", Name: "File 2"},
 			{ID: "child-3", Handle: "file3", Name: "File 3"},
@@ -987,13 +994,13 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 
 	suite.Run("merges OUs from both stores", func() {
 		// Setup DB OUs
-		dbOUs := []OrganizationUnitBasic{
+		dbOUs := []providers.OrganizationUnitBasic{
 			{ID: "db-1", Handle: "db1", Name: "DB 1"},
 			{ID: "db-2", Handle: "db2", Name: "DB 2"},
 		}
 
 		// Setup file store OU
-		err := suite.fileStore.CreateOrganizationUnit(context.Background(), OrganizationUnit{
+		err := suite.fileStore.CreateOrganizationUnit(context.Background(), providers.OrganizationUnit{
 			ID:     "file-1",
 			Handle: "file1",
 			Name:   "File 1",
@@ -1037,7 +1044,7 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 		ids := []string{"ou-1"}
 
 		suite.dbStoreMock.On("GetOrganizationUnitsByIDs", mock.Anything, ids).
-			Return([]OrganizationUnitBasic{}, dbErr).
+			Return([]providers.OrganizationUnitBasic{}, dbErr).
 			Once()
 
 		result, err := suite.compositeStore.GetOrganizationUnitsByIDs(context.Background(), ids)

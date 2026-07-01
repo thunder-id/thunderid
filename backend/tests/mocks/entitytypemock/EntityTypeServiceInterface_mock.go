@@ -10,7 +10,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/entitytype"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewEntityTypeServiceInterfaceMock creates a new instance of EntityTypeServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -41,7 +41,7 @@ func (_m *EntityTypeServiceInterfaceMock) EXPECT() *EntityTypeServiceInterfaceMo
 }
 
 // CreateEntityType provides a mock function for the type EntityTypeServiceInterfaceMock
-func (_mock *EntityTypeServiceInterfaceMock) CreateEntityType(ctx context.Context, category entitytype.TypeCategory, request entitytype.CreateEntityTypeRequestWithID) (*entitytype.EntityType, *serviceerror.ServiceError) {
+func (_mock *EntityTypeServiceInterfaceMock) CreateEntityType(ctx context.Context, category entitytype.TypeCategory, request entitytype.CreateEntityTypeRequestWithID) (*entitytype.EntityType, *common.ServiceError) {
 	ret := _mock.Called(ctx, category, request)
 
 	if len(ret) == 0 {
@@ -49,8 +49,8 @@ func (_mock *EntityTypeServiceInterfaceMock) CreateEntityType(ctx context.Contex
 	}
 
 	var r0 *entitytype.EntityType
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, entitytype.CreateEntityTypeRequestWithID) (*entitytype.EntityType, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, entitytype.CreateEntityTypeRequestWithID) (*entitytype.EntityType, *common.ServiceError)); ok {
 		return returnFunc(ctx, category, request)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, entitytype.CreateEntityTypeRequestWithID) *entitytype.EntityType); ok {
@@ -60,11 +60,11 @@ func (_mock *EntityTypeServiceInterfaceMock) CreateEntityType(ctx context.Contex
 			r0 = ret.Get(0).(*entitytype.EntityType)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, entitytype.CreateEntityTypeRequestWithID) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, entitytype.CreateEntityTypeRequestWithID) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, category, request)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -106,30 +106,30 @@ func (_c *EntityTypeServiceInterfaceMock_CreateEntityType_Call) Run(run func(ctx
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_CreateEntityType_Call) Return(entityType *entitytype.EntityType, serviceError *serviceerror.ServiceError) *EntityTypeServiceInterfaceMock_CreateEntityType_Call {
+func (_c *EntityTypeServiceInterfaceMock_CreateEntityType_Call) Return(entityType *entitytype.EntityType, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_CreateEntityType_Call {
 	_c.Call.Return(entityType, serviceError)
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_CreateEntityType_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, request entitytype.CreateEntityTypeRequestWithID) (*entitytype.EntityType, *serviceerror.ServiceError)) *EntityTypeServiceInterfaceMock_CreateEntityType_Call {
+func (_c *EntityTypeServiceInterfaceMock_CreateEntityType_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, request entitytype.CreateEntityTypeRequestWithID) (*entitytype.EntityType, *common.ServiceError)) *EntityTypeServiceInterfaceMock_CreateEntityType_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // DeleteEntityType provides a mock function for the type EntityTypeServiceInterfaceMock
-func (_mock *EntityTypeServiceInterfaceMock) DeleteEntityType(ctx context.Context, category entitytype.TypeCategory, schemaID string) *serviceerror.ServiceError {
+func (_mock *EntityTypeServiceInterfaceMock) DeleteEntityType(ctx context.Context, category entitytype.TypeCategory, schemaID string) *common.ServiceError {
 	ret := _mock.Called(ctx, category, schemaID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteEntityType")
 	}
 
-	var r0 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string) *serviceerror.ServiceError); ok {
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string) *common.ServiceError); ok {
 		r0 = returnFunc(ctx, category, schemaID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*serviceerror.ServiceError)
+			r0 = ret.Get(0).(*common.ServiceError)
 		}
 	}
 	return r0
@@ -171,18 +171,18 @@ func (_c *EntityTypeServiceInterfaceMock_DeleteEntityType_Call) Run(run func(ctx
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_DeleteEntityType_Call) Return(serviceError *serviceerror.ServiceError) *EntityTypeServiceInterfaceMock_DeleteEntityType_Call {
+func (_c *EntityTypeServiceInterfaceMock_DeleteEntityType_Call) Return(serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_DeleteEntityType_Call {
 	_c.Call.Return(serviceError)
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_DeleteEntityType_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, schemaID string) *serviceerror.ServiceError) *EntityTypeServiceInterfaceMock_DeleteEntityType_Call {
+func (_c *EntityTypeServiceInterfaceMock_DeleteEntityType_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, schemaID string) *common.ServiceError) *EntityTypeServiceInterfaceMock_DeleteEntityType_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetAttributes provides a mock function for the type EntityTypeServiceInterfaceMock
-func (_mock *EntityTypeServiceInterfaceMock) GetAttributes(ctx context.Context, category entitytype.TypeCategory, entityType string, allowCredential bool, allowNonCredential bool, requiredOnly bool) ([]entitytype.AttributeInfo, *serviceerror.ServiceError) {
+func (_mock *EntityTypeServiceInterfaceMock) GetAttributes(ctx context.Context, category entitytype.TypeCategory, entityType string, allowCredential bool, allowNonCredential bool, requiredOnly bool) ([]entitytype.AttributeInfo, *common.ServiceError) {
 	ret := _mock.Called(ctx, category, entityType, allowCredential, allowNonCredential, requiredOnly)
 
 	if len(ret) == 0 {
@@ -190,8 +190,8 @@ func (_mock *EntityTypeServiceInterfaceMock) GetAttributes(ctx context.Context, 
 	}
 
 	var r0 []entitytype.AttributeInfo
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, bool, bool, bool) ([]entitytype.AttributeInfo, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, bool, bool, bool) ([]entitytype.AttributeInfo, *common.ServiceError)); ok {
 		return returnFunc(ctx, category, entityType, allowCredential, allowNonCredential, requiredOnly)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, bool, bool, bool) []entitytype.AttributeInfo); ok {
@@ -201,11 +201,11 @@ func (_mock *EntityTypeServiceInterfaceMock) GetAttributes(ctx context.Context, 
 			r0 = ret.Get(0).([]entitytype.AttributeInfo)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, string, bool, bool, bool) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, string, bool, bool, bool) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, category, entityType, allowCredential, allowNonCredential, requiredOnly)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -265,18 +265,18 @@ func (_c *EntityTypeServiceInterfaceMock_GetAttributes_Call) Run(run func(ctx co
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_GetAttributes_Call) Return(vs []entitytype.AttributeInfo, serviceError *serviceerror.ServiceError) *EntityTypeServiceInterfaceMock_GetAttributes_Call {
+func (_c *EntityTypeServiceInterfaceMock_GetAttributes_Call) Return(vs []entitytype.AttributeInfo, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_GetAttributes_Call {
 	_c.Call.Return(vs, serviceError)
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_GetAttributes_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, entityType string, allowCredential bool, allowNonCredential bool, requiredOnly bool) ([]entitytype.AttributeInfo, *serviceerror.ServiceError)) *EntityTypeServiceInterfaceMock_GetAttributes_Call {
+func (_c *EntityTypeServiceInterfaceMock_GetAttributes_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, entityType string, allowCredential bool, allowNonCredential bool, requiredOnly bool) ([]entitytype.AttributeInfo, *common.ServiceError)) *EntityTypeServiceInterfaceMock_GetAttributes_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetDisplayAttributesByNames provides a mock function for the type EntityTypeServiceInterfaceMock
-func (_mock *EntityTypeServiceInterfaceMock) GetDisplayAttributesByNames(ctx context.Context, category entitytype.TypeCategory, names []string) (map[string]string, *serviceerror.ServiceError) {
+func (_mock *EntityTypeServiceInterfaceMock) GetDisplayAttributesByNames(ctx context.Context, category entitytype.TypeCategory, names []string) (map[string]string, *common.ServiceError) {
 	ret := _mock.Called(ctx, category, names)
 
 	if len(ret) == 0 {
@@ -284,8 +284,8 @@ func (_mock *EntityTypeServiceInterfaceMock) GetDisplayAttributesByNames(ctx con
 	}
 
 	var r0 map[string]string
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, []string) (map[string]string, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, []string) (map[string]string, *common.ServiceError)); ok {
 		return returnFunc(ctx, category, names)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, []string) map[string]string); ok {
@@ -295,11 +295,11 @@ func (_mock *EntityTypeServiceInterfaceMock) GetDisplayAttributesByNames(ctx con
 			r0 = ret.Get(0).(map[string]string)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, []string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, []string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, category, names)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -341,18 +341,18 @@ func (_c *EntityTypeServiceInterfaceMock_GetDisplayAttributesByNames_Call) Run(r
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_GetDisplayAttributesByNames_Call) Return(stringToString map[string]string, serviceError *serviceerror.ServiceError) *EntityTypeServiceInterfaceMock_GetDisplayAttributesByNames_Call {
+func (_c *EntityTypeServiceInterfaceMock_GetDisplayAttributesByNames_Call) Return(stringToString map[string]string, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_GetDisplayAttributesByNames_Call {
 	_c.Call.Return(stringToString, serviceError)
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_GetDisplayAttributesByNames_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, names []string) (map[string]string, *serviceerror.ServiceError)) *EntityTypeServiceInterfaceMock_GetDisplayAttributesByNames_Call {
+func (_c *EntityTypeServiceInterfaceMock_GetDisplayAttributesByNames_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, names []string) (map[string]string, *common.ServiceError)) *EntityTypeServiceInterfaceMock_GetDisplayAttributesByNames_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetEntityType provides a mock function for the type EntityTypeServiceInterfaceMock
-func (_mock *EntityTypeServiceInterfaceMock) GetEntityType(ctx context.Context, category entitytype.TypeCategory, schemaID string, includeDisplay bool) (*entitytype.EntityType, *serviceerror.ServiceError) {
+func (_mock *EntityTypeServiceInterfaceMock) GetEntityType(ctx context.Context, category entitytype.TypeCategory, schemaID string, includeDisplay bool) (*entitytype.EntityType, *common.ServiceError) {
 	ret := _mock.Called(ctx, category, schemaID, includeDisplay)
 
 	if len(ret) == 0 {
@@ -360,8 +360,8 @@ func (_mock *EntityTypeServiceInterfaceMock) GetEntityType(ctx context.Context, 
 	}
 
 	var r0 *entitytype.EntityType
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, bool) (*entitytype.EntityType, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, bool) (*entitytype.EntityType, *common.ServiceError)); ok {
 		return returnFunc(ctx, category, schemaID, includeDisplay)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, bool) *entitytype.EntityType); ok {
@@ -371,11 +371,11 @@ func (_mock *EntityTypeServiceInterfaceMock) GetEntityType(ctx context.Context, 
 			r0 = ret.Get(0).(*entitytype.EntityType)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, string, bool) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, string, bool) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, category, schemaID, includeDisplay)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -423,18 +423,18 @@ func (_c *EntityTypeServiceInterfaceMock_GetEntityType_Call) Run(run func(ctx co
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_GetEntityType_Call) Return(entityType *entitytype.EntityType, serviceError *serviceerror.ServiceError) *EntityTypeServiceInterfaceMock_GetEntityType_Call {
+func (_c *EntityTypeServiceInterfaceMock_GetEntityType_Call) Return(entityType *entitytype.EntityType, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_GetEntityType_Call {
 	_c.Call.Return(entityType, serviceError)
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_GetEntityType_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, schemaID string, includeDisplay bool) (*entitytype.EntityType, *serviceerror.ServiceError)) *EntityTypeServiceInterfaceMock_GetEntityType_Call {
+func (_c *EntityTypeServiceInterfaceMock_GetEntityType_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, schemaID string, includeDisplay bool) (*entitytype.EntityType, *common.ServiceError)) *EntityTypeServiceInterfaceMock_GetEntityType_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetEntityTypeByName provides a mock function for the type EntityTypeServiceInterfaceMock
-func (_mock *EntityTypeServiceInterfaceMock) GetEntityTypeByName(ctx context.Context, category entitytype.TypeCategory, schemaName string) (*entitytype.EntityType, *serviceerror.ServiceError) {
+func (_mock *EntityTypeServiceInterfaceMock) GetEntityTypeByName(ctx context.Context, category entitytype.TypeCategory, schemaName string) (*entitytype.EntityType, *common.ServiceError) {
 	ret := _mock.Called(ctx, category, schemaName)
 
 	if len(ret) == 0 {
@@ -442,8 +442,8 @@ func (_mock *EntityTypeServiceInterfaceMock) GetEntityTypeByName(ctx context.Con
 	}
 
 	var r0 *entitytype.EntityType
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string) (*entitytype.EntityType, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string) (*entitytype.EntityType, *common.ServiceError)); ok {
 		return returnFunc(ctx, category, schemaName)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string) *entitytype.EntityType); ok {
@@ -453,11 +453,11 @@ func (_mock *EntityTypeServiceInterfaceMock) GetEntityTypeByName(ctx context.Con
 			r0 = ret.Get(0).(*entitytype.EntityType)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, category, schemaName)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -499,18 +499,18 @@ func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeByName_Call) Run(run func(
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeByName_Call) Return(entityType *entitytype.EntityType, serviceError *serviceerror.ServiceError) *EntityTypeServiceInterfaceMock_GetEntityTypeByName_Call {
+func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeByName_Call) Return(entityType *entitytype.EntityType, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_GetEntityTypeByName_Call {
 	_c.Call.Return(entityType, serviceError)
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeByName_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, schemaName string) (*entitytype.EntityType, *serviceerror.ServiceError)) *EntityTypeServiceInterfaceMock_GetEntityTypeByName_Call {
+func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeByName_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, schemaName string) (*entitytype.EntityType, *common.ServiceError)) *EntityTypeServiceInterfaceMock_GetEntityTypeByName_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetEntityTypeList provides a mock function for the type EntityTypeServiceInterfaceMock
-func (_mock *EntityTypeServiceInterfaceMock) GetEntityTypeList(ctx context.Context, category entitytype.TypeCategory, limit int, offset int, includeDisplay bool) (*entitytype.EntityTypeListResponse, *serviceerror.ServiceError) {
+func (_mock *EntityTypeServiceInterfaceMock) GetEntityTypeList(ctx context.Context, category entitytype.TypeCategory, limit int, offset int, includeDisplay bool) (*entitytype.EntityTypeListResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, category, limit, offset, includeDisplay)
 
 	if len(ret) == 0 {
@@ -518,8 +518,8 @@ func (_mock *EntityTypeServiceInterfaceMock) GetEntityTypeList(ctx context.Conte
 	}
 
 	var r0 *entitytype.EntityTypeListResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, int, int, bool) (*entitytype.EntityTypeListResponse, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, int, int, bool) (*entitytype.EntityTypeListResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, category, limit, offset, includeDisplay)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, int, int, bool) *entitytype.EntityTypeListResponse); ok {
@@ -529,11 +529,11 @@ func (_mock *EntityTypeServiceInterfaceMock) GetEntityTypeList(ctx context.Conte
 			r0 = ret.Get(0).(*entitytype.EntityTypeListResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, int, int, bool) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, int, int, bool) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, category, limit, offset, includeDisplay)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -587,18 +587,18 @@ func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeList_Call) Run(run func(ct
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeList_Call) Return(entityTypeListResponse *entitytype.EntityTypeListResponse, serviceError *serviceerror.ServiceError) *EntityTypeServiceInterfaceMock_GetEntityTypeList_Call {
+func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeList_Call) Return(entityTypeListResponse *entitytype.EntityTypeListResponse, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_GetEntityTypeList_Call {
 	_c.Call.Return(entityTypeListResponse, serviceError)
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeList_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, limit int, offset int, includeDisplay bool) (*entitytype.EntityTypeListResponse, *serviceerror.ServiceError)) *EntityTypeServiceInterfaceMock_GetEntityTypeList_Call {
+func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeList_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, limit int, offset int, includeDisplay bool) (*entitytype.EntityTypeListResponse, *common.ServiceError)) *EntityTypeServiceInterfaceMock_GetEntityTypeList_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetUniqueAttributes provides a mock function for the type EntityTypeServiceInterfaceMock
-func (_mock *EntityTypeServiceInterfaceMock) GetUniqueAttributes(ctx context.Context, category entitytype.TypeCategory, entityType string) ([]string, *serviceerror.ServiceError) {
+func (_mock *EntityTypeServiceInterfaceMock) GetUniqueAttributes(ctx context.Context, category entitytype.TypeCategory, entityType string) ([]string, *common.ServiceError) {
 	ret := _mock.Called(ctx, category, entityType)
 
 	if len(ret) == 0 {
@@ -606,8 +606,8 @@ func (_mock *EntityTypeServiceInterfaceMock) GetUniqueAttributes(ctx context.Con
 	}
 
 	var r0 []string
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string) ([]string, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string) ([]string, *common.ServiceError)); ok {
 		return returnFunc(ctx, category, entityType)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string) []string); ok {
@@ -617,11 +617,11 @@ func (_mock *EntityTypeServiceInterfaceMock) GetUniqueAttributes(ctx context.Con
 			r0 = ret.Get(0).([]string)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, category, entityType)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -663,30 +663,30 @@ func (_c *EntityTypeServiceInterfaceMock_GetUniqueAttributes_Call) Run(run func(
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_GetUniqueAttributes_Call) Return(strings []string, serviceError *serviceerror.ServiceError) *EntityTypeServiceInterfaceMock_GetUniqueAttributes_Call {
+func (_c *EntityTypeServiceInterfaceMock_GetUniqueAttributes_Call) Return(strings []string, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_GetUniqueAttributes_Call {
 	_c.Call.Return(strings, serviceError)
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_GetUniqueAttributes_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, entityType string) ([]string, *serviceerror.ServiceError)) *EntityTypeServiceInterfaceMock_GetUniqueAttributes_Call {
+func (_c *EntityTypeServiceInterfaceMock_GetUniqueAttributes_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, entityType string) ([]string, *common.ServiceError)) *EntityTypeServiceInterfaceMock_GetUniqueAttributes_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ResolveEntityTypeHandles provides a mock function for the type EntityTypeServiceInterfaceMock
-func (_mock *EntityTypeServiceInterfaceMock) ResolveEntityTypeHandles(ctx context.Context, entityType *entitytype.EntityType) *serviceerror.ServiceError {
+func (_mock *EntityTypeServiceInterfaceMock) ResolveEntityTypeHandles(ctx context.Context, entityType *entitytype.EntityType) *common.ServiceError {
 	ret := _mock.Called(ctx, entityType)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ResolveEntityTypeHandles")
 	}
 
-	var r0 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *entitytype.EntityType) *serviceerror.ServiceError); ok {
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *entitytype.EntityType) *common.ServiceError); ok {
 		r0 = returnFunc(ctx, entityType)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*serviceerror.ServiceError)
+			r0 = ret.Get(0).(*common.ServiceError)
 		}
 	}
 	return r0
@@ -722,18 +722,18 @@ func (_c *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call) Run(run 
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call) Return(serviceError *serviceerror.ServiceError) *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call {
+func (_c *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call) Return(serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call {
 	_c.Call.Return(serviceError)
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call) RunAndReturn(run func(ctx context.Context, entityType *entitytype.EntityType) *serviceerror.ServiceError) *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call {
+func (_c *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call) RunAndReturn(run func(ctx context.Context, entityType *entitytype.EntityType) *common.ServiceError) *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UpdateEntityType provides a mock function for the type EntityTypeServiceInterfaceMock
-func (_mock *EntityTypeServiceInterfaceMock) UpdateEntityType(ctx context.Context, category entitytype.TypeCategory, schemaID string, request entitytype.UpdateEntityTypeRequest) (*entitytype.EntityType, *serviceerror.ServiceError) {
+func (_mock *EntityTypeServiceInterfaceMock) UpdateEntityType(ctx context.Context, category entitytype.TypeCategory, schemaID string, request entitytype.UpdateEntityTypeRequest) (*entitytype.EntityType, *common.ServiceError) {
 	ret := _mock.Called(ctx, category, schemaID, request)
 
 	if len(ret) == 0 {
@@ -741,8 +741,8 @@ func (_mock *EntityTypeServiceInterfaceMock) UpdateEntityType(ctx context.Contex
 	}
 
 	var r0 *entitytype.EntityType
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, entitytype.UpdateEntityTypeRequest) (*entitytype.EntityType, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, entitytype.UpdateEntityTypeRequest) (*entitytype.EntityType, *common.ServiceError)); ok {
 		return returnFunc(ctx, category, schemaID, request)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, entitytype.UpdateEntityTypeRequest) *entitytype.EntityType); ok {
@@ -752,11 +752,11 @@ func (_mock *EntityTypeServiceInterfaceMock) UpdateEntityType(ctx context.Contex
 			r0 = ret.Get(0).(*entitytype.EntityType)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, string, entitytype.UpdateEntityTypeRequest) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, string, entitytype.UpdateEntityTypeRequest) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, category, schemaID, request)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -804,18 +804,18 @@ func (_c *EntityTypeServiceInterfaceMock_UpdateEntityType_Call) Run(run func(ctx
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_UpdateEntityType_Call) Return(entityType *entitytype.EntityType, serviceError *serviceerror.ServiceError) *EntityTypeServiceInterfaceMock_UpdateEntityType_Call {
+func (_c *EntityTypeServiceInterfaceMock_UpdateEntityType_Call) Return(entityType *entitytype.EntityType, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_UpdateEntityType_Call {
 	_c.Call.Return(entityType, serviceError)
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_UpdateEntityType_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, schemaID string, request entitytype.UpdateEntityTypeRequest) (*entitytype.EntityType, *serviceerror.ServiceError)) *EntityTypeServiceInterfaceMock_UpdateEntityType_Call {
+func (_c *EntityTypeServiceInterfaceMock_UpdateEntityType_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, schemaID string, request entitytype.UpdateEntityTypeRequest) (*entitytype.EntityType, *common.ServiceError)) *EntityTypeServiceInterfaceMock_UpdateEntityType_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ValidateEntity provides a mock function for the type EntityTypeServiceInterfaceMock
-func (_mock *EntityTypeServiceInterfaceMock) ValidateEntity(ctx context.Context, category entitytype.TypeCategory, entityType string, attributes json.RawMessage, skipCredentialRequired bool) (bool, *serviceerror.ServiceError) {
+func (_mock *EntityTypeServiceInterfaceMock) ValidateEntity(ctx context.Context, category entitytype.TypeCategory, entityType string, attributes json.RawMessage, skipCredentialRequired bool) (bool, *common.ServiceError) {
 	ret := _mock.Called(ctx, category, entityType, attributes, skipCredentialRequired)
 
 	if len(ret) == 0 {
@@ -823,8 +823,8 @@ func (_mock *EntityTypeServiceInterfaceMock) ValidateEntity(ctx context.Context,
 	}
 
 	var r0 bool
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, json.RawMessage, bool) (bool, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, json.RawMessage, bool) (bool, *common.ServiceError)); ok {
 		return returnFunc(ctx, category, entityType, attributes, skipCredentialRequired)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, json.RawMessage, bool) bool); ok {
@@ -832,11 +832,11 @@ func (_mock *EntityTypeServiceInterfaceMock) ValidateEntity(ctx context.Context,
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, string, json.RawMessage, bool) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, string, json.RawMessage, bool) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, category, entityType, attributes, skipCredentialRequired)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -890,18 +890,18 @@ func (_c *EntityTypeServiceInterfaceMock_ValidateEntity_Call) Run(run func(ctx c
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_ValidateEntity_Call) Return(b bool, serviceError *serviceerror.ServiceError) *EntityTypeServiceInterfaceMock_ValidateEntity_Call {
+func (_c *EntityTypeServiceInterfaceMock_ValidateEntity_Call) Return(b bool, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_ValidateEntity_Call {
 	_c.Call.Return(b, serviceError)
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_ValidateEntity_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, entityType string, attributes json.RawMessage, skipCredentialRequired bool) (bool, *serviceerror.ServiceError)) *EntityTypeServiceInterfaceMock_ValidateEntity_Call {
+func (_c *EntityTypeServiceInterfaceMock_ValidateEntity_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, entityType string, attributes json.RawMessage, skipCredentialRequired bool) (bool, *common.ServiceError)) *EntityTypeServiceInterfaceMock_ValidateEntity_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ValidateEntityUniqueness provides a mock function for the type EntityTypeServiceInterfaceMock
-func (_mock *EntityTypeServiceInterfaceMock) ValidateEntityUniqueness(ctx context.Context, category entitytype.TypeCategory, entityType string, attributes json.RawMessage, exists func(map[string]interface{}) (bool, error)) (bool, *serviceerror.ServiceError) {
+func (_mock *EntityTypeServiceInterfaceMock) ValidateEntityUniqueness(ctx context.Context, category entitytype.TypeCategory, entityType string, attributes json.RawMessage, exists func(map[string]interface{}) (bool, error)) (bool, *common.ServiceError) {
 	ret := _mock.Called(ctx, category, entityType, attributes, exists)
 
 	if len(ret) == 0 {
@@ -909,8 +909,8 @@ func (_mock *EntityTypeServiceInterfaceMock) ValidateEntityUniqueness(ctx contex
 	}
 
 	var r0 bool
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, json.RawMessage, func(map[string]interface{}) (bool, error)) (bool, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, json.RawMessage, func(map[string]interface{}) (bool, error)) (bool, *common.ServiceError)); ok {
 		return returnFunc(ctx, category, entityType, attributes, exists)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, json.RawMessage, func(map[string]interface{}) (bool, error)) bool); ok {
@@ -918,11 +918,11 @@ func (_mock *EntityTypeServiceInterfaceMock) ValidateEntityUniqueness(ctx contex
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, string, json.RawMessage, func(map[string]interface{}) (bool, error)) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, string, json.RawMessage, func(map[string]interface{}) (bool, error)) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, category, entityType, attributes, exists)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -976,12 +976,12 @@ func (_c *EntityTypeServiceInterfaceMock_ValidateEntityUniqueness_Call) Run(run 
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_ValidateEntityUniqueness_Call) Return(b bool, serviceError *serviceerror.ServiceError) *EntityTypeServiceInterfaceMock_ValidateEntityUniqueness_Call {
+func (_c *EntityTypeServiceInterfaceMock_ValidateEntityUniqueness_Call) Return(b bool, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_ValidateEntityUniqueness_Call {
 	_c.Call.Return(b, serviceError)
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_ValidateEntityUniqueness_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, entityType string, attributes json.RawMessage, exists func(map[string]interface{}) (bool, error)) (bool, *serviceerror.ServiceError)) *EntityTypeServiceInterfaceMock_ValidateEntityUniqueness_Call {
+func (_c *EntityTypeServiceInterfaceMock_ValidateEntityUniqueness_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, entityType string, attributes json.RawMessage, exists func(map[string]interface{}) (bool, error)) (bool, *common.ServiceError)) *EntityTypeServiceInterfaceMock_ValidateEntityUniqueness_Call {
 	_c.Call.Return(run)
 	return _c
 }

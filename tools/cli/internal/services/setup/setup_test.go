@@ -96,3 +96,47 @@ func TestWaitForPortFree_UnoccupiedPort(t *testing.T) {
 	free := setup.WaitForPortFree(19999, 2*time.Second)
 	assert.True(t, free, "expected unoccupied port to be detected as free")
 }
+
+func TestIsPortInUse_FreePort(t *testing.T) {
+	assert.False(t, setup.IsPortInUse(19998), "expected unused port to not be in use")
+}
+
+func TestFindFreePort_ReturnsUnoccupied(t *testing.T) {
+	port := setup.FindFreePort(19990)
+	assert.False(t, setup.IsPortInUse(port), "FindFreePort should return a port that is not in use")
+}
+
+func TestUpdateServerPort_UpdatesDeploymentYAML(t *testing.T) {
+	dir := t.TempDir()
+	serverDir := filepath.Join(dir, "backend", "cmd", "server")
+	require.NoError(t, os.MkdirAll(serverDir, 0o755))
+
+	content := "server:\n  hostname: \"localhost\"\n  port: 8090\n\nother:\n  port: 9000\n"
+	require.NoError(t, os.WriteFile(filepath.Join(serverDir, "deployment.yaml"), []byte(content), 0o644))
+
+	require.NoError(t, setup.UpdateServerPort(dir, 8091))
+
+	updated, err := os.ReadFile(filepath.Join(serverDir, "deployment.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(updated), "port: 8091")
+	assert.Contains(t, string(updated), "port: 9000", "non-server port should be unchanged")
+}
+
+func TestUpdateServerPort_RootDeploymentYAMLTakesPrecedence(t *testing.T) {
+	dir := t.TempDir()
+	rootYAML := filepath.Join(dir, "deployment.yaml")
+	require.NoError(t, os.WriteFile(rootYAML, []byte("server:\n  port: 8090\n"), 0o644))
+
+	require.NoError(t, setup.UpdateServerPort(dir, 8092))
+
+	data, err := os.ReadFile(rootYAML)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "port: 8092")
+}
+
+func TestUpdateServerPort_MissingConfig(t *testing.T) {
+	dir := t.TempDir()
+	err := setup.UpdateServerPort(dir, 8091)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "deployment.yaml not found")
+}

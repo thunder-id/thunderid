@@ -21,9 +21,9 @@ package core
 import (
 	"testing"
 
-	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
-	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/stretchr/testify/suite"
 )
 
 type InterceptorUnitTestSuite struct {
@@ -37,8 +37,8 @@ func TestInterceptorUnitTestSuite(t *testing.T) {
 func (s *InterceptorUnitTestSuite) TestInterceptorDeclaration_GettersReturnSetValues() {
 	decl := &interceptorUnit{
 		name:    "CaptchaInterceptor",
-		mode:    common.InterceptorModePreNode,
-		scope:   common.InterceptorScopeSelected,
+		mode:    providers.InterceptorModePreNode,
+		scope:   providers.InterceptorScopeSelected,
 		applyTo: []string{"login-node", "otp-node"},
 		properties: map[string]interface{}{
 			"threshold": 0.5,
@@ -46,8 +46,8 @@ func (s *InterceptorUnitTestSuite) TestInterceptorDeclaration_GettersReturnSetVa
 	}
 
 	s.Equal("CaptchaInterceptor", decl.GetName())
-	s.Equal(common.InterceptorModePreNode, decl.GetMode())
-	s.Equal(common.InterceptorScopeSelected, decl.GetScope())
+	s.Equal(providers.InterceptorModePreNode, decl.GetMode())
+	s.Equal(providers.InterceptorScopeSelected, decl.GetScope())
 	s.Equal([]string{"login-node", "otp-node"}, decl.GetApplyTo())
 	s.Equal(0.5, decl.GetProperties()["threshold"])
 }
@@ -72,16 +72,16 @@ func (s *InterceptorUnitTestSuite) TestInterceptorDeclaration_SetName() {
 
 func (s *InterceptorUnitTestSuite) TestInterceptorDeclaration_SetMode() {
 	decl := &interceptorUnit{}
-	decl.SetMode(common.InterceptorModePostRequest)
+	decl.SetMode(providers.InterceptorModePostRequest)
 
-	s.Equal(common.InterceptorModePostRequest, decl.GetMode())
+	s.Equal(providers.InterceptorModePostRequest, decl.GetMode())
 }
 
 func (s *InterceptorUnitTestSuite) TestInterceptorDeclaration_SetScope() {
 	decl := &interceptorUnit{}
-	decl.SetScope(common.InterceptorScopeAll)
+	decl.SetScope(providers.InterceptorScopeAll)
 
-	s.Equal(common.InterceptorScopeAll, decl.GetScope())
+	s.Equal(providers.InterceptorScopeAll, decl.GetScope())
 }
 
 func (s *InterceptorUnitTestSuite) TestInterceptorDeclaration_SetApplyTo() {

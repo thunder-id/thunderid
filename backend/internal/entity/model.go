@@ -23,63 +23,14 @@ import (
 	"encoding/json"
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// EntityCategory represents the category of an entity (e.g., user, application, agent).
-type EntityCategory string
-
-const (
-	// EntityCategoryUser represents a user entity.
-	EntityCategoryUser EntityCategory = "user"
-	// EntityCategoryApp represents an application entity.
-	EntityCategoryApp EntityCategory = "app"
-	// EntityCategoryAgent represents an agent entity.
-	EntityCategoryAgent EntityCategory = "agent"
-)
-
-// String returns the string representation of the entity category.
-func (ec EntityCategory) String() string {
-	return string(ec)
-}
-
-// EntityState represents the lifecycle state of an entity.
-type EntityState string
-
-const (
-	// EntityStateActive represents an active entity.
-	EntityStateActive EntityState = "ACTIVE"
-)
-
-// String returns the string representation of the entity state.
-func (es EntityState) String() string {
-	return string(es)
-}
-
-// Entity represents a unified identity principal in the system.
-type Entity struct {
-	ID               string          `json:"id,omitempty"`
-	Category         EntityCategory  `json:"category,omitempty"`
-	Type             string          `json:"type,omitempty"`
-	State            EntityState     `json:"state,omitempty"`
-	OUID             string          `json:"ouId,omitempty"`
-	OUHandle         string          `json:"ouHandle,omitempty"`
-	Attributes       json.RawMessage `json:"attributes,omitempty"`
-	SystemAttributes json.RawMessage `json:"systemAttributes,omitempty"`
-	IsReadOnly       bool            `json:"isReadOnly"`
-}
-
-// entityWithCredentials wraps an Entity with its credential data.
+// entityWithCredentials wraps an providers.Entity with its credential data.
 type entityWithCredentials struct {
-	Entity            *Entity
+	Entity            *providers.Entity
 	SchemaCredentials json.RawMessage
 	SystemCredentials json.RawMessage
-}
-
-// EntityGroup represents a group with basic information for entity group membership queries.
-type EntityGroup struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	OUID string `json:"ouId"`
 }
 
 // EntityIdentifier represents an indexed identifier for fast entity lookup.
@@ -92,10 +43,10 @@ type EntityIdentifier struct {
 
 // AuthenticateResult represents the result of an entity authentication.
 type AuthenticateResult struct {
-	EntityID       string         `json:"entityId"`
-	EntityCategory EntityCategory `json:"entityCategory"`
-	EntityType     string         `json:"entityType"`
-	OUID           string         `json:"ouId"`
+	EntityID       string                   `json:"entityId"`
+	EntityCategory providers.EntityCategory `json:"entityCategory"`
+	EntityType     string                   `json:"entityType"`
+	OUID           string                   `json:"ouId"`
 }
 
 // StoredCredential represents a single credential entry stored in the entity's schema or
@@ -112,21 +63,21 @@ type DeclarativeLoaderConfig struct {
 	// Directory is the YAML directory name under declarative_resources/ (e.g., "users").
 	Directory string
 	// Category is the entity category for these resources.
-	Category EntityCategory
-	// Parser converts YAML bytes into an Entity with optional credentials.
+	Category providers.EntityCategory
+	// Parser converts YAML bytes into an providers.Entity with optional credentials.
 	// Returns the entity, schema credentials (JSON), system credentials (JSON), and any error.
 	// Either credential may be nil if not applicable for the entity category.
-	Parser func(data []byte) (*Entity, json.RawMessage, json.RawMessage, error)
+	Parser func(data []byte) (*providers.Entity, json.RawMessage, json.RawMessage, error)
 	// Validator validates the parsed entity. Called after parsing, before storing.
-	Validator func(entity *Entity, svc EntityServiceInterface) error
+	Validator func(entity *providers.Entity, svc EntityServiceInterface) error
 	// IDExtractor extracts the entity ID from the parsed entity for storage key.
-	IDExtractor func(entity *Entity) string
+	IDExtractor func(entity *providers.Entity) string
 }
 
-// entityStoreEntry wraps an Entity with its credentials for internal file-based storage.
+// entityStoreEntry wraps an providers.Entity with its credentials for internal file-based storage.
 // Credentials are stored alongside the entity in declarative mode but never exposed via GetEntity.
 type entityStoreEntry struct {
-	Entity            Entity
+	Entity            providers.Entity
 	Credentials       json.RawMessage
 	SystemCredentials json.RawMessage
 }

@@ -23,9 +23,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 const (
@@ -51,7 +51,7 @@ var (
 						"inputs": []map[string]interface{}{
 							{
 								"ref":        "input_001",
-								"identifier": "mobileNumber",
+								"identifier": "mobile_number",
 								"type":       "string",
 								"required":   true,
 							},
@@ -245,7 +245,7 @@ var (
 			"family_name": map[string]interface{}{
 				"type": "string",
 			},
-			"mobileNumber": map[string]interface{}{
+			"mobile_number": map[string]interface{}{
 				"type": "string",
 			},
 		},
@@ -259,7 +259,7 @@ var (
 			"email": "smsuser@example.com",
 			"given_name": "SMS",
 			"family_name": "User",
-			"mobileNumber": "+1234567890"
+			"mobile_number": "+1234567890"
 		}`),
 	}
 )
@@ -452,7 +452,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowWithMobileNumber() {
 	ts.Require().NotEmpty(flowStep.Data, "Flow data should not be empty")
 	ts.Require().NotEmpty(flowStep.Data.Inputs, "Flow should require inputs")
 
-	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "mobileNumber"),
+	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "mobile_number"),
 		"Mobile number input should be required")
 
 	// Clear any previous messages
@@ -463,7 +463,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowWithMobileNumber() {
 	ts.Require().NoError(err, "Failed to get user attributes")
 
 	inputs := map[string]string{
-		"mobileNumber": userAttrs["mobileNumber"].(string),
+		"mobile_number": userAttrs["mobile_number"].(string),
 	}
 
 	otpFlowStep, err := common.CompleteFlow(flowStep.ExecutionID, inputs, "action_001",
@@ -629,7 +629,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowInvalidOTP() {
 	ts.Require().NoError(err, "Failed to unmarshal user attributes")
 
 	inputs := map[string]string{
-		"mobileNumber": userAttrs["mobileNumber"].(string),
+		"mobile_number": userAttrs["mobile_number"].(string),
 	}
 
 	flowStep, err := common.InitiateAuthenticationFlow(smsAuthTestAppID, false, nil, "")
@@ -683,7 +683,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowRetryAfterInvalidOTP() {
 	ts.Require().NoError(err, "Failed to unmarshal user attributes")
 
 	inputs := map[string]string{
-		"mobileNumber": userAttrs["mobileNumber"].(string),
+		"mobile_number": userAttrs["mobile_number"].(string),
 	}
 
 	flowStep, err := common.InitiateAuthenticationFlow(smsAuthTestAppID, false, nil, "")
@@ -763,7 +763,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowSingleRequestWithMobileNumber() {
 
 	// Step 1: Initialize the flow with mobile number - single action should auto-select
 	inputs := map[string]string{
-		"mobileNumber": userAttrs["mobileNumber"].(string),
+		"mobile_number": userAttrs["mobile_number"].(string),
 	}
 
 	flowStep, err := common.InitiateAuthenticationFlow(smsAuthTestAppID, false, inputs, "")

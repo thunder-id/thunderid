@@ -29,9 +29,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type CIBAHandlerTestSuite struct {
@@ -62,7 +62,7 @@ func (suite *CIBAHandlerTestSuite) newAuthRequest(body string, client *clientaut
 func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_Success() {
 	client := &clientauth.OAuthClientInfo{
 		ClientID: "client-1",
-		OAuthApp: &inboundmodel.OAuthClient{ClientID: "client-1"},
+		OAuthApp: &providers.OAuthClient{ClientID: "client-1"},
 	}
 	suite.mockService.EXPECT().InitiateBackchannelAuth(mock.Anything, mock.MatchedBy(
 		func(r *BackchannelAuthRequest) bool {
@@ -96,7 +96,7 @@ func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_NoClientInContext() {
 func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_ServiceError() {
 	client := &clientauth.OAuthClientInfo{
 		ClientID: "client-1",
-		OAuthApp: &inboundmodel.OAuthClient{ClientID: "client-1"},
+		OAuthApp: &providers.OAuthClient{ClientID: "client-1"},
 	}
 	suite.mockService.EXPECT().InitiateBackchannelAuth(mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, &CIBAError{Code: oauth2const.ErrorUnknownUserID, Message: "unknown user"})
@@ -115,7 +115,7 @@ func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_ServiceError() {
 func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_UnauthorizedClientMapsTo400() {
 	client := &clientauth.OAuthClientInfo{
 		ClientID: "client-1",
-		OAuthApp: &inboundmodel.OAuthClient{ClientID: "client-1"},
+		OAuthApp: &providers.OAuthClient{ClientID: "client-1"},
 	}
 	suite.mockService.EXPECT().InitiateBackchannelAuth(mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, &CIBAError{Code: oauth2const.ErrorUnauthorizedClient, Message: "not allowed"})
@@ -134,7 +134,7 @@ func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_UnauthorizedClientMapsTo4
 func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_ZeroHints() {
 	client := &clientauth.OAuthClientInfo{
 		ClientID: "client-1",
-		OAuthApp: &inboundmodel.OAuthClient{ClientID: "client-1"},
+		OAuthApp: &providers.OAuthClient{ClientID: "client-1"},
 	}
 	req := suite.newAuthRequest("scope=openid", client)
 	w := httptest.NewRecorder()
@@ -150,7 +150,7 @@ func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_ZeroHints() {
 func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_MultipleHints() {
 	client := &clientauth.OAuthClientInfo{
 		ClientID: "client-1",
-		OAuthApp: &inboundmodel.OAuthClient{ClientID: "client-1"},
+		OAuthApp: &providers.OAuthClient{ClientID: "client-1"},
 	}
 	req := suite.newAuthRequest("login_hint=alice&id_token_hint=eyJhbGci&scope=openid", client)
 	w := httptest.NewRecorder()
@@ -166,7 +166,7 @@ func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_MultipleHints() {
 func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_IDTokenHintRoutedToService() {
 	client := &clientauth.OAuthClientInfo{
 		ClientID: "client-1",
-		OAuthApp: &inboundmodel.OAuthClient{ClientID: "client-1"},
+		OAuthApp: &providers.OAuthClient{ClientID: "client-1"},
 	}
 	suite.mockService.EXPECT().InitiateBackchannelAuth(mock.Anything, mock.MatchedBy(
 		func(r *BackchannelAuthRequest) bool {
@@ -188,7 +188,7 @@ func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_IDTokenHintRoutedToServic
 func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_LoginHintTokenUnsupported() {
 	client := &clientauth.OAuthClientInfo{
 		ClientID: "client-1",
-		OAuthApp: &inboundmodel.OAuthClient{ClientID: "client-1"},
+		OAuthApp: &providers.OAuthClient{ClientID: "client-1"},
 	}
 	req := suite.newAuthRequest("login_hint_token=eyJhbGci&scope=openid", client)
 	w := httptest.NewRecorder()
@@ -204,7 +204,7 @@ func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_LoginHintTokenUnsupported
 func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_ServerErrorMapsTo500() {
 	client := &clientauth.OAuthClientInfo{
 		ClientID: "client-1",
-		OAuthApp: &inboundmodel.OAuthClient{ClientID: "client-1"},
+		OAuthApp: &providers.OAuthClient{ClientID: "client-1"},
 	}
 	suite.mockService.EXPECT().InitiateBackchannelAuth(mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, &CIBAError{Code: oauth2const.ErrorServerError, Message: "internal error"})

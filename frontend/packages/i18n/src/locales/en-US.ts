@@ -643,6 +643,10 @@ const translations = {
     'pages.integrations': 'Integrations',
     'pages.applications': 'Applications',
     'pages.apis': 'APIs',
+    'pages.verifiablePresentations': 'Verifiable Presentations',
+    'pages.verifiableCredentials': 'Verifiable Credentials',
+    'pages.credentials': 'Credentials',
+    'pages.presentations': 'Presentations',
     'pages.dashboard': 'Dashboard',
     'pages.flows': 'Flows',
     'pages.design': 'Design',
@@ -1724,9 +1728,18 @@ const translations = {
     'onboarding.configure.stack.platform.mobile.description': 'Native or hybrid mobile applications',
     'onboarding.configure.stack.platform.backend.title': 'Backend Service',
     'onboarding.configure.stack.platform.backend.description': 'Server-to-server APIs and services',
+    'onboarding.configure.stack.platform.wallet.title': 'Digital Wallet',
+    'onboarding.configure.stack.platform.wallet.description': 'OpenID4VCI wallet that requests verifiable credentials',
     'onboarding.configure.stack.platform.custom.title': 'Custom',
     'onboarding.configure.stack.platform.custom.description':
       'Fully customizable application with all configuration options available',
+    'onboarding.configure.details.wallet.vendor.label': 'Wallet',
+    'onboarding.configure.details.wallet.vendor.custom': 'Custom',
+    'onboarding.configure.details.wallet.clientId.label': 'Client ID',
+    'onboarding.configure.details.wallet.clientId.placeholder': 'The wallet’s client ID',
+    'onboarding.configure.details.wallet.clientId.helperText':
+      'Leave empty to auto-generate. Known wallets pre-fill their fixed client ID.',
+    'onboarding.configure.details.wallet.prefilled.helperText': 'Pre-filled for the selected wallet and not editable.',
     'onboarding.configure.details.title': 'Configuration',
     'onboarding.configure.details.description': 'Configure where your application is hosted and callback settings',
     'onboarding.configure.details.hostingUrl.label': 'Where is your application hosted?',
@@ -2081,9 +2094,9 @@ const translations = {
     'edit.token.token_preview.title': 'Decoded Payload',
     'edit.token.validity.hint': 'Token validity period in seconds (e.g., 3600 for 1 hour)',
     'edit.token.validity.error': 'Validity period must be at least 1 second',
-    'edit.token.user_attributes_card.title': 'User Attributes',
-    'edit.token.user_attributes_card.description':
-      'Configure the user attributes to include in your tokens & user info response',
+    'edit.token.token_profile_card.title': 'Token Attributes & Response',
+    'edit.token.token_profile_card.description':
+      'Configure the response types and user attributes included in your tokens and user info responses',
     'edit.token.tabs.access_token': 'Access Token',
     'edit.token.tabs.id_token': 'ID Token',
     'edit.token.tabs.refresh_token': 'Refresh Token',
@@ -2114,6 +2127,13 @@ const translations = {
     'edit.token.scope_mapper.no_mapped': 'No attributes mapped yet — click an attribute below to add it',
     'edit.token.scope_mapper.all_mapped': 'All available attributes are already mapped to this scope',
     'edit.token.scope_mapper.loading': 'Loading available attributes...',
+    'edit.token.id_token.response_type_placeholder': 'Select response type',
+    'edit.token.id_token.encryption_alg_placeholder': 'Select encryption algorithm',
+    'edit.token.id_token.encryption_enc_placeholder': 'Select content encryption',
+    'edit.token.user_info.response_type_placeholder': 'Select response type',
+    'edit.token.user_info.signing_alg_placeholder': 'Select signing algorithm',
+    'edit.token.user_info.encryption_alg_placeholder': 'Select encryption algorithm',
+    'edit.token.user_info.encryption_enc_placeholder': 'Select content encryption',
 
     // Advanced section
     'edit.advanced.labels.oauth2Config': 'OAuth2 Configuration',
@@ -2122,6 +2142,8 @@ const translations = {
     'edit.advanced.labels.responseTypes': 'Response Types',
     'edit.advanced.labels.publicClient': 'Public Client',
     'edit.advanced.labels.pkceRequired': 'PKCE Required',
+    'edit.advanced.labels.requirePAR': 'Require Pushed Authorization Requests',
+    'edit.advanced.par.hint': 'Require the client to use the PAR endpoint before authorization.',
     'edit.advanced.labels.tokenEndpointAuthMethod': 'Token Endpoint Auth Method',
     'edit.advanced.labels.certificate': 'Certificate',
     'edit.advanced.labels.certificateType': 'Certificate Type',
@@ -2136,6 +2158,11 @@ const translations = {
     'edit.advanced.certificate.placeholder.jwks': 'Enter JWKS JSON',
     'edit.advanced.certificate.hint.jwksUri': 'URL to the JWKS endpoint',
     'edit.advanced.certificate.hint.jwks': 'JSON Web Key Set',
+    'edit.advanced.labels.acrValues': 'ACR Values',
+    'edit.advanced.acrValues.intro': 'Authentication context classes permitted for this application.',
+    'edit.advanced.acrValues.placeholder': 'Select ACR values',
+    'edit.advanced.acrValues.hint':
+      'When acr_values is included in the authorization request, only values configured here are accepted.',
     'create.success': 'Application created successfully.',
     'create.error': 'Failed to create application. Please try again.',
     'update.success': 'Application updated successfully.',
@@ -2274,6 +2301,8 @@ const translations = {
     'configureExport.fallback.unnamedResourceServer': 'Unnamed Resource Server',
     'configureExport.fallback.unnamedRole': 'Unnamed Role',
     'configureExport.fallback.unnamedGroup': 'Unnamed Group',
+    'configureExport.fallback.unnamedPresentationDefinition': 'Unnamed Presentation Definition',
+    'configureExport.fallback.unnamedCredentialConfiguration': 'Unnamed Credential Configuration',
     'configureExport.labels.agents': 'Agents',
     'configureExport.fallback.unnamedAgent': 'Unnamed Agent',
     'configureExport.fallback.unnamedUser': 'User {{index}}',
@@ -2296,6 +2325,8 @@ const translations = {
     'summary.totalResources': 'Total Resources',
     'summary.preImportValidation': 'Pre-Import Validation',
     'summary.labels.identityProviders': 'Identity Providers',
+    'summary.labels.presentationDefinitions': 'Presentation Definitions',
+    'summary.labels.credentialConfigurations': 'Credential Configurations',
     'summary.actions.reuploadEnv': 'Re-upload .env file',
     'summary.env.editInfo':
       'You can edit the environment variables below to fix missing or placeholder values. The validation will update automatically.',
@@ -2599,6 +2630,13 @@ const translations = {
     'core.executions.sms.smsTemplate.label': 'SMS Template',
     'core.executions.sms.smsTemplate.placeholder': 'e.g., OTPVerification',
     'core.executions.sms.smsTemplate.hint': 'The SMS template scenario to use when sending the message.',
+
+    // OpenID4VP verifier executor
+    'core.executions.openid4vp.description':
+      'Select the presentation definition this executor requests from the wallet.',
+    'core.executions.openid4vp.allowAuthenticationWithoutLocalUser.label': 'Allow authentication without a local user',
+    'core.executions.openid4vp.allowAuthenticationWithoutLocalUser.hint':
+      'When enabled, a holder with no matching local user is provisioned just-in-time. When disabled, login requires an existing matching user.',
 
     // Permission validator executor
     'core.executions.permissionValidator.description': 'Configure required permission scopes.',
@@ -3542,6 +3580,193 @@ const translations = {
     'permissionCatalog.loadError': 'Failed to load permissions for this resource server.',
     'permissionCatalog.loadServersError': 'Failed to load resource servers.',
     'permissionCatalog.serverNotFound': 'Resource server not found',
+  },
+
+  // ============================================================================
+  // Verifiable Presentations namespace - OpenID4VP presentation definitions
+  // ============================================================================
+  'verifiable-presentations': {
+    // List page
+    'listing.title': 'Verifiable Presentations',
+    'listing.subtitle': 'Define which verifiable credentials your verifier requests from wallets.',
+    'listing.add': 'Add Definition',
+    'listing.error': 'Failed to load presentation definitions',
+    'listing.columns.name': 'Name',
+    'listing.columns.handle': 'Handle',
+    'listing.columns.vct': 'Credential Type (VCT)',
+    'listing.columns.format': 'Format',
+    'listing.columns.organizationUnit': 'Organization Unit',
+    'listing.columns.actions': 'Actions',
+    'listing.verify': 'Verify',
+
+    // Verification dialog
+    'verify.title': 'Verify Presentation',
+    'verify.scanHint':
+      'Scan the QR code with your wallet or tap the button to open on this device, then approve the request to share your credential.',
+    'verify.openInWallet': 'Open in wallet',
+    'verify.copy': 'Copy request link',
+    'verify.notConfigured':
+      'Presentation verification is not enabled. Configure a verifier signing key to start verification requests.',
+    'verify.waiting': 'Waiting for the wallet to respond…',
+    'verify.completed': 'Verification complete',
+    'verify.failed': 'Verification failed',
+    'verify.expired': 'Verification request expired',
+    'verify.claimsTitle': 'Verified claims',
+    'verify.keyBindingVerified': 'Holder key binding verified',
+
+    // Flow step selector
+    'select.label': 'Presentation definition',
+    'select.placeholder': 'Select a presentation definition',
+
+    // Form - General tab
+    'form.tabs.general': 'General',
+    'form.tabs.claims': 'Claims',
+    'form.tabs.issuerTrust': 'Issuer Trust',
+    'form.quickCopy.title': 'Quick Copy',
+    'form.quickCopy.description': 'Copy the definition identifier for use in flows and API calls.',
+    'form.id.label': 'Definition ID',
+    'form.copyId': 'Copy definition ID',
+    'form.details.title': 'Definition Details',
+    'form.details.description': 'The credential type and identity of this presentation definition.',
+    'form.handle.label': 'Handle',
+    'form.displayName.label': 'Display Name',
+    'form.vct.label': 'Credential Type (VCT)',
+    'form.format.label': 'Format',
+    'form.format.sdJwt': 'SD-JWT VC (dc+sd-jwt)',
+    'form.organizationUnit.label': 'Organization Unit',
+    'form.dangerZone.title': 'Danger Zone',
+    'form.dangerZone.description': 'Irreversible actions for this presentation definition.',
+    'form.dangerZone.delete': 'Delete Presentation Definition',
+    'form.dangerZone.deleteDescription':
+      'Permanently delete this presentation definition. This action cannot be undone.',
+    'form.unsavedChanges': 'You have unsaved changes',
+
+    // Form - Issuer Trust tab
+    'form.issuerTrust.title': 'Issuer Trust',
+    'form.issuerTrust.description': 'Control which credential issuers are accepted for this presentation definition.',
+    'form.issuerTrust.enforce.label': 'Enforce trusted issuer',
+    'form.issuerTrust.enforce.hint': 'When enabled, only credentials issued by a trusted issuer are accepted.',
+    'form.issuerTrust.enforce.noAnchorsHint':
+      'No trust anchors are configured, so issuer trust cannot be enforced. Configure trust anchors first.',
+    'form.issuerTrust.authorities.label': 'Trusted Issuers',
+    'form.issuerTrust.authorities.hint': 'Leave empty to accept any registered trust anchor.',
+    'form.issuerTrust.authorities.optionSecondary': '{{subject}} · expires {{notAfter}}',
+
+    // Claims editor
+    'claims.empty': 'No claims yet. Add the claims this definition should request from the wallet.',
+    'claims.remove': 'Remove Claim',
+    'claims.name': 'Claim',
+    'claims.requirement': 'Requirement',
+    'claims.mandatory': 'Mandatory',
+    'claims.optional': 'Optional',
+    'claims.values': 'Allowed Values',
+    'claims.valuesPlaceholder': 'Leave empty to allow any value',
+    'claims.valuesHint':
+      'If set, the disclosed value must match one of these (compared as text). Enforced at verification.',
+    'claims.add': 'Add Claim',
+
+    // Create wizard
+    'create.title': 'New Presentation Definition',
+    'create.subtitle': 'Configure the credential type and the claims to request from the wallet.',
+    'create.steps.details': 'Details',
+    'create.steps.claims': 'Claims',
+    'create.claims.help': 'Add each claim once and set whether it is mandatory and restrict its allowed values.',
+    'create.success': 'Presentation definition created',
+    'create.error': 'Failed to create presentation definition',
+
+    // Edit page
+    'edit.subtitle': 'Edit the credential type and requested claims.',
+    'edit.back': 'Back to Verifiable Presentations',
+    'edit.loadError': 'Failed to load presentation definition',
+    'edit.notFound': 'Presentation definition not found',
+    'update.success': 'Presentation definition updated',
+    'update.error': 'Failed to update presentation definition',
+
+    // Delete
+    'delete.title': 'Delete presentation definition',
+    'delete.message': 'Are you sure you want to delete this presentation definition?',
+    'delete.disclaimer': 'Login flows referencing this definition will stop working.',
+    'delete.success': 'Presentation definition deleted',
+    'delete.error': 'Failed to delete presentation definition',
+  },
+  'verifiable-credentials': {
+    // List page
+    'listing.title': 'Verifiable Credentials',
+    'listing.subtitle': 'Define the credentials your issuer can issue to wallets via OpenID4VCI.',
+    'listing.add': 'Add Credential',
+    'listing.error': 'Failed to load credential configurations',
+    'listing.offer': 'Generate offer',
+    'listing.columns.name': 'Name',
+    'listing.columns.handle': 'Handle',
+    'listing.columns.vct': 'Credential Type (VCT)',
+    'listing.columns.format': 'Format',
+    'listing.columns.organizationUnit': 'Organization Unit',
+    'listing.columns.actions': 'Actions',
+
+    // Create page
+    'create.title': 'Create Verifiable Credential',
+    'create.subtitle': 'Define the credential type, claims and display shown in wallets.',
+    'create.steps.details': 'Details',
+    'create.steps.claims': 'Claims',
+    'create.claims.help':
+      'Add each claim once and set the attribute name as it appears in the user profile and how it should be displayed in the wallet.',
+    'create.success': 'Credential configuration created',
+    'create.error': 'Failed to create credential configuration',
+
+    // Form
+    'form.tabs.general': 'General',
+    'form.tabs.claims': 'Claims',
+    'form.quickCopy.title': 'Quick Copy',
+    'form.quickCopy.description': 'Copy the credential configuration identifier for use in flows and API calls.',
+    'form.id.label': 'Configuration ID',
+    'form.copyId': 'Copy configuration ID',
+    'form.details.title': 'Details',
+    'form.details.description': 'The handle is the credential identifier and OAuth scope wallets request.',
+    'form.handle.label': 'Handle',
+    'form.vct.label': 'Credential Type (VCT)',
+    'form.format.label': 'Format',
+    'form.format.sdJwt': 'SD-JWT VC (dc+sd-jwt)',
+    'form.organizationUnit.label': 'Organization Unit',
+    'form.display.title': 'Display',
+    'form.display.description': 'How this credential is presented in the wallet.',
+    'form.display.name': 'Display Name',
+    'form.display.locale': 'Locale',
+    'form.display.logo': 'Logo URI',
+    'form.dangerZone.title': 'Danger Zone',
+    'form.dangerZone.description': 'Irreversible actions for this credential configuration.',
+    'form.dangerZone.delete': 'Delete credential configuration',
+    'form.dangerZone.deleteDescription': 'Wallets will no longer be able to request this credential.',
+    'form.unsavedChanges': 'You have unsaved changes.',
+
+    // Claims editor
+    'claims.empty': 'No claims yet. Add the attributes this credential should disclose.',
+    'claims.add': 'Add Claim',
+    'claims.remove': 'Remove Claim',
+    'claims.name': 'Attribute Name',
+    'claims.displayName': 'Display Name',
+    'claims.nameHint': 'Must match a user profile attribute name; the value is sourced from the user.',
+
+    // Offer dialog
+    'offer.title': 'Credential Offer',
+    'offer.openInWallet': 'Open in wallet',
+    'offer.copy': 'Copy offer link',
+    'offer.notConfigured':
+      'Credential issuance is not enabled. Configure an issuer signing key to generate credential offers.',
+
+    // Edit page
+    'edit.subtitle': 'Edit the credential type, claims and display.',
+    'edit.back': 'Back to Verifiable Credentials',
+    'edit.loadError': 'Failed to load credential configuration',
+    'edit.notFound': 'Credential configuration not found',
+    'update.success': 'Credential configuration updated',
+    'update.error': 'Failed to update credential configuration',
+
+    // Delete
+    'delete.title': 'Delete credential configuration',
+    'delete.message': 'Are you sure you want to delete this credential configuration?',
+    'delete.disclaimer': 'Wallets will no longer be able to request this credential.',
+    'delete.success': 'Credential configuration deleted',
+    'delete.error': 'Failed to delete credential configuration',
   },
 } as const;
 

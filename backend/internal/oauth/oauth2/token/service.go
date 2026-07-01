@@ -26,7 +26,6 @@ import (
 	"strings"
 	"time"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
@@ -36,6 +35,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // TokenServiceInterface defines the interface for OAuth 2.0 token processing.
@@ -43,7 +43,7 @@ type TokenServiceInterface interface {
 	ProcessTokenRequest(
 		ctx context.Context,
 		tokenRequest *model.TokenRequest,
-		oauthApp *inboundmodel.OAuthClient,
+		oauthApp *providers.OAuthClient,
 	) (*model.TokenResponse, *model.ErrorResponse)
 }
 
@@ -80,7 +80,7 @@ func newTokenService(
 func (ts *tokenService) ProcessTokenRequest(
 	ctx context.Context,
 	tokenRequest *model.TokenRequest,
-	oauthApp *inboundmodel.OAuthClient,
+	oauthApp *providers.OAuthClient,
 ) (*model.TokenResponse, *model.ErrorResponse) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "TokenService"))
 
@@ -102,7 +102,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	}
 
 	// Validate grant_type value.
-	grantType := constants.GrantType(grantTypeStr)
+	grantType := providers.GrantType(grantTypeStr)
 	if !grantType.IsValid() {
 		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
 			400, "Invalid grant_type parameter", startTime)
@@ -195,12 +195,12 @@ func (ts *tokenService) ProcessTokenRequest(
 	}
 
 	// Issue refresh token if applicable.
-	if (grantType == constants.GrantTypeAuthorizationCode || grantType == constants.GrantTypeCIBA) &&
-		oauthApp.IsAllowedGrantType(constants.GrantTypeRefreshToken) {
+	if (grantType == providers.GrantTypeAuthorizationCode || grantType == providers.GrantTypeCIBA) &&
+		oauthApp.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
 		logger.Debug(ctx, "Issuing refresh token for the token request",
 			log.String("client_id", clientID), log.String("grant_type", grantTypeStr))
 
-		refreshGrantHandler, handlerErr := ts.grantHandlerProvider.GetGrantHandler(constants.GrantTypeRefreshToken)
+		refreshGrantHandler, handlerErr := ts.grantHandlerProvider.GetGrantHandler(providers.GrantTypeRefreshToken)
 		if handlerErr != nil {
 			logger.Error(ctx, "Failed to get refresh grant handler", log.Error(handlerErr))
 			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
@@ -255,7 +255,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	}
 
 	// For token exchange, determine the issued_token_type from the request.
-	if grantType == constants.GrantTypeTokenExchange {
+	if grantType == providers.GrantTypeTokenExchange {
 		requestedTokenType := tokenRequest.RequestedTokenType
 		if requestedTokenType == "" || requestedTokenType == string(constants.TokenTypeIdentifierAccessToken) {
 			tokenResponse.IssuedTokenType = string(constants.TokenTypeIdentifierAccessToken)
@@ -275,7 +275,7 @@ func (ts *tokenService) ProcessTokenRequest(
 // verifyDPoPProof validates the DPoP proof when present and stores the resulting jkt
 // in ctx for downstream grant handlers. A missing proof is rejected when the client
 // requires dpop-bound access tokens or oauth.dpop.required is true.
-func (ts *tokenService) verifyDPoPProof(ctx *context.Context, oauthApp *inboundmodel.OAuthClient) *model.ErrorResponse {
+func (ts *tokenService) verifyDPoPProof(ctx *context.Context, oauthApp *providers.OAuthClient) *model.ErrorResponse {
 	proof := dpop.GetProof(*ctx)
 	if proof == "" {
 		if (oauthApp != nil && oauthApp.DPoPBoundAccessTokens) || ts.dpopRequired {

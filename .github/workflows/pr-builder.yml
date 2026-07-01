@@ -110,7 +110,7 @@ jobs:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          # We need to fetch all branches and commits so that Nx affected has a base to compare against.
+          # We need to fetch all branches and commits so that Turbo's --affected has a base to compare against.
           fetch-depth: 0
 
       - name: ⚙️ Set up Node.js and pnpm
@@ -118,14 +118,8 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: 🔄 Fetch main branch for Nx affected base
+      - name: 🔄 Fetch main branch for Turbo affected base
         run: git fetch origin main:main --update-head-ok || true
-
-      - name: 🐳 Set SHAs for Nx
-        id: set-shas
-        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4.4.0
-        with:
-          main-branch-name: "main"
 
       - name: ⚙️ Set up Go Environment
         uses: ./.github/actions/setup-go
@@ -142,7 +136,9 @@ jobs:
 
       - name: 🔍 Run Frontend Linter
         run: |
-          pnpm nx affected --target=lint --parallel=3 --base=${{ steps.set-shas.outputs.base }} --head=${{ steps.set-shas.outputs.head }} --exclude=sdks/**,tests/**
+          pnpm turbo run lint --affected --filter=!./tests/**
+        env:
+          TURBO_SCM_BASE: main
 
       - name: 🎨 Check Frontend Formatting
         run: |
@@ -187,8 +183,8 @@ jobs:
           cd ../tests/integration
           go mod download
 
-      - name: 🗂️ Set up Nx Cache
-        uses: ./.github/actions/setup-nx-cache
+      - name: 🗂️ Set up Turbo Cache
+        uses: ./.github/actions/setup-turbo-cache
 
       - name: 📦 Install Frontend Dependencies
         run: |
@@ -297,8 +293,8 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
 
-      - name: 🗂️ Set up Nx Cache
-        uses: ./.github/actions/setup-nx-cache
+      - name: 🗂️ Set up Turbo Cache
+        uses: ./.github/actions/setup-turbo-cache
 
       - name: 🎭 Set up Playwright Browsers
         uses: ./.github/actions/setup-playwright
@@ -335,8 +331,8 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
 
-      - name: 🗂️ Set up Nx Cache
-        uses: ./.github/actions/setup-nx-cache
+      - name: 🗂️ Set up Turbo Cache
+        uses: ./.github/actions/setup-turbo-cache
 
       - name: 🔨 Build Frontend
         run: |
@@ -384,8 +380,8 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
 
-      - name: 🗂️ Set up Nx Cache
-        uses: ./.github/actions/setup-nx-cache
+      - name: 🗂️ Set up Turbo Cache
+        uses: ./.github/actions/setup-turbo-cache
 
       - name: 🔨 Build Frontend
         run: |
@@ -941,33 +937,6 @@ jobs:
         if: steps.filter.outputs.powershell != 'true'
         run: echo "No PowerShell changes - skipping validation"
 
-  detect-sdk-changes:
-    name: 🔍 Detect SDK Changes
-    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      should-run: ${{ steps.filter.outputs.sdks }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
-        id: filter
-        with:
-          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
-          ref: ${{ github.event_name == 'merge_group' && github.sha || github.event.pull_request.head.sha }}
-          filters: |
-            sdks:
-              - 'sdks/**'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'pnpm-workspace.yaml'
-      - name: ✅ SDK changes detected
-        if: steps.filter.outputs.sdks == 'true'
-        run: echo "SDK files changed - SDK build will run"
-      - name: ⏭️ No SDK changes
-        if: steps.filter.outputs.sdks != 'true'
-        run: echo "No SDK changes - skipping SDK build"
-
   detect-docs-changes:
     name: 🔍 Detect Documentation Changes
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
@@ -995,30 +964,6 @@ jobs:
         if: steps.filter.outputs.docs != 'true'
         run: echo "No documentation changes - skipping docs build"
 
-  build-test-sdks:
-    name: 🔨 Build, Lint & Test SDKs
-    needs: [detect-sdk-changes]
-    if: ${{ always() && needs.detect-sdk-changes.outputs.should-run == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - name: ⚙️ Set up Node.js
-        uses: ./.github/actions/setup-node
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: 📦 Install pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
-        with:
-          run_install: false
-          cache_dependency_path: pnpm-lock.yaml
-
-      - name: 🔨 Build SDKs
-        run: make build_sdks
-
   build-docs:
     name: 📚 Build Documentation
     needs: [detect-docs-changes]
@@ -1043,8 +988,8 @@ jobs:
     if: needs.detect-powershell-changes.outputs.should-run == 'true'
     uses: ./.github/workflows/windows-powershell-validation.yml
 
-  cleanup-nx-cache:
-    name: 🗑️ Cleanup Stale Nx Cache
+  cleanup-turbo-cache:
+    name: 🗑️ Cleanup Stale Turbo Cache
     runs-on: ubuntu-latest
     # Skip on fork PRs — GITHUB_TOKEN is always read-only there regardless of permissions declared here.
     if: always() && github.event.pull_request.head.repo.full_name == github.repository
@@ -1058,13 +1003,13 @@ jobs:
     permissions:
       actions: write
     steps:
-      - name: 🗑️ Delete stale Nx caches
+      - name: 🗑️ Delete stale Turbo caches
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Keep the single most-recently-created Nx cache per OS; delete the rest.
-          gh api "repos/${{ github.repository }}/actions/caches?per_page=100&key=nx-Linux-" \
+          # Keep the single most-recently-created Turbo cache per OS; delete the rest.
+          gh api "repos/${{ github.repository }}/actions/caches?per_page=100&key=turbo-Linux-" \
             --jq '.actions_caches | sort_by(.created_at) | reverse | .[1:] | .[].id' \
           | xargs -r -I{} gh api --method DELETE "repos/${{ github.repository }}/actions/caches/{}"
 

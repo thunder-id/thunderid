@@ -19,34 +19,33 @@
 package oidc
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // Client errors for OIDC authentication.
 var (
 	// ErrorInvalidIDToken is the error when the ID token is invalid or malformed.
-	ErrorInvalidIDToken = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorInvalidIDToken = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AUTH-OIDC-1001",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authoidcservice.invalid_id_token",
 			DefaultValue: "Invalid ID token",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authoidcservice.invalid_id_token_description",
 			DefaultValue: "The ID token is invalid or malformed",
 		},
 	}
 	// ErrorInvalidIDTokenSignature is the error when the ID token signature verification fails.
-	ErrorInvalidIDTokenSignature = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorInvalidIDTokenSignature = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "AUTH-OIDC-1002",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.authoidcservice.invalid_id_token_signature",
 			DefaultValue: "Invalid ID token signature",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.authoidcservice.invalid_id_token_signature_description",
 			DefaultValue: "The ID token signature verification failed",
 		},

@@ -24,7 +24,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type WebAuthnUserTestSuite struct {
@@ -76,9 +76,9 @@ func (suite *WebAuthnUserTestSuite) TestWebAuthnUser_Methods() {
 
 func (suite *WebAuthnUserTestSuite) TestNewWebAuthnUserFromCoreUser_WithFullAttributes() {
 	attrs := json.RawMessage(`{"given_name":"John","family_name":"Doe","username":"johndoe"}`)
-	coreUser := &entity.Entity{
+	coreUser := &providers.Entity{
 		ID:         "user123",
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       "person",
 		OUID:       "org123",
 		Attributes: attrs,
@@ -96,9 +96,9 @@ func (suite *WebAuthnUserTestSuite) TestNewWebAuthnUserFromCoreUser_WithFullAttr
 
 func (suite *WebAuthnUserTestSuite) TestNewWebAuthnUserFromCoreUser_WithEmailOnly() {
 	attrs := json.RawMessage(`{"email":"john@example.com"}`)
-	coreUser := &entity.Entity{
+	coreUser := &providers.Entity{
 		ID:         "user123",
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Attributes: attrs,
 	}
 	credentials := []webauthnCredential{}
@@ -112,9 +112,9 @@ func (suite *WebAuthnUserTestSuite) TestNewWebAuthnUserFromCoreUser_WithEmailOnl
 }
 
 func (suite *WebAuthnUserTestSuite) TestNewWebAuthnUserFromCoreUser_NoAttributes() {
-	coreUser := &entity.Entity{
+	coreUser := &providers.Entity{
 		ID:       "user123",
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 	}
 	credentials := []webauthnCredential{}
 

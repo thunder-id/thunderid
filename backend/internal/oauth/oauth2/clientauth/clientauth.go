@@ -28,16 +28,14 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/thunder-id/thunderid/internal/actorprovider"
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/cert"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/jose/jws"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // authenticate authenticates the OAuth2 client from the request.
@@ -47,8 +45,8 @@ import (
 func authenticate(
 	ctx context.Context,
 	r *http.Request,
-	actorProvider actorprovider.ActorProviderInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	actorProvider providers.ActorProvider,
+	authnProvider providers.AuthnProviderManager,
 	jwtService jwt.JWTServiceInterface,
 	endpointURL string,
 ) (*OAuthClientInfo, *authError) {
@@ -61,11 +59,11 @@ func authenticate(
 	clientAssertionType := r.FormValue(constants.RequestParamClientAssertionType)
 	clientAssertion := r.FormValue(constants.RequestParamClientAssertion)
 
-	var detectedMethod constants.TokenEndpointAuthMethod
+	var detectedMethod providers.TokenEndpointAuthMethod
 
 	// Method 1: Basic Auth (header)
 	if hasAuthHeader {
-		detectedMethod = constants.TokenEndpointAuthMethodClientSecretBasic
+		detectedMethod = providers.TokenEndpointAuthMethodClientSecretBasic
 	}
 
 	// Method 2: Client credentials in body
@@ -73,7 +71,7 @@ func authenticate(
 		if detectedMethod != "" {
 			return nil, errMultipleAuthMethods
 		}
-		detectedMethod = constants.TokenEndpointAuthMethodClientSecretPost
+		detectedMethod = providers.TokenEndpointAuthMethodClientSecretPost
 	}
 
 	// Method 3: Client assertion (private_key_jwt)
@@ -81,12 +79,12 @@ func authenticate(
 		if detectedMethod != "" {
 			return nil, errMultipleAuthMethods
 		}
-		detectedMethod = constants.TokenEndpointAuthMethodPrivateKeyJWT
+		detectedMethod = providers.TokenEndpointAuthMethodPrivateKeyJWT
 	}
 
 	// If no auth method but client_id exists -> public client
 	if detectedMethod == "" && clientIDFromBody != "" {
-		detectedMethod = constants.TokenEndpointAuthMethodNone
+		detectedMethod = providers.TokenEndpointAuthMethodNone
 	}
 
 	// Now process based on detected method
@@ -94,21 +92,21 @@ func authenticate(
 	var clientSecret string
 
 	switch detectedMethod {
-	case constants.TokenEndpointAuthMethodClientSecretBasic:
+	case providers.TokenEndpointAuthMethodClientSecretBasic:
 		var err *authError
 		clientID, clientSecret, err = extractBasicAuthCredentials(r)
 		if err != nil {
 			return nil, err
 		}
 
-	case constants.TokenEndpointAuthMethodClientSecretPost:
+	case providers.TokenEndpointAuthMethodClientSecretPost:
 		if clientIDFromBody == "" {
 			return nil, errMissingClientID
 		}
 		clientID = clientIDFromBody
 		clientSecret = clientSecretFromBody
 
-	case constants.TokenEndpointAuthMethodPrivateKeyJWT:
+	case providers.TokenEndpointAuthMethodPrivateKeyJWT:
 		if clientAssertionType != constants.SupportedClientAssertionType {
 			logger.Debug(ctx, "Invalid client assertion: unsupported client assertion type")
 			return nil, errInvalidClientAssertion
@@ -119,7 +117,7 @@ func authenticate(
 		}
 		clientID = extracted
 
-	case constants.TokenEndpointAuthMethodNone:
+	case providers.TokenEndpointAuthMethodNone:
 		clientID = clientIDFromBody
 
 	default:
@@ -140,25 +138,25 @@ func authenticate(
 		return nil, errInvalidClientCredentials
 	}
 
-	if !oauthApp.IsAllowedTokenEndpointAuthMethod(detectedMethod) {
+	if oauthApp.TokenEndpointAuthMethod != detectedMethod {
 		return nil, errUnauthorizedAuthMethod
 	}
 
 	// Validate credentials based on method
 	switch detectedMethod {
 	// TODO: Move this to authnProvider.Authenticate
-	case constants.TokenEndpointAuthMethodPrivateKeyJWT:
+	case providers.TokenEndpointAuthMethodPrivateKeyJWT:
 		if err := validateClientAssertion(ctx, oauthApp, jwtService, endpointURL, clientID,
 			clientAssertion); err != nil {
 			logger.Debug(ctx, "Invalid client assertion: "+err.Error())
 			return nil, errInvalidClientAssertion
 		}
-	case constants.TokenEndpointAuthMethodClientSecretBasic,
-		constants.TokenEndpointAuthMethodClientSecretPost:
+	case providers.TokenEndpointAuthMethodClientSecretBasic,
+		providers.TokenEndpointAuthMethodClientSecretPost:
 		_, _, authnErr := authnProvider.AuthenticateUser(ctx,
 			map[string]interface{}{"clientId": clientID},
 			map[string]interface{}{"clientSecret": clientSecret},
-			nil, nil, authnprovidermgr.AuthUser{})
+			nil, nil, providers.AuthUser{})
 		if authnErr != nil {
 			logger.Debug(ctx, "Client secret authentication failed",
 				log.MaskedString("clientID", clientID))
@@ -234,7 +232,7 @@ func extractClientIDFromAssertion(ctx context.Context, assertion string) (string
 // validateClientAssertion validates the provided client assertion JWT using the configured certificate and JWT service.
 // The endpointURL is used as the expected audience for JWT validation.
 func validateClientAssertion(ctx context.Context,
-	oauthApp *inboundmodel.OAuthClient,
+	oauthApp *providers.OAuthClient,
 	jwtService jwt.JWTServiceInterface,
 	endpointURL string,
 	clientID, clientAssertion string) error {

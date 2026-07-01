@@ -55,11 +55,12 @@ npx @modelcontextprotocol/inspector
 
 ### Allow Inspector in CORS
 
-Add Inspector's origin to <ProductName />'s CORS allow-list in `repository/conf/deployment.yaml`, then restart <ProductName />:
+Add Inspector's origin to the server-config `cors` section. Create or update `config/resources/server_configs/cors.yaml`, or use `PUT /server-config/cors` after startup:
 
 ```yaml
-cors:
-  allowed_origins:
+name: cors
+value:
+  allowedOrigins:
     # ...existing entries...
     - "http://localhost:6274"
 ```

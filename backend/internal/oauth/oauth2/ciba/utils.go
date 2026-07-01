@@ -23,8 +23,8 @@ import (
 	"slices"
 	"strings"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // getRequiredOptionalAttributes determines the space-separated optional user attributes to resolve
@@ -38,7 +38,7 @@ import (
 // filtered against the UserInfo allowed set. The output therefore matches authorization_code for the
 // same client config and scope. The format (space-separated) is what the assertion executor expects
 // via strings.Fields on the required-attribute runtime keys.
-func getRequiredOptionalAttributes(scopes []string, app *inboundmodel.OAuthClient) string {
+func getRequiredOptionalAttributes(scopes []string, app *providers.OAuthClient) string {
 	if app == nil {
 		return ""
 	}
@@ -68,7 +68,7 @@ func getRequiredOptionalAttributes(scopes []string, app *inboundmodel.OAuthClien
 }
 
 // buildUserInfoAllowedSet creates a set of attributes the UserInfo endpoint is allowed to return.
-func buildUserInfoAllowedSet(userInfoConfig *inboundmodel.UserInfoConfig) map[string]bool {
+func buildUserInfoAllowedSet(userInfoConfig *providers.UserInfoConfig) map[string]bool {
 	if userInfoConfig == nil || len(userInfoConfig.UserAttributes) == 0 {
 		return nil
 	}

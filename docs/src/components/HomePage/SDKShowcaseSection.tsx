@@ -21,6 +21,7 @@ import {Box, Container, Typography} from '@wso2/oxygen-ui';
 import {JSX, useState} from 'react';
 import AndroidLogo from '../icons/AndroidLogo';
 import ExpressLogo from '../icons/ExpressLogo';
+import FlutterLogo from '../icons/FlutterLogo';
 import IOSLogo from '../icons/IOSLogo';
 import JavaScriptLogo from '../icons/JavaScriptLogo';
 import NextLogo from '../icons/NextLogo';
@@ -84,6 +85,12 @@ const SDKS = [
     packageName: 'dev.thunderid:compose',
     icon: AndroidLogo,
     href: '/docs/next/guides/getting-started/connect-your-application/android',
+  },
+  {
+    name: 'Flutter',
+    packageName: 'thunderid_flutter',
+    icon: FlutterLogo,
+    href: '/docs/next/guides/getting-started/connect-your-application/flutter',
   },
 ];
 
@@ -195,7 +202,7 @@ export default function SDKShowcaseSection(): JSX.Element {
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(9, 1fr)',
+                gridTemplateColumns: 'repeat(10, 1fr)',
                 gap: {xs: 1.5, md: 2},
                 justifyItems: 'center',
               }}

@@ -25,30 +25,29 @@ import (
 	"strings"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	yaml "gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/cors"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 type fakeImportService struct {
-	importFn func(context.Context, *ImportRequest) (*ImportResponse, *serviceerror.ServiceError)
-	deleteFn func(context.Context, *DeleteResourceRequest) (*DeleteResourceResponse, *serviceerror.ServiceError)
+	importFn func(context.Context, *ImportRequest) (*ImportResponse, *tidcommon.ServiceError)
+	deleteFn func(context.Context, *DeleteResourceRequest) (*DeleteResourceResponse, *tidcommon.ServiceError)
 }
 
 func (f *fakeImportService) ImportResources(
 	ctx context.Context, r *ImportRequest,
-) (*ImportResponse, *serviceerror.ServiceError) {
+) (*ImportResponse, *tidcommon.ServiceError) {
 	return f.importFn(ctx, r)
 }
 
 func (f *fakeImportService) DeleteResource(
 	ctx context.Context, r *DeleteResourceRequest,
-) (*DeleteResourceResponse, *serviceerror.ServiceError) {
+) (*DeleteResourceResponse, *tidcommon.ServiceError) {
 	return f.deleteFn(ctx, r)
 }
 
@@ -60,15 +59,7 @@ type ImportHandlerTestSuite struct {
 
 func (suite *ImportHandlerTestSuite) SetupTest() {
 	config.ResetServerRuntime()
-	var allowedOrigins cors.OriginEntries
-	suite.Require().NoError(yaml.Unmarshal([]byte(`
-- https://localhost:3000
-`), &allowedOrigins))
-	testConfig := &config.Config{
-		CORS: config.CORSConfig{AllowedOrigins: allowedOrigins},
-	}
-	suite.Require().NoError(cors.InitializeMatcher(testConfig.CORS.AllowedOrigins))
-	require.NoError(suite.T(), config.InitializeServerRuntime("/tmp/test", testConfig))
+	require.NoError(suite.T(), config.InitializeServerRuntime("/tmp/test", &config.Config{}))
 
 	suite.service = &fakeImportService{}
 	suite.handler = newImportHandler(suite.service)
@@ -95,8 +86,8 @@ func (suite *ImportHandlerTestSuite) TestHandleImportRequest_InvalidJSON() {
 func (suite *ImportHandlerTestSuite) TestHandleImportRequest_ServerError() {
 	suite.service.importFn = func(
 		_ context.Context, _ *ImportRequest,
-	) (*ImportResponse, *serviceerror.ServiceError) {
-		return nil, &serviceerror.InternalServerError
+	) (*ImportResponse, *tidcommon.ServiceError) {
+		return nil, &tidcommon.InternalServerError
 	}
 
 	req := httptest.NewRequest("POST", "/import", strings.NewReader(`{"content":"foo"}`))
@@ -111,7 +102,7 @@ func (suite *ImportHandlerTestSuite) TestHandleImportRequest_ServerError() {
 func (suite *ImportHandlerTestSuite) TestHandleImportRequest_Success() {
 	suite.service.importFn = func(
 		_ context.Context, _ *ImportRequest,
-	) (*ImportResponse, *serviceerror.ServiceError) {
+	) (*ImportResponse, *tidcommon.ServiceError) {
 		return &ImportResponse{Summary: &ImportSummary{}, Results: []ImportItemOutcome{}}, nil
 	}
 
@@ -137,7 +128,7 @@ func (suite *ImportHandlerTestSuite) TestHandleDeleteImportRequest_InvalidJSON()
 func (suite *ImportHandlerTestSuite) TestHandleDeleteImportRequest_ClientError() {
 	suite.service.deleteFn = func(
 		_ context.Context, _ *DeleteResourceRequest,
-	) (*DeleteResourceResponse, *serviceerror.ServiceError) {
+	) (*DeleteResourceResponse, *tidcommon.ServiceError) {
 		return nil, &ErrorInvalidImportRequest
 	}
 
@@ -153,7 +144,7 @@ func (suite *ImportHandlerTestSuite) TestHandleDeleteImportRequest_ClientError()
 func (suite *ImportHandlerTestSuite) TestHandleDeleteImportRequest_Success() {
 	suite.service.deleteFn = func(
 		_ context.Context, _ *DeleteResourceRequest,
-	) (*DeleteResourceResponse, *serviceerror.ServiceError) {
+	) (*DeleteResourceResponse, *tidcommon.ServiceError) {
 		return &DeleteResourceResponse{
 			ResourceType: "application",
 			ResourceKey:  "app1",

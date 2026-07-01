@@ -26,6 +26,9 @@ import (
 	"os"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
@@ -165,7 +168,7 @@ properties:
 	suite.Equal("test-idp-1", idp.ID)
 	suite.Equal("Test IDP", idp.Name)
 	suite.Equal("Test Identity Provider", idp.Description)
-	suite.Equal(IDPTypeGoogle, idp.Type)
+	suite.Equal(providers.IDPTypeGoogle, idp.Type)
 	suite.Len(idp.Properties, 2)
 }
 
@@ -196,25 +199,25 @@ type: "INVALID_TYPE"
 func (suite *IDPInitTestSuite) TestParseIDPType_Google() {
 	idpType, err := parseIDPType("GOOGLE")
 	suite.NoError(err)
-	suite.Equal(IDPTypeGoogle, idpType)
+	suite.Equal(providers.IDPTypeGoogle, idpType)
 }
 
 func (suite *IDPInitTestSuite) TestParseIDPType_GitHub() {
 	idpType, err := parseIDPType("GITHUB")
 	suite.NoError(err)
-	suite.Equal(IDPTypeGitHub, idpType)
+	suite.Equal(providers.IDPTypeGitHub, idpType)
 }
 
 func (suite *IDPInitTestSuite) TestParseIDPType_OIDC() {
 	idpType, err := parseIDPType("OIDC")
 	suite.NoError(err)
-	suite.Equal(IDPTypeOIDC, idpType)
+	suite.Equal(providers.IDPTypeOIDC, idpType)
 }
 
 func (suite *IDPInitTestSuite) TestParseIDPType_OAuth() {
 	idpType, err := parseIDPType("OAUTH")
 	suite.NoError(err)
-	suite.Equal(IDPTypeOAuth, idpType)
+	suite.Equal(providers.IDPTypeOAuth, idpType)
 }
 
 func (suite *IDPInitTestSuite) TestParseIDPType_Invalid() {
@@ -229,11 +232,11 @@ func (suite *IDPInitTestSuite) TestValidateIDPForInit_Valid() {
 	prop2, _ := cmodels.NewProperty("client_secret", "test_secret", false)
 	prop3, _ := cmodels.NewProperty("redirect_uri", "http://localhost:3000/callback", false)
 
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		ID:          "test-idp-1",
 		Name:        "Test IDP",
 		Description: "Test",
-		Type:        IDPTypeGoogle,
+		Type:        providers.IDPTypeGoogle,
 		Properties:  []cmodels.Property{*prop1, *prop2, *prop3},
 	}
 
@@ -250,10 +253,10 @@ func (suite *IDPInitTestSuite) TestValidateIDPForInit_NilIDP() {
 }
 
 func (suite *IDPInitTestSuite) TestValidateIDPForInit_EmptyName() {
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		ID:   "test-idp-1",
 		Name: "",
-		Type: IDPTypeGoogle,
+		Type: providers.IDPTypeGoogle,
 	}
 
 	logger := log.GetLogger()
@@ -263,7 +266,7 @@ func (suite *IDPInitTestSuite) TestValidateIDPForInit_EmptyName() {
 }
 
 func (suite *IDPInitTestSuite) TestValidateIDPForInit_EmptyType() {
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		ID:   "test-idp-1",
 		Name: "Test IDP",
 		Type: "",
@@ -276,7 +279,7 @@ func (suite *IDPInitTestSuite) TestValidateIDPForInit_EmptyType() {
 }
 
 func (suite *IDPInitTestSuite) TestValidateIDPForInit_InvalidType() {
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		ID:   "test-idp-1",
 		Name: "Test IDP",
 		Type: "INVALID",
@@ -413,7 +416,7 @@ func TestInitialize_WithDeclarativeResourcesEnabled_ValidConfigs(t *testing.T) {
 			Enabled: true,
 		},
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},
@@ -489,7 +492,7 @@ properties:
 	assert.Nil(t, svcErr)
 	assert.NotNil(t, googleIDP)
 	assert.Equal(t, "Google IDP", googleIDP.Name)
-	assert.Equal(t, IDPTypeGoogle, googleIDP.Type)
+	assert.Equal(t, providers.IDPTypeGoogle, googleIDP.Type)
 	// Google IDP should have 8 properties after defaults are applied:
 	// client_id, client_secret, redirect_uri (from YAML) + authorization_endpoint, token_endpoint,
 	// jwks_endpoint, userinfo_endpoint, scopes (defaults)
@@ -499,7 +502,7 @@ properties:
 	assert.Nil(t, svcErr)
 	assert.NotNil(t, githubIDP)
 	assert.Equal(t, "GitHub IDP", githubIDP.Name)
-	assert.Equal(t, IDPTypeGitHub, githubIDP.Type)
+	assert.Equal(t, providers.IDPTypeGitHub, githubIDP.Type)
 	// GitHub IDP should have 7 properties after defaults are applied:
 	// client_id, client_secret, redirect_uri (from YAML) + authorization_endpoint, token_endpoint,
 	// userinfo_endpoint, user_email_endpoint (defaults)
@@ -529,7 +532,7 @@ func TestInitialize_WithDeclarativeResourcesEnabled_InvalidYAML(t *testing.T) {
 			Enabled: true,
 		},
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},
@@ -590,7 +593,7 @@ properties:
 			Enabled: true,
 		},
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},
@@ -651,7 +654,7 @@ properties:
 			Enabled: true,
 		},
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},

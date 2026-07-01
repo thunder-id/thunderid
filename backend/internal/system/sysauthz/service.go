@@ -23,7 +23,8 @@ package sysauthz
 import (
 	"context"
 
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
@@ -34,7 +35,7 @@ type SystemAuthorizationServiceInterface interface {
 	// the given action. Returns true if allowed, false if denied. A non-nil ServiceError
 	// indicates a processing failure, not an authorization denial.
 	IsActionAllowed(ctx context.Context, action security.Action,
-		actionCtx *ActionContext) (bool, *serviceerror.ServiceError)
+		actionCtx *ActionContext) (bool, *tidcommon.ServiceError)
 
 	// GetAccessibleResources returns the set of resources the caller may access for the
 	// given action and resource type. The result must be applied as a store-level filter
@@ -43,7 +44,7 @@ type SystemAuthorizationServiceInterface interface {
 	// When AllAllowed is true, no ID filter should be applied.
 	// When AllAllowed is false, the store should restrict results to the returned IDs.
 	GetAccessibleResources(ctx context.Context, action security.Action,
-		resourceType security.ResourceType) (*AccessibleResources, *serviceerror.ServiceError)
+		resourceType security.ResourceType) (*AccessibleResources, *tidcommon.ServiceError)
 
 	// SetOUHierarchyResolver injects the OU hierarchy resolver used by inheritance-based
 	// policies. This must be called once at application startup after the ou package has
@@ -90,7 +91,7 @@ func (s *systemAuthorizationService) SetOUHierarchyResolver(resolver OUHierarchy
 
 // IsActionAllowed evaluates whether the authenticated caller may perform the given action.
 func (s *systemAuthorizationService) IsActionAllowed(ctx context.Context, action security.Action,
-	actionCtx *ActionContext) (bool, *serviceerror.ServiceError) {
+	actionCtx *ActionContext) (bool, *tidcommon.ServiceError) {
 	logger := s.logger.WithContext(ctx)
 
 	// Step 1: Check if SKIP_SECURITY flag is set.
@@ -190,7 +191,7 @@ func isResourceOwner(ctx context.Context, actionCtx *ActionContext) bool {
 // GetAccessibleResources returns the set of resources the caller can access for the given
 // action and resource type.
 func (s *systemAuthorizationService) GetAccessibleResources(ctx context.Context, action security.Action,
-	resourceType security.ResourceType) (*AccessibleResources, *serviceerror.ServiceError) {
+	resourceType security.ResourceType) (*AccessibleResources, *tidcommon.ServiceError) {
 	logger := s.logger.WithContext(ctx)
 
 	// Step 1: Check if SKIP_SECURITY flag is set.

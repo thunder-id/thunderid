@@ -7,10 +7,11 @@ package ou
 import (
 	"context"
 
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
+	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	sysauthz "github.com/thunder-id/thunderid/internal/system/sysauthz"
-	mock "github.com/stretchr/testify/mock"
 )
 
 // newSystemAuthorizationServiceMock creates a new instance of systemAuthorizationServiceMock.
@@ -35,7 +36,7 @@ func (_m *systemAuthorizationServiceMock) IsActionAllowed(
 	ctx context.Context,
 	action security.Action,
 	actionCtx *sysauthz.ActionContext,
-) (bool, *serviceerror.ServiceError) {
+) (bool, *tidcommon.ServiceError) {
 	ret := _m.Called(ctx, action, actionCtx)
 
 	if len(ret) == 0 {
@@ -43,17 +44,17 @@ func (_m *systemAuthorizationServiceMock) IsActionAllowed(
 	}
 
 	var r0 bool
-	var r1 *serviceerror.ServiceError
+	var r1 *tidcommon.ServiceError
 	if returnFunc, ok := ret.Get(0).(func(context.Context, security.Action, *sysauthz.ActionContext) bool); ok {
 		r0 = returnFunc(ctx, action, actionCtx)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, security.Action, *sysauthz.ActionContext) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, security.Action, *sysauthz.ActionContext) *tidcommon.ServiceError); ok {
 		r1 = returnFunc(ctx, action, actionCtx)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*tidcommon.ServiceError)
 		}
 	}
 	return r0, r1
@@ -64,7 +65,7 @@ func (_m *systemAuthorizationServiceMock) GetAccessibleResources(
 	ctx context.Context,
 	action security.Action,
 	resourceType security.ResourceType,
-) (*sysauthz.AccessibleResources, *serviceerror.ServiceError) {
+) (*sysauthz.AccessibleResources, *tidcommon.ServiceError) {
 	ret := _m.Called(ctx, action, resourceType)
 
 	if len(ret) == 0 {
@@ -72,7 +73,7 @@ func (_m *systemAuthorizationServiceMock) GetAccessibleResources(
 	}
 
 	var r0 *sysauthz.AccessibleResources
-	var r1 *serviceerror.ServiceError
+	var r1 *tidcommon.ServiceError
 	if returnFunc, ok := ret.Get(0).(func(context.Context, security.Action, security.ResourceType) *sysauthz.AccessibleResources); ok {
 		r0 = returnFunc(ctx, action, resourceType)
 	} else {
@@ -80,11 +81,11 @@ func (_m *systemAuthorizationServiceMock) GetAccessibleResources(
 			r0 = ret.Get(0).(*sysauthz.AccessibleResources)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, security.Action, security.ResourceType) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, security.Action, security.ResourceType) *tidcommon.ServiceError); ok {
 		r1 = returnFunc(ctx, action, resourceType)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*tidcommon.ServiceError)
 		}
 	}
 	return r0, r1

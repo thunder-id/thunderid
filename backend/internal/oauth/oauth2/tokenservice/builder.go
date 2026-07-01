@@ -22,7 +22,6 @@ import (
 	"context"
 	"fmt"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -31,6 +30,7 @@ import (
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // TokenBuilderInterface defines the interface for building OAuth2 tokens.
@@ -157,11 +157,10 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 		claims["act"] = actClaim
 	}
 
-	// Include only userinfo claims request for UserInfo endpoint support
-	if ctx.ClaimsRequest != nil && ctx.ClaimsRequest.UserInfo != nil {
-		userinfoClaims := &oauth2model.ClaimsRequest{
-			UserInfo: ctx.ClaimsRequest.UserInfo,
-		}
+	// Include only normal userinfo claims for UserInfo endpoint support.
+	// verified_claims is never resolved or returned, so it is excluded from the access token.
+	if ctx.ClaimsRequest != nil && len(ctx.ClaimsRequest.UserInfo) > 0 {
+		userinfoClaims := &oauth2model.ClaimsRequest{UserInfo: ctx.ClaimsRequest.UserInfo}
 		serialized, err := oauth2utils.SerializeClaimsRequest(userinfoClaims)
 		if err != nil {
 			return nil, fmt.Errorf("failed to serialize userinfo claims request: %w", err)
@@ -190,7 +189,7 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 // buildAccessTokenUserAttributes builds user attributes for the access token based on app configuration.
 func (tb *tokenBuilder) buildAccessTokenUserAttributes(
 	attrs map[string]interface{},
-	oauthApp *inboundmodel.OAuthClient,
+	oauthApp *providers.OAuthClient,
 ) map[string]interface{} {
 	accessTokenAttributes := make(map[string]interface{})
 
@@ -368,7 +367,7 @@ func (tb *tokenBuilder) BuildIDToken(
 	if tokenCtx.OAuthApp != nil && tokenCtx.OAuthApp.Token != nil && tokenCtx.OAuthApp.Token.IDToken != nil {
 		idTokenCfg := tokenCtx.OAuthApp.Token.IDToken
 		rt := idTokenCfg.ResponseType
-		if rt == inboundmodel.IDTokenResponseTypeJWE || rt == inboundmodel.IDTokenResponseTypeNESTEDJWT {
+		if rt == providers.IDTokenResponseTypeJWE || rt == providers.IDTokenResponseTypeNESTEDJWT {
 			if tb.jweService == nil {
 				return nil, fmt.Errorf("JWE service is not configured")
 			}

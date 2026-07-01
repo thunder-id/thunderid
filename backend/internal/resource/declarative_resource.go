@@ -25,9 +25,11 @@ import (
 	"strings"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 
 	"gopkg.in/yaml.v3"
@@ -68,7 +70,7 @@ func (e *resourceServerExporter) GetParameterizerType() string {
 
 // GetAllResourceIDs retrieves all resource server IDs.
 // In composite mode, this excludes declarative (YAML-based) resource servers.
-func (e *resourceServerExporter) GetAllResourceIDs(ctx context.Context) ([]string, *serviceerror.ServiceError) {
+func (e *resourceServerExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
 	ids := make([]string, 0)
 	offset := 0
 	for {
@@ -94,7 +96,7 @@ func (e *resourceServerExporter) GetAllResourceIDs(ctx context.Context) ([]strin
 
 // GetResourceByID retrieves a resource server with all its nested resources and actions by its ID.
 func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string) (
-	interface{}, string, *serviceerror.ServiceError,
+	interface{}, string, *tidcommon.ServiceError,
 ) {
 	// Get the resource server
 	server, err := e.service.GetResourceServer(ctx, id)
@@ -102,15 +104,17 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 		return nil, "", err
 	}
 
-	// Build ResourceServer with nested structure
-	rs := &ResourceServer{
+	// Build providers.ResourceServer with nested structure
+	rs := &providers.ResourceServer{
 		ID:          server.ID,
 		Name:        server.Name,
 		Description: server.Description,
+		Handle:      server.Handle,
 		Identifier:  server.Identifier,
+		Type:        server.Type,
 		OUID:        server.OUID,
 		Delimiter:   server.Delimiter,
-		Resources:   []Resource{},
+		Resources:   []providers.Resource{},
 	}
 
 	allResources, err := e.service.GetAllResourceList(ctx, id)
@@ -126,11 +130,11 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 
 	// Second pass: build declarative resources with resolved parent handles and actions
 	for _, res := range allResources {
-		resource := Resource{
+		resource := providers.Resource{
 			Name:        res.Name,
 			Handle:      res.Handle,
 			Description: res.Description,
-			Actions:     []Action{},
+			Actions:     []providers.Action{},
 		}
 
 		if res.Parent != nil && *res.Parent != "" {
@@ -142,7 +146,7 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 		// Get actions for this resource
 		actOffset := 0
 		for {
-			actions, actErr := e.service.GetActionList(ctx, id, &res.ID, serverconst.MaxPageSize, actOffset)
+			actions, actErr := e.service.GetActionList(ctx, id, &res.ID, "", serverconst.MaxPageSize, actOffset)
 			if actErr != nil {
 				return nil, "", actErr
 			}
@@ -150,10 +154,11 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 				break
 			}
 			for _, action := range actions.Actions {
-				resource.Actions = append(resource.Actions, Action{
+				resource.Actions = append(resource.Actions, providers.Action{
 					Name:        action.Name,
 					Handle:      action.Handle,
 					Description: action.Description,
+					Kind:        action.Kind,
 				})
 			}
 			actOffset += len(actions.Actions)
@@ -172,7 +177,7 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 func (e *resourceServerExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
-	server, ok := resource.(*ResourceServer)
+	server, ok := resource.(*providers.ResourceServer)
 	if !ok {
 		return "", declarativeresource.CreateTypeError(resourceTypeResourceServer, id)
 	}
@@ -230,7 +235,7 @@ func loadDeclarativeResources(resourceStore resourceStoreInterface, resourceServ
 			return validateResourceServerWrapper(data, fileStore, dbStore, resourceService)
 		},
 		IDExtractor: func(data interface{}) string {
-			return data.(*ResourceServer).ID
+			return data.(*providers.ResourceServer).ID
 		},
 	}
 
@@ -245,7 +250,7 @@ func loadDeclarativeResources(resourceStore resourceStoreInterface, resourceServ
 // parseAndValidateResourceServerWrapper combines parsing, processing, and validation for resource servers.
 func parseAndValidateResourceServerWrapper(resourceService ResourceServiceInterface) func([]byte) (interface{}, error) {
 	return func(data []byte) (interface{}, error) {
-		// Parse YAML into ResourceServer struct
+		// Parse YAML into providers.ResourceServer struct
 		rs, err := parseToResourceServer(data)
 		if err != nil {
 			return nil, err
@@ -260,8 +265,8 @@ func parseAndValidateResourceServerWrapper(resourceService ResourceServiceInterf
 	}
 }
 
-func parseToResourceServer(data []byte) (*ResourceServer, error) {
-	var rs ResourceServer
+func parseToResourceServer(data []byte) (*providers.ResourceServer, error) {
+	var rs providers.ResourceServer
 	err := yaml.Unmarshal(data, &rs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse resource server YAML: %w", err)
@@ -277,14 +282,32 @@ func parseToResourceServer(data []byte) (*ResourceServer, error) {
 		return nil, fmt.Errorf("invalid type %q for resource server '%s'", rs.Type, rs.Name)
 	}
 	if rs.Type == "" {
-		rs.Type = ResourceServerTypeCustom
+		rs.Type = providers.ResourceServerTypeCustom
+	}
+
+	// Apply the action kind discriminator rules (mirrors the REST path). The kind is optional for all
+	// resource server types; MCP actions default to "tool" when omitted, and any provided kind must be
+	// one of the supported values (tool|resource).
+	for i := range rs.Resources {
+		for j := range rs.Resources[i].Actions {
+			action := &rs.Resources[i].Actions[j]
+			if rs.Type == providers.ResourceServerTypeMCP && action.Kind == "" {
+				action.Kind = providers.ActionKindTool
+			}
+			if action.Kind != "" && !action.Kind.IsValid() {
+				return nil, fmt.Errorf(
+					"action %q in resource server '%s' has invalid kind %q (allowed: tool|resource)",
+					action.Handle, rs.Name, action.Kind,
+				)
+			}
+		}
 	}
 
 	return &rs, nil
 }
 
 // ProcessResourceServer processes the resource server and computes permissions in-place.
-func ProcessResourceServer(rs *ResourceServer) error {
+func ProcessResourceServer(rs *providers.ResourceServer) error {
 	delimiter := rs.Delimiter
 	if delimiter == "" {
 		delimiter = ":" // Default delimiter
@@ -292,7 +315,7 @@ func ProcessResourceServer(rs *ResourceServer) error {
 	rs.Delimiter = delimiter
 
 	// Build a map of handle to resource for parent resolution and detect duplicates
-	resourceHandleMap := make(map[string]*Resource)
+	resourceHandleMap := make(map[string]*providers.Resource)
 	for i := range rs.Resources {
 		handle := rs.Resources[i].Handle
 		if existing, ok := resourceHandleMap[handle]; ok {
@@ -315,13 +338,53 @@ func ProcessResourceServer(rs *ResourceServer) error {
 		}
 	}
 
+	// For MCP resource servers, a resource (group) and an action (tool/resource) in the same parent
+	// context can derive an identical permission string under exact-string RBAC, silently collapsing
+	// two distinct primitives. Mirror the REST cross-entity check (Rule 6) on the declarative path by
+	// failing on the first duplicate derived permission across all resources and their nested actions.
+	if rs.Type == providers.ResourceServerTypeMCP {
+		if err := checkDuplicateMCPPermissions(rs); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// checkDuplicateMCPPermissions detects duplicate derived permission strings across all resources
+// (groups) and their nested actions (tools/resources) for an MCP resource server. It returns an
+// error naming the colliding permission and handles on the first duplicate found.
+func checkDuplicateMCPPermissions(rs *providers.ResourceServer) error {
+	seen := make(map[string]string)
+	for i := range rs.Resources {
+		res := &rs.Resources[i]
+		if existing, ok := seen[res.Permission]; ok {
+			return fmt.Errorf(
+				"duplicate permission '%s' derived for handles '%s' and '%s' in resource server '%s'",
+				res.Permission, existing, res.Handle, rs.ID,
+			)
+		}
+		seen[res.Permission] = res.Handle
+
+		for j := range res.Actions {
+			action := &res.Actions[j]
+			if existing, ok := seen[action.Permission]; ok {
+				return fmt.Errorf(
+					"duplicate permission '%s' derived for handles '%s' and '%s' in resource server '%s'",
+					action.Permission, existing, action.Handle, rs.ID,
+				)
+			}
+			seen[action.Permission] = action.Handle
+		}
+	}
+
 	return nil
 }
 
 // processResource processes a resource and its actions, computing permissions in-place.
 func processResource(
-	res *Resource,
-	resourceHandleMap map[string]*Resource,
+	res *providers.Resource,
+	resourceHandleMap map[string]*providers.Resource,
 	rsHandle string,
 	delimiter string,
 ) error {
@@ -341,8 +404,8 @@ func processResource(
 
 // buildPermissionString constructs the permission string by traversing parent chain.
 func buildPermissionString(
-	res *Resource,
-	resourceHandleMap map[string]*Resource,
+	res *providers.Resource,
+	resourceHandleMap map[string]*providers.Resource,
 	rsHandle string,
 	delimiter string,
 ) (string, error) {
@@ -397,7 +460,7 @@ func validateResourceServerWrapper(
 	dbStore resourceStoreInterface,
 	service ResourceServiceInterface,
 ) error {
-	rs, ok := data.(*ResourceServer)
+	rs, ok := data.(*providers.ResourceServer)
 	if !ok {
 		return fmt.Errorf("invalid type: expected *ResourceServer")
 	}

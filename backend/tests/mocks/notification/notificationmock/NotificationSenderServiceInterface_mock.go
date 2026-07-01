@@ -9,7 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/notification/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	common0 "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewNotificationSenderServiceInterfaceMock creates a new instance of NotificationSenderServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -40,19 +40,19 @@ func (_m *NotificationSenderServiceInterfaceMock) EXPECT() *NotificationSenderSe
 }
 
 // Send provides a mock function for the type NotificationSenderServiceInterfaceMock
-func (_mock *NotificationSenderServiceInterfaceMock) Send(ctx context.Context, channel common.ChannelType, senderID string, data common.NotificationData) *serviceerror.ServiceError {
+func (_mock *NotificationSenderServiceInterfaceMock) Send(ctx context.Context, channel common.ChannelType, senderID string, data common.NotificationData) *common0.ServiceError {
 	ret := _mock.Called(ctx, channel, senderID, data)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Send")
 	}
 
-	var r0 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, common.ChannelType, string, common.NotificationData) *serviceerror.ServiceError); ok {
+	var r0 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, common.ChannelType, string, common.NotificationData) *common0.ServiceError); ok {
 		r0 = returnFunc(ctx, channel, senderID, data)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*serviceerror.ServiceError)
+			r0 = ret.Get(0).(*common0.ServiceError)
 		}
 	}
 	return r0
@@ -100,12 +100,12 @@ func (_c *NotificationSenderServiceInterfaceMock_Send_Call) Run(run func(ctx con
 	return _c
 }
 
-func (_c *NotificationSenderServiceInterfaceMock_Send_Call) Return(serviceError *serviceerror.ServiceError) *NotificationSenderServiceInterfaceMock_Send_Call {
+func (_c *NotificationSenderServiceInterfaceMock_Send_Call) Return(serviceError *common0.ServiceError) *NotificationSenderServiceInterfaceMock_Send_Call {
 	_c.Call.Return(serviceError)
 	return _c
 }
 
-func (_c *NotificationSenderServiceInterfaceMock_Send_Call) RunAndReturn(run func(ctx context.Context, channel common.ChannelType, senderID string, data common.NotificationData) *serviceerror.ServiceError) *NotificationSenderServiceInterfaceMock_Send_Call {
+func (_c *NotificationSenderServiceInterfaceMock_Send_Call) RunAndReturn(run func(ctx context.Context, channel common.ChannelType, senderID string, data common.NotificationData) *common0.ServiceError) *NotificationSenderServiceInterfaceMock_Send_Call {
 	_c.Call.Return(run)
 	return _c
 }

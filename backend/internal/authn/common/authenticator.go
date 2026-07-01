@@ -22,7 +22,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 var (
@@ -62,7 +62,7 @@ func GetAuthenticatorFactors(name string) []AuthenticationFactor {
 }
 
 // GetAuthenticatorNameForIDPType returns the authenticator name for a given IDP type.
-func GetAuthenticatorNameForIDPType(idpType idp.IDPType) (string, error) {
+func GetAuthenticatorNameForIDPType(idpType providers.IDPType) (string, error) {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
 

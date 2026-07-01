@@ -41,9 +41,16 @@ schema: {
       "displayName": "Full Name",
       "required": false
     },
-    "mobileNumber": {
+    "mobile_number": {
       "type": "string",
       "displayName": "Mobile Number",
       "required": false
     }
   }
+
+---
+# resource_type: server_config
+name: cors
+value:
+  allowedOrigins:
+    - "https://localhost:3000"

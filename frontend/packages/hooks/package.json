@@ -1,4 +1,5 @@
 {
+  "private": true,
   "name": "@thunderid/hooks",
   "version": "0.0.0",
   "description": "Shared React hooks for ⚡️ ThunderID applications",
@@ -51,8 +52,10 @@
   "devDependencies": {
     "@playwright/test": "catalog:",
     "@thunderid/eslint-plugin": "workspace:^",
+    "@thunderid/logger": "workspace:^",
     "@thunderid/prettier-config": "workspace:^",
     "@thunderid/test-utils": "workspace:^",
+    "@thunderid/utils": "workspace:^",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@vitest/browser-playwright": "catalog:",

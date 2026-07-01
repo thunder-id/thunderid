@@ -22,11 +22,15 @@ import (
 	"context"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -53,7 +57,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OAuth_AllRequired() {
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4, *prop5, *prop6}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOAuth, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -71,7 +75,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OAuth_WithOptional() {
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4, *prop5, *prop6, *prop7}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOAuth, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -84,7 +88,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OAuth_MissingRequired() {
 
 	properties := []cmodels.Property{*prop1, *prop2}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOAuth, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -102,7 +106,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OIDC_AllRequired() {
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4, *prop5}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOIDC, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOIDC, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -129,7 +133,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OIDC_WithExistingScopes() 
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4, *prop5, *prop6}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOIDC, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOIDC, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -154,7 +158,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OIDC_ScopesAlreadyHasOpenI
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4, *prop5, *prop6}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOIDC, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOIDC, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -174,7 +178,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_Google_WithDefaults() {
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeGoogle, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeGoogle, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -201,7 +205,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_Google_WithCustomEndpoints
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeGoogle, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeGoogle, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -223,7 +227,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_GitHub_WithDefaults() {
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeGitHub, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeGitHub, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -248,7 +252,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_GitHub_WithCustomEndpoints
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeGitHub, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeGitHub, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -268,7 +272,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_EmptyPropertyName() {
 
 	properties := []cmodels.Property{*prop1}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOAuth, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -281,7 +285,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_EmptyPropertyValue() {
 
 	properties := []cmodels.Property{*prop1}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOAuth, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -295,7 +299,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_UnsupportedProperty() {
 
 	properties := []cmodels.Property{*prop1, *prop2}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOAuth, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -309,11 +313,11 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_InvalidIDPType() {
 
 	properties := []cmodels.Property{*prop1}
 
-	result, err := validateIDPProperties(context.Background(), IDPType("INVALID"), properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPType("INVALID"), properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
-	s.Equal(serviceerror.InternalServerError.Code, err.Code)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (s *IDPUtilsTestSuite) TestPropertyMapToSlice() {
@@ -407,9 +411,9 @@ func (s *IDPUtilsTestSuite) TestValidateIDP_ValidOAuth() {
 	prop5, _ := cmodels.NewProperty(PropTokenEndpoint, "http://idp/token", false)
 	prop6, _ := cmodels.NewProperty(PropUserInfoEndpoint, "http://idp/userinfo", false)
 
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		Name:       "Test OAuth IDP",
-		Type:       IDPTypeOAuth,
+		Type:       providers.IDPTypeOAuth,
 		Properties: []cmodels.Property{*prop1, *prop2, *prop3, *prop4, *prop5, *prop6},
 	}
 
@@ -427,9 +431,9 @@ func (s *IDPUtilsTestSuite) TestValidateIDP_NilIDP() {
 }
 
 func (s *IDPUtilsTestSuite) TestValidateIDP_EmptyName() {
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		Name: "",
-		Type: IDPTypeOAuth,
+		Type: providers.IDPTypeOAuth,
 	}
 
 	err := validateIDP(context.Background(), idp, s.logger)
@@ -439,7 +443,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDP_EmptyName() {
 }
 
 func (s *IDPUtilsTestSuite) TestValidateIDP_EmptyType() {
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		Name: "Test IDP",
 		Type: "",
 	}
@@ -451,7 +455,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDP_EmptyType() {
 }
 
 func (s *IDPUtilsTestSuite) TestValidateIDP_InvalidType() {
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		Name: "Test IDP",
 		Type: "INVALID",
 	}
@@ -470,9 +474,9 @@ func (s *IDPUtilsTestSuite) TestValidateIDP_WithWhitespaceName() {
 	prop5, _ := cmodels.NewProperty(PropTokenEndpoint, "http://idp/token", false)
 	prop6, _ := cmodels.NewProperty(PropUserInfoEndpoint, "http://idp/userinfo", false)
 
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		Name:       "   ",
-		Type:       IDPTypeOAuth,
+		Type:       providers.IDPTypeOAuth,
 		Properties: []cmodels.Property{*prop1, *prop2, *prop3, *prop4, *prop5, *prop6},
 	}
 
@@ -483,7 +487,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDP_WithWhitespaceName() {
 }
 
 func (s *IDPUtilsTestSuite) TestValidateIDP_WithWhitespaceType() {
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		Name: "Test IDP",
 		Type: "   ",
 	}
@@ -499,7 +503,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_WithWhitespacePropertyName
 
 	properties := []cmodels.Property{*prop1}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOAuth, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -512,7 +516,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_WithWhitespacePropertyValu
 
 	properties := []cmodels.Property{*prop1}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOAuth, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -614,7 +618,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_TokenExchangeOnly_OIDC_Suc
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOIDC, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOIDC, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -628,7 +632,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_TokenExchangeEnabled_Missi
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOIDC, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOIDC, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -645,7 +649,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_TokenExchangeEnabled_Missi
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOIDC, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOIDC, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -662,7 +666,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OIDCWithoutTokenExchange_S
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOIDC, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOIDC, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -680,7 +684,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OIDCWithoutTokenExchange_M
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4}
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOIDC, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOIDC, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -691,9 +695,9 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OIDCWithoutTokenExchange_M
 
 func (s *IDPUtilsTestSuite) TestValidateIDP_PropertyValidationFailure() {
 	prop, _ := cmodels.NewProperty("", "value", false)
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		Name:       "Test IDP",
-		Type:       IDPTypeOAuth,
+		Type:       providers.IDPTypeOAuth,
 		Properties: []cmodels.Property{*prop},
 	}
 
@@ -710,7 +714,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_SecretPropertyValueUnreada
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("/tmp/test", &config.Config{
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},
@@ -721,7 +725,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_SecretPropertyValueUnreada
 		`{"client_secret":{"value":"not-valid-ciphertext","isSecret":true}}`)
 	s.NoError(dErr)
 
-	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOAuth, properties, s.logger)
 
 	s.Nil(result)
 	s.NotNil(err)
@@ -736,7 +740,7 @@ func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_NilMappings_NoOp() {
 
 func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_EmptyMappings_NoOp() {
 	attrs := map[string]interface{}{"email": "user@example.com"}
-	result := ApplyAttributeMappings(attrs, []AttributeMapping{})
+	result := ApplyAttributeMappings(attrs, []providers.AttributeMapping{})
 	s.Equal(attrs, result)
 }
 
@@ -744,7 +748,7 @@ func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_RenamesMappedClaim() {
 	attrs := map[string]interface{}{
 		"http://schemas.example.com/emailaddress": "user@example.com",
 	}
-	result := ApplyAttributeMappings(attrs, []AttributeMapping{
+	result := ApplyAttributeMappings(attrs, []providers.AttributeMapping{
 		{ExternalAttribute: "http://schemas.example.com/emailaddress", LocalAttribute: "email"},
 	})
 	s.Equal("user@example.com", result["email"])
@@ -754,7 +758,7 @@ func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_RenamesMappedClaim() {
 
 func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_OneSourceToMultipleTargets() {
 	attrs := map[string]interface{}{"email": "user@example.com"}
-	result := ApplyAttributeMappings(attrs, []AttributeMapping{
+	result := ApplyAttributeMappings(attrs, []providers.AttributeMapping{
 		{ExternalAttribute: "email", LocalAttribute: "email"},
 		{ExternalAttribute: "email", LocalAttribute: "contactEmail"},
 	})
@@ -768,7 +772,7 @@ func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_UnmappedPassesThrough() {
 		"department": "engineering",
 	}
 	result := ApplyAttributeMappings(
-		attrs, []AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}})
+		attrs, []providers.AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}})
 	s.Equal("Jane", result["firstName"])
 	s.Equal("engineering", result["department"])
 	_, present := result["given_name"]
@@ -781,14 +785,14 @@ func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_MappedValueOverridesColli
 		"firstName":  "stale",
 	}
 	result := ApplyAttributeMappings(
-		attrs, []AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}})
+		attrs, []providers.AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}})
 	s.Equal("Jane", result["firstName"])
 }
 
 func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_MissingExternalClaimIgnored() {
 	attrs := map[string]interface{}{"email": "user@example.com"}
 	result := ApplyAttributeMappings(
-		attrs, []AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}})
+		attrs, []providers.AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}})
 	s.Equal("user@example.com", result["email"])
 	_, present := result["firstName"]
 	s.False(present)
@@ -802,7 +806,7 @@ func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_NestedSourcePath() {
 		"keep": "value",
 	}
 	result := ApplyAttributeMappings(
-		attrs, []AttributeMapping{{ExternalAttribute: "address.email", LocalAttribute: "email"}})
+		attrs, []providers.AttributeMapping{{ExternalAttribute: "address.email", LocalAttribute: "email"}})
 	s.Equal("user@example.com", result["email"])
 	// The containing nested object is read non-destructively and passes through.
 	s.Equal(attrs["address"], result["address"])
@@ -814,7 +818,7 @@ func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_DottedKeyMatchedLiterally
 	attrs := map[string]interface{}{
 		"http://schemas.example.com/emailaddress": "user@example.com",
 	}
-	result := ApplyAttributeMappings(attrs, []AttributeMapping{
+	result := ApplyAttributeMappings(attrs, []providers.AttributeMapping{
 		{ExternalAttribute: "http://schemas.example.com/emailaddress", LocalAttribute: "email"},
 	})
 	s.Equal("user@example.com", result["email"])
@@ -822,7 +826,7 @@ func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_DottedKeyMatchedLiterally
 
 func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_SubPreservedWhenMappedToMultipleTargets() {
 	attrs := map[string]interface{}{"sub": "user-123"}
-	result := ApplyAttributeMappings(attrs, []AttributeMapping{
+	result := ApplyAttributeMappings(attrs, []providers.AttributeMapping{
 		{ExternalAttribute: "sub", LocalAttribute: "username"},
 		{ExternalAttribute: "sub", LocalAttribute: "email"},
 	})
@@ -836,7 +840,7 @@ func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_SubPreservedAlongsideOthe
 		"sub":        "user-123",
 		"given_name": "Jane",
 	}
-	result := ApplyAttributeMappings(attrs, []AttributeMapping{
+	result := ApplyAttributeMappings(attrs, []providers.AttributeMapping{
 		{ExternalAttribute: "sub", LocalAttribute: "picture"},
 		{ExternalAttribute: "given_name", LocalAttribute: "firstName"},
 	})
@@ -853,14 +857,14 @@ func (s *IDPUtilsTestSuite) TestGetAttributeMappings_NilIDP() {
 }
 
 func (s *IDPUtilsTestSuite) TestGetAttributeMappings_NilAttributeConfiguration() {
-	s.Nil(GetAttributeMappings(&IDPDTO{}))
+	s.Nil(GetAttributeMappings(&providers.IDPDTO{}))
 }
 
 func (s *IDPUtilsTestSuite) TestGetAttributeMappings_ReturnsMappings() {
-	mappings := []AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}}
-	idpDTO := &IDPDTO{AttributeConfiguration: &AttributeConfiguration{
-		UserTypeResolution:        &UserTypeResolution{Default: "person"},
-		UserTypeAttributeMappings: []UserTypeAttributeMapping{{UserType: "person", Attributes: mappings}},
+	mappings := []providers.AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}}
+	idpDTO := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution:        &providers.UserTypeResolution{Default: "person"},
+		UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{UserType: "person", Attributes: mappings}},
 	}}
 	s.Equal(mappings, GetAttributeMappings(idpDTO))
 }
@@ -870,11 +874,11 @@ func (s *IDPUtilsTestSuite) TestGetMappedUserType_NilIDP() {
 }
 
 func (s *IDPUtilsTestSuite) TestGetMappedUserType_NilAttributeConfiguration() {
-	s.Equal("", GetMappedUserType(&IDPDTO{}))
+	s.Equal("", GetMappedUserType(&providers.IDPDTO{}))
 }
 
 func (s *IDPUtilsTestSuite) TestGetMappedUserType_ReturnsEntityType() {
-	s.Equal("person", GetMappedUserType(&IDPDTO{AttributeConfiguration: &AttributeConfiguration{
-		UserTypeResolution: &UserTypeResolution{Default: "person"},
+	s.Equal("person", GetMappedUserType(&providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{Default: "person"},
 	}}))
 }

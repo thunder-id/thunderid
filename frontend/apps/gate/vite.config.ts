@@ -31,7 +31,7 @@ const currentDir = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ? Number(process.env.PORT) : 5190;
 const HOST = process.env.HOST ?? 'localhost';
 const BASE_URL = process.env.BASE_URL ?? '/gate';
-const ANALYZER_ENABLED = process.env.ANALYZE === 'true' || false;
+const ANALYZER_ENABLED = process.env.ANALYZE === 'true';
 const BUNDLE_ANALYSIS_ENABLED = process.env.CODECOV_BUNDLE_UPLOAD === 'true';
 
 // https://vite.dev/config/
@@ -92,7 +92,7 @@ export default defineConfig({
             open: true,
             gzipSize: true,
             brotliSize: true,
-          }),
+          }) as import('vite').PluginOption,
         ]
       : []),
     // Upload bundle stats to Codecov (no-op unless CODECOV_BUNDLE_UPLOAD=true in CI).

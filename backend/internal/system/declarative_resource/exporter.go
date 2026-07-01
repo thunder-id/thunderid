@@ -21,7 +21,8 @@ package declarativeresource
 import (
 	"context"
 
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -42,11 +43,11 @@ type ResourceExporter interface {
 	GetParameterizerType() string
 
 	// GetAllResourceIDs retrieves all resource IDs for wildcard export
-	GetAllResourceIDs(ctx context.Context) ([]string, *serviceerror.ServiceError)
+	GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError)
 
 	// GetResourceByID retrieves a single resource by its ID
 	// Returns: resource object, resource name, error
-	GetResourceByID(ctx context.Context, id string) (interface{}, string, *serviceerror.ServiceError)
+	GetResourceByID(ctx context.Context, id string) (interface{}, string, *tidcommon.ServiceError)
 
 	// ValidateResource validates the resource and extracts its name
 	// Returns: resource name, export error

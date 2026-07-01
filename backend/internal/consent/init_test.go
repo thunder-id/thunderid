@@ -21,6 +21,8 @@ package consent
 import (
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
@@ -37,7 +39,7 @@ func TestInitTestSuite(t *testing.T) {
 
 func (s *InitTestSuite) TestInitialize_ReturnsNonNilService() {
 	cfg := &config.Config{
-		Consent: config.ConsentConfig{
+		Consent: engineconfig.ConsentConfig{
 			Enabled: true,
 			BaseURL: "http://consent.example.com",
 		},
@@ -53,7 +55,7 @@ func (s *InitTestSuite) TestInitialize_ReturnsNonNilService() {
 
 func (s *InitTestSuite) TestInitialize_DisabledConsent() {
 	cfg := &config.Config{
-		Consent: config.ConsentConfig{
+		Consent: engineconfig.ConsentConfig{
 			Enabled: false,
 			BaseURL: "",
 		},

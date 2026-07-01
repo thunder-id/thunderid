@@ -192,6 +192,7 @@ func (suite *OUPathAPITestSuite) TestUpdateOrganizationUnitByPath() {
 // TestUpdateOrganizationUnitByInvalidPath tests updating an organization unit by invalid handle path
 func (suite *OUPathAPITestSuite) TestUpdateOrganizationUnitByInvalidPath() {
 	updateRequest := UpdateOURequest{
+		Handle:      "nonexistent",
 		Name:        "Updated OU via Invalid Path",
 		Description: "Updated description via invalid path",
 	}

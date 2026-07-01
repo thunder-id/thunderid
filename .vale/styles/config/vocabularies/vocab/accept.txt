@@ -192,6 +192,7 @@ rp_id
 EUDI
 [Vv]erifiable
 [Kk]rakenD
+[Nn]grok
 [Gg]oroutines?
 jsDelivr
 [Uu]nstyled
@@ -202,3 +203,6 @@ Xcode
 Jetpack
 Gradle
 Keystore
+thunderid_flutter
+Kong
+[Kk]onnect

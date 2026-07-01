@@ -22,14 +22,15 @@ import (
 	"errors"
 	"slices"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
 	authnoidc "github.com/thunder-id/thunderid/internal/authn/oidc"
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/idp"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -50,22 +51,22 @@ type oidcAuthExecutorInterface interface {
 type oidcAuthExecutor struct {
 	oAuthExecutorInterface
 	authService   authnoidc.OIDCAuthnCoreServiceInterface
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface
-	idpType       idp.IDPType
+	authnProvider providers.AuthnProviderManager
+	idpType       providers.IDPType
 	logger        *log.Logger
 }
 
-var _ core.ExecutorInterface = (*oidcAuthExecutor)(nil)
+var _ providers.Executor = (*oidcAuthExecutor)(nil)
 
 // newOIDCAuthExecutor creates a new instance of OIDCAuthExecutor.
 func newOIDCAuthExecutor(
 	name string,
-	defaultInputs, prerequisites []common.Input,
+	defaultInputs, prerequisites []providers.Input,
 	flowFactory core.FlowFactoryInterface,
 	idpService idp.IDPServiceInterface,
 	authService authnoidc.OIDCAuthnCoreServiceInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
-	idpType idp.IDPType,
+	authnProvider providers.AuthnProviderManager,
+	idpType providers.IDPType,
 ) oidcAuthExecutorInterface {
 	if name == "" {
 		name = ExecutorNameOIDCAuth
@@ -93,11 +94,11 @@ func newOIDCAuthExecutor(
 // Execute executes the OIDC authentication logic.
 //
 //nolint:dupl // OAuth and OIDC executors share the same execute skeleton with type-specific behavior.
-func (o *oidcAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+func (o *oidcAuthExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing OIDC authentication executor")
 
-	execResp := &common.ExecutorResponse{
+	execResp := &providers.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 		AuthUser:       ctx.AuthUser,
@@ -124,14 +125,14 @@ func (o *oidcAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRespo
 }
 
 // ProcessAuthFlowResponse processes the response from the OIDC authentication flow and authenticates the user.
-func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) error {
+func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) error {
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Processing OIDC authentication response")
 
 	code, ok := ctx.UserInputs[userInputCode]
 	if !ok || code == "" {
-		execResp.AuthUser = authnprovidermgr.AuthUser{}
+		execResp.AuthUser = providers.AuthUser{}
 		return nil
 	}
 
@@ -142,7 +143,7 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 		expectedState := ctx.RuntimeData[common.RuntimeKeyOAuthState]
 		if returnedState != expectedState {
 			logger.Debug(ctx.Context, "OAuth state mismatch")
-			execResp.Status = common.ExecFailure
+			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrInvalidOAuthState
 			return nil
 		}
@@ -179,8 +180,8 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 	authUser, federatedAttributes, svcErr := o.authnProvider.AuthenticateUser(
 		ctx.Context, nil, credentials, nil, nil, execResp.AuthUser)
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ClientErrorType {
-			execResp.Status = common.ExecFailure
+		if svcErr.Type == tidcommon.ClientErrorType {
+			execResp.Status = providers.ExecFailure
 			execResp.Error = svcErr
 			return nil
 		}
@@ -195,14 +196,14 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 	if claimNonce, ok := federatedAttributes[userInputNonce]; ok && claimNonce != "" {
 		expectedNonce := ctx.UserInputs[userInputNonce]
 		if expectedNonce != "" && claimNonce != expectedNonce {
-			execResp.Status = common.ExecFailure
+			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrNonceMismatch
 			return nil
 		}
 	}
 
 	if !validateFederatedIdentifierConsistency(ctx, federatedAttributes, existingCtxUserAttributes) {
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrInvalidFederatedUser
 		return nil
 	}
@@ -217,23 +218,23 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 	}
 
 	switch ctx.FlowType {
-	case common.FlowTypeAuthentication:
+	case providers.FlowTypeAuthentication:
 		if isAuthenticationWithoutLocalUserAllowed(ctx) {
 			execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
 		}
-	case common.FlowTypeRegistration:
+	case providers.FlowTypeRegistration:
 		if isRegistrationWithExistingUserAllowed(ctx) {
 			execResp.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser] = dataValueTrue
 		}
 	}
 
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 	return nil
 }
 
 // getContextUserAttributes extracts user-facing attributes from the external claims map.
 // TODO: Need to convert attributes as per the IDP to local attribute mapping when the support is implemented.
-func (o *oidcAuthExecutor) getContextUserAttributes(execResp *common.ExecutorResponse,
+func (o *oidcAuthExecutor) getContextUserAttributes(execResp *providers.ExecutorResponse,
 	claims map[string]interface{}) map[string]interface{} {
 	userClaims := make(map[string]interface{})
 

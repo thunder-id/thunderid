@@ -25,6 +25,7 @@ import (
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // entityCompositeStore implements a composite store that combines file-based (immutable) and
@@ -43,19 +44,19 @@ func newEntityCompositeStore(fileStore, dbStore entityStoreInterface) *entityCom
 }
 
 // CreateEntity creates a new entity in the database store only.
-func (c *entityCompositeStore) CreateEntity(ctx context.Context, entity Entity,
+func (c *entityCompositeStore) CreateEntity(ctx context.Context, entity providers.Entity,
 	credentials json.RawMessage, systemCredentials json.RawMessage) error {
 	return c.dbStore.CreateEntity(ctx, entity, credentials, systemCredentials)
 }
 
 // GetEntity retrieves an entity by ID from either store (DB first, then file fallback).
-func (c *entityCompositeStore) GetEntity(ctx context.Context, id string) (Entity, error) {
+func (c *entityCompositeStore) GetEntity(ctx context.Context, id string) (providers.Entity, error) {
 	return declarativeresource.CompositeGetHelper(
-		func() (Entity, error) { return c.dbStore.GetEntity(ctx, id) },
-		func() (Entity, error) {
+		func() (providers.Entity, error) { return c.dbStore.GetEntity(ctx, id) },
+		func() (providers.Entity, error) {
 			entity, err := c.fileStore.GetEntity(ctx, id)
 			if err != nil {
-				return Entity{}, err
+				return providers.Entity{}, err
 			}
 			entity.IsReadOnly = true
 			return entity, nil
@@ -84,7 +85,7 @@ func (c *entityCompositeStore) GetEntityWithCredentials(ctx context.Context, id 
 }
 
 // UpdateEntity fully updates an entity in the database store only.
-func (c *entityCompositeStore) UpdateEntity(ctx context.Context, entity *Entity) error {
+func (c *entityCompositeStore) UpdateEntity(ctx context.Context, entity *providers.Entity) error {
 	return c.dbStore.UpdateEntity(ctx, entity)
 }
 
@@ -129,8 +130,8 @@ func (c *entityCompositeStore) IdentifyEntity(ctx context.Context,
 
 // SearchEntities searches for entities matching the given filters from both stores.
 func (c *entityCompositeStore) SearchEntities(ctx context.Context,
-	filters map[string]interface{}) ([]Entity, error) {
-	var allEntities []Entity
+	filters map[string]interface{}) ([]providers.Entity, error) {
+	var allEntities []providers.Entity
 
 	dbEntities, err := c.dbStore.SearchEntities(ctx, filters)
 	if err != nil && !errors.Is(err, ErrEntityNotFound) {
@@ -161,10 +162,10 @@ func (c *entityCompositeStore) GetEntityListCount(ctx context.Context, category 
 	return c.getDistinctEntityCount(
 		func() (int, error) { return c.dbStore.GetEntityListCount(ctx, category, filters) },
 		func() (int, error) { return c.fileStore.GetEntityListCount(ctx, category, filters) },
-		func(count int) ([]Entity, error) {
+		func(count int) ([]providers.Entity, error) {
 			return c.dbStore.GetEntityList(ctx, category, count, 0, filters)
 		},
-		func(count int) ([]Entity, error) {
+		func(count int) ([]providers.Entity, error) {
 			return c.fileStore.GetEntityList(ctx, category, count, 0, filters)
 		},
 	)
@@ -172,14 +173,14 @@ func (c *entityCompositeStore) GetEntityListCount(ctx context.Context, category 
 
 // GetEntityList retrieves entities from both stores with pagination.
 func (c *entityCompositeStore) GetEntityList(ctx context.Context, category string,
-	limit, offset int, filters map[string]interface{}) ([]Entity, error) {
+	limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
 	entities, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
 		func() (int, error) { return c.dbStore.GetEntityListCount(ctx, category, filters) },
 		func() (int, error) { return c.fileStore.GetEntityListCount(ctx, category, filters) },
-		func(count int) ([]Entity, error) {
+		func(count int) ([]providers.Entity, error) {
 			return c.dbStore.GetEntityList(ctx, category, count, 0, filters)
 		},
-		func(count int) ([]Entity, error) {
+		func(count int) ([]providers.Entity, error) {
 			return c.fileStore.GetEntityList(ctx, category, count, 0, filters)
 		},
 		mergeAndDeduplicateEntities,
@@ -202,10 +203,10 @@ func (c *entityCompositeStore) GetEntityListCountByOUIDs(ctx context.Context, ca
 	return c.getDistinctEntityCount(
 		func() (int, error) { return c.dbStore.GetEntityListCountByOUIDs(ctx, category, ouIDs, filters) },
 		func() (int, error) { return c.fileStore.GetEntityListCountByOUIDs(ctx, category, ouIDs, filters) },
-		func(count int) ([]Entity, error) {
+		func(count int) ([]providers.Entity, error) {
 			return c.dbStore.GetEntityListByOUIDs(ctx, category, ouIDs, count, 0, filters)
 		},
-		func(count int) ([]Entity, error) {
+		func(count int) ([]providers.Entity, error) {
 			return c.fileStore.GetEntityListByOUIDs(ctx, category, ouIDs, count, 0, filters)
 		},
 	)
@@ -213,14 +214,14 @@ func (c *entityCompositeStore) GetEntityListCountByOUIDs(ctx context.Context, ca
 
 // GetEntityListByOUIDs retrieves entities scoped to OU IDs from both stores with pagination.
 func (c *entityCompositeStore) GetEntityListByOUIDs(ctx context.Context, category string,
-	ouIDs []string, limit, offset int, filters map[string]interface{}) ([]Entity, error) {
+	ouIDs []string, limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
 	entities, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
 		func() (int, error) { return c.dbStore.GetEntityListCountByOUIDs(ctx, category, ouIDs, filters) },
 		func() (int, error) { return c.fileStore.GetEntityListCountByOUIDs(ctx, category, ouIDs, filters) },
-		func(count int) ([]Entity, error) {
+		func(count int) ([]providers.Entity, error) {
 			return c.dbStore.GetEntityListByOUIDs(ctx, category, ouIDs, count, 0, filters)
 		},
-		func(count int) ([]Entity, error) {
+		func(count int) ([]providers.Entity, error) {
 			return c.fileStore.GetEntityListByOUIDs(ctx, category, ouIDs, count, 0, filters)
 		},
 		mergeAndDeduplicateEntities,
@@ -256,9 +257,9 @@ func (c *entityCompositeStore) ValidateEntityIDs(ctx context.Context, entityIDs 
 }
 
 // GetEntitiesByIDs retrieves entities by a list of IDs from both stores.
-func (c *entityCompositeStore) GetEntitiesByIDs(ctx context.Context, entityIDs []string) ([]Entity, error) {
+func (c *entityCompositeStore) GetEntitiesByIDs(ctx context.Context, entityIDs []string) ([]providers.Entity, error) {
 	if len(entityIDs) == 0 {
-		return []Entity{}, nil
+		return []providers.Entity{}, nil
 	}
 
 	dbEntities, err := c.dbStore.GetEntitiesByIDs(ctx, entityIDs)
@@ -314,7 +315,7 @@ func (c *entityCompositeStore) GetGroupCountForEntity(ctx context.Context, entit
 
 // GetEntityGroups delegates to DB store only (groups are for mutable entities).
 func (c *entityCompositeStore) GetEntityGroups(ctx context.Context, entityID string,
-	limit, offset int) ([]EntityGroup, error) {
+	limit, offset int) ([]providers.EntityGroup, error) {
 	return c.dbStore.GetEntityGroups(ctx, entityID, limit, offset)
 }
 
@@ -345,8 +346,8 @@ func (c *entityCompositeStore) LoadIndexedAttributes(attributes []string) error 
 func (c *entityCompositeStore) getDistinctEntityCount(
 	dbCount func() (int, error),
 	fileCount func() (int, error),
-	dbList func(count int) ([]Entity, error),
-	fileList func(count int) ([]Entity, error),
+	dbList func(count int) ([]providers.Entity, error),
+	fileList func(count int) ([]providers.Entity, error),
 ) (int, error) {
 	count, err := dbCount()
 	if err != nil {
@@ -383,9 +384,9 @@ func (c *entityCompositeStore) getDistinctEntityCount(
 
 // mergeAndDeduplicateEntities merges and deduplicates entities from two lists.
 // Database entities take precedence over file-based entities when IDs conflict.
-func mergeAndDeduplicateEntities(dbEntities, fileEntities []Entity) []Entity {
+func mergeAndDeduplicateEntities(dbEntities, fileEntities []providers.Entity) []providers.Entity {
 	seen := make(map[string]bool)
-	result := make([]Entity, 0, len(dbEntities)+len(fileEntities))
+	result := make([]providers.Entity, 0, len(dbEntities)+len(fileEntities))
 
 	for i := range dbEntities {
 		dbEntities[i].IsReadOnly = false

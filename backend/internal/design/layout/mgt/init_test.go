@@ -22,11 +22,12 @@ import (
 	"net/http"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // Test Suite
@@ -42,22 +43,22 @@ func TestLayoutInitTestSuite(t *testing.T) {
 func (suite *LayoutInitTestSuite) TestRegisterRoutes() {
 	mux := http.NewServeMux()
 	mockSvc := &mockLayoutService{
-		getLayoutListFunc: func(limit, offset int) (*LayoutList, *serviceerror.ServiceError) {
+		getLayoutListFunc: func(limit, offset int) (*LayoutList, *tidcommon.ServiceError) {
 			return &LayoutList{Layouts: []Layout{}, Links: []Link{}}, nil
 		},
-		createLayoutFunc: func(layout CreateLayoutRequest) (*Layout, *serviceerror.ServiceError) {
+		createLayoutFunc: func(layout CreateLayoutRequest) (*Layout, *tidcommon.ServiceError) {
 			return &Layout{}, nil
 		},
-		getLayoutFunc: func(id string) (*Layout, *serviceerror.ServiceError) {
+		getLayoutFunc: func(id string) (*Layout, *tidcommon.ServiceError) {
 			return &Layout{}, nil
 		},
-		updateLayoutFunc: func(id string, layout UpdateLayoutRequest) (*Layout, *serviceerror.ServiceError) {
+		updateLayoutFunc: func(id string, layout UpdateLayoutRequest) (*Layout, *tidcommon.ServiceError) {
 			return &Layout{}, nil
 		},
-		deleteLayoutFunc: func(id string) *serviceerror.ServiceError {
+		deleteLayoutFunc: func(id string) *tidcommon.ServiceError {
 			return nil
 		},
-		isLayoutExistFunc: func(id string) (bool, *serviceerror.ServiceError) {
+		isLayoutExistFunc: func(id string) (bool, *tidcommon.ServiceError) {
 			return false, nil
 		},
 	}

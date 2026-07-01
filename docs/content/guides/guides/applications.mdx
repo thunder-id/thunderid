@@ -177,7 +177,7 @@ Controls how the application authenticates at the `/oauth2/token` endpoint.
 |--------|-------------|----------|
 | `client_secret_basic` | Client credentials sent in the `Authorization` header (HTTP Basic). Default. | Full-stack Apps, Backend Services |
 | `client_secret_post` | Client credentials sent in the POST body. | Full-stack Apps, Backend Services that cannot set headers |
-| `private_key_jwt` | Client signs a JWT with its private key. Requires a certificate configured on the application. No client secret. | High-assurance confidential clients |
+| `private_key_jwt` | Client signs a JWT with its private key. Requires an OAuth client certificate. No client secret. | High-assurance confidential clients |
 | `none` | No client authentication. Public clients only. Must be combined with PKCE. | Browser Apps, Mobile Apps |
 
 ### PKCE
@@ -224,7 +224,7 @@ You can define custom scopes with custom claim mappings. See [Custom Scope-to-Cl
 | **Validity Period** | Lifetime of the ID token in seconds. Defaults to the deployment-level setting if not configured. |
 | **User Attributes** | User attributes to include in the ID token. Only attributes that are both listed here and covered by the requested scopes are included. |
 | **Response Type** | Format of the ID token: `JWT` (default, signed only), `JWE` (encrypted), or `NESTED_JWT` (signed then encrypted). |
-| **Encryption Algorithm** | Key-management algorithm for encryption. Required when Response Type is `JWE` or `NESTED_JWT`. Supported: `RSA-OAEP`, `RSA-OAEP-256`. Requires a `JWKS` or `JWKS_URI` certificate on the application. |
+| **Encryption Algorithm** | Key-management algorithm for encryption. Required when Response Type is `JWE` or `NESTED_JWT`. Supported: `RSA-OAEP`, `RSA-OAEP-256`. Requires a `JWKS` or `JWKS_URI` OAuth client certificate. |
 | **Encryption Encoding** | Content-encryption algorithm. Required when Encryption Algorithm is set. Supported: `A128CBC-HS256`, `A256GCM`. |
 
 #### Userinfo Endpoint
@@ -232,7 +232,7 @@ You can define custom scopes with custom claim mappings. See [Custom Scope-to-Cl
 | Setting | Description |
 |---------|-------------|
 | **Response Type** | Format of the userinfo response: `JSON` (default), `JWS` (signed), `JWE` (encrypted), or `NESTED_JWT` (signed then encrypted). |
-| **Signing Algorithm** | JWS algorithm when Response Type is `JWS` or `NESTED_JWT`. Supported: `RS256`, `RS512`, `PS256`, `ES256`, `ES384`, `ES512`, `EdDSA`. Requires a certificate on the application. |
+| **Signing Algorithm** | JWS algorithm when Response Type is `JWS` or `NESTED_JWT`. Supported: `RS256`, `RS512`, `PS256`, `ES256`, `ES384`, `ES512`, `EdDSA`. Requires an OAuth client certificate. |
 | **Encryption Algorithm** | Key-management algorithm when Response Type is `JWE` or `NESTED_JWT`. Supported: `RSA-OAEP`, `RSA-OAEP-256`. Requires a `JWKS` or `JWKS_URI` certificate. |
 | **Encryption Encoding** | Content-encryption algorithm. Required when Encryption Algorithm is set. Supported: `A128CBC-HS256`, `A256GCM`. |
 | **User Attributes** | Attributes returned by the `/userinfo` endpoint. If not configured, falls back to the ID token attribute list. |
@@ -261,7 +261,7 @@ ACR values must map to AMR (Authentication Method Reference) values defined in t
 
 ### Certificate Configuration
 
-For applications that use `private_key_jwt` token endpoint auth, sign JWT assertions, or require encrypted ID tokens or userinfo responses, you can attach a certificate.
+For applications that use `private_key_jwt` token endpoint auth, sign JWT assertions, or require encrypted ID tokens or userinfo responses, configure the OAuth client certificate in `inboundAuthConfig[].config.certificate`.
 
 | Certificate Type | Description |
 |-----------------|-------------|
@@ -269,7 +269,7 @@ For applications that use `private_key_jwt` token endpoint auth, sign JWT assert
 | `JWKS_URI` | Provide the URL of the application's JWKS endpoint (for example, `https://yourapp.example.com/.well-known/jwks`). <ProductName /> fetches the public keys from this URL. Must use HTTPS. |
 
 :::note
-Encrypted ID tokens and encrypted userinfo responses both require a `JWKS` or `JWKS_URI` certificate on the application. The `private_key_jwt` token endpoint auth method also requires a certificate and cannot be combined with a client secret.
+Encrypted ID tokens and encrypted userinfo responses both require a `JWKS` or `JWKS_URI` OAuth client certificate. The `private_key_jwt` token endpoint auth method also requires a certificate and cannot be combined with a client secret.
 :::
 
 ## Update an Application

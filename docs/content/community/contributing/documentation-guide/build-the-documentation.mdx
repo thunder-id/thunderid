@@ -1,0 +1,19 @@
+---
+title: Build the Documentation
+---
+
+# Build the Documentation
+
+The documentation can be built independently from the frontend applications.
+From the project root, run the following command:
+
+```bash
+make build_docs
+```
+
+This command:
+1. Builds frontend packages (required dependencies)
+2. Generates API specifications from OpenAPI files
+3. Builds the Docusaurus site
+
+**Output**: Built documentation in `docs/build/`

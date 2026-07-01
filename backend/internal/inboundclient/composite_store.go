@@ -24,6 +24,7 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // compositeStore combines a file-backed (immutable, declarative) store and a database-backed
@@ -75,7 +76,7 @@ func (c *compositeStore) CreateInboundClient(ctx context.Context, client inbound
 }
 
 func (c *compositeStore) CreateOAuthProfile(ctx context.Context, entityID string,
-	oauthProfile *inboundmodel.OAuthProfile) error {
+	oauthProfile *providers.OAuthProfile) error {
 	return c.dbStore.CreateOAuthProfile(ctx, entityID, oauthProfile)
 }
 
@@ -93,10 +94,10 @@ func (c *compositeStore) GetInboundClientByEntityID(ctx context.Context, entityI
 }
 
 func (c *compositeStore) GetOAuthProfileByEntityID(ctx context.Context, entityID string) (
-	*inboundmodel.OAuthProfile, error) {
+	*providers.OAuthProfile, error) {
 	return declarativeresource.CompositeGetHelper(
-		func() (*inboundmodel.OAuthProfile, error) { return c.dbStore.GetOAuthProfileByEntityID(ctx, entityID) },
-		func() (*inboundmodel.OAuthProfile, error) {
+		func() (*providers.OAuthProfile, error) { return c.dbStore.GetOAuthProfileByEntityID(ctx, entityID) },
+		func() (*providers.OAuthProfile, error) {
 			return c.fileStore.GetOAuthProfileByEntityID(ctx, entityID)
 		},
 		ErrInboundClientNotFound,
@@ -108,7 +109,7 @@ func (c *compositeStore) UpdateInboundClient(ctx context.Context, client inbound
 }
 
 func (c *compositeStore) UpdateOAuthProfile(ctx context.Context, entityID string,
-	oauthProfile *inboundmodel.OAuthProfile) error {
+	oauthProfile *providers.OAuthProfile) error {
 	return c.dbStore.UpdateOAuthProfile(ctx, entityID, oauthProfile)
 }
 

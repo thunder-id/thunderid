@@ -113,11 +113,12 @@ The two tabs below offer the same end state through different paths.
 
 Before you begin, make sure you have:
 
-- <ProductName /> running locally, with `http://localhost:5173` added to `cors.allowed_origins` in `backend/cmd/server/deployment.yaml` so the web app can call <ProductName /> from the browser. Keep existing entries and restart <ProductName /> after the change. See [Get <ProductName />](/docs/next/guides/getting-started/get-thunderid).
+- <ProductName /> running locally, with `http://localhost:5173` added to the server-config `cors` section so the web app can call <ProductName /> from the browser. Add it to `backend/cmd/server/config/resources/server_configs/cors.yaml`, or use `PUT /server-config/cors` after startup. See [Get <ProductName />](/docs/next/guides/getting-started/get-thunderid).
 
   ```yaml
-  cors:
-    allowed_origins:
+  name: cors
+  value:
+    allowedOrigins:
       - "http://localhost:5173"
   ```
 

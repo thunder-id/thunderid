@@ -22,11 +22,12 @@ import (
 	"net/http"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // Test Suite
@@ -42,22 +43,22 @@ func TestThemeInitTestSuite(t *testing.T) {
 func (suite *ThemeInitTestSuite) TestRegisterRoutes() {
 	mux := http.NewServeMux()
 	mockSvc := &mockThemeService{
-		getThemeListFunc: func(limit, offset int) (*ThemeList, *serviceerror.ServiceError) {
+		getThemeListFunc: func(limit, offset int) (*ThemeList, *tidcommon.ServiceError) {
 			return &ThemeList{Themes: []Theme{}, Links: []Link{}}, nil
 		},
-		createThemeFunc: func(theme CreateThemeRequestWithID) (*Theme, *serviceerror.ServiceError) {
+		createThemeFunc: func(theme CreateThemeRequestWithID) (*Theme, *tidcommon.ServiceError) {
 			return &Theme{}, nil
 		},
-		getThemeFunc: func(id string) (*Theme, *serviceerror.ServiceError) {
+		getThemeFunc: func(id string) (*Theme, *tidcommon.ServiceError) {
 			return &Theme{}, nil
 		},
-		updateThemeFunc: func(id string, theme UpdateThemeRequest) (*Theme, *serviceerror.ServiceError) {
+		updateThemeFunc: func(id string, theme UpdateThemeRequest) (*Theme, *tidcommon.ServiceError) {
 			return &Theme{}, nil
 		},
-		deleteThemeFunc: func(id string) *serviceerror.ServiceError {
+		deleteThemeFunc: func(id string) *tidcommon.ServiceError {
 			return nil
 		},
-		isThemeExistFunc: func(id string) (bool, *serviceerror.ServiceError) {
+		isThemeExistFunc: func(id string) (bool, *tidcommon.ServiceError) {
 			return false, nil
 		},
 	}

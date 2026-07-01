@@ -23,6 +23,8 @@ import (
 	"net/url"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -72,8 +74,8 @@ func (suite *InitTestSuite) SetupTest() {
 	_ = config.InitializeServerRuntime(
 		"test-home",
 		&config.Config{
-			OAuth: config.OAuthConfig{
-				DPoP: config.DPoPConfig{
+			OAuth: engineconfig.OAuthConfig{
+				DPoP: engineconfig.DPoPConfig{
 					AllowedAlgs: []string{"ES256", "PS256"},
 				},
 			},

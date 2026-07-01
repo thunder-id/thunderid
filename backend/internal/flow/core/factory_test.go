@@ -21,10 +21,13 @@ package core
 import (
 	"testing"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 type FlowFactoryTestSuite struct {
@@ -140,23 +143,23 @@ func (s *FlowFactoryTestSuite) TestCreateGraph() {
 	tests := []struct {
 		name         string
 		graphID      string
-		flowType     common.FlowType
+		flowType     providers.FlowType
 		expectUUID   bool
-		expectedType common.FlowType
+		expectedType providers.FlowType
 	}{
-		{"Create graph with ID and type", "graph-1", common.FlowTypeAuthentication,
-			false, common.FlowTypeAuthentication},
-		{"Create graph with registration flow type", "graph-2", common.FlowTypeRegistration,
-			false, common.FlowTypeRegistration},
-		{"Empty graph ID generates UUID", "", common.FlowTypeAuthentication,
-			true, common.FlowTypeAuthentication},
+		{"Create graph with ID and type", "graph-1", providers.FlowTypeAuthentication,
+			false, providers.FlowTypeAuthentication},
+		{"Create graph with registration flow type", "graph-2", providers.FlowTypeRegistration,
+			false, providers.FlowTypeRegistration},
+		{"Empty graph ID generates UUID", "", providers.FlowTypeAuthentication,
+			true, providers.FlowTypeAuthentication},
 		{"Empty flow type defaults to authentication", "graph-3", "",
-			false, common.FlowTypeAuthentication},
+			false, providers.FlowTypeAuthentication},
 	}
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			graph := s.factory.CreateGraph(tt.graphID, tt.flowType)
+			graph := s.factory.CreateGraph(tt.graphID, tt.flowType, 1)
 
 			s.NotNil(graph)
 			if tt.expectUUID {
@@ -172,15 +175,15 @@ func (s *FlowFactoryTestSuite) TestCreateGraph() {
 }
 
 func (s *FlowFactoryTestSuite) TestCreateExecutor() {
-	defaultInputs := []common.Input{{Identifier: "input1", Required: true}}
-	prerequisites := []common.Input{{Identifier: "prereq1", Required: true}}
+	defaultInputs := []providers.Input{{Identifier: "input1", Required: true}}
+	prerequisites := []providers.Input{{Identifier: "prereq1", Required: true}}
 
-	executor := s.factory.CreateExecutor("test-executor", common.ExecutorTypeAuthentication,
+	executor := s.factory.CreateExecutor("test-executor", providers.ExecutorTypeAuthentication,
 		defaultInputs, prerequisites)
 
 	s.NotNil(executor)
 	s.Equal("test-executor", executor.GetName())
-	s.Equal(common.ExecutorTypeAuthentication, executor.GetType())
+	s.Equal(providers.ExecutorTypeAuthentication, executor.GetType())
 	s.Equal(defaultInputs, executor.GetDefaultInputs())
 	s.Equal(prerequisites, executor.GetPrerequisites())
 }
@@ -192,7 +195,7 @@ func (s *FlowFactoryTestSuite) TestCloneNodeSuccess() {
 	node.AddPreviousNode("prev-1")
 	if execNode, ok := node.(ExecutorBackedNodeInterface); ok {
 		execNode.SetExecutorName("test-executor")
-		execNode.SetInputs([]common.Input{{Identifier: "input1", Required: true}})
+		execNode.SetInputs([]providers.Input{{Identifier: "input1", Required: true}})
 	}
 
 	clonedNode, err := s.factory.CloneNode(node)
@@ -380,7 +383,7 @@ type fakeExecutorBackedNode struct {
 	id string
 }
 
-func (f *fakeExecutorBackedNode) Execute(ctx *NodeContext) (*common.NodeResponse, *serviceerror.ServiceError) {
+func (f *fakeExecutorBackedNode) Execute(ctx *providers.NodeContext) (*common.NodeResponse, *tidcommon.ServiceError) {
 	return nil, nil
 }
 
@@ -428,11 +431,11 @@ func (f *fakeExecutorBackedNode) AddPreviousNode(previousNodeID string) {}
 
 func (f *fakeExecutorBackedNode) RemovePreviousNode(previousNodeID string) {}
 
-func (f *fakeExecutorBackedNode) GetInputs() []common.Input {
+func (f *fakeExecutorBackedNode) GetInputs() []providers.Input {
 	return nil
 }
 
-func (f *fakeExecutorBackedNode) SetInputs(inputs []common.Input) {}
+func (f *fakeExecutorBackedNode) SetInputs(inputs []providers.Input) {}
 
 func (f *fakeExecutorBackedNode) GetCondition() *NodeCondition {
 	return nil
@@ -440,11 +443,11 @@ func (f *fakeExecutorBackedNode) GetCondition() *NodeCondition {
 
 func (f *fakeExecutorBackedNode) SetCondition(condition *NodeCondition) {}
 
-func (f *fakeExecutorBackedNode) ShouldExecute(ctx *NodeContext) bool {
+func (f *fakeExecutorBackedNode) ShouldExecute(ctx *providers.NodeContext) bool {
 	return true
 }
 
-func (f *fakeExecutorBackedNode) GetExecutionPolicy() *ExecutionPolicy {
+func (f *fakeExecutorBackedNode) GetExecutionPolicy() *providers.ExecutionPolicy {
 	return nil
 }
 
@@ -454,11 +457,11 @@ func (f *fakeExecutorBackedNode) GetExecutorName() string {
 
 func (f *fakeExecutorBackedNode) SetExecutorName(name string) {}
 
-func (f *fakeExecutorBackedNode) GetExecutor() ExecutorInterface {
+func (f *fakeExecutorBackedNode) GetExecutor() providers.Executor {
 	return nil
 }
 
-func (f *fakeExecutorBackedNode) SetExecutor(executor ExecutorInterface) {}
+func (f *fakeExecutorBackedNode) SetExecutor(executor providers.Executor) {}
 
 func (f *fakeExecutorBackedNode) GetOnSuccess() string {
 	return ""

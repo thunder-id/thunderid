@@ -21,13 +21,15 @@ package interceptor
 import (
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
@@ -42,7 +44,7 @@ func TestChallengeTokenInterceptorSuite(t *testing.T) {
 }
 
 func (s *ChallengeTokenInterceptorTestSuite) SetupTest() {
-	reg, err := Initialize(InterceptorDependencies{FlowFactory: newMockFlowFactory(s.T())}, config.FlowConfig{})
+	reg, err := Initialize(InterceptorDependencies{FlowFactory: newMockFlowFactory(s.T())}, engineconfig.FlowConfig{})
 	assert.NoError(s.T(), err)
 	ic, err := reg.GetInterceptor(ChallengeTokenInterceptor)
 	assert.NoError(s.T(), err)
@@ -53,7 +55,7 @@ func (s *ChallengeTokenInterceptorTestSuite) SetupTest() {
 
 func (s *ChallengeTokenInterceptorTestSuite) TestExecute_PreRequestMode_ValidatesToken() {
 	ctx := &core.InterceptorContext{
-		Mode:        common.InterceptorModePreRequest,
+		Mode:        providers.InterceptorModePreRequest,
 		ExecutionID: "exec-1",
 		SharedData:  map[string]string{},
 	}
@@ -66,9 +68,9 @@ func (s *ChallengeTokenInterceptorTestSuite) TestExecute_PreRequestMode_Validate
 
 func (s *ChallengeTokenInterceptorTestSuite) TestExecute_PostRequestMode_RotatesToken() {
 	ctx := &core.InterceptorContext{
-		Mode:        common.InterceptorModePostRequest,
+		Mode:        providers.InterceptorModePostRequest,
 		ExecutionID: "exec-1",
-		FlowStatus:  common.FlowStatusIncomplete,
+		FlowStatus:  providers.FlowStatusIncomplete,
 		SharedData:  map[string]string{},
 	}
 
@@ -81,7 +83,7 @@ func (s *ChallengeTokenInterceptorTestSuite) TestExecute_PostRequestMode_Rotates
 
 func (s *ChallengeTokenInterceptorTestSuite) TestExecute_UnknownMode_ReturnsFail() {
 	ctx := &core.InterceptorContext{
-		Mode:        common.InterceptorModePreNode,
+		Mode:        providers.InterceptorModePreNode,
 		ExecutionID: "exec-1",
 		SharedData:  map[string]string{},
 	}
@@ -96,7 +98,7 @@ func (s *ChallengeTokenInterceptorTestSuite) TestExecute_UnknownMode_ReturnsFail
 
 func (s *ChallengeTokenInterceptorTestSuite) TestValidate_NoStoredHash_Passes() {
 	ctx := &core.InterceptorContext{
-		Mode:        common.InterceptorModePreRequest,
+		Mode:        providers.InterceptorModePreRequest,
 		ExecutionID: "exec-1",
 		SharedData:  map[string]string{},
 	}
@@ -109,7 +111,7 @@ func (s *ChallengeTokenInterceptorTestSuite) TestValidate_NoStoredHash_Passes() 
 
 func (s *ChallengeTokenInterceptorTestSuite) TestValidate_EmptyIncomingToken_Fails() {
 	ctx := &core.InterceptorContext{
-		Mode:        common.InterceptorModePreRequest,
+		Mode:        providers.InterceptorModePreRequest,
 		ExecutionID: "exec-1",
 		SharedData: map[string]string{
 			sharedDataKeyChallengeTokenHash: cryptolib.HashToken("some-token"),
@@ -125,7 +127,7 @@ func (s *ChallengeTokenInterceptorTestSuite) TestValidate_EmptyIncomingToken_Fai
 
 func (s *ChallengeTokenInterceptorTestSuite) TestValidate_InvalidToken_Fails() {
 	ctx := &core.InterceptorContext{
-		Mode:        common.InterceptorModePreRequest,
+		Mode:        providers.InterceptorModePreRequest,
 		ExecutionID: "exec-1",
 		SharedData: map[string]string{
 			sharedDataKeyChallengeTokenHash:           cryptolib.HashToken("correct-token"),
@@ -143,7 +145,7 @@ func (s *ChallengeTokenInterceptorTestSuite) TestValidate_InvalidToken_Fails() {
 func (s *ChallengeTokenInterceptorTestSuite) TestValidate_ValidToken_Passes() {
 	token := "valid-token"
 	ctx := &core.InterceptorContext{
-		Mode:        common.InterceptorModePreRequest,
+		Mode:        providers.InterceptorModePreRequest,
 		ExecutionID: "exec-1",
 		SharedData: map[string]string{
 			sharedDataKeyChallengeTokenHash:           cryptolib.HashToken(token),
@@ -161,12 +163,12 @@ func (s *ChallengeTokenInterceptorTestSuite) TestValidate_ValidToken_Passes() {
 
 func (s *ChallengeTokenInterceptorTestSuite) TestValidate_SkipChallengeValidationPolicy_Passes() {
 	ctx := &core.InterceptorContext{
-		Mode:        common.InterceptorModePreRequest,
+		Mode:        providers.InterceptorModePreRequest,
 		ExecutionID: "exec-1",
 		SharedData: map[string]string{
 			sharedDataKeyChallengeTokenHash: cryptolib.HashToken("some-token"),
 		},
-		ExecutionPolicy: &core.ExecutionPolicy{SkipChallengeValidation: true},
+		ExecutionPolicy: &providers.ExecutionPolicy{SkipChallengeValidation: true},
 	}
 
 	result, err := s.interceptor.Execute(ctx)
@@ -177,7 +179,7 @@ func (s *ChallengeTokenInterceptorTestSuite) TestValidate_SkipChallengeValidatio
 
 func (s *ChallengeTokenInterceptorTestSuite) TestValidate_AllowSegmentRestart_Passes() {
 	ctx := &core.InterceptorContext{
-		Mode:                common.InterceptorModePreRequest,
+		Mode:                providers.InterceptorModePreRequest,
 		ExecutionID:         "exec-1",
 		AllowSegmentRestart: true,
 		SharedData: map[string]string{
@@ -193,7 +195,7 @@ func (s *ChallengeTokenInterceptorTestSuite) TestValidate_AllowSegmentRestart_Pa
 
 func (s *ChallengeTokenInterceptorTestSuite) TestValidate_NodeWithNilPolicy_DoesNotSkip() {
 	ctx := &core.InterceptorContext{
-		Mode:        common.InterceptorModePreRequest,
+		Mode:        providers.InterceptorModePreRequest,
 		ExecutionID: "exec-1",
 		SharedData: map[string]string{
 			sharedDataKeyChallengeTokenHash: cryptolib.HashToken("some-token"),
@@ -209,12 +211,12 @@ func (s *ChallengeTokenInterceptorTestSuite) TestValidate_NodeWithNilPolicy_Does
 
 func (s *ChallengeTokenInterceptorTestSuite) TestValidate_PolicyWithoutSkipFlag_DoesNotSkip() {
 	ctx := &core.InterceptorContext{
-		Mode:        common.InterceptorModePreRequest,
+		Mode:        providers.InterceptorModePreRequest,
 		ExecutionID: "exec-1",
 		SharedData: map[string]string{
 			sharedDataKeyChallengeTokenHash: cryptolib.HashToken("some-token"),
 		},
-		ExecutionPolicy: &core.ExecutionPolicy{SkipChallengeValidation: false},
+		ExecutionPolicy: &providers.ExecutionPolicy{SkipChallengeValidation: false},
 	}
 
 	result, err := s.interceptor.Execute(ctx)
@@ -227,9 +229,9 @@ func (s *ChallengeTokenInterceptorTestSuite) TestValidate_PolicyWithoutSkipFlag_
 
 func (s *ChallengeTokenInterceptorTestSuite) TestRotate_GeneratesNewToken() {
 	ctx := &core.InterceptorContext{
-		Mode:        common.InterceptorModePostRequest,
+		Mode:        providers.InterceptorModePostRequest,
 		ExecutionID: "exec-1",
-		FlowStatus:  common.FlowStatusIncomplete,
+		FlowStatus:  providers.FlowStatusIncomplete,
 		SharedData:  map[string]string{},
 	}
 
@@ -248,9 +250,9 @@ func (s *ChallengeTokenInterceptorTestSuite) TestRotate_GeneratesNewToken() {
 
 func (s *ChallengeTokenInterceptorTestSuite) TestRotate_ClearsIncomingToken() {
 	ctx := &core.InterceptorContext{
-		Mode:        common.InterceptorModePostRequest,
+		Mode:        providers.InterceptorModePostRequest,
 		ExecutionID: "exec-1",
-		FlowStatus:  common.FlowStatusIncomplete,
+		FlowStatus:  providers.FlowStatusIncomplete,
 		SharedData: map[string]string{
 			common.InterceptorDataKeyChallengeTokenIn: "old-incoming-token",
 		},
@@ -264,9 +266,9 @@ func (s *ChallengeTokenInterceptorTestSuite) TestRotate_ClearsIncomingToken() {
 
 func (s *ChallengeTokenInterceptorTestSuite) TestRotate_OverwritesPreviousHash() {
 	ctx := &core.InterceptorContext{
-		Mode:        common.InterceptorModePostRequest,
+		Mode:        providers.InterceptorModePostRequest,
 		ExecutionID: "exec-1",
-		FlowStatus:  common.FlowStatusIncomplete,
+		FlowStatus:  providers.FlowStatusIncomplete,
 		SharedData: map[string]string{
 			sharedDataKeyChallengeTokenHash: "old-hash",
 		},
@@ -299,28 +301,28 @@ func newMockFlowFactory(t interface {
 	// CreateInterceptorUnit is called by initDefaultInterceptorUnits.
 	preUnit := coremock.NewInterceptorUnitInterfaceMock(t)
 	preUnit.On("GetName").Return(ChallengeTokenInterceptor).Maybe()
-	preUnit.On("GetMode").Return(common.InterceptorModePreRequest).Maybe()
+	preUnit.On("GetMode").Return(providers.InterceptorModePreRequest).Maybe()
 	preUnit.On("Clone").Return(preUnit).Maybe()
 	preUnit.On("GetInterceptor").Return(nil).Maybe()
-	preUnit.On("GetScope").Return(common.InterceptorScope("")).Maybe()
+	preUnit.On("GetScope").Return(providers.InterceptorScope("")).Maybe()
 	preUnit.On("GetApplyTo").Return([]string(nil)).Maybe()
 	preUnit.On("SetInterceptor", mock.Anything).Return().Maybe()
 
 	postUnit := coremock.NewInterceptorUnitInterfaceMock(t)
 	postUnit.On("GetName").Return(ChallengeTokenInterceptor).Maybe()
-	postUnit.On("GetMode").Return(common.InterceptorModePostRequest).Maybe()
+	postUnit.On("GetMode").Return(providers.InterceptorModePostRequest).Maybe()
 	postUnit.On("Clone").Return(postUnit).Maybe()
 	postUnit.On("GetInterceptor").Return(nil).Maybe()
-	postUnit.On("GetScope").Return(common.InterceptorScope("")).Maybe()
+	postUnit.On("GetScope").Return(providers.InterceptorScope("")).Maybe()
 	postUnit.On("GetApplyTo").Return([]string(nil)).Maybe()
 	postUnit.On("SetInterceptor", mock.Anything).Return().Maybe()
 
 	factoryMock.On("CreateInterceptorUnit",
-		ChallengeTokenInterceptor, common.InterceptorModePreRequest,
-		common.InterceptorScope(""), []string(nil), map[string]interface{}(nil)).Return(preUnit).Maybe()
+		ChallengeTokenInterceptor, providers.InterceptorModePreRequest,
+		providers.InterceptorScope(""), []string(nil), map[string]interface{}(nil)).Return(preUnit).Maybe()
 	factoryMock.On("CreateInterceptorUnit",
-		ChallengeTokenInterceptor, common.InterceptorModePostRequest,
-		common.InterceptorScope(""), []string(nil), map[string]interface{}(nil)).Return(postUnit).Maybe()
+		ChallengeTokenInterceptor, providers.InterceptorModePostRequest,
+		providers.InterceptorScope(""), []string(nil), map[string]interface{}(nil)).Return(postUnit).Maybe()
 
 	return factoryMock
 }

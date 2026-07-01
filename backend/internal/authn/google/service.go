@@ -24,12 +24,12 @@ import (
 	"strings"
 	"time"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/authn/common"
 	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
 	authnoidc "github.com/thunder-id/thunderid/internal/authn/oidc"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -62,14 +62,14 @@ func newGoogleOIDCAuthnService(internal authnoidc.OIDCAuthnServiceInterface,
 
 // BuildAuthorizeURL constructs the authorization request URL for Google OIDC authentication.
 func (g *googleOIDCAuthnService) BuildAuthorizeURL(
-	ctx context.Context, idpID string) (string, *serviceerror.ServiceError) {
+	ctx context.Context, idpID string) (string, *tidcommon.ServiceError) {
 	return g.internal.BuildAuthorizeURL(ctx, idpID)
 }
 
 // ExchangeCodeForToken exchanges the authorization code for a token with Google
 // and validates the token response if validateResponse is true.
 func (g *googleOIDCAuthnService) ExchangeCodeForToken(ctx context.Context, idpID, code string, validateResponse bool) (
-	*authnoauth.TokenResponse, *serviceerror.ServiceError) {
+	*authnoauth.TokenResponse, *tidcommon.ServiceError) {
 	tokenResp, svcErr := g.internal.ExchangeCodeForToken(ctx, idpID, code, false)
 	if svcErr != nil {
 		return nil, svcErr
@@ -89,7 +89,7 @@ func (g *googleOIDCAuthnService) ExchangeCodeForToken(ctx context.Context, idpID
 // ExchangeCodeForToken method calls this method to validate the token response if validateResponse is set
 // to true. Hence generally you may not need to call this method explicitly.
 func (g *googleOIDCAuthnService) ValidateTokenResponse(ctx context.Context, idpID string,
-	tokenResp *authnoauth.TokenResponse) *serviceerror.ServiceError {
+	tokenResp *authnoauth.TokenResponse) *tidcommon.ServiceError {
 	svcErr := g.internal.ValidateTokenResponse(ctx, idpID, tokenResp, false)
 	if svcErr != nil {
 		return svcErr
@@ -103,7 +103,7 @@ func (g *googleOIDCAuthnService) ValidateTokenResponse(ctx context.Context, idpI
 // to true. Hence generally you may not need to call this method explicitly if ExchangeCodeForToken method
 // is called with validateResponse set to true.
 func (g *googleOIDCAuthnService) ValidateIDToken(
-	ctx context.Context, idpID, idToken string) *serviceerror.ServiceError {
+	ctx context.Context, idpID, idToken string) *tidcommon.ServiceError {
 	logger := g.logger.With(log.String("idpId", idpID))
 	logger.Debug(ctx, "Validating ID token")
 
@@ -142,7 +142,7 @@ func (g *googleOIDCAuthnService) ValidateIDToken(
 	iss, ok := claims["iss"].(string)
 	if !ok || (iss != Issuer1 && iss != Issuer2) {
 		logger.Debug(ctx, "Invalid ID token issuer", log.String("issuer", iss))
-		return serviceerror.CustomServiceError(authnoidc.ErrorInvalidIDToken, core.I18nMessage{
+		return tidcommon.CustomServiceError(authnoidc.ErrorInvalidIDToken, tidcommon.I18nMessage{
 			Key:          "error.authnservice.google.invalid_id_token_issuer_description",
 			DefaultValue: "The issuer of the ID token is not a valid Google issuer",
 		})
@@ -153,7 +153,7 @@ func (g *googleOIDCAuthnService) ValidateIDToken(
 	if !ok || aud != oAuthClientConfig.ClientID {
 		logger.Debug(ctx, "Invalid ID token audience", log.String("audience", aud),
 			log.MaskedString("clientId", oAuthClientConfig.ClientID))
-		return serviceerror.CustomServiceError(authnoidc.ErrorInvalidIDToken, core.I18nMessage{
+		return tidcommon.CustomServiceError(authnoidc.ErrorInvalidIDToken, tidcommon.I18nMessage{
 			Key:          "error.authnservice.google.invalid_id_token_audience_description",
 			DefaultValue: "The ID token audience does not match the expected client ID",
 		})
@@ -166,14 +166,14 @@ func (g *googleOIDCAuthnService) ValidateIDToken(
 	exp, ok := claims["exp"].(float64)
 	if !ok {
 		logger.Debug(ctx, "Invalid ID token expiration claim", log.Any("exp", claims["exp"]))
-		return serviceerror.CustomServiceError(authnoidc.ErrorInvalidIDToken, core.I18nMessage{
+		return tidcommon.CustomServiceError(authnoidc.ErrorInvalidIDToken, tidcommon.I18nMessage{
 			Key:          "error.authnservice.google.invalid_id_token_exp_claim_description",
 			DefaultValue: "The ID token expiration claim is missing or invalid",
 		})
 	}
 	if time.Now().Unix() >= int64(exp)+leeway {
 		logger.Debug(ctx, "ID token has expired", log.Int("exp", int(exp)))
-		return serviceerror.CustomServiceError(authnoidc.ErrorInvalidIDToken, core.I18nMessage{
+		return tidcommon.CustomServiceError(authnoidc.ErrorInvalidIDToken, tidcommon.I18nMessage{
 			Key:          "error.authnservice.google.invalid_id_token_expired_description",
 			DefaultValue: "The ID token has expired",
 		})
@@ -183,14 +183,14 @@ func (g *googleOIDCAuthnService) ValidateIDToken(
 	iat, ok := claims["iat"].(float64)
 	if !ok {
 		logger.Debug(ctx, "Invalid ID token issued-at claim", log.Any("iat", claims["iat"]))
-		return serviceerror.CustomServiceError(authnoidc.ErrorInvalidIDToken, core.I18nMessage{
+		return tidcommon.CustomServiceError(authnoidc.ErrorInvalidIDToken, tidcommon.I18nMessage{
 			Key:          "error.authnservice.google.invalid_id_token_iat_claim_description",
 			DefaultValue: "The ID token issued-at (iat) claim is missing or invalid",
 		})
 	}
 	if time.Now().Unix() < int64(iat)-leeway {
 		logger.Debug(ctx, "ID token was issued in the future", log.Int("iat", int(iat)))
-		return serviceerror.CustomServiceError(authnoidc.ErrorInvalidIDToken, core.I18nMessage{
+		return tidcommon.CustomServiceError(authnoidc.ErrorInvalidIDToken, tidcommon.I18nMessage{
 			Key:          "error.authnservice.google.invalid_id_token_future_iat_description",
 			DefaultValue: "The ID token was issued in the future",
 		})
@@ -204,7 +204,7 @@ func (g *googleOIDCAuthnService) ValidateIDToken(
 			if hdStr, ok := hd.(string); !ok || hdStr != domain {
 				logger.Debug(ctx, "Invalid hosted domain (hd) claim", log.String("hd", hdStr),
 					log.String("expectedDomain", domain))
-				return serviceerror.CustomServiceError(authnoidc.ErrorInvalidIDToken, core.I18nMessage{
+				return tidcommon.CustomServiceError(authnoidc.ErrorInvalidIDToken, tidcommon.I18nMessage{
 					Key:          "error.authnservice.google.invalid_id_token_hosted_domain_description",
 					DefaultValue: "The ID token is not from the expected hosted domain: " + domain,
 				})
@@ -217,19 +217,19 @@ func (g *googleOIDCAuthnService) ValidateIDToken(
 
 // GetIDTokenClaims extracts and returns the claims from the Google ID token.
 func (g *googleOIDCAuthnService) GetIDTokenClaims(ctx context.Context, idToken string) (
-	map[string]interface{}, *serviceerror.ServiceError) {
+	map[string]interface{}, *tidcommon.ServiceError) {
 	return g.internal.GetIDTokenClaims(ctx, idToken)
 }
 
 // FetchUserInfo retrieves user information from Google, ensuring email resolution if necessary.
 func (g *googleOIDCAuthnService) FetchUserInfo(ctx context.Context, idpID, accessToken string) (
-	map[string]interface{}, *serviceerror.ServiceError) {
+	map[string]interface{}, *tidcommon.ServiceError) {
 	return g.internal.FetchUserInfo(ctx, idpID, accessToken)
 }
 
 // GetOAuthClientConfig retrieves and validates the OAuth client configuration for the given identity provider ID.
 func (g *googleOIDCAuthnService) GetOAuthClientConfig(ctx context.Context, idpID string) (
-	*authnoauth.OAuthClientConfig, *serviceerror.ServiceError) {
+	*authnoauth.OAuthClientConfig, *tidcommon.ServiceError) {
 	return g.internal.GetOAuthClientConfig(ctx, idpID)
 }
 
@@ -237,7 +237,7 @@ func (g *googleOIDCAuthnService) GetOAuthClientConfig(ctx context.Context, idpID
 // extracts ID token claims, and resolves the internal user.
 // A missing internal user is NOT an error — the caller decides how to handle it.
 func (g *googleOIDCAuthnService) Authenticate(ctx context.Context, idpID, code string) (
-	*common.AuthnResult, *serviceerror.ServiceError) {
+	*common.AuthnResult, *tidcommon.ServiceError) {
 	logger := g.logger.With(log.String("idpId", idpID))
 	logger.Debug(ctx, "Performing federated Google OIDC authentication")
 

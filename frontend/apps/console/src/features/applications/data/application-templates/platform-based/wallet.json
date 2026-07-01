@@ -1,0 +1,29 @@
+{
+  "id": "wallet",
+  "displayName": "Digital Wallet",
+  "description": "OpenID4VCI wallet that requests verifiable credentials",
+  "defaults": {
+    "name": "Digital Wallet",
+    "inboundAuthConfig": [
+      {
+        "type": "oauth2",
+        "config": {
+          "grantTypes": ["authorization_code", "refresh_token"],
+          "responseTypes": ["code"],
+          "redirectUris": [],
+          "pkceRequired": true,
+          "tokenEndpointAuthMethod": "none",
+          "publicClient": true
+        }
+      }
+    ],
+    "allowedUserTypes": []
+  },
+  "fieldConstraints": {
+    "oauth2": {
+      "publicClient": {"readOnly": true, "value": true},
+      "pkceRequired": {"readOnly": true, "value": true},
+      "tokenEndpointAuthMethod": {"readOnly": true, "value": "none"}
+    }
+  }
+}

@@ -7,8 +7,8 @@ package certmock
 import (
 	"crypto/tls"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/config"
 )
 
 // NewSystemCertificateServiceInterfaceMock creates a new instance of SystemCertificateServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

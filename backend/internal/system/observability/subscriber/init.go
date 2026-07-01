@@ -25,8 +25,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 const initComponentName = "SubscriberInit"
@@ -57,7 +57,7 @@ const initComponentName = "SubscriberInit"
 // Error Handling:
 //   - In "strict" failure mode: Returns error on first initialization failure
 //   - In "lenient" failure mode: Logs warning and continues with remaining subscribers
-func Initialize(observabilityConfig config.ObservabilityConfig) ([]SubscriberInterface, error) {
+func Initialize(observabilityConfig engineconfig.ObservabilityConfig) ([]SubscriberInterface, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, initComponentName))
 
 	// Subscriber initialization runs during application startup, outside any request.

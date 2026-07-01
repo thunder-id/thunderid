@@ -22,8 +22,9 @@ import (
 	"context"
 	"net/http"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -82,9 +83,9 @@ func (ih *importHandler) HandleDeleteImportRequest(w http.ResponseWriter, r *htt
 	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusOK, deleteResponse)
 }
 
-func (ih *importHandler) handleError(ctx context.Context, w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
+func (ih *importHandler) handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.ServiceError) {
 	statusCode := http.StatusInternalServerError
-	if svcErr.Type == serviceerror.ClientErrorType {
+	if svcErr.Type == tidcommon.ClientErrorType {
 		statusCode = http.StatusBadRequest
 	}
 

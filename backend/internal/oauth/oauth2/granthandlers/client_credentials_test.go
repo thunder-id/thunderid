@@ -19,7 +19,9 @@
 package granthandlers
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"context"
 	"errors"
@@ -31,16 +33,11 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/authz"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
-	"github.com/thunder-id/thunderid/internal/ou"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
@@ -60,10 +57,10 @@ type ClientCredentialsGrantHandlerTestSuite struct {
 	mockTokenBuilder    *tokenservicemock.TokenBuilderInterfaceMock
 	mockOUService       *oumock.OrganizationUnitServiceInterfaceMock
 	mockAuthzService    *authzmock.AuthorizationServiceInterfaceMock
-	mockEntityProvider  *actorprovidermock.ActorProviderInterfaceMock
+	mockEntityProvider  *actorprovidermock.ActorProviderMock
 	mockResourceService *resourcemock.ResourceServiceInterfaceMock
 	handler             *clientCredentialsGrantHandler
-	oauthApp            *inboundmodel.OAuthClient
+	oauthApp            *providers.OAuthClient
 }
 
 func TestClientCredentialsGrantHandlerSuite(t *testing.T) {
@@ -73,7 +70,7 @@ func TestClientCredentialsGrantHandlerSuite(t *testing.T) {
 func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 	// Initialize Runtime for tests
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://auth.example.com",
 			ValidityPeriod: 3600,
 		},
@@ -85,18 +82,18 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 	suite.mockTokenBuilder = tokenservicemock.NewTokenBuilderInterfaceMock(suite.T())
 	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	suite.mockAuthzService = authzmock.NewAuthorizationServiceInterfaceMock(suite.T())
-	suite.mockEntityProvider = actorprovidermock.NewActorProviderInterfaceMock(suite.T())
+	suite.mockEntityProvider = actorprovidermock.NewActorProviderMock(suite.T())
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
-		Return(func(_ context.Context, identifier string) *resource.ResourceServer {
-			return &resource.ResourceServer{ID: identifier, Identifier: identifier}
-		}, func(_ context.Context, _ string) *serviceerror.ServiceError {
+		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
+			return &providers.ResourceServer{ID: identifier, Identifier: identifier}
+		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil).Maybe()
 	suite.mockResourceService.On("FindResourceServersByPermissions", mock.Anything, mock.Anything).
-		Return([]resource.ResourceServer{}, nil).Maybe()
+		Return([]providers.ResourceServer{}, nil).Maybe()
 
 	suite.handler = &clientCredentialsGrantHandler{
 		tokenBuilder:    suite.mockTokenBuilder,
@@ -106,15 +103,15 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 		resourceService: suite.mockResourceService,
 	}
 	suite.mockEntityProvider.On("GetActorGroups", mock.Anything).
-		Return([]entityprovider.EntityGroup{}, nil).Maybe()
+		Return([]providers.EntityGroup{}, nil).Maybe()
 
-	suite.oauthApp = &inboundmodel.OAuthClient{
+	suite.oauthApp = &providers.OAuthClient{
 		ID:                      testEntityID,
 		ClientID:                testClientID,
 		RedirectURIs:            []string{"https://example.com/callback"},
-		GrantTypes:              []constants.GrantType{constants.GrantTypeClientCredentials},
-		ResponseTypes:           []constants.ResponseType{constants.ResponseTypeCode},
-		TokenEndpointAuthMethod: constants.TokenEndpointAuthMethodClientSecretBasic,
+		GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
+		ResponseTypes:           []providers.ResponseType{providers.ResponseTypeCode},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
 	}
 }
 
@@ -378,21 +375,21 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ClientAttri
 		Scope:        "read",
 	}
 
-	oauthAppWithOU := &inboundmodel.OAuthClient{
+	oauthAppWithOU := &providers.OAuthClient{
 		ID:                      "app123",
 		ClientID:                testClientID,
 		OUID:                    "ou-456",
-		GrantTypes:              []constants.GrantType{constants.GrantTypeClientCredentials},
-		TokenEndpointAuthMethod: constants.TokenEndpointAuthMethodClientSecretBasic,
+		GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
 	}
 
 	mockEvaluateAccessBatch(suite.mockAuthzService, oauthAppWithOU.ID, []string{"read"}, []string{"read"})
 
 	suite.mockOUService.On("GetOrganizationUnit", context.Background(), "ou-456").Return(
-		ou.OrganizationUnit{},
-		&serviceerror.ServiceError{
+		providers.OrganizationUnit{},
+		&tidcommon.ServiceError{
 			Code:  "OU-0001",
-			Error: core.I18nMessage{Key: "error.test.not_found", DefaultValue: "not found"},
+			Error: tidcommon.I18nMessage{Key: "error.test.not_found", DefaultValue: "not found"},
 		},
 	)
 
@@ -560,9 +557,9 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AuthzServic
 
 	suite.mockAuthzService.On("EvaluateAccessBatch", mock.Anything, mock.Anything).
 		Return((*authz.AccessEvaluationsResponse)(nil),
-			&serviceerror.ServiceError{
+			&tidcommon.ServiceError{
 				Code: "AUTHZ-0001",
-				Error: core.I18nMessage{
+				Error: tidcommon.I18nMessage{
 					Key: "error.test.authorization_check_failed", DefaultValue: "authorization check failed",
 				},
 			})
@@ -618,7 +615,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ImplicitRSD
 	mockTokenBuilder := tokenservicemock.NewTokenBuilderInterfaceMock(suite.T())
 	mockAuthzService := authzmock.NewAuthorizationServiceInterfaceMock(suite.T())
 	mockResourceService := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	mockEntityProvider := actorprovidermock.NewActorProviderInterfaceMock(suite.T())
+	mockEntityProvider := actorprovidermock.NewActorProviderMock(suite.T())
 
 	handler := &clientCredentialsGrantHandler{
 		tokenBuilder:    mockTokenBuilder,
@@ -629,7 +626,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ImplicitRSD
 	}
 
 	mockEntityProvider.On("GetActorGroups", mock.Anything).
-		Return([]entityprovider.EntityGroup{}, nil).Maybe()
+		Return([]providers.EntityGroup{}, nil).Maybe()
 
 	// No resource param — ResolveResourceServers returns nil (no explicit identifiers).
 	// GetResourceServerByIdentifier is not called.
@@ -638,7 +635,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ImplicitRSD
 	mockEvaluateAccessBatch(mockAuthzService, suite.oauthApp.ID, []string{"r1:s1"}, []string{"r1:s1"})
 
 	mockResourceService.On("FindResourceServersByPermissions", mock.Anything, []string{"r1:s1"}).
-		Return([]resource.ResourceServer{
+		Return([]providers.ResourceServer{
 			{ID: "rs01", Identifier: rsIdentifier},
 		}, nil)
 
@@ -680,7 +677,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ImplicitRSD
 	mockTokenBuilder := tokenservicemock.NewTokenBuilderInterfaceMock(suite.T())
 	mockAuthzService := authzmock.NewAuthorizationServiceInterfaceMock(suite.T())
 	mockResourceService := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	mockEntityProvider := actorprovidermock.NewActorProviderInterfaceMock(suite.T())
+	mockEntityProvider := actorprovidermock.NewActorProviderMock(suite.T())
 
 	handler := &clientCredentialsGrantHandler{
 		tokenBuilder:    mockTokenBuilder,
@@ -691,13 +688,13 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ImplicitRSD
 	}
 
 	mockEntityProvider.On("GetActorGroups", mock.Anything).
-		Return([]entityprovider.EntityGroup{}, nil).Maybe()
+		Return([]providers.EntityGroup{}, nil).Maybe()
 
 	mockEvaluateAccessBatch(mockAuthzService, suite.oauthApp.ID, []string{"r1:s1"}, []string{"r1:s1"})
 
 	// Both RSes own the granted scope — ComposeAudiences includes both identifiers.
 	mockResourceService.On("FindResourceServersByPermissions", mock.Anything, []string{"r1:s1"}).
-		Return([]resource.ResourceServer{
+		Return([]providers.ResourceServer{
 			{ID: "rs01", Identifier: rsIdentifier1},
 			{ID: "rs02", Identifier: rsIdentifier2},
 		}, nil)

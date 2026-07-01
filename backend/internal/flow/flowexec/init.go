@@ -21,27 +21,29 @@ package flowexec
 import (
 	"net/http"
 
-	"github.com/thunder-id/thunderid/internal/actorprovider"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/observability"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize creates and configures the flow execution service components.
 // The observabilitySvc parameter is optional (can be nil) - if nil, observability events won't be published.
 func Initialize(
 	mux *http.ServeMux,
-	flowProvider FlowProviderInterface,
-	actorProvider actorprovider.ActorProviderInterface,
+	flowProvider providers.FlowProvider,
+	actorProvider providers.ActorProvider,
 	executorRegistry executor.ExecutorRegistryInterface,
 	interceptorRegistry interceptor.InterceptorRegistryInterface,
 	observabilitySvc observability.ObservabilityServiceInterface,
 	cryptoSvc kmprovider.RuntimeCryptoProvider,
+	graphBuilder graphbuilder.GraphBuilderInterface,
 	cfg flowconfig.Config,
 ) (FlowExecServiceInterface, error) {
 	var flowStore flowStoreInterface
@@ -62,7 +64,7 @@ func Initialize(
 	interceptorRunner := newInterceptorRunner(interceptorRegistry)
 	flowEngine := newFlowEngine(executorRegistry, interceptorRunner, observabilitySvc)
 	flowExecService := newFlowExecService(flowProvider, flowStore, flowEngine,
-		actorProvider, observabilitySvc, transactioner, cryptoSvc, cfg)
+		actorProvider, observabilitySvc, transactioner, cryptoSvc, graphBuilder, cfg)
 
 	handler := newFlowExecutionHandler(flowExecService)
 	registerRoutes(mux, handler)

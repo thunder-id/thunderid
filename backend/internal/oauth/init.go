@@ -22,12 +22,9 @@ package oauth
 import (
 	"net/http"
 
-	"github.com/thunder-id/thunderid/internal/actorprovider"
 	"github.com/thunder-id/thunderid/internal/attributecache"
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/authz"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
-	"github.com/thunder-id/thunderid/internal/idp"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/jwks"
 	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
@@ -37,39 +34,37 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/introspect"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jwksresolver"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/token"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/userinfo"
 	"github.com/thunder-id/thunderid/internal/oauth/scope"
-	"github.com/thunder-id/thunderid/internal/ou"
-	"github.com/thunder-id/thunderid/internal/resource"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
-	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/observability"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes all OAuth-related services and registers their routes.
 func Initialize(
 	mux *http.ServeMux,
-	actorProvider actorprovider.ActorProviderInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	actorProvider providers.ActorProvider,
+	authnProvider providers.AuthnProviderManager,
 	jwtService jwt.JWTServiceInterface,
 	jweService jwe.JWEServiceInterface,
 	flowExecService flowexec.FlowExecServiceInterface,
 	observabilitySvc observability.ObservabilityServiceInterface,
 	runtimeCrypto kmprovider.RuntimeCryptoProvider,
-	ouService ou.OrganizationUnitServiceInterface,
+	ouService providers.OrganizationUnitProvider,
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface,
 	authzService authz.AuthorizationServiceInterface,
-	resourceService resource.ResourceServiceInterface,
-	i18nService i18nmgt.I18nServiceInterface,
-	idpService idp.IDPServiceInterface,
+	resourceService providers.ResourceServerProvider,
+	i18nService providers.I18nProvider,
+	idpService providers.IDPProvider,
+	dpopVerifier dpop.VerifierInterface,
 	cfg oauthconfig.Config,
 ) error {
 	jwks.Initialize(mux, runtimeCrypto)
@@ -80,8 +75,6 @@ func Initialize(
 	tokenBuilder, tokenValidator := tokenservice.Initialize(cfg, jwtService, jweService, resolver, idpService)
 	scopeValidator := scope.Initialize()
 	discoveryService := discovery.Initialize(mux, runtimeCrypto, cfg)
-	jtiStore := jti.Initialize(cfg)
-	dpopVerifier := dpop.Initialize(cfg, jtiStore)
 	parService := par.Initialize(mux, actorProvider, authnProvider, jwtService, discoveryService,
 		resourceService, dpopVerifier, cfg)
 	cibaService := ciba.Initialize(mux, jwtService, actorProvider, authnProvider, flowExecService,

@@ -21,37 +21,16 @@ package common
 import (
 	"fmt"
 	"regexp"
-	"slices"
 
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
-
-// Input represents the inputs required for a node
-type Input struct {
-	Ref         string           `json:"ref,omitempty"`
-	Identifier  string           `json:"identifier"`
-	Type        string           `json:"type"`
-	Required    bool             `json:"required"`
-	Options     []string         `json:"options,omitempty"`
-	DisplayName string           `json:"-"`
-	Validation  []ValidationRule `json:"validation,omitempty"`
-}
-
-// ValidationRule defines a single constraint on a flow input. CompiledRegex is
-// populated by PrepareValidationRules at graph-build time and excluded from JSON.
-type ValidationRule struct {
-	Type          ValidationType `json:"type"`
-	Value         interface{}    `json:"value"`
-	Message       string         `json:"message,omitempty"`
-	CompiledRegex *regexp.Regexp `json:"-"`
-}
 
 // PrepareValidationRules compiles the regex pattern of every regex rule in place.
 // An empty or non-string regex value is treated as a no-op.
-func PrepareValidationRules(rules []ValidationRule) error {
+func PrepareValidationRules(rules []providers.ValidationRule) error {
 	for i := range rules {
-		if rules[i].Type != ValidationTypeRegex {
+		if rules[i].Type != providers.ValidationTypeRegex {
 			continue
 		}
 		pattern, ok := rules[i].Value.(string)
@@ -73,11 +52,6 @@ type FieldError struct {
 	Message    string `json:"message"`
 }
 
-// IsSensitive checks whether this input's type is considered sensitive.
-func (i Input) IsSensitive() bool {
-	return slices.Contains(sensitiveInputTypes, i.Type)
-}
-
 // Action represents an action to be executed in a flow step
 type Action struct {
 	Ref      string `json:"ref,omitempty"`
@@ -87,45 +61,32 @@ type Action struct {
 
 // Prompt groups inputs with an action for prompt nodes.
 type Prompt struct {
-	Inputs []Input `json:"inputs,omitempty"`
-	Action *Action `json:"action,omitempty"`
+	Inputs []providers.Input `json:"inputs,omitempty"`
+	Action *Action           `json:"action,omitempty"`
 }
 
 // NodeResponse represents the response from a node execution
 type NodeResponse struct {
-	Status         NodeStatus                 `json:"status"`
-	Type           NodeResponseType           `json:"type"`
-	Error          *serviceerror.ServiceError `json:"error,omitempty"`
-	Inputs         []Input                    `json:"inputs,omitempty"`
-	AdditionalData map[string]string          `json:"additionalData,omitempty"`
-	RedirectURL    string                     `json:"redirectUrl,omitempty"`
-	Actions        []Action                   `json:"actions,omitempty"`
-	Meta           interface{}                `json:"meta,omitempty"`
-	NextNodeID     string                     `json:"nextNodeId,omitempty"`
-	RuntimeData    map[string]string          `json:"runtimeData,omitempty"`
-	ForwardedData  map[string]interface{}     `json:"forwardedData,omitempty"`
-	Assertion      string                     `json:"assertion,omitempty"`
-	FieldErrors    []FieldError               `json:"fieldErrors,omitempty"`
-	AuthUser       authnprovidermgr.AuthUser  `json:"-"`
-}
-
-// ExecutorResponse represents the response from an executor
-type ExecutorResponse struct {
-	Status         ExecutorStatus             `json:"status"`
-	Inputs         []Input                    `json:"inputs,omitempty"`
-	AdditionalData map[string]string          `json:"additionalData,omitempty"`
-	RedirectURL    string                     `json:"redirectUrl,omitempty"`
-	RuntimeData    map[string]string          `json:"runtimeData,omitempty"`
-	ForwardedData  map[string]interface{}     `json:"forwardedData,omitempty"`
-	Assertion      string                     `json:"assertion,omitempty"`
-	Error          *serviceerror.ServiceError `json:"error,omitempty"`
-	AuthUser       authnprovidermgr.AuthUser  `json:"-"`
+	Status         NodeStatus              `json:"status"`
+	Type           NodeResponseType        `json:"type"`
+	Error          *tidcommon.ServiceError `json:"error,omitempty"`
+	Inputs         []providers.Input       `json:"inputs,omitempty"`
+	AdditionalData map[string]string       `json:"additionalData,omitempty"`
+	RedirectURL    string                  `json:"redirectUrl,omitempty"`
+	Actions        []Action                `json:"actions,omitempty"`
+	Meta           interface{}             `json:"meta,omitempty"`
+	NextNodeID     string                  `json:"nextNodeId,omitempty"`
+	RuntimeData    map[string]string       `json:"runtimeData,omitempty"`
+	ForwardedData  map[string]interface{}  `json:"forwardedData,omitempty"`
+	Assertion      string                  `json:"assertion,omitempty"`
+	FieldErrors    []FieldError            `json:"fieldErrors,omitempty"`
+	AuthUser       providers.AuthUser      `json:"-"`
 }
 
 // InterceptorResponse represents the response from an interceptor execution
 type InterceptorResponse struct {
-	Status InterceptorStatus          `json:"status"`
-	Error  *serviceerror.ServiceError `json:"error,omitempty"`
+	Status InterceptorStatus       `json:"status"`
+	Error  *tidcommon.ServiceError `json:"error,omitempty"`
 
 	// EngineOutputs passes data from interceptors back to the engine.
 	EngineOutputs map[string]string `json:"engineOutputs,omitempty"`
@@ -133,45 +94,4 @@ type InterceptorResponse struct {
 	// Flow step data returned to the client.
 	ChallengeToken string       `json:"challengeToken,omitempty"`
 	FieldErrors    []FieldError `json:"fieldErrors,omitempty"`
-}
-
-// NodeExecutionRecord represents a record of a node execution in the flow.
-type NodeExecutionRecord struct {
-	NodeID       string             `json:"nodeId"`
-	NodeType     string             `json:"nodeType"`
-	ExecutorName string             `json:"executorName,omitempty"`
-	ExecutorType ExecutorType       `json:"executorType,omitempty"`
-	ExecutorMode string             `json:"executorMode,omitempty"`
-	Step         int                `json:"step"`
-	Status       FlowStatus         `json:"status"`
-	Executions   []ExecutionAttempt `json:"executions"`
-	StartTime    int64              `json:"startTime,omitempty"`
-	EndTime      int64              `json:"endTime,omitempty"`
-}
-
-// GetDuration calculates the duration of the execution in milliseconds.
-func (n *NodeExecutionRecord) GetDuration() int64 {
-	return getDuration(n.StartTime, n.EndTime)
-}
-
-// ExecutionAttempt represents a single execution attempt of a node.
-type ExecutionAttempt struct {
-	Attempt   int        `json:"attempt"`
-	Timestamp int64      `json:"timestamp"`
-	Status    FlowStatus `json:"status"`
-	StartTime int64      `json:"startTime"`
-	EndTime   int64      `json:"endTime"`
-}
-
-// GetDuration calculates the duration of the execution attempt in milliseconds.
-func (e *ExecutionAttempt) GetDuration() int64 {
-	return getDuration(e.StartTime, e.EndTime)
-}
-
-// getDuration calculates the duration between startTime and endTime in milliseconds.
-func getDuration(startTime int64, endTime int64) int64 {
-	if startTime == 0 || endTime == 0 {
-		return 0
-	}
-	return (endTime - startTime) * 1000
 }

@@ -111,3 +111,43 @@ CREATE TABLE "JTI_RECORD" (
 
 -- Index for expiry time on JTI_RECORD (supports cleanup and expiry checks)
 CREATE INDEX idx_jti_record_expiry_time ON "JTI_RECORD" (EXPIRY_TIME);
+
+-- Table to store short-lived OpenID4VP verifier request state.
+CREATE TABLE "OPENID4VP_REQUEST_STATE" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    STATE VARCHAR(64) PRIMARY KEY,
+    DEFINITION_ID VARCHAR(255),
+    NONCE VARCHAR(128),
+    EPHEMERAL_KEY BLOB,
+    CLIENT_ID VARCHAR(255),
+    RP_ID VARCHAR(255),
+    REQUEST_URI TEXT,
+    STATUS VARCHAR(16),
+    RESULT TEXT,
+    FAILURE_REASON TEXT,
+    EXPIRY_TIME DATETIME NOT NULL
+);
+
+-- Index for expiry time on OPENID4VP_REQUEST_STATE (supports cleanup and expiry checks)
+CREATE INDEX idx_openid4vp_request_state_expiry_time ON "OPENID4VP_REQUEST_STATE" (EXPIRY_TIME);
+
+-- Table to store short-lived OpenID4VCI c_nonces.
+CREATE TABLE "OPENID4VCI_NONCE" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    NONCE VARCHAR(255) PRIMARY KEY,
+    EXPIRY_TIME DATETIME NOT NULL
+);
+
+-- Index for expiry time on OPENID4VCI_NONCE (supports cleanup and expiry checks)
+CREATE INDEX idx_openid4vci_nonce_expiry_time ON "OPENID4VCI_NONCE" (EXPIRY_TIME);
+
+-- Table to store short-lived issuer-initiated credential offers.
+CREATE TABLE "OPENID4VCI_CREDENTIAL_OFFER" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    ID VARCHAR(255) PRIMARY KEY,
+    OFFER TEXT NOT NULL,
+    EXPIRY_TIME DATETIME NOT NULL
+);
+
+-- Index for expiry time on OPENID4VCI_CREDENTIAL_OFFER (supports cleanup and expiry checks)
+CREATE INDEX idx_openid4vci_offer_expiry_time ON "OPENID4VCI_CREDENTIAL_OFFER" (EXPIRY_TIME);

@@ -19,7 +19,7 @@
 import type {UseMutationResult} from '@tanstack/react-query';
 import {render, screen, userEvent, waitFor} from '@thunderid/test-utils';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import type {ImportResponse, ProductConfig} from '../../models/import-configuration';
+import type {ConfigSummaryItem, ImportResponse, ProductConfig} from '../../models/import-configuration';
 
 const mockNavigate = vi.fn();
 const mockShowToast = vi.fn();
@@ -107,11 +107,14 @@ vi.mock('../../components/EnvVariablesViewer', () => ({
 }));
 
 vi.mock('../../components/ResourceSummaryTable', () => ({
-  default: ({items}: {items: {label: string; value: number}[]}) => (
+  default: ({items}: {items: ConfigSummaryItem[]}) => (
     <div data-testid="resource-summary-table">
       {items.map((item) => (
         <div key={item.label}>
-          {item.label}: {item.value}
+          <div>
+            {item.label}: {item.value}
+          </div>
+          {item.content}
         </div>
       ))}
     </div>
@@ -593,6 +596,177 @@ describe('ImportConfigurationSummaryPage', () => {
       render(<ImportConfigurationSummaryPage />);
 
       expect(screen.queryByText(/configureExport\.labels\.agents/i)).not.toBeInTheDocument();
+    });
+
+    it('displays notification senders when notification_sender data is present', () => {
+      mockLocationState.configData = {
+        notification_sender: [
+          {name: 'Email Sender', type: 'SMTP'},
+          {name: 'SMS Sender', type: 'TWILIO'},
+        ],
+      } as ProductConfig;
+
+      render(<ImportConfigurationSummaryPage />);
+
+      expect(screen.getByText(/configureExport\.labels\.notificationSenders.*2/i)).toBeInTheDocument();
+    });
+
+    it('displays resource servers when resource_server data is present', () => {
+      mockLocationState.configData = {
+        resource_server: [{name: 'API Gateway', description: 'Main gateway'}, {name: 'Reports API'}],
+      } as ProductConfig;
+
+      render(<ImportConfigurationSummaryPage />);
+
+      expect(screen.getByText(/configureExport\.labels\.resourceServers.*2/i)).toBeInTheDocument();
+    });
+
+    it('displays roles when role data is present', () => {
+      mockLocationState.configData = {
+        role: [{name: 'Admin', description: 'Administrator'}],
+      } as ProductConfig;
+
+      render(<ImportConfigurationSummaryPage />);
+
+      expect(screen.getByText(/configureExport\.labels\.roles.*1/i)).toBeInTheDocument();
+    });
+
+    it('displays groups when group data is present', () => {
+      mockLocationState.configData = {
+        group: [
+          {id: 'group1', name: 'Engineering'},
+          {id: 'group2', name: 'Marketing'},
+          {id: 'group3', name: 'Sales'},
+        ],
+      } as ProductConfig;
+
+      render(<ImportConfigurationSummaryPage />);
+
+      expect(screen.getByText(/configureExport\.labels\.groups.*3/i)).toBeInTheDocument();
+    });
+
+    it('does not display resource server, role, or group sections when absent', () => {
+      mockLocationState.configData = {
+        application: [{id: 'app1', name: 'App 1'}],
+      } as ProductConfig;
+
+      render(<ImportConfigurationSummaryPage />);
+
+      expect(screen.queryByText(/configureExport\.labels\.resourceServers/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/configureExport\.labels\.roles/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/configureExport\.labels\.groups/i)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('resource detail rendering', () => {
+    it('renders names, chips, and details for each resource type', () => {
+      mockLocationState.configData = {
+        application: [
+          {
+            name: 'My App',
+            description: 'App description',
+            url: 'https://app.example.com',
+            inbound_auth_config: [{type: 'oauth2', config: {client_id: 'app-client-id'}}],
+          },
+        ],
+        flow: [{name: 'My Flow', flowType: 'LOGIN', handle: 'login-flow'}],
+        identity_provider: [{name: 'Google', type: 'OIDC', handle: 'google-idp'}],
+        notification_sender: [{name: 'Email Sender', type: 'SMTP', handle: 'email-sender'}],
+        layout: [{name: 'My Layout', handle: 'layout-1', description: 'Layout description'}],
+        organization_unit: [{name: 'Engineering OU', handle: 'eng-ou', description: 'Org description'}],
+        theme: [{name: 'Dark Theme', handle: 'dark-theme', description: 'Theme description'}],
+        translation: [{locale: 'fr-FR', namespace: 'common'}],
+        user: [{type: 'customer', attributes: {name: 'Jane Doe', username: 'jane', email: 'jane@example.com'}}],
+        user_type: [{name: 'Customer', handle: 'customer', allow_self_registration: true}],
+        agent: [
+          {
+            name: 'My Agent',
+            description: 'Agent description',
+            inbound_auth_config: [{type: 'oauth2', config: {client_id: 'agent-client-id'}}],
+          },
+        ],
+        resource_server: [{name: 'API Server', handle: 'api-server', description: 'RS description'}],
+        role: [{name: 'Administrator', handle: 'admin-role', description: 'Role description'}],
+        group: [{id: 'g1', name: 'Engineering', description: 'Group description'}],
+      } as ProductConfig;
+
+      render(<ImportConfigurationSummaryPage />);
+
+      // Application detail line, URL and client id.
+      expect(screen.getByText('App description')).toBeInTheDocument();
+      expect(screen.getByText('https://app.example.com')).toBeInTheDocument();
+      expect(screen.getByText('app-client-id')).toBeInTheDocument();
+
+      // Chips render the raw values.
+      expect(screen.getByText('LOGIN')).toBeInTheDocument();
+      expect(screen.getByText('OIDC')).toBeInTheDocument();
+      expect(screen.getByText('SMTP')).toBeInTheDocument();
+      expect(screen.getByText('customer')).toBeInTheDocument();
+      expect(screen.getByText('configureExport.labels.selfRegistration')).toBeInTheDocument();
+
+      // Handle detail lines shown when distinct from the name.
+      expect(screen.getByText('login-flow')).toBeInTheDocument();
+      expect(screen.getByText('eng-ou')).toBeInTheDocument();
+
+      // Description detail lines for the remaining types.
+      expect(screen.getByText('Layout description')).toBeInTheDocument();
+      expect(screen.getByText('Org description')).toBeInTheDocument();
+      expect(screen.getByText('Theme description')).toBeInTheDocument();
+      expect(screen.getByText('RS description')).toBeInTheDocument();
+      expect(screen.getByText('Role description')).toBeInTheDocument();
+      expect(screen.getByText('Group description')).toBeInTheDocument();
+
+      // Translation locale and namespace chip.
+      expect(screen.getByText('fr-FR')).toBeInTheDocument();
+      expect(screen.getByText('common')).toBeInTheDocument();
+
+      // User username and email detail lines plus the agent client id.
+      expect(screen.getByText('@jane')).toBeInTheDocument();
+      expect(screen.getByText('jane@example.com')).toBeInTheDocument();
+      expect(screen.getByText('agent-client-id')).toBeInTheDocument();
+    });
+
+    it('toggles the expand/collapse control when more than five items exist', async () => {
+      const user = userEvent.setup();
+      mockLocationState.configData = {
+        application: Array.from({length: 7}, (_unused, idx) => ({name: `App ${idx + 1}`})),
+      } as ProductConfig;
+
+      render(<ImportConfigurationSummaryPage />);
+
+      // Only the first five are shown initially.
+      expect(screen.getByText('App 5')).toBeInTheDocument();
+      expect(screen.queryByText('App 7')).not.toBeInTheDocument();
+
+      await user.click(screen.getByText('configureExport.actions.more'));
+
+      // After expanding, all items are shown and a collapse control appears.
+      expect(screen.getByText('App 7')).toBeInTheDocument();
+      const collapse = screen.getByText('configureExport.actions.showLess');
+
+      await user.click(collapse);
+
+      expect(screen.queryByText('App 7')).not.toBeInTheDocument();
+    });
+
+    it('falls back to generated labels and keys when identifiers are missing', () => {
+      mockLocationState.configData = {
+        flow: [{}],
+        theme: [{}],
+        user_type: [{}],
+        translation: [{}],
+        user: [{}],
+        group: [{}],
+      } as ProductConfig;
+
+      render(<ImportConfigurationSummaryPage />);
+
+      expect(screen.getByText('summary.fallback.flow')).toBeInTheDocument();
+      expect(screen.getByText('summary.fallback.theme')).toBeInTheDocument();
+      expect(screen.getByText('summary.fallback.schema')).toBeInTheDocument();
+      expect(screen.getByText('configureExport.fallback.unnamedTranslation')).toBeInTheDocument();
+      expect(screen.getByText('summary.fallback.user')).toBeInTheDocument();
+      expect(screen.getByText('configureExport.fallback.unnamedGroup')).toBeInTheDocument();
     });
   });
 });

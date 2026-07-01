@@ -21,13 +21,16 @@ package flowexec
 import (
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/mock"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/observability/observabilitymock"
 )
@@ -39,10 +42,10 @@ func setupMockObservability(t *testing.T) *observabilitymock.ObservabilityServic
 	// Initialize runtime with observability enabled
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
-		Observability: config.ObservabilityConfig{
+		Observability: engineconfig.ObservabilityConfig{
 			Enabled: true,
-			Output: config.ObservabilityOutputConfig{
-				Console: config.ObservabilityConsoleConfig{
+			Output: engineconfig.ObservabilityOutputConfig{
+				Console: engineconfig.ObservabilityConsoleConfig{
 					Enabled: true,
 					Format:  "json",
 				},
@@ -75,13 +78,13 @@ func TestPublishFlowStartedEvent(t *testing.T) {
 	t.Run("with_authenticated_user", func(t *testing.T) {
 		ctx := &EngineContext{
 			ExecutionID: "flow-001",
-			FlowType:    common.FlowTypeAuthentication,
+			FlowType:    providers.FlowTypeAuthentication,
 			AppID:       "app-001",
 			AuthenticatedUser: authncm.AuthenticatedUser{
 				IsAuthenticated: true,
 				UserID:          "user-123",
 			},
-			ExecutionHistory: make(map[string]*common.NodeExecutionRecord),
+			ExecutionHistory: make(map[string]*providers.NodeExecutionRecord),
 		}
 
 		// Call the actual function to get code coverage
@@ -95,9 +98,9 @@ func TestPublishFlowStartedEvent(t *testing.T) {
 	t.Run("without_authenticated_user", func(t *testing.T) {
 		ctx := &EngineContext{
 			ExecutionID:      "flow-002",
-			FlowType:         common.FlowTypeRegistration,
+			FlowType:         providers.FlowTypeRegistration,
 			AppID:            "app-002",
-			ExecutionHistory: make(map[string]*common.NodeExecutionRecord),
+			ExecutionHistory: make(map[string]*providers.NodeExecutionRecord),
 		}
 
 		// Call the actual function to get code coverage
@@ -117,13 +120,13 @@ func TestPublishFlowCompletedEvent(t *testing.T) {
 
 	ctx := &EngineContext{
 		ExecutionID: "flow-003",
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		AppID:       "app-003",
 		AuthenticatedUser: authncm.AuthenticatedUser{
 			IsAuthenticated: true,
 			UserID:          "user-456",
 		},
-		ExecutionHistory: make(map[string]*common.NodeExecutionRecord),
+		ExecutionHistory: make(map[string]*providers.NodeExecutionRecord),
 	}
 
 	flowStartTime := int64(1000)
@@ -146,15 +149,15 @@ func TestPublishFlowFailedEvent(t *testing.T) {
 	t.Run("with_error_description", func(t *testing.T) {
 		ctx := &EngineContext{
 			ExecutionID:      "flow-004",
-			FlowType:         common.FlowTypeAuthentication,
+			FlowType:         providers.FlowTypeAuthentication,
 			AppID:            "app-004",
-			ExecutionHistory: make(map[string]*common.NodeExecutionRecord),
+			ExecutionHistory: make(map[string]*providers.NodeExecutionRecord),
 		}
 
-		svcErr := &serviceerror.ServiceError{
-			Error:            i18ncore.I18nMessage{DefaultValue: "flow_execution_failed"},
+		svcErr := &tidcommon.ServiceError{
+			Error:            tidcommon.I18nMessage{DefaultValue: "flow_execution_failed"},
 			Code:             "FLOW_ERR_001",
-			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Authentication failed due to invalid credentials"},
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "Authentication failed due to invalid credentials"},
 		}
 
 		flowStartTime := int64(1000)
@@ -171,13 +174,13 @@ func TestPublishFlowFailedEvent(t *testing.T) {
 	t.Run("without_error_description", func(t *testing.T) {
 		ctx := &EngineContext{
 			ExecutionID:      "flow-005",
-			FlowType:         common.FlowTypeAuthentication,
+			FlowType:         providers.FlowTypeAuthentication,
 			AppID:            "app-005",
-			ExecutionHistory: make(map[string]*common.NodeExecutionRecord),
+			ExecutionHistory: make(map[string]*providers.NodeExecutionRecord),
 		}
 
-		svcErr := &serviceerror.ServiceError{
-			Error: i18ncore.I18nMessage{DefaultValue: "generic_error"},
+		svcErr := &tidcommon.ServiceError{
+			Error: tidcommon.I18nMessage{DefaultValue: "generic_error"},
 			Code:  "ERR_002",
 		}
 
@@ -206,9 +209,9 @@ func TestPublishNodeExecutionStartedEvent(t *testing.T) {
 
 		ctx := &EngineContext{
 			ExecutionID:      "flow-006",
-			FlowType:         common.FlowTypeAuthentication,
+			FlowType:         providers.FlowTypeAuthentication,
 			AppID:            "app-006",
-			ExecutionHistory: make(map[string]*common.NodeExecutionRecord),
+			ExecutionHistory: make(map[string]*providers.NodeExecutionRecord),
 		}
 
 		// Call the actual function to get code coverage
@@ -226,18 +229,18 @@ func TestPublishNodeExecutionStartedEvent(t *testing.T) {
 
 		ctx := &EngineContext{
 			ExecutionID:      "flow-007",
-			FlowType:         common.FlowTypeAuthentication,
+			FlowType:         providers.FlowTypeAuthentication,
 			AppID:            "app-007",
-			ExecutionHistory: make(map[string]*common.NodeExecutionRecord),
+			ExecutionHistory: make(map[string]*providers.NodeExecutionRecord),
 		}
 
 		// Simulate retry scenario
-		ctx.ExecutionHistory[node.GetID()] = &common.NodeExecutionRecord{
+		ctx.ExecutionHistory[node.GetID()] = &providers.NodeExecutionRecord{
 			NodeID:     node.GetID(),
 			NodeType:   string(node.GetType()),
 			Step:       1,
-			Status:     common.FlowStatusIncomplete,
-			Executions: []common.ExecutionAttempt{{Attempt: 1, Status: common.FlowStatusIncomplete}},
+			Status:     providers.FlowStatusIncomplete,
+			Executions: []providers.ExecutionAttempt{{Attempt: 1, Status: providers.FlowStatusIncomplete}},
 			StartTime:  1000,
 		}
 
@@ -263,21 +266,21 @@ func TestPublishNodeExecutionCompletedEvent(t *testing.T) {
 
 		ctx := &EngineContext{
 			ExecutionID: "flow-008",
-			FlowType:    common.FlowTypeAuthentication,
+			FlowType:    providers.FlowTypeAuthentication,
 			AppID:       "app-008",
 			AuthenticatedUser: authncm.AuthenticatedUser{
 				IsAuthenticated: true,
 				UserID:          "user-789",
 			},
-			ExecutionHistory: make(map[string]*common.NodeExecutionRecord),
+			ExecutionHistory: make(map[string]*providers.NodeExecutionRecord),
 		}
 
-		ctx.ExecutionHistory[node.GetID()] = &common.NodeExecutionRecord{
+		ctx.ExecutionHistory[node.GetID()] = &providers.NodeExecutionRecord{
 			NodeID:     node.GetID(),
 			NodeType:   string(node.GetType()),
 			Step:       1,
-			Status:     common.FlowStatusComplete,
-			Executions: []common.ExecutionAttempt{{Attempt: 1, Status: common.FlowStatusComplete}},
+			Status:     providers.FlowStatusComplete,
+			Executions: []providers.ExecutionAttempt{{Attempt: 1, Status: providers.FlowStatusComplete}},
 			StartTime:  1000,
 		}
 
@@ -300,24 +303,24 @@ func TestPublishNodeExecutionCompletedEvent(t *testing.T) {
 
 		ctx := &EngineContext{
 			ExecutionID:      "flow-009",
-			FlowType:         common.FlowTypeAuthentication,
+			FlowType:         providers.FlowTypeAuthentication,
 			AppID:            "app-009",
-			ExecutionHistory: make(map[string]*common.NodeExecutionRecord),
+			ExecutionHistory: make(map[string]*providers.NodeExecutionRecord),
 		}
 
-		ctx.ExecutionHistory[node.GetID()] = &common.NodeExecutionRecord{
+		ctx.ExecutionHistory[node.GetID()] = &providers.NodeExecutionRecord{
 			NodeID:     node.GetID(),
 			NodeType:   string(node.GetType()),
 			Step:       1,
-			Status:     common.FlowStatusError,
-			Executions: []common.ExecutionAttempt{{Attempt: 1, Status: common.FlowStatusError}},
+			Status:     providers.FlowStatusError,
+			Executions: []providers.ExecutionAttempt{{Attempt: 1, Status: providers.FlowStatusError}},
 			StartTime:  1000,
 		}
 
-		svcErr := &serviceerror.ServiceError{
-			Error:            i18ncore.I18nMessage{DefaultValue: "node_execution_failed"},
+		svcErr := &tidcommon.ServiceError{
+			Error:            tidcommon.I18nMessage{DefaultValue: "node_execution_failed"},
 			Code:             "NODE_ERR_001",
-			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Task execution failed"},
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "Task execution failed"},
 		}
 
 		executionStartTime := int64(1000)
@@ -338,17 +341,17 @@ func TestPublishNodeExecutionCompletedEvent(t *testing.T) {
 
 		ctx := &EngineContext{
 			ExecutionID:      "flow-010",
-			FlowType:         common.FlowTypeAuthentication,
+			FlowType:         providers.FlowTypeAuthentication,
 			AppID:            "app-010",
-			ExecutionHistory: make(map[string]*common.NodeExecutionRecord),
+			ExecutionHistory: make(map[string]*providers.NodeExecutionRecord),
 		}
 
-		ctx.ExecutionHistory[node.GetID()] = &common.NodeExecutionRecord{
+		ctx.ExecutionHistory[node.GetID()] = &providers.NodeExecutionRecord{
 			NodeID:     node.GetID(),
 			NodeType:   string(node.GetType()),
 			Step:       1,
-			Status:     common.FlowStatusIncomplete,
-			Executions: []common.ExecutionAttempt{{Attempt: 1, Status: common.FlowStatusIncomplete}},
+			Status:     providers.FlowStatusIncomplete,
+			Executions: []providers.ExecutionAttempt{{Attempt: 1, Status: providers.FlowStatusIncomplete}},
 			StartTime:  1000,
 		}
 
@@ -371,7 +374,7 @@ func TestObservabilityDisabled(t *testing.T) {
 	defer config.ResetServerRuntime()
 
 	testConfig := &config.Config{
-		Observability: config.ObservabilityConfig{
+		Observability: engineconfig.ObservabilityConfig{
 			Enabled: false,
 		},
 	}
@@ -388,9 +391,9 @@ func TestObservabilityDisabled(t *testing.T) {
 	// Try to publish an event
 	ctx := &EngineContext{
 		ExecutionID:      "test-flow",
-		FlowType:         common.FlowTypeAuthentication,
+		FlowType:         providers.FlowTypeAuthentication,
 		AppID:            "test-app",
-		ExecutionHistory: make(map[string]*common.NodeExecutionRecord),
+		ExecutionHistory: make(map[string]*providers.NodeExecutionRecord),
 	}
 
 	publishFlowStartedEvent(ctx, mockObs)

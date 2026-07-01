@@ -113,6 +113,24 @@ const LoginFlowBuilderPage = lazy(() => import('./features/login-flow/pages/Logi
 const CreateRolePage = lazy(() => import('./features/roles/pages/CreateRolePage'));
 const RoleEditPage = lazy(() => import('./features/roles/pages/RoleEditPage'));
 const RolesListPage = lazy(() => import('./features/roles/pages/RolesListPage'));
+const VerifiablePresentationsListPage = lazy(
+  () => import('./features/verifiable-presentations/pages/VerifiablePresentationsListPage'),
+);
+const VerifiablePresentationCreatePage = lazy(
+  () => import('./features/verifiable-presentations/pages/VerifiablePresentationCreatePage'),
+);
+const VerifiablePresentationEditPage = lazy(
+  () => import('./features/verifiable-presentations/pages/VerifiablePresentationEditPage'),
+);
+const VerifiableCredentialsListPage = lazy(
+  () => import('./features/verifiable-credentials/pages/VerifiableCredentialsListPage'),
+);
+const VerifiableCredentialCreatePage = lazy(
+  () => import('./features/verifiable-credentials/pages/VerifiableCredentialCreatePage'),
+);
+const VerifiableCredentialEditPage = lazy(
+  () => import('./features/verifiable-credentials/pages/VerifiableCredentialEditPage'),
+);
 const CreateUserTypePage = lazy(() =>
   import('@thunderid/configure-user-types').then((m) => ({default: m.CreateUserTypePage})),
 );
@@ -152,6 +170,10 @@ export default function App(): JSX.Element {
               <Route path="groups/:groupId" element={<GroupEditPage />} />
               <Route path="roles" element={<RolesListPage />} />
               <Route path="roles/:roleId" element={<RoleEditPage />} />
+              <Route path="verifiable-presentations" element={<VerifiablePresentationsListPage />} />
+              <Route path="verifiable-presentations/:vpId" element={<VerifiablePresentationEditPage />} />
+              <Route path="verifiable-credentials" element={<VerifiableCredentialsListPage />} />
+              <Route path="verifiable-credentials/:vcId" element={<VerifiableCredentialEditPage />} />
               <Route path="applications" element={<ApplicationsListPage />} />
               <Route path="applications/:applicationId" element={<ApplicationEditPage />} />
               <Route path="agents" element={<AgentsListPage />} />
@@ -234,6 +256,26 @@ export default function App(): JSX.Element {
               }
             >
               <Route index element={<CreateUserTypePage />} />
+            </Route>
+            <Route
+              path="/verifiable-presentations/create"
+              element={
+                <ProtectedRoute>
+                  <FullScreenLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<VerifiablePresentationCreatePage />} />
+            </Route>
+            <Route
+              path="/verifiable-credentials/create"
+              element={
+                <ProtectedRoute>
+                  <FullScreenLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<VerifiableCredentialCreatePage />} />
             </Route>
             <Route
               path="/applications/create"

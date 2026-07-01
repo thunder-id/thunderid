@@ -22,8 +22,9 @@ import (
 	"context"
 	"net/http"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -91,7 +92,7 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 }
 
 // handleFlowError handles errors that occur during flow execution as an API error response.
-func handleFlowError(ctx context.Context, w http.ResponseWriter, flowErr *serviceerror.ServiceError) {
+func handleFlowError(ctx context.Context, w http.ResponseWriter, flowErr *tidcommon.ServiceError) {
 	errResp := apierror.ErrorResponse{
 		Code:        flowErr.Code,
 		Message:     flowErr.Error,
@@ -99,7 +100,7 @@ func handleFlowError(ctx context.Context, w http.ResponseWriter, flowErr *servic
 	}
 
 	statusCode := http.StatusInternalServerError
-	if flowErr.Type == serviceerror.ClientErrorType {
+	if flowErr.Type == tidcommon.ClientErrorType {
 		switch flowErr.Code {
 		case ErrorDirectFlowInitiationNotPermitted.Code:
 			statusCode = http.StatusForbidden
@@ -112,7 +113,7 @@ func handleFlowError(ctx context.Context, w http.ResponseWriter, flowErr *servic
 }
 
 // convertToAPIError converts service errors that occur during flow step execution as an API error response.
-func convertToAPIError(flowErr *serviceerror.ServiceError) apierror.ErrorResponse {
+func convertToAPIError(flowErr *tidcommon.ServiceError) apierror.ErrorResponse {
 	errResp := apierror.ErrorResponse{
 		Code:        flowErr.Code,
 		Message:     flowErr.Error,

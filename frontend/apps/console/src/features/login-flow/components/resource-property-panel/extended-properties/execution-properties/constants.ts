@@ -141,4 +141,5 @@ export const EXECUTORS_WITH_FIXED_INPUTS = new Set<string>([
   ExecutionTypes.OAuthExecutor,
   ExecutionTypes.OIDCAuthExecutor,
   ExecutionTypes.ConsentExecutor,
+  ExecutionTypes.OpenID4VPVerify,
 ]);

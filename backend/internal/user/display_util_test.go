@@ -22,11 +22,11 @@ import (
 	"context"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 )
@@ -50,7 +50,7 @@ func (suite *DisplayUtilTestSuite) TestResolveDisplayAttributePaths_Deduplicates
 			has := map[string]bool{names[0]: true, names[1]: true}
 			return has["employee"] && has["contractor"]
 		})).Return(map[string]string{"employee": "email", "contractor": "name"},
-		(*serviceerror.ServiceError)(nil))
+		(*tidcommon.ServiceError)(nil))
 
 	result := ResolveDisplayAttributePaths(context.Background(),
 		[]string{"employee", "contractor", "employee"}, schemaMock, nil)
@@ -79,9 +79,9 @@ func (suite *DisplayUtilTestSuite) TestResolveDisplayAttributePaths_SchemaServic
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
 	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, []string{"employee"}).
 		Return((map[string]string)(nil),
-			&serviceerror.ServiceError{
+			&tidcommon.ServiceError{
 				Code:  "500",
-				Error: i18ncore.I18nMessage{DefaultValue: "schema unavailable"},
+				Error: tidcommon.I18nMessage{DefaultValue: "schema unavailable"},
 			})
 
 	logger := log.GetLogger()

@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 const (
@@ -44,7 +45,7 @@ func TestCacheTestSuite(t *testing.T) {
 
 func (suite *CacheTestSuite) SetupSuite() {
 	mockConfig := &config.Config{
-		Cache: config.CacheConfig{
+		Cache: engineconfig.CacheConfig{
 			Disabled:        false,
 			Size:            1000,
 			TTL:             3600,
@@ -282,14 +283,14 @@ func (suite *CacheTestSuite) TestGetCacheProperty() {
 	testCases := []struct {
 		name             string
 		cacheName        string
-		cacheConfig      config.CacheConfig
-		expectedProperty config.CacheProperty
+		cacheConfig      engineconfig.CacheConfig
+		expectedProperty engineconfig.CacheProperty
 	}{
 		{
 			name:      "ExistingProperty",
 			cacheName: "testCache",
-			cacheConfig: config.CacheConfig{
-				Properties: []config.CacheProperty{
+			cacheConfig: engineconfig.CacheConfig{
+				Properties: []engineconfig.CacheProperty{
 					{
 						Name:     "testCache",
 						Disabled: false,
@@ -298,7 +299,7 @@ func (suite *CacheTestSuite) TestGetCacheProperty() {
 					},
 				},
 			},
-			expectedProperty: config.CacheProperty{
+			expectedProperty: engineconfig.CacheProperty{
 				Name:     "testCache",
 				Disabled: false,
 				Size:     100,
@@ -308,8 +309,8 @@ func (suite *CacheTestSuite) TestGetCacheProperty() {
 		{
 			name:      "NonExistingProperty",
 			cacheName: "nonExistingCache",
-			cacheConfig: config.CacheConfig{
-				Properties: []config.CacheProperty{
+			cacheConfig: engineconfig.CacheConfig{
+				Properties: []engineconfig.CacheProperty{
 					{
 						Name:     "testCache",
 						Disabled: false,
@@ -318,7 +319,7 @@ func (suite *CacheTestSuite) TestGetCacheProperty() {
 					},
 				},
 			},
-			expectedProperty: config.CacheProperty{},
+			expectedProperty: engineconfig.CacheProperty{},
 		},
 	}
 
@@ -333,40 +334,40 @@ func (suite *CacheTestSuite) TestGetCacheProperty() {
 func (suite *CacheTestSuite) TestGetEvictionPolicy() {
 	testCases := []struct {
 		name                   string
-		cacheConfig            config.CacheConfig
-		cacheProperty          config.CacheProperty
+		cacheConfig            engineconfig.CacheConfig
+		cacheProperty          engineconfig.CacheProperty
 		expectedEvictionPolicy evictionPolicy
 	}{
 		{
 			name: "PropertyLFUEvictionPolicy",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				EvictionPolicy: string(evictionPolicyLRU),
 			},
-			cacheProperty: config.CacheProperty{
+			cacheProperty: engineconfig.CacheProperty{
 				EvictionPolicy: string(evictionPolicyLFU),
 			},
 			expectedEvictionPolicy: evictionPolicyLFU,
 		},
 		{
 			name: "ConfigLRUEvictionPolicy",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				EvictionPolicy: string(evictionPolicyLRU),
 			},
-			cacheProperty:          config.CacheProperty{},
+			cacheProperty:          engineconfig.CacheProperty{},
 			expectedEvictionPolicy: evictionPolicyLRU,
 		},
 		{
 			name:                   "DefaultLRUEvictionPolicy",
-			cacheConfig:            config.CacheConfig{},
-			cacheProperty:          config.CacheProperty{},
+			cacheConfig:            engineconfig.CacheConfig{},
+			cacheProperty:          engineconfig.CacheProperty{},
 			expectedEvictionPolicy: evictionPolicyLRU,
 		},
 		{
 			name: "InvalidEvictionPolicy",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				EvictionPolicy: "INVALID",
 			},
-			cacheProperty:          config.CacheProperty{},
+			cacheProperty:          engineconfig.CacheProperty{},
 			expectedEvictionPolicy: evictionPolicyLRU,
 		},
 	}
@@ -382,24 +383,24 @@ func (suite *CacheTestSuite) TestGetEvictionPolicy() {
 func (suite *CacheTestSuite) TestGetCacheType() {
 	testCases := []struct {
 		name              string
-		cacheConfig       config.CacheConfig
+		cacheConfig       engineconfig.CacheConfig
 		expectedCacheType cacheType
 	}{
 		{
 			name: "InMemoryCacheType",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				Type: string(cacheTypeInMemory),
 			},
 			expectedCacheType: cacheTypeInMemory,
 		},
 		{
 			name:              "DefaultCacheType",
-			cacheConfig:       config.CacheConfig{},
+			cacheConfig:       engineconfig.CacheConfig{},
 			expectedCacheType: cacheTypeInMemory,
 		},
 		{
 			name: "UnknownCacheType",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				Type: "unknown",
 			},
 			expectedCacheType: cacheTypeInMemory,
@@ -418,54 +419,54 @@ func (suite *CacheTestSuite) TestGetCacheType() {
 func (suite *CacheTestSuite) TestGetCacheSize() {
 	testCases := []struct {
 		name              string
-		cacheConfig       config.CacheConfig
-		cacheProperty     config.CacheProperty
+		cacheConfig       engineconfig.CacheConfig
+		cacheProperty     engineconfig.CacheProperty
 		expectedCacheSize int
 	}{
 		{
 			name: "PropertySize",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				Size: 500,
 			},
-			cacheProperty: config.CacheProperty{
+			cacheProperty: engineconfig.CacheProperty{
 				Size: 200,
 			},
 			expectedCacheSize: 200,
 		},
 		{
 			name: "ConfigSize",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				Size: 500,
 			},
-			cacheProperty:     config.CacheProperty{},
+			cacheProperty:     engineconfig.CacheProperty{},
 			expectedCacheSize: 500,
 		},
 		{
 			name: "ZeroPropertySize",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				Size: 500,
 			},
-			cacheProperty: config.CacheProperty{
+			cacheProperty: engineconfig.CacheProperty{
 				Size: 0,
 			},
 			expectedCacheSize: 500,
 		},
 		{
 			name: "NegativePropertySize",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				Size: 500,
 			},
-			cacheProperty: config.CacheProperty{
+			cacheProperty: engineconfig.CacheProperty{
 				Size: -1,
 			},
 			expectedCacheSize: 500,
 		},
 		{
 			name: "ZeroConfigSize",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				Size: 0,
 			},
-			cacheProperty:     config.CacheProperty{},
+			cacheProperty:     engineconfig.CacheProperty{},
 			expectedCacheSize: 0,
 		},
 	}
@@ -482,54 +483,54 @@ func (suite *CacheTestSuite) TestGetCacheSize() {
 func (suite *CacheTestSuite) TestGetCacheTTL() {
 	testCases := []struct {
 		name             string
-		cacheConfig      config.CacheConfig
-		cacheProperty    config.CacheProperty
+		cacheConfig      engineconfig.CacheConfig
+		cacheProperty    engineconfig.CacheProperty
 		expectedCacheTTL time.Duration
 	}{
 		{
 			name: "PropertyTTL",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				TTL: 1800,
 			},
-			cacheProperty: config.CacheProperty{
+			cacheProperty: engineconfig.CacheProperty{
 				TTL: 900,
 			},
 			expectedCacheTTL: 900 * time.Second,
 		},
 		{
 			name: "ConfigTTL",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				TTL: 1800,
 			},
-			cacheProperty:    config.CacheProperty{},
+			cacheProperty:    engineconfig.CacheProperty{},
 			expectedCacheTTL: 1800 * time.Second,
 		},
 		{
 			name: "ZeroPropertyTTL",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				TTL: 1800,
 			},
-			cacheProperty: config.CacheProperty{
+			cacheProperty: engineconfig.CacheProperty{
 				TTL: 0,
 			},
 			expectedCacheTTL: 1800 * time.Second,
 		},
 		{
 			name: "NegativePropertyTTL",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				TTL: 1800,
 			},
-			cacheProperty: config.CacheProperty{
+			cacheProperty: engineconfig.CacheProperty{
 				TTL: -1,
 			},
 			expectedCacheTTL: 1800 * time.Second,
 		},
 		{
 			name: "ZeroConfigTTL",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				TTL: 0,
 			},
-			cacheProperty:    config.CacheProperty{},
+			cacheProperty:    engineconfig.CacheProperty{},
 			expectedCacheTTL: 0,
 		},
 	}
@@ -741,7 +742,7 @@ func (suite *CacheTestSuite) TestCleanupExpired() {
 
 	// Use a real inMemoryCache to verify CleanupExpired is delegated to the inner cache.
 	internalCache := newInMemoryCache[string]("testCleanup", true,
-		config.CacheConfig{Size: 100, TTL: 1, EvictionPolicy: "LRU"}, config.CacheProperty{})
+		engineconfig.CacheConfig{Size: 100, TTL: 1, EvictionPolicy: "LRU"}, engineconfig.CacheProperty{})
 	cache := &Cache[string]{
 		enabled:   true,
 		cacheImpl: internalCache,

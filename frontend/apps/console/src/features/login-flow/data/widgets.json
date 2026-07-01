@@ -367,7 +367,8 @@
                 "onIncomplete": "{{EUDI_WAIT_VIEW_ID}}"
               },
               "properties": {
-                "presentation_definition_id": "eudi-pid"
+                "presentation_definition_id": "eudi-pid",
+                "allowAuthenticationWithoutLocalUser": true
               }
             }
           },

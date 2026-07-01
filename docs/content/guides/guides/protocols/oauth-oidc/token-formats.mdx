@@ -81,7 +81,7 @@ The `userAttributes` array on each token type controls which user attributes are
 
 ## Certificate Prerequisites
 
-Encrypted responses (`JWE`, `NESTED_JWT`) and `private_key_jwt` client authentication require a certificate on the application — either an inline `JWKS` or a `JWKS_URI` <ProductName /> can fetch. See [Application certificate](../client-authentication-methods#application-certificate) for the full rules.
+Encrypted responses (`JWE`, `NESTED_JWT`) and `private_key_jwt` client authentication require an OAuth client certificate — either an inline `JWKS` or a `JWKS_URI` <ProductName /> can fetch. See [OAuth client certificate](../client-authentication-methods#oauth-client-certificate) for the full rules.
 
 | Use case | Certificate required? | Reason |
 |---|---|---|
@@ -100,7 +100,7 @@ Encrypted responses (`JWE`, `NESTED_JWT`) and `private_key_jwt` client authentic
 2. Open the **Token** tab.
 3. Use the **ID Token** section to configure ID Token format, signing, and encryption.
 4. Use the **UserInfo** section to configure the UserInfo response format.
-5. For encrypted responses, attach a **Certificate** under the **Advanced** tab.
+5. For encrypted responses, configure a **Certificate** in the OAuth client settings.
 6. Save.
 
 </TabItem>
@@ -142,4 +142,4 @@ The supported algorithms are listed in the [Server Metadata](../server-metadata)
 - [OpenID Connect](../openid-connect) — the spec that defines ID Token shape
 - [UserInfo](../userinfo) — the endpoint whose response format is selected here
 - [JWKS](../jwks) — <ProductName />'s signing keys
-- [Client Authentication Methods — Application certificate](../client-authentication-methods#application-certificate) — attaching the client's public key
+- [Client Authentication Methods — OAuth client certificate](../client-authentication-methods#oauth-client-certificate) — attaching the client's public key

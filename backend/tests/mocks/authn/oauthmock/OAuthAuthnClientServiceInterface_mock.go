@@ -5,9 +5,9 @@
 package oauthmock
 
 import (
-	"github.com/thunder-id/thunderid/internal/authn/oauth"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/authn/oauth"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewOAuthAuthnClientServiceInterfaceMock creates a new instance of OAuthAuthnClientServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -38,7 +38,7 @@ func (_m *OAuthAuthnClientServiceInterfaceMock) EXPECT() *OAuthAuthnClientServic
 }
 
 // GetOAuthClientConfig provides a mock function for the type OAuthAuthnClientServiceInterfaceMock
-func (_mock *OAuthAuthnClientServiceInterfaceMock) GetOAuthClientConfig(idpID string) (*oauth.OAuthClientConfig, *serviceerror.ServiceError) {
+func (_mock *OAuthAuthnClientServiceInterfaceMock) GetOAuthClientConfig(idpID string) (*oauth.OAuthClientConfig, *tidcommon.ServiceError) {
 	ret := _mock.Called(idpID)
 
 	if len(ret) == 0 {
@@ -46,8 +46,8 @@ func (_mock *OAuthAuthnClientServiceInterfaceMock) GetOAuthClientConfig(idpID st
 	}
 
 	var r0 *oauth.OAuthClientConfig
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(string) (*oauth.OAuthClientConfig, *serviceerror.ServiceError)); ok {
+	var r1 *tidcommon.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(string) (*oauth.OAuthClientConfig, *tidcommon.ServiceError)); ok {
 		return returnFunc(idpID)
 	}
 	if returnFunc, ok := ret.Get(0).(func(string) *oauth.OAuthClientConfig); ok {
@@ -57,11 +57,11 @@ func (_mock *OAuthAuthnClientServiceInterfaceMock) GetOAuthClientConfig(idpID st
 			r0 = ret.Get(0).(*oauth.OAuthClientConfig)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(string) *tidcommon.ServiceError); ok {
 		r1 = returnFunc(idpID)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*tidcommon.ServiceError)
 		}
 	}
 	return r0, r1
@@ -91,12 +91,12 @@ func (_c *OAuthAuthnClientServiceInterfaceMock_GetOAuthClientConfig_Call) Run(ru
 	return _c
 }
 
-func (_c *OAuthAuthnClientServiceInterfaceMock_GetOAuthClientConfig_Call) Return(oAuthClientConfig *oauth.OAuthClientConfig, serviceError *serviceerror.ServiceError) *OAuthAuthnClientServiceInterfaceMock_GetOAuthClientConfig_Call {
+func (_c *OAuthAuthnClientServiceInterfaceMock_GetOAuthClientConfig_Call) Return(oAuthClientConfig *oauth.OAuthClientConfig, serviceError *tidcommon.ServiceError) *OAuthAuthnClientServiceInterfaceMock_GetOAuthClientConfig_Call {
 	_c.Call.Return(oAuthClientConfig, serviceError)
 	return _c
 }
 
-func (_c *OAuthAuthnClientServiceInterfaceMock_GetOAuthClientConfig_Call) RunAndReturn(run func(idpID string) (*oauth.OAuthClientConfig, *serviceerror.ServiceError)) *OAuthAuthnClientServiceInterfaceMock_GetOAuthClientConfig_Call {
+func (_c *OAuthAuthnClientServiceInterfaceMock_GetOAuthClientConfig_Call) RunAndReturn(run func(idpID string) (*oauth.OAuthClientConfig, *tidcommon.ServiceError)) *OAuthAuthnClientServiceInterfaceMock_GetOAuthClientConfig_Call {
 	_c.Call.Return(run)
 	return _c
 }

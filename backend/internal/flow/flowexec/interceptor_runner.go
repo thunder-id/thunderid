@@ -21,10 +21,13 @@ package flowexec
 import (
 	"slices"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -32,9 +35,9 @@ import (
 type InterceptorRunnerInterface interface {
 	// runInterceptors filters, orders, and executes interceptors for the given mode.
 	// Returns an common.InterceptorResponse with accumulated outputs (COMPLETE) or UI-interaction
-	// fields (INCOMPLETE). FAIL is returned as a *serviceerror.ServiceError.
-	runInterceptors(mode common.InterceptorMode, execCtx *InterceptorRunnerContext) (
-		*common.InterceptorResponse, *serviceerror.ServiceError)
+	// fields (INCOMPLETE). FAIL is returned as a *tidcommon.ServiceError.
+	runInterceptors(mode providers.InterceptorMode, execCtx *InterceptorRunnerContext) (
+		*common.InterceptorResponse, *tidcommon.ServiceError)
 }
 
 // interceptorRunner is the default implementation of InterceptorRunnerInterface.
@@ -55,9 +58,9 @@ func newInterceptorRunner(registry interceptor.InterceptorRegistryInterface) Int
 // to mode-specific handlers. The runner internally branches: request-level modes (PRE_REQUEST,
 // POST_REQUEST) reject INCOMPLETE results, while node-level modes (PRE_NODE, POST_NODE) allow them.
 func (s *interceptorRunner) runInterceptors(
-	mode common.InterceptorMode,
+	mode providers.InterceptorMode,
 	execCtx *InterceptorRunnerContext,
-) (*common.InterceptorResponse, *serviceerror.ServiceError) {
+) (*common.InterceptorResponse, *tidcommon.ServiceError) {
 	applicable, svcErr := s.resolveApplicableInterceptors(mode, execCtx)
 	if svcErr != nil {
 		return nil, svcErr
@@ -73,9 +76,9 @@ func (s *interceptorRunner) runInterceptors(
 // interceptor instances from the registry. The input list is already mode-filtered and priority-sorted
 // at graph construction time.
 func (s *interceptorRunner) resolveApplicableInterceptors(
-	mode common.InterceptorMode,
+	mode providers.InterceptorMode,
 	execCtx *InterceptorRunnerContext,
-) ([]core.InterceptorUnitInterface, *serviceerror.ServiceError) {
+) ([]core.InterceptorUnitInterface, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String(log.LoggerKeyExecutionID, execCtx.ExecutionID))
 
 	all := execCtx.ResolvedInterceptors
@@ -103,7 +106,7 @@ func (s *interceptorRunner) resolveApplicableInterceptors(
 			if err != nil {
 				logger.Error(execCtx.Ctx, "Interceptor not found in registry",
 					log.String("interceptorName", b.GetName()), log.Error(err))
-				return nil, &serviceerror.InternalServerError
+				return nil, &tidcommon.InternalServerError
 			}
 			b.SetInterceptor(ic)
 		}
@@ -118,9 +121,9 @@ func (s *interceptorRunner) resolveApplicableInterceptors(
 // user interaction.
 func (s *interceptorRunner) executeInterceptors(
 	applicable []core.InterceptorUnitInterface,
-	mode common.InterceptorMode,
+	mode providers.InterceptorMode,
 	execCtx *InterceptorRunnerContext,
-) (*common.InterceptorResponse, *serviceerror.ServiceError) {
+) (*common.InterceptorResponse, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String(log.LoggerKeyExecutionID, execCtx.ExecutionID))
 
 	resp := &common.InterceptorResponse{
@@ -153,7 +156,7 @@ func (s *interceptorRunner) executeInterceptors(
 		default:
 			logger.Error(execCtx.Ctx, "Interceptor returned invalid status",
 				log.String("interceptorName", name), log.String("status", string(result.Status)))
-			return nil, &serviceerror.InternalServerError
+			return nil, &tidcommon.InternalServerError
 		}
 	}
 
@@ -164,10 +167,10 @@ func (s *interceptorRunner) executeInterceptors(
 func (s *interceptorRunner) executeInterceptor(
 	ic core.InterceptorInterface,
 	name string,
-	mode common.InterceptorMode,
+	mode providers.InterceptorMode,
 	execCtx *InterceptorRunnerContext,
 	logger *log.Logger,
-) (*common.InterceptorResponse, *serviceerror.ServiceError) {
+) (*common.InterceptorResponse, *tidcommon.ServiceError) {
 	logger.Debug(execCtx.Ctx, "Running interceptor",
 		log.String("interceptorName", name),
 		log.String("mode", string(mode)),
@@ -185,6 +188,7 @@ func (s *interceptorRunner) executeInterceptor(
 		NodeType:            execCtx.NodeType,
 		ExecutionPolicy:     execCtx.ExecutionPolicy,
 		AllowSegmentRestart: execCtx.AllowSegmentRestart,
+		CurrentNodeInputs:   execCtx.CurrentNodeInputs,
 		ForwardedData:       execCtx.ForwardedData,
 		AdditionalData:      execCtx.AdditionalData,
 		SharedData:          execCtx.SharedData,
@@ -197,7 +201,7 @@ func (s *interceptorRunner) executeInterceptor(
 	if err != nil {
 		logger.Error(execCtx.Ctx, "Interceptor execution error",
 			log.String("interceptorName", name), log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return result, nil
@@ -237,9 +241,9 @@ func shouldApplyToNode(
 	}
 
 	switch interceptorUnit.GetScope() {
-	case common.InterceptorScopeSelected:
+	case providers.InterceptorScopeSelected:
 		return slices.Contains(interceptorUnit.GetApplyTo(), nodeID)
-	case common.InterceptorScopeAll:
+	case providers.InterceptorScopeAll:
 		return !slices.Contains(skipInterceptors, interceptorUnit.GetName())
 	default:
 		// No scope specified defaults to ALL.
@@ -254,6 +258,6 @@ func isDefaultInterceptorUnit(name string) bool {
 }
 
 // isPerNodeMode returns true for PRE_NODE and POST_NODE modes.
-func isPerNodeMode(mode common.InterceptorMode) bool {
-	return mode == common.InterceptorModePreNode || mode == common.InterceptorModePostNode
+func isPerNodeMode(mode providers.InterceptorMode) bool {
+	return mode == providers.InterceptorModePreNode || mode == providers.InterceptorModePostNode
 }

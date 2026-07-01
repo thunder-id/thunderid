@@ -120,7 +120,8 @@ export default function Stepper({children, stepNode = 'h2', as = 'h2'}: StepperP
             <Typography
               id={step.id}
               variant={as}
-              component="p"
+              component={as}
+              className="anchor"
               sx={{margin: 0, padding: 0, lineHeight: '36px', fontWeight: 700}}
             >
               {step.label}

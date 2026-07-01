@@ -30,20 +30,22 @@ import (
 	"testing"
 	"time"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
 	"github.com/thunder-id/thunderid/internal/attributecache"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
@@ -71,7 +73,7 @@ const testUserInfoIssuer = "test-issuer"
 
 func userInfoTestConfig() oauthconfig.Config {
 	return oauthconfig.Config{
-		JWT: config.JWTConfig{Issuer: testUserInfoIssuer, ValidityPeriod: 600},
+		JWT: engineconfig.JWTConfig{Issuer: testUserInfoIssuer, ValidityPeriod: 600},
 	}
 }
 
@@ -84,7 +86,7 @@ func (s *UserInfoServiceTestSuite) SetupTest() {
 	s.userInfoService = newUserInfoService(
 		s.mockJWTService, nil, nil, s.mockTokenValidator,
 		actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider), s.mockAttributeCacheService, nil,
-		oauthconfig.Config{JWT: config.JWTConfig{Issuer: testUserInfoIssuer, ValidityPeriod: 600}},
+		oauthconfig.Config{JWT: engineconfig.JWTConfig{Issuer: testUserInfoIssuer, ValidityPeriod: 600}},
 	)
 
 	// Initialize server runtime for tests that still depend on global config.
@@ -92,7 +94,7 @@ func (s *UserInfoServiceTestSuite) SetupTest() {
 	_ = config.InitializeServerRuntime(
 		"test-home",
 		&config.Config{
-			JWT: config.JWTConfig{
+			JWT: engineconfig.JWTConfig{
 				Issuer:         "test-issuer",
 				ValidityPeriod: 600,
 			},
@@ -230,11 +232,11 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_ErrorFetchingUserAttributes()
 	s.mockTokenValidator.On("ValidateAccessToken", mock.Anything, token).Return(
 		&tokenservice.AccessTokenClaims{Sub: "user123", Claims: claims}, nil)
 	s.mockAttributeCacheService.On("GetAttributeCache", mock.Anything, "cache-err-123").Return(
-		nil, &serviceerror.InternalServerError)
+		nil, &tidcommon.InternalServerError)
 
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.NotNil(s.T(), svcErr)
-	assert.Equal(s.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+	assert.Equal(s.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 	assert.Nil(s.T(), response)
 	s.mockTokenValidator.AssertExpectations(s.T())
 	s.mockAttributeCacheService.AssertExpectations(s.T())
@@ -252,20 +254,20 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_ErrorFetchingGroups() {
 	}
 	token := s.createToken(claims)
 
-	oauthApp := &inboundmodel.OAuthClient{
-		UserInfo: &inboundmodel.UserInfoConfig{
+	oauthApp := &providers.OAuthClient{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"name", constants.UserAttributeGroups},
 		},
 	}
 	s.mockTokenValidator.On("ValidateAccessToken", mock.Anything, token).Return(
 		&tokenservice.AccessTokenClaims{Sub: "user123", Claims: claims}, nil)
 	s.mockAttributeCacheService.On("GetAttributeCache", mock.Anything, "cache-groups-123").Return(
-		nil, &serviceerror.InternalServerError)
+		nil, &tidcommon.InternalServerError)
 	s.mockInboundClient.On("GetOAuthClientByClientID", mock.Anything, "client123").Return(oauthApp, nil)
 
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.NotNil(s.T(), svcErr)
-	assert.Equal(s.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+	assert.Equal(s.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 	assert.Nil(s.T(), response)
 	s.mockTokenValidator.AssertExpectations(s.T())
 	s.mockAttributeCacheService.AssertExpectations(s.T())
@@ -289,13 +291,13 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_Success_StandardScopes() {
 		"email": "john@example.com",
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+	oauthApp := &providers.OAuthClient{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"name", "email"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"name", "email"},
 		},
 	}
@@ -309,7 +311,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_Success_StandardScopes() {
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), response)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJSON, response.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJSON, response.Type)
 	assert.Equal(s.T(), "user123", response.JSONBody["sub"])
 	assert.Equal(s.T(), "John Doe", response.JSONBody["name"])
 	assert.Equal(s.T(), "john@example.com", response.JSONBody["email"])
@@ -335,13 +337,13 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_Success_WithGroups() {
 		constants.UserAttributeGroups: []interface{}{"admin", "users"},
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+	oauthApp := &providers.OAuthClient{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"name", constants.UserAttributeGroups},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"name", constants.UserAttributeGroups},
 		},
 		ScopeClaims: map[string][]string{
@@ -358,7 +360,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_Success_WithGroups() {
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), response)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJSON, response.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJSON, response.Type)
 	assert.Equal(s.T(), "user123", response.JSONBody["sub"])
 	assert.Equal(s.T(), "John Doe", response.JSONBody["name"])
 	groupsValue := response.JSONBody[constants.UserAttributeGroups]
@@ -391,13 +393,13 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_Success_WithScopeClaimsMappin
 		"phone": "1234567890",
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+	oauthApp := &providers.OAuthClient{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"name", "email", "phone"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"name", "email", "phone"},
 		},
 		ScopeClaims: map[string][]string{
@@ -414,7 +416,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_Success_WithScopeClaimsMappin
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), response)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJSON, response.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJSON, response.Type)
 	assert.Equal(s.T(), "user123", response.JSONBody["sub"])
 	assert.Equal(s.T(), "John Doe", response.JSONBody["name"])
 	assert.Equal(s.T(), "1234567890", response.JSONBody["phone"])
@@ -450,7 +452,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_Success_NoAppConfig() {
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), response)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJSON, response.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJSON, response.Type)
 	assert.Equal(s.T(), "user123", response.JSONBody["sub"])
 	// No other claims because allowedUserAttributes is empty
 	assert.Len(s.T(), response.JSONBody, 1)
@@ -483,7 +485,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_AppNotFound_ReturnsInvalidTok
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), response)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJSON, response.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJSON, response.Type)
 	assert.Equal(s.T(), "user123", response.JSONBody["sub"])
 	// No other claims because allowedUserAttributes is empty
 	assert.Len(s.T(), response.JSONBody, 1)
@@ -508,13 +510,13 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_Success_GroupsNotInAllowedAtt
 		"name": "John Doe",
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+	oauthApp := &providers.OAuthClient{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"name"}, // groups not in allowed attributes
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"name"},
 		},
 	}
@@ -528,7 +530,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_Success_GroupsNotInAllowedAtt
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), response)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJSON, response.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJSON, response.Type)
 	assert.Equal(s.T(), "user123", response.JSONBody["sub"])
 	assert.Equal(s.T(), "John Doe", response.JSONBody["name"])
 	assert.NotContains(s.T(), response.JSONBody, constants.UserAttributeGroups) // groups not included
@@ -550,13 +552,13 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_Success_EmptyUserAttributes()
 	}
 	token := s.createToken(claims)
 
-	oauthApp := &inboundmodel.OAuthClient{
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+	oauthApp := &providers.OAuthClient{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"name", "email"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"name", "email"},
 		},
 	}
@@ -568,7 +570,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_Success_EmptyUserAttributes()
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), response)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJSON, response.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJSON, response.Type)
 	assert.Equal(s.T(), "user123", response.JSONBody["sub"])
 	// No other claims because user has no cached attributes
 	assert.Len(s.T(), response.JSONBody, 1)
@@ -634,7 +636,7 @@ func (s *UserInfoServiceTestSuite) testGetUserInfoInvalidClientID(clientIDValue 
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr, description)
 	assert.NotNil(s.T(), response, description)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJSON, response.Type, description)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJSON, response.Type, description)
 	assert.Equal(s.T(), "user123", response.JSONBody["sub"], description)
 	// No other claims because allowedUserAttributes is empty
 	assert.Len(s.T(), response.JSONBody, 1, description)
@@ -675,7 +677,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_GroupsWithNilOAuthApp() {
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), response)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJSON, response.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJSON, response.Type)
 	assert.Equal(s.T(), "user123", response.JSONBody["sub"])
 	// Groups not included because oauthApp is nil
 	assert.NotContains(s.T(), response.JSONBody, constants.UserAttributeGroups)
@@ -699,7 +701,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_GroupsWithNilToken() {
 		"name": "John Doe",
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
+	oauthApp := &providers.OAuthClient{
 		Token: nil, // Token is nil
 	}
 
@@ -713,7 +715,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_GroupsWithNilToken() {
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), response)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJSON, response.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJSON, response.Type)
 	assert.Equal(s.T(), "user123", response.JSONBody["sub"])
 	// Groups not included because Token is nil
 	assert.NotContains(s.T(), response.JSONBody, constants.UserAttributeGroups)
@@ -738,8 +740,8 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_GroupsWithNilIDToken() {
 		"name": "John Doe",
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
-		Token: &inboundmodel.OAuthTokenConfig{
+	oauthApp := &providers.OAuthClient{
+		Token: &providers.OAuthTokenConfig{
 			IDToken: nil, // IDToken is nil
 		},
 	}
@@ -754,7 +756,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_GroupsWithNilIDToken() {
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), response)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJSON, response.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJSON, response.Type)
 	assert.Equal(s.T(), "user123", response.JSONBody["sub"])
 	// Groups not included because IDToken is nil
 	assert.NotContains(s.T(), response.JSONBody, constants.UserAttributeGroups)
@@ -779,13 +781,13 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_GroupsWithEmptyGroups() {
 		"name": "John Doe",
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+	oauthApp := &providers.OAuthClient{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"name", constants.UserAttributeGroups},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"name", constants.UserAttributeGroups},
 		},
 		ScopeClaims: map[string][]string{
@@ -803,7 +805,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_GroupsWithEmptyGroups() {
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), response)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJSON, response.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJSON, response.Type)
 	assert.Equal(s.T(), "user123", response.JSONBody["sub"])
 	assert.Equal(s.T(), "John Doe", response.JSONBody["name"])
 	// Groups not included because the attribute cache has no groups entry
@@ -856,13 +858,13 @@ func (s *UserInfoServiceTestSuite) testGetUserInfoAllowedGrantType(grantTypeValu
 		"name": "John Doe",
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+	oauthApp := &providers.OAuthClient{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"name"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"name"},
 		},
 	}
@@ -876,7 +878,7 @@ func (s *UserInfoServiceTestSuite) testGetUserInfoAllowedGrantType(grantTypeValu
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr, description)
 	assert.NotNil(s.T(), response, description)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJSON, response.Type, description)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJSON, response.Type, description)
 	assert.Equal(s.T(), "user123", response.JSONBody["sub"], description)
 	assert.Equal(s.T(), "John Doe", response.JSONBody["name"], description)
 	s.mockTokenValidator.AssertExpectations(s.T())
@@ -963,7 +965,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_OnlyOpenIDScope_Success() {
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), response)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJSON, response.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJSON, response.Type)
 	assert.Equal(s.T(), "user123", response.JSONBody["sub"])
 	// Only sub claim should be present
 	assert.Len(s.T(), response.JSONBody, 1)
@@ -988,8 +990,8 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_OpenIDScope_InMiddleOfScopeSt
 		"email": "john@example.com",
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
-		UserInfo: &inboundmodel.UserInfoConfig{
+	oauthApp := &providers.OAuthClient{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"name", "email"},
 		},
 	}
@@ -1003,7 +1005,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_OpenIDScope_InMiddleOfScopeSt
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), response)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJSON, response.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJSON, response.Type)
 	assert.Equal(s.T(), "user123", response.JSONBody["sub"])
 	assert.Equal(s.T(), "John Doe", response.JSONBody["name"])
 	assert.Equal(s.T(), "john@example.com", response.JSONBody["email"])
@@ -1028,8 +1030,8 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_OpenIDScope_AtEnd() {
 		"email": "john@example.com",
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
-		UserInfo: &inboundmodel.UserInfoConfig{
+	oauthApp := &providers.OAuthClient{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"email"},
 		},
 	}
@@ -1043,7 +1045,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_OpenIDScope_AtEnd() {
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), response)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJSON, response.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJSON, response.Type)
 	assert.NotNil(s.T(), response.JSONBody)
 	assert.Equal(s.T(), "user123", response.JSONBody["sub"])
 	assert.Equal(s.T(), "john@example.com", response.JSONBody["email"])
@@ -1070,10 +1072,10 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_JWS_ResponseType() {
 		"email": "john@example.com",
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
-		Token: &inboundmodel.OAuthTokenConfig{},
-		UserInfo: &inboundmodel.UserInfoConfig{
-			ResponseType:   inboundmodel.UserInfoResponseTypeJWS,
+	oauthApp := &providers.OAuthClient{
+		Token: &providers.OAuthTokenConfig{},
+		UserInfo: &providers.UserInfoConfig{
+			ResponseType:   providers.UserInfoResponseTypeJWS,
 			SigningAlg:     "RS256",
 			UserAttributes: []string{"email"},
 		},
@@ -1108,7 +1110,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_JWS_ResponseType() {
 
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), response)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJWS, response.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJWS, response.Type)
 	assert.Equal(s.T(), "signed.jwt.token", response.JWTBody)
 	assert.Nil(s.T(), response.JSONBody)
 
@@ -1215,10 +1217,10 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_JWS_GenerateJWTFailure() {
 		"email": "john@example.com",
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
-		Token: &inboundmodel.OAuthTokenConfig{},
-		UserInfo: &inboundmodel.UserInfoConfig{
-			ResponseType:   inboundmodel.UserInfoResponseTypeJWS,
+	oauthApp := &providers.OAuthClient{
+		Token: &providers.OAuthTokenConfig{},
+		UserInfo: &providers.UserInfoConfig{
+			ResponseType:   providers.UserInfoResponseTypeJWS,
 			SigningAlg:     "RS256",
 			UserAttributes: []string{"email"},
 		},
@@ -1244,13 +1246,13 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_JWS_GenerateJWTFailure() {
 		mock.Anything,
 		"RS256",
 	).Return("", int64(0),
-		&serviceerror.ServiceError{
-			Type: serviceerror.ServerErrorType,
+		&tidcommon.ServiceError{
+			Type: tidcommon.ServerErrorType,
 			Code: "JWT_SIGNING_FAILED",
-			Error: core.I18nMessage{
+			Error: tidcommon.I18nMessage{
 				Key: "error.test.jwt_signing_failed", DefaultValue: "JWT signing failed",
 			},
-			ErrorDescription: core.I18nMessage{
+			ErrorDescription: tidcommon.I18nMessage{
 				Key: "error.test.jwt_signing_failed", DefaultValue: "JWT signing failed",
 			},
 		})
@@ -1259,7 +1261,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_JWS_GenerateJWTFailure() {
 
 	assert.Nil(s.T(), response)
 	assert.NotNil(s.T(), svcErr)
-	assert.Equal(s.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+	assert.Equal(s.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 
 	s.mockTokenValidator.AssertExpectations(s.T())
 	s.mockJWTService.AssertExpectations(s.T())

@@ -24,7 +24,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -51,15 +52,19 @@ var getDBProvider = provider.GetDBProvider
 // flowStoreInterface defines the interface for flow store operations.
 type flowStoreInterface interface {
 	ListFlows(ctx context.Context, limit, offset int, flowType string) ([]BasicFlowDefinition, int, error)
-	CreateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (*CompleteFlowDefinition, error)
-	GetFlowByID(ctx context.Context, flowID string) (*CompleteFlowDefinition, error)
-	GetFlowByHandle(ctx context.Context, handle string, flowType common.FlowType) (*CompleteFlowDefinition, error)
-	UpdateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (*CompleteFlowDefinition, error)
+	CreateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (*providers.CompleteFlowDefinition, error)
+	GetFlowByID(ctx context.Context, flowID string) (*providers.CompleteFlowDefinition, error)
+	GetFlowByHandle(
+		ctx context.Context,
+		handle string,
+		flowType providers.FlowType,
+	) (*providers.CompleteFlowDefinition, error)
+	UpdateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (*providers.CompleteFlowDefinition, error)
 	DeleteFlow(ctx context.Context, flowID string) error
 	ListFlowVersions(ctx context.Context, flowID string) ([]BasicFlowVersion, error)
 	GetFlowVersion(ctx context.Context, flowID string, version int) (*FlowVersion, error)
-	RestoreFlowVersion(ctx context.Context, flowID string, version int) (*CompleteFlowDefinition, error)
-	IsFlowExistsByHandle(ctx context.Context, handle string, flowType common.FlowType) (bool, error)
+	RestoreFlowVersion(ctx context.Context, flowID string, version int) (*providers.CompleteFlowDefinition, error)
+	IsFlowExistsByHandle(ctx context.Context, handle string, flowType providers.FlowType) (bool, error)
 }
 
 // flowStore is the default implementation of flowStoreInterface.
@@ -143,7 +148,7 @@ func (s *flowStore) ListFlows(ctx context.Context, limit, offset int, flowType s
 
 // CreateFlow creates a new flow definition with version 1.
 func (s *flowStore) CreateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (
-	*CompleteFlowDefinition, error) {
+	*providers.CompleteFlowDefinition, error) {
 	nodesJSON, err := json.Marshal(flow.Nodes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal nodes: %w", err)
@@ -177,8 +182,8 @@ func (s *flowStore) CreateFlow(ctx context.Context, flowID string, flow *FlowDef
 }
 
 // GetFlowByID retrieves the active version of a flow definition by its ID.
-func (s *flowStore) GetFlowByID(ctx context.Context, flowID string) (*CompleteFlowDefinition, error) {
-	var flow *CompleteFlowDefinition
+func (s *flowStore) GetFlowByID(ctx context.Context, flowID string) (*providers.CompleteFlowDefinition, error) {
+	var flow *providers.CompleteFlowDefinition
 	err := s.withDBClientContext(ctx, func(dbClient provider.DBClientInterface) error {
 		results, err := dbClient.QueryContext(ctx, queryGetFlow, flowID, s.deploymentID)
 		if err != nil {
@@ -197,9 +202,9 @@ func (s *flowStore) GetFlowByID(ctx context.Context, flowID string) (*CompleteFl
 }
 
 // GetFlowByHandle retrieves a flow definition by handle and flow type.
-func (s *flowStore) GetFlowByHandle(ctx context.Context, handle string, flowType common.FlowType) (
-	*CompleteFlowDefinition, error) {
-	var flow *CompleteFlowDefinition
+func (s *flowStore) GetFlowByHandle(ctx context.Context, handle string, flowType providers.FlowType) (
+	*providers.CompleteFlowDefinition, error) {
+	var flow *providers.CompleteFlowDefinition
 	err := s.withDBClientContext(ctx, func(dbClient provider.DBClientInterface) error {
 		results, err := dbClient.QueryContext(ctx, queryGetFlowByHandle, handle, string(flowType), s.deploymentID)
 		if err != nil {
@@ -220,7 +225,7 @@ func (s *flowStore) GetFlowByHandle(ctx context.Context, handle string, flowType
 // UpdateFlow updates a flow definition by creating a new version.
 // Automatically deletes oldest versions if the count exceeds max_version_history.
 func (s *flowStore) UpdateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (
-	*CompleteFlowDefinition, error) {
+	*providers.CompleteFlowDefinition, error) {
 	nodesJSON, err := json.Marshal(flow.Nodes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal nodes: %w", err)
@@ -279,7 +284,11 @@ func (s *flowStore) DeleteFlow(ctx context.Context, flowID string) error {
 }
 
 // IsFlowExistsByHandle checks if a flow exists with the given handle and flow type.
-func (s *flowStore) IsFlowExistsByHandle(ctx context.Context, handle string, flowType common.FlowType) (bool, error) {
+func (s *flowStore) IsFlowExistsByHandle(
+	ctx context.Context,
+	handle string,
+	flowType providers.FlowType,
+) (bool, error) {
 	var exists bool
 	err := s.withDBClientContext(ctx, func(dbClient provider.DBClientInterface) error {
 		results, err := dbClient.QueryContext(ctx, queryCheckFlowExistsByHandle,
@@ -344,7 +353,7 @@ func (s *flowStore) GetFlowVersion(ctx context.Context, flowID string, version i
 // This creates a new version by copying the configuration from the specified version.
 // Automatically deletes oldest versions if the count exceeds max_version_history.
 func (s *flowStore) RestoreFlowVersion(ctx context.Context, flowID string, version int) (
-	*CompleteFlowDefinition, error) {
+	*providers.CompleteFlowDefinition, error) {
 	err := s.withDBClientContext(ctx, func(dbClient provider.DBClientInterface) error {
 		flowResults, err := dbClient.QueryContext(ctx, queryGetFlow, flowID, s.deploymentID)
 		if err != nil {
@@ -547,16 +556,16 @@ func (s *flowStore) buildBasicFlowDefinitionFromRow(row map[string]interface{}) 
 		ID:            flowID,
 		Handle:        handle,
 		Name:          name,
-		FlowType:      common.FlowType(flowTypeStr),
+		FlowType:      providers.FlowType(flowTypeStr),
 		ActiveVersion: int(activeVersion),
 		CreatedAt:     createdAt,
 		UpdatedAt:     updatedAt,
 	}, nil
 }
 
-// buildCompleteFlowDefinitionFromRow builds a CompleteFlowDefinition from a database row.
+// buildCompleteFlowDefinitionFromRow builds a providers.CompleteFlowDefinition from a database row.
 func (s *flowStore) buildCompleteFlowDefinitionFromRow(row map[string]interface{}) (
-	*CompleteFlowDefinition, error) {
+	*providers.CompleteFlowDefinition, error) {
 	flowID, err := s.getString(row, colFlowID)
 	if err != nil {
 		return nil, err
@@ -597,11 +606,11 @@ func (s *flowStore) buildCompleteFlowDefinitionFromRow(row map[string]interface{
 		return nil, err
 	}
 
-	flow := &CompleteFlowDefinition{
+	flow := &providers.CompleteFlowDefinition{
 		ID:            flowID,
 		Handle:        handle,
 		Name:          name,
-		FlowType:      common.FlowType(flowTypeStr),
+		FlowType:      providers.FlowType(flowTypeStr),
 		ActiveVersion: int(activeVersion),
 		CreatedAt:     createdAt,
 		UpdatedAt:     updatedAt,

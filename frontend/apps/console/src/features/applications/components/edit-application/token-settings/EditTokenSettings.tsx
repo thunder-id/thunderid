@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -359,16 +359,23 @@ export default function EditTokenSettings({
     return oauth2Config.userInfo?.userAttributes ?? oauth2Config.token?.idToken?.userAttributes ?? [];
   }, [isOAuthMode, oauth2Config]);
 
-  const isUserInfoCustomAttributes = useMemo(() => {
+  const derivedIsCustom = useMemo(() => {
     if (!isOAuthMode || !oauth2Config?.userInfo) return false;
-
     const userInfoAttrs = oauth2Config.userInfo.userAttributes ?? [];
     const idTokenAttrs = oauth2Config.token?.idToken?.userAttributes ?? [];
-
     return !areAttributesEqual(userInfoAttrs, idTokenAttrs);
   }, [isOAuthMode, oauth2Config]);
 
+  const [isUserInfoCustomAttributes, setIsUserInfoCustomAttributes] = useState(derivedIsCustom);
+
+  // Sync local toggle state when the derived value changes due to external config updates
+  useEffect(() => {
+    setIsUserInfoCustomAttributes(derivedIsCustom);
+  }, [derivedIsCustom]);
+
   const handleToggleUserInfo = (checked: boolean) => {
+    setIsUserInfoCustomAttributes(checked);
+
     if (!checked && activeTokenType === 'userinfo') {
       setPendingAdditionsByToken((prev) => ({...prev, userinfo: new Set()}));
       setPendingRemovalsByToken((prev) => ({...prev, userinfo: new Set()}));
@@ -377,10 +384,11 @@ export default function EditTokenSettings({
 
     if (checked) {
       // When enabling, start with ID token attributes if current UserInfo attrs are empty/undefined
-      if (!oauth2Config?.userInfo) {
+      if (!oauth2Config?.userInfo?.userAttributes?.length) {
         const updatedConfig = {
           ...oauth2Config,
           userInfo: {
+            ...oauth2Config?.userInfo,
             userAttributes: [...currentIdTokenAttributes],
           },
         };
@@ -394,9 +402,14 @@ export default function EditTokenSettings({
         onFieldChange('inboundAuthConfig', updatedInboundAuth);
       }
     } else if (oauth2Config) {
-      // When disabling, remove userInfo from config to use fallback
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const {userInfo: _, ...updatedConfig} = oauth2Config;
+      // When disabling custom mode, sync userInfo attributes with ID token attributes
+      const updatedConfig = {
+        ...oauth2Config,
+        userInfo: {
+          ...oauth2Config.userInfo,
+          userAttributes: [...currentIdTokenAttributes],
+        },
+      };
 
       const updatedInboundAuth = application.inboundAuthConfig?.map((config) => {
         if (config.type === 'oauth2') {
@@ -429,6 +442,46 @@ export default function EditTokenSettings({
         return {...config, config: updatedConfig};
       }
 
+      return config;
+    });
+    onFieldChange('inboundAuthConfig', updatedInboundAuth);
+  };
+
+  const handleIdTokenConfigChange = (field: string, value: string) => {
+    const updatedConfig = {
+      ...oauth2Config,
+      token: {
+        ...oauth2Config?.token,
+        idToken: {
+          ...oauth2Config?.token?.idToken,
+          userAttributes: oauth2Config?.token?.idToken?.userAttributes ?? [],
+          validityPeriod: oauth2Config?.token?.idToken?.validityPeriod ?? 3600,
+          [field]: value,
+        },
+      },
+    };
+    const updatedInboundAuth = application.inboundAuthConfig?.map((config) => {
+      if (config.type === 'oauth2') {
+        return {...config, config: updatedConfig};
+      }
+      return config;
+    });
+    onFieldChange('inboundAuthConfig', updatedInboundAuth);
+  };
+
+  const handleUserInfoConfigChange = (field: string, value: string) => {
+    const updatedConfig = {
+      ...oauth2Config,
+      userInfo: {
+        ...oauth2Config?.userInfo,
+        userAttributes: oauth2Config?.userInfo?.userAttributes ?? oauth2Config?.token?.idToken?.userAttributes ?? [],
+        [field]: value,
+      },
+    };
+    const updatedInboundAuth = application.inboundAuthConfig?.map((config) => {
+      if (config.type === 'oauth2') {
+        return {...config, config: updatedConfig};
+      }
       return config;
     });
     onFieldChange('inboundAuthConfig', updatedInboundAuth);
@@ -544,6 +597,7 @@ export default function EditTokenSettings({
         updatedConfig = {
           ...updatedConfig,
           userInfo: {
+            ...updatedConfig.userInfo,
             userAttributes: nextAttrs,
           },
         };
@@ -648,6 +702,15 @@ export default function EditTokenSettings({
             onAttributeClick={handleAttributeClick}
             entityLabel={entityLabel}
             disabled={application.isReadOnly}
+            idTokenResponseType={oauth2Config?.token?.idToken?.responseType}
+            idTokenEncryptionAlg={oauth2Config?.token?.idToken?.encryptionAlg}
+            idTokenEncryptionEnc={oauth2Config?.token?.idToken?.encryptionEnc}
+            onIdTokenConfigChange={handleIdTokenConfigChange}
+            userInfoResponseType={oauth2Config?.userInfo?.responseType}
+            userInfoSigningAlg={oauth2Config?.userInfo?.signingAlg}
+            userInfoEncryptionAlg={oauth2Config?.userInfo?.encryptionAlg}
+            userInfoEncryptionEnc={oauth2Config?.userInfo?.encryptionEnc}
+            onUserInfoConfigChange={handleUserInfoConfigChange}
           />
 
           {/* Scopes & Attribute Mapping */}

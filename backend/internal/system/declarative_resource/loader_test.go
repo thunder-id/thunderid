@@ -26,6 +26,8 @@ import (
 	"strconv"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/yaml.v3"
@@ -91,7 +93,7 @@ func (suite *ResourceLoaderTestSuite) SetupSuite() {
 
 	// Initialize server runtime for testing
 	testConfig := &config.Config{
-		Server: config.ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Hostname: "localhost",
 			Port:     8080,
 		},

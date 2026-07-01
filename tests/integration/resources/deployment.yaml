@@ -26,6 +26,9 @@ database:
 flow:
   max_version_history: 3
 
+server_config:
+  store: composite
+
 passkey:
   allowed_origins:
     - "https://localhost:8095"

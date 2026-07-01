@@ -23,9 +23,11 @@ import (
 	"errors"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
-	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 )
 
@@ -43,12 +45,12 @@ func newFileBasedStore() (organizationUnitStoreInterface, transaction.Transactio
 
 // Create implements declarativeresource.Storer interface for resource loader
 func (f *fileBasedStore) Create(id string, data interface{}) error {
-	ou := data.(*OrganizationUnit)
+	ou := data.(*providers.OrganizationUnit)
 	return f.CreateOrganizationUnit(context.Background(), *ou)
 }
 
 // CreateOrganizationUnit implements organizationUnitStoreInterface.
-func (f *fileBasedStore) CreateOrganizationUnit(ctx context.Context, ou OrganizationUnit) error {
+func (f *fileBasedStore) CreateOrganizationUnit(ctx context.Context, ou providers.OrganizationUnit) error {
 	return f.GenericFileBasedStore.Create(ou.ID, &ou)
 }
 
@@ -58,15 +60,15 @@ func (f *fileBasedStore) DeleteOrganizationUnit(ctx context.Context, id string) 
 }
 
 // GetOrganizationUnit implements organizationUnitStoreInterface.
-func (f *fileBasedStore) GetOrganizationUnit(ctx context.Context, id string) (OrganizationUnit, error) {
+func (f *fileBasedStore) GetOrganizationUnit(ctx context.Context, id string) (providers.OrganizationUnit, error) {
 	data, err := f.GenericFileBasedStore.Get(id)
 	if err != nil {
-		return OrganizationUnit{}, ErrOrganizationUnitNotFound
+		return providers.OrganizationUnit{}, ErrOrganizationUnitNotFound
 	}
-	ou, ok := data.(*OrganizationUnit)
+	ou, ok := data.(*providers.OrganizationUnit)
 	if !ok {
 		declarativeresource.LogTypeAssertionError("organization unit", id)
-		return OrganizationUnit{}, errors.New("organization unit data corrupted")
+		return providers.OrganizationUnit{}, errors.New("organization unit data corrupted")
 	}
 	return *ou, nil
 }
@@ -74,14 +76,14 @@ func (f *fileBasedStore) GetOrganizationUnit(ctx context.Context, id string) (Or
 // GetOrganizationUnitByHandle implements organizationUnitStoreInterface.
 func (f *fileBasedStore) GetOrganizationUnitByHandle(
 	ctx context.Context, handle string, parent *string,
-) (OrganizationUnit, error) {
+) (providers.OrganizationUnit, error) {
 	list, err := f.GenericFileBasedStore.List()
 	if err != nil {
-		return OrganizationUnit{}, err
+		return providers.OrganizationUnit{}, err
 	}
 
 	for _, item := range list {
-		ou, ok := item.Data.(*OrganizationUnit)
+		ou, ok := item.Data.(*providers.OrganizationUnit)
 		if !ok {
 			continue
 		}
@@ -93,18 +95,21 @@ func (f *fileBasedStore) GetOrganizationUnitByHandle(
 		}
 	}
 
-	return OrganizationUnit{}, ErrOrganizationUnitNotFound
+	return providers.OrganizationUnit{}, ErrOrganizationUnitNotFound
 }
 
 // GetOrganizationUnitByPath implements organizationUnitStoreInterface.
-func (f *fileBasedStore) GetOrganizationUnitByPath(ctx context.Context, handles []string) (OrganizationUnit, error) {
-	var currentOU *OrganizationUnit
+func (f *fileBasedStore) GetOrganizationUnitByPath(
+	ctx context.Context,
+	handles []string,
+) (providers.OrganizationUnit, error) {
+	var currentOU *providers.OrganizationUnit
 	var currentParent *string
 
 	for _, handle := range handles {
 		ou, err := f.GetOrganizationUnitByHandle(ctx, handle, currentParent)
 		if err != nil {
-			return OrganizationUnit{}, ErrOrganizationUnitNotFound
+			return providers.OrganizationUnit{}, ErrOrganizationUnitNotFound
 		}
 
 		currentOU = &ou
@@ -112,7 +117,7 @@ func (f *fileBasedStore) GetOrganizationUnitByPath(ctx context.Context, handles 
 	}
 
 	if currentOU == nil {
-		return OrganizationUnit{}, ErrOrganizationUnitNotFound
+		return providers.OrganizationUnit{}, ErrOrganizationUnitNotFound
 	}
 
 	return *currentOU, nil
@@ -120,18 +125,18 @@ func (f *fileBasedStore) GetOrganizationUnitByPath(ctx context.Context, handles 
 
 // GetOrganizationUnitList implements organizationUnitStoreInterface.
 func (f *fileBasedStore) GetOrganizationUnitList(
-	ctx context.Context, limit, offset int, fe *filter.FilterGroup,
-) ([]OrganizationUnitBasic, error) {
+	ctx context.Context, limit, offset int, fe *tidcommon.FilterGroup,
+) ([]providers.OrganizationUnitBasic, error) {
 	list, err := f.GenericFileBasedStore.List()
 	if err != nil {
 		return nil, err
 	}
 
-	var ouList []OrganizationUnitBasic
+	var ouList []providers.OrganizationUnitBasic
 	for _, item := range list {
-		if ou, ok := item.Data.(*OrganizationUnit); ok {
+		if ou, ok := item.Data.(*providers.OrganizationUnit); ok {
 			if ou.Parent == nil && matchesOUFilter(ou, fe) {
-				ouList = append(ouList, OrganizationUnitBasic{
+				ouList = append(ouList, providers.OrganizationUnitBasic{
 					ID:          ou.ID,
 					Handle:      ou.Handle,
 					Name:        ou.Name,
@@ -144,7 +149,7 @@ func (f *fileBasedStore) GetOrganizationUnitList(
 
 	start := offset
 	if start > len(ouList) {
-		return []OrganizationUnitBasic{}, nil
+		return []providers.OrganizationUnitBasic{}, nil
 	}
 	end := start + limit
 	if end > len(ouList) {
@@ -155,7 +160,7 @@ func (f *fileBasedStore) GetOrganizationUnitList(
 }
 
 // GetOrganizationUnitListCount implements organizationUnitStoreInterface.
-func (f *fileBasedStore) GetOrganizationUnitListCount(ctx context.Context, fe *filter.FilterGroup) (int, error) {
+func (f *fileBasedStore) GetOrganizationUnitListCount(ctx context.Context, fe *tidcommon.FilterGroup) (int, error) {
 	list, err := f.GenericFileBasedStore.List()
 	if err != nil {
 		return 0, err
@@ -163,7 +168,7 @@ func (f *fileBasedStore) GetOrganizationUnitListCount(ctx context.Context, fe *f
 
 	count := 0
 	for _, item := range list {
-		if ou, ok := item.Data.(*OrganizationUnit); ok {
+		if ou, ok := item.Data.(*providers.OrganizationUnit); ok {
 			if ou.Parent == nil && matchesOUFilter(ou, fe) {
 				count++
 			}
@@ -174,9 +179,12 @@ func (f *fileBasedStore) GetOrganizationUnitListCount(ctx context.Context, fe *f
 }
 
 // GetOrganizationUnitsByIDs implements organizationUnitStoreInterface.
-func (f *fileBasedStore) GetOrganizationUnitsByIDs(ctx context.Context, ids []string) ([]OrganizationUnitBasic, error) {
+func (f *fileBasedStore) GetOrganizationUnitsByIDs(
+	ctx context.Context,
+	ids []string,
+) ([]providers.OrganizationUnitBasic, error) {
 	if len(ids) == 0 {
-		return []OrganizationUnitBasic{}, nil
+		return []providers.OrganizationUnitBasic{}, nil
 	}
 
 	idSet := make(map[string]struct{}, len(ids))
@@ -189,11 +197,11 @@ func (f *fileBasedStore) GetOrganizationUnitsByIDs(ctx context.Context, ids []st
 		return nil, err
 	}
 
-	var result []OrganizationUnitBasic
+	var result []providers.OrganizationUnitBasic
 	for _, item := range list {
-		if ou, ok := item.Data.(*OrganizationUnit); ok {
+		if ou, ok := item.Data.(*providers.OrganizationUnit); ok {
 			if _, found := idSet[ou.ID]; found {
-				result = append(result, OrganizationUnitBasic{
+				result = append(result, providers.OrganizationUnitBasic{
 					ID:          ou.ID,
 					Handle:      ou.Handle,
 					Name:        ou.Name,
@@ -236,7 +244,7 @@ func (f *fileBasedStore) CheckOrganizationUnitNameConflict(
 	}
 
 	for _, item := range list {
-		if ou, ok := item.Data.(*OrganizationUnit); ok {
+		if ou, ok := item.Data.(*providers.OrganizationUnit); ok {
 			parentMatch := (parent == nil && ou.Parent == nil) ||
 				(parent != nil && ou.Parent != nil && *parent == *ou.Parent)
 
@@ -259,7 +267,7 @@ func (f *fileBasedStore) CheckOrganizationUnitHandleConflict(
 	}
 
 	for _, item := range list {
-		if ou, ok := item.Data.(*OrganizationUnit); ok {
+		if ou, ok := item.Data.(*providers.OrganizationUnit); ok {
 			parentMatch := (parent == nil && ou.Parent == nil) ||
 				(parent != nil && ou.Parent != nil && *parent == *ou.Parent)
 
@@ -273,13 +281,13 @@ func (f *fileBasedStore) CheckOrganizationUnitHandleConflict(
 }
 
 // UpdateOrganizationUnit implements organizationUnitStoreInterface.
-func (f *fileBasedStore) UpdateOrganizationUnit(ctx context.Context, ou OrganizationUnit) error {
+func (f *fileBasedStore) UpdateOrganizationUnit(ctx context.Context, ou providers.OrganizationUnit) error {
 	return errors.New("UpdateOrganizationUnit is not supported in file-based store")
 }
 
 // GetOrganizationUnitChildrenCount implements organizationUnitStoreInterface.
 func (f *fileBasedStore) GetOrganizationUnitChildrenCount(
-	ctx context.Context, id string, fe *filter.FilterGroup,
+	ctx context.Context, id string, fe *tidcommon.FilterGroup,
 ) (int, error) {
 	list, err := f.GenericFileBasedStore.List()
 	if err != nil {
@@ -288,7 +296,7 @@ func (f *fileBasedStore) GetOrganizationUnitChildrenCount(
 
 	count := 0
 	for _, item := range list {
-		if ou, ok := item.Data.(*OrganizationUnit); ok {
+		if ou, ok := item.Data.(*providers.OrganizationUnit); ok {
 			if ou.Parent != nil && *ou.Parent == id && matchesOUFilter(ou, fe) {
 				count++
 			}
@@ -300,18 +308,18 @@ func (f *fileBasedStore) GetOrganizationUnitChildrenCount(
 
 // GetOrganizationUnitChildrenList implements organizationUnitStoreInterface.
 func (f *fileBasedStore) GetOrganizationUnitChildrenList(
-	ctx context.Context, id string, limit, offset int, fe *filter.FilterGroup,
-) ([]OrganizationUnitBasic, error) {
+	ctx context.Context, id string, limit, offset int, fe *tidcommon.FilterGroup,
+) ([]providers.OrganizationUnitBasic, error) {
 	list, err := f.GenericFileBasedStore.List()
 	if err != nil {
 		return nil, err
 	}
 
-	var children []OrganizationUnitBasic
+	var children []providers.OrganizationUnitBasic
 	for _, item := range list {
-		if ou, ok := item.Data.(*OrganizationUnit); ok {
+		if ou, ok := item.Data.(*providers.OrganizationUnit); ok {
 			if ou.Parent != nil && *ou.Parent == id && matchesOUFilter(ou, fe) {
-				children = append(children, OrganizationUnitBasic{
+				children = append(children, providers.OrganizationUnitBasic{
 					ID:          ou.ID,
 					Handle:      ou.Handle,
 					Name:        ou.Name,
@@ -324,7 +332,7 @@ func (f *fileBasedStore) GetOrganizationUnitChildrenList(
 
 	start := offset
 	if start > len(children) {
-		return []OrganizationUnitBasic{}, nil
+		return []providers.OrganizationUnitBasic{}, nil
 	}
 	end := start + limit
 	if end > len(children) {
@@ -337,7 +345,7 @@ func (f *fileBasedStore) GetOrganizationUnitChildrenList(
 // matchesOUFilter reports whether an OU satisfies all clauses in the filter group.
 // Returns true when g is nil (no filter applied).
 // AND has higher precedence than OR, matching standard SQL behavior.
-func matchesOUFilter(ou *OrganizationUnit, g *filter.FilterGroup) bool {
+func matchesOUFilter(ou *providers.OrganizationUnit, g *tidcommon.FilterGroup) bool {
 	if g == nil || len(g.Clauses) == 0 {
 		return true
 	}
@@ -348,9 +356,9 @@ func matchesOUFilter(ou *OrganizationUnit, g *filter.FilterGroup) bool {
 	for _, clause := range g.Clauses[1:] {
 		exprResult := evaluateSingleClause(ou, &clause.Expr)
 		switch clause.Connector {
-		case filter.LogicalAnd:
+		case tidcommon.LogicalAnd:
 			andGroupResult = andGroupResult && exprResult
-		case filter.LogicalOr:
+		case tidcommon.LogicalOr:
 			if andGroupResult {
 				return true
 			}
@@ -360,10 +368,10 @@ func matchesOUFilter(ou *OrganizationUnit, g *filter.FilterGroup) bool {
 	return andGroupResult
 }
 
-// matchesOUBasicFilter reports whether an OrganizationUnitBasic satisfies all clauses in the filter group.
+// matchesOUBasicFilter reports whether an providers.OrganizationUnitBasic satisfies all clauses in the filter group.
 // Used by the service layer when filtering the authorization-restricted ID set in memory.
-func matchesOUBasicFilter(ou OrganizationUnitBasic, g *filter.FilterGroup) bool {
-	ouFull := &OrganizationUnit{
+func matchesOUBasicFilter(ou providers.OrganizationUnitBasic, g *tidcommon.FilterGroup) bool {
+	ouFull := &providers.OrganizationUnit{
 		Handle:      ou.Handle,
 		Name:        ou.Name,
 		Description: ou.Description,
@@ -374,7 +382,7 @@ func matchesOUBasicFilter(ou OrganizationUnitBasic, g *filter.FilterGroup) bool 
 }
 
 // evaluateSingleClause tests one FilterExpression against an OU.
-func evaluateSingleClause(ou *OrganizationUnit, expr *filter.FilterExpression) bool {
+func evaluateSingleClause(ou *providers.OrganizationUnit, expr *tidcommon.FilterExpression) bool {
 	var fieldVal string
 	switch expr.Attribute {
 	case "name":
@@ -397,11 +405,11 @@ func evaluateSingleClause(ou *OrganizationUnit, expr *filter.FilterExpression) b
 	}
 
 	switch expr.Operator {
-	case filter.OperatorEq:
+	case tidcommon.OperatorEq:
 		return strings.EqualFold(fieldVal, strTarget)
-	case filter.OperatorGt:
+	case tidcommon.OperatorGt:
 		return fieldVal > strTarget
-	case filter.OperatorLt:
+	case tidcommon.OperatorLt:
 		return fieldVal < strTarget
 	}
 	return false

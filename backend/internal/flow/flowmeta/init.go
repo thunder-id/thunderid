@@ -21,20 +21,17 @@ package flowmeta
 import (
 	"net/http"
 
-	"github.com/thunder-id/thunderid/internal/actorprovider"
-	"github.com/thunder-id/thunderid/internal/design/resolve"
-	"github.com/thunder-id/thunderid/internal/ou"
-	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize creates and configures the flow metadata service components.
 func Initialize(
 	mux *http.ServeMux,
-	actorProvider actorprovider.ActorProviderInterface,
-	ouService ou.OrganizationUnitServiceInterface,
-	designResolve resolve.DesignResolveServiceInterface,
-	i18nService i18nmgt.I18nServiceInterface,
+	actorProvider providers.ActorProvider,
+	ouService providers.OrganizationUnitProvider,
+	designResolve providers.DesignProvider,
+	i18nService providers.I18nProvider,
 ) FlowMetaServiceInterface {
 	// Create service instance
 	flowMetaService := newFlowMetaService(

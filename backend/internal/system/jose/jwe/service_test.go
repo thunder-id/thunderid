@@ -29,6 +29,8 @@ import (
 	"strings"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
@@ -61,7 +63,7 @@ func (suite *JWEServiceTestSuite) SetupTest() {
 	suite.testECPrivateKey = ecKey
 
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			PreferredKeyID: "test-kid",
 		},
 	}

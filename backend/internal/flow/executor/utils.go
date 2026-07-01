@@ -25,11 +25,9 @@ import (
 	"strings"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
-	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/flow/core"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // getAuthnServiceName returns the authn service name for an executor.
@@ -47,7 +45,7 @@ func getAuthnServiceName(executorName string) string {
 }
 
 // GetUserAttribute extracts a specific attribute value from a user entity's JSON attributes.
-func GetUserAttribute(user *entityprovider.Entity, attributeKey string) (string, error) {
+func GetUserAttribute(user *providers.Entity, attributeKey string) (string, error) {
 	if user == nil || len(user.Attributes) == 0 {
 		return "", errors.New("user entity or attributes are empty")
 	}
@@ -68,7 +66,7 @@ func GetUserAttribute(user *entityprovider.Entity, attributeKey string) (string,
 
 // resolveInputIdentifierByType returns the identifier of the first input in ctx.NodeInputs matching inputType,
 // or fallback if none is found.
-func resolveInputIdentifierByType(ctx *core.NodeContext, inputType string, fallback string) string {
+func resolveInputIdentifierByType(ctx *providers.NodeContext, inputType string, fallback string) string {
 	if input, ok := findInputByType(ctx.NodeInputs, inputType); ok {
 		return input.Identifier
 	}
@@ -76,13 +74,13 @@ func resolveInputIdentifierByType(ctx *core.NodeContext, inputType string, fallb
 }
 
 // findInputByType returns the first input in the given slice whose Type matches inputType.
-func findInputByType(inputs []common.Input, inputType string) (common.Input, bool) {
+func findInputByType(inputs []providers.Input, inputType string) (providers.Input, bool) {
 	for _, input := range inputs {
 		if input.Type == inputType {
 			return input, true
 		}
 	}
-	return common.Input{}, false
+	return providers.Input{}, false
 }
 
 // isAuthenticationWithoutLocalUserAllowed returns the value of the AllowAuthenticationWithoutLocalUser
@@ -90,7 +88,7 @@ func findInputByType(inputs []common.Input, inputType string) (common.Input, boo
 // This is used to determine if authentication flow can proceed without a local user account.
 // Idea is to use this in authentication flows which has a ProvisioningExecutor attached at the end
 // to provision the user account and auto login without throwing an error for user not found.
-func isAuthenticationWithoutLocalUserAllowed(ctx *core.NodeContext) bool {
+func isAuthenticationWithoutLocalUserAllowed(ctx *providers.NodeContext) bool {
 	if val, ok := ctx.NodeProperties[common.NodePropertyAllowAuthenticationWithoutLocalUser]; ok {
 		if boolVal, ok := val.(bool); ok {
 			return boolVal
@@ -104,7 +102,7 @@ func isAuthenticationWithoutLocalUserAllowed(ctx *core.NodeContext) bool {
 // This is used to determine if registration flow can proceed when an existing user account is found.
 // Idea is to use this in registration flows which can continue with the existing user account
 // instead of throwing an error for user already exists and allow the flow to complete successfully.
-func isRegistrationWithExistingUserAllowed(ctx *core.NodeContext) bool {
+func isRegistrationWithExistingUserAllowed(ctx *providers.NodeContext) bool {
 	if val, ok := ctx.NodeProperties[common.NodePropertyAllowRegistrationWithExistingUser]; ok {
 		if boolVal, ok := val.(bool); ok {
 			return boolVal
@@ -119,7 +117,7 @@ func isRegistrationWithExistingUserAllowed(ctx *core.NodeContext) bool {
 // Idea is to use this in registration flows which can continue even if an existing user account
 // is found, but the provisioning executor is trying to provision the user to a different OU than
 // the one in the existing account.
-func isCrossOUProvisioningAllowed(ctx *core.NodeContext) bool {
+func isCrossOUProvisioningAllowed(ctx *providers.NodeContext) bool {
 	if val, ok := ctx.NodeProperties[common.NodePropertyAllowCrossOUProvisioning]; ok {
 		if boolVal, ok := val.(bool); ok {
 			return boolVal
@@ -130,7 +128,7 @@ func isCrossOUProvisioningAllowed(ctx *core.NodeContext) bool {
 
 // isAllowAuthenticationWithoutLocalUserRuntimeFlagSet checks if the runtime flag for allowing authentication without
 // a local user is set in the context.
-func isAllowRegistrationWithExistingUserRuntimeFlagSet(ctx *core.NodeContext) bool {
+func isAllowRegistrationWithExistingUserRuntimeFlagSet(ctx *providers.NodeContext) bool {
 	val, ok := ctx.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser]
 	return ok && val == dataValueTrue
 }
@@ -138,7 +136,7 @@ func isAllowRegistrationWithExistingUserRuntimeFlagSet(ctx *core.NodeContext) bo
 // validateFederatedIdentifierConsistency checks if the federated identifiers from the authentication result
 // are consistent with any existing identifiers in the context (runtime data, user inputs, authenticated
 // user attributes).
-func validateFederatedIdentifierConsistency(ctx *core.NodeContext,
+func validateFederatedIdentifierConsistency(ctx *providers.NodeContext,
 	federatedIdentifiers, existingIdentifiers map[string]interface{}) bool {
 	if len(federatedIdentifiers) == 0 {
 		return true
@@ -174,7 +172,7 @@ func validateFederatedIdentifierConsistency(ctx *core.NodeContext,
 
 // buildAppMetadataFromContext constructs application metadata from the node context,
 // including application metadata and OAuth client IDs.
-func buildAppMetadataFromContext(ctx *core.NodeContext) map[string]interface{} {
+func buildAppMetadataFromContext(ctx *providers.NodeContext) map[string]interface{} {
 	appMetadata := make(map[string]interface{})
 
 	if ctx.Application.Metadata != nil {
@@ -198,7 +196,7 @@ func buildAppMetadataFromContext(ctx *core.NodeContext) map[string]interface{} {
 }
 
 // buildRuntimeMetadata constructs the runtime metadata for authentication.
-func buildRuntimeMetadata(ctx *core.NodeContext) map[string]string {
+func buildRuntimeMetadata(ctx *providers.NodeContext) map[string]string {
 	runtimeMetadata := map[string]string{
 		"authorization_request_id": ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID],
 		"current_client_id":        ctx.RuntimeData[common.RuntimeKeyClientID],
@@ -216,16 +214,16 @@ func buildRuntimeMetadata(ctx *core.NodeContext) map[string]string {
 }
 
 // buildAuthnMetadata constructs the metadata for authentication.
-func buildAuthnMetadata(ctx *core.NodeContext) *authnprovidercm.AuthnMetadata {
-	return &authnprovidercm.AuthnMetadata{
+func buildAuthnMetadata(ctx *providers.NodeContext) *providers.AuthnMetadata {
+	return &providers.AuthnMetadata{
 		AppMetadata:     buildAppMetadataFromContext(ctx),
 		RuntimeMetadata: buildRuntimeMetadata(ctx),
 	}
 }
 
 // buildGetAttributesMetadata constructs the metadata for fetching user attributes.
-func buildGetAttributesMetadata(ctx *core.NodeContext) *authnprovidercm.GetAttributesMetadata {
-	metadata := &authnprovidercm.GetAttributesMetadata{
+func buildGetAttributesMetadata(ctx *providers.NodeContext) *providers.GetAttributesMetadata {
+	metadata := &providers.GetAttributesMetadata{
 		AppMetadata:     buildAppMetadataFromContext(ctx),
 		RuntimeMetadata: buildRuntimeMetadata(ctx),
 	}

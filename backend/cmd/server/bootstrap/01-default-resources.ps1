@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
 # ----------------------------------------------------------------------------
-# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+# Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
 #
 # WSO2 LLC. licenses this file to you under the Apache License,
 # Version 2.0 (the "License"); you may not use this file except
@@ -147,7 +147,7 @@ $userTypeData = ([ordered]@{
             displayName = "Last Name"
             required = $false
         }
-        mobileNumber = @{
+        mobile_number = @{
             type = "string"
             displayName = "Mobile Number"
             required = $false

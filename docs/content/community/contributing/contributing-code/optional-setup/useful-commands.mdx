@@ -1,0 +1,337 @@
+---
+title: Useful Commands
+description: Reference for standard development commands for running, testing, linting, and more.
+sidebar_position: 2
+hide_table_of_contents: false
+---
+
+# Useful Commands
+
+## Quick Reference
+
+| Purpose | macOS/Linux | Windows |
+|---------|-------------|---------|
+| Build everything | `make build` | `.\build.ps1 build` |
+| Build backend only | `make build_backend` | `.\build.ps1 build_backend` |
+| Build frontend only | `make build_frontend` | `.\build.ps1 build_frontend` |
+| Package for distribution | `./build.sh package` | `.\build.ps1 package` |
+| Run everything (development) | `make run` | `.\build.ps1 run` |
+| Run backend only | `make run_backend` | `.\build.ps1 run_backend` |
+| Run frontend only | `make run_frontend` | `.\build.ps1 run_frontend` |
+| Run all tests | `make test` | `.\build.ps1 test` |
+| Run unit tests | `make test_unit` | `.\build.ps1 test_unit` |
+| Clean build artifacts | `make clean` | `.\build.ps1 clean` |
+| Lint code | `make lint` | `.\build.ps1 lint` |
+| Lint documentation (Vale) | `make lint_docs` | — |
+| Run all PR checks | `make pr_checks` | — |
+
+While the examples below use `make` for cross-platform simplicity, all commands map directly to the underlying build scripts for your OS:
+
+- **Make (Cross-platform):** `make <target>`
+- **Bash (Linux/macOS):** `./build.sh <target>`
+- **PowerShell (Windows):** `.\build.ps1 <target>`
+
+## Running
+
+**Run everything (backend + frontend):**
+```bash
+make run
+```
+
+This automatically sets up the complete development environment with backend, frontend apps, and seed data.
+
+If you built the project without the consent server, you must also run it with the flag to avoid startup errors:
+```bash
+make run WITHOUT_CONSENT=true
+```
+
+**Run only the backend:**
+```bash
+make run_backend
+```
+
+**Run only the frontend:**
+```bash
+make run_frontend
+```
+
+## Testing
+
+**Run all backend tests (unit + integration):**
+```bash
+make test
+```
+
+**Run unit tests only:**
+```bash
+make test_unit
+```
+
+**Run integration tests only:**
+```bash
+make test_integration
+```
+
+**Run a specific integration test:**
+```bash
+make test_integration RUN="TestName"
+```
+
+**Run tests for a specific package:**
+```bash
+make test_integration PACKAGE="pkg/path"
+```
+
+**Run frontend unit tests:**
+```bash
+cd frontend && pnpm test
+```
+
+:::note
+`make test` only runs backend tests. Frontend and E2E tests must be run separately.
+:::
+
+**Code Coverage Requirements:**
+- **Minimum**: at least 80% code coverage for new code
+- **Encouraged**: 100% coverage
+
+### E2E Tests (Playwright)
+
+Use `make test_e2e` for a fully automated run. It starts the server, imports sample app resources, starts the sample app, and runs Playwright:
+
+```bash
+make test_e2e
+```
+
+:::note
+Stop any running <ProductName /> instance before using `make test_e2e`. The script manages the full server lifecycle.
+:::
+
+To run Playwright against an already-running server and sample app, run Playwright directly inside `tests/e2e/`:
+
+```bash
+cd tests/e2e
+npx playwright test
+```
+
+<details>
+<summary><strong>Click to expand - Manual E2E Setup</strong></summary>
+
+**1. Build the product**
+
+```bash
+make build
+```
+
+This produces the server distribution and sample app packages under `target/dist/`.
+
+**2. Start the server**
+
+Extract the server distribution and run setup, then start:
+
+```bash
+mkdir -p tests/e2e/server
+unzip "target/dist/{{productSlug}}-*.zip" -d tests/e2e/server
+cd tests/e2e/server && ./setup.sh
+./start.sh &
+```
+
+`setup.sh` starts the server temporarily with security disabled, runs the bootstrap scripts (which register default resources and sample app OAuth clients), and stops the server cleanly. `start.sh` then starts it with security enabled.
+
+**3. Extract sample apps and start the SDK sample**
+
+Extract the React Vanilla and React SDK sample packages and start the SDK sample app, which the e2e tests interact with:
+
+```bash
+cd <REPO_ROOT>
+mkdir -p tests/e2e/sample-app-vanilla tests/e2e/sample-app-sdk
+
+unzip "target/dist/sample-app-react-vanilla-*.zip" -d tests/e2e/sample-app-vanilla
+unzip "target/dist/sample-app-react-sdk-*.zip"    -d tests/e2e/sample-app-sdk
+
+cd tests/e2e/sample-app-sdk && ./start.sh &
+```
+
+**4. Install dependencies and browsers**
+
+```bash
+cd tests/e2e
+npm ci
+npx playwright install --with-deps
+```
+
+**5. Configure environment**
+
+Copy `.env.example` to `.env` and set your values:
+
+```bash
+cp .env.example .env
+```
+
+```env
+BASE_URL=https://localhost:8090
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=admin
+TEST_USER_USERNAME=testuser
+TEST_USER_PASSWORD=admin
+ENVIRONMENT=local
+
+# Sample app (used in social login / OAuth flow tests)
+SAMPLE_APP_URL=https://localhost:3000
+SAMPLE_APP_USERNAME=e2e-test-user
+SAMPLE_APP_PASSWORD=e2e-test-password
+
+# Mock SMS server port (used in MFA tests)
+MOCK_SMS_SERVER_PORT=8098
+```
+
+**6. Run the tests**
+
+```bash
+cd tests/e2e
+npx playwright test
+```
+
+</details>
+
+**E2E test options:**
+
+| Option | Command |
+|--------|---------|
+| All browsers | `npx playwright test` |
+| Chromium only | `npx playwright test --project=chromium` |
+| Accessibility tests only | `npx playwright test --grep @accessibility` |
+| Smoke tests only | `npx playwright test --grep @smoke` |
+| Watch in browser | `npx playwright test --headed` |
+| Step through interactively | `npx playwright test --debug` |
+| Interactive UI mode | `npx playwright test --ui` |
+
+## Linting
+
+**Lint backend code:**
+```bash
+make lint_backend
+```
+
+This uses `golangci-lint` to check code quality and style.
+
+**Lint frontend code:**
+```bash
+make lint_frontend
+```
+
+**Lint documentation (Vale):**
+```bash
+make lint_docs
+```
+
+Vale must be installed before running this command. On macOS, install it with:
+
+```bash
+brew install vale
+```
+
+For other platforms, download the binary from the [Vale releases page](https://github.com/errata-ai/vale/releases).
+
+This command runs Vale against the entire `docs/` directory and may surface pre-existing issues in files you did not change. CI only checks files changed in your pull request, so focus on issues in files you have edited.
+
+**Lint backend, frontend, and SDKs:**
+```bash
+make lint
+```
+
+## PR Checks
+
+Run all the checks that CI performs on pull requests in a single command:
+
+```bash
+make pr_checks
+```
+
+This runs the following checks in order:
+
+| Step | Command | What it checks |
+|------|---------|---------------|
+| Verify mocks | `make verify_mocks` | Mock files are in sync with interfaces |
+| Lint | `make lint` | Backend, frontend, and SDK code quality |
+| Format check | `make format_check` | Frontend code formatting |
+| Backend unit tests | `make test_unit` | Backend unit test suite |
+| Frontend unit tests | `make test_frontend` | Console and Gate app unit tests |
+| Integration tests | `make test_integration` | API and database integration tests |
+| Build backend | `make build_backend` | Backend compiles successfully |
+| Build frontend | `make build_frontend` | Frontend compiles successfully |
+| Build samples | `make build_samples` | Sample apps compile successfully |
+
+Each step can also be run independently:
+
+**Check mock files are in sync:**
+```bash
+make verify_mocks
+```
+
+This regenerates mocks from the current interfaces and fails if the result differs from what is committed.
+
+**Check frontend code formatting:**
+```bash
+make format_check
+```
+
+**Run frontend unit tests (console + gate):**
+```bash
+make test_frontend
+```
+
+**Run a security audit on dependencies:**
+```bash
+make security_audit
+```
+
+This runs `pnpm audit` and `npm audit` at the `high` severity level. Note that CI applies additional ignore rules from `.audit-ignore.json` for known advisories; this local command may surface entries that CI suppresses.
+
+**Run E2E tests:**
+
+```bash
+make test_e2e
+```
+
+This handles the full setup automatically. The script starts the server with security disabled, imports declarative resources for the sample apps, and restarts the server with security enabled. The script then builds and starts the sample app and runs Playwright. Stop any already-running <ProductName /> instance before using this command.
+
+## Generating Mocks
+
+<ProductName /> uses `mockery` to generate mocks for unit tests.
+
+**Generate mocks:**
+```bash
+make mockery
+```
+
+This will generate mocks based on the configurations in:
+- `.mockery.public.yml` - For public interfaces
+- `.mockery.private.yml` - For private interfaces
+
+Generated mocks are placed in `backend/tests/mocks/`.
+
+:::warning
+CI has a `verify-mocks` job that will fail your build if mocks are out of sync with the interfaces. Always run `make mockery` after changing any interface. Use `make verify_mocks` to confirm they are in sync before pushing.
+:::
+
+## Other Commands
+
+**Clean build artifacts:**
+```bash
+make clean
+```
+
+**Build Docker images:**
+```bash
+# Single-arch image with version tag
+make docker-build
+
+# Multi-arch image (amd64 + arm64)
+make docker-build-multiarch
+```
+
+**View all available commands:**
+```bash
+make help
+```

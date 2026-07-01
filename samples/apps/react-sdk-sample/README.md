@@ -150,12 +150,18 @@ Before running the app, ensure your application is configured with:
 - Ensure the application exists in and is enabled
 
 **Issue**: CORS errors
-- Add your application URL to "Allowed Origins" in  `deployment.yaml`:
-  ```yaml
-  cors:
-    allowed_origins:
-      - "https://localhost:3000"
-  ```
+- Add your application URL to the server-config `cors` section:
+  - Create or update `config/resources/server_configs/cors.yaml`:
+    ```yaml
+    name: cors
+    value:
+      allowedOrigins:
+        - "https://localhost:3000"
+    ```
+  - Or update it at runtime with `PUT /server-config/cors`:
+    ```json
+    { "allowedOrigins": ["https://localhost:3000"] }
+    ```
 
 ## How It Works
 
@@ -192,4 +198,3 @@ Licensed under the Apache License, Version 2.0. You may not use this file except
 
 ---------------------------------------------------------------------------
 (c) Copyright 2025 WSO2 LLC.
-

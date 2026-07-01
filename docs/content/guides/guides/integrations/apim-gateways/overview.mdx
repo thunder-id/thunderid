@@ -1,0 +1,31 @@
+---
+title: APIM Gateways
+sidebar_position: 0
+description: Protect your APIs at the gateway layer by validating JWTs issued by {{ProductName}} and enforcing scope-based authorization — without changing your upstream services.
+---
+
+import {STSIntegrationDiagram} from '../../../../../src/components/GatewayIntegrationDiagram';
+import {APIMGatewayTiles} from '../../../../../src/components/APIMGatewayTiles';
+
+# APIM Gateways
+
+An API Management (APIM) Gateway is a server that acts as a single entry point for all incoming API requests from clients (like mobile apps or websites) to your backend services.
+
+By integrating <ProductName /> with your gateway, you can enforce authentication and authorization at the network boundary before requests ever reach your backend services.
+
+<ProductName /> acts as the token authority: it issues signed JWT access tokens to authenticated clients, exposes a [JWKS endpoint](https://www.rfc-editor.org/rfc/rfc7517) for public key distribution, and publishes an [OpenID Connect discovery document](https://openid.net/specs/openid-connect-discovery-1_0.html). Your API gateway uses these to cryptographically verify every incoming token at the edge.
+
+Select your API gateway to get a step-by-step integration guide with <ProductName />.
+
+<APIMGatewayTiles />
+
+## How It Works
+
+The integration follows the same pattern across all supported gateways:
+
+<STSIntegrationDiagram gatewayName="API Gateway" />
+
+- **Application obtains a token** — A client application authenticates with <ProductName /> using the [client credentials grant](/docs/next/guides/guides/protocols/oauth-oidc/client-credentials) and receives a signed JWT.
+- **Application calls the gateway** — The client sends the JWT as a `Bearer` token in the `Authorization` header.
+- **Gateway validates the token and enforces authorization** — The gateway fetches <ProductName />'s JWKS (cached after the first request) and cryptographically verifies the token's signature, issuer, and expiry. Optionally, the gateway checks that the token carries the required permission scopes. Tokens missing required scopes are rejected with `403 Forbidden`.
+- **Gateway forwards the request** — Valid, authorized requests are forwarded to the upstream service.

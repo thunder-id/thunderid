@@ -21,7 +21,7 @@ package clientauth
 import (
 	"context"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type contextKey string
@@ -33,7 +33,7 @@ var OAuthClientKey contextKey = "oauth_client"
 type OAuthClientInfo struct {
 	ClientID     string
 	ClientSecret string
-	OAuthApp     *inboundmodel.OAuthClient
+	OAuthApp     *providers.OAuthClient
 }
 
 // withOAuthClient adds OAuth client information to the context.

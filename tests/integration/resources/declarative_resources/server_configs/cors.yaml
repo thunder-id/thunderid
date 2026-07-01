@@ -1,0 +1,4 @@
+name: cors
+value:
+  allowedOrigins:
+    - "https://declarative.example.com"

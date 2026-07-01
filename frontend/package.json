@@ -21,12 +21,12 @@
     "wso2"
   ],
   "scripts": {
-    "build:apps": "nx run-many --target=build --projects=frontend/apps/*",
-    "build:packages": "nx run-many --target=build --projects=frontend/packages/*",
+    "build:apps": "turbo run build --filter=./apps/*",
+    "build:packages": "turbo run build --filter=./packages/*",
     "clean": "pnpm clean:node_modules",
     "clean:node_modules": "rimraf node_modules",
-    "dev": "nx run-many --target=dev --projects=frontend/apps/*",
-    "test:packages": "nx run-many --target=test --projects=frontend/packages/*",
+    "dev": "turbo run dev --filter=./apps/*",
+    "test:packages": "turbo run test --filter=./packages/* --concurrency=3",
     "i18n:extract": "pnpm i18next-cli sync"
   },
   "devDependencies": {
@@ -36,7 +36,7 @@
     "@thunderid/logger": "workspace:^",
     "@thunderid/prettier-config": "workspace:^",
     "i18next-cli": "1.51.3",
-    "nx": "catalog:",
-    "rimraf": "catalog:"
+    "rimraf": "catalog:",
+    "turbo": "catalog:"
   }
 }

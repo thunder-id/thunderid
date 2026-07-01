@@ -1,0 +1,289 @@
+---
+title: Style Guide
+---
+
+# Style Guide
+
+This style guide defines the writing and formatting standards for <ProductName /> documentation. Following these guidelines ensures consistency, clarity, and a high-quality experience for all readers.
+
+All contributors must review and follow these standards when creating or updating documentation.
+
+## Audience
+
+<ProductName /> documentation serves:
+
+- Identity developers
+- Application developers
+- System administrators
+- IT professionals
+
+When writing documentation, explicitly identify who the content is for and adjust the depth and terminology accordingly.
+
+### Targeting a Specific Audience
+
+- Use terminology familiar to that role.
+- Do not over-explain concepts they are expected to know.
+- Focus on tasks and responsibilities relevant to that role.
+
+For example:
+
+- For identity developers, you may assume familiarity with OAuth flows, tokens, and claims.
+- For system administrators, you may assume familiarity with configuration files and deployment environments.
+
+### Writing for a General Audience
+
+- Assume basic IT knowledge.
+- Do not assume deep familiarity with identity protocols or <ProductName /> internals.
+- Define <ProductName />-specific concepts on first use.
+- Focus on clarity over technical density.
+
+## Writing Standards
+
+### Voice and Tone
+
+- Use **active voice** and **present tense**. The only exception is when the actor is unknown or unimportant, in which case passive voice can be used.
+- Address the reader as "you."
+- Maintain a professional, friendly, and neutral tone.
+- Avoid slang, jokes, sarcasm, and marketing language.
+- Avoid weasel words and vague language. Be specific and direct. For example, instead of "may," use "can" or "allows." Instead of "some", specify the exact number or percentage.
+- Avoid wordy phrases. Use concise language. For example, instead of `in order to`, use "to". Instead of `due to the fact that`, use "because".
+- Avoid Latin abbreviations such as e.g., i.e., and etc. Use plain English (for example, that is, and so on).
+
+### Terminology and Consistency
+
+Consistency in terminology improves clarity, reduces ambiguity, and strengthens documentation quality. Follow these rules strictly.
+
+#### 1. Product and Feature Names
+
+- Use official product and feature names exactly as defined.
+- Do not invent shorthand versions.
+- Do not change capitalization.
+- Do not alternate between long and short forms unless formally introduced.
+
+**Correct:**
+- <ProductName /> Console  
+- Passkey Authentication  
+
+**Incorrect:**
+- <ProductName /> console  
+- Passkey auth
+
+#### 2. Acronyms and Abbreviations
+
+- Define acronyms on first use unless universally known (API, URL, JSON, HTTP).
+- After defining an acronym, use it consistently.
+- Do not redefine the same acronym within the same document.
+- Do not switch between expanded and abbreviated forms randomly.
+
+**Correct:**
+
+> Multi-Factor Authentication (MFA)  
+> Enable MFA for the application.
+
+**Incorrect:**
+
+> Multi-Factor Authentication (MFA)  
+> Enable multi-factor authentication for the application.
+
+After defining MFA, use **MFA** consistently.
+
+#### 3. Use One Term Per Concept
+
+- Choose one term for each concept and use it consistently.
+- Do not switch terminology mid-document.
+- Avoid using synonyms interchangeably.
+
+**Incorrect examples:**
+- application / app  
+- organization / tenant  
+- sign in / login (unless intentionally differentiated)
+
+#### 4. Avoid Ambiguous Pronouns
+
+Avoid using “it,” “this,” “that,” or “they” when the referent is unclear.
+
+**Ambiguous:**
+
+> Configure the server and restart it.
+
+**Clear:**
+
+> Configure the server and restart the server.
+
+When clarity matters, repeat the noun.
+
+#### 5. Prefer Strong Verbs Over Weak “Be” Verbs
+
+Reduce unnecessary use of:
+- am  
+- is  
+- are  
+- was  
+- were  
+
+Prefer direct, active verbs.
+
+**Instead of:**
+
+> The configuration is located in `deployment.toml`.
+
+**Write:**
+
+> The configuration file is `deployment.toml`.  
+> Or:  
+> Find the configuration in `deployment.toml`.
+
+**Instead of:**
+
+> The token is used to authenticate requests.
+
+**Write:**
+
+> The token authenticates requests.
+
+Use “is” only when it improves clarity.
+
+#### 6. Use Concrete Language
+
+- Prefer precise nouns and strong verbs.
+- Avoid vague verbs such as:
+  - handle  
+  - manage  
+  - deal with  
+  - perform  
+  - `utilize`  
+
+**Instead of:**
+
+> The system handles authentication.
+
+**Write:**
+
+> The system validates credentials and issues tokens.
+
+#### 7. Avoid Informal Abbreviations in Prose
+
+Do not use informal shorthand in documentation text.
+
+**Avoid → Use Instead**
+
+- config → configuration  
+- dev → development  
+- `prod` → production  
+- `env` → environment  
+- `repo` → repository  
+
+These abbreviations are allowed only inside:
+- Code blocks  
+- File paths  
+- Commands  
+- Environment variable names  
+
+## Formatting Rules
+
+### Headings
+
+- Use **Title Case** for all headings (e.g., `# Configure Passwordless Authentication`).
+- Make headings task-focused and descriptive.
+
+### Lists
+
+- Use **numbered lists** for procedures.
+- Use **bulleted lists** for non-sequential information.
+- Keep list items parallel in grammar and structure.
+
+### Text Formatting
+
+- **Bold**: UI labels, buttons, menu items (e.g., Select **Save**).
+- `Backticks`: Code elements, file names, paths, commands, URLs (e.g., Update `deployment.toml`).
+- Use descriptive link text (e.g., `[Microsoft Writing Style Guide](https://learn.microsoft.com/en-us/style-guide/welcome/)`).
+
+### Code Blocks
+
+- Use fenced code blocks with language tags (e.g., ```toml).
+- Keep code blocks focused and free of sensitive data.
+
+## Document Structure
+
+Documentation must follow a logical structure that guides the reader through the task from start to finish. A well-structured document enables the reader to quickly understand:
+
+- What they will achieve
+
+- When the task is applicable
+
+- What prerequisites are required
+
+- How to complete the task
+
+- How to confirm the outcome
+
+- How to troubleshoot common issues
+
+- Next steps or related tasks
+
+Each section should build on the previous one and move the reader toward successful completion of the task. Avoid unnecessary background information, repetition, or unrelated details that interrupt the flow.
+
+## Content Generation Guidelines (AI-Assisted Writing)
+
+When generating content using AI tools, adhere to the following guidelines to ensure quality and compliance with <ProductName /> documentation standards.
+
+### Mandatory Requirements
+
+- AI-generated content must comply with the standards defined in `AGENTS.md`.
+- Do not override or reinterpret style rules.
+- Ensure the document structure matches the required template when applicable.
+- Apply heading capitalization, list formatting, and text formatting rules exactly as specified.
+
+### Accuracy and Validation
+
+- Verify all technical details against the actual product behavior.
+- Do not publish AI-generated steps without confirming they work.
+- Validate configuration examples before including them.
+- Remove any assumptions, guesses, or speculative content.
+
+## Quality Checklist
+
+### Before Finalizing
+
+Ensure the document adheres to all style and formatting rules:
+
+- Headings follow capitalization rules.
+- Procedures use numbered lists.
+- UI labels are **bold**.
+- Code elements and paths are in `backticks`.
+- Links use descriptive text.
+- Content is concise, active voice, present tense.
+- No unverified claims or placeholders remain.
+- No secrets or sensitive data appear in examples.
+
+### Before Publishing
+
+Review the document and confirm that a reader can:
+
+- Understand the goal within the first section.
+
+- Identify whether the guide applies to their situation.
+
+- Gather all required prerequisites.
+
+- Follow clear, sequential steps.
+
+- Validate that the configuration or action worked as expected.
+
+If any of these elements are missing or unclear, revise the structure before publishing.
+
+## Vale Compliance
+
+Before requesting a review, run [Vale](https://vale.sh/) against the document and ensure there are no errors or warnings.
+
+### Requirements
+
+- Address all Vale errors.
+- Address all Vale warnings.
+- Do not suppress rules unless there is a clear, documented justification.
+- If Vale flags a valid product or industry term, add it to the project vocabulary (`.vale/styles/config/vocabularies/vocab/accept.txt`) in the same pull request.
+- Re-run Vale after making changes to confirm the document is clean.
+
+Documentation must pass Vale checks before merging.
+
+By adhering to this style guide, you contribute to creating high-quality, user-friendly documentation for <ProductName />.

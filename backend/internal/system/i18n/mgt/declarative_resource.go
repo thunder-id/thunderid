@@ -22,11 +22,11 @@ import (
 	"context"
 	"fmt"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"gopkg.in/yaml.v3"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -57,14 +57,14 @@ func (e *translationExporter) GetParameterizerType() string {
 
 // GetAllResourceIDs retrieves all languages from the database store.
 // One file per language.
-func (e *translationExporter) GetAllResourceIDs(ctx context.Context) ([]string, *serviceerror.ServiceError) {
+func (e *translationExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
 	// Get all translations from store
 	languages, err := e.store.GetDistinctLanguages()
 	if err != nil {
-		return nil, &serviceerror.ServiceError{
+		return nil, &tidcommon.ServiceError{
 			Code: "I18N_EXPORT_ERROR",
-			Type: serviceerror.ServerErrorType,
-			Error: core.I18nMessage{
+			Type: tidcommon.ServerErrorType,
+			Error: tidcommon.I18nMessage{
 				Key:          "error.i18nservice.export_error",
 				DefaultValue: "Failed to fetch translation languages for export",
 			},
@@ -75,14 +75,14 @@ func (e *translationExporter) GetAllResourceIDs(ctx context.Context) ([]string, 
 
 // GetResourceByID retrieves all translations for a specific language.
 func (e *translationExporter) GetResourceByID(ctx context.Context, id string) (
-	interface{}, string, *serviceerror.ServiceError,
+	interface{}, string, *tidcommon.ServiceError,
 ) {
 	translations, err := e.store.GetTranslations()
 	if err != nil {
-		return nil, "", &serviceerror.ServiceError{
+		return nil, "", &tidcommon.ServiceError{
 			Code: "I18N_FETCH_ERROR",
-			Type: serviceerror.ServerErrorType,
-			Error: core.I18nMessage{
+			Type: tidcommon.ServerErrorType,
+			Error: tidcommon.I18nMessage{
 				Key:          "error.i18nservice.fetch_error",
 				DefaultValue: "Failed to fetch translations for export",
 			},
@@ -103,10 +103,10 @@ func (e *translationExporter) GetResourceByID(ctx context.Context, id string) (
 	}
 
 	if len(result) == 0 {
-		return nil, "", &serviceerror.ServiceError{
+		return nil, "", &tidcommon.ServiceError{
 			Code: "TRANSLATION_NOT_FOUND",
-			Type: serviceerror.ClientErrorType,
-			Error: core.I18nMessage{
+			Type: tidcommon.ClientErrorType,
+			Error: tidcommon.I18nMessage{
 				Key:          "error.i18nservice.translation_not_found",
 				DefaultValue: fmt.Sprintf("Translation not found for %s", id),
 			},

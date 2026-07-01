@@ -24,11 +24,12 @@ import (
 	"errors"
 	"slices"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -40,23 +41,23 @@ const (
 // identifyingExecutorInterface defines the interface for identifying executors.
 type identifyingExecutorInterface interface {
 	IdentifyUser(ctx context.Context, filters map[string]interface{},
-		execResp *common.ExecutorResponse) (*string, error)
+		execResp *providers.ExecutorResponse) (*string, error)
 }
 
 // identifyingExecutor implements the ExecutorInterface for identifying users based on provided attributes.
 type identifyingExecutor struct {
-	core.ExecutorInterface
+	providers.Executor
 	entityProvider entityprovider.EntityProviderInterface
 	logger         *log.Logger
 }
 
-var _ core.ExecutorInterface = (*identifyingExecutor)(nil)
+var _ providers.Executor = (*identifyingExecutor)(nil)
 var _ identifyingExecutorInterface = (*identifyingExecutor)(nil)
 
 // newIdentifyingExecutor creates a new instance of IdentifyingExecutor.
 func newIdentifyingExecutor(
 	name string,
-	defaultInputs, prerequisites []common.Input,
+	defaultInputs, prerequisites []providers.Input,
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 ) *identifyingExecutor {
@@ -66,18 +67,18 @@ func newIdentifyingExecutor(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, idfExecLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, name))
 
-	base := flowFactory.CreateExecutor(ExecutorNameIdentifying, common.ExecutorTypeUtility,
+	base := flowFactory.CreateExecutor(ExecutorNameIdentifying, providers.ExecutorTypeUtility,
 		defaultInputs, prerequisites)
 	return &identifyingExecutor{
-		ExecutorInterface: base,
-		entityProvider:    entityProvider,
-		logger:            logger,
+		Executor:       base,
+		entityProvider: entityProvider,
+		logger:         logger,
 	}
 }
 
 // IdentifyUser identifies a user based on the provided attributes.
 func (i *identifyingExecutor) IdentifyUser(ctx context.Context, filters map[string]interface{},
-	execResp *common.ExecutorResponse) (*string, error) {
+	execResp *providers.ExecutorResponse) (*string, error) {
 	logger := i.logger
 	logger.Debug(ctx, "Identifying user with filters")
 
@@ -89,7 +90,7 @@ func (i *identifyingExecutor) IdentifyUser(ctx context.Context, filters map[stri
 			} else {
 				execResp.Error = &ErrFailedToIdentifyUser
 			}
-			execResp.Status = common.ExecFailure
+			execResp.Status = providers.ExecFailure
 			return nil, nil
 		}
 		return &entity.ID, nil
@@ -116,13 +117,13 @@ func (i *identifyingExecutor) IdentifyUser(ctx context.Context, filters map[stri
 			logger.Debug(ctx, "Failed to identify user due to error: "+err.Error())
 			execResp.Error = &ErrFailedToIdentifyUser
 		}
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		return nil, nil
 	}
 
 	if userID == nil || *userID == "" {
 		logger.Debug(ctx, "User not found for the provided filter")
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrUserNotFound
 		return nil, nil
 	}
@@ -131,11 +132,11 @@ func (i *identifyingExecutor) IdentifyUser(ctx context.Context, filters map[stri
 }
 
 // Execute executes the identifying executor logic.
-func (i *identifyingExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+func (i *identifyingExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing identifying executor")
 
-	execResp := &common.ExecutorResponse{
+	execResp := &providers.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 	}
@@ -146,13 +147,13 @@ func (i *identifyingExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRe
 	if loginHintAttr != "" {
 		if loginHint == "" {
 			execResp.Inputs = append(execResp.Inputs,
-				common.Input{Identifier: userInputLoginHint, Required: true})
-			execResp.Status = common.ExecUserInputRequired
+				providers.Input{Identifier: userInputLoginHint, Required: true})
+			execResp.Status = providers.ExecUserInputRequired
 			return execResp, nil
 		}
 	} else if !i.HasRequiredInputs(ctx, execResp) {
 		logger.Debug(ctx.Context, "Required inputs for identifying executor are not provided")
-		execResp.Status = common.ExecUserInputRequired
+		execResp.Status = providers.ExecUserInputRequired
 		return execResp, nil
 	}
 
@@ -169,8 +170,8 @@ func (i *identifyingExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRe
 }
 
 // executeIdentify handles the default identify mode which expects exactly one user match.
-func (i *identifyingExecutor) executeIdentify(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) (*common.ExecutorResponse, error) {
+func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	userSearchAttributes := i.buildSearchAttributes(ctx)
@@ -178,7 +179,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *core.NodeContext,
 	userID, err := i.IdentifyUser(ctx.Context, userSearchAttributes, execResp)
 	if err != nil {
 		logger.Debug(ctx.Context, "Failed to identify user due to error: "+err.Error())
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrFailedToIdentifyUser
 		return execResp, nil
 	}
@@ -190,32 +191,32 @@ func (i *identifyingExecutor) executeIdentify(ctx *core.NodeContext,
 	// When loginHintAttribute is set the identifier was supplied externally — there is no
 	// interactive user to re-enter it, so keep ExecFailure.
 	loginHintAttr, _ := ctx.NodeProperties[propertyKeyLoginHintAttribute].(string)
-	if execResp.Status == common.ExecFailure &&
+	if execResp.Status == providers.ExecFailure &&
 		execResp.Error != nil && execResp.Error.Code == ErrUserNotFound.Code && loginHintAttr == "" {
 		logger.Debug(ctx.Context, "User not found — promoting to user input required",
 			log.Int("searchAttributeCount", len(userSearchAttributes)))
-		execResp.Status = common.ExecUserInputRequired
+		execResp.Status = providers.ExecUserInputRequired
 		execResp.Inputs = i.GetRequiredInputs(ctx)
 		return execResp, nil
 	}
-	if execResp.Status == common.ExecFailure {
+	if execResp.Status == providers.ExecFailure {
 		return execResp, nil
 	}
 
 	if userID == nil || *userID == "" {
 		logger.Debug(ctx.Context, "User not found for the provided attributes")
 		if loginHintAttr == "" {
-			execResp.Status = common.ExecUserInputRequired
+			execResp.Status = providers.ExecUserInputRequired
 			execResp.Inputs = i.GetRequiredInputs(ctx)
 		} else {
-			execResp.Status = common.ExecFailure
+			execResp.Status = providers.ExecFailure
 		}
 		execResp.Error = &ErrUserNotFound
 		return execResp, nil
 	}
 
 	execResp.RuntimeData[userAttributeUserID] = *userID
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 
 	logger.Debug(ctx.Context, "Identifying executor completed successfully",
 		log.MaskedString(log.LoggerKeyUserID, *userID))
@@ -224,8 +225,8 @@ func (i *identifyingExecutor) executeIdentify(ctx *core.NodeContext,
 }
 
 // executeResolve handles the resolve mode for user disambiguation.
-func (i *identifyingExecutor) executeResolve(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) (*common.ExecutorResponse, error) {
+func (i *identifyingExecutor) executeResolve(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing identifying executor in resolve mode")
 
@@ -244,8 +245,8 @@ func (i *identifyingExecutor) executeResolve(ctx *core.NodeContext,
 
 	candidates, err := i.getCandidates(ctx, userSearchAttributes, logger)
 	if err != nil {
-		execResp.Status = common.ExecFailure
-		execResp.Error = serviceerror.CustomServiceError(ErrFailedToIdentifyUser, i18ncore.I18nMessage{
+		execResp.Status = providers.ExecFailure
+		execResp.Error = tidcommon.CustomServiceError(ErrFailedToIdentifyUser, tidcommon.I18nMessage{
 			Key:          ErrFailedToIdentifyUser.ErrorDescription.Key,
 			DefaultValue: err.Error(),
 		})
@@ -255,13 +256,13 @@ func (i *identifyingExecutor) executeResolve(ctx *core.NodeContext,
 	switch len(candidates) {
 	case 0:
 		logger.Debug(ctx.Context, "No matching users after filtering")
-		execResp.Status = common.ExecUserInputRequired
+		execResp.Status = providers.ExecUserInputRequired
 		execResp.Inputs = i.GetRequiredInputs(ctx)
 		execResp.Error = &ErrUserNotFound
 		return execResp, nil
 	case 1:
 		execResp.RuntimeData[userAttributeUserID] = candidates[0].ID
-		execResp.Status = common.ExecComplete
+		execResp.Status = providers.ExecComplete
 		logger.Debug(ctx.Context, "User resolved successfully",
 			log.MaskedString("userID", candidates[0].ID))
 		return execResp, nil
@@ -272,8 +273,8 @@ func (i *identifyingExecutor) executeResolve(ctx *core.NodeContext,
 
 // executeCheckState handles the check_state mode which looks up candidates and sets a
 // runtime flag indicating whether zero, one, or multiple entities match. Always returns ExecComplete.
-func (i *identifyingExecutor) executeCheckState(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) (*common.ExecutorResponse, error) {
+func (i *identifyingExecutor) executeCheckState(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing identifying executor in check_state mode")
 
@@ -281,8 +282,8 @@ func (i *identifyingExecutor) executeCheckState(ctx *core.NodeContext,
 
 	candidates, err := i.getCandidates(ctx, userSearchAttributes, logger)
 	if err != nil {
-		execResp.Status = common.ExecFailure
-		execResp.Error = serviceerror.CustomServiceError(ErrFailedToIdentifyUser, i18ncore.I18nMessage{
+		execResp.Status = providers.ExecFailure
+		execResp.Error = tidcommon.CustomServiceError(ErrFailedToIdentifyUser, tidcommon.I18nMessage{
 			Key:          ErrFailedToIdentifyUser.ErrorDescription.Key,
 			DefaultValue: err.Error(),
 		})
@@ -303,7 +304,7 @@ func (i *identifyingExecutor) executeCheckState(ctx *core.NodeContext,
 			log.Int("candidateCount", len(candidates)))
 	}
 
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 	return execResp, nil
 }
 
@@ -311,7 +312,7 @@ func (i *identifyingExecutor) executeCheckState(ctx *core.NodeContext,
 // When the loginHintAttribute node property is set, the login_hint value from UserInputs is
 // mapped to the configured attribute so the flow admin controls which user attribute resolves
 // the identifier without hardcoding a specific attribute.
-func (i *identifyingExecutor) buildSearchAttributes(ctx *core.NodeContext) map[string]interface{} {
+func (i *identifyingExecutor) buildSearchAttributes(ctx *providers.NodeContext) map[string]interface{} {
 	if hintAttr, ok := ctx.NodeProperties[propertyKeyLoginHintAttribute].(string); ok && hintAttr != "" {
 		if hint, exists := ctx.UserInputs[userInputLoginHint]; exists && hint != "" {
 			return map[string]interface{}{hintAttr: hint}
@@ -331,8 +332,8 @@ func (i *identifyingExecutor) buildSearchAttributes(ctx *core.NodeContext) map[s
 
 // getCandidates retrieves candidate users either from the store (first call) or from
 // stored candidates in RuntimeData (subsequent calls), filtering in-memory.
-func (i *identifyingExecutor) getCandidates(ctx *core.NodeContext,
-	searchAttrs map[string]interface{}, logger *log.Logger) ([]*entityprovider.Entity, error) {
+func (i *identifyingExecutor) getCandidates(ctx *providers.NodeContext,
+	searchAttrs map[string]interface{}, logger *log.Logger) ([]*providers.Entity, error) {
 	storedCandidates, hasCandidates := ctx.RuntimeData[common.RuntimeKeyCandidateUsers]
 	if hasCandidates {
 		return i.getFilteredCandidates(ctx.Context, storedCandidates, searchAttrs, logger)
@@ -342,7 +343,7 @@ func (i *identifyingExecutor) getCandidates(ctx *core.NodeContext,
 
 // searchCandidates performs the initial database search for matching users.
 func (i *identifyingExecutor) searchCandidates(ctx context.Context,
-	searchAttrs map[string]interface{}, logger *log.Logger) ([]*entityprovider.Entity, error) {
+	searchAttrs map[string]interface{}, logger *log.Logger) ([]*providers.Entity, error) {
 	searchableFilters := make(map[string]interface{})
 	for key, value := range searchAttrs {
 		if !slices.Contains(nonSearchableInputs, key) {
@@ -354,7 +355,7 @@ func (i *identifyingExecutor) searchCandidates(ctx context.Context,
 	if err != nil {
 		if err.Code == entityprovider.ErrorCodeEntityNotFound {
 			logger.Debug(ctx, "No users found for the provided filters")
-			return []*entityprovider.Entity{}, nil
+			return []*providers.Entity{}, nil
 		}
 		logger.Debug(ctx, "Failed to search users: "+err.Error())
 		return nil, errors.New(ErrFailedToIdentifyUser.Error.DefaultValue)
@@ -366,8 +367,8 @@ func (i *identifyingExecutor) searchCandidates(ctx context.Context,
 // getFilteredCandidates deserializes stored candidates and filters them in-memory.
 func (i *identifyingExecutor) getFilteredCandidates(ctx context.Context,
 	storedCandidates string, searchAttrs map[string]interface{},
-	logger *log.Logger) ([]*entityprovider.Entity, error) {
-	var candidates []*entityprovider.Entity
+	logger *log.Logger) ([]*providers.Entity, error) {
+	var candidates []*providers.Entity
 	if err := json.Unmarshal([]byte(storedCandidates), &candidates); err != nil {
 		logger.Debug(ctx, "Failed to deserialize candidate users")
 		return nil, errors.New(ErrFailedToIdentifyUser.Error.DefaultValue)
@@ -380,13 +381,13 @@ func (i *identifyingExecutor) getFilteredCandidates(ctx context.Context,
 // It extracts disambiguation options and either requests more input or fails if
 // candidates are indistinguishable.
 func (i *identifyingExecutor) handleAmbiguousCandidates(ctx context.Context,
-	candidates []*entityprovider.Entity, execResp *common.ExecutorResponse,
-	logger *log.Logger) (*common.ExecutorResponse, error) {
+	candidates []*providers.Entity, execResp *providers.ExecutorResponse,
+	logger *log.Logger) (*providers.ExecutorResponse, error) {
 	options := extractDisambiguationOptions(candidates)
 	if len(options) == 0 {
 		logger.Debug(ctx, "Candidates are indistinguishable, no disambiguation options available",
 			log.Int("candidateCount", len(candidates)))
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrFailedToIdentifyUser
 		return execResp, nil
 	}
@@ -394,13 +395,13 @@ func (i *identifyingExecutor) handleAmbiguousCandidates(ctx context.Context,
 	candidatesJSON, err := json.Marshal(candidates)
 	if err != nil {
 		logger.Debug(ctx, "Failed to serialize candidate users")
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrFailedToIdentifyUser
 		return execResp, nil
 	}
 
 	execResp.RuntimeData[common.RuntimeKeyCandidateUsers] = string(candidatesJSON)
-	execResp.Status = common.ExecUserInputRequired
+	execResp.Status = providers.ExecUserInputRequired
 	execResp.ForwardedData = map[string]interface{}{
 		common.ForwardedDataKeyInputs: options,
 	}
@@ -411,8 +412,8 @@ func (i *identifyingExecutor) handleAmbiguousCandidates(ctx context.Context,
 }
 
 // filterUsersByAttributes filters users by matching their attributes against the provided filters.
-func filterUsersByAttributes(users []*entityprovider.Entity, filters map[string]interface{}) []*entityprovider.Entity {
-	var matched []*entityprovider.Entity
+func filterUsersByAttributes(users []*providers.Entity, filters map[string]interface{}) []*providers.Entity {
+	var matched []*providers.Entity
 	for _, u := range users {
 		var attrs map[string]interface{}
 		if len(u.Attributes) > 0 {
@@ -466,9 +467,9 @@ func filterUsersByAttributes(users []*entityprovider.Entity, filters map[string]
 }
 
 // extractDisambiguationOptions extracts distinct attribute values from candidate users
-// and returns them as []common.Input with Options populated. This allows downstream prompt
+// and returns them as []providers.Input with Options populated. This allows downstream prompt
 // nodes to render dropdowns when enriched via ForwardedData.
-func extractDisambiguationOptions(candidates []*entityprovider.Entity) []common.Input {
+func extractDisambiguationOptions(candidates []*providers.Entity) []providers.Input {
 	// Collect distinct values per attribute key (including top-level fields)
 	optionsMap := make(map[string]map[string]struct{})
 
@@ -508,9 +509,9 @@ func extractDisambiguationOptions(candidates []*entityprovider.Entity) []common.
 		}
 	}
 
-	// Convert to []common.Input — only include attributes with more than one distinct value
+	// Convert to []providers.Input — only include attributes with more than one distinct value
 	// (single-value attributes don't help with disambiguation)
-	inputs := make([]common.Input, 0, len(optionsMap))
+	inputs := make([]providers.Input, 0, len(optionsMap))
 	for key, valuesSet := range optionsMap {
 		if len(valuesSet) <= 1 {
 			continue
@@ -519,9 +520,9 @@ func extractDisambiguationOptions(candidates []*entityprovider.Entity) []common.
 		for v := range valuesSet {
 			options = append(options, v)
 		}
-		inputs = append(inputs, common.Input{
+		inputs = append(inputs, providers.Input{
 			Identifier: key,
-			Type:       common.InputTypeSelect,
+			Type:       providers.InputTypeSelect,
 			Options:    options,
 		})
 	}

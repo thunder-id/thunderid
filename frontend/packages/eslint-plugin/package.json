@@ -1,7 +1,8 @@
 {
+  "private": false,
   "name": "@thunderid/eslint-plugin",
-  "version": "0.0.0",
-  "description": "ESLint plugin for ⚡️ ThunderID UIs with custom rules and configurations",
+  "version": "0.0.4",
+  "description": "ESLint plugin for ThunderID projects",
   "keywords": [
     "thunderid",
     "eslint",
@@ -38,13 +39,6 @@
     "type": "git",
     "url": "https://github.com/thunder-id/thunderid",
     "directory": "frontend/packages/eslint-plugin"
-  },
-  "nx": {
-    "targets": {
-      "build": {
-        "dependsOn": []
-      }
-    }
   },
   "scripts": {
     "build": "pnpm clean:dist && rolldown -c rolldown.config.js && tsc -p tsconfig.lib.json --emitDeclarationOnly --outDir dist",

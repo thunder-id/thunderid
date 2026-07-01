@@ -24,11 +24,11 @@ import (
 	"strings"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
@@ -272,9 +272,9 @@ func (s *SystemAuthzTestSuite) TestIsActionAllowed() {
 			wantAllowed: false,
 			wantErr:     true,
 			overridePolicy: &stubPolicy{
-				actionErr: &serviceerror.ServiceError{
+				actionErr: &tidcommon.ServiceError{
 					Code:  "ERR-001",
-					Error: i18ncore.I18nMessage{DefaultValue: "policy failure"},
+					Error: tidcommon.I18nMessage{DefaultValue: "policy failure"},
 				},
 			},
 		},
@@ -401,9 +401,9 @@ func (s *SystemAuthzTestSuite) TestGetAccessibleResources() {
 			wantErr:      true,
 			overridePolicy: &stubPolicy{
 				applicable: true,
-				resourceErr: &serviceerror.ServiceError{
+				resourceErr: &tidcommon.ServiceError{
 					Code:  "ERR-002",
-					Error: i18ncore.I18nMessage{DefaultValue: "resource policy error"},
+					Error: tidcommon.I18nMessage{DefaultValue: "resource policy error"},
 				},
 			},
 		},

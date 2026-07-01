@@ -32,11 +32,6 @@ export interface AgentInboundAuthConfig {
   config?: OAuthAgentConfig;
 }
 
-export interface AgentCertificate {
-  type?: string;
-  value?: string;
-}
-
 export interface AgentLoginConsentConfig {
   validityPeriod?: number;
 }
@@ -60,7 +55,6 @@ export interface Agent {
   isRegistrationFlowEnabled?: boolean;
   assertion?: AssertionConfig;
   loginConsent?: AgentLoginConsentConfig;
-  certificate?: AgentCertificate;
   isReadOnly?: boolean;
 }
 

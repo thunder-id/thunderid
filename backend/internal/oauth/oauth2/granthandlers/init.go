@@ -19,16 +19,14 @@
 package granthandlers
 
 import (
-	"github.com/thunder-id/thunderid/internal/actorprovider"
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/authz"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
-	"github.com/thunder-id/thunderid/internal/ou"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the grant handler provider. oauth2AuthzService is created by the
@@ -40,10 +38,10 @@ func Initialize(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	tokenValidator tokenservice.TokenValidatorInterface,
 	attrCacheService attributecache.AttributeCacheServiceInterface,
-	ouService ou.OrganizationUnitServiceInterface,
+	ouService providers.OrganizationUnitProvider,
 	authzService authz.AuthorizationServiceInterface,
-	actorProvider actorprovider.ActorProviderInterface,
-	resourceService resource.ResourceServiceInterface,
+	actorProvider providers.ActorProvider,
+	resourceService providers.ResourceServerProvider,
 	cibaService ciba.CIBAServiceInterface,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {

@@ -27,6 +27,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
@@ -34,8 +38,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 )
 
 type MessageHandlerTestSuite struct {
@@ -49,7 +51,7 @@ func TestMessageHandlerTestSuite(t *testing.T) {
 func (suite *MessageHandlerTestSuite) SetupSuite() {
 	testConfig := &config.Config{
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: "0579f866ac7c9273580d0ff163fa01a7b2401a7ff3ddc3e3b14ae3136fa6025e",
 			},
 		},
@@ -87,7 +89,7 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderListRequest_ServiceError()
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
 	handler := newMessageNotificationSenderHandler(m, nil)
 
-	m.On("ListSenders", mock.Anything).Return(nil, &serviceerror.InternalServerError).Once()
+	m.On("ListSenders", mock.Anything).Return(nil, &tidcommon.InternalServerError).Once()
 
 	req := httptest.NewRequest(http.MethodGet, "/senders", nil)
 	rr := httptest.NewRecorder()
@@ -268,7 +270,7 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderGetRequest_ServiceError() 
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
 	handler := newMessageNotificationSenderHandler(m, nil)
 
-	m.On("GetSender", mock.Anything, "err").Return(nil, &serviceerror.InternalServerError).Once()
+	m.On("GetSender", mock.Anything, "err").Return(nil, &tidcommon.InternalServerError).Once()
 	req := httptest.NewRequest(http.MethodGet, "/senders/err", nil)
 	req.SetPathValue("id", "err")
 	rr := httptest.NewRecorder()
@@ -369,7 +371,7 @@ func (suite *MessageHandlerTestSuite) TestHandleError() {
 
 	cases := []struct {
 		name          string
-		svcErr        *serviceerror.ServiceError
+		svcErr        *tidcommon.ServiceError
 		customDesc    string
 		expectedCode  int
 		expectedError string
@@ -390,11 +392,11 @@ func (suite *MessageHandlerTestSuite) TestHandleError() {
 		},
 		{
 			name: "generic client error -> 400",
-			svcErr: &serviceerror.ServiceError{
-				Type:             serviceerror.ClientErrorType,
+			svcErr: &tidcommon.ServiceError{
+				Type:             tidcommon.ClientErrorType,
 				Code:             "MNS-1999",
-				Error:            i18ncore.I18nMessage{DefaultValue: "Some client error"},
-				ErrorDescription: i18ncore.I18nMessage{DefaultValue: "details"},
+				Error:            tidcommon.I18nMessage{DefaultValue: "Some client error"},
+				ErrorDescription: tidcommon.I18nMessage{DefaultValue: "details"},
 			},
 			customDesc:    "custom desc",
 			expectedCode:  400,
@@ -402,10 +404,10 @@ func (suite *MessageHandlerTestSuite) TestHandleError() {
 		},
 		{
 			name:          "server error -> 500",
-			svcErr:        &serviceerror.InternalServerError,
+			svcErr:        &tidcommon.InternalServerError,
 			customDesc:    "internal happened",
 			expectedCode:  500,
-			expectedError: serviceerror.InternalServerError.Error.String(),
+			expectedError: tidcommon.InternalServerError.Error.String(),
 		},
 	}
 
@@ -476,7 +478,7 @@ func (e *errWriter) WriteHeader(statusCode int) {}
 func (suite *MessageHandlerTestSuite) TestHandleError_EncodeFailure() {
 	handler := newMessageNotificationSenderHandler(nil, nil)
 	ew := &errWriter{}
-	handler.handleError(context.Background(), ew, &serviceerror.InternalServerError, "boom")
+	handler.handleError(context.Background(), ew, &tidcommon.InternalServerError, "boom")
 }
 
 func (suite *MessageHandlerTestSuite) TestGetDTOFromSenderRequest() {

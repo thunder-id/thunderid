@@ -24,13 +24,15 @@ import (
 	"testing"
 	"time"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
-	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 )
 
@@ -527,8 +529,8 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChil
 	suite.Run("build count query error", func() {
 		suite.SetupTest()
 		suite.expectDBClient()
-		badFilter := &filter.FilterGroup{Clauses: []filter.FilterClause{
-			{Expr: filter.FilterExpression{Attribute: "name", Operator: filter.Operator("co"), Value: "x"}},
+		badFilter := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+			{Expr: tidcommon.FilterExpression{Attribute: "name", Operator: tidcommon.Operator("co"), Value: "x"}},
 		}}
 
 		count, err := suite.store.GetOrganizationUnitChildrenCount(context.Background(), "root", badFilter)
@@ -561,7 +563,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChil
 		limit   int
 		offset  int
 		setup   func(parent string, limit, offset int)
-		assert  func(children []OrganizationUnitBasic)
+		assert  func(children []providers.OrganizationUnitBasic)
 		wantErr string
 	}{
 		{
@@ -581,7 +583,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChil
 					}, nil).
 					Once()
 			},
-			assert: func(children []OrganizationUnitBasic) {
+			assert: func(children []providers.OrganizationUnitBasic) {
 				suite.Len(children, 2)
 				suite.Equal("child1", children[0].ID)
 			},
@@ -649,10 +651,16 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChil
 			suite.SetupTest()
 			tc.setup(tc.parent, tc.limit, tc.offset)
 
-			filterExpr := (*filter.FilterGroup)(nil)
+			filterExpr := (*tidcommon.FilterGroup)(nil)
 			if tc.name == "build list query error" {
-				filterExpr = &filter.FilterGroup{Clauses: []filter.FilterClause{
-					{Expr: filter.FilterExpression{Attribute: "name", Operator: filter.Operator("co"), Value: "x"}},
+				filterExpr = &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+					{
+						Expr: tidcommon.FilterExpression{
+							Attribute: "name",
+							Operator:  tidcommon.Operator("co"),
+							Value:     "x",
+						},
+					},
 				}}
 			}
 
@@ -677,15 +685,15 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChil
 func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit() {
 	tests := []struct {
 		name    string
-		ou      OrganizationUnit
-		setup   func(ou OrganizationUnit)
+		ou      providers.OrganizationUnit
+		setup   func(ou providers.OrganizationUnit)
 		wantErr string
 	}{
 		{
 			name: "success",
-			ou: func() OrganizationUnit {
+			ou: func() providers.OrganizationUnit {
 				parent := "parent1"
-				return OrganizationUnit{
+				return providers.OrganizationUnit{
 					ID:          "ou1",
 					Parent:      &parent,
 					Handle:      "root",
@@ -693,7 +701,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit(
 					Description: "desc",
 				}
 			}(),
-			setup: func(ou OrganizationUnit) {
+			setup: func(ou providers.OrganizationUnit) {
 				suite.expectDBClient()
 				suite.dbClientMock.
 					On(
@@ -716,9 +724,9 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit(
 		},
 		{
 			name: "success with design fields",
-			ou: func() OrganizationUnit {
+			ou: func() providers.OrganizationUnit {
 				parent := "parent1"
-				return OrganizationUnit{
+				return providers.OrganizationUnit{
 					ID:          "ou1",
 					Parent:      &parent,
 					Handle:      "root",
@@ -729,7 +737,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit(
 					LogoURL:     "https://example.com/logo.png",
 				}
 			}(),
-			setup: func(ou OrganizationUnit) {
+			setup: func(ou providers.OrganizationUnit) {
 				suite.expectDBClient()
 				suite.dbClientMock.
 					On(
@@ -753,8 +761,8 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit(
 		},
 		{
 			name: "execute error",
-			ou:   OrganizationUnit{ID: "ou1"},
-			setup: func(ou OrganizationUnit) {
+			ou:   providers.OrganizationUnit{ID: "ou1"},
+			setup: func(ou providers.OrganizationUnit) {
 				suite.expectDBClient()
 				suite.dbClientMock.
 					On(
@@ -778,8 +786,8 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit(
 		},
 		{
 			name: "db client error",
-			ou:   OrganizationUnit{ID: "ou1"},
-			setup: func(ou OrganizationUnit) {
+			ou:   providers.OrganizationUnit{ID: "ou1"},
+			setup: func(ou providers.OrganizationUnit) {
 				suite.providerMock.
 					On("GetUserDBClient").
 					Return(nil, errors.New("db err")).
@@ -972,7 +980,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitByPa
 		name          string
 		path          []string
 		setup         func(path []string)
-		assert        func(ou OrganizationUnit)
+		assert        func(ou providers.OrganizationUnit)
 		wantErr       error
 		wantErrString string
 		after         func()
@@ -1000,7 +1008,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitByPa
 					}, nil).
 					Once()
 			},
-			assert: func(ou OrganizationUnit) {
+			assert: func(ou providers.OrganizationUnit) {
 				suite.Equal("child-id", ou.ID)
 				suite.NotNil(ou.Parent)
 				suite.Equal("root-id", *ou.Parent)
@@ -1121,7 +1129,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnit() {
 		name          string
 		id            string
 		setup         func(id string)
-		assert        func(ou OrganizationUnit)
+		assert        func(ou providers.OrganizationUnit)
 		wantErr       error
 		wantErrString string
 	}{
@@ -1138,7 +1146,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnit() {
 					Return([]map[string]interface{}{row}, nil).
 					Once()
 			},
-			assert: func(ou OrganizationUnit) {
+			assert: func(ou providers.OrganizationUnit) {
 				suite.Equal("ou1", ou.ID)
 				suite.NotNil(ou.Parent)
 				suite.Equal(testParentID, *ou.Parent)
@@ -1227,7 +1235,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitByHa
 		handle        string
 		parent        *string
 		setup         func(handle string, parent *string)
-		assert        func(ou OrganizationUnit)
+		assert        func(ou providers.OrganizationUnit)
 		wantErr       error
 		wantErrString string
 	}{
@@ -1244,7 +1252,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitByHa
 					Return([]map[string]interface{}{row}, nil).
 					Once()
 			},
-			assert: func(ou OrganizationUnit) {
+			assert: func(ou providers.OrganizationUnit) {
 				suite.Equal("ou1", ou.ID)
 				suite.Equal("root", ou.Handle)
 				suite.Nil(ou.Parent)
@@ -1263,7 +1271,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitByHa
 					Return([]map[string]interface{}{row}, nil).
 					Once()
 			},
-			assert: func(ou OrganizationUnit) {
+			assert: func(ou providers.OrganizationUnit) {
 				suite.Equal("ou2", ou.ID)
 				suite.Equal("child", ou.Handle)
 			},
@@ -1351,19 +1359,19 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitByHa
 func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CreateOrganizationUnit() {
 	tests := []struct {
 		name    string
-		ou      OrganizationUnit
-		setup   func(ou OrganizationUnit)
+		ou      providers.OrganizationUnit
+		setup   func(ou providers.OrganizationUnit)
 		wantErr string
 	}{
 		{
 			name: "success",
-			ou: OrganizationUnit{
+			ou: providers.OrganizationUnit{
 				ID:          "ou1",
 				Handle:      "root",
 				Name:        "Root",
 				Description: "desc",
 			},
-			setup: func(ou OrganizationUnit) {
+			setup: func(ou providers.OrganizationUnit) {
 				suite.expectDBClient()
 				suite.dbClientMock.
 					On(
@@ -1387,7 +1395,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CreateOrganizationUnit(
 		},
 		{
 			name: "success with design fields",
-			ou: OrganizationUnit{
+			ou: providers.OrganizationUnit{
 				ID:          "ou1",
 				Handle:      "root",
 				Name:        "Root",
@@ -1396,7 +1404,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CreateOrganizationUnit(
 				LayoutID:    "layout-456",
 				LogoURL:     "https://example.com/logo.png",
 			},
-			setup: func(ou OrganizationUnit) {
+			setup: func(ou providers.OrganizationUnit) {
 				suite.expectDBClient()
 				suite.dbClientMock.
 					On(
@@ -1421,13 +1429,13 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CreateOrganizationUnit(
 		},
 		{
 			name: "execute error",
-			ou: OrganizationUnit{
+			ou: providers.OrganizationUnit{
 				ID:          "ou-err",
 				Handle:      "root",
 				Name:        "Root",
 				Description: "desc",
 			},
-			setup: func(ou OrganizationUnit) {
+			setup: func(ou providers.OrganizationUnit) {
 				suite.expectDBClient()
 				suite.dbClientMock.
 					On(
@@ -1452,8 +1460,8 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CreateOrganizationUnit(
 		},
 		{
 			name: "db client error",
-			ou:   OrganizationUnit{ID: "ou1"},
-			setup: func(ou OrganizationUnit) {
+			ou:   providers.OrganizationUnit{ID: "ou1"},
+			setup: func(ou providers.OrganizationUnit) {
 				suite.providerMock.
 					On("GetUserDBClient").
 					Return(nil, errors.New("db init failed")).
@@ -1490,7 +1498,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitList
 		limit         int
 		offset        int
 		setup         func(limit, offset int)
-		assert        func(ous []OrganizationUnitBasic)
+		assert        func(ous []providers.OrganizationUnitBasic)
 		wantErrString string
 	}{
 		{
@@ -1511,7 +1519,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitList
 					Return(rows, nil).
 					Once()
 			},
-			assert: func(ous []OrganizationUnitBasic) {
+			assert: func(ous []providers.OrganizationUnitBasic) {
 				suite.Len(ous, 2)
 				suite.Equal("root", ous[0].ID)
 				suite.Equal("https://example.com/root-logo.png", ous[0].LogoURL)
@@ -1578,10 +1586,16 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitList
 			suite.SetupTest()
 			tc.setup(tc.limit, tc.offset)
 
-			filterExpr := (*filter.FilterGroup)(nil)
+			filterExpr := (*tidcommon.FilterGroup)(nil)
 			if tc.name == "build list query error" {
-				filterExpr = &filter.FilterGroup{Clauses: []filter.FilterClause{
-					{Expr: filter.FilterExpression{Attribute: "name", Operator: filter.Operator("co"), Value: "x"}},
+				filterExpr = &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+					{
+						Expr: tidcommon.FilterExpression{
+							Attribute: "name",
+							Operator:  tidcommon.Operator("co"),
+							Value:     "x",
+						},
+					},
 				}}
 			}
 
@@ -1682,10 +1696,16 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitList
 			suite.SetupTest()
 			tc.setup()
 
-			filterExpr := (*filter.FilterGroup)(nil)
+			filterExpr := (*tidcommon.FilterGroup)(nil)
 			if tc.name == "build count query error" {
-				filterExpr = &filter.FilterGroup{Clauses: []filter.FilterClause{
-					{Expr: filter.FilterExpression{Attribute: "name", Operator: filter.Operator("co"), Value: "x"}},
+				filterExpr = &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+					{
+						Expr: tidcommon.FilterExpression{
+							Attribute: "name",
+							Operator:  tidcommon.Operator("co"),
+							Value:     "x",
+						},
+					},
 				}}
 			}
 
@@ -1709,7 +1729,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitsByI
 		name          string
 		ids           []string
 		setup         func(ids []string)
-		assert        func(ous []OrganizationUnitBasic)
+		assert        func(ous []providers.OrganizationUnitBasic)
 		wantErrString string
 	}{
 		{
@@ -1729,7 +1749,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitsByI
 					Return(rows, nil).
 					Once()
 			},
-			assert: func(ous []OrganizationUnitBasic) {
+			assert: func(ous []providers.OrganizationUnitBasic) {
 				suite.Len(ous, 2)
 				suite.Equal("ou1", ous[0].ID)
 				suite.Equal("https://example.com/ou1-logo.png", ous[0].LogoURL)
@@ -1740,7 +1760,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitsByI
 		{
 			name: "empty ids",
 			ids:  []string{},
-			assert: func(ous []OrganizationUnitBasic) {
+			assert: func(ous []providers.OrganizationUnitBasic) {
 				suite.Len(ous, 0)
 			},
 		},
@@ -2096,25 +2116,25 @@ func TestBuildOrganizationUnitFromResultRow_NonStringThemeAndLayout(t *testing.T
 }
 
 func TestBuildOUFilterGroup(t *testing.T) {
-	sg := func(attr string, op filter.Operator, val interface{}) *filter.FilterGroup {
-		return &filter.FilterGroup{Clauses: []filter.FilterClause{
-			{Expr: filter.FilterExpression{Attribute: attr, Operator: op, Value: val}},
+	sg := func(attr string, op tidcommon.Operator, val interface{}) *tidcommon.FilterGroup {
+		return &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+			{Expr: tidcommon.FilterExpression{Attribute: attr, Operator: op, Value: val}},
 		}}
 	}
 	twoClause := func(
-		attr1 string, op1 filter.Operator, val1 interface{},
-		conn filter.LogicalOperator,
-		attr2 string, op2 filter.Operator, val2 interface{},
-	) *filter.FilterGroup {
-		return &filter.FilterGroup{Clauses: []filter.FilterClause{
-			{Expr: filter.FilterExpression{Attribute: attr1, Operator: op1, Value: val1}},
-			{Connector: conn, Expr: filter.FilterExpression{Attribute: attr2, Operator: op2, Value: val2}},
+		attr1 string, op1 tidcommon.Operator, val1 interface{},
+		conn tidcommon.LogicalOperator,
+		attr2 string, op2 tidcommon.Operator, val2 interface{},
+	) *tidcommon.FilterGroup {
+		return &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+			{Expr: tidcommon.FilterExpression{Attribute: attr1, Operator: op1, Value: val1}},
+			{Connector: conn, Expr: tidcommon.FilterExpression{Attribute: attr2, Operator: op2, Value: val2}},
 		}}
 	}
 
 	tests := []struct {
 		name      string
-		g         *filter.FilterGroup
+		g         *tidcommon.FilterGroup
 		startIdx  int
 		wantCond  string
 		wantArgs  []interface{}
@@ -2122,28 +2142,28 @@ func TestBuildOUFilterGroup(t *testing.T) {
 	}{
 		{
 			name:     "eq on text column uses LOWER",
-			g:        sg("name", filter.OperatorEq, "Finance"),
+			g:        sg("name", tidcommon.OperatorEq, "Finance"),
 			startIdx: 2,
 			wantCond: " AND LOWER(NAME) = LOWER($2)",
 			wantArgs: []interface{}{"Finance"},
 		},
 		{
 			name:     "eq on timestamp column uses plain equals",
-			g:        sg("createdAt", filter.OperatorEq, "2025-01-01"),
+			g:        sg("createdAt", tidcommon.OperatorEq, "2025-01-01"),
 			startIdx: 3,
 			wantCond: " AND CREATED_AT = $3",
 			wantArgs: []interface{}{"2025-01-01"},
 		},
 		{
 			name:     "gt operator",
-			g:        sg("createdAt", filter.OperatorGt, "2025-01-01"),
+			g:        sg("createdAt", tidcommon.OperatorGt, "2025-01-01"),
 			startIdx: 4,
 			wantCond: " AND CREATED_AT > $4",
 			wantArgs: []interface{}{"2025-01-01"},
 		},
 		{
 			name:     "lt operator",
-			g:        sg("updatedAt", filter.OperatorLt, "2026-01-01"),
+			g:        sg("updatedAt", tidcommon.OperatorLt, "2026-01-01"),
 			startIdx: 5,
 			wantCond: " AND UPDATED_AT < $5",
 			wantArgs: []interface{}{"2026-01-01"},
@@ -2151,27 +2171,35 @@ func TestBuildOUFilterGroup(t *testing.T) {
 		{
 			name: "two AND clauses wrapped in parens",
 			g: twoClause(
-				"name", filter.OperatorEq, "Eng", filter.LogicalAnd, "createdAt", filter.OperatorGt, "2024"),
+				"name", tidcommon.OperatorEq, "Eng", tidcommon.LogicalAnd, "createdAt", tidcommon.OperatorGt, "2024"),
 			startIdx: 2,
 			wantCond: " AND (LOWER(NAME) = LOWER($2) AND CREATED_AT > $3)",
 			wantArgs: []interface{}{"Eng", "2024"},
 		},
 		{
-			name:     "two OR clauses wrapped in parens",
-			g:        twoClause("name", filter.OperatorEq, "A", filter.LogicalOr, "handle", filter.OperatorEq, "a"),
+			name: "two OR clauses wrapped in parens",
+			g: twoClause(
+				"name",
+				tidcommon.OperatorEq,
+				"A",
+				tidcommon.LogicalOr,
+				"handle",
+				tidcommon.OperatorEq,
+				"a",
+			),
 			startIdx: 2,
 			wantCond: " AND (LOWER(NAME) = LOWER($2) OR LOWER(HANDLE) = LOWER($3))",
 			wantArgs: []interface{}{"A", "a"},
 		},
 		{
 			name:      "non filterable attribute",
-			g:         sg("id", filter.OperatorEq, "ou1"),
+			g:         sg("id", tidcommon.OperatorEq, "ou1"),
 			startIdx:  2,
 			wantError: `attribute "id" is not filterable`,
 		},
 		{
 			name:      "unsupported operator",
-			g:         sg("name", filter.Operator("co"), "Finance"),
+			g:         sg("name", tidcommon.Operator("co"), "Finance"),
 			startIdx:  2,
 			wantError: `unsupported operator "co"`,
 		},
@@ -2205,10 +2233,10 @@ func TestBuildOUFilterGroup(t *testing.T) {
 func TestBuildOUCountQueries(t *testing.T) {
 	type countQueryCase struct {
 		name           string
-		buildFn        func(*filter.FilterGroup) (dbmodel.DBQuery, []interface{}, error)
+		buildFn        func(*tidcommon.FilterGroup) (dbmodel.DBQuery, []interface{}, error)
 		queryID        string
 		noFilterClause string
-		withFilter     *filter.FilterGroup
+		withFilter     *tidcommon.FilterGroup
 		wantClause     string
 		wantArgs       []interface{}
 	}
@@ -2219,8 +2247,8 @@ func TestBuildOUCountQueries(t *testing.T) {
 			buildFn:        buildRootOUCountQuery,
 			queryID:        "OUQ-OU_MGT-01",
 			noFilterClause: "PARENT_ID IS NULL AND DEPLOYMENT_ID = $1",
-			withFilter: &filter.FilterGroup{Clauses: []filter.FilterClause{
-				{Expr: filter.FilterExpression{Attribute: "name", Operator: filter.OperatorEq, Value: "Finance"}},
+			withFilter: &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+				{Expr: tidcommon.FilterExpression{Attribute: "name", Operator: tidcommon.OperatorEq, Value: "Finance"}},
 			}},
 			wantClause: "LOWER(NAME) = LOWER($2)",
 			wantArgs:   []interface{}{"Finance"},
@@ -2230,8 +2258,14 @@ func TestBuildOUCountQueries(t *testing.T) {
 			buildFn:        buildChildrenOUCountQuery,
 			queryID:        "OUQ-OU_MGT-10",
 			noFilterClause: "PARENT_ID = $1 AND DEPLOYMENT_ID = $2",
-			withFilter: &filter.FilterGroup{Clauses: []filter.FilterClause{
-				{Expr: filter.FilterExpression{Attribute: "description", Operator: filter.OperatorEq, Value: "desc"}},
+			withFilter: &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+				{
+					Expr: tidcommon.FilterExpression{
+						Attribute: "description",
+						Operator:  tidcommon.OperatorEq,
+						Value:     "desc",
+					},
+				},
 			}},
 			wantClause: "LOWER(DESCRIPTION) = LOWER($3)",
 			wantArgs:   []interface{}{"desc"},
@@ -2253,8 +2287,8 @@ func TestBuildOUCountQueries(t *testing.T) {
 			require.Equal(t, tc.wantArgs, args)
 		})
 		t.Run(tc.name+"/filter error", func(t *testing.T) {
-			badF := &filter.FilterGroup{Clauses: []filter.FilterClause{
-				{Expr: filter.FilterExpression{Attribute: "name", Operator: filter.Operator("co"), Value: "x"}},
+			badF := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+				{Expr: tidcommon.FilterExpression{Attribute: "name", Operator: tidcommon.Operator("co"), Value: "x"}},
 			}}
 			_, _, err := tc.buildFn(badF)
 			require.Error(t, err)
@@ -2275,8 +2309,8 @@ func TestBuildRootOUListQuery(t *testing.T) {
 	})
 
 	t.Run("with filter", func(t *testing.T) {
-		f := &filter.FilterGroup{Clauses: []filter.FilterClause{
-			{Expr: filter.FilterExpression{Attribute: "handle", Operator: filter.OperatorEq, Value: "root"}},
+		f := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+			{Expr: tidcommon.FilterExpression{Attribute: "handle", Operator: tidcommon.OperatorEq, Value: "root"}},
 		}}
 		q, args, err := buildRootOUListQuery(f)
 
@@ -2286,8 +2320,8 @@ func TestBuildRootOUListQuery(t *testing.T) {
 	})
 
 	t.Run("filter error", func(t *testing.T) {
-		f := &filter.FilterGroup{Clauses: []filter.FilterClause{
-			{Expr: filter.FilterExpression{Attribute: "invalid", Operator: filter.OperatorEq, Value: "x"}},
+		f := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+			{Expr: tidcommon.FilterExpression{Attribute: "invalid", Operator: tidcommon.OperatorEq, Value: "x"}},
 		}}
 		_, _, err := buildRootOUListQuery(f)
 
@@ -2307,8 +2341,8 @@ func TestBuildChildrenOUCountQuery(t *testing.T) {
 	})
 
 	t.Run("with filter", func(t *testing.T) {
-		f := &filter.FilterGroup{Clauses: []filter.FilterClause{
-			{Expr: filter.FilterExpression{Attribute: "description", Operator: filter.OperatorEq, Value: "desc"}},
+		f := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+			{Expr: tidcommon.FilterExpression{Attribute: "description", Operator: tidcommon.OperatorEq, Value: "desc"}},
 		}}
 		q, args, err := buildChildrenOUCountQuery(f)
 
@@ -2318,8 +2352,8 @@ func TestBuildChildrenOUCountQuery(t *testing.T) {
 	})
 
 	t.Run("filter error", func(t *testing.T) {
-		f := &filter.FilterGroup{Clauses: []filter.FilterClause{
-			{Expr: filter.FilterExpression{Attribute: "name", Operator: filter.Operator("co"), Value: "Finance"}},
+		f := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+			{Expr: tidcommon.FilterExpression{Attribute: "name", Operator: tidcommon.Operator("co"), Value: "Finance"}},
 		}}
 		_, _, err := buildChildrenOUCountQuery(f)
 
@@ -2340,8 +2374,14 @@ func TestBuildChildrenOUListQuery(t *testing.T) {
 	})
 
 	t.Run("with filter", func(t *testing.T) {
-		f := &filter.FilterGroup{Clauses: []filter.FilterClause{
-			{Expr: filter.FilterExpression{Attribute: "createdAt", Operator: filter.OperatorGt, Value: "2025-01-01"}},
+		f := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+			{
+				Expr: tidcommon.FilterExpression{
+					Attribute: "createdAt",
+					Operator:  tidcommon.OperatorGt,
+					Value:     "2025-01-01",
+				},
+			},
 		}}
 		q, args, err := buildChildrenOUListQuery(f)
 
@@ -2351,8 +2391,8 @@ func TestBuildChildrenOUListQuery(t *testing.T) {
 	})
 
 	t.Run("filter error", func(t *testing.T) {
-		f := &filter.FilterGroup{Clauses: []filter.FilterClause{
-			{Expr: filter.FilterExpression{Attribute: "updatedAt", Operator: filter.Operator("co"), Value: "x"}},
+		f := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+			{Expr: tidcommon.FilterExpression{Attribute: "updatedAt", Operator: tidcommon.Operator("co"), Value: "x"}},
 		}}
 		_, _, err := buildChildrenOUListQuery(f)
 

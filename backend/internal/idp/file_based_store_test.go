@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/stretchr/testify/suite"
 )
@@ -52,11 +53,11 @@ func (suite *FileBasedStoreTestSuite) TestCreateIdentityProvider() {
 	prop2, err := cmodels.NewProperty("client_secret", "test_secret", false)
 	suite.NoError(err)
 
-	idp := IDPDTO{
+	idp := providers.IDPDTO{
 		ID:          "test-idp-1",
 		Name:        "Test IDP",
 		Description: "Test Identity Provider",
-		Type:        IDPTypeGoogle,
+		Type:        providers.IDPTypeGoogle,
 		Properties:  []cmodels.Property{*prop1, *prop2},
 	}
 
@@ -70,7 +71,7 @@ func (suite *FileBasedStoreTestSuite) TestCreateIdentityProvider() {
 	suite.NotNil(retrievedIDP)
 	suite.Equal("test-idp-1", retrievedIDP.ID)
 	suite.Equal("Test IDP", retrievedIDP.Name)
-	suite.Equal(IDPTypeGoogle, retrievedIDP.Type)
+	suite.Equal(providers.IDPTypeGoogle, retrievedIDP.Type)
 }
 
 func (suite *FileBasedStoreTestSuite) TestGetIdentityProviderByID() {
@@ -78,11 +79,11 @@ func (suite *FileBasedStoreTestSuite) TestGetIdentityProviderByID() {
 	prop, err := cmodels.NewProperty("client_id", "test_client_id", false)
 	suite.NoError(err)
 
-	idp := IDPDTO{
+	idp := providers.IDPDTO{
 		ID:          "test-idp-2",
 		Name:        "Test IDP 2",
 		Description: "Test Identity Provider 2",
-		Type:        IDPTypeGitHub,
+		Type:        providers.IDPTypeGitHub,
 		Properties:  []cmodels.Property{*prop},
 	}
 
@@ -95,7 +96,7 @@ func (suite *FileBasedStoreTestSuite) TestGetIdentityProviderByID() {
 	suite.NotNil(retrievedIDP)
 	suite.Equal("test-idp-2", retrievedIDP.ID)
 	suite.Equal("Test IDP 2", retrievedIDP.Name)
-	suite.Equal(IDPTypeGitHub, retrievedIDP.Type)
+	suite.Equal(providers.IDPTypeGitHub, retrievedIDP.Type)
 }
 
 func (suite *FileBasedStoreTestSuite) TestGetIdentityProviderByID_NotFound() {
@@ -111,11 +112,11 @@ func (suite *FileBasedStoreTestSuite) TestGetIdentityProviderByName() {
 	prop, err := cmodels.NewProperty("client_id", "test_client_id", false)
 	suite.NoError(err)
 
-	idp := IDPDTO{
+	idp := providers.IDPDTO{
 		ID:          "test-idp-3",
 		Name:        "Test IDP By Name",
 		Description: "Test Identity Provider 3",
-		Type:        IDPTypeOIDC,
+		Type:        providers.IDPTypeOIDC,
 		Properties:  []cmodels.Property{*prop},
 	}
 
@@ -143,19 +144,19 @@ func (suite *FileBasedStoreTestSuite) TestGetIdentityProviderList() {
 	prop1, _ := cmodels.NewProperty("client_id", "client1", false)
 	prop2, _ := cmodels.NewProperty("client_id", "client2", false)
 
-	idp1 := IDPDTO{
+	idp1 := providers.IDPDTO{
 		ID:          "test-idp-4",
 		Name:        "Test IDP 4",
 		Description: "Test Identity Provider 4",
-		Type:        IDPTypeGoogle,
+		Type:        providers.IDPTypeGoogle,
 		Properties:  []cmodels.Property{*prop1},
 	}
 
-	idp2 := IDPDTO{
+	idp2 := providers.IDPDTO{
 		ID:          "test-idp-5",
 		Name:        "Test IDP 5",
 		Description: "Test Identity Provider 5",
-		Type:        IDPTypeGitHub,
+		Type:        providers.IDPTypeGitHub,
 		Properties:  []cmodels.Property{*prop2},
 	}
 
@@ -178,10 +179,10 @@ func (suite *FileBasedStoreTestSuite) TestGetIdentityProviderList() {
 
 func (suite *FileBasedStoreTestSuite) TestUpdateIdentityProvider_NotSupported() {
 	// Test that update is not supported in file-based store
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		ID:   "test-idp-6",
 		Name: "Test IDP 6",
-		Type: IDPTypeGoogle,
+		Type: providers.IDPTypeGoogle,
 	}
 
 	err := suite.store.UpdateIdentityProvider(context.Background(), idp)
@@ -200,18 +201,18 @@ func (suite *FileBasedStoreTestSuite) TestGetIdentityProvidersByProperty_Returns
 	prop1, _ := cmodels.NewProperty("issuer", "https://example.com", false)
 	prop2, _ := cmodels.NewProperty("client_id", "client1", false)
 
-	idp1 := IDPDTO{
+	idp1 := providers.IDPDTO{
 		ID:         "test-idp-prop-1",
 		Name:       "IDP Prop 1",
-		Type:       IDPTypeOIDC,
+		Type:       providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{*prop1, *prop2},
 	}
 
 	prop3, _ := cmodels.NewProperty("issuer", "https://other.com", false)
-	idp2 := IDPDTO{
+	idp2 := providers.IDPDTO{
 		ID:         "test-idp-prop-2",
 		Name:       "IDP Prop 2",
-		Type:       IDPTypeOIDC,
+		Type:       providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{*prop3},
 	}
 
@@ -227,10 +228,10 @@ func (suite *FileBasedStoreTestSuite) TestGetIdentityProvidersByProperty_Returns
 
 func (suite *FileBasedStoreTestSuite) TestGetIdentityProvidersByProperty_NonMatchingValue() {
 	prop, _ := cmodels.NewProperty("issuer", "https://example.com", false)
-	idp := IDPDTO{
+	idp := providers.IDPDTO{
 		ID:         "test-idp-prop-3",
 		Name:       "IDP Prop 3",
-		Type:       IDPTypeOIDC,
+		Type:       providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{*prop},
 	}
 
@@ -244,18 +245,18 @@ func (suite *FileBasedStoreTestSuite) TestGetIdentityProvidersByProperty_NonMatc
 
 func (suite *FileBasedStoreTestSuite) TestGetIdentityProvidersByProperty_MultipleMatches() {
 	prop1, _ := cmodels.NewProperty("issuer", "https://shared.com", false)
-	idp1 := IDPDTO{
+	idp1 := providers.IDPDTO{
 		ID:         "test-idp-prop-4",
 		Name:       "IDP Prop 4",
-		Type:       IDPTypeOIDC,
+		Type:       providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{*prop1},
 	}
 
 	prop2, _ := cmodels.NewProperty("issuer", "https://shared.com", false)
-	idp2 := IDPDTO{
+	idp2 := providers.IDPDTO{
 		ID:         "test-idp-prop-5",
 		Name:       "IDP Prop 5",
-		Type:       IDPTypeOIDC,
+		Type:       providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{*prop2},
 	}
 
@@ -272,16 +273,16 @@ func (suite *FileBasedStoreTestSuite) TestGetIdentityProviderListCount() {
 	prop1, _ := cmodels.NewProperty("client_id", "client1", false)
 	prop2, _ := cmodels.NewProperty("client_id", "client2", false)
 
-	idp1 := IDPDTO{
+	idp1 := providers.IDPDTO{
 		ID:         "test-idp-count-1",
 		Name:       "Count IDP 1",
-		Type:       IDPTypeOIDC,
+		Type:       providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{*prop1},
 	}
-	idp2 := IDPDTO{
+	idp2 := providers.IDPDTO{
 		ID:         "test-idp-count-2",
 		Name:       "Count IDP 2",
-		Type:       IDPTypeOIDC,
+		Type:       providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{*prop2},
 	}
 

@@ -22,6 +22,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -30,12 +32,12 @@ import (
 type FlowFactoryInterface interface {
 	CreateNode(id, _type string, properties map[string]interface{}, isStartNode, isFinalNode bool) (
 		NodeInterface, error)
-	CreateGraph(id string, _type common.FlowType) GraphInterface
-	CreateExecutor(name string, executorType common.ExecutorType,
-		defaultInputs, prerequisites []common.Input) ExecutorInterface
+	CreateGraph(id string, _type providers.FlowType, version int) GraphInterface
+	CreateExecutor(name string, executorType providers.ExecutorType,
+		defaultInputs, prerequisites []providers.Input) providers.Executor
 	CreateInterceptor(name string, isDefault bool, priority int) InterceptorInterface
-	CreateInterceptorUnit(name string, mode common.InterceptorMode,
-		scope common.InterceptorScope, applyTo []string,
+	CreateInterceptorUnit(name string, mode providers.InterceptorMode,
+		scope providers.InterceptorScope, applyTo []string,
 		properties map[string]interface{}) InterceptorUnitInterface
 	CloneNode(source NodeInterface) (NodeInterface, error)
 	CloneNodes(nodes map[string]NodeInterface) (map[string]NodeInterface, error)
@@ -74,25 +76,29 @@ func (f *flowFactory) CreateNode(id, _type string, properties map[string]interfa
 }
 
 // CreateGraph creates a new graph with the given ID and type
-func (f *flowFactory) CreateGraph(id string, _type common.FlowType) GraphInterface {
+func (f *flowFactory) CreateGraph(id string, _type providers.FlowType, version int) GraphInterface {
 	if id == "" {
 		id = sysutils.GenerateUUID()
 	}
 	if _type == "" {
-		_type = common.FlowTypeAuthentication
+		_type = providers.FlowTypeAuthentication
+	}
+	if version <= 0 {
+		version = 1
 	}
 
 	return &graph{
-		id:    id,
-		_type: _type,
-		nodes: make(map[string]NodeInterface),
-		edges: make(map[string][]string),
+		id:      id,
+		_type:   _type,
+		version: version,
+		nodes:   make(map[string]NodeInterface),
+		edges:   make(map[string][]string),
 	}
 }
 
 // CreateExecutor creates a new executor with the given properties
-func (f *flowFactory) CreateExecutor(name string, executorType common.ExecutorType,
-	defaultInputs, prerequisites []common.Input) ExecutorInterface {
+func (f *flowFactory) CreateExecutor(name string, executorType providers.ExecutorType,
+	defaultInputs, prerequisites []providers.Input) providers.Executor {
 	return newExecutor(name, executorType, defaultInputs, prerequisites)
 }
 
@@ -102,8 +108,8 @@ func (f *flowFactory) CreateInterceptor(name string, isDefault bool, priority in
 }
 
 // CreateInterceptorUnit creates a new interceptor execution unit from flow-level configuration.
-func (f *flowFactory) CreateInterceptorUnit(name string, mode common.InterceptorMode,
-	scope common.InterceptorScope, applyTo []string,
+func (f *flowFactory) CreateInterceptorUnit(name string, mode providers.InterceptorMode,
+	scope providers.InterceptorScope, applyTo []string,
 	properties map[string]interface{}) InterceptorUnitInterface {
 	return newInterceptorUnit(name, mode, scope, applyTo, properties)
 }
@@ -157,7 +163,7 @@ func (f *flowFactory) CloneNode(source NodeInterface) (NodeInterface, error) {
 	if executableSource, ok := source.(ExecutorBackedNodeInterface); ok {
 		if executableCopy, ok := nodeCopy.(ExecutorBackedNodeInterface); ok {
 			executableCopy.SetExecutorName(executableSource.GetExecutorName())
-			executableCopy.SetInputs(append([]common.Input{}, executableSource.GetInputs()...))
+			executableCopy.SetInputs(append([]providers.Input{}, executableSource.GetInputs()...))
 			executableCopy.SetOnSuccess(executableSource.GetOnSuccess())
 			executableCopy.SetOnFailure(executableSource.GetOnFailure())
 			executableCopy.SetOnIncomplete(executableSource.GetOnIncomplete())

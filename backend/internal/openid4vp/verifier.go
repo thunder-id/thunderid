@@ -19,52 +19,25 @@
 package openid4vp
 
 import (
-	"context"
+	"crypto/x509"
+	"encoding/base64"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/system/jose/jws"
 	"github.com/thunder-id/thunderid/internal/system/jose/sdjwt"
 )
-
-// verifier composes a trust store and a policy; used in tests to exercise the
-// SD-JWT VC verification pipeline directly.
-type verifier struct {
-	trust  *staticTrustStore
-	policy policy
-}
-
-func newVerifier(trust *staticTrustStore, policy policy) (*verifier, error) {
-	if trust == nil && policy.EnforceTrustedIssuer {
-		return nil, fmt.Errorf("%w: trust resolver is required", ErrPolicy)
-	}
-	if policy.ExpectedVCT == "" {
-		return nil, fmt.Errorf("%w: expected vct is required", ErrPolicy)
-	}
-	if policy.Audience == "" {
-		return nil, fmt.Errorf("%w: audience is required", ErrPolicy)
-	}
-	return &verifier{trust: trust, policy: policy}, nil
-}
-
-func (v *verifier) verify(ctx context.Context, presentation, nonce string) (*VerifiedPresentation, error) {
-	cred, err := verifySDJWTPresentation(
-		ctx, presentation, v.trust, v.policy.Audience, nonce, v.policy.Leeway, v.policy.KeyBindingMaxAge,
-		v.policy.EnforceTrustedIssuer, v.policy.EnforceKeyBinding)
-	if err != nil {
-		return nil, err
-	}
-	return finalizePresentation(cred, v.policy)
-}
 
 // verifySDJWTPresentation runs the SD-JWT verification stack: parsing, optional
 // trust/signature enforcement, selective-disclosure resolution, and optional
 // key-binding enforcement. Policy enforcement (VCT, claim policy) is
 // finalizePresentation's job.
 func verifySDJWTPresentation(
-	ctx context.Context, presentation string, trust *staticTrustStore,
+	presentation string, trust *trustAnchorStore,
 	expectedAudience, expectedNonce string, leeway, maxIATAge time.Duration,
-	enforceTrustedIssuer, enforceKeyBinding bool,
+	enforceTrustedIssuer, enforceKeyBinding bool, allowedAnchors []string,
 ) (*verifiedCredential, error) {
 	p, err := sdjwt.Parse(presentation)
 	if err != nil {
@@ -81,11 +54,18 @@ func verifySDJWTPresentation(
 	}
 
 	if enforceTrustedIssuer {
-		issuerKey, err := trust.resolveIssuerKey(ctx, issuer)
+		if trust == nil {
+			return nil, fmt.Errorf("%w: no trust anchors configured", ErrUntrustedIssuer)
+		}
+		chain, err := x5cChain(p.IssuerJWT)
 		if err != nil {
 			return nil, err
 		}
-		if err := sdjwt.VerifyIssuerSignature(p, issuerKey); err != nil {
+		leaf, err := trust.verifyChain(chain, time.Now(), allowedAnchors)
+		if err != nil {
+			return nil, err
+		}
+		if err := sdjwt.VerifyIssuerSignature(p, leaf.PublicKey); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrInvalidPresentation, err)
 		}
 	}
@@ -95,7 +75,7 @@ func verifySDJWTPresentation(
 		return nil, fmt.Errorf("%w: %w", ErrInvalidPresentation, err)
 	}
 
-	if enforceKeyBinding {
+	if enforceKeyBinding || p.HasKeyBinding() {
 		if err := sdjwt.VerifyKeyBinding(p, cred, sdjwt.VerifyOptions{
 			ExpectedAudience: expectedAudience,
 			ExpectedNonce:    expectedNonce,
@@ -107,12 +87,52 @@ func verifySDJWTPresentation(
 	}
 
 	vct, _ := cred.Claims["vct"].(string)
+	// Derive the holder key-binding thumbprint, used as the fallback subject
+	// identifier when the credential carries no "sub". Best-effort: a malformed
+	// or absent cnf.jwk simply yields no thumbprint.
+	var keyBindingThumbprint string
+	if cred.ConfirmationKey != nil {
+		if jkt, jktErr := jws.ComputeJKT(cred.ConfirmationKey); jktErr == nil {
+			keyBindingThumbprint = jkt
+		}
+	}
 	return &verifiedCredential{
-		Issuer:         issuer,
-		VCT:            vct,
-		Claims:         cred.Claims,
-		DisclosedPaths: cred.DisclosedPaths,
+		Issuer:               issuer,
+		VCT:                  vct,
+		Claims:               cred.Claims,
+		DisclosedPaths:       cred.DisclosedPaths,
+		KeyBindingThumbprint: keyBindingThumbprint,
 	}, nil
+}
+
+// x5cChain extracts the leaf-first X.509 certificate chain from the x5c header
+// of the issuer JWS (RFC 7515: base64-STANDARD-encoded DER, leaf first).
+func x5cChain(issuerJWT string) ([]*x509.Certificate, error) {
+	header, err := jws.DecodeHeader(issuerJWT)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidPresentation, err)
+	}
+	raw, ok := header["x5c"].([]interface{})
+	if !ok || len(raw) == 0 {
+		return nil, fmt.Errorf("%w: issuer JWT missing x5c header", ErrInvalidPresentation)
+	}
+	chain := make([]*x509.Certificate, 0, len(raw))
+	for _, entry := range raw {
+		encoded, ok := entry.(string)
+		if !ok {
+			return nil, fmt.Errorf("%w: malformed x5c entry", ErrInvalidPresentation)
+		}
+		der, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidPresentation, err)
+		}
+		cert, err := x509.ParseCertificate(der)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidPresentation, err)
+		}
+		chain = append(chain, cert)
+	}
+	return chain, nil
 }
 
 // finalizePresentation enforces VCT and selective-disclosure policy on a raw credential.
@@ -126,11 +146,12 @@ func finalizePresentation(cred *verifiedCredential, policy policy) (*VerifiedPre
 
 	subject, _ := cred.Claims["sub"].(string)
 	return &VerifiedPresentation{
-		Subject:        subject,
-		Issuer:         cred.Issuer,
-		VCT:            cred.VCT,
-		Claims:         flattenClaims(cred.Claims),
-		DisclosedPaths: cred.DisclosedPaths,
+		Subject:              subject,
+		Issuer:               cred.Issuer,
+		VCT:                  cred.VCT,
+		Claims:               flattenClaims(cred.Claims),
+		DisclosedPaths:       cred.DisclosedPaths,
+		KeyBindingThumbprint: cred.KeyBindingThumbprint,
 	}, nil
 }
 
@@ -153,9 +174,30 @@ func enforceClaimPolicy(disclosed []string, claims map[string]interface{}, polic
 			return fmt.Errorf("%w: %s", ErrMissingMandatoryClaim, mandatory)
 		}
 	}
+
+	// Value constraints: when a constrained claim is disclosed, its value must be
+	// one of the allowed values. Absent (optional, undisclosed) claims are not
+	// checked here — mandatory presence is enforced above.
+	for path, allowed := range policy.ClaimValues {
+		value, ok := lookupClaim(claims, path)
+		if !ok {
+			continue
+		}
+		if !valueAllowed(value, allowed) {
+			return fmt.Errorf("%w: %s", ErrClaimValueNotAllowed, path)
+		}
+	}
 	return nil
 }
 
+// valueAllowed reports whether the disclosed claim value matches one of the
+// allowed values. Values are compared as strings so string, boolean and numeric
+// claims are handled uniformly.
+func valueAllowed(value interface{}, allowed []string) bool {
+	return slices.Contains(allowed, fmt.Sprint(value))
+}
+
+// lookupClaim resolves a dotted-path claim value from the nested claims map.
 func lookupClaim(claims map[string]interface{}, path string) (interface{}, bool) {
 	segments := strings.Split(path, ".")
 	var current interface{} = claims
@@ -182,6 +224,7 @@ func flattenClaims(claims map[string]interface{}) map[string]interface{} {
 	return out
 }
 
+// flattenInto recursively flattens node into out using dotted-path keys prefixed by prefix.
 func flattenInto(out map[string]interface{}, prefix string, node map[string]interface{}) {
 	for k, val := range node {
 		key := k
@@ -193,5 +236,30 @@ func flattenInto(out map[string]interface{}, prefix string, node map[string]inte
 			continue
 		}
 		out[key] = val
+	}
+}
+
+// keyBindingSubjectPrefix namespaces subjects derived from the holder key-binding
+// thumbprint so they are self-describing and never collide with issuer-provided
+// "sub" values or disclosed claim values.
+const keyBindingSubjectPrefix = "urn:ietf:params:oauth:jwk-thumbprint:sha-256:"
+
+// defaultSubjectDeriver returns a subjectDeriver that resolves the subject in
+// priority order: the credential's own "sub" claim, then the holder key-binding
+// thumbprint as an automatic fallback. The thumbprint guarantees a stable,
+// unique identifier even when the credential carries no "sub", so a returning
+// holder resolves to the same subject across presentations.
+func defaultSubjectDeriver() subjectDeriver {
+	return func(vp *VerifiedPresentation) string {
+		if vp == nil {
+			return ""
+		}
+		if vp.Subject != "" {
+			return vp.Subject
+		}
+		if vp.KeyBindingThumbprint != "" {
+			return keyBindingSubjectPrefix + vp.KeyBindingThumbprint
+		}
+		return ""
 	}
 }

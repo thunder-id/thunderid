@@ -49,7 +49,7 @@ prepare:
 clean:
 	./build.sh clean $(OS) $(ARCH)
 
-build: build_frontend build_backend build_sdks package_samples
+build: build_frontend build_backend package_samples
 
 build_backend:
 	./build.sh build_backend $(OS) $(ARCH)
@@ -121,16 +121,7 @@ docker-build-multiarch-latest:
 docker-build-multiarch-push:
 	docker buildx build --platform linux/amd64,linux/arm64 -t $(BINARY_NAME):$(VERSION) -t $(BINARY_NAME):latest --push .
 
-lint: lint_backend lint_frontend lint_sdks
-
-build_sdks:
-	./build.sh build_sdks
-
-test_sdks:
-	./build.sh test_sdks
-
-lint_sdks:
-	./build.sh lint_sdks
+lint: lint_backend lint_frontend
 
 build_tools:
 	./build.sh build_tools
@@ -153,12 +144,12 @@ lint_frontend:
 
 generate_i18n: install-i18n-extractor
 	@echo "Extracting i18n messages from backend source code..."
-	cd backend && $(I18N_EXTRACTOR) -source ./internal -output ./internal/system/i18n/core/defaults.go
+	cd backend && $(I18N_EXTRACTOR) -source ./internal,./pkg/thunderidengine -output ./internal/system/i18n/core/defaults.go
 	@echo "i18n defaults generated successfully"
 
 check_i18n: install-i18n-extractor
 	@echo "Checking i18n messages..."
-	@cd backend && $(I18N_EXTRACTOR) -source ./internal -output ../defaults.check.go > /dev/null
+	@cd backend && $(I18N_EXTRACTOR) -source ./internal,./pkg/thunderidengine -output ../defaults.check.go > /dev/null
 	@diff -u backend/internal/system/i18n/core/defaults.go defaults.check.go > /dev/null || (echo "i18n generated file is out of sync. Please run 'make generate_i18n'" && rm defaults.check.go && exit 1)
 	@rm defaults.check.go
 	@echo "i18n messages are up to date"
@@ -220,13 +211,10 @@ help:
 	@echo "  docker-build-multiarch        - Build multi-arch Docker image with version tag."
 	@echo "  docker-build-multiarch-latest - Build multi-arch Docker image with latest tag."
 	@echo "  docker-build-multiarch-push   - Build and push multi-arch images to registry."
-	@echo "  build_sdks                    - Build all SDK packages."
-	@echo "  test_sdks                     - Run tests for all SDK packages."
-	@echo "  lint_sdks                     - Run linting on all SDK packages."
 	@echo "  build_tools                   - Build all tool binaries (CLI + i18n-extractor + npm tools)."
 	@echo "  test_tools                    - Run tests for all tools."
 	@echo "  lint_tools                    - Run linting on all tools."
-	@echo "  lint                          - Run linting on backend, frontend, and SDK code."
+	@echo "  lint                          - Run linting on backend and frontend code."
 	@echo "  lint_backend                  - Run golangci-lint on the backend code."
 	@echo "  lint_frontend                 - Run ESLint on the frontend code."
 	@echo "  lint_docs                     - Run Vale style linting on the documentation (requires vale)."
@@ -245,7 +233,7 @@ help:
 .PHONY: docker-build-multiarch-latest docker-build-multiarch-push
 .PHONY: test_unit test_integration build_with_coverage build_with_coverage_only test
 .PHONY: help go_install_tool
-.PHONY: lint lint_backend lint_frontend lint_docs lint_sdks build_sdks test_sdks golangci-lint mockery install-mockery
+.PHONY: lint lint_backend lint_frontend lint_docs golangci-lint mockery install-mockery
 .PHONY: verify_mocks format_check test_frontend security_audit test_e2e pr_checks
 .PHONY: run_backend debug_backend run_frontend run_docs
 

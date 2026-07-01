@@ -21,10 +21,11 @@ package declarativeresource
 import (
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 func TestIsDeclarativeModeEnabled(t *testing.T) {
@@ -63,7 +64,7 @@ func TestCheckDeclarativeOperations(t *testing.T) {
 	testCases := []struct {
 		name            string
 		operation       string
-		checkFunc       func() *serviceerror.ServiceError
+		checkFunc       func() *tidcommon.ServiceError
 		expectedErrText string
 	}{
 		{

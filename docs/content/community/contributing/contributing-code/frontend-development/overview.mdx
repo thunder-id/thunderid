@@ -14,11 +14,6 @@ The frontend is an Nx-managed monorepo under `frontend/` with two React apps:
 | <ProductName /> Gate | `frontend/apps/gate/` | Login, registration, recovery UI | 5190 |
 | <ProductName /> Console | `frontend/apps/console/` | Admin console | 5191 |
 
-## File Naming
-
-- TypeScript files (`.ts`): camelCase (e.g., `useCreateApplication.ts`)
-- React components (`.tsx`): PascalCase (e.g., `MenuButton.tsx`)
-
 ## Feature Package Structure
 
 ```
@@ -34,55 +29,3 @@ my-feature/
 └── utils/        # Utility functions
 ```
 
-## Monaco Editor
-
-The Monaco editor must be **bundled with the app**, never loaded from the jsDelivr CDN that `@monaco-editor/react` falls back to by default. CDN loading breaks offline / air-gapped deployments and strict Content Security Policy (CSP) setups.
-
-### Using Monaco in a Feature
-
-Import the editor directly from `@monaco-editor/react` (and any editor types from `monaco-editor`):
-
-```tsx
-import Editor, {type OnMount} from '@monaco-editor/react';
-```
-
-Do **not** import it through an app-local wrapper module. Importing the package directly keeps the feature free of host-app internals, so it can be extracted into a standalone `@thunderid/configure-*` package later. When a feature is published as a package, declare `@monaco-editor/react` and `monaco-editor` under `peerDependencies` (see `@thunderid/configure-translations`).
-
-### The Host App Owns Monaco Setup
-
-`@monaco-editor/react` loads Monaco from the CDN until `loader.config({monaco})` is called. The host app configures this once in `src/lib/monaco-setup.ts`: it points `self.MonacoEnvironment` at locally bundled Vite `?worker` workers and calls `loader.config({monaco})` so the loader uses the bundled `monaco-editor`.
-
-`monaco-setup` must run **before** the first editor mounts. Run it by chaining it into the lazy import of every page that renders a Monaco editor — in the app router (`App.tsx`):
-
-```tsx
-const ApplicationEditPage = lazy(() =>
-  import('./lib/monaco-setup').then(() => import('./features/applications/pages/ApplicationEditPage')),
-);
-```
-
-Do not simplify these into a plain `lazy(() => import('...Page'))` — that skips setup and silently falls back to the CDN. Gate per page (rather than importing `monaco-setup` eagerly at app start) so `monaco-editor` stays out of the initial bundle.
-
-### Setting Up Monaco in a New App
-
-Copy `src/lib/monaco-setup.ts`, add `monaco-editor` to `dependencies` (not `devDependencies`) alongside `@monaco-editor/react`, and gate each Monaco-rendering page behind `monaco-setup` as shown above. Only `json` and `css`/`scss`/`less` get dedicated workers; everything else (`yaml`, `shell`, …) uses the generic `editor.worker`.
-
-## Scaffolding Tool
-
-<ProductName /> includes a CLI scaffolding tool (`@thunderid/create`) that generates production-ready feature packages. See the [Scaffolding Tool](scaffolding-tool.mdx) guide for details.
-
-## Testing
-
-| Purpose | Command |
-|---------|---------|
-| All frontend unit tests | `cd frontend && pnpm test` |
-| Lint frontend | `make lint_frontend` |
-| E2E tests | `cd tests/e2e && npm ci && npx playwright test` |
-| E2E (Chromium only) | `cd tests/e2e && npx playwright test --project=chromium` |
-| E2E (accessibility) | `cd tests/e2e && npx playwright test --grep @accessibility` |
-| E2E (headed/visible) | `cd tests/e2e && npx playwright test --headed` |
-| E2E (debug mode) | `cd tests/e2e && npx playwright test --debug` |
-
-## Recommended VSCode Extensions
-
-- [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint)
-- [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode)

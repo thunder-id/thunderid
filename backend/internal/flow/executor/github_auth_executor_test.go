@@ -21,10 +21,11 @@ package executor
 import (
 	"testing"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/suite"
 
 	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
-	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/githubmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oauthmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -38,7 +39,7 @@ type GithubAuthExecutorTestSuite struct {
 	mockIDPService    *idpmock.IDPServiceInterfaceMock
 	mockGithubService *githubmock.GithubOAuthAuthnServiceInterfaceMock
 	mockOAuthService  *oauthmock.OAuthAuthnCoreServiceInterfaceMock
-	mockAuthnProvider *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider *managermock.AuthnProviderManagerMock
 }
 
 func TestGithubAuthExecutorTestSuite(t *testing.T) {
@@ -50,11 +51,11 @@ func (suite *GithubAuthExecutorTestSuite) SetupTest() {
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
 	suite.mockGithubService = githubmock.NewGithubOAuthAuthnServiceInterfaceMock(suite.T())
 	suite.mockOAuthService = oauthmock.NewOAuthAuthnCoreServiceInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 }
 
 func (suite *GithubAuthExecutorTestSuite) TestNewGithubOAuthExecutor_Success() {
-	defaultInputs := []common.Input{
+	defaultInputs := []providers.Input{
 		{
 			Identifier: "code",
 			Type:       "string",
@@ -63,7 +64,7 @@ func (suite *GithubAuthExecutorTestSuite) TestNewGithubOAuthExecutor_Success() {
 	}
 	baseExec := coremock.NewExecutorInterfaceMock(suite.T())
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameGitHubAuth,
-		common.ExecutorTypeAuthentication, defaultInputs, []common.Input{}).
+		providers.ExecutorTypeAuthentication, defaultInputs, []providers.Input{}).
 		Return(baseExec).Once()
 
 	mockGithubSvc := &mockGithubServiceWithOAuth{

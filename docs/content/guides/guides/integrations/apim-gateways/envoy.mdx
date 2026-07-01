@@ -1,0 +1,486 @@
+---
+title: Protect APIs on Envoy with {{ProductName}}
+description: Configure Envoy to validate JWTs issued by {{ProductName}} before forwarding requests to upstream APIs.
+sidebar_position: 2
+---
+
+import {STSIntegrationDiagram, EnvoyLogo} from '../../../../../src/components/GatewayIntegrationDiagram';
+
+# Protect APIs on Envoy with <ProductName />
+
+This guide explains how to secure your APIs at the [Envoy](https://www.envoyproxy.io/) gateway layer using tokens issued by <ProductName />. By retrieving public signing keys from the <ProductName /> [JWKS endpoint](https://www.rfc-editor.org/rfc/rfc7517), Envoy cryptographically verifies every incoming token at the edge before forwarding authorized requests to your backend services.
+
+<STSIntegrationDiagram gatewayName="Envoy" gatewayLogo={<EnvoyLogo color="#fff" />} gatewayBgColor="#1a0a2e" />
+
+The guide covers two core integration approaches available in Envoy:
+
+- **[Token Validation](#configure-jwt-token-validation-in-envoy):** Configure Envoy to validate incoming JWTs issued by <ProductName /> using the [`envoy.filters.http.jwt_authn`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter) HTTP filter, ensuring only authenticated requests access your APIs.
+- **[Scope-Based Authorization](#configure-scope-based-authorization-in-envoy):** Leverage <ProductName />'s [RBAC](/docs/next/guides/key-concepts/authorization/) capabilities to enforce strict, Envoy-driven access control policies on upstream APIs.
+
+
+## Prerequisites
+
+Before you begin, ensure you have the following:
+
+- A running <ProductName /> installation. Follow [Get <ProductName />](/docs/next/guides/getting-started/get-thunderid) for download, setup, and start commands.
+- The latest stable [Envoy](https://www.envoyproxy.io/docs/envoy/latest/start/install) version installed.
+- A backend REST API service running and accessible, for example `http://localhost:8081`.
+- `curl` available in your terminal.
+
+Verify your Envoy version:
+
+```bash
+envoy --version
+```
+
+## Configure JWT Token Validation in Envoy
+
+JWT Token Validation is the foundation of API security with Envoy and <ProductName />. In this section, you register an application in <ProductName /> to obtain credentials, configure Envoy to validate tokens using the <ProductName /> JWKS endpoint, and verify that unauthenticated requests are rejected.
+
+### Configure <ProductName />
+
+#### Create an Application
+
+1. Sign in to the <ProductName /> Console at `https://<THUNDER_HOST>:<THUNDER_PORT>/console`.
+2. Navigate to **Applications** → **New Application**.
+3. Enter an **Application Name**.
+4. Select **Backend Service** as the application type.
+5. Click **Create Application**.
+6. Note the **Client ID** and **Client Secret** from the application details page.
+
+#### Obtain an Access Token
+
+Use the client credentials grant to request an access token. The examples use HTTP Basic authentication for the client credentials:
+
+```bash
+curl -kL -X POST 'https://<THUNDER_HOST>:8090/oauth2/token' \
+  --user '<CLIENT_ID>:<CLIENT_SECRET>' \
+  --header 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'grant_type=client_credentials'
+```
+
+Save the returned `access_token`. You will use it in the **Try It Out** section.
+
+### Configure Envoy
+
+#### Create an API
+
+Create an Envoy configuration file. See the [Envoy configuration overview](https://www.envoyproxy.io/docs/envoy/latest/configuration/overview/overview) for a full reference.
+
+The listener defines the port Envoy exposes to clients. The route configuration defines the paths Envoy exposes. The cluster configuration defines the upstream service.
+
+This example exposes Envoy on port `8080` and forwards requests for `/resources` to an upstream API on `http://localhost:8081`.
+
+~~~yaml
+static_resources:
+  listeners:
+    - name: local_listener
+      address:
+        socket_address:
+          address: 127.0.0.1
+          port_value: 8080
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: resources_api_gateway
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: resources_api
+                      domains: ["*"]
+                      routes:
+                        - match:
+                            prefix: "/resources"
+                          route:
+                            cluster: upstream_api
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+  clusters:
+    - name: upstream_api
+      connect_timeout: 1s
+      type: STATIC
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: upstream_api
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 8081
+~~~
+
+Start Envoy to verify the API is reachable before adding authentication:
+
+~~~bash
+envoy --mode validate -c envoy.yaml
+envoy -c envoy.yaml
+~~~
+
+Envoy starts on port `8080`. Verify the endpoint responds:
+
+```bash
+curl -i --location 'http://localhost:8080/resources' \
+  --header 'Content-Type: application/json'
+```
+
+Expected response:
+
+```text
+HTTP/1.1 200 OK
+```
+
+#### Add JWT Validation
+
+Envoy validates JWTs using the [`jwt_authn`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter) HTTP filter. Envoy fetches public keys from the <ProductName /> JWKS endpoint and uses the keys to verify the signature on incoming tokens.
+
+Add the `jwt_authn` filter before the router filter:
+
+~~~yaml
+http_filters:
+  - name: envoy.filters.http.jwt_authn
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+      providers:
+        thunderid:
+          issuer: "https://localhost:8090"
+          remote_jwks:
+            http_uri:
+              uri: "https://127.0.0.1:8090/oauth2/jwks"
+              cluster: thunderid
+              timeout: 5s
+            cache_duration: 300s
+          from_headers:
+            - name: authorization
+              value_prefix: "Bearer "
+      rules:
+        - match:
+            prefix: "/resources"
+          requires:
+            provider_name: thunderid
+        - match:
+            prefix: "/"
+          requires:
+            allow_missing: {}
+  - name: envoy.filters.http.router
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+~~~
+
+Add a cluster for the <ProductName /> JWKS endpoint:
+
+~~~yaml
+clusters:
+  - name: thunderid
+    connect_timeout: 1s
+    type: STATIC
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: thunderid
+      endpoints:
+        - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: 127.0.0.1
+                    port_value: 8090
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        sni: localhost
+        common_tls_context:
+          tls_params:
+            tls_minimum_protocol_version: TLSv1_3
+            tls_maximum_protocol_version: TLSv1_3
+          validation_context:
+            trust_chain_verification: ACCEPT_UNTRUSTED
+~~~
+
+:::warning Local development only
+`trust_chain_verification: ACCEPT_UNTRUSTED` skips certificate chain verification for local development with self-signed certificates. Remove this setting in production and configure Envoy with a certificate authority trusted by your deployment.
+:::
+
+**Configuration reference** -- see the full list of options in the [JWT authentication filter docs](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter):
+
+| Field | Value | Description |
+|---|---|---|
+| `issuer` | `https://<THUNDER_HOST>:<THUNDER_PORT>` | Token issuer expected by Envoy |
+| `remote_jwks.http_uri.uri` | `https://<THUNDER_HOST>:<THUNDER_PORT>/oauth2/jwks` | <ProductName /> JWKS endpoint for fetching public keys |
+| `cache_duration` | `300s` | Caches JWKS keys to avoid fetching them on every request |
+| `from_headers` | `Authorization: Bearer` | Reads the JWT from the `Authorization` header |
+| `trust_chain_verification` | `ACCEPT_UNTRUSTED` | Skips TLS certificate chain verification. Use only in local development. |
+
+Restart Envoy to apply the changes:
+
+~~~bash
+pkill -f "envoy -c envoy.yaml"
+envoy --mode validate -c envoy.yaml
+envoy -c envoy.yaml
+~~~
+
+### Try It Out
+
+**Request without a token — expect `401 Unauthorized`:**
+
+```bash
+curl -i --location 'http://localhost:8080/resources' \
+  --header 'Content-Type: application/json'
+```
+
+Expected response:
+
+```text
+HTTP/1.1 401 Unauthorized
+
+Jwt is missing
+```
+
+**Request with a valid <ProductName /> token — expect `200 OK`:**
+
+```bash
+curl -i --location 'http://localhost:8080/resources' \
+  --header 'Authorization: Bearer <ACCESS_TOKEN>' \
+  --header 'Content-Type: application/json'
+```
+
+Expected response:
+
+```json
+{
+  "resources": [
+    {
+      "id": "101",
+      "name": "Resource One",
+      "status": "active"
+    },
+    {
+      "id": "102",
+      "name": "Resource Two",
+      "status": "pending"
+    }
+  ]
+}
+```
+
+## Configure Scope-Based Authorization in Envoy
+
+JWT authentication confirms that a token is valid and was issued by <ProductName />. It does not control what the token holder is allowed to do. With the configuration from the previous section, Envoy accepts any valid <ProductName /> token for the protected route.
+
+Scope-based authorization adds a second layer of control. <ProductName /> embeds scopes in tokens based on the roles assigned to an application. Envoy then checks those scopes on every request and rejects tokens that do not carry the required permissions. This lets you enforce scope-based access control — for example, restricting a read endpoint to tokens with `resources-api:resource:read` — without changing the upstream service.
+
+The steps below build on the JWT authentication configuration from the previous section. You will define a Resource Server, a Resource, and actions in <ProductName /> to model your API permissions. Then bundle them into a role, assign the role to your application, and update the Envoy configuration to enforce scope validation.
+
+### Configure <ProductName />
+
+#### Create a Resource Server
+
+A Resource Server represents your API in <ProductName />.
+The Resource Server groups all resources and actions under a single identifier and acts as the audience for tokens issued to clients of that API.
+For a full reference, see [Resource Servers](/docs/next/guides/guides/resource-servers).
+
+**Using the Console:**
+
+1. Sign in to the <ProductName /> Console at `https://<THUNDER_HOST>:<THUNDER_PORT>/console`.
+2. Navigate to **Resource Servers** → **New Resource Server**.
+3. Fill in the following fields:
+   - **Name**: `Resources API`
+   - **Handle**: `resources-api`
+   - **Identifier**: `https://api.example.com/resources`
+   - **Description**: `Handles resource operations`
+   - **Delimiter**: `:` (colon)
+4. Click **Create**.
+5. Note the Resource Server **ID** from the details page.
+
+#### Create a Resource
+
+A Resource represents a specific entity within the API, such as `/resources`. Resources let you model your API surface so that permissions can be granted at a granular level.
+
+**Using the Console:**
+
+1. Open the **Resources API** Resource Server.
+2. Go to the **Resources** tab and click **New Resource**.
+3. Fill in the following fields:
+   - **Name**: `Resources`
+   - **Handle**: `resource`
+4. Click **Create**.
+
+#### Create Resource Actions
+
+Actions define the operations allowed on a resource.
+Each action produces a scope in the format `<resource-server-handle>:<resource-handle>:<action-handle>`.
+<ProductName /> includes these scopes in tokens issued to applications that hold the corresponding role.
+
+**Using the Console:**
+
+1. Under the **Resources API** Resource Server, open the **Resources** resource.
+2. Go to the **Actions** tab and click **New Action**.
+3. Fill in the following fields:
+   - **Name**: `Read Resource`
+   - **Handle**: `read`
+   - **Description**: `Permission to read resources`
+4. Click **Create**.
+5. Note the generated permission shown in the action details: `resources-api:resource:read`.
+
+#### Create a Role and assign permission
+
+Roles bundle one or more permissions together. Assign roles to applications to control which scopes appear in their tokens.
+
+1. Navigate to **Roles** → **New Role**.
+2. Fill in the following fields:
+   - **Name**: `Resources API Reader`
+3. Click **Continue**.
+4. Under **Assign permissions**, choose `resources-api:resource:read`.
+5. Click **Continue**.
+
+#### Assign a Role to the Application
+
+Assign the role to the application you created in the previous section. <ProductName /> includes the role's scopes in every token issued for that application.
+
+**Using the Console:**
+
+1. Navigate to **Applications** and open your Backend Service application.
+2. Go to the **Roles** tab.
+3. Click **Assign Role**, select **Resources API Reader** from the list, and confirm.
+
+### Configure Envoy
+
+Add `claim_to_headers` to the `jwt_authn` provider you configured in the previous section, then use the Envoy RBAC filter to enforce the required scope. See the [JWT authentication filter docs](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter) and [RBAC filter docs](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/rbac_filter) for the full list of options.
+
+Envoy copies the JWT `scope` claim into a request header. The required scope can then be checked before Envoy forwards the request.
+
+Then add scope validation before the router filter:
+
+~~~yaml
+http_filters:
+  - name: envoy.filters.http.jwt_authn
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+      providers:
+        thunderid:
+          issuer: "https://localhost:8090"
+          remote_jwks:
+            http_uri:
+              uri: "https://127.0.0.1:8090/oauth2/jwks"
+              cluster: thunderid
+              timeout: 5s
+            cache_duration: 300s
+          from_headers:
+            - name: authorization
+              value_prefix: "Bearer "
+          claim_to_headers:
+            - header_name: x-jwt-scope
+              claim_name: scope
+      rules:
+        - match:
+            prefix: "/resources"
+          requires:
+            provider_name: thunderid
+        - match:
+            prefix: "/"
+          requires:
+            allow_missing: {}
+  - name: envoy.filters.http.rbac
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC
+      rules:
+        action: ALLOW
+        policies:
+          resources-read:
+            permissions:
+              - and_rules:
+                  rules:
+                    - url_path:
+                        path:
+                          prefix: "/resources"
+                    - header:
+                        name: ":method"
+                        string_match:
+                          exact: "GET"
+                    - header:
+                        name: "x-jwt-scope"
+                        string_match:
+                          safe_regex:
+                            regex: "(^|\\s)resources-api:resource:read(\\s|$)"
+            principals:
+              - any: true
+  - name: envoy.filters.http.router
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+~~~
+
+Add one scope policy for each protected route or operation. For example, an update endpoint can require a separate scope such as `resources-api:resource:update`.
+
+**Scope configuration reference:**
+
+| Field | Value | Description |
+|---|---|---|
+| `claim_to_headers.claim_name` | `scope` | JWT claim that stores scopes |
+| `claim_to_headers.header_name` | `x-jwt-scope` | Header Envoy uses to check the token scopes |
+| `string_match.safe_regex.regex` | `(^\|\\s)resources-api:resource:read(\\s\|$)` | Required scope to access the matching route. The regular expression matches scope token boundaries in a space-delimited scope claim. |
+| `action` | `ALLOW` | Allows only requests that match one of the configured scope policies |
+
+Restart Envoy to apply the changes:
+
+~~~bash
+pkill -f "envoy -c envoy.yaml"
+envoy --mode validate -c envoy.yaml
+envoy -c envoy.yaml
+~~~
+
+### Try It Out
+
+#### Obtain an Access Token with the Required Scope
+
+Request a token for the application that has the role assigned:
+
+```bash
+curl -kL -X POST 'https://<THUNDER_HOST>:8090/oauth2/token' \
+  --user '<CLIENT_ID>:<CLIENT_SECRET>' \
+  --header 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'grant_type=client_credentials' \
+  --data-urlencode 'scope=resources-api:resource:read'
+```
+
+The response confirms the scope is present:
+
+```json
+{
+  "access_token": "<ACCESS_TOKEN>",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "resources-api:resource:read"
+}
+```
+
+#### Call the Protected API
+
+**With a token that has the required scope — expect `200 OK`:**
+
+```bash
+curl -i --location 'http://localhost:8080/resources' \
+  --header 'Authorization: Bearer <ACCESS_TOKEN>' \
+  --header 'Content-Type: application/json'
+```
+
+**With a token missing the required scope — expect `403 Forbidden`:**
+
+```bash
+curl -i --location 'http://localhost:8080/resources' \
+  --header 'Authorization: Bearer <TOKEN_WITHOUT_REQUIRED_SCOPE>' \
+  --header 'Content-Type: application/json'
+```
+
+Expected response:
+
+```text
+HTTP/1.1 403 Forbidden
+
+RBAC: access denied
+```

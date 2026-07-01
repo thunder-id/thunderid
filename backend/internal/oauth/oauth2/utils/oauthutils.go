@@ -173,13 +173,15 @@ func ParseClaimsRequest(claimsParam string) (*model.ClaimsRequest, error) {
 	return &claimsRequest, nil
 }
 
-// validateClaimsRequest validates a ClaimsRequest against OIDC spec constraints.
+// validateClaimsRequest validates a ClaimsRequest against OIDC spec constraints. Normal claims
+// and verified_claims are already normalized and structurally validated by
+// ClaimsRequest.UnmarshalJSON; here only the normal-claim constraint grammar is enforced.
 func validateClaimsRequest(cr *model.ClaimsRequest) error {
 	if cr == nil {
 		return nil
 	}
 
-	// Validate userinfo claims
+	// Validate normal userinfo claims
 	for claimName, claimReq := range cr.UserInfo {
 		if err := validateIndividualClaimRequest("userinfo", claimName, claimReq); err != nil {
 			return err
@@ -198,26 +200,9 @@ func validateClaimsRequest(cr *model.ClaimsRequest) error {
 
 // validateIndividualClaimRequest validates constraints for an individual claim request.
 func validateIndividualClaimRequest(location, claimName string, icr *model.IndividualClaimRequest) error {
-	if icr == nil {
-		return nil
+	if err := icr.Validate(); err != nil {
+		return fmt.Errorf("invalid claims parameter: claim '%s' in %s %w", claimName, location, err)
 	}
-
-	// value and values are mutually exclusive
-	if icr.Value != nil && len(icr.Values) > 0 {
-		return fmt.Errorf(
-			"invalid claims parameter: claim '%s' in %s has both 'value' and 'values' specified "+
-				"(mutually exclusive per OIDC spec)",
-			claimName, location)
-	}
-
-	// values array must contain at least one value
-	if icr.Values != nil && len(icr.Values) == 0 {
-		return fmt.Errorf(
-			"invalid claims parameter: claim '%s' in %s has empty 'values' array "+
-				"(must contain at least one value)",
-			claimName, location)
-	}
-
 	return nil
 }
 

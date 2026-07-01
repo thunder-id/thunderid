@@ -22,16 +22,17 @@ import (
 	"context"
 	"testing"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/application"
 	"github.com/thunder-id/thunderid/internal/application/model"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
 )
@@ -85,9 +86,9 @@ func (s *ApplicationExporterTestSuite) TestGetAllResourceIDs_Success() {
 }
 
 func (s *ApplicationExporterTestSuite) TestGetAllResourceIDs_Error() {
-	serviceError := &serviceerror.ServiceError{
+	serviceError := &tidcommon.ServiceError{
 		Code:  "ERR_CODE",
-		Error: i18ncore.I18nMessage{DefaultValue: "test error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "test error"},
 	}
 
 	s.mockService.EXPECT().GetApplicationList(mock.Anything).Return(nil, serviceError)
@@ -95,7 +96,7 @@ func (s *ApplicationExporterTestSuite) TestGetAllResourceIDs_Error() {
 	ids, err := s.exporter.GetAllResourceIDs(context.Background())
 
 	assert.Nil(s.T(), ids)
-	assert.Equal(s.T(), &serviceerror.InternalServerError, err)
+	assert.Equal(s.T(), &tidcommon.InternalServerError, err)
 }
 
 func (s *ApplicationExporterTestSuite) TestGetAllResourceIDs_EmptyList() {
@@ -112,7 +113,7 @@ func (s *ApplicationExporterTestSuite) TestGetAllResourceIDs_EmptyList() {
 }
 
 func (s *ApplicationExporterTestSuite) TestGetResourceByID_Success() {
-	expectedApp := &model.Application{
+	expectedApp := &providers.Application{
 		ID:   "app1",
 		Name: "Test App",
 	}
@@ -127,9 +128,9 @@ func (s *ApplicationExporterTestSuite) TestGetResourceByID_Success() {
 }
 
 func (s *ApplicationExporterTestSuite) TestGetResourceByID_Error() {
-	serviceError := &serviceerror.ServiceError{
+	serviceError := &tidcommon.ServiceError{
 		Code:  "ERR_CODE",
-		Error: i18ncore.I18nMessage{DefaultValue: "test error"},
+		Error: tidcommon.I18nMessage{DefaultValue: "test error"},
 	}
 
 	s.mockService.EXPECT().GetApplication(mock.Anything, "app1").Return(nil, serviceError)
@@ -142,7 +143,7 @@ func (s *ApplicationExporterTestSuite) TestGetResourceByID_Error() {
 }
 
 func (s *ApplicationExporterTestSuite) TestValidateResource_Success() {
-	app := &model.Application{
+	app := &providers.Application{
 		ID:   "app1",
 		Name: "Valid App",
 	}
@@ -166,7 +167,7 @@ func (s *ApplicationExporterTestSuite) TestValidateResource_InvalidType() {
 }
 
 func (s *ApplicationExporterTestSuite) TestValidateResource_EmptyName() {
-	app := &model.Application{
+	app := &providers.Application{
 		ID:   "app1",
 		Name: "",
 	}
@@ -185,12 +186,12 @@ func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_PublicCli
 	pr, ok := s.exporter.(declarativeresource.PerResourceRuler)
 	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")
 
-	app := &model.Application{
+	app := &providers.Application{
 		ID:   "app1",
 		Name: "Public App",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID:     "client-id-1",
 					PublicClient: true,
 				},
@@ -210,12 +211,12 @@ func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_Confident
 	pr, ok := s.exporter.(declarativeresource.PerResourceRuler)
 	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")
 
-	app := &model.Application{
+	app := &providers.Application{
 		ID:   "app2",
 		Name: "Confidential App",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID:     "client-id-2",
 					PublicClient: false,
 				},

@@ -23,9 +23,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 const (
@@ -125,7 +125,7 @@ var (
 						"inputs": []map[string]interface{}{
 							{
 								"ref":        "input_mobile",
-								"identifier": "mobileNumber",
+								"identifier": "mobile_number",
 								"type":       "string",
 								"required":   true,
 							},
@@ -265,7 +265,7 @@ var (
 			"locale": map[string]interface{}{
 				"type": "string",
 			},
-			"mobileNumber": map[string]interface{}{
+			"mobile_number": map[string]interface{}{
 				"type": "string",
 			},
 		},
@@ -532,10 +532,10 @@ func (ts *HTTPRequestRuntimeDataRegistrationFlowTestSuite) TestHTTPRequestRuntim
 	ts.Require().NoError(err, "Failed to complete runtime data flow with authorization code")
 	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
 	ts.Require().Equal("VIEW", flowStep.Type)
-	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "mobileNumber"))
+	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "mobile_number"))
 
 	flowStep, err = common.CompleteFlow(flowStep.ExecutionID, map[string]string{
-		"mobileNumber": mobileNumber,
+		"mobile_number": mobileNumber,
 	}, "action_mobile", flowStep.ChallengeToken)
 	ts.Require().NoError(err, "Failed to continue runtime data flow with mobile number")
 	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)

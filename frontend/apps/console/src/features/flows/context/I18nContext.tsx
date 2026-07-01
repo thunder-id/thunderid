@@ -60,10 +60,6 @@ export interface I18nContextProps {
    * Supported locales for the custom text preferences.
    */
   supportedLocales?: Record<string, {code: string; name: string; flag: string}>;
-  /**
-   * Indicates whether branding is enabled for the organization.
-   */
-  isBrandingEnabled?: boolean;
 }
 
 const I18nContext: Context<I18nContextProps | undefined> = createContext<I18nContextProps | undefined>(undefined);

@@ -24,12 +24,10 @@ import (
 	"os"
 	"testing"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/thunder-id/thunderid/internal/cert"
-	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
@@ -267,14 +265,9 @@ inboundAuthConfig:
 	// Note: ValidityPeriod and UserAttributes might be 0/nil if not properly parsed
 	// This could be due to YAML structure differences
 
-	// Verify certificate
-	assert.NotNil(suite.T(), appDTO.Certificate)
-	assert.Equal(suite.T(), cert.CertificateTypeJWKS, appDTO.Certificate.Type) // Using valid cert type
-	assert.Equal(suite.T(), "test-cert-value", appDTO.Certificate.Value)
-
 	// Verify inbound auth config
 	assert.Len(suite.T(), appDTO.InboundAuthConfig, 1)
-	assert.Equal(suite.T(), inboundmodel.OAuthInboundAuthType, appDTO.InboundAuthConfig[0].Type)
+	assert.Equal(suite.T(), providers.OAuthInboundAuthType, appDTO.InboundAuthConfig[0].Type)
 	assert.NotNil(suite.T(), appDTO.InboundAuthConfig[0].OAuthConfig)
 	assert.Equal(suite.T(), "test-client-id", appDTO.InboundAuthConfig[0].OAuthConfig.ClientID)
 	assert.Equal(
@@ -283,10 +276,10 @@ inboundAuthConfig:
 		appDTO.InboundAuthConfig[0].OAuthConfig.RedirectURIs)
 	// Note: GrantTypes and ResponseTypes are typed constants, not plain strings
 	assert.Contains(suite.T(), appDTO.InboundAuthConfig[0].OAuthConfig.GrantTypes,
-		oauth2const.GrantType("authorization_code"))
+		providers.GrantType("authorization_code"))
 	assert.Contains(suite.T(), appDTO.InboundAuthConfig[0].OAuthConfig.ResponseTypes,
-		oauth2const.ResponseType("code"))
-	assert.Equal(suite.T(), oauth2const.TokenEndpointAuthMethod("client_secret_basic"),
+		providers.ResponseType("code"))
+	assert.Equal(suite.T(), providers.TokenEndpointAuthMethod("client_secret_basic"),
 		appDTO.InboundAuthConfig[0].OAuthConfig.TokenEndpointAuthMethod)
 	assert.True(suite.T(), appDTO.InboundAuthConfig[0].OAuthConfig.PKCERequired)
 	assert.False(suite.T(), appDTO.InboundAuthConfig[0].OAuthConfig.PublicClient)
@@ -319,7 +312,6 @@ isRegistrationFlowEnabled: false
 	assert.Empty(suite.T(), appDTO.URL)
 	assert.Empty(suite.T(), appDTO.LogoURL)
 	assert.Nil(suite.T(), appDTO.Assertion)
-	assert.Nil(suite.T(), appDTO.Certificate)
 	assert.Empty(suite.T(), appDTO.InboundAuthConfig)
 }
 
@@ -347,7 +339,7 @@ inboundAuthConfig:
 	assert.NotNil(suite.T(), appDTO)
 	// Should only include OAuth config, SAML should be filtered out
 	assert.Len(suite.T(), appDTO.InboundAuthConfig, 1)
-	assert.Equal(suite.T(), inboundmodel.OAuthInboundAuthType, appDTO.InboundAuthConfig[0].Type)
+	assert.Equal(suite.T(), providers.OAuthInboundAuthType, appDTO.InboundAuthConfig[0].Type)
 	assert.Equal(suite.T(), "test-client-id", appDTO.InboundAuthConfig[0].OAuthConfig.ClientID)
 }
 
@@ -445,11 +437,11 @@ inboundAuthConfig:
 	assert.Equal(suite.T(), []string{"https://app.example.com/callback",
 		"https://app.example.com/redirect"}, oauthConfig.RedirectURIs)
 	// Using Contains for typed constants
-	assert.Contains(suite.T(), oauthConfig.GrantTypes, oauth2const.GrantType("authorization_code"))
-	assert.Contains(suite.T(), oauthConfig.GrantTypes, oauth2const.GrantType("refresh_token"))
-	assert.Contains(suite.T(), oauthConfig.ResponseTypes, oauth2const.ResponseType("code"))
-	assert.Contains(suite.T(), oauthConfig.ResponseTypes, oauth2const.ResponseType("token"))
-	assert.Equal(suite.T(), oauth2const.TokenEndpointAuthMethod("client_secret_post"),
+	assert.Contains(suite.T(), oauthConfig.GrantTypes, providers.GrantType("authorization_code"))
+	assert.Contains(suite.T(), oauthConfig.GrantTypes, providers.GrantType("refresh_token"))
+	assert.Contains(suite.T(), oauthConfig.ResponseTypes, providers.ResponseType("code"))
+	assert.Contains(suite.T(), oauthConfig.ResponseTypes, providers.ResponseType("token"))
+	assert.Equal(suite.T(), providers.TokenEndpointAuthMethod("client_secret_post"),
 		oauthConfig.TokenEndpointAuthMethod)
 	assert.False(suite.T(), oauthConfig.PKCERequired)
 	assert.True(suite.T(), oauthConfig.PublicClient)
@@ -535,7 +527,7 @@ inboundAuthConfig:
 	assert.Equal(t, "Test application", appDTO.Description)
 	assert.True(t, appDTO.IsRegistrationFlowEnabled)
 	assert.Len(t, appDTO.InboundAuthConfig, 1)
-	assert.Equal(t, inboundmodel.OAuthInboundAuthType, appDTO.InboundAuthConfig[0].Type)
+	assert.Equal(t, providers.OAuthInboundAuthType, appDTO.InboundAuthConfig[0].Type)
 	assert.Equal(t, "test-client-id", appDTO.InboundAuthConfig[0].OAuthConfig.ClientID)
 }
 

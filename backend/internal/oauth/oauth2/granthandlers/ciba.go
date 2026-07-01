@@ -25,12 +25,12 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // cibaGrantHandler handles the OpenID Connect CIBA grant type (poll mode).
@@ -57,8 +57,8 @@ func newCIBAGrantHandler(
 
 // ValidateGrant validates the CIBA grant request.
 func (h *cibaGrantHandler) ValidateGrant(ctx context.Context, tokenRequest *model.TokenRequest,
-	oauthApp *inboundmodel.OAuthClient) *model.ErrorResponse {
-	if constants.GrantType(tokenRequest.GrantType) != constants.GrantTypeCIBA {
+	oauthApp *providers.OAuthClient) *model.ErrorResponse {
+	if providers.GrantType(tokenRequest.GrantType) != providers.GrantTypeCIBA {
 		return &model.ErrorResponse{
 			Error:            constants.ErrorUnsupportedGrantType,
 			ErrorDescription: "Unsupported grant type",
@@ -96,7 +96,7 @@ func (h *cibaGrantHandler) ValidateGrant(ctx context.Context, tokenRequest *mode
 
 // HandleGrant processes the CIBA grant request following the poll-mode state machine.
 func (h *cibaGrantHandler) HandleGrant(ctx context.Context, tokenRequest *model.TokenRequest,
-	oauthApp *inboundmodel.OAuthClient) (*model.TokenResponseDTO, *model.ErrorResponse) {
+	oauthApp *providers.OAuthClient) (*model.TokenResponseDTO, *model.ErrorResponse) {
 	record, err := h.cibaService.GetByAuthReqID(ctx, tokenRequest.AuthReqID)
 	if err != nil {
 		if errors.Is(err, ciba.ErrCIBARequestNotFound) {
@@ -173,7 +173,7 @@ func (h *cibaGrantHandler) handlePending(ctx context.Context, record *ciba.CIBAA
 
 // issueTokens builds the access, refresh, and (when openid) ID tokens, then marks the request consumed.
 func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAuthRequest,
-	oauthApp *inboundmodel.OAuthClient) (*model.TokenResponseDTO, *model.ErrorResponse) {
+	oauthApp *providers.OAuthClient) (*model.TokenResponseDTO, *model.ErrorResponse) {
 	// Use AuthorizedScopes (StandardScopes + authorized permissions from assertion) when available.
 	// Falls back to StandardScopes (OIDC only) if callback hasn't been processed yet.
 	scopeStr := record.AuthorizedScopes
@@ -203,7 +203,7 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 		Scopes:           scopes,
 		UserAttributes:   attrs,
 		AttributeCacheID: record.AttributeCacheID,
-		GrantType:        string(constants.GrantTypeCIBA),
+		GrantType:        string(providers.GrantTypeCIBA),
 		OAuthApp:         oauthApp,
 	})
 	if err != nil {

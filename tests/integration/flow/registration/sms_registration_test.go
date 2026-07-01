@@ -23,9 +23,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 var (
@@ -108,7 +108,7 @@ var (
 						"inputs": []map[string]interface{}{
 							{
 								"ref":        "input_001",
-								"identifier": "mobileNumber",
+								"identifier": "mobile_number",
 								"type":       "string",
 								"required":   true,
 							},
@@ -190,7 +190,7 @@ var (
 						},
 						{
 							"ref":        "input_005",
-							"identifier": "mobileNumber",
+							"identifier": "mobile_number",
 							"type":       "string",
 							"required":   true,
 						},
@@ -239,7 +239,7 @@ var (
 			"family_name": map[string]interface{}{
 				"type": "string",
 			},
-			"mobileNumber": map[string]interface{}{
+			"mobile_number": map[string]interface{}{
 				"type": "string",
 			},
 		},
@@ -420,7 +420,7 @@ func (ts *SMSRegistrationFlowTestSuite) TestSMSRegistrationFlow() {
 	// Validate that mobile number input is required
 	ts.Require().NotEmpty(flowStep.Data, "Flow data should not be empty")
 	ts.Require().NotEmpty(flowStep.Data.Inputs, "Flow should require inputs")
-	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "mobileNumber"),
+	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "mobile_number"),
 		"Mobile number input should be required")
 
 	// Clear any previous messages
@@ -428,7 +428,7 @@ func (ts *SMSRegistrationFlowTestSuite) TestSMSRegistrationFlow() {
 
 	// Step 2: Continue the flow with mobile number
 	inputs := map[string]string{
-		"mobileNumber": mobileNumber,
+		"mobile_number": mobileNumber,
 	}
 
 	otpFlowStep, err := common.CompleteFlow(flowStep.ExecutionID, inputs, "action_001",
@@ -510,7 +510,7 @@ func (ts *SMSRegistrationFlowTestSuite) TestSMSRegistrationFlow() {
 	ts.Require().NotEmpty(jwtClaims.Sub, "JWT subject should not be empty")
 
 	// Step 5: Verify the user was created by searching via the user API
-	user, err := testutils.FindUserByAttribute("mobileNumber", mobileNumber)
+	user, err := testutils.FindUserByAttribute("mobile_number", mobileNumber)
 	if err != nil {
 		ts.T().Fatalf("Failed to retrieve user by mobile number: %v", err)
 	}
@@ -537,7 +537,7 @@ func (ts *SMSRegistrationFlowTestSuite) TestSMSRegistrationFlowInvalidOTP() {
 
 	// Step 1: Initialize the registration flow and provide mobile number
 	inputs := map[string]string{
-		"mobileNumber": mobileNumber,
+		"mobile_number": mobileNumber,
 	}
 
 	flowStep, err := common.InitiateRegistrationFlow(ts.testAppID, false, nil, "")
@@ -604,7 +604,7 @@ func (ts *SMSRegistrationFlowTestSuite) TestSMSRegistrationFlowSingleRequestWith
 	// Step 2: Provide mobile number with action to trigger SMS
 	ts.mockServer.ClearMessages()
 	inputs := map[string]string{
-		"mobileNumber": mobileNumber,
+		"mobile_number": mobileNumber,
 	}
 
 	otpStep, err := common.CompleteFlow(flowStep.ExecutionID, inputs, "action_001",
@@ -641,10 +641,10 @@ func (ts *SMSRegistrationFlowTestSuite) TestSMSRegistrationFlowSingleRequestWith
 
 	// Step 4: Provide user attributes
 	userInputs := map[string]string{
-		"given_name":   "Test",
-		"family_name":  "User",
-		"email":        fmt.Sprintf("%s@example.com", mobileNumber),
-		"mobileNumber": mobileNumber,
+		"given_name":    "Test",
+		"family_name":   "User",
+		"email":         fmt.Sprintf("%s@example.com", mobileNumber),
+		"mobile_number": mobileNumber,
 	}
 
 	completeFlowStep, err := common.CompleteFlow(provisionStep.ExecutionID, userInputs, "",
@@ -672,7 +672,7 @@ func (ts *SMSRegistrationFlowTestSuite) TestSMSRegistrationFlowSingleRequestWith
 	ts.Require().NotEmpty(jwtClaims.Sub, "JWT subject should not be empty")
 
 	// Step 3: Verify the user was created by searching via the user API
-	user, err := testutils.FindUserByAttribute("mobileNumber", mobileNumber)
+	user, err := testutils.FindUserByAttribute("mobile_number", mobileNumber)
 	if err != nil {
 		ts.T().Fatalf("Failed to retrieve user by mobile number: %v", err)
 	}

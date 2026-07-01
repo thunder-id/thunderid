@@ -6,8 +6,8 @@ package granthandlersmock
 
 import (
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewGrantHandlerProviderInterfaceMock creates a new instance of GrantHandlerProviderInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -38,7 +38,7 @@ func (_m *GrantHandlerProviderInterfaceMock) EXPECT() *GrantHandlerProviderInter
 }
 
 // GetGrantHandler provides a mock function for the type GrantHandlerProviderInterfaceMock
-func (_mock *GrantHandlerProviderInterfaceMock) GetGrantHandler(grantType constants.GrantType) (granthandlers.GrantHandlerInterface, error) {
+func (_mock *GrantHandlerProviderInterfaceMock) GetGrantHandler(grantType providers.GrantType) (granthandlers.GrantHandlerInterface, error) {
 	ret := _mock.Called(grantType)
 
 	if len(ret) == 0 {
@@ -47,17 +47,17 @@ func (_mock *GrantHandlerProviderInterfaceMock) GetGrantHandler(grantType consta
 
 	var r0 granthandlers.GrantHandlerInterface
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(constants.GrantType) (granthandlers.GrantHandlerInterface, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(providers.GrantType) (granthandlers.GrantHandlerInterface, error)); ok {
 		return returnFunc(grantType)
 	}
-	if returnFunc, ok := ret.Get(0).(func(constants.GrantType) granthandlers.GrantHandlerInterface); ok {
+	if returnFunc, ok := ret.Get(0).(func(providers.GrantType) granthandlers.GrantHandlerInterface); ok {
 		r0 = returnFunc(grantType)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(granthandlers.GrantHandlerInterface)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(constants.GrantType) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(providers.GrantType) error); ok {
 		r1 = returnFunc(grantType)
 	} else {
 		r1 = ret.Error(1)
@@ -71,16 +71,16 @@ type GrantHandlerProviderInterfaceMock_GetGrantHandler_Call struct {
 }
 
 // GetGrantHandler is a helper method to define mock.On call
-//   - grantType constants.GrantType
+//   - grantType providers.GrantType
 func (_e *GrantHandlerProviderInterfaceMock_Expecter) GetGrantHandler(grantType interface{}) *GrantHandlerProviderInterfaceMock_GetGrantHandler_Call {
 	return &GrantHandlerProviderInterfaceMock_GetGrantHandler_Call{Call: _e.mock.On("GetGrantHandler", grantType)}
 }
 
-func (_c *GrantHandlerProviderInterfaceMock_GetGrantHandler_Call) Run(run func(grantType constants.GrantType)) *GrantHandlerProviderInterfaceMock_GetGrantHandler_Call {
+func (_c *GrantHandlerProviderInterfaceMock_GetGrantHandler_Call) Run(run func(grantType providers.GrantType)) *GrantHandlerProviderInterfaceMock_GetGrantHandler_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 constants.GrantType
+		var arg0 providers.GrantType
 		if args[0] != nil {
-			arg0 = args[0].(constants.GrantType)
+			arg0 = args[0].(providers.GrantType)
 		}
 		run(
 			arg0,
@@ -94,7 +94,7 @@ func (_c *GrantHandlerProviderInterfaceMock_GetGrantHandler_Call) Return(grantHa
 	return _c
 }
 
-func (_c *GrantHandlerProviderInterfaceMock_GetGrantHandler_Call) RunAndReturn(run func(grantType constants.GrantType) (granthandlers.GrantHandlerInterface, error)) *GrantHandlerProviderInterfaceMock_GetGrantHandler_Call {
+func (_c *GrantHandlerProviderInterfaceMock_GetGrantHandler_Call) RunAndReturn(run func(grantType providers.GrantType) (granthandlers.GrantHandlerInterface, error)) *GrantHandlerProviderInterfaceMock_GetGrantHandler_Call {
 	_c.Call.Return(run)
 	return _c
 }

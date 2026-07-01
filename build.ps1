@@ -479,57 +479,6 @@ function Build-Docs {
     Write-Host "================================================================"
 }
 
-function Build-JavaScript-SDKs {
-    Ensure-Pnpm
-    
-    Write-Host "Installing SDK dependencies..."
-    & pnpm install --frozen-lockfile
-    
-    Write-Host "Building JavaScript ecosystem SDK packages..."
-    & pnpm --filter './sdks/**' build
-}
-
-function Test-JavaScript-SDKs {
-    Ensure-Pnpm
-    
-    Write-Host "Installing SDK dependencies..."
-    & pnpm install --frozen-lockfile
-    
-    Write-Host "Running JavaScript ecosystem SDK tests..."
-    & pnpm --filter './sdks/**' test
-}
-
-function Lint-JavaScript-SDKs {
-    Ensure-Pnpm
-    
-    Write-Host "Installing SDK dependencies..."
-    & pnpm install --frozen-lockfile
-    
-    Write-Host "Linting JavaScript ecosystem SDK packages..."
-    & pnpm --filter './sdks/**' lint
-}
-
-function Build-SDKs {
-    Write-Host "================================================================"
-    Write-Host "Building SDKs..."
-    Build-JavaScript-SDKs
-    Write-Host "================================================================"
-}
-
-function Test-SDKs {
-    Write-Host "================================================================"
-    Write-Host "Running SDK tests..."
-    Test-JavaScript-SDKs
-    Write-Host "================================================================"
-}
-
-function Lint-SDKs {
-    Write-Host "================================================================"
-    Write-Host "Linting SDKs..."
-    Lint-JavaScript-SDKs
-    Write-Host "================================================================"
-}
-
 function Build-CLI {
     Write-Host "Building CLI tool..."
     & bash "$PSScriptRoot/tools/cli/scripts/build.sh"
@@ -1869,7 +1818,6 @@ switch ($Command) {
     'build' {
         Build-Backend
         Build-Frontend
-        Build-SDKs
         Package
         Package-Sample-App
     }
@@ -1882,15 +1830,6 @@ switch ($Command) {
     }
     'build_docs' {
         Build-Docs
-    }
-    'build_sdks' {
-        Build-SDKs
-    }
-    'test_sdks' {
-        Test-SDKs
-    }
-    'lint_sdks' {
-        Lint-SDKs
     }
     'build_tools' {
         Build-Tools
@@ -1930,7 +1869,7 @@ switch ($Command) {
         Test-Integration
     }
     default {
-        Write-Host "Usage: $($MyInvocation.MyCommand.Name) {clean|build|build_backend|build_frontend|build_docs|build_sdks|test_sdks|lint_sdks|build_tools|test_tools|lint_tools|package_samples|test_unit|test_integration|merge_coverage|run|run_backend|run_frontend|run_docs|test}"
+        Write-Host "Usage: $($MyInvocation.MyCommand.Name) {clean|build|build_backend|build_frontend|build_docs|build_tools|test_tools|lint_tools|package_samples|test_unit|test_integration|merge_coverage|run|run_backend|run_frontend|run_docs|test}"
         exit 1
     }
 }

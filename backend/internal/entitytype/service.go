@@ -25,12 +25,13 @@ import (
 	"errors"
 	"fmt"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/consent"
 	"github.com/thunder-id/thunderid/internal/entitytype/model"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -49,42 +50,42 @@ type AttributeInfo = model.AttributeInfo
 // (user or agent).
 type EntityTypeServiceInterface interface {
 	GetEntityTypeList(ctx context.Context, category TypeCategory, limit, offset int,
-		includeDisplay bool) (*EntityTypeListResponse, *serviceerror.ServiceError)
+		includeDisplay bool) (*EntityTypeListResponse, *tidcommon.ServiceError)
 	CreateEntityType(
 		ctx context.Context, category TypeCategory, request CreateEntityTypeRequestWithID,
-	) (*EntityType, *serviceerror.ServiceError)
+	) (*EntityType, *tidcommon.ServiceError)
 	GetEntityType(ctx context.Context, category TypeCategory, schemaID string,
-		includeDisplay bool) (*EntityType, *serviceerror.ServiceError)
+		includeDisplay bool) (*EntityType, *tidcommon.ServiceError)
 	GetEntityTypeByName(
 		ctx context.Context, category TypeCategory, schemaName string,
-	) (*EntityType, *serviceerror.ServiceError)
+	) (*EntityType, *tidcommon.ServiceError)
 	UpdateEntityType(ctx context.Context, category TypeCategory, schemaID string,
 		request UpdateEntityTypeRequest) (
-		*EntityType, *serviceerror.ServiceError)
+		*EntityType, *tidcommon.ServiceError)
 	DeleteEntityType(ctx context.Context, category TypeCategory,
-		schemaID string) *serviceerror.ServiceError
+		schemaID string) *tidcommon.ServiceError
 	ValidateEntity(
 		ctx context.Context, category TypeCategory, entityType string, attributes json.RawMessage,
 		skipCredentialRequired bool,
-	) (bool, *serviceerror.ServiceError)
+	) (bool, *tidcommon.ServiceError)
 	ValidateEntityUniqueness(
 		ctx context.Context,
 		category TypeCategory,
 		entityType string,
 		attributes json.RawMessage,
 		exists func(map[string]interface{}) (bool, error),
-	) (bool, *serviceerror.ServiceError)
+	) (bool, *tidcommon.ServiceError)
 	GetAttributes(
 		ctx context.Context, category TypeCategory, entityType string,
 		allowCredential, allowNonCredential, requiredOnly bool,
-	) ([]AttributeInfo, *serviceerror.ServiceError)
+	) ([]AttributeInfo, *tidcommon.ServiceError)
 	GetUniqueAttributes(
 		ctx context.Context, category TypeCategory, entityType string,
-	) ([]string, *serviceerror.ServiceError)
+	) ([]string, *tidcommon.ServiceError)
 	GetDisplayAttributesByNames(
 		ctx context.Context, category TypeCategory, names []string,
-	) (map[string]string, *serviceerror.ServiceError)
-	ResolveEntityTypeHandles(ctx context.Context, entityType *EntityType) *serviceerror.ServiceError
+	) (map[string]string, *tidcommon.ServiceError)
+	ResolveEntityTypeHandles(ctx context.Context, entityType *EntityType) *tidcommon.ServiceError
 }
 
 // entityTypeService is the default implementation of the EntityTypeServiceInterface.
@@ -116,7 +117,7 @@ func newEntityTypeService(
 // GetEntityTypeList lists entity types for the given category with pagination.
 func (us *entityTypeService) GetEntityTypeList(ctx context.Context, category TypeCategory,
 	limit, offset int, includeDisplay bool) (
-	*EntityTypeListResponse, *serviceerror.ServiceError) {
+	*EntityTypeListResponse, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -144,7 +145,7 @@ func (us *entityTypeService) GetEntityTypeList(ctx context.Context, category Typ
 // listAllEntityTypes retrieves entity types without authorization filtering.
 func (us *entityTypeService) listAllEntityTypes(
 	ctx context.Context, category TypeCategory, limit, offset int, includeDisplay bool, logger *log.Logger,
-) (*EntityTypeListResponse, *serviceerror.ServiceError) {
+) (*EntityTypeListResponse, *tidcommon.ServiceError) {
 	totalCount, err := us.entityTypeStore.GetEntityTypeListCount(ctx, category)
 	if err != nil {
 		return nil, logAndReturnServerError(ctx, logger, "Failed to get entity type list count", err)
@@ -173,7 +174,7 @@ func (us *entityTypeService) listAllEntityTypes(
 func (us *entityTypeService) listAccessibleEntityTypes(
 	ctx context.Context, category TypeCategory, ouIDs []string, limit, offset int,
 	includeDisplay bool, logger *log.Logger,
-) (*EntityTypeListResponse, *serviceerror.ServiceError) {
+) (*EntityTypeListResponse, *tidcommon.ServiceError) {
 	displayQuery := utils.DisplayQueryParam(includeDisplay)
 
 	if len(ouIDs) == 0 {
@@ -212,7 +213,7 @@ func (us *entityTypeService) listAccessibleEntityTypes(
 // CreateEntityType creates a new entity type in the given category.
 func (us *entityTypeService) CreateEntityType(
 	ctx context.Context, category TypeCategory, request CreateEntityTypeRequestWithID,
-) (*EntityType, *serviceerror.ServiceError) {
+) (*EntityType, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -267,7 +268,7 @@ func (us *entityTypeService) CreateEntityType(
 		id, err = utils.GenerateUUIDv7()
 		if err != nil {
 			logger.Error(ctx, "Failed to generate UUID", log.Error(err))
-			return nil, &serviceerror.InternalServerError
+			return nil, &tidcommon.InternalServerError
 		}
 	}
 
@@ -305,7 +306,7 @@ func (us *entityTypeService) CreateEntityType(
 // GetEntityType retrieves an entity type by its ID within the given category.
 func (us *entityTypeService) GetEntityType(
 	ctx context.Context, category TypeCategory, schemaID string, includeDisplay bool,
-) (*EntityType, *serviceerror.ServiceError) {
+) (*EntityType, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -346,7 +347,7 @@ func (us *entityTypeService) GetEntityType(
 // GetEntityTypeByName retrieves an entity type by its name within the given category.
 func (us *entityTypeService) GetEntityTypeByName(
 	ctx context.Context, category TypeCategory, schemaName string,
-) (*EntityType, *serviceerror.ServiceError) {
+) (*EntityType, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -376,7 +377,7 @@ func (us *entityTypeService) GetEntityTypeByName(
 // UpdateEntityType updates an entity type by its ID within the given category.
 func (us *entityTypeService) UpdateEntityType(ctx context.Context, category TypeCategory,
 	schemaID string, request UpdateEntityTypeRequest) (
-	*EntityType, *serviceerror.ServiceError) {
+	*EntityType, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -481,7 +482,7 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 
 // DeleteEntityType deletes an entity type by its ID within the given category.
 func (us *entityTypeService) DeleteEntityType(ctx context.Context, category TypeCategory,
-	schemaID string) *serviceerror.ServiceError {
+	schemaID string) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -554,7 +555,7 @@ func (us *entityTypeService) DeleteEntityType(ctx context.Context, category Type
 func (us *entityTypeService) ValidateEntity(
 	ctx context.Context, category TypeCategory, entityType string, attributes json.RawMessage,
 	skipCredentialRequired bool,
-) (bool, *serviceerror.ServiceError) {
+) (bool, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -591,7 +592,7 @@ func (us *entityTypeService) ValidateEntityUniqueness(
 	entityType string,
 	attributes json.RawMessage,
 	exists func(map[string]interface{}) (bool, error),
-) (bool, *serviceerror.ServiceError) {
+) (bool, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -634,7 +635,7 @@ func (us *entityTypeService) ValidateEntityUniqueness(
 func (us *entityTypeService) GetAttributes(
 	ctx context.Context, category TypeCategory, entityType string,
 	allowCredential, allowNonCredential, requiredOnly bool,
-) ([]AttributeInfo, *serviceerror.ServiceError) {
+) ([]AttributeInfo, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -655,7 +656,7 @@ func (us *entityTypeService) GetAttributes(
 // GetUniqueAttributes returns the names of schema properties marked as unique for a given entity type.
 func (us *entityTypeService) GetUniqueAttributes(
 	ctx context.Context, category TypeCategory, entityType string,
-) ([]string, *serviceerror.ServiceError) {
+) ([]string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -676,7 +677,7 @@ func (us *entityTypeService) GetUniqueAttributes(
 // GetDisplayAttributesByNames returns display attributes for multiple entity types by name within a category.
 func (us *entityTypeService) GetDisplayAttributesByNames(
 	ctx context.Context, category TypeCategory, names []string,
-) (map[string]string, *serviceerror.ServiceError) {
+) (map[string]string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -725,17 +726,17 @@ func (us *entityTypeService) getCompiledSchemaForEntityType(
 // caller's organization unit membership.
 func (us *entityTypeService) checkEntityTypeAccess(
 	ctx context.Context, category TypeCategory, action security.Action, ouID string,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	if us.authzService == nil {
 		return nil
 	}
 	allowed, svcErr := us.authzService.IsActionAllowed(ctx, action,
 		&sysauthz.ActionContext{ResourceType: resourceTypeForCategory(category), OUID: ouID})
 	if svcErr != nil {
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 	if !allowed {
-		return &serviceerror.ErrorUnauthorized
+		return &tidcommon.ErrorUnauthorized
 	}
 	return nil
 }
@@ -744,7 +745,7 @@ func (us *entityTypeService) checkEntityTypeAccess(
 // given list action. The action implies the resource type (entity type vs agent schema).
 func (us *entityTypeService) getAccessibleResources(
 	ctx context.Context, action security.Action,
-) (*sysauthz.AccessibleResources, *serviceerror.ServiceError) {
+) (*sysauthz.AccessibleResources, *tidcommon.ServiceError) {
 	if us.authzService == nil {
 		return &sysauthz.AccessibleResources{AllAllowed: true}, nil
 	}
@@ -755,7 +756,7 @@ func (us *entityTypeService) getAccessibleResources(
 	accessible, svcErr := us.authzService.GetAccessibleResources(
 		ctx, action, resourceType)
 	if svcErr != nil {
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	return accessible, nil
 }
@@ -765,7 +766,7 @@ func (us *entityTypeService) getAccessibleResources(
 // entity types support ou_handle. It elevates to runtime context internally.
 func (us *entityTypeService) ResolveEntityTypeHandles(
 	ctx context.Context, entityType *EntityType,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	return us.resolveEntityTypeOUHandle(security.WithRuntimeContext(ctx), entityType)
 }
 
@@ -775,7 +776,7 @@ func (us *entityTypeService) ResolveEntityTypeHandles(
 // If both ou_id and ou_handle are provided, ou_id wins and a warning is logged.
 func (us *entityTypeService) resolveEntityTypeOUHandle(
 	ctx context.Context, entityType *EntityType,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	if entityType.OUID != "" && entityType.OUHandle != "" {
 		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 		logger.Warn(ctx, "Both ouId and ouHandle provided for entity type; ouHandle ignored",
@@ -784,7 +785,7 @@ func (us *entityTypeService) resolveEntityTypeOUHandle(
 	}
 	if entityType.OUID == "" && entityType.OUHandle != "" {
 		if us.ouService == nil {
-			return &serviceerror.InternalServerError
+			return &tidcommon.InternalServerError
 		}
 		ou, svcErr := us.ouService.GetOrganizationUnitByPath(ctx, entityType.OUHandle)
 		if svcErr != nil {
@@ -801,17 +802,17 @@ func (us *entityTypeService) ensureOrganizationUnitExists(
 	oUID string,
 	category TypeCategory,
 	logger *log.Logger,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	if us.ouService == nil {
 		logger.Error(ctx, "Organization unit service is not configured for entity type operations")
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	exists, svcErr := us.ouService.IsOrganizationUnitExists(ctx, oUID)
 	if svcErr != nil {
 		logger.Error(ctx, "Failed to verify organization unit existence",
 			log.String("oUID", oUID), log.Any("error", svcErr))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	if !exists {
@@ -824,7 +825,7 @@ func (us *entityTypeService) ensureOrganizationUnitExists(
 }
 
 // validatePaginationParams validates the limit and offset parameters.
-func validatePaginationParams(limit, offset int) *serviceerror.ServiceError {
+func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
 	if limit < 1 || limit > serverconst.MaxPageSize {
 		return &ErrorInvalidLimit
 	}
@@ -869,7 +870,7 @@ func pathForCategory(category TypeCategory) string {
 }
 
 // validateCategory ensures the supplied category is one of the supported values.
-func validateCategory(category TypeCategory) *serviceerror.ServiceError {
+func validateCategory(category TypeCategory) *tidcommon.ServiceError {
 	if !category.IsValid() {
 		return invalidEntityTypeRequestErr(category, "invalid schema category")
 	}
@@ -970,15 +971,15 @@ func logAndReturnServerError(ctx context.Context,
 	logger *log.Logger,
 	message string,
 	err error,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	logger.Error(ctx, message, log.Error(err))
-	return &serviceerror.InternalServerError
+	return &tidcommon.InternalServerError
 }
 
 // validateEntityTypeDefinition validates the entity type definition without checking OU existence.
 // This is used during initialization to validate file-based configurations.
 func validateEntityTypeDefinition(
-	ctx context.Context, category TypeCategory, schema EntityType) *serviceerror.ServiceError {
+	ctx context.Context, category TypeCategory, schema EntityType) *tidcommon.ServiceError {
 	logger := log.GetLogger()
 
 	if schema.Name == "" {
@@ -1009,7 +1010,7 @@ func validateEntityTypeDefinition(
 // validateSystemAttributes validates the system attributes against the compiled schema.
 func validateSystemAttributes(
 	compiledSchema *model.Schema, systemAttrs *SystemAttributes,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	if systemAttrs == nil {
 		return nil
 	}
@@ -1022,7 +1023,7 @@ func validateSystemAttributes(
 // Only string and number types are considered displayable.
 func validateDisplayAttribute(
 	compiledSchema *model.Schema, display string,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	if display == "" {
 		return nil
 	}
@@ -1041,7 +1042,7 @@ func validateDisplayAttribute(
 
 // syncConsentElementsOnCreate creates missing consent elements for a new schema creation.
 func (us *entityTypeService) syncConsentElementsOnCreate(ctx context.Context,
-	category TypeCategory, schema json.RawMessage, logger *log.Logger) *serviceerror.ServiceError {
+	category TypeCategory, schema json.RawMessage, logger *log.Logger) *tidcommon.ServiceError {
 	// TODO: Replace "default" with the schema's actual OU when applications are associated with OUs.
 	const ouID = "default"
 
@@ -1066,7 +1067,7 @@ func (us *entityTypeService) syncConsentElementsOnCreate(ctx context.Context,
 // syncConsentElementsOnUpdate reconciles consent elements when a schema is updated.
 // It creates elements that were added and deletes elements that were removed.
 func (us *entityTypeService) syncConsentElementsOnUpdate(ctx context.Context,
-	category TypeCategory, oldSchema, newSchema json.RawMessage, logger *log.Logger) *serviceerror.ServiceError {
+	category TypeCategory, oldSchema, newSchema json.RawMessage, logger *log.Logger) *tidcommon.ServiceError {
 	// TODO: Replace "default" with the schema's actual OU when applications are associated with OUs.
 	const ouID = "default"
 
@@ -1114,7 +1115,7 @@ func (us *entityTypeService) syncConsentElementsOnUpdate(ctx context.Context,
 // the missing ones.
 // nolint:unparam // ouID is always "default" in current usage but kept for future flexibility
 func (us *entityTypeService) createMissingConsentElements(ctx context.Context,
-	ouID string, names []string, logger *log.Logger) *serviceerror.ServiceError {
+	ouID string, names []string, logger *log.Logger) *tidcommon.ServiceError {
 	if len(names) == 0 {
 		logger.Debug(ctx, "No consent elements to create for the schema", log.String("ouID", ouID))
 		return nil
@@ -1140,7 +1141,7 @@ func (us *entityTypeService) createMissingConsentElements(ctx context.Context,
 		if !existingMap[name] {
 			elementsToCreate = append(elementsToCreate, consent.ConsentElementInput{
 				Name:      name,
-				Namespace: consent.NamespaceAttribute,
+				Namespace: providers.NamespaceAttribute,
 			})
 		}
 	}
@@ -1158,7 +1159,7 @@ func (us *entityTypeService) createMissingConsentElements(ctx context.Context,
 
 // deleteConsentElements removes a list of consent elements associated with the given attribute names.
 func (us *entityTypeService) deleteConsentElements(ctx context.Context,
-	attributeNames []string, logger *log.Logger) *serviceerror.ServiceError {
+	attributeNames []string, logger *log.Logger) *tidcommon.ServiceError {
 	// TODO: Replace "default" with the schema's actual OU when applications are associated with OUs.
 	const ouID = "default"
 
@@ -1172,7 +1173,7 @@ func (us *entityTypeService) deleteConsentElements(ctx context.Context,
 
 	for _, attrName := range attributeNames {
 		// List existing consent elements for the removed attribute to find their IDs for deletion
-		existing, err := us.consentService.ListConsentElements(ctx, ouID, consent.NamespaceAttribute, attrName)
+		existing, err := us.consentService.ListConsentElements(ctx, ouID, providers.NamespaceAttribute, attrName)
 		if err != nil {
 			return wrapConsentServiceError(ctx, err, logger)
 		}
@@ -1206,7 +1207,7 @@ func (us *entityTypeService) deleteConsentElements(ctx context.Context,
 }
 
 // extractAttributeNames returns the set of attribute names from a schema JSON as a string slice.
-func extractAttributeNames(category TypeCategory, schema json.RawMessage) ([]string, *serviceerror.ServiceError) {
+func extractAttributeNames(category TypeCategory, schema json.RawMessage) ([]string, *tidcommon.ServiceError) {
 	if len(schema) == 0 {
 		return nil, nil
 	}
@@ -1228,7 +1229,7 @@ func extractAttributeNames(category TypeCategory, schema json.RawMessage) ([]str
 // for last lookups.
 func extractAttributeNamesAsMap(
 	category TypeCategory, schema json.RawMessage,
-) (map[string]bool, *serviceerror.ServiceError) {
+) (map[string]bool, *tidcommon.ServiceError) {
 	result := make(map[string]bool)
 	if len(schema) == 0 {
 		return result, nil
@@ -1249,19 +1250,19 @@ func extractAttributeNamesAsMap(
 // wrapConsentServiceError converts an ServiceError from the consent service into a ServiceError
 // for the entity type service.
 func wrapConsentServiceError(
-	ctx context.Context, err *serviceerror.ServiceError, logger *log.Logger) *serviceerror.ServiceError {
+	ctx context.Context, err *tidcommon.ServiceError, logger *log.Logger) *tidcommon.ServiceError {
 	if err == nil {
 		return nil
 	}
 
-	if err.Type == serviceerror.ClientErrorType {
+	if err.Type == tidcommon.ClientErrorType {
 		logger.Debug(ctx, "Failed to sync consent elements for the schema changes", log.Any("error", err))
-		return serviceerror.CustomServiceError(ErrorConsentSyncFailed, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorConsentSyncFailed, tidcommon.I18nMessage{
 			Key:          "error.entitytypeservice.consent_sync_failed_description",
 			DefaultValue: fmt.Sprintf("%s : code - %s", ErrorConsentSyncFailed.ErrorDescription.DefaultValue, err.Code),
 		})
 	}
 
 	logger.Error(ctx, "Failed to sync consent elements for the schema changes", log.Any("error", err))
-	return &serviceerror.InternalServerError
+	return &tidcommon.InternalServerError
 }

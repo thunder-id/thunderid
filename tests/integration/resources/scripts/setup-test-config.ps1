@@ -121,6 +121,9 @@ $footer = @"
 flow:
   max_version_history: 3
 
+server_config:
+  store: composite
+
 oauth:
   allow_wildcard_redirect_uri: true
   auth_class:

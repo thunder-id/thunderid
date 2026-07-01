@@ -20,7 +20,7 @@ package declarativeresource
 
 import (
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // IsDeclarativeModeEnabled checks if declarative resources are enabled in the configuration.
@@ -29,7 +29,7 @@ func IsDeclarativeModeEnabled() bool {
 }
 
 // CheckDeclarativeCreate returns an error when declarative read-only mode is active.
-func CheckDeclarativeCreate() *serviceerror.ServiceError {
+func CheckDeclarativeCreate() *tidcommon.ServiceError {
 	if IsDeclarativeModeEnabled() {
 		return &ErrorDeclarativeResourceCreateOperation
 	}
@@ -37,7 +37,7 @@ func CheckDeclarativeCreate() *serviceerror.ServiceError {
 }
 
 // CheckDeclarativeUpdate returns an error when declarative read-only mode is active.
-func CheckDeclarativeUpdate() *serviceerror.ServiceError {
+func CheckDeclarativeUpdate() *tidcommon.ServiceError {
 	if IsDeclarativeModeEnabled() {
 		return &ErrorDeclarativeResourceUpdateOperation
 	}
@@ -45,7 +45,7 @@ func CheckDeclarativeUpdate() *serviceerror.ServiceError {
 }
 
 // CheckDeclarativeDelete returns an error when declarative read-only mode is active.
-func CheckDeclarativeDelete() *serviceerror.ServiceError {
+func CheckDeclarativeDelete() *tidcommon.ServiceError {
 	if IsDeclarativeModeEnabled() {
 		return &ErrorDeclarativeResourceDeleteOperation
 	}

@@ -36,7 +36,7 @@ schema: {
       "displayName": "Last Name",
       "required": false
     },
-    "mobileNumber": {
+    "mobile_number": {
       "type": "string",
       "displayName": "Mobile Number",
       "required": false
@@ -1139,7 +1139,7 @@ nodes:
       name: SMSExecutor
       mode: send
       inputs:
-        - identifier: mobileNumber
+        - identifier: mobile_number
           type: PHONE_INPUT
           required: true
     onSuccess: notification_sent_status
@@ -1664,7 +1664,7 @@ attributes:
   given_name: John
   family_name: Doe
   email: john.doe@example.com
-  mobileNumber: "+15550192837"
+  mobile_number: "+15550192837"
 credentials:
   password: "{{.JOHN_DOE_PASSWORD}}"
 
@@ -1678,7 +1678,7 @@ attributes:
   given_name: Jane
   family_name: Smith
   email: jane.smith@example.com
-  mobileNumber: "+15550384756"
+  mobile_number: "+15550384756"
 credentials:
   password: "{{.JANE_SMITH_PASSWORD}}"
 
@@ -1693,3 +1693,12 @@ attributes:
   displayName: Alex Carter
 credentials:
   password: "{{.ALEX_CARTER_PASSWORD}}"
+
+---
+# resource_type: server_config
+# Allows the Wayfinder web app's browser origin to call Thunder. CORS origins come only from the
+# server-config "cors" section (no default ships), so importing this bundle sets the frontend origin.
+name: cors
+value:
+  allowedOrigins:
+    - "http://localhost:5173"

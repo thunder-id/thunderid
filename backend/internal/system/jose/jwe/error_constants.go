@@ -19,63 +19,62 @@
 package jwe
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // Client errors for JWE service
 var (
 	// ErrorDecodingJWE is the error returned when decoding the JWE token fails.
-	ErrorDecodingJWE = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorDecodingJWE = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "JWE-1001",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.jweservice.decoding_jwe_error",
 			DefaultValue: "JWE decode error",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.jweservice.decoding_jwe_error_description",
 			DefaultValue: "Error occurred while decoding JWE token",
 		},
 	}
 
 	// ErrorJWEDecryptionFailed is the error returned when the JWE token decryption fails.
-	ErrorJWEDecryptionFailed = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorJWEDecryptionFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "JWE-1002",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.jweservice.decryption_failed",
 			DefaultValue: "JWE decryption failed",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.jweservice.decryption_failed_description",
 			DefaultValue: "Failed to decrypt the JWE token",
 		},
 	}
 
 	// ErrorUnsupportedJWEAlgorithm is the error returned when the JWE algorithm is unsupported.
-	ErrorUnsupportedJWEAlgorithm = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorUnsupportedJWEAlgorithm = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "JWE-1003",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.jweservice.unsupported_algorithm",
 			DefaultValue: "Unsupported JWE algorithm",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.jweservice.unsupported_algorithm_description",
 			DefaultValue: "The specified JWE algorithm is not supported",
 		},
 	}
 
 	// ErrorUnsupportedEncryptionAlgorithm is the error returned when the encryption algorithm is unsupported.
-	ErrorUnsupportedEncryptionAlgorithm = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorUnsupportedEncryptionAlgorithm = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "JWE-1004",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.jweservice.unsupported_encryption_algorithm",
 			DefaultValue: "Unsupported encryption algorithm",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.jweservice.unsupported_encryption_algorithm_description",
 			DefaultValue: "The specified encryption algorithm is not supported",
 		},

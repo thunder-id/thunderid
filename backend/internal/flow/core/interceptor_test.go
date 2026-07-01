@@ -21,10 +21,11 @@ package core
 import (
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 const (
@@ -96,7 +97,7 @@ func (s *InterceptorTestSuite) TestInterceptorResponse_Pass() {
 }
 
 func (s *InterceptorTestSuite) TestInterceptorResponse_Fail() {
-	failErr := &serviceerror.ServiceError{
+	failErr := &tidcommon.ServiceError{
 		Code: "INT-001",
 	}
 	result := &common.InterceptorResponse{

@@ -9,7 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewFlowExecServiceInterfaceMock creates a new instance of FlowExecServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -40,7 +40,7 @@ func (_m *FlowExecServiceInterfaceMock) EXPECT() *FlowExecServiceInterfaceMock_E
 }
 
 // Execute provides a mock function for the type FlowExecServiceInterfaceMock
-func (_mock *FlowExecServiceInterfaceMock) Execute(ctx context.Context, appID string, executionID string, flowType string, verbose bool, action string, inputs map[string]string, challengeToken string) (*flowexec.FlowStep, *serviceerror.ServiceError) {
+func (_mock *FlowExecServiceInterfaceMock) Execute(ctx context.Context, appID string, executionID string, flowType string, verbose bool, action string, inputs map[string]string, challengeToken string) (*flowexec.FlowStep, *common.ServiceError) {
 	ret := _mock.Called(ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken)
 
 	if len(ret) == 0 {
@@ -48,8 +48,8 @@ func (_mock *FlowExecServiceInterfaceMock) Execute(ctx context.Context, appID st
 	}
 
 	var r0 *flowexec.FlowStep
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, bool, string, map[string]string, string) (*flowexec.FlowStep, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, bool, string, map[string]string, string) (*flowexec.FlowStep, *common.ServiceError)); ok {
 		return returnFunc(ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, bool, string, map[string]string, string) *flowexec.FlowStep); ok {
@@ -59,11 +59,11 @@ func (_mock *FlowExecServiceInterfaceMock) Execute(ctx context.Context, appID st
 			r0 = ret.Get(0).(*flowexec.FlowStep)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, bool, string, map[string]string, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, bool, string, map[string]string, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -135,18 +135,18 @@ func (_c *FlowExecServiceInterfaceMock_Execute_Call) Run(run func(ctx context.Co
 	return _c
 }
 
-func (_c *FlowExecServiceInterfaceMock_Execute_Call) Return(flowStep *flowexec.FlowStep, serviceError *serviceerror.ServiceError) *FlowExecServiceInterfaceMock_Execute_Call {
+func (_c *FlowExecServiceInterfaceMock_Execute_Call) Return(flowStep *flowexec.FlowStep, serviceError *common.ServiceError) *FlowExecServiceInterfaceMock_Execute_Call {
 	_c.Call.Return(flowStep, serviceError)
 	return _c
 }
 
-func (_c *FlowExecServiceInterfaceMock_Execute_Call) RunAndReturn(run func(ctx context.Context, appID string, executionID string, flowType string, verbose bool, action string, inputs map[string]string, challengeToken string) (*flowexec.FlowStep, *serviceerror.ServiceError)) *FlowExecServiceInterfaceMock_Execute_Call {
+func (_c *FlowExecServiceInterfaceMock_Execute_Call) RunAndReturn(run func(ctx context.Context, appID string, executionID string, flowType string, verbose bool, action string, inputs map[string]string, challengeToken string) (*flowexec.FlowStep, *common.ServiceError)) *FlowExecServiceInterfaceMock_Execute_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // InitiateAndExecute provides a mock function for the type FlowExecServiceInterfaceMock
-func (_mock *FlowExecServiceInterfaceMock) InitiateAndExecute(ctx context.Context, initContext *flowexec.FlowInitContext) (*flowexec.FlowStep, *serviceerror.ServiceError) {
+func (_mock *FlowExecServiceInterfaceMock) InitiateAndExecute(ctx context.Context, initContext *flowexec.FlowInitContext) (*flowexec.FlowStep, *common.ServiceError) {
 	ret := _mock.Called(ctx, initContext)
 
 	if len(ret) == 0 {
@@ -154,8 +154,8 @@ func (_mock *FlowExecServiceInterfaceMock) InitiateAndExecute(ctx context.Contex
 	}
 
 	var r0 *flowexec.FlowStep
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *flowexec.FlowInitContext) (*flowexec.FlowStep, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *flowexec.FlowInitContext) (*flowexec.FlowStep, *common.ServiceError)); ok {
 		return returnFunc(ctx, initContext)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, *flowexec.FlowInitContext) *flowexec.FlowStep); ok {
@@ -165,11 +165,11 @@ func (_mock *FlowExecServiceInterfaceMock) InitiateAndExecute(ctx context.Contex
 			r0 = ret.Get(0).(*flowexec.FlowStep)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *flowexec.FlowInitContext) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *flowexec.FlowInitContext) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, initContext)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -205,18 +205,18 @@ func (_c *FlowExecServiceInterfaceMock_InitiateAndExecute_Call) Run(run func(ctx
 	return _c
 }
 
-func (_c *FlowExecServiceInterfaceMock_InitiateAndExecute_Call) Return(flowStep *flowexec.FlowStep, serviceError *serviceerror.ServiceError) *FlowExecServiceInterfaceMock_InitiateAndExecute_Call {
+func (_c *FlowExecServiceInterfaceMock_InitiateAndExecute_Call) Return(flowStep *flowexec.FlowStep, serviceError *common.ServiceError) *FlowExecServiceInterfaceMock_InitiateAndExecute_Call {
 	_c.Call.Return(flowStep, serviceError)
 	return _c
 }
 
-func (_c *FlowExecServiceInterfaceMock_InitiateAndExecute_Call) RunAndReturn(run func(ctx context.Context, initContext *flowexec.FlowInitContext) (*flowexec.FlowStep, *serviceerror.ServiceError)) *FlowExecServiceInterfaceMock_InitiateAndExecute_Call {
+func (_c *FlowExecServiceInterfaceMock_InitiateAndExecute_Call) RunAndReturn(run func(ctx context.Context, initContext *flowexec.FlowInitContext) (*flowexec.FlowStep, *common.ServiceError)) *FlowExecServiceInterfaceMock_InitiateAndExecute_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // InitiateFlow provides a mock function for the type FlowExecServiceInterfaceMock
-func (_mock *FlowExecServiceInterfaceMock) InitiateFlow(ctx context.Context, initContext *flowexec.FlowInitContext) (string, *serviceerror.ServiceError) {
+func (_mock *FlowExecServiceInterfaceMock) InitiateFlow(ctx context.Context, initContext *flowexec.FlowInitContext) (string, *common.ServiceError) {
 	ret := _mock.Called(ctx, initContext)
 
 	if len(ret) == 0 {
@@ -224,8 +224,8 @@ func (_mock *FlowExecServiceInterfaceMock) InitiateFlow(ctx context.Context, ini
 	}
 
 	var r0 string
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *flowexec.FlowInitContext) (string, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *flowexec.FlowInitContext) (string, *common.ServiceError)); ok {
 		return returnFunc(ctx, initContext)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, *flowexec.FlowInitContext) string); ok {
@@ -233,11 +233,11 @@ func (_mock *FlowExecServiceInterfaceMock) InitiateFlow(ctx context.Context, ini
 	} else {
 		r0 = ret.Get(0).(string)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *flowexec.FlowInitContext) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *flowexec.FlowInitContext) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, initContext)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -273,12 +273,12 @@ func (_c *FlowExecServiceInterfaceMock_InitiateFlow_Call) Run(run func(ctx conte
 	return _c
 }
 
-func (_c *FlowExecServiceInterfaceMock_InitiateFlow_Call) Return(s string, serviceError *serviceerror.ServiceError) *FlowExecServiceInterfaceMock_InitiateFlow_Call {
+func (_c *FlowExecServiceInterfaceMock_InitiateFlow_Call) Return(s string, serviceError *common.ServiceError) *FlowExecServiceInterfaceMock_InitiateFlow_Call {
 	_c.Call.Return(s, serviceError)
 	return _c
 }
 
-func (_c *FlowExecServiceInterfaceMock_InitiateFlow_Call) RunAndReturn(run func(ctx context.Context, initContext *flowexec.FlowInitContext) (string, *serviceerror.ServiceError)) *FlowExecServiceInterfaceMock_InitiateFlow_Call {
+func (_c *FlowExecServiceInterfaceMock_InitiateFlow_Call) RunAndReturn(run func(ctx context.Context, initContext *flowexec.FlowInitContext) (string, *common.ServiceError)) *FlowExecServiceInterfaceMock_InitiateFlow_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -19,59 +19,58 @@
 package jws
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // Client errors for JWS operations
 var (
-	ErrorUnsupportedAlgorithm = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorUnsupportedAlgorithm = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "JWS-1001",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.jwsservice.unsupported_algorithm",
 			DefaultValue: "Unsupported JWS algorithm",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.jwsservice.unsupported_algorithm_description",
 			DefaultValue: "The specified JWS algorithm is not supported",
 		},
 	}
 
-	ErrorInvalidSignature = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorInvalidSignature = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "JWS-1002",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.jwsservice.invalid_signature",
 			DefaultValue: "Invalid signature",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.jwsservice.invalid_signature_description",
 			DefaultValue: "The signature is invalid",
 		},
 	}
 
-	ErrorInvalidFormat = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorInvalidFormat = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "JWS-1003",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.jwsservice.invalid_format",
 			DefaultValue: "Invalid JWS format",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.jwsservice.invalid_format_description",
 			DefaultValue: "The JWS token format is invalid",
 		},
 	}
 
-	ErrorDecodingHeader = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorDecodingHeader = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "JWS-1004",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.jwsservice.decoding_header_error",
 			DefaultValue: "JWS decode error",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.jwsservice.decoding_header_error_description",
 			DefaultValue: "Error occurred while decoding JWS header",
 		},

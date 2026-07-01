@@ -36,6 +36,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // flowCallbackRequest is the request body sent by the Gate UI to the flow callback endpoint.
@@ -105,11 +106,11 @@ func (d *callbackDispatcher) handleFlowCallback(w http.ResponseWriter, r *http.R
 
 	callbackType := req.Type
 	if callbackType == "" {
-		callbackType = string(oauth2const.GrantTypeAuthorizationCode)
+		callbackType = string(providers.GrantTypeAuthorizationCode)
 	}
 
 	switch callbackType {
-	case string(oauth2const.GrantTypeAuthorizationCode):
+	case string(providers.GrantTypeAuthorizationCode):
 		redirectURI, authErr := d.authZService.HandleAuthorizationCallback(ctx, req.AuthID, req.Assertion)
 		if authErr != nil {
 			if authErr.SendErrorToClient {
@@ -121,7 +122,7 @@ func (d *callbackDispatcher) handleFlowCallback(w http.ResponseWriter, r *http.R
 		}
 		utils.WriteSuccessResponse(ctx, w, http.StatusOK, oauth2authz.AuthZPostResponse{RedirectURI: redirectURI})
 
-	case string(oauth2const.GrantTypeCIBA):
+	case string(providers.GrantTypeCIBA):
 		cibaErr := d.cibaService.HandleCallback(ctx, req.AuthID, req.Assertion)
 		if cibaErr != nil {
 			statusCode := http.StatusBadRequest

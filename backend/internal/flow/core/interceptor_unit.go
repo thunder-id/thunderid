@@ -19,7 +19,7 @@
 package core
 
 import (
-	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // InterceptorUnitInterface defines the contract for an interceptor binding. A binding
@@ -27,14 +27,14 @@ import (
 // (mode, scope, properties), similar to how a task execution node binds an executor by name.
 type InterceptorUnitInterface interface {
 	GetName() string
-	GetMode() common.InterceptorMode
-	GetScope() common.InterceptorScope
+	GetMode() providers.InterceptorMode
+	GetScope() providers.InterceptorScope
 	GetApplyTo() []string
 	GetProperties() map[string]interface{}
 	GetInterceptor() InterceptorInterface
 	SetName(name string)
-	SetMode(mode common.InterceptorMode)
-	SetScope(scope common.InterceptorScope)
+	SetMode(mode providers.InterceptorMode)
+	SetScope(scope providers.InterceptorScope)
 	SetApplyTo(applyTo []string)
 	SetProperties(properties map[string]interface{})
 	SetInterceptor(interceptor InterceptorInterface)
@@ -47,8 +47,8 @@ type InterceptorUnitInterface interface {
 // and is not serialized.
 type interceptorUnit struct {
 	name        string
-	mode        common.InterceptorMode
-	scope       common.InterceptorScope
+	mode        providers.InterceptorMode
+	scope       providers.InterceptorScope
 	applyTo     []string
 	properties  map[string]interface{}
 	interceptor InterceptorInterface
@@ -57,7 +57,7 @@ type interceptorUnit struct {
 var _ InterceptorUnitInterface = (*interceptorUnit)(nil)
 
 // newInterceptorUnit creates a new interceptor execution unit with the given properties.
-func newInterceptorUnit(name string, mode common.InterceptorMode, scope common.InterceptorScope,
+func newInterceptorUnit(name string, mode providers.InterceptorMode, scope providers.InterceptorScope,
 	applyTo []string, properties map[string]interface{}) *interceptorUnit {
 	return &interceptorUnit{
 		name:       name,
@@ -74,12 +74,12 @@ func (b *interceptorUnit) GetName() string {
 }
 
 // GetMode returns the execution mode (pre or post) of the interceptor.
-func (b *interceptorUnit) GetMode() common.InterceptorMode {
+func (b *interceptorUnit) GetMode() providers.InterceptorMode {
 	return b.mode
 }
 
 // GetScope returns the scope at which the interceptor applies.
-func (b *interceptorUnit) GetScope() common.InterceptorScope {
+func (b *interceptorUnit) GetScope() providers.InterceptorScope {
 	return b.scope
 }
 
@@ -104,12 +104,12 @@ func (b *interceptorUnit) SetName(name string) {
 }
 
 // SetMode sets the execution mode (pre or post) of the interceptor.
-func (b *interceptorUnit) SetMode(mode common.InterceptorMode) {
+func (b *interceptorUnit) SetMode(mode providers.InterceptorMode) {
 	b.mode = mode
 }
 
 // SetScope sets the scope at which the interceptor applies.
-func (b *interceptorUnit) SetScope(scope common.InterceptorScope) {
+func (b *interceptorUnit) SetScope(scope providers.InterceptorScope) {
 	b.scope = scope
 }
 

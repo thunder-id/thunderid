@@ -1,0 +1,43 @@
+---
+title: ThunderIDSignedIn
+description: Conditional guard widget that renders content only when the user is signed in
+---
+
+# `ThunderIDSignedIn`
+
+`ThunderIDSignedIn` is a guard widget that renders its `child` only when the user is authenticated. When the user is not signed in it renders `fallback` instead (or nothing, if no fallback is provided).
+
+This widget re-renders automatically whenever the auth state in the parent `ThunderIDProvider` changes.
+
+## Usage
+
+```dart
+import 'package:thunderid_flutter/thunderid_flutter.dart';
+
+ThunderIDSignedIn(
+  child: const HomeScreen(),
+  fallback: const AuthScreen(),
+)
+```
+
+Using `ThunderIDSignedIn` and `ThunderIDSignedOut` together:
+
+```dart
+Widget build(BuildContext context) {
+  return Scaffold(
+    body: Stack(
+      children: [
+        ThunderIDSignedIn(child: const HomeScreen()),
+        ThunderIDSignedOut(child: const AuthScreen()),
+      ],
+    ),
+  );
+}
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `child` | `Widget` | ✅ | Rendered when `ThunderIDProvider.of(context).isSignedIn` is `true`. |
+| `fallback` | `Widget?` | | Rendered when the user is not signed in. Defaults to `const SizedBox.shrink()` if omitted. |

@@ -24,6 +24,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/stretchr/testify/suite"
 	_ "modernc.org/sqlite"
 
@@ -65,7 +67,7 @@ func (suite *InitTestSuite) SetupTest() {
 				SQLite: config.SQLiteDataSource{Path: ":memory:"},
 			},
 		},
-		Server: config.ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Identifier: "test-deployment",
 		},
 	}

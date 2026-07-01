@@ -24,14 +24,15 @@ import (
 	"fmt"
 	"strings"
 
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/role"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -43,18 +44,18 @@ type entityRef struct {
 
 // provisioningExecutor implements the ExecutorInterface for user provisioning in a flow.
 type provisioningExecutor struct {
-	core.ExecutorInterface
+	providers.Executor
 	identifyingExecutorInterface
 	entityProvider        entityprovider.EntityProviderInterface
 	groupService          group.GroupServiceInterface
 	roleService           role.RoleServiceInterface
 	roleAssignmentService role.RoleAssignmentServiceInterface
 	entityTypeService     entitytype.EntityTypeServiceInterface
-	authnProvider         authnprovidermgr.AuthnProviderManagerInterface
+	authnProvider         providers.AuthnProviderManager
 	logger                *log.Logger
 }
 
-var _ core.ExecutorInterface = (*provisioningExecutor)(nil)
+var _ providers.Executor = (*provisioningExecutor)(nil)
 var _ identifyingExecutorInterface = (*provisioningExecutor)(nil)
 
 // newProvisioningExecutor creates a new instance of ProvisioningExecutor.
@@ -65,19 +66,19 @@ func newProvisioningExecutor(
 	roleAssignmentService role.RoleAssignmentServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) *provisioningExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, ExecutorNameProvisioning),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameProvisioning))
 
-	base := flowFactory.CreateExecutor(ExecutorNameProvisioning, common.ExecutorTypeRegistration,
-		[]common.Input{}, []common.Input{})
+	base := flowFactory.CreateExecutor(ExecutorNameProvisioning, providers.ExecutorTypeRegistration,
+		[]providers.Input{}, []providers.Input{})
 
 	identifyingExec := newIdentifyingExecutor(ExecutorNameProvisioning,
-		[]common.Input{}, []common.Input{}, flowFactory, entityProvider)
+		[]providers.Input{}, []providers.Input{}, flowFactory, entityProvider)
 
 	return &provisioningExecutor{
-		ExecutorInterface:            base,
+		Executor:                     base,
 		identifyingExecutorInterface: identifyingExec,
 		entityProvider:               entityProvider,
 		groupService:                 groupService,
@@ -90,33 +91,33 @@ func newProvisioningExecutor(
 }
 
 // Execute executes the user provisioning logic based on the inputs provided.
-func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing user provisioning executor")
 
-	execResp := &common.ExecutorResponse{
+	execResp := &providers.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 		AuthUser:       ctx.AuthUser,
 	}
 
 	// If it's an authentication flow, skip execution if the user is not eligible for provisioning
-	if ctx.FlowType == common.FlowTypeAuthentication {
+	if ctx.FlowType == providers.FlowTypeAuthentication {
 		eligible, ok := ctx.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning]
 		if !ok || eligible != dataValueTrue {
 			logger.Debug(ctx.Context, "User is not eligible for provisioning, skipping execution")
-			execResp.Status = common.ExecComplete
+			execResp.Status = providers.ExecComplete
 			return execResp, nil
 		}
 	}
 
 	if !p.HasRequiredInputs(ctx, execResp) {
-		if execResp.Status == common.ExecFailure {
+		if execResp.Status == providers.ExecFailure {
 			return execResp, nil
 		}
 
 		logger.Debug(ctx.Context, "Required inputs for provisioning executor is not provided")
-		execResp.Status = common.ExecUserInputRequired
+		execResp.Status = providers.ExecUserInputRequired
 		return execResp, nil
 	}
 
@@ -126,7 +127,7 @@ func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorR
 	}
 	if len(identifyingAttrs) == 0 && len(credentialAttrs) == 0 {
 		logger.Debug(ctx.Context, "No user attributes provided for provisioning")
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrProvisioningUserAttrsMissing
 		return execResp, nil
 	}
@@ -134,11 +135,11 @@ func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorR
 	userID, err := p.IdentifyUser(ctx.Context, identifyingAttrs, execResp)
 	if err != nil {
 		logger.Error(ctx.Context, "Failed to identify user", log.Error(err))
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrFailedToIdentifyUser
 		return execResp, nil
 	}
-	if execResp.Status == common.ExecFailure &&
+	if execResp.Status == providers.ExecFailure &&
 		execResp.Error != nil && execResp.Error.Code == ErrAmbiguousUserIdentity.Code &&
 		isCrossOUProvisioningAllowed(ctx) {
 		resolved, err := p.resolveAmbiguousUserForProvisioning(ctx, identifyingAttrs)
@@ -149,7 +150,8 @@ func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorR
 		execResp.Status = ""
 		execResp.Error = nil
 	}
-	if execResp.Status == common.ExecFailure && (execResp.Error == nil || execResp.Error.Code != ErrUserNotFound.Code) {
+	if execResp.Status == providers.ExecFailure &&
+		(execResp.Error == nil || execResp.Error.Code != ErrUserNotFound.Code) {
 		return execResp, nil
 	}
 	// clear execResp set by IdentifyUser
@@ -175,13 +177,13 @@ func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorR
 	}
 	createdEntity, err := p.createUserInStore(ctx, userAttributes)
 	if err != nil {
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = p.handleCreateUserError(ctx, err, logger)
 		return execResp, nil
 	}
 	if createdEntity == nil || createdEntity.ID == "" {
 		logger.Error(ctx.Context, "Created user is nil or has no ID")
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrProvisioningFailed
 		return execResp, nil
 	}
@@ -194,20 +196,20 @@ func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorR
 		logger.Error(ctx.Context, "Failed to assign groups and roles to provisioned user",
 			log.MaskedString(log.LoggerKeyUserID, createdEntity.ID),
 			log.Error(err))
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrProvisioningAssignmentFailed
 		return execResp, nil
 	}
 
 	p.authenticateProvisionedUser(ctx, createdEntity.ID, execResp)
-	if execResp.Status == common.ExecFailure {
+	if execResp.Status == providers.ExecFailure {
 		return execResp, nil
 	}
 
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 
 	// Set the auto-provisioned flag if it's a user auto provisioning scenario
-	if ctx.FlowType == common.FlowTypeAuthentication {
+	if ctx.FlowType == providers.FlowTypeAuthentication {
 		execResp.RuntimeData[common.RuntimeKeyUserAutoProvisioned] = dataValueTrue
 	}
 
@@ -215,15 +217,15 @@ func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorR
 }
 
 // authenticateProvisionedUser authenticates the newly provisioned user and updates the executor response.
-func (p *provisioningExecutor) authenticateProvisionedUser(ctx *core.NodeContext, userID string,
-	execResp *common.ExecutorResponse) {
+func (p *provisioningExecutor) authenticateProvisionedUser(ctx *providers.NodeContext, userID string,
+	execResp *providers.ExecutorResponse) {
 	credential := map[string]interface{}{
 		"provisionedEntityID": userID,
 	}
 	authUser, authenticatedClaims, err := p.authnProvider.AuthenticateUser(ctx.Context, nil, credential,
 		nil, nil, execResp.AuthUser)
 	if !authUser.IsAuthenticated() || err != nil {
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrUserAuthFailed
 		return
 	}
@@ -236,45 +238,45 @@ func (p *provisioningExecutor) authenticateProvisionedUser(ctx *core.NodeContext
 // handleNonProvisionableUserInAuthentication sets the exec response when an existing user is found
 // during an authentication flow and provisioning cannot proceed.
 // Provisioning is simply skipped and the flow continues with the existing user.
-func (p *provisioningExecutor) handleNonProvisionableUserInAuthentication(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) {
+func (p *provisioningExecutor) handleNonProvisionableUserInAuthentication(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) {
 	p.logger.Debug(ctx.Context, "Skipping provisioning and continuing with existing user")
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 }
 
 // handleNonProvisionableUserInRegistration sets the exec response when an existing user is found
 // during a registration or onboarding flow and provisioning cannot proceed.
 // It either allows the flow to skip provisioning, prompts for different input, or fails immediately.
-func (p *provisioningExecutor) handleNonProvisionableUserInRegistration(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse, existsErr *serviceerror.ServiceError) {
+func (p *provisioningExecutor) handleNonProvisionableUserInRegistration(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse, existsErr *tidcommon.ServiceError) {
 	if isAllowRegistrationWithExistingUserRuntimeFlagSet(ctx) {
-		execResp.Status = common.ExecComplete
+		execResp.Status = providers.ExecComplete
 		return
 	}
 	requiredInputs := p.GetRequiredInputs(ctx)
 	if len(requiredInputs) > 0 {
 		// Existing user identified based on user input attributes.
 		// Allow the user to input different attributes for registration.
-		execResp.Status = common.ExecUserInputRequired
+		execResp.Status = providers.ExecUserInputRequired
 		execResp.Inputs = requiredInputs
 		execResp.Error = existsErr
 		return
 	}
 	// Existing user identified without user input attributes.
 	// User cannot recover from error by changing input, so fail immediately.
-	execResp.Status = common.ExecFailure
+	execResp.Status = providers.ExecFailure
 	execResp.Error = existsErr
 }
 
 // handleExistingUser handles the case where a user with the given ID already exists.
 // Returns true if provisioning should proceed (cross-OU case), false if execution should stop.
-func (p *provisioningExecutor) handleExistingUser(ctx *core.NodeContext, userID string,
-	execResp *common.ExecutorResponse, logger *log.Logger) (bool, error) {
+func (p *provisioningExecutor) handleExistingUser(ctx *providers.NodeContext, userID string,
+	execResp *providers.ExecutorResponse, logger *log.Logger) (bool, error) {
 	logger.Debug(ctx.Context, "User already exists", log.MaskedString(log.LoggerKeyUserID, userID))
 
 	if !isCrossOUProvisioningAllowed(ctx) {
 		logger.Debug(ctx.Context, "Cross OU provisioning is not allowed")
-		if ctx.FlowType == common.FlowTypeAuthentication {
+		if ctx.FlowType == providers.FlowTypeAuthentication {
 			p.handleNonProvisionableUserInAuthentication(ctx, execResp)
 			return false, nil
 		}
@@ -291,7 +293,7 @@ func (p *provisioningExecutor) handleExistingUser(ctx *core.NodeContext, userID 
 	if targetOUID == "" {
 		logger.Debug(ctx.Context, "Target OU for cross-OU provisioning is not set")
 		// Cross-OU provisioning is not intended.
-		if ctx.FlowType == common.FlowTypeAuthentication {
+		if ctx.FlowType == providers.FlowTypeAuthentication {
 			p.handleNonProvisionableUserInAuthentication(ctx, execResp)
 			return false, nil
 		}
@@ -307,7 +309,7 @@ func (p *provisioningExecutor) handleExistingUser(ctx *core.NodeContext, userID 
 	if existingUser.OUID == targetOUID {
 		logger.Debug(ctx.Context, "Existing user is in the target OU")
 		// Cross-OU provisioning is not intended.
-		if ctx.FlowType == common.FlowTypeAuthentication {
+		if ctx.FlowType == providers.FlowTypeAuthentication {
 			p.handleNonProvisionableUserInAuthentication(ctx, execResp)
 			return false, nil
 		}
@@ -324,7 +326,7 @@ func (p *provisioningExecutor) handleExistingUser(ctx *core.NodeContext, userID 
 // resolveAmbiguousUserForProvisioning is called when IdentifyUser reports ambiguity and cross-OU
 // provisioning is allowed. It searches for all matching users and returns the ID of the one in the
 // target OU, or nil if none exists there.
-func (p *provisioningExecutor) resolveAmbiguousUserForProvisioning(ctx *core.NodeContext,
+func (p *provisioningExecutor) resolveAmbiguousUserForProvisioning(ctx *providers.NodeContext,
 	identifyingAttrs map[string]interface{}) (*string, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
@@ -363,8 +365,8 @@ func (p *provisioningExecutor) resolveAmbiguousUserForProvisioning(ctx *core.Nod
 // required credentials -> optional credentials. maxPerPrompt caps the forwarded
 // prompt batch after this list is built. includeOptional only affects optional
 // non-credential attrs.
-func (p *provisioningExecutor) HasRequiredInputs(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) bool {
+func (p *provisioningExecutor) HasRequiredInputs(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) bool {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Checking inputs for the provisioning executor")
 
@@ -374,7 +376,7 @@ func (p *provisioningExecutor) HasRequiredInputs(ctx *core.NodeContext,
 
 	// Build a lookup map of node-defined inputs for the required/optional override rule:
 	// node can upgrade optional → required, but cannot lower schema-required to optional.
-	nodeInputMap := make(map[string]common.Input, len(ctx.NodeInputs))
+	nodeInputMap := make(map[string]providers.Input, len(ctx.NodeInputs))
 	for _, inp := range ctx.NodeInputs {
 		nodeInputMap[inp.Identifier] = inp
 	}
@@ -383,7 +385,7 @@ func (p *provisioningExecutor) HasRequiredInputs(ctx *core.NodeContext,
 	allSchemaAttrs, err := p.fetchSchemaAttributes(ctx, true, true)
 	if err != nil {
 		logger.Warn(ctx.Context, "Failed to fetch schema attributes for provisioning", log.Any("error", err))
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		return false
 	}
 	if len(allSchemaAttrs) == 0 {
@@ -397,7 +399,7 @@ func (p *provisioningExecutor) HasRequiredInputs(ctx *core.NodeContext,
 	// followed by required creds, then optional creds.
 	// Node-defined inputs not present in the schema are ignored — provisioning is schema-driven
 	// and can only store attributes defined by the entity type.
-	allSchemaMissing := make([]common.Input, 0,
+	allSchemaMissing := make([]providers.Input, 0,
 		len(ncRequiredMissing)+len(credRequiredMissing)+len(ncOptionalMissing)+len(credOptionalMissing))
 	allSchemaMissing = append(allSchemaMissing, ncRequiredMissing...)
 	allSchemaMissing = append(allSchemaMissing, ncOptionalMissing...)
@@ -427,10 +429,10 @@ func (p *provisioningExecutor) HasRequiredInputs(ctx *core.NodeContext,
 // buildMissingInputs categorizes all schema attributes into four missing-input buckets in a single
 // pass. attr.Credential drives the input type (password vs text) and optional-inclusion rules.
 func (p *provisioningExecutor) buildMissingInputs(
-	ctx *core.NodeContext,
+	ctx *providers.NodeContext,
 	schemaAttrs []entitytype.AttributeInfo,
-	nodeInputMap map[string]common.Input,
-) (credRequired, credOptional, ncRequired, ncOptional []common.Input) {
+	nodeInputMap map[string]providers.Input,
+) (credRequired, credOptional, ncRequired, ncOptional []providers.Input) {
 	promptOptional := p.isPromptOptionalAttributesEnabled(ctx)
 	promptOptionalCredentials := p.isPromptOptionalCredentialsEnabled(ctx)
 	presentedOptionalInputs := core.GetPresentedOptionalInputs(ctx.RuntimeData)
@@ -452,9 +454,9 @@ func (p *provisioningExecutor) buildMissingInputs(
 			if !effectiveRequired && core.IsOptionalInputPrompted(presentedOptionalInputs, attr.Attribute) {
 				continue
 			}
-			input := common.Input{
+			input := providers.Input{
 				Identifier:  attr.Attribute,
-				Type:        common.InputTypePassword,
+				Type:        providers.InputTypePassword,
 				Required:    effectiveRequired,
 				DisplayName: attr.DisplayName,
 			}
@@ -470,16 +472,16 @@ func (p *provisioningExecutor) buildMissingInputs(
 			if !effectiveRequired && core.IsOptionalInputPrompted(presentedOptionalInputs, attr.Attribute) {
 				continue
 			}
-			input := common.Input{
+			input := providers.Input{
 				Identifier:  attr.Attribute,
-				Type:        common.InputTypeText,
+				Type:        providers.InputTypeText,
 				DisplayName: attr.DisplayName,
 			}
 			if inNodeInputs {
 				input = nodeInp
 				input.Identifier = attr.Attribute
 				if input.Type == "" {
-					input.Type = common.InputTypeText
+					input.Type = providers.InputTypeText
 				}
 				if input.DisplayName == "" {
 					input.DisplayName = attr.DisplayName
@@ -500,7 +502,7 @@ func (p *provisioningExecutor) buildMissingInputs(
 // current user type. allowCredential and allowNonCredential control which attribute classes
 // are returned.
 func (p *provisioningExecutor) fetchSchemaAttributes(
-	ctx *core.NodeContext, allowCredential, allowNonCredential bool,
+	ctx *providers.NodeContext, allowCredential, allowNonCredential bool,
 ) ([]entitytype.AttributeInfo, error) {
 	if p.entityTypeService == nil {
 		return nil, nil
@@ -524,7 +526,7 @@ func (p *provisioningExecutor) fetchSchemaAttributes(
 
 // isPromptOptionalAttributesEnabled reads the includeOptional node property.
 // Returns false when the property is absent, preserving the default behavior of prompting only required attributes.
-func (p *provisioningExecutor) isPromptOptionalAttributesEnabled(ctx *core.NodeContext) bool {
+func (p *provisioningExecutor) isPromptOptionalAttributesEnabled(ctx *providers.NodeContext) bool {
 	if val, ok := ctx.NodeProperties[propertyKeyDynamicInputsIncludeOptional]; ok {
 		if boolVal, ok := val.(bool); ok {
 			return boolVal
@@ -535,7 +537,7 @@ func (p *provisioningExecutor) isPromptOptionalAttributesEnabled(ctx *core.NodeC
 
 // isPromptOptionalCredentialsEnabled reads the includeOptionalCredentials node property.
 // Returns false when the property is absent. Only the required credentials are prompted by default.
-func (p *provisioningExecutor) isPromptOptionalCredentialsEnabled(ctx *core.NodeContext) bool {
+func (p *provisioningExecutor) isPromptOptionalCredentialsEnabled(ctx *providers.NodeContext) bool {
 	if val, ok := ctx.NodeProperties[propertyKeyDynamicInputsIncludeOptionalCredentials]; ok {
 		if boolVal, ok := val.(bool); ok {
 			return boolVal
@@ -546,7 +548,7 @@ func (p *provisioningExecutor) isPromptOptionalCredentialsEnabled(ctx *core.Node
 
 // getMaxDynamicInputs reads the maxPerPrompt node property.
 // Returns 0 when absent, meaning all missing inputs are prompted at once (current default behavior).
-func (p *provisioningExecutor) getMaxDynamicInputs(ctx *core.NodeContext) int {
+func (p *provisioningExecutor) getMaxDynamicInputs(ctx *providers.NodeContext) int {
 	if val, ok := ctx.NodeProperties[propertyKeyMaxDynamicInputsPerPrompt]; ok {
 		switch v := val.(type) {
 		case int:
@@ -561,7 +563,7 @@ func (p *provisioningExecutor) getMaxDynamicInputs(ctx *core.NodeContext) int {
 // isAttrSatisfied returns true if the attribute has a non-empty usable value.
 // Credential attrs are satisfied only by UserInputs or RuntimeData.
 // Non-credential attrs also fall back to AuthenticatedUser.Attributes.
-func (p *provisioningExecutor) isAttrSatisfied(ctx *core.NodeContext, attr string) bool {
+func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, attr string) bool {
 	if val, ok := ctx.UserInputs[attr]; ok && val != "" {
 		return true
 	}
@@ -577,7 +579,7 @@ func (p *provisioningExecutor) isAttrSatisfied(ctx *core.NodeContext, attr strin
 // Credential values are resolved from non-empty UserInputs then non-empty RuntimeData only.
 // Non-credential values additionally fall back to AuthenticatedUser.Attributes.
 func (p *provisioningExecutor) getAttributesForProvisioning(
-	ctx *core.NodeContext,
+	ctx *providers.NodeContext,
 ) (identifyingAttrs map[string]interface{}, credentialAttrs map[string]interface{}, err error) {
 	schemaAttrs, fetchErr := p.fetchSchemaAttributes(ctx, true, true)
 	if fetchErr != nil {
@@ -611,8 +613,8 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 }
 
 // createUserInStore creates a new user in the user store with the provided attributes.
-func (p *provisioningExecutor) createUserInStore(nodeCtx *core.NodeContext,
-	userAttributes map[string]interface{}) (*entityprovider.Entity, error) {
+func (p *provisioningExecutor) createUserInStore(nodeCtx *providers.NodeContext,
+	userAttributes map[string]interface{}) (*providers.Entity, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, nodeCtx.ExecutionID))
 	logger.Debug(nodeCtx.Context, "Creating the user account")
 
@@ -629,9 +631,9 @@ func (p *provisioningExecutor) createUserInStore(nodeCtx *core.NodeContext,
 		return nil, fmt.Errorf("user type not found")
 	}
 
-	newEntity := entityprovider.Entity{
-		Category: entityprovider.EntityCategoryUser,
-		State:    entityprovider.EntityStateActive,
+	newEntity := providers.Entity{
+		Category: providers.EntityCategoryUser,
+		State:    providers.EntityStateActive,
 		OUID:     ouID,
 		Type:     userType,
 	}
@@ -656,10 +658,10 @@ func (p *provisioningExecutor) createUserInStore(nodeCtx *core.NodeContext,
 
 // handleCreateUserError maps an entity provider error during user creation to the appropriate ServiceError.
 func (p *provisioningExecutor) handleCreateUserError(
-	ctx *core.NodeContext,
+	ctx *providers.NodeContext,
 	err error,
 	logger *log.Logger,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	var epErr *entityprovider.EntityProviderError
 	if errors.As(err, &epErr) {
 		if epErr.Code == entityprovider.ErrorCodeAttributeConflict {
@@ -674,7 +676,7 @@ func (p *provisioningExecutor) handleCreateUserError(
 }
 
 // getTargetEntityRef retrieves the target entity reference (user type and OU ID) for provisioning.
-func (p *provisioningExecutor) getTargetEntityRef(ctx *core.NodeContext) (*entityRef, error) {
+func (p *provisioningExecutor) getTargetEntityRef(ctx *providers.NodeContext) (*entityRef, error) {
 	ouID := p.getOUID(ctx)
 	userType := p.getUserType(ctx)
 
@@ -701,7 +703,7 @@ func (p *provisioningExecutor) getTargetEntityRef(ctx *core.NodeContext) (*entit
 
 // getOUID retrieves the organization unit ID from runtime data.
 // Priority: RuntimeData["ouId"] (set by OUResolverExecutor) > RuntimeData["defaultOUID"] (set by UserTypeResolver).
-func (p *provisioningExecutor) getOUID(ctx *core.NodeContext) string {
+func (p *provisioningExecutor) getOUID(ctx *providers.NodeContext) string {
 	// Check for ouId in runtime data (e.g. from OUResolverExecutor).
 	if val, ok := ctx.RuntimeData[ouIDKey]; ok && val != "" {
 		return val
@@ -715,7 +717,7 @@ func (p *provisioningExecutor) getOUID(ctx *core.NodeContext) string {
 }
 
 // getUserType retrieves the user type from runtime data.
-func (p *provisioningExecutor) getUserType(ctx *core.NodeContext) string {
+func (p *provisioningExecutor) getUserType(ctx *providers.NodeContext) string {
 	userType := ""
 	if val, ok := ctx.RuntimeData[userTypeKey]; ok && val != "" {
 		userType = val
@@ -727,7 +729,7 @@ func (p *provisioningExecutor) getUserType(ctx *core.NodeContext) string {
 // assignGroupsAndRoles assigns the newly created user to configured groups and roles.
 // If no group or role is configured, the assignments are skipped.
 func (p *provisioningExecutor) assignGroupsAndRoles(
-	ctx *core.NodeContext,
+	ctx *providers.NodeContext,
 	userID string,
 ) error {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
@@ -766,7 +768,7 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 
 // getGroupsToAssign parses the assignGroup node property into a slice of group IDs.
 // The property value is a comma-separated string; a single ID produces a one-element slice.
-func (p *provisioningExecutor) getGroupsToAssign(ctx *core.NodeContext) []string {
+func (p *provisioningExecutor) getGroupsToAssign(ctx *providers.NodeContext) []string {
 	if len(ctx.NodeProperties) == 0 {
 		return nil
 	}
@@ -783,7 +785,7 @@ func (p *provisioningExecutor) getGroupsToAssign(ctx *core.NodeContext) []string
 
 // getRolesToAssign parses the assignRole node property into a slice of role IDs.
 // The property value is a comma-separated string; a single ID produces a one-element slice.
-func (p *provisioningExecutor) getRolesToAssign(ctx *core.NodeContext) []string {
+func (p *provisioningExecutor) getRolesToAssign(ctx *providers.NodeContext) []string {
 	if len(ctx.NodeProperties) == 0 {
 		return nil
 	}
@@ -811,7 +813,7 @@ func splitTrimmed(s string) []string {
 }
 
 // getDefaultEntityRef resolves the user type for auto provisioning in authentication flows.
-func (p *provisioningExecutor) getDefaultEntityRef(ctx *core.NodeContext) (*entityRef, error) {
+func (p *provisioningExecutor) getDefaultEntityRef(ctx *providers.NodeContext) (*entityRef, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Resolving user type for automatic provisioning")
 

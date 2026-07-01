@@ -27,6 +27,8 @@ import (
 	"testing"
 	"time"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
@@ -50,7 +52,7 @@ func TestJWTUtilsSuite(t *testing.T) {
 
 func (suite *JWTUtilsTestSuite) SetupTest() {
 	err := config.InitializeServerRuntime("", &config.Config{
-		JWT: config.JWTConfig{},
+		JWT: engineconfig.JWTConfig{},
 	})
 	assert.NoError(suite.T(), err)
 

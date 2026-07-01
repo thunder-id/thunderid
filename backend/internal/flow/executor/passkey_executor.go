@@ -23,13 +23,12 @@ import (
 	"errors"
 	"fmt"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/authn/passkey"
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
-	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -69,25 +68,25 @@ const (
 
 // passkeyAuthExecutor implements the ExecutorInterface for passkey authentication.
 type passkeyAuthExecutor struct {
-	core.ExecutorInterface
+	providers.Executor
 	identifyingExecutorInterface
 	passkeyService passkey.PasskeyServiceInterface
-	authnProvider  authnprovidermgr.AuthnProviderManagerInterface
+	authnProvider  providers.AuthnProviderManager
 	entityProvider entityprovider.EntityProviderInterface
 	logger         *log.Logger
 }
 
-var _ core.ExecutorInterface = (*passkeyAuthExecutor)(nil)
+var _ providers.Executor = (*passkeyAuthExecutor)(nil)
 var _ identifyingExecutorInterface = (*passkeyAuthExecutor)(nil)
 
 // newPasskeyAuthExecutor creates a new instance of PasskeyAuthExecutor.
 func newPasskeyAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
 	passkeyService passkey.PasskeyServiceInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 	entityProvider entityprovider.EntityProviderInterface,
 ) *passkeyAuthExecutor {
-	defaultInputs := []common.Input{
+	defaultInputs := []providers.Input{
 		{
 			Identifier: inputCredentialID,
 			Type:       "string",
@@ -115,7 +114,7 @@ func newPasskeyAuthExecutor(
 		},
 	}
 
-	prerequisites := []common.Input{
+	prerequisites := []providers.Input{
 		{
 			Identifier: userAttributeUserID,
 			Type:       "string",
@@ -128,11 +127,11 @@ func newPasskeyAuthExecutor(
 
 	identifyExec := newIdentifyingExecutor(ExecutorNamePasskeyAuth, defaultInputs, prerequisites,
 		flowFactory, entityProvider)
-	base := flowFactory.CreateExecutor(ExecutorNamePasskeyAuth, common.ExecutorTypeAuthentication,
+	base := flowFactory.CreateExecutor(ExecutorNamePasskeyAuth, providers.ExecutorTypeAuthentication,
 		defaultInputs, prerequisites)
 
 	return &passkeyAuthExecutor{
-		ExecutorInterface:            base,
+		Executor:                     base,
 		identifyingExecutorInterface: identifyExec,
 		passkeyService:               passkeyService,
 		authnProvider:                authnProvider,
@@ -142,11 +141,11 @@ func newPasskeyAuthExecutor(
 }
 
 // Execute executes the passkey authentication logic.
-func (p *passkeyAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+func (p *passkeyAuthExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing passkey authentication executor")
 
-	execResp := &common.ExecutorResponse{
+	execResp := &providers.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 		AuthUser:       ctx.AuthUser,
@@ -173,8 +172,8 @@ func (p *passkeyAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRe
 }
 
 // executeChallenge generates and returns a passkey authentication challenge.
-func (p *passkeyAuthExecutor) executeChallenge(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) (*common.ExecutorResponse, error) {
+func (p *passkeyAuthExecutor) executeChallenge(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	// Get userID from context (may be empty for usernameless flow)
@@ -201,12 +200,12 @@ func (p *passkeyAuthExecutor) executeChallenge(ctx *core.NodeContext,
 	}
 	startData, svcErr := p.passkeyService.StartAuthentication(ctx.Context, startReq)
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ClientErrorType {
+		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx.Context, "Failed to start passkey authentication",
 				log.MaskedString(log.LoggerKeyUserID, userID),
 				log.String("error", svcErr.ErrorDescription.DefaultValue))
-			execResp.Status = common.ExecFailure
-			execResp.Error = serviceerror.CustomServiceError(ErrPasskeyAuthFailed, i18ncore.I18nMessage{
+			execResp.Status = providers.ExecFailure
+			execResp.Error = tidcommon.CustomServiceError(ErrPasskeyAuthFailed, tidcommon.I18nMessage{
 				Key:          ErrPasskeyAuthFailed.ErrorDescription.Key,
 				DefaultValue: "Failed to start passkey authentication: " + svcErr.ErrorDescription.DefaultValue,
 			})
@@ -229,7 +228,7 @@ func (p *passkeyAuthExecutor) executeChallenge(ctx *core.NodeContext,
 
 	// Return challenge data to client
 	execResp.AdditionalData[runtimePasskeyChallenge] = string(challengeJSON)
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 
 	if userID == "" {
 		logger.Debug(ctx.Context, "Usernameless passkey challenge generated successfully")
@@ -241,15 +240,15 @@ func (p *passkeyAuthExecutor) executeChallenge(ctx *core.NodeContext,
 }
 
 // executeVerify verifies the passkey authentication response.
-func (p *passkeyAuthExecutor) executeVerify(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) (*common.ExecutorResponse, error) {
+func (p *passkeyAuthExecutor) executeVerify(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Verifying passkey authentication response")
 
 	// Check for required inputs
 	if !p.HasRequiredInputs(ctx, execResp) {
 		logger.Debug(ctx.Context, "Required inputs for passkey verification are not provided")
-		execResp.Status = common.ExecUserInputRequired
+		execResp.Status = providers.ExecUserInputRequired
 		return execResp, nil
 	}
 
@@ -259,11 +258,11 @@ func (p *passkeyAuthExecutor) executeVerify(ctx *core.NodeContext,
 		logger.Error(ctx.Context, "Error validating passkey", log.Error(err))
 		return execResp, fmt.Errorf("error validating passkey: %w", err)
 	}
-	if execResp.Status == common.ExecFailure || execResp.Status == common.ExecUserInputRequired {
+	if execResp.Status == providers.ExecFailure || execResp.Status == providers.ExecUserInputRequired {
 		return execResp, nil
 	}
 
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 	logger.Debug(ctx.Context, "Passkey verification completed successfully",
 		log.String("status", string(execResp.Status)),
 		log.Bool("isAuthenticated", execResp.AuthUser.IsAuthenticated()))
@@ -272,7 +271,7 @@ func (p *passkeyAuthExecutor) executeVerify(ctx *core.NodeContext,
 }
 
 // validatePasskey validates the passkey authentication response.
-func (p *passkeyAuthExecutor) validatePasskey(ctx *core.NodeContext, execResp *common.ExecutorResponse,
+func (p *passkeyAuthExecutor) validatePasskey(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
 	logger *log.Logger) error {
 	userID := p.GetUserIDFromContext(ctx, execResp, p.authnProvider)
 
@@ -307,12 +306,12 @@ func (p *passkeyAuthExecutor) validatePasskey(ctx *core.NodeContext, execResp *c
 		ctx.Context, nil, credentials, nil, nil, execResp.AuthUser)
 	execResp.AuthUser = authUser
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ClientErrorType {
+		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx.Context, "Passkey verification failed",
 				log.MaskedString(log.LoggerKeyUserID, userID),
 				log.String("error", svcErr.ErrorDescription.DefaultValue))
 			// Return USER_INPUT_REQUIRED to allow retry on invalid passkey
-			execResp.Status = common.ExecUserInputRequired
+			execResp.Status = providers.ExecUserInputRequired
 			execResp.Inputs = p.GetRequiredInputs(ctx)
 			execResp.Error = &ErrInvalidPasskey
 			return nil
@@ -334,14 +333,14 @@ func (p *passkeyAuthExecutor) validatePasskey(ctx *core.NodeContext, execResp *c
 }
 
 // executeRegisterStart initiates passkey credential registration.
-func (p *passkeyAuthExecutor) executeRegisterStart(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) (*common.ExecutorResponse, error) {
+func (p *passkeyAuthExecutor) executeRegisterStart(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Starting passkey registration")
 
 	userID := p.GetUserIDFromContext(ctx, execResp, p.authnProvider)
 	if userID == "" {
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrUserIDRequiredForPasskeyReg
 		return execResp, nil
 	}
@@ -370,12 +369,12 @@ func (p *passkeyAuthExecutor) executeRegisterStart(ctx *core.NodeContext,
 	// Start passkey registration
 	startData, svcErr := p.passkeyService.StartRegistration(ctx.Context, regReq)
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ClientErrorType {
+		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx.Context, "Failed to start passkey registration",
 				log.MaskedString(log.LoggerKeyUserID, userID),
 				log.String("error", svcErr.ErrorDescription.DefaultValue))
-			execResp.Status = common.ExecFailure
-			execResp.Error = serviceerror.CustomServiceError(ErrPasskeyRegistrationFailed, i18ncore.I18nMessage{
+			execResp.Status = providers.ExecFailure
+			execResp.Error = tidcommon.CustomServiceError(ErrPasskeyRegistrationFailed, tidcommon.I18nMessage{
 				Key:          ErrPasskeyRegistrationFailed.ErrorDescription.Key,
 				DefaultValue: "Failed to start passkey registration: " + svcErr.ErrorDescription.DefaultValue,
 			})
@@ -398,7 +397,7 @@ func (p *passkeyAuthExecutor) executeRegisterStart(ctx *core.NodeContext,
 
 	// Return creation options to client
 	execResp.AdditionalData[runtimePasskeyCreationOptions] = string(creationJSON)
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 
 	logger.Debug(ctx.Context, "Passkey registration options generated successfully",
 		log.MaskedString(log.LoggerKeyUserID, userID))
@@ -406,13 +405,13 @@ func (p *passkeyAuthExecutor) executeRegisterStart(ctx *core.NodeContext,
 }
 
 // executeRegisterFinish completes passkey credential registration.
-func (p *passkeyAuthExecutor) executeRegisterFinish(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) (*common.ExecutorResponse, error) {
+func (p *passkeyAuthExecutor) executeRegisterFinish(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Finishing passkey registration")
 
 	// Check for required inputs
-	allInputs := []common.Input{
+	allInputs := []providers.Input{
 		{Identifier: inputCredentialID, Required: true},
 		{Identifier: inputClientDataJSON, Required: true},
 		{Identifier: inputAttestationObject, Required: true},
@@ -432,7 +431,7 @@ func (p *passkeyAuthExecutor) executeRegisterFinish(ctx *core.NodeContext,
 
 	if missingRequiredInputs {
 		logger.Debug(ctx.Context, "Required inputs for passkey registration are not provided")
-		execResp.Status = common.ExecUserInputRequired
+		execResp.Status = providers.ExecUserInputRequired
 		execResp.Inputs = allInputs
 		return execResp, nil
 	}
@@ -466,13 +465,13 @@ func (p *passkeyAuthExecutor) executeRegisterFinish(ctx *core.NodeContext,
 	// Call passkey service to finish registration
 	finishData, svcErr := p.passkeyService.FinishRegistration(ctx.Context, finishReq)
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ClientErrorType {
+		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx.Context, "Passkey registration failed",
 				log.String("error", svcErr.ErrorDescription.DefaultValue))
 			// Return USER_INPUT_REQUIRED to allow retry on invalid registration
-			execResp.Status = common.ExecUserInputRequired
+			execResp.Status = providers.ExecUserInputRequired
 			execResp.Inputs = allInputs
-			execResp.Error = serviceerror.CustomServiceError(ErrPasskeyRegistrationFailed, i18ncore.I18nMessage{
+			execResp.Error = tidcommon.CustomServiceError(ErrPasskeyRegistrationFailed, tidcommon.I18nMessage{
 				Key:          ErrPasskeyRegistrationFailed.ErrorDescription.Key,
 				DefaultValue: "Failed to finish passkey registration: " + svcErr.ErrorDescription.DefaultValue,
 			})
@@ -495,14 +494,14 @@ func (p *passkeyAuthExecutor) executeRegisterFinish(ctx *core.NodeContext,
 	execResp.AdditionalData[runtimePasskeyCredentialName] = finishData.CredentialName
 	execResp.AdditionalData["credentialCreatedAt"] = finishData.CreatedAt
 
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 	logger.Debug(ctx.Context, "Passkey registration finished successfully",
 		log.String("credentialID", finishData.CredentialID))
 	return execResp, nil
 }
 
 // getRelyingPartyID retrieves the relying party ID from node properties.
-func (p *passkeyAuthExecutor) getRelyingPartyID(ctx *core.NodeContext) string {
+func (p *passkeyAuthExecutor) getRelyingPartyID(ctx *providers.NodeContext) string {
 	if len(ctx.NodeProperties) == 0 {
 		return ""
 	}
@@ -517,7 +516,7 @@ func (p *passkeyAuthExecutor) getRelyingPartyID(ctx *core.NodeContext) string {
 }
 
 // getRelyingPartyName retrieves the relying party name from node properties.
-func (p *passkeyAuthExecutor) getRelyingPartyName(ctx *core.NodeContext) string {
+func (p *passkeyAuthExecutor) getRelyingPartyName(ctx *providers.NodeContext) string {
 	if len(ctx.NodeProperties) == 0 {
 		return ""
 	}
@@ -532,7 +531,7 @@ func (p *passkeyAuthExecutor) getRelyingPartyName(ctx *core.NodeContext) string 
 }
 
 // getAuthenticatorSelection retrieves authenticator selection criteria from node properties.
-func (p *passkeyAuthExecutor) getAuthenticatorSelection(ctx *core.NodeContext) *passkey.AuthenticatorSelection {
+func (p *passkeyAuthExecutor) getAuthenticatorSelection(ctx *providers.NodeContext) *passkey.AuthenticatorSelection {
 	if len(ctx.NodeProperties) == 0 {
 		return nil
 	}
@@ -558,7 +557,7 @@ func (p *passkeyAuthExecutor) getAuthenticatorSelection(ctx *core.NodeContext) *
 }
 
 // getAttestation retrieves attestation conveyance preference from node properties.
-func (p *passkeyAuthExecutor) getAttestation(ctx *core.NodeContext) string {
+func (p *passkeyAuthExecutor) getAttestation(ctx *providers.NodeContext) string {
 	if len(ctx.NodeProperties) == 0 {
 		return "none" // Default to "none"
 	}

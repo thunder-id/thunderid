@@ -24,13 +24,14 @@ import (
 	"fmt"
 	"slices"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/idp"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -54,39 +55,39 @@ var userInfoSkipAttributes = []string{"username", "sub", "id"}
 
 // oAuthExecutorInterface defines the interface for OAuth authentication executors.
 type oAuthExecutorInterface interface {
-	core.ExecutorInterface
-	BuildAuthorizeFlow(ctx *core.NodeContext, execResp *common.ExecutorResponse) error
-	ProcessAuthFlowResponse(ctx *core.NodeContext, execResp *common.ExecutorResponse) error
-	GetIdpID(ctx *core.NodeContext) (string, error)
+	providers.Executor
+	BuildAuthorizeFlow(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) error
+	ProcessAuthFlowResponse(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) error
+	GetIdpID(ctx *providers.NodeContext) (string, error)
 }
 
 // oAuthExecutor implements the OAuthExecutorInterface for handling generic OAuth authentication flows.
 type oAuthExecutor struct {
-	core.ExecutorInterface
+	providers.Executor
 	authService   authnoauth.OAuthAuthnCoreServiceInterface
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface
-	idpType       idp.IDPType
+	authnProvider providers.AuthnProviderManager
+	idpType       providers.IDPType
 	idpService    idp.IDPServiceInterface
 	logger        *log.Logger
 }
 
-var _ core.ExecutorInterface = (*oAuthExecutor)(nil)
+var _ providers.Executor = (*oAuthExecutor)(nil)
 
 // newOAuthExecutor creates a new instance of OAuthExecutor.
 func newOAuthExecutor(
 	name string,
-	defaultInputs, prerequisites []common.Input,
+	defaultInputs, prerequisites []providers.Input,
 	flowFactory core.FlowFactoryInterface,
 	idpService idp.IDPServiceInterface,
 	authService authnoauth.OAuthAuthnCoreServiceInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
-	idpType idp.IDPType,
+	authnProvider providers.AuthnProviderManager,
+	idpType providers.IDPType,
 ) oAuthExecutorInterface {
 	if name == "" {
 		name = ExecutorNameOAuth
 	}
 	if len(defaultInputs) == 0 {
-		defaultInputs = []common.Input{
+		defaultInputs = []providers.Input{
 			{
 				Identifier: userInputCode,
 				Type:       "string",
@@ -97,27 +98,27 @@ func newOAuthExecutor(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, oAuthLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, name))
 
-	base := flowFactory.CreateExecutor(name, common.ExecutorTypeAuthentication,
+	base := flowFactory.CreateExecutor(name, providers.ExecutorTypeAuthentication,
 		defaultInputs, prerequisites)
 
 	return &oAuthExecutor{
-		ExecutorInterface: base,
-		authService:       authService,
-		authnProvider:     authnProvider,
-		idpType:           idpType,
-		idpService:        idpService,
-		logger:            logger,
+		Executor:      base,
+		authService:   authService,
+		authnProvider: authnProvider,
+		idpType:       idpType,
+		idpService:    idpService,
+		logger:        logger,
 	}
 }
 
 // Execute executes the OAuth authentication flow.
 //
 //nolint:dupl // OAuth and OIDC executors share the same execute skeleton with type-specific behavior.
-func (o *oAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+func (o *oAuthExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing OAuth authentication executor")
 
-	execResp := &common.ExecutorResponse{
+	execResp := &providers.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 		AuthUser:       ctx.AuthUser,
@@ -144,7 +145,7 @@ func (o *oAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse
 }
 
 // BuildAuthorizeFlow constructs the redirection to the external OAuth provider for user authentication.
-func (o *oAuthExecutor) BuildAuthorizeFlow(ctx *core.NodeContext, execResp *common.ExecutorResponse) error {
+func (o *oAuthExecutor) BuildAuthorizeFlow(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) error {
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Initiating OAuth authentication flow")
 
@@ -155,8 +156,8 @@ func (o *oAuthExecutor) BuildAuthorizeFlow(ctx *core.NodeContext, execResp *comm
 
 	authorizeURL, svcErr := o.authService.BuildAuthorizeURL(ctx.Context, idpID)
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ClientErrorType {
-			execResp.Status = common.ExecFailure
+		if svcErr.Type == tidcommon.ClientErrorType {
+			execResp.Status = providers.ExecFailure
 			execResp.Error = svcErr
 			return nil
 		}
@@ -177,7 +178,7 @@ func (o *oAuthExecutor) BuildAuthorizeFlow(ctx *core.NodeContext, execResp *comm
 	authorizeURL = authorizeURL + "&" + "state=" + state
 
 	// Set the response to redirect the user to the authorization URL.
-	execResp.Status = common.ExecExternalRedirection
+	execResp.Status = providers.ExecExternalRedirection
 	execResp.RedirectURL = authorizeURL
 	execResp.AdditionalData = map[string]string{
 		common.DataIDPName: idpName,
@@ -191,14 +192,14 @@ func (o *oAuthExecutor) BuildAuthorizeFlow(ctx *core.NodeContext, execResp *comm
 }
 
 // ProcessAuthFlowResponse processes the response from the OAuth authentication flow and authenticates the user.
-func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) error {
+func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) error {
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Processing OAuth authentication response")
 
 	code, ok := ctx.UserInputs[userInputCode]
 	if !ok || code == "" {
-		execResp.AuthUser = authnprovidermgr.AuthUser{}
+		execResp.AuthUser = providers.AuthUser{}
 		return nil
 	}
 
@@ -209,7 +210,7 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 		expectedState := ctx.RuntimeData[common.RuntimeKeyOAuthState]
 		if returnedState != expectedState {
 			logger.Debug(ctx.Context, "OAuth state mismatch")
-			execResp.Status = common.ExecFailure
+			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrInvalidOAuthState
 			return nil
 		}
@@ -247,8 +248,8 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 	authUser, federatedAttributes, svcErr := o.authnProvider.AuthenticateUser(
 		ctx.Context, nil, credentials, nil, metadata, execResp.AuthUser)
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ClientErrorType {
-			execResp.Status = common.ExecFailure
+		if svcErr.Type == tidcommon.ClientErrorType {
+			execResp.Status = providers.ExecFailure
 			execResp.Error = svcErr
 			return nil
 		}
@@ -260,7 +261,7 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 	execResp.AuthUser = authUser
 
 	if !validateFederatedIdentifierConsistency(ctx, federatedAttributes, existingCtxUserAttributes) {
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrInvalidFederatedUser
 		return nil
 	}
@@ -275,32 +276,32 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 	}
 
 	switch ctx.FlowType {
-	case common.FlowTypeAuthentication:
+	case providers.FlowTypeAuthentication:
 		if isAuthenticationWithoutLocalUserAllowed(ctx) {
 			execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
 		}
-	case common.FlowTypeRegistration:
+	case providers.FlowTypeRegistration:
 		if isRegistrationWithExistingUserAllowed(ctx) {
 			execResp.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser] = dataValueTrue
 		}
 	}
 
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 	return nil
 }
 
 // HasRequiredInputs checks if the required inputs are provided in the context and appends any
 // missing inputs to the executor response. Returns true if required inputs are found, otherwise false.
-func (o *oAuthExecutor) HasRequiredInputs(ctx *core.NodeContext, execResp *common.ExecutorResponse) bool {
+func (o *oAuthExecutor) HasRequiredInputs(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) bool {
 	if code, ok := ctx.UserInputs[userInputCode]; ok && code != "" {
 		return true
 	}
 
-	return o.ExecutorInterface.HasRequiredInputs(ctx, execResp)
+	return o.Executor.HasRequiredInputs(ctx, execResp)
 }
 
 // GetIdpID retrieves the identity provider ID from the node properties.
-func (o *oAuthExecutor) GetIdpID(ctx *core.NodeContext) (string, error) {
+func (o *oAuthExecutor) GetIdpID(ctx *providers.NodeContext) (string, error) {
 	if len(ctx.NodeProperties) > 0 {
 		if val, ok := ctx.NodeProperties["idpId"]; ok {
 			if idpID, valid := val.(string); valid && idpID != "" {
@@ -318,7 +319,7 @@ func (o *oAuthExecutor) getIDPName(ctx context.Context, idpID string) (string, e
 
 	idp, svcErr := o.idpService.GetIdentityProvider(ctx, idpID)
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ClientErrorType {
+		if svcErr.Type == tidcommon.ClientErrorType {
 			return "", fmt.Errorf("failed to get identity provider: %s", svcErr.ErrorDescription.DefaultValue)
 		}
 
@@ -332,7 +333,7 @@ func (o *oAuthExecutor) getIDPName(ctx context.Context, idpID string) (string, e
 
 // getContextUserAttributes extracts and returns user attributes from the user info map.
 // TODO: Need to convert attributes as per the IDP to local attribute mapping when the support is implemented.
-func (o *oAuthExecutor) getContextUserAttributes(execResp *common.ExecutorResponse,
+func (o *oAuthExecutor) getContextUserAttributes(execResp *providers.ExecutorResponse,
 	userInfo map[string]string) map[string]interface{} {
 	attributes := make(map[string]interface{})
 	for key, value := range userInfo {

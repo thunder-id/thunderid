@@ -9,7 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/notification/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	common0 "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewNotificationSenderMgtSvcInterfaceMock creates a new instance of NotificationSenderMgtSvcInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -40,7 +40,7 @@ func (_m *NotificationSenderMgtSvcInterfaceMock) EXPECT() *NotificationSenderMgt
 }
 
 // CreateSender provides a mock function for the type NotificationSenderMgtSvcInterfaceMock
-func (_mock *NotificationSenderMgtSvcInterfaceMock) CreateSender(ctx context.Context, sender common.NotificationSenderDTO) (*common.NotificationSenderDTO, *serviceerror.ServiceError) {
+func (_mock *NotificationSenderMgtSvcInterfaceMock) CreateSender(ctx context.Context, sender common.NotificationSenderDTO) (*common.NotificationSenderDTO, *common0.ServiceError) {
 	ret := _mock.Called(ctx, sender)
 
 	if len(ret) == 0 {
@@ -48,8 +48,8 @@ func (_mock *NotificationSenderMgtSvcInterfaceMock) CreateSender(ctx context.Con
 	}
 
 	var r0 *common.NotificationSenderDTO
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, common.NotificationSenderDTO) (*common.NotificationSenderDTO, *serviceerror.ServiceError)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, common.NotificationSenderDTO) (*common.NotificationSenderDTO, *common0.ServiceError)); ok {
 		return returnFunc(ctx, sender)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, common.NotificationSenderDTO) *common.NotificationSenderDTO); ok {
@@ -59,11 +59,11 @@ func (_mock *NotificationSenderMgtSvcInterfaceMock) CreateSender(ctx context.Con
 			r0 = ret.Get(0).(*common.NotificationSenderDTO)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, common.NotificationSenderDTO) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, common.NotificationSenderDTO) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx, sender)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common0.ServiceError)
 		}
 	}
 	return r0, r1
@@ -99,30 +99,30 @@ func (_c *NotificationSenderMgtSvcInterfaceMock_CreateSender_Call) Run(run func(
 	return _c
 }
 
-func (_c *NotificationSenderMgtSvcInterfaceMock_CreateSender_Call) Return(notificationSenderDTO *common.NotificationSenderDTO, serviceError *serviceerror.ServiceError) *NotificationSenderMgtSvcInterfaceMock_CreateSender_Call {
+func (_c *NotificationSenderMgtSvcInterfaceMock_CreateSender_Call) Return(notificationSenderDTO *common.NotificationSenderDTO, serviceError *common0.ServiceError) *NotificationSenderMgtSvcInterfaceMock_CreateSender_Call {
 	_c.Call.Return(notificationSenderDTO, serviceError)
 	return _c
 }
 
-func (_c *NotificationSenderMgtSvcInterfaceMock_CreateSender_Call) RunAndReturn(run func(ctx context.Context, sender common.NotificationSenderDTO) (*common.NotificationSenderDTO, *serviceerror.ServiceError)) *NotificationSenderMgtSvcInterfaceMock_CreateSender_Call {
+func (_c *NotificationSenderMgtSvcInterfaceMock_CreateSender_Call) RunAndReturn(run func(ctx context.Context, sender common.NotificationSenderDTO) (*common.NotificationSenderDTO, *common0.ServiceError)) *NotificationSenderMgtSvcInterfaceMock_CreateSender_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // DeleteSender provides a mock function for the type NotificationSenderMgtSvcInterfaceMock
-func (_mock *NotificationSenderMgtSvcInterfaceMock) DeleteSender(ctx context.Context, id string) *serviceerror.ServiceError {
+func (_mock *NotificationSenderMgtSvcInterfaceMock) DeleteSender(ctx context.Context, id string) *common0.ServiceError {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteSender")
 	}
 
-	var r0 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	var r0 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common0.ServiceError); ok {
 		r0 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*serviceerror.ServiceError)
+			r0 = ret.Get(0).(*common0.ServiceError)
 		}
 	}
 	return r0
@@ -158,18 +158,18 @@ func (_c *NotificationSenderMgtSvcInterfaceMock_DeleteSender_Call) Run(run func(
 	return _c
 }
 
-func (_c *NotificationSenderMgtSvcInterfaceMock_DeleteSender_Call) Return(serviceError *serviceerror.ServiceError) *NotificationSenderMgtSvcInterfaceMock_DeleteSender_Call {
+func (_c *NotificationSenderMgtSvcInterfaceMock_DeleteSender_Call) Return(serviceError *common0.ServiceError) *NotificationSenderMgtSvcInterfaceMock_DeleteSender_Call {
 	_c.Call.Return(serviceError)
 	return _c
 }
 
-func (_c *NotificationSenderMgtSvcInterfaceMock_DeleteSender_Call) RunAndReturn(run func(ctx context.Context, id string) *serviceerror.ServiceError) *NotificationSenderMgtSvcInterfaceMock_DeleteSender_Call {
+func (_c *NotificationSenderMgtSvcInterfaceMock_DeleteSender_Call) RunAndReturn(run func(ctx context.Context, id string) *common0.ServiceError) *NotificationSenderMgtSvcInterfaceMock_DeleteSender_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetSender provides a mock function for the type NotificationSenderMgtSvcInterfaceMock
-func (_mock *NotificationSenderMgtSvcInterfaceMock) GetSender(ctx context.Context, id string) (*common.NotificationSenderDTO, *serviceerror.ServiceError) {
+func (_mock *NotificationSenderMgtSvcInterfaceMock) GetSender(ctx context.Context, id string) (*common.NotificationSenderDTO, *common0.ServiceError) {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
@@ -177,8 +177,8 @@ func (_mock *NotificationSenderMgtSvcInterfaceMock) GetSender(ctx context.Contex
 	}
 
 	var r0 *common.NotificationSenderDTO
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*common.NotificationSenderDTO, *serviceerror.ServiceError)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*common.NotificationSenderDTO, *common0.ServiceError)); ok {
 		return returnFunc(ctx, id)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.NotificationSenderDTO); ok {
@@ -188,11 +188,11 @@ func (_mock *NotificationSenderMgtSvcInterfaceMock) GetSender(ctx context.Contex
 			r0 = ret.Get(0).(*common.NotificationSenderDTO)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common0.ServiceError)
 		}
 	}
 	return r0, r1
@@ -228,18 +228,18 @@ func (_c *NotificationSenderMgtSvcInterfaceMock_GetSender_Call) Run(run func(ctx
 	return _c
 }
 
-func (_c *NotificationSenderMgtSvcInterfaceMock_GetSender_Call) Return(notificationSenderDTO *common.NotificationSenderDTO, serviceError *serviceerror.ServiceError) *NotificationSenderMgtSvcInterfaceMock_GetSender_Call {
+func (_c *NotificationSenderMgtSvcInterfaceMock_GetSender_Call) Return(notificationSenderDTO *common.NotificationSenderDTO, serviceError *common0.ServiceError) *NotificationSenderMgtSvcInterfaceMock_GetSender_Call {
 	_c.Call.Return(notificationSenderDTO, serviceError)
 	return _c
 }
 
-func (_c *NotificationSenderMgtSvcInterfaceMock_GetSender_Call) RunAndReturn(run func(ctx context.Context, id string) (*common.NotificationSenderDTO, *serviceerror.ServiceError)) *NotificationSenderMgtSvcInterfaceMock_GetSender_Call {
+func (_c *NotificationSenderMgtSvcInterfaceMock_GetSender_Call) RunAndReturn(run func(ctx context.Context, id string) (*common.NotificationSenderDTO, *common0.ServiceError)) *NotificationSenderMgtSvcInterfaceMock_GetSender_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetSenderByName provides a mock function for the type NotificationSenderMgtSvcInterfaceMock
-func (_mock *NotificationSenderMgtSvcInterfaceMock) GetSenderByName(ctx context.Context, name string) (*common.NotificationSenderDTO, *serviceerror.ServiceError) {
+func (_mock *NotificationSenderMgtSvcInterfaceMock) GetSenderByName(ctx context.Context, name string) (*common.NotificationSenderDTO, *common0.ServiceError) {
 	ret := _mock.Called(ctx, name)
 
 	if len(ret) == 0 {
@@ -247,8 +247,8 @@ func (_mock *NotificationSenderMgtSvcInterfaceMock) GetSenderByName(ctx context.
 	}
 
 	var r0 *common.NotificationSenderDTO
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*common.NotificationSenderDTO, *serviceerror.ServiceError)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*common.NotificationSenderDTO, *common0.ServiceError)); ok {
 		return returnFunc(ctx, name)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.NotificationSenderDTO); ok {
@@ -258,11 +258,11 @@ func (_mock *NotificationSenderMgtSvcInterfaceMock) GetSenderByName(ctx context.
 			r0 = ret.Get(0).(*common.NotificationSenderDTO)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx, name)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common0.ServiceError)
 		}
 	}
 	return r0, r1
@@ -298,18 +298,18 @@ func (_c *NotificationSenderMgtSvcInterfaceMock_GetSenderByName_Call) Run(run fu
 	return _c
 }
 
-func (_c *NotificationSenderMgtSvcInterfaceMock_GetSenderByName_Call) Return(notificationSenderDTO *common.NotificationSenderDTO, serviceError *serviceerror.ServiceError) *NotificationSenderMgtSvcInterfaceMock_GetSenderByName_Call {
+func (_c *NotificationSenderMgtSvcInterfaceMock_GetSenderByName_Call) Return(notificationSenderDTO *common.NotificationSenderDTO, serviceError *common0.ServiceError) *NotificationSenderMgtSvcInterfaceMock_GetSenderByName_Call {
 	_c.Call.Return(notificationSenderDTO, serviceError)
 	return _c
 }
 
-func (_c *NotificationSenderMgtSvcInterfaceMock_GetSenderByName_Call) RunAndReturn(run func(ctx context.Context, name string) (*common.NotificationSenderDTO, *serviceerror.ServiceError)) *NotificationSenderMgtSvcInterfaceMock_GetSenderByName_Call {
+func (_c *NotificationSenderMgtSvcInterfaceMock_GetSenderByName_Call) RunAndReturn(run func(ctx context.Context, name string) (*common.NotificationSenderDTO, *common0.ServiceError)) *NotificationSenderMgtSvcInterfaceMock_GetSenderByName_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ListSenders provides a mock function for the type NotificationSenderMgtSvcInterfaceMock
-func (_mock *NotificationSenderMgtSvcInterfaceMock) ListSenders(ctx context.Context) ([]common.NotificationSenderDTO, *serviceerror.ServiceError) {
+func (_mock *NotificationSenderMgtSvcInterfaceMock) ListSenders(ctx context.Context) ([]common.NotificationSenderDTO, *common0.ServiceError) {
 	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
@@ -317,8 +317,8 @@ func (_mock *NotificationSenderMgtSvcInterfaceMock) ListSenders(ctx context.Cont
 	}
 
 	var r0 []common.NotificationSenderDTO
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context) ([]common.NotificationSenderDTO, *serviceerror.ServiceError)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context) ([]common.NotificationSenderDTO, *common0.ServiceError)); ok {
 		return returnFunc(ctx)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context) []common.NotificationSenderDTO); ok {
@@ -328,11 +328,11 @@ func (_mock *NotificationSenderMgtSvcInterfaceMock) ListSenders(ctx context.Cont
 			r0 = ret.Get(0).([]common.NotificationSenderDTO)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common0.ServiceError)
 		}
 	}
 	return r0, r1
@@ -362,18 +362,18 @@ func (_c *NotificationSenderMgtSvcInterfaceMock_ListSenders_Call) Run(run func(c
 	return _c
 }
 
-func (_c *NotificationSenderMgtSvcInterfaceMock_ListSenders_Call) Return(notificationSenderDTOs []common.NotificationSenderDTO, serviceError *serviceerror.ServiceError) *NotificationSenderMgtSvcInterfaceMock_ListSenders_Call {
+func (_c *NotificationSenderMgtSvcInterfaceMock_ListSenders_Call) Return(notificationSenderDTOs []common.NotificationSenderDTO, serviceError *common0.ServiceError) *NotificationSenderMgtSvcInterfaceMock_ListSenders_Call {
 	_c.Call.Return(notificationSenderDTOs, serviceError)
 	return _c
 }
 
-func (_c *NotificationSenderMgtSvcInterfaceMock_ListSenders_Call) RunAndReturn(run func(ctx context.Context) ([]common.NotificationSenderDTO, *serviceerror.ServiceError)) *NotificationSenderMgtSvcInterfaceMock_ListSenders_Call {
+func (_c *NotificationSenderMgtSvcInterfaceMock_ListSenders_Call) RunAndReturn(run func(ctx context.Context) ([]common.NotificationSenderDTO, *common0.ServiceError)) *NotificationSenderMgtSvcInterfaceMock_ListSenders_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UpdateSender provides a mock function for the type NotificationSenderMgtSvcInterfaceMock
-func (_mock *NotificationSenderMgtSvcInterfaceMock) UpdateSender(ctx context.Context, id string, sender common.NotificationSenderDTO) (*common.NotificationSenderDTO, *serviceerror.ServiceError) {
+func (_mock *NotificationSenderMgtSvcInterfaceMock) UpdateSender(ctx context.Context, id string, sender common.NotificationSenderDTO) (*common.NotificationSenderDTO, *common0.ServiceError) {
 	ret := _mock.Called(ctx, id, sender)
 
 	if len(ret) == 0 {
@@ -381,8 +381,8 @@ func (_mock *NotificationSenderMgtSvcInterfaceMock) UpdateSender(ctx context.Con
 	}
 
 	var r0 *common.NotificationSenderDTO
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, common.NotificationSenderDTO) (*common.NotificationSenderDTO, *serviceerror.ServiceError)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, common.NotificationSenderDTO) (*common.NotificationSenderDTO, *common0.ServiceError)); ok {
 		return returnFunc(ctx, id, sender)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, common.NotificationSenderDTO) *common.NotificationSenderDTO); ok {
@@ -392,11 +392,11 @@ func (_mock *NotificationSenderMgtSvcInterfaceMock) UpdateSender(ctx context.Con
 			r0 = ret.Get(0).(*common.NotificationSenderDTO)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, common.NotificationSenderDTO) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, common.NotificationSenderDTO) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx, id, sender)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common0.ServiceError)
 		}
 	}
 	return r0, r1
@@ -438,12 +438,12 @@ func (_c *NotificationSenderMgtSvcInterfaceMock_UpdateSender_Call) Run(run func(
 	return _c
 }
 
-func (_c *NotificationSenderMgtSvcInterfaceMock_UpdateSender_Call) Return(notificationSenderDTO *common.NotificationSenderDTO, serviceError *serviceerror.ServiceError) *NotificationSenderMgtSvcInterfaceMock_UpdateSender_Call {
+func (_c *NotificationSenderMgtSvcInterfaceMock_UpdateSender_Call) Return(notificationSenderDTO *common.NotificationSenderDTO, serviceError *common0.ServiceError) *NotificationSenderMgtSvcInterfaceMock_UpdateSender_Call {
 	_c.Call.Return(notificationSenderDTO, serviceError)
 	return _c
 }
 
-func (_c *NotificationSenderMgtSvcInterfaceMock_UpdateSender_Call) RunAndReturn(run func(ctx context.Context, id string, sender common.NotificationSenderDTO) (*common.NotificationSenderDTO, *serviceerror.ServiceError)) *NotificationSenderMgtSvcInterfaceMock_UpdateSender_Call {
+func (_c *NotificationSenderMgtSvcInterfaceMock_UpdateSender_Call) RunAndReturn(run func(ctx context.Context, id string, sender common.NotificationSenderDTO) (*common.NotificationSenderDTO, *common0.ServiceError)) *NotificationSenderMgtSvcInterfaceMock_UpdateSender_Call {
 	_c.Call.Return(run)
 	return _c
 }

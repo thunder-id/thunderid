@@ -22,11 +22,12 @@ import (
 	"context"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -103,10 +104,10 @@ type mockResourceExporter struct {
 	paramType         string
 	name              string
 	getAllIDs         []string
-	getAllErr         *serviceerror.ServiceError
+	getAllErr         *tidcommon.ServiceError
 	resourceByID      interface{}
 	resourceNameByID  string
-	getByIDErr        *serviceerror.ServiceError
+	getByIDErr        *tidcommon.ServiceError
 	validateName      string
 	validateExportErr *ExportError
 }
@@ -119,13 +120,13 @@ func (m *mockResourceExporter) GetParameterizerType() string {
 	return m.paramType
 }
 
-func (m *mockResourceExporter) GetAllResourceIDs(ctx context.Context) ([]string, *serviceerror.ServiceError) {
+func (m *mockResourceExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
 	return m.getAllIDs, m.getAllErr
 }
 
 func (m *mockResourceExporter) GetResourceByID(
 	ctx context.Context, id string,
-) (interface{}, string, *serviceerror.ServiceError) {
+) (interface{}, string, *tidcommon.ServiceError) {
 	return m.resourceByID, m.resourceNameByID, m.getByIDErr
 }
 

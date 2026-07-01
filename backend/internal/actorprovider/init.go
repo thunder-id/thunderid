@@ -16,17 +16,20 @@
  * under the License.
  */
 
+// Package actorprovider resolves inbound actors (applications, agents, and similar entities)
+// for runtime layers that need a unified view of inbound-client and backing records.
 package actorprovider
 
 import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize creates the default ActorProvider backed by inbound-client and entity-provider services.
 func Initialize(
 	inboundClient inboundclient.InboundClientServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
-) ActorProviderInterface {
+) providers.ActorProvider {
 	return newActorProvider(inboundClient, entityProvider)
 }

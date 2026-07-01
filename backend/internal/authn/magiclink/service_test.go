@@ -26,14 +26,16 @@ import (
 	"sync"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
-	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 )
 
@@ -70,14 +72,14 @@ func createMagicLinkJWTWithSubject(subject string) string {
 
 func initializeTestRuntime(root string) error {
 	testConfig := &config.Config{
-		Server: config.ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Hostname: "localhost",
 			Port:     8090,
 		},
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer: "magiclink-svc",
 		},
-		GateClient: config.GateClientConfig{
+		GateClient: engineconfig.GateClientConfig{
 			Hostname:     "localhost",
 			Port:         8090,
 			Scheme:       "https",
@@ -90,9 +92,8 @@ func initializeTestRuntime(root string) error {
 
 type MagicLinkServiceTestSuite struct {
 	suite.Suite
-	mockJWTService  *jwtmock.JWTServiceInterfaceMock
-	mockUserService *entityprovidermock.EntityProviderInterfaceMock
-	service         MagicLinkAuthnServiceInterface
+	mockJWTService *jwtmock.JWTServiceInterfaceMock
+	service        MagicLinkAuthnServiceInterface
 }
 
 func TestMagicLinkServiceTestSuite(t *testing.T) {
@@ -112,8 +113,7 @@ func (suite *MagicLinkServiceTestSuite) TearDownSuite() {
 
 func (suite *MagicLinkServiceTestSuite) SetupTest() {
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
-	suite.mockUserService = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
-	suite.service = newMagicLinkAuthnService(suite.mockJWTService, suite.mockUserService)
+	suite.service = newMagicLinkAuthnService(suite.mockJWTService)
 }
 
 func (suite *MagicLinkServiceTestSuite) TestGenerateMagicLinkSuccess() {
@@ -162,7 +162,7 @@ func (suite *MagicLinkServiceTestSuite) TestGenerateMagicLinkJWTGenerationError(
 		mock.Anything,
 		jwt.TokenTypeJWT,
 		"",
-	).Return("", int64(0), &serviceerror.ServiceError{Code: serviceerror.InternalServerError.Code})
+	).Return("", int64(0), &tidcommon.ServiceError{Code: tidcommon.InternalServerError.Code})
 
 	magicLinkURL, err := suite.service.GenerateMagicLink(context.Background(), testUserID, 0,
 		map[string]string{"id": testExecutionID}, nil, "")
@@ -179,7 +179,7 @@ func (suite *MagicLinkServiceTestSuite) TestAuthenticateEmptyToken() {
 }
 
 func (suite *MagicLinkServiceTestSuite) TestAuthenticateExpiredToken() {
-	expiredErr := &serviceerror.ServiceError{
+	expiredErr := &tidcommon.ServiceError{
 		Code: jwt.ErrorTokenExpired.Code,
 	}
 	suite.mockJWTService.On("VerifyJWT", mock.Anything, testToken, tokenAudience, mock.Anything).Return(expiredErr)
@@ -192,7 +192,7 @@ func (suite *MagicLinkServiceTestSuite) TestAuthenticateExpiredToken() {
 
 func (suite *MagicLinkServiceTestSuite) TestAuthenticateInvalidToken() {
 	suite.mockJWTService.On("VerifyJWT", mock.Anything, testToken, tokenAudience, mock.Anything).
-		Return(&serviceerror.ServiceError{
+		Return(&tidcommon.ServiceError{
 			Code: "JWT_INVALID",
 		})
 

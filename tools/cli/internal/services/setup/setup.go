@@ -215,7 +215,7 @@ func StartBackgroundOnPort(installPath string, verbose bool, port int) (*exec.Cm
 
 	cmd.Dir = root
 	if port > 0 {
-		cmd.Env = append(os.Environ(), fmt.Sprintf("THUNDER_PORT=%d", port))
+		cmd.Env = append(os.Environ(), fmt.Sprintf("BACKEND_PORT=%d", port))
 	}
 	if verbose {
 		cmd.Stdout = io.MultiWriter(out, os.Stderr)
@@ -289,6 +289,69 @@ func WaitForPortFree(port int, timeout time.Duration) bool {
 		time.Sleep(250 * time.Millisecond)
 	}
 	return false
+}
+
+// IsPortInUse returns true if a process is already accepting connections on the given TCP port.
+func IsPortInUse(port int) bool {
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), 200*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+// FindFreePort returns the first free TCP port at or above start.
+func FindFreePort(start int) int {
+	for port := start; port < 65535; port++ {
+		if !IsPortInUse(port) {
+			return port
+		}
+	}
+	return start
+}
+
+// UpdateServerPort rewrites the server.port value in the deployment.yaml found under installPath.
+func UpdateServerPort(installPath string, port int) error {
+	candidates := []string{
+		filepath.Join(installPath, "deployment.yaml"),
+		filepath.Join(installPath, "backend", "cmd", "server", "deployment.yaml"),
+	}
+	var configPath string
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			configPath = p
+			break
+		}
+	}
+	if configPath == "" {
+		return fmt.Errorf("deployment.yaml not found in %s", installPath)
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(data), "\n")
+	inServer := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "server:" {
+			inServer = true
+			continue
+		}
+		if inServer {
+			if len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
+				inServer = false
+				continue
+			}
+			if strings.HasPrefix(trimmed, "port:") {
+				indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+				lines[i] = indent + fmt.Sprintf("port: %d", port)
+				return os.WriteFile(configPath, []byte(strings.Join(lines, "\n")), 0o644)
+			}
+		}
+	}
+	return fmt.Errorf("server.port not found in %s", configPath)
 }
 
 // KillPort sends SIGTERM to all processes listening on the given TCP port.

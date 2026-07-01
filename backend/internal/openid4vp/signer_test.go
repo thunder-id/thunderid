@@ -30,14 +30,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 )
+
+type OpenID4VPSignerTestSuite struct {
+	suite.Suite
+}
+
+func TestOpenID4VPSignerTestSuite(t *testing.T) {
+	suite.Run(t, new(OpenID4VPSignerTestSuite))
+}
 
 func newSignerMock(
 	t *testing.T, key *ecdsa.PrivateKey, info kmprovider.PublicKeyInfo,
@@ -47,16 +54,16 @@ func newSignerMock(
 	m.EXPECT().GetPublicKeys(mock.Anything, mock.Anything).Return([]kmprovider.PublicKeyInfo{info}, nil).Maybe()
 	m.EXPECT().Sign(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(
-			_ context.Context, _ kmprovider.KeyRef, _ cryptolib.SignAlgorithm, content []byte,
+			_ context.Context, _ kmprovider.KeyRef, _ string, content []byte,
 		) ([]byte, error) {
 			return cryptolib.Generate(content, cryptolib.ECDSASHA256, key)
 		}).Maybe()
 	return m
 }
 
-func TestRequestSignerSignsVerifiableJAR(t *testing.T) {
+func (suite *OpenID4VPSignerTestSuite) TestRequestSignerSignsVerifiableJAR() {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
+	suite.Require().NoError(err)
 	info := kmprovider.PublicKeyInfo{
 		KeyID:          "vp-signing",
 		Algorithm:      cryptolib.AlgorithmES256,
@@ -64,67 +71,96 @@ func TestRequestSignerSignsVerifiableJAR(t *testing.T) {
 		Thumbprint:     "thumb-1",
 		CertificateDER: []byte{0x30, 0x82, 0x01, 0x02, 0x03},
 	}
-	m := newSignerMock(t, key, info)
+	m := newSignerMock(suite.T(), key, info)
 
 	signer, err := newRequestSigner(context.Background(), m, "vp-signing")
-	require.NoError(t, err)
+	suite.Require().NoError(err)
 
 	jar, err := signer.signRequestObject(context.Background(), map[string]interface{}{
 		"response_type": "vp_token",
 		"client_id":     "x509_hash:abc",
 	})
-	require.NoError(t, err)
+	suite.Require().NoError(err)
 
 	parts := strings.Split(jar, ".")
-	require.Len(t, parts, 3)
+	suite.Require().Len(parts, 3)
 
 	headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
-	require.NoError(t, err)
+	suite.Require().NoError(err)
 	var header map[string]interface{}
-	require.NoError(t, json.Unmarshal(headerJSON, &header))
-	assert.Equal(t, "ES256", header["alg"])
-	assert.Equal(t, requestObjectType, header["typ"])
-	assert.Equal(t, "thumb-1", header["kid"])
+	suite.Require().NoError(json.Unmarshal(headerJSON, &header))
+	suite.Equal("ES256", header["alg"])
+	suite.Equal(requestObjectType, header["typ"])
+	// No kid header: the wallet authenticates via x5c for the x509 client scheme.
+	_, hasKid := header["kid"]
+	suite.False(hasKid, "request object header must not carry a kid alongside x5c")
 	x5c := header["x5c"].([]interface{})
-	require.Len(t, x5c, 1)
-	assert.Equal(t, base64.StdEncoding.EncodeToString(info.CertificateDER), x5c[0])
+	suite.Require().Len(x5c, 1)
+	suite.Equal(base64.StdEncoding.EncodeToString(info.CertificateDER), x5c[0])
 
 	// Signature is in JWS P1363 format (r||s, 32 bytes each for P-256).
 	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
-	require.NoError(t, err)
-	require.Len(t, sig, 64)
+	suite.Require().NoError(err)
+	suite.Require().Len(sig, 64)
 	signingInput := parts[0] + "." + parts[1]
 	hashed := sha256.Sum256([]byte(signingInput))
 	r := new(big.Int).SetBytes(sig[:32])
 	s := new(big.Int).SetBytes(sig[32:])
-	assert.True(t, ecdsa.Verify(&key.PublicKey, hashed[:], r, s))
+	suite.True(ecdsa.Verify(&key.PublicKey, hashed[:], r, s))
 }
 
-func TestNewRequestSignerErrors(t *testing.T) {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
+func (suite *OpenID4VPSignerTestSuite) TestEcdsaDERToJWS() {
+	digest := sha256.Sum256([]byte("signing input"))
 
-	t.Run("nil provider", func(t *testing.T) {
+	tests := []struct {
+		name    string
+		curve   elliptic.Curve
+		alg     string
+		wantLen int
+	}{
+		{"ES256", elliptic.P256(), "ES256", 64},
+		{"ES384", elliptic.P384(), "ES384", 96},
+		{"ES512", elliptic.P521(), "ES512", 132},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			key, err := ecdsa.GenerateKey(tt.curve, rand.Reader)
+			suite.Require().NoError(err)
+			der, err := ecdsa.SignASN1(rand.Reader, key, digest[:])
+			suite.Require().NoError(err)
+
+			raw := ecdsaDERToJWS(der, tt.alg)
+			suite.Len(raw, tt.wantLen)
+		})
+	}
+}
+
+func (suite *OpenID4VPSignerTestSuite) TestNewRequestSignerErrors() {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	suite.Require().NoError(err)
+
+	suite.Run("nil provider", func() {
 		_, err := newRequestSigner(context.Background(), nil, "k")
-		assert.ErrorIs(t, err, ErrPolicy)
+		suite.ErrorIs(err, ErrPolicy)
 	})
 
-	t.Run("no key found", func(t *testing.T) {
-		m := cryptomock.NewRuntimeCryptoProviderMock(t)
+	suite.Run("no key found", func() {
+		m := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
 		m.EXPECT().GetPublicKeys(mock.Anything, mock.Anything).Return(nil, nil)
 		_, err := newRequestSigner(context.Background(), m, "missing")
-		assert.ErrorIs(t, err, ErrPolicy)
+		suite.ErrorIs(err, ErrPolicy)
 	})
 
-	t.Run("missing certificate", func(t *testing.T) {
+	suite.Run("missing certificate", func() {
 		info := kmprovider.PublicKeyInfo{
 			KeyID:     "vp-signing",
 			Algorithm: cryptolib.AlgorithmES256,
 			PublicKey: &key.PublicKey,
 		}
-		m := cryptomock.NewRuntimeCryptoProviderMock(t)
+		m := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
 		m.EXPECT().GetPublicKeys(mock.Anything, mock.Anything).Return([]kmprovider.PublicKeyInfo{info}, nil)
 		_, err := newRequestSigner(context.Background(), m, "vp-signing")
-		assert.ErrorIs(t, err, ErrPolicy)
+		suite.ErrorIs(err, ErrPolicy)
 	})
 }

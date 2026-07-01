@@ -22,12 +22,13 @@ import (
 	"context"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -160,7 +161,7 @@ func (suite *RoleExporterTestSuite) TestGetAllResourceIDs_ExcludesDeclarativeRol
 
 // Test GetAllResourceIDs - error on GetRoleList
 func (suite *RoleExporterTestSuite) TestGetAllResourceIDs_ErrorOnGetRoleList() {
-	serviceErr := &serviceerror.ServiceError{Code: "500"}
+	serviceErr := &tidcommon.ServiceError{Code: "500"}
 	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 0).Return(nil, serviceErr)
 
 	ids, err := suite.exporter.GetAllResourceIDs(suite.ctx)
@@ -178,7 +179,7 @@ func (suite *RoleExporterTestSuite) TestGetAllResourceIDs_ErrorOnIsRoleDeclarati
 		},
 		TotalResults: 1,
 	}
-	serviceErr := &serviceerror.ServiceError{Code: "500"}
+	serviceErr := &tidcommon.ServiceError{Code: "500"}
 
 	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 0).Return(roleList, nil)
 	suite.mockService.On("IsRoleDeclarative", suite.ctx, "role1").Return(false, serviceErr)
@@ -235,7 +236,7 @@ func (suite *RoleExporterTestSuite) TestGetResourceByID_Success() {
 
 // Test GetResourceByID - error on GetRoleWithPermissions
 func (suite *RoleExporterTestSuite) TestGetResourceByID_ErrorOnGetRoleWithPermissions() {
-	serviceErr := &serviceerror.ServiceError{Code: "404"}
+	serviceErr := &tidcommon.ServiceError{Code: "404"}
 	suite.mockService.On("GetRoleWithPermissions", suite.ctx, "nonexistent").Return(nil, serviceErr)
 
 	resource, name, err := suite.exporter.GetResourceByID(suite.ctx, "nonexistent")

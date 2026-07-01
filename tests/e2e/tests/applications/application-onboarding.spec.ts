@@ -172,24 +172,23 @@ test.describe("Application Onboarding", () => {
       });
     });
 
-    /** TC004: EMBEDDED experience skips configure-details */
-    test("TC004: Create application - EMBEDDED experience skips configure-details", async ({ applicationsPage }) => {
-      const appData = TestDataFactory.createApplication({ name: `TestApp_EMBEDDED_${Date.now()}` });
-
+    /** TC004: SPA (public client) hides the EMBEDDED experience option */
+    test("TC004: Create application - SPA stack hides EMBEDDED experience", async ({ applicationsPage }) => {
       await test.step("Navigate and open wizard", async () => {
         await applicationsPage.goto();
         await applicationsPage.verifyPageLoaded();
         await applicationsPage.clickAddApplication();
       });
 
-      await test.step("Step 1: Skip stack and advance", async () => {
+      await test.step("Step 1: Select the React (SPA) stack and advance", async () => {
         await applicationsPage.waitForStep("application-configure-stack");
+        await applicationsPage.selectStack("React");
         await applicationsPage.clickNext();
       });
 
       await test.step("Step 2: Fill name and advance", async () => {
         await applicationsPage.waitForStep("application-configure-name");
-        await applicationsPage.fillAppName(appData.name);
+        await applicationsPage.fillAppName(`TestApp_SPA_${Date.now()}`);
         await applicationsPage.clickNext();
         await applicationsPage.handleOptionalOuStep();
       });
@@ -201,19 +200,12 @@ test.describe("Application Onboarding", () => {
         await applicationsPage.clickNext();
       });
 
-      await test.step("Step 6: Select EMBEDDED and verify configure-details is skipped", async () => {
+      await test.step("Step 6: Verify only the redirect-based option is offered", async () => {
         await applicationsPage.waitForStep("application-configure-experience");
-        console.log("Selecting EMBEDDED experience");
-        await applicationsPage.selectEmbeddedExperience();
-        await expect(applicationsPage.configureDetailsStep).not.toBeVisible();
-        await applicationsPage.clickNext();
-        await applicationsPage.screenshot("tc004-embedded-selected");
-        console.log("configure-details was never shown - correct EMBEDDED behaviour");
-        // EMBEDDED without passkey creates app directly and navigates to edit page
-        await applicationsPage.page.waitForURL(/\/console\/applications\/(?!create)[^/]+$/, { timeout: 30000 });
-        createdAppIds.push(applicationsPage.page.url().split("/").pop()!);
-        console.log("Navigated to edit page directly — EMBEDDED skips both configure-details and secret screen");
-        await applicationsPage.screenshot("tc004-details-skipped");
+        await expect(applicationsPage.inbuiltExperienceCard.first()).toBeVisible();
+        await expect(applicationsPage.embeddedExperienceCard).toHaveCount(0);
+        console.log("EMBEDDED experience hidden for SPA — correct");
+        await applicationsPage.screenshot("tc004-spa-embedded-hidden");
       });
     });
 

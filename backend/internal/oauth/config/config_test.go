@@ -21,6 +21,8 @@ package oauthconfig
 import (
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -44,7 +46,7 @@ func (s *OAuthConfigTestSuite) TearDownTest() {
 
 func (s *OAuthConfigTestSuite) TestFromServerRuntime() {
 	cfg := &config.Config{
-		Server: config.ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Identifier: "dep-1",
 			Hostname:   "thunder.io",
 			Port:       443,
@@ -53,14 +55,14 @@ func (s *OAuthConfigTestSuite) TestFromServerRuntime() {
 		Database: config.DatabaseConfig{
 			Runtime: config.DataSource{Type: "sqlite"},
 		},
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
-		OAuth: config.OAuthConfig{
-			PAR: config.PARConfig{ExpiresIn: 600},
+		OAuth: engineconfig.OAuthConfig{
+			PAR: engineconfig.PARConfig{ExpiresIn: 600},
 		},
-		GateClient: config.GateClientConfig{
+		GateClient: engineconfig.GateClientConfig{
 			Scheme:   "https",
 			Hostname: "localhost",
 			Port:     3000,

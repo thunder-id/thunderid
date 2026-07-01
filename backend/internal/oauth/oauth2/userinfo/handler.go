@@ -24,11 +24,12 @@ import (
 	"net/http"
 	"strings"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -129,11 +130,11 @@ func (h *userInfoHandler) writeUserInfoResponse(ctx context.Context, w http.Resp
 	w.Header().Set(serverconst.PragmaHeaderName, serverconst.PragmaNoCache)
 
 	switch result.Type {
-	case inboundmodel.UserInfoResponseTypeJWS:
+	case providers.UserInfoResponseTypeJWS:
 		w.Header().Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeJWT)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(result.JWTBody))
-	case inboundmodel.UserInfoResponseTypeJWE, inboundmodel.UserInfoResponseTypeNESTEDJWT:
+	case providers.UserInfoResponseTypeJWE, providers.UserInfoResponseTypeNESTEDJWT:
 		w.Header().Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeJWT)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(result.JWTBody))
@@ -147,18 +148,18 @@ func (h *userInfoHandler) writeUserInfoResponse(ctx context.Context, w http.Resp
 // writeServiceErrorResponse writes a service error response. The dpop flag selects
 // between WWW-Authenticate: Bearer and WWW-Authenticate: DPoP.
 func (h *userInfoHandler) writeServiceErrorResponse(ctx context.Context,
-	w http.ResponseWriter, svcErr *serviceerror.ServiceError, dpop bool,
+	w http.ResponseWriter, svcErr *tidcommon.ServiceError, dpop bool,
 ) {
 	var statusCode int
 
 	switch svcErr.Type {
-	case serviceerror.ClientErrorType:
+	case tidcommon.ClientErrorType:
 		if svcErr.Code == errorInsufficientScope.Code {
 			statusCode = http.StatusForbidden
 		} else {
 			statusCode = http.StatusUnauthorized
 		}
-	case serviceerror.ServerErrorType:
+	case tidcommon.ServerErrorType:
 		statusCode = http.StatusInternalServerError
 	default:
 		statusCode = http.StatusUnauthorized
@@ -169,7 +170,7 @@ func (h *userInfoHandler) writeServiceErrorResponse(ctx context.Context,
 			log.String("errorCode", svcErr.Code),
 			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
 		utils.WriteJSONError(ctx, w, constants.ErrorServerError,
-			serviceerror.InternalServerError.Error.DefaultValue, statusCode, nil)
+			tidcommon.InternalServerError.Error.DefaultValue, statusCode, nil)
 		return
 	}
 

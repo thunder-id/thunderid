@@ -21,10 +21,9 @@ package executor
 import (
 	authngithub "github.com/thunder-id/thunderid/internal/authn/github"
 	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
-	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // githubOAuthExecutor implements the OAuth authentication executor for GitHub.
@@ -33,22 +32,22 @@ type githubOAuthExecutor struct {
 	githubAuthService authngithub.GithubOAuthAuthnServiceInterface
 }
 
-var _ core.ExecutorInterface = (*githubOAuthExecutor)(nil)
+var _ providers.Executor = (*githubOAuthExecutor)(nil)
 
 // newGithubOAuthExecutor creates a new instance of GithubOAuthExecutor with the provided details.
 func newGithubOAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
 	idpService idp.IDPServiceInterface,
 	authService authngithub.GithubOAuthAuthnServiceInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) oAuthExecutorInterface {
 	oauthSvcCast, ok := authService.(authnoauth.OAuthAuthnCoreServiceInterface)
 	if !ok {
 		panic("failed to cast GithubOAuthAuthnService to OAuthAuthnCoreServiceInterface")
 	}
 
-	base := newOAuthExecutor(ExecutorNameGitHubAuth, []common.Input{}, []common.Input{},
-		flowFactory, idpService, oauthSvcCast, authnProvider, idp.IDPTypeGitHub)
+	base := newOAuthExecutor(ExecutorNameGitHubAuth, []providers.Input{}, []providers.Input{},
+		flowFactory, idpService, oauthSvcCast, authnProvider, providers.IDPTypeGitHub)
 
 	return &githubOAuthExecutor{
 		oAuthExecutorInterface: base,

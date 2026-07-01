@@ -26,8 +26,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
-	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
-	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
 
@@ -60,7 +59,7 @@ func (s *ModelTestSuite) TestFromEngineContext_WithToken() {
 		ExecutionID: "test-flow-id",
 		AppID:       "test-app-id",
 		Verbose:     true,
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		UserInputs: map[string]string{
 			"username": "testuser",
 		},
@@ -75,7 +74,7 @@ func (s *ModelTestSuite) TestFromEngineContext_WithToken() {
 				"email": "test@example.com",
 			},
 		},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -104,7 +103,7 @@ func (s *ModelTestSuite) TestFromEngineContext_WithoutToken() {
 		ExecutionID: "test-flow-id",
 		AppID:       "test-app-id",
 		Verbose:     false,
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		UserInputs: map[string]string{
 			"username": "testuser",
 		},
@@ -115,7 +114,7 @@ func (s *ModelTestSuite) TestFromEngineContext_WithoutToken() {
 			Token:           "",
 			Attributes:      map[string]interface{}{},
 		},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -139,11 +138,11 @@ func (s *ModelTestSuite) TestFromEngineContext_WithEmptyAuthenticatedUser() {
 		ExecutionID:       "test-flow-id",
 		AppID:             "test-app-id",
 		Verbose:           false,
-		FlowType:          common.FlowTypeAuthentication,
+		FlowType:          providers.FlowTypeAuthentication,
 		UserInputs:        map[string]string{},
 		RuntimeData:       map[string]string{},
 		AuthenticatedUser: authncm.AuthenticatedUser{},
-		ExecutionHistory:  map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory:  map[string]*providers.NodeExecutionRecord{},
 		Graph:             mockGraph,
 	}
 
@@ -162,13 +161,13 @@ func (s *ModelTestSuite) TestToEngineContext_WithToken() {
 	testToken := "test-token-xyz789"
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
 	mockGraph.On("GetID").Return("test-graph-id")
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
 
 	ctx := EngineContext{
 		Context:     context.Background(),
 		ExecutionID: "test-flow-id",
 		AppID:       "test-app-id",
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
 			IsAuthenticated: true,
 			UserID:          "user-456",
@@ -179,7 +178,7 @@ func (s *ModelTestSuite) TestToEngineContext_WithToken() {
 		},
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -200,7 +199,7 @@ func (s *ModelTestSuite) TestToEngineContext_WithToken() {
 
 func (s *ModelTestSuite) TestToEngineContext_WithoutToken() {
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
 
 	userInputs := `{"username":"testuser"}`
 	runtimeData := `{"key":"value"}`
@@ -292,14 +291,14 @@ func (s *ModelTestSuite) TestContextRoundTrip() {
 
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
 	mockGraph.On("GetID").Return("test-graph-id").Maybe()
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication).Maybe()
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication).Maybe()
 
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			ctx := EngineContext{
 				ExecutionID: "test-flow-id",
 				AppID:       tc.appID,
-				FlowType:    common.FlowTypeAuthentication,
+				FlowType:    providers.FlowTypeAuthentication,
 				AuthenticatedUser: authncm.AuthenticatedUser{
 					IsAuthenticated: tc.userID != "",
 					UserID:          tc.userID,
@@ -307,7 +306,7 @@ func (s *ModelTestSuite) TestContextRoundTrip() {
 				},
 				UserInputs:       tc.inputs,
 				RuntimeData:      tc.runtime,
-				ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+				ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 				Graph:            mockGraph,
 			}
 
@@ -338,7 +337,7 @@ func (s *ModelTestSuite) TestFromEngineContext_PreservesOtherFields() {
 		ExecutionID:   "flow-123",
 		AppID:         "app-123",
 		Verbose:       true,
-		FlowType:      common.FlowTypeAuthentication,
+		FlowType:      providers.FlowTypeAuthentication,
 		CurrentAction: currentAction,
 		UserInputs: map[string]string{
 			"input1": "value1",
@@ -357,7 +356,7 @@ func (s *ModelTestSuite) TestFromEngineContext_PreservesOtherFields() {
 				"attr1": "value1",
 			},
 		},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{
 			"node1": {NodeID: "node1"},
 		},
 		Graph: mockGraph,
@@ -389,20 +388,20 @@ func (s *ModelTestSuite) TestFromEngineContext_PreservesOtherFields() {
 }
 
 func (s *ModelTestSuite) TestFromEngineContext_WithAvailableAttributes() {
-	testAvailableAttributes := &authnprovidercm.AttributesResponse{
-		Attributes: map[string]*authnprovidercm.AttributeResponse{
+	testAvailableAttributes := &providers.AttributesResponse{
+		Attributes: map[string]*providers.AttributeResponse{
 			"email": {
-				AssuranceMetadataResponse: &authnprovidercm.AssuranceMetadataResponse{
+				AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
 					IsVerified: true,
 				},
 			},
 			"phoneNumber": {
-				AssuranceMetadataResponse: &authnprovidercm.AssuranceMetadataResponse{
+				AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
 					IsVerified: false,
 				},
 			},
 		},
-		Verifications: map[string]*authnprovidercm.VerificationResponse{},
+		Verifications: map[string]*providers.VerificationResponse{},
 	}
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
 	mockGraph.On("GetID").Return("test-graph-id")
@@ -412,7 +411,7 @@ func (s *ModelTestSuite) TestFromEngineContext_WithAvailableAttributes() {
 		ExecutionID: "test-flow-id",
 		AppID:       "test-app-id",
 		Verbose:     true,
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		UserInputs: map[string]string{
 			"username": "testuser",
 		},
@@ -427,7 +426,7 @@ func (s *ModelTestSuite) TestFromEngineContext_WithAvailableAttributes() {
 				"email": "test@example.com",
 			},
 		},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -458,7 +457,7 @@ func (s *ModelTestSuite) TestFromEngineContext_WithoutAvailableAttributes() {
 		ExecutionID: "test-flow-id",
 		AppID:       "test-app-id",
 		Verbose:     false,
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		UserInputs: map[string]string{
 			"username": "testuser",
 		},
@@ -469,7 +468,7 @@ func (s *ModelTestSuite) TestFromEngineContext_WithoutAvailableAttributes() {
 			AvailableAttributes: nil,
 			Attributes:          map[string]interface{}{},
 		},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -485,30 +484,30 @@ func (s *ModelTestSuite) TestFromEngineContext_WithoutAvailableAttributes() {
 }
 
 func (s *ModelTestSuite) TestToEngineContext_WithAvailableAttributes() {
-	testAvailableAttributes := &authnprovidercm.AttributesResponse{
-		Attributes: map[string]*authnprovidercm.AttributeResponse{
+	testAvailableAttributes := &providers.AttributesResponse{
+		Attributes: map[string]*providers.AttributeResponse{
 			"email": {
-				AssuranceMetadataResponse: &authnprovidercm.AssuranceMetadataResponse{
+				AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
 					IsVerified: true,
 				},
 			},
 			"address": {
-				AssuranceMetadataResponse: &authnprovidercm.AssuranceMetadataResponse{
+				AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
 					IsVerified: false,
 				},
 			},
 		},
-		Verifications: map[string]*authnprovidercm.VerificationResponse{},
+		Verifications: map[string]*providers.VerificationResponse{},
 	}
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
 	mockGraph.On("GetID").Return("test-graph-id")
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
 
 	ctx := EngineContext{
 		Context:     context.Background(),
 		ExecutionID: "test-flow-id",
 		AppID:       "test-app-id",
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
 			IsAuthenticated:     true,
 			UserID:              "user-456",
@@ -519,7 +518,7 @@ func (s *ModelTestSuite) TestToEngineContext_WithAvailableAttributes() {
 		},
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -545,7 +544,7 @@ func (s *ModelTestSuite) TestToEngineContext_WithAvailableAttributes() {
 
 func (s *ModelTestSuite) TestToEngineContext_WithoutAvailableAttributes() {
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
 
 	userInputs := `{"username":"testuser"}`
 	runtimeData := `{"key":"value"}`
@@ -583,49 +582,49 @@ func (s *ModelTestSuite) TestToEngineContext_WithoutAvailableAttributes() {
 func (s *ModelTestSuite) TestAvailableAttributesSerializationRoundTrip() {
 	testCases := []struct {
 		name       string
-		attributes *authnprovidercm.AttributesResponse
+		attributes *providers.AttributesResponse
 	}{
 		{
 			name: "Single attribute",
-			attributes: &authnprovidercm.AttributesResponse{
-				Attributes: map[string]*authnprovidercm.AttributeResponse{
+			attributes: &providers.AttributesResponse{
+				Attributes: map[string]*providers.AttributeResponse{
 					"email": {
-						AssuranceMetadataResponse: &authnprovidercm.AssuranceMetadataResponse{
+						AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
 							IsVerified: true,
 						},
 					},
 				},
-				Verifications: map[string]*authnprovidercm.VerificationResponse{},
+				Verifications: map[string]*providers.VerificationResponse{},
 			},
 		},
 		{
 			name: "Multiple attributes",
-			attributes: &authnprovidercm.AttributesResponse{
-				Attributes: map[string]*authnprovidercm.AttributeResponse{
+			attributes: &providers.AttributesResponse{
+				Attributes: map[string]*providers.AttributeResponse{
 					"email": {
-						AssuranceMetadataResponse: &authnprovidercm.AssuranceMetadataResponse{
+						AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
 							IsVerified: true,
 						},
 					},
 					"phone": {
-						AssuranceMetadataResponse: &authnprovidercm.AssuranceMetadataResponse{
+						AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
 							IsVerified: false,
 						},
 					},
 					"address": {
-						AssuranceMetadataResponse: &authnprovidercm.AssuranceMetadataResponse{
+						AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
 							IsVerified: true,
 						},
 					},
 				},
-				Verifications: map[string]*authnprovidercm.VerificationResponse{},
+				Verifications: map[string]*providers.VerificationResponse{},
 			},
 		},
 	}
 
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
 	mockGraph.On("GetID").Return("test-graph-id").Maybe()
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication).Maybe()
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication).Maybe()
 
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
@@ -633,7 +632,7 @@ func (s *ModelTestSuite) TestAvailableAttributesSerializationRoundTrip() {
 				Context:     context.Background(),
 				ExecutionID: "test-flow-id",
 				AppID:       "test-app-id",
-				FlowType:    common.FlowTypeAuthentication,
+				FlowType:    providers.FlowTypeAuthentication,
 				AuthenticatedUser: authncm.AuthenticatedUser{
 					IsAuthenticated:     true,
 					UserID:              "user-123",
@@ -642,7 +641,7 @@ func (s *ModelTestSuite) TestAvailableAttributesSerializationRoundTrip() {
 				},
 				UserInputs:       map[string]string{},
 				RuntimeData:      map[string]string{},
-				ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+				ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 				Graph:            mockGraph,
 			}
 
@@ -674,11 +673,11 @@ func (s *ModelTestSuite) TestFromEngineContext_WithCurrentSegmentID() {
 	ctx := EngineContext{
 		Context:          context.Background(),
 		ExecutionID:      "test-exec-id",
-		FlowType:         common.FlowTypeAuthentication,
+		FlowType:         providers.FlowTypeAuthentication,
 		CurrentSegmentID: "seg-1",
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -697,11 +696,11 @@ func (s *ModelTestSuite) TestFromEngineContext_EmptyCurrentSegmentID_OmitsField(
 	ctx := EngineContext{
 		Context:          context.Background(),
 		ExecutionID:      "test-exec-id",
-		FlowType:         common.FlowTypeAuthentication,
+		FlowType:         providers.FlowTypeAuthentication,
 		CurrentSegmentID: "",
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -714,7 +713,7 @@ func (s *ModelTestSuite) TestFromEngineContext_EmptyCurrentSegmentID_OmitsField(
 
 func (s *ModelTestSuite) TestToEngineContext_WithCurrentSegmentID() {
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
 
 	segID := "seg-1"
 	content := flowContextContent{
@@ -738,7 +737,7 @@ func (s *ModelTestSuite) TestToEngineContext_WithCurrentSegmentID() {
 
 func (s *ModelTestSuite) TestToEngineContext_MissingCurrentSegmentID_IsEmpty() {
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
 
 	content := flowContextContent{
 		GraphID:          "test-graph-id",
@@ -762,16 +761,16 @@ func (s *ModelTestSuite) TestToEngineContext_MissingCurrentSegmentID_IsEmpty() {
 func (s *ModelTestSuite) TestCurrentSegmentID_RoundTrip() {
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
 	mockGraph.On("GetID").Return("test-graph-id")
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
 
 	ctx := EngineContext{
 		Context:          context.Background(),
 		ExecutionID:      "test-exec-id",
-		FlowType:         common.FlowTypeAuthentication,
+		FlowType:         providers.FlowTypeAuthentication,
 		CurrentSegmentID: "seg-2",
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -850,10 +849,10 @@ func (s *ModelTestSuite) TestFromEngineContext_WithInterceptorSharedData() {
 	ctx := EngineContext{
 		Context:               context.Background(),
 		ExecutionID:           "test-exec-id",
-		FlowType:              common.FlowTypeAuthentication,
+		FlowType:              providers.FlowTypeAuthentication,
 		UserInputs:            map[string]string{},
 		RuntimeData:           map[string]string{},
-		ExecutionHistory:      map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory:      map[string]*providers.NodeExecutionRecord{},
 		Graph:                 mockGraph,
 		InterceptorSharedData: map[string]string{"challenge": "abc123"},
 	}
@@ -875,10 +874,10 @@ func (s *ModelTestSuite) TestFromEngineContext_NilInterceptorSharedData() {
 	ctx := EngineContext{
 		Context:               context.Background(),
 		ExecutionID:           "test-exec-id",
-		FlowType:              common.FlowTypeAuthentication,
+		FlowType:              providers.FlowTypeAuthentication,
 		UserInputs:            map[string]string{},
 		RuntimeData:           map[string]string{},
-		ExecutionHistory:      map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory:      map[string]*providers.NodeExecutionRecord{},
 		Graph:                 mockGraph,
 		InterceptorSharedData: nil,
 	}
@@ -894,7 +893,7 @@ func (s *ModelTestSuite) TestFromEngineContext_NilInterceptorSharedData() {
 
 func (s *ModelTestSuite) TestToEngineContext_WithInterceptorSharedData() {
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
 
 	sharedDataJSON := `{"token":"xyz"}`
 
@@ -920,7 +919,7 @@ func (s *ModelTestSuite) TestToEngineContext_WithInterceptorSharedData() {
 
 func (s *ModelTestSuite) TestToEngineContext_NilInterceptorSharedData() {
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
 
 	content := flowContextContent{
 		GraphID:               "test-graph-id",
@@ -946,15 +945,15 @@ func (s *ModelTestSuite) TestToEngineContext_NilInterceptorSharedData() {
 func (s *ModelTestSuite) TestInterceptorSharedData_RoundTrip() {
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
 	mockGraph.On("GetID").Return("test-graph-id")
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
 
 	ctx := EngineContext{
 		Context:               context.Background(),
 		ExecutionID:           "test-exec-id",
-		FlowType:              common.FlowTypeAuthentication,
+		FlowType:              providers.FlowTypeAuthentication,
 		UserInputs:            map[string]string{},
 		RuntimeData:           map[string]string{},
-		ExecutionHistory:      map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory:      map[string]*providers.NodeExecutionRecord{},
 		Graph:                 mockGraph,
 		InterceptorSharedData: map[string]string{"reqCount": "3"},
 	}

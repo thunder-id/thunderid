@@ -22,6 +22,8 @@ import (
 	"context"
 	"fmt"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"bytes"
 
 	"gopkg.in/yaml.v3"
@@ -29,7 +31,6 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -60,7 +61,7 @@ func (e *groupExporter) GetParameterizerType() string {
 
 // GetAllResourceIDs retrieves all non-declarative group IDs.
 // In composite mode this excludes YAML-backed groups so exports only capture mutable DB groups.
-func (e *groupExporter) GetAllResourceIDs(ctx context.Context) ([]string, *serviceerror.ServiceError) {
+func (e *groupExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
 	offset := 0
 	limit := serverconst.MaxPageSize
 	var ids []string
@@ -87,7 +88,7 @@ func (e *groupExporter) GetAllResourceIDs(ctx context.Context) ([]string, *servi
 
 // GetResourceByID retrieves a group by its ID.
 func (e *groupExporter) GetResourceByID(
-	ctx context.Context, id string) (interface{}, string, *serviceerror.ServiceError) {
+	ctx context.Context, id string) (interface{}, string, *tidcommon.ServiceError) {
 	grp, err := e.service.GetGroup(ctx, id, false)
 	if err != nil {
 		return nil, "", err
@@ -130,7 +131,7 @@ func (e *groupExporter) ValidateResource(ctx context.Context,
 func (e *groupExporter) getAllGroupMembers(
 	ctx context.Context,
 	groupID string,
-) ([]Member, *serviceerror.ServiceError) {
+) ([]Member, *tidcommon.ServiceError) {
 	offset := 0
 	limit := serverconst.MaxPageSize
 	var members []Member

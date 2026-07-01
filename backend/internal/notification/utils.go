@@ -26,16 +26,16 @@ import (
 	"slices"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 )
 
 var matchString = regexp.MatchString
 
 // validateNotificationSender validates the notification sender data.
-func validateNotificationSender(sender common.NotificationSenderDTO) *serviceerror.ServiceError {
+func validateNotificationSender(sender common.NotificationSenderDTO) *tidcommon.ServiceError {
 	if sender.Name == "" {
 		return &ErrorInvalidSenderName
 	}
@@ -49,7 +49,7 @@ func validateNotificationSender(sender common.NotificationSenderDTO) *serviceerr
 }
 
 // validateMessageNotificationSender validates a message notification sender.
-func validateMessageNotificationSender(sender common.NotificationSenderDTO) *serviceerror.ServiceError {
+func validateMessageNotificationSender(sender common.NotificationSenderDTO) *tidcommon.ServiceError {
 	if sender.Provider == "" {
 		return &ErrorInvalidProvider
 	}
@@ -61,7 +61,7 @@ func validateMessageNotificationSender(sender common.NotificationSenderDTO) *ser
 
 	if err := validateMessageNotificationSenderProperties(sender); err != nil {
 		svcErr := ErrorInvalidRequestFormat
-		svcErr.ErrorDescription = core.I18nMessage{
+		svcErr.ErrorDescription = tidcommon.I18nMessage{
 			Key:          "error.notificationservice.sender_property_validation_failed_description",
 			DefaultValue: err.Error(),
 		}

@@ -7,7 +7,8 @@ package flowexec
 import (
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	common0 "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewInterceptorRunnerInterfaceMock creates a new instance of InterceptorRunnerInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -38,7 +39,7 @@ func (_m *InterceptorRunnerInterfaceMock) EXPECT() *InterceptorRunnerInterfaceMo
 }
 
 // runInterceptors provides a mock function for the type InterceptorRunnerInterfaceMock
-func (_mock *InterceptorRunnerInterfaceMock) runInterceptors(mode common.InterceptorMode, execCtx *InterceptorRunnerContext) (*common.InterceptorResponse, *serviceerror.ServiceError) {
+func (_mock *InterceptorRunnerInterfaceMock) runInterceptors(mode providers.InterceptorMode, execCtx *InterceptorRunnerContext) (*common.InterceptorResponse, *common0.ServiceError) {
 	ret := _mock.Called(mode, execCtx)
 
 	if len(ret) == 0 {
@@ -46,22 +47,22 @@ func (_mock *InterceptorRunnerInterfaceMock) runInterceptors(mode common.Interce
 	}
 
 	var r0 *common.InterceptorResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(common.InterceptorMode, *InterceptorRunnerContext) (*common.InterceptorResponse, *serviceerror.ServiceError)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(providers.InterceptorMode, *InterceptorRunnerContext) (*common.InterceptorResponse, *common0.ServiceError)); ok {
 		return returnFunc(mode, execCtx)
 	}
-	if returnFunc, ok := ret.Get(0).(func(common.InterceptorMode, *InterceptorRunnerContext) *common.InterceptorResponse); ok {
+	if returnFunc, ok := ret.Get(0).(func(providers.InterceptorMode, *InterceptorRunnerContext) *common.InterceptorResponse); ok {
 		r0 = returnFunc(mode, execCtx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*common.InterceptorResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(common.InterceptorMode, *InterceptorRunnerContext) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(providers.InterceptorMode, *InterceptorRunnerContext) *common0.ServiceError); ok {
 		r1 = returnFunc(mode, execCtx)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common0.ServiceError)
 		}
 	}
 	return r0, r1
@@ -73,17 +74,17 @@ type InterceptorRunnerInterfaceMock_runInterceptors_Call struct {
 }
 
 // runInterceptors is a helper method to define mock.On call
-//   - mode common.InterceptorMode
+//   - mode providers.InterceptorMode
 //   - execCtx *InterceptorRunnerContext
 func (_e *InterceptorRunnerInterfaceMock_Expecter) runInterceptors(mode interface{}, execCtx interface{}) *InterceptorRunnerInterfaceMock_runInterceptors_Call {
 	return &InterceptorRunnerInterfaceMock_runInterceptors_Call{Call: _e.mock.On("runInterceptors", mode, execCtx)}
 }
 
-func (_c *InterceptorRunnerInterfaceMock_runInterceptors_Call) Run(run func(mode common.InterceptorMode, execCtx *InterceptorRunnerContext)) *InterceptorRunnerInterfaceMock_runInterceptors_Call {
+func (_c *InterceptorRunnerInterfaceMock_runInterceptors_Call) Run(run func(mode providers.InterceptorMode, execCtx *InterceptorRunnerContext)) *InterceptorRunnerInterfaceMock_runInterceptors_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 common.InterceptorMode
+		var arg0 providers.InterceptorMode
 		if args[0] != nil {
-			arg0 = args[0].(common.InterceptorMode)
+			arg0 = args[0].(providers.InterceptorMode)
 		}
 		var arg1 *InterceptorRunnerContext
 		if args[1] != nil {
@@ -97,12 +98,12 @@ func (_c *InterceptorRunnerInterfaceMock_runInterceptors_Call) Run(run func(mode
 	return _c
 }
 
-func (_c *InterceptorRunnerInterfaceMock_runInterceptors_Call) Return(interceptorResponse *common.InterceptorResponse, serviceError *serviceerror.ServiceError) *InterceptorRunnerInterfaceMock_runInterceptors_Call {
+func (_c *InterceptorRunnerInterfaceMock_runInterceptors_Call) Return(interceptorResponse *common.InterceptorResponse, serviceError *common0.ServiceError) *InterceptorRunnerInterfaceMock_runInterceptors_Call {
 	_c.Call.Return(interceptorResponse, serviceError)
 	return _c
 }
 
-func (_c *InterceptorRunnerInterfaceMock_runInterceptors_Call) RunAndReturn(run func(mode common.InterceptorMode, execCtx *InterceptorRunnerContext) (*common.InterceptorResponse, *serviceerror.ServiceError)) *InterceptorRunnerInterfaceMock_runInterceptors_Call {
+func (_c *InterceptorRunnerInterfaceMock_runInterceptors_Call) RunAndReturn(run func(mode providers.InterceptorMode, execCtx *InterceptorRunnerContext) (*common.InterceptorResponse, *common0.ServiceError)) *InterceptorRunnerInterfaceMock_runInterceptors_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -16,6 +16,7 @@
  * under the License.
  */
 
+// Package filter parses SCIM-style filter expressions.
 package filter
 
 import (
@@ -24,6 +25,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // filterPattern matches a complete single expression (with end anchor) for validation.
@@ -36,9 +39,9 @@ var singleExprPrefix = regexp.MustCompile(`^(\w+(?:\.\w+)*)\s+(eq|gt|lt)\s+(?:"(
 // connectorPrefix matches a leading AND or OR connector (case-insensitive) surrounded by whitespace.
 var connectorPrefix = regexp.MustCompile(`(?i)^\s+(AND|OR)\s+`)
 
-// ParseFilterParam reads the "filter" query parameter and parses it into a FilterGroup.
+// ParseFilterParam reads the "filter" query parameter and parses it into a tidcommon.FilterGroup.
 // Returns nil when no filter parameter is present.
-func ParseFilterParam(query url.Values) (*FilterGroup, error) {
+func ParseFilterParam(query url.Values) (*tidcommon.FilterGroup, error) {
 	if !query.Has("filter") {
 		return nil, nil
 	}
@@ -58,10 +61,10 @@ func ParseFilterParam(query url.Values) (*FilterGroup, error) {
 //	name eq "Engineering"
 //	name eq "Engineering" AND createdAt gt "2024-01-01T00:00:00Z"
 //	name eq "A" OR name eq "B"
-func ParseFilterGroup(filterStr string) (*FilterGroup, error) {
+func ParseFilterGroup(filterStr string) (*tidcommon.FilterGroup, error) {
 	remaining := filterStr
-	connector := LogicalOperator("")
-	var clauses []FilterClause
+	connector := tidcommon.LogicalOperator("")
+	var clauses []tidcommon.FilterClause
 
 	for remaining != "" {
 		loc := singleExprPrefix.FindStringIndex(remaining)
@@ -73,7 +76,7 @@ func ParseFilterGroup(filterStr string) (*FilterGroup, error) {
 		if err != nil {
 			return nil, err
 		}
-		clauses = append(clauses, FilterClause{Connector: connector, Expr: *expr})
+		clauses = append(clauses, tidcommon.FilterClause{Connector: connector, Expr: *expr})
 		remaining = remaining[loc[1]:]
 
 		if remaining == "" {
@@ -84,7 +87,7 @@ func ParseFilterGroup(filterStr string) (*FilterGroup, error) {
 		if m == nil {
 			return nil, fmt.Errorf("expected AND or OR after expression, got: %q", remaining)
 		}
-		connector = LogicalOperator(strings.ToUpper(m[1]))
+		connector = tidcommon.LogicalOperator(strings.ToUpper(m[1]))
 		remaining = remaining[len(m[0]):]
 	}
 
@@ -92,14 +95,14 @@ func ParseFilterGroup(filterStr string) (*FilterGroup, error) {
 		return nil, fmt.Errorf("no filter expressions found")
 	}
 
-	return &FilterGroup{Clauses: clauses}, nil
+	return &tidcommon.FilterGroup{Clauses: clauses}, nil
 }
 
 // ParseFilterExpression parses a single filter expression string of the form:
 //
 //	attribute (eq|gt|lt) "value"
 //	attribute (eq|gt|lt) value
-func ParseFilterExpression(filterStr string) (*FilterExpression, error) {
+func ParseFilterExpression(filterStr string) (*tidcommon.FilterExpression, error) {
 	matches := filterPattern.FindStringSubmatch(filterStr)
 	if len(matches) == 0 {
 		return nil, fmt.Errorf("invalid filter format: %q", filterStr)
@@ -107,15 +110,15 @@ func ParseFilterExpression(filterStr string) (*FilterExpression, error) {
 	return parseExpressionFromMatches(matches)
 }
 
-// parseExpressionFromMatches extracts a FilterExpression from a regex match slice.
+// parseExpressionFromMatches extracts a tidcommon.FilterExpression from a regex match slice.
 // Slot layout: [full, attribute, operator, quotedValue, unquotedValue].
-func parseExpressionFromMatches(matches []string) (*FilterExpression, error) {
+func parseExpressionFromMatches(matches []string) (*tidcommon.FilterExpression, error) {
 	if len(matches) < 5 {
 		return nil, fmt.Errorf("invalid filter format")
 	}
 
 	attribute := matches[1]
-	op := Operator(matches[2])
+	op := tidcommon.Operator(matches[2])
 
 	var value interface{}
 	if matches[3] != "" {
@@ -133,7 +136,7 @@ func parseExpressionFromMatches(matches []string) (*FilterExpression, error) {
 		}
 	}
 
-	return &FilterExpression{
+	return &tidcommon.FilterExpression{
 		Attribute: attribute,
 		Operator:  op,
 		Value:     value,

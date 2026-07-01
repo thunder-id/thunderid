@@ -19,7 +19,7 @@
 package introspect
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"context"
 	"crypto/rand"
@@ -31,7 +31,6 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 
 	"github.com/stretchr/testify/assert"
@@ -82,13 +81,13 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_EmptyToken() {
 func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_PublicKeyNotAvailable() {
 	s.jwtServiceMock.On("GetPublicKey").Return(nil).Maybe()
 	s.jwtServiceMock.On("VerifyJWT", mock.Anything, mock.Anything, "", "").Return(
-		&serviceerror.ServiceError{
-			Type: serviceerror.ServerErrorType,
+		&tidcommon.ServiceError{
+			Type: tidcommon.ServerErrorType,
 			Code: "PUBLIC_KEY_NOT_AVAILABLE",
-			Error: core.I18nMessage{
+			Error: tidcommon.I18nMessage{
 				Key: "error.test.public_key_not_available", DefaultValue: "Public key not available",
 			},
-			ErrorDescription: core.I18nMessage{
+			ErrorDescription: tidcommon.I18nMessage{
 				Key:          "error.test.the_public_key_is_not_available_for_verification",
 				DefaultValue: "The public key is not available for verification",
 			},
@@ -127,11 +126,11 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_InvalidSignatur
 	invalidToken := signingInput + "." + signatureEncoded
 
 	s.jwtServiceMock.On("VerifyJWT", mock.Anything, invalidToken, "", "").Return(
-		&serviceerror.ServiceError{
-			Type:  serviceerror.ServerErrorType,
+		&tidcommon.ServiceError{
+			Type:  tidcommon.ServerErrorType,
 			Code:  "INVALID_SIGNATURE",
-			Error: core.I18nMessage{Key: "error.test.invalid_signature", DefaultValue: "Invalid signature"},
-			ErrorDescription: core.I18nMessage{
+			Error: tidcommon.I18nMessage{Key: "error.test.invalid_signature", DefaultValue: "Invalid signature"},
+			ErrorDescription: tidcommon.I18nMessage{
 				Key: "error.test.the_jwt_signature_is_invalid", DefaultValue: "The JWT signature is invalid",
 			},
 		})
@@ -268,63 +267,63 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken() {
 			switch tc.name {
 			case "InvalidTokenFormat":
 				s.jwtServiceMock.On("VerifyJWT", mock.Anything, token, "", "").Return(
-					&serviceerror.ServiceError{
-						Type: serviceerror.ServerErrorType,
+					&tidcommon.ServiceError{
+						Type: tidcommon.ServerErrorType,
 						Code: "INVALID_TOKEN_FORMAT",
-						Error: core.I18nMessage{
+						Error: tidcommon.I18nMessage{
 							Key: "error.test.invalid_token_format", DefaultValue: "Invalid token format",
 						},
-						ErrorDescription: core.I18nMessage{
+						ErrorDescription: tidcommon.I18nMessage{
 							Key: "error.test.the_token_format_is_invalid", DefaultValue: "The token format is invalid",
 						},
 					})
 			case "ExpiredToken":
 				s.jwtServiceMock.On("VerifyJWT", mock.Anything, token, "", "").Return(
-					&serviceerror.ServiceError{
-						Type: serviceerror.ClientErrorType,
+					&tidcommon.ServiceError{
+						Type: tidcommon.ClientErrorType,
 						Code: "TOKEN_EXPIRED",
-						Error: core.I18nMessage{
+						Error: tidcommon.I18nMessage{
 							Key: "error.test.token_has_expired", DefaultValue: "Token has expired",
 						},
-						ErrorDescription: core.I18nMessage{
+						ErrorDescription: tidcommon.I18nMessage{
 							Key: "error.test.the_token_has_expired", DefaultValue: "The token has expired",
 						},
 					})
 			case "FutureToken":
 				s.jwtServiceMock.On("VerifyJWT", mock.Anything, token, "", "").Return(
-					&serviceerror.ServiceError{
-						Type: serviceerror.ClientErrorType,
+					&tidcommon.ServiceError{
+						Type: tidcommon.ClientErrorType,
 						Code: "TOKEN_NOT_VALID_YET",
-						Error: core.I18nMessage{
+						Error: tidcommon.I18nMessage{
 							Key: "error.test.token_not_valid_yet", DefaultValue: "Token not valid yet",
 						},
-						ErrorDescription: core.I18nMessage{
+						ErrorDescription: tidcommon.I18nMessage{
 							Key:          "error.test.the_token_is_not_valid_yet_nbf",
 							DefaultValue: "The token is not valid yet (nbf)",
 						},
 					})
 			case "TokenWithMissingExpClaim":
 				s.jwtServiceMock.On("VerifyJWT", mock.Anything, token, "", "").Return(
-					&serviceerror.ServiceError{
-						Type: serviceerror.ClientErrorType,
+					&tidcommon.ServiceError{
+						Type: tidcommon.ClientErrorType,
 						Code: "MISSING_EXP_CLAIM",
-						Error: core.I18nMessage{
+						Error: tidcommon.I18nMessage{
 							Key: "error.test.missing_exp_claim", DefaultValue: "Missing exp claim",
 						},
-						ErrorDescription: core.I18nMessage{
+						ErrorDescription: tidcommon.I18nMessage{
 							Key:          "error.test.missing_or_invalid_exp_claim",
 							DefaultValue: "Missing or invalid 'exp' claim",
 						},
 					})
 			case "TokenWithMissingNbfClaim":
 				s.jwtServiceMock.On("VerifyJWT", mock.Anything, token, "", "").Return(
-					&serviceerror.ServiceError{
-						Type: serviceerror.ClientErrorType,
+					&tidcommon.ServiceError{
+						Type: tidcommon.ClientErrorType,
 						Code: "MISSING_NBF_CLAIM",
-						Error: core.I18nMessage{
+						Error: tidcommon.I18nMessage{
 							Key: "error.test.missing_nbf_claim", DefaultValue: "Missing nbf claim",
 						},
-						ErrorDescription: core.I18nMessage{
+						ErrorDescription: tidcommon.I18nMessage{
 							Key:          "error.test.missing_or_invalid_nbf_claim",
 							DefaultValue: "Missing or invalid 'nbf' claim",
 						},

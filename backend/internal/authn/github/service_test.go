@@ -19,7 +19,7 @@
 package github
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"bytes"
 	"context"
@@ -36,7 +36,6 @@ import (
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/oauth"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oauthmock"
 	"github.com/thunder-id/thunderid/tests/mocks/httpmock"
@@ -91,9 +90,11 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestBuildAuthorizeURLSuccess() {
 }
 
 func (suite *GithubOAuthAuthnServiceTestSuite) TestBuildAuthorizeURLError() {
-	svcErr := &serviceerror.ServiceError{
-		Code:             "ERROR",
-		ErrorDescription: core.I18nMessage{Key: "error.test.failed_to_build_url", DefaultValue: "Failed to build URL"},
+	svcErr := &tidcommon.ServiceError{
+		Code: "ERROR",
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.test.failed_to_build_url", DefaultValue: "Failed to build URL",
+		},
 	}
 	suite.mockOAuthService.On("BuildAuthorizeURL", mock.Anything, testGithubIDPID).Return("", svcErr)
 
@@ -120,9 +121,9 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestExchangeCodeForTokenSuccess()
 
 func (suite *GithubOAuthAuthnServiceTestSuite) TestExchangeCodeForTokenError() {
 	code := testAuthCode
-	svcErr := &serviceerror.ServiceError{
+	svcErr := &tidcommon.ServiceError{
 		Code: "TOKEN_ERROR",
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.test.failed_to_exchange_token", DefaultValue: "Failed to exchange token",
 		},
 	}
@@ -208,7 +209,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoWithFailure() {
 			name: "ConfigRetrievalFailure",
 			setupMock: func() {
 				suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).
-					Return(nil, &serviceerror.ServiceError{Code: "CONFIG-001"}).Once()
+					Return(nil, &tidcommon.ServiceError{Code: "CONFIG-001"}).Once()
 			},
 			errCode: "CONFIG-001",
 		},
@@ -224,7 +225,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoWithFailure() {
 				suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).
 					Return(config, nil).Once()
 				suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, config, testAccessToken).
-					Return(nil, &serviceerror.ServiceError{Code: "FETCH-001"}).Once()
+					Return(nil, &tidcommon.ServiceError{Code: "FETCH-001"}).Once()
 			},
 			errCode: "FETCH-001",
 		},
@@ -270,7 +271,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoWithEmailFetchFa
 				suite.mockHTTPClient.On("Do", mock.Anything).
 					Return(nil, errors.New("http error")).Once()
 			},
-			errCode: serviceerror.InternalServerError.Code,
+			errCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name: "EmailFetchNon200Status",
@@ -298,7 +299,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoWithEmailFetchFa
 					Return(userInfo, nil).Once()
 				suite.mockHTTPClient.On("Do", mock.Anything).Return(resp, nil).Once()
 			},
-			errCode: serviceerror.InternalServerError.Code,
+			errCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name: "EmailFetchInvalidJSON",
@@ -326,7 +327,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoWithEmailFetchFa
 					Return(userInfo, nil).Once()
 				suite.mockHTTPClient.On("Do", mock.Anything).Return(resp, nil).Once()
 			},
-			errCode: serviceerror.InternalServerError.Code,
+			errCode: tidcommon.InternalServerError.Code,
 		},
 	}
 
@@ -472,7 +473,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchPrimaryEmailWithEmptyEnd
 
 	result, err := suite.service.FetchUserInfo(context.Background(), testGithubIDPID, accessToken)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 	suite.Nil(result)
 }
 
@@ -551,9 +552,9 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestAuthenticateSuccess() {
 
 func (suite *GithubOAuthAuthnServiceTestSuite) TestAuthenticateExchangeCodeError() {
 	code := testAuthCode
-	svcErr := &serviceerror.ServiceError{
+	svcErr := &tidcommon.ServiceError{
 		Code: "TOKEN_ERROR",
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.test.failed_to_exchange_token", DefaultValue: "Failed to exchange token",
 		},
 	}
@@ -571,7 +572,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestAuthenticateFetchUserInfoErro
 		AccessToken: testAccessToken,
 		TokenType:   "Bearer",
 	}
-	svcErr := &serviceerror.ServiceError{Code: "FETCH-001"}
+	svcErr := &tidcommon.ServiceError{Code: "FETCH-001"}
 
 	suite.mockOAuthService.On("ExchangeCodeForToken", mock.Anything, testGithubIDPID, code, true).
 		Return(tokenResp, nil)

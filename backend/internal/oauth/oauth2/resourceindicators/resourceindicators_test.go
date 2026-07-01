@@ -22,13 +22,14 @@ import (
 	"context"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
-	"github.com/thunder-id/thunderid/internal/resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
 
@@ -85,7 +86,7 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveResourceServers_Empty() {
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestResolveResourceServers_Found() {
-	rs := resource.ResourceServer{ID: "rs01", Identifier: "https://api.example.com"}
+	rs := providers.ResourceServer{ID: "rs01", Identifier: "https://api.example.com"}
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "https://api.example.com").
 		Return(&rs, nil)
 
@@ -93,11 +94,11 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveResourceServers_Found() {
 		[]string{"https://api.example.com"})
 
 	assert.Nil(suite.T(), err)
-	assert.Equal(suite.T(), []*resource.ResourceServer{&rs}, resolved)
+	assert.Equal(suite.T(), []*providers.ResourceServer{&rs}, resolved)
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestResolveResourceServers_NotFound_ReturnsInvalidTarget() {
-	svcErr := &serviceerror.ServiceError{Type: serviceerror.ClientErrorType, Code: "RSE-4041"}
+	svcErr := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RSE-4041"}
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "https://unknown.example.com").
 		Return(nil, svcErr)
 
@@ -110,7 +111,7 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveResourceServers_NotFound_Re
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestResolveResourceServers_StoreFailure_ReturnsServerError() {
-	svcErr := &serviceerror.ServiceError{Type: serviceerror.ServerErrorType, Code: "SSE-5000"}
+	svcErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "SSE-5000"}
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "https://api.example.com").
 		Return(nil, svcErr)
 
@@ -127,9 +128,9 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveResourceServers_StoreFailur
 
 func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_RSContributes_NoClientID() {
 	// When at least one RS contributes, clientID must NOT appear in aud.
-	rs := &resource.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
+	rs := &providers.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
 	auds, err := ComposeAudiences(context.Background(), suite.mockResourceService,
-		"client123", []*resource.ResourceServer{rs}, []string{"read"})
+		"client123", []*providers.ResourceServer{rs}, []string{"read"})
 
 	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), []string{"https://rs01.example.com"}, auds)
@@ -138,7 +139,7 @@ func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_RSContributes_NoC
 func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_NoRS_FallbackToClientID() {
 	// When no RS contributes (explicit empty resolvedRSes), aud falls back to clientID.
 	auds, err := ComposeAudiences(context.Background(), suite.mockResourceService,
-		"client123", []*resource.ResourceServer{}, []string{})
+		"client123", []*providers.ResourceServer{}, []string{})
 
 	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), []string{"client123"}, auds)
@@ -147,7 +148,7 @@ func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_NoRS_FallbackToCl
 func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_NilResolvedRSes_NoScopes_FallbackToClientID() {
 	// resolvedRSes==nil, no scopes → implicit discovery skipped → fallback to clientID.
 	suite.mockResourceService.On("FindResourceServersByPermissions", mock.Anything, mock.Anything).
-		Return([]resource.ResourceServer{}, nil).Maybe()
+		Return([]providers.ResourceServer{}, nil).Maybe()
 
 	auds, err := ComposeAudiences(context.Background(), suite.mockResourceService,
 		"client123", nil, []string{})
@@ -159,7 +160,7 @@ func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_NilResolvedRSes_N
 func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_ImplicitDiscovery_RSFound() {
 	// resolvedRSes==nil with scopes → implicit discovery returns RS → aud contains RS only, no clientID.
 	suite.mockResourceService.On("FindResourceServersByPermissions", mock.Anything, []string{"read"}).
-		Return([]resource.ResourceServer{
+		Return([]providers.ResourceServer{
 			{ID: "rs01", Identifier: "https://rs01.example.com"},
 		}, nil)
 
@@ -173,7 +174,7 @@ func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_ImplicitDiscovery
 func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_ImplicitDiscovery_NoRSFound_FallbackToClientID() {
 	// resolvedRSes==nil with scopes → implicit discovery returns nothing → fallback to clientID.
 	suite.mockResourceService.On("FindResourceServersByPermissions", mock.Anything, []string{"openid"}).
-		Return([]resource.ResourceServer{}, nil)
+		Return([]providers.ResourceServer{}, nil)
 
 	auds, err := ComposeAudiences(context.Background(), suite.mockResourceService,
 		"client123", nil, []string{"openid"})
@@ -185,7 +186,7 @@ func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_ImplicitDiscovery
 func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_EmptyClientID_NoRS_ReturnsEmptySlice() {
 	// No RS and empty clientID → return empty slice (no fallback possible).
 	auds, err := ComposeAudiences(context.Background(), suite.mockResourceService,
-		"", []*resource.ResourceServer{}, []string{})
+		"", []*providers.ResourceServer{}, []string{})
 
 	assert.Nil(suite.T(), err)
 	assert.Empty(suite.T(), auds)
@@ -193,10 +194,10 @@ func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_EmptyClientID_NoR
 
 func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_MultipleRS_Deduped() {
 	// Multiple RSes with duplicate identifiers are deduped; clientID is absent.
-	rs1 := &resource.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
-	rs2 := &resource.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
+	rs1 := &providers.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
+	rs2 := &providers.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
 	auds, err := ComposeAudiences(context.Background(), suite.mockResourceService,
-		"client123", []*resource.ResourceServer{rs1, rs2}, []string{"read"})
+		"client123", []*providers.ResourceServer{rs1, rs2}, []string{"read"})
 
 	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), []string{"https://rs01.example.com"}, auds)
@@ -204,7 +205,7 @@ func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_MultipleRS_Dedupe
 
 func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_ImplicitDiscovery_ServiceError() {
 	// FindResourceServersByPermissions failure returns server error.
-	svcErr := &serviceerror.ServiceError{Code: "internal_error"}
+	svcErr := &tidcommon.ServiceError{Code: "internal_error"}
 	suite.mockResourceService.On("FindResourceServersByPermissions", mock.Anything, []string{"read"}).
 		Return(nil, svcErr)
 
@@ -219,58 +220,58 @@ func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_ImplicitDiscovery
 // ContributingAudiences tests
 
 func (suite *ResourceIndicatorsTestSuite) TestContributingAudiences_Empty() {
-	auds := ContributingAudiences([]*resource.ResourceServer{})
+	auds := ContributingAudiences([]*providers.ResourceServer{})
 	assert.Nil(suite.T(), auds)
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestContributingAudiences_SkipsEmptyIdentifier() {
-	rs := &resource.ResourceServer{ID: "rs01", Identifier: ""}
-	auds := ContributingAudiences([]*resource.ResourceServer{rs})
+	rs := &providers.ResourceServer{ID: "rs01", Identifier: ""}
+	auds := ContributingAudiences([]*providers.ResourceServer{rs})
 	assert.Empty(suite.T(), auds)
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestContributingAudiences_PreservesOrder() {
-	rs1 := &resource.ResourceServer{ID: "rs01", Identifier: "https://b.example.com"}
-	rs2 := &resource.ResourceServer{ID: "rs02", Identifier: "https://a.example.com"}
-	auds := ContributingAudiences([]*resource.ResourceServer{rs1, rs2})
+	rs1 := &providers.ResourceServer{ID: "rs01", Identifier: "https://b.example.com"}
+	rs2 := &providers.ResourceServer{ID: "rs02", Identifier: "https://a.example.com"}
+	auds := ContributingAudiences([]*providers.ResourceServer{rs1, rs2})
 	assert.Equal(suite.T(), []string{"https://b.example.com", "https://a.example.com"}, auds)
 }
 
 // FilterByIdentifiers tests
 
 func (suite *ResourceIndicatorsTestSuite) TestFilterByIdentifiers_Empty() {
-	result := FilterByIdentifiers([]*resource.ResourceServer{}, []string{"https://api.example.com"})
+	result := FilterByIdentifiers([]*providers.ResourceServer{}, []string{"https://api.example.com"})
 	assert.Empty(suite.T(), result)
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestFilterByIdentifiers_AllMatch() {
-	rs1 := &resource.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
-	rs2 := &resource.ResourceServer{ID: "rs02", Identifier: "https://rs02.example.com"}
-	result := FilterByIdentifiers([]*resource.ResourceServer{rs1, rs2},
+	rs1 := &providers.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
+	rs2 := &providers.ResourceServer{ID: "rs02", Identifier: "https://rs02.example.com"}
+	result := FilterByIdentifiers([]*providers.ResourceServer{rs1, rs2},
 		[]string{"https://rs01.example.com", "https://rs02.example.com"})
-	assert.Equal(suite.T(), []*resource.ResourceServer{rs1, rs2}, result)
+	assert.Equal(suite.T(), []*providers.ResourceServer{rs1, rs2}, result)
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestFilterByIdentifiers_Subset() {
-	rs1 := &resource.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
-	rs2 := &resource.ResourceServer{ID: "rs02", Identifier: "https://rs02.example.com"}
-	result := FilterByIdentifiers([]*resource.ResourceServer{rs1, rs2},
+	rs1 := &providers.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
+	rs2 := &providers.ResourceServer{ID: "rs02", Identifier: "https://rs02.example.com"}
+	result := FilterByIdentifiers([]*providers.ResourceServer{rs1, rs2},
 		[]string{"https://rs01.example.com"})
-	assert.Equal(suite.T(), []*resource.ResourceServer{rs1}, result)
+	assert.Equal(suite.T(), []*providers.ResourceServer{rs1}, result)
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestFilterByIdentifiers_NoMatch() {
-	rs1 := &resource.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
-	result := FilterByIdentifiers([]*resource.ResourceServer{rs1}, []string{"https://other.example.com"})
+	rs1 := &providers.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
+	result := FilterByIdentifiers([]*providers.ResourceServer{rs1}, []string{"https://other.example.com"})
 	assert.Empty(suite.T(), result)
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestFilterByIdentifiers_PreservesOrder() {
-	rs1 := &resource.ResourceServer{ID: "rs01", Identifier: "https://b.example.com"}
-	rs2 := &resource.ResourceServer{ID: "rs02", Identifier: "https://a.example.com"}
-	result := FilterByIdentifiers([]*resource.ResourceServer{rs1, rs2},
+	rs1 := &providers.ResourceServer{ID: "rs01", Identifier: "https://b.example.com"}
+	rs2 := &providers.ResourceServer{ID: "rs02", Identifier: "https://a.example.com"}
+	result := FilterByIdentifiers([]*providers.ResourceServer{rs1, rs2},
 		[]string{"https://b.example.com", "https://a.example.com"})
-	assert.Equal(suite.T(), []*resource.ResourceServer{rs1, rs2}, result)
+	assert.Equal(suite.T(), []*providers.ResourceServer{rs1, rs2}, result)
 }
 
 // UnionScopes tests

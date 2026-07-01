@@ -63,6 +63,9 @@ export * from './models/theme';
 export {default as GoogleFontLoader} from './components/GoogleFontLoader';
 export type {GoogleFontLoaderProps} from './components/GoogleFontLoader';
 
+export {default as QrCode} from './components/QrCode';
+export type {QrCodeProps} from './components/QrCode';
+
 export {default as StylesheetInjector} from './components/StylesheetInjector';
 export type {StylesheetInjectorProps} from './components/StylesheetInjector';
 

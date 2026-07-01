@@ -23,12 +23,14 @@ import (
 	"errors"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/cachemock"
 )
@@ -36,11 +38,11 @@ import (
 type CacheBackedOUStoreTestSuite struct {
 	suite.Suite
 	mockStore             *organizationUnitStoreInterfaceMock
-	ouByIDCache           *cachemock.CacheInterfaceMock[*OrganizationUnit]
-	ouByHandleParentCache *cachemock.CacheInterfaceMock[*OrganizationUnit]
+	ouByIDCache           *cachemock.CacheInterfaceMock[*providers.OrganizationUnit]
+	ouByHandleParentCache *cachemock.CacheInterfaceMock[*providers.OrganizationUnit]
 	cachedStore           *cacheBackedOUStore
-	ouByIDData            map[string]*OrganizationUnit
-	ouByHandleParentData  map[string]*OrganizationUnit
+	ouByIDData            map[string]*providers.OrganizationUnit
+	ouByHandleParentData  map[string]*providers.OrganizationUnit
 }
 
 func TestCacheBackedOUStoreTestSuite(t *testing.T) {
@@ -49,11 +51,11 @@ func TestCacheBackedOUStoreTestSuite(t *testing.T) {
 
 func (s *CacheBackedOUStoreTestSuite) SetupTest() {
 	s.mockStore = newOrganizationUnitStoreInterfaceMock(s.T())
-	s.ouByIDData = make(map[string]*OrganizationUnit)
-	s.ouByHandleParentData = make(map[string]*OrganizationUnit)
+	s.ouByIDData = make(map[string]*providers.OrganizationUnit)
+	s.ouByHandleParentData = make(map[string]*providers.OrganizationUnit)
 
-	s.ouByIDCache = cachemock.NewCacheInterfaceMock[*OrganizationUnit](s.T())
-	s.ouByHandleParentCache = cachemock.NewCacheInterfaceMock[*OrganizationUnit](s.T())
+	s.ouByIDCache = cachemock.NewCacheInterfaceMock[*providers.OrganizationUnit](s.T())
+	s.ouByHandleParentCache = cachemock.NewCacheInterfaceMock[*providers.OrganizationUnit](s.T())
 
 	setupOUCacheMock(s.ouByIDCache, s.ouByIDData)
 	setupOUCacheMock(s.ouByHandleParentCache, s.ouByHandleParentData)
@@ -107,8 +109,8 @@ func setupOUCacheMock[T any](
 	mockCache.EXPECT().CleanupExpired().Maybe()
 }
 
-func (s *CacheBackedOUStoreTestSuite) makeOU(handle string, parent *string) OrganizationUnit {
-	return OrganizationUnit{
+func (s *CacheBackedOUStoreTestSuite) makeOU(handle string, parent *string) providers.OrganizationUnit {
+	return providers.OrganizationUnit{
 		ID:     cacheTestOUID,
 		Handle: handle,
 		Name:   "Test OU " + handle,
@@ -147,7 +149,7 @@ func (s *CacheBackedOUStoreTestSuite) TestGetOrganizationUnit_CacheMiss() {
 func (s *CacheBackedOUStoreTestSuite) TestGetOrganizationUnit_StoreError() {
 	storeErr := errors.New("db error")
 	s.mockStore.On("GetOrganizationUnit", mock.Anything, "bad-id").
-		Return(OrganizationUnit{}, storeErr).Once()
+		Return(providers.OrganizationUnit{}, storeErr).Once()
 
 	_, err := s.cachedStore.GetOrganizationUnit(context.Background(), "bad-id")
 	s.Equal(storeErr, err)
@@ -209,7 +211,7 @@ func (s *CacheBackedOUStoreTestSuite) TestGetOrganizationUnitByHandle_CacheMiss(
 func (s *CacheBackedOUStoreTestSuite) TestGetOrganizationUnitByHandle_StoreError() {
 	storeErr := errors.New("db error")
 	s.mockStore.On("GetOrganizationUnitByHandle", mock.Anything, "bad-handle",
-		(*string)(nil)).Return(OrganizationUnit{}, storeErr).Once()
+		(*string)(nil)).Return(providers.OrganizationUnit{}, storeErr).Once()
 
 	_, err := s.cachedStore.GetOrganizationUnitByHandle(
 		context.Background(), "bad-handle", nil)
@@ -409,25 +411,25 @@ func (s *CacheBackedOUStoreTestSuite) TestPassThroughMethods() {
 	ctx := context.Background()
 
 	s.mockStore.On("GetOrganizationUnitListCount", mock.Anything,
-		(*filter.FilterGroup)(nil)).Return(5, nil).Once()
+		(*tidcommon.FilterGroup)(nil)).Return(5, nil).Once()
 	count, err := s.cachedStore.GetOrganizationUnitListCount(ctx, nil)
 	s.Nil(err)
 	s.Equal(5, count)
 
 	s.mockStore.On("GetOrganizationUnitList", mock.Anything, 10, 0,
-		(*filter.FilterGroup)(nil)).Return([]OrganizationUnitBasic{}, nil).Once()
+		(*tidcommon.FilterGroup)(nil)).Return([]providers.OrganizationUnitBasic{}, nil).Once()
 	list, err := s.cachedStore.GetOrganizationUnitList(ctx, 10, 0, nil)
 	s.Nil(err)
 	s.Empty(list)
 
 	s.mockStore.On("GetOrganizationUnitsByIDs", mock.Anything,
-		[]string{"id-1"}).Return([]OrganizationUnitBasic{}, nil).Once()
+		[]string{"id-1"}).Return([]providers.OrganizationUnitBasic{}, nil).Once()
 	byIDs, err := s.cachedStore.GetOrganizationUnitsByIDs(ctx, []string{"id-1"})
 	s.Nil(err)
 	s.Empty(byIDs)
 
 	s.mockStore.On("GetOrganizationUnitByPath", mock.Anything,
-		[]string{"root", "child"}).Return(OrganizationUnit{ID: "path-ou"}, nil).Once()
+		[]string{"root", "child"}).Return(providers.OrganizationUnit{ID: "path-ou"}, nil).Once()
 	byPath, err := s.cachedStore.GetOrganizationUnitByPath(ctx, []string{"root", "child"})
 	s.Nil(err)
 	s.Equal("path-ou", byPath.ID)
@@ -449,13 +451,13 @@ func (s *CacheBackedOUStoreTestSuite) TestPassThroughMethods() {
 	s.False(conflict)
 
 	s.mockStore.On("GetOrganizationUnitChildrenCount", mock.Anything, "ou-1",
-		(*filter.FilterGroup)(nil)).Return(3, nil).Once()
+		(*tidcommon.FilterGroup)(nil)).Return(3, nil).Once()
 	childCount, err := s.cachedStore.GetOrganizationUnitChildrenCount(ctx, "ou-1", nil)
 	s.Nil(err)
 	s.Equal(3, childCount)
 
 	s.mockStore.On("GetOrganizationUnitChildrenList", mock.Anything, "ou-1", 10, 0,
-		(*filter.FilterGroup)(nil)).Return([]OrganizationUnitBasic{}, nil).Once()
+		(*tidcommon.FilterGroup)(nil)).Return([]providers.OrganizationUnitBasic{}, nil).Once()
 	children, err := s.cachedStore.GetOrganizationUnitChildrenList(ctx, "ou-1", 10, 0, nil)
 	s.Nil(err)
 	s.Empty(children)
@@ -488,7 +490,7 @@ func (s *CacheBackedOUStoreTestSuite) TestIsOrganizationUnitExists_CacheMiss_Del
 // --- Cache error handling tests ---
 
 func (s *CacheBackedOUStoreTestSuite) TestCacheSetError_DoesNotPropagateOnGetEntity() {
-	failingIDCache := cachemock.NewCacheInterfaceMock[*OrganizationUnit](s.T())
+	failingIDCache := cachemock.NewCacheInterfaceMock[*providers.OrganizationUnit](s.T())
 	failingIDCache.EXPECT().Get(mock.Anything, mock.Anything).
 		Return(nil, false).Once()
 	failingIDCache.EXPECT().Set(mock.Anything, mock.Anything, mock.Anything).
@@ -515,7 +517,7 @@ func (s *CacheBackedOUStoreTestSuite) TestCacheSetError_DoesNotPropagateOnGetEnt
 }
 
 func (s *CacheBackedOUStoreTestSuite) TestCacheSetError_DoesNotPropagateOnGetByHandle() {
-	failingHandleCache := cachemock.NewCacheInterfaceMock[*OrganizationUnit](s.T())
+	failingHandleCache := cachemock.NewCacheInterfaceMock[*providers.OrganizationUnit](s.T())
 	failingHandleCache.EXPECT().Get(mock.Anything, mock.Anything).
 		Return(nil, false).Once()
 	failingHandleCache.EXPECT().Set(mock.Anything, mock.Anything, mock.Anything).
@@ -543,7 +545,7 @@ func (s *CacheBackedOUStoreTestSuite) TestCacheSetError_DoesNotPropagateOnGetByH
 }
 
 func (s *CacheBackedOUStoreTestSuite) TestCacheDeleteError_DoesNotPropagateOnDelete() {
-	failingIDCache := cachemock.NewCacheInterfaceMock[*OrganizationUnit](s.T())
+	failingIDCache := cachemock.NewCacheInterfaceMock[*providers.OrganizationUnit](s.T())
 	failingIDCache.EXPECT().Get(mock.Anything, mock.Anything).Return(nil, false).Maybe()
 	failingIDCache.EXPECT().Set(mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	failingIDCache.EXPECT().Delete(mock.Anything, mock.Anything).
@@ -575,7 +577,7 @@ func (s *CacheBackedOUStoreTestSuite) TestDeleteOrganizationUnit_HandleParentInv
 	// OU is NOT in cache, and store.GetOrganizationUnit fails — handle+parent cache should
 	// remain (graceful degradation), but DeleteOrganizationUnit should still succeed.
 	s.mockStore.On("GetOrganizationUnit", mock.Anything, cacheTestOUID).
-		Return(OrganizationUnit{}, errors.New("fetch error")).Once()
+		Return(providers.OrganizationUnit{}, errors.New("fetch error")).Once()
 	s.mockStore.On("DeleteOrganizationUnit", mock.Anything, cacheTestOUID).
 		Return(nil).Once()
 

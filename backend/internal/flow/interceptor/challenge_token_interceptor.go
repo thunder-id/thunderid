@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
@@ -33,7 +35,7 @@ import (
 // across requests within a flow instance.
 type challengeTokenInterceptor struct {
 	core.InterceptorInterface
-	postRequestStatuses []common.FlowStatus
+	postRequestStatuses []providers.FlowStatus
 	logger              *log.Logger
 }
 
@@ -45,8 +47,8 @@ func newChallengeTokenInterceptor(flowFactory core.FlowFactoryInterface) *challe
 
 	return &challengeTokenInterceptor{
 		InterceptorInterface: base,
-		postRequestStatuses: []common.FlowStatus{
-			common.FlowStatusIncomplete,
+		postRequestStatuses: []providers.FlowStatus{
+			providers.FlowStatusIncomplete,
 		},
 		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, ChallengeTokenInterceptor)),
 	}
@@ -55,9 +57,9 @@ func newChallengeTokenInterceptor(flowFactory core.FlowFactoryInterface) *challe
 // Execute delegates to the appropriate handler based on the interceptor mode.
 func (c *challengeTokenInterceptor) Execute(ctx *core.InterceptorContext) (*common.InterceptorResponse, error) {
 	switch ctx.Mode {
-	case common.InterceptorModePreRequest:
+	case providers.InterceptorModePreRequest:
 		return c.validateChallengeToken(ctx)
-	case common.InterceptorModePostRequest:
+	case providers.InterceptorModePostRequest:
 		return c.rotateChallengeToken(ctx)
 	default:
 		return &common.InterceptorResponse{

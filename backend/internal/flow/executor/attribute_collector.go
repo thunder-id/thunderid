@@ -23,11 +23,10 @@ import (
 	"errors"
 	"fmt"
 
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
-	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 const (
@@ -39,21 +38,21 @@ const (
 
 // attributeCollector is an executor that collects user attributes and updates the user profile.
 type attributeCollector struct {
-	core.ExecutorInterface
+	providers.Executor
 	entityProvider entityprovider.EntityProviderInterface
-	authnProvider  authnprovidermgr.AuthnProviderManagerInterface
+	authnProvider  providers.AuthnProviderManager
 	logger         *log.Logger
 }
 
-var _ core.ExecutorInterface = (*attributeCollector)(nil)
+var _ providers.Executor = (*attributeCollector)(nil)
 
 // newAttributeCollector creates a new instance of AttributeCollector.
 func newAttributeCollector(
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) *attributeCollector {
-	prerequisites := []common.Input{
+	prerequisites := []providers.Input{
 		{
 			Identifier: "userID",
 			Type:       "string",
@@ -63,74 +62,74 @@ func newAttributeCollector(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, attrCollectLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAttributeCollect))
 
-	base := flowFactory.CreateExecutor(ExecutorNameAttributeCollect, common.ExecutorTypeUtility,
-		[]common.Input{}, prerequisites)
+	base := flowFactory.CreateExecutor(ExecutorNameAttributeCollect, providers.ExecutorTypeUtility,
+		[]providers.Input{}, prerequisites)
 
 	return &attributeCollector{
-		ExecutorInterface: base,
-		entityProvider:    entityProvider,
-		authnProvider:     authnProvider,
-		logger:            logger,
+		Executor:       base,
+		entityProvider: entityProvider,
+		authnProvider:  authnProvider,
+		logger:         logger,
 	}
 }
 
 // Execute executes the attribute collection logic.
-func (a *attributeCollector) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+func (a *attributeCollector) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing attribute collect executor")
 
-	execResp := &common.ExecutorResponse{
+	execResp := &providers.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 		AuthUser:       ctx.AuthUser,
 	}
 
-	if ctx.FlowType == common.FlowTypeRegistration {
+	if ctx.FlowType == providers.FlowTypeRegistration {
 		logger.Debug(ctx.Context, "Flow type is registration, skipping attribute collection")
-		execResp.Status = common.ExecComplete
+		execResp.Status = providers.ExecComplete
 		return execResp, nil
 	}
 
 	if !execResp.AuthUser.IsAuthenticated() {
 		logger.Debug(ctx.Context, "User is not authenticated, cannot collect attributes")
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrUserNotAuthenticated
 		return execResp, nil
 	}
 
 	if !a.ValidatePrerequisites(ctx, execResp, a.authnProvider) {
 		logger.Debug(ctx.Context, "Prerequisites validation failed for attribute collector")
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrPrerequisitesFailed
 		return execResp, nil
 	}
 
 	if !a.HasRequiredInputs(ctx, execResp) {
 		logger.Debug(ctx.Context, "Required inputs for attribute collector is not provided")
-		execResp.Status = common.ExecUserInputRequired
+		execResp.Status = providers.ExecUserInputRequired
 		return execResp, nil
 	}
 
 	if err := a.updateUserInStore(ctx, execResp); err != nil {
 		logger.Error(ctx.Context, "Failed to update user attributes", log.Error(err))
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrAttributeCollectFailed
 		return execResp, nil
 	}
 
 	logger.Debug(ctx.Context, "User attributes updated successfully")
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 	return execResp, nil
 }
 
 // HasRequiredInputs checks if the required inputs are provided in the context and appends any
 // missing inputs to the executor response. Returns true if required inputs are found, otherwise false.
-func (a *attributeCollector) HasRequiredInputs(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) bool {
+func (a *attributeCollector) HasRequiredInputs(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) bool {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Checking inputs for the attribute collector")
 
-	if a.ExecutorInterface.HasRequiredInputs(ctx, execResp) {
+	if a.Executor.HasRequiredInputs(ctx, execResp) {
 		return true
 	}
 	if len(execResp.Inputs) == 0 {
@@ -150,7 +149,7 @@ func (a *attributeCollector) HasRequiredInputs(ctx *core.NodeContext,
 
 		// Clear the required data in the executor response to avoid duplicates.
 		missingAttributes := execResp.Inputs
-		execResp.Inputs = make([]common.Input, 0)
+		execResp.Inputs = make([]providers.Input, 0)
 		if execResp.RuntimeData == nil {
 			execResp.RuntimeData = make(map[string]string)
 		}
@@ -200,7 +199,7 @@ func (a *attributeCollector) HasRequiredInputs(ctx *core.NodeContext,
 
 	// Clear the required inputs in the executor response to avoid duplicates.
 	missingInputs := execResp.Inputs
-	execResp.Inputs = make([]common.Input, 0)
+	execResp.Inputs = make([]providers.Input, 0)
 	if execResp.RuntimeData == nil {
 		execResp.RuntimeData = make(map[string]string)
 	}
@@ -240,7 +239,7 @@ func (a *attributeCollector) HasRequiredInputs(ctx *core.NodeContext,
 
 // getUserAttributes retrieves the user attributes from the user profile.
 func (a *attributeCollector) getUserAttributes(
-	ctx *core.NodeContext, execResp *common.ExecutorResponse,
+	ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
 ) (map[string]interface{}, error) {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Retrieving user attributes from the user profile")
@@ -268,7 +267,7 @@ func (a *attributeCollector) getUserAttributes(
 }
 
 // updateUserInStore updates the user profile with the collected attributes.
-func (a *attributeCollector) updateUserInStore(ctx *core.NodeContext, execResp *common.ExecutorResponse) error {
+func (a *attributeCollector) updateUserInStore(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) error {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Updating user attributes")
 
@@ -304,8 +303,8 @@ func (a *attributeCollector) updateUserInStore(ctx *core.NodeContext, execResp *
 
 // getUserFromStore retrieves the user profile from the user store.
 func (a *attributeCollector) getUserFromStore(
-	ctx *core.NodeContext, execResp *common.ExecutorResponse,
-) (*entityprovider.Entity, error) {
+	ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
+) (*providers.Entity, error) {
 	userID := a.GetUserIDFromContext(ctx, execResp, a.authnProvider)
 	if userID == "" {
 		return nil, errors.New("user ID is not available in the context")
@@ -320,11 +319,11 @@ func (a *attributeCollector) getUserFromStore(
 }
 
 // getUpdatedUserObject creates a new user object with the updated attributes.
-func (a *attributeCollector) getUpdatedUserObject(ctx *core.NodeContext,
-	userData *entityprovider.Entity) (bool, *entityprovider.Entity, error) {
+func (a *attributeCollector) getUpdatedUserObject(ctx *providers.NodeContext,
+	userData *providers.Entity) (bool, *providers.Entity, error) {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	updatedUser := &entityprovider.Entity{
+	updatedUser := &providers.Entity{
 		ID:       userData.ID,
 		Category: userData.Category,
 		OUID:     userData.OUID,
@@ -368,7 +367,7 @@ func (a *attributeCollector) getUpdatedUserObject(ctx *core.NodeContext,
 }
 
 // getInputAttributes retrieves the input attributes from the context.
-func (a *attributeCollector) getInputAttributes(ctx *core.NodeContext) map[string]interface{} {
+func (a *attributeCollector) getInputAttributes(ctx *providers.NodeContext) map[string]interface{} {
 	attributesMap := make(map[string]interface{})
 	requiredInputAttrs := a.getInputs(ctx)
 
@@ -390,7 +389,7 @@ func (a *attributeCollector) getInputAttributes(ctx *core.NodeContext) map[strin
 }
 
 // getInputs returns the required inputs for the AttributeCollector.
-func (a *attributeCollector) getInputs(ctx *core.NodeContext) []common.Input {
+func (a *attributeCollector) getInputs(ctx *providers.NodeContext) []providers.Input {
 	executorReqData := a.GetDefaultInputs()
 	requiredData := ctx.NodeInputs
 

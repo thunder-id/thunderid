@@ -24,10 +24,11 @@ import (
 	"fmt"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/entitytype/model"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 
 	"gopkg.in/yaml.v3"
@@ -65,7 +66,7 @@ func (e *entityTypeExporter) GetParameterizerType() string {
 
 // GetAllResourceIDs retrieves all user-category entity type IDs.
 // In composite mode, this excludes declarative (YAML-based) entity types.
-func (e *entityTypeExporter) GetAllResourceIDs(ctx context.Context) ([]string, *serviceerror.ServiceError) {
+func (e *entityTypeExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
 	response, err := e.service.GetEntityTypeList(ctx, TypeCategoryUser, serverconst.MaxPageSize, 0, false)
 	if err != nil {
 		return nil, err
@@ -81,7 +82,7 @@ func (e *entityTypeExporter) GetAllResourceIDs(ctx context.Context) ([]string, *
 
 // GetResourceByID retrieves a user-category entity type by its ID.
 func (e *entityTypeExporter) GetResourceByID(ctx context.Context, id string) (
-	interface{}, string, *serviceerror.ServiceError,
+	interface{}, string, *tidcommon.ServiceError,
 ) {
 	schema, err := e.service.GetEntityType(ctx, TypeCategoryUser, id, false)
 	if err != nil {

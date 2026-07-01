@@ -19,12 +19,29 @@
 package group
 
 import (
+	"encoding/json"
+
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 type I18nMessage struct {
 	Key          string `json:"key,omitempty"`
 	DefaultValue string `json:"defaultValue,omitempty"`
+}
+
+func (m *I18nMessage) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		m.DefaultValue = s
+		return nil
+	}
+	type alias I18nMessage
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	*m = I18nMessage(a)
+	return nil
 }
 
 const (

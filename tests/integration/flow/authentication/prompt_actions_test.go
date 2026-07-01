@@ -23,9 +23,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 const (
@@ -91,7 +91,7 @@ var (
 					"inputs": []map[string]interface{}{
 						{
 							"ref":        "input_003",
-							"identifier": "mobileNumber",
+							"identifier": "mobile_number",
 							"type":       "string",
 							"required":   true,
 						},
@@ -107,7 +107,7 @@ var (
 						"inputs": []map[string]interface{}{
 							{
 								"ref":        "input_004",
-								"identifier": "mobileNumber",
+								"identifier": "mobile_number",
 								"type":       "string",
 								"required":   true,
 							},
@@ -217,7 +217,7 @@ var (
 			"family_name": map[string]interface{}{
 				"type": "string",
 			},
-			"mobileNumber": map[string]interface{}{
+			"mobile_number": map[string]interface{}{
 				"type": "string",
 			},
 		},
@@ -231,7 +231,7 @@ var (
 			"email": "promptactionsuser1@example.com",
 			"given_name": "PromptActions",
 			"family_name": "User1",
-			"mobileNumber": "+1234567890"
+			"mobile_number": "+1234567890"
 		}`),
 	}
 
@@ -559,7 +559,7 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestCredentialsAuthWithoutMobileUser
 
 		var hasMobileNumber bool
 		for _, input := range mobilePromptStep.Data.Inputs {
-			if input.Identifier == "mobileNumber" {
+			if input.Identifier == "mobile_number" {
 				hasMobileNumber = true
 				break
 			}
@@ -571,7 +571,7 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestCredentialsAuthWithoutMobileUser
 
 		// Step 4: Provide mobile number
 		mobileInputs := map[string]string{
-			"mobileNumber": "+1987654321",
+			"mobile_number": "+1987654321",
 		}
 
 		otpFlowStep, err := common.CompleteFlow(flowStep.ExecutionID, mobileInputs, "",
@@ -774,7 +774,7 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestSMSOTPAuthWithValidMobile() {
 
 	var hasMobileNumber bool
 	for _, input := range smsAuthStep.Data.Inputs {
-		if input.Identifier == "mobileNumber" {
+		if input.Identifier == "mobile_number" {
 			hasMobileNumber = true
 			break
 		}
@@ -790,7 +790,7 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestSMSOTPAuthWithValidMobile() {
 	ts.Require().NoError(err, "Failed to unmarshal user attributes")
 
 	mobileInputs := map[string]string{
-		"mobileNumber": userAttrs["mobileNumber"].(string),
+		"mobile_number": userAttrs["mobile_number"].(string),
 	}
 
 	otpFlowStep, err := common.CompleteFlow(flowStep.ExecutionID, mobileInputs, "action_mobile",
@@ -882,7 +882,7 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestSMSOTPAuthWithInvalidMobile() {
 
 	// Step 3: Provide invalid mobile number (not in any user profile)
 	mobileInputs := map[string]string{
-		"mobileNumber": "+9999999999", // Invalid mobile not associated with any user
+		"mobile_number": "+9999999999", // Invalid mobile not associated with any user
 	}
 
 	// This should result in failure or error

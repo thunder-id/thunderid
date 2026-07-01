@@ -31,11 +31,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/dpopmock"
 )
 
@@ -73,7 +73,7 @@ func (s *HandlerTestSuite) TestHandlePAR_Success() {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	// Set authenticated client in context.
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ClientID: "test-client",
 	}
 	clientInfo := &clientauth.OAuthClientInfo{
@@ -119,7 +119,7 @@ func (s *HandlerTestSuite) TestHandlePAR_ValidationError() {
 	req := httptest.NewRequest(http.MethodPost, "/oauth2/par", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	app := &inboundmodel.OAuthClient{ClientID: "test-client"}
+	app := &providers.OAuthClient{ClientID: "test-client"}
 	clientInfo := &clientauth.OAuthClientInfo{ClientID: "test-client", OAuthApp: app}
 	ctx := context.WithValue(req.Context(), clientauth.OAuthClientKey, clientInfo)
 	req = req.WithContext(ctx)
@@ -151,7 +151,7 @@ func (s *HandlerTestSuite) TestHandlePAR_DPoPHeaderForwardedAsJkt() {
 	req := httptest.NewRequest(http.MethodPost, "/oauth2/par", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set(oauth2const.HeaderDPoP, "proof-jwt")
-	app := &inboundmodel.OAuthClient{ClientID: "test-client"}
+	app := &providers.OAuthClient{ClientID: "test-client"}
 	clientInfo := &clientauth.OAuthClientInfo{ClientID: "test-client", OAuthApp: app}
 	req = req.WithContext(context.WithValue(req.Context(), clientauth.OAuthClientKey, clientInfo))
 
@@ -171,7 +171,7 @@ func (s *HandlerTestSuite) TestHandlePAR_MultipleDPoPHeaders_Rejected() {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Add(oauth2const.HeaderDPoP, "proof-1")
 	req.Header.Add(oauth2const.HeaderDPoP, "proof-2")
-	app := &inboundmodel.OAuthClient{ClientID: "test-client"}
+	app := &providers.OAuthClient{ClientID: "test-client"}
 	clientInfo := &clientauth.OAuthClientInfo{ClientID: "test-client", OAuthApp: app}
 	req = req.WithContext(context.WithValue(req.Context(), clientauth.OAuthClientKey, clientInfo))
 
@@ -195,7 +195,7 @@ func (s *HandlerTestSuite) TestHandlePAR_InvalidDPoPProof_Rejected() {
 	req := httptest.NewRequest(http.MethodPost, "/oauth2/par", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set(oauth2const.HeaderDPoP, "proof-jwt")
-	app := &inboundmodel.OAuthClient{ClientID: "test-client"}
+	app := &providers.OAuthClient{ClientID: "test-client"}
 	clientInfo := &clientauth.OAuthClientInfo{ClientID: "test-client", OAuthApp: app}
 	req = req.WithContext(context.WithValue(req.Context(), clientauth.OAuthClientKey, clientInfo))
 
@@ -219,7 +219,7 @@ func (s *HandlerTestSuite) TestHandlePAR_ServerError() {
 	req := httptest.NewRequest(http.MethodPost, "/oauth2/par", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	app := &inboundmodel.OAuthClient{ClientID: "test-client"}
+	app := &providers.OAuthClient{ClientID: "test-client"}
 	clientInfo := &clientauth.OAuthClientInfo{ClientID: "test-client", OAuthApp: app}
 	ctx := context.WithValue(req.Context(), clientauth.OAuthClientKey, clientInfo)
 	req = req.WithContext(ctx)

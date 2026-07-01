@@ -1,0 +1,101 @@
+---
+title: Pull Request Workflow
+description: Step-by-step workflow for making, testing, and submitting code contributions.
+sidebar_position: 4
+hide_table_of_contents: false
+---
+
+# Pull Request Workflow
+
+For area-specific coding standards, see the [Backend Development](backend-development/overview.mdx) and [Frontend Development](frontend-development/overview.mdx) guides.
+
+## 1. Make Your Changes
+
+Follow coding guidelines and best practices:
+
+- **Backend**: Review `.github/instructions/` for package structure, services, data access, API handlers, and testing patterns
+- **Frontend**: See `.github/instructions/frontend.instructions.md`
+- **Security**: Avoid SQL injection, XSS, command injection, and OWASP top 10 vulnerabilities
+
+**Best practices:**
+- Keep changes focused on a single issue
+- Use meaningful variable/function names
+- Add comments for complex logic
+- Maintain consistency with existing code
+
+## 2. Test and Validate Your Changes
+
+Before committing, ensure code quality and correctness. Run everything CI will check with one command:
+
+```bash
+make pr_checks
+```
+
+Or run individual checks:
+
+| Purpose | Command |
+|---------|---------|
+| All PR checks | `make pr_checks` |
+| Backend unit tests | `make test_unit` |
+| Backend integration tests | `make test_integration` |
+| Backend all tests | `make test` |
+| Frontend unit tests | `make test_frontend` |
+| E2E tests (Playwright) | `make test_e2e` |
+| Lint all code | `make lint` |
+| Lint backend | `make lint_backend` |
+| Lint frontend | `make lint_frontend` |
+| Lint documentation (Vale) | `make lint_docs` |
+| Check formatting | `make format_check` |
+| Verify mock files | `make verify_mocks` |
+| Security audit | `make security_audit` |
+
+**Requirements:**
+- All tests must pass
+- Code coverage: at least 80% (higher encouraged)
+- No linting errors
+- Unit tests for business logic
+- Integration tests for API endpoints
+- Test edge cases and error scenarios
+
+## 3. Commit Your Changes
+
+Use clear, descriptive commit messages:
+
+```bash
+git commit -m "Fix token refresh failing after 30 minutes
+
+Fixes #123"
+```
+
+**Best practices:**
+- Make atomic commits (one logical change per commit) — ideally one commit per PR
+- Write commit messages that explain **why**, not just **what**
+- Reference the issue number using `Fixes #<number>` or `Closes #<number>`
+
+## 4. Push and Create PR
+
+Push your changes to your forked repository:
+
+```bash
+git push origin <branch-name>
+```
+
+Then create a Pull Request to the `upstream/main` branch on GitHub:
+
+1. Go to your fork on GitHub
+2. Click **"Compare & pull request"**
+3. Provide a clear, descriptive title (e.g., "Add TOTP-based MFA support")
+4. Fill in the PR templates
+5. Link to the related issue
+6. Ensure all CI checks pass
+
+## 5. Address Review Feedback
+
+- Respond to reviewer comments promptly
+- Keep commit history clean — rebase review fixes into the appropriate commit rather than adding separate "fix review comments" commits
+- Push updates to the same branch
+- Re-request review when ready
+
+## 6. Merge
+
+Once approved by maintainers and all checks pass, a maintainer will merge your PR.

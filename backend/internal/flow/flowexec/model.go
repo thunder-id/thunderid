@@ -25,14 +25,13 @@ import (
 	"strings"
 	"time"
 
-	appmodel "github.com/thunder-id/thunderid/internal/application/model"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
-	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
-	managerpkg "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // EngineContext holds the overall context used by the flow engine during execution.
@@ -40,7 +39,7 @@ type EngineContext struct {
 	Context context.Context
 
 	ExecutionID    string
-	FlowType       common.FlowType
+	FlowType       providers.FlowType
 	AppID          string
 	Verbose        bool
 	UserInputs     map[string]string
@@ -55,12 +54,12 @@ type EngineContext struct {
 	CurrentSegmentID    string
 
 	Graph       core.GraphInterface
-	Application appmodel.Application
+	Application providers.Application
 
 	AuthenticatedUser authncm.AuthenticatedUser
-	AuthUser          managerpkg.AuthUser
+	AuthUser          providers.AuthUser
 	Assertion         string
-	ExecutionHistory  map[string]*common.NodeExecutionRecord
+	ExecutionHistory  map[string]*providers.NodeExecutionRecord
 
 	InterceptorSharedData map[string]string
 }
@@ -82,16 +81,17 @@ type InterceptorRunnerContext struct {
 	Ctx                  context.Context
 	ExecutionID          string
 	AppID                string
-	FlowType             common.FlowType
-	FlowStatus           common.FlowStatus
+	FlowType             providers.FlowType
+	FlowStatus           providers.FlowStatus
 	CurrentNodeID        string
 	NodeType             common.NodeType
 	SkipInterceptors     []string
-	ExecutionPolicy      *core.ExecutionPolicy
+	ExecutionPolicy      *providers.ExecutionPolicy
 	AllowSegmentRestart  bool
 	UserInputs           map[string]string
 	ForwardedData        map[string]interface{}
 	AdditionalData       map[string]string
+	CurrentNodeInputs    []providers.Input
 	ResolvedInterceptors []core.InterceptorUnitInterface
 	SharedData           map[string]string
 }
@@ -101,16 +101,16 @@ type FlowStep struct {
 	ExecutionID    string
 	StepID         string
 	Type           common.FlowStepType
-	Status         common.FlowStatus
+	Status         providers.FlowStatus
 	ChallengeToken string
 	Data           FlowData
 	Assertion      string
-	Error          *serviceerror.ServiceError
+	Error          *tidcommon.ServiceError
 }
 
 // FlowData holds the data returned by a flow execution step
 type FlowData struct {
-	Inputs         []common.Input      `json:"inputs,omitempty"`
+	Inputs         []providers.Input   `json:"inputs,omitempty"`
 	RedirectURL    string              `json:"redirectURL,omitempty"`
 	Actions        []common.Action     `json:"actions,omitempty"`
 	Meta           interface{}         `json:"meta,omitempty"`
@@ -232,9 +232,9 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context, graph core.GraphInt
 	}
 
 	// Parse available attributes
-	var availableAttributes *authnprovidercm.AttributesResponse
+	var availableAttributes *providers.AttributesResponse
 	if content.AvailableAttributes != nil && strings.TrimSpace(*content.AvailableAttributes) != "" {
-		var attrs authnprovidercm.AttributesResponse
+		var attrs providers.AttributesResponse
 		if err := json.Unmarshal([]byte(*content.AvailableAttributes), &attrs); err != nil {
 			return EngineContext{}, err
 		}
@@ -260,13 +260,13 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context, graph core.GraphInt
 	}
 
 	// Parse execution history
-	var executionHistory map[string]*common.NodeExecutionRecord
+	var executionHistory map[string]*providers.NodeExecutionRecord
 	if content.ExecutionHistory != nil {
 		if err := json.Unmarshal([]byte(*content.ExecutionHistory), &executionHistory); err != nil {
 			return EngineContext{}, err
 		}
 	} else {
-		executionHistory = make(map[string]*common.NodeExecutionRecord)
+		executionHistory = make(map[string]*providers.NodeExecutionRecord)
 	}
 
 	// Get current node from graph if available
@@ -290,7 +290,7 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context, graph core.GraphInt
 	}
 
 	// Deserialize AuthUser if present
-	var authUser managerpkg.AuthUser
+	var authUser providers.AuthUser
 	if content.AuthUser != nil {
 		if err := json.Unmarshal([]byte(*content.AuthUser), &authUser); err != nil {
 			return EngineContext{}, err

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewCIBAServiceInterfaceMock creates a new instance of CIBAServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -173,7 +173,7 @@ func (_c *CIBAServiceInterfaceMock_HandleCallback_Call) RunAndReturn(run func(ct
 }
 
 // InitiateBackchannelAuth provides a mock function for the type CIBAServiceInterfaceMock
-func (_mock *CIBAServiceInterfaceMock) InitiateBackchannelAuth(ctx context.Context, request *BackchannelAuthRequest, oauthApp *model.OAuthClient) (*BackchannelAuthResponse, *CIBAError) {
+func (_mock *CIBAServiceInterfaceMock) InitiateBackchannelAuth(ctx context.Context, request *BackchannelAuthRequest, oauthApp *providers.OAuthClient) (*BackchannelAuthResponse, *CIBAError) {
 	ret := _mock.Called(ctx, request, oauthApp)
 
 	if len(ret) == 0 {
@@ -182,17 +182,17 @@ func (_mock *CIBAServiceInterfaceMock) InitiateBackchannelAuth(ctx context.Conte
 
 	var r0 *BackchannelAuthResponse
 	var r1 *CIBAError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *BackchannelAuthRequest, *model.OAuthClient) (*BackchannelAuthResponse, *CIBAError)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *BackchannelAuthRequest, *providers.OAuthClient) (*BackchannelAuthResponse, *CIBAError)); ok {
 		return returnFunc(ctx, request, oauthApp)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *BackchannelAuthRequest, *model.OAuthClient) *BackchannelAuthResponse); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *BackchannelAuthRequest, *providers.OAuthClient) *BackchannelAuthResponse); ok {
 		r0 = returnFunc(ctx, request, oauthApp)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*BackchannelAuthResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *BackchannelAuthRequest, *model.OAuthClient) *CIBAError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *BackchannelAuthRequest, *providers.OAuthClient) *CIBAError); ok {
 		r1 = returnFunc(ctx, request, oauthApp)
 	} else {
 		if ret.Get(1) != nil {
@@ -210,12 +210,12 @@ type CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call struct {
 // InitiateBackchannelAuth is a helper method to define mock.On call
 //   - ctx context.Context
 //   - request *BackchannelAuthRequest
-//   - oauthApp *model.OAuthClient
+//   - oauthApp *providers.OAuthClient
 func (_e *CIBAServiceInterfaceMock_Expecter) InitiateBackchannelAuth(ctx interface{}, request interface{}, oauthApp interface{}) *CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call {
 	return &CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call{Call: _e.mock.On("InitiateBackchannelAuth", ctx, request, oauthApp)}
 }
 
-func (_c *CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call) Run(run func(ctx context.Context, request *BackchannelAuthRequest, oauthApp *model.OAuthClient)) *CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call {
+func (_c *CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call) Run(run func(ctx context.Context, request *BackchannelAuthRequest, oauthApp *providers.OAuthClient)) *CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -225,9 +225,9 @@ func (_c *CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call) Run(run func(ct
 		if args[1] != nil {
 			arg1 = args[1].(*BackchannelAuthRequest)
 		}
-		var arg2 *model.OAuthClient
+		var arg2 *providers.OAuthClient
 		if args[2] != nil {
-			arg2 = args[2].(*model.OAuthClient)
+			arg2 = args[2].(*providers.OAuthClient)
 		}
 		run(
 			arg0,
@@ -243,7 +243,7 @@ func (_c *CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call) Return(backchan
 	return _c
 }
 
-func (_c *CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call) RunAndReturn(run func(ctx context.Context, request *BackchannelAuthRequest, oauthApp *model.OAuthClient) (*BackchannelAuthResponse, *CIBAError)) *CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call {
+func (_c *CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call) RunAndReturn(run func(ctx context.Context, request *BackchannelAuthRequest, oauthApp *providers.OAuthClient) (*BackchannelAuthResponse, *CIBAError)) *CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call {
 	_c.Call.Return(run)
 	return _c
 }

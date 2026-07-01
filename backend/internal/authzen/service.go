@@ -25,11 +25,13 @@ import (
 	"slices"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/authz"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/resource"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -37,13 +39,13 @@ import (
 type AuthZENServiceInterface interface {
 	// EvaluateAccess evaluates a single AuthZEN access request.
 	EvaluateAccess(ctx context.Context, request AccessEvaluationRequest) (
-		*AccessEvaluationResponse, *serviceerror.ServiceError)
+		*AccessEvaluationResponse, *tidcommon.ServiceError)
 	// EvaluateAccessBatch evaluates multiple AuthZEN access requests.
 	EvaluateAccessBatch(ctx context.Context, request AccessEvaluationsRequest) (
-		*AccessEvaluationsResponse, *serviceerror.ServiceError)
+		*AccessEvaluationsResponse, *tidcommon.ServiceError)
 	// SearchActions returns the actions allowed for a subject and resource.
 	SearchActions(ctx context.Context, request AccessActionSearchRequest) (
-		*AccessSearchResponse, *serviceerror.ServiceError)
+		*AccessSearchResponse, *tidcommon.ServiceError)
 }
 
 // authzenService adapts AuthZEN requests to Thunder authorization services.
@@ -70,7 +72,7 @@ func newService(
 
 // EvaluateAccess evaluates one AuthZEN access request against Thunder authorization.
 func (s *authzenService) EvaluateAccess(ctx context.Context, request AccessEvaluationRequest) (
-	*AccessEvaluationResponse, *serviceerror.ServiceError) {
+	*AccessEvaluationResponse, *tidcommon.ServiceError) {
 	if svcErr := validateEvaluationRequest(request); svcErr != nil {
 		return nil, svcErr
 	}
@@ -110,7 +112,7 @@ func (s *authzenService) EvaluateAccess(ctx context.Context, request AccessEvalu
 		s.logger.Error(ctx, "Authorization evaluation failed",
 			log.MaskedString(log.LoggerKeyUserID, request.Subject.ID),
 			log.String("error", svcErr.Error.DefaultValue))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return &AccessEvaluationResponse{
@@ -121,7 +123,7 @@ func (s *authzenService) EvaluateAccess(ctx context.Context, request AccessEvalu
 
 // EvaluateAccessBatch evaluates multiple AuthZEN access requests and preserves request order.
 func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request AccessEvaluationsRequest) (
-	*AccessEvaluationsResponse, *serviceerror.ServiceError) {
+	*AccessEvaluationsResponse, *tidcommon.ServiceError) {
 	if len(request.Evaluations) == 0 {
 		return nil, &ErrorMissingEvaluations
 	}
@@ -219,7 +221,7 @@ func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request Access
 		s.logger.Error(ctx, "Authorization batch evaluation failed",
 			log.Int("evaluationCount", len(request.Evaluations)),
 			log.String("error", svcErr.Error.DefaultValue))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	for i, evaluation := range authzResp.Evaluations {
@@ -238,7 +240,7 @@ func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request Access
 
 // SearchActions returns actions the subject is authorized to perform on the resource.
 func (s *authzenService) SearchActions(ctx context.Context, request AccessActionSearchRequest) (
-	*AccessSearchResponse, *serviceerror.ServiceError) {
+	*AccessSearchResponse, *tidcommon.ServiceError) {
 	if strings.TrimSpace(request.Subject.ID) == "" {
 		return nil, &ErrorMissingSubject
 	}
@@ -261,7 +263,7 @@ func (s *authzenService) SearchActions(ctx context.Context, request AccessAction
 		s.logger.Error(ctx, "Failed to retrieve resource server actions",
 			log.String("resourceServerID", resourceServerID),
 			log.String("error", svcErr.Error.DefaultValue))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	requestedPermissions := make([]string, 0, len(actions))
@@ -301,7 +303,7 @@ func (s *authzenService) SearchActions(ctx context.Context, request AccessAction
 		s.logger.Error(ctx, "Authorization action search failed",
 			log.MaskedString(log.LoggerKeyUserID, request.Subject.ID),
 			log.String("error", svcErr.Error.DefaultValue))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	results := make([]Action, 0, len(authzResp.Evaluations))
@@ -319,8 +321,8 @@ func (s *authzenService) SearchActions(ctx context.Context, request AccessAction
 func (s *authzenService) getAllPermissionActions(
 	ctx context.Context,
 	resourceServerID string,
-) ([]resource.Action, *serviceerror.ServiceError) {
-	actions := make([]resource.Action, 0)
+) ([]providers.Action, *tidcommon.ServiceError) {
+	actions := make([]providers.Action, 0)
 	permissions := make(map[string]struct{})
 
 	rsLevelActions, svcErr := s.getAllActions(ctx, resourceServerID, nil)
@@ -350,11 +352,11 @@ func (s *authzenService) getAllActions(
 	ctx context.Context,
 	resourceServerID string,
 	resourceID *string,
-) ([]resource.Action, *serviceerror.ServiceError) {
-	actions := make([]resource.Action, 0)
+) ([]providers.Action, *tidcommon.ServiceError) {
+	actions := make([]providers.Action, 0)
 	for offset := 0; ; {
 		actionList, svcErr := s.resourceService.GetActionList(
-			ctx, resourceServerID, resourceID, serverconst.MaxPageSize, offset)
+			ctx, resourceServerID, resourceID, "", serverconst.MaxPageSize, offset)
 		if svcErr != nil {
 			return nil, svcErr
 		}
@@ -375,8 +377,8 @@ func (s *authzenService) getAllActions(
 func (s *authzenService) getAllResources(
 	ctx context.Context,
 	resourceServerID string,
-) ([]resource.Resource, *serviceerror.ServiceError) {
-	resources := make([]resource.Resource, 0)
+) ([]providers.Resource, *tidcommon.ServiceError) {
+	resources := make([]providers.Resource, 0)
 	for offset := 0; ; {
 		resourceList, svcErr := s.resourceService.GetResourceList(
 			ctx, resourceServerID, nil, serverconst.MaxPageSize, offset)
@@ -418,10 +420,10 @@ func pageSize(count int, itemCount int) int {
 
 // appendUniquePermissionActions appends actions whose permissions were not already seen.
 func appendUniquePermissionActions(
-	actions []resource.Action,
+	actions []providers.Action,
 	permissions map[string]struct{},
-	newActions []resource.Action,
-) []resource.Action {
+	newActions []providers.Action,
+) []providers.Action {
 	for _, action := range newActions {
 		if action.Permission == "" {
 			continue
@@ -436,7 +438,7 @@ func appendUniquePermissionActions(
 }
 
 // validateSubject verifies that the subject exists and matches its type.
-func (s *authzenService) validateSubject(ctx context.Context, subject Subject) *serviceerror.ServiceError {
+func (s *authzenService) validateSubject(ctx context.Context, subject Subject) *tidcommon.ServiceError {
 	if s.entityProvider == nil {
 		return nil
 	}
@@ -455,7 +457,7 @@ func (s *authzenService) validateSubject(ctx context.Context, subject Subject) *
 		s.logger.Error(ctx, "Failed to validate subject",
 			log.MaskedString(log.LoggerKeyUserID, subject.ID),
 			log.String("error", err.Error()))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	if entity == nil || entity.Category.String() != subject.Type {
@@ -469,7 +471,7 @@ func (s *authzenService) validateAction(
 	ctx context.Context,
 	resourceServerID string,
 	actionName string,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	if s.resourceService == nil {
 		return nil
 	}
@@ -479,7 +481,7 @@ func (s *authzenService) validateAction(
 		s.logger.Error(ctx, "Failed to validate action",
 			log.String("resourceServerID", resourceServerID),
 			log.String("error", svcErr.Error.DefaultValue))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 	if len(invalidPermissions) > 0 {
 		return &ErrorInvalidAction
@@ -488,7 +490,7 @@ func (s *authzenService) validateAction(
 }
 
 // validateEvaluationRequest validates required fields for a single access evaluation.
-func validateEvaluationRequest(request AccessEvaluationRequest) *serviceerror.ServiceError {
+func validateEvaluationRequest(request AccessEvaluationRequest) *tidcommon.ServiceError {
 	if strings.TrimSpace(request.Subject.ID) == "" {
 		return &ErrorMissingSubject
 	}
@@ -503,7 +505,7 @@ func validateEvaluationRequest(request AccessEvaluationRequest) *serviceerror.Se
 
 // resolveResourceServerID resolves a resource server handle to its internal ID.
 func (s *authzenService) resolveResourceServerID(ctx context.Context, resourceServerHandle string) (
-	string, *serviceerror.ServiceError) {
+	string, *tidcommon.ServiceError) {
 	if strings.TrimSpace(resourceServerHandle) == "" {
 		return "", &ErrorMissingResource
 	}
@@ -520,14 +522,14 @@ func (s *authzenService) resolveResourceServerID(ctx context.Context, resourceSe
 		s.logger.Error(ctx, "Failed to retrieve resource server by handle",
 			log.String("resourceServerHandle", resourceServerHandle),
 			log.String("error", svcErr.Error.DefaultValue))
-		return "", &serviceerror.InternalServerError
+		return "", &tidcommon.InternalServerError
 	}
 
 	return resourceServer.ID, nil
 }
 
 // resolveGroupIDs returns the transitive group IDs for an entity.
-func (s *authzenService) resolveGroupIDs(ctx context.Context, entityID string) ([]string, *serviceerror.ServiceError) {
+func (s *authzenService) resolveGroupIDs(ctx context.Context, entityID string) ([]string, *tidcommon.ServiceError) {
 	if s.entityProvider == nil {
 		return []string{}, nil
 	}
@@ -540,7 +542,7 @@ func (s *authzenService) resolveGroupIDs(ctx context.Context, entityID string) (
 		s.logger.Error(ctx, "Failed to resolve entity groups",
 			log.MaskedString(log.LoggerKeyUserID, entityID),
 			log.String("error", err.Error()))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	groupIDs := make([]string, 0, len(groups))

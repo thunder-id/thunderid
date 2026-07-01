@@ -64,20 +64,20 @@ coverage:
         enabled: true
         target: 60%
         threshold: 1%
-        informational: true
+        informational: false
       backend-unit:
         flags:
           - backend-unit
         target: 60%
         threshold: 1%
-        informational: true
+        informational: false
       backend-integration:
         flags:
           - backend-integration-sqlite
           - backend-integration-postgres
         target: 60%
         threshold: 1%
-        informational: true
+        informational: false
       backend-combined:
         flags:
           - backend-unit
@@ -97,19 +97,19 @@ coverage:
           - frontend-apps-gate-unit
         target: auto
         threshold: 1%
-        informational: true
+        informational: false
       frontend-apps-console-unit:
         flags:
           - frontend-apps-console-unit
         target: 60%
         threshold: 1%
-        informational: true
+        informational: false
       frontend-apps-gate-unit:
         flags:
           - frontend-apps-gate-unit
         target: 60%
         threshold: 1%
-        informational: true
+        informational: false
     patch:
       default:
         target: 80%

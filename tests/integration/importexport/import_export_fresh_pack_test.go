@@ -38,6 +38,7 @@ type exportRequest struct {
 	Flows             []string `json:"flows,omitempty"`
 	Themes            []string `json:"themes,omitempty"`
 	Layouts           []string `json:"layouts,omitempty"`
+	ServerConfigs     []string `json:"serverConfigs,omitempty"`
 }
 
 type importRequest struct {
@@ -119,6 +120,72 @@ func (suite *ImportExportFreshPackSuite) TearDownSuite() {
 	if err != nil {
 		suite.T().Logf("failed to restore fresh pack in teardown: %v", err)
 	}
+}
+
+// TestServerConfigExportImportRoundTrip sets the writable CORS layer, exports it, clears it, then imports
+// the exported document and verifies the writable layer is restored. Import targets the writable (db)
+// layer via the same SetConfig path the API uses, so the round-trip is independent of the declarative layer.
+func (suite *ImportExportFreshPackSuite) TestServerConfigExportImportRoundTrip() {
+	origin := "https://roundtrip.example.com"
+
+	suite.putServerConfigCORS(fmt.Sprintf(`[%q]`, origin))
+
+	exported, err := suite.exportResources(exportRequest{ServerConfigs: []string{"cors"}})
+	suite.Require().NoError(err)
+	suite.Require().Contains(exported, origin)
+
+	// Clear the writable layer; the origin must be gone before import.
+	suite.putServerConfigCORS(`[]`)
+	suite.Require().NotContains(suite.getServerConfigCORS(), origin)
+
+	importResp, err := suite.importResources(importRequest{
+		Content: exported,
+		Options: importOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+	})
+	suite.Require().NoError(err)
+
+	var serverConfigResult *importItem
+	for i := range importResp.Results {
+		if importResp.Results[i].ResourceType == "server_config" {
+			serverConfigResult = &importResp.Results[i]
+			break
+		}
+	}
+	suite.Require().NotNil(serverConfigResult, "import results should include a server_config item")
+	suite.Equal("success", serverConfigResult.Status)
+
+	// The writable layer is restored.
+	suite.Require().Contains(suite.getServerConfigCORS(), origin)
+
+	// Leave the section clean for other tests.
+	suite.putServerConfigCORS(`[]`)
+}
+
+func (suite *ImportExportFreshPackSuite) putServerConfigCORS(allowedOrigins string) {
+	body := `{"allowedOrigins":` + allowedOrigins + `}`
+	req, err := http.NewRequest(http.MethodPut,
+		testutils.TestServerURL+"/server-config/cors", bytes.NewReader([]byte(body)))
+	suite.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+}
+
+func (suite *ImportExportFreshPackSuite) getServerConfigCORS() string {
+	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+"/server-config/cors", nil)
+	suite.Require().NoError(err)
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	return string(body)
 }
 
 func (suite *ImportExportFreshPackSuite) TestExportImportAcrossFreshPack() {

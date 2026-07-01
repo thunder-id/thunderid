@@ -314,8 +314,7 @@ func (suite *GroupTreeAPITestSuite) TestCreateGroupByPathWithInvalidData() {
 	err = json.Unmarshal(body, &errorResp)
 	suite.Require().NoError(err)
 
-	suite.Equal("GRP-1001", errorResp.Code)
-	suite.Equal("Invalid request format", errorResp.Message.DefaultValue)
+	suite.Equal("INVALID_INPUT_METADATA", errorResp.Code)
 }
 
 // TestCreateGroupByPathWithInvalidMemberType tests creating a group by path with invalid member type

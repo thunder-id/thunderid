@@ -23,6 +23,10 @@ import (
 	"errors"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -30,7 +34,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -54,7 +57,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) SetupSuite() {
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: "0579f866ac7c9273580d0ff163fa01a7b2401a7ff3ddc3e3b14ae3136fa6025e",
 			},
 		},
@@ -123,7 +126,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestCreateSender_UUIDGenerat
 	result, err := svc.CreateSender(context.Background(), sender)
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *NotificationSenderMgtServiceTestSuite) TestCreateSender_WithFailures() {
@@ -153,7 +156,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestCreateSender_WithFailure
 			setupMock: func(m *notificationStoreInterfaceMock, s common.NotificationSenderDTO) {
 				m.EXPECT().getSenderByName(mock.Anything, s.Name).Return(nil, errors.New("database error")).Once()
 			},
-			expectedErrCode: serviceerror.InternalServerError.Code,
+			expectedErrCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name: "StoreErrorOnCreate",
@@ -164,7 +167,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestCreateSender_WithFailure
 				m.EXPECT().getSenderByName(mock.Anything, s.Name).Return(nil, nil).Once()
 				m.EXPECT().createSender(mock.Anything, mock.Anything).Return(errors.New("database error")).Once()
 			},
-			expectedErrCode: serviceerror.InternalServerError.Code,
+			expectedErrCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name: "InvalidName",
@@ -243,7 +246,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestListSenders_StoreError()
 	result, err := suite.service.ListSenders(context.Background())
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *NotificationSenderMgtServiceTestSuite) TestGetSender() {
@@ -280,7 +283,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestGetSender_StoreError() {
 	result, err := suite.service.GetSender(context.Background(), testSenderID)
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 // GetSenderByName Tests
@@ -359,7 +362,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestGetSenderByName_WithFail
 			setup: func(m *notificationStoreInterfaceMock) {
 				m.EXPECT().getSenderByName(mock.Anything, "Test").Return(nil, errors.New("database error")).Once()
 			},
-			expectedErrCode: serviceerror.InternalServerError.Code,
+			expectedErrCode: tidcommon.InternalServerError.Code,
 		},
 	}
 
@@ -519,7 +522,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestUpdateSender_WithFailure
 				m.EXPECT().getSenderByID(mock.Anything, testSenderID).Return(&existing, nil).Once()
 				m.EXPECT().updateSender(mock.Anything, testSenderID, s).Return(errors.New("database error")).Once()
 			},
-			expectedErrCode: serviceerror.InternalServerError.Code,
+			expectedErrCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name: "GetSenderByIDError",
@@ -529,7 +532,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestUpdateSender_WithFailure
 			setupMock: func(m *notificationStoreInterfaceMock, s common.NotificationSenderDTO) {
 				m.EXPECT().getSenderByID(mock.Anything, testSenderID).Return(nil, errors.New("database error")).Once()
 			},
-			expectedErrCode: serviceerror.InternalServerError.Code,
+			expectedErrCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name: "GetSenderByNameError",
@@ -545,7 +548,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestUpdateSender_WithFailure
 				m.EXPECT().getSenderByName(mock.Anything, testSenderUpdatedName).
 					Return(nil, errors.New("database error")).Once()
 			},
-			expectedErrCode: serviceerror.InternalServerError.Code,
+			expectedErrCode: tidcommon.InternalServerError.Code,
 		},
 		{
 			name: "InvalidValidation",
@@ -610,7 +613,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender_StoreError(
 		Return(errors.New("database error")).Once()
 	err := suite.service.DeleteSender(context.Background(), testSenderID)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 // TestCreateSender_DeclarativeResourcesEnabled tests that CreateSender returns error when declarative resources enabled

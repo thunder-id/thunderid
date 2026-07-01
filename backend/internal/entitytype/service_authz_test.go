@@ -23,13 +23,13 @@ import (
 	"encoding/json"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/tests/mocks/consentmock"
@@ -45,10 +45,10 @@ func newAuthzError(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
-	svcErr := &serviceerror.ServiceError{
-		Type: serviceerror.ServerErrorType,
+	svcErr := &tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
 		Code: "SSE-5000",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.sysauthz.authorization_failure",
 			DefaultValue: "authz failure",
 		},
@@ -162,7 +162,7 @@ func (s *AuthzTestSuite) TestGetEntityTypeList_AuthzServiceError() {
 	resp, svcErr := svc.GetEntityTypeList(context.Background(), TypeCategoryUser, 10, 0, false)
 	s.Nil(resp)
 	s.Require().NotNil(svcErr)
-	s.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (s *AuthzTestSuite) TestGetEntityTypeList_NilAuthzService() {
@@ -192,7 +192,7 @@ func (s *AuthzTestSuite) TestCreateEntityType_Denied() {
 	storeMock := newEntityTypeStoreInterfaceMock(s.T())
 	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	ouMock.On("IsOrganizationUnitExists", mock.Anything, testOUID1).
-		Return(true, (*serviceerror.ServiceError)(nil))
+		Return(true, (*tidcommon.ServiceError)(nil))
 
 	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	authzMock.On("IsActionAllowed", mock.Anything, security.ActionCreateUserType,
@@ -213,7 +213,7 @@ func (s *AuthzTestSuite) TestCreateEntityType_Denied() {
 	})
 	s.Nil(result)
 	s.Require().NotNil(svcErr)
-	s.Equal(serviceerror.ErrorUnauthorized.Code, svcErr.Code)
+	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
 }
 
 func (s *AuthzTestSuite) TestCreateEntityType_AuthzError() {
@@ -222,7 +222,7 @@ func (s *AuthzTestSuite) TestCreateEntityType_AuthzError() {
 	storeMock := newEntityTypeStoreInterfaceMock(s.T())
 	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	ouMock.On("IsOrganizationUnitExists", mock.Anything, testOUID1).
-		Return(true, (*serviceerror.ServiceError)(nil))
+		Return(true, (*tidcommon.ServiceError)(nil))
 
 	svc := &entityTypeService{
 		entityTypeStore: storeMock,
@@ -238,7 +238,7 @@ func (s *AuthzTestSuite) TestCreateEntityType_AuthzError() {
 	})
 	s.Nil(result)
 	s.Require().NotNil(svcErr)
-	s.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 // ---- GetEntityType ----
@@ -262,7 +262,7 @@ func (s *AuthzTestSuite) TestGetEntityType_Denied() {
 	result, svcErr := svc.GetEntityType(context.Background(), TypeCategoryUser, "schema-1", false)
 	s.Nil(result)
 	s.Require().NotNil(svcErr)
-	s.Equal(serviceerror.ErrorUnauthorized.Code, svcErr.Code)
+	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
 }
 
 func (s *AuthzTestSuite) TestGetEntityType_AuthzError() {
@@ -279,7 +279,7 @@ func (s *AuthzTestSuite) TestGetEntityType_AuthzError() {
 	result, svcErr := svc.GetEntityType(context.Background(), TypeCategoryUser, "schema-1", false)
 	s.Nil(result)
 	s.Require().NotNil(svcErr)
-	s.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 // ---- GetEntityTypeByName ----
@@ -303,7 +303,7 @@ func (s *AuthzTestSuite) TestGetEntityTypeByName_Denied() {
 	result, svcErr := svc.GetEntityTypeByName(context.Background(), TypeCategoryUser, "employee")
 	s.Nil(result)
 	s.Require().NotNil(svcErr)
-	s.Equal(serviceerror.ErrorUnauthorized.Code, svcErr.Code)
+	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
 }
 
 func (s *AuthzTestSuite) TestGetEntityTypeByName_AuthzError() {
@@ -320,7 +320,7 @@ func (s *AuthzTestSuite) TestGetEntityTypeByName_AuthzError() {
 	result, svcErr := svc.GetEntityTypeByName(context.Background(), TypeCategoryUser, "employee")
 	s.Nil(result)
 	s.Require().NotNil(svcErr)
-	s.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 // ---- UpdateEntityType ----
@@ -340,7 +340,7 @@ func (s *AuthzTestSuite) TestUpdateEntityType_Denied() {
 
 	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	ouMock.On("IsOrganizationUnitExists", mock.Anything, testOUID1).
-		Return(true, (*serviceerror.ServiceError)(nil))
+		Return(true, (*tidcommon.ServiceError)(nil))
 
 	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	authzMock.On("IsActionAllowed", mock.Anything, security.ActionUpdateUserType,
@@ -361,7 +361,7 @@ func (s *AuthzTestSuite) TestUpdateEntityType_Denied() {
 	})
 	s.Nil(result)
 	s.Require().NotNil(svcErr)
-	s.Equal(serviceerror.ErrorUnauthorized.Code, svcErr.Code)
+	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
 }
 
 func (s *AuthzTestSuite) TestUpdateEntityType_AuthzError() {
@@ -379,7 +379,7 @@ func (s *AuthzTestSuite) TestUpdateEntityType_AuthzError() {
 
 	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	ouMock.On("IsOrganizationUnitExists", mock.Anything, testOUID1).
-		Return(true, (*serviceerror.ServiceError)(nil))
+		Return(true, (*tidcommon.ServiceError)(nil))
 
 	svc := &entityTypeService{
 		entityTypeStore: storeMock,
@@ -395,7 +395,7 @@ func (s *AuthzTestSuite) TestUpdateEntityType_AuthzError() {
 	})
 	s.Nil(result)
 	s.Require().NotNil(svcErr)
-	s.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 // ---- DeleteEntityType ----
@@ -424,7 +424,7 @@ func (s *AuthzTestSuite) TestDeleteEntityType_Denied() {
 
 	svcErr := svc.DeleteEntityType(context.Background(), TypeCategoryUser, "schema-1")
 	s.Require().NotNil(svcErr)
-	s.Equal(serviceerror.ErrorUnauthorized.Code, svcErr.Code)
+	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
 }
 
 func (s *AuthzTestSuite) TestDeleteEntityType_AuthzError() {
@@ -446,7 +446,7 @@ func (s *AuthzTestSuite) TestDeleteEntityType_AuthzError() {
 
 	svcErr := svc.DeleteEntityType(context.Background(), TypeCategoryUser, "schema-1")
 	s.Require().NotNil(svcErr)
-	s.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (s *AuthzTestSuite) TestDeleteEntityType_NotFound_StillChecksAuthz() {
@@ -471,7 +471,7 @@ func (s *AuthzTestSuite) TestDeleteEntityType_NotFound_StillChecksAuthz() {
 
 	svcErr := svc.DeleteEntityType(context.Background(), TypeCategoryUser, "nonexistent")
 	s.Require().NotNil(svcErr)
-	s.Equal(serviceerror.ErrorUnauthorized.Code, svcErr.Code,
+	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code,
 		"delete of nonexistent schema should still return unauthorized for denied callers")
 }
 
@@ -573,7 +573,7 @@ func (s *AuthzTestSuite) TestGetEntityType_WithIncludeDisplay() {
 			mock.Anything, []string{testOUID1},
 		).Return(
 			(map[string]string)(nil),
-			&serviceerror.ServiceError{Code: "OU-5000"},
+			&tidcommon.ServiceError{Code: "OU-5000"},
 		).Once()
 
 		svc := &entityTypeService{

@@ -1,4 +1,5 @@
 {
+  "private": true,
   "name": "@thunderid/contexts",
   "version": "0.0.0",
   "description": "Shared React contexts for ⚡️ ThunderID applications",

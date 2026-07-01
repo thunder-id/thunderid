@@ -29,6 +29,7 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/cachemock"
 )
 
@@ -36,7 +37,7 @@ type CacheBackedStoreTestSuite struct {
 	suite.Suite
 	mockStore    *inboundClientStoreInterfaceMock
 	clientCache  *cachemock.CacheInterfaceMock[*inboundmodel.InboundClient]
-	profileCache *cachemock.CacheInterfaceMock[*inboundmodel.OAuthProfile]
+	profileCache *cachemock.CacheInterfaceMock[*providers.OAuthProfile]
 	cachedStore  *cachedBackStore
 }
 
@@ -50,7 +51,7 @@ func (suite *CacheBackedStoreTestSuite) SetupTest() {
 
 	suite.mockStore = newInboundClientStoreInterfaceMock(suite.T())
 	suite.clientCache = cachemock.NewCacheInterfaceMock[*inboundmodel.InboundClient](suite.T())
-	suite.profileCache = cachemock.NewCacheInterfaceMock[*inboundmodel.OAuthProfile](suite.T())
+	suite.profileCache = cachemock.NewCacheInterfaceMock[*providers.OAuthProfile](suite.T())
 	suite.cachedStore = &cachedBackStore{
 		inboundClientCache: suite.clientCache,
 		oauthProfileCache:  suite.profileCache,
@@ -83,7 +84,7 @@ func (suite *CacheBackedStoreTestSuite) TestCreateInboundClient_InnerError() {
 // CreateOAuthProfile — delegates to inner.
 func (suite *CacheBackedStoreTestSuite) TestCreateOAuthProfile_Delegates() {
 	ctx := context.Background()
-	p := &inboundmodel.OAuthProfile{}
+	p := &providers.OAuthProfile{}
 	suite.mockStore.EXPECT().CreateOAuthProfile(mock.Anything, "e1", p).Return(nil)
 
 	err := suite.cachedStore.CreateOAuthProfile(ctx, "e1", p)
@@ -131,7 +132,7 @@ func (suite *CacheBackedStoreTestSuite) TestGetInboundClientByEntityID_InnerErro
 // GetOAuthProfileByEntityID — cache hit.
 func (suite *CacheBackedStoreTestSuite) TestGetOAuthProfileByEntityID_CacheHit() {
 	ctx := context.Background()
-	cached := &inboundmodel.OAuthProfile{GrantTypes: []string{"authorization_code"}}
+	cached := &providers.OAuthProfile{GrantTypes: []string{"authorization_code"}}
 	suite.profileCache.EXPECT().Get(mock.Anything, cache.CacheKey{Key: "e1"}).Return(cached, true)
 
 	got, err := suite.cachedStore.GetOAuthProfileByEntityID(ctx, "e1")
@@ -142,9 +143,9 @@ func (suite *CacheBackedStoreTestSuite) TestGetOAuthProfileByEntityID_CacheHit()
 // GetOAuthProfileByEntityID — cache miss, fetches inner and caches.
 func (suite *CacheBackedStoreTestSuite) TestGetOAuthProfileByEntityID_CacheMiss() {
 	ctx := context.Background()
-	var nilProfile *inboundmodel.OAuthProfile
+	var nilProfile *providers.OAuthProfile
 	suite.profileCache.EXPECT().Get(mock.Anything, cache.CacheKey{Key: "e1"}).Return(nilProfile, false)
-	inner := &inboundmodel.OAuthProfile{GrantTypes: []string{"authorization_code"}}
+	inner := &providers.OAuthProfile{GrantTypes: []string{"authorization_code"}}
 	suite.mockStore.EXPECT().GetOAuthProfileByEntityID(mock.Anything, "e1").Return(inner, nil)
 	suite.profileCache.EXPECT().Set(mock.Anything, cache.CacheKey{Key: "e1"}, inner).Return(nil)
 
@@ -156,7 +157,7 @@ func (suite *CacheBackedStoreTestSuite) TestGetOAuthProfileByEntityID_CacheMiss(
 // GetOAuthProfileByEntityID — cache miss + inner error.
 func (suite *CacheBackedStoreTestSuite) TestGetOAuthProfileByEntityID_InnerError() {
 	ctx := context.Background()
-	var nilProfile *inboundmodel.OAuthProfile
+	var nilProfile *providers.OAuthProfile
 	suite.profileCache.EXPECT().Get(mock.Anything, cache.CacheKey{Key: "e1"}).Return(nilProfile, false)
 	storeErr := errors.New("db error")
 	suite.mockStore.EXPECT().GetOAuthProfileByEntityID(mock.Anything, "e1").Return(nil, storeErr)
@@ -213,7 +214,7 @@ func (suite *CacheBackedStoreTestSuite) TestUpdateInboundClient_InnerError() {
 // UpdateOAuthProfile — inner succeeds, invalidates OAuth cache.
 func (suite *CacheBackedStoreTestSuite) TestUpdateOAuthProfile_InvalidatesCache() {
 	ctx := context.Background()
-	p := &inboundmodel.OAuthProfile{}
+	p := &providers.OAuthProfile{}
 	suite.mockStore.EXPECT().UpdateOAuthProfile(mock.Anything, "e1", p).Return(nil)
 	suite.profileCache.EXPECT().Delete(mock.Anything, cache.CacheKey{Key: "e1"}).Return(nil)
 
@@ -224,7 +225,7 @@ func (suite *CacheBackedStoreTestSuite) TestUpdateOAuthProfile_InvalidatesCache(
 // UpdateOAuthProfile — inner fails.
 func (suite *CacheBackedStoreTestSuite) TestUpdateOAuthProfile_InnerError() {
 	ctx := context.Background()
-	p := &inboundmodel.OAuthProfile{}
+	p := &providers.OAuthProfile{}
 	storeErr := errors.New("update failed")
 	suite.mockStore.EXPECT().UpdateOAuthProfile(mock.Anything, "e1", p).Return(storeErr)
 
@@ -313,11 +314,11 @@ func (suite *CacheBackedStoreTestSuite) TestCacheOAuthProfile_NilNoOp() {
 }
 
 func (suite *CacheBackedStoreTestSuite) TestCacheOAuthProfile_EmptyAppIDNoOp() {
-	suite.cachedStore.cacheOAuthProfile(context.Background(), "", &inboundmodel.OAuthProfile{})
+	suite.cachedStore.cacheOAuthProfile(context.Background(), "", &providers.OAuthProfile{})
 }
 
 func (suite *CacheBackedStoreTestSuite) TestCacheOAuthProfile_LogsOnSetError() {
-	profile := &inboundmodel.OAuthProfile{GrantTypes: []string{"authorization_code"}}
+	profile := &providers.OAuthProfile{GrantTypes: []string{"authorization_code"}}
 	suite.profileCache.EXPECT().Set(mock.Anything, cache.CacheKey{Key: "a1"}, profile).
 		Return(errors.New("cache down"))
 	suite.cachedStore.cacheOAuthProfile(context.Background(), "a1", profile)

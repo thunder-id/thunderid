@@ -1,0 +1,141 @@
+---
+title: Contribute Ideas
+sidebar_position: 3
+description: "Share ideas, explore problems, and propose design solutions for {{ProductName}} features."
+hide_table_of_contents: false
+---
+
+import Link from '@docusaurus/Link';
+
+# Contribute Ideas
+
+This page covers the full ideas-to-design journey: sharing a raw idea in a discussion, converting it into a formal feature request, and proposing the technical design once a feature is approved.
+
+## Share an Idea
+
+All features start with a problem worth solving. Two paths exist depending on how well-formed the idea is:
+
+<div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: '2.5rem'}}>
+
+  <div style={{padding: 24, borderRadius: 14, border: '1px solid var(--ifm-color-emphasis-200)', background: 'var(--ifm-background-surface-color)'}}>
+    <div style={{fontFamily: 'var(--ifm-font-family-monospace)', fontSize: '0.8rem', color: 'var(--ifm-color-primary)', marginBottom: 10, fontWeight: 600}}>Option 1</div>
+    <h3 style={{fontSize: '0.95rem', fontWeight: 700, marginBottom: 8, marginTop: 0}}>Discussion</h3>
+    <p style={{fontSize: '0.82rem', color: 'var(--ifm-color-emphasis-600)', lineHeight: 1.65, marginBottom: 14}}>Use when the idea needs refinement or community input. Problem needs exploration before a formal request.</p>
+    <div style={{fontFamily: 'var(--ifm-font-family-monospace)', fontSize: '0.75rem', color: 'var(--ifm-color-emphasis-500)', lineHeight: 1.8, marginBottom: 16}}>Create discussion → Collaborate → Create issue</div>
+    <RepoLink path="/discussions/new?category=ideas" style={{fontSize: '0.82rem', fontWeight: 500}}>Start a Discussion →</RepoLink>
+  </div>
+
+  <div style={{padding: 24, borderRadius: 14, border: '1px solid var(--ifm-color-emphasis-200)', background: 'var(--ifm-background-surface-color)'}}>
+    <div style={{fontFamily: 'var(--ifm-font-family-monospace)', fontSize: '0.8rem', color: 'var(--ifm-color-primary)', marginBottom: 10, fontWeight: 600}}>Option 2</div>
+    <h3 style={{fontSize: '0.95rem', fontWeight: 700, marginBottom: 8, marginTop: 0}}>Feature Issue</h3>
+    <p style={{fontSize: '0.82rem', color: 'var(--ifm-color-emphasis-600)', lineHeight: 1.65, marginBottom: 14}}>Use when you have a clear, well-defined problem with answers to: What? Why? Who?</p>
+    <div style={{fontFamily: 'var(--ifm-font-family-monospace)', fontSize: '0.75rem', color: 'var(--ifm-color-emphasis-500)', lineHeight: 1.8, marginBottom: 16}}>Create issue → Triage → Assignment</div>
+    <RepoLink path="/issues/new?template=feature.yml" style={{fontSize: '0.82rem', fontWeight: 500}}>Open a Feature Issue →</RepoLink>
+  </div>
+
+</div>
+
+**When in doubt**: Start with a discussion. You can always create an issue later.
+
+### Writing a good feature issue
+
+Before opening an issue, make sure you can answer these three questions:
+
+<div style={{display: 'flex', flexDirection: 'column', gap: 12, marginBottom: '2.5rem'}}>
+  <div style={{display: 'flex', gap: 16, padding: 20, borderRadius: 12, border: '1px solid var(--ifm-color-emphasis-200)', background: 'var(--ifm-background-surface-color)'}}>
+    <div style={{fontFamily: 'var(--ifm-font-family-monospace)', fontSize: '1.35rem', fontWeight: 700, color: 'color-mix(in srgb, var(--ifm-color-primary) 35%, transparent)', flexShrink: 0, lineHeight: 1, paddingTop: 2}}>01</div>
+    <div>
+      <div style={{fontSize: '0.9rem', fontWeight: 700, marginBottom: 5}}>What problem are we solving?</div>
+      <div style={{fontSize: '0.82rem', color: 'var(--ifm-color-emphasis-600)', lineHeight: 1.65}}>Be specific about the problem, not the solution. Describe the limitation and its negative impact on users.</div>
+    </div>
+  </div>
+  <div style={{display: 'flex', gap: 16, padding: 20, borderRadius: 12, border: '1px solid var(--ifm-color-emphasis-200)', background: 'var(--ifm-background-surface-color)'}}>
+    <div style={{fontFamily: 'var(--ifm-font-family-monospace)', fontSize: '1.35rem', fontWeight: 700, color: 'color-mix(in srgb, var(--ifm-color-primary) 35%, transparent)', flexShrink: 0, lineHeight: 1, paddingTop: 2}}>02</div>
+    <div>
+      <div style={{fontSize: '0.9rem', fontWeight: 700, marginBottom: 5}}>Why should we solve this now?</div>
+      <div style={{fontSize: '0.82rem', color: 'var(--ifm-color-emphasis-600)', lineHeight: 1.65}}>Provide justification: user impact, business value, technical debt, or compliance requirements.</div>
+    </div>
+  </div>
+  <div style={{display: 'flex', gap: 16, padding: 20, borderRadius: 12, border: '1px solid var(--ifm-color-emphasis-200)', background: 'var(--ifm-background-surface-color)'}}>
+    <div style={{fontFamily: 'var(--ifm-font-family-monospace)', fontSize: '1.35rem', fontWeight: 700, color: 'color-mix(in srgb, var(--ifm-color-primary) 35%, transparent)', flexShrink: 0, lineHeight: 1, paddingTop: 2}}>03</div>
+    <div>
+      <div style={{fontSize: '0.9rem', fontWeight: 700, marginBottom: 5}}>Who are we solving this for?</div>
+      <div style={{fontSize: '0.82rem', color: 'var(--ifm-color-emphasis-600)', lineHeight: 1.65}}>Identify user personas: end users, administrators, developers, security teams — and their goals.</div>
+    </div>
+  </div>
+</div>
+
+### What Happens After You File an Issue
+
+Maintainers will **triage** the issue (review strategic fit, assess scope, add labels) then decide whether it's approved for work. If approved, it's open for anyone — including you — to pick up.
+
+:::tip You can stop here
+Creating a well-defined feature issue is a complete contribution. You don't need to design or implement it yourself.
+:::
+
+## Propose a Design
+
+Once a feature issue is **approved and assigned to you**, create a design discussion to propose how you'll solve it.
+
+<div style={{display: 'flex', flexDirection: 'column', gap: 20, marginBottom: '2.5rem'}}>
+
+  <div style={{display: 'flex', gap: 20}}>
+    <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0}}>
+      <div style={{width: 36, height: 36, borderRadius: '50%', background: 'var(--ifm-color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--ifm-font-family-monospace)', fontSize: '0.82rem', fontWeight: 700, color: '#fff'}}>1</div>
+      <div style={{flex: 1, width: 1, background: 'color-mix(in srgb, var(--ifm-color-primary) 25%, transparent)', minHeight: 32, marginTop: 4}}/>
+    </div>
+    <div style={{paddingTop: 6, paddingBottom: 24}}>
+      <div style={{fontSize: '0.95rem', fontWeight: 700, marginBottom: 6}}>Create a Design Discussion</div>
+      <p style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-600)', lineHeight: 1.65, marginBottom: 10}}>Go to GitHub Discussions, select the <strong>"Design"</strong> category, and outline your high-level approach to solving the assigned problem.</p>
+      <RepoLink path="/discussions/new/choose" style={{fontSize: '0.875rem', fontWeight: 500}}>Open Design Discussion →</RepoLink>
+    </div>
+  </div>
+
+  <div style={{display: 'flex', gap: 20}}>
+    <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0}}>
+      <div style={{width: 36, height: 36, borderRadius: '50%', background: 'var(--ifm-color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--ifm-font-family-monospace)', fontSize: '0.82rem', fontWeight: 700, color: '#fff'}}>2</div>
+      <div style={{flex: 1, width: 1, background: 'color-mix(in srgb, var(--ifm-color-primary) 25%, transparent)', minHeight: 32, marginTop: 4}}/>
+    </div>
+    <div style={{paddingTop: 6, paddingBottom: 24}}>
+      <div style={{fontSize: '0.95rem', fontWeight: 700, marginBottom: 6}}>Community Collaboration</div>
+      <p style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-600)', lineHeight: 1.65}}>The community will ask clarifying questions, identify edge cases, and suggest alternatives. Respond promptly and be open to feedback. Most discussions reach clarity within 1–2 weeks.</p>
+    </div>
+  </div>
+
+  <div style={{display: 'flex', gap: 20}}>
+    <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0}}>
+      <div style={{width: 36, height: 36, borderRadius: '50%', background: 'var(--ifm-color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--ifm-font-family-monospace)', fontSize: '0.82rem', fontWeight: 700, color: '#fff'}}>3</div>
+      <div style={{flex: 1, width: 1, background: 'color-mix(in srgb, var(--ifm-color-primary) 25%, transparent)', minHeight: 32, marginTop: 4}}/>
+    </div>
+    <div style={{paddingTop: 6, paddingBottom: 24}}>
+      <div style={{fontSize: '0.95rem', fontWeight: 700, marginBottom: 6}}>Design Review</div>
+      <p style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-600)', lineHeight: 1.65}}>Maintainers formally review the proposal. Outcome: <strong>Approved</strong> → move to implementation; <strong>Needs Revision</strong> → address feedback and iterate; <strong>Rejected</strong> → explained and closed.</p>
+    </div>
+  </div>
+
+  <div style={{display: 'flex', gap: 20}}>
+    <div style={{flexShrink: 0}}>
+      <div style={{width: 36, height: 36, borderRadius: '50%', background: 'color-mix(in srgb, #4ade80 15%, transparent)', border: '1px solid color-mix(in srgb, #4ade80 35%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4ade80'}}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+    </div>
+    <div style={{paddingTop: 6}}>
+      <div style={{fontSize: '0.95rem', fontWeight: 700, color: '#4ade80', marginBottom: 6}}>Approved — begin implementation</div>
+      <p style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-600)', lineHeight: 1.65, marginBottom: 12}}>Once approved, you (or someone else) can implement the feature. You're credited as the design author regardless.</p>
+      <Link href="../contributing-code/pull-request-workflow" style={{fontSize: '0.875rem', fontWeight: 500}}>See Contribute Code →</Link>
+    </div>
+  </div>
+
+</div>
+
+### Review Outcomes
+
+| Outcome | Meaning | Next step |
+|---|---|---|
+| ✅ Approved | Design is sound | Move to [Contribute Code](../contributing-code/pull-request-workflow) |
+| 🔄 Needs Revision | Good direction, changes needed | Address feedback, iterate (typically 1–2 cycles) |
+| ❌ Rejected | Fundamental issues found | Maintainer explains; discussion closed with documentation |
+
+:::note
+Rejection is not a reflection on you — it's how the process protects the codebase. Better to catch issues during design than implementation.
+:::

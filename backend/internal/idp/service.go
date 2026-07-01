@@ -25,25 +25,30 @@ import (
 	"fmt"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // IDPServiceInterface defines the interface for the IdP service.
 type IDPServiceInterface interface {
-	CreateIdentityProvider(ctx context.Context, idp *IDPDTO) (*IDPDTO, *serviceerror.ServiceError)
-	GetIdentityProviderList(ctx context.Context) ([]BasicIDPDTO, *serviceerror.ServiceError)
-	GetIdentityProvider(ctx context.Context, idpID string) (*IDPDTO, *serviceerror.ServiceError)
-	GetIdentityProviderByName(ctx context.Context, idpName string) (*IDPDTO, *serviceerror.ServiceError)
+	CreateIdentityProvider(ctx context.Context, idp *providers.IDPDTO) (*providers.IDPDTO, *tidcommon.ServiceError)
+	GetIdentityProviderList(ctx context.Context) ([]BasicIDPDTO, *tidcommon.ServiceError)
+	GetIdentityProvider(ctx context.Context, idpID string) (*providers.IDPDTO, *tidcommon.ServiceError)
+	GetIdentityProviderByName(ctx context.Context, idpName string) (*providers.IDPDTO, *tidcommon.ServiceError)
 	GetIdentityProvidersByProperty(ctx context.Context, propertyKey,
-		propertyValue string) ([]IDPDTO, *serviceerror.ServiceError)
-	UpdateIdentityProvider(ctx context.Context, idpID string, idp *IDPDTO) (*IDPDTO, *serviceerror.ServiceError)
-	DeleteIdentityProvider(ctx context.Context, idpID string) *serviceerror.ServiceError
+		propertyValue string) ([]providers.IDPDTO, *tidcommon.ServiceError)
+	UpdateIdentityProvider(
+		ctx context.Context,
+		idpID string,
+		idp *providers.IDPDTO,
+	) (*providers.IDPDTO, *tidcommon.ServiceError)
+	DeleteIdentityProvider(ctx context.Context, idpID string) *tidcommon.ServiceError
 }
 
 // idpService is the default implementation of the IdPServiceInterface.
@@ -69,7 +74,7 @@ func newIDPService(idpStore idpStoreInterface, entityTypeService entitytype.Enti
 
 // CreateIdentityProvider creates a new Identity Provider.
 func (is *idpService) CreateIdentityProvider(
-	ctx context.Context, idp *IDPDTO) (*IDPDTO, *serviceerror.ServiceError) {
+	ctx context.Context, idp *providers.IDPDTO) (*providers.IDPDTO, *tidcommon.ServiceError) {
 	logger := is.logger
 	if isDeclarativeModeEnabled() {
 		return nil, &declarativeresource.ErrorDeclarativeResourceCreateOperation
@@ -86,14 +91,14 @@ func (is *idpService) CreateIdentityProvider(
 		id, genErr := is.uuidGenerator()
 		if genErr != nil {
 			logger.Error(ctx, "failed to generate ID for identity provider", log.Error(genErr))
-			return nil, &serviceerror.InternalServerError
+			return nil, &tidcommon.InternalServerError
 		}
 		idp.ID = id
 	}
 
 	var (
 		err    error
-		svcErr *serviceerror.ServiceError
+		svcErr *tidcommon.ServiceError
 	)
 	err = is.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		// Check if an identity provider with the same name already exists
@@ -120,14 +125,14 @@ func (is *idpService) CreateIdentityProvider(
 	if err != nil {
 		logger.Error(ctx, "Failed to create identity provider",
 			log.Error(err), log.String("idpName", idp.Name))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return idp, nil
 }
 
 // GetIdentityProviderList retrieves the list of all Identity Providers.
-func (is *idpService) GetIdentityProviderList(ctx context.Context) ([]BasicIDPDTO, *serviceerror.ServiceError) {
+func (is *idpService) GetIdentityProviderList(ctx context.Context) ([]BasicIDPDTO, *tidcommon.ServiceError) {
 	logger := is.logger
 	idps, err := is.idpStore.GetIdentityProviderList(ctx)
 	if err != nil {
@@ -135,14 +140,17 @@ func (is *idpService) GetIdentityProviderList(ctx context.Context) ([]BasicIDPDT
 			return nil, &ErrorResultLimitExceededInCompositeMode
 		}
 		logger.Error(ctx, "Failed to get identity provider list", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return idps, nil
 }
 
 // GetIdentityProvider retrieves an identity provider by its ID.
-func (is *idpService) GetIdentityProvider(ctx context.Context, idpID string) (*IDPDTO, *serviceerror.ServiceError) {
+func (is *idpService) GetIdentityProvider(
+	ctx context.Context,
+	idpID string,
+) (*providers.IDPDTO, *tidcommon.ServiceError) {
 	logger := is.logger
 	if strings.TrimSpace(idpID) == "" {
 		return nil, &ErrorInvalidIDPID
@@ -154,7 +162,7 @@ func (is *idpService) GetIdentityProvider(ctx context.Context, idpID string) (*I
 			return nil, &ErrorIDPNotFound
 		}
 		logger.Error(ctx, "Failed to get identity provider", log.String("idpID", idpID), log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return idp, nil
@@ -162,7 +170,7 @@ func (is *idpService) GetIdentityProvider(ctx context.Context, idpID string) (*I
 
 // GetIdentityProviderByName retrieves an identity provider by its name.
 func (is *idpService) GetIdentityProviderByName(ctx context.Context,
-	idpName string) (*IDPDTO, *serviceerror.ServiceError) {
+	idpName string) (*providers.IDPDTO, *tidcommon.ServiceError) {
 	logger := is.logger
 	if strings.TrimSpace(idpName) == "" {
 		return nil, &ErrorInvalidIDPName
@@ -175,7 +183,7 @@ func (is *idpService) GetIdentityProviderByName(ctx context.Context,
 		}
 		logger.Error(ctx, "Failed to get identity provider by name",
 			log.String("idpName", idpName), log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return idp, nil
@@ -183,7 +191,7 @@ func (is *idpService) GetIdentityProviderByName(ctx context.Context,
 
 // GetIdentityProvidersByProperty retrieves identity providers matching a given property key and value.
 func (is *idpService) GetIdentityProvidersByProperty(ctx context.Context,
-	propertyKey, propertyValue string) ([]IDPDTO, *serviceerror.ServiceError) {
+	propertyKey, propertyValue string) ([]providers.IDPDTO, *tidcommon.ServiceError) {
 	logger := is.logger
 	if strings.TrimSpace(propertyKey) == "" || strings.TrimSpace(propertyValue) == "" {
 		return nil, &ErrorInvalidIDPID
@@ -197,15 +205,19 @@ func (is *idpService) GetIdentityProvidersByProperty(ctx context.Context,
 		logger.Error(ctx, "Failed to get identity providers by property",
 			log.String("propertyKey", propertyKey),
 			log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return idps, nil
 }
 
 // UpdateIdentityProvider updates an existing Identity Provider.
-func (is *idpService) UpdateIdentityProvider(ctx context.Context, idpID string, idp *IDPDTO) (*IDPDTO,
-	*serviceerror.ServiceError) {
+func (is *idpService) UpdateIdentityProvider(
+	ctx context.Context,
+	idpID string,
+	idp *providers.IDPDTO,
+) (*providers.IDPDTO,
+	*tidcommon.ServiceError) {
 	logger := is.logger
 	// Block updates only in declarative-only mode; allow in composite and mutable modes
 	// In composite mode, the store will check if the resource is immutable and return appropriate error
@@ -224,7 +236,7 @@ func (is *idpService) UpdateIdentityProvider(ctx context.Context, idpID string, 
 	}
 
 	idp.ID = idpID
-	var svcErr *serviceerror.ServiceError
+	var svcErr *tidcommon.ServiceError
 	err := is.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		// Check if the identity provider exists
 		existingIDP, err := is.idpStore.GetIdentityProvider(txCtx, idpID)
@@ -265,14 +277,14 @@ func (is *idpService) UpdateIdentityProvider(ctx context.Context, idpID string, 
 	}
 	if err != nil {
 		logger.Error(ctx, "Failed to update identity provider", log.Error(err), log.String("idpID", idpID))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return idp, nil
 }
 
 // DeleteIdentityProvider deletes an identity provider.
-func (is *idpService) DeleteIdentityProvider(ctx context.Context, idpID string) *serviceerror.ServiceError {
+func (is *idpService) DeleteIdentityProvider(ctx context.Context, idpID string) *tidcommon.ServiceError {
 	logger := is.logger
 	// Block deletes only in declarative-only mode; allow in composite and mutable modes
 	// In composite mode, the store will check if the resource is immutable and return appropriate error
@@ -284,7 +296,7 @@ func (is *idpService) DeleteIdentityProvider(ctx context.Context, idpID string) 
 		return &ErrorInvalidIDPID
 	}
 
-	var svcErr *serviceerror.ServiceError
+	var svcErr *tidcommon.ServiceError
 	err := is.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		// Check if the identity provider exists
 		_, err := is.idpStore.GetIdentityProvider(txCtx, idpID)
@@ -312,7 +324,7 @@ func (is *idpService) DeleteIdentityProvider(ctx context.Context, idpID string) 
 	}
 	if err != nil {
 		logger.Error(ctx, "Failed to delete identity provider", log.Error(err), log.String("idpID", idpID))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	return nil
@@ -321,13 +333,16 @@ func (is *idpService) DeleteIdentityProvider(ctx context.Context, idpID string) 
 // validateAttributeConfiguration validates the IDP's attribute configuration: a required default user type, and
 // for each user type's attributes a valid claim-mapping shape with every local (target) claim a
 // non-credential attribute defined in that user type's schema. No-op when no profile is configured.
-func (is *idpService) validateAttributeConfiguration(ctx context.Context, idp *IDPDTO) *serviceerror.ServiceError {
+func (is *idpService) validateAttributeConfiguration(
+	ctx context.Context,
+	idp *providers.IDPDTO,
+) *tidcommon.ServiceError {
 	profile := idp.AttributeConfiguration
 	if profile == nil {
 		return nil
 	}
 	if profile.UserTypeResolution == nil || strings.TrimSpace(profile.UserTypeResolution.Default) == "" {
-		return serviceerror.CustomServiceError(ErrorInvalidAttributeConfiguration, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 			Key:          "error.idpservice.attribute_configuration_user_type_required_description",
 			DefaultValue: "attribute configuration requires an user type",
 		})
@@ -337,13 +352,13 @@ func (is *idpService) validateAttributeConfiguration(ctx context.Context, idp *I
 	for i := range profile.UserTypeAttributeMappings {
 		entry := profile.UserTypeAttributeMappings[i]
 		if strings.TrimSpace(entry.UserType) == "" {
-			return serviceerror.CustomServiceError(ErrorInvalidAttributeConfiguration, core.I18nMessage{
+			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 				Key:          "error.idpservice.attribute_configuration_entry_user_type_required_description",
 				DefaultValue: "each user type attributes entry requires an user type",
 			})
 		}
 		if seenUserTypes[entry.UserType] {
-			return serviceerror.CustomServiceError(ErrorInvalidAttributeConfiguration, core.I18nMessage{
+			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 				Key: "error.idpservice.attribute_configuration_duplicate_user_type_description",
 				DefaultValue: fmt.Sprintf(
 					"user type '%s' is configured more than once", entry.UserType),
@@ -361,7 +376,7 @@ func (is *idpService) validateAttributeConfiguration(ctx context.Context, idp *I
 		attributes, svcErr := is.entityTypeService.GetAttributes(
 			ctx, entitytype.TypeCategoryUser, entry.UserType, false, true, false)
 		if svcErr != nil {
-			return serviceerror.CustomServiceError(ErrorInvalidAttributeConfiguration, core.I18nMessage{
+			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 				Key: "error.idpservice.attribute_configuration_user_type_invalid_description",
 				DefaultValue: fmt.Sprintf("invalid user type '%s' for attribute configuration: %s",
 					entry.UserType, svcErr.ErrorDescription.DefaultValue),
@@ -373,7 +388,7 @@ func (is *idpService) validateAttributeConfiguration(ctx context.Context, idp *I
 		}
 		for _, m := range entry.Attributes {
 			if !validTargets[m.LocalAttribute] {
-				return serviceerror.CustomServiceError(ErrorInvalidAttributeConfiguration, core.I18nMessage{
+				return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 					Key: "error.idpservice.attribute_configuration_target_not_in_schema_description",
 					DefaultValue: fmt.Sprintf("local claim '%s' is not an attribute of user type '%s'",
 						m.LocalAttribute, entry.UserType),

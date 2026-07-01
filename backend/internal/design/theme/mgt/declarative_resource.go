@@ -24,8 +24,9 @@ import (
 	"fmt"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 
 	"gopkg.in/yaml.v3"
@@ -58,7 +59,7 @@ func (e *themeExporter) GetParameterizerType() string {
 
 // GetAllResourceIDs retrieves all theme IDs from the database store.
 // In composite mode, this excludes declarative (YAML-based) themes.
-func (e *themeExporter) GetAllResourceIDs(ctx context.Context) ([]string, *serviceerror.ServiceError) {
+func (e *themeExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
 	const pageSize = 100
 	var allIDs []string
 	offset := 0
@@ -88,7 +89,7 @@ func (e *themeExporter) GetAllResourceIDs(ctx context.Context) ([]string, *servi
 
 // GetResourceByID retrieves a theme by its ID.
 func (e *themeExporter) GetResourceByID(ctx context.Context, id string) (
-	interface{}, string, *serviceerror.ServiceError,
+	interface{}, string, *tidcommon.ServiceError,
 ) {
 	theme, err := e.service.GetTheme(ctx, id)
 	if err != nil {

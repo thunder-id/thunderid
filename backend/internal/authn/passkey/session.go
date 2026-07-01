@@ -23,7 +23,8 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -46,17 +47,17 @@ func generateSessionKey() (string, error) {
 // storeSessionData stores session data in the database and returns a session key.
 func (w *passkeyService) storeSessionData(ctx context.Context,
 	sessionData *sessionData,
-) (string, *serviceerror.ServiceError) {
+) (string, *tidcommon.ServiceError) {
 	// Generate a random session key
 	sessionKey, err := generateSessionKey()
 	if err != nil {
-		return "", &serviceerror.InternalServerError
+		return "", &tidcommon.InternalServerError
 	}
 
 	// Store session data in database
 	err = w.sessionStore.storeSession(ctx, sessionKey, sessionData, sessionTTLSeconds)
 	if err != nil {
-		return "", &serviceerror.InternalServerError
+		return "", &tidcommon.InternalServerError
 	}
 
 	return sessionKey, nil
@@ -65,12 +66,12 @@ func (w *passkeyService) storeSessionData(ctx context.Context,
 // retrieveSessionData retrieves the session data from the database using the session key.
 func (w *passkeyService) retrieveSessionData(ctx context.Context,
 	sessionKey string,
-) (*sessionData, string, string, *serviceerror.ServiceError) {
+) (*sessionData, string, string, *tidcommon.ServiceError) {
 	// Retrieve session data from database
 	session, err := w.sessionStore.retrieveSession(ctx, sessionKey)
 	if err != nil {
 		w.logger.Debug(ctx, "Failed to retrieve passkey session", log.Error(err))
-		return nil, "", "", &serviceerror.InternalServerError
+		return nil, "", "", &tidcommon.InternalServerError
 	}
 
 	if session == nil {

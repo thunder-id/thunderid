@@ -26,13 +26,15 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 )
 
@@ -156,11 +158,11 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate() {
 			name:       "Invalid JWT signature",
 			authHeader: "Bearer invalid.jwt.token",
 			setupMock: func(m *jwtmock.JWTServiceInterfaceMock) {
-				m.On("VerifyJWT", mock.Anything, "invalid.jwt.token", "", "").Return(&serviceerror.ServiceError{
-					Type:             serviceerror.ServerErrorType,
+				m.On("VerifyJWT", mock.Anything, "invalid.jwt.token", "", "").Return(&tidcommon.ServiceError{
+					Type:             tidcommon.ServerErrorType,
 					Code:             "INVALID_SIGNATURE",
-					Error:            i18ncore.I18nMessage{DefaultValue: "Invalid signature"},
-					ErrorDescription: i18ncore.I18nMessage{DefaultValue: "The JWT signature is invalid"},
+					Error:            tidcommon.I18nMessage{DefaultValue: "Invalid signature"},
+					ErrorDescription: tidcommon.I18nMessage{DefaultValue: "The JWT signature is invalid"},
 				})
 			},
 			expectedError: errInvalidToken,
@@ -169,11 +171,11 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate() {
 			name:       "Expired JWT token",
 			authHeader: "Bearer expired.jwt.token",
 			setupMock: func(m *jwtmock.JWTServiceInterfaceMock) {
-				m.On("VerifyJWT", mock.Anything, "expired.jwt.token", "", "").Return(&serviceerror.ServiceError{
-					Type:             serviceerror.ClientErrorType,
+				m.On("VerifyJWT", mock.Anything, "expired.jwt.token", "", "").Return(&tidcommon.ServiceError{
+					Type:             tidcommon.ClientErrorType,
 					Code:             "JWT-60005",
-					Error:            i18ncore.I18nMessage{DefaultValue: "Token has expired"},
-					ErrorDescription: i18ncore.I18nMessage{DefaultValue: "The JWT token has expired"},
+					Error:            tidcommon.I18nMessage{DefaultValue: "Token has expired"},
+					ErrorDescription: tidcommon.I18nMessage{DefaultValue: "The JWT token has expired"},
 				})
 			},
 			expectedError: errInvalidToken,
@@ -495,9 +497,9 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_IssuerMismatch(
 	defer config.ResetServerRuntime()
 
 	cfg := &config.Config{
-		Server: config.ServerConfig{
-			SecurityConfig: config.SecurityConfig{
-				TrustedIssuer: config.TrustedIssuerConfig{
+		Server: engineconfig.ServerConfig{
+			SecurityConfig: engineconfig.SecurityConfig{
+				TrustedIssuer: engineconfig.TrustedIssuerConfig{
 					Issuer:   "https://expected-auth:8090",
 					JWKSURL:  "https://expected-auth:8090/oauth2/jwks",
 					Audience: testFederatedAudience,
@@ -525,9 +527,9 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_JWKSVerificatio
 	audience := testFederatedAudience
 
 	cfg := &config.Config{
-		Server: config.ServerConfig{
-			SecurityConfig: config.SecurityConfig{
-				TrustedIssuer: config.TrustedIssuerConfig{
+		Server: engineconfig.ServerConfig{
+			SecurityConfig: engineconfig.SecurityConfig{
+				TrustedIssuer: engineconfig.TrustedIssuerConfig{
 					Issuer:   issuer,
 					JWKSURL:  jwksURL,
 					Audience: audience,
@@ -560,9 +562,9 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_JWKSVerificatio
 	audience := testFederatedAudience
 
 	cfg := &config.Config{
-		Server: config.ServerConfig{
-			SecurityConfig: config.SecurityConfig{
-				TrustedIssuer: config.TrustedIssuerConfig{
+		Server: engineconfig.ServerConfig{
+			SecurityConfig: engineconfig.SecurityConfig{
+				TrustedIssuer: engineconfig.TrustedIssuerConfig{
 					Issuer:   issuer,
 					JWKSURL:  jwksURL,
 					Audience: audience,
@@ -578,10 +580,10 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_JWKSVerificatio
 	)
 
 	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
-	mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, jwksURL, audience, issuer).Return(&serviceerror.ServiceError{
-		Type:  serviceerror.ServerErrorType,
+	mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, jwksURL, audience, issuer).Return(&tidcommon.ServiceError{
+		Type:  tidcommon.ServerErrorType,
 		Code:  "JWKS_ERROR",
-		Error: i18ncore.I18nMessage{DefaultValue: "JWKS verification failed"},
+		Error: tidcommon.I18nMessage{DefaultValue: "JWKS verification failed"},
 	})
 	auth := newJWTAuthenticator(mockJWT)
 
@@ -597,31 +599,31 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_RequiredClaims(
 
 	tests := []struct {
 		name           string
-		requiredClaims []config.RequiredClaim
+		requiredClaims []engineconfig.RequiredClaim
 		payloadClaims  map[string]interface{}
 		expectedResult bool
 	}{
 		{
 			name:           "RequiredClaimsMatch",
-			requiredClaims: []config.RequiredClaim{{Claim: "ouId", Value: "tenant-org-1"}},
+			requiredClaims: []engineconfig.RequiredClaim{{Claim: "ouId", Value: "tenant-org-1"}},
 			payloadClaims:  map[string]interface{}{"sub": "user1", "iss": issuer, "ouId": "tenant-org-1"},
 			expectedResult: true,
 		},
 		{
 			name:           "RequiredClaimMismatch",
-			requiredClaims: []config.RequiredClaim{{Claim: "ouId", Value: "tenant-org-1"}},
+			requiredClaims: []engineconfig.RequiredClaim{{Claim: "ouId", Value: "tenant-org-1"}},
 			payloadClaims:  map[string]interface{}{"sub": "user1", "iss": issuer, "ouId": "wrong-org"},
 			expectedResult: false,
 		},
 		{
 			name:           "RequiredClaimMissing",
-			requiredClaims: []config.RequiredClaim{{Claim: "ouId", Value: "tenant-org-1"}},
+			requiredClaims: []engineconfig.RequiredClaim{{Claim: "ouId", Value: "tenant-org-1"}},
 			payloadClaims:  map[string]interface{}{"sub": "user1", "iss": issuer},
 			expectedResult: false,
 		},
 		{
 			name: "MultipleRequiredClaimsAllMatch",
-			requiredClaims: []config.RequiredClaim{
+			requiredClaims: []engineconfig.RequiredClaim{
 				{Claim: "ouId", Value: "tenant-org-1"},
 				{Claim: "access_tier", Value: "admin"},
 			},
@@ -632,7 +634,7 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_RequiredClaims(
 		},
 		{
 			name: "MultipleRequiredClaimsOneFails",
-			requiredClaims: []config.RequiredClaim{
+			requiredClaims: []engineconfig.RequiredClaim{
 				{Claim: "ouId", Value: "tenant-org-1"},
 				{Claim: "access_tier", Value: "admin"},
 			},
@@ -655,9 +657,9 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_RequiredClaims(
 			defer config.ResetServerRuntime()
 
 			cfg := &config.Config{
-				Server: config.ServerConfig{
-					SecurityConfig: config.SecurityConfig{
-						TrustedIssuer: config.TrustedIssuerConfig{
+				Server: engineconfig.ServerConfig{
+					SecurityConfig: engineconfig.SecurityConfig{
+						TrustedIssuer: engineconfig.TrustedIssuerConfig{
 							Issuer:         issuer,
 							JWKSURL:        jwksURL,
 							Audience:       audience,
@@ -727,9 +729,9 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_InvalidPayload(
 			defer config.ResetServerRuntime()
 
 			cfg := &config.Config{
-				Server: config.ServerConfig{
-					SecurityConfig: config.SecurityConfig{
-						TrustedIssuer: config.TrustedIssuerConfig{
+				Server: engineconfig.ServerConfig{
+					SecurityConfig: engineconfig.SecurityConfig{
+						TrustedIssuer: engineconfig.TrustedIssuerConfig{
 							Issuer:   testFederatedIssuer,
 							JWKSURL:  testFederatedJWKSURL,
 							Audience: testFederatedAudience,
@@ -762,9 +764,9 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_FederatedTokenFailure()
 	audience := testFederatedAudience
 
 	cfg := &config.Config{
-		Server: config.ServerConfig{
-			SecurityConfig: config.SecurityConfig{
-				TrustedIssuer: config.TrustedIssuerConfig{
+		Server: engineconfig.ServerConfig{
+			SecurityConfig: engineconfig.SecurityConfig{
+				TrustedIssuer: engineconfig.TrustedIssuerConfig{
 					Issuer:   issuer,
 					JWKSURL:  jwksURL,
 					Audience: audience,
@@ -784,10 +786,10 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_FederatedTokenFailure()
 	)
 
 	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
-	mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, jwksURL, audience, issuer).Return(&serviceerror.ServiceError{
-		Type:  serviceerror.ServerErrorType,
+	mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, jwksURL, audience, issuer).Return(&tidcommon.ServiceError{
+		Type:  tidcommon.ServerErrorType,
 		Code:  "JWKS_ERROR",
-		Error: i18ncore.I18nMessage{DefaultValue: "JWKS verification failed"},
+		Error: tidcommon.I18nMessage{DefaultValue: "JWKS verification failed"},
 	})
 	auth := newJWTAuthenticator(mockJWT)
 
@@ -811,9 +813,9 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_FederatedTokenSuccess()
 	audience := testFederatedAudience
 
 	cfg := &config.Config{
-		Server: config.ServerConfig{
-			SecurityConfig: config.SecurityConfig{
-				TrustedIssuer: config.TrustedIssuerConfig{
+		Server: engineconfig.ServerConfig{
+			SecurityConfig: engineconfig.SecurityConfig{
+				TrustedIssuer: engineconfig.TrustedIssuerConfig{
 					Issuer:   issuer,
 					JWKSURL:  jwksURL,
 					Audience: audience,
@@ -855,16 +857,16 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_FederatedTokenSuccess()
 // issuer-based routing can distinguish self-issued tokens from federated ones.
 func federatedConfigWithLocalIssuer() *config.Config {
 	return &config.Config{
-		Server: config.ServerConfig{
-			SecurityConfig: config.SecurityConfig{
-				TrustedIssuer: config.TrustedIssuerConfig{
+		Server: engineconfig.ServerConfig{
+			SecurityConfig: engineconfig.SecurityConfig{
+				TrustedIssuer: engineconfig.TrustedIssuerConfig{
 					Issuer:   testFederatedIssuer,
 					JWKSURL:  testFederatedJWKSURL,
 					Audience: testFederatedAudience,
 				},
 			},
 		},
-		JWT: config.JWTConfig{Issuer: testLocalIssuer},
+		JWT: engineconfig.JWTConfig{Issuer: testLocalIssuer},
 	}
 }
 
@@ -916,10 +918,10 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_SelfIssuedTokenInvalidU
 	)
 
 	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
-	mockJWT.On("VerifyJWT", mock.Anything, token, "", "").Return(&serviceerror.ServiceError{
-		Type:  serviceerror.ServerErrorType,
+	mockJWT.On("VerifyJWT", mock.Anything, token, "", "").Return(&tidcommon.ServiceError{
+		Type:  tidcommon.ServerErrorType,
 		Code:  "INVALID_SIGNATURE",
-		Error: i18ncore.I18nMessage{DefaultValue: "Invalid signature"},
+		Error: tidcommon.I18nMessage{DefaultValue: "Invalid signature"},
 	})
 	auth := newJWTAuthenticator(mockJWT)
 

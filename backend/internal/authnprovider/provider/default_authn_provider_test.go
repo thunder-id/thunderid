@@ -24,6 +24,9 @@ import (
 	"errors"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
@@ -32,9 +35,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/passkey"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entity"
-	"github.com/thunder-id/thunderid/internal/idp"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/commonmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/magiclinkmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/otpmock"
@@ -67,16 +67,16 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Success() {
 
 	authResult := &entity.AuthenticateResult{
 		EntityID:       "user123",
-		EntityCategory: entity.EntityCategoryUser,
+		EntityCategory: providers.EntityCategoryUser,
 		EntityType:     "customer",
 		OUID:           "ou1",
 	}
 
-	entityObj := &entity.Entity{
+	entityObj := &providers.Entity{
 		ID:         "user123",
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       "customer",
-		State:      entity.EntityStateActive,
+		State:      providers.EntityStateActive,
 		OUID:       "ou1",
 		Attributes: json.RawMessage(`{"email":"test@example.com"}`),
 	}
@@ -107,7 +107,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_NilCredentials() {
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.ClientErrorType, err.Type)
+	suite.Equal(tidcommon.ClientErrorType, err.Type)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_EntityNotFound() {
@@ -149,7 +149,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_GenericAuthError() 
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_GetEntityFails() {
@@ -158,7 +158,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_GetEntityFails() {
 
 	authResult := &entity.AuthenticateResult{
 		EntityID:       "user123",
-		EntityCategory: entity.EntityCategoryUser,
+		EntityCategory: providers.EntityCategoryUser,
 		EntityType:     "customer",
 		OUID:           "ou1",
 	}
@@ -172,7 +172,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_GetEntityFails() {
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_GetEntityEmptyAttributes() {
@@ -181,16 +181,16 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_GetEntityEmptyAttri
 
 	authResult := &entity.AuthenticateResult{
 		EntityID:       "user123",
-		EntityCategory: entity.EntityCategoryUser,
+		EntityCategory: providers.EntityCategoryUser,
 		EntityType:     "customer",
 		OUID:           "ou1",
 	}
 
-	entityObj := &entity.Entity{
+	entityObj := &providers.Entity{
 		ID:         "user123",
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       "customer",
-		State:      entity.EntityStateActive,
+		State:      providers.EntityStateActive,
 		OUID:       "ou1",
 		Attributes: nil,
 	}
@@ -215,16 +215,16 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_InvalidAttributeJSO
 
 	authResult := &entity.AuthenticateResult{
 		EntityID:       "user123",
-		EntityCategory: entity.EntityCategoryUser,
+		EntityCategory: providers.EntityCategoryUser,
 		EntityType:     "customer",
 		OUID:           "ou1",
 	}
 
-	entityObj := &entity.Entity{
+	entityObj := &providers.Entity{
 		ID:         "user123",
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       "customer",
-		State:      entity.EntityStateActive,
+		State:      providers.EntityStateActive,
 		OUID:       "ou1",
 		Attributes: json.RawMessage(`{invalid-json`),
 	}
@@ -238,7 +238,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_InvalidAttributeJSO
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_ByPreResolvedUserID_Success() {
@@ -247,16 +247,16 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_ByPreResolvedUserID
 
 	authResult := &entity.AuthenticateResult{
 		EntityID:       "resolved-user-123",
-		EntityCategory: entity.EntityCategoryUser,
+		EntityCategory: providers.EntityCategoryUser,
 		EntityType:     "customer",
 		OUID:           "ou1",
 	}
 
-	entityObj := &entity.Entity{
+	entityObj := &providers.Entity{
 		ID:         "resolved-user-123",
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       "customer",
-		State:      entity.EntityStateActive,
+		State:      providers.EntityStateActive,
 		OUID:       "ou1",
 		Attributes: json.RawMessage(`{"email":"test@example.com"}`),
 	}
@@ -319,16 +319,16 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_EmptyUserID_FallsBa
 
 	authResult := &entity.AuthenticateResult{
 		EntityID:       "user123",
-		EntityCategory: entity.EntityCategoryUser,
+		EntityCategory: providers.EntityCategoryUser,
 		EntityType:     "customer",
 		OUID:           "ou1",
 	}
 
-	entityObj := &entity.Entity{
+	entityObj := &providers.Entity{
 		ID:         "user123",
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       "customer",
-		State:      entity.EntityStateActive,
+		State:      providers.EntityStateActive,
 		OUID:       "ou1",
 		Attributes: json.RawMessage(`{"email":"test@example.com"}`),
 	}
@@ -350,11 +350,11 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Provisioning_Succes
 		"provisionedEntityID": "provisioned-user-123",
 	}
 
-	entityObj := &entity.Entity{
+	entityObj := &providers.Entity{
 		ID:         "provisioned-user-123",
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       "customer",
-		State:      entity.EntityStateActive,
+		State:      providers.EntityStateActive,
 		OUID:       "ou1",
 		Attributes: json.RawMessage(`{"email":"test@example.com"}`),
 	}
@@ -407,7 +407,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Provisioning_GetEnt
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_IdentifyEntity_ServerError() {
@@ -421,12 +421,12 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_IdentifyEntity_Serv
 		},
 	}
 
-	otpToken := map[string]interface{}{"mobileNumber": "+1234567890"}
+	otpToken := map[string]interface{}{"mobile_number": "+1234567890"}
 
 	mockOTP.On("Authenticate", mock.Anything, "tok", "123456").
 		Return(&authncommon.AuthnResult{
 			Token:               otpToken,
-			AuthenticatedClaims: map[string]interface{}{"mobileNumber": "+1234567890"},
+			AuthenticatedClaims: map[string]interface{}{"mobile_number": "+1234567890"},
 		}, nil).Once()
 	suite.mockService.On("IdentifyEntity", mock.Anything, otpToken).
 		Return(nil, errors.New("db error")).Once()
@@ -435,7 +435,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_IdentifyEntity_Serv
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_IdentifyEntity_Success_ThenGetEntity() {
@@ -449,13 +449,13 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_IdentifyEntity_Succ
 		},
 	}
 
-	otpToken := map[string]interface{}{"mobileNumber": "+1234567890"}
+	otpToken := map[string]interface{}{"mobile_number": "+1234567890"}
 
-	entityObj := &entity.Entity{
+	entityObj := &providers.Entity{
 		ID:         "resolved-id",
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       "customer",
-		State:      entity.EntityStateActive,
+		State:      providers.EntityStateActive,
 		OUID:       "ou1",
 		Attributes: json.RawMessage(`{"name":"test"}`),
 	}
@@ -463,7 +463,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_IdentifyEntity_Succ
 	mockOTP.On("Authenticate", mock.Anything, "tok", "123456").
 		Return(&authncommon.AuthnResult{
 			Token:               otpToken,
-			AuthenticatedClaims: map[string]interface{}{"mobileNumber": "+1234567890"},
+			AuthenticatedClaims: map[string]interface{}{"mobile_number": "+1234567890"},
 		}, nil).Once()
 	suite.mockService.On("IdentifyEntity", mock.Anything, otpToken).
 		Return(new("resolved-id"), nil).Once()
@@ -488,12 +488,12 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_IdentifyEntity_GetE
 		},
 	}
 
-	otpToken := map[string]interface{}{"mobileNumber": "+1234567890"}
+	otpToken := map[string]interface{}{"mobile_number": "+1234567890"}
 
 	mockOTP.On("Authenticate", mock.Anything, "tok", "123456").
 		Return(&authncommon.AuthnResult{
 			Token:               otpToken,
-			AuthenticatedClaims: map[string]interface{}{"mobileNumber": "+1234567890"},
+			AuthenticatedClaims: map[string]interface{}{"mobile_number": "+1234567890"},
 		}, nil).Once()
 	suite.mockService.On("IdentifyEntity", mock.Anything, otpToken).
 		Return(new("resolved-id"), nil).Once()
@@ -504,7 +504,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_IdentifyEntity_GetE
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenWithUserID() {
@@ -515,11 +515,11 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenWithUserID() {
 		EntityID: "user123",
 	}
 
-	entityObj := &entity.Entity{
+	entityObj := &providers.Entity{
 		ID:         "user123",
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       "customer",
-		State:      entity.EntityStateActive,
+		State:      providers.EntityStateActive,
 		OUID:       "ou1",
 		Attributes: json.RawMessage(`{}`),
 	}
@@ -542,9 +542,9 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenWithUserID() {
 func (suite *DefaultAuthnProviderTestSuite) TestGetEntityReference_Success() {
 	token := map[string]interface{}{"userID": "user123"}
 
-	entityObj := &entity.Entity{
+	entityObj := &providers.Entity{
 		ID:       "user123",
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "customer",
 		OUID:     "ou1",
 	}
@@ -567,7 +567,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestGetEntityReference_InvalidTokenF
 
 	suite.Nil(ref)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestGetEntityReference_EntityNotFound() {
@@ -606,7 +606,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestGetEntityReference_IdentifyServe
 
 	suite.Nil(ref)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestGetEntityReference_GetEntityFails() {
@@ -619,16 +619,16 @@ func (suite *DefaultAuthnProviderTestSuite) TestGetEntityReference_GetEntityFail
 
 	suite.Nil(ref)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 // --- GetAttributes tests ---
 
 func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_Success_All() {
 	token := map[string]interface{}{"userID": "user123"}
-	entityObj := &entity.Entity{
+	entityObj := &providers.Entity{
 		ID:         "user123",
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       "customer",
 		OUID:       "ou1",
 		Attributes: json.RawMessage(`{"email":"test@example.com", "age": 30}`),
@@ -647,9 +647,9 @@ func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_Success_All() {
 
 func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_Success_Filtered() {
 	token := map[string]interface{}{"userID": "user123"}
-	entityObj := &entity.Entity{
+	entityObj := &providers.Entity{
 		ID:         "user123",
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       "customer",
 		OUID:       "ou1",
 		Attributes: json.RawMessage(`{"email":"test@example.com", "age": 30}`),
@@ -658,8 +658,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_Success_Filtered()
 	suite.mockService.On("GetEntity", mock.Anything, "user123").
 		Return(entityObj, nil).Once()
 
-	reqAttrs := &authnprovidercm.RequestedAttributes{
-		Attributes: map[string]*authnprovidercm.AttributeMetadataRequest{
+	reqAttrs := &providers.RequestedAttributes{
+		Attributes: map[string]*providers.AttributeMetadataRequest{
 			"email": nil,
 		},
 	}
@@ -673,9 +673,9 @@ func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_Success_Filtered()
 
 func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_EmptyAttributes() {
 	token := map[string]interface{}{"userID": "user123"}
-	entityObj := &entity.Entity{
+	entityObj := &providers.Entity{
 		ID:         "user123",
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       "customer",
 		OUID:       "ou1",
 		Attributes: nil,
@@ -693,9 +693,9 @@ func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_EmptyAttributes() 
 
 func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_InvalidAttributeJSON() {
 	token := map[string]interface{}{"userID": "user123"}
-	entityObj := &entity.Entity{
+	entityObj := &providers.Entity{
 		ID:         "user123",
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       "customer",
 		OUID:       "ou1",
 		Attributes: json.RawMessage(`{invalid`),
@@ -708,7 +708,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_InvalidAttributeJS
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_IdentifyEntityFails() {
@@ -721,7 +721,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_IdentifyEntityFail
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_GetEntityFails() {
@@ -734,7 +734,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_GetEntityFails() {
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_EntityNotFound() {
@@ -768,7 +768,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_InvalidTokenFormat
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 // --- OTP authentication tests ---
@@ -855,11 +855,11 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_OTP_ClientError_Non
 	}
 
 	mockOTP.On("Authenticate", mock.Anything, "tok", "123456").
-		Return(nil, &serviceerror.ServiceError{
-			Type:             serviceerror.ClientErrorType,
+		Return(nil, &tidcommon.ServiceError{
+			Type:             tidcommon.ClientErrorType,
 			Code:             "OTHER-CLIENT-ERROR",
-			Error:            i18ncore.I18nMessage{DefaultValue: "Some client error"},
-			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Some client error description"},
+			Error:            tidcommon.I18nMessage{DefaultValue: "Some client error"},
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "Some client error description"},
 		}).Once()
 
 	result, err := provider.Authenticate(context.Background(), nil, credentials, nil)
@@ -881,18 +881,18 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_OTP_ServerError() {
 	}
 
 	mockOTP.On("Authenticate", mock.Anything, "tok", "123456").
-		Return(nil, &serviceerror.ServiceError{
-			Type:             serviceerror.ServerErrorType,
+		Return(nil, &tidcommon.ServiceError{
+			Type:             tidcommon.ServerErrorType,
 			Code:             "INTERNAL",
-			Error:            i18ncore.I18nMessage{DefaultValue: "Internal error"},
-			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Something went wrong"},
+			Error:            tidcommon.I18nMessage{DefaultValue: "Internal error"},
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "Something went wrong"},
 		}).Once()
 
 	result, err := provider.Authenticate(context.Background(), nil, credentials, nil)
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 // --- Magic Link authentication tests ---
@@ -908,11 +908,11 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_MagicLink_Authentic
 	}
 
 	mockML.On("Authenticate", mock.Anything, "expired-token", "").
-		Return(nil, &serviceerror.ServiceError{
-			Type:             serviceerror.ClientErrorType,
+		Return(nil, &tidcommon.ServiceError{
+			Type:             tidcommon.ClientErrorType,
 			Code:             "AUTHN-ML-1002",
-			Error:            i18ncore.I18nMessage{DefaultValue: "Expired token"},
-			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "The magic link token has expired"},
+			Error:            tidcommon.I18nMessage{DefaultValue: "Expired token"},
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "The magic link token has expired"},
 		}).Once()
 
 	result, err := provider.Authenticate(context.Background(), nil, credentials, nil)
@@ -933,18 +933,18 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_MagicLink_ServerErr
 	}
 
 	mockML.On("Authenticate", mock.Anything, "valid-token", "").
-		Return(nil, &serviceerror.ServiceError{
-			Type:             serviceerror.ServerErrorType,
+		Return(nil, &tidcommon.ServiceError{
+			Type:             tidcommon.ServerErrorType,
 			Code:             "INTERNAL",
-			Error:            i18ncore.I18nMessage{DefaultValue: "Internal error"},
-			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Something went wrong"},
+			Error:            tidcommon.I18nMessage{DefaultValue: "Internal error"},
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "Something went wrong"},
 		}).Once()
 
 	result, err := provider.Authenticate(context.Background(), nil, credentials, nil)
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_MagicLink_InvalidPayload() {
@@ -982,11 +982,11 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_MagicLink_MissingTo
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenizedAuth_EntityFound() {
 	setupOTP := func() (AuthnProviderInterface, map[string]interface{}, map[string]interface{}) {
 		mockOTP := otpmock.NewOTPAuthnServiceInterfaceMock(suite.T())
-		token := map[string]interface{}{"mobileNumber": "+1234567890"}
+		token := map[string]interface{}{"mobile_number": "+1234567890"}
 		mockOTP.On("Authenticate", mock.Anything, "tok", "123456").
 			Return(&authncommon.AuthnResult{
 				Token:               token,
-				AuthenticatedClaims: map[string]interface{}{"mobileNumber": "+1234567890"},
+				AuthenticatedClaims: map[string]interface{}{"mobile_number": "+1234567890"},
 			}, nil).Once()
 		creds := map[string]interface{}{
 			"otp": map[string]interface{}{
@@ -1026,9 +1026,9 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenizedAuth_Entit
 		suite.Run(tc.name, func() {
 			provider, credentials, token := tc.setup()
 
-			entityObj := &entity.Entity{
+			entityObj := &providers.Entity{
 				ID:         "u1",
-				Category:   entity.EntityCategoryUser,
+				Category:   providers.EntityCategoryUser,
 				Type:       "customer",
 				OUID:       "ou1",
 				Attributes: json.RawMessage(`{}`),
@@ -1051,11 +1051,11 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenizedAuth_Entit
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenizedAuth_IdentifyEntityErrorReturnsTokens() {
 	setupOTP := func() (AuthnProviderInterface, map[string]interface{}, map[string]interface{}) {
 		mockOTP := otpmock.NewOTPAuthnServiceInterfaceMock(suite.T())
-		token := map[string]interface{}{"mobileNumber": "+1234567890"}
+		token := map[string]interface{}{"mobile_number": "+1234567890"}
 		mockOTP.On("Authenticate", mock.Anything, "tok", "123456").
 			Return(&authncommon.AuthnResult{
 				Token:               token,
-				AuthenticatedClaims: map[string]interface{}{"mobileNumber": "+1234567890"},
+				AuthenticatedClaims: map[string]interface{}{"mobile_number": "+1234567890"},
 			}, nil).Once()
 		creds := map[string]interface{}{
 			"otp": map[string]interface{}{
@@ -1177,7 +1177,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_MissingID
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
 			Code:    "auth-code",
-			IDPType: idp.IDPType("google"),
+			IDPType: providers.IDPType("google"),
 		},
 	}
 
@@ -1194,7 +1194,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_MissingCo
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
 			IDPID:   "idp-1",
-			IDPType: idp.IDPType("google"),
+			IDPType: providers.IDPType("google"),
 		},
 	}
 
@@ -1207,12 +1207,12 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_MissingCo
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_UnsupportedIDPType() {
 	provider := newDefaultAuthnProvider(suite.mockService, nil, nil, nil, nil,
-		map[idp.IDPType]authncommon.FederatedAuthenticator{})
+		map[providers.IDPType]authncommon.FederatedAuthenticator{})
 
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
 			IDPID:   "idp-1",
-			IDPType: idp.IDPType("unsupported"),
+			IDPType: providers.IDPType("unsupported"),
 			Code:    "auth-code",
 		},
 	}
@@ -1241,9 +1241,9 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Passkey_Success() {
 		},
 	}
 
-	entityObj := &entity.Entity{
+	entityObj := &providers.Entity{
 		ID:         "pk-user-1",
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       "customer",
 		OUID:       "ou1",
 		Attributes: json.RawMessage(`{}`),
@@ -1262,11 +1262,11 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Passkey_Success() {
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Passkey_AuthFailed() {
 	suite.mockPasskey.On("FinishAuthentication", mock.Anything, mock.Anything).
-		Return(nil, &serviceerror.ServiceError{
-			Type:             serviceerror.ClientErrorType,
+		Return(nil, &tidcommon.ServiceError{
+			Type:             tidcommon.ClientErrorType,
 			Code:             "PASSKEY-001",
-			Error:            i18ncore.I18nMessage{DefaultValue: "Passkey auth failed"},
-			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Invalid passkey credential"},
+			Error:            tidcommon.I18nMessage{DefaultValue: "Passkey auth failed"},
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "Invalid passkey credential"},
 		}).Once()
 	provider := newDefaultAuthnProvider(suite.mockService, suite.mockPasskey, nil, nil, nil, nil)
 
@@ -1292,22 +1292,22 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_Success()
 			Token:               fedToken,
 			AuthenticatedClaims: map[string]interface{}{"sub": "fed-sub-1"},
 		}, nil).Once()
-	federatedAuths := map[idp.IDPType]authncommon.FederatedAuthenticator{
-		idp.IDPType("google"): suite.mockFederated,
+	federatedAuths := map[providers.IDPType]authncommon.FederatedAuthenticator{
+		providers.IDPType("google"): suite.mockFederated,
 	}
 	provider := newDefaultAuthnProvider(suite.mockService, nil, nil, nil, nil, federatedAuths)
 
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
 			IDPID:   "idp-1",
-			IDPType: idp.IDPType("google"),
+			IDPType: providers.IDPType("google"),
 			Code:    "auth-code",
 		},
 	}
 
-	entityObj := &entity.Entity{
+	entityObj := &providers.Entity{
 		ID:         "fed-user-1",
-		Category:   entity.EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       "customer",
 		OUID:       "ou1",
 		Attributes: json.RawMessage(`{}`),
@@ -1328,21 +1328,21 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_Success()
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_ClientError() {
 	suite.mockFederated.On("Authenticate", mock.Anything, "idp-1", "auth-code").
-		Return(nil, &serviceerror.ServiceError{
-			Type:             serviceerror.ClientErrorType,
+		Return(nil, &tidcommon.ServiceError{
+			Type:             tidcommon.ClientErrorType,
 			Code:             "FED-001",
-			Error:            i18ncore.I18nMessage{DefaultValue: "Fed auth failed"},
-			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Invalid auth code"},
+			Error:            tidcommon.I18nMessage{DefaultValue: "Fed auth failed"},
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "Invalid auth code"},
 		}).Once()
-	federatedAuths := map[idp.IDPType]authncommon.FederatedAuthenticator{
-		idp.IDPType("google"): suite.mockFederated,
+	federatedAuths := map[providers.IDPType]authncommon.FederatedAuthenticator{
+		providers.IDPType("google"): suite.mockFederated,
 	}
 	provider := newDefaultAuthnProvider(suite.mockService, nil, nil, nil, nil, federatedAuths)
 
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
 			IDPID:   "idp-1",
-			IDPType: idp.IDPType("google"),
+			IDPType: providers.IDPType("google"),
 			Code:    "auth-code",
 		},
 	}
@@ -1356,21 +1356,21 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_ClientErr
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_ServerError() {
 	suite.mockFederated.On("Authenticate", mock.Anything, "idp-1", "auth-code").
-		Return(nil, &serviceerror.ServiceError{
-			Type:             serviceerror.ServerErrorType,
+		Return(nil, &tidcommon.ServiceError{
+			Type:             tidcommon.ServerErrorType,
 			Code:             "INTERNAL",
-			Error:            i18ncore.I18nMessage{DefaultValue: "Internal error"},
-			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Something went wrong"},
+			Error:            tidcommon.I18nMessage{DefaultValue: "Internal error"},
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "Something went wrong"},
 		}).Once()
-	federatedAuths := map[idp.IDPType]authncommon.FederatedAuthenticator{
-		idp.IDPType("google"): suite.mockFederated,
+	federatedAuths := map[providers.IDPType]authncommon.FederatedAuthenticator{
+		providers.IDPType("google"): suite.mockFederated,
 	}
 	provider := newDefaultAuthnProvider(suite.mockService, nil, nil, nil, nil, federatedAuths)
 
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
 			IDPID:   "idp-1",
-			IDPType: idp.IDPType("google"),
+			IDPType: providers.IDPType("google"),
 			Code:    "auth-code",
 		},
 	}
@@ -1379,5 +1379,5 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_ServerErr
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }

@@ -29,6 +29,8 @@ import (
 	"strings"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -36,16 +38,14 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 )
 
 // testEncodingErrorBody is the expected response body when a response write fails mid-encode.
 var testEncodingErrorBody = func() string {
 	resp := apierror.ErrorResponse{
-		Code:        serviceerror.ErrorEncodingError.Code,
-		Message:     serviceerror.ErrorEncodingError.Error,
-		Description: serviceerror.ErrorEncodingError.ErrorDescription,
+		Code:        tidcommon.ErrorEncodingError.Code,
+		Message:     tidcommon.ErrorEncodingError.Error,
+		Description: tidcommon.ErrorEncodingError.ErrorDescription,
 	}
 	b, _ := json.Marshal(resp)
 	return string(b)
@@ -388,14 +388,14 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest() {
 			setup: func(svc *GroupServiceInterfaceMock) {
 				svc.
 					On("GetGroupList", mock.Anything, serverconst.DefaultPageSize, 0, false).
-					Return((*GroupListResponse)(nil), &serviceerror.InternalServerError).
+					Return((*GroupListResponse)(nil), &tidcommon.InternalServerError).
 					Once()
 			},
 			assertBody: func(recorder *httptest.ResponseRecorder) {
 				suite.Require().Equal(http.StatusInternalServerError, recorder.Code)
 				var body apierror.ErrorResponse
 				suite.Require().NoError(json.Unmarshal(recorder.Body.Bytes(), &body))
-				suite.Require().Equal(serviceerror.InternalServerError.Code, body.Code)
+				suite.Require().Equal(tidcommon.InternalServerError.Code, body.Code)
 			},
 		},
 	}
@@ -516,14 +516,14 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListByPathReques
 			setup: func(serviceMock *GroupServiceInterfaceMock) {
 				serviceMock.
 					On("GetGroupsByPath", mock.Anything, "root", serverconst.DefaultPageSize, 0, false).
-					Return((*GroupListResponse)(nil), &serviceerror.InternalServerError).
+					Return((*GroupListResponse)(nil), &tidcommon.InternalServerError).
 					Once()
 			},
 			assert: func(rr *httptest.ResponseRecorder) {
 				require.Equal(suite.T(), http.StatusInternalServerError, rr.Code)
 				var body apierror.ErrorResponse
 				require.NoError(suite.T(), json.Unmarshal(rr.Body.Bytes(), &body))
-				require.Equal(suite.T(), serviceerror.InternalServerError.Code, body.Code)
+				require.Equal(suite.T(), tidcommon.InternalServerError.Code, body.Code)
 			},
 		},
 		{
@@ -649,14 +649,14 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupPostRequest() {
 			setup: func(serviceMock *GroupServiceInterfaceMock) {
 				serviceMock.
 					On("CreateGroup", mock.Anything, mock.AnythingOfType("group.CreateGroupRequest")).
-					Return((*Group)(nil), &serviceerror.InternalServerError).
+					Return((*Group)(nil), &tidcommon.InternalServerError).
 					Once()
 			},
 			assert: func(rr *httptest.ResponseRecorder) {
 				require.Equal(suite.T(), http.StatusInternalServerError, rr.Code)
 				var body apierror.ErrorResponse
 				require.NoError(suite.T(), json.Unmarshal(rr.Body.Bytes(), &body))
-				require.Equal(suite.T(), serviceerror.InternalServerError.Code, body.Code)
+				require.Equal(suite.T(), tidcommon.InternalServerError.Code, body.Code)
 			},
 		},
 		{
@@ -774,7 +774,7 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupPostByPathReques
 			name:          "invalid path",
 			method:        http.MethodPost,
 			url:           "/ous//groups",
-			body:          `{"name":"n"}`,
+			body:          `{"name":"group-name"}`,
 			setJSONHeader: true,
 			assert: func(rr *httptest.ResponseRecorder) {
 				require.Equal(suite.T(), http.StatusBadRequest, rr.Code)
@@ -789,11 +789,11 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupPostByPathReques
 			url:            "/ous/root/groups",
 			pathParamKey:   "path",
 			pathParamValue: "root",
-			body:           `{"name":"n"}`,
+			body:           `{"name":"group-name"}`,
 			setJSONHeader:  true,
 			setup: func(serviceMock *GroupServiceInterfaceMock) {
 				serviceMock.
-					On("CreateGroupByPath", mock.Anything, "root", CreateGroupByPathRequest{Name: "n"}).
+					On("CreateGroupByPath", mock.Anything, "root", CreateGroupByPathRequest{Name: "group-name"}).
 					Return((*Group)(nil), &ErrorGroupNotFound).
 					Once()
 			},
@@ -844,19 +844,19 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupPostByPathReques
 			url:            "/ous/root/groups",
 			pathParamKey:   "path",
 			pathParamValue: "root",
-			body:           `{"name":"n"}`,
+			body:           `{"name":"group-name"}`,
 			setJSONHeader:  true,
 			setup: func(serviceMock *GroupServiceInterfaceMock) {
 				serviceMock.
-					On("CreateGroupByPath", mock.Anything, "root", CreateGroupByPathRequest{Name: "n"}).
-					Return((*Group)(nil), &serviceerror.InternalServerError).
+					On("CreateGroupByPath", mock.Anything, "root", CreateGroupByPathRequest{Name: "group-name"}).
+					Return((*Group)(nil), &tidcommon.InternalServerError).
 					Once()
 			},
 			assert: func(rr *httptest.ResponseRecorder) {
 				require.Equal(suite.T(), http.StatusInternalServerError, rr.Code)
 				var body apierror.ErrorResponse
 				require.NoError(suite.T(), json.Unmarshal(rr.Body.Bytes(), &body))
-				require.Equal(suite.T(), serviceerror.InternalServerError.Code, body.Code)
+				require.Equal(suite.T(), tidcommon.InternalServerError.Code, body.Code)
 			},
 		},
 	}
@@ -916,14 +916,14 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupGetRequest() {
 			setup: func(serviceMock *GroupServiceInterfaceMock) {
 				serviceMock.
 					On("GetGroup", mock.Anything, "grp-001", false).
-					Return((*Group)(nil), &serviceerror.InternalServerError).
+					Return((*Group)(nil), &tidcommon.InternalServerError).
 					Once()
 			},
 			assert: func(rr *httptest.ResponseRecorder) {
 				require.Equal(suite.T(), http.StatusInternalServerError, rr.Code)
 				var body apierror.ErrorResponse
 				require.NoError(suite.T(), json.Unmarshal(rr.Body.Bytes(), &body))
-				require.Equal(suite.T(), serviceerror.InternalServerError.Code, body.Code)
+				require.Equal(suite.T(), tidcommon.InternalServerError.Code, body.Code)
 			},
 		},
 		{
@@ -1038,14 +1038,14 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupPutRequest() {
 			setup: func(serviceMock *GroupServiceInterfaceMock) {
 				serviceMock.
 					On("UpdateGroup", mock.Anything, "grp-001", mock.AnythingOfType("group.UpdateGroupRequest")).
-					Return(nil, &serviceerror.InternalServerError).
+					Return(nil, &tidcommon.InternalServerError).
 					Once()
 			},
 			assert: func(rr *httptest.ResponseRecorder) {
 				require.Equal(suite.T(), http.StatusInternalServerError, rr.Code)
 				var body apierror.ErrorResponse
 				require.NoError(suite.T(), json.Unmarshal(rr.Body.Bytes(), &body))
-				require.Equal(suite.T(), serviceerror.InternalServerError.Code, body.Code)
+				require.Equal(suite.T(), tidcommon.InternalServerError.Code, body.Code)
 			},
 		},
 		{
@@ -1200,14 +1200,14 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupDeleteRequest() 
 			setup: func(serviceMock *GroupServiceInterfaceMock) {
 				serviceMock.
 					On("DeleteGroup", mock.Anything, "grp-001").
-					Return(&serviceerror.InternalServerError).
+					Return(&tidcommon.InternalServerError).
 					Once()
 			},
 			assert: func(rr *httptest.ResponseRecorder) {
 				require.Equal(suite.T(), http.StatusInternalServerError, rr.Code)
 				var body apierror.ErrorResponse
 				require.NoError(suite.T(), json.Unmarshal(rr.Body.Bytes(), &body))
-				require.Equal(suite.T(), serviceerror.InternalServerError.Code, body.Code)
+				require.Equal(suite.T(), tidcommon.InternalServerError.Code, body.Code)
 			},
 		},
 		{
@@ -1365,14 +1365,14 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupMembersGetReques
 			setup: func(serviceMock *GroupServiceInterfaceMock) {
 				serviceMock.
 					On("GetGroupMembers", mock.Anything, "grp-001", serverconst.DefaultPageSize, 0, false).
-					Return((*MemberListResponse)(nil), &serviceerror.InternalServerError).
+					Return((*MemberListResponse)(nil), &tidcommon.InternalServerError).
 					Once()
 			},
 			assert: func(rr *httptest.ResponseRecorder) {
 				require.Equal(suite.T(), http.StatusInternalServerError, rr.Code)
 				var body apierror.ErrorResponse
 				require.NoError(suite.T(), json.Unmarshal(rr.Body.Bytes(), &body))
-				require.Equal(suite.T(), serviceerror.InternalServerError.Code, body.Code)
+				require.Equal(suite.T(), tidcommon.InternalServerError.Code, body.Code)
 			},
 		},
 		{
@@ -1425,11 +1425,11 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleErrorInternalServer()
 	handler := newGroupHandler(nil)
 	rr := httptest.NewRecorder()
 
-	handler.handleError(context.Background(), rr, &serviceerror.ServiceError{
-		Type:             serviceerror.ServerErrorType,
+	handler.handleError(context.Background(), rr, &tidcommon.ServiceError{
+		Type:             tidcommon.ServerErrorType,
 		Code:             "GRP-9999",
-		Error:            i18ncore.I18nMessage{DefaultValue: "boom"},
-		ErrorDescription: i18ncore.I18nMessage{DefaultValue: "explosion"},
+		Error:            tidcommon.I18nMessage{DefaultValue: "boom"},
+		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "explosion"},
 	})
 
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -1607,7 +1607,7 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupMembersRemoveReq
 			setup: func(serviceMock *GroupServiceInterfaceMock) {
 				serviceMock.
 					On("RemoveGroupMembers", mock.Anything, "grp-001", mock.Anything).
-					Return(nil, &serviceerror.InternalServerError).
+					Return(nil, &tidcommon.InternalServerError).
 					Once()
 			},
 			assert: func(rr *httptest.ResponseRecorder) {
@@ -1708,4 +1708,21 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleErrorClientError() {
 	var body apierror.ErrorResponse
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &body))
 	require.Equal(t, ErrorGroupNameConflict.Code, body.Code)
+}
+
+func (suite *GroupHandlerTestSuite) TestGroupHandler_ValidationError_NameTooShort() {
+	serviceMock := NewGroupServiceInterfaceMock(suite.T())
+	handler := newGroupHandler(serviceMock)
+
+	// Fails validation because the name string has a length of 2 (violates min=3)
+	body := `{"name":"ab", "ouId":"ou-001"}`
+	req := httptest.NewRequest(http.MethodPost, "/groups", strings.NewReader(body))
+	w := httptest.NewRecorder()
+
+	handler.HandleGroupPostRequest(w, req)
+
+	require.Equal(suite.T(), http.StatusBadRequest, w.Code)
+
+	// Confirms validation intercepted the flow and short-circuited the mock service call
+	serviceMock.AssertNotCalled(suite.T(), "CreateGroup", mock.Anything, mock.Anything)
 }

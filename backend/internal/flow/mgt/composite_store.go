@@ -21,7 +21,8 @@ package flowmgt
 import (
 	"context"
 
-	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 )
 
@@ -83,17 +84,20 @@ func (c *compositeFlowStore) ListFlows(ctx context.Context, limit, offset int, f
 
 // CreateFlow creates a new flow in the database store only.
 func (c *compositeFlowStore) CreateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (
-	*CompleteFlowDefinition, error) {
+	*providers.CompleteFlowDefinition, error) {
 	return c.dbStore.CreateFlow(ctx, flowID, flow)
 }
 
 // GetFlowByID retrieves a flow by ID from either store.
 // Checks database store first, then falls back to file store.
 // Flows from the file store are marked as read-only (IsReadOnly=true).
-func (c *compositeFlowStore) GetFlowByID(ctx context.Context, flowID string) (*CompleteFlowDefinition, error) {
+func (c *compositeFlowStore) GetFlowByID(
+	ctx context.Context,
+	flowID string,
+) (*providers.CompleteFlowDefinition, error) {
 	return declarativeresource.CompositeGetHelper(
-		func() (*CompleteFlowDefinition, error) { return c.dbStore.GetFlowByID(ctx, flowID) },
-		func() (*CompleteFlowDefinition, error) {
+		func() (*providers.CompleteFlowDefinition, error) { return c.dbStore.GetFlowByID(ctx, flowID) },
+		func() (*providers.CompleteFlowDefinition, error) {
 			flow, err := c.fileStore.GetFlowByID(ctx, flowID)
 			if err != nil {
 				return nil, err
@@ -111,10 +115,12 @@ func (c *compositeFlowStore) GetFlowByID(ctx context.Context, flowID string) (*C
 // Checks database store first, then falls back to file store.
 // Flows from the file store are marked as read-only (IsReadOnly=true).
 func (c *compositeFlowStore) GetFlowByHandle(ctx context.Context, handle string,
-	flowType common.FlowType) (*CompleteFlowDefinition, error) {
+	flowType providers.FlowType) (*providers.CompleteFlowDefinition, error) {
 	return declarativeresource.CompositeGetHelper(
-		func() (*CompleteFlowDefinition, error) { return c.dbStore.GetFlowByHandle(ctx, handle, flowType) },
-		func() (*CompleteFlowDefinition, error) {
+		func() (*providers.CompleteFlowDefinition, error) {
+			return c.dbStore.GetFlowByHandle(ctx, handle, flowType)
+		},
+		func() (*providers.CompleteFlowDefinition, error) {
 			flow, err := c.fileStore.GetFlowByHandle(ctx, handle, flowType)
 			if err != nil {
 				return nil, err
@@ -131,7 +137,7 @@ func (c *compositeFlowStore) GetFlowByHandle(ctx context.Context, handle string,
 // UpdateFlow updates a flow in the database store only.
 // Immutability checks are handled at the service layer.
 func (c *compositeFlowStore) UpdateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (
-	*CompleteFlowDefinition, error) {
+	*providers.CompleteFlowDefinition, error) {
 	return c.dbStore.UpdateFlow(ctx, flowID, flow)
 }
 
@@ -153,13 +159,13 @@ func (c *compositeFlowStore) GetFlowVersion(ctx context.Context, flowID string, 
 
 // RestoreFlowVersion restores a flow version in the database store only.
 func (c *compositeFlowStore) RestoreFlowVersion(ctx context.Context, flowID string, version int) (
-	*CompleteFlowDefinition, error) {
+	*providers.CompleteFlowDefinition, error) {
 	return c.dbStore.RestoreFlowVersion(ctx, flowID, version)
 }
 
 // IsFlowExistsByHandle checks if a flow exists by handle in either store.
 func (c *compositeFlowStore) IsFlowExistsByHandle(ctx context.Context, handle string,
-	flowType common.FlowType) (bool, error) {
+	flowType providers.FlowType) (bool, error) {
 	return declarativeresource.CompositeBooleanCheckHelper(
 		func() (bool, error) { return c.fileStore.IsFlowExistsByHandle(ctx, handle, flowType) },
 		func() (bool, error) { return c.dbStore.IsFlowExistsByHandle(ctx, handle, flowType) },

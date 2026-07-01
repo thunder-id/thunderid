@@ -23,9 +23,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -74,7 +76,7 @@ func (h *flowMgtHandler) listFlows(w http.ResponseWriter, r *http.Request) {
 	}
 
 	flowTypeStr := r.URL.Query().Get(queryParamFlowType)
-	flowType := common.FlowType(flowTypeStr)
+	flowType := providers.FlowType(flowTypeStr)
 
 	flowList, svcErr := h.service.ListFlows(ctx, limit, offset, flowType)
 	if svcErr != nil {
@@ -246,7 +248,7 @@ func (h *flowMgtHandler) restoreFlowVersion(w http.ResponseWriter, r *http.Reque
 }
 
 // parsePaginationParams extracts and validates pagination parameters from the request.
-func parsePaginationParams(r *http.Request) (int, int, *serviceerror.ServiceError) {
+func parsePaginationParams(r *http.Request) (int, int, *tidcommon.ServiceError) {
 	limitStr := r.URL.Query().Get(queryParamLimit)
 	offsetStr := r.URL.Query().Get(queryParamOffset)
 
@@ -275,9 +277,9 @@ func parsePaginationParams(r *http.Request) (int, int, *serviceerror.ServiceErro
 // TODO: Currently we're storing node representation as it is. In the future, we should sanitize and
 // validate it properly.
 func sanitizeFlowDefinitionRequest(req *FlowDefinitionRequest) *FlowDefinition {
-	var interceptors []InterceptorDefinition
+	var interceptors []providers.InterceptorDefinition
 	if len(req.Interceptors) > 0 {
-		interceptors = make([]InterceptorDefinition, len(req.Interceptors))
+		interceptors = make([]providers.InterceptorDefinition, len(req.Interceptors))
 		for i, ic := range req.Interceptors {
 			interceptors[i] = ic
 			interceptors[i].Name = utils.SanitizeString(ic.Name)
@@ -306,7 +308,7 @@ func handleInvalidRequestError(ctx context.Context, w http.ResponseWriter) {
 }
 
 // handleError writes an error response based on the provided ServiceError.
-func handleError(ctx context.Context, w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
+func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.ServiceError) {
 	errResp := apierror.ErrorResponse{
 		Code:        svcErr.Code,
 		Message:     svcErr.Error,
@@ -319,7 +321,7 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *serviceerro
 		statusCode = http.StatusNotFound
 	case ErrorDuplicateFlowID.Code:
 		statusCode = http.StatusConflict
-	case serviceerror.InternalServerError.Code:
+	case tidcommon.InternalServerError.Code:
 		statusCode = http.StatusInternalServerError
 		log.GetLogger().Error(ctx, "Internal server error in flow handler",
 			log.String("code", svcErr.Code),

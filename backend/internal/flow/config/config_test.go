@@ -21,6 +21,8 @@ package flowconfig
 import (
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -44,8 +46,8 @@ func (s *FlowConfigTestSuite) TearDownTest() {
 
 func (s *FlowConfigTestSuite) TestFromServerRuntime() {
 	cfg := &config.Config{
-		Flow: config.FlowConfig{UserOnboardingFlowHandle: "onboarding-handle"},
-		Server: config.ServerConfig{
+		Flow: engineconfig.FlowConfig{UserOnboardingFlowHandle: "onboarding-handle"},
+		Server: engineconfig.ServerConfig{
 			Identifier: "dep-1",
 		},
 		Database: config.DatabaseConfig{

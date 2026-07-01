@@ -8,7 +8,7 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewFlowMetaServiceInterfaceMock creates a new instance of FlowMetaServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -39,7 +39,7 @@ func (_m *FlowMetaServiceInterfaceMock) EXPECT() *FlowMetaServiceInterfaceMock_E
 }
 
 // GetFlowMetadata provides a mock function for the type FlowMetaServiceInterfaceMock
-func (_mock *FlowMetaServiceInterfaceMock) GetFlowMetadata(ctx context.Context, metaType MetaType, id string, language *string, namespace *string) (*FlowMetadataResponse, *serviceerror.ServiceError) {
+func (_mock *FlowMetaServiceInterfaceMock) GetFlowMetadata(ctx context.Context, metaType MetaType, id string, language *string, namespace *string) (*FlowMetadataResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, metaType, id, language, namespace)
 
 	if len(ret) == 0 {
@@ -47,8 +47,8 @@ func (_mock *FlowMetaServiceInterfaceMock) GetFlowMetadata(ctx context.Context, 
 	}
 
 	var r0 *FlowMetadataResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, MetaType, string, *string, *string) (*FlowMetadataResponse, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, MetaType, string, *string, *string) (*FlowMetadataResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, metaType, id, language, namespace)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, MetaType, string, *string, *string) *FlowMetadataResponse); ok {
@@ -58,11 +58,11 @@ func (_mock *FlowMetaServiceInterfaceMock) GetFlowMetadata(ctx context.Context, 
 			r0 = ret.Get(0).(*FlowMetadataResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, MetaType, string, *string, *string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, MetaType, string, *string, *string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, metaType, id, language, namespace)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -116,12 +116,12 @@ func (_c *FlowMetaServiceInterfaceMock_GetFlowMetadata_Call) Run(run func(ctx co
 	return _c
 }
 
-func (_c *FlowMetaServiceInterfaceMock_GetFlowMetadata_Call) Return(flowMetadataResponse *FlowMetadataResponse, serviceError *serviceerror.ServiceError) *FlowMetaServiceInterfaceMock_GetFlowMetadata_Call {
+func (_c *FlowMetaServiceInterfaceMock_GetFlowMetadata_Call) Return(flowMetadataResponse *FlowMetadataResponse, serviceError *common.ServiceError) *FlowMetaServiceInterfaceMock_GetFlowMetadata_Call {
 	_c.Call.Return(flowMetadataResponse, serviceError)
 	return _c
 }
 
-func (_c *FlowMetaServiceInterfaceMock_GetFlowMetadata_Call) RunAndReturn(run func(ctx context.Context, metaType MetaType, id string, language *string, namespace *string) (*FlowMetadataResponse, *serviceerror.ServiceError)) *FlowMetaServiceInterfaceMock_GetFlowMetadata_Call {
+func (_c *FlowMetaServiceInterfaceMock_GetFlowMetadata_Call) RunAndReturn(run func(ctx context.Context, metaType MetaType, id string, language *string, namespace *string) (*FlowMetadataResponse, *common.ServiceError)) *FlowMetaServiceInterfaceMock_GetFlowMetadata_Call {
 	_c.Call.Return(run)
 	return _c
 }

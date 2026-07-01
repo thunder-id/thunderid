@@ -29,6 +29,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/hashmock"
 )
 
@@ -61,13 +62,13 @@ func (s *ServiceTestSuite) SetupTest() {
 	s.testErr = errors.New("store error")
 }
 
-func testEntity(id string) *Entity {
+func testEntity(id string) *providers.Entity {
 	attrs, _ := json.Marshal(map[string]interface{}{"username": "user-" + id})
-	return &Entity{
+	return &providers.Entity{
 		ID:         id,
-		Category:   EntityCategoryUser,
+		Category:   providers.EntityCategoryUser,
 		Type:       "employee",
-		State:      EntityStateActive,
+		State:      providers.EntityStateActive,
 		OUID:       "ou-1",
 		Attributes: json.RawMessage(attrs),
 	}
@@ -90,7 +91,7 @@ func (s *ServiceTestSuite) TestCreateEntity_GetAfterCreateFails() {
 	e := testEntity("e2")
 	s.store.On("CreateEntity", mock.Anything, *e, json.RawMessage(nil), json.RawMessage(nil)).
 		Return(nil)
-	s.store.On("GetEntity", mock.Anything, e.ID).Return(Entity{}, s.testErr)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(providers.Entity{}, s.testErr)
 	_, err := s.svc.CreateEntity(s.ctx, e, nil)
 	s.Error(err)
 }
@@ -114,7 +115,7 @@ func (s *ServiceTestSuite) TestGetEntity_Success() {
 }
 
 func (s *ServiceTestSuite) TestGetEntity_Error() {
-	s.store.On("GetEntity", mock.Anything, "bad").Return(Entity{}, s.testErr)
+	s.store.On("GetEntity", mock.Anything, "bad").Return(providers.Entity{}, s.testErr)
 	_, err := s.svc.GetEntity(s.ctx, "bad")
 	s.Error(err)
 }
@@ -134,7 +135,7 @@ func (s *ServiceTestSuite) TestUpdateEntity_StoreFails() {
 func (s *ServiceTestSuite) TestUpdateEntity_GetAfterUpdateFails() {
 	e := testEntity("e6")
 	s.store.On("UpdateEntity", mock.Anything, e).Return(nil)
-	s.store.On("GetEntity", mock.Anything, e.ID).Return(Entity{}, s.testErr)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(providers.Entity{}, s.testErr)
 	_, err := s.svc.UpdateEntity(s.ctx, e.ID, e)
 	s.Error(err)
 }
@@ -155,7 +156,7 @@ func (s *ServiceTestSuite) TestDeleteEntity_Delegates() {
 
 func (s *ServiceTestSuite) TestUpdateAttributes_GetEntityFails() {
 	attrs := json.RawMessage(`{"username":"new"}`)
-	s.store.On("GetEntity", mock.Anything, "bad").Return(Entity{}, s.testErr)
+	s.store.On("GetEntity", mock.Anything, "bad").Return(providers.Entity{}, s.testErr)
 	err := s.svc.UpdateAttributes(s.ctx, "bad", attrs)
 	s.Error(err)
 }
@@ -278,15 +279,15 @@ func (s *ServiceTestSuite) TestIdentifyEntity_Delegates() {
 
 func (s *ServiceTestSuite) TestGetEntityListCount_Delegates() {
 	s.store.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(5, nil)
-	count, err := s.svc.GetEntityListCount(s.ctx, EntityCategoryUser, nil)
+	count, err := s.svc.GetEntityListCount(s.ctx, providers.EntityCategoryUser, nil)
 	s.NoError(err)
 	s.Equal(5, count)
 }
 
 func (s *ServiceTestSuite) TestGetEntityList_Delegates() {
 	e := testEntity("le1")
-	s.store.On("GetEntityList", mock.Anything, "user", 10, 0, mock.Anything).Return([]Entity{*e}, nil)
-	list, err := s.svc.GetEntityList(s.ctx, EntityCategoryUser, 10, 0, nil)
+	s.store.On("GetEntityList", mock.Anything, "user", 10, 0, mock.Anything).Return([]providers.Entity{*e}, nil)
+	list, err := s.svc.GetEntityList(s.ctx, providers.EntityCategoryUser, 10, 0, nil)
 	s.NoError(err)
 	s.Len(list, 1)
 }
@@ -294,7 +295,7 @@ func (s *ServiceTestSuite) TestGetEntityList_Delegates() {
 func (s *ServiceTestSuite) TestGetEntityListCountByOUIDs_Delegates() {
 	s.store.On("GetEntityListCountByOUIDs", mock.Anything, "user", []string{"ou1"}, mock.Anything).
 		Return(3, nil)
-	count, err := s.svc.GetEntityListCountByOUIDs(s.ctx, EntityCategoryUser, []string{"ou1"}, nil)
+	count, err := s.svc.GetEntityListCountByOUIDs(s.ctx, providers.EntityCategoryUser, []string{"ou1"}, nil)
 	s.NoError(err)
 	s.Equal(3, count)
 }
@@ -302,8 +303,8 @@ func (s *ServiceTestSuite) TestGetEntityListCountByOUIDs_Delegates() {
 func (s *ServiceTestSuite) TestGetEntityListByOUIDs_Delegates() {
 	e := testEntity("ou-e1")
 	s.store.On("GetEntityListByOUIDs", mock.Anything, "user", []string{"ou1"}, 10, 0, mock.Anything).
-		Return([]Entity{*e}, nil)
-	list, err := s.svc.GetEntityListByOUIDs(s.ctx, EntityCategoryUser, []string{"ou1"}, 10, 0, nil)
+		Return([]providers.Entity{*e}, nil)
+	list, err := s.svc.GetEntityListByOUIDs(s.ctx, providers.EntityCategoryUser, []string{"ou1"}, 10, 0, nil)
 	s.NoError(err)
 	s.Len(list, 1)
 }
@@ -317,7 +318,7 @@ func (s *ServiceTestSuite) TestValidateEntityIDs_Delegates() {
 
 func (s *ServiceTestSuite) TestGetEntitiesByIDs_Delegates() {
 	e := testEntity("bid1")
-	s.store.On("GetEntitiesByIDs", mock.Anything, []string{"bid1"}).Return([]Entity{*e}, nil)
+	s.store.On("GetEntitiesByIDs", mock.Anything, []string{"bid1"}).Return([]providers.Entity{*e}, nil)
 	list, err := s.svc.GetEntitiesByIDs(s.ctx, []string{"bid1"})
 	s.NoError(err)
 	s.Len(list, 1)
@@ -339,7 +340,7 @@ func (s *ServiceTestSuite) TestGetGroupCountForEntity_Delegates() {
 }
 
 func (s *ServiceTestSuite) TestGetEntityGroups_Delegates() {
-	groups := []EntityGroup{{ID: "g1", Name: "Group1", OUID: "ou1"}}
+	groups := []providers.EntityGroup{{ID: "g1", Name: "Group1", OUID: "ou1"}}
 	s.store.On("GetEntityGroups", mock.Anything, "e1", 10, 0).Return(groups, nil)
 	got, err := s.svc.GetEntityGroups(s.ctx, "e1", 10, 0)
 	s.NoError(err)
@@ -356,8 +357,8 @@ func (s *ServiceTestSuite) TestIsEntityDeclarative_Delegates() {
 func (s *ServiceTestSuite) TestLoadDeclarativeResources_MutableStore_NoOp() {
 	cfg := DeclarativeLoaderConfig{
 		Directory: "users",
-		Category:  EntityCategoryUser,
-		Parser: func(data []byte) (*Entity, json.RawMessage, json.RawMessage, error) {
+		Category:  providers.EntityCategoryUser,
+		Parser: func(data []byte) (*providers.Entity, json.RawMessage, json.RawMessage, error) {
 			return nil, nil, nil, nil
 		},
 	}
@@ -381,7 +382,7 @@ func (s *ServiceTestSuite) TestUpdateEntity_UpdateFails_ViaOldPath() {
 func (s *ServiceTestSuite) TestUpdateEntity_GetAfterUpdateFails_ViaOldPath() {
 	e := testEntity("uc3")
 	s.store.On("UpdateEntity", mock.Anything, e).Return(nil)
-	s.store.On("GetEntity", mock.Anything, e.ID).Return(Entity{}, s.testErr)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(providers.Entity{}, s.testErr)
 	_, err := s.svc.UpdateEntity(s.ctx, e.ID, e)
 	s.Error(err)
 }
@@ -397,7 +398,7 @@ func (s *ServiceTestSuite) TestUpdateEntity_Success_ViaOldPath() {
 
 func (s *ServiceTestSuite) TestSearchEntities_Success() {
 	filters := map[string]interface{}{"email": "a@b.com"}
-	entities := []Entity{*testEntity("e1"), *testEntity("e2")}
+	entities := []providers.Entity{*testEntity("e1"), *testEntity("e2")}
 	s.store.On("SearchEntities", mock.Anything, filters).Return(entities, nil)
 	got, err := s.svc.SearchEntities(s.ctx, filters)
 	s.NoError(err)
@@ -452,7 +453,7 @@ func (s *ServiceTestSuite) TestAuthenticateEntityByID_EntityNotFound() {
 
 func (s *ServiceTestSuite) TestAuthenticateEntityByID_InactiveEntity() {
 	e := testEntity("inactive-1")
-	e.State = EntityState("SUSPENDED")
+	e.State = providers.EntityState("SUSPENDED")
 	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
 		Return(&entityWithCredentials{Entity: e, SchemaCredentials: testCredentialsJSON()}, nil)
 
@@ -498,7 +499,7 @@ func (s *ServiceTestSuite) TestGetTransitiveEntityGroups_ProviderNil() {
 
 func (s *ServiceTestSuite) TestSetGroupMembershipProvider_DelegatesOnCall() {
 	provider := NewGroupMembershipProviderMock(s.T())
-	expected := []EntityGroup{{ID: "grp1", Name: "Admins", OUID: "ou1"}}
+	expected := []providers.EntityGroup{{ID: "grp1", Name: "Admins", OUID: "ou1"}}
 	provider.On("GetTransitiveGroupsForEntity", s.ctx, "user1").Return(expected, nil).Once()
 
 	s.svc.SetGroupMembershipProvider(provider)

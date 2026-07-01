@@ -19,7 +19,8 @@
 package oidc
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"context"
 	"testing"
@@ -30,8 +31,6 @@ import (
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/oauth"
-	"github.com/thunder-id/thunderid/internal/idp"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oauthmock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
@@ -120,9 +119,11 @@ func (suite *OIDCAuthnServiceTestSuite) TestBuildAuthorizeURLSuccess() {
 }
 
 func (suite *OIDCAuthnServiceTestSuite) TestBuildAuthorizeURLError() {
-	svcErr := &serviceerror.ServiceError{
-		Code:             "ERROR",
-		ErrorDescription: core.I18nMessage{Key: "error.test.failed_to_build_url", DefaultValue: "Failed to build URL"},
+	svcErr := &tidcommon.ServiceError{
+		Code: "ERROR",
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.test.failed_to_build_url", DefaultValue: "Failed to build URL",
+		},
 	}
 	suite.mockOAuthService.On("BuildAuthorizeURL", mock.Anything, testOIDCIDPID).Return("", svcErr)
 
@@ -363,7 +364,7 @@ func (suite *OIDCAuthnServiceTestSuite) TestFetchUserInfoSuccess() {
 
 func (suite *OIDCAuthnServiceTestSuite) TestExchangeCodeForTokenInternalError() {
 	suite.mockOAuthService.On("ExchangeCodeForToken", mock.Anything, testOIDCIDPID, "auth_code", false).
-		Return(nil, &serviceerror.ServiceError{Code: "INT-ERR"})
+		Return(nil, &tidcommon.ServiceError{Code: "INT-ERR"})
 
 	result, err := suite.service.ExchangeCodeForToken(context.Background(), testOIDCIDPID, "auth_code", false)
 	suite.Nil(result)
@@ -388,11 +389,15 @@ func (suite *OIDCAuthnServiceTestSuite) TestValidateTokenResponseValidateIDToken
 
 	// jwt service fails verification
 	suite.mockJWTService.On("VerifyJWTWithJWKS", mock.Anything, "id_token", "https://example.com/jwks", "", "").
-		Return(&serviceerror.ServiceError{
-			Type:             serviceerror.ServerErrorType,
-			Code:             "SIGNATURE_INVALID",
-			Error:            core.I18nMessage{Key: "error.test.signature_invalid", DefaultValue: "Signature invalid"},
-			ErrorDescription: core.I18nMessage{Key: "error.test.signature_invalid", DefaultValue: "signature invalid"},
+		Return(&tidcommon.ServiceError{
+			Type: tidcommon.ServerErrorType,
+			Code: "SIGNATURE_INVALID",
+			Error: tidcommon.I18nMessage{
+				Key: "error.test.signature_invalid", DefaultValue: "Signature invalid",
+			},
+			ErrorDescription: tidcommon.I18nMessage{
+				Key: "error.test.signature_invalid", DefaultValue: "signature invalid",
+			},
 		})
 
 	tokenResp := &oauth.TokenResponse{AccessToken: "access", IDToken: "id_token"}
@@ -478,7 +483,7 @@ func (suite *OIDCAuthnServiceTestSuite) TestAuthenticateSuccess() {
 	}
 	suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testOIDCIDPID).Return(cfg, nil)
 	suite.mockJWTService.On("VerifyJWTWithJWKS", mock.Anything, idToken, "https://example.com/jwks", "", "").Return(nil)
-	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testOIDCIDPID).Return(&idp.IDPDTO{}, nil)
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testOIDCIDPID).Return(&providers.IDPDTO{}, nil)
 
 	result, svcErr := suite.service.Authenticate(context.Background(), testOIDCIDPID, "auth_code")
 	suite.Nil(svcErr)
@@ -518,7 +523,7 @@ func (suite *OIDCAuthnServiceTestSuite) TestAuthenticateWithUserInfoMerge() {
 			"sub":   "1234567890",
 			"email": "john@example.com",
 		}, nil)
-	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testOIDCIDPID).Return(&idp.IDPDTO{}, nil)
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testOIDCIDPID).Return(&providers.IDPDTO{}, nil)
 
 	result, svcErr := suite.service.Authenticate(context.Background(), testOIDCIDPID, "auth_code")
 	suite.Nil(svcErr)
@@ -558,7 +563,7 @@ func (suite *OIDCAuthnServiceTestSuite) TestAuthenticateUserInfoSubMismatch() {
 			"sub":   "different_user",
 			"email": "other@example.com",
 		}, nil)
-	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testOIDCIDPID).Return(&idp.IDPDTO{}, nil)
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testOIDCIDPID).Return(&providers.IDPDTO{}, nil)
 
 	result, svcErr := suite.service.Authenticate(context.Background(), testOIDCIDPID, "auth_code")
 	suite.Nil(svcErr)
@@ -577,7 +582,7 @@ func (suite *OIDCAuthnServiceTestSuite) TestAuthenticateExchangeCodeError() {
 	suite.service = *cast
 
 	suite.mockOAuthService.On("ExchangeCodeForToken", mock.Anything, testOIDCIDPID, "bad_code", false).
-		Return(nil, &serviceerror.ServiceError{Code: "TOKEN-ERR"})
+		Return(nil, &tidcommon.ServiceError{Code: "TOKEN-ERR"})
 
 	result, svcErr := suite.service.Authenticate(context.Background(), testOIDCIDPID, "bad_code")
 	suite.Nil(result)
@@ -642,8 +647,8 @@ func (suite *OIDCAuthnServiceTestSuite) TestAuthenticateUserInfoFetchError() {
 	suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testOIDCIDPID).Return(cfg, nil)
 	suite.mockJWTService.On("VerifyJWTWithJWKS", mock.Anything, idToken, "https://example.com/jwks", "", "").Return(nil)
 	suite.mockOAuthService.On("FetchUserInfo", mock.Anything, testOIDCIDPID, "access_token").Return(
-		nil, &serviceerror.ServiceError{Code: "USERINFO-ERR"})
-	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testOIDCIDPID).Return(&idp.IDPDTO{}, nil)
+		nil, &tidcommon.ServiceError{Code: "USERINFO-ERR"})
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testOIDCIDPID).Return(&providers.IDPDTO{}, nil)
 
 	result, svcErr := suite.service.Authenticate(context.Background(), testOIDCIDPID, "auth_code")
 	suite.Nil(svcErr)
@@ -653,11 +658,11 @@ func (suite *OIDCAuthnServiceTestSuite) TestAuthenticateUserInfoFetchError() {
 }
 
 func (suite *OIDCAuthnServiceTestSuite) TestResolveAttributeMappings_AppliesMappings() {
-	idpDTO := &idp.IDPDTO{AttributeConfiguration: &idp.AttributeConfiguration{
-		UserTypeResolution: &idp.UserTypeResolution{Default: "person"},
-		UserTypeAttributeMappings: []idp.UserTypeAttributeMapping{{
+	idpDTO := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{Default: "person"},
+		UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{
 			UserType:   "person",
-			Attributes: []idp.AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}},
+			Attributes: []providers.AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}},
 		}},
 	}}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testOIDCIDPID).Return(idpDTO, nil)
@@ -672,9 +677,9 @@ func (suite *OIDCAuthnServiceTestSuite) TestResolveAttributeMappings_AppliesMapp
 }
 
 func (suite *OIDCAuthnServiceTestSuite) TestResolveAttributeMappings_ClientError() {
-	clientErr := &serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType, Code: "IDP-1001",
-		ErrorDescription: core.I18nMessage{DefaultValue: "not found"},
+	clientErr := &tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType, Code: "IDP-1001",
+		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "not found"},
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testOIDCIDPID).Return(nil, clientErr)
 
@@ -687,9 +692,9 @@ func (suite *OIDCAuthnServiceTestSuite) TestResolveAttributeMappings_ClientError
 }
 
 func (suite *OIDCAuthnServiceTestSuite) TestResolveAttributeMappings_ServerError() {
-	serverErr := &serviceerror.ServiceError{
-		Type: serviceerror.ServerErrorType, Code: "IDP-5000",
-		ErrorDescription: core.I18nMessage{DefaultValue: "boom"},
+	serverErr := &tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType, Code: "IDP-5000",
+		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "boom"},
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testOIDCIDPID).Return(nil, serverErr)
 
@@ -698,7 +703,7 @@ func (suite *OIDCAuthnServiceTestSuite) TestResolveAttributeMappings_ServerError
 
 	suite.Nil(result)
 	suite.NotNil(svcErr)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *OIDCAuthnServiceTestSuite) TestResolveAttributeMappings_NilIDP() {
@@ -709,5 +714,5 @@ func (suite *OIDCAuthnServiceTestSuite) TestResolveAttributeMappings_NilIDP() {
 
 	suite.Nil(result)
 	suite.NotNil(svcErr)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }

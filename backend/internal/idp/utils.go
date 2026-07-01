@@ -24,11 +24,12 @@ import (
 	"slices"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // subClaim is the OIDC subject identifier claim, which is always preserved during attribute mapping.
@@ -52,7 +53,7 @@ func GetPropertyValue(properties []cmodels.Property, name string) string {
 // GetMappedUserType returns the resolved local user type for the IDP's attribute mapping,
 // or an empty string when no mapping is configured. This iteration resolves to the configured
 // default user type.
-func GetMappedUserType(idp *IDPDTO) string {
+func GetMappedUserType(idp *providers.IDPDTO) string {
 	if idp == nil || idp.AttributeConfiguration == nil || idp.AttributeConfiguration.UserTypeResolution == nil {
 		return ""
 	}
@@ -61,7 +62,7 @@ func GetMappedUserType(idp *IDPDTO) string {
 
 // GetAttributeMappings returns the external→local attribute mappings for the resolved user type's
 // attributes entry, or nil when no mapping is configured.
-func GetAttributeMappings(idp *IDPDTO) []AttributeMapping {
+func GetAttributeMappings(idp *providers.IDPDTO) []providers.AttributeMapping {
 	if idp == nil || idp.AttributeConfiguration == nil {
 		return nil
 	}
@@ -79,7 +80,10 @@ func GetAttributeMappings(idp *IDPDTO) []AttributeMapping {
 
 // ApplyAttributeMappings applies external→local attribute mappings. Unmapped attributes pass through;
 // mapped values take precedence on collision. Returns attrs unchanged when no mappings are configured.
-func ApplyAttributeMappings(attrs map[string]interface{}, mappings []AttributeMapping) map[string]interface{} {
+func ApplyAttributeMappings(
+	attrs map[string]interface{},
+	mappings []providers.AttributeMapping,
+) map[string]interface{} {
 	if len(mappings) == 0 {
 		return attrs
 	}
@@ -136,19 +140,19 @@ func getNestedValue(data map[string]interface{}, path string) (interface{}, bool
 // schema: non-empty source/target names and no duplicate targets. A single external attribute may map
 // to multiple local attributes, but two external attributes mapping to the same local attribute is a
 // conflict and is rejected.
-func validateAttributeMappingShape(mappings []AttributeMapping) *serviceerror.ServiceError {
+func validateAttributeMappingShape(mappings []providers.AttributeMapping) *tidcommon.ServiceError {
 	seenTargets := make(map[string]bool, len(mappings))
 	for _, m := range mappings {
 		external := strings.TrimSpace(m.ExternalAttribute)
 		local := strings.TrimSpace(m.LocalAttribute)
 		if external == "" || local == "" {
-			return serviceerror.CustomServiceError(ErrorInvalidAttributeConfiguration, core.I18nMessage{
+			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 				Key:          "error.idpservice.attribute_configuration_empty_claim_description",
 				DefaultValue: "attribute mapping must not contain empty attribute names",
 			})
 		}
 		if seenTargets[local] {
-			return serviceerror.CustomServiceError(ErrorInvalidAttributeConfiguration, core.I18nMessage{
+			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 				Key: "error.idpservice.attribute_configuration_duplicate_target_description",
 				DefaultValue: fmt.Sprintf(
 					"local attribute name '%s' appears as a mapping target more than once", local),
@@ -160,7 +164,7 @@ func validateAttributeMappingShape(mappings []AttributeMapping) *serviceerror.Se
 }
 
 // validateIDP validates the identity provider details.
-func validateIDP(ctx context.Context, idp *IDPDTO, logger *log.Logger) *serviceerror.ServiceError {
+func validateIDP(ctx context.Context, idp *providers.IDPDTO, logger *log.Logger) *tidcommon.ServiceError {
 	if idp == nil {
 		return &ErrorIDPNil
 	}
@@ -172,7 +176,7 @@ func validateIDP(ctx context.Context, idp *IDPDTO, logger *log.Logger) *servicee
 	if strings.TrimSpace(string(idp.Type)) == "" {
 		return &ErrorInvalidIDPType
 	}
-	isValidType := slices.Contains(supportedIDPTypes, idp.Type)
+	isValidType := slices.Contains(providers.SupportedIDPTypes, idp.Type)
 	if !isValidType {
 		return &ErrorInvalidIDPType
 	}
@@ -188,13 +192,13 @@ func validateIDP(ctx context.Context, idp *IDPDTO, logger *log.Logger) *servicee
 }
 
 // validateIDPProperties validates the properties of the identity provider based on its type.
-func validateIDPProperties(ctx context.Context, idpType IDPType, properties []cmodels.Property,
-	logger *log.Logger) ([]cmodels.Property, *serviceerror.ServiceError) {
+func validateIDPProperties(ctx context.Context, idpType providers.IDPType, properties []cmodels.Property,
+	logger *log.Logger) ([]cmodels.Property, *tidcommon.ServiceError) {
 	config, exists := idpPropertyConfigs[idpType]
 	if !exists {
 		logger.Error(ctx, "No property configuration found for IDP type",
 			log.String("idpType", string(idpType)))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	allowedProps := make([]string, 0, len(config.Required)+len(config.Optional))
@@ -207,13 +211,13 @@ func validateIDPProperties(ctx context.Context, idpType IDPType, properties []cm
 	for _, prop := range properties {
 		propName := prop.GetName()
 		if strings.TrimSpace(propName) == "" {
-			return nil, serviceerror.CustomServiceError(ErrorInvalidIDPProperty, core.I18nMessage{
+			return nil, tidcommon.CustomServiceError(ErrorInvalidIDPProperty, tidcommon.I18nMessage{
 				Key:          "error.idpservice.property_name_empty_description",
 				DefaultValue: "property names cannot be empty",
 			})
 		}
 		if !slices.Contains(allowedProps, propName) {
-			return nil, serviceerror.CustomServiceError(ErrorUnsupportedIDPProperty, core.I18nMessage{
+			return nil, tidcommon.CustomServiceError(ErrorUnsupportedIDPProperty, tidcommon.I18nMessage{
 				Key:          "error.idpservice.property_not_supported_for_type_description",
 				DefaultValue: fmt.Sprintf("property '%s' is not supported for IDP type '%s'", propName, idpType),
 			})
@@ -221,13 +225,13 @@ func validateIDPProperties(ctx context.Context, idpType IDPType, properties []cm
 
 		propertyValue, err := prop.GetValue()
 		if err != nil {
-			return nil, serviceerror.CustomServiceError(ErrorInvalidIDPProperty, core.I18nMessage{
+			return nil, tidcommon.CustomServiceError(ErrorInvalidIDPProperty, tidcommon.I18nMessage{
 				Key:          "error.idpservice.property_value_get_failed_description",
 				DefaultValue: fmt.Sprintf("failed to get value for property '%s': %v", propName, err),
 			})
 		}
 		if strings.TrimSpace(propertyValue) == "" {
-			return nil, serviceerror.CustomServiceError(ErrorInvalidIDPProperty, core.I18nMessage{
+			return nil, tidcommon.CustomServiceError(ErrorInvalidIDPProperty, tidcommon.I18nMessage{
 				Key:          "error.idpservice.property_value_empty_description",
 				DefaultValue: fmt.Sprintf("value cannot be empty for property '%s'", propName),
 			})
@@ -248,7 +252,7 @@ func validateIDPProperties(ctx context.Context, idpType IDPType, properties []cm
 	}
 	for _, requiredProp := range requiredProps {
 		if !slices.Contains(filteredPropKeys, requiredProp) {
-			return nil, serviceerror.CustomServiceError(ErrorInvalidIDPProperty, core.I18nMessage{
+			return nil, tidcommon.CustomServiceError(ErrorInvalidIDPProperty, tidcommon.I18nMessage{
 				Key:          "error.idpservice.required_property_missing_description",
 				DefaultValue: fmt.Sprintf("required property '%s' is missing for IDP type '%s'", requiredProp, idpType),
 			})
@@ -266,7 +270,7 @@ func validateIDPProperties(ctx context.Context, idpType IDPType, properties []cm
 	}
 
 	// Ensure openid scope for OIDC and Google IDPs
-	if idpType == IDPTypeOIDC || idpType == IDPTypeGoogle {
+	if idpType == providers.IDPTypeOIDC || idpType == providers.IDPTypeGoogle {
 		if err := ensureOpenIDScope(ctx, filteredPropsMap, logger); err != nil {
 			return nil, err
 		}
@@ -277,7 +281,7 @@ func validateIDPProperties(ctx context.Context, idpType IDPType, properties []cm
 
 // ensureOpenIDScope ensures that the openid scope is present in the scopes property.
 func ensureOpenIDScope(ctx context.Context, propertyMap map[string]cmodels.Property,
-	logger *log.Logger) *serviceerror.ServiceError {
+	logger *log.Logger) *tidcommon.ServiceError {
 	scopesProp, exists := propertyMap[PropScopes]
 	if !exists {
 		err := createAndAppendProperty(ctx, propertyMap, PropScopes, "openid", false, logger)
@@ -289,7 +293,7 @@ func ensureOpenIDScope(ctx context.Context, propertyMap map[string]cmodels.Prope
 
 	scopesValue, err := scopesProp.GetValue()
 	if err != nil {
-		return serviceerror.CustomServiceError(ErrorInvalidIDPProperty, core.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidIDPProperty, tidcommon.I18nMessage{
 			Key:          "error.idpservice.scopes_value_get_failed_description",
 			DefaultValue: fmt.Sprintf("failed to get scopes value: %v", err),
 		})
@@ -326,11 +330,11 @@ func ensureOpenIDScope(ctx context.Context, propertyMap map[string]cmodels.Prope
 // createAndAppendProperty creates a new property and appends it to the property map.
 func createAndAppendProperty(ctx context.Context, propertyMap map[string]cmodels.Property,
 	name, value string, isSecret bool, logger *log.Logger,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	prop, err := cmodels.NewProperty(name, value, isSecret)
 	if err != nil {
 		logger.Error(ctx, "Failed to create property", log.String("propertyName", name), log.Error(err))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 	propertyMap[name] = *prop
 	return nil

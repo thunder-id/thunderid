@@ -23,9 +23,10 @@ import (
 	"context"
 	"slices"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -58,19 +59,19 @@ func newGithubOAuthAuthnService(internal authnoauth.OAuthAuthnServiceInterface,
 
 // BuildAuthorizeURL constructs the authorization request URL for GitHub OAuth authentication.
 func (g *githubOAuthAuthnService) BuildAuthorizeURL(
-	ctx context.Context, idpID string) (string, *serviceerror.ServiceError) {
+	ctx context.Context, idpID string) (string, *tidcommon.ServiceError) {
 	return g.internal.BuildAuthorizeURL(ctx, idpID)
 }
 
 // ExchangeCodeForToken exchanges the authorization code for a token with GitHub.
 func (g *githubOAuthAuthnService) ExchangeCodeForToken(ctx context.Context, idpID, code string, validateResponse bool) (
-	*authnoauth.TokenResponse, *serviceerror.ServiceError) {
+	*authnoauth.TokenResponse, *tidcommon.ServiceError) {
 	return g.internal.ExchangeCodeForToken(ctx, idpID, code, validateResponse)
 }
 
 // FetchUserInfo retrieves user information from the Github API, ensuring email resolution if necessary.
 func (g *githubOAuthAuthnService) FetchUserInfo(ctx context.Context, idpID, accessToken string) (
-	map[string]interface{}, *serviceerror.ServiceError) {
+	map[string]interface{}, *tidcommon.ServiceError) {
 	logger := g.logger
 	oAuthClientConfig, svcErr := g.internal.GetOAuthClientConfig(ctx, idpID)
 	if svcErr != nil {
@@ -111,13 +112,13 @@ func (g *githubOAuthAuthnService) shouldFetchEmail(scopes []string) bool {
 // fetchPrimaryEmail fetches the primary email of the user from the GitHub user emails endpoint.
 func (g *githubOAuthAuthnService) fetchPrimaryEmail(ctx context.Context,
 	oAuthClientConfig *authnoauth.OAuthClientConfig, accessToken string) (
-	string, *serviceerror.ServiceError) {
+	string, *tidcommon.ServiceError) {
 	logger := g.logger
 	logger.Debug(ctx, "Fetching primary email from GitHub user emails endpoint")
 
 	if oAuthClientConfig.OAuthEndpoints.UserEmailEndpoint == "" {
 		logger.Error(ctx, "User email endpoint is not configured in OAuth client config")
-		return "", &serviceerror.InternalServerError
+		return "", &tidcommon.InternalServerError
 	}
 
 	req, svcErr := buildUserEmailRequest(ctx, oAuthClientConfig.OAuthEndpoints.UserEmailEndpoint, accessToken, logger)
@@ -143,7 +144,7 @@ func (g *githubOAuthAuthnService) fetchPrimaryEmail(ctx context.Context,
 
 // GetOAuthClientConfig retrieves and validates the OAuth client configuration for the given identity provider ID.
 func (g *githubOAuthAuthnService) GetOAuthClientConfig(ctx context.Context, idpID string) (
-	*authnoauth.OAuthClientConfig, *serviceerror.ServiceError) {
+	*authnoauth.OAuthClientConfig, *tidcommon.ServiceError) {
 	return g.internal.GetOAuthClientConfig(ctx, idpID)
 }
 
@@ -151,7 +152,7 @@ func (g *githubOAuthAuthnService) GetOAuthClientConfig(ctx context.Context, idpI
 // fetches user info, and resolves the internal user.
 // A missing internal user is NOT an error — the caller decides how to handle it.
 func (g *githubOAuthAuthnService) Authenticate(ctx context.Context, idpID, code string) (
-	*authncm.AuthnResult, *serviceerror.ServiceError) {
+	*authncm.AuthnResult, *tidcommon.ServiceError) {
 	logger := g.logger.With(log.String("idpId", idpID))
 	logger.Debug(ctx, "Performing federated GitHub OAuth authentication")
 

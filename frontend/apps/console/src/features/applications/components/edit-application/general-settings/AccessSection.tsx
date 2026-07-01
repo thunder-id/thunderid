@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -115,8 +115,22 @@ export default function AccessSection({
       return false;
     }
     try {
+      // Replace wildcards in the host portion with a placeholder so new URL() can parse it.
+      // Path wildcards (e.g., /callback/*, /**) parse fine natively.
+      // The backend enforces all wildcard rules (allowed patterns, server config).
+      const schemeEnd = uri.indexOf('://');
+      let uriForValidation = uri;
+      if (schemeEnd !== -1) {
+        const pathStart = uri.indexOf('/', schemeEnd + 3);
+        const hostPart = pathStart !== -1 ? uri.slice(schemeEnd + 3, pathStart) : uri.slice(schemeEnd + 3);
+        if (hostPart.includes('*')) {
+          const sanitizedHost = hostPart.replace(/\*/g, 'wildcard-placeholder');
+          uriForValidation =
+            uri.slice(0, schemeEnd + 3) + sanitizedHost + (pathStart !== -1 ? uri.slice(pathStart) : '');
+        }
+      }
       // eslint-disable-next-line no-new
-      new URL(uri);
+      new URL(uriForValidation);
 
       setUriErrors((prev) => {
         const newErrors = {...prev};

@@ -130,7 +130,7 @@ export default function ConfigureSignInOptions({
 }: ConfigureSignInOptionsProps): JSX.Element {
   const {t} = useTranslation();
   const theme = useTheme();
-  const {selectedAuthFlow, setSelectedAuthFlow} = useApplicationCreateContext();
+  const {selectedAuthFlow, setSelectedAuthFlow, setIntegrations} = useApplicationCreateContext();
 
   const {data, isLoading, error} = useIdentityProviders();
   const {
@@ -257,6 +257,10 @@ export default function ConfigureSignInOptions({
       availableFlows?.find((flow: BasicFlowDefinition) => flow.id === flowId) ?? null;
 
     setSelectedAuthFlow(selectedFlow);
+
+    if (selectedFlow) {
+      setIntegrations({});
+    }
   };
 
   const handleClearFlowSelection = (): void => {

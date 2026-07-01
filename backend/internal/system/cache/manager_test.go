@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 type TestString string
@@ -43,7 +44,7 @@ func TestCacheManagerSuite(t *testing.T) {
 
 func (suite *CacheManagerTestSuite) SetupSuite() {
 	mockConfig := &config.Config{
-		Cache: config.CacheConfig{
+		Cache: engineconfig.CacheConfig{
 			Disabled: true, // Disable cache globally for tests
 		},
 	}
@@ -61,7 +62,7 @@ func (suite *CacheManagerTestSuite) TearDownSuite() {
 func (suite *CacheManagerTestSuite) TestInitialize() {
 	t := suite.T()
 
-	manager := Initialize(config.CacheConfig{Disabled: true}, "test-deployment")
+	manager := Initialize(engineconfig.CacheConfig{Disabled: true}, "test-deployment")
 	assert.NotNil(t, manager, "Cache manager should not be nil")
 	assert.IsType(t, &CacheManager{}, manager, "Cache manager should be of type *CacheManager")
 }
@@ -71,18 +72,18 @@ func (suite *CacheManagerTestSuite) TestInitializeWithCacheConfig() {
 
 	tests := []struct {
 		name              string
-		cacheConfig       config.CacheConfig
+		cacheConfig       engineconfig.CacheConfig
 		expectEnabled     bool
 		expectCleanupSecs int
 	}{
 		{
 			name:          "returns disabled manager when cache is disabled",
-			cacheConfig:   config.CacheConfig{Disabled: true},
+			cacheConfig:   engineconfig.CacheConfig{Disabled: true},
 			expectEnabled: false,
 		},
 		{
 			name: "enables in-memory manager with configured cleanup interval",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				Disabled:        false,
 				Type:            "inmemory",
 				CleanupInterval: 60,
@@ -92,7 +93,7 @@ func (suite *CacheManagerTestSuite) TestInitializeWithCacheConfig() {
 		},
 		{
 			name: "defaults to in-memory when cache type is empty",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				Disabled:        false,
 				CleanupInterval: 30,
 			},
@@ -101,10 +102,10 @@ func (suite *CacheManagerTestSuite) TestInitializeWithCacheConfig() {
 		},
 		{
 			name: "disables manager when redis connection fails",
-			cacheConfig: config.CacheConfig{
+			cacheConfig: engineconfig.CacheConfig{
 				Disabled: false,
 				Type:     "redis",
-				Redis: config.RedisConfig{
+				Redis: engineconfig.RedisConfig{
 					Address:        "127.0.0.1:1",
 					DialTimeoutMS:  100,
 					ReadTimeoutMS:  100,
@@ -133,10 +134,10 @@ func (suite *CacheManagerTestSuite) TestInitializeWithCacheConfig() {
 func (suite *CacheManagerTestSuite) TestCacheManagerInit() {
 	t := suite.T()
 
-	manager := Initialize(config.CacheConfig{Disabled: true}, "test-deployment")
+	manager := Initialize(engineconfig.CacheConfig{Disabled: true}, "test-deployment")
 	assert.False(t, manager.IsEnabled(), "Cache should be disabled")
 
-	enabledCacheConfig := config.CacheConfig{
+	enabledCacheConfig := engineconfig.CacheConfig{
 		Disabled:        false,
 		Size:            1000,
 		TTL:             3600,
@@ -283,7 +284,7 @@ func (suite *CacheManagerTestSuite) TestConcurrentAccess() {
 
 	// Setup enabled config
 	enabledConfig := &config.Config{
-		Cache: config.CacheConfig{
+		Cache: engineconfig.CacheConfig{
 			Disabled: false,
 		},
 	}
@@ -360,7 +361,7 @@ func (suite *CacheManagerTestSuite) TestNewCache() {
 
 	// Test 1: Test with cache globally disabled
 	disabledConfig := config.Config{
-		Cache: config.CacheConfig{
+		Cache: engineconfig.CacheConfig{
 			Disabled: true,
 		},
 	}
@@ -377,9 +378,9 @@ func (suite *CacheManagerTestSuite) TestNewCache() {
 
 	// Test 2: Test with specific cache disabled
 	enabledConfig := config.Config{
-		Cache: config.CacheConfig{
+		Cache: engineconfig.CacheConfig{
 			Disabled: false,
-			Properties: []config.CacheProperty{
+			Properties: []engineconfig.CacheProperty{
 				{
 					Name:     "testSpecificDisabledCache",
 					Disabled: true,
@@ -400,10 +401,10 @@ func (suite *CacheManagerTestSuite) TestNewCache() {
 
 	// Test 3: Test with in-memory cache type
 	inMemConfig := config.Config{
-		Cache: config.CacheConfig{
+		Cache: engineconfig.CacheConfig{
 			Disabled: false,
 			Type:     "inmemory",
-			Properties: []config.CacheProperty{
+			Properties: []engineconfig.CacheProperty{
 				{
 					Name: "testInMemCache",
 					Size: 100,
@@ -422,7 +423,7 @@ func (suite *CacheManagerTestSuite) TestNewCache() {
 
 	// Test 4: Test with unknown cache type
 	unknownTypeConfig := config.Config{
-		Cache: config.CacheConfig{
+		Cache: engineconfig.CacheConfig{
 			Disabled: false,
 			Type:     "unknown-type",
 		},
@@ -441,7 +442,7 @@ func (suite *CacheManagerTestSuite) TestNewCache() {
 
 func (suite *CacheManagerTestSuite) TestGetCleanupInterval() {
 	t := suite.T()
-	config := config.CacheConfig{
+	config := engineconfig.CacheConfig{
 		CleanupInterval: 120,
 	}
 	interval := getCleanupInterval(config)
@@ -454,7 +455,7 @@ func (suite *CacheManagerTestSuite) TestCacheManagerAccessors() {
 	client := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
 	manager := &CacheManager{
 		caches:       make(map[string]interface{}),
-		cacheConfig:  config.CacheConfig{Disabled: false},
+		cacheConfig:  engineconfig.CacheConfig{Disabled: false},
 		deploymentID: "deployment-test",
 		redisClient:  client,
 	}

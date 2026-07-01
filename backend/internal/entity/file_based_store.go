@@ -26,6 +26,7 @@ import (
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	entitystore "github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // entityFileBasedStore implements entityStoreInterface using an in-memory file-based store.
@@ -52,7 +53,7 @@ func (f *entityFileBasedStore) Create(id string, data interface{}) error {
 }
 
 // CreateEntity implements entityStoreInterface.
-func (f *entityFileBasedStore) CreateEntity(ctx context.Context, entity Entity,
+func (f *entityFileBasedStore) CreateEntity(ctx context.Context, entity providers.Entity,
 	credentials json.RawMessage, systemCredentials json.RawMessage) error {
 	resource := &entityStoreEntry{
 		Entity:            entity,
@@ -63,15 +64,15 @@ func (f *entityFileBasedStore) CreateEntity(ctx context.Context, entity Entity,
 }
 
 // GetEntity retrieves an entity by ID.
-func (f *entityFileBasedStore) GetEntity(ctx context.Context, id string) (Entity, error) {
+func (f *entityFileBasedStore) GetEntity(ctx context.Context, id string) (providers.Entity, error) {
 	data, err := f.GenericFileBasedStore.Get(id)
 	if err != nil {
-		return Entity{}, ErrEntityNotFound
+		return providers.Entity{}, ErrEntityNotFound
 	}
 	resource, ok := data.(*entityStoreEntry)
 	if !ok {
 		declarativeresource.LogTypeAssertionError("entity", id)
-		return Entity{}, errors.New("entity data corrupted")
+		return providers.Entity{}, errors.New("entity data corrupted")
 	}
 	return resource.Entity, nil
 }
@@ -96,7 +97,7 @@ func (f *entityFileBasedStore) GetEntityWithCredentials(ctx context.Context, id 
 }
 
 // UpdateEntity is not supported in file-based store.
-func (f *entityFileBasedStore) UpdateEntity(ctx context.Context, entity *Entity) error {
+func (f *entityFileBasedStore) UpdateEntity(ctx context.Context, entity *providers.Entity) error {
 	return errors.New("UpdateEntity is not supported in file-based store")
 }
 
@@ -157,13 +158,13 @@ func (f *entityFileBasedStore) IdentifyEntity(ctx context.Context,
 
 // SearchEntities searches for all entities matching the provided filters from the file store.
 func (f *entityFileBasedStore) SearchEntities(ctx context.Context,
-	filters map[string]interface{}) ([]Entity, error) {
+	filters map[string]interface{}) ([]providers.Entity, error) {
 	resources, err := f.listEntityResources()
 	if err != nil {
 		return nil, err
 	}
 
-	var matched []Entity
+	var matched []providers.Entity
 	for _, resource := range resources {
 		combined := mergeJSONObjects(resource.Entity.Attributes, resource.Entity.SystemAttributes)
 		if matchesFilters(combined, filters) {
@@ -201,13 +202,13 @@ func (f *entityFileBasedStore) GetEntityListCount(ctx context.Context, category 
 
 // GetEntityList retrieves entities from the file store with pagination and filtering.
 func (f *entityFileBasedStore) GetEntityList(ctx context.Context, category string,
-	limit, offset int, filters map[string]interface{}) ([]Entity, error) {
+	limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
 	resources, err := f.listEntityResources()
 	if err != nil {
 		return nil, err
 	}
 
-	entities := make([]Entity, 0)
+	entities := make([]providers.Entity, 0)
 	for _, resource := range resources {
 		if string(resource.Entity.Category) != category {
 			continue
@@ -252,7 +253,7 @@ func (f *entityFileBasedStore) GetEntityListCountByOUIDs(ctx context.Context, ca
 
 // GetEntityListByOUIDs retrieves entities scoped to OU IDs with pagination and filtering.
 func (f *entityFileBasedStore) GetEntityListByOUIDs(ctx context.Context, category string,
-	ouIDs []string, limit, offset int, filters map[string]interface{}) ([]Entity, error) {
+	ouIDs []string, limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
 	resources, err := f.listEntityResources()
 	if err != nil {
 		return nil, err
@@ -263,7 +264,7 @@ func (f *entityFileBasedStore) GetEntityListByOUIDs(ctx context.Context, categor
 		ouIDSet[id] = struct{}{}
 	}
 
-	entities := make([]Entity, 0)
+	entities := make([]providers.Entity, 0)
 	for _, resource := range resources {
 		if string(resource.Entity.Category) != category {
 			continue
@@ -287,8 +288,8 @@ func (f *entityFileBasedStore) GetGroupCountForEntity(ctx context.Context, entit
 
 // GetEntityGroups returns empty for file-based store (groups are for mutable entities only).
 func (f *entityFileBasedStore) GetEntityGroups(ctx context.Context, entityID string,
-	limit, offset int) ([]EntityGroup, error) {
-	return []EntityGroup{}, nil
+	limit, offset int) ([]providers.EntityGroup, error) {
+	return []providers.EntityGroup{}, nil
 }
 
 // ValidateEntityIDs checks if all provided entity IDs exist.
@@ -308,12 +309,12 @@ func (f *entityFileBasedStore) ValidateEntityIDs(ctx context.Context, entityIDs 
 }
 
 // GetEntitiesByIDs retrieves entities by a list of IDs from the file store.
-func (f *entityFileBasedStore) GetEntitiesByIDs(ctx context.Context, entityIDs []string) ([]Entity, error) {
+func (f *entityFileBasedStore) GetEntitiesByIDs(ctx context.Context, entityIDs []string) ([]providers.Entity, error) {
 	if len(entityIDs) == 0 {
-		return []Entity{}, nil
+		return []providers.Entity{}, nil
 	}
 
-	entities := make([]Entity, 0, len(entityIDs))
+	entities := make([]providers.Entity, 0, len(entityIDs))
 	for _, id := range entityIDs {
 		entity, err := f.GetEntity(ctx, id)
 		if err != nil {
@@ -403,15 +404,15 @@ func (f *entityFileBasedStore) listEntityResources() ([]*entityStoreEntry, error
 	return resources, nil
 }
 
-func applyPagination(entities []Entity, limit, offset int) []Entity {
+func applyPagination(entities []providers.Entity, limit, offset int) []providers.Entity {
 	if limit < 0 {
-		return []Entity{}
+		return []providers.Entity{}
 	}
 	if offset < 0 {
 		offset = 0
 	}
 	if offset >= len(entities) {
-		return []Entity{}
+		return []providers.Entity{}
 	}
 
 	end := offset + limit

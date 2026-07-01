@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 type RedisCacheTestSuite struct {
@@ -38,14 +39,14 @@ func TestRedisCacheSuite(t *testing.T) {
 
 func (suite *RedisCacheTestSuite) SetupSuite() {
 	mockConfig := &config.Config{
-		Cache: config.CacheConfig{
+		Cache: engineconfig.CacheConfig{
 			Disabled:        false,
 			Type:            "redis",
 			Size:            1000,
 			TTL:             3600,
 			EvictionPolicy:  "LRU",
 			CleanupInterval: 300,
-			Redis: config.RedisConfig{
+			Redis: engineconfig.RedisConfig{
 				Address:   "localhost:6379",
 				KeyPrefix: "test",
 			},
@@ -70,8 +71,8 @@ func (suite *RedisCacheTestSuite) TestNewRedisCacheDisabled() {
 		false,
 		nil,
 		"test",
-		config.CacheConfig{TTL: 60},
-		config.CacheProperty{})
+		engineconfig.CacheConfig{TTL: 60},
+		engineconfig.CacheProperty{})
 
 	assert.NotNil(t, cache)
 	assert.False(t, cache.IsEnabled())
@@ -86,8 +87,8 @@ func (suite *RedisCacheTestSuite) TestDisabledCacheOperations() {
 		false,
 		nil,
 		"test",
-		config.CacheConfig{TTL: 60},
-		config.CacheProperty{})
+		engineconfig.CacheConfig{TTL: 60},
+		engineconfig.CacheProperty{})
 
 	// Set should be a no-op
 	err := cache.Set(context.Background(), CacheKey{Key: "testKey"}, "testValue")
@@ -110,8 +111,8 @@ func (suite *RedisCacheTestSuite) TestDisabledCacheStats() {
 		false,
 		nil,
 		"test",
-		config.CacheConfig{TTL: 60},
-		config.CacheProperty{})
+		engineconfig.CacheConfig{TTL: 60},
+		engineconfig.CacheProperty{})
 
 	stats := cache.GetStats()
 	assert.False(t, stats.Enabled)
@@ -124,8 +125,8 @@ func (suite *RedisCacheTestSuite) TestCleanupExpiredIsNoOp() {
 		false,
 		nil,
 		"test",
-		config.CacheConfig{TTL: 60},
-		config.CacheProperty{})
+		engineconfig.CacheConfig{TTL: 60},
+		engineconfig.CacheProperty{})
 
 	// CleanupExpired is a no-op for Redis as TTL-based expiry is handled natively
 	assert.NotPanics(t, func() {
@@ -162,7 +163,7 @@ func (suite *RedisCacheTestSuite) TestBuildKeyWithEmptyPrefix() {
 func (suite *RedisCacheTestSuite) TestGetCacheTypeRedis() {
 	t := suite.T()
 
-	cacheConfig := config.CacheConfig{
+	cacheConfig := engineconfig.CacheConfig{
 		Type: "redis",
 	}
 	assert.Equal(t, cacheTypeRedis, getCacheType(cacheConfig))
@@ -171,7 +172,7 @@ func (suite *RedisCacheTestSuite) TestGetCacheTypeRedis() {
 func (suite *RedisCacheTestSuite) TestGetCacheTypeInMemory() {
 	t := suite.T()
 
-	cacheConfig := config.CacheConfig{
+	cacheConfig := engineconfig.CacheConfig{
 		Type: "inmemory",
 	}
 	assert.Equal(t, cacheTypeInMemory, getCacheType(cacheConfig))
@@ -180,7 +181,7 @@ func (suite *RedisCacheTestSuite) TestGetCacheTypeInMemory() {
 func (suite *RedisCacheTestSuite) TestGetCacheTypeEmpty() {
 	t := suite.T()
 
-	cacheConfig := config.CacheConfig{
+	cacheConfig := engineconfig.CacheConfig{
 		Type: "",
 	}
 	assert.Equal(t, cacheTypeInMemory, getCacheType(cacheConfig))
@@ -189,7 +190,7 @@ func (suite *RedisCacheTestSuite) TestGetCacheTypeEmpty() {
 func (suite *RedisCacheTestSuite) TestGetCacheTypeUnknown() {
 	t := suite.T()
 
-	cacheConfig := config.CacheConfig{
+	cacheConfig := engineconfig.CacheConfig{
 		Type: "memcached",
 	}
 	assert.Equal(t, cacheTypeInMemory, getCacheType(cacheConfig))

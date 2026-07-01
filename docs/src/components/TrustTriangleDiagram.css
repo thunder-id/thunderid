@@ -1,0 +1,94 @@
+/* Trust Triangle Diagram — Issuer / Holder / Verifier VC flow */
+
+.tt-diagram {
+  margin: 1.5rem 0 2.5rem;
+}
+
+.tt-diagram__svg {
+  width: 100%;
+  height: auto;
+  max-width: 520px;
+  display: block;
+  margin: 0 auto;
+  color: color-mix(in srgb, var(--ifm-color-primary) 45%, var(--ifm-color-emphasis-400));
+}
+
+.tt-diagram__svg text {
+  fill: var(--ifm-font-color-base);
+  font-size: 12px;
+  font-family: var(--ifm-font-family-base);
+}
+
+/* Issuer box — accented (mirrors sts-diagram__idp) */
+.tt-diagram__issuer rect {
+  fill: color-mix(in srgb, var(--ifm-color-primary) 12%, var(--ifm-background-surface-color));
+  stroke: color-mix(in srgb, var(--ifm-color-primary) 45%, var(--ifm-color-emphasis-300));
+  stroke-width: 1.5;
+}
+
+[data-theme='dark'] .tt-diagram__issuer rect {
+  fill: color-mix(in srgb, var(--ifm-color-primary) 18%, rgba(255, 255, 255, 0.07));
+  stroke: color-mix(in srgb, var(--ifm-color-primary) 50%, rgba(255, 255, 255, 0.2));
+}
+
+/* Holder and Verifier boxes */
+.tt-diagram__holder rect,
+.tt-diagram__verifier rect {
+  fill: var(--ifm-background-surface-color);
+  stroke: var(--ifm-color-emphasis-300);
+  stroke-width: 1;
+}
+
+[data-theme='dark'] .tt-diagram__holder rect,
+[data-theme='dark'] .tt-diagram__verifier rect {
+  fill: rgba(255, 255, 255, 0.04);
+  stroke: rgba(255, 255, 255, 0.12);
+}
+
+/* Edges */
+.tt-diagram__edges line {
+  stroke: currentColor;
+  stroke-width: 1.4;
+}
+
+/* Text */
+.tt-diagram__box-title {
+  font-weight: 700;
+  font-size: 14px !important;
+}
+
+.tt-diagram__issuer-name {
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em;
+}
+
+.tt-diagram__box-sub {
+  font-size: 11px !important;
+  fill: var(--ifm-color-emphasis-700) !important;
+  font-style: italic;
+}
+
+.tt-diagram__edge-label {
+  font-size: 11px !important;
+  fill: var(--ifm-color-emphasis-800) !important;
+  font-weight: 600;
+}
+
+.tt-diagram__edge-num {
+  font-size: 16px !important;
+  font-weight: 700;
+}
+
+/* Logo icon colours (reuse STS palette) */
+.tt-diagram__logo-dark {
+  fill: #05213f;
+}
+
+.tt-diagram__logo-accent {
+  fill: #3688ff;
+}
+
+[data-theme='dark'] .tt-diagram__logo-dark {
+  fill: rgba(255, 255, 255, 0.75);
+}

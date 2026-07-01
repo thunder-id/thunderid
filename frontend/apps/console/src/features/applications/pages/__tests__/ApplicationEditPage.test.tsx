@@ -23,7 +23,7 @@ import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import useGetApplication from '../../api/useGetApplication';
 import useUpdateApplication from '../../api/useUpdateApplication';
 import type {Application} from '../../models/application';
-import getIntegrationGuidesForTemplate from '../../utils/getIntegrationGuidesForTemplate';
+import {getIntegrationGuideForTemplate} from '../../utils/getIntegrationGuidesForTemplate';
 import getTemplateMetadata from '../../utils/getTemplateMetadata';
 import ApplicationEditPage from '../ApplicationEditPage';
 
@@ -78,6 +78,7 @@ vi.mock('../../utils/getTemplateMetadata', () => ({
 
 vi.mock('../../utils/getIntegrationGuidesForTemplate', () => ({
   default: vi.fn(),
+  getIntegrationGuideForTemplate: vi.fn(),
 }));
 
 // Mock child components
@@ -216,7 +217,7 @@ vi.mock('@thunderid/components', async () => {
 const mockUseGetApplication = useGetApplication as ReturnType<typeof vi.fn>;
 const mockUseUpdateApplication = useUpdateApplication as ReturnType<typeof vi.fn>;
 const mockGetTemplateMetadata = getTemplateMetadata as ReturnType<typeof vi.fn>;
-const mockGetIntegrationGuidesForTemplate = getIntegrationGuidesForTemplate as ReturnType<typeof vi.fn>;
+const mockGetIntegrationGuidesForTemplate = getIntegrationGuideForTemplate as ReturnType<typeof vi.fn>;
 
 describe('ApplicationEditPage', () => {
   const mockApplication: Application = {

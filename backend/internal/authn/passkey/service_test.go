@@ -24,13 +24,17 @@ import (
 	"encoding/json"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 )
@@ -57,7 +61,7 @@ func TestWebAuthnServiceTestSuite(t *testing.T) {
 
 func (suite *WebAuthnServiceTestSuite) SetupSuite() {
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "test-issuer",
 			ValidityPeriod: 3600,
 			Audience:       "application",
@@ -143,7 +147,7 @@ func (suite *WebAuthnServiceTestSuite) TestStartRegistration_UserServiceServerEr
 
 	suite.Nil(result)
 	suite.NotNil(svcErr)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestStartRegistration_GetCredentialsError() {
@@ -152,9 +156,9 @@ func (suite *WebAuthnServiceTestSuite) TestStartRegistration_GetCredentialsError
 		RelyingPartyID: testRelyingPartyID,
 	}
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 	}
 
@@ -167,7 +171,7 @@ func (suite *WebAuthnServiceTestSuite) TestStartRegistration_GetCredentialsError
 
 	suite.Nil(result)
 	suite.NotNil(svcErr)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_NilRequest() {
@@ -304,13 +308,13 @@ func (suite *WebAuthnServiceTestSuite) TestStartAuthentication_UserServiceServer
 
 	suite.Nil(result)
 	suite.NotNil(svcErr)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestStartAuthentication_GetCredentialsError() {
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 	}
 
@@ -327,13 +331,13 @@ func (suite *WebAuthnServiceTestSuite) TestStartAuthentication_GetCredentialsErr
 
 	suite.Nil(result)
 	suite.NotNil(svcErr)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestStartAuthentication_NoCredentialsFound() {
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 		OUID:     "org123",
 	}
@@ -491,7 +495,7 @@ func (suite *WebAuthnServiceTestSuite) TestGetStoredPasskeyCredentials_ServiceEr
 
 	suite.NotNil(svcErr)
 	suite.Nil(entries)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestGetStoredPasskeyCredentials_NotFound() {
@@ -751,7 +755,7 @@ func (suite *WebAuthnServiceTestSuite) TestStoreSessionData_StoreError() {
 
 	suite.Empty(sessionToken)
 	suite.NotNil(svcErr)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestRetrieveSessionData_Success() {
@@ -785,7 +789,7 @@ func (suite *WebAuthnServiceTestSuite) TestRetrieveSessionData_SessionNotFound()
 	suite.Nil(retrievedSessionData)
 	suite.Empty(userID)
 	suite.Empty(rpID)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestClearSessionData() {
@@ -804,9 +808,9 @@ func (suite *WebAuthnServiceTestSuite) TestStartRegistration_StoreSessionError()
 		RelyingPartyID: testRelyingPartyID,
 	}
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 		OUID:     "org123",
 	}
@@ -827,7 +831,7 @@ func (suite *WebAuthnServiceTestSuite) TestStartRegistration_StoreSessionError()
 
 	suite.Nil(result)
 	suite.NotNil(svcErr)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_InvalidCredentialType() {
@@ -880,7 +884,7 @@ func (suite *WebAuthnServiceTestSuite) TestGenerateAssertionWithAttributes() {
 
 	suite.Nil(result)
 	suite.NotNil(svcErr)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_GetUserError() {
@@ -909,7 +913,7 @@ func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_GetUserError() {
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_GetCredentialsError() {
@@ -919,9 +923,9 @@ func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_GetCredentialsEr
 		RelyingPartyID: testRelyingPartyID,
 	}
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 	}
 
@@ -946,7 +950,7 @@ func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_GetCredentialsEr
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_NoCredentialsError() {
@@ -956,9 +960,9 @@ func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_NoCredentialsErr
 		RelyingPartyID: testRelyingPartyID,
 	}
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 	}
 
@@ -999,9 +1003,9 @@ func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_InvalidAssertion
 	}
 	credentialJSON, _ := json.Marshal(mockCredential)
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 	}
 
@@ -1042,9 +1046,9 @@ func (suite *WebAuthnServiceTestSuite) TestStartAuthentication_CredentialsValida
 	}
 	credentialJSON, _ := json.Marshal(mockCredential)
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 	}
 
@@ -1083,9 +1087,9 @@ func (suite *WebAuthnServiceTestSuite) TestStartAuthentication_CredentialWithZer
 	}
 	credentialJSON, _ := json.Marshal(mockCredential)
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 	}
 
@@ -1128,9 +1132,9 @@ func (suite *WebAuthnServiceTestSuite) TestStartRegistration_WithExistingValidCr
 	}
 	credentialJSON, _ := json.Marshal(mockCredential)
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 	}
 
@@ -1171,9 +1175,9 @@ func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_UpdateCredential
 	}
 	credentialJSON, _ := json.Marshal(mockCredential)
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 	}
 
@@ -1214,9 +1218,9 @@ func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_SkipAssertion() 
 	}
 	credentialJSON, _ := json.Marshal(mockCredential)
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 	}
 
@@ -1262,9 +1266,9 @@ func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_UsernameBasedFlo
 	}
 	credentialJSON, _ := json.Marshal(mockCredential)
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 	}
 
@@ -1318,9 +1322,9 @@ func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_ValidatePasskeyL
 	}
 	credentialJSON, _ := json.Marshal(mockCredential)
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 		OUID:     "org123",
 	}
@@ -1371,9 +1375,9 @@ func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_ValidateLogin_Re
 	}
 	credentialJSON, _ := json.Marshal(mockCredential)
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 		OUID:     "org123",
 	}
@@ -1427,9 +1431,9 @@ func (suite *WebAuthnServiceTestSuite) TestStartRegistration_WebAuthnInitError()
 		RelyingPartyID: "%zz",
 	}
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 	}
 
@@ -1442,7 +1446,7 @@ func (suite *WebAuthnServiceTestSuite) TestStartRegistration_WebAuthnInitError()
 
 	suite.Nil(result)
 	suite.NotNil(svcErr)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestStartAuthentication_WebAuthnInitError() {
@@ -1455,7 +1459,7 @@ func (suite *WebAuthnServiceTestSuite) TestStartAuthentication_WebAuthnInitError
 
 	suite.Nil(result)
 	suite.NotNil(svcErr)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestStartAuthentication_UsernameStoreSessionError() {
@@ -1469,9 +1473,9 @@ func (suite *WebAuthnServiceTestSuite) TestStartAuthentication_UsernameStoreSess
 	}
 	credentialJSON, _ := json.Marshal(mockCredential)
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 	}
 
@@ -1494,7 +1498,7 @@ func (suite *WebAuthnServiceTestSuite) TestStartAuthentication_UsernameStoreSess
 
 	suite.Nil(result)
 	suite.NotNil(svcErr)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_WebAuthnInitError() {
@@ -1504,9 +1508,9 @@ func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_WebAuthnInitError(
 		RelyingPartyID: "%zz",
 	}
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 	}
 
@@ -1528,7 +1532,7 @@ func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_WebAuthnInitError(
 
 	suite.Nil(result)
 	suite.NotNil(svcErr)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_RetrieveSessionStoreError() {
@@ -1546,7 +1550,7 @@ func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_RetrieveSessionSto
 
 	suite.Nil(result)
 	suite.NotNil(svcErr)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_CreateCredentialError() {
@@ -1556,9 +1560,9 @@ func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_CreateCredentialEr
 		RelyingPartyID: testRelyingPartyID,
 	}
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 	}
 
@@ -1648,9 +1652,9 @@ func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_WebAuthnInitErro
 	}
 	credentialJSON, _ := json.Marshal(mockCredential)
 
-	testEntity := &entity.Entity{
+	testEntity := &providers.Entity{
 		ID:       testUserID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "person",
 	}
 
@@ -1674,5 +1678,5 @@ func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_WebAuthnInitErro
 
 	suite.Nil(result)
 	suite.NotNil(svcErr)
-	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }

@@ -18,7 +18,7 @@
 
 import {cn} from '@thunderid/utils';
 import {ColorSchemeImage, Stack, Typography} from '@wso2/oxygen-ui';
-import {Bot, ShieldCheck, Zap} from '@wso2/oxygen-ui-icons-react';
+import {Bot, ShieldCheck, Wallet, Zap} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 
 const items: {
@@ -30,6 +30,12 @@ const items: {
     icon: <Bot className="text-muted-foreground" />,
     title: 'Native Agent Identity',
     description: 'Engineered with native Agent ID to secure end-to-end workflows among humans, agents, and resources.',
+  },
+  {
+    icon: <Wallet className="text-muted-foreground" />,
+    title: 'Verifiable Credentials',
+    description:
+      'Standards-based issuance and verification of wallet-held digital credentials for user-controlled identity.',
   },
   {
     icon: <ShieldCheck className="text-muted-foreground" />,

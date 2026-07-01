@@ -24,6 +24,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 type RuntimeConfigTestSuite struct {
@@ -41,7 +43,7 @@ func (suite *RuntimeConfigTestSuite) BeforeTest(suiteName, testName string) {
 
 func (suite *RuntimeConfigTestSuite) TestInitializeServerRuntime() {
 	config := &Config{
-		Server: ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Hostname: "testhost",
 			Port:     9000,
 		},
@@ -66,7 +68,7 @@ func (suite *RuntimeConfigTestSuite) TestInitializeServerRuntime() {
 func (suite *RuntimeConfigTestSuite) TestInitializeServerRuntimeOnlyOnce() {
 	// First initialization
 	firstConfig := &Config{
-		Server: ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Hostname: "firsthost",
 			Port:     8000,
 		},
@@ -77,7 +79,7 @@ func (suite *RuntimeConfigTestSuite) TestInitializeServerRuntimeOnlyOnce() {
 
 	// Try second initialization
 	secondConfig := &Config{
-		Server: ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Hostname: "secondhost",
 			Port:     9000,
 		},
@@ -95,7 +97,7 @@ func (suite *RuntimeConfigTestSuite) TestInitializeServerRuntimeOnlyOnce() {
 
 func (suite *RuntimeConfigTestSuite) TestGetServerRuntime() {
 	config := &Config{
-		Server: ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Hostname: "gettest",
 			Port:     8888,
 		},
@@ -122,8 +124,8 @@ func (suite *RuntimeConfigTestSuite) TestGetServerRuntimePanic() {
 func (suite *RuntimeConfigTestSuite) TestInitializeServerRuntime_InvalidLoginPathFallback() {
 	// Setup a config with an intentionally broken LoginPath
 	config := &Config{}
-	config.GateClient.Scheme = schemeHTTPS
-	config.GateClient.Hostname = localhost
+	config.GateClient.Scheme = "https"
+	config.GateClient.Hostname = "localhost"
 	config.GateClient.Port = 8443
 	config.GateClient.LoginPath = "/login%ZZ"
 
@@ -142,8 +144,8 @@ func (suite *RuntimeConfigTestSuite) TestInitializeServerRuntime_InvalidLoginPat
 func (suite *RuntimeConfigTestSuite) TestInitializeServerRuntime_InvalidCallbackPathFallback() {
 	// Setup a config with an intentionally broken CallbackPath
 	config := &Config{}
-	config.GateClient.Scheme = schemeHTTPS
-	config.GateClient.Hostname = localhost
+	config.GateClient.Scheme = "https"
+	config.GateClient.Hostname = "localhost"
 	config.GateClient.Port = 8443
 	config.GateClient.CallbackPath = "/callback%ZZ"
 

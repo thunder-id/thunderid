@@ -27,8 +27,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/entity"
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 )
@@ -1843,7 +1843,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetTransitiveGroupsForEntity() 
 		entityID      string
 		setup         func(*providermock.DBProviderInterfaceMock, *providermock.DBClientInterfaceMock)
 		expectErr     string
-		assertResults func([]entity.EntityGroup)
+		assertResults func([]providers.EntityGroup)
 	}{
 		{
 			name:     "success - single group",
@@ -1859,7 +1859,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetTransitiveGroupsForEntity() 
 						{"id": "grp-001", "name": "Administrators", "ou_id": "ou-1"},
 					}, nil).Once()
 			},
-			assertResults: func(groups []entity.EntityGroup) {
+			assertResults: func(groups []providers.EntityGroup) {
 				suite.Require().Len(groups, 1)
 				suite.Require().Equal("grp-001", groups[0].ID)
 				suite.Require().Equal("Administrators", groups[0].Name)
@@ -1878,7 +1878,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetTransitiveGroupsForEntity() 
 					QueryGetTransitiveGroupsForMember, "user-002", testDeploymentID).
 					Return([]map[string]interface{}{}, nil).Once()
 			},
-			assertResults: func(groups []entity.EntityGroup) {
+			assertResults: func(groups []providers.EntityGroup) {
 				suite.Require().Empty(groups)
 			},
 		},

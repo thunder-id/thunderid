@@ -23,11 +23,12 @@ import (
 	"net/http"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/design/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/design/layoutmock"
 	"github.com/thunder-id/thunderid/tests/mocks/design/thememock"
@@ -61,9 +62,9 @@ func (suite *InitTestSuite) TestRegisterRoutes() {
 	mockService := &mockDesignResolveService{
 		resolveDesignFn: func(
 			ctx context.Context,
-			resolveType common.DesignResolveType,
+			resolveType providers.DesignResolveType,
 			id string,
-		) (*common.DesignResponse, *serviceerror.ServiceError) {
+		) (*providers.DesignResponse, *tidcommon.ServiceError) {
 			return nil, nil
 		},
 	}

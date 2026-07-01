@@ -23,6 +23,7 @@ import (
 	"errors"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // OAuth2 request parameters.
@@ -126,100 +127,6 @@ const (
 	OAuth2BackchannelAuthEndpoint         string = "/oauth2/bc-authorize"
 	OAuth2BackchannelAuthCallbackEndpoint string = "/oauth2/bc-authorize/callback"
 )
-
-// GrantType defines a type for OAuth2 grant types.
-type GrantType string
-
-const (
-	// GrantTypeAuthorizationCode represents the authorization code grant type.
-	GrantTypeAuthorizationCode GrantType = "authorization_code"
-	// GrantTypeClientCredentials represents the client credentials grant type.
-	GrantTypeClientCredentials GrantType = "client_credentials"
-	// GrantTypeRefreshToken represents the refresh token grant type.
-	GrantTypeRefreshToken GrantType = "refresh_token"
-	// GrantTypeTokenExchange represents the token exchange grant type.
-	GrantTypeTokenExchange GrantType = "urn:ietf:params:oauth:grant-type:token-exchange" //nolint:gosec
-	// GrantTypeCIBA represents the OpenID Connect CIBA (Client-Initiated Backchannel Authentication) grant type.
-	GrantTypeCIBA GrantType = "urn:openid:params:grant-type:ciba"
-)
-
-// supportedGrantTypes is the single source of truth for all supported grant types.
-var supportedGrantTypes = []GrantType{
-	GrantTypeAuthorizationCode,
-	GrantTypeClientCredentials,
-	GrantTypeRefreshToken,
-	GrantTypeTokenExchange,
-	GrantTypeCIBA,
-}
-
-// IsValid checks if the GrantType is valid.
-func (gt GrantType) IsValid() bool {
-	for _, valid := range supportedGrantTypes {
-		if gt == valid {
-			return true
-		}
-	}
-	return false
-}
-
-// ResponseType defines a type for OAuth2 response types.
-type ResponseType string
-
-const (
-	// ResponseTypeCode represents the authorization code response type.
-	ResponseTypeCode ResponseType = "code"
-	// ResponseTypeIDToken represents the id token response type.
-	ResponseTypeIDToken ResponseType = "id_token"
-)
-
-// supportedResponseTypes is the single source of truth for all supported response types.
-var supportedResponseTypes = []ResponseType{
-	ResponseTypeCode,
-}
-
-// IsValid checks if the ResponseType is valid.
-func (rt ResponseType) IsValid() bool {
-	for _, valid := range supportedResponseTypes {
-		if rt == valid {
-			return true
-		}
-	}
-	return false
-}
-
-// TokenEndpointAuthMethod defines a type for token endpoint authentication methods.
-type TokenEndpointAuthMethod string
-
-const (
-	// TokenEndpointAuthMethodClientSecretBasic represents the client secret basic authentication method.
-	TokenEndpointAuthMethodClientSecretBasic TokenEndpointAuthMethod = "client_secret_basic"
-	// TokenEndpointAuthMethodClientSecretPost represents the client secret post authentication method.
-	TokenEndpointAuthMethodClientSecretPost TokenEndpointAuthMethod = "client_secret_post"
-	// TokenEndpointAuthMethodPrivateKeyJWT represents the private key JWT authentication method.
-	// #nosec G101 - This is not a hardcoded credential, but a constant representing an authentication method.
-	TokenEndpointAuthMethodPrivateKeyJWT TokenEndpointAuthMethod = "private_key_jwt"
-	// TokenEndpointAuthMethodNone represents no authentication method.
-	TokenEndpointAuthMethodNone TokenEndpointAuthMethod = "none"
-)
-
-// supportedTokenEndpointAuthMethods is the single source of truth for all supported token endpoint
-// authentication methods.
-var supportedTokenEndpointAuthMethods = []TokenEndpointAuthMethod{
-	TokenEndpointAuthMethodClientSecretBasic,
-	TokenEndpointAuthMethodClientSecretPost,
-	TokenEndpointAuthMethodPrivateKeyJWT,
-	TokenEndpointAuthMethodNone,
-}
-
-// IsValid checks if the TokenEndpointAuthMethod is valid.
-func (tam TokenEndpointAuthMethod) IsValid() bool {
-	for _, valid := range supportedTokenEndpointAuthMethods {
-		if tam == valid {
-			return true
-		}
-	}
-	return false
-}
 
 // OAuth2 token types.
 const (
@@ -389,8 +296,8 @@ const (
 
 // GetSupportedResponseTypes returns all supported OAuth2 response types.
 func GetSupportedResponseTypes() []string {
-	result := make([]string, len(supportedResponseTypes))
-	for i, rt := range supportedResponseTypes {
+	result := make([]string, len(providers.SupportedResponseTypes))
+	for i, rt := range providers.SupportedResponseTypes {
 		result[i] = string(rt)
 	}
 	return result
@@ -398,8 +305,8 @@ func GetSupportedResponseTypes() []string {
 
 // GetSupportedGrantTypes returns all supported OAuth2 grant types.
 func GetSupportedGrantTypes() []string {
-	result := make([]string, len(supportedGrantTypes))
-	for i, gt := range supportedGrantTypes {
+	result := make([]string, len(providers.SupportedGrantTypes))
+	for i, gt := range providers.SupportedGrantTypes {
 		result[i] = string(gt)
 	}
 	return result
@@ -407,8 +314,8 @@ func GetSupportedGrantTypes() []string {
 
 // GetSupportedTokenEndpointAuthMethods returns all supported token endpoint authentication methods.
 func GetSupportedTokenEndpointAuthMethods() []string {
-	result := make([]string, len(supportedTokenEndpointAuthMethods))
-	for i, tam := range supportedTokenEndpointAuthMethods {
+	result := make([]string, len(providers.SupportedTokenEndpointAuthMethods))
+	for i, tam := range providers.SupportedTokenEndpointAuthMethods {
 		result[i] = string(tam)
 	}
 	return result

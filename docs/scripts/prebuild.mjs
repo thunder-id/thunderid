@@ -74,6 +74,9 @@ async function generateDocs() {
   // Generate changelog
   executeScript('Changelog Generator', join(__dirname, 'generate-changelog.mjs'));
 
+  // Generate contributors
+  executeScript('Contributors Generator', join(__dirname, 'generate-contributors.mjs'));
+
   logger.info('🎉 All documentation artifacts generated successfully!\n');
 }
 

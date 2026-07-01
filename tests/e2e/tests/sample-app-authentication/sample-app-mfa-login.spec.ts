@@ -124,7 +124,7 @@ describeOrSkip("Sample App - MFA Authentication with SMS OTP", () => {
             username,
             password,
             email: "e2e@example.com",
-            mobileNumber: "+12345678920",
+            mobile_number: "+12345678920",
             given_name: "E2E Test User",
           },
         });
@@ -422,7 +422,7 @@ describeOrSkip("Sample App - MFA Authentication with SMS OTP", () => {
     await expect(page.locator('input[name="given_name"]')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('input[name="family_name"]')).toBeVisible();
     await expect(page.locator('input[name="email"]')).toBeVisible();
-    await expect(page.locator('input[name="mobileNumber"]')).toBeVisible();
+    await expect(page.locator('input[name="mobile_number"]')).toBeVisible();
     console.log("✓ User information form displayed with mobile number field");
 
     // Step 8: Fill user information including mobile number
@@ -430,7 +430,7 @@ describeOrSkip("Sample App - MFA Authentication with SMS OTP", () => {
     await page.locator('input[name="given_name"]').fill(regGivenName);
     await page.locator('input[name="family_name"]').fill(regFamilyName);
     await page.locator('input[name="email"]').fill(regEmail);
-    await page.locator('input[name="mobileNumber"]').fill(regMobile);
+    await page.locator('input[name="mobile_number"]').fill(regMobile);
     console.log(`  First Name: ${regGivenName}`);
     console.log(`  Last Name: ${regFamilyName}`);
     console.log(`  Email: ${regEmail}`);

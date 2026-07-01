@@ -16,12 +16,20 @@
  * under the License.
  */
 
-import {render, screen} from '@testing-library/react';
-import {describe, it, expect, vi} from 'vitest';
+import {fireEvent, render, screen} from '@testing-library/react';
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import CertificateTypes from '../../../../constants/certificate-types';
 import type {Application} from '../../../../models/application';
 import type {OAuth2Config} from '../../../../models/oauth';
 import EditAdvancedSettings from '../EditAdvancedSettings';
+
+const {mockUseThunderID} = vi.hoisted(() => ({
+  mockUseThunderID: vi.fn(() => ({discovery: null}) as unknown),
+}));
+
+vi.mock('@thunderid/react', () => ({
+  useThunderID: mockUseThunderID,
+}));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -193,6 +201,87 @@ describe('EditAdvancedSettings', () => {
       render(<EditAdvancedSettings application={minimalApp} editedApp={{}} onFieldChange={mockOnFieldChange} />);
 
       expect(screen.getByText('applications:edit.advanced.labels.certificate')).toBeInTheDocument();
+    });
+  });
+
+  describe('AcrValuesSection Integration', () => {
+    beforeEach(() => {
+      mockUseThunderID.mockReturnValue({
+        discovery: {
+          wellKnown: {
+            acr_values_supported: ['urn:acr:loa1', 'urn:acr:loa2'],
+            grant_types_supported: ['authorization_code', 'refresh_token', 'client_credentials'],
+            response_types_supported: ['code', 'token'],
+            token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
+          },
+        },
+      });
+    });
+
+    afterEach(() => {
+      mockUseThunderID.mockReturnValue({discovery: null});
+    });
+
+    it('should render AcrValuesSection when discovery has acr_values_supported', () => {
+      render(
+        <EditAdvancedSettings
+          application={mockApplication}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getAllByText('applications:edit.advanced.labels.acrValues').length).toBeGreaterThan(0);
+    });
+
+    it('should not render AcrValuesSection when discovery has no acr_values_supported', () => {
+      mockUseThunderID.mockReturnValue({discovery: null});
+
+      render(
+        <EditAdvancedSettings
+          application={mockApplication}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.queryByText('applications:edit.advanced.labels.acrValues')).not.toBeInTheDocument();
+    });
+
+    it('should propagate AcrValues changes to onFieldChange as inboundAuthConfig update', () => {
+      const appWithInboundAuth = {
+        ...mockApplication,
+        inboundAuthConfig: [{type: 'oauth2', config: {...mockOAuth2Config}}],
+      } as Application;
+
+      render(
+        <EditAdvancedSettings
+          application={appWithInboundAuth}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      // Open the MUI Select dropdown
+      const selectButton = document.getElementById('acr_values')!;
+      fireEvent.mouseDown(selectButton);
+
+      // Click an ACR value option in the dropdown
+      const option = screen.getByText('urn:acr:loa1');
+      fireEvent.click(option);
+
+      expect(mockOnFieldChange).toHaveBeenCalledWith(
+        'inboundAuthConfig',
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'oauth2',
+            config: expect.objectContaining({acrValues: ['urn:acr:loa1']}) as unknown,
+          }),
+        ]),
+      );
     });
   });
 });

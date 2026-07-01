@@ -27,6 +27,8 @@ import (
 	"testing"
 	"time"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -54,7 +56,7 @@ func TestAuthorizeHandlerTestSuite(t *testing.T) {
 func (suite *AuthorizeHandlerTestSuite) SetupTest() {
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
-		GateClient: config.GateClientConfig{
+		GateClient: engineconfig.GateClientConfig{
 			Scheme:    "https",
 			Hostname:  "localhost",
 			Port:      3000,
@@ -71,11 +73,11 @@ func (suite *AuthorizeHandlerTestSuite) SetupTest() {
 				SQLite: config.SQLiteDataSource{Path: ":memory:"},
 			},
 		},
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer: "https://localhost:8090",
 		},
-		OAuth: config.OAuthConfig{
-			AuthorizationCode: config.AuthorizationCodeConfig{
+		OAuth: engineconfig.OAuthConfig{
+			AuthorizationCode: engineconfig.AuthorizationCodeConfig{
 				ValidityPeriod: 600,
 			},
 		},

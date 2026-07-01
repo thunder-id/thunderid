@@ -49,6 +49,7 @@ export const PlatformApplicationTemplate = {
   BROWSER: 'BROWSER',
   MOBILE: 'MOBILE',
   FULL_STACK: 'FULL_STACK',
+  WALLET: 'WALLET',
   CUSTOM: 'CUSTOM',
 } as const;
 

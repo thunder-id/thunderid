@@ -316,7 +316,6 @@ describe('withConfig (console)', () => {
       render(<WithConfigComponent />);
       expect(capturedProviderProps.preferences).toEqual({
         resolveFromMeta: false,
-        theme: {inheritFromBranding: false},
       });
     });
 
@@ -420,18 +419,16 @@ describe('withConfig (console)', () => {
       render(<WithConfigComponent />);
       expect(capturedProviderProps.preferences).toEqual({
         resolveFromMeta: true,
-        theme: {inheritFromBranding: false},
       });
     });
 
     it('sets preferences from config.sdk.preferences when no generic OIDC', () => {
-      mockConfig.sdk = {preferences: {resolveFromMeta: false, theme: {inheritFromBranding: false}}};
+      mockConfig.sdk = {preferences: {resolveFromMeta: false}};
       mockGetClientUrl.mockReturnValue('https://client.example.com');
 
       render(<WithConfigComponent />);
       expect(capturedProviderProps.preferences).toEqual({
         resolveFromMeta: false,
-        theme: {inheritFromBranding: false},
       });
     });
 

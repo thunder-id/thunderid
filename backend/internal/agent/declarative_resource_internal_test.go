@@ -22,19 +22,19 @@ import (
 	"encoding/json"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/tests/mocks/agentmock"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
-	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 )
 
 type ParseToAgentRequestTestSuite struct {
@@ -122,11 +122,11 @@ inboundAuthConfig:
 
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), req.InboundAuthConfig, 1)
-	assert.Equal(s.T(), inboundmodel.OAuthInboundAuthType, req.InboundAuthConfig[0].Type)
+	assert.Equal(s.T(), providers.OAuthInboundAuthType, req.InboundAuthConfig[0].Type)
 	oauthCfg := req.InboundAuthConfig[0].OAuthConfig
 	assert.NotNil(s.T(), oauthCfg)
 	assert.Equal(s.T(), "client-abc", oauthCfg.ClientID)
-	assert.Contains(s.T(), oauthCfg.GrantTypes, oauth2const.GrantType("client_credentials"))
+	assert.Contains(s.T(), oauthCfg.GrantTypes, providers.GrantType("client_credentials"))
 	assert.False(s.T(), oauthCfg.PublicClient)
 }
 
@@ -259,9 +259,9 @@ func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_ValidateAgent
 	yamlData := []byte("id: err-agent\nouId: ou-1\ntype: t\nname: Err Agent\n")
 	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
 	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.Anything, "err-agent").
-		Return("", "", inboundmodel.InboundClient{}, &serviceerror.ServiceError{
+		Return("", "", inboundmodel.InboundClient{}, &tidcommon.ServiceError{
 			Code:  "AGT-XXXX",
-			Error: i18ncore.I18nMessage{DefaultValue: "validation failed"},
+			Error: tidcommon.I18nMessage{DefaultValue: "validation failed"},
 		}).Once()
 
 	parser := makeAgentEntityParser(mockSvc)
@@ -293,9 +293,9 @@ func (s *MakeAgentInboundParserTestSuite) TestMakeAgentInboundParser_ValidateAge
 	yamlData := []byte("id: inbound-err-agent\nouId: ou-1\ntype: t\nname: Inbound Err Agent\n")
 	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
 	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.Anything, "inbound-err-agent").
-		Return("", "", inboundmodel.InboundClient{}, &serviceerror.ServiceError{
+		Return("", "", inboundmodel.InboundClient{}, &tidcommon.ServiceError{
 			Code:  "AGT-YYYY",
-			Error: i18ncore.I18nMessage{DefaultValue: "inbound validation failed"},
+			Error: tidcommon.I18nMessage{DefaultValue: "inbound validation failed"},
 		}).Once()
 
 	parser := makeAgentInboundParser(mockSvc)

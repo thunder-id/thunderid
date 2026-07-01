@@ -20,7 +20,6 @@ package openid4vp
 
 import (
 	"context"
-	"crypto"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -30,66 +29,80 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/system/cache"
+	"github.com/thunder-id/thunderid/internal/openid4vp/definition"
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
-// Initialize wires the OpenID4VP verifier engine, registers its HTTP endpoints,
-// and registers every presentation definition supplied in configuration.
-//
-// jwtService is used to sign RP-facing result tokens. When nil, the COMPLETED
-// status response cannot issue a result token (wallet flow still works).
+// Initialize wires the OpenID4VP verifier engine and the presentation-definition management API.
 func Initialize(
 	mux *http.ServeMux, cryptoProvider kmprovider.RuntimeCryptoProvider,
-	cacheManager cache.CacheManagerInterface, jwtService jwt.JWTServiceInterface,
-) (OpenID4VPServiceInterface, error) {
+	configCrypto kmprovider.ConfigCryptoProvider, jwtService jwt.JWTServiceInterface,
+	ouService ou.OrganizationUnitServiceInterface,
+) (
+	OpenID4VPServiceInterface, definition.PresentationDefinitionServiceInterface,
+	declarativeresource.ResourceExporter, error,
+) {
 	runtime := config.GetServerRuntime()
 	cfg := runtime.Config.OpenID4VP
 	serverHome := runtime.ServerHome
 
+	// The presentation-definition management API is always available; only the
+	// wallet/RP-facing verifier engine is gated on the signing key.
+	defSvc, defExporter, err := definition.Initialize(mux, ouService)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	if cfg.SigningKeyID == "" {
+		log.GetLogger().Debug(context.Background(),
+			"OpenID4VP verifier not configured; presentation verification disabled")
+		return nil, defSvc, defExporter, nil
+	}
 	if cfg.ClientID == "" {
-		return nil, fmt.Errorf("%w: client_id is required", ErrPolicy)
+		return nil, nil, nil, fmt.Errorf("%w: client_id is required", ErrPolicy)
 	}
 	signer, err := newRequestSigner(context.Background(), cryptoProvider, cfg.SigningKeyID)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	verifierInfo, err := loadVerifierInfo(cfg.RegistrationCertFile, serverHome)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
-	base := strings.TrimRight(cfg.BaseURL, "/")
-	svc, err := newService(serviceConfig{
+	trust, err := buildSharedTrustStore(cfg.TrustedAnchors, serverHome)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	base := strings.TrimRight(config.GetServerURL(&runtime.Config.Server), "/")
+	stateTTL := time.Duration(cfg.StateTTLSeconds) * time.Second
+	if stateTTL == 0 {
+		stateTTL = defaultStateTTL
+	}
+	svc, err := newOpenID4VPService(serviceConfig{
 		RequestURIBase:        base + requestURIPath,
 		ResponseURIBase:       base + responseURIPath,
-		ClientIDScheme:        cfg.ClientIDScheme,
 		EphemeralKeyID:        cfg.EphemeralKeyID,
 		ResponseEncValues:     cfg.ResponseEncValues,
 		RequestAudience:       cfg.RequestAudience,
 		RequestValidity:       time.Duration(cfg.RequestValiditySeconds) * time.Second,
-		TTL:                   time.Duration(cfg.StateTTLSeconds) * time.Second,
+		TTL:                   stateTTL,
 		Leeway:                time.Duration(cfg.LeewaySeconds) * time.Second,
 		KeyBindingMaxAge:      time.Duration(cfg.KeyBindingMaxAgeSeconds) * time.Second,
 		ResultRedirectURIBase: cfg.ResultRedirectURI,
 		VerifierInfo:          verifierInfo,
-		EnforceTrustedIssuer:  cfg.EnforceTrustedIssuer,
 		EnforceKeyBinding:     cfg.EnforceKeyBinding,
-	}, newCacheStateStore(cacheManager), cfg.ClientID, signer)
+	}, newOpenID4VPStore(configCrypto), cfg.ClientID, signer, trust, defSvc)
 	if err != nil {
-		return nil, err
-	}
-	for _, dc := range cfg.PresentationDefinitions {
-		def, err := buildDefinition(dc, svc, serverHome)
-		if err != nil {
-			return nil, fmt.Errorf("presentation definition %q: %w", dc.ID, err)
-		}
-		if err := svc.registry.register(def); err != nil {
-			return nil, err
-		}
+		return nil, nil, nil, err
 	}
 
 	var issuer resultTokenIssuer
@@ -97,67 +110,51 @@ func Initialize(
 		issuer = newJWTresultTokenIssuer(jwtService, base, cfg.ClientID)
 	}
 	resultTokenValidity := time.Duration(cfg.ResultTokenValiditySeconds) * time.Second
-	registerRoutes(mux, newOpenID4VPHandler(svc, issuer, base, resultTokenValidity, svc.cfg.TTL))
+	registerRoutes(mux, newOpenID4VPHandler(svc, issuer, base, resultTokenValidity, stateTTL))
 
-	return svc, nil
+	return svc, defSvc, defExporter, nil
 }
 
-// buildDefinition constructs a presentationDefinition from its config.
-// Trusted-issuer cert paths are resolved against serverHome.
-func buildDefinition(
-	dc config.DefinitionConfig, svc *service, serverHome string,
-) (*presentationDefinition, error) {
-	if dc.ID == "" {
-		return nil, fmt.Errorf("%w: presentation definition requires an id", ErrPolicy)
+// registerRoutes registers the OpenID4VP HTTP routes on mux with CORS middleware.
+func registerRoutes(mux *http.ServeMux, h *openID4VPHandler) {
+	opts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET", "POST"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
 	}
 
-	issuers := make([]trustedIssuer, 0, len(dc.TrustedIssuers))
-	for _, ti := range dc.TrustedIssuers {
-		issuers = append(issuers, trustedIssuer{
-			Issuer:   ti.Issuer,
-			CertFile: resolvePath(serverHome, ti.CertFile),
+	mux.HandleFunc(middleware.WithCORS("GET "+requestURIPath,
+		middleware.CorrelationIDMiddleware(http.HandlerFunc(h.HandleRequestObject)).ServeHTTP, opts))
+	mux.HandleFunc(middleware.WithCORS("POST "+responseURIPath,
+		middleware.CorrelationIDMiddleware(http.HandlerFunc(h.HandleResponse)).ServeHTTP, opts))
+	mux.HandleFunc(middleware.WithCORS("POST "+apiInitiatePath,
+		middleware.CorrelationIDMiddleware(http.HandlerFunc(h.HandleInitiate)).ServeHTTP, opts))
+	mux.HandleFunc(middleware.WithCORS("GET "+apiStatusPath,
+		middleware.CorrelationIDMiddleware(http.HandlerFunc(h.HandleStatus)).ServeHTTP, opts))
+	mux.HandleFunc(middleware.WithCORS("GET "+apiTrustAnchorsPath,
+		middleware.CorrelationIDMiddleware(http.HandlerFunc(h.HandleTrustAnchors)).ServeHTTP, opts))
+
+	walletAndRPPaths := []string{requestURIPath, responseURIPath, apiInitiatePath, apiStatusPath, apiTrustAnchorsPath}
+	for _, path := range walletAndRPPaths {
+		mux.HandleFunc(middleware.WithCORS("OPTIONS "+path,
+			func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }, opts))
+	}
+}
+
+// buildSharedTrustStore builds the engine-wide trust anchor store; returns nil when no anchors are configured.
+func buildSharedTrustStore(entries []config.TrustedAnchorEntry, serverHome string) (*trustAnchorStore, error) {
+	if len(entries) == 0 {
+		return nil, nil
+	}
+	anchors := make([]trustAnchor, 0, len(entries))
+	for _, ta := range entries {
+		anchors = append(anchors, trustAnchor{
+			Name:     ta.Name,
+			CertFile: resolvePath(serverHome, ta.CertFile),
 		})
 	}
-
-	var trust *staticTrustStore
-	if len(issuers) > 0 {
-		var err error
-		trust, err = buildTrustStore(issuers)
-		if err != nil {
-			return nil, err
-		}
-	} else if svc.cfg.EnforceTrustedIssuer {
-		return nil, fmt.Errorf("%w: enforce_trusted_issuer requires at least one trusted issuer", ErrPolicy)
-	}
-
-	allClaims := dc.RequestedClaims
-	if len(allClaims) == 0 {
-		merged := make([]string, 0, len(dc.MandatoryClaims)+len(dc.OptionalClaims))
-		merged = append(merged, dc.MandatoryClaims...)
-		merged = append(merged, dc.OptionalClaims...)
-		allClaims = merged
-	}
-
-	return &presentationDefinition{
-		ID:          dc.ID,
-		DisplayName: dc.DisplayName,
-		DCQL: dcqlConfig{
-			CredentialID: dc.CredentialID,
-			VCT:          dc.VCT,
-			Claims:       allClaims,
-		},
-		policy: policy{
-			ExpectedVCT:          dc.VCT,
-			Audience:             svc.clientID,
-			RequestedClaims:      allClaims,
-			MandatoryClaims:      dc.MandatoryClaims,
-			EnforceTrustedIssuer: svc.cfg.EnforceTrustedIssuer,
-			EnforceKeyBinding:    svc.cfg.EnforceKeyBinding,
-		},
-		Trust:         trust,
-		SubjectClaims: dc.SubjectClaims,
-		DeriveSubject: defaultSubjectDeriver(dc.SubjectClaims),
-	}, nil
+	return buildTrustStore(anchors)
 }
 
 // resolvePath joins a relative path with the server home directory.
@@ -169,7 +166,7 @@ func resolvePath(serverHome, path string) string {
 }
 
 // loadVerifierInfo reads the Registration Certificate JWT from path and wraps it
-// as a verifier_attestations entry. An empty path returns (nil, nil).
+// as a verifier_info entry. An empty path returns (nil, nil).
 func loadVerifierInfo(path, serverHome string) ([]interface{}, error) {
 	if path == "" {
 		return nil, nil
@@ -191,28 +188,29 @@ func loadVerifierInfo(path, serverHome string) ([]interface{}, error) {
 	}, nil
 }
 
-// buildTrustStore loads the configured trusted issuer certificates.
-func buildTrustStore(issuers []trustedIssuer) (*staticTrustStore, error) {
-	if len(issuers) == 0 {
-		return nil, fmt.Errorf("%w: at least one trusted issuer is required", ErrPolicy)
+// buildTrustStore loads the configured trust anchor (root CA) certificates.
+func buildTrustStore(anchors []trustAnchor) (*trustAnchorStore, error) {
+	if len(anchors) == 0 {
+		return nil, fmt.Errorf("%w: at least one trust anchor is required", ErrPolicy)
 	}
-	keys := make(map[string]crypto.PublicKey, len(issuers))
-	for _, issuer := range issuers {
-		if issuer.Issuer == "" || issuer.CertFile == "" {
-			return nil, fmt.Errorf("%w: trusted issuer requires issuer and cert_file", ErrPolicy)
+	certs := make([]*x509.Certificate, 0, len(anchors))
+	names := make([]string, 0, len(anchors))
+	for _, anchor := range anchors {
+		if anchor.Name == "" || anchor.CertFile == "" {
+			return nil, fmt.Errorf("%w: trust anchor requires name and cert_file", ErrPolicy)
 		}
-		key, err := loadIssuerKey(issuer.CertFile)
+		cert, err := loadCertificate(anchor.CertFile)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load trusted issuer %q: %w", issuer.Issuer, err)
+			return nil, fmt.Errorf("failed to load trust anchor %q: %w", anchor.Name, err)
 		}
-		keys[issuer.Issuer] = key
+		certs = append(certs, cert)
+		names = append(names, anchor.Name)
 	}
-	return newStaticTrustStore(keys), nil
+	return newTrustAnchorStore(certs, names), nil
 }
 
-// loadIssuerKey reads an issuer signing key from a PEM file containing either an
-// X.509 certificate or a PKIX public key.
-func loadIssuerKey(path string) (crypto.PublicKey, error) {
+// loadCertificate reads an X.509 certificate from a PEM CERTIFICATE file.
+func loadCertificate(path string) (*x509.Certificate, error) {
 	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, err
@@ -221,16 +219,8 @@ func loadIssuerKey(path string) (crypto.PublicKey, error) {
 	if block == nil {
 		return nil, fmt.Errorf("no PEM block found in %s", path)
 	}
-	switch block.Type {
-	case "CERTIFICATE":
-		cert, err := x509.ParseCertificate(block.Bytes)
-		if err != nil {
-			return nil, err
-		}
-		return cert.PublicKey, nil
-	case "PUBLIC KEY":
-		return x509.ParsePKIXPublicKey(block.Bytes)
-	default:
+	if block.Type != "CERTIFICATE" {
 		return nil, fmt.Errorf("unsupported PEM block type %q in %s", block.Type, path)
 	}
+	return x509.ParseCertificate(block.Bytes)
 }

@@ -1,0 +1,281 @@
+openapi: 3.0.3
+
+info:
+  title: Server Configuration API
+  version: "1.0"
+  description: |
+    API to manage server-wide configuration that is mutable at runtime without a restart. Each
+    configuration section is stored under a well-known name. A section is read as three layers:
+    `readOnly` (declarative, fixed at boot), `writable` (runtime-mutable, set via `PUT`), and
+    `merged` (the effective value in use, derived from the other two). The concrete shape of a
+    section's value is section-specific.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host:
+        default: "localhost"
+      port:
+        default: "8090"
+
+tags:
+  - name: management
+    description: Manage server-wide configuration (admin)
+
+security:
+  - OAuth2: [system]
+
+paths:
+  /server-config:
+    get:
+      tags:
+        - management
+      summary: List server configuration sections
+      description: Returns the names of the supported server-wide configuration sections.
+      operationId: listServerConfigs
+      responses:
+        "200":
+          description: The supported configuration section names
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerConfigNameList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /server-config/{name}:
+    get:
+      tags:
+        - management
+      summary: Get a server configuration section
+      description: |
+        Returns a single server-wide configuration section by name as its three layers. All three
+        layers (`readOnly`, `writable`, `merged`) are always present in the response; the shape of
+        each layer's value is section-specific.
+      operationId: getServerConfigByName
+      parameters:
+        - $ref: '#/components/parameters/ConfigName'
+      responses:
+        "200":
+          description: The requested server configuration section
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerConfigLayers'
+        "400":
+          $ref: '#/components/responses/UnsupportedConfigName'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - management
+      summary: Update a server configuration section
+      description: |
+        Replaces the writable layer of the named section with the request body. The value is validated
+        before any write; an invalid value is rejected and nothing is changed. The section is cleared
+        by setting it to an empty value. Returns the recomputed layers.
+      operationId: updateServerConfigByName
+      parameters:
+        - $ref: '#/components/parameters/ConfigName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServerConfigValue'
+      responses:
+        "200":
+          description: The recomputed server configuration section
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerConfigLayers'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                unsupported-config-name:
+                  summary: The configuration section name is not supported
+                  value:
+                    code: "SCF-1001"
+                    message:
+                      key: "error.serverconfigservice.unsupported_config_name"
+                      defaultValue: "Unsupported configuration name"
+                    description:
+                      key: "error.serverconfigservice.unsupported_config_name_description"
+                      defaultValue: "The requested server configuration name is not supported"
+                invalid-config-value:
+                  summary: The section value is invalid
+                  value:
+                    code: "SCF-1003"
+                    message:
+                      key: "error.serverconfigservice.invalid_config_value"
+                      defaultValue: "Invalid server configuration value"
+                    description:
+                      key: "error.serverconfigservice.invalid_config_value_description"
+                      defaultValue: "The provided server configuration value is invalid"
+                invalid-request-format:
+                  summary: The request body is malformed
+                  value:
+                    code: "SCF-1004"
+                    message:
+                      key: "error.serverconfigservice.invalid_request_format"
+                      defaultValue: "Invalid request format"
+                    description:
+                      key: "error.serverconfigservice.invalid_request_format_description"
+                      defaultValue: "The request body is malformed or contains invalid data"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: /oauth2/authorize
+          tokenUrl: /oauth2/token
+          scopes:
+            system: Access to system management APIs
+        clientCredentials:
+          tokenUrl: /oauth2/token
+          scopes:
+            system: Access to system management APIs
+
+  parameters:
+    ConfigName:
+      name: name
+      in: path
+      required: true
+      description: The configuration section name.
+      schema:
+        type: string
+
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "AUTH-4010"
+            message:
+              key: "error.auth.unauthorized"
+              defaultValue: "Unauthorized"
+            description:
+              key: "error.auth.unauthorized_description"
+              defaultValue: "Authentication is required to access this resource"
+
+    UnsupportedConfigName:
+      description: Unsupported configuration name
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "SCF-1001"
+            message:
+              key: "error.serverconfigservice.unsupported_config_name"
+              defaultValue: "Unsupported configuration name"
+            description:
+              key: "error.serverconfigservice.unsupported_config_name_description"
+              defaultValue: "The requested server configuration name is not supported"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "SSE-5000"
+            message:
+              key: "error.internal_server_error"
+              defaultValue: "Internal server error"
+            description:
+              key: "error.internal_server_error_description"
+              defaultValue: "An unexpected error occurred while processing the request"
+
+  schemas:
+    ServerConfigNameList:
+      type: array
+      maxItems: 50
+      uniqueItems: true
+      description: The supported configuration section names.
+      items:
+        type: string
+
+    ServerConfigValue:
+      description: >
+        The value of a configuration section. Its concrete shape is section-specific and may be any
+        valid JSON value (object, array, or scalar).
+
+    ServerConfigLayers:
+      type: object
+      description: |
+        A configuration section as its three layers. `readOnly` is the declarative value fixed at boot,
+        `writable` is the runtime-mutable value set via `PUT`, and `merged` is the effective value in
+        use — the merge of the other two. Every layer is always present; each value's shape is
+        section-specific.
+      required:
+        - readOnly
+        - writable
+        - merged
+      properties:
+        readOnly:
+          description: Declarative layer fixed at boot.
+          allOf:
+            - $ref: '#/components/schemas/ServerConfigValue'
+        writable:
+          description: Runtime-mutable layer set via `PUT`.
+          allOf:
+            - $ref: '#/components/schemas/ServerConfigValue'
+        merged:
+          description: Effective value in use — the merge of the readOnly and writable layers.
+          allOf:
+            - $ref: '#/components/schemas/ServerConfigValue'
+
+    I18nMessage:
+      type: object
+      description: Internationalized message with translation key and default value.
+      required:
+        - key
+        - defaultValue
+      properties:
+        key:
+          type: string
+          description: Translation key for fetching localized message.
+          example: error.serverconfigservice.invalid_config_value
+        defaultValue:
+          type: string
+          description: Default message in English (fallback).
+          example: Invalid server configuration value
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: "Error code identifying the error condition (e.g. `SCF-1003`)."
+          example: "SCF-1003"
+        message:
+          $ref: '#/components/schemas/I18nMessage'
+        description:
+          $ref: '#/components/schemas/I18nMessage'

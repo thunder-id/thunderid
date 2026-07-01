@@ -24,6 +24,7 @@ import (
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 var (
@@ -49,7 +50,7 @@ func newCompositeIDPStore(fileStore, dbStore idpStoreInterface) *compositeIDPSto
 }
 
 // CreateIdentityProvider creates a new identity provider in the database store only.
-func (c *compositeIDPStore) CreateIdentityProvider(ctx context.Context, idp IDPDTO) error {
+func (c *compositeIDPStore) CreateIdentityProvider(ctx context.Context, idp providers.IDPDTO) error {
 	return c.dbStore.CreateIdentityProvider(ctx, idp)
 }
 
@@ -104,28 +105,28 @@ func (c *compositeIDPStore) GetIdentityProviderListCount(ctx context.Context) (i
 
 // GetIdentityProvider retrieves an identity provider by ID from either store.
 // Checks database store first, then falls back to file store.
-func (c *compositeIDPStore) GetIdentityProvider(ctx context.Context, idpID string) (*IDPDTO, error) {
+func (c *compositeIDPStore) GetIdentityProvider(ctx context.Context, idpID string) (*providers.IDPDTO, error) {
 	return declarativeresource.CompositeGetHelper(
-		func() (*IDPDTO, error) { return c.dbStore.GetIdentityProvider(ctx, idpID) },
-		func() (*IDPDTO, error) { return c.fileStore.GetIdentityProvider(ctx, idpID) },
+		func() (*providers.IDPDTO, error) { return c.dbStore.GetIdentityProvider(ctx, idpID) },
+		func() (*providers.IDPDTO, error) { return c.fileStore.GetIdentityProvider(ctx, idpID) },
 		ErrIDPNotFound,
 	)
 }
 
 // GetIdentityProviderByName retrieves an identity provider by name from either store.
 // Checks database store first, then falls back to file store.
-func (c *compositeIDPStore) GetIdentityProviderByName(ctx context.Context, idpName string) (*IDPDTO, error) {
+func (c *compositeIDPStore) GetIdentityProviderByName(ctx context.Context, idpName string) (*providers.IDPDTO, error) {
 	return declarativeresource.CompositeGetHelper(
-		func() (*IDPDTO, error) { return c.dbStore.GetIdentityProviderByName(ctx, idpName) },
-		func() (*IDPDTO, error) { return c.fileStore.GetIdentityProviderByName(ctx, idpName) },
+		func() (*providers.IDPDTO, error) { return c.dbStore.GetIdentityProviderByName(ctx, idpName) },
+		func() (*providers.IDPDTO, error) { return c.fileStore.GetIdentityProviderByName(ctx, idpName) },
 		ErrIDPNotFound,
 	)
 }
 
 // GetIdentityProvidersByProperty retrieves identity providers matching a property from both stores.
 func (c *compositeIDPStore) GetIdentityProvidersByProperty(ctx context.Context,
-	propertyKey, propertyValue string) ([]IDPDTO, error) {
-	var allIDPs []IDPDTO
+	propertyKey, propertyValue string) ([]providers.IDPDTO, error) {
+	var allIDPs []providers.IDPDTO
 
 	dbIDPs, err := c.dbStore.GetIdentityProvidersByProperty(ctx, propertyKey, propertyValue)
 	if err != nil && !errors.Is(err, ErrIDPNotFound) {
@@ -151,10 +152,10 @@ func (c *compositeIDPStore) GetIdentityProvidersByProperty(ctx context.Context,
 
 // UpdateIdentityProvider updates an identity provider in the database store only.
 // Returns an error if the IDP is declarative (exists in file store).
-func (c *compositeIDPStore) UpdateIdentityProvider(ctx context.Context, idp *IDPDTO) error {
+func (c *compositeIDPStore) UpdateIdentityProvider(ctx context.Context, idp *providers.IDPDTO) error {
 	return declarativeresource.CompositeUpdateHelper(
 		idp,
-		func(dto *IDPDTO) string { return dto.ID },
+		func(dto *providers.IDPDTO) string { return dto.ID },
 		func(idpID string) (bool, error) {
 			_, err := c.fileStore.GetIdentityProvider(ctx, idpID)
 			if err == nil {
@@ -165,7 +166,7 @@ func (c *compositeIDPStore) UpdateIdentityProvider(ctx context.Context, idp *IDP
 			}
 			return false, err // Other error
 		},
-		func(dto *IDPDTO) error {
+		func(dto *providers.IDPDTO) error {
 			return c.dbStore.UpdateIdentityProvider(ctx, dto)
 		},
 		ErrIDPIsImmutable,

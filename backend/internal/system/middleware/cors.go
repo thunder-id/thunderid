@@ -20,6 +20,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -36,9 +37,8 @@ import (
 var DefaultAllowedHeaders = []string{"Content-Type", "Authorization"}
 
 // CORSOptions represents the per-route CORS response configuration. Allowed
-// origins are global (server-level deployment configuration); methods,
-// headers, credentials, and max-age are per-route because each route has its
-// own method surface and caching profile.
+// origins are server-wide; methods, headers, credentials, and max-age are
+// per-route because each route has its own method surface and caching profile.
 //
 // AllowedMethods and AllowedHeaders are slices so the response payload is
 // data-driven rather than a parsed string. MaxAge is the preflight cache TTL
@@ -63,20 +63,7 @@ func WithCORS(pattern string, handler http.HandlerFunc, opts CORSOptions) (strin
 	}
 }
 
-// applyCORSHeaders sets the CORS response headers when the request carries a
-// valid Origin header that matches a configured allowed-origins entry.
-//
-// Behavior:
-//   - Multiple Origin headers are refused without evaluation: the Fetch spec
-//     sends exactly one, and a duplicate is a smuggling/relay signal.
-//   - Vary: Origin is appended whenever the request carries an Origin header,
-//     including on the deny path, so a shared cache cannot serve a response
-//     produced for one origin to a different origin.
-//   - The matcher is read once per request from the cors package singleton
-//     installed at boot; no regex compilation runs on the hot path.
-//   - Allow-Methods, Allow-Headers, and Max-Age are preflight-only response
-//     headers per the Fetch spec; we emit them only on OPTIONS requests that
-//     also carry Access-Control-Request-Method.
+// applyCORSHeaders sets CORS response headers for requests from allowed origins.
 func applyCORSHeaders(w http.ResponseWriter, r *http.Request, opts CORSOptions) {
 	origins := r.Header.Values("Origin")
 	if len(origins) == 0 {
@@ -96,11 +83,6 @@ func applyCORSHeaders(w http.ResponseWriter, r *http.Request, opts CORSOptions) 
 	// deny) so caches key the response by Origin.
 	w.Header().Add("Vary", "Origin")
 
-	matcher := cors.GetMatcher()
-	if matcher == nil {
-		return
-	}
-
 	parsed, err := cors.ParseOrigin(requestOrigin)
 	if err != nil {
 		logger().Debug(r.Context(), "CORS origin rejected by parser",
@@ -108,7 +90,7 @@ func applyCORSHeaders(w http.ResponseWriter, r *http.Request, opts CORSOptions) 
 		return
 	}
 
-	allow, echo := matcher.Match(parsed)
+	allow, echo := matchOrigin(r.Context(), parsed)
 	if !allow {
 		logger().Debug(r.Context(), "CORS origin rejected by matcher",
 			log.String("origin", requestOrigin))
@@ -136,6 +118,15 @@ func applyCORSHeaders(w http.ResponseWriter, r *http.Request, opts CORSOptions) 
 	if opts.MaxAge > 0 {
 		w.Header().Set("Access-Control-Max-Age", strconv.Itoa(opts.MaxAge))
 	}
+}
+
+// matchOrigin reports whether the parsed origin is allowed and returns the value to echo on a hit.
+func matchOrigin(ctx context.Context, parsed cors.ParseResult) (bool, string) {
+	m := cors.GetDynamicMatcher(ctx)
+	if m == nil {
+		return false, ""
+	}
+	return m.Match(parsed)
 }
 
 // isPreflight reports whether r is a CORS preflight request. A preflight is

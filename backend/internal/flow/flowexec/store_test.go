@@ -28,9 +28,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
-	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
-	managerpkg "github.com/thunder-id/thunderid/internal/authnprovider/manager"
-	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
@@ -77,7 +75,7 @@ func (s *StoreTestSuite) TestStoreFlowContext_WithToken() {
 		ExecutionID: "test-flow-id",
 		AppID:       "test-app-id",
 		Verbose:     false,
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
 			IsAuthenticated: true,
 			UserID:          "user-123",
@@ -86,7 +84,7 @@ func (s *StoreTestSuite) TestStoreFlowContext_WithToken() {
 		},
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -125,7 +123,7 @@ func (s *StoreTestSuite) TestStoreFlowContext_WithoutToken() {
 		ExecutionID: "test-flow-id",
 		AppID:       "test-app-id",
 		Verbose:     false,
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
 			IsAuthenticated: false,
 			Token:           "", // No token
@@ -133,7 +131,7 @@ func (s *StoreTestSuite) TestStoreFlowContext_WithoutToken() {
 		},
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -170,7 +168,7 @@ func (s *StoreTestSuite) TestUpdateFlowContext_WithToken() {
 	ctx := EngineContext{
 		ExecutionID: "test-flow-id",
 		AppID:       "test-app-id",
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
 			IsAuthenticated: true,
 			UserID:          "user-456",
@@ -179,7 +177,7 @@ func (s *StoreTestSuite) TestUpdateFlowContext_WithToken() {
 		},
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -199,7 +197,7 @@ func (s *StoreTestSuite) TestGetFlowContext_WithToken() {
 	testToken := "retrieved-token-abc"
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
 	mockGraph.On("GetID").Return("test-graph-id")
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
 
 	expiryTime := time.Now().Add(30 * time.Minute)
 
@@ -207,7 +205,7 @@ func (s *StoreTestSuite) TestGetFlowContext_WithToken() {
 	ctx := EngineContext{
 		ExecutionID: "test-flow-id",
 		AppID:       "test-app-id",
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
 			IsAuthenticated: true,
 			UserID:          "user-789",
@@ -216,7 +214,7 @@ func (s *StoreTestSuite) TestGetFlowContext_WithToken() {
 		},
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -322,13 +320,13 @@ func (s *StoreTestSuite) TestStoreAndRetrieve_TokenRoundTrip() {
 	originalToken := "integration-test-token-secret"
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
 	mockGraph.On("GetID").Return("integration-graph-id")
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
 
 	originalCtx := EngineContext{
 		ExecutionID: "integration-flow-id",
 		AppID:       "integration-app-id",
 		Verbose:     true,
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
 			IsAuthenticated: true,
 			UserID:          "integration-user-123",
@@ -347,7 +345,7 @@ func (s *StoreTestSuite) TestStoreAndRetrieve_TokenRoundTrip() {
 		RuntimeData: map[string]string{
 			"state": "abc123",
 		},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{
 			"node-1": {NodeID: "node-1"},
 		},
 		Graph: mockGraph,
@@ -395,13 +393,13 @@ func (s *StoreTestSuite) TestStoreAndRetrieve_ContextEncryptionRoundTrip() {
 
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
 	mockGraph.On("GetID").Return("context-enc-graph-id")
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
 
 	originalCtx := EngineContext{
 		ExecutionID: "context-enc-flow-id",
 		AppID:       sensitiveAppID,
 		Verbose:     false,
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
 			IsAuthenticated: true,
 			UserID:          sensitiveUserID,
@@ -410,7 +408,7 @@ func (s *StoreTestSuite) TestStoreAndRetrieve_ContextEncryptionRoundTrip() {
 		},
 		UserInputs:  map[string]string{"input_key": sensitiveInput},
 		RuntimeData: map[string]string{"runtime_key": sensitiveRuntimeData},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{
 			"node-enc-1": {NodeID: "node-enc-1"},
 		},
 		Graph: mockGraph,
@@ -461,14 +459,14 @@ func (s *StoreTestSuite) TestBuildFlowContextFromResultRow_WithToken() {
 	ctx := EngineContext{
 		ExecutionID: "test-flow-id",
 		AppID:       "test-app-id",
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
 			Token:      testToken,
 			Attributes: map[string]interface{}{},
 		},
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -506,14 +504,14 @@ func (s *StoreTestSuite) TestBuildFlowContextFromResultRow_WithByteToken() {
 	ctx := EngineContext{
 		ExecutionID: "test-flow-id",
 		AppID:       "test-app-id",
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
 			Token:      testToken,
 			Attributes: map[string]interface{}{},
 		},
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -539,20 +537,20 @@ func (s *StoreTestSuite) TestBuildFlowContextFromResultRow_WithByteToken() {
 
 func (s *StoreTestSuite) TestStoreFlowContext_WithAvailableAttributes() {
 	// Setup
-	testAvailableAttributes := &authnprovidercm.AttributesResponse{
-		Attributes: map[string]*authnprovidercm.AttributeResponse{
+	testAvailableAttributes := &providers.AttributesResponse{
+		Attributes: map[string]*providers.AttributeResponse{
 			"email": {
-				AssuranceMetadataResponse: &authnprovidercm.AssuranceMetadataResponse{
+				AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
 					IsVerified: true,
 				},
 			},
 			"phone": {
-				AssuranceMetadataResponse: &authnprovidercm.AssuranceMetadataResponse{
+				AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
 					IsVerified: false,
 				},
 			},
 		},
-		Verifications: map[string]*authnprovidercm.VerificationResponse{},
+		Verifications: map[string]*providers.VerificationResponse{},
 	}
 	mockDBProvider := providermock.NewDBProviderInterfaceMock(s.T())
 	mockDBClient := providermock.NewDBClientInterfaceMock(s.T())
@@ -576,7 +574,7 @@ func (s *StoreTestSuite) TestStoreFlowContext_WithAvailableAttributes() {
 		ExecutionID: "test-flow-id",
 		AppID:       "test-app-id",
 		Verbose:     false,
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		RuntimeData: map[string]string{"key": "value"},
 		UserInputs:  map[string]string{"input1": "val1"},
 		AuthenticatedUser: authncm.AuthenticatedUser{
@@ -600,20 +598,20 @@ func (s *StoreTestSuite) TestStoreFlowContext_WithAvailableAttributes() {
 
 func (s *StoreTestSuite) TestUpdateFlowContext_WithAvailableAttributes() {
 	// Setup
-	testAvailableAttributes := &authnprovidercm.AttributesResponse{
-		Attributes: map[string]*authnprovidercm.AttributeResponse{
+	testAvailableAttributes := &providers.AttributesResponse{
+		Attributes: map[string]*providers.AttributeResponse{
 			"email": {
-				AssuranceMetadataResponse: &authnprovidercm.AssuranceMetadataResponse{
+				AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
 					IsVerified: true,
 				},
 			},
 			"address": {
-				AssuranceMetadataResponse: &authnprovidercm.AssuranceMetadataResponse{
+				AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
 					IsVerified: false,
 				},
 			},
 		},
-		Verifications: map[string]*authnprovidercm.VerificationResponse{},
+		Verifications: map[string]*providers.VerificationResponse{},
 	}
 	mockDBProvider := providermock.NewDBProviderInterfaceMock(s.T())
 	mockDBClient := providermock.NewDBClientInterfaceMock(s.T())
@@ -634,7 +632,7 @@ func (s *StoreTestSuite) TestUpdateFlowContext_WithAvailableAttributes() {
 	ctx := EngineContext{
 		ExecutionID: "test-flow-id",
 		AppID:       "test-app-id",
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
 			IsAuthenticated:     true,
 			UserID:              "user-456",
@@ -643,7 +641,7 @@ func (s *StoreTestSuite) TestUpdateFlowContext_WithAvailableAttributes() {
 		},
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -660,24 +658,24 @@ func (s *StoreTestSuite) TestUpdateFlowContext_WithAvailableAttributes() {
 
 func (s *StoreTestSuite) TestGetFlowContext_WithAvailableAttributes() {
 	// Setup
-	testAvailableAttributes := &authnprovidercm.AttributesResponse{
-		Attributes: map[string]*authnprovidercm.AttributeResponse{
+	testAvailableAttributes := &providers.AttributesResponse{
+		Attributes: map[string]*providers.AttributeResponse{
 			"email": {
-				AssuranceMetadataResponse: &authnprovidercm.AssuranceMetadataResponse{
+				AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
 					IsVerified: true,
 				},
 			},
 			"phone": {
-				AssuranceMetadataResponse: &authnprovidercm.AssuranceMetadataResponse{
+				AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
 					IsVerified: false,
 				},
 			},
 		},
-		Verifications: map[string]*authnprovidercm.VerificationResponse{},
+		Verifications: map[string]*providers.VerificationResponse{},
 	}
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
 	mockGraph.On("GetID").Return("test-graph-id")
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
 
 	expiryTime := time.Now().Add(30 * time.Minute)
 
@@ -685,7 +683,7 @@ func (s *StoreTestSuite) TestGetFlowContext_WithAvailableAttributes() {
 	ctx := EngineContext{
 		ExecutionID: "test-flow-id",
 		AppID:       "test-app-id",
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
 			IsAuthenticated:     true,
 			UserID:              "user-789",
@@ -694,7 +692,7 @@ func (s *StoreTestSuite) TestGetFlowContext_WithAvailableAttributes() {
 		},
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 
@@ -752,7 +750,7 @@ func (s *StoreTestSuite) TestGetFlowContext_WithAvailableAttributes() {
 }
 
 func (s *StoreTestSuite) TestEngineContextRoundTrip_WithAuthUser() {
-	var authUser managerpkg.AuthUser
+	var authUser providers.AuthUser
 	jsonStr := `{"entityReferenceToken":null,` +
 		`"entityReference":{"entityId":"au-user-1","entityCategory":"user",` +
 		`"entityType":"person","ouId":"ou-1"},` +
@@ -761,12 +759,12 @@ func (s *StoreTestSuite) TestEngineContextRoundTrip_WithAuthUser() {
 	s.NoError(err)
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
 	mockGraph.On("GetID").Return("test-graph-id")
-	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
 
 	originalCtx := EngineContext{
 		ExecutionID: "authuser-flow-id",
 		AppID:       "authuser-app-id",
-		FlowType:    common.FlowTypeAuthentication,
+		FlowType:    providers.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
 			IsAuthenticated: true,
 			UserID:          "au-user-1",
@@ -775,7 +773,7 @@ func (s *StoreTestSuite) TestEngineContextRoundTrip_WithAuthUser() {
 		AuthUser:         authUser,
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
-		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Graph:            mockGraph,
 	}
 

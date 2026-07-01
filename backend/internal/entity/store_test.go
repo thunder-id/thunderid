@@ -29,6 +29,7 @@ import (
 
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 )
 
@@ -183,7 +184,7 @@ func (s *DBStoreTestSuite) TestGetEntityWithCredentials_Success() {
 
 func (s *DBStoreTestSuite) TestCreateEntity_ProviderError() {
 	s.expectClientError()
-	e := Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
+	e := providers.Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
 	err := s.store.CreateEntity(s.ctx, e, nil, nil)
 	s.Error(err)
 }
@@ -191,7 +192,7 @@ func (s *DBStoreTestSuite) TestCreateEntity_ProviderError() {
 func (s *DBStoreTestSuite) TestCreateEntity_ExecuteError() {
 	s.expectClient()
 	s.onExecAny(0, s.testErr)
-	e := Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
+	e := providers.Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
 	err := s.store.CreateEntity(s.ctx, e, nil, nil)
 	s.Error(err)
 }
@@ -200,7 +201,7 @@ func (s *DBStoreTestSuite) TestCreateEntity_Success_NoIdentifiers() {
 	s.expectClient()
 	s.onExecAny(1, nil)
 	// SyncAttributeIdentifiers: no indexed attributes → no DB call for sync
-	e := Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
+	e := providers.Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
 	err := s.store.CreateEntity(s.ctx, e, nil, nil)
 	s.NoError(err)
 }
@@ -209,7 +210,7 @@ func (s *DBStoreTestSuite) TestCreateEntity_WithSystemAttrsAndCreds() {
 	s.expectClient()
 	s.onExecAny(1, nil)
 	// SyncAttributeIdentifiers: no indexed attributes → no DB call for sync
-	e := Entity{
+	e := providers.Entity{
 		ID:               "e1",
 		Attributes:       json.RawMessage(`{}`),
 		SystemAttributes: json.RawMessage(`{"key":"val"}`),
@@ -220,7 +221,7 @@ func (s *DBStoreTestSuite) TestCreateEntity_WithSystemAttrsAndCreds() {
 
 func (s *DBStoreTestSuite) TestUpdateEntity_ProviderError() {
 	s.expectClientError()
-	e := &Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
+	e := &providers.Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
 	err := s.store.UpdateEntity(s.ctx, e)
 	s.Error(err)
 }
@@ -228,7 +229,7 @@ func (s *DBStoreTestSuite) TestUpdateEntity_ProviderError() {
 func (s *DBStoreTestSuite) TestUpdateEntity_ExecuteError() {
 	s.expectClient()
 	s.onExecAny(0, s.testErr)
-	e := &Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
+	e := &providers.Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
 	err := s.store.UpdateEntity(s.ctx, e)
 	s.Error(err)
 }
@@ -236,7 +237,7 @@ func (s *DBStoreTestSuite) TestUpdateEntity_ExecuteError() {
 func (s *DBStoreTestSuite) TestUpdateEntity_NotFound() {
 	s.expectClient()
 	s.onExecAny(0, nil)
-	e := &Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
+	e := &providers.Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
 	err := s.store.UpdateEntity(s.ctx, e)
 	s.ErrorIs(err, ErrEntityNotFound)
 }
@@ -246,7 +247,7 @@ func (s *DBStoreTestSuite) TestUpdateEntity_ReloadError() {
 	s.onExecAny(1, nil).Once()          // update entity succeeds
 	s.expectClient()                    // for reload (GetEntity)
 	s.onQueryAny(nil, s.testErr).Once() // reload query fails
-	e := &Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
+	e := &providers.Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
 	err := s.store.UpdateEntity(s.ctx, e)
 	s.Error(err)
 }
@@ -257,7 +258,7 @@ func (s *DBStoreTestSuite) TestUpdateEntity_DeleteIdentifiersError() {
 	s.expectClient()                                                  // for reload (GetEntity)
 	s.onQueryAny([]map[string]interface{}{dbEntityRow()}, nil).Once() // reload succeeds
 	s.onExecAny(0, s.testErr).Once()                                  // delete identifiers fails
-	e := &Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
+	e := &providers.Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
 	err := s.store.UpdateEntity(s.ctx, e)
 	s.Error(err)
 }
@@ -269,7 +270,7 @@ func (s *DBStoreTestSuite) TestUpdateEntity_Success() {
 	s.expectClient()                                                  // for reload (GetEntity)
 	s.onQueryAny([]map[string]interface{}{dbEntityRow()}, nil).Once() // reload succeeds
 	s.onExecAny(1, nil).Once()                                        // delete identifiers
-	e := &Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
+	e := &providers.Entity{ID: "e1", Attributes: json.RawMessage(`{}`)}
 	err := s.store.UpdateEntity(s.ctx, e)
 	s.NoError(err)
 }
@@ -703,9 +704,9 @@ func (s *StoreHelpersTestSuite) TestBuildEntityFromResultRow_Success() {
 	e, err := buildEntityFromResultRow(goodRow())
 	s.NoError(err)
 	s.Equal("entity-1", e.ID)
-	s.Equal(EntityCategoryUser, e.Category)
+	s.Equal(providers.EntityCategoryUser, e.Category)
 	s.Equal("employee", e.Type)
-	s.Equal(EntityStateActive, e.State)
+	s.Equal(providers.EntityStateActive, e.State)
 	s.Equal("ou-1", e.OUID)
 	s.NotNil(e.Attributes)
 	s.NotNil(e.SystemAttributes)

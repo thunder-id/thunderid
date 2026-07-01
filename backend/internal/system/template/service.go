@@ -23,7 +23,8 @@ import (
 	"errors"
 	"regexp"
 
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -48,7 +49,7 @@ func (s *templateService) GetTemplateByScenario(
 	ctx context.Context,
 	scenario ScenarioType,
 	tmplType TemplateType,
-) (*TemplateDTO, *serviceerror.ServiceError) {
+) (*TemplateDTO, *tidcommon.ServiceError) {
 	s.logger.Debug(ctx, "Retrieving template by scenario and type",
 		log.String("scenario", string(scenario)),
 		log.String("type", string(tmplType)))
@@ -60,7 +61,7 @@ func (s *templateService) GetTemplateByScenario(
 		s.logger.Error(ctx, "Failed to retrieve template by scenario",
 			log.String("scenario", string(scenario)),
 			log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return tmpl, nil
@@ -72,7 +73,7 @@ func (s *templateService) Render(
 	scenario ScenarioType,
 	tmplType TemplateType,
 	data TemplateData,
-) (*RenderedTemplate, *serviceerror.ServiceError) {
+) (*RenderedTemplate, *tidcommon.ServiceError) {
 	s.logger.Debug(ctx, "Rendering template", log.String("scenario", string(scenario)))
 	tmpl, svcErr := s.GetTemplateByScenario(ctx, scenario, tmplType)
 	if svcErr != nil {

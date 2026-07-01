@@ -10,6 +10,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewEntityServiceInterfaceMock creates a new instance of EntityServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -188,26 +189,26 @@ func (_c *EntityServiceInterfaceMock_AuthenticateEntityByID_Call) RunAndReturn(r
 }
 
 // CreateEntity provides a mock function for the type EntityServiceInterfaceMock
-func (_mock *EntityServiceInterfaceMock) CreateEntity(ctx context.Context, entity1 *entity.Entity, systemCredentials json.RawMessage) (*entity.Entity, error) {
+func (_mock *EntityServiceInterfaceMock) CreateEntity(ctx context.Context, entity1 *providers.Entity, systemCredentials json.RawMessage) (*providers.Entity, error) {
 	ret := _mock.Called(ctx, entity1, systemCredentials)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateEntity")
 	}
 
-	var r0 *entity.Entity
+	var r0 *providers.Entity
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *entity.Entity, json.RawMessage) (*entity.Entity, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.Entity, json.RawMessage) (*providers.Entity, error)); ok {
 		return returnFunc(ctx, entity1, systemCredentials)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *entity.Entity, json.RawMessage) *entity.Entity); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.Entity, json.RawMessage) *providers.Entity); ok {
 		r0 = returnFunc(ctx, entity1, systemCredentials)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*entity.Entity)
+			r0 = ret.Get(0).(*providers.Entity)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *entity.Entity, json.RawMessage) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *providers.Entity, json.RawMessage) error); ok {
 		r1 = returnFunc(ctx, entity1, systemCredentials)
 	} else {
 		r1 = ret.Error(1)
@@ -222,21 +223,21 @@ type EntityServiceInterfaceMock_CreateEntity_Call struct {
 
 // CreateEntity is a helper method to define mock.On call
 //   - ctx context.Context
-//   - entity1 *entity.Entity
+//   - entity1 *providers.Entity
 //   - systemCredentials json.RawMessage
 func (_e *EntityServiceInterfaceMock_Expecter) CreateEntity(ctx interface{}, entity1 interface{}, systemCredentials interface{}) *EntityServiceInterfaceMock_CreateEntity_Call {
 	return &EntityServiceInterfaceMock_CreateEntity_Call{Call: _e.mock.On("CreateEntity", ctx, entity1, systemCredentials)}
 }
 
-func (_c *EntityServiceInterfaceMock_CreateEntity_Call) Run(run func(ctx context.Context, entity1 *entity.Entity, systemCredentials json.RawMessage)) *EntityServiceInterfaceMock_CreateEntity_Call {
+func (_c *EntityServiceInterfaceMock_CreateEntity_Call) Run(run func(ctx context.Context, entity1 *providers.Entity, systemCredentials json.RawMessage)) *EntityServiceInterfaceMock_CreateEntity_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *entity.Entity
+		var arg1 *providers.Entity
 		if args[1] != nil {
-			arg1 = args[1].(*entity.Entity)
+			arg1 = args[1].(*providers.Entity)
 		}
 		var arg2 json.RawMessage
 		if args[2] != nil {
@@ -251,12 +252,12 @@ func (_c *EntityServiceInterfaceMock_CreateEntity_Call) Run(run func(ctx context
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_CreateEntity_Call) Return(entity11 *entity.Entity, err error) *EntityServiceInterfaceMock_CreateEntity_Call {
+func (_c *EntityServiceInterfaceMock_CreateEntity_Call) Return(entity11 *providers.Entity, err error) *EntityServiceInterfaceMock_CreateEntity_Call {
 	_c.Call.Return(entity11, err)
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_CreateEntity_Call) RunAndReturn(run func(ctx context.Context, entity1 *entity.Entity, systemCredentials json.RawMessage) (*entity.Entity, error)) *EntityServiceInterfaceMock_CreateEntity_Call {
+func (_c *EntityServiceInterfaceMock_CreateEntity_Call) RunAndReturn(run func(ctx context.Context, entity1 *providers.Entity, systemCredentials json.RawMessage) (*providers.Entity, error)) *EntityServiceInterfaceMock_CreateEntity_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -393,23 +394,23 @@ func (_c *EntityServiceInterfaceMock_GetCredentialsByType_Call) RunAndReturn(run
 }
 
 // GetEntitiesByIDs provides a mock function for the type EntityServiceInterfaceMock
-func (_mock *EntityServiceInterfaceMock) GetEntitiesByIDs(ctx context.Context, entityIDs []string) ([]entity.Entity, error) {
+func (_mock *EntityServiceInterfaceMock) GetEntitiesByIDs(ctx context.Context, entityIDs []string) ([]providers.Entity, error) {
 	ret := _mock.Called(ctx, entityIDs)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetEntitiesByIDs")
 	}
 
-	var r0 []entity.Entity
+	var r0 []providers.Entity
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) ([]entity.Entity, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) ([]providers.Entity, error)); ok {
 		return returnFunc(ctx, entityIDs)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) []entity.Entity); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) []providers.Entity); ok {
 		r0 = returnFunc(ctx, entityIDs)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]entity.Entity)
+			r0 = ret.Get(0).([]providers.Entity)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, []string) error); ok {
@@ -450,34 +451,34 @@ func (_c *EntityServiceInterfaceMock_GetEntitiesByIDs_Call) Run(run func(ctx con
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_GetEntitiesByIDs_Call) Return(entitys []entity.Entity, err error) *EntityServiceInterfaceMock_GetEntitiesByIDs_Call {
+func (_c *EntityServiceInterfaceMock_GetEntitiesByIDs_Call) Return(entitys []providers.Entity, err error) *EntityServiceInterfaceMock_GetEntitiesByIDs_Call {
 	_c.Call.Return(entitys, err)
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_GetEntitiesByIDs_Call) RunAndReturn(run func(ctx context.Context, entityIDs []string) ([]entity.Entity, error)) *EntityServiceInterfaceMock_GetEntitiesByIDs_Call {
+func (_c *EntityServiceInterfaceMock_GetEntitiesByIDs_Call) RunAndReturn(run func(ctx context.Context, entityIDs []string) ([]providers.Entity, error)) *EntityServiceInterfaceMock_GetEntitiesByIDs_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetEntity provides a mock function for the type EntityServiceInterfaceMock
-func (_mock *EntityServiceInterfaceMock) GetEntity(ctx context.Context, entityID string) (*entity.Entity, error) {
+func (_mock *EntityServiceInterfaceMock) GetEntity(ctx context.Context, entityID string) (*providers.Entity, error) {
 	ret := _mock.Called(ctx, entityID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetEntity")
 	}
 
-	var r0 *entity.Entity
+	var r0 *providers.Entity
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*entity.Entity, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*providers.Entity, error)); ok {
 		return returnFunc(ctx, entityID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *entity.Entity); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *providers.Entity); ok {
 		r0 = returnFunc(ctx, entityID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*entity.Entity)
+			r0 = ret.Get(0).(*providers.Entity)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
@@ -518,34 +519,34 @@ func (_c *EntityServiceInterfaceMock_GetEntity_Call) Run(run func(ctx context.Co
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_GetEntity_Call) Return(entity1 *entity.Entity, err error) *EntityServiceInterfaceMock_GetEntity_Call {
+func (_c *EntityServiceInterfaceMock_GetEntity_Call) Return(entity1 *providers.Entity, err error) *EntityServiceInterfaceMock_GetEntity_Call {
 	_c.Call.Return(entity1, err)
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_GetEntity_Call) RunAndReturn(run func(ctx context.Context, entityID string) (*entity.Entity, error)) *EntityServiceInterfaceMock_GetEntity_Call {
+func (_c *EntityServiceInterfaceMock_GetEntity_Call) RunAndReturn(run func(ctx context.Context, entityID string) (*providers.Entity, error)) *EntityServiceInterfaceMock_GetEntity_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetEntityGroups provides a mock function for the type EntityServiceInterfaceMock
-func (_mock *EntityServiceInterfaceMock) GetEntityGroups(ctx context.Context, entityID string, limit int, offset int) ([]entity.EntityGroup, error) {
+func (_mock *EntityServiceInterfaceMock) GetEntityGroups(ctx context.Context, entityID string, limit int, offset int) ([]providers.EntityGroup, error) {
 	ret := _mock.Called(ctx, entityID, limit, offset)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetEntityGroups")
 	}
 
-	var r0 []entity.EntityGroup
+	var r0 []providers.EntityGroup
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) ([]entity.EntityGroup, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) ([]providers.EntityGroup, error)); ok {
 		return returnFunc(ctx, entityID, limit, offset)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) []entity.EntityGroup); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) []providers.EntityGroup); ok {
 		r0 = returnFunc(ctx, entityID, limit, offset)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]entity.EntityGroup)
+			r0 = ret.Get(0).([]providers.EntityGroup)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) error); ok {
@@ -598,37 +599,37 @@ func (_c *EntityServiceInterfaceMock_GetEntityGroups_Call) Run(run func(ctx cont
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_GetEntityGroups_Call) Return(entityGroups []entity.EntityGroup, err error) *EntityServiceInterfaceMock_GetEntityGroups_Call {
+func (_c *EntityServiceInterfaceMock_GetEntityGroups_Call) Return(entityGroups []providers.EntityGroup, err error) *EntityServiceInterfaceMock_GetEntityGroups_Call {
 	_c.Call.Return(entityGroups, err)
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_GetEntityGroups_Call) RunAndReturn(run func(ctx context.Context, entityID string, limit int, offset int) ([]entity.EntityGroup, error)) *EntityServiceInterfaceMock_GetEntityGroups_Call {
+func (_c *EntityServiceInterfaceMock_GetEntityGroups_Call) RunAndReturn(run func(ctx context.Context, entityID string, limit int, offset int) ([]providers.EntityGroup, error)) *EntityServiceInterfaceMock_GetEntityGroups_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetEntityList provides a mock function for the type EntityServiceInterfaceMock
-func (_mock *EntityServiceInterfaceMock) GetEntityList(ctx context.Context, category entity.EntityCategory, limit int, offset int, filters map[string]interface{}) ([]entity.Entity, error) {
+func (_mock *EntityServiceInterfaceMock) GetEntityList(ctx context.Context, category providers.EntityCategory, limit int, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
 	ret := _mock.Called(ctx, category, limit, offset, filters)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetEntityList")
 	}
 
-	var r0 []entity.Entity
+	var r0 []providers.Entity
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entity.EntityCategory, int, int, map[string]interface{}) ([]entity.Entity, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, int, int, map[string]interface{}) ([]providers.Entity, error)); ok {
 		return returnFunc(ctx, category, limit, offset, filters)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entity.EntityCategory, int, int, map[string]interface{}) []entity.Entity); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, int, int, map[string]interface{}) []providers.Entity); ok {
 		r0 = returnFunc(ctx, category, limit, offset, filters)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]entity.Entity)
+			r0 = ret.Get(0).([]providers.Entity)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, entity.EntityCategory, int, int, map[string]interface{}) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, providers.EntityCategory, int, int, map[string]interface{}) error); ok {
 		r1 = returnFunc(ctx, category, limit, offset, filters)
 	} else {
 		r1 = ret.Error(1)
@@ -643,7 +644,7 @@ type EntityServiceInterfaceMock_GetEntityList_Call struct {
 
 // GetEntityList is a helper method to define mock.On call
 //   - ctx context.Context
-//   - category entity.EntityCategory
+//   - category providers.EntityCategory
 //   - limit int
 //   - offset int
 //   - filters map[string]interface{}
@@ -651,15 +652,15 @@ func (_e *EntityServiceInterfaceMock_Expecter) GetEntityList(ctx interface{}, ca
 	return &EntityServiceInterfaceMock_GetEntityList_Call{Call: _e.mock.On("GetEntityList", ctx, category, limit, offset, filters)}
 }
 
-func (_c *EntityServiceInterfaceMock_GetEntityList_Call) Run(run func(ctx context.Context, category entity.EntityCategory, limit int, offset int, filters map[string]interface{})) *EntityServiceInterfaceMock_GetEntityList_Call {
+func (_c *EntityServiceInterfaceMock_GetEntityList_Call) Run(run func(ctx context.Context, category providers.EntityCategory, limit int, offset int, filters map[string]interface{})) *EntityServiceInterfaceMock_GetEntityList_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 entity.EntityCategory
+		var arg1 providers.EntityCategory
 		if args[1] != nil {
-			arg1 = args[1].(entity.EntityCategory)
+			arg1 = args[1].(providers.EntityCategory)
 		}
 		var arg2 int
 		if args[2] != nil {
@@ -684,37 +685,37 @@ func (_c *EntityServiceInterfaceMock_GetEntityList_Call) Run(run func(ctx contex
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_GetEntityList_Call) Return(entitys []entity.Entity, err error) *EntityServiceInterfaceMock_GetEntityList_Call {
+func (_c *EntityServiceInterfaceMock_GetEntityList_Call) Return(entitys []providers.Entity, err error) *EntityServiceInterfaceMock_GetEntityList_Call {
 	_c.Call.Return(entitys, err)
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_GetEntityList_Call) RunAndReturn(run func(ctx context.Context, category entity.EntityCategory, limit int, offset int, filters map[string]interface{}) ([]entity.Entity, error)) *EntityServiceInterfaceMock_GetEntityList_Call {
+func (_c *EntityServiceInterfaceMock_GetEntityList_Call) RunAndReturn(run func(ctx context.Context, category providers.EntityCategory, limit int, offset int, filters map[string]interface{}) ([]providers.Entity, error)) *EntityServiceInterfaceMock_GetEntityList_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetEntityListByOUIDs provides a mock function for the type EntityServiceInterfaceMock
-func (_mock *EntityServiceInterfaceMock) GetEntityListByOUIDs(ctx context.Context, category entity.EntityCategory, ouIDs []string, limit int, offset int, filters map[string]interface{}) ([]entity.Entity, error) {
+func (_mock *EntityServiceInterfaceMock) GetEntityListByOUIDs(ctx context.Context, category providers.EntityCategory, ouIDs []string, limit int, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
 	ret := _mock.Called(ctx, category, ouIDs, limit, offset, filters)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetEntityListByOUIDs")
 	}
 
-	var r0 []entity.Entity
+	var r0 []providers.Entity
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entity.EntityCategory, []string, int, int, map[string]interface{}) ([]entity.Entity, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, []string, int, int, map[string]interface{}) ([]providers.Entity, error)); ok {
 		return returnFunc(ctx, category, ouIDs, limit, offset, filters)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entity.EntityCategory, []string, int, int, map[string]interface{}) []entity.Entity); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, []string, int, int, map[string]interface{}) []providers.Entity); ok {
 		r0 = returnFunc(ctx, category, ouIDs, limit, offset, filters)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]entity.Entity)
+			r0 = ret.Get(0).([]providers.Entity)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, entity.EntityCategory, []string, int, int, map[string]interface{}) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, providers.EntityCategory, []string, int, int, map[string]interface{}) error); ok {
 		r1 = returnFunc(ctx, category, ouIDs, limit, offset, filters)
 	} else {
 		r1 = ret.Error(1)
@@ -729,7 +730,7 @@ type EntityServiceInterfaceMock_GetEntityListByOUIDs_Call struct {
 
 // GetEntityListByOUIDs is a helper method to define mock.On call
 //   - ctx context.Context
-//   - category entity.EntityCategory
+//   - category providers.EntityCategory
 //   - ouIDs []string
 //   - limit int
 //   - offset int
@@ -738,15 +739,15 @@ func (_e *EntityServiceInterfaceMock_Expecter) GetEntityListByOUIDs(ctx interfac
 	return &EntityServiceInterfaceMock_GetEntityListByOUIDs_Call{Call: _e.mock.On("GetEntityListByOUIDs", ctx, category, ouIDs, limit, offset, filters)}
 }
 
-func (_c *EntityServiceInterfaceMock_GetEntityListByOUIDs_Call) Run(run func(ctx context.Context, category entity.EntityCategory, ouIDs []string, limit int, offset int, filters map[string]interface{})) *EntityServiceInterfaceMock_GetEntityListByOUIDs_Call {
+func (_c *EntityServiceInterfaceMock_GetEntityListByOUIDs_Call) Run(run func(ctx context.Context, category providers.EntityCategory, ouIDs []string, limit int, offset int, filters map[string]interface{})) *EntityServiceInterfaceMock_GetEntityListByOUIDs_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 entity.EntityCategory
+		var arg1 providers.EntityCategory
 		if args[1] != nil {
-			arg1 = args[1].(entity.EntityCategory)
+			arg1 = args[1].(providers.EntityCategory)
 		}
 		var arg2 []string
 		if args[2] != nil {
@@ -776,18 +777,18 @@ func (_c *EntityServiceInterfaceMock_GetEntityListByOUIDs_Call) Run(run func(ctx
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_GetEntityListByOUIDs_Call) Return(entitys []entity.Entity, err error) *EntityServiceInterfaceMock_GetEntityListByOUIDs_Call {
+func (_c *EntityServiceInterfaceMock_GetEntityListByOUIDs_Call) Return(entitys []providers.Entity, err error) *EntityServiceInterfaceMock_GetEntityListByOUIDs_Call {
 	_c.Call.Return(entitys, err)
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_GetEntityListByOUIDs_Call) RunAndReturn(run func(ctx context.Context, category entity.EntityCategory, ouIDs []string, limit int, offset int, filters map[string]interface{}) ([]entity.Entity, error)) *EntityServiceInterfaceMock_GetEntityListByOUIDs_Call {
+func (_c *EntityServiceInterfaceMock_GetEntityListByOUIDs_Call) RunAndReturn(run func(ctx context.Context, category providers.EntityCategory, ouIDs []string, limit int, offset int, filters map[string]interface{}) ([]providers.Entity, error)) *EntityServiceInterfaceMock_GetEntityListByOUIDs_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetEntityListCount provides a mock function for the type EntityServiceInterfaceMock
-func (_mock *EntityServiceInterfaceMock) GetEntityListCount(ctx context.Context, category entity.EntityCategory, filters map[string]interface{}) (int, error) {
+func (_mock *EntityServiceInterfaceMock) GetEntityListCount(ctx context.Context, category providers.EntityCategory, filters map[string]interface{}) (int, error) {
 	ret := _mock.Called(ctx, category, filters)
 
 	if len(ret) == 0 {
@@ -796,15 +797,15 @@ func (_mock *EntityServiceInterfaceMock) GetEntityListCount(ctx context.Context,
 
 	var r0 int
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entity.EntityCategory, map[string]interface{}) (int, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, map[string]interface{}) (int, error)); ok {
 		return returnFunc(ctx, category, filters)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entity.EntityCategory, map[string]interface{}) int); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, map[string]interface{}) int); ok {
 		r0 = returnFunc(ctx, category, filters)
 	} else {
 		r0 = ret.Get(0).(int)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, entity.EntityCategory, map[string]interface{}) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, providers.EntityCategory, map[string]interface{}) error); ok {
 		r1 = returnFunc(ctx, category, filters)
 	} else {
 		r1 = ret.Error(1)
@@ -819,21 +820,21 @@ type EntityServiceInterfaceMock_GetEntityListCount_Call struct {
 
 // GetEntityListCount is a helper method to define mock.On call
 //   - ctx context.Context
-//   - category entity.EntityCategory
+//   - category providers.EntityCategory
 //   - filters map[string]interface{}
 func (_e *EntityServiceInterfaceMock_Expecter) GetEntityListCount(ctx interface{}, category interface{}, filters interface{}) *EntityServiceInterfaceMock_GetEntityListCount_Call {
 	return &EntityServiceInterfaceMock_GetEntityListCount_Call{Call: _e.mock.On("GetEntityListCount", ctx, category, filters)}
 }
 
-func (_c *EntityServiceInterfaceMock_GetEntityListCount_Call) Run(run func(ctx context.Context, category entity.EntityCategory, filters map[string]interface{})) *EntityServiceInterfaceMock_GetEntityListCount_Call {
+func (_c *EntityServiceInterfaceMock_GetEntityListCount_Call) Run(run func(ctx context.Context, category providers.EntityCategory, filters map[string]interface{})) *EntityServiceInterfaceMock_GetEntityListCount_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 entity.EntityCategory
+		var arg1 providers.EntityCategory
 		if args[1] != nil {
-			arg1 = args[1].(entity.EntityCategory)
+			arg1 = args[1].(providers.EntityCategory)
 		}
 		var arg2 map[string]interface{}
 		if args[2] != nil {
@@ -853,13 +854,13 @@ func (_c *EntityServiceInterfaceMock_GetEntityListCount_Call) Return(n int, err 
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_GetEntityListCount_Call) RunAndReturn(run func(ctx context.Context, category entity.EntityCategory, filters map[string]interface{}) (int, error)) *EntityServiceInterfaceMock_GetEntityListCount_Call {
+func (_c *EntityServiceInterfaceMock_GetEntityListCount_Call) RunAndReturn(run func(ctx context.Context, category providers.EntityCategory, filters map[string]interface{}) (int, error)) *EntityServiceInterfaceMock_GetEntityListCount_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetEntityListCountByOUIDs provides a mock function for the type EntityServiceInterfaceMock
-func (_mock *EntityServiceInterfaceMock) GetEntityListCountByOUIDs(ctx context.Context, category entity.EntityCategory, ouIDs []string, filters map[string]interface{}) (int, error) {
+func (_mock *EntityServiceInterfaceMock) GetEntityListCountByOUIDs(ctx context.Context, category providers.EntityCategory, ouIDs []string, filters map[string]interface{}) (int, error) {
 	ret := _mock.Called(ctx, category, ouIDs, filters)
 
 	if len(ret) == 0 {
@@ -868,15 +869,15 @@ func (_mock *EntityServiceInterfaceMock) GetEntityListCountByOUIDs(ctx context.C
 
 	var r0 int
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entity.EntityCategory, []string, map[string]interface{}) (int, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, []string, map[string]interface{}) (int, error)); ok {
 		return returnFunc(ctx, category, ouIDs, filters)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entity.EntityCategory, []string, map[string]interface{}) int); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, []string, map[string]interface{}) int); ok {
 		r0 = returnFunc(ctx, category, ouIDs, filters)
 	} else {
 		r0 = ret.Get(0).(int)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, entity.EntityCategory, []string, map[string]interface{}) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, providers.EntityCategory, []string, map[string]interface{}) error); ok {
 		r1 = returnFunc(ctx, category, ouIDs, filters)
 	} else {
 		r1 = ret.Error(1)
@@ -891,22 +892,22 @@ type EntityServiceInterfaceMock_GetEntityListCountByOUIDs_Call struct {
 
 // GetEntityListCountByOUIDs is a helper method to define mock.On call
 //   - ctx context.Context
-//   - category entity.EntityCategory
+//   - category providers.EntityCategory
 //   - ouIDs []string
 //   - filters map[string]interface{}
 func (_e *EntityServiceInterfaceMock_Expecter) GetEntityListCountByOUIDs(ctx interface{}, category interface{}, ouIDs interface{}, filters interface{}) *EntityServiceInterfaceMock_GetEntityListCountByOUIDs_Call {
 	return &EntityServiceInterfaceMock_GetEntityListCountByOUIDs_Call{Call: _e.mock.On("GetEntityListCountByOUIDs", ctx, category, ouIDs, filters)}
 }
 
-func (_c *EntityServiceInterfaceMock_GetEntityListCountByOUIDs_Call) Run(run func(ctx context.Context, category entity.EntityCategory, ouIDs []string, filters map[string]interface{})) *EntityServiceInterfaceMock_GetEntityListCountByOUIDs_Call {
+func (_c *EntityServiceInterfaceMock_GetEntityListCountByOUIDs_Call) Run(run func(ctx context.Context, category providers.EntityCategory, ouIDs []string, filters map[string]interface{})) *EntityServiceInterfaceMock_GetEntityListCountByOUIDs_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 entity.EntityCategory
+		var arg1 providers.EntityCategory
 		if args[1] != nil {
-			arg1 = args[1].(entity.EntityCategory)
+			arg1 = args[1].(providers.EntityCategory)
 		}
 		var arg2 []string
 		if args[2] != nil {
@@ -931,7 +932,7 @@ func (_c *EntityServiceInterfaceMock_GetEntityListCountByOUIDs_Call) Return(n in
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_GetEntityListCountByOUIDs_Call) RunAndReturn(run func(ctx context.Context, category entity.EntityCategory, ouIDs []string, filters map[string]interface{}) (int, error)) *EntityServiceInterfaceMock_GetEntityListCountByOUIDs_Call {
+func (_c *EntityServiceInterfaceMock_GetEntityListCountByOUIDs_Call) RunAndReturn(run func(ctx context.Context, category providers.EntityCategory, ouIDs []string, filters map[string]interface{}) (int, error)) *EntityServiceInterfaceMock_GetEntityListCountByOUIDs_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1003,23 +1004,23 @@ func (_c *EntityServiceInterfaceMock_GetGroupCountForEntity_Call) RunAndReturn(r
 }
 
 // GetTransitiveEntityGroups provides a mock function for the type EntityServiceInterfaceMock
-func (_mock *EntityServiceInterfaceMock) GetTransitiveEntityGroups(ctx context.Context, entityID string) ([]entity.EntityGroup, error) {
+func (_mock *EntityServiceInterfaceMock) GetTransitiveEntityGroups(ctx context.Context, entityID string) ([]providers.EntityGroup, error) {
 	ret := _mock.Called(ctx, entityID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetTransitiveEntityGroups")
 	}
 
-	var r0 []entity.EntityGroup
+	var r0 []providers.EntityGroup
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]entity.EntityGroup, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]providers.EntityGroup, error)); ok {
 		return returnFunc(ctx, entityID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []entity.EntityGroup); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []providers.EntityGroup); ok {
 		r0 = returnFunc(ctx, entityID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]entity.EntityGroup)
+			r0 = ret.Get(0).([]providers.EntityGroup)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
@@ -1060,12 +1061,12 @@ func (_c *EntityServiceInterfaceMock_GetTransitiveEntityGroups_Call) Run(run fun
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_GetTransitiveEntityGroups_Call) Return(entityGroups []entity.EntityGroup, err error) *EntityServiceInterfaceMock_GetTransitiveEntityGroups_Call {
+func (_c *EntityServiceInterfaceMock_GetTransitiveEntityGroups_Call) Return(entityGroups []providers.EntityGroup, err error) *EntityServiceInterfaceMock_GetTransitiveEntityGroups_Call {
 	_c.Call.Return(entityGroups, err)
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_GetTransitiveEntityGroups_Call) RunAndReturn(run func(ctx context.Context, entityID string) ([]entity.EntityGroup, error)) *EntityServiceInterfaceMock_GetTransitiveEntityGroups_Call {
+func (_c *EntityServiceInterfaceMock_GetTransitiveEntityGroups_Call) RunAndReturn(run func(ctx context.Context, entityID string) ([]providers.EntityGroup, error)) *EntityServiceInterfaceMock_GetTransitiveEntityGroups_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1307,23 +1308,23 @@ func (_c *EntityServiceInterfaceMock_LoadIndexedAttributes_Call) RunAndReturn(ru
 }
 
 // SearchEntities provides a mock function for the type EntityServiceInterfaceMock
-func (_mock *EntityServiceInterfaceMock) SearchEntities(ctx context.Context, filters map[string]interface{}) ([]entity.Entity, error) {
+func (_mock *EntityServiceInterfaceMock) SearchEntities(ctx context.Context, filters map[string]interface{}) ([]providers.Entity, error) {
 	ret := _mock.Called(ctx, filters)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SearchEntities")
 	}
 
-	var r0 []entity.Entity
+	var r0 []providers.Entity
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}) ([]entity.Entity, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}) ([]providers.Entity, error)); ok {
 		return returnFunc(ctx, filters)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}) []entity.Entity); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}) []providers.Entity); ok {
 		r0 = returnFunc(ctx, filters)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]entity.Entity)
+			r0 = ret.Get(0).([]providers.Entity)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, map[string]interface{}) error); ok {
@@ -1364,12 +1365,12 @@ func (_c *EntityServiceInterfaceMock_SearchEntities_Call) Run(run func(ctx conte
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_SearchEntities_Call) Return(entitys []entity.Entity, err error) *EntityServiceInterfaceMock_SearchEntities_Call {
+func (_c *EntityServiceInterfaceMock_SearchEntities_Call) Return(entitys []providers.Entity, err error) *EntityServiceInterfaceMock_SearchEntities_Call {
 	_c.Call.Return(entitys, err)
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_SearchEntities_Call) RunAndReturn(run func(ctx context.Context, filters map[string]interface{}) ([]entity.Entity, error)) *EntityServiceInterfaceMock_SearchEntities_Call {
+func (_c *EntityServiceInterfaceMock_SearchEntities_Call) RunAndReturn(run func(ctx context.Context, filters map[string]interface{}) ([]providers.Entity, error)) *EntityServiceInterfaceMock_SearchEntities_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1541,26 +1542,26 @@ func (_c *EntityServiceInterfaceMock_UpdateCredentials_Call) RunAndReturn(run fu
 }
 
 // UpdateEntity provides a mock function for the type EntityServiceInterfaceMock
-func (_mock *EntityServiceInterfaceMock) UpdateEntity(ctx context.Context, entityID string, entity1 *entity.Entity) (*entity.Entity, error) {
+func (_mock *EntityServiceInterfaceMock) UpdateEntity(ctx context.Context, entityID string, entity1 *providers.Entity) (*providers.Entity, error) {
 	ret := _mock.Called(ctx, entityID, entity1)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateEntity")
 	}
 
-	var r0 *entity.Entity
+	var r0 *providers.Entity
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *entity.Entity) (*entity.Entity, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *providers.Entity) (*providers.Entity, error)); ok {
 		return returnFunc(ctx, entityID, entity1)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *entity.Entity) *entity.Entity); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *providers.Entity) *providers.Entity); ok {
 		r0 = returnFunc(ctx, entityID, entity1)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*entity.Entity)
+			r0 = ret.Get(0).(*providers.Entity)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *entity.Entity) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *providers.Entity) error); ok {
 		r1 = returnFunc(ctx, entityID, entity1)
 	} else {
 		r1 = ret.Error(1)
@@ -1576,12 +1577,12 @@ type EntityServiceInterfaceMock_UpdateEntity_Call struct {
 // UpdateEntity is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-//   - entity1 *entity.Entity
+//   - entity1 *providers.Entity
 func (_e *EntityServiceInterfaceMock_Expecter) UpdateEntity(ctx interface{}, entityID interface{}, entity1 interface{}) *EntityServiceInterfaceMock_UpdateEntity_Call {
 	return &EntityServiceInterfaceMock_UpdateEntity_Call{Call: _e.mock.On("UpdateEntity", ctx, entityID, entity1)}
 }
 
-func (_c *EntityServiceInterfaceMock_UpdateEntity_Call) Run(run func(ctx context.Context, entityID string, entity1 *entity.Entity)) *EntityServiceInterfaceMock_UpdateEntity_Call {
+func (_c *EntityServiceInterfaceMock_UpdateEntity_Call) Run(run func(ctx context.Context, entityID string, entity1 *providers.Entity)) *EntityServiceInterfaceMock_UpdateEntity_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -1591,9 +1592,9 @@ func (_c *EntityServiceInterfaceMock_UpdateEntity_Call) Run(run func(ctx context
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 *entity.Entity
+		var arg2 *providers.Entity
 		if args[2] != nil {
-			arg2 = args[2].(*entity.Entity)
+			arg2 = args[2].(*providers.Entity)
 		}
 		run(
 			arg0,
@@ -1604,12 +1605,12 @@ func (_c *EntityServiceInterfaceMock_UpdateEntity_Call) Run(run func(ctx context
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_UpdateEntity_Call) Return(entity11 *entity.Entity, err error) *EntityServiceInterfaceMock_UpdateEntity_Call {
+func (_c *EntityServiceInterfaceMock_UpdateEntity_Call) Return(entity11 *providers.Entity, err error) *EntityServiceInterfaceMock_UpdateEntity_Call {
 	_c.Call.Return(entity11, err)
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_UpdateEntity_Call) RunAndReturn(run func(ctx context.Context, entityID string, entity1 *entity.Entity) (*entity.Entity, error)) *EntityServiceInterfaceMock_UpdateEntity_Call {
+func (_c *EntityServiceInterfaceMock_UpdateEntity_Call) RunAndReturn(run func(ctx context.Context, entityID string, entity1 *providers.Entity) (*providers.Entity, error)) *EntityServiceInterfaceMock_UpdateEntity_Call {
 	_c.Call.Return(run)
 	return _c
 }

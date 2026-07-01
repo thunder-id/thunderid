@@ -19,7 +19,7 @@
 package jwks
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"encoding/json"
 	"net/http"
@@ -29,8 +29,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 type JWKSHandlerTestSuite struct {
@@ -89,11 +87,11 @@ func (s *JWKSHandlerTestSuite) TestHandleJWKSRequest_ClientError() {
 	req := httptest.NewRequest(http.MethodGet, "/oauth2/jwks", nil)
 	rr := httptest.NewRecorder()
 
-	svcErr := &serviceerror.ServiceError{
-		Type:             serviceerror.ClientErrorType,
+	svcErr := &tidcommon.ServiceError{
+		Type:             tidcommon.ClientErrorType,
 		Code:             "invalid_request",
-		Error:            core.I18nMessage{Key: "error.test.invalid_request", DefaultValue: "invalid_request"},
-		ErrorDescription: core.I18nMessage{Key: "error.test.invalid_request", DefaultValue: "Invalid request"},
+		Error:            tidcommon.I18nMessage{Key: "error.test.invalid_request", DefaultValue: "invalid_request"},
+		ErrorDescription: tidcommon.I18nMessage{Key: "error.test.invalid_request", DefaultValue: "Invalid request"},
 	}
 	s.mockService.On("GetJWKS", mock.Anything).Return(nil, svcErr)
 
@@ -108,7 +106,7 @@ func (s *JWKSHandlerTestSuite) TestHandleJWKSRequest_ServiceError() {
 	req := httptest.NewRequest(http.MethodGet, "/oauth2/jwks", nil)
 	rr := httptest.NewRecorder()
 
-	svcErr := serviceerror.CustomServiceError(serviceerror.InternalServerError, core.I18nMessage{
+	svcErr := tidcommon.CustomServiceError(tidcommon.InternalServerError, tidcommon.I18nMessage{
 		Key:          "error.test.failed_get_jwks",
 		DefaultValue: "Failed to get JWKS",
 	})

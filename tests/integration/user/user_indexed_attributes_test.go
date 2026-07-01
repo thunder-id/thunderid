@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -26,8 +26,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -52,14 +52,14 @@ var (
 				"email": map[string]interface{}{
 					"type": "string",
 				},
-				"mobileNumber": map[string]interface{}{
+				"mobile_number": map[string]interface{}{
 					"type": "string",
 				},
 				"sub": map[string]interface{}{
 					"type": "string",
 				},
 				"password": map[string]interface{}{
-					"type": "string",
+					"type":       "string",
 					"credential": true,
 				},
 			},
@@ -77,7 +77,7 @@ var (
 					"type": "string",
 				},
 				"password": map[string]interface{}{
-					"type": "string",
+					"type":       "string",
 					"credential": true,
 				},
 			},
@@ -92,7 +92,7 @@ var (
 					"type": "string",
 				},
 				"password": map[string]interface{}{
-					"type": "string",
+					"type":       "string",
 					"credential": true,
 				},
 			},
@@ -120,7 +120,7 @@ var (
 					"items": map[string]interface{}{"type": "string"},
 				},
 				"password": map[string]interface{}{
-					"type": "string",
+					"type":       "string",
 					"credential": true,
 				},
 			},
@@ -186,20 +186,20 @@ func (suite *IndexedAttributesTestSuite) TearDownSuite() {
 
 func (suite *IndexedAttributesTestSuite) TestCreateUserWithAllIndexedAttributes() {
 	attributes := map[string]interface{}{
-		"username":     "indexed_user1",
-		"email":        "indexed1@example.com",
-		"mobileNumber": "+1234567890",
-		"sub":          "user-sub-123",
-		"password":     "SecurePass123!",
+		"username":      "indexed_user1",
+		"email":         "indexed1@example.com",
+		"mobile_number": "+1234567890",
+		"sub":           "user-sub-123",
+		"password":      "SecurePass123!",
 	}
 
 	attributesJSON, err := json.Marshal(attributes)
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:             "all_indexed",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(attributesJSON),
+		Type:       "all_indexed",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
 	}
 
 	userID, err := testutils.CreateUser(user)
@@ -232,9 +232,9 @@ func (suite *IndexedAttributesTestSuite) TestCreateUserWithPartialIndexedAttribu
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:             "partial_indexed",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(attributesJSON),
+		Type:       "partial_indexed",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
 	}
 
 	userID, err := testutils.CreateUser(user)
@@ -265,9 +265,9 @@ func (suite *IndexedAttributesTestSuite) TestCreateUserWithNoIndexedAttributes()
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:             "no_indexed",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(attributesJSON),
+		Type:       "no_indexed",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
 	}
 
 	userID, err := testutils.CreateUser(user)
@@ -296,9 +296,9 @@ func (suite *IndexedAttributesTestSuite) TestCreateUserWithComplexTypes() {
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:             "mixed_types",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(attributesJSON),
+		Type:       "mixed_types",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
 	}
 
 	userID, err := testutils.CreateUser(user)
@@ -339,9 +339,9 @@ func (suite *IndexedAttributesTestSuite) TestUpdateUserAddIndexedAttribute() {
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:             "partial_indexed",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(attributesJSON),
+		Type:       "partial_indexed",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
 	}
 
 	userID, err := testutils.CreateUser(user)
@@ -366,9 +366,9 @@ func (suite *IndexedAttributesTestSuite) TestUpdateUserAddIndexedAttribute() {
 	suite.Require().NoError(err)
 
 	updatedUser := testutils.User{
-		Type:             "partial_indexed",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(updatedAttrsJSON),
+		Type:       "partial_indexed",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(updatedAttrsJSON),
 	}
 
 	err = suite.updateUser(userID, updatedUser)
@@ -397,9 +397,9 @@ func (suite *IndexedAttributesTestSuite) TestUpdateUserModifyIndexedAttributeVal
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:             "partial_indexed",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(attributesJSON),
+		Type:       "partial_indexed",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
 	}
 
 	userID, err := testutils.CreateUser(user)
@@ -423,9 +423,9 @@ func (suite *IndexedAttributesTestSuite) TestUpdateUserModifyIndexedAttributeVal
 	suite.Require().NoError(err)
 
 	updatedUser := testutils.User{
-		Type:             "partial_indexed",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(updatedAttrsJSON),
+		Type:       "partial_indexed",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(updatedAttrsJSON),
 	}
 
 	err = suite.updateUser(userID, updatedUser)
@@ -442,22 +442,22 @@ func (suite *IndexedAttributesTestSuite) TestUpdateUserModifyIndexedAttributeVal
 }
 
 func (suite *IndexedAttributesTestSuite) TestUpdateUserRemoveIndexedAttribute() {
-	// Create user with username, email, and mobileNumber
+	// Create user with username, email, and mobile_number
 	attributes := map[string]interface{}{
-		"username":     "update_user3",
-		"email":        "charlie@example.com",
-		"mobileNumber": "+9876543210",
-		"sub":          "sub-charlie",
-		"password":     "Pass123!",
+		"username":      "update_user3",
+		"email":         "charlie@example.com",
+		"mobile_number": "+9876543210",
+		"sub":           "sub-charlie",
+		"password":      "Pass123!",
 	}
 
 	attributesJSON, err := json.Marshal(attributes)
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:             "all_indexed",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(attributesJSON),
+		Type:       "all_indexed",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
 	}
 
 	userID, err := testutils.CreateUser(user)
@@ -470,7 +470,7 @@ func (suite *IndexedAttributesTestSuite) TestUpdateUserRemoveIndexedAttribute() 
 		}
 	}()
 
-	// Update user removing mobileNumber
+	// Update user removing mobile_number
 	updatedAttributes := map[string]interface{}{
 		"username": "update_user3",
 		"email":    "charlie@example.com",
@@ -482,15 +482,15 @@ func (suite *IndexedAttributesTestSuite) TestUpdateUserRemoveIndexedAttribute() 
 	suite.Require().NoError(err)
 
 	updatedUser := testutils.User{
-		Type:             "all_indexed",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(updatedAttrsJSON),
+		Type:       "all_indexed",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(updatedAttrsJSON),
 	}
 
 	err = suite.updateUser(userID, updatedUser)
 	suite.Require().NoError(err, "Failed to update user with removed indexed attribute")
 
-	// Verify update - mobileNumber should be gone
+	// Verify update - mobile_number should be gone
 	retrievedUser, err := suite.getUser(userID)
 	suite.Require().NoError(err)
 
@@ -498,8 +498,8 @@ func (suite *IndexedAttributesTestSuite) TestUpdateUserRemoveIndexedAttribute() 
 	err = json.Unmarshal(retrievedUser.Attributes, &retrievedAttrs)
 	suite.Require().NoError(err)
 	suite.Equal("charlie@example.com", retrievedAttrs["email"])
-	_, hasMobileNumber := retrievedAttrs["mobileNumber"]
-	suite.False(hasMobileNumber, "mobileNumber should be removed")
+	_, hasMobileNumber := retrievedAttrs["mobile_number"]
+	suite.False(hasMobileNumber, "mobile_number should be removed")
 }
 
 // Test Suite 3: Authentication with Indexed Attributes
@@ -516,9 +516,9 @@ func (suite *IndexedAttributesTestSuite) TestAuthenticateWithSingleIndexedAttrib
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:             "partial_indexed",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(attributesJSON),
+		Type:       "partial_indexed",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
 	}
 
 	userID, err := testutils.CreateUser(user)
@@ -560,9 +560,9 @@ func (suite *IndexedAttributesTestSuite) TestAuthenticateWithSingleIndexedAttrib
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:             "partial_indexed",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(attributesJSON),
+		Type:       "partial_indexed",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
 	}
 
 	userID, err := testutils.CreateUser(user)
@@ -594,19 +594,19 @@ func (suite *IndexedAttributesTestSuite) TestAuthenticateWithSingleIndexedAttrib
 func (suite *IndexedAttributesTestSuite) TestAuthenticateWithSingleIndexedAttributeMobileNumber() {
 	// Create user with mobile number
 	attributes := map[string]interface{}{
-		"username":     "auth_user2",
-		"email":        "auth2@test.com",
-		"mobileNumber": "+1111111111",
-		"password":     "TestPass123!",
+		"username":      "auth_user2",
+		"email":         "auth2@test.com",
+		"mobile_number": "+1111111111",
+		"password":      "TestPass123!",
 	}
 
 	attributesJSON, err := json.Marshal(attributes)
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:             "all_indexed",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(attributesJSON),
+		Type:       "all_indexed",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
 	}
 
 	userID, err := testutils.CreateUser(user)
@@ -622,7 +622,7 @@ func (suite *IndexedAttributesTestSuite) TestAuthenticateWithSingleIndexedAttrib
 	// Authenticate using mobile number
 	authRequest := map[string]interface{}{
 		"identifiers": map[string]interface{}{
-			"mobileNumber": "+1111111111",
+			"mobile_number": "+1111111111",
 		},
 		"credentials": map[string]interface{}{
 			"password": "TestPass123!",
@@ -638,20 +638,20 @@ func (suite *IndexedAttributesTestSuite) TestAuthenticateWithSingleIndexedAttrib
 func (suite *IndexedAttributesTestSuite) TestAuthenticateWithMultipleIndexedAttributes() {
 	// Create user with all indexed attributes
 	attributes := map[string]interface{}{
-		"username":     "auth_user3",
-		"email":        "auth3@test.com",
-		"mobileNumber": "+2222222222",
-		"sub":          "sub-auth3",
-		"password":     "TestPass123!",
+		"username":      "auth_user3",
+		"email":         "auth3@test.com",
+		"mobile_number": "+2222222222",
+		"sub":           "sub-auth3",
+		"password":      "TestPass123!",
 	}
 
 	attributesJSON, err := json.Marshal(attributes)
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:             "all_indexed",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(attributesJSON),
+		Type:       "all_indexed",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
 	}
 
 	userID, err := testutils.CreateUser(user)
@@ -667,10 +667,10 @@ func (suite *IndexedAttributesTestSuite) TestAuthenticateWithMultipleIndexedAttr
 	// Authenticate using all indexed attributes
 	authRequest := map[string]interface{}{
 		"identifiers": map[string]interface{}{
-			"username":     "auth_user3",
-			"email":        "auth3@test.com",
-			"mobileNumber": "+2222222222",
-			"sub":          "sub-auth3",
+			"username":      "auth_user3",
+			"email":         "auth3@test.com",
+			"mobile_number": "+2222222222",
+			"sub":           "sub-auth3",
 		},
 		"credentials": map[string]interface{}{
 			"password": "TestPass123!",
@@ -696,9 +696,9 @@ func (suite *IndexedAttributesTestSuite) TestAuthenticateWithMixedIndexedAndNonI
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:             "partial_indexed",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(attributesJSON),
+		Type:       "partial_indexed",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
 	}
 
 	userID, err := testutils.CreateUser(user)
@@ -740,9 +740,9 @@ func (suite *IndexedAttributesTestSuite) TestAuthenticateWithOnlyNonIndexedAttri
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:             "no_indexed",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(attributesJSON),
+		Type:       "no_indexed",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
 	}
 
 	userID, err := testutils.CreateUser(user)
@@ -775,20 +775,20 @@ func (suite *IndexedAttributesTestSuite) TestAuthenticateWithOnlyNonIndexedAttri
 func (suite *IndexedAttributesTestSuite) TestAuthenticateWithDifferentIndexedAttributeVariations() {
 	// Create user with all indexed attributes
 	attributes := map[string]interface{}{
-		"username":     "auth_user_variations",
-		"email":        "auth_variations@test.com",
-		"mobileNumber": "+3333333333",
-		"sub":          "sub-variations",
-		"password":     "TestPass123!",
+		"username":      "auth_user_variations",
+		"email":         "auth_variations@test.com",
+		"mobile_number": "+3333333333",
+		"sub":           "sub-variations",
+		"password":      "TestPass123!",
 	}
 
 	attributesJSON, err := json.Marshal(attributes)
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:             "all_indexed",
-		OUID:             suite.ouID,
-		Attributes:       json.RawMessage(attributesJSON),
+		Type:       "all_indexed",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
 	}
 
 	userID, err := testutils.CreateUser(user)
@@ -831,7 +831,7 @@ func (suite *IndexedAttributesTestSuite) TestAuthenticateWithDifferentIndexedAtt
 			name: "MobileNumber only",
 			authRequest: map[string]interface{}{
 				"identifiers": map[string]interface{}{
-					"mobileNumber": "+3333333333",
+					"mobile_number": "+3333333333",
 				},
 				"credentials": map[string]interface{}{
 					"password": "TestPass123!",

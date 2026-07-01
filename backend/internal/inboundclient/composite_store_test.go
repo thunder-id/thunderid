@@ -27,6 +27,7 @@ import (
 
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type CompositeStoreTestSuite struct {
@@ -117,7 +118,7 @@ func (suite *CompositeStoreTestSuite) TestGetInboundClientByEntityID_NotFound() 
 // GetOAuthProfileByEntityID — DB has it.
 func (suite *CompositeStoreTestSuite) TestGetOAuthProfileByEntityID_FromDB() {
 	ctx := context.Background()
-	want := &inboundmodel.OAuthProfile{GrantTypes: []string{"authorization_code"}}
+	want := &providers.OAuthProfile{GrantTypes: []string{"authorization_code"}}
 	suite.dbMock.EXPECT().GetOAuthProfileByEntityID(mock.Anything, "db1").Return(want, nil)
 
 	got, err := suite.composite.GetOAuthProfileByEntityID(ctx, "db1")
@@ -130,7 +131,7 @@ func (suite *CompositeStoreTestSuite) TestGetOAuthProfileByEntityID_FallsBackToF
 	ctx := context.Background()
 	suite.dbMock.EXPECT().GetOAuthProfileByEntityID(mock.Anything, "f1").Return(nil, ErrInboundClientNotFound)
 
-	profileData := inboundmodel.OAuthProfile{GrantTypes: []string{"authorization_code"}}
+	profileData := providers.OAuthProfile{GrantTypes: []string{"authorization_code"}}
 	suite.Require().NoError(suite.fileStore.CreateInboundClient(ctx, inboundmodel.InboundClient{
 		ID:         "f1",
 		Properties: map[string]interface{}{PropOAuthProfile: profileData},
@@ -154,7 +155,7 @@ func (suite *CompositeStoreTestSuite) TestCreateInboundClient_DelegatesToDB() {
 // CreateOAuthProfile delegates to DB store.
 func (suite *CompositeStoreTestSuite) TestCreateOAuthProfile_DelegatesToDB() {
 	ctx := context.Background()
-	p := &inboundmodel.OAuthProfile{}
+	p := &providers.OAuthProfile{}
 	suite.dbMock.EXPECT().CreateOAuthProfile(mock.Anything, "e1", p).Return(nil)
 
 	err := suite.composite.CreateOAuthProfile(ctx, "e1", p)
@@ -174,7 +175,7 @@ func (suite *CompositeStoreTestSuite) TestUpdateInboundClient_DelegatesToDB() {
 // UpdateOAuthProfile delegates to DB store.
 func (suite *CompositeStoreTestSuite) TestUpdateOAuthProfile_DelegatesToDB() {
 	ctx := context.Background()
-	p := &inboundmodel.OAuthProfile{}
+	p := &providers.OAuthProfile{}
 	suite.dbMock.EXPECT().UpdateOAuthProfile(mock.Anything, "e1", p).Return(nil)
 
 	err := suite.composite.UpdateOAuthProfile(ctx, "e1", p)

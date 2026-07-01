@@ -3,7 +3,6 @@ packages:
   - frontend/apps/*
   - frontend/packages/*
   - docs
-  - sdks/**
   - samples/apps/**
   - tools/*
   - tests/e2e
@@ -11,6 +10,7 @@ packages:
 strictPeerDependencies: false
 autoInstallPeers: true
 enablePrePostScripts: true
+verifyDepsBeforeRun: false
 
 allowBuilds:
   '@parcel/watcher': false
@@ -19,8 +19,6 @@ allowBuilds:
   core-js-pure: false
   # JUSTIFICATION: The `esbuild` package is not directly and might be coming from a transitive dependency. Not required to be built as part of the workspace.
   esbuild: false
-  nx: true
-  protobufjs: false
   # JUSTIFICATION: The `sharp` package is a native module that requires platform-specific binaries. It is not suitable for inclusion in the workspace as it may cause issues during installation and usage across different environments.
   sharp: true
   unrs-resolver: false
@@ -28,6 +26,7 @@ allowBuilds:
 
 catalog:
   '@axe-core/playwright': 4.3.0
+  '@docsearch/docusaurus-adapter': ^4.6.3
   '@codecov/vite-plugin': 2.0.1
   '@hookform/resolvers': 5.2.2
   '@monaco-editor/react': 4.7.0
@@ -37,6 +36,8 @@ catalog:
   '@testing-library/jest-dom': 6.9.1
   '@testing-library/react': 16.3.0
   '@testing-library/user-event': 14.6.1
+  '@thunderid/react': 0.3.4
+  '@thunderid/react-router': 0.2.3
   '@types/lodash-es': 4.17.12
   '@types/node': 24.7.2
   '@types/react': 19.2.14
@@ -51,14 +52,13 @@ catalog:
   babel-plugin-react-compiler: 19.1.0-rc.3
   clsx: 2.1.1
   dayjs: 1.11.18
-  dompurify: 3.4.9
+  dompurify: 3.4.11
   eslint: 9.39.4
   globals: 16.4.0
   i18next: 25.6.0
   jsdom: 27.0.1
   lodash-es: 4.18.1
   lucide-react: 0.545.0
-  nx: 22.7.5
   playwright: 1.60.0
   prettier: 3.6.2
   react: 19.2.3
@@ -70,29 +70,13 @@ catalog:
   rolldown: 1.0.0-beta.45
   rollup-plugin-visualizer: 6.0.5
   tslib: 2.8.1
+  turbo: 2.9.18
   typescript: 5.9.3
   typescript-eslint: 8.57.2
   vite: 8.0.16
   vite-plugin-svgr: 5.2.0
   vitest: 4.1.8
   zod: 4.3.6
-
-  # SDKS
-  buffer: 6.0.3
-  base64url: 3.0.1
-  jose: 5.2.0
-  core-js: 3.42.0
-  crypto-browserify: 3.12.1
-  fast-sha256: 1.3.0
-  process: 0.11.10
-  randombytes: 2.1.0
-  stream-browserify: 3.0.0
-  '@emotion/css': 11.13.5
-  '@floating-ui/react': 0.27.12
-  cross-fetch: 4.1.0
-  memory-cache: 0.2.0
-  secure-random-bytes: 5.0.1
-  uuid: 11.1.1
 
 overrides:
   # JUSTIFICATION: Fixes GHSA-w7jw-789q-3m8p by overriding to fix docusaurus version in docs workspace only.
@@ -110,8 +94,7 @@ overrides:
   vite@>=8.0.0 <=8.0.15: '>=8.0.16'
   vue: 3.5.34
   defu: 6.1.5
-  axios: 1.16.0
-  dompurify: 3.4.9
+  dompurify: '>=3.4.11'
   follow-redirects: 1.16.0
   unhead: 2.1.13
   minimatch@>=5.0.0 <5.1.8: '>=5.1.8'
@@ -126,7 +109,6 @@ overrides:
   svgo: 3.3.3
   brace-expansion@>=4.0.0 <5.0.5: 5.0.5
   lodash: 4.18.1
-  protobufjs: 7.6.0
   js-yaml@>=4.0.0 <=4.1.1: 4.2.0
   # TODO: Remove once `nuxt` bumps `devalue` to 5.8.1 or later.
   devalue: 5.8.1
@@ -142,13 +124,16 @@ overrides:
   # JUSTIFICATION: Fixes GHSA-9cwx-2883-4wfx — launch-editor NTLMv2 hash disclosure via UNC path handling on Windows (transitive via vite and other tooling).
   launch-editor: '>=2.14.1'
   # JUSTIFICATION: Fixes GHSA-86vr-4h7v-f9x9 — @babel/core arbitrary file read via sourceMappingURL comment.
-  '@babel/core': '>=7.29.6'
+  # Bounded to <8 so it stays on the patched 7.x line: @docusaurus/core and @vitest/coverage-istanbul
+  # require Babel 7 and break on the 8.x ESM export changes.
+  '@babel/core': '>=7.29.6 <8'
   # JUSTIFICATION: Transitive dep via docusaurus. Fixes CVE-2026-48038 (GHSA-q7cg-457f-vx79) — uncaught RangeError DoS in joi on deeply nested input through recursive link() schemas.
   joi: '>=18.2.1'
   # JUSTIFICATION: Fixes GHSA-gv7w-rqvm-qjhr — esbuild Deno module downloads native binaries without integrity verification, enabling RCE via NPM_CONFIG_REGISTRY.
   esbuild: '>=0.28.1'
-  # JUSTIFICATION: Transitive dep via axios/nx. Fixes GHSA-hmw2-7cc7-3qxx — CRLF injection in form-data via unescaped field names (vulnerable <4.0.6).
-  form-data: '>=4.0.6'
+  # JUSTIFICATION: Fixes GHSA-vxpw-j846-p89q (high DoS), GHSA-p88m-4jfj-68fv (HTTP header injection),
+  # GHSA-35p6-xmwp-9g52 and GHSA-g8m3-5g58-fq7m — transitive via @codecov/vite-plugin chain.
+  undici: '>=6.27.0'
 
 packageExtensions:
   '@hookform/resolvers':
@@ -169,3 +154,7 @@ auditConfig:
 
 minimumReleaseAgeExclude:
   - tmp@0.2.7
+  - '@thunderid/browser@0.3.2'
+  - '@thunderid/javascript@0.3.7'
+  - '@thunderid/react-router@0.2.3'
+  - '@thunderid/react@0.3.4'

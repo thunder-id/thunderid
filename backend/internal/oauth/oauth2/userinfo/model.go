@@ -18,13 +18,13 @@
 
 package userinfo
 
-import inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+import "github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 // UserInfoResponse represents the structured response returned by the
 // UserInfo service. It supports JSON, JWS, JWE, and NESTED_JWT response types.
 // Only one of JSONBody or JWTBody will be populated based on Type.
 type UserInfoResponse struct {
-	Type     inboundmodel.UserInfoResponseType
+	Type     providers.UserInfoResponseType
 	JSONBody map[string]interface{}
 	JWTBody  string
 }

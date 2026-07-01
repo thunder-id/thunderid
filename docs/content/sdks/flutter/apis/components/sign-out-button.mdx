@@ -1,0 +1,55 @@
+---
+title: SignOutButton
+description: Pre-styled sign-out button widget for the {{ProductName}} Flutter SDK
+---
+
+# `SignOutButton`
+
+`SignOutButton` is a pre-styled `OutlinedButton` widget that calls `signOut()` on tap and notifies the parent `ThunderIDProvider` to refresh auth state.
+
+```dart
+import 'package:thunderid_flutter/thunderid_flutter.dart';
+
+SignOutButton(
+  onSignOutComplete: () {
+    // Optional: navigate or show a confirmation after sign-out
+  },
+)
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `onSignOutComplete` | `VoidCallback?` | | Called after sign-out completes and the provider state is refreshed. |
+| `label` | `String?` | | Override the button label. Defaults to the localized `"Sign Out"` string. |
+| `style` | `ButtonStyle?` | | Override the `OutlinedButton` style. |
+
+## `BaseSignOutButton`
+
+`BaseSignOutButton` provides the sign-out action and completion callback while giving full control over the button UI.
+
+```dart
+BaseSignOutButton(
+  onSignOutComplete: () => Navigator.of(context).popUntil((r) => r.isFirst),
+  builder: (context, signOut, isLoading) {
+    return FilledButton.tonal(
+      onPressed: isLoading ? null : signOut,
+      child: isLoading
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Text('Log Out'),
+    );
+  },
+)
+```
+
+### `BaseSignOutButton` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `onSignOutComplete` | `VoidCallback?` | | Called after sign-out is complete. |
+| `builder` | `Widget Function(BuildContext, VoidCallback, bool)` | ✅ | Builder receiving the `signOut` callback and `isLoading` flag. |

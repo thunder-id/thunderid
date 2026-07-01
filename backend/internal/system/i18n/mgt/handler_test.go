@@ -26,10 +26,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 type I18nHandlerTestSuite struct {
@@ -66,7 +67,7 @@ func (suite *I18nHandlerTestSuite) TestHandleListLanguages_Success() {
 }
 
 func (suite *I18nHandlerTestSuite) TestHandleListLanguages_ServiceError() {
-	suite.mockService.On("ListLanguages", mock.Anything).Return(nil, &serviceerror.InternalServerError)
+	suite.mockService.On("ListLanguages", mock.Anything).Return(nil, &tidcommon.InternalServerError)
 
 	req := httptest.NewRequest(http.MethodGet, "/i18n/languages", nil)
 	w := httptest.NewRecorder()
@@ -77,7 +78,7 @@ func (suite *I18nHandlerTestSuite) TestHandleListLanguages_ServiceError() {
 }
 
 func (suite *I18nHandlerTestSuite) TestHandleResolveTranslationsByLanguage_Success() {
-	expectedResp := &LanguageTranslationsResponse{
+	expectedResp := &providers.LanguageTranslationsResponse{
 		Language:     "en-US",
 		TotalResults: 10,
 		Translations: map[string]map[string]string{
@@ -94,7 +95,7 @@ func (suite *I18nHandlerTestSuite) TestHandleResolveTranslationsByLanguage_Succe
 	suite.handler.HandleResolveTranslationsByLanguage(w, req)
 
 	suite.Equal(http.StatusOK, w.Code)
-	var response LanguageTranslationsResponse
+	var response providers.LanguageTranslationsResponse
 	err := json.NewDecoder(w.Body).Decode(&response)
 	suite.NoError(err)
 	suite.Equal("en-US", response.Language)
@@ -121,7 +122,7 @@ func (suite *I18nHandlerTestSuite) TestHandleSetOverrideTranslationsByLanguage_S
 		Translations: inputTranslations,
 	}
 
-	expectedResp := &LanguageTranslationsResponse{
+	expectedResp := &providers.LanguageTranslationsResponse{
 		Language:     "en-US",
 		TotalResults: 1,
 		Translations: inputTranslations,
@@ -230,7 +231,7 @@ func (suite *I18nHandlerTestSuite) TestHandleSetOverrideTranslationsByLanguage_S
 	}
 
 	suite.mockService.On("SetTranslationOverrides", mock.Anything, "en-US", inputTranslations).
-		Return(nil, &serviceerror.InternalServerError)
+		Return(nil, &tidcommon.InternalServerError)
 
 	body, _ := json.Marshal(request)
 	req := httptest.NewRequest(http.MethodPost, "/i18n/languages/en-US/translations", bytes.NewBuffer(body))
@@ -257,7 +258,7 @@ func (suite *I18nHandlerTestSuite) TestHandleClearOverrideTranslationsByLanguage
 
 func (suite *I18nHandlerTestSuite) TestHandleResolveTranslation_ServiceError() {
 	suite.mockService.On("ResolveTranslationsForKey", mock.Anything, "en-US", "ns", "key").
-		Return(nil, &serviceerror.InternalServerError)
+		Return(nil, &tidcommon.InternalServerError)
 
 	req := httptest.NewRequest(http.MethodGet, "/i18n/languages/en-US/translations/ns/ns/keys/key/resolve", nil)
 	req.SetPathValue("language", "en-US")
@@ -287,7 +288,7 @@ func (suite *I18nHandlerTestSuite) TestHandleSetOverrideTranslation_ServiceError
 	request := SetTranslationRequest{Value: "new val"}
 
 	suite.mockService.On("SetTranslationOverrideForKey", mock.Anything, "en-US", "ns", "key", "new val").
-		Return(nil, &serviceerror.InternalServerError)
+		Return(nil, &tidcommon.InternalServerError)
 
 	body, _ := json.Marshal(request)
 	req := httptest.NewRequest(http.MethodPost, "/i18n/languages/en-US/translations/ns/ns/keys/key",
@@ -319,8 +320,8 @@ func (suite *I18nHandlerTestSuite) TestHandleClearOverrideTranslation_ServiceErr
 
 func (suite *I18nHandlerTestSuite) TestHandleError_NotFound() {
 	// Testing manual error construction/mapping in handleError
-	svcErr := &serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	svcErr := &tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "I18N-1006", // Assuming this is TranslationNotFound
 	}
 

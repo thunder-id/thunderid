@@ -22,6 +22,8 @@ import (
 	"sync"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -41,11 +43,11 @@ func TestAuthenticationInitTestSuite(t *testing.T) {
 
 func initializeTestRuntime(root string) error {
 	testConfig := &config.Config{
-		Server: config.ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Hostname: "localhost",
 			Port:     8090,
 		},
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer: "test-issuer",
 		},
 	}

@@ -69,7 +69,7 @@ The Docker image bakes in default configuration files. You can override them wit
 
 | File in container | Purpose |
 |---|---|
-| `/opt/thunderid/deployment.yaml` | Backend server — bind address, public URL, CORS, Gate client redirect |
+| `/opt/thunderid/deployment.yaml` | Backend server — bind address, public URL, Gate client redirect |
 | `/opt/thunderid/apps/console/config.js` | Management Console frontend |
 | `/opt/thunderid/apps/gate/config.js` | Gate login app frontend |
 
@@ -99,16 +99,21 @@ gate_client:
   scheme: "https"
   path: "/gate"
 
-cors:
-  allowed_origins:
-    - "https://<your-host>:<your-port>"  # e.g. https://thunderid.local:8090
-
 passkey:
   allowed_origins:
     - "https://<your-host>:<your-port>"  # e.g. https://thunderid.local:8090
 
 # Other configurations...
 ```
+
+> **CORS allowed origins** live in the server-config `cors` section, not in `deployment.yaml`. Add them to `config/resources/server_configs/cors.yaml`, or update them at runtime with `PUT /server-config/cors`:
+>
+> ```yaml
+> name: cors
+> value:
+>   allowedOrigins:
+>     - "https://<your-host>:<your-port>"  # e.g. https://thunderid.local:8090
+> ```
 
 #### `console-config.js`
 
@@ -229,7 +234,7 @@ Your `deployment.yaml` contains an unrecognized field. Ensure the config schema 
 Make sure all three files are mounted correctly. A hard refresh (`Ctrl+Shift+R`) may be needed to clear the browser cache.
 
 **CORS errors in the browser**
-Ensure your full origin (host + port) is listed under `cors.allowed_origins` in `deployment.yaml`.
+Ensure your full origin (host + port) is listed in the server-config `cors` section. Add it to `config/resources/server_configs/cors.yaml`, or apply it at runtime with `PUT /server-config/cors`.
 
 **Connection refused on the new port**
 Ensure the `ports` mapping in `docker-compose.yml` matches the port set in `deployment.yaml`.

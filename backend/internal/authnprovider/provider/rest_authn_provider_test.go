@@ -25,11 +25,16 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/tests/mocks/httpmock"
 )
 
@@ -49,6 +54,34 @@ func (suite *RestAuthnProviderTestSuite) setupMockClient() *httpmock.HTTPClientI
 	return client
 }
 
+func (suite *RestAuthnProviderTestSuite) initRuntime(rest config.RestConfig) {
+	cfg := &config.Config{
+		AuthnProvider: config.AuthnProviderConfig{Type: "rest", Rest: rest},
+	}
+	config.ResetServerRuntime()
+	suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", cfg))
+	suite.T().Cleanup(config.ResetServerRuntime)
+}
+
+func (suite *RestAuthnProviderTestSuite) TestInitializeRestAuthnProvider_DefaultCorrelationHeader() {
+	suite.initRuntime(config.RestConfig{BaseURL: "https://authn.example.com"})
+
+	provider := initializeRestAuthnProvider().(*restAuthnProvider)
+
+	suite.Equal(serverconst.CorrelationIDHeaderName, provider.correlationIDHeader)
+}
+
+func (suite *RestAuthnProviderTestSuite) TestInitializeRestAuthnProvider_ConfiguredCorrelationHeader() {
+	suite.initRuntime(config.RestConfig{
+		BaseURL:             "https://authn.example.com",
+		CorrelationIDHeader: "X-Trace-Token",
+	})
+
+	provider := initializeRestAuthnProvider().(*restAuthnProvider)
+
+	suite.Equal("X-Trace-Token", provider.correlationIDHeader)
+}
+
 func (suite *RestAuthnProviderTestSuite) TestAuthenticate_Success() {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		suite.Equal("/authenticate", r.URL.Path)
@@ -60,8 +93,8 @@ func (suite *RestAuthnProviderTestSuite) TestAuthenticate_Success() {
 		suite.Equal("user", req.Identifiers["username"])
 		suite.Equal("pass", req.Credentials["password"])
 
-		resp := authnprovidercm.AuthnResult{
-			EntityReference: &authnprovidercm.EntityReference{
+		resp := providers.AuthnResult{
+			EntityReference: &providers.EntityReference{
 				EntityID:       "user123",
 				EntityCategory: "user",
 				EntityType:     "customer",
@@ -73,7 +106,7 @@ func (suite *RestAuthnProviderTestSuite) TestAuthenticate_Success() {
 	}))
 	defer ts.Close()
 
-	provider := newRestAuthnProvider(ts.URL, "apikey123", suite.setupMockClient())
+	provider := newRestAuthnProvider(ts.URL, "apikey123", "X-Correlation-ID", suite.setupMockClient())
 	identifiers := map[string]interface{}{"username": "user"}
 	credentials := map[string]interface{}{"password": "pass"}
 
@@ -83,6 +116,46 @@ func (suite *RestAuthnProviderTestSuite) TestAuthenticate_Success() {
 	suite.NotNil(result.EntityReference)
 	suite.Equal("user123", result.EntityReference.EntityID)
 	suite.Equal("customer", result.EntityReference.EntityType)
+}
+
+func (suite *RestAuthnProviderTestSuite) TestAuthenticate_PropagatesCorrelationID() {
+	var gotCorrelationID string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCorrelationID = r.Header.Get("X-Correlation-ID")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(providers.AuthnResult{})
+	}))
+	defer ts.Close()
+
+	provider := newRestAuthnProvider(ts.URL, "", "X-Correlation-ID", suite.setupMockClient())
+	ctx := sysContext.WithTraceID(context.Background(), "trace-xyz")
+
+	_, err := provider.Authenticate(ctx, map[string]interface{}{"username": "user"},
+		map[string]interface{}{"password": "pass"}, nil)
+
+	suite.Nil(err)
+	suite.Equal("trace-xyz", gotCorrelationID)
+}
+
+func (suite *RestAuthnProviderTestSuite) TestAuthenticate_PropagatesConfiguredCorrelationIDHeader() {
+	var defaultHeader, customHeader string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defaultHeader = r.Header.Get("X-Correlation-ID")
+		customHeader = r.Header.Get("X-Trace-Token")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(providers.AuthnResult{})
+	}))
+	defer ts.Close()
+
+	provider := newRestAuthnProvider(ts.URL, "", "X-Trace-Token", suite.setupMockClient())
+	ctx := sysContext.WithTraceID(context.Background(), "trace-xyz")
+
+	_, err := provider.Authenticate(ctx, map[string]interface{}{"username": "user"},
+		map[string]interface{}{"password": "pass"}, nil)
+
+	suite.Nil(err)
+	suite.Equal("trace-xyz", customHeader)
+	suite.Empty(defaultHeader)
 }
 
 func (suite *RestAuthnProviderTestSuite) TestAuthenticate_Failure() {
@@ -95,7 +168,7 @@ func (suite *RestAuthnProviderTestSuite) TestAuthenticate_Failure() {
 	}))
 	defer ts.Close()
 
-	provider := newRestAuthnProvider(ts.URL, "", suite.setupMockClient())
+	provider := newRestAuthnProvider(ts.URL, "", "X-Correlation-ID", suite.setupMockClient())
 	result, err := provider.Authenticate(context.Background(), nil, nil, nil)
 
 	suite.Nil(result)
@@ -109,7 +182,7 @@ func (suite *RestAuthnProviderTestSuite) TestGetEntityReference_Success() {
 		suite.Equal(http.MethodPost, r.Method)
 		suite.Equal("apikey123", r.Header.Get("API-KEY"))
 
-		resp := authnprovidercm.EntityReference{
+		resp := providers.EntityReference{
 			EntityID:       "user123",
 			EntityCategory: "user",
 			EntityType:     "customer",
@@ -120,7 +193,7 @@ func (suite *RestAuthnProviderTestSuite) TestGetEntityReference_Success() {
 	}))
 	defer ts.Close()
 
-	provider := newRestAuthnProvider(ts.URL, "apikey123", suite.setupMockClient())
+	provider := newRestAuthnProvider(ts.URL, "apikey123", "X-Correlation-ID", suite.setupMockClient())
 	result, err := provider.GetEntityReference(context.Background(), "ref-token-123")
 
 	suite.Nil(err)
@@ -141,7 +214,7 @@ func (suite *RestAuthnProviderTestSuite) TestGetEntityReference_Failure() {
 	}))
 	defer ts.Close()
 
-	provider := newRestAuthnProvider(ts.URL, "", suite.setupMockClient())
+	provider := newRestAuthnProvider(ts.URL, "", "X-Correlation-ID", suite.setupMockClient())
 	result, err := provider.GetEntityReference(context.Background(), "invalid-token")
 
 	suite.Nil(result)
@@ -161,8 +234,8 @@ func (suite *RestAuthnProviderTestSuite) TestGetAttributes_Success() {
 		suite.Len(req.RequestedAttributes.Attributes, 1)
 		suite.Contains(req.RequestedAttributes.Attributes, "email")
 
-		resp := authnprovidercm.AttributesResponse{
-			Attributes: map[string]*authnprovidercm.AttributeResponse{
+		resp := providers.AttributesResponse{
+			Attributes: map[string]*providers.AttributeResponse{
 				"email": {Value: "test@example.com"},
 			},
 		}
@@ -171,9 +244,9 @@ func (suite *RestAuthnProviderTestSuite) TestGetAttributes_Success() {
 	}))
 	defer ts.Close()
 
-	provider := newRestAuthnProvider(ts.URL, "apikey123", suite.setupMockClient())
-	reqAttrs := &authnprovidercm.RequestedAttributes{
-		Attributes: map[string]*authnprovidercm.AttributeMetadataRequest{
+	provider := newRestAuthnProvider(ts.URL, "apikey123", "X-Correlation-ID", suite.setupMockClient())
+	reqAttrs := &providers.RequestedAttributes{
+		Attributes: map[string]*providers.AttributeMetadataRequest{
 			"email": nil,
 		},
 	}
@@ -193,7 +266,7 @@ func (suite *RestAuthnProviderTestSuite) TestGetAttributes_InvalidToken() {
 	}))
 	defer ts.Close()
 
-	provider := newRestAuthnProvider(ts.URL, "", suite.setupMockClient())
+	provider := newRestAuthnProvider(ts.URL, "", "X-Correlation-ID", suite.setupMockClient())
 	result, err := provider.GetAttributes(context.Background(), "invalid", nil, nil)
 
 	suite.Nil(result)
@@ -209,11 +282,11 @@ func (suite *RestAuthnProviderTestSuite) TestSystemError_Decoding() {
 	}))
 	defer ts.Close()
 
-	provider := newRestAuthnProvider(ts.URL, "", suite.setupMockClient())
+	provider := newRestAuthnProvider(ts.URL, "", "X-Correlation-ID", suite.setupMockClient())
 	result, err := provider.Authenticate(context.Background(), nil, nil, nil)
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
-	suite.Equal(serviceerror.ServerErrorType, err.Type)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.ServerErrorType, err.Type)
 }

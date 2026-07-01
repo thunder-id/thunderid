@@ -33,10 +33,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/otp"
 	"github.com/thunder-id/thunderid/internal/authn/passkey"
 	"github.com/thunder-id/thunderid/internal/authn/reactsdk"
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the authentication service and registers its routes.
@@ -45,7 +45,7 @@ func Initialize(
 	mcpServer *mcp.Server,
 	idpSvc idp.IDPServiceInterface,
 	jwtSvc jwt.JWTServiceInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 	authAssertGen assert.AuthAssertGeneratorInterface,
 	passkeySvc passkey.PasskeyServiceInterface,
 	otpSvc otp.OTPAuthnServiceInterface,
@@ -70,22 +70,22 @@ func Initialize(
 	common.RegisterAuthenticator(common.AuthenticatorMeta{
 		Name:          common.AuthenticatorOAuth,
 		Factors:       []common.AuthenticationFactor{common.FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeOAuth,
+		AssociatedIDP: providers.IDPTypeOAuth,
 	})
 	common.RegisterAuthenticator(common.AuthenticatorMeta{
 		Name:          common.AuthenticatorOIDC,
 		Factors:       []common.AuthenticationFactor{common.FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeOIDC,
+		AssociatedIDP: providers.IDPTypeOIDC,
 	})
 	common.RegisterAuthenticator(common.AuthenticatorMeta{
 		Name:          common.AuthenticatorGithub,
 		Factors:       []common.AuthenticationFactor{common.FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeGitHub,
+		AssociatedIDP: providers.IDPTypeGitHub,
 	})
 	common.RegisterAuthenticator(common.AuthenticatorMeta{
 		Name:          common.AuthenticatorGoogle,
 		Factors:       []common.AuthenticationFactor{common.FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeGoogle,
+		AssociatedIDP: providers.IDPTypeGoogle,
 	})
 	common.RegisterAuthenticator(common.AuthenticatorMeta{
 		Name:    common.AuthenticatorMagicLink,

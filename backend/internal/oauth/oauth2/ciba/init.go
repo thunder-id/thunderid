@@ -22,16 +22,14 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/thunder-id/thunderid/internal/actorprovider"
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the CIBA backchannel authentication handler, registers its routes,
@@ -40,11 +38,11 @@ import (
 func Initialize(
 	mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface,
-	actorProvider actorprovider.ActorProviderInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	actorProvider providers.ActorProvider,
+	authnProvider providers.AuthnProviderManager,
 	flowExecService flowexec.FlowExecServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
-	resourceService resource.ResourceServiceInterface,
+	resourceService providers.ResourceServerProvider,
 	cfg oauthconfig.Config,
 ) CIBAServiceInterface {
 	store := newCIBAStore(cfg)
@@ -59,8 +57,8 @@ func Initialize(
 func registerRoutes(
 	mux *http.ServeMux,
 	cibaHandler CIBAHandlerInterface,
-	actorProvider actorprovider.ActorProviderInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	actorProvider providers.ActorProvider,
+	authnProvider providers.AuthnProviderManager,
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 ) {

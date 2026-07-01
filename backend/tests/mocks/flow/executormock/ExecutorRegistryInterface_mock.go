@@ -6,7 +6,7 @@ package executormock
 
 import (
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewExecutorRegistryInterfaceMock creates a new instance of ExecutorRegistryInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -37,23 +37,23 @@ func (_m *ExecutorRegistryInterfaceMock) EXPECT() *ExecutorRegistryInterfaceMock
 }
 
 // GetExecutor provides a mock function for the type ExecutorRegistryInterfaceMock
-func (_mock *ExecutorRegistryInterfaceMock) GetExecutor(name string) (core.ExecutorInterface, error) {
+func (_mock *ExecutorRegistryInterfaceMock) GetExecutor(name string) (providers.Executor, error) {
 	ret := _mock.Called(name)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetExecutor")
 	}
 
-	var r0 core.ExecutorInterface
+	var r0 providers.Executor
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(string) (core.ExecutorInterface, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(string) (providers.Executor, error)); ok {
 		return returnFunc(name)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) core.ExecutorInterface); ok {
+	if returnFunc, ok := ret.Get(0).(func(string) providers.Executor); ok {
 		r0 = returnFunc(name)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(core.ExecutorInterface)
+			r0 = ret.Get(0).(providers.Executor)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(string) error); ok {
@@ -88,12 +88,12 @@ func (_c *ExecutorRegistryInterfaceMock_GetExecutor_Call) Run(run func(name stri
 	return _c
 }
 
-func (_c *ExecutorRegistryInterfaceMock_GetExecutor_Call) Return(executorInterface core.ExecutorInterface, err error) *ExecutorRegistryInterfaceMock_GetExecutor_Call {
-	_c.Call.Return(executorInterface, err)
+func (_c *ExecutorRegistryInterfaceMock_GetExecutor_Call) Return(executor providers.Executor, err error) *ExecutorRegistryInterfaceMock_GetExecutor_Call {
+	_c.Call.Return(executor, err)
 	return _c
 }
 
-func (_c *ExecutorRegistryInterfaceMock_GetExecutor_Call) RunAndReturn(run func(name string) (core.ExecutorInterface, error)) *ExecutorRegistryInterfaceMock_GetExecutor_Call {
+func (_c *ExecutorRegistryInterfaceMock_GetExecutor_Call) RunAndReturn(run func(name string) (providers.Executor, error)) *ExecutorRegistryInterfaceMock_GetExecutor_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -150,7 +150,7 @@ func (_c *ExecutorRegistryInterfaceMock_IsRegistered_Call) RunAndReturn(run func
 }
 
 // RegisterExecutor provides a mock function for the type ExecutorRegistryInterfaceMock
-func (_mock *ExecutorRegistryInterfaceMock) RegisterExecutor(name string, ex core.ExecutorInterface) {
+func (_mock *ExecutorRegistryInterfaceMock) RegisterExecutor(name string, ex providers.Executor) {
 	_mock.Called(name, ex)
 	return
 }
@@ -162,20 +162,20 @@ type ExecutorRegistryInterfaceMock_RegisterExecutor_Call struct {
 
 // RegisterExecutor is a helper method to define mock.On call
 //   - name string
-//   - ex core.ExecutorInterface
+//   - ex providers.Executor
 func (_e *ExecutorRegistryInterfaceMock_Expecter) RegisterExecutor(name interface{}, ex interface{}) *ExecutorRegistryInterfaceMock_RegisterExecutor_Call {
 	return &ExecutorRegistryInterfaceMock_RegisterExecutor_Call{Call: _e.mock.On("RegisterExecutor", name, ex)}
 }
 
-func (_c *ExecutorRegistryInterfaceMock_RegisterExecutor_Call) Run(run func(name string, ex core.ExecutorInterface)) *ExecutorRegistryInterfaceMock_RegisterExecutor_Call {
+func (_c *ExecutorRegistryInterfaceMock_RegisterExecutor_Call) Run(run func(name string, ex providers.Executor)) *ExecutorRegistryInterfaceMock_RegisterExecutor_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 string
 		if args[0] != nil {
 			arg0 = args[0].(string)
 		}
-		var arg1 core.ExecutorInterface
+		var arg1 providers.Executor
 		if args[1] != nil {
-			arg1 = args[1].(core.ExecutorInterface)
+			arg1 = args[1].(providers.Executor)
 		}
 		run(
 			arg0,
@@ -190,7 +190,7 @@ func (_c *ExecutorRegistryInterfaceMock_RegisterExecutor_Call) Return() *Executo
 	return _c
 }
 
-func (_c *ExecutorRegistryInterfaceMock_RegisterExecutor_Call) RunAndReturn(run func(name string, ex core.ExecutorInterface)) *ExecutorRegistryInterfaceMock_RegisterExecutor_Call {
+func (_c *ExecutorRegistryInterfaceMock_RegisterExecutor_Call) RunAndReturn(run func(name string, ex providers.Executor)) *ExecutorRegistryInterfaceMock_RegisterExecutor_Call {
 	_c.Run(run)
 	return _c
 }

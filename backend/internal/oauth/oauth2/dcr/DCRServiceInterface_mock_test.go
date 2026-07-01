@@ -8,7 +8,7 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewDCRServiceInterfaceMock creates a new instance of DCRServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -39,7 +39,7 @@ func (_m *DCRServiceInterfaceMock) EXPECT() *DCRServiceInterfaceMock_Expecter {
 }
 
 // RegisterClient provides a mock function for the type DCRServiceInterfaceMock
-func (_mock *DCRServiceInterfaceMock) RegisterClient(ctx context.Context, request *DCRRegistrationRequest) (*DCRRegistrationResponse, *serviceerror.ServiceError) {
+func (_mock *DCRServiceInterfaceMock) RegisterClient(ctx context.Context, request *DCRRegistrationRequest) (*DCRRegistrationResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, request)
 
 	if len(ret) == 0 {
@@ -47,8 +47,8 @@ func (_mock *DCRServiceInterfaceMock) RegisterClient(ctx context.Context, reques
 	}
 
 	var r0 *DCRRegistrationResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *DCRRegistrationRequest) (*DCRRegistrationResponse, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *DCRRegistrationRequest) (*DCRRegistrationResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, request)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, *DCRRegistrationRequest) *DCRRegistrationResponse); ok {
@@ -58,11 +58,11 @@ func (_mock *DCRServiceInterfaceMock) RegisterClient(ctx context.Context, reques
 			r0 = ret.Get(0).(*DCRRegistrationResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *DCRRegistrationRequest) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *DCRRegistrationRequest) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, request)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -98,12 +98,12 @@ func (_c *DCRServiceInterfaceMock_RegisterClient_Call) Run(run func(ctx context.
 	return _c
 }
 
-func (_c *DCRServiceInterfaceMock_RegisterClient_Call) Return(dCRRegistrationResponse *DCRRegistrationResponse, serviceError *serviceerror.ServiceError) *DCRServiceInterfaceMock_RegisterClient_Call {
+func (_c *DCRServiceInterfaceMock_RegisterClient_Call) Return(dCRRegistrationResponse *DCRRegistrationResponse, serviceError *common.ServiceError) *DCRServiceInterfaceMock_RegisterClient_Call {
 	_c.Call.Return(dCRRegistrationResponse, serviceError)
 	return _c
 }
 
-func (_c *DCRServiceInterfaceMock_RegisterClient_Call) RunAndReturn(run func(ctx context.Context, request *DCRRegistrationRequest) (*DCRRegistrationResponse, *serviceerror.ServiceError)) *DCRServiceInterfaceMock_RegisterClient_Call {
+func (_c *DCRServiceInterfaceMock_RegisterClient_Call) RunAndReturn(run func(ctx context.Context, request *DCRRegistrationRequest) (*DCRRegistrationResponse, *common.ServiceError)) *DCRServiceInterfaceMock_RegisterClient_Call {
 	_c.Call.Return(run)
 	return _c
 }

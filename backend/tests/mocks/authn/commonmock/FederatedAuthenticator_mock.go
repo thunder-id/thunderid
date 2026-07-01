@@ -9,7 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/authn/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	common0 "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewFederatedAuthenticatorMock creates a new instance of FederatedAuthenticatorMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -40,7 +40,7 @@ func (_m *FederatedAuthenticatorMock) EXPECT() *FederatedAuthenticatorMock_Expec
 }
 
 // Authenticate provides a mock function for the type FederatedAuthenticatorMock
-func (_mock *FederatedAuthenticatorMock) Authenticate(ctx context.Context, idpID string, code string) (*common.AuthnResult, *serviceerror.ServiceError) {
+func (_mock *FederatedAuthenticatorMock) Authenticate(ctx context.Context, idpID string, code string) (*common.AuthnResult, *common0.ServiceError) {
 	ret := _mock.Called(ctx, idpID, code)
 
 	if len(ret) == 0 {
@@ -48,8 +48,8 @@ func (_mock *FederatedAuthenticatorMock) Authenticate(ctx context.Context, idpID
 	}
 
 	var r0 *common.AuthnResult
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*common.AuthnResult, *serviceerror.ServiceError)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*common.AuthnResult, *common0.ServiceError)); ok {
 		return returnFunc(ctx, idpID, code)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *common.AuthnResult); ok {
@@ -59,11 +59,11 @@ func (_mock *FederatedAuthenticatorMock) Authenticate(ctx context.Context, idpID
 			r0 = ret.Get(0).(*common.AuthnResult)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx, idpID, code)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common0.ServiceError)
 		}
 	}
 	return r0, r1
@@ -105,12 +105,12 @@ func (_c *FederatedAuthenticatorMock_Authenticate_Call) Run(run func(ctx context
 	return _c
 }
 
-func (_c *FederatedAuthenticatorMock_Authenticate_Call) Return(authnResult *common.AuthnResult, serviceError *serviceerror.ServiceError) *FederatedAuthenticatorMock_Authenticate_Call {
+func (_c *FederatedAuthenticatorMock_Authenticate_Call) Return(authnResult *common.AuthnResult, serviceError *common0.ServiceError) *FederatedAuthenticatorMock_Authenticate_Call {
 	_c.Call.Return(authnResult, serviceError)
 	return _c
 }
 
-func (_c *FederatedAuthenticatorMock_Authenticate_Call) RunAndReturn(run func(ctx context.Context, idpID string, code string) (*common.AuthnResult, *serviceerror.ServiceError)) *FederatedAuthenticatorMock_Authenticate_Call {
+func (_c *FederatedAuthenticatorMock_Authenticate_Call) RunAndReturn(run func(ctx context.Context, idpID string, code string) (*common.AuthnResult, *common0.ServiceError)) *FederatedAuthenticatorMock_Authenticate_Call {
 	_c.Call.Return(run)
 	return _c
 }

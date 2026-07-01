@@ -26,11 +26,6 @@ vi.mock('@thunderid/contexts', () => ({
   useConfig: mockUseConfig,
 }));
 
-const mockUseColorScheme = vi.hoisted(() => vi.fn());
-vi.mock('@wso2/oxygen-ui', () => ({
-  useColorScheme: mockUseColorScheme,
-}));
-
 vi.mock('@thunderid/components', () => ({
   Helmet: ({children = undefined}: {children?: ReactNode}) => children,
 }));
@@ -39,6 +34,11 @@ const defaultFavicon = {
   light: 'assets/images/favicon.ico',
   dark: 'assets/images/favicon-inverted.ico',
 };
+
+const withBase = (path: string): string => `${import.meta.env.BASE_URL.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
+
+const iconFor = (scheme: 'light' | 'dark'): Element | null =>
+  document.head.querySelector(`link[rel="icon"][media="(prefers-color-scheme: ${scheme})"]`);
 
 describe('Head', () => {
   beforeEach(() => {
@@ -51,40 +51,37 @@ describe('Head', () => {
     document.head.querySelectorAll('link[rel="icon"]').forEach((el) => el.remove());
   });
 
-  it('renders a single favicon link tag', () => {
-    mockUseColorScheme.mockReturnValue({mode: 'light', systemMode: 'light'});
+  it('renders a light and a dark favicon link, each scoped to a prefers-color-scheme media query', () => {
     render(<Head />);
-    expect(document.head.querySelectorAll('link[rel="icon"]')).toHaveLength(1);
+    expect(document.head.querySelectorAll('link[rel="icon"]')).toHaveLength(2);
+    expect(iconFor('light')).not.toBeNull();
+    expect(iconFor('dark')).not.toBeNull();
   });
 
-  it('renders the light favicon when mode is "light"', () => {
-    mockUseColorScheme.mockReturnValue({mode: 'light', systemMode: 'light'});
+  it('maps the light favicon to the light color scheme and the dark favicon to the dark color scheme', () => {
     render(<Head />);
-    expect(document.head.querySelector('link[rel="icon"]')).toHaveAttribute('href', defaultFavicon.light);
+    expect(iconFor('light')).toHaveAttribute('href', withBase(defaultFavicon.light));
+    expect(iconFor('dark')).toHaveAttribute('href', withBase(defaultFavicon.dark));
   });
 
-  it('renders the dark favicon when mode is "dark"', () => {
-    mockUseColorScheme.mockReturnValue({mode: 'dark', systemMode: 'dark'});
+  it('prefixes the base URL to relative favicon paths', () => {
     render(<Head />);
-    expect(document.head.querySelector('link[rel="icon"]')).toHaveAttribute('href', defaultFavicon.dark);
+    const href = iconFor('light')?.getAttribute('href');
+    expect(href).toBe(withBase(defaultFavicon.light));
+    expect(href?.startsWith(import.meta.env.BASE_URL)).toBe(true);
   });
 
-  it('renders the light favicon when mode is "system" and systemMode is "light"', () => {
-    mockUseColorScheme.mockReturnValue({mode: 'system', systemMode: 'light'});
+  it('uses absolute favicon URLs as-is without prefixing the base URL', () => {
+    mockUseConfig.mockReturnValue({
+      config: {
+        brand: {
+          favicon: {light: 'https://cdn.example.com/light.ico', dark: 'https://cdn.example.com/dark.ico'},
+        },
+      },
+    });
     render(<Head />);
-    expect(document.head.querySelector('link[rel="icon"]')).toHaveAttribute('href', defaultFavicon.light);
-  });
-
-  it('renders the dark favicon when mode is "system" and systemMode is "dark"', () => {
-    mockUseColorScheme.mockReturnValue({mode: 'system', systemMode: 'dark'});
-    render(<Head />);
-    expect(document.head.querySelector('link[rel="icon"]')).toHaveAttribute('href', defaultFavicon.dark);
-  });
-
-  it('falls back to the light favicon when mode is neither "dark" nor "system"', () => {
-    mockUseColorScheme.mockReturnValue({mode: undefined, systemMode: undefined});
-    render(<Head />);
-    expect(document.head.querySelector('link[rel="icon"]')).toHaveAttribute('href', defaultFavicon.light);
+    expect(iconFor('light')).toHaveAttribute('href', 'https://cdn.example.com/light.ico');
+    expect(iconFor('dark')).toHaveAttribute('href', 'https://cdn.example.com/dark.ico');
   });
 
   it('reflects custom favicon paths from config', () => {
@@ -95,8 +92,8 @@ describe('Head', () => {
         },
       },
     });
-    mockUseColorScheme.mockReturnValue({mode: 'dark', systemMode: 'dark'});
     render(<Head />);
-    expect(document.head.querySelector('link[rel="icon"]')).toHaveAttribute('href', 'custom/dark.ico');
+    expect(iconFor('light')).toHaveAttribute('href', withBase('custom/light.ico'));
+    expect(iconFor('dark')).toHaveAttribute('href', withBase('custom/dark.ico'));
   });
 });

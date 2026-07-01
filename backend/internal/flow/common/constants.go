@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -20,32 +20,6 @@
 package common
 
 import "time"
-
-// FlowType defines the type of flow execution.
-type FlowType string
-
-const (
-	// FlowTypeAuthentication represents a flow execution for user authentication.
-	FlowTypeAuthentication FlowType = "AUTHENTICATION"
-	// FlowTypeRegistration represents a flow execution for user registration.
-	FlowTypeRegistration FlowType = "REGISTRATION"
-	// FlowTypeUserOnboarding represents an admin-initiated user onboarding flow.
-	FlowTypeUserOnboarding FlowType = "USER_ONBOARDING"
-	// FlowTypeRecovery represents a flow execution for account recovery (e.g., password reset).
-	FlowTypeRecovery FlowType = "RECOVERY"
-)
-
-// FlowStatus defines the status of a flow execution.
-type FlowStatus string
-
-const (
-	// FlowStatusComplete indicates that the flow execution is complete.
-	FlowStatusComplete FlowStatus = "COMPLETE"
-	// FlowStatusIncomplete indicates that the flow execution is incomplete.
-	FlowStatusIncomplete FlowStatus = "INCOMPLETE"
-	// FlowStatusError indicates that there was an error during the flow execution.
-	FlowStatusError FlowStatus = "ERROR"
-)
 
 // FlowStepType defines the type of a step in the flow execution.
 type FlowStepType string
@@ -98,34 +72,6 @@ const (
 	NodeResponseTypeRetry NodeResponseType = "RETRY"
 )
 
-// ExecutorStatus defines the status of an executor in the flow execution.
-type ExecutorStatus string
-
-const (
-	// ExecComplete indicates that the executor has completed its execution successfully.
-	ExecComplete ExecutorStatus = "COMPLETE"
-	// ExecUserInputRequired indicates that the executor requires user input to proceed.
-	ExecUserInputRequired ExecutorStatus = "USER_INPUT_REQUIRED"
-	// ExecExternalRedirection indicates that the executor is redirecting to an external URL.
-	ExecExternalRedirection ExecutorStatus = "EXTERNAL_REDIRECTION"
-	// ExecFailure indicates that the executor has failed during its execution.
-	ExecFailure ExecutorStatus = "FAILURE"
-	// ExecRetry indicates that the executor is retrying its execution.
-	ExecRetry ExecutorStatus = "RETRY"
-)
-
-// ExecutorType defines the type of an executor in the flow execution.
-type ExecutorType string
-
-const (
-	// ExecutorTypeAuthentication represents an executor that performs authentication.
-	ExecutorTypeAuthentication ExecutorType = "AUTHENTICATION"
-	// ExecutorTypeRegistration represents an executor that handles user registration/provisioning.
-	ExecutorTypeRegistration ExecutorType = "REGISTRATION"
-	// ExecutorTypeUtility represents a utility executor for common operations.
-	ExecutorTypeUtility ExecutorType = "UTILITY"
-)
-
 const (
 	// DataIDPName is the key used for the identity provider name in the flow response.
 	DataIDPName = "idpName"
@@ -153,14 +99,6 @@ const (
 
 // DefaultHTTPTimeout defines the default timeout duration for HTTP requests.
 const DefaultHTTPTimeout = 5 * time.Second
-
-// NodeVariant identifies a PROMPT node sub-type that activates a variant-specific code path.
-type NodeVariant string
-
-const (
-	// NodeVariantLoginOptions identifies a PROMPT node that presents login method choices to the user.
-	NodeVariantLoginOptions NodeVariant = "LOGIN_OPTIONS"
-)
 
 const (
 	// NodePropertyAllowAuthenticationWithoutLocalUser indicates whether authentication is allowed without a local user
@@ -261,34 +199,6 @@ const (
 	RuntimeKeyAuthorizationRequestID = "authorizationRequestId"
 )
 
-// TODO: Define a go type for InputType when formalizing input types
-
-// InputType constants define known input types used in flow definitions.
-const (
-	// InputTypeText represents a text input type.
-	InputTypeText = "TEXT_INPUT"
-	// InputTypeEmail represents an email input type.
-	InputTypeEmail = "EMAIL_INPUT"
-	// InputTypePassword represents a password credential input type.
-	InputTypePassword = "PASSWORD_INPUT"
-	// InputTypeOTP represents a one-time password input type.
-	InputTypeOTP = "OTP_INPUT"
-	// InputTypePhone represents a phone number input type.
-	InputTypePhone = "PHONE_INPUT"
-	// InputTypeConsent represents a consent decisions input type.
-	InputTypeConsent = "CONSENT_INPUT"
-	// InputTypeHidden represents a hidden input type.
-	InputTypeHidden = "HIDDEN"
-	// InputTypeSelect represents a select (dropdown) input type.
-	InputTypeSelect = "SELECT"
-
-	// TODO: Add support for other sensitive input types:
-	// - Passkey credential fields (credentialId, clientDataJSON, authenticatorData, signature, userHandle)
-	// - OAuth/OIDC authorization codes
-	// - OIDC nonce
-	// - Invite tokens
-)
-
 // MetaComponentType constants define known component types used in flow meta definitions.
 const (
 	// MetaComponentTypeBlock represents a block container component.
@@ -303,14 +213,8 @@ const (
 // Attribute name constants for well-known user attributes used across flow executors.
 const (
 	// AttributeMobileNumber is the default attribute name for a user's mobile phone number.
-	AttributeMobileNumber = "mobileNumber"
+	AttributeMobileNumber = "mobile_number"
 )
-
-// sensitiveInputTypes contains the list of input types that are considered sensitive.
-var sensitiveInputTypes = []string{
-	InputTypePassword,
-	InputTypeOTP,
-}
 
 const (
 	// AttributeEmail is the default attribute name for a user's email.
@@ -339,38 +243,6 @@ const (
 	ForwardedDataKeyTemplateData = "templateData"
 )
 
-// ValidationType identifies the constraint type of a ValidationRule.
-type ValidationType string
-
-// Validation rule types.
-const (
-	// ValidationTypeRegex matches the submitted value against a regex pattern.
-	ValidationTypeRegex ValidationType = "regex"
-	// ValidationTypeMinLength enforces a minimum string length on the submitted value.
-	ValidationTypeMinLength ValidationType = "minLength"
-	// ValidationTypeMaxLength enforces a maximum string length on the submitted value.
-	ValidationTypeMaxLength ValidationType = "maxLength"
-)
-
-// Default i18n fallback message keys returned in fieldErrors when a validation
-// rule does not specify a message.
-const (
-	DefaultValidationMessageRegex     = "validation.pattern.invalid"
-	DefaultValidationMessageMinLength = "validation.minLength.invalid"
-	DefaultValidationMessageMaxLength = "validation.maxLength.invalid"
-)
-
-// InterceptorMode represents the lifecycle point at which an interceptor executes.
-type InterceptorMode string
-
-// Interceptor mode constants.
-const (
-	InterceptorModePreRequest  InterceptorMode = "PRE_REQUEST"
-	InterceptorModePreNode     InterceptorMode = "PRE_NODE"
-	InterceptorModePostNode    InterceptorMode = "POST_NODE"
-	InterceptorModePostRequest InterceptorMode = "POST_REQUEST"
-)
-
 // InterceptorStatus represents the outcome of an interceptor execution.
 type InterceptorStatus string
 
@@ -386,26 +258,3 @@ const (
 	// InterceptorDataKeyChallengeTokenIn is the shared data key for the incoming challenge token.
 	InterceptorDataKeyChallengeTokenIn = "challengeTokenIn"
 )
-
-// InterceptorScope determines which nodes a per-node interceptor applies to.
-type InterceptorScope string
-
-// Interceptor scope constants.
-const (
-	InterceptorScopeAll      InterceptorScope = "ALL"
-	InterceptorScopeSelected InterceptorScope = "SELECTED"
-)
-
-// ValidInterceptorModes contains the set of valid interceptor modes for validation.
-var ValidInterceptorModes = map[InterceptorMode]bool{
-	InterceptorModePreRequest:  true,
-	InterceptorModePreNode:     true,
-	InterceptorModePostNode:    true,
-	InterceptorModePostRequest: true,
-}
-
-// ValidInterceptorScopes contains the set of valid interceptor scopes for validation.
-var ValidInterceptorScopes = map[InterceptorScope]bool{
-	InterceptorScopeAll:      true,
-	InterceptorScopeSelected: true,
-}

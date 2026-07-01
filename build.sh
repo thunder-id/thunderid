@@ -383,60 +383,6 @@ function build_frontend() {
     echo "================================================================"
 }
 
-function build_sdks_js() {
-    ensure_pnpm
-    
-    echo "Installing SDK dependencies..."
-    pnpm install --frozen-lockfile
-    
-    echo "Building JavaScript ecosystem SDK packages..."
-    pnpm --filter './sdks/**' build
-    cd "$SCRIPT_DIR" || exit 1
-}
-
-function test_sdks_js() {
-    ensure_pnpm
-    
-    echo "Installing SDK dependencies..."
-    pnpm install --frozen-lockfile
-    
-    echo "Running JavaScript ecosystem SDK tests..."
-    pnpm --filter './sdks/**' test
-    cd "$SCRIPT_DIR" || exit 1
-}
-
-function lint_sdks_js() {
-    ensure_pnpm
-    
-    echo "Installing SDK dependencies..."
-    pnpm install --frozen-lockfile
-    
-    echo "Linting JavaScript ecosystem SDK packages..."
-    pnpm --filter './sdks/**' lint
-    cd "$SCRIPT_DIR" || exit 1
-}
-
-function build_sdks() {
-    echo "================================================================"
-    echo "Building SDKs..."
-    build_sdks_js
-    echo "================================================================"
-}
-
-function test_sdks() {
-    echo "================================================================"
-    echo "Running SDK tests..."
-    test_sdks_js
-    echo "================================================================"
-}
-
-function lint_sdks() {
-    echo "================================================================"
-    echo "Linting SDKs..."
-    lint_sdks_js
-    echo "================================================================"
-}
-
 function build_cli() {
     echo "Building CLI tool..."
     bash "$SCRIPT_DIR/tools/cli/scripts/build.sh"
@@ -1306,15 +1252,6 @@ case "$1" in
     build_docs)
         build_docs
         ;;
-    build_sdks)
-        build_sdks
-        ;;
-    test_sdks)
-        test_sdks
-        ;;
-    lint_sdks)
-        lint_sdks
-        ;;
     build_tools)
         build_tools
         ;;
@@ -1330,7 +1267,6 @@ case "$1" in
     build)
         build_backend
         build_frontend
-        build_sdks
         package
         package_sample_app
         ;;
@@ -1370,9 +1306,6 @@ case "$1" in
         echo "  build_backend            - Build only the ${PRODUCT_NAME} backend server"
         echo "  build_frontend           - Build only the Next.js frontend applications"
         echo "  build_docs               - Build only the documentation"
-        echo "  build_sdks               - Build all SDK packages"
-        echo "  test_sdks                - Run tests for all SDK packages"
-        echo "  lint_sdks                - Run linting for all SDK packages"
         echo "  build_tools              - Build all tool binaries (CLI + i18n-extractor + npm tools)"
         echo "  test_tools               - Run tests for all tools (CLI + i18n-extractor)"
         echo "  lint_tools               - Run linting for all tools (CLI + i18n-extractor)"

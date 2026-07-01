@@ -22,13 +22,15 @@ import (
 	"context"
 	"testing"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 )
 
@@ -128,20 +130,20 @@ func (suite *DeclarativeModeGroupServiceTestSuite) TestDeleteGroup_FailsWhenDecl
 func (suite *DeclarativeModeGroupServiceTestSuite) TestGroupMemberMutations_AllowedForDeclarativeGroup() {
 	cases := []struct {
 		name   string
-		invoke func(members []Member) (*Group, *serviceerror.ServiceError)
+		invoke func(members []Member) (*Group, *tidcommon.ServiceError)
 		method string
 	}{
 		{
 			name:   "AddGroupMembers",
 			method: "AddGroupMembers",
-			invoke: func(m []Member) (*Group, *serviceerror.ServiceError) {
+			invoke: func(m []Member) (*Group, *tidcommon.ServiceError) {
 				return suite.service.AddGroupMembers(suite.ctx, "group-1", m)
 			},
 		},
 		{
 			name:   "RemoveGroupMembers",
 			method: "RemoveGroupMembers",
-			invoke: func(m []Member) (*Group, *serviceerror.ServiceError) {
+			invoke: func(m []Member) (*Group, *tidcommon.ServiceError) {
 				return suite.service.RemoveGroupMembers(suite.ctx, "group-1", m)
 			},
 		},
@@ -155,7 +157,7 @@ func (suite *DeclarativeModeGroupServiceTestSuite) TestGroupMemberMutations_Allo
 
 			suite.store.On("GetGroup", mock.Anything, "group-1").Return(grpDAO, nil)
 			suite.entityService.On("GetEntitiesByIDs", mock.Anything, []string{"user-1"}).
-				Return([]entity.Entity{{ID: "user-1", Category: entity.EntityCategoryUser}}, nil)
+				Return([]providers.Entity{{ID: "user-1", Category: providers.EntityCategoryUser}}, nil)
 			suite.store.On(tc.method, mock.Anything, "group-1", normalizedMembers).Return(nil)
 
 			grp, err := tc.invoke([]Member{{ID: "user-1", Type: MemberTypeUser}})

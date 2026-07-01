@@ -354,7 +354,7 @@ func (suite *RoleAPITestSuite) TestCreateRole_ValidationErrors() {
 					},
 				},
 			},
-			expectedErr: "ROL-1001",
+			expectedErr: "INVALID_INPUT_METADATA",
 		},
 		{
 			name: "Missing OUID",
@@ -367,7 +367,7 @@ func (suite *RoleAPITestSuite) TestCreateRole_ValidationErrors() {
 					},
 				},
 			},
-			expectedErr: "ROL-1001",
+			expectedErr: "INVALID_INPUT_METADATA",
 		},
 		{
 			name: "Invalid Organization Unit",

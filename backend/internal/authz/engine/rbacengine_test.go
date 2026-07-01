@@ -22,11 +22,11 @@ import (
 	"context"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 )
 
@@ -146,13 +146,13 @@ func (suite *RBACEngineTestSuite) TestEvaluateAccessRoleServiceError() {
 		ResourceServer: ResourceServer{Handle: "document"},
 		Permission:     Permission{Name: "document:read"},
 	}
-	roleServiceError := &serviceerror.ServiceError{
-		Type: serviceerror.ServerErrorType,
+	roleServiceError := &tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
 		Code: "ROL-5000",
-		Error: i18ncore.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key: "error.test.internal_server_error", DefaultValue: "Internal server error",
 		},
-		ErrorDescription: i18ncore.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.test.an_unexpected_error_occurred", DefaultValue: "An unexpected error occurred",
 		},
 	}

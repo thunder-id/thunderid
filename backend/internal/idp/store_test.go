@@ -27,6 +27,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 )
@@ -79,11 +80,11 @@ func (s *IDPStoreTestSuite) TestNewIDPStore() {
 // TestCreateIdentityProvider_Success tests successful IDP creation
 func (s *IDPStoreTestSuite) TestCreateIdentityProvider_Success() {
 	prop, _ := cmodels.NewProperty("client_id", "test-client", false)
-	idp := IDPDTO{
+	idp := providers.IDPDTO{
 		ID:          "idp-123",
 		Name:        "Test IDP",
 		Description: "Test Description",
-		Type:        IDPTypeOIDC,
+		Type:        providers.IDPTypeOIDC,
 		Properties:  []cmodels.Property{*prop},
 	}
 
@@ -101,11 +102,11 @@ func (s *IDPStoreTestSuite) TestCreateIdentityProvider_Success() {
 
 // TestCreateIdentityProvider_NoProperties tests IDP creation without properties
 func (s *IDPStoreTestSuite) TestCreateIdentityProvider_NoProperties() {
-	idp := IDPDTO{
+	idp := providers.IDPDTO{
 		ID:          "idp-123",
 		Name:        "Test IDP",
 		Description: "Test Description",
-		Type:        IDPTypeOIDC,
+		Type:        providers.IDPTypeOIDC,
 		Properties:  []cmodels.Property{},
 	}
 
@@ -122,7 +123,7 @@ func (s *IDPStoreTestSuite) TestCreateIdentityProvider_NoProperties() {
 
 // TestCreateIdentityProvider_DBClientError tests DB client error
 func (s *IDPStoreTestSuite) TestCreateIdentityProvider_DBClientError() {
-	idp := IDPDTO{ID: "idp-123", Name: "Test", Type: IDPTypeOIDC}
+	idp := providers.IDPDTO{ID: "idp-123", Name: "Test", Type: providers.IDPTypeOIDC}
 
 	s.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("db error"))
 
@@ -135,7 +136,7 @@ func (s *IDPStoreTestSuite) TestCreateIdentityProvider_DBClientError() {
 
 // TestCreateIdentityProvider_ExecuteError tests execute error
 func (s *IDPStoreTestSuite) TestCreateIdentityProvider_ExecuteError() {
-	idp := IDPDTO{ID: "idp-123", Name: "Test", Type: IDPTypeOIDC}
+	idp := providers.IDPDTO{ID: "idp-123", Name: "Test", Type: providers.IDPTypeOIDC}
 
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryCreateIdentityProvider, idp.ID, idp.Name,
@@ -378,11 +379,11 @@ func (s *IDPStoreTestSuite) TestGetIdentityProviderByName_QueryError() {
 
 // TestUpdateIdentityProvider_Success tests successful IDP update
 func (s *IDPStoreTestSuite) TestUpdateIdentityProvider_Success() {
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		ID:          "idp-123",
 		Name:        "Updated IDP",
 		Description: "Updated Description",
-		Type:        IDPTypeOIDC,
+		Type:        providers.IDPTypeOIDC,
 		Properties:  []cmodels.Property{},
 	}
 
@@ -400,11 +401,11 @@ func (s *IDPStoreTestSuite) TestUpdateIdentityProvider_Success() {
 // TestUpdateIdentityProvider_WithProperties tests IDP update with properties
 func (s *IDPStoreTestSuite) TestUpdateIdentityProvider_WithProperties() {
 	prop, _ := cmodels.NewProperty("client_id", "test", false)
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		ID:          "idp-123",
 		Name:        "Updated IDP",
 		Description: "Updated Description",
-		Type:        IDPTypeOIDC,
+		Type:        providers.IDPTypeOIDC,
 		Properties:  []cmodels.Property{*prop},
 	}
 
@@ -422,7 +423,7 @@ func (s *IDPStoreTestSuite) TestUpdateIdentityProvider_WithProperties() {
 
 // TestUpdateIdentityProvider_DBClientError tests DB client error
 func (s *IDPStoreTestSuite) TestUpdateIdentityProvider_DBClientError() {
-	idp := &IDPDTO{ID: "idp-123", Name: "Test", Type: IDPTypeOIDC}
+	idp := &providers.IDPDTO{ID: "idp-123", Name: "Test", Type: providers.IDPTypeOIDC}
 
 	s.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("db error"))
 
@@ -435,7 +436,7 @@ func (s *IDPStoreTestSuite) TestUpdateIdentityProvider_DBClientError() {
 
 // TestUpdateIdentityProvider_ExecuteError tests execute error
 func (s *IDPStoreTestSuite) TestUpdateIdentityProvider_ExecuteError() {
-	idp := &IDPDTO{ID: "idp-123", Name: "Test", Type: IDPTypeOIDC}
+	idp := &providers.IDPDTO{ID: "idp-123", Name: "Test", Type: providers.IDPTypeOIDC}
 
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryUpdateIdentityProviderByID, idp.ID, idp.Name,
@@ -776,12 +777,14 @@ func (s *IDPStoreTestSuite) TestSerializeAttributeConfiguration_Nil() {
 }
 
 func (s *IDPStoreTestSuite) TestSerializeAttributeConfiguration_WithMapping() {
-	am := &AttributeConfiguration{
-		UserTypeResolution: &UserTypeResolution{Default: "Person"},
-		UserTypeAttributeMappings: []UserTypeAttributeMapping{
+	am := &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{Default: "Person"},
+		UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{
 			{
-				UserType:   "Person",
-				Attributes: []AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}},
+				UserType: "Person",
+				Attributes: []providers.AttributeMapping{
+					{ExternalAttribute: "given_name", LocalAttribute: "firstName"},
+				},
 			},
 		},
 	}

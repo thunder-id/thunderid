@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -189,7 +189,22 @@ export interface ScopeClaims {
  *
  * @public
  */
-export type IDTokenConfig = TokenConfig;
+export type IDTokenResponseType = 'JWT' | 'JWE' | 'NESTED_JWT';
+
+export interface IDTokenConfig extends TokenConfig {
+  /**
+   * Response format of the ID token (JWT, JWE, NESTED_JWT)
+   */
+  responseType?: IDTokenResponseType;
+  /**
+   * JWE key-management algorithm for encrypted ID token responses
+   */
+  encryptionAlg?: string;
+  /**
+   * JWE content-encryption algorithm for encrypted ID token responses
+   */
+  encryptionEnc?: string;
+}
 
 /**
  * Refresh Token Configuration
@@ -394,11 +409,25 @@ export interface OAuth2Config {
   scopeClaims?: ScopeClaims;
 
   /**
+   * Whether Pushed Authorization Requests (PAR) are required
+   * When true, the client must use the PAR endpoint before initiating authorization
+   * @defaultValue false
+   * @see https://datatracker.ietf.org/doc/html/rfc9126
+   */
+  requirePushedAuthorizationRequests?: boolean;
+
+  /**
    * OAuth client certificate (JWKS or JWKS URI).
    * Required when tokenEndpointAuthMethod is 'private_key_jwt'.
    * null means no certificate is configured.
    */
   certificate?: {type: string; value?: string} | null;
+
+  /**
+   * Default ACR values applied when the request does not specify acr_values
+   * @example ['urn:thunder:silver', 'urn:thunder:gold']
+   */
+  acrValues?: string[];
 }
 
 /**
@@ -409,9 +438,27 @@ export interface OAuth2Config {
  *
  * @public
  */
+export type UserInfoResponseType = 'JSON' | 'JWS' | 'JWE' | 'NESTED_JWT';
+
 export interface UserInfoConfig {
   /**
    * List of user attributes to include in the user info response
    */
   userAttributes: string[];
+  /**
+   * Response format of the UserInfo endpoint
+   */
+  responseType?: UserInfoResponseType;
+  /**
+   * JWS algorithm for signed userinfo responses
+   */
+  signingAlg?: string;
+  /**
+   * JWE key-management algorithm for encrypted userinfo responses
+   */
+  encryptionAlg?: string;
+  /**
+   * JWE content-encryption algorithm for encrypted userinfo responses
+   */
+  encryptionEnc?: string;
 }

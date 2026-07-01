@@ -22,13 +22,12 @@ import (
 	"context"
 	"fmt"
 
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
-	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // attributeUniquenessValidator checks whether values supplied for unique schema attributes
@@ -36,10 +35,10 @@ import (
 // after a prompt node so that conflicts can be reported with the specific attribute name
 // before any creation executor runs.
 type attributeUniquenessValidator struct {
-	core.ExecutorInterface
+	providers.Executor
 	entityTypeService entitytype.EntityTypeServiceInterface
 	entityProvider    entityprovider.EntityProviderInterface
-	authnProvider     authnprovidermgr.AuthnProviderManagerInterface
+	authnProvider     providers.AuthnProviderManager
 	logger            *log.Logger
 }
 
@@ -48,19 +47,19 @@ func newAttributeUniquenessValidator(
 	flowFactory core.FlowFactoryInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) *attributeUniquenessValidator {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, ExecutorNameAttributeUniquenessValidator))
-	prerequisites := []common.Input{
+	prerequisites := []providers.Input{
 		{
 			Identifier: userTypeKey,
 			Required:   true,
 		},
 	}
-	base := flowFactory.CreateExecutor(ExecutorNameAttributeUniquenessValidator, common.ExecutorTypeUtility,
-		[]common.Input{}, prerequisites)
+	base := flowFactory.CreateExecutor(ExecutorNameAttributeUniquenessValidator, providers.ExecutorTypeUtility,
+		[]providers.Input{}, prerequisites)
 	return &attributeUniquenessValidator{
-		ExecutorInterface: base,
+		Executor:          base,
 		entityTypeService: entityTypeService,
 		entityProvider:    entityProvider,
 		authnProvider:     authnProvider,
@@ -72,11 +71,11 @@ func newAttributeUniquenessValidator(
 // any value already present in UserInputs belongs to an existing user.
 // Returns ExecUserInputRequired (triggering onIncomplete routing) with the specific attribute
 // named in the structured error when a conflict is detected, or ExecComplete when all values are free.
-func (e *attributeUniquenessValidator) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing uniqueness checker executor")
 
-	execResp := &common.ExecutorResponse{
+	execResp := &providers.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 	}
@@ -110,12 +109,12 @@ func (e *attributeUniquenessValidator) Execute(ctx *core.NodeContext) (*common.E
 
 		if userID != nil {
 			logger.Debug(ctx.Context, "Unique attribute conflict detected", log.String("attribute", attr))
-			execResp.Status = common.ExecUserInputRequired
+			execResp.Status = providers.ExecUserInputRequired
 			execResp.Error = errAttributeNotUniqueFor(attr)
 			return execResp, nil
 		}
 	}
 
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 	return execResp, nil
 }

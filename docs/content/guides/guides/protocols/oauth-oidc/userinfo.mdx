@@ -40,8 +40,8 @@ The client presents the access token as a Bearer (or DPoP) credential. <ProductN
 |---|---|---|
 | `JSON` | `application/json` | Default. Plain JSON object. |
 | `JWS` | `application/jwt` | When the client must verify integrity of the response cryptographically. |
-| `JWE` | `application/jwt` | When the response must be confidential end-to-end (e.g. crosses an intermediary). Requires a certificate on the application. |
-| `NESTED_JWT` | `application/jwt` | Sign-then-encrypt — both properties. Requires a certificate on the application. |
+| `JWE` | `application/jwt` | When the response must be confidential end-to-end (e.g. crosses an intermediary). Requires an OAuth client certificate. |
+| `NESTED_JWT` | `application/jwt` | Sign-then-encrypt — both properties. Requires an OAuth client certificate. |
 
 The signing and encryption algorithm tables live on the [Token Formats](../token-formats) page.
 

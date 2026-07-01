@@ -22,14 +22,14 @@ import (
 	"context"
 	"strings"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz/requestvalidator"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -40,7 +40,7 @@ const requestURIPrefix = "urn:ietf:params:oauth:request_uri:"
 type PARServiceInterface interface {
 	HandlePushedAuthorizationRequest(
 		ctx context.Context, params map[string]string, resources []string,
-		oauthApp *inboundmodel.OAuthClient, dpopHeaderJkt string,
+		oauthApp *providers.OAuthClient, dpopHeaderJkt string,
 	) (*parResponse, string, string)
 	ResolvePushedAuthorizationRequest(
 		ctx context.Context, requestURI string, clientID string,
@@ -50,14 +50,14 @@ type PARServiceInterface interface {
 // parService implements PARServiceInterface.
 type parService struct {
 	store           parStoreInterface
-	resourceService resource.ResourceServiceInterface
+	resourceService providers.ResourceServerProvider
 	cfg             oauthconfig.Config
 	logger          *log.Logger
 }
 
 // newPARService creates a new PAR service instance.
 func newPARService(
-	store parStoreInterface, resourceService resource.ResourceServiceInterface, cfg oauthconfig.Config,
+	store parStoreInterface, resourceService providers.ResourceServerProvider, cfg oauthconfig.Config,
 ) PARServiceInterface {
 	return &parService{
 		store:           store,
@@ -71,7 +71,7 @@ func newPARService(
 // Returns the response on success, or (errorCode, errorDescription) on failure.
 func (s *parService) HandlePushedAuthorizationRequest(
 	ctx context.Context, params map[string]string, resources []string,
-	oauthApp *inboundmodel.OAuthClient, dpopHeaderJkt string,
+	oauthApp *providers.OAuthClient, dpopHeaderJkt string,
 ) (*parResponse, string, string) {
 	// The request MUST NOT contain a request_uri parameter.
 	if params[oauth2const.RequestParamRequestURI] != "" {

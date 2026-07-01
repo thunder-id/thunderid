@@ -7,7 +7,8 @@ package inboundclient
 import (
 	"context"
 
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -39,7 +40,7 @@ func (_m *FlowResolverMock) EXPECT() *FlowResolverMock_Expecter {
 }
 
 // GetFlowHandle provides a mock function for the type FlowResolverMock
-func (_mock *FlowResolverMock) GetFlowHandle(ctx context.Context, flowID string) (string, *serviceerror.ServiceError) {
+func (_mock *FlowResolverMock) GetFlowHandle(ctx context.Context, flowID string) (string, *tidcommon.ServiceError) {
 	ret := _mock.Called(ctx, flowID)
 
 	if len(ret) == 0 {
@@ -47,8 +48,8 @@ func (_mock *FlowResolverMock) GetFlowHandle(ctx context.Context, flowID string)
 	}
 
 	var r0 string
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, *serviceerror.ServiceError)); ok {
+	var r1 *tidcommon.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, *tidcommon.ServiceError)); ok {
 		return returnFunc(ctx, flowID)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
@@ -56,11 +57,11 @@ func (_mock *FlowResolverMock) GetFlowHandle(ctx context.Context, flowID string)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *tidcommon.ServiceError); ok {
 		r1 = returnFunc(ctx, flowID)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*tidcommon.ServiceError)
 		}
 	}
 	return r0, r1
@@ -96,18 +97,18 @@ func (_c *FlowResolverMock_GetFlowHandle_Call) Run(run func(ctx context.Context,
 	return _c
 }
 
-func (_c *FlowResolverMock_GetFlowHandle_Call) Return(s string, serviceError *serviceerror.ServiceError) *FlowResolverMock_GetFlowHandle_Call {
+func (_c *FlowResolverMock_GetFlowHandle_Call) Return(s string, serviceError *tidcommon.ServiceError) *FlowResolverMock_GetFlowHandle_Call {
 	_c.Call.Return(s, serviceError)
 	return _c
 }
 
-func (_c *FlowResolverMock_GetFlowHandle_Call) RunAndReturn(run func(ctx context.Context, flowID string) (string, *serviceerror.ServiceError)) *FlowResolverMock_GetFlowHandle_Call {
+func (_c *FlowResolverMock_GetFlowHandle_Call) RunAndReturn(run func(ctx context.Context, flowID string) (string, *tidcommon.ServiceError)) *FlowResolverMock_GetFlowHandle_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // IsValidFlow provides a mock function for the type FlowResolverMock
-func (_mock *FlowResolverMock) IsValidFlow(ctx context.Context, flowID string, flowType string) (bool, *serviceerror.ServiceError) {
+func (_mock *FlowResolverMock) IsValidFlow(ctx context.Context, flowID string, flowType string) (bool, *tidcommon.ServiceError) {
 	ret := _mock.Called(ctx, flowID, flowType)
 
 	if len(ret) == 0 {
@@ -115,8 +116,8 @@ func (_mock *FlowResolverMock) IsValidFlow(ctx context.Context, flowID string, f
 	}
 
 	var r0 bool
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (bool, *serviceerror.ServiceError)); ok {
+	var r1 *tidcommon.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (bool, *tidcommon.ServiceError)); ok {
 		return returnFunc(ctx, flowID, flowType)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) bool); ok {
@@ -124,11 +125,11 @@ func (_mock *FlowResolverMock) IsValidFlow(ctx context.Context, flowID string, f
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *tidcommon.ServiceError); ok {
 		r1 = returnFunc(ctx, flowID, flowType)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*tidcommon.ServiceError)
 		}
 	}
 	return r0, r1
@@ -170,18 +171,18 @@ func (_c *FlowResolverMock_IsValidFlow_Call) Run(run func(ctx context.Context, f
 	return _c
 }
 
-func (_c *FlowResolverMock_IsValidFlow_Call) Return(b bool, serviceError *serviceerror.ServiceError) *FlowResolverMock_IsValidFlow_Call {
+func (_c *FlowResolverMock_IsValidFlow_Call) Return(b bool, serviceError *tidcommon.ServiceError) *FlowResolverMock_IsValidFlow_Call {
 	_c.Call.Return(b, serviceError)
 	return _c
 }
 
-func (_c *FlowResolverMock_IsValidFlow_Call) RunAndReturn(run func(ctx context.Context, flowID string, flowType string) (bool, *serviceerror.ServiceError)) *FlowResolverMock_IsValidFlow_Call {
+func (_c *FlowResolverMock_IsValidFlow_Call) RunAndReturn(run func(ctx context.Context, flowID string, flowType string) (bool, *tidcommon.ServiceError)) *FlowResolverMock_IsValidFlow_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ResolveFlowIDByHandle provides a mock function for the type FlowResolverMock
-func (_mock *FlowResolverMock) ResolveFlowIDByHandle(ctx context.Context, handle string, flowType string) (string, *serviceerror.ServiceError) {
+func (_mock *FlowResolverMock) ResolveFlowIDByHandle(ctx context.Context, handle string, flowType string) (string, *tidcommon.ServiceError) {
 	ret := _mock.Called(ctx, handle, flowType)
 
 	if len(ret) == 0 {
@@ -189,8 +190,8 @@ func (_mock *FlowResolverMock) ResolveFlowIDByHandle(ctx context.Context, handle
 	}
 
 	var r0 string
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (string, *serviceerror.ServiceError)); ok {
+	var r1 *tidcommon.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (string, *tidcommon.ServiceError)); ok {
 		return returnFunc(ctx, handle, flowType)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) string); ok {
@@ -198,11 +199,11 @@ func (_mock *FlowResolverMock) ResolveFlowIDByHandle(ctx context.Context, handle
 	} else {
 		r0 = ret.Get(0).(string)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *tidcommon.ServiceError); ok {
 		r1 = returnFunc(ctx, handle, flowType)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*tidcommon.ServiceError)
 		}
 	}
 	return r0, r1
@@ -244,12 +245,12 @@ func (_c *FlowResolverMock_ResolveFlowIDByHandle_Call) Run(run func(ctx context.
 	return _c
 }
 
-func (_c *FlowResolverMock_ResolveFlowIDByHandle_Call) Return(s string, serviceError *serviceerror.ServiceError) *FlowResolverMock_ResolveFlowIDByHandle_Call {
+func (_c *FlowResolverMock_ResolveFlowIDByHandle_Call) Return(s string, serviceError *tidcommon.ServiceError) *FlowResolverMock_ResolveFlowIDByHandle_Call {
 	_c.Call.Return(s, serviceError)
 	return _c
 }
 
-func (_c *FlowResolverMock_ResolveFlowIDByHandle_Call) RunAndReturn(run func(ctx context.Context, handle string, flowType string) (string, *serviceerror.ServiceError)) *FlowResolverMock_ResolveFlowIDByHandle_Call {
+func (_c *FlowResolverMock_ResolveFlowIDByHandle_Call) RunAndReturn(run func(ctx context.Context, handle string, flowType string) (string, *tidcommon.ServiceError)) *FlowResolverMock_ResolveFlowIDByHandle_Call {
 	_c.Call.Return(run)
 	return _c
 }

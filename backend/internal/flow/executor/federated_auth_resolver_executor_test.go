@@ -22,16 +22,14 @@ import (
 	"encoding/json"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
@@ -39,7 +37,7 @@ import (
 type FederatedAuthResolverTestSuite struct {
 	suite.Suite
 	mockFlowFactory   *coremock.FlowFactoryInterfaceMock
-	mockAuthnProvider *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider *managermock.AuthnProviderManagerMock
 	executor          *federatedAuthResolverExecutor
 }
 
@@ -47,21 +45,21 @@ func TestFederatedAuthResolverSuite(t *testing.T) {
 	suite.Run(t, new(FederatedAuthResolverTestSuite))
 }
 
-func newFederatedAuthResolverAuthenticatedUser() authnprovidermgr.AuthUser {
-	var authUser authnprovidermgr.AuthUser
+func newFederatedAuthResolverAuthenticatedUser() providers.AuthUser {
+	var authUser providers.AuthUser
 	_ = authUser.UnmarshalJSON([]byte(`{"entityReferenceToken":"tok","attributeToken":"tok"}`))
 	return authUser
 }
 
 func (suite *FederatedAuthResolverTestSuite) SetupTest() {
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 
 	mockExec := createMockExecutor(suite.T(), ExecutorNameFederatedAuthResolver,
-		common.ExecutorTypeAuthentication)
+		providers.ExecutorTypeAuthentication)
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameFederatedAuthResolver,
-		common.ExecutorTypeAuthentication,
-		([]common.Input)(nil), ([]common.Input)(nil)).Return(mockExec)
+		providers.ExecutorTypeAuthentication,
+		([]providers.Input)(nil), ([]providers.Input)(nil)).Return(mockExec)
 
 	suite.executor = newFederatedAuthResolverExecutor(suite.mockFlowFactory, suite.mockAuthnProvider)
 }
@@ -71,13 +69,13 @@ func (suite *FederatedAuthResolverTestSuite) TestNewFederatedAuthResolverExecuto
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestExecute_SingleCandidateMatch() {
-	candidates := []*entityprovider.Entity{
+	candidates := []*providers.Entity{
 		{ID: "user-1", OUID: "ou-1", OUHandle: "org-alpha", Type: "Customer"},
 		{ID: "user-2", OUID: "ou-2", OUHandle: "org-beta", Type: "Customer"},
 	}
 	candidatesJSON, _ := json.Marshal(candidates)
 
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		UserInputs:  map[string]string{"ouHandle": "org-alpha"},
 		RuntimeData: map[string]string{
@@ -86,9 +84,9 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_SingleCandidateMatch() 
 		},
 	}
 
-	mockBase := suite.executor.ExecutorInterface.(*coremock.ExecutorInterfaceMock)
+	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
 	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
-	mockBase.On("GetRequiredInputs", mock.Anything).Return([]common.Input{
+	mockBase.On("GetRequiredInputs", mock.Anything).Return([]providers.Input{
 		{Identifier: "ouHandle", Type: "TEXT_INPUT", Required: true},
 	})
 
@@ -98,7 +96,7 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_SingleCandidateMatch() 
 	}, map[string]interface{}{
 		userAttributeSub: "sub-123",
 	}, mock.Anything, mock.Anything, mock.Anything).
-		Return(authenticatedAuthUser, authnprovidercm.AuthenticatedClaims{}, nil)
+		Return(authenticatedAuthUser, providers.AuthenticatedClaims{}, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -108,13 +106,13 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_SingleCandidateMatch() 
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestExecute_NoCandidatesInRuntimeData() {
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		UserInputs:  map[string]string{"ouHandle": "org-alpha"},
 		RuntimeData: map[string]string{},
 	}
 
-	mockBase := suite.executor.ExecutorInterface.(*coremock.ExecutorInterfaceMock)
+	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
 	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
 
 	resp, err := suite.executor.Execute(ctx)
@@ -124,10 +122,10 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_NoCandidatesInRuntimeDa
 }
 
 func (suite *FederatedAuthResolverTestSuite) executeWithCandidatesAndInput(
-	candidates []*entityprovider.Entity, inputs map[string]string) (*common.ExecutorResponse, error) {
+	candidates []*providers.Entity, inputs map[string]string) (*providers.ExecutorResponse, error) {
 	candidatesJSON, _ := json.Marshal(candidates)
 
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		UserInputs:  inputs,
 		RuntimeData: map[string]string{
@@ -135,9 +133,9 @@ func (suite *FederatedAuthResolverTestSuite) executeWithCandidatesAndInput(
 		},
 	}
 
-	mockBase := suite.executor.ExecutorInterface.(*coremock.ExecutorInterfaceMock)
+	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
 	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
-	mockBase.On("GetRequiredInputs", mock.Anything).Return([]common.Input{
+	mockBase.On("GetRequiredInputs", mock.Anything).Return([]providers.Input{
 		{Identifier: "ouHandle", Type: "TEXT_INPUT", Required: true},
 	})
 
@@ -145,7 +143,7 @@ func (suite *FederatedAuthResolverTestSuite) executeWithCandidatesAndInput(
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestExecute_NoMatchingCandidate() {
-	candidates := []*entityprovider.Entity{
+	candidates := []*providers.Entity{
 		{ID: "user-1", OUID: "ou-1", OUHandle: "org-alpha", Type: "Customer"},
 		{ID: "user-2", OUID: "ou-2", OUHandle: "org-beta", Type: "Customer"},
 	}
@@ -153,12 +151,12 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_NoMatchingCandidate() {
 	resp, err := suite.executeWithCandidatesAndInput(candidates, map[string]string{"ouHandle": "org-gamma"})
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
 	assert.Equal(suite.T(), ErrUserNotFound.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestExecute_MultipleCandidatesStillAmbiguous() {
-	candidates := []*entityprovider.Entity{
+	candidates := []*providers.Entity{
 		{ID: "user-1", OUID: "ou-1", OUHandle: "org-alpha", Type: "Customer"},
 		{ID: "user-2", OUID: "ou-1", OUHandle: "org-alpha", Type: "Admin"},
 	}
@@ -166,13 +164,13 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_MultipleCandidatesStill
 	resp, err := suite.executeWithCandidatesAndInput(candidates, map[string]string{"ouHandle": "org-alpha"})
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
 	assert.NotNil(suite.T(), resp.ForwardedData)
 	assert.NotEmpty(suite.T(), resp.RuntimeData[common.RuntimeKeyCandidateUsers])
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestExecute_IndistinguishableCandidates() {
-	candidates := []*entityprovider.Entity{
+	candidates := []*providers.Entity{
 		{ID: "user-1", OUID: "ou-1", OUHandle: "org-alpha", Type: "Customer"},
 		{ID: "user-2", OUID: "ou-1", OUHandle: "org-alpha", Type: "Customer"},
 	}
@@ -180,28 +178,28 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_IndistinguishableCandid
 	resp, err := suite.executeWithCandidatesAndInput(candidates, map[string]string{"ouHandle": "org-alpha"})
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
 	assert.Equal(suite.T(), ErrFailedToIdentifyUser.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestExecute_RequiredInputsMissing() {
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		UserInputs:  map[string]string{},
 		RuntimeData: map[string]string{},
 	}
 
-	mockBase := suite.executor.ExecutorInterface.(*coremock.ExecutorInterfaceMock)
+	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
 	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(false)
 
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestExecute_InvalidCandidatesJSON() {
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		UserInputs:  map[string]string{"ouHandle": "org-alpha"},
 		RuntimeData: map[string]string{
@@ -209,7 +207,7 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_InvalidCandidatesJSON()
 		},
 	}
 
-	mockBase := suite.executor.ExecutorInterface.(*coremock.ExecutorInterfaceMock)
+	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
 	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
 
 	resp, err := suite.executor.Execute(ctx)
@@ -219,12 +217,12 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_InvalidCandidatesJSON()
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestExecute_PassesSubToAuthnProvider() {
-	candidates := []*entityprovider.Entity{
+	candidates := []*providers.Entity{
 		{ID: "user-1", OUID: "ou-1", OUHandle: "org-alpha", Type: "Customer"},
 	}
 	candidatesJSON, _ := json.Marshal(candidates)
 
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		UserInputs:  map[string]string{"ouHandle": "org-alpha"},
 		RuntimeData: map[string]string{
@@ -233,9 +231,9 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_PassesSubToAuthnProvide
 		},
 	}
 
-	mockBase := suite.executor.ExecutorInterface.(*coremock.ExecutorInterfaceMock)
+	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
 	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
-	mockBase.On("GetRequiredInputs", mock.Anything).Return([]common.Input{
+	mockBase.On("GetRequiredInputs", mock.Anything).Return([]providers.Input{
 		{Identifier: "ouHandle", Type: "TEXT_INPUT", Required: true},
 	})
 
@@ -245,7 +243,7 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_PassesSubToAuthnProvide
 	}, map[string]interface{}{
 		userAttributeSub: "federated-sub-123",
 	}, mock.Anything, mock.Anything, mock.Anything).
-		Return(authenticatedAuthUser, authnprovidercm.AuthenticatedClaims{}, nil)
+		Return(authenticatedAuthUser, providers.AuthenticatedClaims{}, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -255,12 +253,12 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_PassesSubToAuthnProvide
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestExecute_FailsWhenAuthnProviderReturnsError() {
-	candidates := []*entityprovider.Entity{
+	candidates := []*providers.Entity{
 		{ID: "user-1", OUID: "ou-1", OUHandle: "org-alpha", Type: "Customer"},
 	}
 	candidatesJSON, _ := json.Marshal(candidates)
 
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		UserInputs:  map[string]string{"ouHandle": "org-alpha"},
 		RuntimeData: map[string]string{
@@ -269,9 +267,9 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_FailsWhenAuthnProviderR
 		},
 	}
 
-	mockBase := suite.executor.ExecutorInterface.(*coremock.ExecutorInterfaceMock)
+	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
 	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
-	mockBase.On("GetRequiredInputs", mock.Anything).Return([]common.Input{
+	mockBase.On("GetRequiredInputs", mock.Anything).Return([]providers.Input{
 		{Identifier: "ouHandle", Type: "TEXT_INPUT", Required: true},
 	})
 
@@ -280,27 +278,27 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_FailsWhenAuthnProviderR
 	}, map[string]interface{}{
 		userAttributeSub: "federated-sub-123",
 	}, mock.Anything, mock.Anything, mock.Anything).Return(
-		authnprovidermgr.AuthUser{}, (authnprovidercm.AuthenticatedClaims)(nil), &serviceerror.ServiceError{
+		providers.AuthUser{}, (providers.AuthenticatedClaims)(nil), &tidcommon.ServiceError{
 			Code: "authentication_failed",
 		})
 
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
 	assert.Equal(suite.T(), ErrUserNotAuthenticated.Error.DefaultValue, resp.Error.Error.DefaultValue)
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestExecute_IgnoresUnexpectedInputKeys() {
-	candidates := []*entityprovider.Entity{
+	candidates := []*providers.Entity{
 		{ID: "user-1", OUID: "ou-1", OUHandle: "org-alpha", Type: "Customer"},
 		{ID: "user-2", OUID: "ou-2", OUHandle: "org-beta", Type: "Admin"},
 	}
 	candidatesJSON, _ := json.Marshal(candidates)
 
 	// Malicious client sends userID as an extra input
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		UserInputs: map[string]string{
 			"ouHandle": "org-alpha",
@@ -312,9 +310,9 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_IgnoresUnexpectedInputK
 		},
 	}
 
-	mockBase := suite.executor.ExecutorInterface.(*coremock.ExecutorInterfaceMock)
+	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
 	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
-	mockBase.On("GetRequiredInputs", mock.Anything).Return([]common.Input{
+	mockBase.On("GetRequiredInputs", mock.Anything).Return([]providers.Input{
 		{Identifier: "ouHandle", Type: "TEXT_INPUT", Required: true},
 	})
 
@@ -325,7 +323,7 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_IgnoresUnexpectedInputK
 	}, map[string]interface{}{
 		userAttributeSub: "federated-sub-123",
 	}, mock.Anything, mock.Anything, mock.Anything).
-		Return(authenticatedAuthUser, authnprovidercm.AuthenticatedClaims{}, nil)
+		Return(authenticatedAuthUser, providers.AuthenticatedClaims{}, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 

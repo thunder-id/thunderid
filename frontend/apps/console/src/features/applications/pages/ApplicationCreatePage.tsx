@@ -26,8 +26,10 @@ import {useState, useCallback, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useLocation, useNavigate} from 'react-router';
 import useCreateFlow from '../../flows/api/useCreateFlow';
+import useGetFlowById from '../../flows/api/useGetFlowById';
 import type {BasicFlowDefinition} from '../../flows/models/responses';
 import generateFlowGraph from '../../flows/utils/generateFlowGraph';
+import getFlowEntryComponents from '../../flows/utils/getFlowEntryComponents';
 import useIdentityProviders from '../../integrations/api/useIdentityProviders';
 import {AuthenticatorTypes} from '../../integrations/models/authenticators';
 import {IdentityProviderTypes} from '../../integrations/models/identity-provider';
@@ -48,6 +50,7 @@ import {
   ApplicationCreateFlowSignInApproach,
   ApplicationCreateFlowStep,
 } from '../models/application-create-flow';
+import {PlatformApplicationTemplate} from '../models/application-templates';
 import type {OAuth2Config} from '../models/oauth';
 import type {CreateApplicationRequest} from '../models/requests';
 import getConfigurationTypeFromTemplate from '../utils/getConfigurationTypeFromTemplate';
@@ -117,6 +120,24 @@ export default function ApplicationCreatePage(): JSX.Element {
   const createFlow = useCreateFlow();
   const {data: idpData} = useIdentityProviders();
 
+  const hasEnabledIntegrations = useMemo((): boolean => Object.values(integrations).some(Boolean), [integrations]);
+
+  const previewFlowId: string | undefined =
+    !hasEnabledIntegrations && selectedAuthFlow ? selectedAuthFlow.id : undefined;
+  const {data: previewFlow, isLoading: isPreviewFlowLoading} = useGetFlowById(previewFlowId, Boolean(previewFlowId));
+
+  const previewMock = useMemo(() => {
+    if (hasEnabledIntegrations || !selectedAuthFlow) {
+      return buildPreviewMock(integrations, idpData ?? [], {
+        application: {
+          logoUrl: appLogo!,
+        },
+      });
+    }
+
+    return getFlowEntryComponents(previewFlow) ?? [];
+  }, [hasEnabledIntegrations, selectedAuthFlow, integrations, idpData, appLogo, previewFlow]);
+
   const [stepReady, setStepReady] = useState<Record<ApplicationCreateFlowStep, boolean>>({
     STACK: true,
     NAME: false,
@@ -129,14 +150,37 @@ export default function ApplicationCreatePage(): JSX.Element {
   });
 
   const [oauthConfig, setOAuthConfig] = useState<OAuth2Config | null>(null);
+  const [walletClientId, setWalletClientId] = useState<string>('');
 
-  const effectiveOauthConfig = useMemo(
-    () =>
-      oauthConfig && callbackUrlFromConfig ? {...oauthConfig, redirectUris: [callbackUrlFromConfig]} : oauthConfig,
-    [oauthConfig, callbackUrlFromConfig],
-  );
+  const effectiveOauthConfig = useMemo(() => {
+    if (!oauthConfig) return oauthConfig;
+    let config: OAuth2Config = callbackUrlFromConfig
+      ? {...oauthConfig, redirectUris: [callbackUrlFromConfig]}
+      : oauthConfig;
+    if (walletClientId.trim()) {
+      config = {...config, clientId: walletClientId.trim()};
+    }
+    return config;
+  }, [oauthConfig, callbackUrlFromConfig, walletClientId]);
 
   const creationFlow = useMemo(() => resolveCreationFlow(selectedTemplateConfig), [selectedTemplateConfig]);
+
+  // Browser-based SPAs are public clients that must use the redirect-based flow, so the
+  // embedded (native) sign-in approach is not offered for them. Native mobile apps and digital
+  // wallets are also public clients but legitimately use app-native flows, so they are excluded
+  // from this rule.
+  const isBrowserSpaTemplate = useMemo((): boolean => {
+    if (
+      selectedPlatform === PlatformApplicationTemplate.MOBILE ||
+      selectedPlatform === PlatformApplicationTemplate.WALLET
+    ) {
+      return false;
+    }
+    const oauthConfig = selectedTemplateConfig?.defaults?.inboundAuthConfig?.find(
+      (config) => config.type === 'oauth2',
+    )?.config;
+    return oauthConfig?.publicClient === true;
+  }, [selectedTemplateConfig, selectedPlatform]);
 
   const needsConfigure = useMemo((): boolean => {
     const isPasskeyEnabled = !selectedAuthFlow && (integrations[AuthenticatorTypes.PASSKEY] ?? false);
@@ -171,7 +215,6 @@ export default function ApplicationCreatePage(): JSX.Element {
 
   const handleIntegrationToggle = (integrationId: string): void => {
     toggleIntegration(integrationId);
-    setSelectedAuthFlow(null);
   };
 
   const handleCreateApplication = (skipOAuthConfig = false, overrideFlowId?: string): void => {
@@ -437,6 +480,7 @@ export default function ApplicationCreatePage(): JSX.Element {
           <ConfigureExperience
             selectedApproach={signInApproach}
             onApproachChange={setSignInApproach}
+            allowEmbeddedApproach={!isBrowserSpaTemplate}
             onReadyChange={handleApproachStepReadyChange}
             userTypes={userTypesData?.types ?? []}
             selectedUserTypes={selectedUserTypes}
@@ -460,6 +504,7 @@ export default function ApplicationCreatePage(): JSX.Element {
             platform={selectedPlatform}
             onHostingUrlChange={setHostingUrl}
             onCallbackUrlChange={setCallbackUrlFromConfig}
+            onClientIdChange={setWalletClientId}
             onReadyChange={handleConfigureStepReadyChange}
           />
         );
@@ -651,15 +696,13 @@ export default function ApplicationCreatePage(): JSX.Element {
           currentStep !== ApplicationCreateFlowStep.ORGANIZATION_UNIT &&
           currentStep !== ApplicationCreateFlowStep.COMPLETE && (
             <Box sx={{flex: '0 0 50%', display: 'flex', flexDirection: 'column', p: 5}}>
-              <GatePreview
-                theme={selectedTheme}
-                mock={buildPreviewMock(integrations, idpData ?? [], {
-                  application: {
-                    logoUrl: appLogo!,
-                  },
-                })}
-                displayName={appName ?? undefined}
-              />
+              {isPreviewFlowLoading ? (
+                <Box sx={{display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1}}>
+                  <CircularProgress />
+                </Box>
+              ) : (
+                <GatePreview theme={selectedTheme} mock={previewMock} displayName={appName ?? undefined} />
+              )}
             </Box>
           )}
       </Box>

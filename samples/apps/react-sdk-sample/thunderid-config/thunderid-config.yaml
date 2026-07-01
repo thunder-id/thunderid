@@ -41,7 +41,7 @@ schema: {
       "displayName": "Full Name",
       "required": false
     },
-    "mobileNumber": {
+    "mobile_number": {
       "type": "string",
       "displayName": "Mobile Number",
       "required": false
@@ -125,3 +125,10 @@ inboundAuthConfig:
           - given_name
           - family_name
           - picture
+
+---
+# resource_type: server_config
+name: cors
+value:
+  allowedOrigins:
+    - "https://localhost:3000"

@@ -26,7 +26,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -41,18 +42,18 @@ const (
 // AttributeCacheServiceInterface defines the interface for the attribute cache service.
 type AttributeCacheServiceInterface interface {
 	// CreateAttributeCache creates a new attribute cache entry.
-	CreateAttributeCache(ctx context.Context, cache *AttributeCache) (*AttributeCache, *serviceerror.ServiceError)
+	CreateAttributeCache(ctx context.Context, cache *AttributeCache) (*AttributeCache, *tidcommon.ServiceError)
 
 	// GetAttributeCache retrieves an attribute cache entry by ID.
-	GetAttributeCache(ctx context.Context, id string) (*AttributeCache, *serviceerror.ServiceError)
+	GetAttributeCache(ctx context.Context, id string) (*AttributeCache, *tidcommon.ServiceError)
 
 	// ExtendAttributeCacheTTL extends the TTL of an attribute cache entry.
 	ExtendAttributeCacheTTL(
 		ctx context.Context, id string, ttlSeconds int,
-	) *serviceerror.ServiceError
+	) *tidcommon.ServiceError
 
 	// DeleteAttributeCache deletes an attribute cache entry by ID.
-	DeleteAttributeCache(ctx context.Context, id string) *serviceerror.ServiceError
+	DeleteAttributeCache(ctx context.Context, id string) *tidcommon.ServiceError
 }
 
 // attributeCacheService is the default implementation of the AttributeCacheServiceInterface.
@@ -70,7 +71,7 @@ func newAttributeCacheService(store attributeCacheStoreInterface) AttributeCache
 // CreateAttributeCache creates a new attribute cache entry.
 func (s *attributeCacheService) CreateAttributeCache(
 	ctx context.Context, cache *AttributeCache,
-) (*AttributeCache, *serviceerror.ServiceError) {
+) (*AttributeCache, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Creating attribute cache entry")
 
@@ -90,13 +91,13 @@ func (s *attributeCacheService) CreateAttributeCache(
 	cache.ID, err = utils.GenerateUUIDv7()
 	if err != nil {
 		logger.Error(ctx, "Failed to generate UUID", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	err = s.store.CreateAttributeCache(ctx, *cache)
 	if err != nil {
 		logger.Error(ctx, "Failed to create attribute cache", log.Error(err), log.String("id", cache.ID))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	logger.Debug(ctx, "Successfully created attribute cache", log.String("id", cache.ID))
@@ -106,7 +107,7 @@ func (s *attributeCacheService) CreateAttributeCache(
 // GetAttributeCache retrieves an attribute cache entry by ID.
 func (s *attributeCacheService) GetAttributeCache(
 	ctx context.Context, id string,
-) (*AttributeCache, *serviceerror.ServiceError) {
+) (*AttributeCache, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Retrieving attribute cache", log.String("id", id))
 
@@ -121,7 +122,7 @@ func (s *attributeCacheService) GetAttributeCache(
 			return nil, &ErrorAttributeCacheNotFound
 		}
 		logger.Error(ctx, "Failed to retrieve attribute cache", log.Error(err), log.String("id", id))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	logger.Debug(ctx, "Successfully retrieved attribute cache", log.String("id", id))
@@ -131,7 +132,7 @@ func (s *attributeCacheService) GetAttributeCache(
 // ExtendAttributeCacheTTL extends the TTL of an attribute cache entry.
 func (s *attributeCacheService) ExtendAttributeCacheTTL(
 	ctx context.Context, id string, ttlSeconds int,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Extending attribute cache TTL", log.String("id", id))
 
@@ -150,7 +151,7 @@ func (s *attributeCacheService) ExtendAttributeCacheTTL(
 			return &ErrorAttributeCacheNotFound
 		}
 		logger.Error(ctx, "Failed to extend attribute cache TTL", log.Error(err), log.String("id", id))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	logger.Debug(ctx, "Successfully extended attribute cache TTL", log.String("id", id))
@@ -160,7 +161,7 @@ func (s *attributeCacheService) ExtendAttributeCacheTTL(
 // DeleteAttributeCache deletes an attribute cache entry by ID.
 func (s *attributeCacheService) DeleteAttributeCache(
 	ctx context.Context, id string,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Deleting attribute cache", log.String("id", id))
 
@@ -175,7 +176,7 @@ func (s *attributeCacheService) DeleteAttributeCache(
 			return &ErrorAttributeCacheNotFound
 		}
 		logger.Error(ctx, "Failed to delete attribute cache", log.Error(err), log.String("id", id))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	logger.Debug(ctx, "Successfully deleted attribute cache", log.String("id", id))

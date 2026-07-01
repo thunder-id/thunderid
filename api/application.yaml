@@ -115,9 +115,6 @@ paths:
               assertion:
                 validityPeriod: 3600
                 userAttributes: ["email", "username"]
-              certificate:
-                type: "JWKS_URI"
-                value: "https://myapp.example.com/.well-known/jwks"
               allowedUserTypes: ["employee", "customer"]
               loginConsent:
                 validityPeriod: 3600
@@ -193,9 +190,6 @@ paths:
                 assertion:
                   validityPeriod: 3600
                   userAttributes: ["email", "username"]
-                certificate:
-                  type: "JWKS_URI"
-                  value: "https://myapp.example.com/.well-known/jwks"
                 allowedUserTypes: ["employee", "customer"]
                 loginConsent:
                   enabled: true
@@ -339,9 +333,6 @@ paths:
                 assertion:
                   validityPeriod: 3600
                   userAttributes: ["email", "username"]
-                certificate:
-                  type: "JWKS_URI"
-                  value: "https://myapp.example.com/.well-known/jwks"
                 allowedUserTypes: ["employee", "customer"]
                 loginConsent:
                   enabled: true
@@ -471,9 +462,6 @@ paths:
               assertion:
                 validityPeriod: 3600
                 userAttributes: ["email", "username"]
-              certificate:
-                type: "JWKS_URI"
-                value: "https://myapp.example.com/.well-known/jwks"
               allowedUserTypes: ["employee", "customer"]
               loginConsent:
                 validityPeriod: 3600
@@ -550,9 +538,6 @@ paths:
                 assertion:
                   validityPeriod: 3600
                   userAttributes: ["email", "username"]
-                certificate:
-                  type: "JWKS_URI"
-                  value: "https://myapp.example.com/.well-known/jwks"
                 allowedUserTypes: ["employee", "customer"]
                 loginConsent:
                   enabled: true
@@ -819,8 +804,6 @@ components:
           example: "https://myapp.example.com/logo.png"
         assertion:
           $ref: '#/components/schemas/AssertionConfig'
-        certificate:
-          $ref: '#/components/schemas/Certificate'
         inboundAuthConfig:
           type: array
           items:
@@ -933,8 +916,6 @@ components:
           example: "https://myapp.example.com/logo.png"
         assertion:
           $ref: '#/components/schemas/AssertionConfig'
-        certificate:
-          $ref: '#/components/schemas/Certificate'
         inboundAuthConfig:
           type: array
           items:
@@ -1047,8 +1028,6 @@ components:
           example: "https://myapp.example.com/logo.png"
         assertion:
           $ref: '#/components/schemas/AssertionConfig'
-        certificate:
-          $ref: '#/components/schemas/Certificate'
         inboundAuthConfig:
           type: array
           items:

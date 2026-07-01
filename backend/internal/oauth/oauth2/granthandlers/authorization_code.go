@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -34,8 +33,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // authorizationCodeGrantHandler handles the authorization code grant type.
@@ -43,7 +42,7 @@ type authorizationCodeGrantHandler struct {
 	authzService    authz.AuthorizeServiceInterface
 	tokenBuilder    tokenservice.TokenBuilderInterface
 	attributeCache  attributecache.AttributeCacheServiceInterface
-	resourceService resource.ResourceServiceInterface
+	resourceService providers.ResourceServerProvider
 }
 
 // newAuthorizationCodeGrantHandler creates a new instance of AuthorizationCodeGrantHandler.
@@ -51,7 +50,7 @@ func newAuthorizationCodeGrantHandler(
 	authzService authz.AuthorizeServiceInterface,
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	attributeCache attributecache.AttributeCacheServiceInterface,
-	resourceService resource.ResourceServiceInterface,
+	resourceService providers.ResourceServerProvider,
 ) GrantHandlerInterface {
 	return &authorizationCodeGrantHandler{
 		authzService:    authzService,
@@ -63,14 +62,14 @@ func newAuthorizationCodeGrantHandler(
 
 // ValidateGrant validates the authorization code grant request.
 func (h *authorizationCodeGrantHandler) ValidateGrant(ctx context.Context, tokenRequest *model.TokenRequest,
-	oauthApp *inboundmodel.OAuthClient) *model.ErrorResponse {
+	oauthApp *providers.OAuthClient) *model.ErrorResponse {
 	if tokenRequest.GrantType == "" {
 		return &model.ErrorResponse{
 			Error:            constants.ErrorInvalidRequest,
 			ErrorDescription: "Missing grant_type parameter",
 		}
 	}
-	if constants.GrantType(tokenRequest.GrantType) != constants.GrantTypeAuthorizationCode {
+	if providers.GrantType(tokenRequest.GrantType) != providers.GrantTypeAuthorizationCode {
 		return &model.ErrorResponse{
 			Error:            constants.ErrorUnsupportedGrantType,
 			ErrorDescription: "Unsupported grant type",
@@ -98,7 +97,7 @@ func (h *authorizationCodeGrantHandler) ValidateGrant(ctx context.Context, token
 
 // HandleGrant processes the authorization code grant request and generates a token response.
 func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRequest *model.TokenRequest,
-	oauthApp *inboundmodel.OAuthClient) (
+	oauthApp *providers.OAuthClient) (
 	*model.TokenResponseDTO, *model.ErrorResponse) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthorizationCodeGrantHandler"))
 
@@ -151,7 +150,7 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	if len(tokenRequest.Resources) > 0 {
 		// When the auth code had explicit resources, narrow by filtering the already-resolved full set.
 		// When the auth code had no explicit resources, resolve the token-request resources directly.
-		var narrowedRSes []*resource.ResourceServer
+		var narrowedRSes []*providers.ResourceServer
 		if len(authCode.Resources) > 0 {
 			narrowedRSes = resourceindicators.FilterByIdentifiers(fullRSes, tokenRequest.Resources)
 		} else {
@@ -188,7 +187,7 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		Scopes:           accessTokenScopes,
 		UserAttributes:   attrs,
 		AttributeCacheID: authCode.AttributeCacheID,
-		GrantType:        string(constants.GrantTypeAuthorizationCode),
+		GrantType:        string(providers.GrantTypeAuthorizationCode),
 		OAuthApp:         oauthApp,
 		ClaimsRequest:    authCode.ClaimsRequest,
 		ClaimsLocales:    authCode.ClaimsLocales,
@@ -243,7 +242,7 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 func (h *authorizationCodeGrantHandler) retrieveAndValidateAuthCode(
 	ctx context.Context,
 	tokenRequest *model.TokenRequest,
-	oauthApp *inboundmodel.OAuthClient,
+	oauthApp *providers.OAuthClient,
 	logger *log.Logger,
 ) (*authz.AuthorizationCode, *model.ErrorResponse) {
 	authCode, codeErr := h.authzService.GetAuthorizationCodeDetails(ctx, tokenRequest.ClientID, tokenRequest.Code)

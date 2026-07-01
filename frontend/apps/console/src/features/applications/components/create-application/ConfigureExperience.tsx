@@ -56,6 +56,13 @@ export interface ConfigureExperienceProps {
   onApproachChange: (approach: ApplicationCreateFlowSignInApproach) => void;
 
   /**
+   * Whether the embedded (native) sign-in approach is allowed. Browser-based SPAs
+   * (public clients) must use the redirect-based approach, so the embedded option is
+   * hidden for them. Defaults to true.
+   */
+  allowEmbeddedApproach?: boolean;
+
+  /**
    * Callback function to broadcast whether this step is ready to proceed
    */
   onReadyChange?: (isReady: boolean) => void;
@@ -119,6 +126,7 @@ export interface ConfigureExperienceProps {
 export default function ConfigureExperience({
   selectedApproach,
   onApproachChange,
+  allowEmbeddedApproach = true,
   onReadyChange = undefined,
   userTypes = [],
   selectedUserTypes = [],
@@ -151,6 +159,16 @@ export default function ConfigureExperience({
       onUserTypesChange([userTypes[0].name]);
     }
   }, [showUserTypes, userTypes, selectedUserTypes.length, onUserTypesChange]);
+
+  /**
+   * Reset to the redirect-based approach if the embedded approach is not allowed
+   * but is currently selected (e.g. after switching to a public-client SPA template).
+   */
+  useEffect((): void => {
+    if (!allowEmbeddedApproach && selectedApproach === ApplicationCreateFlowSignInApproach.EMBEDDED) {
+      onApproachChange(ApplicationCreateFlowSignInApproach.INBUILT);
+    }
+  }, [allowEmbeddedApproach, selectedApproach, onApproachChange]);
 
   const handleApproachChange = (event: ChangeEvent<HTMLInputElement>): void => {
     onApproachChange(event.target.value as ApplicationCreateFlowSignInApproach);
@@ -228,53 +246,55 @@ export default function ConfigureExperience({
               </CardActionArea>
             </Card>
 
-            {/* Native/Custom UI Option */}
-            <Card variant="outlined" onClick={() => onApproachChange(ApplicationCreateFlowSignInApproach.EMBEDDED)}>
-              <CardActionArea
-                sx={{
-                  height: '100%',
-                  cursor: 'pointer',
-                  border: 1,
-                  borderColor:
-                    selectedApproach === ApplicationCreateFlowSignInApproach.EMBEDDED ? 'primary.main' : 'divider',
-                  transition: 'all 0.2s ease-in-out',
-                  '&:hover': {
-                    borderColor: 'primary.main',
-                    bgcolor:
-                      selectedApproach === ApplicationCreateFlowSignInApproach.EMBEDDED
-                        ? 'action.selected'
-                        : 'action.hover',
-                  },
-                }}
-              >
-                <CardContent>
-                  <Stack direction="row" spacing={2} alignItems="flex-start">
-                    <FormControlLabel
-                      value={ApplicationCreateFlowSignInApproach.EMBEDDED}
-                      control={<Radio />}
-                      label=""
-                      sx={{m: 0}}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                    <Box sx={{flex: 1}}>
-                      <Stack direction="row" spacing={1} alignItems="center" sx={{mb: 1}}>
-                        <Code size={20} />
-                        <Typography variant="h6">
-                          {t('applications:onboarding.configure.approach.native.title', {
+            {/* Native/Custom UI Option - hidden for public-client SPAs which must use redirect-based flows */}
+            {allowEmbeddedApproach && (
+              <Card variant="outlined" onClick={() => onApproachChange(ApplicationCreateFlowSignInApproach.EMBEDDED)}>
+                <CardActionArea
+                  sx={{
+                    height: '100%',
+                    cursor: 'pointer',
+                    border: 1,
+                    borderColor:
+                      selectedApproach === ApplicationCreateFlowSignInApproach.EMBEDDED ? 'primary.main' : 'divider',
+                    transition: 'all 0.2s ease-in-out',
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      bgcolor:
+                        selectedApproach === ApplicationCreateFlowSignInApproach.EMBEDDED
+                          ? 'action.selected'
+                          : 'action.hover',
+                    },
+                  }}
+                >
+                  <CardContent>
+                    <Stack direction="row" spacing={2} alignItems="flex-start">
+                      <FormControlLabel
+                        value={ApplicationCreateFlowSignInApproach.EMBEDDED}
+                        control={<Radio />}
+                        label=""
+                        sx={{m: 0}}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <Box sx={{flex: 1}}>
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{mb: 1}}>
+                          <Code size={20} />
+                          <Typography variant="h6">
+                            {t('applications:onboarding.configure.approach.native.title', {
+                              product: productName,
+                            })}
+                          </Typography>
+                        </Stack>
+                        <Typography variant="body2" color="text.secondary">
+                          {t('applications:onboarding.configure.approach.native.description', {
                             product: productName,
                           })}
                         </Typography>
-                      </Stack>
-                      <Typography variant="body2" color="text.secondary">
-                        {t('applications:onboarding.configure.approach.native.description', {
-                          product: productName,
-                        })}
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </CardActionArea>
-            </Card>
+                      </Box>
+                    </Stack>
+                  </CardContent>
+                </CardActionArea>
+              </Card>
+            )}
           </Stack>
         </RadioGroup>
       </Stack>

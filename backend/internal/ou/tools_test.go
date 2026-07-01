@@ -23,13 +23,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 )
 
 type OUToolsTestSuite struct {
@@ -45,7 +46,7 @@ func (suite *OUToolsTestSuite) TestListOrganizationUnits_Success() {
 	tools := &ouTools{ouService: mockService}
 
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	expectedOUs := []OrganizationUnitBasic{
+	expectedOUs := []providers.OrganizationUnitBasic{
 		{
 			ID:          "ou1",
 			Handle:      "engineering",
@@ -67,7 +68,7 @@ func (suite *OUToolsTestSuite) TestListOrganizationUnits_Success() {
 	}
 
 	mockService.On("GetOrganizationUnitList", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(&OrganizationUnitListResponse{
+		Return(&providers.OrganizationUnitListResponse{
 			TotalResults:      2,
 			OrganizationUnits: expectedOUs,
 		}, nil)
@@ -105,8 +106,8 @@ func (suite *OUToolsTestSuite) TestListOrganizationUnits_Error() {
 	tools := &ouTools{ouService: mockService}
 
 	mockService.On("GetOrganizationUnitList", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, &serviceerror.ServiceError{
-			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "database error"},
+		Return(nil, &tidcommon.ServiceError{
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "database error"},
 		})
 
 	ctx := context.Background()

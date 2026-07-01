@@ -22,22 +22,21 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/thunder-id/thunderid/internal/actorprovider"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the authorization handler and registers its routes.
 func Initialize(
 	mux *http.ServeMux,
-	actorProvider actorprovider.ActorProviderInterface,
-	resourceService resource.ResourceServiceInterface,
+	actorProvider providers.ActorProvider,
+	resourceService providers.ResourceServerProvider,
 	jwtService jwt.JWTServiceInterface,
 	flowExecService flowexec.FlowExecServiceInterface,
 	parService par.PARServiceInterface,

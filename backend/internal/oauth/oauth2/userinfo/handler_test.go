@@ -24,13 +24,13 @@ import (
 	"strings"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 )
 
 type UserInfoHandlerTestSuite struct {
@@ -109,8 +109,8 @@ func (s *UserInfoHandlerTestSuite) TestHandleUserInfo_ServerError() {
 	req.Header.Set("Authorization", "Bearer token123")
 	rr := httptest.NewRecorder()
 
-	expectedError := serviceerror.CustomServiceError(serviceerror.InternalServerError,
-		core.I18nMessage{
+	expectedError := tidcommon.CustomServiceError(tidcommon.InternalServerError,
+		tidcommon.I18nMessage{
 			Key:          "error.test.fetch_userinfo_attributes_or_groups",
 			DefaultValue: "An error occurred while fetching user attributes or groups",
 		})
@@ -120,7 +120,7 @@ func (s *UserInfoHandlerTestSuite) TestHandleUserInfo_ServerError() {
 
 	assert.Equal(s.T(), http.StatusInternalServerError, rr.Code)
 	assert.Contains(s.T(), rr.Body.String(), "server_error")
-	assert.Contains(s.T(), rr.Body.String(), serviceerror.InternalServerError.Error.DefaultValue)
+	assert.Contains(s.T(), rr.Body.String(), tidcommon.InternalServerError.Error.DefaultValue)
 	assert.NotContains(s.T(), rr.Body.String(), expectedError.ErrorDescription.DefaultValue)
 	// Server errors should not include WWW-Authenticate
 	assert.Empty(s.T(), rr.Header().Get("WWW-Authenticate"))
@@ -290,7 +290,7 @@ func (s *UserInfoHandlerTestSuite) TestHandleUserInfo_EncodingError() {
 	// With buffer approach, encoding fails BEFORE headers are sent, so we get HTTP 500
 	assert.Equal(s.T(), http.StatusInternalServerError, rr.Code)
 	// Verify that encoding error message is returned
-	assert.Contains(s.T(), rr.Body.String(), serviceerror.ErrorEncodingError.Code)
+	assert.Contains(s.T(), rr.Body.String(), tidcommon.ErrorEncodingError.Code)
 	s.mockService.AssertExpectations(s.T())
 }
 
@@ -301,10 +301,10 @@ func (s *UserInfoHandlerTestSuite) TestWriteServiceErrorResponse_DefaultCase() {
 	rr := httptest.NewRecorder()
 
 	// Create a service error with an unknown type (not ClientErrorType or ServerErrorType)
-	unknownError := &serviceerror.ServiceError{
+	unknownError := &tidcommon.ServiceError{
 		Type: "UnknownErrorType", // Unknown type
 		Code: "unknown_error",
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.test.an_unknown_error_occurred", DefaultValue: "An unknown error occurred",
 		},
 	}
@@ -414,7 +414,7 @@ func (s *UserInfoHandlerTestSuite) TestHandleUserInfo_BearerDowngrade_DPoPWWWAut
 
 // assertServiceErrorResponse is a helper to test service error responses with WWW-Authenticate headers.
 func (s *UserInfoHandlerTestSuite) assertServiceErrorResponse(
-	token string, svcErr *serviceerror.ServiceError, expectedStatus int, expectedWWWAuthError string,
+	token string, svcErr *tidcommon.ServiceError, expectedStatus int, expectedWWWAuthError string,
 ) {
 	req := httptest.NewRequest(http.MethodGet, "/oauth2/userinfo", nil)
 	req.Header.Set("Authorization", "Bearer "+token)

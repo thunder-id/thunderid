@@ -17,3 +17,14 @@ inboundAuthConfig:
       grantTypes:
         - client_credentials
       tokenEndpointAuthMethod: client_secret_basic
+
+---
+# resource_type: server_config
+# Allows the sample apps' browser origins to reach the API during E2E tests. CORS origins come only from
+# the server-config "cors" section (no default ships), so the E2E setup imports them here.
+name: cors
+value:
+  allowedOrigins:
+    - "https://localhost:3000"
+    - "http://localhost:5173"
+    - "http://localhost:6274"

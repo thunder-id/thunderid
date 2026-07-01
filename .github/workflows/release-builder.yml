@@ -6,9 +6,9 @@
 name: 🚀 Release Builder
 
 on:
-  schedule:
-    # Runs every Friday at 12:00 PM IST (6:30 AM UTC)
-    - cron: '30 6 * * 5'
+  # schedule:
+  #   # Runs every Friday at 12:00 PM IST (6:30 AM UTC)
+  #   - cron: '30 6 * * 5'
   workflow_dispatch:
     inputs:
       bump_type:
@@ -59,7 +59,7 @@ jobs:
       prerelease: ${{ steps.get_version.outputs.prerelease }}
       run_performance_test: ${{ steps.get_version.outputs.run_performance_test }}
       use_existing_version: ${{ steps.get_version.outputs.use_existing_version }}
-    steps:  
+    steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -88,18 +88,10 @@ jobs:
             exit 1
           fi
 
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            PRERELEASE="${{ github.event.inputs.prerelease }}"
-            RUN_PERF_TEST="${{ github.event.inputs.run_performance_test }}"
-            BUMP_TYPE="${{ github.event.inputs.bump_type }}"
-            USE_EXISTING_VERSION="${{ github.event.inputs.use_existing_version }}"
-          else
-            # Scheduled run — default to minor bump
-            PRERELEASE="false"
-            RUN_PERF_TEST="true"
-            BUMP_TYPE="minor"
-            USE_EXISTING_VERSION="false"
-          fi
+          PRERELEASE="${{ github.event.inputs.prerelease }}"
+          RUN_PERF_TEST="${{ github.event.inputs.run_performance_test }}"
+          BUMP_TYPE="${{ github.event.inputs.bump_type }}"
+          USE_EXISTING_VERSION="${{ github.event.inputs.use_existing_version }}"
 
           if [ "$USE_EXISTING_VERSION" == "true" ]; then
             VERSION="$CURRENT_VERSION"

@@ -25,12 +25,14 @@ import (
 	"os"
 	"testing"
 
-	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/consentmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 
@@ -747,7 +749,7 @@ func TestInitialize_StoreModes(t *testing.T) {
 			mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 			// Mock OU service for potential declarative resource loading
 			mockOUService.On("GetOrganizationUnit", mock.Anything, mock.Anything).
-				Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).
+				Return(providers.OrganizationUnit{ID: "ou-1"}, nil).
 				Maybe()
 			mockConsentService := mockConsentServiceWithDisabled(t)
 
@@ -921,7 +923,7 @@ func TestOUServiceInteractionDuringValidation(t *testing.T) {
 		name           string
 		ouID           string
 		ouExists       bool
-		ouServiceError *serviceerror.ServiceError
+		ouServiceError *tidcommon.ServiceError
 		expectedResult string
 	}{
 		{
@@ -942,14 +944,14 @@ func TestOUServiceInteractionDuringValidation(t *testing.T) {
 			name:     "OU service returns error - should fail",
 			ouID:     "550e8400-e29b-41d4-a716-446655440002",
 			ouExists: false,
-			ouServiceError: &serviceerror.ServiceError{
+			ouServiceError: &tidcommon.ServiceError{
 				Code: "OUS-5000",
-				Type: serviceerror.ServerErrorType,
-				Error: core.I18nMessage{
+				Type: tidcommon.ServerErrorType,
+				Error: tidcommon.I18nMessage{
 					Key:          "error.organizationunit.internal_server_error",
 					DefaultValue: "Internal server error",
 				},
-				ErrorDescription: core.I18nMessage{
+				ErrorDescription: tidcommon.I18nMessage{
 					Key:          "error.organizationunit.failed_to_query",
 					DefaultValue: "Failed to query organization unit",
 				},
@@ -965,20 +967,20 @@ func TestOUServiceInteractionDuringValidation(t *testing.T) {
 			// Mock the GetOrganizationUnit call that happens in Initialize()
 			if tc.ouServiceError != nil {
 				mockOUService.On("GetOrganizationUnit", mock.Anything, tc.ouID).
-					Return(oupkg.OrganizationUnit{}, tc.ouServiceError).Once()
+					Return(providers.OrganizationUnit{}, tc.ouServiceError).Once()
 			} else if tc.ouExists {
 				mockOUService.On("GetOrganizationUnit", mock.Anything, tc.ouID).
-					Return(oupkg.OrganizationUnit{ID: tc.ouID}, (*serviceerror.ServiceError)(nil)).Once()
+					Return(providers.OrganizationUnit{ID: tc.ouID}, (*tidcommon.ServiceError)(nil)).Once()
 			} else {
 				mockOUService.On("GetOrganizationUnit", mock.Anything, tc.ouID).
-					Return(oupkg.OrganizationUnit{}, &serviceerror.ServiceError{
+					Return(providers.OrganizationUnit{}, &tidcommon.ServiceError{
 						Code: "OUS-1002",
-						Type: serviceerror.ClientErrorType,
-						Error: core.I18nMessage{
+						Type: tidcommon.ClientErrorType,
+						Error: tidcommon.I18nMessage{
 							Key:          "error.organizationunit.not_found",
 							DefaultValue: "Organization unit not found",
 						},
-						ErrorDescription: core.I18nMessage{
+						ErrorDescription: tidcommon.I18nMessage{
 							Key:          "error.organizationunit.not_found_description",
 							DefaultValue: "The organization unit does not exist",
 						},
@@ -1126,7 +1128,7 @@ func TestInitialize_WithDeclarativeResourcesEnabled_InvalidYAML(t *testing.T) {
 			},
 		},
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},
@@ -1186,7 +1188,7 @@ schema: |
 			},
 		},
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},
@@ -1246,7 +1248,7 @@ schema: |
 			},
 		},
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},
@@ -1262,14 +1264,14 @@ schema: |
 
 	// Mock OU service to return not-found for the handle
 	mockOUService.On("GetOrganizationUnitByPath", mock.Anything, "nonexistent-handle").
-		Return(oupkg.OrganizationUnit{}, &serviceerror.ServiceError{
+		Return(providers.OrganizationUnit{}, &tidcommon.ServiceError{
 			Code: "OUS-1002",
-			Type: serviceerror.ClientErrorType,
-			Error: core.I18nMessage{
+			Type: tidcommon.ClientErrorType,
+			Error: tidcommon.I18nMessage{
 				Key:          "error.organizationunit.not_found",
 				DefaultValue: "Organization unit not found",
 			},
-			ErrorDescription: core.I18nMessage{
+			ErrorDescription: tidcommon.I18nMessage{
 				Key:          "error.organizationunit.not_found_description",
 				DefaultValue: "The organization unit does not exist",
 			},
@@ -1320,7 +1322,7 @@ schema: |
 			},
 		},
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: testCryptoKey,
 			},
 		},

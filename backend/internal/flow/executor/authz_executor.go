@@ -22,13 +22,12 @@ import (
 	"encoding/json"
 	"errors"
 
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	authzsvc "github.com/thunder-id/thunderid/internal/authz"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
-	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 const (
@@ -40,57 +39,57 @@ const (
 // authorizationExecutor implements the ExecutorInterface for performing authorization checks
 // during flow execution. It enriches the flow context with authorized permissions.
 type authorizationExecutor struct {
-	core.ExecutorInterface
+	providers.Executor
 	authzService   authzsvc.AuthorizationServiceInterface
 	entityProvider entityprovider.EntityProviderInterface
-	authnProvider  authnprovidermgr.AuthnProviderManagerInterface
+	authnProvider  providers.AuthnProviderManager
 	logger         *log.Logger
 }
 
-var _ core.ExecutorInterface = (*authorizationExecutor)(nil)
+var _ providers.Executor = (*authorizationExecutor)(nil)
 
 // newAuthorizationExecutor creates a new instance of AuthorizationExecutor.
 func newAuthorizationExecutor(
 	flowFactory core.FlowFactoryInterface,
 	authZService authzsvc.AuthorizationServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) *authorizationExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, authzLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAuthorization))
 
-	base := flowFactory.CreateExecutor(ExecutorNameAuthorization, common.ExecutorTypeUtility,
-		[]common.Input{}, []common.Input{})
+	base := flowFactory.CreateExecutor(ExecutorNameAuthorization, providers.ExecutorTypeUtility,
+		[]providers.Input{}, []providers.Input{})
 
 	return &authorizationExecutor{
-		ExecutorInterface: base,
-		authzService:      authZService,
-		entityProvider:    entityProvider,
-		authnProvider:     authnProvider,
-		logger:            logger,
+		Executor:       base,
+		authzService:   authZService,
+		entityProvider: entityProvider,
+		authnProvider:  authnProvider,
+		logger:         logger,
 	}
 }
 
 // Execute executes the authorization logic by determining required permissions based on context,
 // calling the authorization service, and storing authorized permissions in runtime data.
-func (a *authorizationExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing authorization executor")
 
-	execResp := &common.ExecutorResponse{
+	execResp := &providers.ExecutorResponse{
 		RuntimeData: make(map[string]string),
 		AuthUser:    ctx.AuthUser,
 	}
 
-	if !execResp.AuthUser.IsAuthenticated() && ctx.FlowType == common.FlowTypeRegistration {
+	if !execResp.AuthUser.IsAuthenticated() && ctx.FlowType == providers.FlowTypeRegistration {
 		logger.Debug(ctx.Context,
 			"Sending executor complete response for unauthenticated user in registration flow")
-		execResp.Status = common.ExecComplete
+		execResp.Status = providers.ExecComplete
 		return execResp, nil
 	}
 
 	if !execResp.AuthUser.IsAuthenticated() {
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrUserNotAuthenticated
 		return execResp, nil
 	}
@@ -98,7 +97,7 @@ func (a *authorizationExecutor) Execute(ctx *core.NodeContext) (*common.Executor
 	authUser, entityRef, svcErr := a.authnProvider.GetEntityReference(ctx.Context, execResp.AuthUser)
 	execResp.AuthUser = authUser
 	if svcErr != nil {
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrFailedToIdentifyUser
 		return execResp, nil
 	}
@@ -108,7 +107,7 @@ func (a *authorizationExecutor) Execute(ctx *core.NodeContext) (*common.Executor
 
 	if len(requestedPerms) == 0 {
 		logger.Debug(ctx.Context, "No permissions to check, returning empty permissions")
-		execResp.Status = common.ExecComplete
+		execResp.Status = providers.ExecComplete
 		return execResp, nil
 	}
 
@@ -131,7 +130,7 @@ func (a *authorizationExecutor) Execute(ctx *core.NodeContext) (*common.Executor
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Authorization service call failed",
 			log.String("error", svcErr.Error.DefaultValue))
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrAuthorizationFailed
 		return execResp, nil
 	}
@@ -141,12 +140,12 @@ func (a *authorizationExecutor) Execute(ctx *core.NodeContext) (*common.Executor
 	logger.Debug(ctx.Context, "Authorization completed successfully",
 		log.Int("authorizedCount", len(authorizedPermissions)))
 
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 	return execResp, nil
 }
 
 // extractRequestedPermissions extracts requested permissions from the context.
-func extractRequestedPermissions(ctx *core.NodeContext) []string {
+func extractRequestedPermissions(ctx *providers.NodeContext) []string {
 	requestedPermissions := ctx.RuntimeData[requestedPermissionsKey]
 	if requestedPermissions != "" {
 		return utils.ParseStringArray(requestedPermissions, " ")
@@ -156,7 +155,7 @@ func extractRequestedPermissions(ctx *core.NodeContext) []string {
 }
 
 // setAuthorizedPermissions sets the authorized permissions in the executor response's runtime data.
-func setAuthorizedPermissions(execResp *common.ExecutorResponse, authorizedPermissions []string) {
+func setAuthorizedPermissions(execResp *providers.ExecutorResponse, authorizedPermissions []string) {
 	execResp.RuntimeData[authorizedPermissionsKey] = utils.StringifyStringArray(authorizedPermissions, " ")
 }
 
@@ -195,7 +194,7 @@ func (a *authorizationExecutor) filterAuthorizedPermissions(
 
 // extractGroupIDs extracts group IDs from the authenticated user's attributes or runtime data.
 // If neither provides group information, it fetches them using the user service.
-func (a *authorizationExecutor) extractGroupIDs(ctx *core.NodeContext, userID string) ([]string, error) {
+func (a *authorizationExecutor) extractGroupIDs(ctx *providers.NodeContext, userID string) ([]string, error) {
 	// Try to get groups from runtime data (JSON array string)
 	if groupsJSON, ok := ctx.RuntimeData[userAttributeGroups]; ok && groupsJSON != "" {
 		var groups []string

@@ -7,7 +7,7 @@ package flowexecmock
 import (
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // newFlowEngineInterfaceMock creates a new instance of flowEngineInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -38,7 +38,7 @@ func (_m *flowEngineInterfaceMock) EXPECT() *flowEngineInterfaceMock_Expecter {
 }
 
 // Execute provides a mock function for the type flowEngineInterfaceMock
-func (_mock *flowEngineInterfaceMock) Execute(ctx *flowexec.EngineContext) (flowexec.FlowStep, *serviceerror.ServiceError) {
+func (_mock *flowEngineInterfaceMock) Execute(ctx *flowexec.EngineContext) (flowexec.FlowStep, *common.ServiceError) {
 	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
@@ -46,8 +46,8 @@ func (_mock *flowEngineInterfaceMock) Execute(ctx *flowexec.EngineContext) (flow
 	}
 
 	var r0 flowexec.FlowStep
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(*flowexec.EngineContext) (flowexec.FlowStep, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(*flowexec.EngineContext) (flowexec.FlowStep, *common.ServiceError)); ok {
 		return returnFunc(ctx)
 	}
 	if returnFunc, ok := ret.Get(0).(func(*flowexec.EngineContext) flowexec.FlowStep); ok {
@@ -55,11 +55,11 @@ func (_mock *flowEngineInterfaceMock) Execute(ctx *flowexec.EngineContext) (flow
 	} else {
 		r0 = ret.Get(0).(flowexec.FlowStep)
 	}
-	if returnFunc, ok := ret.Get(1).(func(*flowexec.EngineContext) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(*flowexec.EngineContext) *common.ServiceError); ok {
 		r1 = returnFunc(ctx)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -89,12 +89,12 @@ func (_c *flowEngineInterfaceMock_Execute_Call) Run(run func(ctx *flowexec.Engin
 	return _c
 }
 
-func (_c *flowEngineInterfaceMock_Execute_Call) Return(flowStep flowexec.FlowStep, serviceError *serviceerror.ServiceError) *flowEngineInterfaceMock_Execute_Call {
+func (_c *flowEngineInterfaceMock_Execute_Call) Return(flowStep flowexec.FlowStep, serviceError *common.ServiceError) *flowEngineInterfaceMock_Execute_Call {
 	_c.Call.Return(flowStep, serviceError)
 	return _c
 }
 
-func (_c *flowEngineInterfaceMock_Execute_Call) RunAndReturn(run func(ctx *flowexec.EngineContext) (flowexec.FlowStep, *serviceerror.ServiceError)) *flowEngineInterfaceMock_Execute_Call {
+func (_c *flowEngineInterfaceMock_Execute_Call) RunAndReturn(run func(ctx *flowexec.EngineContext) (flowexec.FlowStep, *common.ServiceError)) *flowEngineInterfaceMock_Execute_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -28,12 +28,13 @@ import (
 	"errors"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 )
@@ -139,7 +140,7 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_GetPublicKeysError() {
 	resp, svcErr := suite.jwksService.GetJWKS(context.Background())
 	assert.Nil(suite.T(), resp)
 	assert.NotNil(suite.T(), svcErr)
-	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *JWKSServiceTestSuite) TestGetJWKS_NoCertificatesFound() {
@@ -149,7 +150,7 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_NoCertificatesFound() {
 	resp, svcErr := suite.jwksService.GetJWKS(context.Background())
 	assert.Nil(suite.T(), resp)
 	assert.NotNil(suite.T(), svcErr)
-	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *JWKSServiceTestSuite) TestGetJWKS_UnsupportedPublicKeyType() {
@@ -187,7 +188,7 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_OnlyUnsupportedKeys() {
 	resp, svcErr := suite.jwksService.GetJWKS(context.Background())
 	assert.Nil(suite.T(), resp)
 	assert.NotNil(suite.T(), svcErr)
-	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *JWKSServiceTestSuite) TestGetJWKS_MultipleCertificates() {

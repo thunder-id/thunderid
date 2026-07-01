@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -26,8 +26,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -50,7 +50,7 @@ var (
 					"type": "string",
 				},
 				"password": map[string]interface{}{
-					"type": "string",
+					"type":       "string",
 					"credential": true,
 				},
 				"email": map[string]interface{}{
@@ -65,7 +65,7 @@ var (
 					"type": "string",
 				},
 				"password": map[string]interface{}{
-					"type": "string",
+					"type":       "string",
 					"credential": true,
 				},
 				"username": map[string]interface{}{
@@ -76,11 +76,11 @@ var (
 		"mobile_password": {
 			Name: "mobile_password",
 			Schema: map[string]interface{}{
-				"mobileNumber": map[string]interface{}{
+				"mobile_number": map[string]interface{}{
 					"type": "string",
 				},
 				"password": map[string]interface{}{
-					"type": "string",
+					"type":       "string",
 					"credential": true,
 				},
 				"username": map[string]interface{}{
@@ -97,11 +97,11 @@ var (
 				"email": map[string]interface{}{
 					"type": "string",
 				},
-				"mobileNumber": map[string]interface{}{
+				"mobile_number": map[string]interface{}{
 					"type": "string",
 				},
 				"password": map[string]interface{}{
-					"type": "string",
+					"type":       "string",
 					"credential": true,
 				},
 				"given_name": map[string]interface{}{
@@ -172,20 +172,20 @@ func (suite *CredentialsAuthTestSuite) SetupSuite() {
 		{
 			userType: "mobile_password",
 			attributes: map[string]interface{}{
-				"mobileNumber": "+1234567891",
-				"password":     "TestPassword789!",
-				"username":     "credtest_user3",
+				"mobile_number": "+1234567891",
+				"password":      "TestPassword789!",
+				"username":      "credtest_user3",
 			},
 		},
 		{
 			userType: "multiple_attributes",
 			attributes: map[string]interface{}{
-				"username":     "credtest_user4",
-				"email":        "credtest4@example.com",
-				"mobileNumber": "+1234567892",
-				"password":     "TestPassword999!",
+				"username":      "credtest_user4",
+				"email":         "credtest4@example.com",
+				"mobile_number": "+1234567892",
+				"password":      "TestPassword999!",
 				"given_name":    "Test",
-				"family_name":     "User",
+				"family_name":   "User",
 			},
 		},
 	}
@@ -195,9 +195,9 @@ func (suite *CredentialsAuthTestSuite) SetupSuite() {
 		suite.Require().NoError(err, "Failed to marshal attributes for %s", tu.userType)
 
 		user := testutils.User{
-			Type:             tu.userType,
-			OUID:             suite.ouID,
-			Attributes:       json.RawMessage(attributesJSON),
+			Type:       tu.userType,
+			OUID:       suite.ouID,
+			Attributes: json.RawMessage(attributesJSON),
 		}
 
 		userID, err := testutils.CreateUser(user)
@@ -277,7 +277,7 @@ func (suite *CredentialsAuthTestSuite) TestAuthenticateWithEmailPassword() {
 func (suite *CredentialsAuthTestSuite) TestAuthenticateWithMobilePassword() {
 	authRequest := map[string]interface{}{
 		"identifiers": map[string]interface{}{
-			"mobileNumber": "+1234567891",
+			"mobile_number": "+1234567891",
 		},
 		"credentials": map[string]interface{}{
 			"password": "TestPassword789!",
@@ -326,7 +326,7 @@ func (suite *CredentialsAuthTestSuite) TestAuthenticateWithMultipleAttributes() 
 			name: "Mobile with multiple attributes",
 			authRequest: map[string]interface{}{
 				"identifiers": map[string]interface{}{
-					"mobileNumber": "+1234567892",
+					"mobile_number": "+1234567892",
 				},
 				"credentials": map[string]interface{}{
 					"password": "TestPassword999!",
@@ -382,7 +382,7 @@ func (suite *CredentialsAuthTestSuite) TestAuthenticateWithInvalidPassword() {
 			name: "Invalid password with mobile",
 			authRequest: map[string]interface{}{
 				"identifiers": map[string]interface{}{
-					"mobileNumber": "+1234567891",
+					"mobile_number": "+1234567891",
 				},
 				"credentials": map[string]interface{}{
 					"password": "WrongPassword789!",
@@ -433,7 +433,7 @@ func (suite *CredentialsAuthTestSuite) TestAuthenticateWithNonExistentUser() {
 			name: "Non-existent mobile",
 			authRequest: map[string]interface{}{
 				"identifiers": map[string]interface{}{
-					"mobileNumber": "+9999999999",
+					"mobile_number": "+9999999999",
 				},
 				"credentials": map[string]interface{}{
 					"password": "TestPassword123!",
@@ -478,7 +478,7 @@ func (suite *CredentialsAuthTestSuite) TestAuthenticateWithMissingPassword() {
 			name: "Missing password with mobile",
 			authRequest: map[string]interface{}{
 				"identifiers": map[string]interface{}{
-					"mobileNumber": "+1234567891",
+					"mobile_number": "+1234567891",
 				},
 			},
 		},
@@ -513,7 +513,7 @@ func (suite *CredentialsAuthTestSuite) TestAuthenticateWithEmptyRequest() {
 	errorResp, statusCode, err := suite.sendAuthRequestExpectingError(authRequest)
 	suite.Require().NoError(err, "Failed to send authenticate request")
 	suite.Equal(http.StatusBadRequest, statusCode, "Expected status 400 for empty request")
-	suite.Equal("AUTH-CRED-1001", errorResp.Code, "Expected error code AUTH-CRED-1001 for empty attributes")
+	suite.Equal("INVALID_INPUT_METADATA", errorResp.Code, "Expected validation error for missing required fields")
 }
 
 // TestAuthenticateWithEmptyCredentials tests authentication failure with empty values
@@ -629,8 +629,8 @@ func (suite *CredentialsAuthTestSuite) TestAuthenticateWithDifferentAttributeCom
 			name: "Only additional attributes (no identifying attribute)",
 			authRequest: map[string]interface{}{
 				"identifiers": map[string]interface{}{
-					"given_name": "Test",
-					"family_name":  "User",
+					"given_name":  "Test",
+					"family_name": "User",
 				},
 				"credentials": map[string]interface{}{
 					"password": "TestPassword999!",
@@ -789,7 +789,7 @@ func (suite *CredentialsAuthTestSuite) TestCredentialsAuthenticationWithVariousA
 			name: "Mobile and password authentication",
 			credentials: map[string]interface{}{
 				"identifiers": map[string]interface{}{
-					"mobileNumber": "+1234567891",
+					"mobile_number": "+1234567891",
 				},
 				"credentials": map[string]interface{}{
 					"password": "TestPassword789!",
@@ -990,7 +990,7 @@ func (suite *CredentialsAuthTestSuite) TestAuthenticateWithExistingAssertionSkip
 			"password": "TestPassword123!",
 		},
 		"skipAssertion": true,
-		"assertion":      firstResponse.Assertion,
+		"assertion":     firstResponse.Assertion,
 	}
 
 	secondResponse, statusCode, err := suite.sendAuthRequest(secondAuthRequest)

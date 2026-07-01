@@ -22,8 +22,10 @@ package consent
 import (
 	"context"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -58,7 +60,7 @@ func (s *consentService) IsEnabled() bool {
 
 // CreateConsentElements creates one or more consent elements.
 func (s *consentService) CreateConsentElements(ctx context.Context, ouID string,
-	elements []ConsentElementInput) ([]ConsentElement, *serviceerror.ServiceError) {
+	elements []ConsentElementInput) ([]ConsentElement, *tidcommon.ServiceError) {
 	if len(elements) == 0 {
 		return nil, nil
 	}
@@ -66,14 +68,14 @@ func (s *consentService) CreateConsentElements(ctx context.Context, ouID string,
 }
 
 // ListConsentElements retrieves consent elements, optionally filtered by namespace and name
-func (s *consentService) ListConsentElements(ctx context.Context, ouID string, ns Namespace,
-	nameFilter string) ([]ConsentElement, *serviceerror.ServiceError) {
+func (s *consentService) ListConsentElements(ctx context.Context, ouID string, ns providers.Namespace,
+	nameFilter string) ([]ConsentElement, *tidcommon.ServiceError) {
 	return s.client.listConsentElements(ctx, ouID, ns, nameFilter)
 }
 
 // UpdateConsentElement updates an existing consent element by ID.
 func (s *consentService) UpdateConsentElement(ctx context.Context, ouID string,
-	elementID string, element *ConsentElementInput) (*ConsentElement, *serviceerror.ServiceError) {
+	elementID string, element *ConsentElementInput) (*ConsentElement, *tidcommon.ServiceError) {
 	if element == nil {
 		return nil, &ErrorInvalidRequestFormat
 	}
@@ -83,7 +85,7 @@ func (s *consentService) UpdateConsentElement(ctx context.Context, ouID string,
 // DeleteConsentElement deletes a consent element by ID.
 // Returns nil if the element does not exist (idempotent).
 func (s *consentService) DeleteConsentElement(ctx context.Context, ouID string,
-	elementID string) *serviceerror.ServiceError {
+	elementID string) *tidcommon.ServiceError {
 	svcErr := s.client.deleteConsentElement(ctx, ouID, elementID)
 	if svcErr != nil && svcErr.Code == ErrorConsentElementNotFound.Code {
 		s.logger.Debug(ctx, "Consent element not found during delete, skipping",
@@ -95,7 +97,7 @@ func (s *consentService) DeleteConsentElement(ctx context.Context, ouID string,
 
 // ValidateConsentElements validates a list of consent element names and returns the valid ones.
 func (s *consentService) ValidateConsentElements(ctx context.Context, ouID string, names []string) (
-	[]string, *serviceerror.ServiceError) {
+	[]string, *tidcommon.ServiceError) {
 	if len(names) == 0 {
 		return []string{}, nil
 	}
@@ -104,7 +106,7 @@ func (s *consentService) ValidateConsentElements(ctx context.Context, ouID strin
 
 // CreateConsentPurpose creates a consent purpose for a resource.
 func (s *consentService) CreateConsentPurpose(ctx context.Context, ouID string, purpose *ConsentPurposeInput) (
-	*ConsentPurpose, *serviceerror.ServiceError) {
+	*ConsentPurpose, *tidcommon.ServiceError) {
 	if purpose == nil {
 		return nil, &ErrorInvalidRequestFormat
 	}
@@ -113,13 +115,13 @@ func (s *consentService) CreateConsentPurpose(ctx context.Context, ouID string, 
 
 // ListConsentPurposes retrieves consent purposes for a resource.
 func (s *consentService) ListConsentPurposes(ctx context.Context, ouID, groupID string) (
-	[]ConsentPurpose, *serviceerror.ServiceError) {
+	[]ConsentPurpose, *tidcommon.ServiceError) {
 	return s.client.listConsentPurposes(ctx, ouID, groupID)
 }
 
 // UpdateConsentPurpose updates an existing consent purpose by ID.
 func (s *consentService) UpdateConsentPurpose(ctx context.Context, ouID, purposeID string,
-	purpose *ConsentPurposeInput) (*ConsentPurpose, *serviceerror.ServiceError) {
+	purpose *ConsentPurposeInput) (*ConsentPurpose, *tidcommon.ServiceError) {
 	if purpose == nil {
 		return nil, &ErrorInvalidRequestFormat
 	}
@@ -129,7 +131,7 @@ func (s *consentService) UpdateConsentPurpose(ctx context.Context, ouID, purpose
 // DeleteConsentPurpose deletes a consent purpose by ID.
 // Returns nil if the purpose does not exist (idempotent).
 func (s *consentService) DeleteConsentPurpose(ctx context.Context, ouID string,
-	purposeID string) *serviceerror.ServiceError {
+	purposeID string) *tidcommon.ServiceError {
 	svcErr := s.client.deleteConsentPurpose(ctx, ouID, purposeID)
 	if svcErr != nil && svcErr.Code == ErrorConsentPurposeNotFound.Code {
 		s.logger.Debug(ctx, "Consent purpose not found during delete, skipping",
@@ -141,7 +143,7 @@ func (s *consentService) DeleteConsentPurpose(ctx context.Context, ouID string,
 
 // CreateConsent creates a new consent record.
 func (s *consentService) CreateConsent(ctx context.Context, ouID string, consent *ConsentRequest) (
-	*Consent, *serviceerror.ServiceError) {
+	*providers.Consent, *tidcommon.ServiceError) {
 	if consent == nil {
 		return nil, &ErrorInvalidRequestFormat
 	}
@@ -150,19 +152,19 @@ func (s *consentService) CreateConsent(ctx context.Context, ouID string, consent
 
 // SearchConsents searches consent records matching the filter.
 func (s *consentService) SearchConsents(ctx context.Context, ouID string, filter *ConsentSearchFilter) (
-	[]Consent, *serviceerror.ServiceError) {
+	[]providers.Consent, *tidcommon.ServiceError) {
 	return s.client.searchConsents(ctx, ouID, filter)
 }
 
 // ValidateConsent validates a consent by ID and returns validation details.
 func (s *consentService) ValidateConsent(ctx context.Context, ouID, consentID string) (
-	*ConsentValidationResult, *serviceerror.ServiceError) {
+	*ConsentValidationResult, *tidcommon.ServiceError) {
 	return s.client.validateConsent(ctx, ouID, consentID)
 }
 
 // UpdateConsent updates the content of an existing consent record.
 func (s *consentService) UpdateConsent(ctx context.Context, ouID string, consentID string,
-	consent *ConsentRequest) (*Consent, *serviceerror.ServiceError) {
+	consent *ConsentRequest) (*providers.Consent, *tidcommon.ServiceError) {
 	if consent == nil {
 		return nil, &ErrorInvalidRequestFormat
 	}
@@ -171,7 +173,7 @@ func (s *consentService) UpdateConsent(ctx context.Context, ouID string, consent
 
 // RevokeConsent revokes an active consent record.
 func (s *consentService) RevokeConsent(ctx context.Context, ouID, consentID string,
-	payload *ConsentRevokeRequest) *serviceerror.ServiceError {
+	payload *ConsentRevokeRequest) *tidcommon.ServiceError {
 	if payload == nil {
 		return &ErrorInvalidRequestFormat
 	}

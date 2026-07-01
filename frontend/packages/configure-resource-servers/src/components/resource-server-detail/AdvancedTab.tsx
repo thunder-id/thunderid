@@ -41,7 +41,15 @@ export default function AdvancedTab({resourceServer, onRefresh}: AdvancedTabProp
 
   const handleIdentifierSave = (): void => {
     updateRs.mutate(
-      {id: resourceServer.id, data: {identifier: identifier || null}},
+      {
+        id: resourceServer.id,
+        data: {
+          name: resourceServer.name,
+          description: resourceServer.description ?? null,
+          identifier: identifier || null,
+          ouId: resourceServer.ouId,
+        },
+      },
       {
         onSuccess: () => {
           showToast(t('resourceServers:edit.advanced.identifier.saved', 'Identifier saved.'), 'success');

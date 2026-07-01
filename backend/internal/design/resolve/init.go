@@ -35,8 +35,11 @@ func Initialize(
 	applicationService application.ApplicationServiceInterface,
 ) DesignResolveServiceInterface {
 	designResolveService := newDesignResolveService(themeMgtService, layoutMgtService, applicationService)
-	designResolveHandler := newDesignResolveHandler(designResolveService)
-	registerRoutes(mux, designResolveHandler)
+
+	if mux != nil {
+		designResolveHandler := newDesignResolveHandler(designResolveService)
+		registerRoutes(mux, designResolveHandler)
+	}
 	return designResolveService
 }
 

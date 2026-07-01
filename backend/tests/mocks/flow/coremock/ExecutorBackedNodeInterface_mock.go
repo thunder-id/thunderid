@@ -8,7 +8,8 @@ import (
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	common0 "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewExecutorBackedNodeInterfaceMock creates a new instance of ExecutorBackedNodeInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -119,7 +120,7 @@ func (_c *ExecutorBackedNodeInterfaceMock_AddPreviousNode_Call) RunAndReturn(run
 }
 
 // Execute provides a mock function for the type ExecutorBackedNodeInterfaceMock
-func (_mock *ExecutorBackedNodeInterfaceMock) Execute(ctx *core.NodeContext) (*common.NodeResponse, *serviceerror.ServiceError) {
+func (_mock *ExecutorBackedNodeInterfaceMock) Execute(ctx *providers.NodeContext) (*common.NodeResponse, *common0.ServiceError) {
 	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
@@ -127,22 +128,22 @@ func (_mock *ExecutorBackedNodeInterfaceMock) Execute(ctx *core.NodeContext) (*c
 	}
 
 	var r0 *common.NodeResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(*core.NodeContext) (*common.NodeResponse, *serviceerror.ServiceError)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(*providers.NodeContext) (*common.NodeResponse, *common0.ServiceError)); ok {
 		return returnFunc(ctx)
 	}
-	if returnFunc, ok := ret.Get(0).(func(*core.NodeContext) *common.NodeResponse); ok {
+	if returnFunc, ok := ret.Get(0).(func(*providers.NodeContext) *common.NodeResponse); ok {
 		r0 = returnFunc(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*common.NodeResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(*core.NodeContext) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(*providers.NodeContext) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common0.ServiceError)
 		}
 	}
 	return r0, r1
@@ -154,16 +155,16 @@ type ExecutorBackedNodeInterfaceMock_Execute_Call struct {
 }
 
 // Execute is a helper method to define mock.On call
-//   - ctx *core.NodeContext
+//   - ctx *providers.NodeContext
 func (_e *ExecutorBackedNodeInterfaceMock_Expecter) Execute(ctx interface{}) *ExecutorBackedNodeInterfaceMock_Execute_Call {
 	return &ExecutorBackedNodeInterfaceMock_Execute_Call{Call: _e.mock.On("Execute", ctx)}
 }
 
-func (_c *ExecutorBackedNodeInterfaceMock_Execute_Call) Run(run func(ctx *core.NodeContext)) *ExecutorBackedNodeInterfaceMock_Execute_Call {
+func (_c *ExecutorBackedNodeInterfaceMock_Execute_Call) Run(run func(ctx *providers.NodeContext)) *ExecutorBackedNodeInterfaceMock_Execute_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 *core.NodeContext
+		var arg0 *providers.NodeContext
 		if args[0] != nil {
-			arg0 = args[0].(*core.NodeContext)
+			arg0 = args[0].(*providers.NodeContext)
 		}
 		run(
 			arg0,
@@ -172,12 +173,12 @@ func (_c *ExecutorBackedNodeInterfaceMock_Execute_Call) Run(run func(ctx *core.N
 	return _c
 }
 
-func (_c *ExecutorBackedNodeInterfaceMock_Execute_Call) Return(nodeResponse *common.NodeResponse, serviceError *serviceerror.ServiceError) *ExecutorBackedNodeInterfaceMock_Execute_Call {
+func (_c *ExecutorBackedNodeInterfaceMock_Execute_Call) Return(nodeResponse *common.NodeResponse, serviceError *common0.ServiceError) *ExecutorBackedNodeInterfaceMock_Execute_Call {
 	_c.Call.Return(nodeResponse, serviceError)
 	return _c
 }
 
-func (_c *ExecutorBackedNodeInterfaceMock_Execute_Call) RunAndReturn(run func(ctx *core.NodeContext) (*common.NodeResponse, *serviceerror.ServiceError)) *ExecutorBackedNodeInterfaceMock_Execute_Call {
+func (_c *ExecutorBackedNodeInterfaceMock_Execute_Call) RunAndReturn(run func(ctx *providers.NodeContext) (*common.NodeResponse, *common0.ServiceError)) *ExecutorBackedNodeInterfaceMock_Execute_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -229,19 +230,19 @@ func (_c *ExecutorBackedNodeInterfaceMock_GetCondition_Call) RunAndReturn(run fu
 }
 
 // GetExecutionPolicy provides a mock function for the type ExecutorBackedNodeInterfaceMock
-func (_mock *ExecutorBackedNodeInterfaceMock) GetExecutionPolicy() *core.ExecutionPolicy {
+func (_mock *ExecutorBackedNodeInterfaceMock) GetExecutionPolicy() *providers.ExecutionPolicy {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetExecutionPolicy")
 	}
 
-	var r0 *core.ExecutionPolicy
-	if returnFunc, ok := ret.Get(0).(func() *core.ExecutionPolicy); ok {
+	var r0 *providers.ExecutionPolicy
+	if returnFunc, ok := ret.Get(0).(func() *providers.ExecutionPolicy); ok {
 		r0 = returnFunc()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*core.ExecutionPolicy)
+			r0 = ret.Get(0).(*providers.ExecutionPolicy)
 		}
 	}
 	return r0
@@ -264,30 +265,30 @@ func (_c *ExecutorBackedNodeInterfaceMock_GetExecutionPolicy_Call) Run(run func(
 	return _c
 }
 
-func (_c *ExecutorBackedNodeInterfaceMock_GetExecutionPolicy_Call) Return(executionPolicy *core.ExecutionPolicy) *ExecutorBackedNodeInterfaceMock_GetExecutionPolicy_Call {
+func (_c *ExecutorBackedNodeInterfaceMock_GetExecutionPolicy_Call) Return(executionPolicy *providers.ExecutionPolicy) *ExecutorBackedNodeInterfaceMock_GetExecutionPolicy_Call {
 	_c.Call.Return(executionPolicy)
 	return _c
 }
 
-func (_c *ExecutorBackedNodeInterfaceMock_GetExecutionPolicy_Call) RunAndReturn(run func() *core.ExecutionPolicy) *ExecutorBackedNodeInterfaceMock_GetExecutionPolicy_Call {
+func (_c *ExecutorBackedNodeInterfaceMock_GetExecutionPolicy_Call) RunAndReturn(run func() *providers.ExecutionPolicy) *ExecutorBackedNodeInterfaceMock_GetExecutionPolicy_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetExecutor provides a mock function for the type ExecutorBackedNodeInterfaceMock
-func (_mock *ExecutorBackedNodeInterfaceMock) GetExecutor() core.ExecutorInterface {
+func (_mock *ExecutorBackedNodeInterfaceMock) GetExecutor() providers.Executor {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetExecutor")
 	}
 
-	var r0 core.ExecutorInterface
-	if returnFunc, ok := ret.Get(0).(func() core.ExecutorInterface); ok {
+	var r0 providers.Executor
+	if returnFunc, ok := ret.Get(0).(func() providers.Executor); ok {
 		r0 = returnFunc()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(core.ExecutorInterface)
+			r0 = ret.Get(0).(providers.Executor)
 		}
 	}
 	return r0
@@ -310,12 +311,12 @@ func (_c *ExecutorBackedNodeInterfaceMock_GetExecutor_Call) Run(run func()) *Exe
 	return _c
 }
 
-func (_c *ExecutorBackedNodeInterfaceMock_GetExecutor_Call) Return(executorInterface core.ExecutorInterface) *ExecutorBackedNodeInterfaceMock_GetExecutor_Call {
-	_c.Call.Return(executorInterface)
+func (_c *ExecutorBackedNodeInterfaceMock_GetExecutor_Call) Return(executor providers.Executor) *ExecutorBackedNodeInterfaceMock_GetExecutor_Call {
+	_c.Call.Return(executor)
 	return _c
 }
 
-func (_c *ExecutorBackedNodeInterfaceMock_GetExecutor_Call) RunAndReturn(run func() core.ExecutorInterface) *ExecutorBackedNodeInterfaceMock_GetExecutor_Call {
+func (_c *ExecutorBackedNodeInterfaceMock_GetExecutor_Call) RunAndReturn(run func() providers.Executor) *ExecutorBackedNodeInterfaceMock_GetExecutor_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -409,19 +410,19 @@ func (_c *ExecutorBackedNodeInterfaceMock_GetID_Call) RunAndReturn(run func() st
 }
 
 // GetInputs provides a mock function for the type ExecutorBackedNodeInterfaceMock
-func (_mock *ExecutorBackedNodeInterfaceMock) GetInputs() []common.Input {
+func (_mock *ExecutorBackedNodeInterfaceMock) GetInputs() []providers.Input {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetInputs")
 	}
 
-	var r0 []common.Input
-	if returnFunc, ok := ret.Get(0).(func() []common.Input); ok {
+	var r0 []providers.Input
+	if returnFunc, ok := ret.Get(0).(func() []providers.Input); ok {
 		r0 = returnFunc()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]common.Input)
+			r0 = ret.Get(0).([]providers.Input)
 		}
 	}
 	return r0
@@ -444,12 +445,12 @@ func (_c *ExecutorBackedNodeInterfaceMock_GetInputs_Call) Run(run func()) *Execu
 	return _c
 }
 
-func (_c *ExecutorBackedNodeInterfaceMock_GetInputs_Call) Return(inputs []common.Input) *ExecutorBackedNodeInterfaceMock_GetInputs_Call {
+func (_c *ExecutorBackedNodeInterfaceMock_GetInputs_Call) Return(inputs []providers.Input) *ExecutorBackedNodeInterfaceMock_GetInputs_Call {
 	_c.Call.Return(inputs)
 	return _c
 }
 
-func (_c *ExecutorBackedNodeInterfaceMock_GetInputs_Call) RunAndReturn(run func() []common.Input) *ExecutorBackedNodeInterfaceMock_GetInputs_Call {
+func (_c *ExecutorBackedNodeInterfaceMock_GetInputs_Call) RunAndReturn(run func() []providers.Input) *ExecutorBackedNodeInterfaceMock_GetInputs_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1087,7 +1088,7 @@ func (_c *ExecutorBackedNodeInterfaceMock_SetCondition_Call) RunAndReturn(run fu
 }
 
 // SetExecutor provides a mock function for the type ExecutorBackedNodeInterfaceMock
-func (_mock *ExecutorBackedNodeInterfaceMock) SetExecutor(executor core.ExecutorInterface) {
+func (_mock *ExecutorBackedNodeInterfaceMock) SetExecutor(executor providers.Executor) {
 	_mock.Called(executor)
 	return
 }
@@ -1098,16 +1099,16 @@ type ExecutorBackedNodeInterfaceMock_SetExecutor_Call struct {
 }
 
 // SetExecutor is a helper method to define mock.On call
-//   - executor core.ExecutorInterface
+//   - executor providers.Executor
 func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetExecutor(executor interface{}) *ExecutorBackedNodeInterfaceMock_SetExecutor_Call {
 	return &ExecutorBackedNodeInterfaceMock_SetExecutor_Call{Call: _e.mock.On("SetExecutor", executor)}
 }
 
-func (_c *ExecutorBackedNodeInterfaceMock_SetExecutor_Call) Run(run func(executor core.ExecutorInterface)) *ExecutorBackedNodeInterfaceMock_SetExecutor_Call {
+func (_c *ExecutorBackedNodeInterfaceMock_SetExecutor_Call) Run(run func(executor providers.Executor)) *ExecutorBackedNodeInterfaceMock_SetExecutor_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 core.ExecutorInterface
+		var arg0 providers.Executor
 		if args[0] != nil {
-			arg0 = args[0].(core.ExecutorInterface)
+			arg0 = args[0].(providers.Executor)
 		}
 		run(
 			arg0,
@@ -1121,7 +1122,7 @@ func (_c *ExecutorBackedNodeInterfaceMock_SetExecutor_Call) Return() *ExecutorBa
 	return _c
 }
 
-func (_c *ExecutorBackedNodeInterfaceMock_SetExecutor_Call) RunAndReturn(run func(executor core.ExecutorInterface)) *ExecutorBackedNodeInterfaceMock_SetExecutor_Call {
+func (_c *ExecutorBackedNodeInterfaceMock_SetExecutor_Call) RunAndReturn(run func(executor providers.Executor)) *ExecutorBackedNodeInterfaceMock_SetExecutor_Call {
 	_c.Run(run)
 	return _c
 }
@@ -1167,7 +1168,7 @@ func (_c *ExecutorBackedNodeInterfaceMock_SetExecutorName_Call) RunAndReturn(run
 }
 
 // SetInputs provides a mock function for the type ExecutorBackedNodeInterfaceMock
-func (_mock *ExecutorBackedNodeInterfaceMock) SetInputs(inputs []common.Input) {
+func (_mock *ExecutorBackedNodeInterfaceMock) SetInputs(inputs []providers.Input) {
 	_mock.Called(inputs)
 	return
 }
@@ -1178,16 +1179,16 @@ type ExecutorBackedNodeInterfaceMock_SetInputs_Call struct {
 }
 
 // SetInputs is a helper method to define mock.On call
-//   - inputs []common.Input
+//   - inputs []providers.Input
 func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetInputs(inputs interface{}) *ExecutorBackedNodeInterfaceMock_SetInputs_Call {
 	return &ExecutorBackedNodeInterfaceMock_SetInputs_Call{Call: _e.mock.On("SetInputs", inputs)}
 }
 
-func (_c *ExecutorBackedNodeInterfaceMock_SetInputs_Call) Run(run func(inputs []common.Input)) *ExecutorBackedNodeInterfaceMock_SetInputs_Call {
+func (_c *ExecutorBackedNodeInterfaceMock_SetInputs_Call) Run(run func(inputs []providers.Input)) *ExecutorBackedNodeInterfaceMock_SetInputs_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 []common.Input
+		var arg0 []providers.Input
 		if args[0] != nil {
-			arg0 = args[0].([]common.Input)
+			arg0 = args[0].([]providers.Input)
 		}
 		run(
 			arg0,
@@ -1201,7 +1202,7 @@ func (_c *ExecutorBackedNodeInterfaceMock_SetInputs_Call) Return() *ExecutorBack
 	return _c
 }
 
-func (_c *ExecutorBackedNodeInterfaceMock_SetInputs_Call) RunAndReturn(run func(inputs []common.Input)) *ExecutorBackedNodeInterfaceMock_SetInputs_Call {
+func (_c *ExecutorBackedNodeInterfaceMock_SetInputs_Call) RunAndReturn(run func(inputs []providers.Input)) *ExecutorBackedNodeInterfaceMock_SetInputs_Call {
 	_c.Run(run)
 	return _c
 }
@@ -1447,7 +1448,7 @@ func (_c *ExecutorBackedNodeInterfaceMock_SetPreviousNodeList_Call) RunAndReturn
 }
 
 // ShouldExecute provides a mock function for the type ExecutorBackedNodeInterfaceMock
-func (_mock *ExecutorBackedNodeInterfaceMock) ShouldExecute(ctx *core.NodeContext) bool {
+func (_mock *ExecutorBackedNodeInterfaceMock) ShouldExecute(ctx *providers.NodeContext) bool {
 	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
@@ -1455,7 +1456,7 @@ func (_mock *ExecutorBackedNodeInterfaceMock) ShouldExecute(ctx *core.NodeContex
 	}
 
 	var r0 bool
-	if returnFunc, ok := ret.Get(0).(func(*core.NodeContext) bool); ok {
+	if returnFunc, ok := ret.Get(0).(func(*providers.NodeContext) bool); ok {
 		r0 = returnFunc(ctx)
 	} else {
 		r0 = ret.Get(0).(bool)
@@ -1469,16 +1470,16 @@ type ExecutorBackedNodeInterfaceMock_ShouldExecute_Call struct {
 }
 
 // ShouldExecute is a helper method to define mock.On call
-//   - ctx *core.NodeContext
+//   - ctx *providers.NodeContext
 func (_e *ExecutorBackedNodeInterfaceMock_Expecter) ShouldExecute(ctx interface{}) *ExecutorBackedNodeInterfaceMock_ShouldExecute_Call {
 	return &ExecutorBackedNodeInterfaceMock_ShouldExecute_Call{Call: _e.mock.On("ShouldExecute", ctx)}
 }
 
-func (_c *ExecutorBackedNodeInterfaceMock_ShouldExecute_Call) Run(run func(ctx *core.NodeContext)) *ExecutorBackedNodeInterfaceMock_ShouldExecute_Call {
+func (_c *ExecutorBackedNodeInterfaceMock_ShouldExecute_Call) Run(run func(ctx *providers.NodeContext)) *ExecutorBackedNodeInterfaceMock_ShouldExecute_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 *core.NodeContext
+		var arg0 *providers.NodeContext
 		if args[0] != nil {
-			arg0 = args[0].(*core.NodeContext)
+			arg0 = args[0].(*providers.NodeContext)
 		}
 		run(
 			arg0,
@@ -1492,7 +1493,7 @@ func (_c *ExecutorBackedNodeInterfaceMock_ShouldExecute_Call) Return(b bool) *Ex
 	return _c
 }
 
-func (_c *ExecutorBackedNodeInterfaceMock_ShouldExecute_Call) RunAndReturn(run func(ctx *core.NodeContext) bool) *ExecutorBackedNodeInterfaceMock_ShouldExecute_Call {
+func (_c *ExecutorBackedNodeInterfaceMock_ShouldExecute_Call) RunAndReturn(run func(ctx *providers.NodeContext) bool) *ExecutorBackedNodeInterfaceMock_ShouldExecute_Call {
 	_c.Call.Return(run)
 	return _c
 }

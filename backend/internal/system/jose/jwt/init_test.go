@@ -27,6 +27,8 @@ import (
 	"os"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -96,7 +98,7 @@ func (suite *InitTestSuite) SetupTest() {
 
 func (suite *InitTestSuite) TestInitialize_Success() {
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://auth.example.com",
 			ValidityPeriod: 3600,
 			PreferredKeyID: "test-kid",
@@ -123,7 +125,7 @@ func (suite *InitTestSuite) TestInitialize_Success() {
 
 func (suite *InitTestSuite) TestInitialize_PublicKeyRetrievalError() {
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://auth.example.com",
 			ValidityPeriod: 3600,
 			PreferredKeyID: "test-kid",
@@ -145,7 +147,7 @@ func (suite *InitTestSuite) TestInitialize_PublicKeyRetrievalError() {
 
 func (suite *InitTestSuite) TestInitialize_WithoutPreferredKeyID() {
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://auth.example.com",
 			ValidityPeriod: 3600,
 			// PreferredKeyID is empty

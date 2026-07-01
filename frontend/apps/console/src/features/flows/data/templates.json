@@ -2075,7 +2075,7 @@
                     "inputType": "tel",
                     "label": "{{ t(signin:forms.phone.fields.phone.label) }}",
                     "placeholder": "{{ t(signin:forms.phone.fields.phone.placeholder) }}",
-                    "ref": "mobileNumber",
+                    "ref": "mobile_number",
                     "required": true,
                     "resourceType": "ELEMENT",
                     "type": "TEXT_INPUT"
@@ -2101,7 +2101,7 @@
               "inputs": [
                 {
                   "ref": "input_001",
-                  "identifier": "mobileNumber",
+                  "identifier": "mobile_number",
                   "type": "TEXT_INPUT",
                   "required": true
                 }
@@ -3600,7 +3600,7 @@
                     "inputType": "tel",
                     "label": "{{ t(signup:forms.phone.fields.phone.label) }}",
                     "placeholder": "{{ t(signup:forms.phone.fields.phone.placeholder) }}",
-                    "ref": "mobileNumber",
+                    "ref": "mobile_number",
                     "required": true,
                     "resourceType": "ELEMENT",
                     "type": "TEXT_INPUT"
@@ -3627,7 +3627,7 @@
                 {
                   "ref": "input_001",
                   "type": "TEXT_INPUT",
-                  "identifier": "mobileNumber",
+                  "identifier": "mobile_number",
                   "required": true
                 }
               ],
@@ -3661,7 +3661,7 @@
               {
                 "ref": "input_001",
                 "type": "TEXT_INPUT",
-                "identifier": "mobileNumber",
+                "identifier": "mobile_number",
                 "required": true
               }
             ]
@@ -5690,7 +5690,7 @@
                     "inputType": "tel",
                     "label": "{{ t(signup:forms.phone.fields.phone.label) }}",
                     "placeholder": "{{ t(signup:forms.phone.fields.phone.placeholder) }}",
-                    "ref": "mobileNumber",
+                    "ref": "mobile_number",
                     "required": true,
                     "resourceType": "ELEMENT",
                     "type": "TEXT_INPUT"
@@ -5717,7 +5717,7 @@
                 {
                   "ref": "input_005",
                   "type": "PHONE_INPUT",
-                  "identifier": "mobileNumber",
+                  "identifier": "mobile_number",
                   "required": true
                 }
               ],

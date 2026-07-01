@@ -83,10 +83,6 @@ describe('Application Models', () => {
         template: 'nextjs',
         inboundAuthConfig: [],
         themeId: 'theme_123',
-        certificate: {
-          type: 'PEM',
-          value: 'cert_value',
-        },
         allowedUserTypes: ['INTERNAL'],
       };
 
@@ -104,7 +100,6 @@ describe('Application Models', () => {
       expect(app).toHaveProperty('template');
       expect(app).toHaveProperty('inboundAuthConfig');
       expect(app).toHaveProperty('themeId');
-      expect(app).toHaveProperty('certificate');
       expect(app).toHaveProperty('allowedUserTypes');
     });
   });

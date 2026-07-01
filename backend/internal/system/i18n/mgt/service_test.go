@@ -23,12 +23,13 @@ import (
 	"errors"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 const (
@@ -82,7 +83,7 @@ func (suite *I18nMgtServiceTestSuite) TestListLanguages_StoreError() {
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *I18nMgtServiceTestSuite) TestListLanguages_AddsSystemLanguage() {
@@ -156,7 +157,7 @@ func (suite *I18nMgtServiceTestSuite) TestResolveTranslationsForKey_StoreError()
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *I18nMgtServiceTestSuite) TestResolveTranslationsForKey_UsesSystemDefault_WhenKeyMissingInDB() {
@@ -286,7 +287,7 @@ func (suite *I18nMgtServiceTestSuite) TestSetTranslationOverrideForKey_StoreErro
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *I18nMgtServiceTestSuite) TestSetTranslationOverrideForKey_Declarative() {
@@ -337,7 +338,7 @@ func (suite *I18nMgtServiceTestSuite) TestClearTranslationOverrideForKey_StoreEr
 	err := suite.service.ClearTranslationOverrideForKey(context.Background(), "en-US", "common", "welcome")
 
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *I18nMgtServiceTestSuite) TestClearTranslationOverrideForKey_Declarative() {
@@ -394,7 +395,7 @@ func (suite *I18nMgtServiceTestSuite) TestResolveTranslations_StoreError() {
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *I18nMgtServiceTestSuite) TestResolveTranslations_UsesSystemDefaults_WhenKeyMissingInDB() {
@@ -524,7 +525,7 @@ func (suite *I18nMgtServiceTestSuite) TestResolveTranslations_AllNamespaces_Stor
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 const testAppNamespace = "app-abc-123"
@@ -743,7 +744,7 @@ func (suite *I18nMgtServiceTestSuite) TestSetTranslationOverrides_StoreError() {
 	result, err := suite.service.SetTranslationOverrides(context.Background(), "en-US", translations)
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *I18nMgtServiceTestSuite) TestSetTranslationOverrides_Declarative() {
@@ -779,7 +780,7 @@ func (suite *I18nMgtServiceTestSuite) TestClearTranslationOverrides_StoreError()
 	err := suite.service.ClearTranslationOverrides(context.Background(), "en-US")
 
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *I18nMgtServiceTestSuite) TestClearTranslationOverrides_ValidationErrors() {
@@ -823,7 +824,7 @@ func (suite *I18nMgtServiceTestSuite) TestGetTranslationsByNamespace_StoreError(
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *I18nMgtServiceTestSuite) TestGetTranslationsByNamespace_Success() {
@@ -886,7 +887,7 @@ func (suite *I18nMgtServiceTestSuite) TestDeleteTranslationsByNamespace_StoreErr
 	err := suite.service.DeleteTranslationsByNamespace(context.Background(), "app-test")
 
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *I18nMgtServiceTestSuite) TestDeleteTranslationsByNamespace_Success() {
@@ -920,7 +921,7 @@ func (suite *I18nMgtServiceTestSuite) TestDeleteTranslationsByKey_StoreError() {
 	err := suite.service.DeleteTranslationsByKey(context.Background(), "custom", "app.test-id.name")
 
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *I18nMgtServiceTestSuite) TestDeleteTranslationsByKey_Success() {

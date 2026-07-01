@@ -26,9 +26,10 @@ import (
 	"net/http"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -62,7 +63,7 @@ func (eh *exportHandler) HandleExportRequest(w http.ResponseWriter, r *http.Requ
 	// Export resources using the export service
 	exportResponse, svcErr := eh.service.ExportResources(r.Context(), exportRequest)
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ServerErrorType {
+		if svcErr.Type == tidcommon.ServerErrorType {
 			logger.Error(r.Context(), "Error exporting resources", log.Any("serviceError", svcErr))
 		}
 		eh.handleError(r.Context(), w, svcErr)
@@ -115,7 +116,7 @@ func (eh *exportHandler) HandleExportZipRequest(w http.ResponseWriter, r *http.R
 	// Export resources using the export service
 	exportResponse, svcErr := eh.service.ExportResources(ctx, exportRequest)
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ServerErrorType {
+		if svcErr.Type == tidcommon.ServerErrorType {
 			logger.Error(ctx, "Error exporting resources", log.Any("serviceError", svcErr))
 		}
 		eh.handleError(ctx, w, svcErr)
@@ -126,9 +127,9 @@ func (eh *exportHandler) HandleExportZipRequest(w http.ResponseWriter, r *http.R
 	if err := eh.generateAndSendZipResponse(ctx, w, logger, exportResponse); err != nil {
 		logger.Error(ctx, "Error generating ZIP response", log.Error(err))
 		errResp := apierror.ErrorResponse{
-			Code:        serviceerror.InternalServerError.Code,
-			Message:     serviceerror.InternalServerError.Error,
-			Description: serviceerror.InternalServerError.ErrorDescription,
+			Code:        tidcommon.InternalServerError.Code,
+			Message:     tidcommon.InternalServerError.Error,
+			Description: tidcommon.InternalServerError.ErrorDescription,
 		}
 		sysutils.WriteErrorResponse(ctx, w, http.StatusInternalServerError, errResp)
 		return
@@ -202,9 +203,9 @@ func (eh *exportHandler) generateAndSendZipResponse(ctx context.Context,
 }
 
 // handleError handles service errors and sends appropriate HTTP responses.
-func (eh *exportHandler) handleError(ctx context.Context, w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
+func (eh *exportHandler) handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.ServiceError) {
 	statusCode := http.StatusInternalServerError
-	if svcErr.Type == serviceerror.ClientErrorType {
+	if svcErr.Type == tidcommon.ClientErrorType {
 		statusCode = http.StatusBadRequest
 	}
 

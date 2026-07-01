@@ -1,0 +1,43 @@
+---
+title: Setup and Data Seeding
+description: Understand the data seeding paths for development and deployment environments.
+sidebar_position: 3
+hide_table_of_contents: false
+---
+
+# Setup and Data Seeding
+
+<ProductName /> provides two different data seeding paths, depending on how the system is initialized.
+
+| Command | Use Case | Seeded Data |
+|---------|----------|-------------|
+| `make run` | Source development | Default resources |
+| `./setup.sh` | Deployment / release initialization | Default resources |
+
+## Development Seeding (`make run`)
+
+For development environments, `make run` executes the `backend/cmd/server/bootstrap/01-default-resources.sh` bootstrap script, which seeds the core resources required to start the server and access the console:
+
+- Default Organization Unit
+- Default User Type (Person)
+- Admin user (credentials default to `admin` / `admin`; configurable via `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables)
+- System resource server with system actions and permissions
+- Administrator role and role assignment
+- `Console` application
+
+## Full Bootstrap (`./setup.sh`)
+
+For release artifacts and deployment environments, `./setup.sh` performs a one-time initialization:
+
+1. Starts <ProductName /> temporarily with `SKIP_SECURITY=true`
+2. Waits until the server becomes ready (`/health/readiness`)
+3. Executes all scripts in the `./bootstrap` directory in filename order
+4. Stops the temporary server after initialization is complete
+
+**Bootstrap Scripts:**
+
+- **`01-default-resources.sh`** — Seeds the core identity resources (same as development seeding above)
+
+**In short:**
+- Use `make run` when running <ProductName /> from source.
+- Use `./setup.sh` when initializing a fresh runtime environment with the full bootstrap data.

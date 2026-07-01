@@ -9,7 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/authn/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	common0 "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewOpenID4VPServiceInterfaceMock creates a new instance of OpenID4VPServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -40,7 +40,7 @@ func (_m *OpenID4VPServiceInterfaceMock) EXPECT() *OpenID4VPServiceInterfaceMock
 }
 
 // Authenticate provides a mock function for the type OpenID4VPServiceInterfaceMock
-func (_mock *OpenID4VPServiceInterfaceMock) Authenticate(ctx context.Context, state string) (*common.AuthnResult, *serviceerror.ServiceError) {
+func (_mock *OpenID4VPServiceInterfaceMock) Authenticate(ctx context.Context, state string) (*common.AuthnResult, *common0.ServiceError) {
 	ret := _mock.Called(ctx, state)
 
 	if len(ret) == 0 {
@@ -48,8 +48,8 @@ func (_mock *OpenID4VPServiceInterfaceMock) Authenticate(ctx context.Context, st
 	}
 
 	var r0 *common.AuthnResult
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*common.AuthnResult, *serviceerror.ServiceError)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*common.AuthnResult, *common0.ServiceError)); ok {
 		return returnFunc(ctx, state)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.AuthnResult); ok {
@@ -59,11 +59,11 @@ func (_mock *OpenID4VPServiceInterfaceMock) Authenticate(ctx context.Context, st
 			r0 = ret.Get(0).(*common.AuthnResult)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx, state)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common0.ServiceError)
 		}
 	}
 	return r0, r1
@@ -99,18 +99,253 @@ func (_c *OpenID4VPServiceInterfaceMock_Authenticate_Call) Run(run func(ctx cont
 	return _c
 }
 
-func (_c *OpenID4VPServiceInterfaceMock_Authenticate_Call) Return(authnResult *common.AuthnResult, serviceError *serviceerror.ServiceError) *OpenID4VPServiceInterfaceMock_Authenticate_Call {
+func (_c *OpenID4VPServiceInterfaceMock_Authenticate_Call) Return(authnResult *common.AuthnResult, serviceError *common0.ServiceError) *OpenID4VPServiceInterfaceMock_Authenticate_Call {
 	_c.Call.Return(authnResult, serviceError)
 	return _c
 }
 
-func (_c *OpenID4VPServiceInterfaceMock_Authenticate_Call) RunAndReturn(run func(ctx context.Context, state string) (*common.AuthnResult, *serviceerror.ServiceError)) *OpenID4VPServiceInterfaceMock_Authenticate_Call {
+func (_c *OpenID4VPServiceInterfaceMock_Authenticate_Call) RunAndReturn(run func(ctx context.Context, state string) (*common.AuthnResult, *common0.ServiceError)) *OpenID4VPServiceInterfaceMock_Authenticate_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetRequestObject provides a mock function for the type OpenID4VPServiceInterfaceMock
+func (_mock *OpenID4VPServiceInterfaceMock) GetRequestObject(ctx context.Context, state string) (string, *common0.ServiceError) {
+	ret := _mock.Called(ctx, state)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetRequestObject")
+	}
+
+	var r0 string
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, *common0.ServiceError)); ok {
+		return returnFunc(ctx, state)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
+		r0 = returnFunc(ctx, state)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common0.ServiceError); ok {
+		r1 = returnFunc(ctx, state)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common0.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// OpenID4VPServiceInterfaceMock_GetRequestObject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRequestObject'
+type OpenID4VPServiceInterfaceMock_GetRequestObject_Call struct {
+	*mock.Call
+}
+
+// GetRequestObject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - state string
+func (_e *OpenID4VPServiceInterfaceMock_Expecter) GetRequestObject(ctx interface{}, state interface{}) *OpenID4VPServiceInterfaceMock_GetRequestObject_Call {
+	return &OpenID4VPServiceInterfaceMock_GetRequestObject_Call{Call: _e.mock.On("GetRequestObject", ctx, state)}
+}
+
+func (_c *OpenID4VPServiceInterfaceMock_GetRequestObject_Call) Run(run func(ctx context.Context, state string)) *OpenID4VPServiceInterfaceMock_GetRequestObject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *OpenID4VPServiceInterfaceMock_GetRequestObject_Call) Return(s string, serviceError *common0.ServiceError) *OpenID4VPServiceInterfaceMock_GetRequestObject_Call {
+	_c.Call.Return(s, serviceError)
+	return _c
+}
+
+func (_c *OpenID4VPServiceInterfaceMock_GetRequestObject_Call) RunAndReturn(run func(ctx context.Context, state string) (string, *common0.ServiceError)) *OpenID4VPServiceInterfaceMock_GetRequestObject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetResult provides a mock function for the type OpenID4VPServiceInterfaceMock
+func (_mock *OpenID4VPServiceInterfaceMock) GetResult(ctx context.Context, state string) (*RequestState, *common0.ServiceError) {
+	ret := _mock.Called(ctx, state)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResult")
+	}
+
+	var r0 *RequestState
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*RequestState, *common0.ServiceError)); ok {
+		return returnFunc(ctx, state)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *RequestState); ok {
+		r0 = returnFunc(ctx, state)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*RequestState)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common0.ServiceError); ok {
+		r1 = returnFunc(ctx, state)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common0.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// OpenID4VPServiceInterfaceMock_GetResult_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResult'
+type OpenID4VPServiceInterfaceMock_GetResult_Call struct {
+	*mock.Call
+}
+
+// GetResult is a helper method to define mock.On call
+//   - ctx context.Context
+//   - state string
+func (_e *OpenID4VPServiceInterfaceMock_Expecter) GetResult(ctx interface{}, state interface{}) *OpenID4VPServiceInterfaceMock_GetResult_Call {
+	return &OpenID4VPServiceInterfaceMock_GetResult_Call{Call: _e.mock.On("GetResult", ctx, state)}
+}
+
+func (_c *OpenID4VPServiceInterfaceMock_GetResult_Call) Run(run func(ctx context.Context, state string)) *OpenID4VPServiceInterfaceMock_GetResult_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *OpenID4VPServiceInterfaceMock_GetResult_Call) Return(requestState *RequestState, serviceError *common0.ServiceError) *OpenID4VPServiceInterfaceMock_GetResult_Call {
+	_c.Call.Return(requestState, serviceError)
+	return _c
+}
+
+func (_c *OpenID4VPServiceInterfaceMock_GetResult_Call) RunAndReturn(run func(ctx context.Context, state string) (*RequestState, *common0.ServiceError)) *OpenID4VPServiceInterfaceMock_GetResult_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetResultRedirectURI provides a mock function for the type OpenID4VPServiceInterfaceMock
+func (_mock *OpenID4VPServiceInterfaceMock) GetResultRedirectURI(state string) string {
+	ret := _mock.Called(state)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResultRedirectURI")
+	}
+
+	var r0 string
+	if returnFunc, ok := ret.Get(0).(func(string) string); ok {
+		r0 = returnFunc(state)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	return r0
+}
+
+// OpenID4VPServiceInterfaceMock_GetResultRedirectURI_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResultRedirectURI'
+type OpenID4VPServiceInterfaceMock_GetResultRedirectURI_Call struct {
+	*mock.Call
+}
+
+// GetResultRedirectURI is a helper method to define mock.On call
+//   - state string
+func (_e *OpenID4VPServiceInterfaceMock_Expecter) GetResultRedirectURI(state interface{}) *OpenID4VPServiceInterfaceMock_GetResultRedirectURI_Call {
+	return &OpenID4VPServiceInterfaceMock_GetResultRedirectURI_Call{Call: _e.mock.On("GetResultRedirectURI", state)}
+}
+
+func (_c *OpenID4VPServiceInterfaceMock_GetResultRedirectURI_Call) Run(run func(state string)) *OpenID4VPServiceInterfaceMock_GetResultRedirectURI_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *OpenID4VPServiceInterfaceMock_GetResultRedirectURI_Call) Return(s string) *OpenID4VPServiceInterfaceMock_GetResultRedirectURI_Call {
+	_c.Call.Return(s)
+	return _c
+}
+
+func (_c *OpenID4VPServiceInterfaceMock_GetResultRedirectURI_Call) RunAndReturn(run func(state string) string) *OpenID4VPServiceInterfaceMock_GetResultRedirectURI_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetTrustAnchors provides a mock function for the type OpenID4VPServiceInterfaceMock
+func (_mock *OpenID4VPServiceInterfaceMock) GetTrustAnchors() []TrustAnchorInfo {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetTrustAnchors")
+	}
+
+	var r0 []TrustAnchorInfo
+	if returnFunc, ok := ret.Get(0).(func() []TrustAnchorInfo); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]TrustAnchorInfo)
+		}
+	}
+	return r0
+}
+
+// OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTrustAnchors'
+type OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call struct {
+	*mock.Call
+}
+
+// GetTrustAnchors is a helper method to define mock.On call
+func (_e *OpenID4VPServiceInterfaceMock_Expecter) GetTrustAnchors() *OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call {
+	return &OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call{Call: _e.mock.On("GetTrustAnchors")}
+}
+
+func (_c *OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call) Run(run func()) *OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call) Return(trustAnchorInfos []TrustAnchorInfo) *OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call {
+	_c.Call.Return(trustAnchorInfos)
+	return _c
+}
+
+func (_c *OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call) RunAndReturn(run func() []TrustAnchorInfo) *OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Initiate provides a mock function for the type OpenID4VPServiceInterfaceMock
-func (_mock *OpenID4VPServiceInterfaceMock) Initiate(ctx context.Context, definitionID string) (*Initiation, error) {
+func (_mock *OpenID4VPServiceInterfaceMock) Initiate(ctx context.Context, definitionID string) (*Initiation, *common0.ServiceError) {
 	ret := _mock.Called(ctx, definitionID)
 
 	if len(ret) == 0 {
@@ -118,8 +353,8 @@ func (_mock *OpenID4VPServiceInterfaceMock) Initiate(ctx context.Context, defini
 	}
 
 	var r0 *Initiation
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*Initiation, error)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*Initiation, *common0.ServiceError)); ok {
 		return returnFunc(ctx, definitionID)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *Initiation); ok {
@@ -129,10 +364,12 @@ func (_mock *OpenID4VPServiceInterfaceMock) Initiate(ctx context.Context, defini
 			r0 = ret.Get(0).(*Initiation)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx, definitionID)
 	} else {
-		r1 = ret.Error(1)
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common0.ServiceError)
+		}
 	}
 	return r0, r1
 }
@@ -167,18 +404,18 @@ func (_c *OpenID4VPServiceInterfaceMock_Initiate_Call) Run(run func(ctx context.
 	return _c
 }
 
-func (_c *OpenID4VPServiceInterfaceMock_Initiate_Call) Return(initiation *Initiation, err error) *OpenID4VPServiceInterfaceMock_Initiate_Call {
-	_c.Call.Return(initiation, err)
+func (_c *OpenID4VPServiceInterfaceMock_Initiate_Call) Return(initiation *Initiation, serviceError *common0.ServiceError) *OpenID4VPServiceInterfaceMock_Initiate_Call {
+	_c.Call.Return(initiation, serviceError)
 	return _c
 }
 
-func (_c *OpenID4VPServiceInterfaceMock_Initiate_Call) RunAndReturn(run func(ctx context.Context, definitionID string) (*Initiation, error)) *OpenID4VPServiceInterfaceMock_Initiate_Call {
+func (_c *OpenID4VPServiceInterfaceMock_Initiate_Call) RunAndReturn(run func(ctx context.Context, definitionID string) (*Initiation, *common0.ServiceError)) *OpenID4VPServiceInterfaceMock_Initiate_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // InitiateForRP provides a mock function for the type OpenID4VPServiceInterfaceMock
-func (_mock *OpenID4VPServiceInterfaceMock) InitiateForRP(ctx context.Context, definitionID string, rpID string) (*Initiation, error) {
+func (_mock *OpenID4VPServiceInterfaceMock) InitiateForRP(ctx context.Context, definitionID string, rpID string) (*Initiation, *common0.ServiceError) {
 	ret := _mock.Called(ctx, definitionID, rpID)
 
 	if len(ret) == 0 {
@@ -186,8 +423,8 @@ func (_mock *OpenID4VPServiceInterfaceMock) InitiateForRP(ctx context.Context, d
 	}
 
 	var r0 *Initiation
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*Initiation, error)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*Initiation, *common0.ServiceError)); ok {
 		return returnFunc(ctx, definitionID, rpID)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *Initiation); ok {
@@ -197,10 +434,12 @@ func (_mock *OpenID4VPServiceInterfaceMock) InitiateForRP(ctx context.Context, d
 			r0 = ret.Get(0).(*Initiation)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx, definitionID, rpID)
 	} else {
-		r1 = ret.Error(1)
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common0.ServiceError)
+		}
 	}
 	return r0, r1
 }
@@ -241,18 +480,18 @@ func (_c *OpenID4VPServiceInterfaceMock_InitiateForRP_Call) Run(run func(ctx con
 	return _c
 }
 
-func (_c *OpenID4VPServiceInterfaceMock_InitiateForRP_Call) Return(initiation *Initiation, err error) *OpenID4VPServiceInterfaceMock_InitiateForRP_Call {
-	_c.Call.Return(initiation, err)
+func (_c *OpenID4VPServiceInterfaceMock_InitiateForRP_Call) Return(initiation *Initiation, serviceError *common0.ServiceError) *OpenID4VPServiceInterfaceMock_InitiateForRP_Call {
+	_c.Call.Return(initiation, serviceError)
 	return _c
 }
 
-func (_c *OpenID4VPServiceInterfaceMock_InitiateForRP_Call) RunAndReturn(run func(ctx context.Context, definitionID string, rpID string) (*Initiation, error)) *OpenID4VPServiceInterfaceMock_InitiateForRP_Call {
+func (_c *OpenID4VPServiceInterfaceMock_InitiateForRP_Call) RunAndReturn(run func(ctx context.Context, definitionID string, rpID string) (*Initiation, *common0.ServiceError)) *OpenID4VPServiceInterfaceMock_InitiateForRP_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // LookupState provides a mock function for the type OpenID4VPServiceInterfaceMock
-func (_mock *OpenID4VPServiceInterfaceMock) LookupState(ctx context.Context, state string) (*RequestState, error) {
+func (_mock *OpenID4VPServiceInterfaceMock) LookupState(ctx context.Context, state string) (*RequestState, *common0.ServiceError) {
 	ret := _mock.Called(ctx, state)
 
 	if len(ret) == 0 {
@@ -260,8 +499,8 @@ func (_mock *OpenID4VPServiceInterfaceMock) LookupState(ctx context.Context, sta
 	}
 
 	var r0 *RequestState
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*RequestState, error)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*RequestState, *common0.ServiceError)); ok {
 		return returnFunc(ctx, state)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *RequestState); ok {
@@ -271,10 +510,12 @@ func (_mock *OpenID4VPServiceInterfaceMock) LookupState(ctx context.Context, sta
 			r0 = ret.Get(0).(*RequestState)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx, state)
 	} else {
-		r1 = ret.Error(1)
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common0.ServiceError)
+		}
 	}
 	return r0, r1
 }
@@ -309,203 +550,89 @@ func (_c *OpenID4VPServiceInterfaceMock_LookupState_Call) Run(run func(ctx conte
 	return _c
 }
 
-func (_c *OpenID4VPServiceInterfaceMock_LookupState_Call) Return(requestState *RequestState, err error) *OpenID4VPServiceInterfaceMock_LookupState_Call {
-	_c.Call.Return(requestState, err)
+func (_c *OpenID4VPServiceInterfaceMock_LookupState_Call) Return(requestState *RequestState, serviceError *common0.ServiceError) *OpenID4VPServiceInterfaceMock_LookupState_Call {
+	_c.Call.Return(requestState, serviceError)
 	return _c
 }
 
-func (_c *OpenID4VPServiceInterfaceMock_LookupState_Call) RunAndReturn(run func(ctx context.Context, state string) (*RequestState, error)) *OpenID4VPServiceInterfaceMock_LookupState_Call {
+func (_c *OpenID4VPServiceInterfaceMock_LookupState_Call) RunAndReturn(run func(ctx context.Context, state string) (*RequestState, *common0.ServiceError)) *OpenID4VPServiceInterfaceMock_LookupState_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// RequestObject provides a mock function for the type OpenID4VPServiceInterfaceMock
-func (_mock *OpenID4VPServiceInterfaceMock) RequestObject(ctx context.Context, state string) (string, error) {
-	ret := _mock.Called(ctx, state)
+// SubmitError provides a mock function for the type OpenID4VPServiceInterfaceMock
+func (_mock *OpenID4VPServiceInterfaceMock) SubmitError(ctx context.Context, state string, code string, description string) *common0.ServiceError {
+	ret := _mock.Called(ctx, state, code, description)
 
 	if len(ret) == 0 {
-		panic("no return value specified for RequestObject")
+		panic("no return value specified for SubmitError")
 	}
 
-	var r0 string
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, error)); ok {
-		return returnFunc(ctx, state)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
-		r0 = returnFunc(ctx, state)
-	} else {
-		r0 = ret.Get(0).(string)
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, state)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// OpenID4VPServiceInterfaceMock_RequestObject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RequestObject'
-type OpenID4VPServiceInterfaceMock_RequestObject_Call struct {
-	*mock.Call
-}
-
-// RequestObject is a helper method to define mock.On call
-//   - ctx context.Context
-//   - state string
-func (_e *OpenID4VPServiceInterfaceMock_Expecter) RequestObject(ctx interface{}, state interface{}) *OpenID4VPServiceInterfaceMock_RequestObject_Call {
-	return &OpenID4VPServiceInterfaceMock_RequestObject_Call{Call: _e.mock.On("RequestObject", ctx, state)}
-}
-
-func (_c *OpenID4VPServiceInterfaceMock_RequestObject_Call) Run(run func(ctx context.Context, state string)) *OpenID4VPServiceInterfaceMock_RequestObject_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *OpenID4VPServiceInterfaceMock_RequestObject_Call) Return(s string, err error) *OpenID4VPServiceInterfaceMock_RequestObject_Call {
-	_c.Call.Return(s, err)
-	return _c
-}
-
-func (_c *OpenID4VPServiceInterfaceMock_RequestObject_Call) RunAndReturn(run func(ctx context.Context, state string) (string, error)) *OpenID4VPServiceInterfaceMock_RequestObject_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Result provides a mock function for the type OpenID4VPServiceInterfaceMock
-func (_mock *OpenID4VPServiceInterfaceMock) Result(ctx context.Context, state string) (*RequestState, error) {
-	ret := _mock.Called(ctx, state)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Result")
-	}
-
-	var r0 *RequestState
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*RequestState, error)); ok {
-		return returnFunc(ctx, state)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *RequestState); ok {
-		r0 = returnFunc(ctx, state)
+	var r0 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) *common0.ServiceError); ok {
+		r0 = returnFunc(ctx, state, code, description)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*RequestState)
+			r0 = ret.Get(0).(*common0.ServiceError)
 		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, state)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// OpenID4VPServiceInterfaceMock_Result_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Result'
-type OpenID4VPServiceInterfaceMock_Result_Call struct {
-	*mock.Call
-}
-
-// Result is a helper method to define mock.On call
-//   - ctx context.Context
-//   - state string
-func (_e *OpenID4VPServiceInterfaceMock_Expecter) Result(ctx interface{}, state interface{}) *OpenID4VPServiceInterfaceMock_Result_Call {
-	return &OpenID4VPServiceInterfaceMock_Result_Call{Call: _e.mock.On("Result", ctx, state)}
-}
-
-func (_c *OpenID4VPServiceInterfaceMock_Result_Call) Run(run func(ctx context.Context, state string)) *OpenID4VPServiceInterfaceMock_Result_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *OpenID4VPServiceInterfaceMock_Result_Call) Return(requestState *RequestState, err error) *OpenID4VPServiceInterfaceMock_Result_Call {
-	_c.Call.Return(requestState, err)
-	return _c
-}
-
-func (_c *OpenID4VPServiceInterfaceMock_Result_Call) RunAndReturn(run func(ctx context.Context, state string) (*RequestState, error)) *OpenID4VPServiceInterfaceMock_Result_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// ResultRedirectURI provides a mock function for the type OpenID4VPServiceInterfaceMock
-func (_mock *OpenID4VPServiceInterfaceMock) ResultRedirectURI(state string) string {
-	ret := _mock.Called(state)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ResultRedirectURI")
-	}
-
-	var r0 string
-	if returnFunc, ok := ret.Get(0).(func(string) string); ok {
-		r0 = returnFunc(state)
-	} else {
-		r0 = ret.Get(0).(string)
 	}
 	return r0
 }
 
-// OpenID4VPServiceInterfaceMock_ResultRedirectURI_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResultRedirectURI'
-type OpenID4VPServiceInterfaceMock_ResultRedirectURI_Call struct {
+// OpenID4VPServiceInterfaceMock_SubmitError_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SubmitError'
+type OpenID4VPServiceInterfaceMock_SubmitError_Call struct {
 	*mock.Call
 }
 
-// ResultRedirectURI is a helper method to define mock.On call
+// SubmitError is a helper method to define mock.On call
+//   - ctx context.Context
 //   - state string
-func (_e *OpenID4VPServiceInterfaceMock_Expecter) ResultRedirectURI(state interface{}) *OpenID4VPServiceInterfaceMock_ResultRedirectURI_Call {
-	return &OpenID4VPServiceInterfaceMock_ResultRedirectURI_Call{Call: _e.mock.On("ResultRedirectURI", state)}
+//   - code string
+//   - description string
+func (_e *OpenID4VPServiceInterfaceMock_Expecter) SubmitError(ctx interface{}, state interface{}, code interface{}, description interface{}) *OpenID4VPServiceInterfaceMock_SubmitError_Call {
+	return &OpenID4VPServiceInterfaceMock_SubmitError_Call{Call: _e.mock.On("SubmitError", ctx, state, code, description)}
 }
 
-func (_c *OpenID4VPServiceInterfaceMock_ResultRedirectURI_Call) Run(run func(state string)) *OpenID4VPServiceInterfaceMock_ResultRedirectURI_Call {
+func (_c *OpenID4VPServiceInterfaceMock_SubmitError_Call) Run(run func(ctx context.Context, state string, code string, description string)) *OpenID4VPServiceInterfaceMock_SubmitError_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
 		}
 		run(
 			arg0,
+			arg1,
+			arg2,
+			arg3,
 		)
 	})
 	return _c
 }
 
-func (_c *OpenID4VPServiceInterfaceMock_ResultRedirectURI_Call) Return(s string) *OpenID4VPServiceInterfaceMock_ResultRedirectURI_Call {
-	_c.Call.Return(s)
+func (_c *OpenID4VPServiceInterfaceMock_SubmitError_Call) Return(serviceError *common0.ServiceError) *OpenID4VPServiceInterfaceMock_SubmitError_Call {
+	_c.Call.Return(serviceError)
 	return _c
 }
 
-func (_c *OpenID4VPServiceInterfaceMock_ResultRedirectURI_Call) RunAndReturn(run func(state string) string) *OpenID4VPServiceInterfaceMock_ResultRedirectURI_Call {
+func (_c *OpenID4VPServiceInterfaceMock_SubmitError_Call) RunAndReturn(run func(ctx context.Context, state string, code string, description string) *common0.ServiceError) *OpenID4VPServiceInterfaceMock_SubmitError_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // SubmitResponse provides a mock function for the type OpenID4VPServiceInterfaceMock
-func (_mock *OpenID4VPServiceInterfaceMock) SubmitResponse(ctx context.Context, state string, body []byte) (*VerifiedPresentation, error) {
+func (_mock *OpenID4VPServiceInterfaceMock) SubmitResponse(ctx context.Context, state string, body []byte) (*VerifiedPresentation, *common0.ServiceError) {
 	ret := _mock.Called(ctx, state, body)
 
 	if len(ret) == 0 {
@@ -513,8 +640,8 @@ func (_mock *OpenID4VPServiceInterfaceMock) SubmitResponse(ctx context.Context, 
 	}
 
 	var r0 *VerifiedPresentation
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []byte) (*VerifiedPresentation, error)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []byte) (*VerifiedPresentation, *common0.ServiceError)); ok {
 		return returnFunc(ctx, state, body)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []byte) *VerifiedPresentation); ok {
@@ -524,10 +651,12 @@ func (_mock *OpenID4VPServiceInterfaceMock) SubmitResponse(ctx context.Context, 
 			r0 = ret.Get(0).(*VerifiedPresentation)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []byte) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []byte) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx, state, body)
 	} else {
-		r1 = ret.Error(1)
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common0.ServiceError)
+		}
 	}
 	return r0, r1
 }
@@ -568,12 +697,12 @@ func (_c *OpenID4VPServiceInterfaceMock_SubmitResponse_Call) Run(run func(ctx co
 	return _c
 }
 
-func (_c *OpenID4VPServiceInterfaceMock_SubmitResponse_Call) Return(verifiedPresentation *VerifiedPresentation, err error) *OpenID4VPServiceInterfaceMock_SubmitResponse_Call {
-	_c.Call.Return(verifiedPresentation, err)
+func (_c *OpenID4VPServiceInterfaceMock_SubmitResponse_Call) Return(verifiedPresentation *VerifiedPresentation, serviceError *common0.ServiceError) *OpenID4VPServiceInterfaceMock_SubmitResponse_Call {
+	_c.Call.Return(verifiedPresentation, serviceError)
 	return _c
 }
 
-func (_c *OpenID4VPServiceInterfaceMock_SubmitResponse_Call) RunAndReturn(run func(ctx context.Context, state string, body []byte) (*VerifiedPresentation, error)) *OpenID4VPServiceInterfaceMock_SubmitResponse_Call {
+func (_c *OpenID4VPServiceInterfaceMock_SubmitResponse_Call) RunAndReturn(run func(ctx context.Context, state string, body []byte) (*VerifiedPresentation, *common0.ServiceError)) *OpenID4VPServiceInterfaceMock_SubmitResponse_Call {
 	_c.Call.Return(run)
 	return _c
 }

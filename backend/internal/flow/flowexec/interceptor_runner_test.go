@@ -23,6 +23,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -59,7 +61,7 @@ func (s *InterceptorRunnerTestSuite) TestRunInterceptors_NoDeclarations() {
 		SharedData: map[string]string{},
 	}
 
-	resp, svcErr := s.service.runInterceptors(common.InterceptorModePreRequest, execCtx)
+	resp, svcErr := s.service.runInterceptors(providers.InterceptorModePreRequest, execCtx)
 
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), resp)
@@ -78,13 +80,13 @@ func (s *InterceptorRunnerTestSuite) TestRunInterceptors_BindingResolvedAndExecu
 	execCtx := &InterceptorRunnerContext{
 		Ctx: context.Background(),
 		ResolvedInterceptors: []core.InterceptorUnitInterface{
-			newTestInterceptorUnitMock(s.T(), "ConfigIC", common.InterceptorModePreRequest,
-				common.InterceptorScopeAll, nil),
+			newTestInterceptorUnitMock(s.T(), "ConfigIC", providers.InterceptorModePreRequest,
+				providers.InterceptorScopeAll, nil),
 		},
 		SharedData: map[string]string{},
 	}
 
-	_, svcErr := s.service.runInterceptors(common.InterceptorModePreRequest, execCtx)
+	_, svcErr := s.service.runInterceptors(providers.InterceptorModePreRequest, execCtx)
 
 	assert.Nil(s.T(), svcErr)
 	assert.True(s.T(), executed)
@@ -112,15 +114,15 @@ func (s *InterceptorRunnerTestSuite) TestRunInterceptors_FailHaltsExecution() {
 	execCtx := &InterceptorRunnerContext{
 		Ctx: context.Background(),
 		ResolvedInterceptors: []core.InterceptorUnitInterface{
-			newTestInterceptorUnitMock(s.T(), "First", common.InterceptorModePreRequest,
-				common.InterceptorScope(""), nil),
-			newTestInterceptorUnitMock(s.T(), "Second", common.InterceptorModePreRequest,
-				common.InterceptorScope(""), nil),
+			newTestInterceptorUnitMock(s.T(), "First", providers.InterceptorModePreRequest,
+				providers.InterceptorScope(""), nil),
+			newTestInterceptorUnitMock(s.T(), "Second", providers.InterceptorModePreRequest,
+				providers.InterceptorScope(""), nil),
 		},
 		SharedData: map[string]string{},
 	}
 
-	resp, svcErr := s.service.runInterceptors(common.InterceptorModePreRequest, execCtx)
+	resp, svcErr := s.service.runInterceptors(providers.InterceptorModePreRequest, execCtx)
 
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), resp)
@@ -143,13 +145,13 @@ func (s *InterceptorRunnerTestSuite) TestRunInterceptors_FailWithNilError_UsesDe
 	execCtx := &InterceptorRunnerContext{
 		Ctx: context.Background(),
 		ResolvedInterceptors: []core.InterceptorUnitInterface{
-			newTestInterceptorUnitMock(s.T(), "NilErr", common.InterceptorModePreRequest,
-				common.InterceptorScope(""), nil),
+			newTestInterceptorUnitMock(s.T(), "NilErr", providers.InterceptorModePreRequest,
+				providers.InterceptorScope(""), nil),
 		},
 		SharedData: map[string]string{},
 	}
 
-	resp, svcErr := s.service.runInterceptors(common.InterceptorModePreRequest, execCtx)
+	resp, svcErr := s.service.runInterceptors(providers.InterceptorModePreRequest, execCtx)
 
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), resp)
@@ -167,13 +169,13 @@ func (s *InterceptorRunnerTestSuite) TestRunInterceptors_ErrorHaltsExecution() {
 	execCtx := &InterceptorRunnerContext{
 		Ctx: context.Background(),
 		ResolvedInterceptors: []core.InterceptorUnitInterface{
-			newTestInterceptorUnitMock(s.T(), "ErrorIC", common.InterceptorModePreRequest,
-				common.InterceptorScope(""), nil),
+			newTestInterceptorUnitMock(s.T(), "ErrorIC", providers.InterceptorModePreRequest,
+				providers.InterceptorScope(""), nil),
 		},
 		SharedData: map[string]string{},
 	}
 
-	_, svcErr := s.service.runInterceptors(common.InterceptorModePreRequest, execCtx)
+	_, svcErr := s.service.runInterceptors(providers.InterceptorModePreRequest, execCtx)
 
 	assert.NotNil(s.T(), svcErr)
 }
@@ -193,13 +195,13 @@ func (s *InterceptorRunnerTestSuite) TestRunInterceptors_SharedDataDirectWritesP
 	execCtx := &InterceptorRunnerContext{
 		Ctx: context.Background(),
 		ResolvedInterceptors: []core.InterceptorUnitInterface{
-			newTestInterceptorUnitMock(s.T(), "Writer", common.InterceptorModePreRequest,
-				common.InterceptorScope(""), nil),
+			newTestInterceptorUnitMock(s.T(), "Writer", providers.InterceptorModePreRequest,
+				providers.InterceptorScope(""), nil),
 		},
 		SharedData: sharedData,
 	}
 
-	_, svcErr := s.service.runInterceptors(common.InterceptorModePreRequest, execCtx)
+	_, svcErr := s.service.runInterceptors(providers.InterceptorModePreRequest, execCtx)
 
 	assert.Nil(s.T(), svcErr)
 	assert.Equal(s.T(), "val1", sharedData["key1"])
@@ -218,13 +220,13 @@ func (s *InterceptorRunnerTestSuite) TestRunInterceptors_EngineOutputsAreReturne
 	execCtx := &InterceptorRunnerContext{
 		Ctx: context.Background(),
 		ResolvedInterceptors: []core.InterceptorUnitInterface{
-			newTestInterceptorUnitMock(s.T(), "Enricher", common.InterceptorModePreRequest,
-				common.InterceptorScope(""), nil),
+			newTestInterceptorUnitMock(s.T(), "Enricher", providers.InterceptorModePreRequest,
+				providers.InterceptorScope(""), nil),
 		},
 		SharedData: map[string]string{},
 	}
 
-	resp, svcErr := s.service.runInterceptors(common.InterceptorModePreRequest, execCtx)
+	resp, svcErr := s.service.runInterceptors(providers.InterceptorModePreRequest, execCtx)
 
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), resp)
@@ -264,15 +266,15 @@ func (s *InterceptorRunnerTestSuite) TestRunInterceptors_SharedDataVisibleAcross
 	execCtx := &InterceptorRunnerContext{
 		Ctx: context.Background(),
 		ResolvedInterceptors: []core.InterceptorUnitInterface{
-			newTestInterceptorUnitMock(s.T(), "First", common.InterceptorModePreRequest,
-				common.InterceptorScope(""), nil),
-			newTestInterceptorUnitMock(s.T(), "Second", common.InterceptorModePreRequest,
-				common.InterceptorScope(""), nil),
+			newTestInterceptorUnitMock(s.T(), "First", providers.InterceptorModePreRequest,
+				providers.InterceptorScope(""), nil),
+			newTestInterceptorUnitMock(s.T(), "Second", providers.InterceptorModePreRequest,
+				providers.InterceptorScope(""), nil),
 		},
 		SharedData: sharedData,
 	}
 
-	_, svcErr := s.service.runInterceptors(common.InterceptorModePreRequest, execCtx)
+	_, svcErr := s.service.runInterceptors(providers.InterceptorModePreRequest, execCtx)
 
 	assert.Nil(s.T(), svcErr)
 	assert.Equal(s.T(), testSharedDataValue, sharedData["fromFirst"])
@@ -290,8 +292,8 @@ func (s *InterceptorRunnerTestSuite) TestRunInterceptors_ScopeSelected() {
 	execCtx := &InterceptorRunnerContext{
 		Ctx: context.Background(),
 		ResolvedInterceptors: []core.InterceptorUnitInterface{
-			newTestInterceptorUnitMock(s.T(), "ScopedIC", common.InterceptorModePreNode,
-				common.InterceptorScopeSelected, []string{"target_node"}),
+			newTestInterceptorUnitMock(s.T(), "ScopedIC", providers.InterceptorModePreNode,
+				providers.InterceptorScopeSelected, []string{"target_node"}),
 		},
 		SharedData: map[string]string{},
 	}
@@ -299,14 +301,14 @@ func (s *InterceptorRunnerTestSuite) TestRunInterceptors_ScopeSelected() {
 	// Node that is NOT in applyTo.
 	execCtx.CurrentNodeID = "other_node"
 	execCtx.NodeType = common.NodeTypeTaskExecution
-	_, svcErr := s.service.runInterceptors(common.InterceptorModePreNode, execCtx)
+	_, svcErr := s.service.runInterceptors(providers.InterceptorModePreNode, execCtx)
 	assert.Nil(s.T(), svcErr)
 	assert.False(s.T(), executed, "should not run for non-matching node")
 
 	// Node that IS in applyTo.
 	execCtx.CurrentNodeID = "target_node"
 	execCtx.NodeType = common.NodeTypeTaskExecution
-	_, svcErr = s.service.runInterceptors(common.InterceptorModePreNode, execCtx)
+	_, svcErr = s.service.runInterceptors(providers.InterceptorModePreNode, execCtx)
 	assert.Nil(s.T(), svcErr)
 	assert.True(s.T(), executed, "should run for matching node")
 }
@@ -323,8 +325,8 @@ func (s *InterceptorRunnerTestSuite) TestRunInterceptors_SkipInterceptors() {
 	execCtx := &InterceptorRunnerContext{
 		Ctx: context.Background(),
 		ResolvedInterceptors: []core.InterceptorUnitInterface{
-			newTestInterceptorUnitMock(s.T(), "SkippableIC", common.InterceptorModePreNode,
-				common.InterceptorScopeAll, nil),
+			newTestInterceptorUnitMock(s.T(), "SkippableIC", providers.InterceptorModePreNode,
+				providers.InterceptorScopeAll, nil),
 		},
 		SharedData: map[string]string{},
 	}
@@ -333,7 +335,7 @@ func (s *InterceptorRunnerTestSuite) TestRunInterceptors_SkipInterceptors() {
 	execCtx.NodeType = common.NodeTypeTaskExecution
 	execCtx.SkipInterceptors = []string{"SkippableIC"}
 
-	_, svcErr := s.service.runInterceptors(common.InterceptorModePreNode, execCtx)
+	_, svcErr := s.service.runInterceptors(providers.InterceptorModePreNode, execCtx)
 	assert.Nil(s.T(), svcErr)
 	assert.False(s.T(), executed, "interceptor should be skipped when listed in skipInterceptors")
 }
@@ -356,8 +358,8 @@ func (s *InterceptorRunnerTestSuite) TestRunInterceptors_DefaultInterceptorCanno
 	execCtx := &InterceptorRunnerContext{
 		Ctx: context.Background(),
 		ResolvedInterceptors: []core.InterceptorUnitInterface{
-			newTestInterceptorUnitMock(s.T(), "DefaultIC", common.InterceptorModePreNode,
-				common.InterceptorScope(""), nil),
+			newTestInterceptorUnitMock(s.T(), "DefaultIC", providers.InterceptorModePreNode,
+				providers.InterceptorScope(""), nil),
 		},
 		SharedData:       map[string]string{},
 		CurrentNodeID:    "node1",
@@ -365,10 +367,73 @@ func (s *InterceptorRunnerTestSuite) TestRunInterceptors_DefaultInterceptorCanno
 		SkipInterceptors: []string{"DefaultIC"},
 	}
 
-	_, svcErr := s.service.runInterceptors(common.InterceptorModePreNode, execCtx)
+	_, svcErr := s.service.runInterceptors(providers.InterceptorModePreNode, execCtx)
 
 	assert.Nil(s.T(), svcErr)
 	assert.True(s.T(), executed, "default interceptor must not be bypassed by node skipInterceptors")
+}
+
+func (s *InterceptorRunnerTestSuite) TestRunInterceptors_CurrentNodeInputsPassedToInterceptor() {
+	expectedInputs := []providers.Input{
+		{Identifier: "email", Type: "string", Required: true},
+		{Identifier: "password", Type: providers.InputTypePassword, Required: true},
+	}
+
+	var receivedInputs []providers.Input
+	icMock := newTestInterceptorMock(s.T(), "InputIC", false, 100)
+	icMock.On("Execute", mock.Anything).
+		Run(func(args mock.Arguments) {
+			ctx := args.Get(0).(*core.InterceptorContext)
+			receivedInputs = ctx.CurrentNodeInputs
+		}).
+		Return(&common.InterceptorResponse{Status: common.InterceptorStatusComplete}, nil)
+
+	s.registry.On("GetInterceptor", "InputIC").Return(icMock, nil)
+
+	execCtx := &InterceptorRunnerContext{
+		Ctx: context.Background(),
+		ResolvedInterceptors: []core.InterceptorUnitInterface{
+			newTestInterceptorUnitMock(s.T(), "InputIC", providers.InterceptorModePreNode,
+				providers.InterceptorScopeAll, nil),
+		},
+		CurrentNodeInputs: expectedInputs,
+		SharedData:        map[string]string{},
+	}
+
+	_, svcErr := s.service.runInterceptors(providers.InterceptorModePreRequest, execCtx)
+
+	assert.Nil(s.T(), svcErr)
+	assert.Equal(s.T(), expectedInputs, receivedInputs)
+}
+
+func (s *InterceptorRunnerTestSuite) TestRunInterceptors_NilCurrentNodeInputsPassedAsNil() {
+	var receivedInputs []providers.Input
+	called := false
+	icMock := newTestInterceptorMock(s.T(), "NilInputIC", false, 100)
+	icMock.On("Execute", mock.Anything).
+		Run(func(args mock.Arguments) {
+			called = true
+			ctx := args.Get(0).(*core.InterceptorContext)
+			receivedInputs = ctx.CurrentNodeInputs
+		}).
+		Return(&common.InterceptorResponse{Status: common.InterceptorStatusComplete}, nil)
+
+	s.registry.On("GetInterceptor", "NilInputIC").Return(icMock, nil)
+
+	execCtx := &InterceptorRunnerContext{
+		Ctx: context.Background(),
+		ResolvedInterceptors: []core.InterceptorUnitInterface{
+			newTestInterceptorUnitMock(s.T(), "NilInputIC", providers.InterceptorModePreRequest,
+				providers.InterceptorScope(""), nil),
+		},
+		SharedData: map[string]string{},
+	}
+
+	_, svcErr := s.service.runInterceptors(providers.InterceptorModePreRequest, execCtx)
+
+	assert.Nil(s.T(), svcErr)
+	assert.True(s.T(), called)
+	assert.Nil(s.T(), receivedInputs)
 }
 
 // --- Test helpers ---
@@ -387,7 +452,7 @@ func newTestInterceptorMock(t interface {
 func newTestInterceptorUnitMock(t interface {
 	mock.TestingT
 	Cleanup(func())
-}, name string, mode common.InterceptorMode, scope common.InterceptorScope,
+}, name string, mode providers.InterceptorMode, scope providers.InterceptorScope,
 	applyTo []string,
 ) *coremock.InterceptorUnitInterfaceMock {
 	m := coremock.NewInterceptorUnitInterfaceMock(t)

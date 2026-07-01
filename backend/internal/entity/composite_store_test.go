@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type CompositeStoreTestSuite struct {
@@ -51,8 +52,8 @@ func (s *CompositeStoreTestSuite) SetupTest() {
 	s.testErr = errors.New("store error")
 }
 
-func compEntity(id, ouID string) Entity {
-	return Entity{ID: id, Category: EntityCategoryUser, OUID: ouID}
+func compEntity(id, ouID string) providers.Entity {
+	return providers.Entity{ID: id, Category: providers.EntityCategoryUser, OUID: ouID}
 }
 
 func (s *CompositeStoreTestSuite) TestCreateEntity_DelegatesToDB() {
@@ -73,7 +74,7 @@ func (s *CompositeStoreTestSuite) TestGetEntity_DBFound() {
 
 func (s *CompositeStoreTestSuite) TestGetEntity_DBNotFound_FileFound() {
 	e := compEntity("e2", "ou1")
-	s.dbStore.On("GetEntity", mock.Anything, "e2").Return(Entity{}, ErrEntityNotFound)
+	s.dbStore.On("GetEntity", mock.Anything, "e2").Return(providers.Entity{}, ErrEntityNotFound)
 	s.fileStore.On("GetEntity", mock.Anything, "e2").Return(e, nil)
 	got, err := s.store.GetEntity(s.ctx, "e2")
 	s.NoError(err)
@@ -81,14 +82,14 @@ func (s *CompositeStoreTestSuite) TestGetEntity_DBNotFound_FileFound() {
 }
 
 func (s *CompositeStoreTestSuite) TestGetEntity_DBError() {
-	s.dbStore.On("GetEntity", mock.Anything, "e3").Return(Entity{}, s.testErr)
+	s.dbStore.On("GetEntity", mock.Anything, "e3").Return(providers.Entity{}, s.testErr)
 	_, err := s.store.GetEntity(s.ctx, "e3")
 	s.Error(err)
 }
 
 func (s *CompositeStoreTestSuite) TestGetEntity_BothNotFound() {
-	s.dbStore.On("GetEntity", mock.Anything, "e4").Return(Entity{}, ErrEntityNotFound)
-	s.fileStore.On("GetEntity", mock.Anything, "e4").Return(Entity{}, ErrEntityNotFound)
+	s.dbStore.On("GetEntity", mock.Anything, "e4").Return(providers.Entity{}, ErrEntityNotFound)
+	s.fileStore.On("GetEntity", mock.Anything, "e4").Return(providers.Entity{}, ErrEntityNotFound)
 	_, err := s.store.GetEntity(s.ctx, "e4")
 	s.ErrorIs(err, ErrEntityNotFound)
 }
@@ -165,7 +166,7 @@ func (s *CompositeStoreTestSuite) TestGetGroupCountForEntity_Delegates() {
 }
 
 func (s *CompositeStoreTestSuite) TestGetEntityGroups_Delegates() {
-	groups := []EntityGroup{{ID: "g1"}}
+	groups := []providers.EntityGroup{{ID: "g1"}}
 	s.dbStore.On("GetEntityGroups", mock.Anything, "e1", 10, 0).Return(groups, nil)
 	got, err := s.store.GetEntityGroups(s.ctx, "e1", 10, 0)
 	s.NoError(err)
@@ -210,8 +211,8 @@ func (s *CompositeStoreTestSuite) TestGetEntityListCount_MergesStores() {
 	e3 := compEntity("e3", "ou1") // unique to file
 	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(2, nil)
 	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(1, nil)
-	s.dbStore.On("GetEntityList", mock.Anything, "user", 2, 0, mock.Anything).Return([]Entity{e1, e2}, nil)
-	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return([]Entity{e3}, nil)
+	s.dbStore.On("GetEntityList", mock.Anything, "user", 2, 0, mock.Anything).Return([]providers.Entity{e1, e2}, nil)
+	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return([]providers.Entity{e3}, nil)
 
 	count, err := s.store.GetEntityListCount(s.ctx, "user", nil)
 	s.NoError(err)
@@ -243,7 +244,7 @@ func (s *CompositeStoreTestSuite) TestGetEntityListCount_FileListError() {
 	e1 := compEntity("e1", "ou1")
 	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(1, nil)
 	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(1, nil)
-	s.dbStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return([]Entity{e1}, nil)
+	s.dbStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return([]providers.Entity{e1}, nil)
 	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return(nil, s.testErr)
 	_, err := s.store.GetEntityListCount(s.ctx, "user", nil)
 	s.Error(err)
@@ -254,8 +255,8 @@ func (s *CompositeStoreTestSuite) TestGetEntityList_Success() {
 	e2 := compEntity("e2", "ou1")
 	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(1, nil)
 	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(1, nil)
-	s.dbStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return([]Entity{e1}, nil)
-	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return([]Entity{e2}, nil)
+	s.dbStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return([]providers.Entity{e1}, nil)
+	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return([]providers.Entity{e2}, nil)
 
 	list, err := s.store.GetEntityList(s.ctx, "user", 10, 0, nil)
 	s.NoError(err)
@@ -286,8 +287,10 @@ func (s *CompositeStoreTestSuite) TestGetEntityListCountByOUIDs_MergesStores() {
 	ouIDs := []string{"ou1"}
 	s.dbStore.On("GetEntityListCountByOUIDs", mock.Anything, "user", ouIDs, mock.Anything).Return(1, nil)
 	s.fileStore.On("GetEntityListCountByOUIDs", mock.Anything, "user", ouIDs, mock.Anything).Return(1, nil)
-	s.dbStore.On("GetEntityListByOUIDs", mock.Anything, "user", ouIDs, 1, 0, mock.Anything).Return([]Entity{e1}, nil)
-	s.fileStore.On("GetEntityListByOUIDs", mock.Anything, "user", ouIDs, 1, 0, mock.Anything).Return([]Entity{e2}, nil)
+	s.dbStore.On("GetEntityListByOUIDs", mock.Anything, "user", ouIDs, 1, 0, mock.Anything).
+		Return([]providers.Entity{e1}, nil)
+	s.fileStore.On("GetEntityListByOUIDs", mock.Anything, "user", ouIDs, 1, 0, mock.Anything).
+		Return([]providers.Entity{e2}, nil)
 
 	count, err := s.store.GetEntityListCountByOUIDs(s.ctx, "user", ouIDs, nil)
 	s.NoError(err)
@@ -325,15 +328,15 @@ func (s *CompositeStoreTestSuite) TestValidateEntityIDs_AllValid() {
 func (s *CompositeStoreTestSuite) TestValidateEntityIDs_SomeInvalid() {
 	e1 := compEntity("v1", "ou1")
 	s.dbStore.On("GetEntity", mock.Anything, "v1").Return(e1, nil)
-	s.dbStore.On("GetEntity", mock.Anything, "missing").Return(Entity{}, ErrEntityNotFound)
-	s.fileStore.On("GetEntity", mock.Anything, "missing").Return(Entity{}, ErrEntityNotFound)
+	s.dbStore.On("GetEntity", mock.Anything, "missing").Return(providers.Entity{}, ErrEntityNotFound)
+	s.fileStore.On("GetEntity", mock.Anything, "missing").Return(providers.Entity{}, ErrEntityNotFound)
 	invalid, err := s.store.ValidateEntityIDs(s.ctx, []string{"v1", "missing"})
 	s.NoError(err)
 	s.Equal([]string{"missing"}, invalid)
 }
 
 func (s *CompositeStoreTestSuite) TestValidateEntityIDs_StoreError() {
-	s.dbStore.On("GetEntity", mock.Anything, "err-id").Return(Entity{}, s.testErr)
+	s.dbStore.On("GetEntity", mock.Anything, "err-id").Return(providers.Entity{}, s.testErr)
 	_, err := s.store.ValidateEntityIDs(s.ctx, []string{"err-id"})
 	s.Error(err)
 }
@@ -351,7 +354,7 @@ func (s *CompositeStoreTestSuite) TestGetEntitiesByIDs_DBError() {
 }
 
 func (s *CompositeStoreTestSuite) TestGetEntitiesByIDs_FileError() {
-	s.dbStore.On("GetEntitiesByIDs", mock.Anything, []string{"id1"}).Return([]Entity{}, nil)
+	s.dbStore.On("GetEntitiesByIDs", mock.Anything, []string{"id1"}).Return([]providers.Entity{}, nil)
 	s.fileStore.On("GetEntitiesByIDs", mock.Anything, []string{"id1"}).Return(nil, s.testErr)
 	_, err := s.store.GetEntitiesByIDs(s.ctx, []string{"id1"})
 	s.Error(err)
@@ -361,8 +364,8 @@ func (s *CompositeStoreTestSuite) TestGetEntitiesByIDs_MergeDedup() {
 	e1 := compEntity("e1", "ou1")
 	e2 := compEntity("e2", "ou1")
 	// e1 exists in both — DB takes precedence
-	s.dbStore.On("GetEntitiesByIDs", mock.Anything, []string{"e1", "e2"}).Return([]Entity{e1}, nil)
-	s.fileStore.On("GetEntitiesByIDs", mock.Anything, []string{"e1", "e2"}).Return([]Entity{e1, e2}, nil)
+	s.dbStore.On("GetEntitiesByIDs", mock.Anything, []string{"e1", "e2"}).Return([]providers.Entity{e1}, nil)
+	s.fileStore.On("GetEntitiesByIDs", mock.Anything, []string{"e1", "e2"}).Return([]providers.Entity{e1, e2}, nil)
 
 	list, err := s.store.GetEntitiesByIDs(s.ctx, []string{"e1", "e2"})
 	s.NoError(err)
@@ -398,15 +401,15 @@ func (s *CompositeStoreTestSuite) TestValidateEntityIDsInOUs_OutOfScope() {
 }
 
 func (s *CompositeStoreTestSuite) TestValidateEntityIDsInOUs_NotFound() {
-	s.dbStore.On("GetEntity", mock.Anything, "missing").Return(Entity{}, ErrEntityNotFound)
-	s.fileStore.On("GetEntity", mock.Anything, "missing").Return(Entity{}, ErrEntityNotFound)
+	s.dbStore.On("GetEntity", mock.Anything, "missing").Return(providers.Entity{}, ErrEntityNotFound)
+	s.fileStore.On("GetEntity", mock.Anything, "missing").Return(providers.Entity{}, ErrEntityNotFound)
 	out, err := s.store.ValidateEntityIDsInOUs(s.ctx, []string{"missing"}, []string{"ou-A"})
 	s.NoError(err)
 	s.Equal([]string{"missing"}, out)
 }
 
 func (s *CompositeStoreTestSuite) TestValidateEntityIDsInOUs_StoreError() {
-	s.dbStore.On("GetEntity", mock.Anything, "err-id").Return(Entity{}, s.testErr)
+	s.dbStore.On("GetEntity", mock.Anything, "err-id").Return(providers.Entity{}, s.testErr)
 	_, err := s.store.ValidateEntityIDsInOUs(s.ctx, []string{"err-id"}, []string{"ou-A"})
 	s.Error(err)
 }
@@ -433,14 +436,14 @@ func (s *CompositeStoreTestSuite) TestIsEntityDeclarative_FileError() {
 }
 
 func (s *CompositeStoreTestSuite) TestMergeAndDeduplicateEntities() {
-	db1 := Entity{ID: "shared", IsReadOnly: false}
-	file1 := Entity{ID: "shared", IsReadOnly: false}
-	file2 := Entity{ID: "file-only"}
+	db1 := providers.Entity{ID: "shared", IsReadOnly: false}
+	file1 := providers.Entity{ID: "shared", IsReadOnly: false}
+	file2 := providers.Entity{ID: "file-only"}
 
-	result := mergeAndDeduplicateEntities([]Entity{db1}, []Entity{file1, file2})
+	result := mergeAndDeduplicateEntities([]providers.Entity{db1}, []providers.Entity{file1, file2})
 	s.Len(result, 2)
 
-	idMap := make(map[string]Entity)
+	idMap := make(map[string]providers.Entity)
 	for _, e := range result {
 		idMap[e.ID] = e
 	}
@@ -450,7 +453,7 @@ func (s *CompositeStoreTestSuite) TestMergeAndDeduplicateEntities() {
 
 func (s *CompositeStoreTestSuite) TestSearchEntities_DBOnly() {
 	filters := map[string]interface{}{"email": "a@b.com"}
-	entities := []Entity{compEntity("e1", "ou1"), compEntity("e2", "ou1")}
+	entities := []providers.Entity{compEntity("e1", "ou1"), compEntity("e2", "ou1")}
 	s.dbStore.On("SearchEntities", mock.Anything, filters).Return(entities, nil)
 	s.fileStore.On("SearchEntities", mock.Anything, filters).Return(nil, ErrEntityNotFound)
 	got, err := s.store.SearchEntities(s.ctx, filters)
@@ -460,7 +463,7 @@ func (s *CompositeStoreTestSuite) TestSearchEntities_DBOnly() {
 
 func (s *CompositeStoreTestSuite) TestSearchEntities_FileOnly() {
 	filters := map[string]interface{}{"email": "a@b.com"}
-	entities := []Entity{compEntity("f1", "ou1")}
+	entities := []providers.Entity{compEntity("f1", "ou1")}
 	s.dbStore.On("SearchEntities", mock.Anything, filters).Return(nil, ErrEntityNotFound)
 	s.fileStore.On("SearchEntities", mock.Anything, filters).Return(entities, nil)
 	got, err := s.store.SearchEntities(s.ctx, filters)
@@ -470,8 +473,8 @@ func (s *CompositeStoreTestSuite) TestSearchEntities_FileOnly() {
 
 func (s *CompositeStoreTestSuite) TestSearchEntities_BothStores() {
 	filters := map[string]interface{}{"email": "a@b.com"}
-	dbEntities := []Entity{compEntity("e1", "ou1")}
-	fileEntities := []Entity{compEntity("f1", "ou1")}
+	dbEntities := []providers.Entity{compEntity("e1", "ou1")}
+	fileEntities := []providers.Entity{compEntity("f1", "ou1")}
 	s.dbStore.On("SearchEntities", mock.Anything, filters).Return(dbEntities, nil)
 	s.fileStore.On("SearchEntities", mock.Anything, filters).Return(fileEntities, nil)
 	got, err := s.store.SearchEntities(s.ctx, filters)
@@ -496,7 +499,7 @@ func (s *CompositeStoreTestSuite) TestSearchEntities_DBError() {
 
 func (s *CompositeStoreTestSuite) TestSearchEntities_FileError() {
 	filters := map[string]interface{}{"email": "a@b.com"}
-	dbEntities := []Entity{compEntity("e1", "ou1")}
+	dbEntities := []providers.Entity{compEntity("e1", "ou1")}
 	s.dbStore.On("SearchEntities", mock.Anything, filters).Return(dbEntities, nil)
 	s.fileStore.On("SearchEntities", mock.Anything, filters).Return(nil, s.testErr)
 	_, err := s.store.SearchEntities(s.ctx, filters)

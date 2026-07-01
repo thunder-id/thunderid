@@ -16,20 +16,22 @@
  * under the License.
  */
 
+// Package manager manages authentication providers and their interactions.
 package manager
 
 import (
 	"context"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/authnprovider/provider"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
-// authnProviderManager is a proxy struct that implements AuthnProviderManagerInterface by delegating
+// authnProviderManager is a proxy struct that implements AuthnProviderManager by delegating
 // to an underlying AuthnProviderInterface.
 type authnProviderManager struct {
 	provider provider.AuthnProviderInterface
@@ -37,7 +39,7 @@ type authnProviderManager struct {
 }
 
 // newAuthnProviderManager creates a new authnProviderManager.
-func newAuthnProviderManager(p provider.AuthnProviderInterface) AuthnProviderManagerInterface {
+func newAuthnProviderManager(p provider.AuthnProviderInterface) providers.AuthnProviderManager {
 	return &authnProviderManager{
 		provider: p,
 		logger:   log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthnProviderManager")),
@@ -46,12 +48,10 @@ func newAuthnProviderManager(p provider.AuthnProviderInterface) AuthnProviderMan
 
 // AuthenticateUser authenticates with the underlying provider and returns an updated AuthUser.
 func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers, credentials map[string]interface{},
-	requestedAttributes *authnprovidercm.RequestedAttributes,
-	metadata *authnprovidercm.AuthnMetadata,
-	authUser AuthUser) (AuthUser, authnprovidercm.AuthenticatedClaims, *serviceerror.ServiceError) {
+	requestedAttributes *providers.RequestedAttributes,
+	metadata *providers.AuthnMetadata,
+	authUser providers.AuthUser) (providers.AuthUser, providers.AuthenticatedClaims, *tidcommon.ServiceError) {
 	if sub, ok := credentials["sub"]; ok {
-		// Temporary handling of disambiguation after a federated authentication step.
-		// Only works with Thunder's default authn provider
 		if subStr, ok := sub.(string); !ok || subStr == "" {
 			m.logger.Debug(ctx, "disambiguation requested but sub is missing or invalid in credentials")
 			return authUser, nil, &ErrorAuthenticationFailed
@@ -62,12 +62,12 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 			return authUser, nil, &ErrorAuthenticationFailed
 		}
 
-		if authUser.entityReferenceToken == nil {
+		if authUser.EntityReferenceToken() == nil {
 			m.logger.Debug(ctx, "disambiguation requested but current user's entity reference token is missing")
 			return authUser, nil, &ErrorAuthenticationFailed
 		}
 
-		entityRefToken, ok := authUser.entityReferenceToken.(map[string]interface{})
+		entityRefToken, ok := authUser.EntityReferenceToken().(map[string]interface{})
 		if !ok || entityRefToken == nil {
 			m.logger.Debug(ctx,
 				"disambiguation requested but current user's entity reference token is missing or invalid")
@@ -99,25 +99,22 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 			return authUser, nil, &ErrorAuthenticationFailed
 		}
 		userID := valStr
-		authUser = AuthUser{
-			entityReferenceToken: map[string]interface{}{
-				authnprovidercm.UserAttributeUserID: userID,
-			},
-			entityReference: nil,
-			attributeToken: map[string]interface{}{
-				authnprovidercm.UserAttributeUserID: userID,
-			},
-			attributes: nil,
-		}
+		authUser := providers.AuthUser{}
+		authUser.SetEntityReferenceToken(map[string]interface{}{
+			authnprovidercm.UserAttributeUserID: userID,
+		})
+		authUser.SetAttributeToken(map[string]interface{}{
+			authnprovidercm.UserAttributeUserID: userID,
+		})
 		return authUser, nil, nil
 	}
 
 	authResult, svcErr := m.provider.Authenticate(ctx, identifiers, credentials, metadata)
 	if svcErr != nil {
-		if svcErr.Type == serviceerror.ServerErrorType {
+		if svcErr.Type == tidcommon.ServerErrorType {
 			m.logger.Error(ctx, "provider returned server error during authentication",
 				log.String("error", svcErr.ErrorDescription.DefaultValue))
-			return authUser, nil, &serviceerror.InternalServerError
+			return authUser, nil, &tidcommon.InternalServerError
 		}
 		switch svcErr.Code {
 		case authnprovidercm.ErrorCodeUserNotFound:
@@ -137,47 +134,42 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 	if (authResult.AttributeToken == nil && authResult.Attributes == nil) ||
 		(authResult.EntityReferenceToken == nil && authResult.EntityReference == nil) {
 		m.logger.Error(ctx, "provider Authenticate result is missing both entity reference and attribute values")
-		return authUser, nil, &serviceerror.InternalServerError
+		return authUser, nil, &tidcommon.InternalServerError
 	}
 
 	if authResult.EntityReferenceToken != nil {
-		authUser.entityReferenceToken = authResult.EntityReferenceToken
-		authUser.entityReference = nil
+		authUser.SetEntityReferenceToken(authResult.EntityReferenceToken)
 	} else {
-		authUser.entityReference = authResult.EntityReference
-		authUser.entityReferenceToken = nil
+		authUser.SetEntityReference(authResult.EntityReference)
 	}
 
 	if authResult.AttributeToken != nil {
-		authUser.attributeToken = authResult.AttributeToken
-		authUser.attributes = nil
+		authUser.SetAttributeToken(authResult.AttributeToken)
 	} else {
-		authUser.attributes = authResult.Attributes
-		authUser.attributeToken = nil
+		authUser.SetAttributes(authResult.Attributes)
 	}
 
 	return authUser, authResult.AuthenticatedClaims, nil
 }
 
 // GetEntityReference returns the entity reference for the user.
-func (m *authnProviderManager) GetEntityReference(ctx context.Context, authUser AuthUser) (
-	AuthUser, *authnprovidercm.EntityReference, *serviceerror.ServiceError) {
+func (m *authnProviderManager) GetEntityReference(ctx context.Context, authUser providers.AuthUser) (
+	providers.AuthUser, *providers.EntityReference, *tidcommon.ServiceError) {
 	if !authUser.IsAuthenticated() {
 		m.logger.Error(ctx, "GetEntityReference called with unauthenticated authUser")
-		return authUser, nil, &serviceerror.InternalServerError
+		return authUser, nil, &tidcommon.InternalServerError
 	}
 
-	if authUser.entityReferenceToken == nil {
-		// If entity reference token is nil, entity reference is already fetched and can be returned directly.
-		return authUser, authUser.entityReference, nil
+	if authUser.EntityReferenceToken() == nil {
+		return authUser, authUser.EntityReference(), nil
 	}
 
-	entityRef, err := m.provider.GetEntityReference(ctx, authUser.entityReferenceToken)
+	entityRef, err := m.provider.GetEntityReference(ctx, authUser.EntityReferenceToken())
 	if err != nil {
-		if err.Type == serviceerror.ServerErrorType {
+		if err.Type == tidcommon.ServerErrorType {
 			m.logger.Error(ctx, "provider returned server error while fetching entity reference",
 				log.String("error", err.ErrorDescription.DefaultValue))
-			return authUser, nil, &serviceerror.InternalServerError
+			return authUser, nil, &tidcommon.InternalServerError
 		}
 		switch err.Code {
 		case authnprovidercm.ErrorCodeUserNotFound:
@@ -189,56 +181,56 @@ func (m *authnProviderManager) GetEntityReference(ctx context.Context, authUser 
 				log.String("errorDescription", err.ErrorDescription.DefaultValue))
 			return authUser, nil, &ErrorAmbiguousUser
 		default:
-			return authUser, nil, serviceerror.CustomServiceError(ErrorGetEntityReferenceClientError, core.I18nMessage{
-				Key:          "error.authnmgrservice.get_entity_reference_client_error_description",
-				DefaultValue: err.ErrorDescription.DefaultValue,
-			})
+			return authUser, nil, tidcommon.CustomServiceError(
+				ErrorGetEntityReferenceClientError,
+				tidcommon.I18nMessage{
+					Key:          "error.authnmgrservice.get_entity_reference_client_error_description",
+					DefaultValue: err.ErrorDescription.DefaultValue,
+				})
 		}
 	}
 
-	authUser.entityReference = entityRef
-	authUser.entityReferenceToken = nil
+	authUser.SetEntityReference(entityRef)
 
 	return authUser, entityRef, nil
 }
 
 // GetUserAvailableAttributes returns the available attributes.
 func (m *authnProviderManager) GetUserAvailableAttributes(ctx context.Context,
-	authUser AuthUser) (*authnprovidercm.AttributesResponse, *serviceerror.ServiceError) {
+	authUser providers.AuthUser) (*providers.AttributesResponse, *tidcommon.ServiceError) {
 	if !authUser.IsAuthenticated() {
 		m.logger.Error(ctx, "GetUserAvailableAttributes called with unauthenticated authUser")
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
-	return authUser.attributes, nil
+	return authUser.Attributes(), nil
 }
 
 // GetUserAttributes returns attributes for the user.
 func (m *authnProviderManager) GetUserAttributes(ctx context.Context,
-	requestedAttributes *authnprovidercm.RequestedAttributes,
-	metadata *authnprovidercm.GetAttributesMetadata,
-	authUser AuthUser) (AuthUser, *authnprovidercm.AttributesResponse, *serviceerror.ServiceError) {
+	requestedAttributes *providers.RequestedAttributes,
+	metadata *providers.GetAttributesMetadata,
+	authUser providers.AuthUser) (providers.AuthUser, *providers.AttributesResponse, *tidcommon.ServiceError) {
 	if !authUser.IsAuthenticated() {
 		m.logger.Error(ctx, "GetUserAttributes called with unauthenticated authUser")
-		return authUser, nil, &serviceerror.InternalServerError
+		return authUser, nil, &tidcommon.InternalServerError
 	}
-	if authUser.attributeToken == nil {
-		// If attribute token is nil, attribute values are already fetched and can be returned directly.
-		return authUser, authUser.attributes, nil
+	if authUser.AttributeToken() == nil {
+		return authUser, authUser.Attributes(), nil
 	}
-	fetchedAttributes, err := m.provider.GetAttributes(ctx, authUser.attributeToken, requestedAttributes, metadata)
+	fetchedAttributes, err := m.provider.GetAttributes(ctx, authUser.AttributeToken(),
+		requestedAttributes, metadata)
 	if err != nil {
-		if err.Type == serviceerror.ServerErrorType {
+		if err.Type == tidcommon.ServerErrorType {
 			m.logger.Error(ctx, "provider returned server error while fetching attributes",
 				log.String("error", err.ErrorDescription.DefaultValue))
-			return authUser, nil, &serviceerror.InternalServerError
+			return authUser, nil, &tidcommon.InternalServerError
 		}
-		return authUser, nil, serviceerror.CustomServiceError(ErrorGetAttributesClientError, core.I18nMessage{
+		return authUser, nil, tidcommon.CustomServiceError(ErrorGetAttributesClientError, tidcommon.I18nMessage{
 			Key:          "error.authnprovider.get_attributes_client_error_description",
 			DefaultValue: err.ErrorDescription.DefaultValue,
 		})
 	}
-	authUser.attributes = fetchedAttributes
-	authUser.attributeToken = nil
+	authUser.SetAttributes(fetchedAttributes)
 
 	return authUser, fetchedAttributes, nil
 }

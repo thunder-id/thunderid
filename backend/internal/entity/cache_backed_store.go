@@ -24,6 +24,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // defaultCacheableIdentifiers lists the filter keys eligible for single-key
@@ -33,7 +34,7 @@ var defaultCacheableIdentifiers = []string{"clientId"}
 // cacheBackedEntityStore wraps an entityStoreInterface with in-memory caching
 // for individual entity lookups by ID and identifier filter resolution.
 type cacheBackedEntityStore struct {
-	entityByIDCache                cache.CacheInterface[*Entity]
+	entityByIDCache                cache.CacheInterface[*providers.Entity]
 	entityWithCredentialsByIDCache cache.CacheInterface[*entityWithCredentials]
 	entityIDByIdentifierCache      cache.CacheInterface[*string]
 	cacheableIdentifiers           map[string]bool
@@ -43,7 +44,7 @@ type cacheBackedEntityStore struct {
 
 // newCacheBackedEntityStore wraps a store with read-through caching.
 func newCacheBackedEntityStore(store entityStoreInterface,
-	entityByIDCache cache.CacheInterface[*Entity],
+	entityByIDCache cache.CacheInterface[*providers.Entity],
 	entityWithCredentialsByIDCache cache.CacheInterface[*entityWithCredentials],
 	entityIDByIdentifierCache cache.CacheInterface[*string]) entityStoreInterface {
 	idSet := make(map[string]bool, len(defaultCacheableIdentifiers))
@@ -61,7 +62,7 @@ func newCacheBackedEntityStore(store entityStoreInterface,
 	}
 }
 
-func (s *cacheBackedEntityStore) CreateEntity(ctx context.Context, entity Entity,
+func (s *cacheBackedEntityStore) CreateEntity(ctx context.Context, entity providers.Entity,
 	credentials json.RawMessage, systemCredentials json.RawMessage) error {
 	if err := s.store.CreateEntity(ctx, entity, credentials, systemCredentials); err != nil {
 		return err
@@ -71,7 +72,7 @@ func (s *cacheBackedEntityStore) CreateEntity(ctx context.Context, entity Entity
 	return nil
 }
 
-func (s *cacheBackedEntityStore) GetEntity(ctx context.Context, id string) (Entity, error) {
+func (s *cacheBackedEntityStore) GetEntity(ctx context.Context, id string) (providers.Entity, error) {
 	cacheKey := cache.CacheKey{Key: id}
 	if cached, ok := s.entityByIDCache.Get(ctx, cacheKey); ok {
 		return *cached, nil
@@ -102,7 +103,7 @@ func (s *cacheBackedEntityStore) GetEntityWithCredentials(ctx context.Context,
 	return result, nil
 }
 
-func (s *cacheBackedEntityStore) UpdateEntity(ctx context.Context, entity *Entity) error {
+func (s *cacheBackedEntityStore) UpdateEntity(ctx context.Context, entity *providers.Entity) error {
 	s.invalidateIdentifierCache(ctx, entity.ID)
 	s.invalidateEntityByID(ctx, entity.ID)
 
@@ -191,7 +192,7 @@ func (s *cacheBackedEntityStore) IdentifyEntity(ctx context.Context,
 // Pass-through methods.
 
 func (s *cacheBackedEntityStore) SearchEntities(ctx context.Context,
-	filters map[string]interface{}) ([]Entity, error) {
+	filters map[string]interface{}) ([]providers.Entity, error) {
 	return s.store.SearchEntities(ctx, filters)
 }
 
@@ -201,7 +202,7 @@ func (s *cacheBackedEntityStore) GetEntityListCount(ctx context.Context,
 }
 
 func (s *cacheBackedEntityStore) GetEntityList(ctx context.Context,
-	category string, limit, offset int, filters map[string]interface{}) ([]Entity, error) {
+	category string, limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
 	return s.store.GetEntityList(ctx, category, limit, offset, filters)
 }
 
@@ -212,7 +213,7 @@ func (s *cacheBackedEntityStore) GetEntityListCountByOUIDs(ctx context.Context,
 
 func (s *cacheBackedEntityStore) GetEntityListByOUIDs(ctx context.Context,
 	category string, ouIDs []string, limit, offset int,
-	filters map[string]interface{}) ([]Entity, error) {
+	filters map[string]interface{}) ([]providers.Entity, error) {
 	return s.store.GetEntityListByOUIDs(ctx, category, ouIDs, limit, offset, filters)
 }
 
@@ -222,7 +223,7 @@ func (s *cacheBackedEntityStore) ValidateEntityIDs(ctx context.Context,
 }
 
 func (s *cacheBackedEntityStore) GetEntitiesByIDs(ctx context.Context,
-	entityIDs []string) ([]Entity, error) {
+	entityIDs []string) ([]providers.Entity, error) {
 	return s.store.GetEntitiesByIDs(ctx, entityIDs)
 }
 
@@ -237,7 +238,7 @@ func (s *cacheBackedEntityStore) GetGroupCountForEntity(ctx context.Context,
 }
 
 func (s *cacheBackedEntityStore) GetEntityGroups(ctx context.Context,
-	entityID string, limit, offset int) ([]EntityGroup, error) {
+	entityID string, limit, offset int) ([]providers.EntityGroup, error) {
 	return s.store.GetEntityGroups(ctx, entityID, limit, offset)
 }
 
@@ -261,7 +262,9 @@ func identifierCacheKey(filterKey, filterValue string) cache.CacheKey {
 
 // parseEntityAttributes unmarshals the entity's SystemAttributes and Attributes
 // into a single merged map. SystemAttributes take precedence on key collisions.
-func (s *cacheBackedEntityStore) parseEntityAttributes(ctx context.Context, entity *Entity) map[string]interface{} {
+func (s *cacheBackedEntityStore) parseEntityAttributes(
+	ctx context.Context, entity *providers.Entity,
+) map[string]interface{} {
 	if entity == nil {
 		return nil
 	}
@@ -283,7 +286,7 @@ func (s *cacheBackedEntityStore) parseEntityAttributes(ctx context.Context, enti
 	return merged
 }
 
-func (s *cacheBackedEntityStore) cacheEntityIDByIdentifiers(ctx context.Context, entity *Entity) {
+func (s *cacheBackedEntityStore) cacheEntityIDByIdentifiers(ctx context.Context, entity *providers.Entity) {
 	if entity == nil || entity.ID == "" {
 		return
 	}
@@ -305,7 +308,7 @@ func (s *cacheBackedEntityStore) invalidateIdentifierCache(ctx context.Context, 
 	if entityID == "" || len(s.cacheableIdentifiers) == 0 {
 		return
 	}
-	var entity *Entity
+	var entity *providers.Entity
 	if cached, ok := s.entityByIDCache.Get(ctx, cache.CacheKey{Key: entityID}); ok && cached != nil {
 		entity = cached
 	} else {
@@ -331,7 +334,7 @@ func (s *cacheBackedEntityStore) invalidateIdentifierCache(ctx context.Context, 
 	}
 }
 
-func (s *cacheBackedEntityStore) cacheEntityByID(ctx context.Context, entity *Entity) {
+func (s *cacheBackedEntityStore) cacheEntityByID(ctx context.Context, entity *providers.Entity) {
 	if entity == nil || entity.ID == "" {
 		return
 	}

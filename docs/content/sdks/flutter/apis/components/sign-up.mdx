@@ -1,0 +1,82 @@
+---
+title: SignUp
+description: Embedded sign-up widget for the {{ProductName}} Flutter SDK
+---
+
+# `SignUp`
+
+`SignUp` is a pre-built Flutter widget that drives the full registration flow using the <ProductName /> Flow Execution API. It renders each registration step as it arrives and advances through the flow until the account is created and the user is signed in.
+
+```dart
+import 'package:thunderid_flutter/thunderid_flutter.dart';
+
+SignUp(
+  applicationId: '<your-application-id>',
+  onComplete: () {
+    ThunderIDProvider.of(context).refresh();
+  },
+  onError: (error) => print('Sign up failed: $error'),
+)
+```
+
+## `SignUp` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `applicationId` | `String` | ✅ | The Application ID from the <ProductName /> console. Used to initiate the Flow Execution API. |
+| `onComplete` | `VoidCallback?` | | Called when registration completes and the user is signed in. |
+| `onError` | `void Function(dynamic)?` | | Called if the flow fails or an error occurs. |
+
+## `BaseSignUp`
+
+`BaseSignUp` exposes the raw `SignUpState` to a `builder` function, giving full UI control while the SDK manages the registration loop.
+
+```dart
+BaseSignUp(
+  applicationId: '<your-application-id>',
+  onComplete: () => ThunderIDProvider.of(context).refresh(),
+  builder: (context, state) {
+    return Column(
+      children: [
+        for (final input in state.inputs)
+          TextField(
+            decoration: InputDecoration(labelText: input.label),
+            obscureText: input.type == 'password',
+            onChanged: (value) => state.setValue(input.name, value),
+          ),
+        ElevatedButton(
+          onPressed: state.isLoading ? null : state.submit,
+          child: state.isLoading
+              ? const CircularProgressIndicator()
+              : const Text('Create Account'),
+        ),
+        if (state.error != null) Text(state.error!),
+      ],
+    );
+  },
+)
+```
+
+### `BaseSignUp` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `applicationId` | `String` | ✅ | The Application ID for the flow. |
+| `onComplete` | `VoidCallback?` | | Called on successful completion. |
+| `onError` | `void Function(dynamic)?` | | Called on failure. |
+| `builder` | `Widget Function(BuildContext, SignUpState)` | ✅ | Builder receiving the current `SignUpState`. |
+
+### `SignUpState`
+
+`SignUpState` mirrors the shape of `SignInState` and is passed to the `BaseSignUp` builder on every update.
+
+| Property/Method | Type | Description |
+| :--- | :--- | :--- |
+| `inputs` | `List<FlowInput>` | Form fields for the current registration step. |
+| `actions` | `List<FlowAction>` | Available actions for the current step. |
+| `isLoading` | `bool` | `true` while a step is executing. |
+| `error` | `String?` | Human-readable error from the last step. |
+| `flowStatus` | `FlowStatus` | Current flow status. |
+| `setValue(name, value)` | `void` | Set a field value. |
+| `submit()` | `Future<void>` | Submit the current step. |
+| `executeAction(action)` | `Future<void>` | Execute a `FlowAction`. |

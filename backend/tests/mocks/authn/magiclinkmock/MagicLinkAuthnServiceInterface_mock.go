@@ -9,7 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/authn/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	common0 "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewMagicLinkAuthnServiceInterfaceMock creates a new instance of MagicLinkAuthnServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -40,7 +40,7 @@ func (_m *MagicLinkAuthnServiceInterfaceMock) EXPECT() *MagicLinkAuthnServiceInt
 }
 
 // Authenticate provides a mock function for the type MagicLinkAuthnServiceInterfaceMock
-func (_mock *MagicLinkAuthnServiceInterfaceMock) Authenticate(ctx context.Context, token string, subjectAttribute string) (*common.AuthnResult, *serviceerror.ServiceError) {
+func (_mock *MagicLinkAuthnServiceInterfaceMock) Authenticate(ctx context.Context, token string, subjectAttribute string) (*common.AuthnResult, *common0.ServiceError) {
 	ret := _mock.Called(ctx, token, subjectAttribute)
 
 	if len(ret) == 0 {
@@ -48,8 +48,8 @@ func (_mock *MagicLinkAuthnServiceInterfaceMock) Authenticate(ctx context.Contex
 	}
 
 	var r0 *common.AuthnResult
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*common.AuthnResult, *serviceerror.ServiceError)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*common.AuthnResult, *common0.ServiceError)); ok {
 		return returnFunc(ctx, token, subjectAttribute)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *common.AuthnResult); ok {
@@ -59,11 +59,11 @@ func (_mock *MagicLinkAuthnServiceInterfaceMock) Authenticate(ctx context.Contex
 			r0 = ret.Get(0).(*common.AuthnResult)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx, token, subjectAttribute)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common0.ServiceError)
 		}
 	}
 	return r0, r1
@@ -105,18 +105,18 @@ func (_c *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call) Run(run func(ctx
 	return _c
 }
 
-func (_c *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call) Return(authnResult *common.AuthnResult, serviceError *serviceerror.ServiceError) *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call {
+func (_c *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call) Return(authnResult *common.AuthnResult, serviceError *common0.ServiceError) *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call {
 	_c.Call.Return(authnResult, serviceError)
 	return _c
 }
 
-func (_c *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call) RunAndReturn(run func(ctx context.Context, token string, subjectAttribute string) (*common.AuthnResult, *serviceerror.ServiceError)) *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call {
+func (_c *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call) RunAndReturn(run func(ctx context.Context, token string, subjectAttribute string) (*common.AuthnResult, *common0.ServiceError)) *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GenerateMagicLink provides a mock function for the type MagicLinkAuthnServiceInterfaceMock
-func (_mock *MagicLinkAuthnServiceInterfaceMock) GenerateMagicLink(ctx context.Context, subject string, expirySeconds int64, queryParams map[string]string, additionalClaims map[string]interface{}, magicLinkURL string) (string, *serviceerror.ServiceError) {
+func (_mock *MagicLinkAuthnServiceInterfaceMock) GenerateMagicLink(ctx context.Context, subject string, expirySeconds int64, queryParams map[string]string, additionalClaims map[string]interface{}, magicLinkURL string) (string, *common0.ServiceError) {
 	ret := _mock.Called(ctx, subject, expirySeconds, queryParams, additionalClaims, magicLinkURL)
 
 	if len(ret) == 0 {
@@ -124,8 +124,8 @@ func (_mock *MagicLinkAuthnServiceInterfaceMock) GenerateMagicLink(ctx context.C
 	}
 
 	var r0 string
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int64, map[string]string, map[string]interface{}, string) (string, *serviceerror.ServiceError)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int64, map[string]string, map[string]interface{}, string) (string, *common0.ServiceError)); ok {
 		return returnFunc(ctx, subject, expirySeconds, queryParams, additionalClaims, magicLinkURL)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int64, map[string]string, map[string]interface{}, string) string); ok {
@@ -133,11 +133,11 @@ func (_mock *MagicLinkAuthnServiceInterfaceMock) GenerateMagicLink(ctx context.C
 	} else {
 		r0 = ret.Get(0).(string)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int64, map[string]string, map[string]interface{}, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int64, map[string]string, map[string]interface{}, string) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx, subject, expirySeconds, queryParams, additionalClaims, magicLinkURL)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common0.ServiceError)
 		}
 	}
 	return r0, r1
@@ -197,12 +197,12 @@ func (_c *MagicLinkAuthnServiceInterfaceMock_GenerateMagicLink_Call) Run(run fun
 	return _c
 }
 
-func (_c *MagicLinkAuthnServiceInterfaceMock_GenerateMagicLink_Call) Return(s string, serviceError *serviceerror.ServiceError) *MagicLinkAuthnServiceInterfaceMock_GenerateMagicLink_Call {
+func (_c *MagicLinkAuthnServiceInterfaceMock_GenerateMagicLink_Call) Return(s string, serviceError *common0.ServiceError) *MagicLinkAuthnServiceInterfaceMock_GenerateMagicLink_Call {
 	_c.Call.Return(s, serviceError)
 	return _c
 }
 
-func (_c *MagicLinkAuthnServiceInterfaceMock_GenerateMagicLink_Call) RunAndReturn(run func(ctx context.Context, subject string, expirySeconds int64, queryParams map[string]string, additionalClaims map[string]interface{}, magicLinkURL string) (string, *serviceerror.ServiceError)) *MagicLinkAuthnServiceInterfaceMock_GenerateMagicLink_Call {
+func (_c *MagicLinkAuthnServiceInterfaceMock_GenerateMagicLink_Call) RunAndReturn(run func(ctx context.Context, subject string, expirySeconds int64, queryParams map[string]string, additionalClaims map[string]interface{}, magicLinkURL string) (string, *common0.ServiceError)) *MagicLinkAuthnServiceInterfaceMock_GenerateMagicLink_Call {
 	_c.Call.Return(run)
 	return _c
 }

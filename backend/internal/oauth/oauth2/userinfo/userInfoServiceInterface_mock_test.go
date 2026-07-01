@@ -8,7 +8,7 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // newUserInfoServiceInterfaceMock creates a new instance of userInfoServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -39,7 +39,7 @@ func (_m *userInfoServiceInterfaceMock) EXPECT() *userInfoServiceInterfaceMock_E
 }
 
 // GetUserInfo provides a mock function for the type userInfoServiceInterfaceMock
-func (_mock *userInfoServiceInterfaceMock) GetUserInfo(ctx context.Context, accessToken string) (*UserInfoResponse, *serviceerror.ServiceError) {
+func (_mock *userInfoServiceInterfaceMock) GetUserInfo(ctx context.Context, accessToken string) (*UserInfoResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, accessToken)
 
 	if len(ret) == 0 {
@@ -47,8 +47,8 @@ func (_mock *userInfoServiceInterfaceMock) GetUserInfo(ctx context.Context, acce
 	}
 
 	var r0 *UserInfoResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*UserInfoResponse, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*UserInfoResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, accessToken)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *UserInfoResponse); ok {
@@ -58,11 +58,11 @@ func (_mock *userInfoServiceInterfaceMock) GetUserInfo(ctx context.Context, acce
 			r0 = ret.Get(0).(*UserInfoResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, accessToken)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -98,18 +98,18 @@ func (_c *userInfoServiceInterfaceMock_GetUserInfo_Call) Run(run func(ctx contex
 	return _c
 }
 
-func (_c *userInfoServiceInterfaceMock_GetUserInfo_Call) Return(userInfoResponse *UserInfoResponse, serviceError *serviceerror.ServiceError) *userInfoServiceInterfaceMock_GetUserInfo_Call {
+func (_c *userInfoServiceInterfaceMock_GetUserInfo_Call) Return(userInfoResponse *UserInfoResponse, serviceError *common.ServiceError) *userInfoServiceInterfaceMock_GetUserInfo_Call {
 	_c.Call.Return(userInfoResponse, serviceError)
 	return _c
 }
 
-func (_c *userInfoServiceInterfaceMock_GetUserInfo_Call) RunAndReturn(run func(ctx context.Context, accessToken string) (*UserInfoResponse, *serviceerror.ServiceError)) *userInfoServiceInterfaceMock_GetUserInfo_Call {
+func (_c *userInfoServiceInterfaceMock_GetUserInfo_Call) RunAndReturn(run func(ctx context.Context, accessToken string) (*UserInfoResponse, *common.ServiceError)) *userInfoServiceInterfaceMock_GetUserInfo_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetUserInfoForDPoP provides a mock function for the type userInfoServiceInterfaceMock
-func (_mock *userInfoServiceInterfaceMock) GetUserInfoForDPoP(ctx context.Context, accessToken string, proof string, htm string, htu string) (*UserInfoResponse, *serviceerror.ServiceError) {
+func (_mock *userInfoServiceInterfaceMock) GetUserInfoForDPoP(ctx context.Context, accessToken string, proof string, htm string, htu string) (*UserInfoResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, accessToken, proof, htm, htu)
 
 	if len(ret) == 0 {
@@ -117,8 +117,8 @@ func (_mock *userInfoServiceInterfaceMock) GetUserInfoForDPoP(ctx context.Contex
 	}
 
 	var r0 *UserInfoResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string) (*UserInfoResponse, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string) (*UserInfoResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, accessToken, proof, htm, htu)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string) *UserInfoResponse); ok {
@@ -128,11 +128,11 @@ func (_mock *userInfoServiceInterfaceMock) GetUserInfoForDPoP(ctx context.Contex
 			r0 = ret.Get(0).(*UserInfoResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, accessToken, proof, htm, htu)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -186,12 +186,12 @@ func (_c *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call) Run(run func(ctx
 	return _c
 }
 
-func (_c *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call) Return(userInfoResponse *UserInfoResponse, serviceError *serviceerror.ServiceError) *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call {
+func (_c *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call) Return(userInfoResponse *UserInfoResponse, serviceError *common.ServiceError) *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call {
 	_c.Call.Return(userInfoResponse, serviceError)
 	return _c
 }
 
-func (_c *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call) RunAndReturn(run func(ctx context.Context, accessToken string, proof string, htm string, htu string) (*UserInfoResponse, *serviceerror.ServiceError)) *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call {
+func (_c *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call) RunAndReturn(run func(ctx context.Context, accessToken string, proof string, htm string, htu string) (*UserInfoResponse, *common.ServiceError)) *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call {
 	_c.Call.Return(run)
 	return _c
 }

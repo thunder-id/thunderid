@@ -29,18 +29,18 @@ import (
 	"strings"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/mock"
 
 	"github.com/thunder-id/thunderid/internal/application"
-	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
-	"github.com/thunder-id/thunderid/internal/system/cors"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
@@ -48,9 +48,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	yaml "gopkg.in/yaml.v3"
 )
 
 // HandlerTestSuite contains comprehensive tests for the export handler functions.
@@ -67,15 +65,7 @@ type HandlerTestSuite struct {
 func (suite *HandlerTestSuite) SetupTest() {
 	// Initialize config for tests
 	config.ResetServerRuntime()
-	var allowedOrigins cors.OriginEntries
-	suite.Require().NoError(yaml.Unmarshal([]byte(`
-- https://localhost:3000
-`), &allowedOrigins))
-	testConfig := &config.Config{
-		CORS: config.CORSConfig{AllowedOrigins: allowedOrigins},
-	}
-	suite.Require().NoError(cors.InitializeMatcher(testConfig.CORS.AllowedOrigins))
-	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	err := config.InitializeServerRuntime("/tmp/test", &config.Config{})
 	suite.Require().NoError(err)
 
 	// Setup services and handler
@@ -378,15 +368,7 @@ func TestGenerateAndSendZipResponse_Standalone(t *testing.T) {
 	logger := log.GetLogger()
 	// Setup config
 	config.ResetServerRuntime()
-	var allowedOrigins cors.OriginEntries
-	assert.NoError(t, yaml.Unmarshal([]byte(`
-- https://localhost:3000
-`), &allowedOrigins))
-	testConfig := &config.Config{
-		CORS: config.CORSConfig{AllowedOrigins: allowedOrigins},
-	}
-	require.NoError(t, cors.InitializeMatcher(testConfig.CORS.AllowedOrigins))
-	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	err := config.InitializeServerRuntime("/tmp/test", &config.Config{})
 	assert.NoError(t, err)
 	defer config.ResetServerRuntime()
 
@@ -454,7 +436,7 @@ func TestNewExportHandler(t *testing.T) {
 // TestHandleExportRequest_Success tests successful JSON export on the /export endpoint.
 func (suite *HandlerTestSuite) TestHandleExportRequest_Success() {
 	// Setup mock expectations
-	suite.mockAppService.EXPECT().GetApplication(mock.Anything, "app1").Return(&model.Application{
+	suite.mockAppService.EXPECT().GetApplication(mock.Anything, "app1").Return(&providers.Application{
 		ID:          "app1",
 		Name:        "Test App 1",
 		Description: "Test Application 1",
@@ -515,7 +497,7 @@ func (suite *HandlerTestSuite) TestHandleExportRequest_InvalidJSON() {
 
 // Helper function to test service error responses
 func (suite *HandlerTestSuite) testServiceErrorResponse(
-	method, endpoint, appID string, serviceError *serviceerror.ServiceError, expectedErrorCode string) {
+	method, endpoint, appID string, serviceError *tidcommon.ServiceError, expectedErrorCode string) {
 	// Setup mock to return service error
 	suite.mockAppService.EXPECT().GetApplication(mock.Anything, appID).Return(nil, serviceError).Once()
 
@@ -556,11 +538,11 @@ func (suite *HandlerTestSuite) TestHandleExportRequest_ServiceError() {
 // TestHandleExportRequest_MultipleFiles tests JSON export with multiple files.
 func (suite *HandlerTestSuite) TestHandleExportRequest_MultipleFiles() {
 	// Setup mock expectations for multiple applications
-	suite.mockAppService.EXPECT().GetApplication(mock.Anything, "app1").Return(&model.Application{
+	suite.mockAppService.EXPECT().GetApplication(mock.Anything, "app1").Return(&providers.Application{
 		ID:   "app1",
 		Name: "App One",
 	}, nil).Once()
-	suite.mockAppService.EXPECT().GetApplication(mock.Anything, "app2").Return(&model.Application{
+	suite.mockAppService.EXPECT().GetApplication(mock.Anything, "app2").Return(&providers.Application{
 		ID:   "app2",
 		Name: "App Two",
 	}, nil).Once()
@@ -600,7 +582,7 @@ func (suite *HandlerTestSuite) TestHandleExportRequest_MultipleFiles() {
 // TestHandleExportJSONRequest_Success tests successful JSON export.
 func (suite *HandlerTestSuite) TestHandleExportJSONRequest_Success() {
 	// Setup mock expectations
-	suite.mockAppService.EXPECT().GetApplication(mock.Anything, "app1").Return(&model.Application{
+	suite.mockAppService.EXPECT().GetApplication(mock.Anything, "app1").Return(&providers.Application{
 		ID:          "app1",
 		Name:        "Test App JSON",
 		Description: "JSON Test Application",
@@ -658,13 +640,13 @@ func (suite *HandlerTestSuite) TestHandleExportJSONRequest_InvalidJSON() {
 // TestHandleExportJSONRequest_ServiceError tests service error handling for JSON export.
 func (suite *HandlerTestSuite) TestHandleExportJSONRequest_ServiceError() {
 	// Setup mock to return service error
-	suite.testServiceErrorResponse("POST", "/export", "app1", &serviceerror.InternalServerError, "EXP-1002")
+	suite.testServiceErrorResponse("POST", "/export", "app1", &tidcommon.InternalServerError, "EXP-1002")
 }
 
 // TestHandleExportZipRequest_Success tests successful ZIP export.
 func (suite *HandlerTestSuite) TestHandleExportZipRequest_Success() {
 	// Setup mock expectations
-	suite.mockAppService.EXPECT().GetApplication(mock.Anything, "app1").Return(&model.Application{
+	suite.mockAppService.EXPECT().GetApplication(mock.Anything, "app1").Return(&providers.Application{
 		ID:   "app1",
 		Name: "ZIP Test App",
 	}, nil).Once()
@@ -759,7 +741,7 @@ func (suite *HandlerTestSuite) TestHandleError_ServerError() {
 	w := httptest.NewRecorder()
 
 	// Create server error
-	serverErr := &serviceerror.InternalServerError
+	serverErr := &tidcommon.InternalServerError
 
 	// Execute
 	suite.handler.handleError(context.Background(), w, serverErr)
@@ -771,7 +753,7 @@ func (suite *HandlerTestSuite) TestHandleError_ServerError() {
 	var errResp map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &errResp)
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, errResp["code"])
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, errResp["code"])
 	assert.Equal(suite.T(), "Internal server error", errResp["message"].(map[string]interface{})["defaultValue"])
 	assert.Equal(suite.T(), "An unexpected error occurred while processing the request",
 		errResp["description"].(map[string]interface{})["defaultValue"])
@@ -796,7 +778,7 @@ func (suite *HandlerTestSuite) TestHandleExportRequest_EmptyBody() {
 // TestHandleExportRequest_NilOptions tests request with nil options.
 func (suite *HandlerTestSuite) TestHandleExportRequest_NilOptions() {
 	// Setup mock expectations
-	suite.mockAppService.EXPECT().GetApplication(mock.Anything, "app1").Return(&model.Application{
+	suite.mockAppService.EXPECT().GetApplication(mock.Anything, "app1").Return(&providers.Application{
 		ID:   "app1",
 		Name: "Test App",
 	}, nil).Once()
@@ -914,7 +896,7 @@ func setupBenchmarkTest(b *testing.B) (*exportHandler, []byte) {
 	handler := newExportHandler(exportService)
 
 	// Setup mock expectation
-	mockAppService.EXPECT().GetApplication(mock.Anything, "benchmark-app").Return(&model.Application{
+	mockAppService.EXPECT().GetApplication(mock.Anything, "benchmark-app").Return(&providers.Application{
 		ID:   "benchmark-app",
 		Name: "Benchmark Application",
 	}, nil).Times(b.N)

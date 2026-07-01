@@ -10,7 +10,7 @@ import (
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/authn/assert"
 	"github.com/thunder-id/thunderid/internal/authn/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	common0 "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewAuthAssertGeneratorInterfaceMock creates a new instance of AuthAssertGeneratorInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -41,7 +41,7 @@ func (_m *AuthAssertGeneratorInterfaceMock) EXPECT() *AuthAssertGeneratorInterfa
 }
 
 // GenerateAssertion provides a mock function for the type AuthAssertGeneratorInterfaceMock
-func (_mock *AuthAssertGeneratorInterfaceMock) GenerateAssertion(ctx context.Context, authenticators []common.AuthenticatorReference) (*assert.AssertionResult, *serviceerror.ServiceError) {
+func (_mock *AuthAssertGeneratorInterfaceMock) GenerateAssertion(ctx context.Context, authenticators []common.AuthenticatorReference) (*assert.AssertionResult, *common0.ServiceError) {
 	ret := _mock.Called(ctx, authenticators)
 
 	if len(ret) == 0 {
@@ -49,8 +49,8 @@ func (_mock *AuthAssertGeneratorInterfaceMock) GenerateAssertion(ctx context.Con
 	}
 
 	var r0 *assert.AssertionResult
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []common.AuthenticatorReference) (*assert.AssertionResult, *serviceerror.ServiceError)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []common.AuthenticatorReference) (*assert.AssertionResult, *common0.ServiceError)); ok {
 		return returnFunc(ctx, authenticators)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, []common.AuthenticatorReference) *assert.AssertionResult); ok {
@@ -60,11 +60,11 @@ func (_mock *AuthAssertGeneratorInterfaceMock) GenerateAssertion(ctx context.Con
 			r0 = ret.Get(0).(*assert.AssertionResult)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []common.AuthenticatorReference) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []common.AuthenticatorReference) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx, authenticators)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common0.ServiceError)
 		}
 	}
 	return r0, r1
@@ -100,18 +100,18 @@ func (_c *AuthAssertGeneratorInterfaceMock_GenerateAssertion_Call) Run(run func(
 	return _c
 }
 
-func (_c *AuthAssertGeneratorInterfaceMock_GenerateAssertion_Call) Return(assertionResult *assert.AssertionResult, serviceError *serviceerror.ServiceError) *AuthAssertGeneratorInterfaceMock_GenerateAssertion_Call {
+func (_c *AuthAssertGeneratorInterfaceMock_GenerateAssertion_Call) Return(assertionResult *assert.AssertionResult, serviceError *common0.ServiceError) *AuthAssertGeneratorInterfaceMock_GenerateAssertion_Call {
 	_c.Call.Return(assertionResult, serviceError)
 	return _c
 }
 
-func (_c *AuthAssertGeneratorInterfaceMock_GenerateAssertion_Call) RunAndReturn(run func(ctx context.Context, authenticators []common.AuthenticatorReference) (*assert.AssertionResult, *serviceerror.ServiceError)) *AuthAssertGeneratorInterfaceMock_GenerateAssertion_Call {
+func (_c *AuthAssertGeneratorInterfaceMock_GenerateAssertion_Call) RunAndReturn(run func(ctx context.Context, authenticators []common.AuthenticatorReference) (*assert.AssertionResult, *common0.ServiceError)) *AuthAssertGeneratorInterfaceMock_GenerateAssertion_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UpdateAssertion provides a mock function for the type AuthAssertGeneratorInterfaceMock
-func (_mock *AuthAssertGeneratorInterfaceMock) UpdateAssertion(ctx context.Context, context1 *assert.AssuranceContext, authenticator common.AuthenticatorReference) (*assert.AssertionResult, *serviceerror.ServiceError) {
+func (_mock *AuthAssertGeneratorInterfaceMock) UpdateAssertion(ctx context.Context, context1 *assert.AssuranceContext, authenticator common.AuthenticatorReference) (*assert.AssertionResult, *common0.ServiceError) {
 	ret := _mock.Called(ctx, context1, authenticator)
 
 	if len(ret) == 0 {
@@ -119,8 +119,8 @@ func (_mock *AuthAssertGeneratorInterfaceMock) UpdateAssertion(ctx context.Conte
 	}
 
 	var r0 *assert.AssertionResult
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *assert.AssuranceContext, common.AuthenticatorReference) (*assert.AssertionResult, *serviceerror.ServiceError)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *assert.AssuranceContext, common.AuthenticatorReference) (*assert.AssertionResult, *common0.ServiceError)); ok {
 		return returnFunc(ctx, context1, authenticator)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, *assert.AssuranceContext, common.AuthenticatorReference) *assert.AssertionResult); ok {
@@ -130,11 +130,11 @@ func (_mock *AuthAssertGeneratorInterfaceMock) UpdateAssertion(ctx context.Conte
 			r0 = ret.Get(0).(*assert.AssertionResult)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *assert.AssuranceContext, common.AuthenticatorReference) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *assert.AssuranceContext, common.AuthenticatorReference) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx, context1, authenticator)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common0.ServiceError)
 		}
 	}
 	return r0, r1
@@ -176,18 +176,18 @@ func (_c *AuthAssertGeneratorInterfaceMock_UpdateAssertion_Call) Run(run func(ct
 	return _c
 }
 
-func (_c *AuthAssertGeneratorInterfaceMock_UpdateAssertion_Call) Return(assertionResult *assert.AssertionResult, serviceError *serviceerror.ServiceError) *AuthAssertGeneratorInterfaceMock_UpdateAssertion_Call {
+func (_c *AuthAssertGeneratorInterfaceMock_UpdateAssertion_Call) Return(assertionResult *assert.AssertionResult, serviceError *common0.ServiceError) *AuthAssertGeneratorInterfaceMock_UpdateAssertion_Call {
 	_c.Call.Return(assertionResult, serviceError)
 	return _c
 }
 
-func (_c *AuthAssertGeneratorInterfaceMock_UpdateAssertion_Call) RunAndReturn(run func(ctx context.Context, context1 *assert.AssuranceContext, authenticator common.AuthenticatorReference) (*assert.AssertionResult, *serviceerror.ServiceError)) *AuthAssertGeneratorInterfaceMock_UpdateAssertion_Call {
+func (_c *AuthAssertGeneratorInterfaceMock_UpdateAssertion_Call) RunAndReturn(run func(ctx context.Context, context1 *assert.AssuranceContext, authenticator common.AuthenticatorReference) (*assert.AssertionResult, *common0.ServiceError)) *AuthAssertGeneratorInterfaceMock_UpdateAssertion_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // VerifyAssurance provides a mock function for the type AuthAssertGeneratorInterfaceMock
-func (_mock *AuthAssertGeneratorInterfaceMock) VerifyAssurance(ctx context.Context, context1 *assert.AssuranceContext, requiredAAL assert.AssuranceLevel, requiredIAL assert.AssuranceLevel) (bool, *serviceerror.ServiceError) {
+func (_mock *AuthAssertGeneratorInterfaceMock) VerifyAssurance(ctx context.Context, context1 *assert.AssuranceContext, requiredAAL assert.AssuranceLevel, requiredIAL assert.AssuranceLevel) (bool, *common0.ServiceError) {
 	ret := _mock.Called(ctx, context1, requiredAAL, requiredIAL)
 
 	if len(ret) == 0 {
@@ -195,8 +195,8 @@ func (_mock *AuthAssertGeneratorInterfaceMock) VerifyAssurance(ctx context.Conte
 	}
 
 	var r0 bool
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *assert.AssuranceContext, assert.AssuranceLevel, assert.AssuranceLevel) (bool, *serviceerror.ServiceError)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *assert.AssuranceContext, assert.AssuranceLevel, assert.AssuranceLevel) (bool, *common0.ServiceError)); ok {
 		return returnFunc(ctx, context1, requiredAAL, requiredIAL)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, *assert.AssuranceContext, assert.AssuranceLevel, assert.AssuranceLevel) bool); ok {
@@ -204,11 +204,11 @@ func (_mock *AuthAssertGeneratorInterfaceMock) VerifyAssurance(ctx context.Conte
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *assert.AssuranceContext, assert.AssuranceLevel, assert.AssuranceLevel) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *assert.AssuranceContext, assert.AssuranceLevel, assert.AssuranceLevel) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx, context1, requiredAAL, requiredIAL)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common0.ServiceError)
 		}
 	}
 	return r0, r1
@@ -256,12 +256,12 @@ func (_c *AuthAssertGeneratorInterfaceMock_VerifyAssurance_Call) Run(run func(ct
 	return _c
 }
 
-func (_c *AuthAssertGeneratorInterfaceMock_VerifyAssurance_Call) Return(b bool, serviceError *serviceerror.ServiceError) *AuthAssertGeneratorInterfaceMock_VerifyAssurance_Call {
+func (_c *AuthAssertGeneratorInterfaceMock_VerifyAssurance_Call) Return(b bool, serviceError *common0.ServiceError) *AuthAssertGeneratorInterfaceMock_VerifyAssurance_Call {
 	_c.Call.Return(b, serviceError)
 	return _c
 }
 
-func (_c *AuthAssertGeneratorInterfaceMock_VerifyAssurance_Call) RunAndReturn(run func(ctx context.Context, context1 *assert.AssuranceContext, requiredAAL assert.AssuranceLevel, requiredIAL assert.AssuranceLevel) (bool, *serviceerror.ServiceError)) *AuthAssertGeneratorInterfaceMock_VerifyAssurance_Call {
+func (_c *AuthAssertGeneratorInterfaceMock_VerifyAssurance_Call) RunAndReturn(run func(ctx context.Context, context1 *assert.AssuranceContext, requiredAAL assert.AssuranceLevel, requiredIAL assert.AssuranceLevel) (bool, *common0.ServiceError)) *AuthAssertGeneratorInterfaceMock_VerifyAssurance_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -21,6 +21,8 @@ package flowmgt
 import (
 	"context"
 	"testing"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/stretchr/testify/suite"
 
@@ -47,14 +49,14 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_Success() {
 	authFlow := &FlowDefinition{
 		Handle:   "basic-auth-handle",
 		Name:     "Basic Authentication",
-		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "prompt"},
 			{ID: "prompt", Type: "PROMPT", OnSuccess: "auth"},
 			{
 				ID:   "auth",
 				Type: "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{
+				Executor: &providers.ExecutorDefinition{
 					Name: executor.ExecutorNameCredentialsAuth,
 				},
 				OnSuccess: "end",
@@ -68,7 +70,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_Success() {
 	s.NoError(err)
 	s.NotNil(regFlow)
 	s.Equal("Basic Registration", regFlow.Name)
-	s.Equal(common.FlowTypeRegistration, regFlow.FlowType)
+	s.Equal(providers.FlowTypeRegistration, regFlow.FlowType)
 	s.Equal(authFlow.Handle, regFlow.Handle)
 
 	// Verify provisioning node was inserted
@@ -95,14 +97,14 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithAuthAssert
 	authFlow := &FlowDefinition{
 		Handle:   "sms-auth-handle",
 		Name:     "SMS Authentication",
-		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "prompt"},
 			{ID: "prompt", Type: "PROMPT", OnSuccess: "auth"},
 			{
 				ID:   "auth",
 				Type: "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{
+				Executor: &providers.ExecutorDefinition{
 					Name: executor.ExecutorNameSMSAuth,
 					Mode: executor.ExecutorModeSend,
 				},
@@ -111,7 +113,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithAuthAssert
 			{
 				ID:   "auth_assert",
 				Type: "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{
+				Executor: &providers.ExecutorDefinition{
 					Name: executor.ExecutorNameAuthAssert,
 				},
 				OnSuccess: "end",
@@ -125,7 +127,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithAuthAssert
 	s.NoError(err)
 	s.NotNil(regFlow)
 	s.Equal("SMS Registration", regFlow.Name)
-	s.Equal(common.FlowTypeRegistration, regFlow.FlowType)
+	s.Equal(providers.FlowTypeRegistration, regFlow.FlowType)
 
 	// Verify provisioning node was inserted BEFORE AuthAssertExecutor
 	s.True(s.hasNode(regFlow.Nodes, provisioningNodeID))
@@ -152,28 +154,28 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithAuthAssert
 	s.Equal(string(common.NodeTypePrompt), phonePromptNode.Type)
 	s.Equal("auth", phonePromptNode.Prompts[0].Action.NextNode, "Phone prompt should point to SMS send node")
 	s.Len(phonePromptNode.Prompts[0].Inputs, 1)
-	s.Equal(common.InputTypePhone, phonePromptNode.Prompts[0].Inputs[0].Type)
+	s.Equal(providers.InputTypePhone, phonePromptNode.Prompts[0].Inputs[0].Type)
 }
 
 func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithAuthAssertAndMultiplePaths() {
 	authFlow := &FlowDefinition{
 		Handle:   "multi-path-auth",
 		Name:     "Multi-Path Authentication",
-		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "decision"},
 			{
 				ID:   "decision",
 				Type: "DECISION",
-				Prompts: []PromptDefinition{
-					{Action: &ActionDefinition{Ref: "path1", NextNode: "auth1"}},
-					{Action: &ActionDefinition{Ref: "path2", NextNode: "auth2"}},
+				Prompts: []providers.PromptDefinition{
+					{Action: &providers.ActionDefinition{Ref: "path1", NextNode: "auth1"}},
+					{Action: &providers.ActionDefinition{Ref: "path2", NextNode: "auth2"}},
 				},
 			},
 			{
 				ID:   "auth1",
 				Type: "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{
+				Executor: &providers.ExecutorDefinition{
 					Name: executor.ExecutorNameCredentialsAuth,
 				},
 				OnSuccess: "auth_assert",
@@ -181,7 +183,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithAuthAssert
 			{
 				ID:   "auth2",
 				Type: "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{
+				Executor: &providers.ExecutorDefinition{
 					Name: executor.ExecutorNameSMSAuth,
 				},
 				OnSuccess: "auth_assert",
@@ -189,7 +191,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithAuthAssert
 			{
 				ID:   "auth_assert",
 				Type: "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{
+				Executor: &providers.ExecutorDefinition{
 					Name: executor.ExecutorNameAuthAssert,
 				},
 				OnSuccess: "end",
@@ -220,13 +222,13 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithExistingPr
 	authFlow := &FlowDefinition{
 		Handle:   "auth-flow-handle",
 		Name:     "Auth Flow",
-		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "task"},
 			{
 				ID:   "task",
 				Type: "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{
+				Executor: &providers.ExecutorDefinition{
 					Name: executor.ExecutorNameProvisioning,
 				},
 				OnSuccess: "end",
@@ -247,13 +249,13 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithExistingUs
 	authFlow := &FlowDefinition{
 		Handle:   "auth-flow-handle",
 		Name:     "Auth Flow",
-		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "resolver"},
 			{
 				ID:   "resolver",
 				Type: "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{
+				Executor: &providers.ExecutorDefinition{
 					Name: executor.ExecutorNameUserTypeResolver,
 				},
 				OnSuccess: "end",
@@ -274,8 +276,8 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_CleansAuthProp
 	authFlow := &FlowDefinition{
 		Handle:   "auth-flow-handle",
 		Name:     "Auth Flow",
-		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "task"},
 			{
 				ID:   "task",
@@ -304,8 +306,8 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_NoStartNode() 
 	authFlow := &FlowDefinition{
 		Handle:   "invalid-flow-handle",
 		Name:     "Invalid Flow",
-		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
 			{ID: "task", Type: "TASK_EXECUTION", OnSuccess: "end"},
 			{ID: "end", Type: "END"},
 		},
@@ -322,8 +324,8 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_NoEndNode() {
 	authFlow := &FlowDefinition{
 		Handle:   "invalid-flow-handle",
 		Name:     "Invalid Flow",
-		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "task"},
 			{ID: "task", Type: "TASK_EXECUTION"},
 		},
@@ -340,15 +342,15 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithActions() 
 	authFlow := &FlowDefinition{
 		Handle:   "auth-flow-handle",
 		Name:     "Auth Flow",
-		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "prompt"},
 			{
 				ID:   "prompt",
 				Type: "PROMPT",
-				Prompts: []PromptDefinition{
-					{Action: &ActionDefinition{Ref: "login", NextNode: "end"}},
-					{Action: &ActionDefinition{Ref: "signup", NextNode: "end"}},
+				Prompts: []providers.PromptDefinition{
+					{Action: &providers.ActionDefinition{Ref: "login", NextNode: "end"}},
+					{Action: &providers.ActionDefinition{Ref: "signup", NextNode: "end"}},
 				},
 			},
 			{ID: "end", Type: "END"},
@@ -369,8 +371,8 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithOnFailure(
 	authFlow := &FlowDefinition{
 		Handle:   "auth-flow-handle",
 		Name:     "Auth Flow",
-		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "task"},
 			{
 				ID:        "task",
@@ -395,34 +397,34 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithOnFailure(
 func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithLayout() {
 	authFlow := &FlowDefinition{
 		Name:     "Basic Authentication",
-		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
 			{
 				ID:   "start",
 				Type: "START",
-				Layout: &NodeLayout{
-					Size:     &NodeSize{Width: 180, Height: 80},
-					Position: &NodePosition{X: 50, Y: 50},
+				Layout: &providers.NodeLayout{
+					Size:     &providers.NodeSize{Width: 180, Height: 80},
+					Position: &providers.NodePosition{X: 50, Y: 50},
 				},
 				OnSuccess: "prompt",
 			},
 			{
 				ID:   "prompt",
 				Type: "PROMPT",
-				Layout: &NodeLayout{
-					Size:     &NodeSize{Width: 320, Height: 200},
-					Position: &NodePosition{X: 300, Y: 50},
+				Layout: &providers.NodeLayout{
+					Size:     &providers.NodeSize{Width: 320, Height: 200},
+					Position: &providers.NodePosition{X: 300, Y: 50},
 				},
 				OnSuccess: "auth",
 			},
 			{
 				ID:   "auth",
 				Type: "TASK_EXECUTION",
-				Layout: &NodeLayout{
-					Size:     &NodeSize{Width: 200, Height: 120},
-					Position: &NodePosition{X: 700, Y: 50},
+				Layout: &providers.NodeLayout{
+					Size:     &providers.NodeSize{Width: 200, Height: 120},
+					Position: &providers.NodePosition{X: 700, Y: 50},
 				},
-				Executor: &ExecutorDefinition{
+				Executor: &providers.ExecutorDefinition{
 					Name: executor.ExecutorNameCredentialsAuth,
 				},
 				OnSuccess: "end",
@@ -430,9 +432,9 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithLayout() {
 			{
 				ID:   "end",
 				Type: "END",
-				Layout: &NodeLayout{
-					Size:     &NodeSize{Width: 180, Height: 80},
-					Position: &NodePosition{X: 1000, Y: 50},
+				Layout: &providers.NodeLayout{
+					Size:     &providers.NodeSize{Width: 180, Height: 80},
+					Position: &providers.NodePosition{X: 1000, Y: 50},
 				},
 			},
 		},
@@ -476,12 +478,12 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithLayout() {
 
 func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_NoSMSSendNode() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "start", Type: "START", OnSuccess: "task"},
 		{
 			ID:   "task",
 			Type: "TASK_EXECUTION",
-			Executor: &ExecutorDefinition{
+			Executor: &providers.ExecutorDefinition{
 				Name: executor.ExecutorNameCredentialsAuth,
 			},
 			OnSuccess: "end",
@@ -497,12 +499,12 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_NoSMS
 
 func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_SMSNodeNotSendMode() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "start", Type: "START", OnSuccess: "sms"},
 		{
 			ID:   "sms",
 			Type: "TASK_EXECUTION",
-			Executor: &ExecutorDefinition{
+			Executor: &providers.ExecutorDefinition{
 				Name: executor.ExecutorNameSMSAuth,
 				Mode: executor.ExecutorModeVerify,
 			},
@@ -519,17 +521,17 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_SMSNo
 
 func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_PhoneInputAlreadyCollected() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "start", Type: "START", OnSuccess: "phone_prompt"},
 		{
 			ID:   "phone_prompt",
 			Type: string(common.NodeTypePrompt),
-			Prompts: []PromptDefinition{
+			Prompts: []providers.PromptDefinition{
 				{
-					Inputs: []InputDefinition{
-						{Identifier: "mobileNumber", Type: common.InputTypePhone, Required: true},
+					Inputs: []providers.InputDefinition{
+						{Identifier: "mobileNumber", Type: providers.InputTypePhone, Required: true},
 					},
-					Action: &ActionDefinition{NextNode: "sms"},
+					Action: &providers.ActionDefinition{NextNode: "sms"},
 				},
 			},
 			OnSuccess: "sms",
@@ -537,7 +539,7 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_Phone
 		{
 			ID:   "sms",
 			Type: "TASK_EXECUTION",
-			Executor: &ExecutorDefinition{
+			Executor: &providers.ExecutorDefinition{
 				Name: executor.ExecutorNameSMSAuth,
 				Mode: executor.ExecutorModeSend,
 			},
@@ -554,12 +556,12 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_Phone
 
 func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_InsertsPromptBeforeSMSSend() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "start", Type: "START", OnSuccess: "sms"},
 		{
 			ID:   "sms",
 			Type: "TASK_EXECUTION",
-			Executor: &ExecutorDefinition{
+			Executor: &providers.ExecutorDefinition{
 				Name: executor.ExecutorNameSMSAuth,
 				Mode: executor.ExecutorModeSend,
 			},
@@ -578,7 +580,7 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_Inser
 	s.Equal(string(common.NodeTypePrompt), phonePrompt.Type)
 	s.Len(phonePrompt.Prompts, 1)
 	s.Len(phonePrompt.Prompts[0].Inputs, 1)
-	s.Equal(common.InputTypePhone, phonePrompt.Prompts[0].Inputs[0].Type)
+	s.Equal(providers.InputTypePhone, phonePrompt.Prompts[0].Inputs[0].Type)
 	s.Equal("sms", phonePrompt.Prompts[0].Action.NextNode, "Phone prompt should point to SMS send node")
 	s.Nil(phonePrompt.Layout, "Layout should not be added when includeLayout is false")
 
@@ -589,12 +591,12 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_Inser
 
 func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_InsertsPromptWithLayout() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "start", Type: "START", OnSuccess: "sms"},
 		{
 			ID:   "sms",
 			Type: "TASK_EXECUTION",
-			Executor: &ExecutorDefinition{
+			Executor: &providers.ExecutorDefinition{
 				Name: executor.ExecutorNameSMSAuth,
 				Mode: executor.ExecutorModeSend,
 			},
@@ -614,16 +616,16 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_Inser
 
 func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_UsesExecutorInputIdentifier() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "start", Type: "START", OnSuccess: "sms"},
 		{
 			ID:   "sms",
 			Type: "TASK_EXECUTION",
-			Executor: &ExecutorDefinition{
+			Executor: &providers.ExecutorDefinition{
 				Name: executor.ExecutorNameSMSAuth,
 				Mode: executor.ExecutorModeSend,
-				Inputs: []InputDefinition{
-					{Ref: "phone_input_dvq8", Identifier: "mobile", Type: common.InputTypePhone, Required: true},
+				Inputs: []providers.InputDefinition{
+					{Ref: "phone_input_dvq8", Identifier: "mobile", Type: providers.InputTypePhone, Required: true},
 				},
 			},
 			OnSuccess: "end",
@@ -742,7 +744,7 @@ func (s *FlowInferenceServiceTestSuite) TestReplaceAuthLabel_NoMatchReturnsEmpty
 
 func (s *FlowInferenceServiceTestSuite) TestCloneNodes_Success() {
 	service := s.service.(*flowInferenceService)
-	original := []NodeDefinition{
+	original := []providers.NodeDefinition{
 		{ID: "node1", Type: "START", OnSuccess: "node2"},
 		{
 			ID:   "node2",
@@ -767,7 +769,7 @@ func (s *FlowInferenceServiceTestSuite) TestCloneNodes_Success() {
 func (s *FlowInferenceServiceTestSuite) TestCloneNodes_EmptyArray() {
 	service := s.service.(*flowInferenceService)
 
-	cloned, err := service.cloneNodes([]NodeDefinition{})
+	cloned, err := service.cloneNodes([]providers.NodeDefinition{})
 
 	s.NoError(err)
 	s.Empty(cloned)
@@ -777,7 +779,7 @@ func (s *FlowInferenceServiceTestSuite) TestCloneNodes_EmptyArray() {
 
 func (s *FlowInferenceServiceTestSuite) TestCleanAuthenticationProperties_RemovesAuthProp() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{
 			ID:   "node1",
 			Type: "TASK_EXECUTION",
@@ -797,7 +799,7 @@ func (s *FlowInferenceServiceTestSuite) TestCleanAuthenticationProperties_Remove
 
 func (s *FlowInferenceServiceTestSuite) TestCleanAuthenticationProperties_NilProperties() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "node1", Type: "TASK_EXECUTION"},
 	}
 
@@ -826,7 +828,7 @@ func (s *FlowInferenceServiceTestSuite) TestCleanAuthProperties_PromptNode_Updat
 		"id":       "rich_text_p6ae",
 		"label":    signUpLinkLabel,
 	}
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{
 			ID:   "prompt1",
 			Type: string(common.NodeTypePrompt),
@@ -886,7 +888,7 @@ func (s *FlowInferenceServiceTestSuite) TestCleanAuthProperties_PromptNode_Updat
 
 func (s *FlowInferenceServiceTestSuite) TestCleanAuthenticationProperties_PromptNode_NoSignUpLink() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{
 			ID:   "prompt1",
 			Type: string(common.NodeTypePrompt),
@@ -919,7 +921,7 @@ func (s *FlowInferenceServiceTestSuite) TestCleanAuthenticationProperties_Prompt
 
 func (s *FlowInferenceServiceTestSuite) TestFindStartNode_Success() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "task", Type: "TASK_EXECUTION"},
 		{ID: "start", Type: "START"},
 	}
@@ -932,7 +934,7 @@ func (s *FlowInferenceServiceTestSuite) TestFindStartNode_Success() {
 
 func (s *FlowInferenceServiceTestSuite) TestFindStartNode_NotFound() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "task", Type: "TASK_EXECUTION"},
 	}
 
@@ -947,13 +949,13 @@ func (s *FlowInferenceServiceTestSuite) TestFindStartNode_NotFound() {
 
 func (s *FlowInferenceServiceTestSuite) TestHasLayoutInformation_WithLayout() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{
 			ID:   "node1",
 			Type: "START",
-			Layout: &NodeLayout{
-				Size:     &NodeSize{Width: 100, Height: 50},
-				Position: &NodePosition{X: 0, Y: 0},
+			Layout: &providers.NodeLayout{
+				Size:     &providers.NodeSize{Width: 100, Height: 50},
+				Position: &providers.NodePosition{X: 0, Y: 0},
 			},
 		},
 		{ID: "node2", Type: "END"},
@@ -966,7 +968,7 @@ func (s *FlowInferenceServiceTestSuite) TestHasLayoutInformation_WithLayout() {
 
 func (s *FlowInferenceServiceTestSuite) TestHasLayoutInformation_WithoutLayout() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "node1", Type: "START"},
 		{ID: "node2", Type: "END"},
 	}
@@ -978,7 +980,7 @@ func (s *FlowInferenceServiceTestSuite) TestHasLayoutInformation_WithoutLayout()
 
 func (s *FlowInferenceServiceTestSuite) TestHasLayoutInformation_EmptyNodes() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{}
+	nodes := []providers.NodeDefinition{}
 
 	result := service.hasLayoutInformation(nodes)
 
@@ -987,11 +989,11 @@ func (s *FlowInferenceServiceTestSuite) TestHasLayoutInformation_EmptyNodes() {
 
 func (s *FlowInferenceServiceTestSuite) TestHasLayoutInformation_WithEmptyLayoutObject() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{
 			ID:     "node1",
 			Type:   "START",
-			Layout: &NodeLayout{}, // Empty layout object
+			Layout: &providers.NodeLayout{}, // Empty layout object
 		},
 		{ID: "node2", Type: "END"},
 	}
@@ -1005,7 +1007,7 @@ func (s *FlowInferenceServiceTestSuite) TestHasLayoutInformation_WithEmptyLayout
 
 func (s *FlowInferenceServiceTestSuite) TestAddDefaultLayout() {
 	service := s.service.(*flowInferenceService)
-	node := NodeDefinition{
+	node := providers.NodeDefinition{
 		ID:   "test-node",
 		Type: "TASK_EXECUTION",
 	}
@@ -1030,7 +1032,7 @@ func (s *FlowInferenceServiceTestSuite) TestAddDefaultLayout() {
 
 func (s *FlowInferenceServiceTestSuite) TestFindEndNode_Success() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "task", Type: "TASK_EXECUTION"},
 		{ID: "end", Type: "END"},
 	}
@@ -1043,7 +1045,7 @@ func (s *FlowInferenceServiceTestSuite) TestFindEndNode_Success() {
 
 func (s *FlowInferenceServiceTestSuite) TestFindEndNode_NotFound() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "task", Type: "TASK_EXECUTION"},
 	}
 
@@ -1058,11 +1060,11 @@ func (s *FlowInferenceServiceTestSuite) TestFindEndNode_NotFound() {
 
 func (s *FlowInferenceServiceTestSuite) TestHasProvisioningNode_Exists() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{
 			ID:   "prov",
 			Type: "TASK_EXECUTION",
-			Executor: &ExecutorDefinition{
+			Executor: &providers.ExecutorDefinition{
 				Name: executor.ExecutorNameProvisioning,
 			},
 		},
@@ -1075,7 +1077,7 @@ func (s *FlowInferenceServiceTestSuite) TestHasProvisioningNode_Exists() {
 
 func (s *FlowInferenceServiceTestSuite) TestHasProvisioningNode_NotExists() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "task", Type: "TASK_EXECUTION"},
 	}
 
@@ -1124,11 +1126,11 @@ func (s *FlowInferenceServiceTestSuite) TestCreateProvisioningNode() {
 
 func (s *FlowInferenceServiceTestSuite) TestHasUserTypeResolverNode_Exists() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{
 			ID:   "resolver",
 			Type: "TASK_EXECUTION",
-			Executor: &ExecutorDefinition{
+			Executor: &providers.ExecutorDefinition{
 				Name: executor.ExecutorNameUserTypeResolver,
 			},
 		},
@@ -1141,7 +1143,7 @@ func (s *FlowInferenceServiceTestSuite) TestHasUserTypeResolverNode_Exists() {
 
 func (s *FlowInferenceServiceTestSuite) TestHasUserTypeResolverNode_NotExists() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "task", Type: "TASK_EXECUTION"},
 	}
 
@@ -1190,12 +1192,12 @@ func (s *FlowInferenceServiceTestSuite) TestCreateUserTypeResolverNode() {
 
 func (s *FlowInferenceServiceTestSuite) TestInsertNodeBefore_WithOnSuccess() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "start", Type: "START", OnSuccess: "task"},
 		{ID: "task", Type: "TASK_EXECUTION", OnSuccess: "end"},
 		{ID: "end", Type: "END"},
 	}
-	newNode := NodeDefinition{ID: "new", Type: "TASK_EXECUTION", OnSuccess: "end"}
+	newNode := providers.NodeDefinition{ID: "new", Type: "TASK_EXECUTION", OnSuccess: "end"}
 
 	err := service.insertNodeBefore(&nodes, newNode, "end")
 
@@ -1207,13 +1209,13 @@ func (s *FlowInferenceServiceTestSuite) TestInsertNodeBefore_WithOnSuccess() {
 
 func (s *FlowInferenceServiceTestSuite) TestInsertNodeBefore_WithOnFailure() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "start", Type: "START", OnSuccess: "task"},
 		{ID: "task", Type: "TASK_EXECUTION", OnSuccess: "success", OnFailure: "end"},
 		{ID: "success", Type: "END"},
 		{ID: "end", Type: "END"},
 	}
-	newNode := NodeDefinition{ID: "new", Type: "TASK_EXECUTION", OnSuccess: "end"}
+	newNode := providers.NodeDefinition{ID: "new", Type: "TASK_EXECUTION", OnSuccess: "end"}
 
 	err := service.insertNodeBefore(&nodes, newNode, "end")
 
@@ -1223,20 +1225,20 @@ func (s *FlowInferenceServiceTestSuite) TestInsertNodeBefore_WithOnFailure() {
 
 func (s *FlowInferenceServiceTestSuite) TestInsertNodeBefore_WithActions() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "start", Type: "START", OnSuccess: "prompt"},
 		{
 			ID:   "prompt",
 			Type: "PROMPT",
-			Prompts: []PromptDefinition{
-				{Action: &ActionDefinition{Ref: "action1", NextNode: "end"}},
-				{Action: &ActionDefinition{Ref: "action2", NextNode: "task"}},
+			Prompts: []providers.PromptDefinition{
+				{Action: &providers.ActionDefinition{Ref: "action1", NextNode: "end"}},
+				{Action: &providers.ActionDefinition{Ref: "action2", NextNode: "task"}},
 			},
 		},
 		{ID: "task", Type: "TASK_EXECUTION"},
 		{ID: "end", Type: "END"},
 	}
-	newNode := NodeDefinition{ID: "new", Type: "TASK_EXECUTION", OnSuccess: "end"}
+	newNode := providers.NodeDefinition{ID: "new", Type: "TASK_EXECUTION", OnSuccess: "end"}
 
 	err := service.insertNodeBefore(&nodes, newNode, "end")
 
@@ -1247,12 +1249,12 @@ func (s *FlowInferenceServiceTestSuite) TestInsertNodeBefore_WithActions() {
 
 func (s *FlowInferenceServiceTestSuite) TestInsertNodeBefore_NoNodesPointingToTarget() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "start", Type: "START", OnSuccess: "task"},
 		{ID: "task", Type: "TASK_EXECUTION"},
 		{ID: "end", Type: "END"},
 	}
-	newNode := NodeDefinition{ID: "new", Type: "TASK_EXECUTION", OnSuccess: "end"}
+	newNode := providers.NodeDefinition{ID: "new", Type: "TASK_EXECUTION", OnSuccess: "end"}
 
 	err := service.insertNodeBefore(&nodes, newNode, "end")
 
@@ -1264,12 +1266,12 @@ func (s *FlowInferenceServiceTestSuite) TestInsertNodeBefore_NoNodesPointingToTa
 
 func (s *FlowInferenceServiceTestSuite) TestInsertNodeAfterStart_Success() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "start", Type: "START", OnSuccess: "task"},
 		{ID: "task", Type: "TASK_EXECUTION", OnSuccess: "end"},
 		{ID: "end", Type: "END"},
 	}
-	newNode := NodeDefinition{ID: "new", Type: "TASK_EXECUTION"}
+	newNode := providers.NodeDefinition{ID: "new", Type: "TASK_EXECUTION"}
 
 	err := service.insertNodeAfterStart(&nodes, newNode, "start")
 
@@ -1281,11 +1283,11 @@ func (s *FlowInferenceServiceTestSuite) TestInsertNodeAfterStart_Success() {
 
 func (s *FlowInferenceServiceTestSuite) TestInsertNodeAfterStart_NoOnSuccess() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "start", Type: "START"},
 		{ID: "end", Type: "END"},
 	}
-	newNode := NodeDefinition{ID: "new", Type: "TASK_EXECUTION"}
+	newNode := providers.NodeDefinition{ID: "new", Type: "TASK_EXECUTION"}
 
 	err := service.insertNodeAfterStart(&nodes, newNode, "start")
 
@@ -1295,10 +1297,10 @@ func (s *FlowInferenceServiceTestSuite) TestInsertNodeAfterStart_NoOnSuccess() {
 
 func (s *FlowInferenceServiceTestSuite) TestInsertNodeAfterStart_StartNodeNotFound() {
 	service := s.service.(*flowInferenceService)
-	nodes := []NodeDefinition{
+	nodes := []providers.NodeDefinition{
 		{ID: "task", Type: "TASK_EXECUTION"},
 	}
-	newNode := NodeDefinition{ID: "new", Type: "TASK_EXECUTION"}
+	newNode := providers.NodeDefinition{ID: "new", Type: "TASK_EXECUTION"}
 
 	err := service.insertNodeAfterStart(&nodes, newNode, "start")
 
@@ -1310,14 +1312,14 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_InsertProvisio
 	authFlow := &FlowDefinition{
 		Handle:   "basic-auth",
 		Name:     "Basic Authentication",
-		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "prompt"},
 			{ID: "prompt", Type: "PROMPT", OnSuccess: "auth"},
 			{
 				ID:   "auth",
 				Type: "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{
+				Executor: &providers.ExecutorDefinition{
 					Name: executor.ExecutorNameCredentialsAuth,
 				},
 				OnSuccess: "orphan", // Points to non-existent node
@@ -1337,15 +1339,15 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_InsertUserType
 	authFlow := &FlowDefinition{
 		Handle:   "basic-auth",
 		Name:     "Basic Authentication",
-		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START"}, // No OnSuccess - will cause error in insertNodeAfterStart
 			{ID: "task", Type: "TASK_EXECUTION", OnSuccess: "end"},
 			{ID: "end", Type: "END"},
 			{
 				ID:   provisioningNodeID,
 				Type: "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{
+				Executor: &providers.ExecutorDefinition{
 					Name: executor.ExecutorNameProvisioning,
 				},
 				OnSuccess: "end",
@@ -1362,7 +1364,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_InsertUserType
 
 // Helper methods
 
-func (s *FlowInferenceServiceTestSuite) hasNode(nodes []NodeDefinition, nodeID string) bool {
+func (s *FlowInferenceServiceTestSuite) hasNode(nodes []providers.NodeDefinition, nodeID string) bool {
 	for _, node := range nodes {
 		if node.ID == nodeID {
 			return true
@@ -1371,7 +1373,10 @@ func (s *FlowInferenceServiceTestSuite) hasNode(nodes []NodeDefinition, nodeID s
 	return false
 }
 
-func (s *FlowInferenceServiceTestSuite) getNode(nodes []NodeDefinition, nodeID string) *NodeDefinition {
+func (s *FlowInferenceServiceTestSuite) getNode(
+	nodes []providers.NodeDefinition,
+	nodeID string,
+) *providers.NodeDefinition {
 	for i := range nodes {
 		if nodes[i].ID == nodeID {
 			return &nodes[i]

@@ -24,6 +24,8 @@ import (
 	"errors"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -56,7 +58,7 @@ func (suite *JOSEInitTestSuite) SetupTest() {
 
 	// Initialize server runtime config for testing
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			PreferredKeyID: "test-key-id",
 			Issuer:         "test-issuer",
 			Audience:       "test-audience",
@@ -64,7 +66,7 @@ func (suite *JOSEInitTestSuite) SetupTest() {
 			Leeway:         300,
 		},
 		Crypto: config.CryptoConfig{
-			Encryption: config.EncryptionConfig{
+			Encryption: engineconfig.EncryptionConfig{
 				Key: "0579f866ac7c9273580d0ff163fa01a7b2401a7ff3ddc3e3b14ae3136fa6025e",
 			},
 		},

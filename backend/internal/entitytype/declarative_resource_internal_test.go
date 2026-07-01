@@ -23,11 +23,12 @@ import (
 	"encoding/json"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // TestValidateEntityType tests the validateEntityType function with various scenarios.
@@ -178,7 +179,7 @@ func TestValidateEntityTypeWrapper(t *testing.T) {
 		}
 
 		mockSvc.EXPECT().ResolveEntityTypeHandles(mock.Anything, schema).
-			RunAndReturn(func(_ context.Context, et *EntityType) *serviceerror.ServiceError {
+			RunAndReturn(func(_ context.Context, et *EntityType) *tidcommon.ServiceError {
 				et.OUID = "ou-resolved"
 				return nil
 			}).Once()

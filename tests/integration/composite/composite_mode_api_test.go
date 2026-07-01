@@ -987,7 +987,7 @@ func (suite *CompositeModeSuite) TestRoleDeclarativeDeleteReject() {
 
 func (suite *CompositeModeSuite) TestOrganizationUnitDeclarativeUpdateReject() {
 	client := testutils.GetHTTPClient()
-	payload := map[string]interface{}{"name": "Updated"}
+	payload := map[string]interface{}{"handle": "decl-ou-1", "name": "Updated"}
 	jsonPayload, _ := json.Marshal(payload)
 
 	req, _ := http.NewRequest("PUT", fmt.Sprintf("%s/organization-units/decl-ou-1", testutils.TestServerURL), strings.NewReader(string(jsonPayload)))
@@ -1055,7 +1055,7 @@ func (suite *CompositeModeSuite) TestIdentityProviderDeclarativeDeleteReject() {
 
 func (suite *CompositeModeSuite) TestResourceServerDeclarativeUpdateReject() {
 	client := testutils.GetHTTPClient()
-	payload := map[string]interface{}{"name": "Updated"}
+	payload := map[string]interface{}{"name": "Updated", "ouId": "decl-ou-1"}
 	jsonPayload, _ := json.Marshal(payload)
 
 	req, _ := http.NewRequest("PUT", fmt.Sprintf("%s/resource-servers/decl-rs-1", testutils.TestServerURL), strings.NewReader(string(jsonPayload)))
@@ -1066,7 +1066,7 @@ func (suite *CompositeModeSuite) TestResourceServerDeclarativeUpdateReject() {
 	suite.Equal(http.StatusBadRequest, resp.StatusCode, "update of declarative resource server should be rejected")
 
 	errCode := suite.extractErrorCode(resp)
-	suite.Equal("RES-1001", errCode, "error code should be RES-1001 for immutable resource server")
+	suite.Equal("RES-1018", errCode, "error code should be RES-1018 for immutable resource server")
 }
 
 func (suite *CompositeModeSuite) TestResourceServerDeclarativeDeleteReject() {
@@ -1132,7 +1132,7 @@ func (suite *CompositeModeSuite) TestFlowDeclarativeDeleteReject() {
 
 func (suite *CompositeModeSuite) TestEntityTypeDeclarativeUpdateReject() {
 	client := testutils.GetHTTPClient()
-	payload := map[string]interface{}{"name": "Updated"}
+	payload := map[string]interface{}{"name": "Updated", "ouId": "decl-ou-1"}
 	jsonPayload, _ := json.Marshal(payload)
 
 	req, _ := http.NewRequest("PUT", fmt.Sprintf("%s/user-types/decl-schema-1", testutils.TestServerURL), strings.NewReader(string(jsonPayload)))

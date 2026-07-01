@@ -36,6 +36,7 @@ type ExportRequest struct {
 	Translations        []string `json:"translations,omitempty"`
 	Layouts             []string `json:"layouts,omitempty"`
 	Themes              []string `json:"themes,omitempty"`
+	ServerConfigs       []string `json:"serverConfigs,omitempty"`
 
 	Options *ExportOptions `json:"options,omitempty"`
 }

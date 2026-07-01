@@ -44,8 +44,7 @@ const getConfigurationTypeFromTemplate = (
   // TODO: Remove this once https://github.com/thunder-id/thunderid/pulls/924 is merged.
   const templateName = templateConfig.defaults?.name?.toLowerCase() ?? '';
 
-  // Mobile apps need deep link
-  if (templateName.includes('mobile')) {
+  if (templateName.includes('mobile') || templateName.includes('wallet')) {
     return ApplicationCreateFlowConfiguration.DEEPLINK;
   }
 

@@ -811,5 +811,31 @@
         "requiredScopes": ["system"]
       }
     }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "OpenID4VP Verifier",
+      "label": "Verifiable Presentation",
+      "image": "assets/images/icons/eudi-generic.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "OpenID4VPVerifyExecutor"
+        },
+        "onSuccess": "",
+        "onFailure": "",
+        "onIncomplete": ""
+      },
+      "properties": {
+        "presentation_definition_id": "",
+        "allowAuthenticationWithoutLocalUser": true
+      }
+    }
   }
 ]

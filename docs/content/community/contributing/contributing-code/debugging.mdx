@@ -1,7 +1,7 @@
 ---
 title: Debugging
 description: Set up and debug the backend, frontend apps, and sample applications locally.
-sidebar_position: 6
+sidebar_position: 7
 hide_table_of_contents: false
 ---
 
@@ -48,13 +48,12 @@ This guide focuses on local development and debugging with SQLite for database s
 
 ### Step 1: Configure the Server
 
-Edit `backend/cmd/server/deployment.yaml` and add:
-
-**CORS allowed origins** (so the frontend development servers and sample app can talk to the backend):
+Add the frontend development origins to `backend/cmd/server/config/resources/server_configs/cors.yaml` so the apps can call the backend:
 
 ```yaml
-cors:
-  allowed_origins:
+name: cors
+value:
+  allowedOrigins:
     - "https://localhost:3000"
     - "https://localhost:5190"
     - "https://localhost:5191"
@@ -165,6 +164,39 @@ npm run dev
 
 5. Click **Test Connection** to verify, then click **Finish**
 6. Repeat for the other two databases
+
+## Debug with Local SDK Changes
+
+When developing or testing against unreleased SDK changes, you can point the product frontend at a local build instead of the published npm packages.
+
+The JavaScript SDKs live in a separate repository. Clone it if you haven't already, then install dependencies:
+
+```bash
+git clone https://github.com/thunder-id/javascript-sdks
+cd javascript-sdks
+pnpm install
+```
+
+### Generate Local File Paths
+
+Run the `symlink` script to build the SDK packages and print the `file:` path entries to paste into the product:
+
+```bash
+pnpm symlink
+```
+
+The script outputs multiple blocks — copy the `overrides` block.
+
+### Apply and Install
+
+Paste the copied `overrides` into `pnpm-workspace.yaml` at the repository root under `overrides:`, then run `pnpm install` from the repository root to link the local packages:
+
+```bash
+cd <repo-root>
+pnpm install
+```
+
+Restart the frontend dev server for the changes to take effect. To revert, remove the `overrides` entries and run `pnpm install` again.
 
 ## Sample Debug Scenario: User Creation
 

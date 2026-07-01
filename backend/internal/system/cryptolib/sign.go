@@ -39,6 +39,29 @@ var (
 	ErrInvalidSignature     = errors.New("signature verification failed")
 )
 
+// SignAlgorithmFor maps a JWA algorithm identifier to its corresponding SignAlgorithm.
+// Returns ErrUnsupportedAlgorithm for unknown or non-signature algorithms.
+func SignAlgorithmFor(alg Algorithm) (SignAlgorithm, error) {
+	switch alg {
+	case AlgorithmRS256:
+		return RSASHA256, nil
+	case AlgorithmRS512:
+		return RSASHA512, nil
+	case AlgorithmPS256:
+		return RSAPSSSHA256, nil
+	case AlgorithmES256:
+		return ECDSASHA256, nil
+	case AlgorithmES384:
+		return ECDSASHA384, nil
+	case AlgorithmES512:
+		return ECDSASHA512, nil
+	case AlgorithmEdDSA:
+		return ED25519, nil
+	default:
+		return "", ErrUnsupportedAlgorithm
+	}
+}
+
 // Generate hashes data according to alg and returns the digital signature using privateKey.
 func Generate(data []byte, alg SignAlgorithm, privateKey crypto.PrivateKey) ([]byte, error) {
 	hashed, hashFunc := hashData(data, alg)

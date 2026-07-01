@@ -28,10 +28,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/actorprovider"
 	flowcm "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz/requestvalidator"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -40,11 +38,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // AuthorizeServiceInterface defines the interface for authorization services.
@@ -59,8 +57,8 @@ type AuthorizeServiceInterface interface {
 // authorizeService implements the AuthorizeService for managing OAuth2 authorization flows.
 type authorizeService struct {
 	cfg             oauthconfig.Config
-	inboundClient   actorprovider.ActorProviderInterface
-	resourceService resource.ResourceServiceInterface
+	inboundClient   providers.ActorProvider
+	resourceService providers.ResourceServerProvider
 	authZValidator  AuthorizationValidatorInterface
 	authCodeStore   AuthorizationCodeStoreInterface
 	authReqStore    authorizationRequestStoreInterface
@@ -73,8 +71,8 @@ type authorizeService struct {
 
 // newAuthorizeService creates a new instance of authorizeService with injected dependencies.
 func newAuthorizeService(
-	actorProvider actorprovider.ActorProviderInterface,
-	resourceService resource.ResourceServiceInterface,
+	actorProvider providers.ActorProvider,
+	resourceService providers.ResourceServerProvider,
 	jwtService jwt.JWTServiceInterface,
 	flowExecService flowexec.FlowExecServiceInterface,
 	authCodeStore AuthorizationCodeStoreInterface,
@@ -181,7 +179,7 @@ func (as *authorizeService) HandleInitialAuthorizationRequest(ctx context.Contex
 
 // handlePARAuthorizationRequest resolves a request_uri from a PAR and continues the authorization flow.
 func (as *authorizeService) handlePARAuthorizationRequest(
-	ctx context.Context, requestURI string, clientID string, app *inboundmodel.OAuthClient,
+	ctx context.Context, requestURI string, clientID string, app *providers.OAuthClient,
 ) (*AuthorizationInitResult, *AuthorizationError) {
 	oauthParams, err := as.parService.ResolvePushedAuthorizationRequest(ctx, requestURI, clientID)
 	if err != nil {
@@ -203,7 +201,7 @@ func (as *authorizeService) handlePARAuthorizationRequest(
 
 // handleStandardAuthorizationRequest processes a standard authorization request (without PAR).
 func (as *authorizeService) handleStandardAuthorizationRequest(
-	ctx context.Context, msg *OAuthMessage, app *inboundmodel.OAuthClient,
+	ctx context.Context, msg *OAuthMessage, app *providers.OAuthClient,
 ) (*AuthorizationInitResult, *AuthorizationError) {
 	// Extract required parameters.
 	redirectURI := msg.RequestQueryParams[oauth2const.RequestParamRedirectURI]
@@ -314,7 +312,7 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 // initiateFlowAndStoreRequest initiates the authentication flow and stores the authorization request context.
 // This is the common path shared by both standard and PAR-based authorization requests.
 func (as *authorizeService) initiateFlowAndStoreRequest(
-	ctx context.Context, oauthParams *oauth2model.OAuthParameters, app *inboundmodel.OAuthClient,
+	ctx context.Context, oauthParams *oauth2model.OAuthParameters, app *providers.OAuthClient,
 ) (*AuthorizationInitResult, *AuthorizationError) {
 	effectiveAcrValues := requestvalidator.ResolveACRValues(oauthParams.AcrValues, app.AcrValues)
 	essentialAttributes, optionalAttributes := getRequiredAttributes(
@@ -355,7 +353,7 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	}
 	flowInitCtx := &flowexec.FlowInitContext{
 		ApplicationID: app.ID,
-		FlowType:      string(flowcm.FlowTypeAuthentication),
+		FlowType:      string(providers.FlowTypeAuthentication),
 		RuntimeData:   runtimeData,
 	}
 
@@ -684,7 +682,7 @@ func createAuthorizationCode(
 // getRequiredAttributes determines the essential and optional user attributes required based on OIDC scopes,
 // claims parameter, response type, and app configuration.
 func getRequiredAttributes(oidcScopes []string, claimsRequest *oauth2model.ClaimsRequest, responseType string,
-	app *inboundmodel.OAuthClient) (essentialAttributes, optionalAttributes string) {
+	app *providers.OAuthClient) (essentialAttributes, optionalAttributes string) {
 	if app == nil {
 		return "", ""
 	}
@@ -720,7 +718,7 @@ func getRequiredAttributes(oidcScopes []string, claimsRequest *oauth2model.Claim
 }
 
 // appendAccessTokenAttributes appends access token attributes from app configuration.
-func appendAccessTokenAttributes(app *inboundmodel.OAuthClient, attributesMap map[string]bool) {
+func appendAccessTokenAttributes(app *providers.OAuthClient, attributesMap map[string]bool) {
 	if app.Token.AccessToken != nil && len(app.Token.AccessToken.UserAttributes) > 0 {
 		for _, attr := range app.Token.AccessToken.UserAttributes {
 			attributesMap[attr] = true
@@ -730,7 +728,7 @@ func appendAccessTokenAttributes(app *inboundmodel.OAuthClient, attributesMap ma
 
 // appendOIDCAttributes appends OIDC-related attributes from scopes and claims parameters.
 func appendOIDCAttributes(oidcScopes []string, claimsRequest *oauth2model.ClaimsRequest, responseType string,
-	app *inboundmodel.OAuthClient, essentialAttributes, optionalAttributes map[string]bool) {
+	app *providers.OAuthClient, essentialAttributes, optionalAttributes map[string]bool) {
 	var idTokenAllowedSet map[string]bool
 	if app.Token != nil {
 		idTokenAllowedSet = buildIDTokenAllowedSet(app.Token.IDToken)
@@ -745,7 +743,7 @@ func appendOIDCAttributes(oidcScopes []string, claimsRequest *oauth2model.Claims
 }
 
 // buildIDTokenAllowedSet creates a set of allowed attributes for ID token.
-func buildIDTokenAllowedSet(idTokenConfig *inboundmodel.IDTokenConfig) map[string]bool {
+func buildIDTokenAllowedSet(idTokenConfig *providers.IDTokenConfig) map[string]bool {
 	if idTokenConfig == nil || len(idTokenConfig.UserAttributes) == 0 {
 		return nil
 	}
@@ -757,7 +755,7 @@ func buildIDTokenAllowedSet(idTokenConfig *inboundmodel.IDTokenConfig) map[strin
 }
 
 // buildUserInfoAllowedSet creates a set of allowed attributes for UserInfo.
-func buildUserInfoAllowedSet(userInfoConfig *inboundmodel.UserInfoConfig) map[string]bool {
+func buildUserInfoAllowedSet(userInfoConfig *providers.UserInfoConfig) map[string]bool {
 	if userInfoConfig == nil || len(userInfoConfig.UserAttributes) == 0 {
 		return nil
 	}
@@ -788,8 +786,8 @@ func appendAttributesFromClaimsParameter(claimsRequest *oauth2model.ClaimsReques
 		}
 	}
 
-	// Append user info attributes
-	if claimsRequest.UserInfo != nil && userInfoAllowedSet != nil {
+	// Append user info attributes (verified_claims is held separately in VerifiedUserInfo)
+	if userInfoAllowedSet != nil {
 		for name, value := range claimsRequest.UserInfo {
 			if userInfoAllowedSet[name] {
 				if value != nil && value.Essential {
@@ -803,7 +801,7 @@ func appendAttributesFromClaimsParameter(claimsRequest *oauth2model.ClaimsReques
 }
 
 // appendAttributesFromScopes appends user attributes based on OIDC scopes and app configuration.
-func appendAttributesFromScopes(oidcScopes []string, responseType string, app *inboundmodel.OAuthClient,
+func appendAttributesFromScopes(oidcScopes []string, responseType string, app *providers.OAuthClient,
 	idTokenAllowedSet, userInfoAllowedSet map[string]bool, optionalAttributes map[string]bool) {
 	for _, scope := range oidcScopes {
 		scopeAttributes := resolveScopeAttributes(scope, app.ScopeClaims)
@@ -836,7 +834,7 @@ func resolveScopeAttributes(scope string, scopeAttributesMapping map[string][]st
 func appendAttributesForScope(scopeAttributes []string, responseType string,
 	idTokenAllowedSet, userInfoAllowedSet, optionalAttributes map[string]bool) {
 	for _, attribute := range scopeAttributes {
-		if responseType == string(oauth2const.ResponseTypeIDToken) {
+		if responseType == string(providers.ResponseTypeIDToken) {
 			// If response type does not issue an access token, add claim to id token
 			if idTokenAllowedSet != nil && idTokenAllowedSet[attribute] {
 				optionalAttributes[attribute] = true
@@ -865,12 +863,10 @@ func validateSubClaimConstraint(claimsRequest *oauth2model.ClaimsRequest, actual
 		}
 	}
 
-	// Check userinfo sub claim constraint.
-	if claimsRequest.UserInfo != nil {
-		if subReq, exists := claimsRequest.UserInfo["sub"]; exists && subReq != nil {
-			if !subReq.MatchesValue(actualSubject) {
-				return errors.New("sub claim in userinfo does not match requested value")
-			}
+	// Check userinfo sub claim constraint (verified_claims is held separately in VerifiedUserInfo).
+	if subReq, exists := claimsRequest.UserInfo["sub"]; exists && subReq != nil {
+		if !subReq.MatchesValue(actualSubject) {
+			return errors.New("sub claim in userinfo does not match requested value")
 		}
 	}
 
@@ -883,9 +879,9 @@ func validateSubClaimConstraint(claimsRequest *oauth2model.ClaimsRequest, actual
 // the window between code issuance and token exchange.
 // A fixed buffer of attributeCacheTTLBufferSeconds is added to cover the window between
 // authentication completion and token issuance.
-func (as *authorizeService) resolveUserAttributesCacheTTL(app *inboundmodel.OAuthClient) int64 {
+func (as *authorizeService) resolveUserAttributesCacheTTL(app *providers.OAuthClient) int64 {
 	maxTTL := tokenservice.ResolveTokenConfig(as.cfg, app, tokenservice.TokenTypeAccess).ValidityPeriod
-	if app.IsAllowedGrantType(oauth2const.GrantTypeRefreshToken) {
+	if app.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
 		refreshTTL := tokenservice.ResolveTokenConfig(as.cfg, app, tokenservice.TokenTypeRefresh).ValidityPeriod
 		if refreshTTL > maxTTL {
 			maxTTL = refreshTTL

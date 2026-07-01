@@ -63,6 +63,13 @@ vi.mock('../../../../constants/token-constants', () => ({
     DEFAULT_TOKEN_ATTRIBUTES: ['aud', 'exp', 'iat', 'iss', 'sub'],
     USER_INFO_DEFAULT_ATTRIBUTES: ['sub'],
     ADDITIONAL_USER_ATTRIBUTES: ['ouHandle'],
+    ID_TOKEN_RESPONSE_TYPES: ['JWT', 'JWE', 'NESTED_JWT'],
+    ID_TOKEN_ENCRYPTION_ALGS: ['RSA-OAEP', 'RSA-OAEP-256'],
+    ID_TOKEN_ENCRYPTION_ENCS: ['A128CBC-HS256', 'A256GCM'],
+    USER_INFO_RESPONSE_TYPES: ['JSON', 'JWS', 'JWE', 'NESTED_JWT'],
+    USER_INFO_SIGNING_ALGS: ['RS256', 'RS512'],
+    USER_INFO_ENCRYPTION_ALGS: ['RSA-OAEP', 'RSA-OAEP-256'],
+    USER_INFO_ENCRYPTION_ENCS: ['A128CBC-HS256', 'A256GCM'],
   },
 }));
 
@@ -80,9 +87,9 @@ describe('TokenUserAttributesSection', () => {
     it('renders the settings card with correct title for native mode', () => {
       render(<TokenUserAttributesSection {...baseProps} sharedAttributes={[]} />);
 
-      expect(screen.getByTestId('card-title')).toHaveTextContent('User Attributes');
+      expect(screen.getByTestId('card-title')).toHaveTextContent('Token Attributes & Response');
       expect(screen.getByTestId('card-description')).toHaveTextContent(
-        'Configure the user attributes to include in your tokens & user info response',
+        'Configure the response types and user attributes included in your tokens and user info responses',
       );
     });
 
@@ -98,7 +105,7 @@ describe('TokenUserAttributesSection', () => {
         />,
       );
 
-      expect(screen.getByTestId('card-title')).toHaveTextContent('User Attributes');
+      expect(screen.getByTestId('card-title')).toHaveTextContent('Token Attributes & Response');
     });
   });
 
@@ -351,6 +358,139 @@ describe('TokenUserAttributesSection', () => {
       // email is a pending addition and activeTab=id, so it should appear in id preview too
       // because isPendingTab = (activeTab === tokenType) = ('id' === 'id') = true
       expect(payload).toContain('email');
+    });
+  });
+
+  describe('ID Token response format', () => {
+    it('renders response type select in ID Token tab', () => {
+      render(
+        <TokenUserAttributesSection
+          {...baseProps}
+          accessTokenAttributes={[]}
+          idTokenAttributes={[]}
+          userInfoAttributes={[]}
+          activeTab="id"
+          onTabChange={vi.fn()}
+          onIdTokenConfigChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Response Format')).toBeInTheDocument();
+      expect(screen.getByText('Response Type')).toBeInTheDocument();
+    });
+
+    it('shows encryption fields when ID token response type is JWE', () => {
+      render(
+        <TokenUserAttributesSection
+          {...baseProps}
+          accessTokenAttributes={[]}
+          idTokenAttributes={[]}
+          userInfoAttributes={[]}
+          activeTab="id"
+          onTabChange={vi.fn()}
+          idTokenResponseType="JWE"
+          onIdTokenConfigChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Encryption Algorithm')).toBeInTheDocument();
+      expect(screen.getByText('Content Encryption')).toBeInTheDocument();
+    });
+
+    it('does not show encryption fields when ID token response type is JWT', () => {
+      render(
+        <TokenUserAttributesSection
+          {...baseProps}
+          accessTokenAttributes={[]}
+          idTokenAttributes={[]}
+          userInfoAttributes={[]}
+          activeTab="id"
+          onTabChange={vi.fn()}
+          idTokenResponseType="JWT"
+          onIdTokenConfigChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.queryByText('Encryption Algorithm')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('UserInfo response format', () => {
+    it('renders response type select in UserInfo tab', () => {
+      render(
+        <TokenUserAttributesSection
+          {...baseProps}
+          accessTokenAttributes={[]}
+          idTokenAttributes={[]}
+          userInfoAttributes={[]}
+          activeTab="userinfo"
+          onTabChange={vi.fn()}
+          isUserInfoCustomAttributes
+          onToggleUserInfo={vi.fn()}
+          onUserInfoConfigChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Response Format')).toBeInTheDocument();
+    });
+
+    it('shows signing algorithm when UserInfo response type is JWS', () => {
+      render(
+        <TokenUserAttributesSection
+          {...baseProps}
+          accessTokenAttributes={[]}
+          idTokenAttributes={[]}
+          userInfoAttributes={[]}
+          activeTab="userinfo"
+          onTabChange={vi.fn()}
+          isUserInfoCustomAttributes
+          onToggleUserInfo={vi.fn()}
+          userInfoResponseType="JWS"
+          onUserInfoConfigChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Signing Algorithm')).toBeInTheDocument();
+    });
+
+    it('shows encryption fields when UserInfo response type is JWE', () => {
+      render(
+        <TokenUserAttributesSection
+          {...baseProps}
+          accessTokenAttributes={[]}
+          idTokenAttributes={[]}
+          userInfoAttributes={[]}
+          activeTab="userinfo"
+          onTabChange={vi.fn()}
+          isUserInfoCustomAttributes
+          onToggleUserInfo={vi.fn()}
+          userInfoResponseType="JWE"
+          onUserInfoConfigChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Encryption Algorithm')).toBeInTheDocument();
+      expect(screen.getByText('Content Encryption')).toBeInTheDocument();
+    });
+
+    it('does not show algorithm fields when UserInfo response type is JSON', () => {
+      render(
+        <TokenUserAttributesSection
+          {...baseProps}
+          accessTokenAttributes={[]}
+          idTokenAttributes={[]}
+          userInfoAttributes={[]}
+          activeTab="userinfo"
+          onTabChange={vi.fn()}
+          isUserInfoCustomAttributes
+          onToggleUserInfo={vi.fn()}
+          userInfoResponseType="JSON"
+          onUserInfoConfigChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.queryByText('Signing Algorithm')).not.toBeInTheDocument();
+      expect(screen.queryByText('Encryption Algorithm')).not.toBeInTheDocument();
     });
   });
 

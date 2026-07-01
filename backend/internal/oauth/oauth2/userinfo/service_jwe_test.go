@@ -27,16 +27,18 @@ import (
 	"math/big"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	certmodel "github.com/thunder-id/thunderid/internal/cert"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jwksresolver"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -57,7 +59,7 @@ func TestJWEUserInfoSuite(t *testing.T) {
 func (s *JWEUserInfoTestSuite) SetupTest() {
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test-home", &config.Config{
-		JWT: config.JWTConfig{Issuer: "test-issuer", ValidityPeriod: 600},
+		JWT: engineconfig.JWTConfig{Issuer: "test-issuer", ValidityPeriod: 600},
 	})
 }
 
@@ -77,7 +79,7 @@ func (s *JWEUserInfoTestSuite) TestGenerateJWEUserInfo_Success() {
 		jwe.ContentEncAlgorithm("A256GCM"),
 		"json",
 		"",
-	).Return("compact.jwe.token", (*serviceerror.ServiceError)(nil))
+	).Return("compact.jwe.token", (*tidcommon.ServiceError)(nil))
 
 	svc := &userInfoService{
 		cfg:          userInfoTestConfig(),
@@ -85,13 +87,13 @@ func (s *JWEUserInfoTestSuite) TestGenerateJWEUserInfo_Success() {
 		jwksResolver: jwksresolver.Initialize(nil),
 		logger:       log.GetLogger(),
 	}
-	cfg := &inboundmodel.UserInfoConfig{EncryptionAlg: "RSA-OAEP-256", EncryptionEnc: "A256GCM"}
-	cert := &appmodel.ApplicationCertificate{Type: certmodel.CertificateTypeJWKS, Value: pubJWKS}
+	cfg := &providers.UserInfoConfig{EncryptionAlg: "RSA-OAEP-256", EncryptionEnc: "A256GCM"}
+	cert := &providers.Certificate{Type: certmodel.CertificateTypeJWKS, Value: pubJWKS}
 
 	result, svcErr := svc.generateJWEUserInfo(context.Background(), map[string]interface{}{"sub": "user1"}, cfg, cert)
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), result)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeJWE, result.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJWE, result.Type)
 	assert.Equal(s.T(), "compact.jwe.token", result.JWTBody)
 }
 
@@ -103,12 +105,12 @@ func (s *JWEUserInfoTestSuite) TestGenerateJWEUserInfo_NoCert() {
 		jwksResolver: jwksresolver.Initialize(nil),
 		logger:       log.GetLogger(),
 	}
-	cfg := &inboundmodel.UserInfoConfig{EncryptionAlg: "RSA-OAEP-256", EncryptionEnc: "A256GCM"}
+	cfg := &providers.UserInfoConfig{EncryptionAlg: "RSA-OAEP-256", EncryptionEnc: "A256GCM"}
 
 	result, svcErr := svc.generateJWEUserInfo(context.Background(), map[string]interface{}{"sub": "user1"}, cfg, nil)
 	assert.Nil(s.T(), result)
 	assert.NotNil(s.T(), svcErr)
-	assert.Equal(s.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+	assert.Equal(s.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 // TestGenerateJWEUserInfo_EncryptFailure verifies JWE encryption failure returns server error.
@@ -123,7 +125,7 @@ func (s *JWEUserInfoTestSuite) TestGenerateJWEUserInfo_EncryptFailure() {
 		jwe.ContentEncAlgorithm("A256GCM"),
 		"json",
 		"",
-	).Return("", &serviceerror.InternalServerError)
+	).Return("", &tidcommon.InternalServerError)
 
 	svc := &userInfoService{
 		cfg:          userInfoTestConfig(),
@@ -131,8 +133,8 @@ func (s *JWEUserInfoTestSuite) TestGenerateJWEUserInfo_EncryptFailure() {
 		jwksResolver: jwksresolver.Initialize(nil),
 		logger:       log.GetLogger(),
 	}
-	cfg := &inboundmodel.UserInfoConfig{EncryptionAlg: "RSA-OAEP-256", EncryptionEnc: "A256GCM"}
-	cert := &appmodel.ApplicationCertificate{Type: certmodel.CertificateTypeJWKS, Value: pubJWKS}
+	cfg := &providers.UserInfoConfig{EncryptionAlg: "RSA-OAEP-256", EncryptionEnc: "A256GCM"}
+	cert := &providers.Certificate{Type: certmodel.CertificateTypeJWKS, Value: pubJWKS}
 
 	result, svcErr := svc.generateJWEUserInfo(context.Background(), map[string]interface{}{"sub": "user1"}, cfg, cert)
 	assert.Nil(s.T(), result)
@@ -148,7 +150,7 @@ func (s *JWEUserInfoTestSuite) TestGenerateNestedJWTUserInfo_Success() {
 	mockJWT.On("GenerateJWT",
 		mock.Anything, "user1", "test-issuer", int64(600),
 		mock.Anything, mock.Anything, "RS256",
-	).Return("signed.jwt.token", int64(0), (*serviceerror.ServiceError)(nil))
+	).Return("signed.jwt.token", int64(0), (*tidcommon.ServiceError)(nil))
 
 	mockJWE := jwemock.NewJWEServiceInterfaceMock(s.T())
 	mockJWE.On("Encrypt",
@@ -157,7 +159,7 @@ func (s *JWEUserInfoTestSuite) TestGenerateNestedJWTUserInfo_Success() {
 		jwe.ContentEncAlgorithm("A256GCM"),
 		"JWT",
 		"",
-	).Return("nested.jwe.token", (*serviceerror.ServiceError)(nil))
+	).Return("nested.jwe.token", (*tidcommon.ServiceError)(nil))
 
 	svc := &userInfoService{
 		cfg:          userInfoTestConfig(),
@@ -167,8 +169,8 @@ func (s *JWEUserInfoTestSuite) TestGenerateNestedJWTUserInfo_Success() {
 		logger:       log.GetLogger(),
 	}
 
-	cfg := &inboundmodel.UserInfoConfig{SigningAlg: "RS256", EncryptionAlg: "RSA-OAEP-256", EncryptionEnc: "A256GCM"}
-	cert := &appmodel.ApplicationCertificate{Type: certmodel.CertificateTypeJWKS, Value: pubJWKS}
+	cfg := &providers.UserInfoConfig{SigningAlg: "RS256", EncryptionAlg: "RSA-OAEP-256", EncryptionEnc: "A256GCM"}
+	cert := &providers.Certificate{Type: certmodel.CertificateTypeJWKS, Value: pubJWKS}
 
 	result, svcErr := svc.generateNestedJWTUserInfo(
 		context.Background(),
@@ -180,7 +182,7 @@ func (s *JWEUserInfoTestSuite) TestGenerateNestedJWTUserInfo_Success() {
 	)
 	assert.Nil(s.T(), svcErr)
 	assert.NotNil(s.T(), result)
-	assert.Equal(s.T(), inboundmodel.UserInfoResponseTypeNESTEDJWT, result.Type)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeNESTEDJWT, result.Type)
 	assert.Equal(s.T(), "nested.jwe.token", result.JWTBody)
 }
 
@@ -191,7 +193,7 @@ func (s *JWEUserInfoTestSuite) TestGenerateJWEUserInfo_EncryptErrorPropagated() 
 	pubJWKS := rsaPublicKeyToJWKS(&privateKey.PublicKey)
 
 	mockJWE := jwemock.NewJWEServiceInterfaceMock(s.T())
-	unsupportedErr := &serviceerror.ServiceError{Code: "JWE-1003", Type: serviceerror.ClientErrorType}
+	unsupportedErr := &tidcommon.ServiceError{Code: "JWE-1003", Type: tidcommon.ClientErrorType}
 	mockJWE.On("Encrypt",
 		mock.Anything, mock.Anything, mock.Anything,
 		jwe.KeyEncAlgorithm("RSA-OAEP-256"),
@@ -206,8 +208,8 @@ func (s *JWEUserInfoTestSuite) TestGenerateJWEUserInfo_EncryptErrorPropagated() 
 		jwksResolver: jwksresolver.Initialize(nil),
 		logger:       log.GetLogger(),
 	}
-	cfg := &inboundmodel.UserInfoConfig{EncryptionAlg: "RSA-OAEP-256", EncryptionEnc: "A256GCM"}
-	cert := &appmodel.ApplicationCertificate{Type: certmodel.CertificateTypeJWKS, Value: pubJWKS}
+	cfg := &providers.UserInfoConfig{EncryptionAlg: "RSA-OAEP-256", EncryptionEnc: "A256GCM"}
+	cert := &providers.Certificate{Type: certmodel.CertificateTypeJWKS, Value: pubJWKS}
 
 	result, svcErr := svc.generateJWEUserInfo(context.Background(), map[string]interface{}{"sub": "user1"}, cfg, cert)
 	assert.Nil(s.T(), result)
@@ -225,7 +227,7 @@ func (s *JWEUserInfoTestSuite) TestGenerateJWSUserInfo_UnsupportedAlg() {
 	).Return("", int64(0), &jwt.ErrorUnsupportedJWSAlgorithm)
 
 	svc := &userInfoService{cfg: userInfoTestConfig(), jwtService: mockJWT, logger: log.GetLogger()}
-	cfg := &inboundmodel.UserInfoConfig{SigningAlg: "ES256"}
+	cfg := &providers.UserInfoConfig{SigningAlg: "ES256"}
 
 	result, svcErr := svc.generateJWSUserInfo(
 		context.Background(),
@@ -236,7 +238,7 @@ func (s *JWEUserInfoTestSuite) TestGenerateJWSUserInfo_UnsupportedAlg() {
 	)
 	assert.Nil(s.T(), result)
 	assert.NotNil(s.T(), svcErr)
-	assert.Equal(s.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+	assert.Equal(s.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 // rsaPublicKeyToJWKS builds a minimal RSA JWKS JSON for tests.

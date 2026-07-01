@@ -23,7 +23,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 )
 
-// Initialize wires the DPoP verifier with the given JTI replay-cache backend.
+// Initialize builds a DPoP verifier from the OAuth config, using the provided
+// JTI replay-cache store.
 func Initialize(cfg oauthconfig.Config, jtiStore jti.JTIStoreInterface) VerifierInterface {
 	dpopCfg := cfg.OAuth.DPoP
 

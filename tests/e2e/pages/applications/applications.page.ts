@@ -48,6 +48,8 @@ export class ApplicationsPage extends BasePage {
   readonly configureExperienceStep: Locator;
   readonly configureStackStep: Locator;
   readonly configureDetailsStep: Locator;
+  readonly inbuiltExperienceCard: Locator;
+  readonly embeddedExperienceCard: Locator;
   readonly showClientSecretStep: Locator;
   readonly clientSecretValue: Locator;
   readonly clientSecretContinue: Locator;
@@ -95,6 +97,8 @@ export class ApplicationsPage extends BasePage {
     this.configureExperienceStep = page.locator('[data-testid="application-configure-experience"]');
     this.configureStackStep = page.locator('[data-testid="application-configure-stack"]');
     this.configureDetailsStep = page.locator('[data-testid="application-configure-details"]');
+    this.inbuiltExperienceCard = page.locator('div:has(input[value="INBUILT"])');
+    this.embeddedExperienceCard = page.locator('div:has(input[value="EMBEDDED"])');
     this.showClientSecretStep = page.locator('[data-testid="application-show-client-secret"]');
     this.clientSecretValue = page.locator('[data-testid="application-client-secret-value"]');
     this.clientSecretContinue = page.locator('[data-testid="application-client-secret-continue"]');
@@ -203,18 +207,21 @@ export class ApplicationsPage extends BasePage {
     await this.clickNext();
   }
 
-  /** Select the INBUILT experience option on the experience step (INBUILT is the default, only call if switching) */
-  async selectInbuiltExperience(): Promise<void> {
-    const inbuiltCard = this.page.locator('div:has(input[value="INBUILT"])').first();
-    await inbuiltCard.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
-    await inbuiltCard.click();
+  /** Select a stack/technology card on the stack step by its visible title (e.g. "React", "Next.js"). */
+  async selectStack(title: string): Promise<void> {
+    const card = this.configureStackStep
+      .locator('[role="button"]')
+      .filter({ has: this.page.getByText(title, { exact: true }) })
+      .first();
+    await card.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await card.click();
   }
 
-  /** Select the EMBEDDED experience option on the experience step */
-  async selectEmbeddedExperience(): Promise<void> {
-    const embeddedCard = this.page.locator('div:has(input[value="EMBEDDED"])').first();
-    await embeddedCard.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
-    await embeddedCard.click();
+  /** Select the INBUILT experience option on the experience step (INBUILT is the default, only call if switching) */
+  async selectInbuiltExperience(): Promise<void> {
+    const inbuiltCard = this.inbuiltExperienceCard.first();
+    await inbuiltCard.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await inbuiltCard.click();
   }
 
   /** Read the client secret value from the final wizard step */

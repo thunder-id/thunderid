@@ -19,35 +19,34 @@
 package export
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // Client errors for export operations.
 var (
 	// ErrorInvalidRequest is the error returned when an invalid export request is provided.
-	ErrorInvalidRequest = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorInvalidRequest = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "EXP-1001",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.exportservice.invalid_request",
 			DefaultValue: "Invalid export request",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.exportservice.invalid_request_description",
 			DefaultValue: "The provided export request is invalid or malformed",
 		},
 	}
 
 	// ErrorNoResourcesFound is the error returned when no valid resources are found for export.
-	ErrorNoResourcesFound = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorNoResourcesFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "EXP-1002",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.exportservice.no_resources_found",
 			DefaultValue: "No resources found",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.exportservice.no_resources_found_description",
 			DefaultValue: "No valid resources found for the provided identifiers",
 		},

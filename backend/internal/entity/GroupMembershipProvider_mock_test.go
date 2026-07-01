@@ -8,6 +8,7 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewGroupMembershipProviderMock creates a new instance of GroupMembershipProviderMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -38,23 +39,23 @@ func (_m *GroupMembershipProviderMock) EXPECT() *GroupMembershipProviderMock_Exp
 }
 
 // GetTransitiveGroupsForEntity provides a mock function for the type GroupMembershipProviderMock
-func (_mock *GroupMembershipProviderMock) GetTransitiveGroupsForEntity(ctx context.Context, entityID string) ([]EntityGroup, error) {
+func (_mock *GroupMembershipProviderMock) GetTransitiveGroupsForEntity(ctx context.Context, entityID string) ([]providers.EntityGroup, error) {
 	ret := _mock.Called(ctx, entityID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetTransitiveGroupsForEntity")
 	}
 
-	var r0 []EntityGroup
+	var r0 []providers.EntityGroup
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]EntityGroup, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]providers.EntityGroup, error)); ok {
 		return returnFunc(ctx, entityID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []EntityGroup); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []providers.EntityGroup); ok {
 		r0 = returnFunc(ctx, entityID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]EntityGroup)
+			r0 = ret.Get(0).([]providers.EntityGroup)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
@@ -95,12 +96,12 @@ func (_c *GroupMembershipProviderMock_GetTransitiveGroupsForEntity_Call) Run(run
 	return _c
 }
 
-func (_c *GroupMembershipProviderMock_GetTransitiveGroupsForEntity_Call) Return(entityGroups []EntityGroup, err error) *GroupMembershipProviderMock_GetTransitiveGroupsForEntity_Call {
+func (_c *GroupMembershipProviderMock_GetTransitiveGroupsForEntity_Call) Return(entityGroups []providers.EntityGroup, err error) *GroupMembershipProviderMock_GetTransitiveGroupsForEntity_Call {
 	_c.Call.Return(entityGroups, err)
 	return _c
 }
 
-func (_c *GroupMembershipProviderMock_GetTransitiveGroupsForEntity_Call) RunAndReturn(run func(ctx context.Context, entityID string) ([]EntityGroup, error)) *GroupMembershipProviderMock_GetTransitiveGroupsForEntity_Call {
+func (_c *GroupMembershipProviderMock_GetTransitiveGroupsForEntity_Call) RunAndReturn(run func(ctx context.Context, entityID string) ([]providers.EntityGroup, error)) *GroupMembershipProviderMock_GetTransitiveGroupsForEntity_Call {
 	_c.Call.Return(run)
 	return _c
 }

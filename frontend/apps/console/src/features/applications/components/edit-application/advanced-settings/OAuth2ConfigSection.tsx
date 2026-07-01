@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -53,6 +53,7 @@ interface OidcDiscovery {
   grant_types_supported?: string[];
   response_types_supported?: string[];
   token_endpoint_auth_methods_supported?: string[];
+  acr_values_supported?: string[];
 }
 
 /**
@@ -162,6 +163,8 @@ export default function OAuth2ConfigSection({
   const availableResponseTypes = discovery?.wellKnown?.response_types_supported ?? [];
   const availableTokenEndpointAuthMethods: string[] =
     (discovery as {wellKnown?: OidcDiscovery} | undefined)?.wellKnown?.token_endpoint_auth_methods_supported ?? [];
+  const availableAcrValues: string[] =
+    (discovery as {wellKnown?: OidcDiscovery} | undefined)?.wellKnown?.acr_values_supported ?? [];
   const isEditable = Boolean(onOAuth2ConfigChange) && !disabled;
 
   // Constraint helpers
@@ -169,6 +172,7 @@ export default function OAuth2ConfigSection({
 
   const isPublicClientLocked = constraint('publicClient')?.readOnly ?? false;
   const isPkceLocked = constraint('pkceRequired')?.readOnly ?? false;
+  const isParLocked = constraint('requirePushedAuthorizationRequests')?.readOnly ?? false;
   const tokenMethodConstraint = constraint('tokenEndpointAuthMethod');
   const isTokenMethodLocked = tokenMethodConstraint?.readOnly ?? oauth2Config.publicClient === true;
   const effectiveTokenMethod =
@@ -311,16 +315,62 @@ export default function OAuth2ConfigSection({
           </Select>
           <Typography variant="caption" color="text.secondary" sx={{mt: 0.5}}>
             {isTokenMethodLocked
-              ? t(
-                  'applications:edit.advanced.tokenEndpointAuthMethod.lockedHint',
-                  'Locked to "none" because the client is public.',
-                )
+              ? tokenMethodConstraint?.readOnly
+                ? t(
+                    'applications:edit.advanced.tokenEndpointAuthMethod.templateLockedHint',
+                    'Locked by the template configuration.',
+                  )
+                : t(
+                    'applications:edit.advanced.tokenEndpointAuthMethod.lockedHint',
+                    'Locked to "none" because the client is public.',
+                  )
               : t(
                   'applications:edit.advanced.tokenEndpointAuthMethod.hint',
                   'Defines how the client authenticates at the token endpoint.',
                 )}
           </Typography>
         </FormControl>
+
+        {/* ACR Values */}
+        {availableAcrValues.length > 0 && (
+          <FormControl fullWidth size="small">
+            <FormLabel htmlFor="acr_values">{t('applications:edit.advanced.labels.acrValues')}</FormLabel>
+            <Select
+              id="acr_values"
+              multiple
+              displayEmpty
+              disabled={!isEditable}
+              value={oauth2Config.acrValues ?? []}
+              onChange={(e) => onOAuth2ConfigChange?.({acrValues: e.target.value as string[]})}
+              renderValue={(selected) =>
+                selected.length === 0 ? (
+                  <Typography color="text.secondary" variant="body2">
+                    {t('applications:edit.advanced.acrValues.placeholder', 'Select ACR values')}
+                  </Typography>
+                ) : (
+                  <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                    {selected.map((v) => (
+                      <Chip key={v} label={v} size="small" />
+                    ))}
+                  </Stack>
+                )
+              }
+            >
+              {availableAcrValues.map((acr) => (
+                <MenuItem key={acr} value={acr}>
+                  <Checkbox checked={(oauth2Config.acrValues ?? []).includes(acr)} size="small" />
+                  <ListItemText primary={acr} />
+                </MenuItem>
+              ))}
+            </Select>
+            <Typography variant="caption" color="text.secondary" sx={{mt: 0.5}}>
+              {t(
+                'applications:edit.advanced.acrValues.hint',
+                'When acr_values is included in the authorization request, only values configured here are accepted.',
+              )}
+            </Typography>
+          </FormControl>
+        )}
 
         <Divider />
 
@@ -375,6 +425,43 @@ export default function OAuth2ConfigSection({
           />
           <Typography variant="caption" color="text.secondary" sx={{display: 'block', ml: '52px'}}>
             {t(...getPkceCaption(flags, oauth2Config))}
+          </Typography>
+        </Box>
+
+        {/* Require Pushed Authorization Requests (PAR) Toggle */}
+        <Box>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={oauth2Config.requirePushedAuthorizationRequests ?? false}
+                disabled={!isEditable || isParLocked}
+                onChange={(e) => onOAuth2ConfigChange?.({requirePushedAuthorizationRequests: e.target.checked})}
+                inputProps={{
+                  'aria-label': t(
+                    'applications:edit.advanced.labels.requirePAR',
+                    'Require Pushed Authorization Requests',
+                  ),
+                }}
+              />
+            }
+            label={
+              <Stack direction="row" alignItems="center" spacing={0.5}>
+                <Typography variant="subtitle2">
+                  {t('applications:edit.advanced.labels.requirePAR', 'Require Pushed Authorization Requests')}
+                </Typography>
+                {isParLocked && (
+                  <Tooltip title={t('applications:edit.advanced.lockedByTemplate', 'Set by template')}>
+                    <Lock size={14} />
+                  </Tooltip>
+                )}
+              </Stack>
+            }
+          />
+          <Typography variant="caption" color="text.secondary" sx={{display: 'block', ml: '52px'}}>
+            {t(
+              'applications:edit.advanced.par.hint',
+              'Require the client to use the PAR endpoint before authorization.',
+            )}
           </Typography>
         </Box>
       </Stack>

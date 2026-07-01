@@ -28,9 +28,11 @@ import (
 	"strings"
 	"time"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/entity"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -47,18 +49,18 @@ type PasskeyServiceInterface interface {
 	// Registration methods
 	StartRegistration(
 		ctx context.Context, req *PasskeyRegistrationStartRequest,
-	) (*PasskeyRegistrationStartData, *serviceerror.ServiceError)
+	) (*PasskeyRegistrationStartData, *tidcommon.ServiceError)
 	FinishRegistration(
 		ctx context.Context, req *PasskeyRegistrationFinishRequest,
-	) (*PasskeyRegistrationFinishData, *serviceerror.ServiceError)
+	) (*PasskeyRegistrationFinishData, *tidcommon.ServiceError)
 
 	// Authentication methods
 	StartAuthentication(
 		ctx context.Context, req *PasskeyAuthenticationStartRequest,
-	) (*PasskeyAuthenticationStartData, *serviceerror.ServiceError)
+	) (*PasskeyAuthenticationStartData, *tidcommon.ServiceError)
 	FinishAuthentication(
 		ctx context.Context, req *PasskeyAuthenticationFinishRequest,
-	) (*common.AuthnResult, *serviceerror.ServiceError)
+	) (*common.AuthnResult, *tidcommon.ServiceError)
 }
 
 // passkeyService is the default implementation of PasskeyServiceInterface.
@@ -82,7 +84,7 @@ func newPasskeyService(
 // StartRegistration initiates passkey credential registration for a user.
 func (w *passkeyService) StartRegistration(
 	ctx context.Context, req *PasskeyRegistrationStartRequest,
-) (*PasskeyRegistrationStartData, *serviceerror.ServiceError) {
+) (*PasskeyRegistrationStartData, *tidcommon.ServiceError) {
 	if req == nil {
 		return nil, &ErrorInvalidFinishData
 	}
@@ -128,7 +130,7 @@ func (w *passkeyService) StartRegistration(
 	webAuthnService, err := newDefaultWebAuthnService(req.RelyingPartyID, rpDisplayName, rpOrigins)
 	if err != nil {
 		logger.Error(ctx, "Failed to initialize WebAuthn service", log.String("error", err.Error()))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	// Configure registration options
@@ -139,7 +141,7 @@ func (w *passkeyService) StartRegistration(
 	options, sessionData, err := webAuthnService.BeginRegistration(webAuthnUser, registrationOptions)
 	if err != nil {
 		logger.Error(ctx, "Failed to begin passkey registration", log.String("error", err.Error()))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	// Store session data in cache with TTL
@@ -174,7 +176,7 @@ func (w *passkeyService) StartRegistration(
 
 // FinishRegistration completes passkey credential registration.
 func (w *passkeyService) FinishRegistration(ctx context.Context, req *PasskeyRegistrationFinishRequest) (
-	*PasskeyRegistrationFinishData, *serviceerror.ServiceError) {
+	*PasskeyRegistrationFinishData, *tidcommon.ServiceError) {
 	logger := w.logger.With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Finishing passkey credential registration")
 
@@ -248,7 +250,7 @@ func (w *passkeyService) FinishRegistration(ctx context.Context, req *PasskeyReg
 	webAuthnService, err := newDefaultWebAuthnService(relyingPartyID, relyingPartyID, rpOrigins)
 	if err != nil {
 		logger.Error(ctx, "Failed to initialize WebAuthn service", log.String("error", err.Error()))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	// Verify the credential using WebAuthn service
@@ -270,7 +272,7 @@ func (w *passkeyService) FinishRegistration(ctx context.Context, req *PasskeyReg
 	// Store credential in database using user service
 	if err := w.storePasskeyCredential(ctx, userID, credential); err != nil {
 		logger.Error(ctx, "Failed to store credential in database", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	// Clear session data
@@ -285,7 +287,7 @@ func (w *passkeyService) FinishRegistration(ctx context.Context, req *PasskeyReg
 
 // StartAuthentication initiates passkey authentication for a user.
 func (w *passkeyService) StartAuthentication(ctx context.Context, req *PasskeyAuthenticationStartRequest) (
-	*PasskeyAuthenticationStartData, *serviceerror.ServiceError) {
+	*PasskeyAuthenticationStartData, *tidcommon.ServiceError) {
 	if req == nil {
 		return nil, &ErrorInvalidFinishData
 	}
@@ -314,7 +316,7 @@ func (w *passkeyService) StartAuthentication(ctx context.Context, req *PasskeyAu
 	webAuthnService, err := newDefaultWebAuthnService(req.RelyingPartyID, req.RelyingPartyID, rpOrigins)
 	if err != nil {
 		logger.Error(ctx, "Failed to initialize WebAuthn service", log.String("error", err.Error()))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	var options *credentialAssertion
@@ -325,7 +327,7 @@ func (w *passkeyService) StartAuthentication(ctx context.Context, req *PasskeyAu
 		options, sessionData, err = webAuthnService.BeginDiscoverableLogin()
 		if err != nil {
 			logger.Error(ctx, "Failed to begin usernameless passkey login", log.String("error", err.Error()))
-			return nil, &serviceerror.InternalServerError
+			return nil, &tidcommon.InternalServerError
 		}
 	} else {
 		// Username-based flow: Retrieve entity and its credentials
@@ -357,7 +359,7 @@ func (w *passkeyService) StartAuthentication(ctx context.Context, req *PasskeyAu
 		options, sessionData, err = webAuthnService.BeginLogin(webAuthnUser)
 		if err != nil {
 			logger.Error(ctx, "Failed to begin passkey login", log.String("error", err.Error()))
-			return nil, &serviceerror.InternalServerError
+			return nil, &tidcommon.InternalServerError
 		}
 	}
 
@@ -386,7 +388,7 @@ func (w *passkeyService) StartAuthentication(ctx context.Context, req *PasskeyAu
 
 // FinishAuthentication completes passkey authentication.
 func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyAuthenticationFinishRequest) (
-	*common.AuthnResult, *serviceerror.ServiceError) {
+	*common.AuthnResult, *tidcommon.ServiceError) {
 	logger := w.logger.With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Finishing passkey authentication")
 
@@ -465,7 +467,7 @@ func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyA
 	webAuthnService, err := newDefaultWebAuthnService(relyingPartyID, relyingPartyID, rpOrigins)
 	if err != nil {
 		logger.Error(ctx, "Failed to initialize WebAuthn service", log.String("error", err.Error()))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	// Parse the assertion response from the raw credential data
@@ -506,7 +508,7 @@ func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyA
 	// Update credential in database to prevent replay attacks
 	if err := w.updatePasskeyCredential(ctx, userID, credential); err != nil {
 		logger.Error(ctx, "Failed to update credential sign count in database", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	logger.Debug(ctx, "Updated credential sign count in database",
@@ -529,7 +531,7 @@ func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyA
 // getEntity retrieves an entity by ID, mapping entity-layer errors to passkey service errors.
 func (w *passkeyService) getEntity(
 	ctx context.Context, entityID string,
-) (*entity.Entity, *serviceerror.ServiceError) {
+) (*providers.Entity, *tidcommon.ServiceError) {
 	logger := w.logger.With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
 	e, err := w.entityService.GetEntity(ctx, entityID)
@@ -539,7 +541,7 @@ func (w *passkeyService) getEntity(
 			return nil, &ErrorUserNotFound
 		}
 		logger.Error(ctx, "Failed to retrieve entity", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	return e, nil
 }
@@ -548,7 +550,7 @@ func (w *passkeyService) getEntity(
 // Returns a nil slice when the entity has no passkey credentials registered.
 func (w *passkeyService) getStoredPasskeyEntries(
 	ctx context.Context, entityID string,
-) ([]entity.StoredCredential, *serviceerror.ServiceError) {
+) ([]entity.StoredCredential, *tidcommon.ServiceError) {
 	logger := w.logger.With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
 	entries, err := w.entityService.GetCredentialsByType(ctx, entityID, passkeyCredentialType)
@@ -558,7 +560,7 @@ func (w *passkeyService) getStoredPasskeyEntries(
 			return nil, &ErrorUserNotFound
 		}
 		logger.Error(ctx, "Failed to retrieve passkey credentials", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	return entries, nil
 }

@@ -21,13 +21,14 @@ package executor
 import (
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
@@ -41,7 +42,7 @@ type InviteExecutorTestSuite struct {
 func (suite *InviteExecutorTestSuite) SetupTest() {
 	// Initialize runtime config for tests
 	err := config.InitializeServerRuntime(".", &config.Config{
-		GateClient: config.GateClientConfig{
+		GateClient: engineconfig.GateClientConfig{
 			Scheme:   "https",
 			Hostname: "localhost",
 			Port:     5190,
@@ -56,15 +57,15 @@ func (suite *InviteExecutorTestSuite) SetupTest() {
 	// Set up expectations for CreateExecutor (called in constructor)
 	suite.mockFlowFactory.On("CreateExecutor",
 		ExecutorNameInviteExecutor,
-		common.ExecutorTypeUtility,
-		[]common.Input{
+		providers.ExecutorTypeUtility,
+		[]providers.Input{
 			{
 				Identifier: userInputInviteToken,
 				Type:       "HIDDEN",
 				Required:   true,
 			},
 		},
-		[]common.Input{}).Return(mockBaseExecutor)
+		[]providers.Input{}).Return(mockBaseExecutor)
 
 	suite.executor = newInviteExecutor(suite.mockFlowFactory)
 }
@@ -74,7 +75,7 @@ func (suite *InviteExecutorTestSuite) TearDownTest() {
 }
 
 func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode() {
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:  "test-flow-id",
 		EntityID:     "test-app-id",
 		ExecutorMode: ExecutorModeGenerate,
@@ -85,7 +86,7 @@ func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode() {
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.NotEmpty(suite.T(), resp.RuntimeData[common.RuntimeKeyStoredInviteToken])
 	assert.NotEmpty(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink])
 	assert.Contains(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink], "inviteToken=")
@@ -95,10 +96,10 @@ func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode() {
 }
 
 func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_UserOnboarding_ExposesInviteLink() {
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:  "test-flow-id",
 		EntityID:     "test-app-id",
-		FlowType:     common.FlowTypeUserOnboarding,
+		FlowType:     providers.FlowTypeUserOnboarding,
 		ExecutorMode: ExecutorModeGenerate,
 		UserInputs:   make(map[string]string),
 		RuntimeData:  make(map[string]string),
@@ -107,14 +108,14 @@ func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_UserOnboarding_Ex
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.NotEmpty(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink])
 	assert.Equal(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink], resp.AdditionalData[common.DataInviteLink])
 }
 
 func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_Idempotency() {
 	existingToken := "existing-token-123"
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:  "test-flow-id",
 		ExecutorMode: ExecutorModeGenerate,
 		UserInputs:   make(map[string]string),
@@ -126,14 +127,14 @@ func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_Idempotency() {
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.Equal(suite.T(), existingToken, resp.RuntimeData[common.RuntimeKeyStoredInviteToken])
 	assert.Contains(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink], existingToken)
 	assert.Empty(suite.T(), resp.AdditionalData[common.DataInviteLink])
 }
 
 func (suite *InviteExecutorTestSuite) TestExecute_VerifyMode_NoTokenProvided() {
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:  "test-flow-id",
 		ExecutorMode: ExecutorModeVerify,
 		UserInputs:   make(map[string]string),
@@ -142,18 +143,18 @@ func (suite *InviteExecutorTestSuite) TestExecute_VerifyMode_NoTokenProvided() {
 		},
 	}
 
-	mockExecutor := suite.executor.ExecutorInterface.(*coremock.ExecutorInterfaceMock)
+	mockExecutor := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
 	mockExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(false)
 
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
 }
 
 func (suite *InviteExecutorTestSuite) TestExecute_VerifyMode_ValidationSuccess() {
 	token := "valid-token"
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:  "test-flow-id",
 		ExecutorMode: ExecutorModeVerify,
 		UserInputs: map[string]string{
@@ -164,17 +165,17 @@ func (suite *InviteExecutorTestSuite) TestExecute_VerifyMode_ValidationSuccess()
 		},
 	}
 
-	mockExecutor := suite.executor.ExecutorInterface.(*coremock.ExecutorInterfaceMock)
+	mockExecutor := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
 	mockExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true)
 
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 }
 
 func (suite *InviteExecutorTestSuite) TestExecute_VerifyMode_ValidationFailure_Mismatch() {
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:  "test-flow-id",
 		ExecutorMode: ExecutorModeVerify,
 		UserInputs: map[string]string{
@@ -185,18 +186,18 @@ func (suite *InviteExecutorTestSuite) TestExecute_VerifyMode_ValidationFailure_M
 		},
 	}
 
-	mockExecutor := suite.executor.ExecutorInterface.(*coremock.ExecutorInterfaceMock)
+	mockExecutor := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
 	mockExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true)
 
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
 	assert.Equal(suite.T(), ErrInvalidInviteToken.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *InviteExecutorTestSuite) TestExecute_VerifyMode_ValidationFailure_NoStoredToken() {
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:  "test-flow-id",
 		ExecutorMode: ExecutorModeVerify,
 		UserInputs: map[string]string{
@@ -205,18 +206,18 @@ func (suite *InviteExecutorTestSuite) TestExecute_VerifyMode_ValidationFailure_N
 		RuntimeData: make(map[string]string),
 	}
 
-	mockExecutor := suite.executor.ExecutorInterface.(*coremock.ExecutorInterfaceMock)
+	mockExecutor := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
 	mockExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true)
 
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
 	assert.Equal(suite.T(), ErrInvalidInviteToken.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *InviteExecutorTestSuite) TestExecute_InvalidMode() {
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:  "test-flow-id",
 		ExecutorMode: "invalid",
 		UserInputs:   make(map[string]string),
@@ -231,12 +232,12 @@ func (suite *InviteExecutorTestSuite) TestExecute_InvalidMode() {
 }
 
 func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_PopulatesTemplateData() {
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:  "test-execution-id",
 		ExecutorMode: ExecutorModeGenerate,
-		FlowType:     common.FlowTypeRegistration,
+		FlowType:     providers.FlowTypeRegistration,
 		RuntimeData:  make(map[string]string),
-		Application: appmodel.Application{
+		Application: providers.Application{
 			Name: "Test App",
 		},
 	}
@@ -244,7 +245,7 @@ func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_PopulatesTemplate
 	resp, err := suite.executor.Execute(ctx)
 
 	suite.NoError(err)
-	suite.Equal(common.ExecComplete, resp.Status)
+	suite.Equal(providers.ExecComplete, resp.Status)
 
 	// 1. Ensure TemplateName is completely gone
 	_, hasTemplateName := resp.ForwardedData["templateName"]
@@ -258,7 +259,7 @@ func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_PopulatesTemplate
 }
 
 func (suite *InviteExecutorTestSuite) TestGenerateInviteLink_UsesInviteBaseURLProperty() {
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:  "test-execution-id",
 		ExecutorMode: ExecutorModeGenerate,
 		UserInputs:   make(map[string]string),
@@ -271,12 +272,12 @@ func (suite *InviteExecutorTestSuite) TestGenerateInviteLink_UsesInviteBaseURLPr
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.Contains(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink], "http://localhost:3000?")
 }
 
 func (suite *InviteExecutorTestSuite) TestGenerateInviteLink_FallsBackToGateConfigWhenPropertyAbsent() {
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:  "test-execution-id",
 		ExecutorMode: ExecutorModeGenerate,
 		UserInputs:   make(map[string]string),
@@ -286,7 +287,7 @@ func (suite *InviteExecutorTestSuite) TestGenerateInviteLink_FallsBackToGateConf
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.Contains(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink], "https://localhost:5190/gate/invite?")
 }
 
@@ -318,7 +319,7 @@ func (suite *InviteExecutorTestSuite) TestGetExecutionPolicy_EmptyMode_ReturnsNi
 }
 
 func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_IncludesAuthReqIDWhenPresent() {
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:  "test-flow-id",
 		EntityID:     "test-app-id",
 		ExecutorMode: ExecutorModeGenerate,
@@ -331,13 +332,13 @@ func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_IncludesAuthReqID
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.Contains(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink], "auth_req_id=ciba-req-123")
 	assert.Contains(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink], "executionId=test-flow-id")
 }
 
 func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_NoAuthReqIDWhenAbsent() {
-	ctx := &core.NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:  "test-flow-id",
 		EntityID:     "test-app-id",
 		ExecutorMode: ExecutorModeGenerate,
@@ -348,7 +349,7 @@ func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_NoAuthReqIDWhenAb
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.NotContains(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink], "auth_req_id")
 }
 

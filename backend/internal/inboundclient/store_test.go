@@ -30,6 +30,7 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 )
 
@@ -177,7 +178,7 @@ func (suite *InboundClientStoreTestSuite) TestBuildInboundClientFromRow_MinimalR
 // --- Tests for buildOAuthProfileFromRow ---
 
 func (suite *InboundClientStoreTestSuite) TestBuildOAuthProfileFromRow_Success() {
-	cfg := inboundmodel.OAuthProfile{
+	cfg := providers.OAuthProfile{
 		RedirectURIs:            []string{"https://example.com/callback"},
 		GrantTypes:              []string{"authorization_code"},
 		ResponseTypes:           []string{"code"},
@@ -225,7 +226,7 @@ func (suite *InboundClientStoreTestSuite) TestBuildOAuthProfileFromRow_Malformed
 }
 
 func (suite *InboundClientStoreTestSuite) TestMarshalOAuthProfile_WithAcrValues() {
-	profile := &inboundmodel.OAuthProfile{
+	profile := &providers.OAuthProfile{
 		RedirectURIs: []string{"https://example.com/callback"},
 		GrantTypes:   []string{"authorization_code"},
 		AcrValues:    []string{"urn:thunder:acr:password", "urn:thunder:acr:generated-code"},
@@ -247,7 +248,7 @@ func (suite *InboundClientStoreTestSuite) TestMarshalOAuthProfile_WithAcrValues(
 }
 
 func (suite *InboundClientStoreTestSuite) TestMarshalOAuthProfile_WithEmptyAcrValues() {
-	profile := &inboundmodel.OAuthProfile{
+	profile := &providers.OAuthProfile{
 		RedirectURIs: []string{"https://example.com/callback"},
 		GrantTypes:   []string{"authorization_code"},
 		AcrValues:    []string{},
@@ -263,7 +264,7 @@ func (suite *InboundClientStoreTestSuite) TestMarshalOAuthProfile_WithEmptyAcrVa
 }
 
 func (suite *InboundClientStoreTestSuite) TestMarshalOAuthProfile_WithNilAcrValues() {
-	profile := &inboundmodel.OAuthProfile{
+	profile := &providers.OAuthProfile{
 		RedirectURIs: []string{"https://example.com/callback"},
 		AcrValues:    nil,
 	}
@@ -278,7 +279,7 @@ func (suite *InboundClientStoreTestSuite) TestMarshalOAuthProfile_WithNilAcrValu
 }
 
 func (suite *InboundClientStoreTestSuite) TestBuildOAuthProfileFromRow_WithAcrValues() {
-	cfg := inboundmodel.OAuthProfile{
+	cfg := providers.OAuthProfile{
 		RedirectURIs:            []string{"https://example.com/callback"},
 		GrantTypes:              []string{"authorization_code"},
 		ResponseTypes:           []string{"code"},
@@ -303,7 +304,7 @@ func (suite *InboundClientStoreTestSuite) TestBuildOAuthProfileFromRow_WithAcrVa
 }
 
 func (suite *InboundClientStoreTestSuite) TestBuildOAuthProfileFromRow_WithSingleAcrValue() {
-	cfg := inboundmodel.OAuthProfile{
+	cfg := providers.OAuthProfile{
 		RedirectURIs: []string{"https://example.com/callback"},
 		GrantTypes:   []string{"authorization_code"},
 		AcrValues:    []string{"urn:thunder:acr:password"},
@@ -323,7 +324,7 @@ func (suite *InboundClientStoreTestSuite) TestBuildOAuthProfileFromRow_WithSingl
 }
 
 func (suite *InboundClientStoreTestSuite) TestBuildOAuthProfileFromRow_WithoutAcrValues() {
-	cfg := inboundmodel.OAuthProfile{
+	cfg := providers.OAuthProfile{
 		RedirectURIs: []string{"https://example.com/callback"},
 		GrantTypes:   []string{"authorization_code"},
 	}
@@ -344,7 +345,7 @@ func (suite *InboundClientStoreTestSuite) TestBuildOAuthProfileFromRow_WithoutAc
 func (suite *InboundClientStoreTestSuite) TestAcrValues_RoundTrip() {
 	acrs := []string{"urn:thunder:acr:password", "urn:thunder:acr:generated-code"}
 
-	profile := &inboundmodel.OAuthProfile{
+	profile := &providers.OAuthProfile{
 		RedirectURIs:            []string{"https://example.com/callback"},
 		GrantTypes:              []string{"authorization_code"},
 		ResponseTypes:           []string{"code"},
@@ -563,7 +564,7 @@ func (suite *InboundClientStoreTestSuite) TestCreateOAuthProfile() {
 		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateOAuthProfile,
 			testEntityID, mock.Anything, testServerID).Return(int64(1), nil).Once()
 
-		err := suite.store.CreateOAuthProfile(context.Background(), testEntityID, &inboundmodel.OAuthProfile{})
+		err := suite.store.CreateOAuthProfile(context.Background(), testEntityID, &providers.OAuthProfile{})
 		suite.NoError(err)
 	})
 }
@@ -590,7 +591,7 @@ func (suite *InboundClientStoreTestSuite) TestUpdateOAuthProfile() {
 		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateOAuthProfileByEntityID,
 			testEntityID, mock.Anything, testServerID).Return(int64(1), nil).Once()
 
-		err := suite.store.UpdateOAuthProfile(context.Background(), testEntityID, &inboundmodel.OAuthProfile{})
+		err := suite.store.UpdateOAuthProfile(context.Background(), testEntityID, &providers.OAuthProfile{})
 		suite.NoError(err)
 	})
 }
@@ -684,7 +685,7 @@ func (suite *InboundClientStoreTestSuite) TestGetInboundClientByEntityID() {
 
 func (suite *InboundClientStoreTestSuite) TestGetOAuthProfileByEntityID() {
 	suite.Run("returns OAuth config when found", func() {
-		cfg := inboundmodel.OAuthProfile{RedirectURIs: []string{"https://example.com/cb"}, PKCERequired: true}
+		cfg := providers.OAuthProfile{RedirectURIs: []string{"https://example.com/cb"}, PKCERequired: true}
 		cfgBytes, _ := json.Marshal(cfg)
 		mockRow := map[string]interface{}{
 			"entity_id":    testEntityID,

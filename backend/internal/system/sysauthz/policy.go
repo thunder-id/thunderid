@@ -21,7 +21,8 @@ package sysauthz
 import (
 	"context"
 
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
@@ -51,7 +52,7 @@ const (
 type authorizationPolicy interface {
 	// isActionAllowed returns the policy decision for the caller in the given context.
 	// A non-nil ServiceError signals a policy evaluation failure, not a denial.
-	isActionAllowed(ctx context.Context, actionCtx *ActionContext) (policyDecision, *serviceerror.ServiceError)
+	isActionAllowed(ctx context.Context, actionCtx *ActionContext) (policyDecision, *tidcommon.ServiceError)
 
 	// getAccessibleResources reports whether this policy is applicable for the
 	// given action and resource type, and if so, the set of resources the caller
@@ -60,7 +61,7 @@ type authorizationPolicy interface {
 	// A non-nil ServiceError signals an evaluation failure, not a denial.
 	getAccessibleResources(ctx context.Context, action security.Action,
 		resourceType security.ResourceType,
-	) (applicable bool, result *AccessibleResources, err *serviceerror.ServiceError)
+	) (applicable bool, result *AccessibleResources, err *tidcommon.ServiceError)
 }
 
 // ouMembershipPolicy enforces that the caller's organization unit matches the OU of the
@@ -73,7 +74,7 @@ type ouMembershipPolicy struct{}
 //   - PolicyDecisionAllowed when the caller's OU matches the resource's OU.
 //   - PolicyDecisionDenied when the caller's OU does not match.
 func (p *ouMembershipPolicy) isActionAllowed(ctx context.Context,
-	actionCtx *ActionContext) (policyDecision, *serviceerror.ServiceError) {
+	actionCtx *ActionContext) (policyDecision, *tidcommon.ServiceError) {
 	if actionCtx == nil || actionCtx.OUID == "" {
 		return policyDecisionNotApplicable, nil
 	}
@@ -88,7 +89,7 @@ func (p *ouMembershipPolicy) isActionAllowed(ctx context.Context,
 //     for users and groups is applied at the store layer.
 //   - For ResourceTypeOU: the caller may only see their own OU.
 func (p *ouMembershipPolicy) getAccessibleResources(ctx context.Context, action security.Action,
-	resourceType security.ResourceType) (bool, *AccessibleResources, *serviceerror.ServiceError) {
+	resourceType security.ResourceType) (bool, *AccessibleResources, *tidcommon.ServiceError) {
 	if resourceType != security.ResourceTypeOU {
 		return false, nil, nil
 	}
@@ -112,7 +113,7 @@ type ouInheritancePolicy struct {
 //     caller's OU (i.e. the resource was defined at or above the caller's level).
 //   - PolicyDecisionDenied when the caller is outside the resource's OU subtree.
 func (p *ouInheritancePolicy) isActionAllowed(ctx context.Context,
-	actionCtx *ActionContext) (policyDecision, *serviceerror.ServiceError) {
+	actionCtx *ActionContext) (policyDecision, *tidcommon.ServiceError) {
 	if actionCtx == nil || actionCtx.OUID == "" {
 		return policyDecisionNotApplicable, nil
 	}
@@ -138,7 +139,7 @@ func (p *ouInheritancePolicy) isActionAllowed(ctx context.Context,
 // getAccessibleResources returns the caller's own OU plus all ancestor OUs, so that
 // list queries include inherited resources from parent OUs.
 func (p *ouInheritancePolicy) getAccessibleResources(ctx context.Context, action security.Action,
-	resourceType security.ResourceType) (bool, *AccessibleResources, *serviceerror.ServiceError) {
+	resourceType security.ResourceType) (bool, *AccessibleResources, *tidcommon.ServiceError) {
 	if !inheritanceReadActions[action] {
 		return false, nil, nil
 	}
@@ -191,7 +192,7 @@ func selectPolicies(action security.Action, policies *policies) []authorizationP
 // - PolicyDecisionAllowed continues to the next policy.
 // If all policies return NotApplicable, the action is allowed (permission check already passed).
 func isActionAllowedByPolicies(ctx context.Context, policies *policies, action security.Action,
-	actionCtx *ActionContext) (bool, *serviceerror.ServiceError) {
+	actionCtx *ActionContext) (bool, *tidcommon.ServiceError) {
 	for _, policy := range selectPolicies(action, policies) {
 		decision, err := policy.isActionAllowed(ctx, actionCtx)
 		if err != nil {
@@ -211,7 +212,7 @@ func isActionAllowedByPolicies(ctx context.Context, policies *policies, action s
 // NOTE: If multiple policies ever need to be combined for the same resource type in the
 // future, this function should be updated to intersect their results.
 func getAccessibleResourcesByPolicies(ctx context.Context, policies *policies, action security.Action,
-	resourceType security.ResourceType) (*AccessibleResources, *serviceerror.ServiceError) {
+	resourceType security.ResourceType) (*AccessibleResources, *tidcommon.ServiceError) {
 	for _, policy := range selectPolicies(action, policies) {
 		applicable, result, err := policy.getAccessibleResources(ctx, action, resourceType)
 		if err != nil {

@@ -24,10 +24,10 @@ import (
 	"net/url"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/authn/common"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -42,27 +42,24 @@ type MagicLinkAuthnServiceInterface interface {
 		queryParams map[string]string,
 		additionalClaims map[string]interface{},
 		magicLinkURL string,
-	) (string, *serviceerror.ServiceError)
+	) (string, *tidcommon.ServiceError)
 	Authenticate(ctx context.Context, token string,
-		subjectAttribute string) (*common.AuthnResult, *serviceerror.ServiceError)
+		subjectAttribute string) (*common.AuthnResult, *tidcommon.ServiceError)
 }
 
 // magicLinkAuthnService is the default implementation of MagicLinkAuthnServiceInterface.
 type magicLinkAuthnService struct {
-	jwtService     jwt.JWTServiceInterface
-	entityProvider entityprovider.EntityProviderInterface
-	logger         *log.Logger
+	jwtService jwt.JWTServiceInterface
+	logger     *log.Logger
 }
 
 // newMagicLinkAuthnService creates a new instance of magicLinkAuthnService with the provided dependencies.
 func newMagicLinkAuthnService(
 	jwtSvc jwt.JWTServiceInterface,
-	entityProvider entityprovider.EntityProviderInterface,
 ) MagicLinkAuthnServiceInterface {
 	service := &magicLinkAuthnService{
-		jwtService:     jwtSvc,
-		entityProvider: entityProvider,
-		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "MagicLinkAuthnService")),
+		jwtService: jwtSvc,
+		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "MagicLinkAuthnService")),
 	}
 	common.RegisterAuthenticator(service.getMetadata())
 
@@ -75,7 +72,7 @@ func (s *magicLinkAuthnService) GenerateMagicLink(ctx context.Context,
 	expirySeconds int64,
 	queryParams map[string]string,
 	additionalClaims map[string]interface{},
-	magicLinkURL string) (string, *serviceerror.ServiceError) {
+	magicLinkURL string) (string, *tidcommon.ServiceError) {
 	s.logger.Debug(ctx, "Generating magic link", log.MaskedString("subject", subject))
 
 	if subject == "" {
@@ -118,7 +115,7 @@ func (s *magicLinkAuthnService) GenerateMagicLink(ctx context.Context,
 // A missing local user is NOT an error — the result carries VerifiedIdentifiers instead,
 // allowing callers to handle registration flows.
 func (s *magicLinkAuthnService) Authenticate(ctx context.Context,
-	token string, subjectAttribute string) (*common.AuthnResult, *serviceerror.ServiceError) {
+	token string, subjectAttribute string) (*common.AuthnResult, *tidcommon.ServiceError) {
 	s.logger.Debug(ctx, "Authenticating with magic link token")
 
 	token = strings.TrimSpace(token)
@@ -149,7 +146,7 @@ func (s *magicLinkAuthnService) Authenticate(ctx context.Context,
 }
 
 // verifyToken checks the validity of the provided JWT token and returns service errors for invalid or expired tokens.
-func (s *magicLinkAuthnService) verifyToken(ctx context.Context, token string) *serviceerror.ServiceError {
+func (s *magicLinkAuthnService) verifyToken(ctx context.Context, token string) *tidcommon.ServiceError {
 	issuer := config.GetServerRuntime().Config.JWT.Issuer
 	verifyErr := s.jwtService.VerifyJWT(ctx, token, tokenAudience, issuer)
 	if verifyErr != nil {
@@ -164,7 +161,7 @@ func (s *magicLinkAuthnService) verifyToken(ctx context.Context, token string) *
 
 // extractSubject retrieves the subject claim from the JWT token payload and returns it as a string.
 // along with any service errors encountered during decoding or extraction.
-func (s *magicLinkAuthnService) extractSubject(ctx context.Context, token string) (string, *serviceerror.ServiceError) {
+func (s *magicLinkAuthnService) extractSubject(ctx context.Context, token string) (string, *tidcommon.ServiceError) {
 	payload, decodeErr := jwt.DecodeJWTPayload(token)
 	if decodeErr != nil {
 		s.logger.Debug(ctx, "Failed to decode magic link token payload", log.Error(decodeErr))

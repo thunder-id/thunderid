@@ -1,0 +1,145 @@
+---
+title: Flutter SDK Overview
+displayed_sidebar: flutterSdkSidebar
+sidebar_position: 1
+sidebar_label: Overview
+description: Native Flutter SDK for {{ProductName}} authentication in cross-platform iOS and Android applications
+---
+
+# Flutter SDK
+
+The <ProductName /> Flutter SDK provides a single Dart package for integrating authentication into your iOS and Android Flutter applications:
+
+- **`thunderid_flutter`** — Core authentication client, reactive state management, and drop-in Flutter widgets
+
+The package targets Flutter 3.16+ and Dart 3.2+. All protocol operations (OAuth2/OIDC, PKCE, token validation, token refresh) are delegated to the native <ProductName /> iOS and Android SDKs via Flutter platform channels — no OAuth2/OIDC logic runs in Dart.
+
+## Installation
+
+```yaml title="pubspec.yaml"
+dependencies:
+  thunderid_flutter: ^0.1.0
+```
+
+```bash
+flutter pub get
+```
+
+## Getting Started
+
+To get started quickly, follow the [Flutter Quickstart Guide](/docs/next/guides/getting-started/connect-your-application/flutter) for step-by-step setup instructions.
+
+## Quick Example
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:thunderid_flutter/thunderid_flutter.dart';
+
+void main() {
+  runApp(
+    ThunderIDProvider(
+      config: ThunderIDConfig(
+        baseUrl: 'https://localhost:8090',
+        clientId: '<your-client-id>',
+        scopes: const ['openid', 'profile', 'email'],
+        afterSignInUrl: 'dev.thunderid.app://callback',
+        afterSignOutUrl: 'dev.thunderid.app://logout',
+        applicationId: '<your-application-id>',
+      ),
+      child: const MyApp(),
+    ),
+  );
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Builder(
+        builder: (context) {
+          final thunder = ThunderIDProvider.of(context);
+          if (!thunder.initialized) return const CircularProgressIndicator();
+          return thunder.isSignedIn
+              ? HomeScreen()
+              : AuthScreen();
+        },
+      ),
+    );
+  }
+}
+```
+
+## Features
+
+### Core Client
+
+| Method | Description |
+|--------|-------------|
+| `initialize(config)` | Initialize the SDK with configuration |
+| `signIn(payload, request)` | App-native sign-in via the Flow Execution API |
+| `signUp(payload, request)` | App-native registration via the Flow Execution API |
+| `buildSignInUrl(options)` | Build an OAuth 2.0 authorization URL for redirect-based sign-in |
+| `handleRedirectCallback(url)` | Exchange an authorization code for tokens after redirect |
+| `getAccessToken()` | Retrieve the current access token, refreshing automatically if needed |
+| `getUser()` | Retrieve the authenticated user from the JWT or `/oauth2/userinfo` |
+| `getUserProfile()` | Fetch the full user profile from `/scim2/Me` |
+| `updateUserProfile(payload)` | Update the user's profile |
+| `signOut(options)` | Revoke the refresh token and clear the session |
+| `exchangeToken(config)` | Perform an OAuth 2.0 token exchange (STS) |
+| `decodeJwtToken(token)` | Decode a JWT string into a `Map<String, dynamic>` |
+
+### Widgets
+
+#### Actions
+
+| Widget | Description |
+|--------|-------------|
+| `SignInButton(onTap)` | Pre-styled button that triggers your sign-in flow |
+| `SignOutButton(onSignOutComplete)` | Calls `signOut()` and refreshes auth state |
+| `SignUpButton(onTap)` | Pre-styled button that triggers your registration flow |
+
+#### Presentation
+
+| Widget | Description |
+|--------|-------------|
+| `SignIn(applicationId, onComplete, onError)` | Full embedded sign-in form driven by the Flow Execution API |
+| `BaseSignIn(applicationId, onComplete, onError, builder)` | Builder variant; receives `SignInState` for custom form UI |
+| `SignUp(applicationId, onComplete, onError)` | Full embedded registration form |
+| `BaseSignUp(applicationId, onComplete, onError, builder)` | Builder variant for custom registration UI |
+| `ThunderIDUserProfile(onSaved, onError)` | Editable profile form; loads from `/scim2/Me` and saves via `updateUserProfile` |
+| `BaseThunderIDUserProfile(onSaved, onError, builder)` | Builder variant with full control over the form layout |
+
+#### Guards
+
+| Widget | Description |
+|--------|-------------|
+| `ThunderIDSignedIn(child, fallback)` | Renders `child` only when the user is authenticated |
+| `ThunderIDSignedOut(child, fallback)` | Renders `child` only when the user is not authenticated |
+
+#### State
+
+| Type | Description |
+|------|-------------|
+| `ThunderIDProvider` | Root widget that injects `ThunderIDState` into the widget tree |
+| `ThunderIDProvider.of(context)` | Access the current `ThunderIDState` from any widget |
+
+## Architecture
+
+```
+Flutter (Dart)                    Native
+┌─────────────────────┐          ┌──────────────────────┐
+│ ThunderIDClient     │          │ ThunderID iOS SDK    │
+│ ThunderIDProvider   │ ──────── │ (Swift, Keychain)    │
+│ Widgets             │ channel  ├──────────────────────┤
+└─────────────────────┘          │ ThunderID Android SDK│
+                                 │ (Kotlin, Keystore)   │
+                                 └──────────────────────┘
+```
+
+## Customization
+
+- Use `SignIn` and `SignUp` for pre-built forms, or `BaseSignIn` and `BaseSignUp` to render your own UI with the same Flow Execution loop
+- Provide custom button UI while delegating auth logic to `ThunderIDProvider.of(context).client`
+- Override localized strings via the `preferences` parameter on `ThunderIDConfig`

@@ -21,8 +21,7 @@ package template
 import (
 	"errors"
 
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // Internal error definitions for template operations.
@@ -34,14 +33,14 @@ var (
 // Client errors for template operations.
 var (
 	// ErrorTemplateNotFound is returned when the requested template does not exist.
-	ErrorTemplateNotFound = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	ErrorTemplateNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "TMP-1001",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "error.templateservice.template_not_found",
 			DefaultValue: "Template not found",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.templateservice.template_not_found_description",
 			DefaultValue: "The requested template does not exist for the given scenario",
 		},

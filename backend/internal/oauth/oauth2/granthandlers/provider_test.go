@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	rbacauthzmock "github.com/thunder-id/thunderid/tests/mocks/authzmock"
@@ -47,7 +48,7 @@ type GrantHandlerProviderTestSuite struct {
 	mockAttrCacheService *attributecachemock.AttributeCacheServiceInterfaceMock
 	mockOUService        *oumock.OrganizationUnitServiceInterfaceMock
 	mockRBACAuthzService *rbacauthzmock.AuthorizationServiceInterfaceMock
-	mockEntityProvider   *actorprovidermock.ActorProviderInterfaceMock
+	mockEntityProvider   *actorprovidermock.ActorProviderMock
 	mockResourceService  *resourcemock.ResourceServiceInterfaceMock
 	mockCIBAService      *cibamock.CIBAServiceInterfaceMock
 }
@@ -64,7 +65,7 @@ func (suite *GrantHandlerProviderTestSuite) SetupTest() {
 	suite.mockAttrCacheService = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	suite.mockRBACAuthzService = rbacauthzmock.NewAuthorizationServiceInterfaceMock(suite.T())
-	suite.mockEntityProvider = actorprovidermock.NewActorProviderInterfaceMock(suite.T())
+	suite.mockEntityProvider = actorprovidermock.NewActorProviderMock(suite.T())
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	suite.mockCIBAService = cibamock.NewCIBAServiceInterfaceMock(suite.T())
 	suite.provider = newGrantHandlerProvider(
@@ -101,7 +102,7 @@ func (suite *GrantHandlerProviderTestSuite) TestNewGrantHandlerProvider() {
 }
 
 func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_ClientCredentials() {
-	handler, err := suite.provider.GetGrantHandler(constants.GrantTypeClientCredentials)
+	handler, err := suite.provider.GetGrantHandler(providers.GrantTypeClientCredentials)
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), handler)
@@ -109,7 +110,7 @@ func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_ClientCredential
 }
 
 func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_AuthorizationCode() {
-	handler, err := suite.provider.GetGrantHandler(constants.GrantTypeAuthorizationCode)
+	handler, err := suite.provider.GetGrantHandler(providers.GrantTypeAuthorizationCode)
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), handler)
@@ -117,7 +118,7 @@ func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_AuthorizationCod
 }
 
 func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_RefreshToken() {
-	handler, err := suite.provider.GetGrantHandler(constants.GrantTypeRefreshToken)
+	handler, err := suite.provider.GetGrantHandler(providers.GrantTypeRefreshToken)
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), handler)
@@ -126,7 +127,7 @@ func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_RefreshToken() {
 }
 
 func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_CIBA() {
-	handler, err := suite.provider.GetGrantHandler(constants.GrantTypeCIBA)
+	handler, err := suite.provider.GetGrantHandler(providers.GrantTypeCIBA)
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), handler)
@@ -136,10 +137,10 @@ func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_CIBA() {
 func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_UnsupportedGrantType() {
 	unsupportedGrantTypes := []struct {
 		name      string
-		grantType constants.GrantType
+		grantType providers.GrantType
 	}{
-		{"InvalidType", constants.GrantType("invalid_type")},
-		{"EmptyType", constants.GrantType("")},
+		{"InvalidType", providers.GrantType("invalid_type")},
+		{"EmptyType", providers.GrantType("")},
 	}
 
 	for _, tc := range unsupportedGrantTypes {
@@ -154,11 +155,11 @@ func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_UnsupportedGrant
 }
 
 func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_AllSupportedTypes() {
-	supportedTypes := []constants.GrantType{
-		constants.GrantTypeClientCredentials,
-		constants.GrantTypeAuthorizationCode,
-		constants.GrantTypeRefreshToken,
-		constants.GrantTypeCIBA,
+	supportedTypes := []providers.GrantType{
+		providers.GrantTypeClientCredentials,
+		providers.GrantTypeAuthorizationCode,
+		providers.GrantTypeRefreshToken,
+		providers.GrantTypeCIBA,
 	}
 
 	for _, grantType := range supportedTypes {

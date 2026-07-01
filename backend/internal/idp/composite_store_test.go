@@ -24,6 +24,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type CompositeIDPStoreTestSuite struct {
@@ -50,11 +52,11 @@ func (s *CompositeIDPStoreTestSuite) SetupTest() {
 
 // TestCreateIdentityProvider_CreatesInDBStoreOnly verifies that Create only goes to DB store
 func (s *CompositeIDPStoreTestSuite) TestCreateIdentityProvider_CreatesInDBStoreOnly() {
-	idp := IDPDTO{
+	idp := providers.IDPDTO{
 		ID:          "test-id",
 		Name:        compositeStoreTestIDPName,
 		Description: "Test Description",
-		Type:        IDPTypeOIDC,
+		Type:        providers.IDPTypeOIDC,
 	}
 
 	s.dbStore.On("CreateIdentityProvider", context.Background(), idp).Return(nil)
@@ -69,10 +71,10 @@ func (s *CompositeIDPStoreTestSuite) TestCreateIdentityProvider_CreatesInDBStore
 // TestGetIdentityProvider_ReturnsFromDBFirst verifies DB store is queried first
 func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvider_ReturnsFromDBFirst() {
 	idpID := compositeStoreTestIDPID
-	dbIDP := &IDPDTO{
+	dbIDP := &providers.IDPDTO{
 		ID:   idpID,
 		Name: "DB IDP",
-		Type: IDPTypeOIDC,
+		Type: providers.IDPTypeOIDC,
 	}
 
 	s.dbStore.On("GetIdentityProvider", context.Background(), idpID).Return(dbIDP, nil)
@@ -89,13 +91,13 @@ func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvider_ReturnsFromDBFirst(
 // TestGetIdentityProvider_FallsBackToFileStore verifies fallback when DB store fails
 func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvider_FallsBackToFileStore() {
 	idpID := compositeStoreTestIDPID
-	fileIDP := &IDPDTO{
+	fileIDP := &providers.IDPDTO{
 		ID:   idpID,
 		Name: "File IDP",
-		Type: IDPTypeOIDC,
+		Type: providers.IDPTypeOIDC,
 	}
 
-	s.dbStore.On("GetIdentityProvider", context.Background(), idpID).Return((*IDPDTO)(nil), ErrIDPNotFound)
+	s.dbStore.On("GetIdentityProvider", context.Background(), idpID).Return((*providers.IDPDTO)(nil), ErrIDPNotFound)
 	s.fileStore.On("GetIdentityProvider", context.Background(), idpID).Return(fileIDP, nil)
 
 	result, err := s.compositeStore.GetIdentityProvider(context.Background(), idpID)
@@ -110,8 +112,8 @@ func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvider_FallsBackToFileStor
 func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvider_ReturnsErrorWhenNotInBothStores() {
 	idpID := compositeStoreTestIDPID
 
-	s.dbStore.On("GetIdentityProvider", context.Background(), idpID).Return((*IDPDTO)(nil), ErrIDPNotFound)
-	s.fileStore.On("GetIdentityProvider", context.Background(), idpID).Return((*IDPDTO)(nil), ErrIDPNotFound)
+	s.dbStore.On("GetIdentityProvider", context.Background(), idpID).Return((*providers.IDPDTO)(nil), ErrIDPNotFound)
+	s.fileStore.On("GetIdentityProvider", context.Background(), idpID).Return((*providers.IDPDTO)(nil), ErrIDPNotFound)
 
 	result, err := s.compositeStore.GetIdentityProvider(context.Background(), idpID)
 
@@ -123,10 +125,10 @@ func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvider_ReturnsErrorWhenNot
 // TestGetIdentityProviderByName_ReturnsFromDBFirst verifies DB store is queried first for name lookup
 func (s *CompositeIDPStoreTestSuite) TestGetIdentityProviderByName_ReturnsFromDBFirst() {
 	idpName := compositeStoreTestIDPName
-	dbIDP := &IDPDTO{
+	dbIDP := &providers.IDPDTO{
 		ID:   "db-123",
 		Name: idpName,
-		Type: IDPTypeOIDC,
+		Type: providers.IDPTypeOIDC,
 	}
 
 	s.dbStore.On("GetIdentityProviderByName", context.Background(), idpName).Return(dbIDP, nil)
@@ -142,13 +144,14 @@ func (s *CompositeIDPStoreTestSuite) TestGetIdentityProviderByName_ReturnsFromDB
 // TestGetIdentityProviderByName_FallsBackToFileStore verifies fallback for name lookup
 func (s *CompositeIDPStoreTestSuite) TestGetIdentityProviderByName_FallsBackToFileStore() {
 	idpName := compositeStoreTestIDPName
-	fileIDP := &IDPDTO{
+	fileIDP := &providers.IDPDTO{
 		ID:   "file-123",
 		Name: idpName,
-		Type: IDPTypeOIDC,
+		Type: providers.IDPTypeOIDC,
 	}
 
-	s.dbStore.On("GetIdentityProviderByName", context.Background(), idpName).Return((*IDPDTO)(nil), ErrIDPNotFound)
+	s.dbStore.On("GetIdentityProviderByName", context.Background(), idpName).
+		Return((*providers.IDPDTO)(nil), ErrIDPNotFound)
 	s.fileStore.On("GetIdentityProviderByName", context.Background(), idpName).Return(fileIDP, nil)
 
 	result, err := s.compositeStore.GetIdentityProviderByName(context.Background(), idpName)
@@ -160,12 +163,12 @@ func (s *CompositeIDPStoreTestSuite) TestGetIdentityProviderByName_FallsBackToFi
 // TestGetIdentityProviderList_MergesAndDeduplicates verifies list merging from both stores
 func (s *CompositeIDPStoreTestSuite) TestGetIdentityProviderList_MergesAndDeduplicates() {
 	dbIDPs := []BasicIDPDTO{
-		{ID: "db-1", Name: "DB IDP 1", Type: IDPTypeOIDC},
-		{ID: "db-2", Name: "DB IDP 2", Type: IDPTypeOIDC},
+		{ID: "db-1", Name: "DB IDP 1", Type: providers.IDPTypeOIDC},
+		{ID: "db-2", Name: "DB IDP 2", Type: providers.IDPTypeOIDC},
 	}
 	fileIDPs := []BasicIDPDTO{
-		{ID: "file-1", Name: "File IDP 1", Type: IDPTypeOIDC},
-		{ID: "file-2", Name: "File IDP 2", Type: IDPTypeOIDC},
+		{ID: "file-1", Name: "File IDP 1", Type: providers.IDPTypeOIDC},
+		{ID: "file-2", Name: "File IDP 2", Type: providers.IDPTypeOIDC},
 	}
 
 	s.dbStore.On("GetIdentityProviderListCount", context.Background()).Return(len(dbIDPs), nil)
@@ -204,12 +207,12 @@ func (s *CompositeIDPStoreTestSuite) TestGetIdentityProviderList_MergesAndDedupl
 // TestGetIdentityProviderList_DeduplicatesOnIDConflict verifies deduplication of IDs
 func (s *CompositeIDPStoreTestSuite) TestGetIdentityProviderList_DeduplicatesOnIDConflict() {
 	dbIDPs := []BasicIDPDTO{
-		{ID: "shared-id", Name: "DB IDP", Type: IDPTypeOIDC},
-		{ID: "db-2", Name: "DB IDP 2", Type: IDPTypeOIDC},
+		{ID: "shared-id", Name: "DB IDP", Type: providers.IDPTypeOIDC},
+		{ID: "db-2", Name: "DB IDP 2", Type: providers.IDPTypeOIDC},
 	}
 	fileIDPs := []BasicIDPDTO{
-		{ID: "shared-id", Name: "File IDP", Type: IDPTypeOIDC},
-		{ID: "file-2", Name: "File IDP 2", Type: IDPTypeOIDC},
+		{ID: "shared-id", Name: "File IDP", Type: providers.IDPTypeOIDC},
+		{ID: "file-2", Name: "File IDP 2", Type: providers.IDPTypeOIDC},
 	}
 
 	s.dbStore.On("GetIdentityProviderListCount", context.Background()).Return(len(dbIDPs), nil)
@@ -273,7 +276,7 @@ func (s *CompositeIDPStoreTestSuite) TestGetIdentityProviderList_HandlesDBStoreE
 // TestGetIdentityProviderList_HandlesFileStoreError verifies error handling
 func (s *CompositeIDPStoreTestSuite) TestGetIdentityProviderList_HandlesFileStoreError() {
 	dbIDPs := []BasicIDPDTO{
-		{ID: "db-1", Name: "DB IDP 1", Type: IDPTypeOIDC},
+		{ID: "db-1", Name: "DB IDP 1", Type: providers.IDPTypeOIDC},
 	}
 	s.dbStore.On("GetIdentityProviderListCount", context.Background()).Return(len(dbIDPs), nil)
 	s.fileStore.On("GetIdentityProviderListCount", context.Background()).Return(1, nil)
@@ -288,15 +291,15 @@ func (s *CompositeIDPStoreTestSuite) TestGetIdentityProviderList_HandlesFileStor
 
 // TestUpdateIdentityProvider_UpdatesInDBStoreOnly verifies Update only goes to DB store
 func (s *CompositeIDPStoreTestSuite) TestUpdateIdentityProvider_UpdatesInDBStoreOnly() {
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		ID:          "idp-123",
 		Name:        "Updated IDP",
 		Description: "Updated Description",
-		Type:        IDPTypeOIDC,
+		Type:        providers.IDPTypeOIDC,
 	}
 
 	// Mock fileStore check for immutability (should not find it)
-	s.fileStore.On("GetIdentityProvider", context.Background(), idp.ID).Return((*IDPDTO)(nil), ErrIDPNotFound)
+	s.fileStore.On("GetIdentityProvider", context.Background(), idp.ID).Return((*providers.IDPDTO)(nil), ErrIDPNotFound)
 	s.dbStore.On("UpdateIdentityProvider", context.Background(), idp).Return(nil)
 
 	err := s.compositeStore.UpdateIdentityProvider(context.Background(), idp)
@@ -312,7 +315,7 @@ func (s *CompositeIDPStoreTestSuite) TestDeleteIdentityProvider_DeletesFromDBSto
 	idpID := "idp-123"
 
 	// Mock fileStore check for immutability (should not find it)
-	s.fileStore.On("GetIdentityProvider", context.Background(), idpID).Return((*IDPDTO)(nil), ErrIDPNotFound)
+	s.fileStore.On("GetIdentityProvider", context.Background(), idpID).Return((*providers.IDPDTO)(nil), ErrIDPNotFound)
 	s.dbStore.On("DeleteIdentityProvider", context.Background(), idpID).Return(nil)
 
 	err := s.compositeStore.DeleteIdentityProvider(context.Background(), idpID)
@@ -326,10 +329,10 @@ func (s *CompositeIDPStoreTestSuite) TestDeleteIdentityProvider_DeletesFromDBSto
 // TestMergeAndDeduplicateIDPs_CorrectlyMarksReadOnlyFlags verifies read-only flag assignment
 func (s *CompositeIDPStoreTestSuite) TestMergeAndDeduplicateIDPs_CorrectlyMarksReadOnlyFlags() {
 	dbIDPs := []BasicIDPDTO{
-		{ID: "db-1", Name: "DB IDP", Type: IDPTypeOIDC},
+		{ID: "db-1", Name: "DB IDP", Type: providers.IDPTypeOIDC},
 	}
 	fileIDPs := []BasicIDPDTO{
-		{ID: "file-1", Name: "File IDP", Type: IDPTypeOIDC},
+		{ID: "file-1", Name: "File IDP", Type: providers.IDPTypeOIDC},
 	}
 
 	result := mergeAndDeduplicateIDPs(dbIDPs, fileIDPs)
@@ -350,10 +353,10 @@ func (s *CompositeIDPStoreTestSuite) TestMergeAndDeduplicateIDPs_CorrectlyMarksR
 // TestMergeAndDeduplicateIDPs_PreservesDuplicatesPreference verifies DB precedence over file
 func (s *CompositeIDPStoreTestSuite) TestMergeAndDeduplicateIDPs_PreservesDuplicatesPreference() {
 	dbIDPs := []BasicIDPDTO{
-		{ID: "shared", Name: "DB Name", Type: IDPTypeOIDC},
+		{ID: "shared", Name: "DB Name", Type: providers.IDPTypeOIDC},
 	}
 	fileIDPs := []BasicIDPDTO{
-		{ID: "shared", Name: "File Name", Type: IDPTypeOIDC},
+		{ID: "shared", Name: "File Name", Type: providers.IDPTypeOIDC},
 	}
 
 	result := mergeAndDeduplicateIDPs(dbIDPs, fileIDPs)
@@ -397,12 +400,12 @@ func (s *CompositeIDPStoreTestSuite) TestGetIdentityProviderListCount_ReturnsErr
 // --- GetIdentityProvidersByProperty tests ---
 
 func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_DBReturnsResultsFileNotFound() {
-	dbIDPs := []IDPDTO{{ID: "db-1", Name: "DB IDP", Type: IDPTypeOIDC}}
+	dbIDPs := []providers.IDPDTO{{ID: "db-1", Name: "DB IDP", Type: providers.IDPTypeOIDC}}
 
 	s.dbStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
 		Return(dbIDPs, nil)
 	s.fileStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
-		Return([]IDPDTO(nil), ErrIDPNotFound)
+		Return([]providers.IDPDTO(nil), ErrIDPNotFound)
 
 	result, err := s.compositeStore.GetIdentityProvidersByProperty(
 		context.Background(), "issuer", "https://example.com")
@@ -413,10 +416,10 @@ func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_DBReturn
 }
 
 func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_DBNotFoundFileReturnsResults() {
-	fileIDPs := []IDPDTO{{ID: "file-1", Name: "File IDP", Type: IDPTypeOIDC}}
+	fileIDPs := []providers.IDPDTO{{ID: "file-1", Name: "File IDP", Type: providers.IDPTypeOIDC}}
 
 	s.dbStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
-		Return([]IDPDTO(nil), ErrIDPNotFound)
+		Return([]providers.IDPDTO(nil), ErrIDPNotFound)
 	s.fileStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
 		Return(fileIDPs, nil)
 
@@ -429,8 +432,8 @@ func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_DBNotFou
 }
 
 func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_BothReturnResults() {
-	dbIDPs := []IDPDTO{{ID: "db-1", Name: "DB IDP", Type: IDPTypeOIDC}}
-	fileIDPs := []IDPDTO{{ID: "file-1", Name: "File IDP", Type: IDPTypeOIDC}}
+	dbIDPs := []providers.IDPDTO{{ID: "db-1", Name: "DB IDP", Type: providers.IDPTypeOIDC}}
+	fileIDPs := []providers.IDPDTO{{ID: "file-1", Name: "File IDP", Type: providers.IDPTypeOIDC}}
 
 	s.dbStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
 		Return(dbIDPs, nil)
@@ -446,9 +449,9 @@ func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_BothRetu
 
 func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_BothNotFound() {
 	s.dbStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
-		Return([]IDPDTO(nil), ErrIDPNotFound)
+		Return([]providers.IDPDTO(nil), ErrIDPNotFound)
 	s.fileStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
-		Return([]IDPDTO(nil), ErrIDPNotFound)
+		Return([]providers.IDPDTO(nil), ErrIDPNotFound)
 
 	result, err := s.compositeStore.GetIdentityProvidersByProperty(
 		context.Background(), "issuer", "https://example.com")
@@ -459,7 +462,7 @@ func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_BothNotF
 
 func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_DBReturnsNonNotFoundError() {
 	s.dbStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
-		Return([]IDPDTO(nil), errors.New("db connection error"))
+		Return([]providers.IDPDTO(nil), errors.New("db connection error"))
 
 	result, err := s.compositeStore.GetIdentityProvidersByProperty(
 		context.Background(), "issuer", "https://example.com")
@@ -470,11 +473,11 @@ func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_DBReturn
 }
 
 func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_FileReturnsNonNotFoundError() {
-	dbIDPs := []IDPDTO{{ID: "db-1", Name: "DB IDP", Type: IDPTypeOIDC}}
+	dbIDPs := []providers.IDPDTO{{ID: "db-1", Name: "DB IDP", Type: providers.IDPTypeOIDC}}
 	s.dbStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
 		Return(dbIDPs, nil)
 	s.fileStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
-		Return([]IDPDTO(nil), errors.New("file read error"))
+		Return([]providers.IDPDTO(nil), errors.New("file read error"))
 
 	result, err := s.compositeStore.GetIdentityProvidersByProperty(
 		context.Background(), "issuer", "https://example.com")

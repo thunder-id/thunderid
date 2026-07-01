@@ -28,14 +28,15 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/cachemock"
 )
 
 type CacheBackedIDPStoreTestSuite struct {
 	suite.Suite
 	mockInner     *idpStoreInterfaceMock
-	idCache       *cachemock.CacheInterfaceMock[*IDPDTO]
-	propertyCache *cachemock.CacheInterfaceMock[[]IDPDTO]
+	idCache       *cachemock.CacheInterfaceMock[*providers.IDPDTO]
+	propertyCache *cachemock.CacheInterfaceMock[[]providers.IDPDTO]
 	cachedStore   *cacheBackedIDPStore
 }
 
@@ -45,8 +46,8 @@ func TestCacheBackedIDPStoreTestSuite(t *testing.T) {
 
 func (s *CacheBackedIDPStoreTestSuite) SetupTest() {
 	s.mockInner = newIdpStoreInterfaceMock(s.T())
-	s.idCache = cachemock.NewCacheInterfaceMock[*IDPDTO](s.T())
-	s.propertyCache = cachemock.NewCacheInterfaceMock[[]IDPDTO](s.T())
+	s.idCache = cachemock.NewCacheInterfaceMock[*providers.IDPDTO](s.T())
+	s.propertyCache = cachemock.NewCacheInterfaceMock[[]providers.IDPDTO](s.T())
 	s.cachedStore = &cacheBackedIDPStore{
 		idpByIDCache:       s.idCache,
 		idpByPropertyCache: s.propertyCache,
@@ -54,12 +55,12 @@ func (s *CacheBackedIDPStoreTestSuite) SetupTest() {
 	}
 }
 
-func makeIDPWithIssuer(id, name, issuer string) *IDPDTO {
+func makeIDPWithIssuer(id, name, issuer string) *providers.IDPDTO {
 	prop, _ := cmodels.NewProperty(PropIssuer, issuer, false)
-	return &IDPDTO{
+	return &providers.IDPDTO{
 		ID:         id,
 		Name:       name,
-		Type:       IDPTypeOIDC,
+		Type:       providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{*prop},
 	}
 }
@@ -79,7 +80,7 @@ func (s *CacheBackedIDPStoreTestSuite) TestGetIdentityProvider_CacheHit() {
 // TestGetIdentityProvider_CacheMiss tests a cache miss delegates to inner and populates the ID cache.
 func (s *CacheBackedIDPStoreTestSuite) TestGetIdentityProvider_CacheMiss() {
 	idp := makeIDPWithIssuer("idp-1", "IDP 1", "https://idp.example.com")
-	s.idCache.On("Get", mock.Anything, cache.CacheKey{Key: "idp-1"}).Return((*IDPDTO)(nil), false)
+	s.idCache.On("Get", mock.Anything, cache.CacheKey{Key: "idp-1"}).Return((*providers.IDPDTO)(nil), false)
 	s.mockInner.On("GetIdentityProvider", mock.Anything, "idp-1").Return(idp, nil)
 	s.idCache.On("Set", mock.Anything, cache.CacheKey{Key: "idp-1"}, idp).Return(nil)
 
@@ -94,7 +95,7 @@ func (s *CacheBackedIDPStoreTestSuite) TestGetIdentityProvider_CacheMiss() {
 // TestGetIdentityProvidersByProperty_CacheHit tests that a property cache hit returns without hitting inner store.
 func (s *CacheBackedIDPStoreTestSuite) TestGetIdentityProvidersByProperty_CacheHit() {
 	idp := makeIDPWithIssuer("idp-1", "IDP 1", "https://idp.example.com")
-	cached := []IDPDTO{*idp}
+	cached := []providers.IDPDTO{*idp}
 	s.propertyCache.On("Get", mock.Anything, cache.CacheKey{Key: "issuer:https://idp.example.com"}).
 		Return(cached, true)
 
@@ -109,7 +110,7 @@ func (s *CacheBackedIDPStoreTestSuite) TestGetIdentityProvidersByProperty_CacheH
 // TestGetIdentityProvidersByProperty_AbsenceCacheHit tests a nil-value cache hit returns ErrIDPNotFound.
 func (s *CacheBackedIDPStoreTestSuite) TestGetIdentityProvidersByProperty_AbsenceCacheHit() {
 	s.propertyCache.On("Get", mock.Anything, cache.CacheKey{Key: "issuer:https://idp.example.com"}).
-		Return([]IDPDTO(nil), true)
+		Return([]providers.IDPDTO(nil), true)
 
 	result, err := s.cachedStore.GetIdentityProvidersByProperty(
 		context.Background(), "issuer", "https://idp.example.com")
@@ -122,9 +123,9 @@ func (s *CacheBackedIDPStoreTestSuite) TestGetIdentityProvidersByProperty_Absenc
 // TestGetIdentityProvidersByProperty_CacheMiss tests a cache miss delegates to inner and populates cache.
 func (s *CacheBackedIDPStoreTestSuite) TestGetIdentityProvidersByProperty_CacheMiss() {
 	idp := makeIDPWithIssuer("idp-1", "IDP 1", "https://idp.example.com")
-	idps := []IDPDTO{*idp}
+	idps := []providers.IDPDTO{*idp}
 	s.propertyCache.On("Get", mock.Anything, cache.CacheKey{Key: "issuer:https://idp.example.com"}).
-		Return([]IDPDTO(nil), false)
+		Return([]providers.IDPDTO(nil), false)
 	s.mockInner.On("GetIdentityProvidersByProperty", mock.Anything, "issuer", "https://idp.example.com").
 		Return(idps, nil)
 	s.propertyCache.On("Set", mock.Anything, cache.CacheKey{Key: "issuer:https://idp.example.com"}, idps).
@@ -141,11 +142,11 @@ func (s *CacheBackedIDPStoreTestSuite) TestGetIdentityProvidersByProperty_CacheM
 // TestGetIdentityProvidersByProperty_CachesAbsenceOnNotFound tests that ErrIDPNotFound is cached as nil.
 func (s *CacheBackedIDPStoreTestSuite) TestGetIdentityProvidersByProperty_CachesAbsenceOnNotFound() {
 	s.propertyCache.On("Get", mock.Anything, cache.CacheKey{Key: "issuer:https://unknown.example.com"}).
-		Return([]IDPDTO(nil), false)
+		Return([]providers.IDPDTO(nil), false)
 	s.mockInner.On("GetIdentityProvidersByProperty", mock.Anything, "issuer", "https://unknown.example.com").
-		Return([]IDPDTO(nil), ErrIDPNotFound)
+		Return([]providers.IDPDTO(nil), ErrIDPNotFound)
 	s.propertyCache.On("Set", mock.Anything, cache.CacheKey{Key: "issuer:https://unknown.example.com"},
-		[]IDPDTO(nil)).Return(nil)
+		[]providers.IDPDTO(nil)).Return(nil)
 
 	result, err := s.cachedStore.GetIdentityProvidersByProperty(
 		context.Background(), "issuer", "https://unknown.example.com")
@@ -157,7 +158,7 @@ func (s *CacheBackedIDPStoreTestSuite) TestGetIdentityProvidersByProperty_Caches
 
 // TestCreateIdentityProvider_CachesResult tests create delegates to inner and caches the result.
 func (s *CacheBackedIDPStoreTestSuite) TestCreateIdentityProvider_CachesResult() {
-	idp := IDPDTO{ID: "idp-1", Name: "IDP 1", Type: IDPTypeOIDC}
+	idp := providers.IDPDTO{ID: "idp-1", Name: "IDP 1", Type: providers.IDPTypeOIDC}
 	s.mockInner.On("CreateIdentityProvider", mock.Anything, idp).Return(nil)
 	s.idCache.On("Set", mock.Anything, cache.CacheKey{Key: "idp-1"}, &idp).Return(nil)
 
@@ -174,11 +175,11 @@ func (s *CacheBackedIDPStoreTestSuite) TestUpdateIdentityProvider_InvalidatesOld
 	newIssuer := "https://new.example.com"
 
 	oldProp, _ := cmodels.NewProperty(PropIssuer, oldIssuer, false)
-	oldIDP := &IDPDTO{ID: "idp-1", Name: "Old IDP", Type: IDPTypeOIDC,
+	oldIDP := &providers.IDPDTO{ID: "idp-1", Name: "Old IDP", Type: providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{*oldProp}}
 
 	newProp, _ := cmodels.NewProperty(PropIssuer, newIssuer, false)
-	newIDP := &IDPDTO{ID: "idp-1", Name: "Updated IDP", Type: IDPTypeOIDC,
+	newIDP := &providers.IDPDTO{ID: "idp-1", Name: "Updated IDP", Type: providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{*newProp}}
 
 	s.mockInner.On("GetIdentityProvider", mock.Anything, "idp-1").Return(oldIDP, nil)
@@ -215,7 +216,7 @@ func (s *CacheBackedIDPStoreTestSuite) TestDeleteIdentityProvider_InvalidatesCac
 
 // TestDeleteIdentityProvider_StillDeletesWhenNotFound tests delete succeeds when inner store has no record.
 func (s *CacheBackedIDPStoreTestSuite) TestDeleteIdentityProvider_StillDeletesWhenNotFound() {
-	s.mockInner.On("GetIdentityProvider", mock.Anything, "idp-1").Return((*IDPDTO)(nil), ErrIDPNotFound)
+	s.mockInner.On("GetIdentityProvider", mock.Anything, "idp-1").Return((*providers.IDPDTO)(nil), ErrIDPNotFound)
 	s.mockInner.On("DeleteIdentityProvider", mock.Anything, "idp-1").Return(nil)
 
 	err := s.cachedStore.DeleteIdentityProvider(context.Background(), "idp-1")
@@ -264,9 +265,9 @@ func (s *CacheBackedIDPStoreTestSuite) TestGetIdentityProviderListCount_NoCachin
 // TestGetIdentityProvidersByProperty_InnerStoreError tests that a non-NotFound error is propagated.
 func (s *CacheBackedIDPStoreTestSuite) TestGetIdentityProvidersByProperty_InnerStoreError() {
 	s.propertyCache.On("Get", mock.Anything, cache.CacheKey{Key: "issuer:https://idp.example.com"}).
-		Return([]IDPDTO(nil), false)
+		Return([]providers.IDPDTO(nil), false)
 	s.mockInner.On("GetIdentityProvidersByProperty", mock.Anything, "issuer", "https://idp.example.com").
-		Return([]IDPDTO(nil), errors.New("db error"))
+		Return([]providers.IDPDTO(nil), errors.New("db error"))
 
 	result, err := s.cachedStore.GetIdentityProvidersByProperty(
 		context.Background(), "issuer", "https://idp.example.com")
@@ -282,7 +283,7 @@ func (s *CacheBackedIDPStoreTestSuite) TestGetIdentityProvidersByProperty_InnerS
 func (s *CacheBackedIDPStoreTestSuite) TestGetIdentityProvidersByProperty_NonCacheableKeyBypassesCache() {
 	idp := makeIDPWithIssuer("idp-1", "IDP 1", "https://idp.example.com")
 	s.mockInner.On("GetIdentityProvidersByProperty", mock.Anything, "client_id", "some-client").
-		Return([]IDPDTO{*idp}, nil)
+		Return([]providers.IDPDTO{*idp}, nil)
 
 	result, err := s.cachedStore.GetIdentityProvidersByProperty(context.Background(), "client_id", "some-client")
 
@@ -301,7 +302,7 @@ func (s *CacheBackedIDPStoreTestSuite) TestCacheIDP_NilIDP() {
 }
 
 func (s *CacheBackedIDPStoreTestSuite) TestCacheIDP_EmptyID() {
-	idp := &IDPDTO{ID: "", Name: "No ID", Type: IDPTypeOIDC}
+	idp := &providers.IDPDTO{ID: "", Name: "No ID", Type: providers.IDPTypeOIDC}
 	s.cachedStore.cacheIDP(context.Background(), idp)
 	s.idCache.AssertNotCalled(s.T(), "Set")
 }
@@ -316,10 +317,10 @@ func (s *CacheBackedIDPStoreTestSuite) TestInvalidateIDP_NilIDP() {
 
 func (s *CacheBackedIDPStoreTestSuite) TestInvalidateIDP_PropertyWithEmptyValue() {
 	prop, _ := cmodels.NewProperty("empty_prop", "", false)
-	idp := &IDPDTO{
+	idp := &providers.IDPDTO{
 		ID:         "idp-empty-prop",
 		Name:       "IDP Empty Prop",
-		Type:       IDPTypeOIDC,
+		Type:       providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{*prop},
 	}
 
@@ -334,7 +335,7 @@ func (s *CacheBackedIDPStoreTestSuite) TestInvalidateIDP_PropertyWithEmptyValue(
 // --- CreateIdentityProvider error branch ---
 
 func (s *CacheBackedIDPStoreTestSuite) TestCreateIdentityProvider_InnerStoreError() {
-	idp := IDPDTO{ID: "idp-fail", Name: "Fail IDP", Type: IDPTypeOIDC}
+	idp := providers.IDPDTO{ID: "idp-fail", Name: "Fail IDP", Type: providers.IDPTypeOIDC}
 	s.mockInner.On("CreateIdentityProvider", mock.Anything, idp).Return(errors.New("create failed"))
 
 	err := s.cachedStore.CreateIdentityProvider(context.Background(), idp)
@@ -346,9 +347,9 @@ func (s *CacheBackedIDPStoreTestSuite) TestCreateIdentityProvider_InnerStoreErro
 // --- UpdateIdentityProvider error branches ---
 
 func (s *CacheBackedIDPStoreTestSuite) TestUpdateIdentityProvider_InnerGetError() {
-	idp := &IDPDTO{ID: "idp-1", Name: "Updated", Type: IDPTypeOIDC}
+	idp := &providers.IDPDTO{ID: "idp-1", Name: "Updated", Type: providers.IDPTypeOIDC}
 	s.mockInner.On("GetIdentityProvider", mock.Anything, "idp-1").
-		Return((*IDPDTO)(nil), errors.New("get failed"))
+		Return((*providers.IDPDTO)(nil), errors.New("get failed"))
 
 	err := s.cachedStore.UpdateIdentityProvider(context.Background(), idp)
 
@@ -360,10 +361,10 @@ func (s *CacheBackedIDPStoreTestSuite) TestUpdateIdentityProvider_InnerGetError(
 
 func (s *CacheBackedIDPStoreTestSuite) TestUpdateIdentityProvider_InnerUpdateError() {
 	oldProp, _ := cmodels.NewProperty(PropIssuer, "https://old.example.com", false)
-	oldIDP := &IDPDTO{ID: "idp-1", Name: "Old", Type: IDPTypeOIDC,
+	oldIDP := &providers.IDPDTO{ID: "idp-1", Name: "Old", Type: providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{*oldProp}}
 
-	newIDP := &IDPDTO{ID: "idp-1", Name: "New", Type: IDPTypeOIDC}
+	newIDP := &providers.IDPDTO{ID: "idp-1", Name: "New", Type: providers.IDPTypeOIDC}
 
 	s.mockInner.On("GetIdentityProvider", mock.Anything, "idp-1").Return(oldIDP, nil)
 	s.mockInner.On("UpdateIdentityProvider", mock.Anything, newIDP).Return(errors.New("update failed"))
@@ -379,7 +380,7 @@ func (s *CacheBackedIDPStoreTestSuite) TestUpdateIdentityProvider_InnerUpdateErr
 
 func (s *CacheBackedIDPStoreTestSuite) TestDeleteIdentityProvider_InnerGetGenericError() {
 	s.mockInner.On("GetIdentityProvider", mock.Anything, "idp-1").
-		Return((*IDPDTO)(nil), errors.New("connection refused"))
+		Return((*providers.IDPDTO)(nil), errors.New("connection refused"))
 
 	err := s.cachedStore.DeleteIdentityProvider(context.Background(), "idp-1")
 
@@ -400,7 +401,7 @@ func (s *CacheBackedIDPStoreTestSuite) TestDeleteIdentityProvider_InnerDeleteErr
 }
 
 func (s *CacheBackedIDPStoreTestSuite) TestCacheIDP_SetError() {
-	idp := &IDPDTO{ID: "idp-set-err", Name: "Set Err IDP", Type: IDPTypeOIDC}
+	idp := &providers.IDPDTO{ID: "idp-set-err", Name: "Set Err IDP", Type: providers.IDPTypeOIDC}
 
 	s.idCache.On("Set", mock.Anything, cache.CacheKey{Key: "idp-set-err"}, idp).
 		Return(errors.New("cache set failed"))

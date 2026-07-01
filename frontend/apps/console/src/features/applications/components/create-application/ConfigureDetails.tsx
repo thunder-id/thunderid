@@ -31,14 +31,17 @@ import {
   FormLabel,
   Autocomplete,
   Chip,
+  MenuItem,
+  Select,
 } from '@wso2/oxygen-ui';
 import {Globe} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
-import {useEffect} from 'react';
+import {useEffect, useState} from 'react';
 import {useForm, Controller, useWatch} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import {z} from 'zod';
 import {AuthenticatorTypes} from '../../../integrations/models/authenticators';
+import {CUSTOM_WALLET_VENDOR, WALLET_VENDORS} from '../../constants/wallet-vendors';
 import useApplicationCreate from '../../contexts/ApplicationCreate/useApplicationCreate';
 import {ApplicationCreateFlowConfiguration} from '../../models/application-create-flow';
 import type {PlatformApplicationTemplate, TechnologyApplicationTemplate} from '../../models/application-templates';
@@ -177,6 +180,11 @@ export interface ConfigureDetailsProps {
   onCallbackUrlChange: (url: string) => void;
 
   /**
+   * Callback invoked when the wallet client id changes (wallet template only).
+   */
+  onClientIdChange?: (clientId: string) => void;
+
+  /**
    * Callback function to notify parent component whether this step is ready to proceed
    */
   onReadyChange: (isReady: boolean) => void;
@@ -265,6 +273,7 @@ export interface ConfigureDetailsProps {
 export default function ConfigureDetails({
   onHostingUrlChange,
   onCallbackUrlChange,
+  onClientIdChange = () => null,
   onReadyChange,
   userTypes = [],
   selectedUserTypes = [],
@@ -304,6 +313,33 @@ export default function ConfigureDetails({
 
   const configurationType: ApplicationCreateFlowConfiguration =
     getConfigurationTypeFromTemplate(selectedTemplateConfig);
+
+  const isWallet: boolean = selectedTemplateConfig?.id === 'wallet';
+  const [walletVendor, setWalletVendor] = useState<string>(CUSTOM_WALLET_VENDOR);
+  const [customClientId, setCustomClientId] = useState<string>('');
+  const isWalletCustom: boolean = walletVendor === CUSTOM_WALLET_VENDOR;
+  const selectedVendor = WALLET_VENDORS.find((v) => v.id === walletVendor);
+
+  // Known wallets present a fixed client id + redirect URI, so selecting one
+  // prefills both; "Custom" lets the admin enter them for any other wallet.
+  const applyVendor = (vendorId: string): void => {
+    setWalletVendor(vendorId);
+    if (vendorId === CUSTOM_WALLET_VENDOR) {
+      onClientIdChange(customClientId.trim());
+      setValue('deeplink', '', {shouldValidate: true});
+      return;
+    }
+    const vendor = WALLET_VENDORS.find((v) => v.id === vendorId);
+    onClientIdChange(vendor?.clientId ?? '');
+    setValue('deeplink', vendor?.redirectUri ?? '', {shouldValidate: true});
+  };
+
+  const applyCustomClientId = (value: string): void => {
+    setCustomClientId(value);
+    if (walletVendor === CUSTOM_WALLET_VENDOR) {
+      onClientIdChange(value.trim());
+    }
+  };
 
   const hostingUrl: string = useWatch({control, name: 'hostingUrl'}) ?? '';
   const callbackUrl: string = useWatch({control, name: 'callbackUrl'}) ?? '';
@@ -515,32 +551,111 @@ export default function ConfigureDetails({
           </FormControl>
         )}
 
-      {/* Mobile platform - Deep link / Universal link configuration */}
+      {/* Mobile / wallet platform - Deep link / Universal link configuration */}
       {configurationType === ApplicationCreateFlowConfiguration.DEEPLINK && (
         <>
-          <FormControl fullWidth required>
-            <FormLabel htmlFor="deeplink-input">
-              {t('applications:onboarding.configure.details.deeplink.label')}
-            </FormLabel>
-            <Controller
-              name="deeplink"
-              control={control}
-              render={({field}) => (
-                <TextField
-                  {...field}
-                  fullWidth
-                  id="deeplink-input"
-                  placeholder={t('applications:onboarding.configure.details.deeplink.placeholder')}
-                  error={!!errors.deeplink}
-                  helperText={
-                    errors.deeplink?.message ?? t('applications:onboarding.configure.details.deeplink.helperText')
-                  }
+          {/* Mobile (non-wallet): the admin enters the app's deep link directly. */}
+          {!isWallet && (
+            <>
+              <FormControl fullWidth required>
+                <FormLabel htmlFor="deeplink-input">
+                  {t('applications:onboarding.configure.details.deeplink.label')}
+                </FormLabel>
+                <Controller
+                  name="deeplink"
+                  control={control}
+                  render={({field}) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      id="deeplink-input"
+                      placeholder={t('applications:onboarding.configure.details.deeplink.placeholder')}
+                      error={!!errors.deeplink}
+                      helperText={
+                        errors.deeplink?.message ?? t('applications:onboarding.configure.details.deeplink.helperText')
+                      }
+                    />
+                  )}
                 />
-              )}
-            />
-          </FormControl>
+              </FormControl>
+              <Alert severity="info">{t('applications:onboarding.configure.details.mobile.info')}</Alert>
+            </>
+          )}
 
-          <Alert severity="info">{t('applications:onboarding.configure.details.mobile.info')}</Alert>
+          {/* Wallet: pick a vendor first. Known wallets prefill client id + redirect (read-only); Custom asks for both. */}
+          {isWallet && (
+            <>
+              <FormControl fullWidth>
+                <FormLabel htmlFor="wallet-vendor-select">
+                  {t('applications:onboarding.configure.details.wallet.vendor.label')}
+                </FormLabel>
+                <Select
+                  id="wallet-vendor-select"
+                  value={walletVendor}
+                  onChange={(e): void => applyVendor(e.target.value)}
+                >
+                  {WALLET_VENDORS.map((vendor) => (
+                    <MenuItem key={vendor.id} value={vendor.id}>
+                      {vendor.id === CUSTOM_WALLET_VENDOR
+                        ? t('applications:onboarding.configure.details.wallet.vendor.custom')
+                        : vendor.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth required>
+                <FormLabel htmlFor="wallet-client-id-input">
+                  {t('applications:onboarding.configure.details.wallet.clientId.label')}
+                </FormLabel>
+                <TextField
+                  fullWidth
+                  id="wallet-client-id-input"
+                  value={isWalletCustom ? customClientId : (selectedVendor?.clientId ?? '')}
+                  disabled={!isWalletCustom}
+                  placeholder={t('applications:onboarding.configure.details.wallet.clientId.placeholder')}
+                  helperText={
+                    isWalletCustom
+                      ? t('applications:onboarding.configure.details.wallet.clientId.helperText')
+                      : t('applications:onboarding.configure.details.wallet.prefilled.helperText')
+                  }
+                  onChange={(e): void => applyCustomClientId(e.target.value)}
+                />
+              </FormControl>
+
+              <FormControl fullWidth required>
+                <FormLabel htmlFor="wallet-deeplink-input">
+                  {t('applications:onboarding.configure.details.deeplink.label')}
+                </FormLabel>
+                {isWalletCustom ? (
+                  <Controller
+                    name="deeplink"
+                    control={control}
+                    render={({field}) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        id="wallet-deeplink-input"
+                        placeholder={t('applications:onboarding.configure.details.deeplink.placeholder')}
+                        error={!!errors.deeplink}
+                        helperText={
+                          errors.deeplink?.message ?? t('applications:onboarding.configure.details.deeplink.helperText')
+                        }
+                      />
+                    )}
+                  />
+                ) : (
+                  <TextField
+                    fullWidth
+                    id="wallet-deeplink-input"
+                    value={selectedVendor?.redirectUri ?? ''}
+                    disabled
+                    helperText={t('applications:onboarding.configure.details.wallet.prefilled.helperText')}
+                  />
+                )}
+              </FormControl>
+            </>
+          )}
         </>
       )}
 

@@ -27,17 +27,19 @@ import (
 	"net/url"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	idpPkg "github.com/thunder-id/thunderid/internal/idp"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	sysconst "github.com/thunder-id/thunderid/internal/system/constants"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // parseIDPConfig extracts the OAuth client configuration from the identity provider details.
-func parseIDPConfig(idp *idpPkg.IDPDTO) (*OAuthClientConfig, error) {
+func parseIDPConfig(idp *providers.IDPDTO) (*OAuthClientConfig, error) {
 	oAuthClientConfig := OAuthClientConfig{
 		AdditionalParams: make(map[string]string),
 	}
@@ -95,19 +97,19 @@ func parseIDPConfig(idp *idpPkg.IDPDTO) (*OAuthClientConfig, error) {
 
 // buildTokenRequest constructs the HTTP request to exchange the authorization code for tokens.
 func buildTokenRequest(ctx context.Context, oAuthClientConfig *OAuthClientConfig, code string, logger *log.Logger) (
-	*http.Request, *serviceerror.ServiceError) {
+	*http.Request, *tidcommon.ServiceError) {
 	form := url.Values{}
 	form.Set(oauth2const.RequestParamClientID, oAuthClientConfig.ClientID)
 	form.Set(oauth2const.RequestParamClientSecret, oAuthClientConfig.ClientSecret)
 	form.Set(oauth2const.RequestParamRedirectURI, oAuthClientConfig.RedirectURI)
-	form.Set(oauth2const.RequestParamGrantType, string(oauth2const.GrantTypeAuthorizationCode))
+	form.Set(oauth2const.RequestParamGrantType, string(providers.GrantTypeAuthorizationCode))
 	form.Set(oauth2const.RequestParamCode, code)
 
 	httpReq, err := http.NewRequest(http.MethodPost, oAuthClientConfig.OAuthEndpoints.TokenEndpoint,
 		strings.NewReader(form.Encode()))
 	if err != nil {
 		logger.Error(ctx, "Failed to create token request", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	httpReq.Header.Add(sysconst.ContentTypeHeaderName, sysconst.ContentTypeFormURLEncoded)
@@ -118,12 +120,12 @@ func buildTokenRequest(ctx context.Context, oAuthClientConfig *OAuthClientConfig
 
 // sendTokenRequest sends the token request to the identity provider and processes the response.
 func sendTokenRequest(httpReq *http.Request, httpClient httpservice.HTTPClientInterface, logger *log.Logger) (
-	*TokenResponse, *serviceerror.ServiceError) {
+	*TokenResponse, *tidcommon.ServiceError) {
 	ctx := httpReq.Context()
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
 		logger.Error(ctx, "Token request to identity provider failed", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
@@ -135,13 +137,13 @@ func sendTokenRequest(httpReq *http.Request, httpClient httpservice.HTTPClientIn
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		logger.Error(ctx, "Token endpoint returned an error response",
 			log.Int("statusCode", resp.StatusCode), log.String("response", string(body)))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	var tokenResp TokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
 		logger.Error(ctx, "Failed to parse token response", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return &tokenResp, nil
@@ -149,11 +151,11 @@ func sendTokenRequest(httpReq *http.Request, httpClient httpservice.HTTPClientIn
 
 // buildUserInfoRequest constructs the HTTP request to fetch user information from the identity provider.
 func buildUserInfoRequest(ctx context.Context, userInfoEndpoint string, accessToken string, logger *log.Logger) (
-	*http.Request, *serviceerror.ServiceError) {
+	*http.Request, *tidcommon.ServiceError) {
 	req, err := http.NewRequest(http.MethodGet, userInfoEndpoint, nil)
 	if err != nil {
 		logger.Error(ctx, "Failed to create userinfo request", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	req.Header.Set(sysconst.AuthorizationHeaderName, sysconst.TokenTypeBearer+" "+accessToken)
@@ -164,12 +166,12 @@ func buildUserInfoRequest(ctx context.Context, userInfoEndpoint string, accessTo
 
 // sendUserInfoRequest sends the user info request to the identity provider and processes the response.
 func sendUserInfoRequest(httpReq *http.Request, httpClient httpservice.HTTPClientInterface, logger *log.Logger) (
-	map[string]interface{}, *serviceerror.ServiceError) {
+	map[string]interface{}, *tidcommon.ServiceError) {
 	ctx := httpReq.Context()
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
 		logger.Error(ctx, "Userinfo request to identity provider failed", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
@@ -181,19 +183,19 @@ func sendUserInfoRequest(httpReq *http.Request, httpClient httpservice.HTTPClien
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		logger.Error(ctx, "Userinfo endpoint returned an error response",
 			log.Int("statusCode", resp.StatusCode), log.String("response", string(body)))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Error(ctx, "Failed to read userinfo response body", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	var userInfo map[string]interface{}
 	if err := json.Unmarshal(body, &userInfo); err != nil {
 		logger.Error(ctx, "Failed to parse userinfo response", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return userInfo, nil

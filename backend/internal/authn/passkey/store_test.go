@@ -25,6 +25,8 @@ import (
 	"testing"
 	"time"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/protocol/webauthncose"
 	"github.com/stretchr/testify/assert"
@@ -91,7 +93,7 @@ func TestSessionStoreTestSuite(t *testing.T) {
 
 func (suite *SessionStoreTestSuite) SetupSuite() {
 	testConfig := &config.Config{
-		Server: config.ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Identifier: "test-deployment-id",
 		},
 	}
@@ -115,7 +117,7 @@ func (suite *SessionStoreTestSuite) SetupTest() {
 func (suite *SessionStoreTestSuite) TestNewSessionStore() {
 	// Initialize server runtime for the test
 	testConfig := &config.Config{
-		Server: config.ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Identifier: "test-deployment-id",
 		},
 	}

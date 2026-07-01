@@ -1,0 +1,277 @@
+---
+title: Protect APIs on Kong Konnect with {{ProductName}}
+description: Configure Kong Konnect to validate JWT access tokens issued by {{ProductName}} and enforce scope-based authorization on your upstream APIs.
+sidebar_position: 2
+---
+
+import {STSIntegrationDiagram, KongLogo} from '../../../../../src/components/GatewayIntegrationDiagram';
+
+# Protect APIs on Kong Konnect with <ProductName />
+
+This guide explains how to secure your APIs at the [Kong Konnect](https://konghq.com/products/kong-konnect) gateway layer using tokens issued by <ProductName />. By retrieving public signing keys from the <ProductName /> [JWKS endpoint](https://www.rfc-editor.org/rfc/rfc7517), Kong cryptographically verifies every incoming token at the edge before forwarding authorized requests to your backend services.
+
+<STSIntegrationDiagram gatewayName="Kong Konnect" gatewayLogo={<KongLogo color="#fff" />} gatewayBgColor="#043558" />
+
+The guide covers two core integration approaches available in Kong Konnect:
+
+- **[Token Validation](#configure-jwt-token-validation-in-kong-konnect):** Configure Kong to validate incoming JWTs issued by <ProductName /> using the [OpenID Connect plugin](https://developer.konghq.com/plugins/openid-connect/), ensuring only authenticated requests access your APIs.
+- **[Scope-Based Authorization](#configure-scope-based-authorization-in-kong-konnect):** Leverage <ProductName />'s [RBAC](/docs/next/guides/key-concepts/authorization/) capabilities to enforce strict, Kong-driven access control policies on upstream APIs.
+
+## Prerequisites
+
+- <ProductName /> is installed and configured, and reachable from the Kong data plane container. See [Get <ProductName />](/docs/next/guides/getting-started/get-thunderid).
+- A [Kong Konnect](https://konghq.com/products/kong-konnect) account. The OpenID Connect plugin is available on Konnect-managed data planes.
+- Docker is installed on your machine (required to run the Konnect data plane).
+- `curl` and `jq` are available in your terminal.
+
+## Configure JWT Token Validation in Kong Konnect
+
+JWT authentication is the foundation of API security with Kong Konnect and <ProductName />. In this section, you register an application in <ProductName /> to obtain credentials, configure Kong to validate tokens using <ProductName />'s discovery endpoint and JWKS, and verify that unauthenticated requests are rejected.
+
+### Configure <ProductName />
+
+#### Create an Application
+
+1. Sign in to the <ProductName /> Console at `https://<THUNDER_HOST>:8090/console`.
+2. Navigate to **Applications** → **New Application**.
+3. Enter an **Application Name** (for example, `kong-api-client`).
+4. Select **Backend Service** as the application type.
+5. Click **Create Application**.
+6. Note the application **ID** (`<APP_ID>`), **Client ID**, and **Client Secret** from the application details page.
+
+#### Obtain an Access Token
+
+Use the client credentials grant to request an access token:
+
+```bash
+curl --location 'https://<THUNDER_HOST>:8090/oauth2/token' \
+  --header 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'grant_type=client_credentials' \
+  --data-urlencode 'client_id=<CLIENT_ID>' \
+  --data-urlencode 'client_secret=<CLIENT_SECRET>'
+```
+
+The response contains an `access_token`:
+
+```json
+{
+  "access_token": "<ACCESS_TOKEN>",
+  "token_type": "Bearer",
+  "expires_in": 3600
+}
+```
+
+The token is a JWT signed with RS256. Its `iss` claim is `https://<THUNDER_HOST>:8090`, which matches the `issuer` you configure on the plugin. Copy the `access_token` value. You will use it to call the protected route.
+
+### Configure Kong Konnect
+
+#### Create a Control Plane and Data Plane
+
+1. Sign in to [Kong Konnect](https://cloud.konghq.com/).
+2. Open **Gateway Manager** and create a new **Control Plane** (for example, `thunder-demo`).
+3. Konnect displays a `docker run` command, pre-filled with your control plane's cluster endpoints and the generated mTLS certificates, to start a data plane node. Copy that command, and add the following so the data plane can proxy HTTPS traffic and resolve <ProductName />:
+
+   - `-p 8443:8443` — publishes the HTTPS proxy port.
+   - `--add-host=<THUNDER_HOST>:host-gateway` — maps the issuer hostname to the Docker host from inside the data plane container.
+
+   The resulting command looks similar to this (use the exact endpoints and certificate values from Konnect):
+
+   ```bash
+   docker run -d --name kong-dp \
+     -e "KONG_ROLE=data_plane" \
+     -e "KONG_DATABASE=off" \
+     -e "KONG_CLUSTER_MTLS=pki" \
+     -e "KONG_CLUSTER_CONTROL_PLANE=<CP_ENDPOINT>:443" \
+     -e "KONG_CLUSTER_SERVER_NAME=<CP_SERVER_NAME>" \
+     -e "KONG_CLUSTER_TELEMETRY_ENDPOINT=<TELEMETRY_ENDPOINT>:443" \
+     -e "KONG_CLUSTER_TELEMETRY_SERVER_NAME=<TELEMETRY_SERVER_NAME>" \
+     -e "KONG_CLUSTER_CERT=<CLUSTER_CERT>" \
+     -e "KONG_CLUSTER_CERT_KEY=<CLUSTER_CERT_KEY>" \
+     -e "KONG_LUA_SSL_TRUSTED_CERTIFICATE=system" \
+     -e "KONG_KONNECT_MODE=on" \
+     -e "KONG_PROXY_LISTEN=0.0.0.0:8443 ssl" \
+     --add-host=<THUNDER_HOST>:host-gateway \
+     -p 8443:8443 \
+     kong/kong-gateway:3.9
+   ```
+
+4. Wait until the data plane shows as **Connected** in the Konnect **Gateway Manager**.
+
+:::important
+`<THUNDER_HOST>` must be a hostname the Kong data plane container can resolve to your <ProductName /> instance — not `localhost`, which from inside the container points to Kong itself. The same hostname must appear in the discovery document's `issuer`, the access token's `iss` claim, and the plugin's `issuer` value.
+:::
+
+#### Create a Service and Route
+
+1. In **Gateway Manager**, open your control plane and go to **Services** → **Add Service**.
+2. Enter a name (for example, `bookings`) and set the **URL** to your upstream bookings API (for example, `https://<BOOKINGS_API>`).
+3. Open the new service, go to **Routes** → **Add Route**, and add a route with the path `/bookings`.
+
+#### Add JWT validation
+
+Attach the plugin to the route so it validates every incoming token.
+
+1. Open the `/bookings` route and go to **Plugins** → **Add Plugin**.
+2. Select **OpenID Connect**.
+3. Configure these parameters:
+
+   | Parameter | Value |
+   |-----------|-------|
+   | `issuer` | `https://<THUNDER_HOST>:8090/.well-known/openid-configuration` |
+   | `client_id` | `<CLIENT_ID>` |
+   | `client_secret` | `<CLIENT_SECRET>` |
+   | `client_auth` | `client_secret_post` |
+   | `auth_methods` | `bearer` |
+   | `bearer_token_param_type` | `header` |
+
+4. Save the plugin.
+
+With `issuer` set, the plugin fetches <ProductName />'s JWKS from the discovery document and verifies each token's signature, issuer, and expiry by default. Restricting `auth_methods` to `bearer` makes the plugin validate the incoming access token only, without initiating a login flow. Setting `bearer_token_param_type` to `header` makes the plugin read the token from the `Authorization: Bearer <token>` header used in the examples below.
+
+### Try It Out
+
+**Request without a token — expect `401 Unauthorized`:**
+
+```bash
+curl -k -i "https://127.0.0.1:8443/bookings"
+```
+
+**Request with a valid <ProductName /> token — expect `200 OK`:**
+
+```bash
+export ACCESS_TOKEN="<ACCESS_TOKEN>"
+curl -k -i "https://127.0.0.1:8443/bookings" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+A successful request returns an HTTP `200` response forwarded from the upstream. If the token is missing, invalid, or expired, Kong returns `401 Unauthorized`.
+
+## Configure Scope-Based Authorization in Kong Konnect
+
+JWT validation confirms that a token is valid and was issued by <ProductName />. It does not control what the token holder is allowed to do. With the configuration from the previous section, Kong accepts any valid <ProductName /> token regardless of the application or its assigned permissions.
+
+Scope-based authorization adds a second layer of control. <ProductName /> embeds scopes in tokens based on the roles assigned to an application. Kong then checks those scopes on every request and rejects tokens that do not carry the required permissions. To enforce that tokens carry specific permission scopes, configure the OpenID Connect plugin's `scopes_required` parameter.
+
+The steps below build on the JWT validation configuration from the previous section. You will define a Resource Server, a Resource, and actions in <ProductName /> to model your API permissions. Then bundle them into a role, assign the role to your application, and update the Kong plugin configuration to enforce scope validation.
+
+### Configure <ProductName />
+
+#### Create a Resource Server
+
+A Resource Server represents your API in <ProductName />. It groups all resources and actions under a single handle, which prefixes every permission (scope) the API exposes.
+
+1. In the Console, navigate to **Resource Servers** → **Add resource server**.
+2. For the type, select **API**.
+3. Enter a **Resource Server Name** (for example, `Bookings API`) and a **Handle** (`bookingsapi`). The handle prefixes every permission and cannot be changed after creation.
+4. For the **Permission Delimiter**, select `:`.
+5. Select the **Organization** the resource server belongs to, then create it.
+
+#### Add Resources and Actions
+
+A Resource represents an entity within the API (such as the `/bookings` route), and Actions define the operations allowed on it. Each action produces a scope in the format `<resource-server-handle>:<resource-handle>:<action-handle>`.
+
+1. Open the resource server you just created and go to the **Resources & Actions** tab.
+2. Click **Add Resource** and enter a **Name** (for example, `Bookings`) and a **Handle** (`bookings`).
+3. Under that resource, click **Add Action** and enter a **Name** (for example, `Read Bookings`) and a **Handle** (`read`).
+4. Add a second action with a **Name** (for example, `Write Bookings`) and a **Handle** (`write`).
+
+This produces the permissions `bookingsapi:bookings:read` and `bookingsapi:bookings:write`, which <ProductName /> includes in tokens issued to applications that hold a role granting them.
+
+#### Create a Role and assign permission
+
+Roles bundle one or more permissions together. Assigning a role to an application controls which scopes appear in its tokens.
+
+1. Navigate to **Roles** → **Add Role**.
+2. Enter a **Role Name** (for example, `Bookings manager`).
+3. Click **Continue**.
+4. Under **Assign permissions**, choose `bookingsapi:bookings:read`.
+5. Click **Continue**.
+
+
+#### Assign the Role to the Application
+
+Assign the role to the application you created in the previous section. <ProductName /> includes the role's scopes in every token issued for that application.
+
+1. Open the role and go to the **Assignments** tab.
+2. Under **Apps**, assign the application you created earlier (`kong-api-client`).
+
+### Configure Kong Konnect
+
+Update the OpenID Connect plugin on your `/bookings` route to require the generated scope:
+
+1. Open the route's **OpenID Connect** plugin configuration.
+2. Set the following parameter:
+
+   | Parameter | Value |
+   |-----------|-------|
+   | `scopes_required` | `bookingsapi:bookings:read` |
+
+3. Save the plugin.
+
+The plugin reads scopes from the `scope` claim (the default `scopes_claim`) and rejects any token missing `bookingsapi:bookings:read` with `403 Forbidden`, before the request reaches your upstream.
+
+:::tip
+To restrict which application's tokens are accepted, also set `audience_required` to the **Client ID** of the application. <ProductName /> sets each token's `aud` claim to the issuing application's Client ID, which the plugin reads from the default `audience_claim` (`aud`).
+:::
+
+### Try It Out
+
+#### Obtain an Access Token with the Required Scope
+
+Request a token for the application that has the role assigned:
+
+```bash
+curl --location 'https://<THUNDER_HOST>:8090/oauth2/token' \
+  --header 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'grant_type=client_credentials' \
+  --data-urlencode 'scope=bookingsapi:bookings:read' \
+  --data-urlencode 'client_id=<CLIENT_ID>' \
+  --data-urlencode 'client_secret=<CLIENT_SECRET>'
+```
+
+The response confirms the scope is present:
+
+```json
+{
+  "access_token": "<ACCESS_TOKEN>",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "bookingsapi:bookings:read"
+}
+```
+
+#### Call the Protected API
+
+**With a token that has the required scope — the request is forwarded to the upstream:**
+
+```bash
+export ACCESS_TOKEN="<ACCESS_TOKEN>"
+curl -k -i "https://127.0.0.1:8443/bookings" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Kong verifies the token carries the `bookingsapi:bookings:read` scope and forwards the request to your upstream bookings API.
+
+**With a token missing the required scope — expect `403 Forbidden`:**
+
+```bash
+curl -k -i "https://127.0.0.1:8443/bookings" \
+  -H "Authorization: Bearer <TOKEN_WITHOUT_REQUIRED_SCOPE>"
+```
+
+Kong inspects the token, finds the `bookingsapi:bookings:read` scope absent, and returns `403 Forbidden`.
+
+## Plugin Parameter Reference
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `issuer` | `https://<THUNDER_HOST>:8090/.well-known/openid-configuration` | <ProductName />'s discovery endpoint. The plugin fetches the JWKS from here and verifies each token's signature, issuer, and expiry. |
+| `client_id` | `<CLIENT_ID>` | Client ID of the <ProductName /> Backend Service application. |
+| `client_secret` | `<CLIENT_SECRET>` | Client secret of the <ProductName /> Backend Service application. |
+| `client_auth` | `client_secret_post` | Sends plugin client credentials in the request body when the plugin calls <ProductName /> endpoints. |
+| `auth_methods` | `bearer` | Restricts the plugin to validating the incoming bearer access token, without starting a login flow. |
+| `bearer_token_param_type` | `header` | Reads the bearer token from the `Authorization` header. |
+| `scopes_required` | `bookingsapi:bookings:read` | Scopes the token must carry. Missing scopes are rejected with `403`. Omit to accept any valid token. |
+| `scopes_claim` | `scope` | The token claim the plugin reads scopes from. <ProductName /> emits resource scopes in the `scope` claim. |
+| `audience_required` | `<CLIENT_ID>` | Optional. Audiences the token must carry. <ProductName /> sets `aud` to the issuing application's Client ID. |
+| `audience_claim` | `aud` | The token claim the plugin reads the audience from. |

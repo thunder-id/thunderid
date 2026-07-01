@@ -22,8 +22,9 @@ package authz
 import (
 	"context"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/authz/engine"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -36,13 +37,13 @@ type AuthorizationServiceInterface interface {
 	EvaluateAccess(
 		ctx context.Context,
 		request AccessEvaluationRequest,
-	) (*AccessEvaluationResponse, *serviceerror.ServiceError)
+	) (*AccessEvaluationResponse, *tidcommon.ServiceError)
 
 	// EvaluateAccessBatch evaluates multiple fine-grained access requests.
 	EvaluateAccessBatch(
 		ctx context.Context,
 		request AccessEvaluationsRequest,
-	) (*AccessEvaluationsResponse, *serviceerror.ServiceError)
+	) (*AccessEvaluationsResponse, *tidcommon.ServiceError)
 }
 
 // authorizationService is the default implementation of AuthorizationServiceInterface.
@@ -61,7 +62,7 @@ func newAuthorizationService(engine engine.AuthorizationEngine) AuthorizationSer
 func (s *authorizationService) EvaluateAccess(
 	ctx context.Context,
 	request AccessEvaluationRequest,
-) (*AccessEvaluationResponse, *serviceerror.ServiceError) {
+) (*AccessEvaluationResponse, *tidcommon.ServiceError) {
 	response, svcErr := s.EvaluateAccessBatch(ctx, AccessEvaluationsRequest{
 		Evaluations: []AccessEvaluationRequest{request},
 	})
@@ -78,7 +79,7 @@ func (s *authorizationService) EvaluateAccess(
 func (s *authorizationService) EvaluateAccessBatch(
 	ctx context.Context,
 	request AccessEvaluationsRequest,
-) (*AccessEvaluationsResponse, *serviceerror.ServiceError) {
+) (*AccessEvaluationsResponse, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Evaluating authorization request",
 		log.Int("evaluationCount", len(request.Evaluations)))
@@ -95,7 +96,7 @@ func (s *authorizationService) EvaluateAccessBatch(
 		logger.Error(ctx, "Authorization evaluation failed",
 			log.Int("evaluationCount", len(request.Evaluations)),
 			log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	logger.Debug(ctx, "Authorization evaluation completed",

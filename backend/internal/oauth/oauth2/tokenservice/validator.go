@@ -25,19 +25,19 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/idp"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // TokenValidatorInterface defines the interface for validating tokens.
 type TokenValidatorInterface interface {
 	ValidateAccessToken(ctx context.Context, token string) (*AccessTokenClaims, error)
 	ValidateRefreshToken(ctx context.Context, token string, clientID string) (*RefreshTokenClaims, error)
-	ValidateSubjectToken(ctx context.Context, token string, oauthApp *inboundmodel.OAuthClient) (
+	ValidateSubjectToken(ctx context.Context, token string, oauthApp *providers.OAuthClient) (
 		*SubjectTokenClaims, error)
 }
 
@@ -45,14 +45,14 @@ type TokenValidatorInterface interface {
 type tokenValidator struct {
 	cfg        oauthconfig.Config
 	jwtService jwt.JWTServiceInterface
-	idpService idp.IDPServiceInterface
+	idpService providers.IDPProvider
 }
 
 // NewTokenValidator creates a new TokenValidator instance.
 func newTokenValidator(
 	cfg oauthconfig.Config,
 	jwtService jwt.JWTServiceInterface,
-	idpService idp.IDPServiceInterface,
+	idpService providers.IDPProvider,
 ) TokenValidatorInterface {
 	return &tokenValidator{
 		cfg:        cfg,
@@ -187,7 +187,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 func (tv *tokenValidator) ValidateSubjectToken(
 	ctx context.Context,
 	token string,
-	oauthApp *inboundmodel.OAuthClient,
+	oauthApp *providers.OAuthClient,
 ) (*SubjectTokenClaims, error) {
 	claims, err := jwt.DecodeJWTPayload(token)
 	if err != nil {
@@ -236,7 +236,7 @@ func (tv *tokenValidator) ValidateSubjectToken(
 type tokenExchangeIssuerInfo struct {
 	Issuer            string
 	JWKSURL           string
-	AttributeMappings []idp.AttributeMapping
+	AttributeMappings []providers.AttributeMapping
 }
 
 // resolveExternalIssuer looks up an external IDP whose issuer property matches the given issuer.
@@ -273,8 +273,8 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 	_ string,
 	iss string,
 	claims map[string]interface{},
-	oauthApp *inboundmodel.OAuthClient,
-	attributeMappings []idp.AttributeMapping,
+	oauthApp *providers.OAuthClient,
+	attributeMappings []providers.AttributeMapping,
 ) (*SubjectTokenClaims, error) {
 	sub, err := extractStringClaim(claims, "sub")
 	if err != nil {

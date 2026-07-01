@@ -25,25 +25,27 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/design/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // Mock for DesignResolveServiceInterface
 type mockDesignResolveService struct {
 	resolveDesignFn func(
 		ctx context.Context,
-		resolveType common.DesignResolveType,
+		resolveType providers.DesignResolveType,
 		id string,
-	) (*common.DesignResponse, *serviceerror.ServiceError)
+	) (*providers.DesignResponse, *tidcommon.ServiceError)
 }
 
 func (m *mockDesignResolveService) ResolveDesign(
-	ctx context.Context, resolveType common.DesignResolveType, id string,
-) (*common.DesignResponse, *serviceerror.ServiceError) {
+	ctx context.Context, resolveType providers.DesignResolveType, id string,
+) (*providers.DesignResponse, *tidcommon.ServiceError) {
 	return m.resolveDesignFn(ctx, resolveType, id)
 }
 
@@ -58,7 +60,7 @@ func TestResolveHandlerTestSuite(t *testing.T) {
 
 // Test HandleResolveRequest - Success
 func (suite *ResolveHandlerTestSuite) TestHandleResolveRequest_Success() {
-	designResponse := &common.DesignResponse{
+	designResponse := &providers.DesignResponse{
 		Theme:  json.RawMessage(`{"colors": {"primary": "#007bff"}}`),
 		Layout: json.RawMessage(`{"structure": "centered"}`),
 	}
@@ -66,10 +68,10 @@ func (suite *ResolveHandlerTestSuite) TestHandleResolveRequest_Success() {
 	mockService := &mockDesignResolveService{
 		resolveDesignFn: func(
 			ctx context.Context,
-			resolveType common.DesignResolveType,
+			resolveType providers.DesignResolveType,
 			id string,
-		) (*common.DesignResponse, *serviceerror.ServiceError) {
-			assert.Equal(suite.T(), common.DesignResolveTypeAPP, resolveType)
+		) (*providers.DesignResponse, *tidcommon.ServiceError) {
+			assert.Equal(suite.T(), providers.DesignResolveTypeAPP, resolveType)
 			assert.Equal(suite.T(), "app-123", id)
 			return designResponse, nil
 		},
@@ -86,17 +88,17 @@ func (suite *ResolveHandlerTestSuite) TestHandleResolveRequest_Success() {
 
 // Test HandleResolveRequest - Type is case-insensitive (lowercased input)
 func (suite *ResolveHandlerTestSuite) TestHandleResolveRequest_CaseInsensitiveType() {
-	designResponse := &common.DesignResponse{
+	designResponse := &providers.DesignResponse{
 		Theme: json.RawMessage(`{"colors": {}}`),
 	}
 
 	mockService := &mockDesignResolveService{
 		resolveDesignFn: func(
 			ctx context.Context,
-			resolveType common.DesignResolveType,
+			resolveType providers.DesignResolveType,
 			id string,
-		) (*common.DesignResponse, *serviceerror.ServiceError) {
-			assert.Equal(suite.T(), common.DesignResolveTypeAPP, resolveType)
+		) (*providers.DesignResponse, *tidcommon.ServiceError) {
+			assert.Equal(suite.T(), providers.DesignResolveTypeAPP, resolveType)
 			return designResponse, nil
 		},
 	}
@@ -115,9 +117,9 @@ func (suite *ResolveHandlerTestSuite) TestHandleResolveRequest_InvalidResolveTyp
 	mockService := &mockDesignResolveService{
 		resolveDesignFn: func(
 			ctx context.Context,
-			resolveType common.DesignResolveType,
+			resolveType providers.DesignResolveType,
 			id string,
-		) (*common.DesignResponse, *serviceerror.ServiceError) {
+		) (*providers.DesignResponse, *tidcommon.ServiceError) {
 			return nil, &common.ErrorInvalidResolveType
 		},
 	}
@@ -136,9 +138,9 @@ func (suite *ResolveHandlerTestSuite) TestHandleResolveRequest_MissingID() {
 	mockService := &mockDesignResolveService{
 		resolveDesignFn: func(
 			ctx context.Context,
-			resolveType common.DesignResolveType,
+			resolveType providers.DesignResolveType,
 			id string,
-		) (*common.DesignResponse, *serviceerror.ServiceError) {
+		) (*providers.DesignResponse, *tidcommon.ServiceError) {
 			return nil, &common.ErrorMissingResolveID
 		},
 	}
@@ -157,9 +159,9 @@ func (suite *ResolveHandlerTestSuite) TestHandleResolveRequest_UnsupportedType()
 	mockService := &mockDesignResolveService{
 		resolveDesignFn: func(
 			ctx context.Context,
-			resolveType common.DesignResolveType,
+			resolveType providers.DesignResolveType,
 			id string,
-		) (*common.DesignResponse, *serviceerror.ServiceError) {
+		) (*providers.DesignResponse, *tidcommon.ServiceError) {
 			return nil, &common.ErrorUnsupportedResolveType
 		},
 	}
@@ -178,9 +180,9 @@ func (suite *ResolveHandlerTestSuite) TestHandleResolveRequest_ApplicationNotFou
 	mockService := &mockDesignResolveService{
 		resolveDesignFn: func(
 			ctx context.Context,
-			resolveType common.DesignResolveType,
+			resolveType providers.DesignResolveType,
 			id string,
-		) (*common.DesignResponse, *serviceerror.ServiceError) {
+		) (*providers.DesignResponse, *tidcommon.ServiceError) {
 			return nil, &common.ErrorApplicationNotFound
 		},
 	}
@@ -199,9 +201,9 @@ func (suite *ResolveHandlerTestSuite) TestHandleResolveRequest_ApplicationHasNoD
 	mockService := &mockDesignResolveService{
 		resolveDesignFn: func(
 			ctx context.Context,
-			resolveType common.DesignResolveType,
+			resolveType providers.DesignResolveType,
 			id string,
-		) (*common.DesignResponse, *serviceerror.ServiceError) {
+		) (*providers.DesignResponse, *tidcommon.ServiceError) {
 			return nil, &common.ErrorApplicationHasNoDesign
 		},
 	}
@@ -220,10 +222,10 @@ func (suite *ResolveHandlerTestSuite) TestHandleResolveRequest_InternalServerErr
 	mockService := &mockDesignResolveService{
 		resolveDesignFn: func(
 			ctx context.Context,
-			resolveType common.DesignResolveType,
+			resolveType providers.DesignResolveType,
 			id string,
-		) (*common.DesignResponse, *serviceerror.ServiceError) {
-			return nil, &serviceerror.InternalServerError
+		) (*providers.DesignResponse, *tidcommon.ServiceError) {
+			return nil, &tidcommon.InternalServerError
 		},
 	}
 
@@ -242,7 +244,7 @@ func (suite *ResolveHandlerTestSuite) TestHandleError_StatusCodeMapping() {
 
 	tests := []struct {
 		name           string
-		svcErr         *serviceerror.ServiceError
+		svcErr         *tidcommon.ServiceError
 		expectedStatus int
 	}{
 		{
@@ -272,13 +274,13 @@ func (suite *ResolveHandlerTestSuite) TestHandleError_StatusCodeMapping() {
 		},
 		{
 			name:           "InternalServerError",
-			svcErr:         &serviceerror.InternalServerError,
+			svcErr:         &tidcommon.InternalServerError,
 			expectedStatus: http.StatusInternalServerError,
 		},
 		{
 			name: "UnknownClientError",
-			svcErr: &serviceerror.ServiceError{
-				Type: serviceerror.ClientErrorType,
+			svcErr: &tidcommon.ServiceError{
+				Type: tidcommon.ClientErrorType,
 				Code: "UNKNOWN",
 			},
 			expectedStatus: http.StatusBadRequest,

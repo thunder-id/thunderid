@@ -9,7 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/design/layout/mgt"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewLayoutMgtServiceInterfaceMock creates a new instance of LayoutMgtServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -40,7 +40,7 @@ func (_m *LayoutMgtServiceInterfaceMock) EXPECT() *LayoutMgtServiceInterfaceMock
 }
 
 // CreateLayout provides a mock function for the type LayoutMgtServiceInterfaceMock
-func (_mock *LayoutMgtServiceInterfaceMock) CreateLayout(ctx context.Context, layout layoutmgt.CreateLayoutRequest) (*layoutmgt.Layout, *serviceerror.ServiceError) {
+func (_mock *LayoutMgtServiceInterfaceMock) CreateLayout(ctx context.Context, layout layoutmgt.CreateLayoutRequest) (*layoutmgt.Layout, *common.ServiceError) {
 	ret := _mock.Called(ctx, layout)
 
 	if len(ret) == 0 {
@@ -48,8 +48,8 @@ func (_mock *LayoutMgtServiceInterfaceMock) CreateLayout(ctx context.Context, la
 	}
 
 	var r0 *layoutmgt.Layout
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, layoutmgt.CreateLayoutRequest) (*layoutmgt.Layout, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, layoutmgt.CreateLayoutRequest) (*layoutmgt.Layout, *common.ServiceError)); ok {
 		return returnFunc(ctx, layout)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, layoutmgt.CreateLayoutRequest) *layoutmgt.Layout); ok {
@@ -59,11 +59,11 @@ func (_mock *LayoutMgtServiceInterfaceMock) CreateLayout(ctx context.Context, la
 			r0 = ret.Get(0).(*layoutmgt.Layout)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, layoutmgt.CreateLayoutRequest) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, layoutmgt.CreateLayoutRequest) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, layout)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -99,30 +99,30 @@ func (_c *LayoutMgtServiceInterfaceMock_CreateLayout_Call) Run(run func(ctx cont
 	return _c
 }
 
-func (_c *LayoutMgtServiceInterfaceMock_CreateLayout_Call) Return(layout1 *layoutmgt.Layout, serviceError *serviceerror.ServiceError) *LayoutMgtServiceInterfaceMock_CreateLayout_Call {
+func (_c *LayoutMgtServiceInterfaceMock_CreateLayout_Call) Return(layout1 *layoutmgt.Layout, serviceError *common.ServiceError) *LayoutMgtServiceInterfaceMock_CreateLayout_Call {
 	_c.Call.Return(layout1, serviceError)
 	return _c
 }
 
-func (_c *LayoutMgtServiceInterfaceMock_CreateLayout_Call) RunAndReturn(run func(ctx context.Context, layout layoutmgt.CreateLayoutRequest) (*layoutmgt.Layout, *serviceerror.ServiceError)) *LayoutMgtServiceInterfaceMock_CreateLayout_Call {
+func (_c *LayoutMgtServiceInterfaceMock_CreateLayout_Call) RunAndReturn(run func(ctx context.Context, layout layoutmgt.CreateLayoutRequest) (*layoutmgt.Layout, *common.ServiceError)) *LayoutMgtServiceInterfaceMock_CreateLayout_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // DeleteLayout provides a mock function for the type LayoutMgtServiceInterfaceMock
-func (_mock *LayoutMgtServiceInterfaceMock) DeleteLayout(ctx context.Context, id string) *serviceerror.ServiceError {
+func (_mock *LayoutMgtServiceInterfaceMock) DeleteLayout(ctx context.Context, id string) *common.ServiceError {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteLayout")
 	}
 
-	var r0 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
 		r0 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*serviceerror.ServiceError)
+			r0 = ret.Get(0).(*common.ServiceError)
 		}
 	}
 	return r0
@@ -158,18 +158,18 @@ func (_c *LayoutMgtServiceInterfaceMock_DeleteLayout_Call) Run(run func(ctx cont
 	return _c
 }
 
-func (_c *LayoutMgtServiceInterfaceMock_DeleteLayout_Call) Return(serviceError *serviceerror.ServiceError) *LayoutMgtServiceInterfaceMock_DeleteLayout_Call {
+func (_c *LayoutMgtServiceInterfaceMock_DeleteLayout_Call) Return(serviceError *common.ServiceError) *LayoutMgtServiceInterfaceMock_DeleteLayout_Call {
 	_c.Call.Return(serviceError)
 	return _c
 }
 
-func (_c *LayoutMgtServiceInterfaceMock_DeleteLayout_Call) RunAndReturn(run func(ctx context.Context, id string) *serviceerror.ServiceError) *LayoutMgtServiceInterfaceMock_DeleteLayout_Call {
+func (_c *LayoutMgtServiceInterfaceMock_DeleteLayout_Call) RunAndReturn(run func(ctx context.Context, id string) *common.ServiceError) *LayoutMgtServiceInterfaceMock_DeleteLayout_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetLayout provides a mock function for the type LayoutMgtServiceInterfaceMock
-func (_mock *LayoutMgtServiceInterfaceMock) GetLayout(ctx context.Context, id string) (*layoutmgt.Layout, *serviceerror.ServiceError) {
+func (_mock *LayoutMgtServiceInterfaceMock) GetLayout(ctx context.Context, id string) (*layoutmgt.Layout, *common.ServiceError) {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
@@ -177,8 +177,8 @@ func (_mock *LayoutMgtServiceInterfaceMock) GetLayout(ctx context.Context, id st
 	}
 
 	var r0 *layoutmgt.Layout
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*layoutmgt.Layout, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*layoutmgt.Layout, *common.ServiceError)); ok {
 		return returnFunc(ctx, id)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *layoutmgt.Layout); ok {
@@ -188,11 +188,11 @@ func (_mock *LayoutMgtServiceInterfaceMock) GetLayout(ctx context.Context, id st
 			r0 = ret.Get(0).(*layoutmgt.Layout)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -228,18 +228,18 @@ func (_c *LayoutMgtServiceInterfaceMock_GetLayout_Call) Run(run func(ctx context
 	return _c
 }
 
-func (_c *LayoutMgtServiceInterfaceMock_GetLayout_Call) Return(layout *layoutmgt.Layout, serviceError *serviceerror.ServiceError) *LayoutMgtServiceInterfaceMock_GetLayout_Call {
+func (_c *LayoutMgtServiceInterfaceMock_GetLayout_Call) Return(layout *layoutmgt.Layout, serviceError *common.ServiceError) *LayoutMgtServiceInterfaceMock_GetLayout_Call {
 	_c.Call.Return(layout, serviceError)
 	return _c
 }
 
-func (_c *LayoutMgtServiceInterfaceMock_GetLayout_Call) RunAndReturn(run func(ctx context.Context, id string) (*layoutmgt.Layout, *serviceerror.ServiceError)) *LayoutMgtServiceInterfaceMock_GetLayout_Call {
+func (_c *LayoutMgtServiceInterfaceMock_GetLayout_Call) RunAndReturn(run func(ctx context.Context, id string) (*layoutmgt.Layout, *common.ServiceError)) *LayoutMgtServiceInterfaceMock_GetLayout_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetLayoutList provides a mock function for the type LayoutMgtServiceInterfaceMock
-func (_mock *LayoutMgtServiceInterfaceMock) GetLayoutList(ctx context.Context, limit int, offset int) (*layoutmgt.LayoutList, *serviceerror.ServiceError) {
+func (_mock *LayoutMgtServiceInterfaceMock) GetLayoutList(ctx context.Context, limit int, offset int) (*layoutmgt.LayoutList, *common.ServiceError) {
 	ret := _mock.Called(ctx, limit, offset)
 
 	if len(ret) == 0 {
@@ -247,8 +247,8 @@ func (_mock *LayoutMgtServiceInterfaceMock) GetLayoutList(ctx context.Context, l
 	}
 
 	var r0 *layoutmgt.LayoutList
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) (*layoutmgt.LayoutList, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) (*layoutmgt.LayoutList, *common.ServiceError)); ok {
 		return returnFunc(ctx, limit, offset)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) *layoutmgt.LayoutList); ok {
@@ -258,11 +258,11 @@ func (_mock *LayoutMgtServiceInterfaceMock) GetLayoutList(ctx context.Context, l
 			r0 = ret.Get(0).(*layoutmgt.LayoutList)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, limit, offset)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -304,18 +304,18 @@ func (_c *LayoutMgtServiceInterfaceMock_GetLayoutList_Call) Run(run func(ctx con
 	return _c
 }
 
-func (_c *LayoutMgtServiceInterfaceMock_GetLayoutList_Call) Return(layoutList *layoutmgt.LayoutList, serviceError *serviceerror.ServiceError) *LayoutMgtServiceInterfaceMock_GetLayoutList_Call {
+func (_c *LayoutMgtServiceInterfaceMock_GetLayoutList_Call) Return(layoutList *layoutmgt.LayoutList, serviceError *common.ServiceError) *LayoutMgtServiceInterfaceMock_GetLayoutList_Call {
 	_c.Call.Return(layoutList, serviceError)
 	return _c
 }
 
-func (_c *LayoutMgtServiceInterfaceMock_GetLayoutList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int) (*layoutmgt.LayoutList, *serviceerror.ServiceError)) *LayoutMgtServiceInterfaceMock_GetLayoutList_Call {
+func (_c *LayoutMgtServiceInterfaceMock_GetLayoutList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int) (*layoutmgt.LayoutList, *common.ServiceError)) *LayoutMgtServiceInterfaceMock_GetLayoutList_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // IsLayoutExist provides a mock function for the type LayoutMgtServiceInterfaceMock
-func (_mock *LayoutMgtServiceInterfaceMock) IsLayoutExist(ctx context.Context, id string) (bool, *serviceerror.ServiceError) {
+func (_mock *LayoutMgtServiceInterfaceMock) IsLayoutExist(ctx context.Context, id string) (bool, *common.ServiceError) {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
@@ -323,8 +323,8 @@ func (_mock *LayoutMgtServiceInterfaceMock) IsLayoutExist(ctx context.Context, i
 	}
 
 	var r0 bool
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, *common.ServiceError)); ok {
 		return returnFunc(ctx, id)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
@@ -332,11 +332,11 @@ func (_mock *LayoutMgtServiceInterfaceMock) IsLayoutExist(ctx context.Context, i
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -372,18 +372,18 @@ func (_c *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call) Run(run func(ctx con
 	return _c
 }
 
-func (_c *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call) Return(b bool, serviceError *serviceerror.ServiceError) *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call {
+func (_c *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call) Return(b bool, serviceError *common.ServiceError) *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call {
 	_c.Call.Return(b, serviceError)
 	return _c
 }
 
-func (_c *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call) RunAndReturn(run func(ctx context.Context, id string) (bool, *serviceerror.ServiceError)) *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call {
+func (_c *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call) RunAndReturn(run func(ctx context.Context, id string) (bool, *common.ServiceError)) *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UpdateLayout provides a mock function for the type LayoutMgtServiceInterfaceMock
-func (_mock *LayoutMgtServiceInterfaceMock) UpdateLayout(ctx context.Context, id string, layout layoutmgt.UpdateLayoutRequest) (*layoutmgt.Layout, *serviceerror.ServiceError) {
+func (_mock *LayoutMgtServiceInterfaceMock) UpdateLayout(ctx context.Context, id string, layout layoutmgt.UpdateLayoutRequest) (*layoutmgt.Layout, *common.ServiceError) {
 	ret := _mock.Called(ctx, id, layout)
 
 	if len(ret) == 0 {
@@ -391,8 +391,8 @@ func (_mock *LayoutMgtServiceInterfaceMock) UpdateLayout(ctx context.Context, id
 	}
 
 	var r0 *layoutmgt.Layout
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, layoutmgt.UpdateLayoutRequest) (*layoutmgt.Layout, *serviceerror.ServiceError)); ok {
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, layoutmgt.UpdateLayoutRequest) (*layoutmgt.Layout, *common.ServiceError)); ok {
 		return returnFunc(ctx, id, layout)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, layoutmgt.UpdateLayoutRequest) *layoutmgt.Layout); ok {
@@ -402,11 +402,11 @@ func (_mock *LayoutMgtServiceInterfaceMock) UpdateLayout(ctx context.Context, id
 			r0 = ret.Get(0).(*layoutmgt.Layout)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, layoutmgt.UpdateLayoutRequest) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, layoutmgt.UpdateLayoutRequest) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, id, layout)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -448,12 +448,12 @@ func (_c *LayoutMgtServiceInterfaceMock_UpdateLayout_Call) Run(run func(ctx cont
 	return _c
 }
 
-func (_c *LayoutMgtServiceInterfaceMock_UpdateLayout_Call) Return(layout1 *layoutmgt.Layout, serviceError *serviceerror.ServiceError) *LayoutMgtServiceInterfaceMock_UpdateLayout_Call {
+func (_c *LayoutMgtServiceInterfaceMock_UpdateLayout_Call) Return(layout1 *layoutmgt.Layout, serviceError *common.ServiceError) *LayoutMgtServiceInterfaceMock_UpdateLayout_Call {
 	_c.Call.Return(layout1, serviceError)
 	return _c
 }
 
-func (_c *LayoutMgtServiceInterfaceMock_UpdateLayout_Call) RunAndReturn(run func(ctx context.Context, id string, layout layoutmgt.UpdateLayoutRequest) (*layoutmgt.Layout, *serviceerror.ServiceError)) *LayoutMgtServiceInterfaceMock_UpdateLayout_Call {
+func (_c *LayoutMgtServiceInterfaceMock_UpdateLayout_Call) RunAndReturn(run func(ctx context.Context, id string, layout layoutmgt.UpdateLayoutRequest) (*layoutmgt.Layout, *common.ServiceError)) *LayoutMgtServiceInterfaceMock_UpdateLayout_Call {
 	_c.Call.Return(run)
 	return _c
 }

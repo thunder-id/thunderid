@@ -27,6 +27,7 @@ import (
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	entitystore "github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type FileBasedStoreTestSuite struct {
@@ -45,19 +46,19 @@ func (s *FileBasedStoreTestSuite) SetupTest() {
 	s.ctx = context.Background()
 }
 
-func makeTestEntity(id, category, ouID string) Entity {
+func makeTestEntity(id, category, ouID string) providers.Entity {
 	attrs, _ := json.Marshal(map[string]interface{}{"username": id + "-user", "email": id + "@test.com"})
-	return Entity{
+	return providers.Entity{
 		ID:         id,
-		Category:   EntityCategory(category),
+		Category:   providers.EntityCategory(category),
 		Type:       "employee",
-		State:      EntityStateActive,
+		State:      providers.EntityStateActive,
 		OUID:       ouID,
 		Attributes: json.RawMessage(attrs),
 	}
 }
 
-func (s *FileBasedStoreTestSuite) seedEntity(e Entity) {
+func (s *FileBasedStoreTestSuite) seedEntity(e providers.Entity) {
 	entry := &entityStoreEntry{Entity: e}
 	s.Require().NoError(s.store.GenericFileBasedStore.Create(e.ID, entry))
 }
@@ -146,8 +147,8 @@ func (s *FileBasedStoreTestSuite) TestIdentifyEntity_OneMatch() {
 func (s *FileBasedStoreTestSuite) TestIdentifyEntity_MultipleMatches() {
 	attrs1, _ := json.Marshal(map[string]interface{}{"email": "dup@test.com"})
 	attrs2, _ := json.Marshal(map[string]interface{}{"email": "dup@test.com"})
-	e1 := Entity{ID: "dup1", Category: EntityCategoryUser, Attributes: json.RawMessage(attrs1)}
-	e2 := Entity{ID: "dup2", Category: EntityCategoryUser, Attributes: json.RawMessage(attrs2)}
+	e1 := providers.Entity{ID: "dup1", Category: providers.EntityCategoryUser, Attributes: json.RawMessage(attrs1)}
+	e2 := providers.Entity{ID: "dup2", Category: providers.EntityCategoryUser, Attributes: json.RawMessage(attrs2)}
 	s.seedEntity(e1)
 	s.seedEntity(e2)
 
@@ -286,7 +287,7 @@ func (s *FileBasedStoreTestSuite) TestGetIndexedAttributes() {
 }
 
 func (s *FileBasedStoreTestSuite) TestApplyPagination() {
-	entities := []Entity{{ID: "a"}, {ID: "b"}, {ID: "c"}, {ID: "d"}, {ID: "e"}}
+	entities := []providers.Entity{{ID: "a"}, {ID: "b"}, {ID: "c"}, {ID: "d"}, {ID: "e"}}
 
 	s.Len(applyPagination(entities, 2, 0), 2)
 	s.Len(applyPagination(entities, 0, 0), 5)
@@ -357,8 +358,8 @@ func (s *FileBasedStoreTestSuite) TestSearchEntities_OneMatch() {
 
 func (s *FileBasedStoreTestSuite) TestSearchEntities_MultipleMatches() {
 	attrs, _ := json.Marshal(map[string]interface{}{"email": "shared@test.com"})
-	e1 := Entity{ID: "m1", Category: EntityCategoryUser, Attributes: json.RawMessage(attrs)}
-	e2 := Entity{ID: "m2", Category: EntityCategoryUser, Attributes: json.RawMessage(attrs)}
+	e1 := providers.Entity{ID: "m1", Category: providers.EntityCategoryUser, Attributes: json.RawMessage(attrs)}
+	e2 := providers.Entity{ID: "m2", Category: providers.EntityCategoryUser, Attributes: json.RawMessage(attrs)}
 	s.seedEntity(e1)
 	s.seedEntity(e2)
 	got, err := s.store.SearchEntities(s.ctx, map[string]interface{}{"email": "shared@test.com"})

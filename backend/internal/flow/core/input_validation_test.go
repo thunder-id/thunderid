@@ -21,6 +21,8 @@ package core
 import (
 	"testing"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
@@ -36,7 +38,7 @@ func TestInputValidationTestSuite(t *testing.T) {
 
 // preparedRules pre-compiles regex patterns so tests bypassing the graph builder
 // still exercise the regex code path.
-func preparedRules(rules []common.ValidationRule) []common.ValidationRule {
+func preparedRules(rules []providers.ValidationRule) []providers.ValidationRule {
 	if err := common.PrepareValidationRules(rules); err != nil {
 		panic(err)
 	}
@@ -44,11 +46,11 @@ func preparedRules(rules []common.ValidationRule) []common.ValidationRule {
 }
 
 func (s *InputValidationTestSuite) TestRegexPass() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "email",
-			Validation: preparedRules([]common.ValidationRule{
-				{Type: common.ValidationTypeRegex, Value: "^[^@]+@[^@]+\\.[^@]+$",
+			Validation: preparedRules([]providers.ValidationRule{
+				{Type: providers.ValidationTypeRegex, Value: "^[^@]+@[^@]+\\.[^@]+$",
 					Message: "validation.email.invalid"},
 			}),
 		},
@@ -58,11 +60,11 @@ func (s *InputValidationTestSuite) TestRegexPass() {
 }
 
 func (s *InputValidationTestSuite) TestRegexFail() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "email",
-			Validation: preparedRules([]common.ValidationRule{
-				{Type: common.ValidationTypeRegex, Value: "^[^@]+@[^@]+\\.[^@]+$",
+			Validation: preparedRules([]providers.ValidationRule{
+				{Type: providers.ValidationTypeRegex, Value: "^[^@]+@[^@]+\\.[^@]+$",
 					Message: "validation.email.invalid"},
 			}),
 		},
@@ -74,11 +76,11 @@ func (s *InputValidationTestSuite) TestRegexFail() {
 }
 
 func (s *InputValidationTestSuite) TestMinLengthPass() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "password",
-			Validation: []common.ValidationRule{
-				{Type: common.ValidationTypeMinLength, Value: float64(8),
+			Validation: []providers.ValidationRule{
+				{Type: providers.ValidationTypeMinLength, Value: float64(8),
 					Message: "validation.password.minLength"},
 			},
 		},
@@ -88,11 +90,11 @@ func (s *InputValidationTestSuite) TestMinLengthPass() {
 }
 
 func (s *InputValidationTestSuite) TestMinLengthFail() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "password",
-			Validation: []common.ValidationRule{
-				{Type: common.ValidationTypeMinLength, Value: float64(8),
+			Validation: []providers.ValidationRule{
+				{Type: providers.ValidationTypeMinLength, Value: float64(8),
 					Message: "validation.password.minLength"},
 			},
 		},
@@ -104,11 +106,11 @@ func (s *InputValidationTestSuite) TestMinLengthFail() {
 }
 
 func (s *InputValidationTestSuite) TestMaxLengthPass() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "username",
-			Validation: []common.ValidationRule{
-				{Type: common.ValidationTypeMaxLength, Value: float64(10),
+			Validation: []providers.ValidationRule{
+				{Type: providers.ValidationTypeMaxLength, Value: float64(10),
 					Message: "validation.username.maxLength"},
 			},
 		},
@@ -118,11 +120,11 @@ func (s *InputValidationTestSuite) TestMaxLengthPass() {
 }
 
 func (s *InputValidationTestSuite) TestMaxLengthFail() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "username",
-			Validation: []common.ValidationRule{
-				{Type: common.ValidationTypeMaxLength, Value: float64(5),
+			Validation: []providers.ValidationRule{
+				{Type: providers.ValidationTypeMaxLength, Value: float64(5),
 					Message: "validation.username.maxLength"},
 			},
 		},
@@ -134,13 +136,13 @@ func (s *InputValidationTestSuite) TestMaxLengthFail() {
 
 func (s *InputValidationTestSuite) TestMultipleRulesPerFieldProduceSeparateEntries() {
 	// Perl-style lookahead patterns are not supported by the regex engine; use alternation instead.
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "password",
-			Validation: preparedRules([]common.ValidationRule{
-				{Type: common.ValidationTypeMinLength, Value: float64(8),
+			Validation: preparedRules([]providers.ValidationRule{
+				{Type: providers.ValidationTypeMinLength, Value: float64(8),
 					Message: "validation.password.minLength"},
-				{Type: common.ValidationTypeRegex,
+				{Type: providers.ValidationTypeRegex,
 					Value:   "^(?:[^A-Z]*[A-Z][^0-9]*[0-9].*|[^0-9]*[0-9][^A-Z]*[A-Z].*)$",
 					Message: "validation.password.complexity"},
 			}),
@@ -155,18 +157,18 @@ func (s *InputValidationTestSuite) TestMultipleRulesPerFieldProduceSeparateEntri
 }
 
 func (s *InputValidationTestSuite) TestMultipleFieldsErrorsInSinglePass() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "username",
-			Validation: preparedRules([]common.ValidationRule{
-				{Type: common.ValidationTypeRegex, Value: "^[^@]+@[^@]+$",
+			Validation: preparedRules([]providers.ValidationRule{
+				{Type: providers.ValidationTypeRegex, Value: "^[^@]+@[^@]+$",
 					Message: "validation.email.invalid"},
 			}),
 		},
 		{
 			Identifier: "password",
-			Validation: []common.ValidationRule{
-				{Type: common.ValidationTypeMinLength, Value: float64(8),
+			Validation: []providers.ValidationRule{
+				{Type: providers.ValidationTypeMinLength, Value: float64(8),
 					Message: "validation.password.minLength"},
 			},
 		},
@@ -179,26 +181,26 @@ func (s *InputValidationTestSuite) TestMultipleFieldsErrorsInSinglePass() {
 }
 
 func (s *InputValidationTestSuite) TestDefaultMessageUsedWhenAbsent() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "email",
-			Validation: preparedRules([]common.ValidationRule{
-				{Type: common.ValidationTypeRegex, Value: "^X+$"},
+			Validation: preparedRules([]providers.ValidationRule{
+				{Type: providers.ValidationTypeRegex, Value: "^X+$"},
 			}),
 		},
 	}
 	errs := validateInputValues(inputs, map[string]string{"email": "abc"})
 	s.Len(errs, 1)
-	s.Equal(common.DefaultValidationMessageRegex, errs[0].Message)
+	s.Equal(providers.DefaultValidationMessageRegex, errs[0].Message)
 }
 
 func (s *InputValidationTestSuite) TestMessagePassthroughI18nKey() {
 	i18nKey := "{{i18n(validation:email.invalid)}}"
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "email",
-			Validation: preparedRules([]common.ValidationRule{
-				{Type: common.ValidationTypeRegex, Value: "^X+$", Message: i18nKey},
+			Validation: preparedRules([]providers.ValidationRule{
+				{Type: providers.ValidationTypeRegex, Value: "^X+$", Message: i18nKey},
 			}),
 		},
 	}
@@ -208,11 +210,11 @@ func (s *InputValidationTestSuite) TestMessagePassthroughI18nKey() {
 }
 
 func (s *InputValidationTestSuite) TestAbsentInputSkipsValidation() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "email",
-			Validation: preparedRules([]common.ValidationRule{
-				{Type: common.ValidationTypeRegex, Value: "^X+$",
+			Validation: preparedRules([]providers.ValidationRule{
+				{Type: providers.ValidationTypeRegex, Value: "^X+$",
 					Message: "validation.email.invalid"},
 			}),
 		},
@@ -222,10 +224,10 @@ func (s *InputValidationTestSuite) TestAbsentInputSkipsValidation() {
 }
 
 func (s *InputValidationTestSuite) TestUnknownRuleTypeIgnored() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "field",
-			Validation: []common.ValidationRule{
+			Validation: []providers.ValidationRule{
 				{Type: "unknownRuleType", Value: "anything", Message: "should.not.appear"},
 			},
 		},
@@ -236,11 +238,11 @@ func (s *InputValidationTestSuite) TestUnknownRuleTypeIgnored() {
 
 // An empty regex pattern has no effective constraint, so the rule passes any submitted value.
 func (s *InputValidationTestSuite) TestRegexEmptyPatternPasses() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "field",
-			Validation: []common.ValidationRule{
-				{Type: common.ValidationTypeRegex, Value: "", Message: "should.not.appear"},
+			Validation: []providers.ValidationRule{
+				{Type: providers.ValidationTypeRegex, Value: "", Message: "should.not.appear"},
 			},
 		},
 	}
@@ -250,11 +252,11 @@ func (s *InputValidationTestSuite) TestRegexEmptyPatternPasses() {
 
 // A non-numeric value (malformed flow definition) is treated as passing rather than failing every submission.
 func (s *InputValidationTestSuite) TestMinLengthNonNumericValuePasses() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "field",
-			Validation: []common.ValidationRule{
-				{Type: common.ValidationTypeMinLength, Value: "not-a-number", Message: "should.not.appear"},
+			Validation: []providers.ValidationRule{
+				{Type: providers.ValidationTypeMinLength, Value: "not-a-number", Message: "should.not.appear"},
 			},
 		},
 	}
@@ -263,11 +265,11 @@ func (s *InputValidationTestSuite) TestMinLengthNonNumericValuePasses() {
 }
 
 func (s *InputValidationTestSuite) TestMaxLengthNonNumericValuePasses() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "field",
-			Validation: []common.ValidationRule{
-				{Type: common.ValidationTypeMaxLength, Value: []int{1, 2}, Message: "should.not.appear"},
+			Validation: []providers.ValidationRule{
+				{Type: providers.ValidationTypeMaxLength, Value: []int{1, 2}, Message: "should.not.appear"},
 			},
 		},
 	}
@@ -276,39 +278,39 @@ func (s *InputValidationTestSuite) TestMaxLengthNonNumericValuePasses() {
 }
 
 func (s *InputValidationTestSuite) TestMinLengthDefaultMessageWhenMessageAbsent() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "field",
-			Validation: []common.ValidationRule{
-				{Type: common.ValidationTypeMinLength, Value: float64(8)},
+			Validation: []providers.ValidationRule{
+				{Type: providers.ValidationTypeMinLength, Value: float64(8)},
 			},
 		},
 	}
 	errs := validateInputValues(inputs, map[string]string{"field": "abc"})
 	s.Len(errs, 1)
-	s.Equal(common.DefaultValidationMessageMinLength, errs[0].Message)
+	s.Equal(providers.DefaultValidationMessageMinLength, errs[0].Message)
 }
 
 func (s *InputValidationTestSuite) TestMaxLengthDefaultMessageWhenMessageAbsent() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "field",
-			Validation: []common.ValidationRule{
-				{Type: common.ValidationTypeMaxLength, Value: float64(3)},
+			Validation: []providers.ValidationRule{
+				{Type: providers.ValidationTypeMaxLength, Value: float64(3)},
 			},
 		},
 	}
 	errs := validateInputValues(inputs, map[string]string{"field": "abcdef"})
 	s.Len(errs, 1)
-	s.Equal(common.DefaultValidationMessageMaxLength, errs[0].Message)
+	s.Equal(providers.DefaultValidationMessageMaxLength, errs[0].Message)
 }
 
 func (s *InputValidationTestSuite) TestNumericRuleValueAcceptsInt() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "field",
-			Validation: []common.ValidationRule{
-				{Type: common.ValidationTypeMinLength, Value: 8, Message: "too short"},
+			Validation: []providers.ValidationRule{
+				{Type: providers.ValidationTypeMinLength, Value: 8, Message: "too short"},
 			},
 		},
 	}
@@ -318,11 +320,11 @@ func (s *InputValidationTestSuite) TestNumericRuleValueAcceptsInt() {
 }
 
 func (s *InputValidationTestSuite) TestNumericRuleValueAcceptsInt64() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "field",
-			Validation: []common.ValidationRule{
-				{Type: common.ValidationTypeMaxLength, Value: int64(3), Message: "too long"},
+			Validation: []providers.ValidationRule{
+				{Type: providers.ValidationTypeMaxLength, Value: int64(3), Message: "too long"},
 			},
 		},
 	}
@@ -333,11 +335,11 @@ func (s *InputValidationTestSuite) TestNumericRuleValueAcceptsInt64() {
 
 // Multi-byte UTF-8 values must be counted by rune (code point) length, not by bytes.
 func (s *InputValidationTestSuite) TestMinLengthCountsRunesNotBytes() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "field",
-			Validation: []common.ValidationRule{
-				{Type: common.ValidationTypeMinLength, Value: float64(5), Message: "too short"},
+			Validation: []providers.ValidationRule{
+				{Type: providers.ValidationTypeMinLength, Value: float64(5), Message: "too short"},
 			},
 		},
 	}
@@ -350,11 +352,11 @@ func (s *InputValidationTestSuite) TestMinLengthCountsRunesNotBytes() {
 }
 
 func (s *InputValidationTestSuite) TestMaxLengthCountsRunesNotBytes() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{
 			Identifier: "field",
-			Validation: []common.ValidationRule{
-				{Type: common.ValidationTypeMaxLength, Value: float64(3), Message: "too long"},
+			Validation: []providers.ValidationRule{
+				{Type: providers.ValidationTypeMaxLength, Value: float64(3), Message: "too long"},
 			},
 		},
 	}
@@ -377,12 +379,12 @@ func (s *InputValidationTestSuite) TestPromptNodeValidatesOnlySelectedActionInpu
 	pn.SetPrompts([]common.Prompt{
 		{
 			// Prompt A: the "credential" field must contain '@'.
-			Inputs: []common.Input{
+			Inputs: []providers.Input{
 				{
 					Identifier: "credential",
 					Required:   true,
-					Validation: preparedRules([]common.ValidationRule{
-						{Type: common.ValidationTypeRegex, Value: "@",
+					Validation: preparedRules([]providers.ValidationRule{
+						{Type: providers.ValidationTypeRegex, Value: "@",
 							Message: "must.contain.at.sign"},
 					}),
 				},
@@ -391,12 +393,12 @@ func (s *InputValidationTestSuite) TestPromptNodeValidatesOnlySelectedActionInpu
 		},
 		{
 			// Prompt B: the same "credential" field must be all digits.
-			Inputs: []common.Input{
+			Inputs: []providers.Input{
 				{
 					Identifier: "credential",
 					Required:   true,
-					Validation: preparedRules([]common.ValidationRule{
-						{Type: common.ValidationTypeRegex, Value: "^[0-9]+$",
+					Validation: preparedRules([]providers.ValidationRule{
+						{Type: providers.ValidationTypeRegex, Value: "^[0-9]+$",
 							Message: "must.be.digits"},
 					}),
 				},
@@ -407,7 +409,7 @@ func (s *InputValidationTestSuite) TestPromptNodeValidatesOnlySelectedActionInpu
 
 	// submit_phone with an all-digit value must pass; the previous dedup behavior would
 	// have applied Prompt A's '@' rule.
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:   "test-flow",
 		CurrentAction: "submit_phone",
 		UserInputs:    map[string]string{"credential": "5551234"},
@@ -425,13 +427,13 @@ func (s *InputValidationTestSuite) TestPromptNodeValidationFailureIncludesMetaWh
 	pn := node.(PromptNodeInterface)
 	pn.SetPrompts([]common.Prompt{
 		{
-			Inputs: []common.Input{
+			Inputs: []providers.Input{
 				{
 					Ref:        "input_password",
 					Identifier: "password",
 					Required:   true,
-					Validation: []common.ValidationRule{
-						{Type: common.ValidationTypeMinLength, Value: float64(8),
+					Validation: []providers.ValidationRule{
+						{Type: providers.ValidationTypeMinLength, Value: float64(8),
 							Message: "validation.password.minLength"},
 					},
 				},
@@ -454,7 +456,7 @@ func (s *InputValidationTestSuite) TestPromptNodeValidationFailureIncludesMetaWh
 		},
 	})
 
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:   "test-flow",
 		CurrentAction: "submit",
 		UserInputs:    map[string]string{"password": "short"},
@@ -470,7 +472,7 @@ func (s *InputValidationTestSuite) TestPromptNodeValidationFailureIncludesMetaWh
 }
 
 func (s *InputValidationTestSuite) TestInputWithoutValidationRulesNoOp() {
-	inputs := []common.Input{
+	inputs := []providers.Input{
 		{Identifier: "any", Required: true},
 	}
 	errs := validateInputValues(inputs, map[string]string{"any": "value"})
@@ -482,12 +484,12 @@ func (s *InputValidationTestSuite) TestPromptNodeReturnsFieldErrorsOnFailure() {
 	pn := node.(PromptNodeInterface)
 	pn.SetPrompts([]common.Prompt{
 		{
-			Inputs: []common.Input{
+			Inputs: []providers.Input{
 				{
 					Identifier: "password",
 					Required:   true,
-					Validation: []common.ValidationRule{
-						{Type: common.ValidationTypeMinLength, Value: float64(8),
+					Validation: []providers.ValidationRule{
+						{Type: providers.ValidationTypeMinLength, Value: float64(8),
 							Message: "validation.password.minLength"},
 					},
 				},
@@ -496,7 +498,7 @@ func (s *InputValidationTestSuite) TestPromptNodeReturnsFieldErrorsOnFailure() {
 		},
 	})
 
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:   "test-flow",
 		CurrentAction: "submit",
 		UserInputs:    map[string]string{"password": "short"},
@@ -522,13 +524,13 @@ func (s *InputValidationTestSuite) TestPromptNodeRePromptsInitialFieldSetOnValid
 	pn := node.(PromptNodeInterface)
 	pn.SetPrompts([]common.Prompt{
 		{
-			Inputs: []common.Input{
+			Inputs: []providers.Input{
 				{Identifier: "username", Required: true},
 				{
 					Identifier: "password",
 					Required:   true,
-					Validation: []common.ValidationRule{
-						{Type: common.ValidationTypeMinLength, Value: float64(8),
+					Validation: []providers.ValidationRule{
+						{Type: providers.ValidationTypeMinLength, Value: float64(8),
 							Message: "validation.password.minLength"},
 					},
 				},
@@ -537,7 +539,7 @@ func (s *InputValidationTestSuite) TestPromptNodeRePromptsInitialFieldSetOnValid
 		},
 	})
 
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:   "test-flow",
 		CurrentAction: "submit",
 		UserInputs:    map[string]string{"username": "valid_user", "password": "short"},
@@ -573,12 +575,12 @@ func (s *InputValidationTestSuite) TestPromptNodeAdvancesOnValidSubmission() {
 	pn := node.(PromptNodeInterface)
 	pn.SetPrompts([]common.Prompt{
 		{
-			Inputs: []common.Input{
+			Inputs: []providers.Input{
 				{
 					Identifier: "password",
 					Required:   true,
-					Validation: []common.ValidationRule{
-						{Type: common.ValidationTypeMinLength, Value: float64(8),
+					Validation: []providers.ValidationRule{
+						{Type: providers.ValidationTypeMinLength, Value: float64(8),
 							Message: "validation.password.minLength"},
 					},
 				},
@@ -587,7 +589,7 @@ func (s *InputValidationTestSuite) TestPromptNodeAdvancesOnValidSubmission() {
 		},
 	})
 
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:   "test-flow",
 		CurrentAction: "submit",
 		UserInputs:    map[string]string{"password": "longenough"},
@@ -605,15 +607,15 @@ func (s *InputValidationTestSuite) TestPromptNodeAdvancesOnValidSubmission() {
 func (s *InputValidationTestSuite) TestLoginOptionsVariantReturnsFieldErrorsOnValidationFailure() {
 	node := newPromptNode("login-chooser", map[string]interface{}{}, false, false)
 	pn := node.(PromptNodeInterface)
-	pn.SetVariant(common.NodeVariantLoginOptions)
+	pn.SetVariant(providers.NodeVariantLoginOptions)
 	pn.SetPrompts([]common.Prompt{
 		{
-			Inputs: []common.Input{
+			Inputs: []providers.Input{
 				{
 					Identifier: "password",
 					Required:   true,
-					Validation: []common.ValidationRule{
-						{Type: common.ValidationTypeMinLength, Value: float64(8),
+					Validation: []providers.ValidationRule{
+						{Type: providers.ValidationTypeMinLength, Value: float64(8),
 							Message: "validation.password.minLength"},
 					},
 				},
@@ -622,7 +624,7 @@ func (s *InputValidationTestSuite) TestLoginOptionsVariantReturnsFieldErrorsOnVa
 		},
 	})
 
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:   "test-flow",
 		CurrentAction: "pwd",
 		UserInputs:    map[string]string{"password": "short"},
@@ -643,12 +645,12 @@ func (s *InputValidationTestSuite) TestPromptNodeValidationDoesNotRunWhenRequire
 	pn := node.(PromptNodeInterface)
 	pn.SetPrompts([]common.Prompt{
 		{
-			Inputs: []common.Input{
+			Inputs: []providers.Input{
 				{
 					Identifier: "password",
 					Required:   true,
-					Validation: []common.ValidationRule{
-						{Type: common.ValidationTypeMinLength, Value: float64(8),
+					Validation: []providers.ValidationRule{
+						{Type: providers.ValidationTypeMinLength, Value: float64(8),
 							Message: "validation.password.minLength"},
 					},
 				},
@@ -657,7 +659,7 @@ func (s *InputValidationTestSuite) TestPromptNodeValidationDoesNotRunWhenRequire
 		},
 	})
 
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:   "test-flow",
 		CurrentAction: "submit",
 		UserInputs:    map[string]string{},
@@ -680,13 +682,13 @@ func (s *InputValidationTestSuite) newPromptNodeForReprompt() (*promptNode, *com
 	pn := node.(PromptNodeInterface)
 	pn.SetPrompts([]common.Prompt{
 		{
-			Inputs: []common.Input{
+			Inputs: []providers.Input{
 				{Identifier: "username", Required: true},
 				{
 					Identifier: "password",
 					Required:   true,
-					Validation: []common.ValidationRule{
-						{Type: common.ValidationTypeMinLength, Value: float64(8),
+					Validation: []providers.ValidationRule{
+						{Type: providers.ValidationTypeMinLength, Value: float64(8),
 							Message: "validation.password.minLength"},
 					},
 				},
@@ -695,7 +697,7 @@ func (s *InputValidationTestSuite) newPromptNodeForReprompt() (*promptNode, *com
 		},
 	})
 	return node.(*promptNode), &common.NodeResponse{
-		Inputs:  make([]common.Input, 0),
+		Inputs:  make([]providers.Input, 0),
 		Actions: make([]common.Action, 0),
 	}
 }
@@ -703,7 +705,7 @@ func (s *InputValidationTestSuite) newPromptNodeForReprompt() (*promptNode, *com
 // Returns false and leaves nodeResp untouched when every rule passes.
 func (s *InputValidationTestSuite) TestApplyValidationFailureRePrompt_ReturnsFalseWhenAllRulesPass() {
 	n, nodeResp := s.newPromptNodeForReprompt()
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:   "test-flow",
 		CurrentAction: "submit",
 		UserInputs:    map[string]string{"username": "alice", "password": "longenough"},
@@ -722,7 +724,7 @@ func (s *InputValidationTestSuite) TestApplyValidationFailureRePrompt_ReturnsFal
 // CurrentAction, and re-prompts the initial field set (preserving form structure).
 func (s *InputValidationTestSuite) TestApplyValidationFailureRePrompt_HandlesFailureAndRePromptsInitialFieldSet() {
 	n, nodeResp := s.newPromptNodeForReprompt()
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:   "test-flow",
 		CurrentAction: "submit",
 		UserInputs:    map[string]string{"username": "alice", "password": "short"},
@@ -750,13 +752,13 @@ func (s *InputValidationTestSuite) TestApplyValidationFailureRePrompt_PreservesS
 	pn := node.(PromptNodeInterface)
 	pn.SetPrompts([]common.Prompt{
 		{
-			Inputs: []common.Input{
+			Inputs: []providers.Input{
 				{Identifier: "tenant", Required: true},
 				{
 					Identifier: "password",
 					Required:   true,
-					Validation: []common.ValidationRule{
-						{Type: common.ValidationTypeMinLength, Value: float64(8),
+					Validation: []providers.ValidationRule{
+						{Type: providers.ValidationTypeMinLength, Value: float64(8),
 							Message: "validation.password.minLength"},
 					},
 				},
@@ -766,10 +768,10 @@ func (s *InputValidationTestSuite) TestApplyValidationFailureRePrompt_PreservesS
 	})
 	pn2 := node.(*promptNode)
 	nodeResp := &common.NodeResponse{
-		Inputs:  make([]common.Input, 0),
+		Inputs:  make([]providers.Input, 0),
 		Actions: make([]common.Action, 0),
 	}
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:   "test-flow",
 		CurrentAction: "submit",
 		UserInputs:    map[string]string{"password": "short"},
@@ -790,7 +792,7 @@ func (s *InputValidationTestSuite) TestApplyValidationFailureRePrompt_PreservesS
 // all three sources; missing any would mask the validation failure.
 func (s *InputValidationTestSuite) TestApplyValidationFailureRePrompt_ClearsRuntimeDataAndForwardedData() {
 	n, nodeResp := s.newPromptNodeForReprompt()
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:   "test-flow",
 		CurrentAction: "submit",
 		UserInputs:    map[string]string{"username": "alice", "password": "short"},
@@ -818,7 +820,7 @@ func (s *InputValidationTestSuite) TestApplyValidationFailureRePrompt_PopulatesM
 			map[string]interface{}{"id": "submit", "ref": "submit", "type": "ACTION"},
 		},
 	})
-	ctx := &NodeContext{
+	ctx := &providers.NodeContext{
 		ExecutionID:   "test-flow",
 		CurrentAction: "submit",
 		UserInputs:    map[string]string{"username": "alice", "password": "short"},

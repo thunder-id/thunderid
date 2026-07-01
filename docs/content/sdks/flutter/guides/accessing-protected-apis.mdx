@@ -1,0 +1,164 @@
+---
+title: Accessing Protected APIs
+description: Use {{ProductName}} Flutter SDK access tokens to call your backend APIs
+---
+
+# Accessing Protected APIs
+
+Use `ThunderIDProvider.of(context).client.getAccessToken()` to retrieve the current access token. The SDK automatically refreshes the token if it has expired. Pass the token as a `Bearer` credential in your HTTP requests.
+
+## Using `http` Package
+
+```dart
+import 'package:http/http.dart' as http;
+import 'package:thunderid_flutter/thunderid_flutter.dart';
+
+Future<Map<String, dynamic>> fetchUserData(BuildContext context) async {
+  final thunder = ThunderIDProvider.of(context);
+  final token = await thunder.client.getAccessToken();
+
+  final response = await http.get(
+    Uri.parse('https://api.example.com/user'),
+    headers: {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    },
+  );
+
+  if (response.statusCode == 200) {
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  throw Exception('Request failed: ${response.statusCode}');
+}
+```
+
+## Using `dio` with an Interceptor
+
+Add [dio](https://pub.dev/packages/dio) to your `pubspec.yaml`:
+
+```yaml
+dependencies:
+  dio: ^5.4.0
+```
+
+Create a `Dio` instance with an interceptor that injects the access token and retries on 401:
+
+```dart
+import 'package:dio/dio.dart';
+import 'package:thunderid_flutter/thunderid_flutter.dart';
+
+class ThunderIDInterceptor extends Interceptor {
+  final ThunderIDClient client;
+
+  ThunderIDInterceptor(this.client);
+
+  @override
+  Future<void> onRequest(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
+    try {
+      final token = await client.getAccessToken();
+      options.headers['Authorization'] = 'Bearer $token';
+    } catch (_) {
+      // Token unavailable — let the request proceed without a token.
+      // The server will respond with 401 if authentication is required.
+    }
+    handler.next(options);
+  }
+
+  @override
+  Future<void> onError(
+    DioException err,
+    ErrorInterceptorHandler handler,
+  ) async {
+    if (err.response?.statusCode == 401) {
+      try {
+        // Force a token refresh and retry once.
+        final token = await client.getAccessToken();
+        final opts = err.requestOptions;
+        opts.headers['Authorization'] = 'Bearer $token';
+        final response = await Dio().fetch(opts);
+        handler.resolve(response);
+        return;
+      } catch (_) {
+        // Refresh failed — fall through to the original error.
+      }
+    }
+    handler.next(err);
+  }
+}
+
+Dio buildApiClient(ThunderIDClient thunderClient) {
+  final dio = Dio(BaseOptions(baseUrl: 'https://api.example.com'));
+  dio.interceptors.add(ThunderIDInterceptor(thunderClient));
+  return dio;
+}
+```
+
+Usage in a widget:
+
+```dart
+class ApiService extends StatelessWidget {
+  const ApiService({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final thunder = ThunderIDProvider.of(context);
+    final dio = buildApiClient(thunder.client);
+
+    return ElevatedButton(
+      onPressed: () async {
+        final response = await dio.get('/user');
+        print(response.data);
+      },
+      child: const Text('Fetch Profile'),
+    );
+  }
+}
+```
+
+## Token Expiry and Refresh
+
+`getAccessToken()` automatically refreshes the access token using the stored refresh token if the current token is expired. If the refresh token is also expired, it throws `IAMException` with code `IAMErrorCode.sessionExpired`.
+
+```dart
+try {
+  final token = await thunder.client.getAccessToken();
+  // Use token...
+} on IAMException catch (e) {
+  if (e.code == IAMErrorCode.sessionExpired) {
+    // Session has fully expired. Sign the user out.
+    await thunder.client.signOut();
+    await thunder.refresh();
+  }
+}
+```
+
+## Checking Sign-In State Before Requests
+
+Check `thunder.isSignedIn` before making API calls in widgets to avoid unnecessary network requests:
+
+```dart
+@override
+Widget build(BuildContext context) {
+  final thunder = ThunderIDProvider.of(context);
+
+  return ThunderIDSignedIn(
+    child: FutureBuilder(
+      future: fetchUserData(context),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const CircularProgressIndicator();
+        }
+        if (snapshot.hasError) {
+          return Text('Error: ${snapshot.error}');
+        }
+        return Text('Hello, ${snapshot.data}');
+      },
+    ),
+    fallback: const AuthScreen(),
+  );
+}
+```

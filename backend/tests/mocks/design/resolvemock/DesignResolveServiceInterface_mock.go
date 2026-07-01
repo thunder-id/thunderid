@@ -8,8 +8,8 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/design/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewDesignResolveServiceInterfaceMock creates a new instance of DesignResolveServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -40,30 +40,30 @@ func (_m *DesignResolveServiceInterfaceMock) EXPECT() *DesignResolveServiceInter
 }
 
 // ResolveDesign provides a mock function for the type DesignResolveServiceInterfaceMock
-func (_mock *DesignResolveServiceInterfaceMock) ResolveDesign(ctx context.Context, resolveType common.DesignResolveType, id string) (*common.DesignResponse, *serviceerror.ServiceError) {
+func (_mock *DesignResolveServiceInterfaceMock) ResolveDesign(ctx context.Context, resolveType providers.DesignResolveType, id string) (*providers.DesignResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, resolveType, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ResolveDesign")
 	}
 
-	var r0 *common.DesignResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, common.DesignResolveType, string) (*common.DesignResponse, *serviceerror.ServiceError)); ok {
+	var r0 *providers.DesignResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.DesignResolveType, string) (*providers.DesignResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, resolveType, id)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, common.DesignResolveType, string) *common.DesignResponse); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.DesignResolveType, string) *providers.DesignResponse); ok {
 		r0 = returnFunc(ctx, resolveType, id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*common.DesignResponse)
+			r0 = ret.Get(0).(*providers.DesignResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, common.DesignResolveType, string) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, providers.DesignResolveType, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, resolveType, id)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -76,21 +76,21 @@ type DesignResolveServiceInterfaceMock_ResolveDesign_Call struct {
 
 // ResolveDesign is a helper method to define mock.On call
 //   - ctx context.Context
-//   - resolveType common.DesignResolveType
+//   - resolveType providers.DesignResolveType
 //   - id string
 func (_e *DesignResolveServiceInterfaceMock_Expecter) ResolveDesign(ctx interface{}, resolveType interface{}, id interface{}) *DesignResolveServiceInterfaceMock_ResolveDesign_Call {
 	return &DesignResolveServiceInterfaceMock_ResolveDesign_Call{Call: _e.mock.On("ResolveDesign", ctx, resolveType, id)}
 }
 
-func (_c *DesignResolveServiceInterfaceMock_ResolveDesign_Call) Run(run func(ctx context.Context, resolveType common.DesignResolveType, id string)) *DesignResolveServiceInterfaceMock_ResolveDesign_Call {
+func (_c *DesignResolveServiceInterfaceMock_ResolveDesign_Call) Run(run func(ctx context.Context, resolveType providers.DesignResolveType, id string)) *DesignResolveServiceInterfaceMock_ResolveDesign_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 common.DesignResolveType
+		var arg1 providers.DesignResolveType
 		if args[1] != nil {
-			arg1 = args[1].(common.DesignResolveType)
+			arg1 = args[1].(providers.DesignResolveType)
 		}
 		var arg2 string
 		if args[2] != nil {
@@ -105,12 +105,12 @@ func (_c *DesignResolveServiceInterfaceMock_ResolveDesign_Call) Run(run func(ctx
 	return _c
 }
 
-func (_c *DesignResolveServiceInterfaceMock_ResolveDesign_Call) Return(designResponse *common.DesignResponse, serviceError *serviceerror.ServiceError) *DesignResolveServiceInterfaceMock_ResolveDesign_Call {
+func (_c *DesignResolveServiceInterfaceMock_ResolveDesign_Call) Return(designResponse *providers.DesignResponse, serviceError *common.ServiceError) *DesignResolveServiceInterfaceMock_ResolveDesign_Call {
 	_c.Call.Return(designResponse, serviceError)
 	return _c
 }
 
-func (_c *DesignResolveServiceInterfaceMock_ResolveDesign_Call) RunAndReturn(run func(ctx context.Context, resolveType common.DesignResolveType, id string) (*common.DesignResponse, *serviceerror.ServiceError)) *DesignResolveServiceInterfaceMock_ResolveDesign_Call {
+func (_c *DesignResolveServiceInterfaceMock_ResolveDesign_Call) RunAndReturn(run func(ctx context.Context, resolveType providers.DesignResolveType, id string) (*providers.DesignResponse, *common.ServiceError)) *DesignResolveServiceInterfaceMock_ResolveDesign_Call {
 	_c.Call.Return(run)
 	return _c
 }

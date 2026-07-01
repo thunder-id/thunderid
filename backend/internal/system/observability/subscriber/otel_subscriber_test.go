@@ -29,6 +29,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
 	"go.opentelemetry.io/otel/attribute"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -799,10 +800,10 @@ func setupTestConfig(t *testing.T) {
 
 	// Create a test config
 	testConfig := &config.Config{
-		Observability: config.ObservabilityConfig{
+		Observability: engineconfig.ObservabilityConfig{
 			Enabled: true,
-			Output: config.ObservabilityOutputConfig{
-				OpenTelemetry: config.ObservabilityOTelConfig{
+			Output: engineconfig.ObservabilityOutputConfig{
+				OpenTelemetry: engineconfig.ObservabilityOTelConfig{
 					Enabled:        false,
 					ExporterType:   "stdout",
 					ServiceName:    "test-service",
@@ -812,10 +813,10 @@ func setupTestConfig(t *testing.T) {
 					Insecure:       true,
 					Categories:     []string{},
 				},
-				File: config.ObservabilityFileConfig{
+				File: engineconfig.ObservabilityFileConfig{
 					Enabled: false,
 				},
-				Console: config.ObservabilityConsoleConfig{
+				Console: engineconfig.ObservabilityConsoleConfig{
 					Enabled: false,
 				},
 			},

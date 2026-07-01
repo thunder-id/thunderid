@@ -26,8 +26,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -567,7 +567,7 @@ func (ts *DCRTestSuite) TestDCRRegistrationWithJWKSURI() {
 		GrantTypes:              []string{"authorization_code"},
 		ResponseTypes:           []string{"code"},
 		ClientName:              "JWKS URI Test Client",
-		TokenEndpointAuthMethod: "client_secret_basic",
+		TokenEndpointAuthMethod: "private_key_jwt",
 		JWKSUri:                 "https://client.example.com/.well-known/jwks.json",
 	}
 
@@ -601,7 +601,7 @@ func (ts *DCRTestSuite) TestDCRRegistrationWithJWKS() {
 		GrantTypes:              []string{"authorization_code"},
 		ResponseTypes:           []string{"code"},
 		ClientName:              "JWKS Inline Test Client",
-		TokenEndpointAuthMethod: "client_secret_basic",
+		TokenEndpointAuthMethod: "private_key_jwt",
 		JWKS:                    jwks,
 	}
 
@@ -632,7 +632,7 @@ func (ts *DCRTestSuite) TestDCRRegistrationWithJWKSURIAndRetrieve() {
 		GrantTypes:              []string{"authorization_code"},
 		ResponseTypes:           []string{"code"},
 		ClientName:              "JWKS URI Retrieve Test Client",
-		TokenEndpointAuthMethod: "client_secret_basic",
+		TokenEndpointAuthMethod: "private_key_jwt",
 		JWKSUri:                 "https://retrieve-test.example.com/.well-known/jwks.json",
 		Scope:                   "openid profile email",
 	}
@@ -660,10 +660,13 @@ func (ts *DCRTestSuite) TestDCRRegistrationWithJWKSURIAndRetrieve() {
 	err = json.NewDecoder(getResp.Body).Decode(&retrievedApp)
 	ts.Require().NoError(err, "Failed to decode application response")
 
-	// Verify the application-level certificate contains the JWKS URI
-	certificate, ok := retrievedApp["certificate"].(map[string]interface{})
-	ts.Assert().True(ok, "certificate should be present at application level")
-	ts.Assert().NotNil(certificate, "certificate should not be nil")
+	inboundAuthConfig, ok := retrievedApp["inboundAuthConfig"].([]interface{})
+	ts.Require().True(ok, "inboundAuthConfig should be present")
+	ts.Require().NotEmpty(inboundAuthConfig, "inboundAuthConfig should not be empty")
+	oauthConfig, ok := inboundAuthConfig[0].(map[string]interface{})["config"].(map[string]interface{})
+	ts.Require().True(ok, "OAuth config should be present")
+	certificate, ok := oauthConfig["certificate"].(map[string]interface{})
+	ts.Require().True(ok, "certificate should be present in OAuth config")
 	ts.Assert().Equal("JWKS_URI", certificate["type"], "certificate type should be JWKS_URI")
 	ts.Assert().Equal(request.JWKSUri, certificate["value"], "certificate value should match the JWKS URI")
 
@@ -976,7 +979,7 @@ func (ts *DCRTestSuite) TestDCRRegistrationWithAllOptionalFields() {
 		PolicyURI:               "https://client.example.com/privacy",
 		TosURI:                  "https://client.example.com/terms",
 		Contacts:                []string{"admin@example.com", "support@example.com", "security@example.com"},
-		TokenEndpointAuthMethod: "client_secret_basic",
+		TokenEndpointAuthMethod: "private_key_jwt",
 		Scope:                   "openid profile email address phone offline_access",
 		JWKS:                    jwks,
 	}
@@ -1028,7 +1031,7 @@ func (ts *DCRTestSuite) TestDCRRegistrationWithJWKSURIHTTPS() {
 		GrantTypes:              []string{"authorization_code"},
 		ResponseTypes:           []string{"code"},
 		ClientName:              "JWKS URI HTTPS Test",
-		TokenEndpointAuthMethod: "client_secret_basic",
+		TokenEndpointAuthMethod: "private_key_jwt",
 		JWKSUri:                 "https://secure.example.com/.well-known/jwks.json",
 		Scope:                   "openid",
 	}

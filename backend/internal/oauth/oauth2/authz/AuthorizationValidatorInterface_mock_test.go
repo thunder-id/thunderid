@@ -8,7 +8,7 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewAuthorizationValidatorInterfaceMock creates a new instance of AuthorizationValidatorInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -39,7 +39,7 @@ func (_m *AuthorizationValidatorInterfaceMock) EXPECT() *AuthorizationValidatorI
 }
 
 // validateInitialAuthorizationRequest provides a mock function for the type AuthorizationValidatorInterfaceMock
-func (_mock *AuthorizationValidatorInterfaceMock) validateInitialAuthorizationRequest(ctx context.Context, msg *OAuthMessage, oauthApp *model.OAuthClient) (bool, string, string) {
+func (_mock *AuthorizationValidatorInterfaceMock) validateInitialAuthorizationRequest(ctx context.Context, msg *OAuthMessage, oauthApp *providers.OAuthClient) (bool, string, string) {
 	ret := _mock.Called(ctx, msg, oauthApp)
 
 	if len(ret) == 0 {
@@ -49,20 +49,20 @@ func (_mock *AuthorizationValidatorInterfaceMock) validateInitialAuthorizationRe
 	var r0 bool
 	var r1 string
 	var r2 string
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *OAuthMessage, *model.OAuthClient) (bool, string, string)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *OAuthMessage, *providers.OAuthClient) (bool, string, string)); ok {
 		return returnFunc(ctx, msg, oauthApp)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *OAuthMessage, *model.OAuthClient) bool); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *OAuthMessage, *providers.OAuthClient) bool); ok {
 		r0 = returnFunc(ctx, msg, oauthApp)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *OAuthMessage, *model.OAuthClient) string); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *OAuthMessage, *providers.OAuthClient) string); ok {
 		r1 = returnFunc(ctx, msg, oauthApp)
 	} else {
 		r1 = ret.Get(1).(string)
 	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, *OAuthMessage, *model.OAuthClient) string); ok {
+	if returnFunc, ok := ret.Get(2).(func(context.Context, *OAuthMessage, *providers.OAuthClient) string); ok {
 		r2 = returnFunc(ctx, msg, oauthApp)
 	} else {
 		r2 = ret.Get(2).(string)
@@ -78,12 +78,12 @@ type AuthorizationValidatorInterfaceMock_validateInitialAuthorizationRequest_Cal
 // validateInitialAuthorizationRequest is a helper method to define mock.On call
 //   - ctx context.Context
 //   - msg *OAuthMessage
-//   - oauthApp *model.OAuthClient
+//   - oauthApp *providers.OAuthClient
 func (_e *AuthorizationValidatorInterfaceMock_Expecter) validateInitialAuthorizationRequest(ctx interface{}, msg interface{}, oauthApp interface{}) *AuthorizationValidatorInterfaceMock_validateInitialAuthorizationRequest_Call {
 	return &AuthorizationValidatorInterfaceMock_validateInitialAuthorizationRequest_Call{Call: _e.mock.On("validateInitialAuthorizationRequest", ctx, msg, oauthApp)}
 }
 
-func (_c *AuthorizationValidatorInterfaceMock_validateInitialAuthorizationRequest_Call) Run(run func(ctx context.Context, msg *OAuthMessage, oauthApp *model.OAuthClient)) *AuthorizationValidatorInterfaceMock_validateInitialAuthorizationRequest_Call {
+func (_c *AuthorizationValidatorInterfaceMock_validateInitialAuthorizationRequest_Call) Run(run func(ctx context.Context, msg *OAuthMessage, oauthApp *providers.OAuthClient)) *AuthorizationValidatorInterfaceMock_validateInitialAuthorizationRequest_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -93,9 +93,9 @@ func (_c *AuthorizationValidatorInterfaceMock_validateInitialAuthorizationReques
 		if args[1] != nil {
 			arg1 = args[1].(*OAuthMessage)
 		}
-		var arg2 *model.OAuthClient
+		var arg2 *providers.OAuthClient
 		if args[2] != nil {
-			arg2 = args[2].(*model.OAuthClient)
+			arg2 = args[2].(*providers.OAuthClient)
 		}
 		run(
 			arg0,
@@ -111,7 +111,7 @@ func (_c *AuthorizationValidatorInterfaceMock_validateInitialAuthorizationReques
 	return _c
 }
 
-func (_c *AuthorizationValidatorInterfaceMock_validateInitialAuthorizationRequest_Call) RunAndReturn(run func(ctx context.Context, msg *OAuthMessage, oauthApp *model.OAuthClient) (bool, string, string)) *AuthorizationValidatorInterfaceMock_validateInitialAuthorizationRequest_Call {
+func (_c *AuthorizationValidatorInterfaceMock_validateInitialAuthorizationRequest_Call) RunAndReturn(run func(ctx context.Context, msg *OAuthMessage, oauthApp *providers.OAuthClient) (bool, string, string)) *AuthorizationValidatorInterfaceMock_validateInitialAuthorizationRequest_Call {
 	_c.Call.Return(run)
 	return _c
 }

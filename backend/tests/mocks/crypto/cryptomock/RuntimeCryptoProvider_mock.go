@@ -338,8 +338,8 @@ func (_c *RuntimeCryptoProviderMock_GetTLSMaterial_Call) RunAndReturn(run func(c
 }
 
 // Sign provides a mock function for the type RuntimeCryptoProviderMock
-func (_mock *RuntimeCryptoProviderMock) Sign(ctx context.Context, keyRef common.KeyRef, algorithm cryptolib.SignAlgorithm, content []byte) ([]byte, error) {
-	ret := _mock.Called(ctx, keyRef, algorithm, content)
+func (_mock *RuntimeCryptoProviderMock) Sign(ctx context.Context, keyRef common.KeyRef, alg string, content []byte) ([]byte, error) {
+	ret := _mock.Called(ctx, keyRef, alg, content)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Sign")
@@ -347,18 +347,18 @@ func (_mock *RuntimeCryptoProviderMock) Sign(ctx context.Context, keyRef common.
 
 	var r0 []byte
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, common.KeyRef, cryptolib.SignAlgorithm, []byte) ([]byte, error)); ok {
-		return returnFunc(ctx, keyRef, algorithm, content)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, common.KeyRef, string, []byte) ([]byte, error)); ok {
+		return returnFunc(ctx, keyRef, alg, content)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, common.KeyRef, cryptolib.SignAlgorithm, []byte) []byte); ok {
-		r0 = returnFunc(ctx, keyRef, algorithm, content)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, common.KeyRef, string, []byte) []byte); ok {
+		r0 = returnFunc(ctx, keyRef, alg, content)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]byte)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, common.KeyRef, cryptolib.SignAlgorithm, []byte) error); ok {
-		r1 = returnFunc(ctx, keyRef, algorithm, content)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, common.KeyRef, string, []byte) error); ok {
+		r1 = returnFunc(ctx, keyRef, alg, content)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -373,13 +373,13 @@ type RuntimeCryptoProviderMock_Sign_Call struct {
 // Sign is a helper method to define mock.On call
 //   - ctx context.Context
 //   - keyRef common.KeyRef
-//   - algorithm cryptolib.SignAlgorithm
+//   - alg string
 //   - content []byte
-func (_e *RuntimeCryptoProviderMock_Expecter) Sign(ctx interface{}, keyRef interface{}, algorithm interface{}, content interface{}) *RuntimeCryptoProviderMock_Sign_Call {
-	return &RuntimeCryptoProviderMock_Sign_Call{Call: _e.mock.On("Sign", ctx, keyRef, algorithm, content)}
+func (_e *RuntimeCryptoProviderMock_Expecter) Sign(ctx interface{}, keyRef interface{}, alg interface{}, content interface{}) *RuntimeCryptoProviderMock_Sign_Call {
+	return &RuntimeCryptoProviderMock_Sign_Call{Call: _e.mock.On("Sign", ctx, keyRef, alg, content)}
 }
 
-func (_c *RuntimeCryptoProviderMock_Sign_Call) Run(run func(ctx context.Context, keyRef common.KeyRef, algorithm cryptolib.SignAlgorithm, content []byte)) *RuntimeCryptoProviderMock_Sign_Call {
+func (_c *RuntimeCryptoProviderMock_Sign_Call) Run(run func(ctx context.Context, keyRef common.KeyRef, alg string, content []byte)) *RuntimeCryptoProviderMock_Sign_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -389,9 +389,9 @@ func (_c *RuntimeCryptoProviderMock_Sign_Call) Run(run func(ctx context.Context,
 		if args[1] != nil {
 			arg1 = args[1].(common.KeyRef)
 		}
-		var arg2 cryptolib.SignAlgorithm
+		var arg2 string
 		if args[2] != nil {
-			arg2 = args[2].(cryptolib.SignAlgorithm)
+			arg2 = args[2].(string)
 		}
 		var arg3 []byte
 		if args[3] != nil {
@@ -412,7 +412,82 @@ func (_c *RuntimeCryptoProviderMock_Sign_Call) Return(bytes []byte, err error) *
 	return _c
 }
 
-func (_c *RuntimeCryptoProviderMock_Sign_Call) RunAndReturn(run func(ctx context.Context, keyRef common.KeyRef, algorithm cryptolib.SignAlgorithm, content []byte) ([]byte, error)) *RuntimeCryptoProviderMock_Sign_Call {
+func (_c *RuntimeCryptoProviderMock_Sign_Call) RunAndReturn(run func(ctx context.Context, keyRef common.KeyRef, alg string, content []byte) ([]byte, error)) *RuntimeCryptoProviderMock_Sign_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Verify provides a mock function for the type RuntimeCryptoProviderMock
+func (_mock *RuntimeCryptoProviderMock) Verify(ctx context.Context, kid string, alg string, content []byte, signature []byte) error {
+	ret := _mock.Called(ctx, kid, alg, content, signature)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Verify")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, []byte, []byte) error); ok {
+		r0 = returnFunc(ctx, kid, alg, content, signature)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// RuntimeCryptoProviderMock_Verify_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Verify'
+type RuntimeCryptoProviderMock_Verify_Call struct {
+	*mock.Call
+}
+
+// Verify is a helper method to define mock.On call
+//   - ctx context.Context
+//   - kid string
+//   - alg string
+//   - content []byte
+//   - signature []byte
+func (_e *RuntimeCryptoProviderMock_Expecter) Verify(ctx interface{}, kid interface{}, alg interface{}, content interface{}, signature interface{}) *RuntimeCryptoProviderMock_Verify_Call {
+	return &RuntimeCryptoProviderMock_Verify_Call{Call: _e.mock.On("Verify", ctx, kid, alg, content, signature)}
+}
+
+func (_c *RuntimeCryptoProviderMock_Verify_Call) Run(run func(ctx context.Context, kid string, alg string, content []byte, signature []byte)) *RuntimeCryptoProviderMock_Verify_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 []byte
+		if args[3] != nil {
+			arg3 = args[3].([]byte)
+		}
+		var arg4 []byte
+		if args[4] != nil {
+			arg4 = args[4].([]byte)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *RuntimeCryptoProviderMock_Verify_Call) Return(err error) *RuntimeCryptoProviderMock_Verify_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *RuntimeCryptoProviderMock_Verify_Call) RunAndReturn(run func(ctx context.Context, kid string, alg string, content []byte, signature []byte) error) *RuntimeCryptoProviderMock_Verify_Call {
 	_c.Call.Return(run)
 	return _c
 }

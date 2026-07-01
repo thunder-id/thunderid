@@ -32,13 +32,14 @@ import (
 	"strings"
 	"time"
 
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
-	"github.com/thunder-id/thunderid/internal/flow/common"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/ou"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -80,40 +81,40 @@ type errorHandlingConfig struct {
 
 // httpRequestExecutor implements the ExecutorInterface for making HTTP requests to external endpoints.
 type httpRequestExecutor struct {
-	core.ExecutorInterface
+	providers.Executor
 	ouService     ou.OrganizationUnitServiceInterface
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface
+	authnProvider providers.AuthnProviderManager
 	logger        *log.Logger
 }
 
-var _ core.ExecutorInterface = (*httpRequestExecutor)(nil)
+var _ providers.Executor = (*httpRequestExecutor)(nil)
 
 // newHTTPRequestExecutor creates a new instance of HTTPRequestExecutor.
 func newHTTPRequestExecutor(
 	flowFactory core.FlowFactoryInterface,
 	ouService ou.OrganizationUnitServiceInterface,
-	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) *httpRequestExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, httpRequestLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameHTTPRequest))
 
-	base := flowFactory.CreateExecutor(ExecutorNameHTTPRequest, common.ExecutorTypeUtility,
-		[]common.Input{}, []common.Input{})
+	base := flowFactory.CreateExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
+		[]providers.Input{}, []providers.Input{})
 
 	return &httpRequestExecutor{
-		ExecutorInterface: base,
-		ouService:         ouService,
-		authnProvider:     authnProvider,
-		logger:            logger,
+		Executor:      base,
+		ouService:     ouService,
+		authnProvider: authnProvider,
+		logger:        logger,
 	}
 }
 
 // Execute executes the HTTP request logic.
-func (h *httpRequestExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+func (h *httpRequestExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := h.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing HTTP request executor")
 
-	execResp := &common.ExecutorResponse{
+	execResp := &providers.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 		AuthUser:       ctx.AuthUser,
@@ -122,7 +123,7 @@ func (h *httpRequestExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRe
 	config, err := h.parseAndValidateConfig(ctx.Context, ctx.NodeProperties)
 	if err != nil {
 		logger.Error(ctx.Context, "Failed to parse/validate HTTP request configuration", log.Error(err))
-		execResp.Status = common.ExecFailure
+		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrHTTPRequestConfigInvalid
 		return execResp, nil
 	}
@@ -141,7 +142,7 @@ func (h *httpRequestExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRe
 		return h.handleRequestError(ctx.Context, execResp, config, err.Error(), logger), nil
 	}
 
-	execResp.Status = common.ExecComplete
+	execResp.Status = providers.ExecComplete
 	logger.Debug(ctx.Context, "HTTP request executor execution completed",
 		log.String("status", string(execResp.Status)))
 
@@ -301,8 +302,8 @@ func (h *httpRequestExecutor) parseErrorHandling(
 // so that placeholders like {{ctx(ouHandle)}} can be resolved for the current request.
 // It only performs the fetch when an OU placeholder is referenced in the config and the OU ID
 // is available in the context.
-func (h *httpRequestExecutor) enrichOURuntimeData(ctx *core.NodeContext, config *httpRequestConfig,
-	execResp *common.ExecutorResponse) {
+func (h *httpRequestExecutor) enrichOURuntimeData(ctx *providers.NodeContext, config *httpRequestConfig,
+	execResp *providers.ExecutorResponse) {
 	if h.ouService == nil {
 		return
 	}
@@ -351,7 +352,7 @@ func (h *httpRequestExecutor) enrichOURuntimeData(ctx *core.NodeContext, config 
 
 // resolvePlaceholders resolves placeholders in the configuration using context data.
 func (h *httpRequestExecutor) resolvePlaceholders(
-	ctx *core.NodeContext, config *httpRequestConfig, execResp *common.ExecutorResponse) {
+	ctx *providers.NodeContext, config *httpRequestConfig, execResp *providers.ExecutorResponse) {
 	config.URL = core.ResolvePlaceholder(ctx, config.URL, execResp, h.authnProvider, h.logger)
 
 	// Resolve headers
@@ -365,7 +366,7 @@ func (h *httpRequestExecutor) resolvePlaceholders(
 
 // resolveMapPlaceholders recursively resolves placeholders in a map or slice.
 func (h *httpRequestExecutor) resolveMapPlaceholders(
-	ctx *core.NodeContext, data interface{}, execResp *common.ExecutorResponse) interface{} {
+	ctx *providers.NodeContext, data interface{}, execResp *providers.ExecutorResponse) interface{} {
 	switch v := data.(type) {
 	case map[string]interface{}:
 		result := make(map[string]interface{})
@@ -387,7 +388,7 @@ func (h *httpRequestExecutor) resolveMapPlaceholders(
 }
 
 // executeRequestWithRetry executes the HTTP request with retry logic.
-func (h *httpRequestExecutor) executeRequestWithRetry(ctx *core.NodeContext,
+func (h *httpRequestExecutor) executeRequestWithRetry(ctx *providers.NodeContext,
 	config *httpRequestConfig) (*http.Response, error) {
 	logger := h.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
@@ -423,7 +424,7 @@ func (h *httpRequestExecutor) executeRequestWithRetry(ctx *core.NodeContext,
 }
 
 // executeRequest executes a single HTTP request.
-func (h *httpRequestExecutor) executeRequest(ctx *core.NodeContext, config *httpRequestConfig,
+func (h *httpRequestExecutor) executeRequest(ctx *providers.NodeContext, config *httpRequestConfig,
 	httpClient httpservice.HTTPClientInterface) (*http.Response, error) {
 	logger := h.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
@@ -448,6 +449,11 @@ func (h *httpRequestExecutor) executeRequest(ctx *core.NodeContext, config *http
 		req.Header.Set(key, value)
 	}
 
+	// Propagate the correlation ID unless the flow explicitly configured one.
+	if req.Header.Get(serverconst.CorrelationIDHeaderName) == "" {
+		req.Header.Set(serverconst.CorrelationIDHeaderName, sysContext.GetTraceID(ctx.Context))
+	}
+
 	// Set default Content-Type for requests with body
 	if bodyReader != nil && req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/json")
@@ -465,8 +471,8 @@ func (h *httpRequestExecutor) executeRequest(ctx *core.NodeContext, config *http
 }
 
 // processResponse processes the HTTP response and extracts data based on response mapping.
-func (h *httpRequestExecutor) processResponse(ctx *core.NodeContext, config *httpRequestConfig,
-	response *http.Response, execResp *common.ExecutorResponse) error {
+func (h *httpRequestExecutor) processResponse(ctx *providers.NodeContext, config *httpRequestConfig,
+	response *http.Response, execResp *providers.ExecutorResponse) error {
 	logger := h.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	defer func() {
 		if err := response.Body.Close(); err != nil {
@@ -545,8 +551,8 @@ func (h *httpRequestExecutor) extractValueFromPath(data map[string]interface{}, 
 // handleRequestError handles HTTP request errors and sets the appropriate response status based on the
 // failOnError configuration.
 func (h *httpRequestExecutor) handleRequestError(
-	ctx context.Context, execResp *common.ExecutorResponse, config *httpRequestConfig,
-	errorMessage string, logger *log.Logger) *common.ExecutorResponse {
+	ctx context.Context, execResp *providers.ExecutorResponse, config *httpRequestConfig,
+	errorMessage string, logger *log.Logger) *providers.ExecutorResponse {
 	failOnError := false
 	if config != nil && config.ErrorHandling != nil {
 		failOnError = config.ErrorHandling.FailOnError
@@ -554,15 +560,15 @@ func (h *httpRequestExecutor) handleRequestError(
 
 	if failOnError {
 		logger.Debug(ctx, "Failing execution due to HTTP request error", log.String("error", errorMessage))
-		execResp.Status = common.ExecFailure
-		execResp.Error = serviceerror.CustomServiceError(ErrHTTPRequestFailed, i18ncore.I18nMessage{
+		execResp.Status = providers.ExecFailure
+		execResp.Error = tidcommon.CustomServiceError(ErrHTTPRequestFailed, tidcommon.I18nMessage{
 			Key:          ErrHTTPRequestFailed.ErrorDescription.Key,
 			DefaultValue: errorMessage,
 		})
 	} else {
 		logger.Debug(ctx, "Continuing execution despite HTTP request error",
 			log.String("error", errorMessage))
-		execResp.Status = common.ExecComplete
+		execResp.Status = providers.ExecComplete
 	}
 
 	return execResp

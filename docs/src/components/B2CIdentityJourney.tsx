@@ -17,8 +17,27 @@
  */
 
 import Link from '@docusaurus/Link';
+import {Box} from '@wso2/oxygen-ui';
+import {
+  BarChart3,
+  Briefcase,
+  CircleUser,
+  ClipboardCheck,
+  Code2,
+  Globe,
+  LayoutGrid,
+  LockKeyhole,
+  LogIn,
+  Palette,
+  Share2,
+  ShieldCheck,
+  ShieldPlus,
+  UserPlus,
+  UserX,
+} from '@wso2/oxygen-ui-icons-react';
 import React from 'react';
 import './B2CIdentityJourney.css';
+
 import {
   UseCaseBuildingBlockDetail,
   UseCaseBuildingBlockPanel,
@@ -27,6 +46,997 @@ import {
 import { UseCaseCapabilityMap, UseCaseMapGroup, UseCaseMapNode } from './UseCaseCapabilityMap';
 
 export { UseCaseBuildingBlockPanel };
+
+// ─── Shared icon containers (already sx, kept as-is) ───────────────────────
+
+const iconContainerSx = {
+  width: '3.4rem',
+  minWidth: '3.4rem',
+  height: '3.4rem',
+  borderRadius: '50%',
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 38%, var(--ifm-color-emphasis-300))',
+  background: `radial-gradient(68px 68px at 28% 18%, color-mix(in srgb, var(--ifm-color-primary) 24%, transparent), transparent),
+    linear-gradient(160deg, color-mix(in srgb, var(--ifm-color-primary) 72%, #091629), color-mix(in srgb, var(--ifm-color-primary) 44%, #030712))`,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  boxShadow: 'inset 0 0 0 1px color-mix(in srgb, #fff 24%, transparent), 0 8px 18px color-mix(in srgb, var(--ifm-color-primary) 20%, transparent)',
+  '& svg': {
+    width: '1.55rem',
+    height: '1.55rem',
+    stroke: '#fff',
+    fill: 'none',
+    strokeWidth: '1.8',
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  },
+} as const;
+
+const supportingIconContainerSx = {
+  ...iconContainerSx,
+  width: '2.5rem',
+  minWidth: '2.5rem',
+  height: '2.5rem',
+  flex: 'none',
+  aspectRatio: '1',
+} as const;
+
+// ─── uc-approach-cards ──────────────────────────────────────────────────────
+
+const approachCardsSx = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '1rem',
+  margin: '1.25rem 0',
+} as const;
+
+// ─── uc-b2c-roadmap ─────────────────────────────────────────────────────────
+
+const roadmapSx = {
+  '--uc-node-w': '9rem',
+  '--uc-node-h': '5rem',
+  '--uc-icon-size': '4rem',
+  display: 'flex',
+  flexWrap: 'wrap',
+  justifyContent: 'center',
+  alignItems: 'flex-start',
+  gap: '1.25rem 1.4rem',
+  margin: '1.5rem 0 2rem',
+  padding: '0.5rem 0.2rem',
+  '@media (max-width: 640px)': {
+    '--uc-node-w': '7.5rem',
+    '--uc-node-h': '4.4rem',
+    '--uc-icon-size': '3.4rem',
+    gap: '1rem 0.8rem',
+  },
+} as const;
+
+const roadmapNodeSx = {
+  width: 'var(--uc-node-w)',
+  minHeight: 'var(--uc-node-h)',
+  border: 0,
+  background: 'transparent',
+  cursor: 'pointer',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'flex-start',
+  gap: '0.55rem',
+  textAlign: 'center',
+  textDecoration: 'none',
+  color: 'var(--ifm-font-color-base)',
+  fontWeight: 700,
+  fontSize: '0.82rem',
+  lineHeight: 1.2,
+  transition: 'transform 160ms ease',
+  '&:hover': {
+    transform: 'translateY(-2px)',
+    textDecoration: 'none',
+  },
+  '&:focus-visible': {
+    outline: '2px solid color-mix(in srgb, var(--ifm-color-primary) 58%, white)',
+    outlineOffset: '4px',
+    borderRadius: '6px',
+  },
+  '&:hover .uc-b2c-roadmap__icon': {
+    borderColor: 'color-mix(in srgb, #ffffff 56%, var(--ifm-color-primary))',
+    boxShadow: 'inset 0 0 0 1px color-mix(in srgb, #fff 32%, transparent), 0 12px 24px color-mix(in srgb, var(--ifm-color-primary) 34%, transparent)',
+  },
+} as const;
+
+const roadmapIconSx = {
+  width: 'var(--uc-icon-size)',
+  minWidth: 'var(--uc-icon-size)',
+  height: 'var(--uc-icon-size)',
+  borderRadius: '999px',
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 38%, var(--ifm-color-emphasis-300))',
+  background: `radial-gradient(80px 80px at 28% 18%, color-mix(in srgb, var(--ifm-color-primary) 24%, transparent), transparent),
+    linear-gradient(160deg, color-mix(in srgb, var(--ifm-color-primary) 72%, #091629), color-mix(in srgb, var(--ifm-color-primary) 44%, #030712))`,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  boxShadow: 'inset 0 0 0 1px color-mix(in srgb, #fff 24%, transparent), 0 8px 18px color-mix(in srgb, var(--ifm-color-primary) 24%, transparent)',
+  '& svg': {
+    width: '1.75rem',
+    height: '1.75rem',
+    stroke: '#fff',
+    fill: 'none',
+    strokeWidth: '1.8',
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  },
+} as const;
+
+const roadmapLabelSx = {
+  display: 'block',
+  maxWidth: '9.4rem',
+} as const;
+
+// ─── uc-solution-map ────────────────────────────────────────────────────────
+
+const solutionMapSx = {
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 20%, var(--ifm-color-emphasis-200))',
+  borderRadius: '12px',
+  background: `radial-gradient(700px 280px at 20% 0%, color-mix(in srgb, var(--ifm-color-primary) 9%, transparent), transparent),
+    color-mix(in srgb, var(--ifm-color-emphasis-100) 28%, transparent)`,
+  display: 'grid',
+  gap: '0.9rem',
+  gridTemplateColumns: 'minmax(0, 1fr)',
+  margin: '1.25rem 0 1.75rem',
+  overflow: 'hidden',
+  padding: '1.1rem',
+  position: 'relative',
+  '@media (max-width: 640px)': {
+    padding: '0.85rem',
+  },
+} as const;
+
+const solutionMapRailSx = {
+  background: 'color-mix(in srgb, var(--ifm-color-primary) 36%, var(--ifm-color-emphasis-300))',
+  height: '2px',
+  left: '2.5rem',
+  position: 'absolute',
+  right: '2.5rem',
+  top: '2.05rem',
+  '@media (max-width: 900px)': {
+    display: 'none',
+  },
+  '@media (max-width: 640px)': {
+    bottom: 'auto',
+    display: 'block',
+    height: 'auto',
+    left: '1.9rem',
+    right: 'auto',
+    top: '1.8rem',
+    width: '2px',
+  },
+} as const;
+
+const solutionMapStagesSx = {
+  display: 'grid',
+  gap: '0.7rem',
+  gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+  position: 'relative',
+  '@media (max-width: 900px)': {
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  },
+  '@media (max-width: 640px)': {
+    gridTemplateColumns: '1fr',
+  },
+} as const;
+
+const solutionMapStageSx = {
+  appearance: 'none',
+  background: 'transparent',
+  border: 0,
+  color: 'inherit',
+  cursor: 'pointer',
+  font: 'inherit',
+  minWidth: 0,
+  padding: 0,
+  position: 'relative',
+  textAlign: 'left',
+  '&:focus-visible': {
+    outline: '2px solid color-mix(in srgb, var(--ifm-color-primary) 60%, white)',
+    outlineOffset: '4px',
+  },
+  '&:hover .uc-sm-content, &[aria-selected="true"] .uc-sm-content': {
+    borderColor: 'color-mix(in srgb, var(--ifm-color-primary) 42%, var(--ifm-color-emphasis-300))',
+    boxShadow: '0 10px 24px color-mix(in srgb, var(--ifm-color-primary) 12%, transparent)',
+    transform: 'translateY(-1px)',
+  },
+  '@media (max-width: 640px)': {
+    display: 'grid',
+    gap: '0.55rem',
+    gridTemplateColumns: '2.1rem minmax(0, 1fr)',
+  },
+} as const;
+
+const solutionMapIndexSx = {
+  alignItems: 'center',
+  background: 'color-mix(in srgb, var(--ifm-color-primary) 13%, var(--ifm-background-color))',
+  border: '2px solid color-mix(in srgb, var(--ifm-color-primary) 48%, var(--ifm-color-emphasis-300))',
+  borderRadius: '999px',
+  color: 'color-mix(in srgb, var(--ifm-color-primary) 88%, var(--ifm-font-color-base))',
+  display: 'flex',
+  fontSize: '0.72rem',
+  fontWeight: 850,
+  height: '2.1rem',
+  justifyContent: 'center',
+  margin: '0 auto 0.6rem',
+  position: 'relative',
+  width: '2.1rem',
+  zIndex: 1,
+  '@media (max-width: 640px)': {
+    margin: 0,
+  },
+} as const;
+
+const solutionMapIndexActiveSx = {
+  ...solutionMapIndexSx,
+  background: 'color-mix(in srgb, var(--ifm-color-primary) 88%, #111827)',
+  color: 'white',
+} as const;
+
+const solutionMapContentSx = {
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 16%, var(--ifm-color-emphasis-200))',
+  borderRadius: '8px',
+  background: 'color-mix(in srgb, var(--ifm-background-color) 78%, transparent)',
+  minHeight: '100%',
+  padding: '0.85rem',
+  transition: 'border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease',
+  '@media (max-width: 640px)': {
+    padding: '0.72rem',
+  },
+} as const;
+
+const solutionMapContentTitleSx = {
+  display: 'block',
+  fontSize: '0.9rem',
+  fontWeight: 800,
+  lineHeight: 1.25,
+  margin: '0 0 0.35rem',
+} as const;
+
+const solutionMapContentDescSx = {
+  color: 'var(--ifm-color-emphasis-800)',
+  display: 'block',
+  fontSize: '0.76rem',
+  lineHeight: 1.4,
+  margin: '0 0 0.55rem',
+} as const;
+
+const solutionMapSelectionSx = {
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 18%, var(--ifm-color-emphasis-300))',
+  borderRadius: '999px',
+  color: 'color-mix(in srgb, var(--ifm-color-primary) 88%, var(--ifm-font-color-base))',
+  display: 'inline-flex',
+  fontSize: '0.7rem',
+  fontWeight: 800,
+  lineHeight: 1.15,
+  padding: '0.24rem 0.42rem',
+} as const;
+
+const solutionMapDetailSx = {
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 18%, var(--ifm-color-emphasis-200))',
+  borderRadius: '10px',
+  background: 'color-mix(in srgb, var(--ifm-background-color) 78%, transparent)',
+  display: 'grid',
+  gap: '1rem',
+  gridTemplateColumns: 'minmax(0, 0.98fr) minmax(16rem, 0.8fr)',
+  padding: '1rem',
+  '@media (max-width: 900px)': {
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  },
+  '@media (max-width: 640px)': {
+    gridTemplateColumns: '1fr',
+  },
+} as const;
+
+const solutionMapOptionsSx = {
+  display: 'grid',
+  gap: '0.55rem',
+} as const;
+
+const solutionMapOptionSx = {
+  appearance: 'none',
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 16%, var(--ifm-color-emphasis-300))',
+  borderRadius: '8px',
+  background: 'color-mix(in srgb, var(--ifm-color-emphasis-100) 22%, transparent)',
+  color: 'inherit',
+  cursor: 'pointer',
+  display: 'grid',
+  gap: '0.22rem',
+  font: 'inherit',
+  padding: '0.7rem 0.75rem',
+  textAlign: 'left',
+  transition: 'background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease',
+  '& strong': {
+    color: 'var(--ifm-font-color-base)',
+    fontSize: '0.86rem',
+    lineHeight: 1.2,
+  },
+  '& span': {
+    color: 'var(--ifm-color-emphasis-800)',
+    fontSize: '0.75rem',
+    lineHeight: 1.35,
+  },
+  '&:hover': {
+    borderColor: 'color-mix(in srgb, var(--ifm-color-primary) 46%, var(--ifm-color-emphasis-300))',
+    transform: 'translateY(-1px)',
+  },
+} as const;
+
+const solutionMapOptionActiveSx = {
+  ...solutionMapOptionSx,
+  borderColor: 'color-mix(in srgb, var(--ifm-color-primary) 46%, var(--ifm-color-emphasis-300))',
+  background: 'color-mix(in srgb, var(--ifm-color-primary) 9%, transparent)',
+  boxShadow: '0 8px 18px color-mix(in srgb, var(--ifm-color-primary) 12%, transparent)',
+  transform: 'translateY(-1px)',
+} as const;
+
+const graphicBackgrounds: Record<string, string> = {
+  integration: `linear-gradient(160deg, color-mix(in srgb, var(--ifm-color-primary) 9%, transparent), transparent 55%),
+    color-mix(in srgb, var(--ifm-color-emphasis-100) 18%, transparent)`,
+  'identity-data': `linear-gradient(160deg, color-mix(in srgb, #0f766e 12%, transparent), transparent 55%),
+    color-mix(in srgb, var(--ifm-color-emphasis-100) 18%, transparent)`,
+  'tokens-apis': `linear-gradient(160deg, color-mix(in srgb, #7c3aed 10%, transparent), transparent 55%),
+    color-mix(in srgb, var(--ifm-color-emphasis-100) 18%, transparent)`,
+  operations: `linear-gradient(160deg, color-mix(in srgb, #b45309 10%, transparent), transparent 55%),
+    color-mix(in srgb, var(--ifm-color-emphasis-100) 18%, transparent)`,
+};
+
+const solutionMapGraphicBaseSx = {
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 18%, var(--ifm-color-emphasis-200))',
+  borderRadius: '8px',
+  display: 'grid',
+  gap: '0.9rem',
+  padding: '0.85rem',
+  '& ul': {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '0.35rem',
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+  },
+  '& li': {
+    border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 15%, var(--ifm-color-emphasis-300))',
+    borderRadius: '999px',
+    color: 'var(--ifm-color-emphasis-900)',
+    fontSize: '0.7rem',
+    fontWeight: 750,
+    lineHeight: 1.15,
+    padding: '0.24rem 0.42rem',
+  },
+} as const;
+
+const solutionMapGraphicFlowSx = {
+  alignItems: 'center',
+  display: 'grid',
+  gap: '0.45rem',
+  gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1.15fr) auto minmax(0, 1fr)',
+  minHeight: '6.6rem',
+  '@media (max-width: 640px)': {
+    gridTemplateColumns: '1fr',
+    minHeight: 0,
+  },
+} as const;
+
+const solutionMapGraphicNodeSx = {
+  alignItems: 'center',
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 20%, var(--ifm-color-emphasis-300))',
+  borderRadius: '8px',
+  background: 'color-mix(in srgb, var(--ifm-background-color) 80%, transparent)',
+  color: 'var(--ifm-font-color-base)',
+  display: 'flex',
+  fontSize: '0.78rem',
+  fontWeight: 800,
+  justifyContent: 'center',
+  lineHeight: 1.25,
+  minHeight: '4.8rem',
+  padding: '0.55rem',
+  textAlign: 'center',
+  '@media (max-width: 640px)': {
+    minHeight: '3.7rem',
+  },
+} as const;
+
+const solutionMapGraphicNodePrimarySx = {
+  ...solutionMapGraphicNodeSx,
+  background: `radial-gradient(110px 80px at 50% 0%, color-mix(in srgb, var(--ifm-color-primary) 18%, transparent), transparent),
+    color-mix(in srgb, var(--ifm-color-primary) 9%, var(--ifm-background-color))`,
+  borderColor: 'color-mix(in srgb, var(--ifm-color-primary) 42%, var(--ifm-color-emphasis-300))',
+} as const;
+
+const solutionMapGraphicArrowSx = {
+  color: 'color-mix(in srgb, var(--ifm-color-primary) 70%, var(--ifm-font-color-base))',
+  fontSize: '1.15rem',
+  fontWeight: 850,
+  '@media (max-width: 640px)': {
+    textAlign: 'center',
+    transform: 'rotate(90deg)',
+  },
+} as const;
+
+const solutionMapCrossCuttingSx = {
+  alignItems: 'center',
+  border: '1px solid color-mix(in srgb, #0f766e 24%, var(--ifm-color-emphasis-200))',
+  borderRadius: '8px',
+  background: `radial-gradient(260px 160px at 100% 0%, color-mix(in srgb, #0f766e 10%, transparent), transparent),
+    color-mix(in srgb, var(--ifm-background-color) 80%, transparent)`,
+  display: 'grid',
+  gap: '0.75rem',
+  gridTemplateColumns: 'minmax(10rem, 0.28fr) minmax(0, 1fr)',
+  padding: '0.85rem',
+  '& h3': {
+    fontSize: '0.9rem',
+    lineHeight: 1.25,
+    margin: '0 0 0.25rem',
+  },
+  '& p': {
+    color: 'var(--ifm-color-emphasis-800)',
+    fontSize: '0.76rem',
+    lineHeight: 1.4,
+    margin: 0,
+  },
+  '& ul': {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '0.35rem',
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+  },
+  '& li': {
+    border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 15%, var(--ifm-color-emphasis-300))',
+    borderRadius: '999px',
+    color: 'var(--ifm-color-emphasis-900)',
+    fontSize: '0.7rem',
+    fontWeight: 750,
+    lineHeight: 1.15,
+    padding: '0.24rem 0.42rem',
+  },
+  '@media (max-width: 640px)': {
+    gridTemplateColumns: '1fr',
+  },
+} as const;
+
+// ─── uc-identity-sources-diagram ────────────────────────────────────────────
+
+const identitySourcesDiagramSx = {
+  alignItems: 'center',
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 24%, var(--ifm-color-emphasis-200))',
+  borderRadius: '12px',
+  background: `radial-gradient(760px 260px at 50% 0%, color-mix(in srgb, var(--ifm-color-primary) 9%, transparent), transparent),
+    color-mix(in srgb, var(--ifm-color-emphasis-100) 22%, transparent)`,
+  boxShadow: '0 16px 34px rgba(15, 23, 42, 0.08)',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 0,
+  margin: '1.25rem 0 2rem',
+  padding: '1.4rem 1.1rem 1.1rem',
+} as const;
+
+const identitySourcesHeroSx = {
+  alignItems: 'center',
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 30%, var(--ifm-color-emphasis-200))',
+  borderRadius: '10px',
+  background: 'color-mix(in srgb, var(--ifm-color-primary) 8%, var(--ifm-background-color))',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.4rem',
+  maxWidth: '18rem',
+  padding: '0.8rem 1.2rem',
+  textAlign: 'center',
+  width: '100%',
+  '& strong': {
+    fontSize: '0.95rem',
+    fontWeight: 850,
+    lineHeight: 1.15,
+  },
+} as const;
+
+const identitySourcesHeroIconSx = {
+  '& svg': {
+    display: 'block',
+    fill: 'none',
+    height: '2.4rem',
+    margin: '0 auto',
+    stroke: 'color-mix(in srgb, var(--ifm-color-primary) 80%, var(--ifm-font-color-base))',
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    strokeWidth: 1.5,
+    width: '2.4rem',
+  },
+} as const;
+
+const identitySourcesForkSx = {
+  color: 'color-mix(in srgb, var(--ifm-color-primary) 36%, var(--ifm-color-emphasis-300))',
+  height: '2rem',
+  maxWidth: '28rem',
+  width: '60%',
+  '& svg': {
+    display: 'block',
+    fill: 'none',
+    height: '100%',
+    stroke: 'currentColor',
+    strokeLinecap: 'round' as const,
+    strokeWidth: 1.5,
+    width: '100%',
+  },
+  '@media (max-width: 640px)': {
+    display: 'none',
+  },
+} as const;
+
+const identitySourcesQuestionsSx = {
+  alignItems: 'start',
+  display: 'grid',
+  gap: '0.8rem',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  width: '100%',
+  '@media (max-width: 640px)': {
+    gridTemplateColumns: '1fr',
+  },
+} as const;
+
+const identitySourcesQuestionSx = {
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 18%, var(--ifm-color-emphasis-200))',
+  borderRadius: '10px',
+  background: 'color-mix(in srgb, var(--ifm-color-emphasis-100) 20%, transparent)',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.8rem',
+  padding: '0.8rem',
+} as const;
+
+const identitySourcesEyebrowSx = {
+  color: 'color-mix(in srgb, var(--ifm-color-primary) 86%, var(--ifm-font-color-base))',
+  display: 'block',
+  fontSize: '0.7rem',
+  fontWeight: 850,
+  letterSpacing: '0.08em',
+  lineHeight: 1.1,
+  marginBottom: '0.25rem',
+  textTransform: 'uppercase',
+} as const;
+
+const identitySourcesQuestionHeadSx = {
+  '& h3': {
+    fontSize: '0.98rem',
+    margin: '0 0 0.2rem',
+  },
+  '& h3 a': {
+    color: 'inherit',
+    textDecoration: 'none',
+  },
+  '& h3 a:hover': {
+    textDecoration: 'underline',
+  },
+  '& p': {
+    color: 'var(--ifm-color-emphasis-800)',
+    fontSize: '0.78rem',
+    lineHeight: 1.35,
+    margin: 0,
+  },
+} as const;
+
+const identitySourcesItemGroupSx = {
+  display: 'grid',
+  gap: '0.45rem',
+  '& h4': {
+    color: 'var(--ifm-color-emphasis-700)',
+    fontSize: '0.72rem',
+    fontWeight: 800,
+    letterSpacing: '0.04em',
+    margin: 0,
+    textTransform: 'uppercase',
+  },
+} as const;
+
+const identitySourcesItemsSx = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.45rem',
+  listStyle: 'none',
+  margin: 0,
+  padding: 0,
+  '& li': {
+    alignItems: 'flex-start',
+    border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 14%, var(--ifm-color-emphasis-200))',
+    borderRadius: '8px',
+    background: 'color-mix(in srgb, var(--ifm-background-color) 72%, transparent)',
+    display: 'flex',
+    gap: '0.55rem',
+    padding: '0.5rem 0.6rem',
+  },
+  '& li strong': {
+    display: 'block',
+    fontSize: '0.82rem',
+    fontWeight: 850,
+    lineHeight: 1.2,
+  },
+  '& li span > span': {
+    color: 'var(--ifm-color-emphasis-700)',
+    display: 'block',
+    fontSize: '0.74rem',
+    lineHeight: 1.3,
+  },
+} as const;
+
+const identitySourcesItemIconSx = {
+  flexShrink: 0,
+  marginTop: '0.1rem',
+  '& svg': {
+    display: 'block',
+    fill: 'none',
+    height: '1.1rem',
+    stroke: 'color-mix(in srgb, var(--ifm-color-primary) 70%, var(--ifm-color-emphasis-500))',
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    strokeWidth: 1.5,
+    width: '1.1rem',
+  },
+} as const;
+
+// ─── uc-solution-chooser ────────────────────────────────────────────────────
+
+const solutionChooserSx = {
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 24%, var(--ifm-color-emphasis-200))',
+  borderRadius: '12px',
+  background: `radial-gradient(760px 260px at 50% 0%, color-mix(in srgb, var(--ifm-color-primary) 9%, transparent), transparent),
+    color-mix(in srgb, var(--ifm-color-emphasis-100) 22%, transparent)`,
+  boxShadow: '0 16px 34px rgba(15, 23, 42, 0.08)',
+  margin: '1.25rem 0 2rem',
+  padding: '1.1rem',
+} as const;
+
+const solutionChooserQuestionsSx = {
+  display: 'grid',
+  gap: '0.8rem',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  '@media (max-width: 640px)': {
+    gridTemplateColumns: '1fr',
+  },
+} as const;
+
+const solutionChooserQuestionSx = {
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 18%, var(--ifm-color-emphasis-200))',
+  borderRadius: '10px',
+  background: 'color-mix(in srgb, var(--ifm-color-emphasis-100) 20%, transparent)',
+  padding: '0.8rem',
+  '& h3': {
+    fontSize: '0.98rem',
+    margin: '0 0 0.25rem',
+  },
+  '& p': {
+    color: 'var(--ifm-color-emphasis-800)',
+    fontSize: '0.78rem',
+    lineHeight: 1.35,
+    margin: '0 0 0.72rem',
+  },
+} as const;
+
+const solutionChooserEyebrowSx = {
+  color: 'color-mix(in srgb, var(--ifm-color-primary) 86%, var(--ifm-font-color-base))',
+  display: 'block',
+  fontSize: '0.7rem',
+  fontWeight: 850,
+  letterSpacing: '0.08em',
+  lineHeight: 1.1,
+  marginBottom: '0.25rem',
+  textTransform: 'uppercase',
+} as const;
+
+const solutionChooserOptionsSx = {
+  display: 'grid',
+  gap: '0.45rem',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  '@media (max-width: 640px)': {
+    gridTemplateColumns: '1fr',
+  },
+} as const;
+
+const solutionChooserOptionSx = {
+  appearance: 'none',
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 22%, var(--ifm-color-emphasis-300))',
+  borderRadius: '8px',
+  background: 'color-mix(in srgb, var(--ifm-background-color) 72%, transparent)',
+  color: 'var(--ifm-font-color-base)',
+  cursor: 'pointer',
+  font: 'inherit',
+  fontSize: '0.82rem',
+  fontWeight: 800,
+  lineHeight: 1.2,
+  minHeight: '2.4rem',
+  padding: '0.42rem 0.55rem',
+  textAlign: 'center',
+  transition: 'background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease',
+  '&:hover': {
+    borderColor: 'color-mix(in srgb, var(--ifm-color-primary) 48%, var(--ifm-color-emphasis-300))',
+    transform: 'translateY(-1px)',
+  },
+  '&:disabled': {
+    cursor: 'not-allowed',
+    opacity: 0.48,
+    transform: 'none',
+  },
+} as const;
+
+const solutionChooserOptionActiveSx = {
+  ...solutionChooserOptionSx,
+  borderColor: 'color-mix(in srgb, var(--ifm-color-primary) 48%, var(--ifm-color-emphasis-300))',
+  background: `radial-gradient(100px 64px at 50% 0%, color-mix(in srgb, var(--ifm-color-primary) 18%, transparent), transparent),
+    color-mix(in srgb, var(--ifm-color-primary) 10%, transparent)`,
+  boxShadow: '0 8px 18px color-mix(in srgb, var(--ifm-color-primary) 14%, transparent)',
+  transform: 'translateY(-1px)',
+} as const;
+
+const solutionChooserPatternsSx = {
+  display: 'flex',
+  gap: '0.7rem',
+  justifyContent: 'center',
+  margin: '1.05rem 0',
+  '@media (max-width: 640px)': {
+    alignItems: 'stretch',
+    flexDirection: 'column',
+  },
+} as const;
+
+const solutionChooserRecommendedSx = {
+  borderRadius: '999px',
+  background: 'color-mix(in srgb, var(--ifm-color-primary) 16%, transparent)',
+  color: 'color-mix(in srgb, var(--ifm-color-primary) 88%, var(--ifm-font-color-base))',
+  fontSize: '0.62rem',
+  fontWeight: 850,
+  letterSpacing: '0.05em',
+  lineHeight: 1,
+  padding: '0.2rem 0.42rem',
+  textTransform: 'uppercase',
+} as const;
+
+
+const solutionChooserRecLinkSx = {
+  alignItems: 'center',
+  color: 'var(--ifm-color-primary)',
+  display: 'inline-flex',
+  fontSize: '0.82rem',
+  fontWeight: 700,
+  gap: '0.3rem',
+  marginTop: '0.85rem',
+  textDecoration: 'none',
+  transition: 'gap 140ms ease',
+  '&:hover': {
+    gap: '0.5rem',
+    textDecoration: 'none',
+  },
+} as const;
+
+// ─── uc-glass-card ──────────────────────────────────────────────────────────
+
+const glassCardSx = {
+  background: 'color-mix(in srgb, var(--ifm-color-primary) 6%, var(--ifm-background-surface-color, var(--ifm-card-background)))',
+  border: '1px solid color-mix(in srgb, var(--ifm-color-primary) 22%, var(--ifm-color-emphasis-200))',
+  borderRadius: '8px',
+  backdropFilter: 'blur(10px)',
+  WebkitBackdropFilter: 'blur(10px)',
+  '[data-theme="dark"] &': {
+    background: 'color-mix(in srgb, var(--ifm-color-primary) 12%, rgba(255, 255, 255, 0.045))',
+    borderColor: 'color-mix(in srgb, var(--ifm-color-primary) 28%, rgba(255, 255, 255, 0.1))',
+  },
+} as const;
+
+// ─── uc-arch-decisions ──────────────────────────────────────────────────────
+
+const archDecisionsSx = {
+  containerName: 'architecture-decisions',
+  containerType: 'inline-size',
+  margin: '1.5rem 0 2rem',
+  width: '100%',
+} as const;
+
+const archDecisionsGridSx = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 13.5rem), 1fr))',
+  gap: '0.75rem',
+} as const;
+
+const archDecisionsPrioritizedSx = {
+  ...archDecisionsSx,
+  display: 'grid',
+  gap: '1.25rem',
+  maxWidth: '48rem',
+} as const;
+
+const archDecisionsStepSx = {
+  color: 'var(--ifm-color-primary)',
+  fontSize: '0.72rem',
+  fontWeight: 800,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+} as const;
+
+const archDecisionsPrimarySx = {
+  display: 'grid',
+  gap: '0.55rem',
+  '& .uc-arch-decision-card--primary': {
+    alignItems: 'center',
+    display: 'grid',
+    gap: '0.9rem',
+    gridTemplateColumns: 'auto minmax(0, 1fr)',
+  },
+} as const;
+
+const archDecisionsSupportingSx = {
+  display: 'grid',
+  gap: '0.55rem',
+} as const;
+
+const archDecisionsSupportingGridSx = {
+  alignItems: 'stretch',
+  display: 'grid',
+  gap: '0.75rem',
+  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+} as const;
+
+// ─── uc-arch-decision-card ──────────────────────────────────────────────────
+
+const archDecisionCardBaseSx = {
+  ...glassCardSx,
+  color: 'var(--ifm-font-color-base)',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.5rem',
+  minWidth: 0,
+  padding: '1rem',
+  textDecoration: 'none',
+  transition: 'border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease',
+  '&:hover': {
+    borderColor: 'color-mix(in srgb, var(--ifm-color-primary) 58%, var(--ifm-color-emphasis-300))',
+    boxShadow: '0 8px 20px color-mix(in srgb, var(--ifm-color-primary) 14%, transparent)',
+    transform: 'translateY(-2px)',
+    textDecoration: 'none',
+    color: 'var(--ifm-font-color-base)',
+  },
+} as const;
+
+const archDecisionCardPrimarySx = {
+  ...archDecisionCardBaseSx,
+  background: `radial-gradient(300px 160px at 0% 0%, color-mix(in srgb, var(--ifm-color-primary) 18%, transparent), transparent),
+    color-mix(in srgb, var(--ifm-color-primary) 8%, var(--ifm-background-surface-color, var(--ifm-card-background)))`,
+  borderColor: 'color-mix(in srgb, var(--ifm-color-primary) 48%, var(--ifm-color-emphasis-300))',
+} as const;
+
+const archDecisionCardSupportingSx = {
+  ...archDecisionCardBaseSx,
+  alignSelf: 'stretch',
+  padding: '0.8rem',
+} as const;
+
+const archDecisionCardBodySx = {
+  display: 'grid',
+  gap: '0.25rem',
+} as const;
+
+const archDecisionCardBodyPrimarySx = {
+  ...archDecisionCardBodySx,
+  display: 'flex',
+  flex: 1,
+  flexDirection: 'column',
+} as const;
+
+const archDecisionCardBodySupportingSx = {
+  ...archDecisionCardBodySx,
+  display: 'flex',
+  flex: 1,
+  flexDirection: 'column',
+} as const;
+
+const archDecisionCardTitleSx = {
+  fontSize: '0.95rem',
+  fontWeight: 700,
+  lineHeight: 1.2,
+} as const;
+
+const archDecisionCardTitleSupportingSx = {
+  ...archDecisionCardTitleSx,
+  fontSize: '0.86rem',
+} as const;
+
+const archDecisionCardQuestionSx = {
+  color: 'var(--ifm-color-emphasis-700)',
+  fontSize: '0.8rem',
+  lineHeight: 1.45,
+  margin: 0,
+  flex: 1,
+} as const;
+
+const archDecisionCardQuestionSupportingSx = {
+  ...archDecisionCardQuestionSx,
+  fontSize: '0.74rem',
+  lineHeight: 1.35,
+  flex: 'none',
+} as const;
+
+const archDecisionCardCtaSx = {
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  color: 'var(--ifm-color-primary)',
+  marginTop: '0.25rem',
+} as const;
+
+const archDecisionCardCtaPrimarySx = {
+  ...archDecisionCardCtaSx,
+  marginTop: 'auto',
+  paddingTop: '0.25rem',
+} as const;
+
+const archDecisionCardCtaSupportingSx = {
+  ...archDecisionCardCtaSx,
+  fontSize: '0.76rem',
+  marginTop: 'auto',
+  paddingTop: 0,
+} as const;
+
+// ─── uc-next-steps ──────────────────────────────────────────────────────────
+
+const nextStepsSx = {
+  margin: '2rem 0',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '1.5rem',
+} as const;
+
+const nextStepsTrySx = {
+  ...glassCardSx,
+  display: 'block',
+  borderRadius: '12px !important',
+  borderWidth: '1.5px !important',
+  padding: '1.75rem 2rem',
+  textDecoration: 'none !important',
+  color: 'inherit !important',
+  transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+  '&:hover': {
+    borderColor: 'var(--ifm-color-primary) !important',
+    boxShadow: '0 4px 20px color-mix(in srgb, var(--ifm-color-primary) 18%, transparent)',
+  },
+} as const;
+
+const nextStepsTryEyebrowSx = {
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'var(--ifm-color-primary)',
+  marginBottom: '0.4rem',
+} as const;
+
+const nextStepsTryTitleSx = {
+  fontSize: '1.1rem',
+  fontWeight: 700,
+  color: 'var(--ifm-font-color-base)',
+  marginBottom: '0.5rem',
+} as const;
+
+const nextStepsTryDescSx = {
+  fontSize: '0.9rem',
+  color: 'var(--ifm-color-emphasis-700)',
+  margin: '0 0 1.1rem',
+} as const;
+
+const nextStepsTryBtnSx = {
+  display: 'inline-block',
+  background: 'var(--ifm-color-primary)',
+  color: '#fff !important',
+  padding: '0.5rem 1.15rem',
+  borderRadius: '6px',
+  fontWeight: 600,
+  fontSize: '0.875rem',
+  textDecoration: 'none !important',
+} as const;
+
+// ────────────────────────────────────────────────────────────────────────────
 
 interface RoadmapNode {
   href: string;
@@ -38,89 +1048,42 @@ const roadmapNodes: RoadmapNode[] = [
   {
     href: '#b2c-identity-journey',
     label: 'Sign In',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path d="M14 3h6v18h-6" />
-        <path d="M10 12h10" />
-        <path d="m7 9 3 3-3 3" />
-        <path d="M4 4h8v16H4" />
-      </svg>
-    ),
+    icon: <LogIn />,
   },
   {
     href: '#enable-self-sign-up',
     label: 'Self Sign-Up',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M19 8v6" />
-        <path d="M16 11h6" />
-      </svg>
-    ),
+    icon: <UserPlus />,
   },
   {
     href: '#add-self-service-profile-management',
     label: 'Manage Profile',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <circle cx="12" cy="8" r="4" />
-        <path d="M4 21a8 8 0 0 1 16 0" />
-      </svg>
-    ),
+    icon: <CircleUser />,
   },
   {
     href: '#add-account-recovery',
     label: 'Recover Access',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path d="M7 11V9a5 5 0 0 1 10 0v2" />
-        <rect x="5" y="11" width="14" height="9" rx="2" />
-        <path d="M12 15v2" />
-      </svg>
-    ),
+    icon: <LockKeyhole />,
   },
   {
     href: '#onboard-internal-users',
     label: 'Internal Users',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <rect x="3" y="7" width="18" height="13" rx="2" />
-        <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
-        <path d="M3 13h18" />
-      </svg>
-    ),
+    icon: <Briefcase />,
   },
   {
     href: '#handle-account-closure',
     label: 'Close Accounts',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="m17 11 4 4m0-4-4 4" />
-      </svg>
-    ),
+    icon: <UserX />,
   },
   {
     href: '#defend-against-abuse-and-risk',
     label: 'Defend Against Abuse',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3Z" />
-        <path d="m9 12 2 2 4-4" />
-      </svg>
-    ),
+    icon: <ShieldCheck />,
   },
   {
     href: '#gain-identity-insights',
     label: 'Identity Insights',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path d="M3 3v18h18" />
-        <path d="m7 16 4-4 4 4 4-8" />
-      </svg>
-    ),
+    icon: <BarChart3 />,
   },
 ];
 
@@ -390,50 +1353,12 @@ const journeyDetails: UseCaseBuildingBlockDetail[] = [
 ];
 
 const crossCuttingIcons = {
-  federation: (
-    <svg viewBox="0 0 24 24">
-      <circle cx="7" cy="12" r="3" />
-      <circle cx="17" cy="7" r="3" />
-      <circle cx="17" cy="17" r="3" />
-      <path d="M9.5 10.5 14.5 8.5" />
-      <path d="M9.5 13.5 14.5 15.5" />
-    </svg>
-  ),
-  authorization: (
-    <svg viewBox="0 0 24 24">
-      <path d="M4 12h16" />
-      <path d="M12 4v16" />
-      <path d="M7 7h10v10H7z" />
-    </svg>
-  ),
-  consent: (
-    <svg viewBox="0 0 24 24">
-      <path d="M9 11 12 14 20 6" />
-      <path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9" />
-    </svg>
-  ),
-  branding: (
-    <svg viewBox="0 0 24 24">
-      <path d="M12 4a8 8 0 1 0 0 16c1.4 0 2.5-1.1 2.5-2.5 0-1.1.9-2 2-2h1A4.5 4.5 0 0 0 22 11 7 7 0 0 0 12 4Z" />
-      <circle cx="7.5" cy="11" r="1" />
-      <circle cx="10.5" cy="8" r="1" />
-      <circle cx="14" cy="8" r="1" />
-    </svg>
-  ),
-  localization: (
-    <svg viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 2a14.5 14.5 0 0 0 0 20M12 2a14.5 14.5 0 0 1 0 20" />
-      <path d="M2 12h20" />
-    </svg>
-  ),
-  privacy: (
-    <svg viewBox="0 0 24 24">
-      <path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3Z" />
-      <path d="M9 12h6" />
-      <path d="M12 9v6" />
-    </svg>
-  ),
+  federation: <Share2 />,
+  authorization: <LayoutGrid />,
+  consent: <ClipboardCheck />,
+  branding: <Palette />,
+  localization: <Globe />,
+  privacy: <ShieldPlus />,
 };
 
 const crossCuttingDetails: UseCaseBuildingBlockDetail[] = [
@@ -754,36 +1679,17 @@ const solutionPatternNodes: RoadmapNode[] = [
   {
     href: '#redirect-based',
     label: 'Redirect-Based',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path d="M4 12h12" />
-        <path d="m12 6 6 6-6 6" />
-        <circle cx="20" cy="12" r="2" />
-      </svg>
-    ),
+    icon: <LogIn />,
   },
   {
     href: '#app-native',
     label: 'App-Native',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <rect x="3" y="4" width="7" height="7" rx="1" />
-        <rect x="14" y="4" width="7" height="7" rx="1" />
-        <rect x="3" y="13" width="7" height="7" rx="1" />
-        <rect x="14" y="13" width="7" height="7" rx="1" />
-      </svg>
-    ),
+    icon: <LayoutGrid />,
   },
   {
     href: '#direct-api',
     label: 'Direct API',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path d="m8 4-6 8 6 8" />
-        <path d="m16 4 6 8-6 8" />
-        <path d="M14 4 10 20" />
-      </svg>
-    ),
+    icon: <Code2 />,
   },
 ];
 
@@ -816,7 +1722,7 @@ const solutionPatternDetails: UseCaseBuildingBlockDetail[] = [
 
 export function B2CIntegrationApproachesCards() {
   return (
-    <div className="uc-approach-cards">
+    <Box sx={approachCardsSx}>
       {solutionPatternDetails.map((pattern) => (
         <UseCaseBuildingBlockPanel
           key={pattern.id}
@@ -826,7 +1732,7 @@ export function B2CIntegrationApproachesCards() {
           capabilityGroups={pattern.capabilityGroups}
         />
       ))}
-    </div>
+    </Box>
   );
 }
 
@@ -896,7 +1802,7 @@ export const B2CIntegrationApproachesRoadmap = B2CIntegrationApproachesCards;
 
 export function B2CTokensAndApisCards() {
   return (
-    <div className="uc-approach-cards">
+    <Box sx={approachCardsSx}>
       {tokensAndApisDetails.map((item) => (
         <UseCaseBuildingBlockPanel
           key={item.id}
@@ -906,7 +1812,7 @@ export function B2CTokensAndApisCards() {
           capabilityGroups={item.capabilityGroups}
         />
       ))}
-    </div>
+    </Box>
   );
 }
 
@@ -1029,7 +1935,7 @@ const operationsDetails: UseCaseBuildingBlockDetail[] = [
 
 export function B2COperationsCards() {
   return (
-    <div className="uc-approach-cards">
+    <Box sx={approachCardsSx}>
       {operationsDetails.map((item) => (
         <UseCaseBuildingBlockPanel
           key={item.id}
@@ -1039,7 +1945,7 @@ export function B2COperationsCards() {
           capabilityGroups={item.capabilityGroups}
         />
       ))}
-    </div>
+    </Box>
   );
 }
 
@@ -1256,72 +2162,85 @@ export function B2CSolutionArchitectureMap() {
     }));
   };
 
+  const graphicSx = {
+    ...solutionMapGraphicBaseSx,
+    background: graphicBackgrounds[activeStage.id] ?? graphicBackgrounds.integration,
+  };
+
   return (
-    <section className="uc-solution-map" aria-label="B2C solution architecture decision map">
-      <div className="uc-solution-map__rail" aria-hidden />
-      <div className="uc-solution-map__stages" role="tablist" aria-label="Solution decision sections">
-        {solutionArchitectureStages.map((stage, index) => (
-          <button
-            key={stage.id}
-            type="button"
-            role="tab"
-            aria-selected={activeStage.id === stage.id}
-            className={`uc-solution-map__stage${activeStage.id === stage.id ? ' uc-solution-map__stage--active' : ''}`}
-            onClick={() => setActiveStageId(stage.id)}
-          >
-            <span className="uc-solution-map__index" aria-hidden>
-              {index + 1}
-            </span>
-            <span className="uc-solution-map__content">
-              <span className="uc-solution-map__content-title">{stage.title}</span>
-              <span className="uc-solution-map__content-description">{stage.description}</span>
-              <span className="uc-solution-map__selection">
-                {stage.options.find((option) => option.id === selectedOptions[stage.id])?.label ?? stage.options[0].label}
-              </span>
-            </span>
-          </button>
-        ))}
-      </div>
-      <article className={`uc-solution-map__detail uc-solution-map__detail--${activeStage.id}`} role="tabpanel">
-        <div className="uc-solution-map__question">
-          <span className="uc-solution-chooser__eyebrow">Decision {solutionArchitectureStages.indexOf(activeStage) + 1}</span>
+    <Box component="section" sx={solutionMapSx} aria-label="B2C solution architecture decision map">
+      <Box sx={solutionMapRailSx} aria-hidden />
+      <Box sx={solutionMapStagesSx} role="tablist" aria-label="Solution decision sections">
+        {solutionArchitectureStages.map((stage, index) => {
+          const isActive = activeStage.id === stage.id;
+          return (
+            <Box
+              key={stage.id}
+              component="button"
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              sx={solutionMapStageSx}
+              onClick={() => setActiveStageId(stage.id)}
+            >
+              <Box component="span" sx={isActive ? solutionMapIndexActiveSx : solutionMapIndexSx} aria-hidden>
+                {index + 1}
+              </Box>
+              <Box component="span" className="uc-sm-content" sx={solutionMapContentSx}>
+                <Box component="span" sx={solutionMapContentTitleSx}>{stage.title}</Box>
+                <Box component="span" sx={solutionMapContentDescSx}>{stage.description}</Box>
+                <Box component="span" sx={solutionMapSelectionSx}>
+                  {stage.options.find((option) => option.id === selectedOptions[stage.id])?.label ?? stage.options[0].label}
+                </Box>
+              </Box>
+            </Box>
+          );
+        })}
+      </Box>
+      <Box component="article" sx={solutionMapDetailSx} role="tabpanel">
+        <div>
+          <Box component="span" sx={solutionChooserEyebrowSx}>Decision {solutionArchitectureStages.indexOf(activeStage) + 1}</Box>
           <h3>{activeStage.question}</h3>
-          <div className="uc-solution-map__options" role="group" aria-label={activeStage.question}>
-            {activeStage.options.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                className={`uc-solution-map__option${activeOption.id === option.id ? ' uc-solution-map__option--active' : ''}`}
-                onClick={() => selectOption(activeStage.id, option.id)}
-              >
-                <strong>{option.label}</strong>
-                <span>{option.description}</span>
-              </button>
-            ))}
-          </div>
+          <Box sx={solutionMapOptionsSx} role="group" aria-label={activeStage.question}>
+            {activeStage.options.map((option) => {
+              const isActive = activeOption.id === option.id;
+              return (
+                <Box
+                  key={option.id}
+                  component="button"
+                  type="button"
+                  sx={isActive ? solutionMapOptionActiveSx : solutionMapOptionSx}
+                  onClick={() => selectOption(activeStage.id, option.id)}
+                >
+                  <strong>{option.label}</strong>
+                  <span>{option.description}</span>
+                </Box>
+              );
+            })}
+          </Box>
         </div>
-        <div className="uc-solution-map__graphic" aria-label={`${activeOption.label} architecture graphic`}>
-          <div className="uc-solution-map__graphic-flow">
-            <div className="uc-solution-map__graphic-node">{activeOption.graphic.left}</div>
-            <div className="uc-solution-map__graphic-arrow" aria-hidden>
+        <Box sx={graphicSx} aria-label={`${activeOption.label} architecture graphic`}>
+          <Box sx={solutionMapGraphicFlowSx}>
+            <Box sx={solutionMapGraphicNodeSx}>{activeOption.graphic.left}</Box>
+            <Box component="span" sx={solutionMapGraphicArrowSx} aria-hidden>
               →
-            </div>
-            <div className="uc-solution-map__graphic-node uc-solution-map__graphic-node--primary">
+            </Box>
+            <Box sx={solutionMapGraphicNodePrimarySx}>
               {activeOption.graphic.center}
-            </div>
-            <div className="uc-solution-map__graphic-arrow" aria-hidden>
+            </Box>
+            <Box component="span" sx={solutionMapGraphicArrowSx} aria-hidden>
               →
-            </div>
-            <div className="uc-solution-map__graphic-node">{activeOption.graphic.right}</div>
-          </div>
+            </Box>
+            <Box sx={solutionMapGraphicNodeSx}>{activeOption.graphic.right}</Box>
+          </Box>
           <ul>
             {activeOption.graphic.notes.map((note) => (
               <li key={note}>{note}</li>
             ))}
           </ul>
-        </div>
-      </article>
-      <aside className="uc-solution-map__cross-cutting" aria-label="Cross-cutting choices">
+        </Box>
+      </Box>
+      <Box component="aside" sx={solutionMapCrossCuttingSx} aria-label="Cross-cutting choices">
         <div>
           <h3>Apply cross-cutting choices</h3>
           <p>These choices affect every stage of the solution.</p>
@@ -1331,188 +2250,188 @@ export function B2CSolutionArchitectureMap() {
             <li key={choice}>{choice}</li>
           ))}
         </ul>
-      </aside>
-    </section>
+      </Box>
+    </Box>
   );
 }
 
 export function B2CIdentitySourcesDataGraphic() {
   return (
-    <section className="uc-identity-sources-diagram" aria-label="Identity sources and data overview">
-      <div className="uc-identity-sources-diagram__hero">
-        <div className="uc-identity-sources-diagram__hero-icon">
+    <Box component="section" sx={identitySourcesDiagramSx} aria-label="Identity sources and data overview">
+      <Box sx={identitySourcesHeroSx}>
+        <Box sx={identitySourcesHeroIconSx}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="12" cy="8" r="4" />
             <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
           </svg>
-        </div>
+        </Box>
         <strong>User identity</strong>
-      </div>
+      </Box>
 
-      <div className="uc-identity-sources-diagram__fork" aria-hidden="true">
+      <Box sx={identitySourcesForkSx} aria-hidden="true">
         <svg viewBox="0 0 200 32" preserveAspectRatio="none">
           <line x1="100" y1="0" x2="100" y2="16" />
           <line x1="30" y1="16" x2="170" y2="16" />
           <line x1="30" y1="16" x2="30" y2="32" />
           <line x1="170" y1="16" x2="170" y2="32" />
         </svg>
-      </div>
+      </Box>
 
-      <div className="uc-identity-sources-diagram__questions">
-        <div className="uc-identity-sources-diagram__question">
-          <div className="uc-identity-sources-diagram__question-head">
-            <span className="uc-identity-sources-diagram__eyebrow">Question 1</span>
+      <Box sx={identitySourcesQuestionsSx}>
+        <Box sx={identitySourcesQuestionSx}>
+          <Box sx={identitySourcesQuestionHeadSx}>
+            <Box component="span" sx={identitySourcesEyebrowSx}>Question 1</Box>
             <h3><a href="#identity-federation">How does identity enter the app?</a></h3>
             <p>How consumer identities arrive at your application.</p>
-          </div>
-          <div className="uc-identity-sources-diagram__item-group">
+          </Box>
+          <Box sx={identitySourcesItemGroupSx}>
             <h4>Identity providers</h4>
-            <ul className="uc-identity-sources-diagram__items">
+            <Box component="ul" sx={identitySourcesItemsSx}>
               <li>
-                <span className="uc-identity-sources-diagram__item-icon">
+                <Box component="span" sx={identitySourcesItemIconSx}>
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <circle cx="12" cy="12" r="9" />
                     <path d="M12 3c-2.5 3-4 5.6-4 9s1.5 6 4 9M12 3c2.5 3 4 5.6 4 9s-1.5 6-4 9M3 12h18" />
                   </svg>
-                </span>
+                </Box>
                 <span>
                   <strong>Social sign-in</strong>
                   <span>Google, GitHub, and other consumer providers</span>
                 </span>
               </li>
               <li>
-                <span className="uc-identity-sources-diagram__item-icon">
+                <Box component="span" sx={identitySourcesItemIconSx}>
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <rect x="3" y="6" width="18" height="13" rx="2" />
                     <path d="M8 6V4h8v2" />
                   </svg>
-                </span>
+                </Box>
                 <span>
                   <strong>Enterprise OIDC</strong>
                   <span>Connect enterprise identity providers</span>
                 </span>
               </li>
-            </ul>
-          </div>
+            </Box>
+          </Box>
 
-          <div className="uc-identity-sources-diagram__item-group">
+          <Box sx={identitySourcesItemGroupSx}>
             <h4>Federation decisions</h4>
-            <ul className="uc-identity-sources-diagram__items">
+            <Box component="ul" sx={identitySourcesItemsSx}>
               <li>
-                <span className="uc-identity-sources-diagram__item-icon">
+                <Box component="span" sx={identitySourcesItemIconSx}>
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <circle cx="12" cy="12" r="9" />
                     <path d="M12 8v8M8 12h8" />
                   </svg>
-                </span>
+                </Box>
                 <span>
                   <strong>Provisioning model</strong>
                   <span>JIT on first sign-in, or invitation-only onboarding</span>
                 </span>
               </li>
               <li>
-                <span className="uc-identity-sources-diagram__item-icon">
+                <Box component="span" sx={identitySourcesItemIconSx}>
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M8 12h8" />
                     <circle cx="6" cy="12" r="2" />
                     <circle cx="18" cy="12" r="2" />
                   </svg>
-                </span>
+                </Box>
                 <span>
                   <strong>Account linking policy</strong>
                   <span>Verified email, explicit user action, or both</span>
                 </span>
               </li>
               <li>
-                <span className="uc-identity-sources-diagram__item-icon">
+                <Box component="span" sx={identitySourcesItemIconSx}>
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M8 7H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3" />
                     <path d="M8 7l2.5-3h3L16 7" />
                   </svg>
-                </span>
+                </Box>
                 <span>
                   <strong>Single logout</strong>
                   <span>Sign the user out of your app and connected provider</span>
                 </span>
               </li>
               <li>
-                <span className="uc-identity-sources-diagram__item-icon">
+                <Box component="span" sx={identitySourcesItemIconSx}>
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M3 9l9-6 9 6v10a2 2 0 0 1-2 2h-3" />
                     <path d="M12 12h6M15 9l3 3-3 3" />
                   </svg>
-                </span>
+                </Box>
                 <span>
                   <strong>Home-realm discovery</strong>
                   <span>Route users to the right provider by email domain</span>
                 </span>
               </li>
-            </ul>
-          </div>
-        </div>
+            </Box>
+          </Box>
+        </Box>
 
-        <div className="uc-identity-sources-diagram__question">
-          <div className="uc-identity-sources-diagram__question-head">
-            <span className="uc-identity-sources-diagram__eyebrow">Question 2</span>
+        <Box sx={identitySourcesQuestionSx}>
+          <Box sx={identitySourcesQuestionHeadSx}>
+            <Box component="span" sx={identitySourcesEyebrowSx}>Question 2</Box>
             <h3><a href="#user-stores">Where is it stored?</a></h3>
             <p>Which system owns the canonical user record.</p>
-          </div>
-          <ul className="uc-identity-sources-diagram__items">
+          </Box>
+          <Box component="ul" sx={identitySourcesItemsSx}>
             <li>
-              <span className="uc-identity-sources-diagram__item-icon">
+              <Box component="span" sx={identitySourcesItemIconSx}>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <ellipse cx="12" cy="7" rx="9" ry="3" />
                   <path d="M3 7v5c0 1.66 4.03 3 9 3s9-1.34 9-3V7M3 12v5c0 1.66 4.03 3 9 3s9-1.34 9-3v-5" />
                 </svg>
-              </span>
+              </Box>
               <span>
                 <strong>Product-managed directory</strong>
                 <span>ThunderID owns the canonical user record</span>
               </span>
             </li>
             <li>
-              <span className="uc-identity-sources-diagram__item-icon">
+              <Box component="span" sx={identitySourcesItemIconSx}>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <circle cx="12" cy="12" r="9" />
                   <path d="M9 12h6M12 9l3 3-3 3" />
                 </svg>
-              </span>
+              </Box>
               <span>
                 <strong>Federated-only</strong>
                 <span>No local record; identity stays with the provider</span>
               </span>
             </li>
             <li>
-              <span className="uc-identity-sources-diagram__item-icon">
+              <Box component="span" sx={identitySourcesItemIconSx}>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <rect x="2" y="3" width="8" height="5" rx="1" />
                   <rect x="14" y="3" width="8" height="5" rx="1" />
                   <rect x="2" y="16" width="8" height="5" rx="1" />
                   <path d="M6 8v4h12V8M18 16v-4" />
                 </svg>
-              </span>
+              </Box>
               <span>
                 <strong>External directory</strong>
                 <span>LDAP or custom backing store you control</span>
               </span>
             </li>
             <li>
-              <span className="uc-identity-sources-diagram__item-icon">
+              <Box component="span" sx={identitySourcesItemIconSx}>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <rect x="3" y="9" width="7" height="6" rx="1" />
                   <rect x="14" y="9" width="7" height="6" rx="1" />
                   <path d="M10 12h4" />
                 </svg>
-              </span>
+              </Box>
               <span>
                 <strong>Mixed</strong>
                 <span>Some managed, others federated</span>
               </span>
             </li>
-          </ul>
-        </div>
-      </div>
-    </section>
+          </Box>
+        </Box>
+      </Box>
+    </Box>
   );
 }
 
@@ -1564,62 +2483,66 @@ export function B2CSolutionPatternsExplorer() {
         })
       );
     }
-  }, [selectedPatternId]);
+  }, [selectedPatternId, selectedPattern.label]);
 
   return (
-    <section className="uc-solution-chooser" aria-label="B2C solution pattern chooser">
-      <div className="uc-solution-chooser__questions" aria-label="Architecture decisions">
-        <div className="uc-solution-chooser__question">
+    <Box component="section" sx={solutionChooserSx} aria-label="B2C solution pattern chooser">
+      <Box sx={solutionChooserQuestionsSx} aria-label="Architecture decisions">
+        <Box sx={solutionChooserQuestionSx}>
           <div>
-            <span className="uc-solution-chooser__eyebrow">Decision 1</span>
+            <Box component="span" sx={solutionChooserEyebrowSx}>Decision 1</Box>
             <h3>Who owns the identity screens?</h3>
             <p>Choose where users see sign-in, sign-up, recovery, and consent screens.</p>
           </div>
-          <div className="uc-solution-chooser__options" role="group" aria-label="Choose who owns the identity screens">
-            <button
+          <Box sx={solutionChooserOptionsSx} role="group" aria-label="Choose who owns the identity screens">
+            <Box
+              component="button"
               type="button"
-              className={`uc-solution-chooser__option${uiOwner === 'thunderid' ? ' uc-solution-chooser__option--active' : ''}`}
+              sx={uiOwner === 'thunderid' ? solutionChooserOptionActiveSx : solutionChooserOptionSx}
               onClick={() => selectUiOwner('thunderid')}
             >
               ThunderID
-            </button>
-            <button
+            </Box>
+            <Box
+              component="button"
               type="button"
-              className={`uc-solution-chooser__option${uiOwner === 'app' ? ' uc-solution-chooser__option--active' : ''}`}
+              sx={uiOwner === 'app' ? solutionChooserOptionActiveSx : solutionChooserOptionSx}
               onClick={() => selectUiOwner('app')}
             >
               Your application
-            </button>
-          </div>
-        </div>
+            </Box>
+          </Box>
+        </Box>
 
-        <div className="uc-solution-chooser__question">
+        <Box sx={solutionChooserQuestionSx}>
           <div>
-            <span className="uc-solution-chooser__eyebrow">Decision 2</span>
+            <Box component="span" sx={solutionChooserEyebrowSx}>Decision 2</Box>
             <h3>Who owns the identity journey?</h3>
             <p>Choose who decides the next step, applies policy, and handles branching.</p>
           </div>
-          <div className="uc-solution-chooser__options" role="group" aria-label="Choose who owns the identity journey">
-            <button
+          <Box sx={solutionChooserOptionsSx} role="group" aria-label="Choose who owns the identity journey">
+            <Box
+              component="button"
               type="button"
-              className={`uc-solution-chooser__option${journeyOwner === 'thunderid' ? ' uc-solution-chooser__option--active' : ''}`}
+              sx={journeyOwner === 'thunderid' ? solutionChooserOptionActiveSx : solutionChooserOptionSx}
               onClick={() => setJourneyOwner('thunderid')}
             >
               ThunderID
-            </button>
-            <button
+            </Box>
+            <Box
+              component="button"
               type="button"
-              className={`uc-solution-chooser__option${journeyOwner === 'app' ? ' uc-solution-chooser__option--active' : ''}`}
+              sx={journeyOwner === 'app' ? solutionChooserOptionActiveSx : solutionChooserOptionSx}
               disabled={uiOwner === 'thunderid'}
               onClick={() => setJourneyOwner('app')}
             >
               Your application
-            </button>
-          </div>
-        </div>
-      </div>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
 
-      <div className="uc-solution-chooser__patterns" role="tablist" aria-label="Solution patterns">
+      <Box sx={solutionChooserPatternsSx} role="tablist" aria-label="Solution patterns">
         {solutionPatternDetails.map((pattern) => (
           <button
             key={pattern.id}
@@ -1632,54 +2555,54 @@ export function B2CSolutionPatternsExplorer() {
             <span className="uc-building-block-node__icon" aria-hidden>
               {pattern.icon}
             </span>
-            {selectedPattern.id === pattern.id && <span className="uc-solution-chooser__recommended">Recommended</span>}
+            {selectedPattern.id === pattern.id && <Box component="span" sx={solutionChooserRecommendedSx}>Recommended</Box>}
             <span className="uc-building-block-node__label">{pattern.label}</span>
           </button>
         ))}
-      </div>
+      </Box>
 
-      <article className="uc-building-blocks__panel uc-solution-chooser__detail" role="tabpanel">
+      <article className="uc-building-blocks__panel" style={{marginTop: 0}} role="tabpanel">
         <div className="uc-building-blocks__body">
           <p>{selectedPattern.why}</p>
-          <a href={`#${selectedPattern.id}`} className="uc-solution-chooser__rec-link">
+          <Box component="a" href={`#${selectedPattern.id}`} sx={solutionChooserRecLinkSx}>
             Read the {selectedPattern.title} details
             <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={14} height={14}>
               <path d="M5 12h14M12 5l7 7-7 7" />
             </svg>
-          </a>
+          </Box>
         </div>
       </article>
-    </section>
+    </Box>
   );
 }
 
 export function B2CIdentityJourneyRoadmap() {
   return (
-    <nav className="uc-b2c-roadmap" aria-label="B2C identity use case roadmap">
+    <Box component="nav" sx={roadmapSx} aria-label="B2C identity use case roadmap">
       {roadmapNodes.map((node) => (
-        <a key={node.href} href={node.href} className="uc-b2c-roadmap__node">
-          <span className="uc-b2c-roadmap__icon" aria-hidden>
+        <Box key={node.href} component="a" href={node.href} sx={roadmapNodeSx}>
+          <Box component="span" className="uc-b2c-roadmap__icon" sx={roadmapIconSx} aria-hidden>
             {node.icon}
-          </span>
-          <span className="uc-b2c-roadmap__label">{node.label}</span>
-        </a>
+          </Box>
+          <Box component="span" sx={roadmapLabelSx}>{node.label}</Box>
+        </Box>
       ))}
-    </nav>
+    </Box>
   );
 }
 
 export function B2CSolutionPatternsRoadmap() {
   return (
-    <nav className="uc-b2c-roadmap" aria-label="B2C solution pattern roadmap">
+    <Box component="nav" sx={roadmapSx} aria-label="B2C solution pattern roadmap">
       {solutionPatternNodes.map((node) => (
-        <a key={node.href} href={node.href} className="uc-b2c-roadmap__node">
-          <span className="uc-b2c-roadmap__icon" aria-hidden>
+        <Box key={node.href} component="a" href={node.href} sx={roadmapNodeSx}>
+          <Box component="span" className="uc-b2c-roadmap__icon" sx={roadmapIconSx} aria-hidden>
             {node.icon}
-          </span>
-          <span className="uc-b2c-roadmap__label">{node.label}</span>
-        </a>
+          </Box>
+          <Box component="span" sx={roadmapLabelSx}>{node.label}</Box>
+        </Box>
       ))}
-    </nav>
+    </Box>
   );
 }
 
@@ -1748,16 +2671,16 @@ const b2cArchDecisions: ArchDecisionCard[] = [
 
 function GlassCard({
   href = undefined,
-  className = '',
+  sx: extraSx = {},
   children = undefined,
 }: {
   href?: string;
-  className?: string;
+  sx?: object;
   children?: React.ReactNode;
 }) {
-  const cls = ['uc-glass-card', className].filter(Boolean).join(' ');
-  if (href) return <Link to={href} className={cls}>{children}</Link>;
-  return <div className={cls}>{children}</div>;
+  const cardSx = { ...glassCardSx, ...extraSx };
+  if (href) return <Box component={Link} to={href} sx={cardSx}>{children}</Box>;
+  return <Box sx={cardSx}>{children}</Box>;
 }
 
 export function B2CNextSteps({ href = './try-it-out' }: { href?: string } = {}) {
@@ -1772,18 +2695,18 @@ export function B2CNextSteps({ href = './try-it-out' }: { href?: string } = {}) 
   }, []);
 
   return (
-    <div className="uc-next-steps">
-      <GlassCard href={href} className="uc-next-steps__try">
-        <div className="uc-next-steps__try-eyebrow">Try It Out</div>
-        <div className="uc-next-steps__try-title">
+    <Box sx={nextStepsSx}>
+      <GlassCard href={href} sx={nextStepsTrySx}>
+        <Box sx={nextStepsTryEyebrowSx}>Try It Out</Box>
+        <Box sx={nextStepsTryTitleSx}>
           {patternLabel ? `See ${patternLabel} working in practice` : 'See your pattern working in practice'}
-        </div>
-        <p className="uc-next-steps__try-desc">
+        </Box>
+        <Box component="p" sx={nextStepsTryDescSx}>
           Walk through a working B2C setup and see how your selected integration pattern behaves end to end.
-        </p>
-        <span className="uc-next-steps__try-btn">Start the walkthrough &#8594;</span>
+        </Box>
+        <Box component="span" sx={nextStepsTryBtnSx}>Start the walkthrough &#8594;</Box>
       </GlassCard>
-    </div>
+    </Box>
   );
 }
 
@@ -1802,47 +2725,49 @@ export function B2CArchitectureDecisions({
     const integration = b2cArchDecisions.find((d) => d.id === 'integration') ?? b2cArchDecisions[0];
     const supporting = b2cArchDecisions.filter((d) => d.id !== 'integration');
     return (
-      <div className="uc-arch-decisions uc-arch-decisions--prioritized">
-        <div className="uc-arch-decisions__primary">
-          <span className="uc-arch-decisions__step">Start here</span>
-          <GlassCard href={integration.href} className="uc-arch-decision-card uc-arch-decision-card--primary">
-            <div className="useCaseJourneyCardIcon">{integration.icon}</div>
-            <div className="uc-arch-decision-card__body">
-              <div className="uc-arch-decision-card__title">{integration.title}</div>
-              <p className="uc-arch-decision-card__question">{integration.question}</p>
-              <span className="uc-arch-decision-card__cta">Choose an integration pattern &#8594;</span>
-            </div>
+      <Box sx={archDecisionsPrioritizedSx}>
+        <Box sx={archDecisionsPrimarySx}>
+          <Box component="span" sx={archDecisionsStepSx}>Start here</Box>
+          <GlassCard href={integration.href} sx={archDecisionCardPrimarySx}>
+            <Box sx={iconContainerSx}>{integration.icon}</Box>
+            <Box sx={archDecisionCardBodyPrimarySx}>
+              <Box sx={archDecisionCardTitleSx}>{integration.title}</Box>
+              <Box component="p" sx={archDecisionCardQuestionSx}>{integration.question}</Box>
+              <Box component="span" sx={archDecisionCardCtaPrimarySx}>Choose an integration pattern &#8594;</Box>
+            </Box>
           </GlassCard>
-        </div>
-        <div className="uc-arch-decisions__supporting">
-          <span className="uc-arch-decisions__step">Supporting decisions</span>
-          <div className="uc-arch-decisions__supporting-grid">
+        </Box>
+        <Box sx={archDecisionsSupportingSx}>
+          <Box component="span" sx={archDecisionsStepSx}>Supporting decisions</Box>
+          <Box sx={archDecisionsSupportingGridSx}>
             {supporting.map((d) => (
-              <GlassCard key={d.id} href={d.href} className="uc-arch-decision-card uc-arch-decision-card--supporting">
-                <div className="useCaseJourneyCardIcon">{d.icon}</div>
-                <div className="uc-arch-decision-card__title">{d.title}</div>
-                <p className="uc-arch-decision-card__question">{d.question}</p>
-                <span className="uc-arch-decision-card__cta">Explore &#8594;</span>
+              <GlassCard key={d.id} href={d.href} sx={archDecisionCardSupportingSx}>
+                <Box sx={supportingIconContainerSx}>{d.icon}</Box>
+                <Box sx={archDecisionCardBodySupportingSx}>
+                  <Box sx={archDecisionCardTitleSupportingSx}>{d.title}</Box>
+                  <Box component="p" sx={archDecisionCardQuestionSupportingSx}>{d.question}</Box>
+                  <Box component="span" sx={archDecisionCardCtaSupportingSx}>Explore &#8594;</Box>
+                </Box>
               </GlassCard>
             ))}
-          </div>
-        </div>
-      </div>
+          </Box>
+        </Box>
+      </Box>
     );
   }
 
   return (
-    <div className="uc-arch-decisions">
-      <div className="uc-arch-decisions__grid">
+    <Box sx={archDecisionsSx}>
+      <Box sx={archDecisionsGridSx}>
         {cards.map((d) => (
-          <GlassCard key={d.id} href={d.href} className="uc-arch-decision-card">
-            <div className="useCaseJourneyCardIcon">{d.icon}</div>
-            <div className="uc-arch-decision-card__title">{d.title}</div>
-            <p className="uc-arch-decision-card__question">{d.question}</p>
-            <span className="uc-arch-decision-card__cta">Explore &#8594;</span>
+          <GlassCard key={d.id} href={d.href} sx={archDecisionCardBaseSx}>
+            <Box sx={iconContainerSx}>{d.icon}</Box>
+            <Box sx={archDecisionCardTitleSx}>{d.title}</Box>
+            <Box component="p" sx={archDecisionCardQuestionSx}>{d.question}</Box>
+            <Box component="span" sx={archDecisionCardCtaSx}>Explore &#8594;</Box>
           </GlassCard>
         ))}
-      </div>
-    </div>
+      </Box>
+    </Box>
   );
 }

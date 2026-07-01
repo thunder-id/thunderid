@@ -719,7 +719,7 @@ const LoginPage = () => {
             }
         });
 
-        const isMobileInput = inputs.some(input => input.identifier === "mobileNumber");
+        const isMobileInput = inputs.some(input => input.identifier === "mobile_number");
 
         if (needsDecision) {
             // This is a decision submission - identify the action from form data
@@ -1184,16 +1184,16 @@ const LoginPage = () => {
                             >
                                 <Box display="flex" flexDirection="column" gap={2}>
                                     <Box display="flex" flexDirection="column" gap={0.5}>
-                                        <InputLabel htmlFor={usesMobileNumberField(mobileAuthActions[0]) ? "mobileNumber" : "username"}>
+                                        <InputLabel htmlFor={usesMobileNumberField(mobileAuthActions[0]) ? "mobile_number" : "username"}>
                                             {usesMobileNumberField(mobileAuthActions[0]) ? "Mobile Number" : "Username"}
                                         </InputLabel>
                                         <OutlinedInput
                                             type="text"
-                                            id={usesMobileNumberField(mobileAuthActions[0]) ? "mobileNumber" : "username"}
-                                            name={usesMobileNumberField(mobileAuthActions[0]) ? "mobileNumber" : "username"}
+                                            id={usesMobileNumberField(mobileAuthActions[0]) ? "mobile_number" : "username"}
+                                            name={usesMobileNumberField(mobileAuthActions[0]) ? "mobile_number" : "username"}
                                             placeholder={`Enter your ${usesMobileNumberField(mobileAuthActions[0]) ? "mobile number" : "username"}`}
                                             size="small"
-                                            value={formData[usesMobileNumberField(mobileAuthActions[0]) ? "mobileNumber" : "username"] || ''}
+                                            value={formData[usesMobileNumberField(mobileAuthActions[0]) ? "mobile_number" : "username"] || ''}
                                             onChange={handleInputChange}
                                             required
                                         />
@@ -1372,16 +1372,16 @@ const LoginPage = () => {
                     >
                         <Box display="flex" flexDirection="column" gap={2}>
                             <Box display="flex" flexDirection="column" gap={0.5}>
-                                <InputLabel htmlFor={usesMobileNumberField(mobileAuthActions[0]) ? "mobileNumber" : "username"}>
+                                <InputLabel htmlFor={usesMobileNumberField(mobileAuthActions[0]) ? "mobile_number" : "username"}>
                                     {usesMobileNumberField(mobileAuthActions[0]) ? "Mobile Number" : "Username"}
                                 </InputLabel>
                                 <OutlinedInput
                                     type="text"
-                                    id={usesMobileNumberField(mobileAuthActions[0]) ? "mobileNumber" : "username"}
-                                    name={usesMobileNumberField(mobileAuthActions[0]) ? "mobileNumber" : "username"}
+                                    id={usesMobileNumberField(mobileAuthActions[0]) ? "mobile_number" : "username"}
+                                    name={usesMobileNumberField(mobileAuthActions[0]) ? "mobile_number" : "username"}
                                     placeholder={`Enter your ${usesMobileNumberField(mobileAuthActions[0]) ? "mobile number" : "username"}`}
                                     size="small"
-                                    value={formData[usesMobileNumberField(mobileAuthActions[0]) ? "mobileNumber" : "username"] || ''}
+                                    value={formData[usesMobileNumberField(mobileAuthActions[0]) ? "mobile_number" : "username"] || ''}
                                     onChange={handleInputChange}
                                     required
                                 />

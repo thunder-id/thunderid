@@ -25,12 +25,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/flow/core"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
 
@@ -68,23 +65,23 @@ func (s *UtilsTestSuite) TestGetAuthnServiceName() {
 }
 
 // createMockAuthExecutor creates a mock executor for OAuth/OIDC authentication.
-func createMockAuthExecutor(t *testing.T, executorName string) core.ExecutorInterface {
+func createMockAuthExecutor(t *testing.T, executorName string) providers.Executor {
 	mockExec := coremock.NewExecutorInterfaceMock(t)
 	mockExec.On("GetName").Return(executorName).Maybe()
-	mockExec.On("GetType").Return(common.ExecutorTypeAuthentication).Maybe()
-	mockExec.On("GetDefaultInputs").Return([]common.Input{
+	mockExec.On("GetType").Return(providers.ExecutorTypeAuthentication).Maybe()
+	mockExec.On("GetDefaultInputs").Return([]providers.Input{
 		{Identifier: "code", Type: "string", Required: true},
 	}).Maybe()
-	mockExec.On("GetPrerequisites").Return([]common.Input{}).Maybe()
+	mockExec.On("GetPrerequisites").Return([]providers.Input{}).Maybe()
 	mockExec.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(
-		func(ctx *core.NodeContext, execResp *common.ExecutorResponse) bool {
+		func(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) bool {
 			if code, ok := ctx.UserInputs["code"]; ok && code != "" {
 				return true
 			}
 			if len(ctx.NodeInputs) == 0 {
 				return true
 			}
-			execResp.Inputs = []common.Input{{Identifier: "code", Type: "string", Required: true}}
+			execResp.Inputs = []providers.Input{{Identifier: "code", Type: "string", Required: true}}
 			return false
 		}).Maybe()
 	return mockExec
@@ -93,14 +90,14 @@ func createMockAuthExecutor(t *testing.T, executorName string) core.ExecutorInte
 func (s *UtilsTestSuite) TestGetUserAttribute() {
 	tests := []struct {
 		name         string
-		user         *entityprovider.Entity
+		user         *providers.Entity
 		attributeKey string
 		expectedVal  string
 		expectError  bool
 	}{
 		{
 			name: "Success case",
-			user: &entityprovider.Entity{
+			user: &providers.Entity{
 				Attributes: []byte(`{"email":"user@example.com"}`),
 			},
 			attributeKey: "email",
@@ -115,7 +112,7 @@ func (s *UtilsTestSuite) TestGetUserAttribute() {
 		},
 		{
 			name: "Empty attributes",
-			user: &entityprovider.Entity{
+			user: &providers.Entity{
 				Attributes: []byte(``),
 			},
 			attributeKey: "email",
@@ -123,7 +120,7 @@ func (s *UtilsTestSuite) TestGetUserAttribute() {
 		},
 		{
 			name: "Invalid JSON attributes",
-			user: &entityprovider.Entity{
+			user: &providers.Entity{
 				Attributes: []byte(`invalid-json`),
 			},
 			attributeKey: "email",
@@ -131,7 +128,7 @@ func (s *UtilsTestSuite) TestGetUserAttribute() {
 		},
 		{
 			name: "Attribute not found",
-			user: &entityprovider.Entity{
+			user: &providers.Entity{
 				Attributes: []byte(`{"other":"data"}`),
 			},
 			attributeKey: "email",
@@ -139,7 +136,7 @@ func (s *UtilsTestSuite) TestGetUserAttribute() {
 		},
 		{
 			name: "Non-string attribute value",
-			user: &entityprovider.Entity{
+			user: &providers.Entity{
 				Attributes: []byte(`{"email":123}`),
 			},
 			attributeKey: "email",
@@ -199,7 +196,7 @@ func (s *UtilsTestSuite) TestIsAuthenticationWithoutLocalUserAllowed() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			ctx := &core.NodeContext{NodeProperties: tt.properties}
+			ctx := &providers.NodeContext{NodeProperties: tt.properties}
 			result := isAuthenticationWithoutLocalUserAllowed(ctx)
 			s.Equal(tt.expected, result)
 		})
@@ -209,35 +206,35 @@ func (s *UtilsTestSuite) TestIsAuthenticationWithoutLocalUserAllowed() {
 func (s *UtilsTestSuite) TestFindInputByType() {
 	tests := []struct {
 		name        string
-		inputs      []common.Input
+		inputs      []providers.Input
 		inputType   string
-		expected    common.Input
+		expected    providers.Input
 		expectFound bool
 	}{
 		{
 			name:        "Empty inputs",
-			inputs:      []common.Input{},
-			inputType:   common.InputTypeEmail,
-			expected:    common.Input{},
+			inputs:      []providers.Input{},
+			inputType:   providers.InputTypeEmail,
+			expected:    providers.Input{},
 			expectFound: false,
 		},
 		{
 			name: "Type found",
-			inputs: []common.Input{
+			inputs: []providers.Input{
 				{Identifier: "mobile", Type: "phone"},
-				{Identifier: "workEmail", Type: common.InputTypeEmail},
+				{Identifier: "workEmail", Type: providers.InputTypeEmail},
 			},
-			inputType:   common.InputTypeEmail,
-			expected:    common.Input{Identifier: "workEmail", Type: common.InputTypeEmail},
+			inputType:   providers.InputTypeEmail,
+			expected:    providers.Input{Identifier: "workEmail", Type: providers.InputTypeEmail},
 			expectFound: true,
 		},
 		{
 			name: "Type not found",
-			inputs: []common.Input{
+			inputs: []providers.Input{
 				{Identifier: "mobile", Type: "phone"},
 			},
-			inputType:   common.InputTypeEmail,
-			expected:    common.Input{},
+			inputType:   providers.InputTypeEmail,
+			expected:    providers.Input{},
 			expectFound: false,
 		},
 	}
@@ -289,7 +286,7 @@ func (s *UtilsTestSuite) TestIsRegistrationWithExistingUserAllowed() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			ctx := &core.NodeContext{NodeProperties: tt.properties}
+			ctx := &providers.NodeContext{NodeProperties: tt.properties}
 			result := isRegistrationWithExistingUserAllowed(ctx)
 			s.Equal(tt.expected, result)
 		})
@@ -299,39 +296,39 @@ func (s *UtilsTestSuite) TestIsRegistrationWithExistingUserAllowed() {
 func (s *UtilsTestSuite) TestResolveInputIdentifierByType() {
 	tests := []struct {
 		name      string
-		ctx       *core.NodeContext
+		ctx       *providers.NodeContext
 		inputType string
 		fallback  string
 		expected  string
 	}{
 		{
 			name: "Type found in NodeInputs",
-			ctx: &core.NodeContext{
-				NodeInputs: []common.Input{
-					{Identifier: "customEmailIdentifier", Type: common.InputTypeEmail},
+			ctx: &providers.NodeContext{
+				NodeInputs: []providers.Input{
+					{Identifier: "customEmailIdentifier", Type: providers.InputTypeEmail},
 				},
 			},
-			inputType: common.InputTypeEmail,
+			inputType: providers.InputTypeEmail,
 			fallback:  "defaultEmail",
 			expected:  "customEmailIdentifier",
 		},
 		{
 			name: "Type not found, returns fallback",
-			ctx: &core.NodeContext{
-				NodeInputs: []common.Input{
+			ctx: &providers.NodeContext{
+				NodeInputs: []providers.Input{
 					{Identifier: "phone", Type: "mobile"},
 				},
 			},
-			inputType: common.InputTypeEmail,
+			inputType: providers.InputTypeEmail,
 			fallback:  "defaultEmail",
 			expected:  "defaultEmail",
 		},
 		{
 			name: "Empty NodeInputs, returns fallback",
-			ctx: &core.NodeContext{
-				NodeInputs: []common.Input{},
+			ctx: &providers.NodeContext{
+				NodeInputs: []providers.Input{},
 			},
-			inputType: common.InputTypeEmail,
+			inputType: providers.InputTypeEmail,
 			fallback:  "defaultEmail",
 			expected:  "defaultEmail",
 		},
@@ -383,7 +380,7 @@ func (s *UtilsTestSuite) TestIsCrossOUProvisioningAllowed() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			ctx := &core.NodeContext{NodeProperties: tt.properties}
+			ctx := &providers.NodeContext{NodeProperties: tt.properties}
 			result := isCrossOUProvisioningAllowed(ctx)
 			s.Equal(tt.expected, result)
 		})
@@ -395,21 +392,21 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 		name                 string
 		federatedIdentifiers map[string]interface{}
 		existingIdentifiers  map[string]interface{}
-		ctx                  *core.NodeContext
+		ctx                  *providers.NodeContext
 		expectedValid        bool
 	}{
 		{
 			name:                 "Nil federated identifiers returns true",
 			federatedIdentifiers: nil,
 			existingIdentifiers:  nil,
-			ctx:                  &core.NodeContext{},
+			ctx:                  &providers.NodeContext{},
 			expectedValid:        true,
 		},
 		{
 			name:                 "Empty federated identifiers returns true",
 			federatedIdentifiers: map[string]interface{}{},
 			existingIdentifiers:  map[string]interface{}{},
-			ctx:                  &core.NodeContext{},
+			ctx:                  &providers.NodeContext{},
 			expectedValid:        true,
 		},
 		{
@@ -419,7 +416,7 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 				"sub":   "sub123",
 			},
 			existingIdentifiers: map[string]interface{}{},
-			ctx: &core.NodeContext{
+			ctx: &providers.NodeContext{
 				UserInputs: map[string]string{
 					"email": "user@example.com",
 				},
@@ -433,7 +430,7 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 				"sub":   "sub123",
 			},
 			existingIdentifiers: map[string]interface{}{},
-			ctx: &core.NodeContext{
+			ctx: &providers.NodeContext{
 				UserInputs: map[string]string{
 					"email": "user2@example.com",
 				},
@@ -447,7 +444,7 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 				"sub":   "sub123",
 			},
 			existingIdentifiers: map[string]interface{}{},
-			ctx: &core.NodeContext{
+			ctx: &providers.NodeContext{
 				RuntimeData: map[string]string{
 					"email": "user@example.com",
 				},
@@ -461,7 +458,7 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 				"sub":   "sub123",
 			},
 			existingIdentifiers: map[string]interface{}{},
-			ctx: &core.NodeContext{
+			ctx: &providers.NodeContext{
 				RuntimeData: map[string]string{
 					"email": "user2@example.com",
 				},
@@ -477,7 +474,7 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 			existingIdentifiers: map[string]interface{}{
 				"email": "user@example.com",
 			},
-			ctx:           &core.NodeContext{},
+			ctx:           &providers.NodeContext{},
 			expectedValid: true,
 		},
 		{
@@ -489,7 +486,7 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 			existingIdentifiers: map[string]interface{}{
 				"email": "user2@example.com",
 			},
-			ctx:           &core.NodeContext{},
+			ctx:           &providers.NodeContext{},
 			expectedValid: false,
 		},
 		{
@@ -499,7 +496,7 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 				"sub":   "sub123",
 			},
 			existingIdentifiers: map[string]interface{}{},
-			ctx: &core.NodeContext{
+			ctx: &providers.NodeContext{
 				RuntimeData: map[string]string{
 					"sub": "sub123",
 				},
@@ -513,7 +510,7 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 				"sub":   "sub123",
 			},
 			existingIdentifiers: map[string]interface{}{},
-			ctx: &core.NodeContext{
+			ctx: &providers.NodeContext{
 				RuntimeData: map[string]string{
 					"sub": "sub456",
 				},
@@ -527,7 +524,7 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 				"sub":   "sub123",
 			},
 			existingIdentifiers: map[string]interface{}{},
-			ctx: &core.NodeContext{
+			ctx: &providers.NodeContext{
 				UserInputs: map[string]string{
 					"email": "",
 				},
@@ -541,7 +538,7 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 				"sub":   "sub123",
 			},
 			existingIdentifiers: map[string]interface{}{},
-			ctx: &core.NodeContext{
+			ctx: &providers.NodeContext{
 				RuntimeData: map[string]string{
 					"email": "",
 				},
@@ -555,7 +552,7 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 				"sub":   "sub123",
 			},
 			existingIdentifiers: map[string]interface{}{},
-			ctx:                 &core.NodeContext{},
+			ctx:                 &providers.NodeContext{},
 			expectedValid:       true,
 		},
 		{
@@ -565,7 +562,7 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 				"sub":   "sub123",
 			},
 			existingIdentifiers: map[string]interface{}{},
-			ctx: &core.NodeContext{
+			ctx: &providers.NodeContext{
 				UserInputs: map[string]string{
 					"email": "user1@example.com",
 					"sub":   "sub456",
@@ -587,22 +584,22 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 }
 
 func (s *UtilsTestSuite) TestBuildAuthnMetadata_WithAllFields() {
-	ctx := &core.NodeContext{
-		Application: appmodel.Application{
+	ctx := &providers.NodeContext{
+		Application: providers.Application{
 			Metadata: map[string]interface{}{
 				"tenant_id": "tenant-123",
 				"region":    "us-west",
 			},
-			InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 				{
-					Type: inboundmodel.OAuthInboundAuthType,
-					OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+					Type: providers.OAuthInboundAuthType,
+					OAuthConfig: &providers.OAuthConfigWithSecret{
 						ClientID: "oauth-client-1",
 					},
 				},
 				{
-					Type: inboundmodel.OAuthInboundAuthType,
-					OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+					Type: providers.OAuthInboundAuthType,
+					OAuthConfig: &providers.OAuthConfigWithSecret{
 						ClientID: "oauth-client-2",
 					},
 				},
@@ -625,8 +622,8 @@ func (s *UtilsTestSuite) TestBuildAuthnMetadata_WithAllFields() {
 }
 
 func (s *UtilsTestSuite) TestBuildAuthnMetadata_WithNoMetadata() {
-	ctx := &core.NodeContext{
-		Application: appmodel.Application{},
+	ctx := &providers.NodeContext{
+		Application: providers.Application{},
 	}
 
 	metadata := buildAuthnMetadata(ctx)
@@ -640,8 +637,8 @@ func (s *UtilsTestSuite) TestBuildAuthnMetadata_WithNoMetadata() {
 }
 
 func (s *UtilsTestSuite) TestBuildAuthnMetadata_WithOnlyAppMetadata() {
-	ctx := &core.NodeContext{
-		Application: appmodel.Application{
+	ctx := &providers.NodeContext{
+		Application: providers.Application{
 			Metadata: map[string]interface{}{
 				"environment": "production",
 				"version":     "1.0.0",
@@ -659,12 +656,12 @@ func (s *UtilsTestSuite) TestBuildAuthnMetadata_WithOnlyAppMetadata() {
 }
 
 func (s *UtilsTestSuite) TestBuildAuthnMetadata_WithOnlyClientIDs() {
-	ctx := &core.NodeContext{
-		Application: appmodel.Application{
-			InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+	ctx := &providers.NodeContext{
+		Application: providers.Application{
+			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 				{
-					Type: inboundmodel.OAuthInboundAuthType,
-					OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+					Type: providers.OAuthInboundAuthType,
+					OAuthConfig: &providers.OAuthConfigWithSecret{
 						ClientID: "single-oauth-client",
 					},
 				},
@@ -682,11 +679,11 @@ func (s *UtilsTestSuite) TestBuildAuthnMetadata_WithOnlyClientIDs() {
 }
 
 func (s *UtilsTestSuite) TestBuildAuthnMetadata_WithNilOAuthConfig() {
-	ctx := &core.NodeContext{
-		Application: appmodel.Application{
-			InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+	ctx := &providers.NodeContext{
+		Application: providers.Application{
+			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 				{
-					Type:        inboundmodel.OAuthInboundAuthType,
+					Type:        providers.OAuthInboundAuthType,
 					OAuthConfig: nil,
 				},
 			},
@@ -701,12 +698,12 @@ func (s *UtilsTestSuite) TestBuildAuthnMetadata_WithNilOAuthConfig() {
 }
 
 func (s *UtilsTestSuite) TestBuildAuthnMetadata_WithEmptyClientID() {
-	ctx := &core.NodeContext{
-		Application: appmodel.Application{
-			InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+	ctx := &providers.NodeContext{
+		Application: providers.Application{
+			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 				{
-					Type: inboundmodel.OAuthInboundAuthType,
-					OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+					Type: providers.OAuthInboundAuthType,
+					OAuthConfig: &providers.OAuthConfigWithSecret{
 						ClientID: "",
 					},
 				},
@@ -722,28 +719,28 @@ func (s *UtilsTestSuite) TestBuildAuthnMetadata_WithEmptyClientID() {
 }
 
 func (s *UtilsTestSuite) TestBuildAuthnMetadata_WithMixedInboundConfigs() {
-	ctx := &core.NodeContext{
-		Application: appmodel.Application{
-			InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+	ctx := &providers.NodeContext{
+		Application: providers.Application{
+			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 				{
-					Type: inboundmodel.OAuthInboundAuthType,
-					OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+					Type: providers.OAuthInboundAuthType,
+					OAuthConfig: &providers.OAuthConfigWithSecret{
 						ClientID: "valid-client",
 					},
 				},
 				{
-					Type:        inboundmodel.OAuthInboundAuthType,
+					Type:        providers.OAuthInboundAuthType,
 					OAuthConfig: nil,
 				},
 				{
-					Type: inboundmodel.OAuthInboundAuthType,
-					OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+					Type: providers.OAuthInboundAuthType,
+					OAuthConfig: &providers.OAuthConfigWithSecret{
 						ClientID: "",
 					},
 				},
 				{
-					Type: inboundmodel.OAuthInboundAuthType,
-					OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+					Type: providers.OAuthInboundAuthType,
+					OAuthConfig: &providers.OAuthConfigWithSecret{
 						ClientID: "another-valid-client",
 					},
 				},
@@ -762,8 +759,8 @@ func (s *UtilsTestSuite) TestBuildAuthnMetadata_WithMixedInboundConfigs() {
 }
 
 func (s *UtilsTestSuite) TestBuildGetAttributesMetadata_WithLocale() {
-	ctx := &core.NodeContext{
-		Application: appmodel.Application{
+	ctx := &providers.NodeContext{
+		Application: providers.Application{
 			Metadata: map[string]interface{}{
 				"tenant_id": "tenant-123",
 			},
@@ -781,8 +778,8 @@ func (s *UtilsTestSuite) TestBuildGetAttributesMetadata_WithLocale() {
 }
 
 func (s *UtilsTestSuite) TestBuildGetAttributesMetadata_WithoutLocale() {
-	ctx := &core.NodeContext{
-		Application: appmodel.Application{},
+	ctx := &providers.NodeContext{
+		Application: providers.Application{},
 		RuntimeData: map[string]string{},
 	}
 
@@ -798,8 +795,8 @@ func (s *UtilsTestSuite) TestBuildGetAttributesMetadata_WithoutLocale() {
 }
 
 func (s *UtilsTestSuite) TestBuildAuthnMetadata_WithRuntimeMetadata() {
-	ctx := &core.NodeContext{
-		Application: appmodel.Application{},
+	ctx := &providers.NodeContext{
+		Application: providers.Application{},
 		RuntimeData: map[string]string{
 			common.RuntimeKeyAuthorizationRequestID: "auth-req-123",
 			common.RuntimeKeyClientID:               "oauth-client-abc",
@@ -818,8 +815,8 @@ func (s *UtilsTestSuite) TestBuildAuthnMetadata_WithRuntimeMetadata() {
 }
 
 func (s *UtilsTestSuite) TestBuildGetAttributesMetadata_WithRuntimeMetadata() {
-	ctx := &core.NodeContext{
-		Application: appmodel.Application{
+	ctx := &providers.NodeContext{
+		Application: providers.Application{
 			Metadata: map[string]interface{}{
 				"tenant_id": "tenant-123",
 			},

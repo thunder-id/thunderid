@@ -99,7 +99,7 @@ export function useStepUpAuth(): UseStepUpAuthReturn {
       if (!user) {
         throw new Error("User not found. Please sign in again.");
       }
-      const mobileNumber = user.attributes.mobileNumber as string | undefined;
+      const mobileNumber = user.attributes.mobile_number as string | undefined;
 
       if (!mobileNumber || mobileNumber.trim() === "") {
         throw new Error(

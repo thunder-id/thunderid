@@ -22,18 +22,19 @@ import (
 	"context"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
-	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
@@ -50,7 +51,7 @@ func (suite *UtilsTestSuite) SetupTest() {
 	config.ResetServerRuntime()
 
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
@@ -355,14 +356,14 @@ func (suite *UtilsTestSuite) TestFetchUserAttributes_GetAttributeCacheError() {
 	mockAttrCacheService := attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 
 	// Mock GetAttributeCache to return error
-	serverErr := &serviceerror.ServiceError{
-		Type: serviceerror.ServerErrorType,
+	serverErr := &tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
 		Code: "CACHE_NOT_FOUND",
-		Error: core.I18nMessage{
+		Error: tidcommon.I18nMessage{
 			Key:          "cache_not_found",
 			DefaultValue: "Cache not found",
 		},
-		ErrorDescription: core.I18nMessage{
+		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "cache_not_found_desc",
 			DefaultValue: "cache not found",
 		},
@@ -522,16 +523,16 @@ func (suite *UtilsTestSuite) TestFetchUserAttributes_CacheWithoutOUID() {
 }
 
 func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_WithServerLevelConfig() {
-	oauthApp := &inboundmodel.OAuthClient{
+	oauthApp := &providers.OAuthClient{
 		ClientID: "test-client",
 	}
 	cfg := oauthconfig.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
-		OAuth: config.OAuthConfig{
-			RefreshToken: config.RefreshTokenConfig{
+		OAuth: engineconfig.OAuthConfig{
+			RefreshToken: engineconfig.RefreshTokenConfig{
 				ValidityPeriod: 86400,
 			},
 		},
@@ -545,11 +546,11 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_WithServerLevel
 }
 
 func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_WithoutServerLevelConfig() {
-	oauthApp := &inboundmodel.OAuthClient{
+	oauthApp := &providers.OAuthClient{
 		ClientID: "test-client",
 	}
 	cfg := oauthconfig.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
@@ -563,12 +564,12 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_WithoutServerLe
 
 func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_WithNilOAuthApp() {
 	cfg := oauthconfig.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
-		OAuth: config.OAuthConfig{
-			RefreshToken: config.RefreshTokenConfig{
+		OAuth: engineconfig.OAuthConfig{
+			RefreshToken: engineconfig.RefreshTokenConfig{
 				ValidityPeriod: 604800,
 			},
 		},
@@ -583,20 +584,20 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_WithNilOAuthApp
 
 func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_WithTokenConfig() {
 	cfg := oauthconfig.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
-		OAuth: config.OAuthConfig{
-			RefreshToken: config.RefreshTokenConfig{
+		OAuth: engineconfig.OAuthConfig{
+			RefreshToken: engineconfig.RefreshTokenConfig{
 				ValidityPeriod: 86400,
 			},
 		},
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
+	oauthApp := &providers.OAuthClient{
 		ClientID: "test-client",
-		Token:    &inboundmodel.OAuthTokenConfig{},
+		Token:    &providers.OAuthTokenConfig{},
 	}
 
 	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeRefresh)
@@ -608,7 +609,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_WithTokenConfig
 
 func (suite *UtilsTestSuite) TestResolveTokenConfig_AccessToken_WithNilOAuthApp() {
 	cfg := oauthconfig.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
@@ -623,13 +624,13 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_AccessToken_WithNilOAuthApp(
 
 func (suite *UtilsTestSuite) TestResolveTokenConfig_AccessToken_WithNilToken() {
 	cfg := oauthconfig.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
+	oauthApp := &providers.OAuthClient{
 		ClientID: "test-client",
 		Token:    nil,
 	}
@@ -643,16 +644,16 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_AccessToken_WithNilToken() {
 
 func (suite *UtilsTestSuite) TestResolveTokenConfig_AccessToken_WithAppLevelConfig() {
 	cfg := oauthconfig.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
+	oauthApp := &providers.OAuthClient{
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
 				ValidityPeriod: 7200,
 			},
 		},
@@ -666,7 +667,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_AccessToken_WithAppLevelConf
 
 func (suite *UtilsTestSuite) TestResolveTokenConfig_IDToken_WithNilOAuthApp() {
 	cfg := oauthconfig.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
@@ -681,13 +682,13 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_IDToken_WithNilOAuthApp() {
 
 func (suite *UtilsTestSuite) TestResolveTokenConfig_IDToken_WithNilToken() {
 	cfg := oauthconfig.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
+	oauthApp := &providers.OAuthClient{
 		ClientID: "test-client",
 		Token:    nil,
 	}
@@ -701,16 +702,16 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_IDToken_WithNilToken() {
 
 func (suite *UtilsTestSuite) TestResolveTokenConfig_IDToken_WithAppLevelConfig() {
 	cfg := oauthconfig.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
+	oauthApp := &providers.OAuthClient{
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				ValidityPeriod: 1800,
 			},
 		},
@@ -724,7 +725,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_IDToken_WithAppLevelConfig()
 
 func (suite *UtilsTestSuite) TestResolveTokenConfig_WithCustomIssuer_NilOAuthApp() {
 	cfg := oauthconfig.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
@@ -738,15 +739,15 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_WithCustomIssuer_NilOAuthApp
 
 func (suite *UtilsTestSuite) TestResolveTokenConfig_WithTokenConfig_UsesServerIssuer() {
 	cfg := oauthconfig.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
+	oauthApp := &providers.OAuthClient{
 		ClientID: "test-client",
-		Token:    &inboundmodel.OAuthTokenConfig{},
+		Token:    &providers.OAuthTokenConfig{},
 	}
 
 	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeAccess)
@@ -760,8 +761,8 @@ const (
 	testBCCOUID  = "ou-456"
 )
 
-func newOAuthAppForClientAttributes(ouID string) *inboundmodel.OAuthClient {
-	return &inboundmodel.OAuthClient{
+func newOAuthAppForClientAttributes(ouID string) *providers.OAuthClient {
+	return &providers.OAuthClient{
 		ID:   testBCCAppID,
 		OUID: ouID,
 	}
@@ -789,11 +790,11 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_NilOAuthApp_ReturnsNil() 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_HappyPath() {
 	ous := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 
-	ous.On("GetOrganizationUnit", context.Background(), testBCCOUID).Return(ou.OrganizationUnit{
+	ous.On("GetOrganizationUnit", context.Background(), testBCCOUID).Return(providers.OrganizationUnit{
 		ID:     testBCCOUID,
 		Name:   "Engineering",
 		Handle: "eng",
-	}, (*serviceerror.ServiceError)(nil))
+	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForClientAttributes(testBCCOUID)
 	claims, err := BuildClientAttributes(context.Background(), app, ous)
@@ -809,10 +810,10 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_OULookupError_ReturnsErro
 	ous := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 
 	ous.On("GetOrganizationUnit", context.Background(), testBCCOUID).Return(
-		ou.OrganizationUnit{},
-		&serviceerror.ServiceError{
+		providers.OrganizationUnit{},
+		&tidcommon.ServiceError{
 			Code:  "OU-0001",
-			Error: core.I18nMessage{Key: "error.test.not_found", DefaultValue: "not found"},
+			Error: tidcommon.I18nMessage{Key: "error.test.not_found", DefaultValue: "not found"},
 		},
 	)
 
@@ -906,18 +907,18 @@ func (suite *UtilsTestSuite) TestExtractAudiences_SliceWithEmptyString_ReturnsEr
 
 func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_WithAppLevelConfig() {
 	cfg := oauthconfig.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
-		OAuth: config.OAuthConfig{
-			RefreshToken: config.RefreshTokenConfig{ValidityPeriod: 86400},
+		OAuth: engineconfig.OAuthConfig{
+			RefreshToken: engineconfig.RefreshTokenConfig{ValidityPeriod: 86400},
 		},
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
-		Token: &inboundmodel.OAuthTokenConfig{
-			RefreshToken: &inboundmodel.RefreshTokenConfig{
+	oauthApp := &providers.OAuthClient{
+		Token: &providers.OAuthTokenConfig{
+			RefreshToken: &providers.RefreshTokenConfig{
 				ValidityPeriod: 7200,
 			},
 		},
@@ -930,17 +931,17 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_WithAppLevelCon
 
 func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_FallsBackToServerConfig() {
 	cfg := oauthconfig.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
-		OAuth: config.OAuthConfig{
-			RefreshToken: config.RefreshTokenConfig{ValidityPeriod: 86400},
+		OAuth: engineconfig.OAuthConfig{
+			RefreshToken: engineconfig.RefreshTokenConfig{ValidityPeriod: 86400},
 		},
 	}
 
-	oauthApp := &inboundmodel.OAuthClient{
-		Token: &inboundmodel.OAuthTokenConfig{},
+	oauthApp := &providers.OAuthClient{
+		Token: &providers.OAuthTokenConfig{},
 	}
 
 	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeRefresh)

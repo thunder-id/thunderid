@@ -19,11 +19,11 @@
 package tokenservice
 
 import (
-	"github.com/thunder-id/thunderid/internal/idp"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jwksresolver"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the token service components (builder and validator).
@@ -33,7 +33,7 @@ func Initialize(
 	jwtService jwt.JWTServiceInterface,
 	jweService jwe.JWEServiceInterface,
 	resolver *jwksresolver.Resolver,
-	idpService idp.IDPServiceInterface,
+	idpService providers.IDPProvider,
 ) (TokenBuilderInterface, TokenValidatorInterface) {
 	tokenBuilder := newTokenBuilder(cfg, jwtService, jweService, resolver)
 	tokenValidator := newTokenValidator(cfg, jwtService, idpService)

@@ -16,6 +16,7 @@
  * under the License.
  */
 
+// Package common defines shared constants for authentication providers.
 package common
 
 const (

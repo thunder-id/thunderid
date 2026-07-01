@@ -22,17 +22,15 @@ import (
 	"context"
 	"encoding/json"
 
-	appmodel "github.com/thunder-id/thunderid/internal/application/model"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // BuildApplication assembles the runtime application view read from engineCtx.Application.
 // Entity-agnostic: works for any actor with an inbound-client row.
 func BuildApplication(
-	ctx context.Context, provider ActorProviderInterface, actorID string,
-) (*appmodel.Application, *serviceerror.ServiceError) {
+	ctx context.Context, provider providers.ActorProvider, actorID string,
+) (*providers.Application, *tidcommon.ServiceError) {
 	client, svcErr := provider.GetInboundClientByID(ctx, actorID)
 	if svcErr != nil {
 		return nil, svcErr
@@ -41,9 +39,9 @@ func BuildApplication(
 		return nil, &ErrorActorNotFound
 	}
 
-	entity, epErr := provider.GetActor(actorID)
-	if epErr != nil && epErr.Code != entityprovider.ErrorCodeEntityNotFound {
-		return nil, &serviceerror.InternalServerError
+	entity, entityErr := provider.GetActor(actorID)
+	if entityErr != nil && entityErr.Code != ErrorEntityNotFound.Code {
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return assembleApplication(client, entity), nil
@@ -51,11 +49,11 @@ func BuildApplication(
 
 // assembleApplication maps inbound-client and actor records into the application model.
 func assembleApplication(
-	client *inboundmodel.InboundClient, entity *entityprovider.Entity,
-) *appmodel.Application {
-	app := &appmodel.Application{
+	client *providers.InboundClient, entity *providers.Entity,
+) *providers.Application {
+	app := &providers.Application{
 		ID: client.ID,
-		InboundAuthProfile: inboundmodel.InboundAuthProfile{
+		InboundAuthProfile: providers.InboundAuthProfile{
 			Assertion:        client.Assertion,
 			LoginConsent:     client.LoginConsent,
 			AllowedUserTypes: client.AllowedUserTypes,
@@ -71,10 +69,10 @@ func assembleApplication(
 	}
 
 	if clientID, _ := entityAttrs["clientId"].(string); clientID != "" {
-		app.InboundAuthConfig = []inboundmodel.InboundAuthConfigWithSecret{
+		app.InboundAuthConfig = []providers.InboundAuthConfigWithSecret{
 			{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID: clientID,
 				},
 			},
@@ -86,7 +84,7 @@ func assembleApplication(
 
 // BuildApplicationMetadata composes display metadata from inbound-client properties and actor records.
 func BuildApplicationMetadata(
-	id string, entity *entityprovider.Entity, props map[string]interface{},
+	id string, entity *providers.Entity, props map[string]interface{},
 ) *ApplicationMetadata {
 	meta := &ApplicationMetadata{ID: id}
 	if entity != nil && len(entity.SystemAttributes) > 0 {
@@ -118,7 +116,7 @@ func BuildApplicationMetadata(
 }
 
 // readEntitySystemAttributes unmarshals system attributes from an actor record.
-func readEntitySystemAttributes(entity *entityprovider.Entity) map[string]interface{} {
+func readEntitySystemAttributes(entity *providers.Entity) map[string]interface{} {
 	if entity == nil || len(entity.SystemAttributes) == 0 {
 		return map[string]interface{}{}
 	}

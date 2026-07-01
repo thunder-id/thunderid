@@ -422,6 +422,7 @@ func CopyDeclarativeResources(zipFilePattern string) error {
 		"organization_units",
 		"resource_servers",
 		"roles",
+		"server_configs",
 		"themes",
 		"user_types",
 		"users",

@@ -22,35 +22,39 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 )
 
-func TestBuildQuery(t *testing.T) {
+type OpenID4VPDCQLTestSuite struct {
+	suite.Suite
+}
+
+func TestOpenID4VPDCQLTestSuite(t *testing.T) {
+	suite.Run(t, new(OpenID4VPDCQLTestSuite))
+}
+
+func (suite *OpenID4VPDCQLTestSuite) TestBuildQuery() {
 	q, err := buildQuery(dcqlConfig{
 		CredentialID: credentialID,
 		VCT:          testVCT,
 		Claims:       []string{"given_name", "family_name", "birthdate"},
 	})
-	require.NoError(t, err)
+	suite.Require().NoError(err)
 
-	require.Len(t, q.Credentials, 1)
+	suite.Require().Len(q.Credentials, 1)
 	cred := q.Credentials[0]
-	assert.Equal(t, credentialID, cred.ID)
-	assert.Equal(t, FormatSDJWTVC, cred.Format)
-	require.NotNil(t, cred.Meta)
-	assert.Equal(t, []string{testVCT}, cred.Meta.VCTValues)
+	suite.Equal(credentialID, cred.ID)
+	suite.Equal(FormatSDJWTVC, cred.Format)
+	suite.Require().NotNil(cred.Meta)
+	suite.Equal([]string{testVCT}, cred.Meta.VCTValues)
 
-	require.Len(t, cred.Claims, 3)
-	assert.Equal(t, []interface{}{"given_name"}, cred.Claims[0].Path)
-	assert.Equal(t, []interface{}{"family_name"}, cred.Claims[1].Path)
-	assert.Equal(t, []interface{}{"birthdate"}, cred.Claims[2].Path)
-
-	require.Len(t, q.CredentialSets, 1)
-	assert.Equal(t, [][]string{{credentialID}}, q.CredentialSets[0].Options)
+	suite.Require().Len(cred.Claims, 3)
+	suite.Equal([]interface{}{"given_name"}, cred.Claims[0].Path)
+	suite.Equal([]interface{}{"family_name"}, cred.Claims[1].Path)
+	suite.Equal([]interface{}{"birthdate"}, cred.Claims[2].Path)
 }
 
-func TestBuildQueryRequiresFields(t *testing.T) {
+func (suite *OpenID4VPDCQLTestSuite) TestBuildQueryRequiresFields() {
 	cases := []dcqlConfig{
 		{VCT: testVCT, Claims: []string{"given_name"}},      // missing credential id
 		{CredentialID: credentialID, Claims: []string{"a"}}, // missing vct
@@ -58,68 +62,93 @@ func TestBuildQueryRequiresFields(t *testing.T) {
 	}
 	for _, cfg := range cases {
 		_, err := buildQuery(cfg)
-		assert.ErrorIs(t, err, ErrPolicy)
+		suite.ErrorIs(err, ErrPolicy)
 	}
 }
 
-func TestBuildQueryNestedPath(t *testing.T) {
+func (suite *OpenID4VPDCQLTestSuite) TestBuildQueryNestedPath() {
 	q, err := buildQuery(dcqlConfig{
 		CredentialID: "pid",
 		VCT:          "urn:eudi:pid:de:1",
 		Claims:       []string{"address.locality", "nationalities"},
 	})
-	require.NoError(t, err)
+	suite.Require().NoError(err)
 
 	cred := q.Credentials[0]
-	assert.Equal(t, "pid", cred.ID)
-	assert.Equal(t, []interface{}{"address", "locality"}, cred.Claims[0].Path)
-	assert.Equal(t, []interface{}{"nationalities"}, cred.Claims[1].Path)
+	suite.Equal("pid", cred.ID)
+	suite.Equal([]interface{}{"address", "locality"}, cred.Claims[0].Path)
+	suite.Equal([]interface{}{"nationalities"}, cred.Claims[1].Path)
 }
 
-func TestBuildQueryMalformedPath(t *testing.T) {
+func (suite *OpenID4VPDCQLTestSuite) TestBuildQueryMalformedPath() {
 	for _, path := range []string{"address.", ".locality", "a..b"} {
 		_, err := buildQuery(dcqlConfig{CredentialID: credentialID, VCT: testVCT, Claims: []string{path}})
-		assert.ErrorIs(t, err, ErrPolicy, "path %q", path)
+		suite.ErrorIs(err, ErrPolicy, "path %q", path)
 	}
 }
 
-func TestBuildQueryJSONShape(t *testing.T) {
+func (suite *OpenID4VPDCQLTestSuite) TestBuildQueryJSONShape() {
 	q, err := buildQuery(dcqlConfig{CredentialID: credentialID, VCT: testVCT, Claims: []string{"given_name"}})
-	require.NoError(t, err)
+	suite.Require().NoError(err)
 
 	raw, err := json.Marshal(q)
-	require.NoError(t, err)
+	suite.Require().NoError(err)
 
 	var decoded map[string]interface{}
-	require.NoError(t, json.Unmarshal(raw, &decoded))
+	suite.Require().NoError(json.Unmarshal(raw, &decoded))
 
 	credentials, ok := decoded["credentials"].([]interface{})
-	require.True(t, ok)
-	require.Len(t, credentials, 1)
+	suite.Require().True(ok)
+	suite.Require().Len(credentials, 1)
 
 	cred := credentials[0].(map[string]interface{})
-	assert.Equal(t, FormatSDJWTVC, cred["format"])
-	assert.Equal(t, credentialID, cred["id"])
+	suite.Equal(FormatSDJWTVC, cred["format"])
+	suite.Equal(credentialID, cred["id"])
 
 	meta := cred["meta"].(map[string]interface{})
-	assert.Equal(t, []interface{}{testVCT}, meta["vct_values"])
+	suite.Equal([]interface{}{testVCT}, meta["vct_values"])
 
 	// path must serialize as a JSON array, per DCQL.
 	claims := cred["claims"].([]interface{})
 	claim := claims[0].(map[string]interface{})
-	assert.Equal(t, []interface{}{"given_name"}, claim["path"])
+	suite.Equal([]interface{}{"given_name"}, claim["path"])
 
-	// The requested-claims policy can reuse the same paths the query asked for.
-	assert.Contains(t, string(raw), `"credential_sets"`)
+	// credential_sets is omitted for a single required credential.
+	suite.NotContains(string(raw), `"credential_sets"`)
+}
+
+func (suite *OpenID4VPDCQLTestSuite) TestBuildQueryTrustedAuthorities() {
+	q, err := buildQuery(dcqlConfig{
+		CredentialID:           credentialID,
+		VCT:                    testVCT,
+		Claims:                 []string{"given_name"},
+		TrustedAuthorityKeyIDs: []string{"AQIDBA", "BQYHCA"},
+	})
+	suite.Require().NoError(err)
+
+	cred := q.Credentials[0]
+	suite.Require().Len(cred.TrustedAuthorities, 1)
+	suite.Equal("aki", cred.TrustedAuthorities[0].Type)
+	suite.Equal([]string{"AQIDBA", "BQYHCA"}, cred.TrustedAuthorities[0].Values)
+}
+
+func (suite *OpenID4VPDCQLTestSuite) TestBuildQueryOmitsTrustedAuthoritiesWhenEmpty() {
+	q, err := buildQuery(dcqlConfig{CredentialID: credentialID, VCT: testVCT, Claims: []string{"given_name"}})
+	suite.Require().NoError(err)
+	suite.Empty(q.Credentials[0].TrustedAuthorities)
+
+	raw, err := json.Marshal(q)
+	suite.Require().NoError(err)
+	suite.NotContains(string(raw), `"trusted_authorities"`)
 }
 
 // TestQueryAlignsWithVerifierPolicy guards that the claim paths emitted by the
 // DCQL builder match the dotted paths the verifier policy checks against, so a
 // disclosed claim is never wrongly rejected as "unrequested".
-func TestQueryAlignsWithVerifierPolicy(t *testing.T) {
+func (suite *OpenID4VPDCQLTestSuite) TestQueryAlignsWithVerifierPolicy() {
 	claims := []string{"given_name", "family_name", "birthdate"}
 	q, err := buildQuery(dcqlConfig{CredentialID: credentialID, VCT: testVCT, Claims: claims})
-	require.NoError(t, err)
+	suite.Require().NoError(err)
 
 	requested := make([]string, 0, len(q.Credentials[0].Claims))
 	for _, c := range q.Credentials[0].Claims {
@@ -129,31 +158,31 @@ func TestQueryAlignsWithVerifierPolicy(t *testing.T) {
 		}
 		requested = append(requested, joinDotted(parts))
 	}
-	assert.ElementsMatch(t, claims, requested)
+	suite.ElementsMatch(claims, requested)
 }
 
-func TestClaimPathToSegmentsEdgeCases(t *testing.T) {
-	t.Run("empty path", func(t *testing.T) {
+func (suite *OpenID4VPDCQLTestSuite) TestClaimPathToSegmentsEdgeCases() {
+	suite.Run("empty path", func() {
 		_, err := claimPathToSegments("")
-		assert.ErrorIs(t, err, ErrPolicy)
+		suite.ErrorIs(err, ErrPolicy)
 	})
-	t.Run("single segment", func(t *testing.T) {
+	suite.Run("single segment", func() {
 		segs, err := claimPathToSegments("given_name")
-		require.NoError(t, err)
-		assert.Equal(t, []interface{}{"given_name"}, segs)
+		suite.Require().NoError(err)
+		suite.Equal([]interface{}{"given_name"}, segs)
 	})
-	t.Run("nested segments", func(t *testing.T) {
+	suite.Run("nested segments", func() {
 		segs, err := claimPathToSegments("address.locality.street")
-		require.NoError(t, err)
-		assert.Equal(t, []interface{}{"address", "locality", "street"}, segs)
+		suite.Require().NoError(err)
+		suite.Equal([]interface{}{"address", "locality", "street"}, segs)
 	})
-	t.Run("trailing dot", func(t *testing.T) {
+	suite.Run("trailing dot", func() {
 		_, err := claimPathToSegments("address.")
-		assert.ErrorIs(t, err, ErrPolicy)
+		suite.ErrorIs(err, ErrPolicy)
 	})
-	t.Run("leading dot", func(t *testing.T) {
+	suite.Run("leading dot", func() {
 		_, err := claimPathToSegments(".locality")
-		assert.ErrorIs(t, err, ErrPolicy)
+		suite.ErrorIs(err, ErrPolicy)
 	})
 }
 

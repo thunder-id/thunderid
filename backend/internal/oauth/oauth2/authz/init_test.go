@@ -24,13 +24,13 @@ import (
 	"net/url"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	yaml "gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowexecmock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
@@ -54,10 +54,6 @@ func TestInitTestSuite(t *testing.T) {
 
 func (suite *InitTestSuite) SetupTest() {
 	// Initialize Runtime config with basic test config
-	var allowedOrigins cors.OriginEntries
-	suite.Require().NoError(yaml.Unmarshal([]byte(`
-- https://example.com
-`), &allowedOrigins))
 	testConfig := &config.Config{
 		Database: config.DatabaseConfig{
 			Config: config.DataSource{
@@ -69,16 +65,14 @@ func (suite *InitTestSuite) SetupTest() {
 				SQLite: config.SQLiteDataSource{Path: "test.db"},
 			},
 		},
-		GateClient: config.GateClientConfig{
+		GateClient: engineconfig.GateClientConfig{
 			Scheme:    "https",
 			Hostname:  "localhost",
 			Port:      3000,
 			LoginPath: "/login",
 			ErrorPath: "/error",
 		},
-		CORS: config.CORSConfig{AllowedOrigins: allowedOrigins},
 	}
-	suite.Require().NoError(cors.InitializeMatcher(testConfig.CORS.AllowedOrigins))
 	_ = config.InitializeServerRuntime("", testConfig)
 
 	suite.mockInboundClient = inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())

@@ -20,8 +20,8 @@
 package tokenservice
 
 import (
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // TokenType represents the type of token being processed.
@@ -53,7 +53,7 @@ type AccessTokenBuildContext struct {
 	UserAttributes   map[string]interface{}
 	AttributeCacheID string
 	GrantType        string
-	OAuthApp         *inboundmodel.OAuthClient
+	OAuthApp         *providers.OAuthClient
 	ActorClaims      *SubjectTokenClaims
 	ClaimsRequest    *oauth2model.ClaimsRequest
 	ClaimsLocales    string
@@ -71,7 +71,7 @@ type RefreshTokenBuildContext struct {
 	AccessTokenSubject   string
 	AccessTokenAudiences []string
 	AttributeCacheID     string
-	OAuthApp             *inboundmodel.OAuthClient
+	OAuthApp             *providers.OAuthClient
 	ClaimsRequest        *oauth2model.ClaimsRequest
 	ClaimsLocales        string
 	DPoPJkt              string
@@ -85,7 +85,7 @@ type IDTokenBuildContext struct {
 	Scopes         []string
 	UserAttributes map[string]interface{}
 	AuthTime       int64
-	OAuthApp       *inboundmodel.OAuthClient
+	OAuthApp       *providers.OAuthClient
 	ClaimsRequest  *oauth2model.ClaimsRequest
 	Nonce          string
 	CompletedACR   string

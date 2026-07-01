@@ -84,11 +84,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# NX artifacts
-.nx/cache
-.nx/workspace-data
-frontend/packages/**/.nx/cache
-frontend/packages/**/.nx/workspace-data
+# Turborepo artifacts
+.turbo
+**/.turbo
 
 # typescript
 *.tsbuildinfo
@@ -124,10 +122,6 @@ backend/coverage_unit.html
 docs/static/api/combined.yaml
 docs/static/api/next/combined.yaml
 docs/static/api/next/postman/
-
-# IDE settings
-.cursor/rules/nx-rules.mdc
-.github/instructions/nx.instructions.md
 
 # Playwright
 .playwright-cli/

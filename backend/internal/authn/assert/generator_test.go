@@ -23,11 +23,12 @@ import (
 	"testing"
 	"time"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/suite"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
-	"github.com/thunder-id/thunderid/internal/idp"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -55,22 +56,22 @@ func (suite *GeneratorTestSuite) SetupTest() {
 	authncm.RegisterAuthenticator(authncm.AuthenticatorMeta{
 		Name:          authncm.AuthenticatorGoogle,
 		Factors:       []authncm.AuthenticationFactor{authncm.FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeGoogle,
+		AssociatedIDP: providers.IDPTypeGoogle,
 	})
 	authncm.RegisterAuthenticator(authncm.AuthenticatorMeta{
 		Name:          authncm.AuthenticatorGithub,
 		Factors:       []authncm.AuthenticationFactor{authncm.FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeGitHub,
+		AssociatedIDP: providers.IDPTypeGitHub,
 	})
 	authncm.RegisterAuthenticator(authncm.AuthenticatorMeta{
 		Name:          authncm.AuthenticatorOAuth,
 		Factors:       []authncm.AuthenticationFactor{authncm.FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeOAuth,
+		AssociatedIDP: providers.IDPTypeOAuth,
 	})
 	authncm.RegisterAuthenticator(authncm.AuthenticatorMeta{
 		Name:          authncm.AuthenticatorOIDC,
 		Factors:       []authncm.AuthenticationFactor{authncm.FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeOIDC,
+		AssociatedIDP: providers.IDPTypeOIDC,
 	})
 }
 
@@ -374,7 +375,7 @@ func (suite *GeneratorTestSuite) TestVerifyAssurance() {
 		requiredAAL   AssuranceLevel
 		requiredIAL   AssuranceLevel
 		expectSuccess bool
-		expectedError *serviceerror.ServiceError
+		expectedError *tidcommon.ServiceError
 	}{
 		{
 			name:          "Exact AAL match",

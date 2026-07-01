@@ -29,6 +29,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/cachemock"
 )
 
@@ -36,11 +37,11 @@ import (
 type CacheBackedEntityStoreTestSuite struct {
 	suite.Suite
 	mockStore                      *entityStoreInterfaceMock
-	entityByIDCache                *cachemock.CacheInterfaceMock[*Entity]
+	entityByIDCache                *cachemock.CacheInterfaceMock[*providers.Entity]
 	entityWithCredentialsByIDCache *cachemock.CacheInterfaceMock[*entityWithCredentials]
 	entityIDByIdentifierCache      *cachemock.CacheInterfaceMock[*string]
 	cachedStore                    *cacheBackedEntityStore
-	entityByIDData                 map[string]*Entity
+	entityByIDData                 map[string]*providers.Entity
 	entityWithCredsByIDData        map[string]*entityWithCredentials
 	entityIDByIdentifierData       map[string]*string
 }
@@ -51,11 +52,11 @@ func TestCacheBackedEntityStoreTestSuite(t *testing.T) {
 
 func (s *CacheBackedEntityStoreTestSuite) SetupTest() {
 	s.mockStore = newEntityStoreInterfaceMock(s.T())
-	s.entityByIDData = make(map[string]*Entity)
+	s.entityByIDData = make(map[string]*providers.Entity)
 	s.entityWithCredsByIDData = make(map[string]*entityWithCredentials)
 	s.entityIDByIdentifierData = make(map[string]*string)
 
-	s.entityByIDCache = cachemock.NewCacheInterfaceMock[*Entity](s.T())
+	s.entityByIDCache = cachemock.NewCacheInterfaceMock[*providers.Entity](s.T())
 	s.entityWithCredentialsByIDCache = cachemock.NewCacheInterfaceMock[*entityWithCredentials](s.T())
 	s.entityIDByIdentifierCache = cachemock.NewCacheInterfaceMock[*string](s.T())
 
@@ -115,14 +116,14 @@ func setupEntityCacheMock[T any](
 	mockCache.EXPECT().CleanupExpired().Maybe()
 }
 
-func (s *CacheBackedEntityStoreTestSuite) makeEntity(id, clientID string) Entity {
+func (s *CacheBackedEntityStoreTestSuite) makeEntity(id, clientID string) providers.Entity {
 	sysAttrs := map[string]interface{}{"clientId": clientID}
 	sysAttrsJSON, _ := json.Marshal(sysAttrs)
-	return Entity{
+	return providers.Entity{
 		ID:               id,
-		Category:         EntityCategoryApp,
+		Category:         providers.EntityCategoryApp,
 		Type:             "application",
-		State:            EntityStateActive,
+		State:            providers.EntityStateActive,
 		SystemAttributes: json.RawMessage(sysAttrsJSON),
 	}
 }
@@ -157,7 +158,7 @@ func (s *CacheBackedEntityStoreTestSuite) TestGetEntity_CacheMiss() {
 
 func (s *CacheBackedEntityStoreTestSuite) TestGetEntity_StoreError() {
 	storeErr := errors.New("db error")
-	s.mockStore.On("GetEntity", mock.Anything, "bad-id").Return(Entity{}, storeErr).Once()
+	s.mockStore.On("GetEntity", mock.Anything, "bad-id").Return(providers.Entity{}, storeErr).Once()
 
 	_, err := s.cachedStore.GetEntity(context.Background(), "bad-id")
 	s.Equal(storeErr, err)
@@ -270,7 +271,7 @@ func (s *CacheBackedEntityStoreTestSuite) TestGetEntityWithCredentials_NilResult
 	s.NotNil(result)
 	s.mockStore.AssertExpectations(s.T())
 
-	// Result has nil Entity, so it should not be cached.
+	// Result has nil providers.Entity, so it should not be cached.
 	_, ok := s.entityWithCredentialsByIDCache.Get(context.Background(),
 		cache.CacheKey{Key: "nil-entity"})
 	s.False(ok)
@@ -603,7 +604,7 @@ func (s *CacheBackedEntityStoreTestSuite) TestDeleteEntity_InvalidatesIdentifier
 	entityID := entity.ID
 	s.entityIDByIdentifierData["clientId:client-1"] = &entityID
 
-	// Entity is NOT in entityByIDCache — invalidateIdentifierCache must fall back to the store.
+	// providers.Entity is NOT in entityByIDCache — invalidateIdentifierCache must fall back to the store.
 	s.mockStore.On("DeleteEntity", mock.Anything, entity.ID).Return(nil).Once()
 	s.mockStore.On("GetEntity", mock.Anything, entity.ID).Return(entity, nil).Once()
 
@@ -621,7 +622,7 @@ func (s *CacheBackedEntityStoreTestSuite) TestUpdateEntity_InvalidatesIdentifier
 	entityID := entity.ID
 	s.entityIDByIdentifierData["clientId:client-1"] = &entityID
 
-	// Entity is NOT in entityByIDCache — invalidateIdentifierCache must fall back to the store
+	// providers.Entity is NOT in entityByIDCache — invalidateIdentifierCache must fall back to the store
 	// BEFORE the update, so it reads the old attributes.
 	s.mockStore.On("GetEntity", mock.Anything, entity.ID).Return(entity, nil).Once()
 	s.mockStore.On("UpdateEntity", mock.Anything, &entity).Return(nil).Once()
@@ -652,7 +653,7 @@ func (s *CacheBackedEntityStoreTestSuite) TestUpdateAttributeMethods_InvalidateI
 			entityID := entity.ID
 			s.entityIDByIdentifierData["clientId:client-1"] = &entityID
 
-			// Entity is NOT in entityByIDCache — store fallback happens before the update.
+			// providers.Entity is NOT in entityByIDCache — store fallback happens before the update.
 			s.mockStore.On("GetEntity", mock.Anything, entity.ID).Return(entity, nil).Once()
 			newAttrs, _ := json.Marshal(map[string]interface{}{"clientId": "new-client"})
 			s.mockStore.On(tc.storeFn, mock.Anything, entity.ID,

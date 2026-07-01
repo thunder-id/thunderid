@@ -23,14 +23,14 @@ import (
 	"context"
 	"encoding/json"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/actorprovider"
-	"github.com/thunder-id/thunderid/internal/design/common"
-	"github.com/thunder-id/thunderid/internal/design/resolve"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/ou"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // MetaType represents the type of metadata being requested.
@@ -57,24 +57,24 @@ type FlowMetaServiceInterface interface {
 		id string,
 		language *string,
 		namespace *string,
-	) (*FlowMetadataResponse, *serviceerror.ServiceError)
+	) (*FlowMetadataResponse, *tidcommon.ServiceError)
 }
 
 // flowMetaService is the implementation of FlowMetaServiceInterface.
 type flowMetaService struct {
-	actorProvider actorprovider.ActorProviderInterface
-	ouService     ou.OrganizationUnitServiceInterface
-	designResolve resolve.DesignResolveServiceInterface
-	i18nService   i18nmgt.I18nServiceInterface
+	actorProvider providers.ActorProvider
+	ouService     providers.OrganizationUnitProvider
+	designResolve providers.DesignProvider
+	i18nService   providers.I18nProvider
 	logger        *log.Logger
 }
 
 // newFlowMetaService creates a new instance of flowMetaService with injected dependencies.
 func newFlowMetaService(
-	actorProvider actorprovider.ActorProviderInterface,
-	ouService ou.OrganizationUnitServiceInterface,
-	designResolve resolve.DesignResolveServiceInterface,
-	i18nService i18nmgt.I18nServiceInterface,
+	actorProvider providers.ActorProvider,
+	ouService providers.OrganizationUnitProvider,
+	designResolve providers.DesignProvider,
+	i18nService providers.I18nProvider,
 ) FlowMetaServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	return &flowMetaService{
@@ -93,7 +93,7 @@ func (fms *flowMetaService) GetFlowMetadata(
 	id string,
 	language *string,
 	namespace *string,
-) (*FlowMetadataResponse, *serviceerror.ServiceError) {
+) (*FlowMetadataResponse, *tidcommon.ServiceError) {
 	response := newFlowMetadataResponse()
 	lang, ns := resolveLanguageAndNamespace(language, namespace)
 
@@ -158,7 +158,7 @@ func (fms *flowMetaService) populateTypeMetadata(
 	metaType MetaType,
 	id string,
 	response *FlowMetadataResponse,
-) (string, *serviceerror.ServiceError) {
+) (string, *tidcommon.ServiceError) {
 	if metaType == MetaTypeOU {
 		response.IsRegistrationFlowEnabled = false
 		return id, nil
@@ -178,8 +178,9 @@ func (fms *flowMetaService) populateTypeMetadata(
 	}
 
 	entity, epErr := fms.actorProvider.GetActor(id)
-	if epErr != nil && epErr.Code != entityprovider.ErrorCodeEntityNotFound {
-		fms.logger.Error(ctx, "Failed to get actor", log.String("appID", id), log.Error(epErr))
+	if epErr != nil && epErr.Code != string(entityprovider.ErrorCodeEntityNotFound) {
+		fms.logger.Error(ctx, "Failed to get actor", log.String("appID", id),
+			log.String("error", epErr.Error.DefaultValue))
 		return "", &ErrorApplicationFetchFailed
 	}
 
@@ -210,7 +211,7 @@ func (fms *flowMetaService) populateOUMetadata(
 	ctx context.Context,
 	ouID string,
 	response *FlowMetadataResponse,
-) *serviceerror.ServiceError {
+) *tidcommon.ServiceError {
 	if ouID == "" {
 		return nil
 	}
@@ -249,10 +250,10 @@ func (fms *flowMetaService) populateDesignMetadata(
 	ouID string,
 	response *FlowMetadataResponse,
 ) {
-	designType := common.DesignResolveTypeAPP
+	designType := providers.DesignResolveTypeAPP
 	designID := id
 	if metaType == MetaTypeOU {
-		designType = common.DesignResolveTypeOU
+		designType = providers.DesignResolveTypeOU
 		designID = ouID
 	}
 

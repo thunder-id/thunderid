@@ -20,7 +20,8 @@ package core
 
 import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // RepresentationNodeInterface extends NodeInterface for representation nodes (START/END).
@@ -61,7 +62,7 @@ func newRepresentationNode(id string, nodeType common.NodeType, properties map[s
 }
 
 // Execute executes representation nodes with simple onSuccess navigation
-func (n *representationNode) Execute(ctx *NodeContext) (*common.NodeResponse, *serviceerror.ServiceError) {
+func (n *representationNode) Execute(ctx *providers.NodeContext) (*common.NodeResponse, *tidcommon.ServiceError) {
 	response := &common.NodeResponse{
 		Status:         common.NodeStatusComplete,
 		RuntimeData:    make(map[string]string),

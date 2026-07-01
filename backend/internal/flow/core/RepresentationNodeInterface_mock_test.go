@@ -7,7 +7,8 @@ package core
 import (
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	common0 "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewRepresentationNodeInterfaceMock creates a new instance of RepresentationNodeInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -118,7 +119,7 @@ func (_c *RepresentationNodeInterfaceMock_AddPreviousNode_Call) RunAndReturn(run
 }
 
 // Execute provides a mock function for the type RepresentationNodeInterfaceMock
-func (_mock *RepresentationNodeInterfaceMock) Execute(ctx *NodeContext) (*common.NodeResponse, *serviceerror.ServiceError) {
+func (_mock *RepresentationNodeInterfaceMock) Execute(ctx *providers.NodeContext) (*common.NodeResponse, *common0.ServiceError) {
 	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
@@ -126,22 +127,22 @@ func (_mock *RepresentationNodeInterfaceMock) Execute(ctx *NodeContext) (*common
 	}
 
 	var r0 *common.NodeResponse
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(*NodeContext) (*common.NodeResponse, *serviceerror.ServiceError)); ok {
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(*providers.NodeContext) (*common.NodeResponse, *common0.ServiceError)); ok {
 		return returnFunc(ctx)
 	}
-	if returnFunc, ok := ret.Get(0).(func(*NodeContext) *common.NodeResponse); ok {
+	if returnFunc, ok := ret.Get(0).(func(*providers.NodeContext) *common.NodeResponse); ok {
 		r0 = returnFunc(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*common.NodeResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(*NodeContext) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(*providers.NodeContext) *common0.ServiceError); ok {
 		r1 = returnFunc(ctx)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
+			r1 = ret.Get(1).(*common0.ServiceError)
 		}
 	}
 	return r0, r1
@@ -153,16 +154,16 @@ type RepresentationNodeInterfaceMock_Execute_Call struct {
 }
 
 // Execute is a helper method to define mock.On call
-//   - ctx *NodeContext
+//   - ctx *providers.NodeContext
 func (_e *RepresentationNodeInterfaceMock_Expecter) Execute(ctx interface{}) *RepresentationNodeInterfaceMock_Execute_Call {
 	return &RepresentationNodeInterfaceMock_Execute_Call{Call: _e.mock.On("Execute", ctx)}
 }
 
-func (_c *RepresentationNodeInterfaceMock_Execute_Call) Run(run func(ctx *NodeContext)) *RepresentationNodeInterfaceMock_Execute_Call {
+func (_c *RepresentationNodeInterfaceMock_Execute_Call) Run(run func(ctx *providers.NodeContext)) *RepresentationNodeInterfaceMock_Execute_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 *NodeContext
+		var arg0 *providers.NodeContext
 		if args[0] != nil {
-			arg0 = args[0].(*NodeContext)
+			arg0 = args[0].(*providers.NodeContext)
 		}
 		run(
 			arg0,
@@ -171,12 +172,12 @@ func (_c *RepresentationNodeInterfaceMock_Execute_Call) Run(run func(ctx *NodeCo
 	return _c
 }
 
-func (_c *RepresentationNodeInterfaceMock_Execute_Call) Return(nodeResponse *common.NodeResponse, serviceError *serviceerror.ServiceError) *RepresentationNodeInterfaceMock_Execute_Call {
+func (_c *RepresentationNodeInterfaceMock_Execute_Call) Return(nodeResponse *common.NodeResponse, serviceError *common0.ServiceError) *RepresentationNodeInterfaceMock_Execute_Call {
 	_c.Call.Return(nodeResponse, serviceError)
 	return _c
 }
 
-func (_c *RepresentationNodeInterfaceMock_Execute_Call) RunAndReturn(run func(ctx *NodeContext) (*common.NodeResponse, *serviceerror.ServiceError)) *RepresentationNodeInterfaceMock_Execute_Call {
+func (_c *RepresentationNodeInterfaceMock_Execute_Call) RunAndReturn(run func(ctx *providers.NodeContext) (*common.NodeResponse, *common0.ServiceError)) *RepresentationNodeInterfaceMock_Execute_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -228,19 +229,19 @@ func (_c *RepresentationNodeInterfaceMock_GetCondition_Call) RunAndReturn(run fu
 }
 
 // GetExecutionPolicy provides a mock function for the type RepresentationNodeInterfaceMock
-func (_mock *RepresentationNodeInterfaceMock) GetExecutionPolicy() *ExecutionPolicy {
+func (_mock *RepresentationNodeInterfaceMock) GetExecutionPolicy() *providers.ExecutionPolicy {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetExecutionPolicy")
 	}
 
-	var r0 *ExecutionPolicy
-	if returnFunc, ok := ret.Get(0).(func() *ExecutionPolicy); ok {
+	var r0 *providers.ExecutionPolicy
+	if returnFunc, ok := ret.Get(0).(func() *providers.ExecutionPolicy); ok {
 		r0 = returnFunc()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*ExecutionPolicy)
+			r0 = ret.Get(0).(*providers.ExecutionPolicy)
 		}
 	}
 	return r0
@@ -263,12 +264,12 @@ func (_c *RepresentationNodeInterfaceMock_GetExecutionPolicy_Call) Run(run func(
 	return _c
 }
 
-func (_c *RepresentationNodeInterfaceMock_GetExecutionPolicy_Call) Return(executionPolicy *ExecutionPolicy) *RepresentationNodeInterfaceMock_GetExecutionPolicy_Call {
+func (_c *RepresentationNodeInterfaceMock_GetExecutionPolicy_Call) Return(executionPolicy *providers.ExecutionPolicy) *RepresentationNodeInterfaceMock_GetExecutionPolicy_Call {
 	_c.Call.Return(executionPolicy)
 	return _c
 }
 
-func (_c *RepresentationNodeInterfaceMock_GetExecutionPolicy_Call) RunAndReturn(run func() *ExecutionPolicy) *RepresentationNodeInterfaceMock_GetExecutionPolicy_Call {
+func (_c *RepresentationNodeInterfaceMock_GetExecutionPolicy_Call) RunAndReturn(run func() *providers.ExecutionPolicy) *RepresentationNodeInterfaceMock_GetExecutionPolicy_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -938,7 +939,7 @@ func (_c *RepresentationNodeInterfaceMock_SetPreviousNodeList_Call) RunAndReturn
 }
 
 // ShouldExecute provides a mock function for the type RepresentationNodeInterfaceMock
-func (_mock *RepresentationNodeInterfaceMock) ShouldExecute(ctx *NodeContext) bool {
+func (_mock *RepresentationNodeInterfaceMock) ShouldExecute(ctx *providers.NodeContext) bool {
 	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
@@ -946,7 +947,7 @@ func (_mock *RepresentationNodeInterfaceMock) ShouldExecute(ctx *NodeContext) bo
 	}
 
 	var r0 bool
-	if returnFunc, ok := ret.Get(0).(func(*NodeContext) bool); ok {
+	if returnFunc, ok := ret.Get(0).(func(*providers.NodeContext) bool); ok {
 		r0 = returnFunc(ctx)
 	} else {
 		r0 = ret.Get(0).(bool)
@@ -960,16 +961,16 @@ type RepresentationNodeInterfaceMock_ShouldExecute_Call struct {
 }
 
 // ShouldExecute is a helper method to define mock.On call
-//   - ctx *NodeContext
+//   - ctx *providers.NodeContext
 func (_e *RepresentationNodeInterfaceMock_Expecter) ShouldExecute(ctx interface{}) *RepresentationNodeInterfaceMock_ShouldExecute_Call {
 	return &RepresentationNodeInterfaceMock_ShouldExecute_Call{Call: _e.mock.On("ShouldExecute", ctx)}
 }
 
-func (_c *RepresentationNodeInterfaceMock_ShouldExecute_Call) Run(run func(ctx *NodeContext)) *RepresentationNodeInterfaceMock_ShouldExecute_Call {
+func (_c *RepresentationNodeInterfaceMock_ShouldExecute_Call) Run(run func(ctx *providers.NodeContext)) *RepresentationNodeInterfaceMock_ShouldExecute_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 *NodeContext
+		var arg0 *providers.NodeContext
 		if args[0] != nil {
-			arg0 = args[0].(*NodeContext)
+			arg0 = args[0].(*providers.NodeContext)
 		}
 		run(
 			arg0,
@@ -983,7 +984,7 @@ func (_c *RepresentationNodeInterfaceMock_ShouldExecute_Call) Return(b bool) *Re
 	return _c
 }
 
-func (_c *RepresentationNodeInterfaceMock_ShouldExecute_Call) RunAndReturn(run func(ctx *NodeContext) bool) *RepresentationNodeInterfaceMock_ShouldExecute_Call {
+func (_c *RepresentationNodeInterfaceMock_ShouldExecute_Call) RunAndReturn(run func(ctx *providers.NodeContext) bool) *RepresentationNodeInterfaceMock_ShouldExecute_Call {
 	_c.Call.Return(run)
 	return _c
 }

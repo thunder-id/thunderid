@@ -8,7 +8,7 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // newInboundClientStoreInterfaceMock creates a new instance of inboundClientStoreInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -39,7 +39,7 @@ func (_m *inboundClientStoreInterfaceMock) EXPECT() *inboundClientStoreInterface
 }
 
 // CreateInboundClient provides a mock function for the type inboundClientStoreInterfaceMock
-func (_mock *inboundClientStoreInterfaceMock) CreateInboundClient(ctx context.Context, client model.InboundClient) error {
+func (_mock *inboundClientStoreInterfaceMock) CreateInboundClient(ctx context.Context, client providers.InboundClient) error {
 	ret := _mock.Called(ctx, client)
 
 	if len(ret) == 0 {
@@ -47,7 +47,7 @@ func (_mock *inboundClientStoreInterfaceMock) CreateInboundClient(ctx context.Co
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, model.InboundClient) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.InboundClient) error); ok {
 		r0 = returnFunc(ctx, client)
 	} else {
 		r0 = ret.Error(0)
@@ -62,20 +62,20 @@ type inboundClientStoreInterfaceMock_CreateInboundClient_Call struct {
 
 // CreateInboundClient is a helper method to define mock.On call
 //   - ctx context.Context
-//   - client model.InboundClient
+//   - client providers.InboundClient
 func (_e *inboundClientStoreInterfaceMock_Expecter) CreateInboundClient(ctx interface{}, client interface{}) *inboundClientStoreInterfaceMock_CreateInboundClient_Call {
 	return &inboundClientStoreInterfaceMock_CreateInboundClient_Call{Call: _e.mock.On("CreateInboundClient", ctx, client)}
 }
 
-func (_c *inboundClientStoreInterfaceMock_CreateInboundClient_Call) Run(run func(ctx context.Context, client model.InboundClient)) *inboundClientStoreInterfaceMock_CreateInboundClient_Call {
+func (_c *inboundClientStoreInterfaceMock_CreateInboundClient_Call) Run(run func(ctx context.Context, client providers.InboundClient)) *inboundClientStoreInterfaceMock_CreateInboundClient_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 model.InboundClient
+		var arg1 providers.InboundClient
 		if args[1] != nil {
-			arg1 = args[1].(model.InboundClient)
+			arg1 = args[1].(providers.InboundClient)
 		}
 		run(
 			arg0,
@@ -90,13 +90,13 @@ func (_c *inboundClientStoreInterfaceMock_CreateInboundClient_Call) Return(err e
 	return _c
 }
 
-func (_c *inboundClientStoreInterfaceMock_CreateInboundClient_Call) RunAndReturn(run func(ctx context.Context, client model.InboundClient) error) *inboundClientStoreInterfaceMock_CreateInboundClient_Call {
+func (_c *inboundClientStoreInterfaceMock_CreateInboundClient_Call) RunAndReturn(run func(ctx context.Context, client providers.InboundClient) error) *inboundClientStoreInterfaceMock_CreateInboundClient_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // CreateOAuthProfile provides a mock function for the type inboundClientStoreInterfaceMock
-func (_mock *inboundClientStoreInterfaceMock) CreateOAuthProfile(ctx context.Context, entityID string, oauthProfile *model.OAuthProfile) error {
+func (_mock *inboundClientStoreInterfaceMock) CreateOAuthProfile(ctx context.Context, entityID string, oauthProfile *providers.OAuthProfile) error {
 	ret := _mock.Called(ctx, entityID, oauthProfile)
 
 	if len(ret) == 0 {
@@ -104,7 +104,7 @@ func (_mock *inboundClientStoreInterfaceMock) CreateOAuthProfile(ctx context.Con
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *model.OAuthProfile) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *providers.OAuthProfile) error); ok {
 		r0 = returnFunc(ctx, entityID, oauthProfile)
 	} else {
 		r0 = ret.Error(0)
@@ -120,12 +120,12 @@ type inboundClientStoreInterfaceMock_CreateOAuthProfile_Call struct {
 // CreateOAuthProfile is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-//   - oauthProfile *model.OAuthProfile
+//   - oauthProfile *providers.OAuthProfile
 func (_e *inboundClientStoreInterfaceMock_Expecter) CreateOAuthProfile(ctx interface{}, entityID interface{}, oauthProfile interface{}) *inboundClientStoreInterfaceMock_CreateOAuthProfile_Call {
 	return &inboundClientStoreInterfaceMock_CreateOAuthProfile_Call{Call: _e.mock.On("CreateOAuthProfile", ctx, entityID, oauthProfile)}
 }
 
-func (_c *inboundClientStoreInterfaceMock_CreateOAuthProfile_Call) Run(run func(ctx context.Context, entityID string, oauthProfile *model.OAuthProfile)) *inboundClientStoreInterfaceMock_CreateOAuthProfile_Call {
+func (_c *inboundClientStoreInterfaceMock_CreateOAuthProfile_Call) Run(run func(ctx context.Context, entityID string, oauthProfile *providers.OAuthProfile)) *inboundClientStoreInterfaceMock_CreateOAuthProfile_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -135,9 +135,9 @@ func (_c *inboundClientStoreInterfaceMock_CreateOAuthProfile_Call) Run(run func(
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 *model.OAuthProfile
+		var arg2 *providers.OAuthProfile
 		if args[2] != nil {
-			arg2 = args[2].(*model.OAuthProfile)
+			arg2 = args[2].(*providers.OAuthProfile)
 		}
 		run(
 			arg0,
@@ -153,7 +153,7 @@ func (_c *inboundClientStoreInterfaceMock_CreateOAuthProfile_Call) Return(err er
 	return _c
 }
 
-func (_c *inboundClientStoreInterfaceMock_CreateOAuthProfile_Call) RunAndReturn(run func(ctx context.Context, entityID string, oauthProfile *model.OAuthProfile) error) *inboundClientStoreInterfaceMock_CreateOAuthProfile_Call {
+func (_c *inboundClientStoreInterfaceMock_CreateOAuthProfile_Call) RunAndReturn(run func(ctx context.Context, entityID string, oauthProfile *providers.OAuthProfile) error) *inboundClientStoreInterfaceMock_CreateOAuthProfile_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -273,23 +273,23 @@ func (_c *inboundClientStoreInterfaceMock_DeleteOAuthProfile_Call) RunAndReturn(
 }
 
 // GetInboundClientByEntityID provides a mock function for the type inboundClientStoreInterfaceMock
-func (_mock *inboundClientStoreInterfaceMock) GetInboundClientByEntityID(ctx context.Context, entityID string) (*model.InboundClient, error) {
+func (_mock *inboundClientStoreInterfaceMock) GetInboundClientByEntityID(ctx context.Context, entityID string) (*providers.InboundClient, error) {
 	ret := _mock.Called(ctx, entityID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetInboundClientByEntityID")
 	}
 
-	var r0 *model.InboundClient
+	var r0 *providers.InboundClient
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*model.InboundClient, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*providers.InboundClient, error)); ok {
 		return returnFunc(ctx, entityID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *model.InboundClient); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *providers.InboundClient); ok {
 		r0 = returnFunc(ctx, entityID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.InboundClient)
+			r0 = ret.Get(0).(*providers.InboundClient)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
@@ -330,34 +330,34 @@ func (_c *inboundClientStoreInterfaceMock_GetInboundClientByEntityID_Call) Run(r
 	return _c
 }
 
-func (_c *inboundClientStoreInterfaceMock_GetInboundClientByEntityID_Call) Return(inboundClient *model.InboundClient, err error) *inboundClientStoreInterfaceMock_GetInboundClientByEntityID_Call {
+func (_c *inboundClientStoreInterfaceMock_GetInboundClientByEntityID_Call) Return(inboundClient *providers.InboundClient, err error) *inboundClientStoreInterfaceMock_GetInboundClientByEntityID_Call {
 	_c.Call.Return(inboundClient, err)
 	return _c
 }
 
-func (_c *inboundClientStoreInterfaceMock_GetInboundClientByEntityID_Call) RunAndReturn(run func(ctx context.Context, entityID string) (*model.InboundClient, error)) *inboundClientStoreInterfaceMock_GetInboundClientByEntityID_Call {
+func (_c *inboundClientStoreInterfaceMock_GetInboundClientByEntityID_Call) RunAndReturn(run func(ctx context.Context, entityID string) (*providers.InboundClient, error)) *inboundClientStoreInterfaceMock_GetInboundClientByEntityID_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetInboundClientList provides a mock function for the type inboundClientStoreInterfaceMock
-func (_mock *inboundClientStoreInterfaceMock) GetInboundClientList(ctx context.Context, limit int) ([]model.InboundClient, error) {
+func (_mock *inboundClientStoreInterfaceMock) GetInboundClientList(ctx context.Context, limit int) ([]providers.InboundClient, error) {
 	ret := _mock.Called(ctx, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetInboundClientList")
 	}
 
-	var r0 []model.InboundClient
+	var r0 []providers.InboundClient
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int) ([]model.InboundClient, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int) ([]providers.InboundClient, error)); ok {
 		return returnFunc(ctx, limit)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int) []model.InboundClient); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int) []providers.InboundClient); ok {
 		r0 = returnFunc(ctx, limit)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]model.InboundClient)
+			r0 = ret.Get(0).([]providers.InboundClient)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, int) error); ok {
@@ -398,34 +398,34 @@ func (_c *inboundClientStoreInterfaceMock_GetInboundClientList_Call) Run(run fun
 	return _c
 }
 
-func (_c *inboundClientStoreInterfaceMock_GetInboundClientList_Call) Return(inboundClients []model.InboundClient, err error) *inboundClientStoreInterfaceMock_GetInboundClientList_Call {
+func (_c *inboundClientStoreInterfaceMock_GetInboundClientList_Call) Return(inboundClients []providers.InboundClient, err error) *inboundClientStoreInterfaceMock_GetInboundClientList_Call {
 	_c.Call.Return(inboundClients, err)
 	return _c
 }
 
-func (_c *inboundClientStoreInterfaceMock_GetInboundClientList_Call) RunAndReturn(run func(ctx context.Context, limit int) ([]model.InboundClient, error)) *inboundClientStoreInterfaceMock_GetInboundClientList_Call {
+func (_c *inboundClientStoreInterfaceMock_GetInboundClientList_Call) RunAndReturn(run func(ctx context.Context, limit int) ([]providers.InboundClient, error)) *inboundClientStoreInterfaceMock_GetInboundClientList_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetOAuthProfileByEntityID provides a mock function for the type inboundClientStoreInterfaceMock
-func (_mock *inboundClientStoreInterfaceMock) GetOAuthProfileByEntityID(ctx context.Context, entityID string) (*model.OAuthProfile, error) {
+func (_mock *inboundClientStoreInterfaceMock) GetOAuthProfileByEntityID(ctx context.Context, entityID string) (*providers.OAuthProfile, error) {
 	ret := _mock.Called(ctx, entityID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOAuthProfileByEntityID")
 	}
 
-	var r0 *model.OAuthProfile
+	var r0 *providers.OAuthProfile
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*model.OAuthProfile, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*providers.OAuthProfile, error)); ok {
 		return returnFunc(ctx, entityID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *model.OAuthProfile); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *providers.OAuthProfile); ok {
 		r0 = returnFunc(ctx, entityID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.OAuthProfile)
+			r0 = ret.Get(0).(*providers.OAuthProfile)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
@@ -466,12 +466,12 @@ func (_c *inboundClientStoreInterfaceMock_GetOAuthProfileByEntityID_Call) Run(ru
 	return _c
 }
 
-func (_c *inboundClientStoreInterfaceMock_GetOAuthProfileByEntityID_Call) Return(oAuthProfile *model.OAuthProfile, err error) *inboundClientStoreInterfaceMock_GetOAuthProfileByEntityID_Call {
+func (_c *inboundClientStoreInterfaceMock_GetOAuthProfileByEntityID_Call) Return(oAuthProfile *providers.OAuthProfile, err error) *inboundClientStoreInterfaceMock_GetOAuthProfileByEntityID_Call {
 	_c.Call.Return(oAuthProfile, err)
 	return _c
 }
 
-func (_c *inboundClientStoreInterfaceMock_GetOAuthProfileByEntityID_Call) RunAndReturn(run func(ctx context.Context, entityID string) (*model.OAuthProfile, error)) *inboundClientStoreInterfaceMock_GetOAuthProfileByEntityID_Call {
+func (_c *inboundClientStoreInterfaceMock_GetOAuthProfileByEntityID_Call) RunAndReturn(run func(ctx context.Context, entityID string) (*providers.OAuthProfile, error)) *inboundClientStoreInterfaceMock_GetOAuthProfileByEntityID_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -660,7 +660,7 @@ func (_c *inboundClientStoreInterfaceMock_IsDeclarative_Call) RunAndReturn(run f
 }
 
 // UpdateInboundClient provides a mock function for the type inboundClientStoreInterfaceMock
-func (_mock *inboundClientStoreInterfaceMock) UpdateInboundClient(ctx context.Context, client model.InboundClient) error {
+func (_mock *inboundClientStoreInterfaceMock) UpdateInboundClient(ctx context.Context, client providers.InboundClient) error {
 	ret := _mock.Called(ctx, client)
 
 	if len(ret) == 0 {
@@ -668,7 +668,7 @@ func (_mock *inboundClientStoreInterfaceMock) UpdateInboundClient(ctx context.Co
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, model.InboundClient) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.InboundClient) error); ok {
 		r0 = returnFunc(ctx, client)
 	} else {
 		r0 = ret.Error(0)
@@ -683,20 +683,20 @@ type inboundClientStoreInterfaceMock_UpdateInboundClient_Call struct {
 
 // UpdateInboundClient is a helper method to define mock.On call
 //   - ctx context.Context
-//   - client model.InboundClient
+//   - client providers.InboundClient
 func (_e *inboundClientStoreInterfaceMock_Expecter) UpdateInboundClient(ctx interface{}, client interface{}) *inboundClientStoreInterfaceMock_UpdateInboundClient_Call {
 	return &inboundClientStoreInterfaceMock_UpdateInboundClient_Call{Call: _e.mock.On("UpdateInboundClient", ctx, client)}
 }
 
-func (_c *inboundClientStoreInterfaceMock_UpdateInboundClient_Call) Run(run func(ctx context.Context, client model.InboundClient)) *inboundClientStoreInterfaceMock_UpdateInboundClient_Call {
+func (_c *inboundClientStoreInterfaceMock_UpdateInboundClient_Call) Run(run func(ctx context.Context, client providers.InboundClient)) *inboundClientStoreInterfaceMock_UpdateInboundClient_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 model.InboundClient
+		var arg1 providers.InboundClient
 		if args[1] != nil {
-			arg1 = args[1].(model.InboundClient)
+			arg1 = args[1].(providers.InboundClient)
 		}
 		run(
 			arg0,
@@ -711,13 +711,13 @@ func (_c *inboundClientStoreInterfaceMock_UpdateInboundClient_Call) Return(err e
 	return _c
 }
 
-func (_c *inboundClientStoreInterfaceMock_UpdateInboundClient_Call) RunAndReturn(run func(ctx context.Context, client model.InboundClient) error) *inboundClientStoreInterfaceMock_UpdateInboundClient_Call {
+func (_c *inboundClientStoreInterfaceMock_UpdateInboundClient_Call) RunAndReturn(run func(ctx context.Context, client providers.InboundClient) error) *inboundClientStoreInterfaceMock_UpdateInboundClient_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UpdateOAuthProfile provides a mock function for the type inboundClientStoreInterfaceMock
-func (_mock *inboundClientStoreInterfaceMock) UpdateOAuthProfile(ctx context.Context, entityID string, oauthProfile *model.OAuthProfile) error {
+func (_mock *inboundClientStoreInterfaceMock) UpdateOAuthProfile(ctx context.Context, entityID string, oauthProfile *providers.OAuthProfile) error {
 	ret := _mock.Called(ctx, entityID, oauthProfile)
 
 	if len(ret) == 0 {
@@ -725,7 +725,7 @@ func (_mock *inboundClientStoreInterfaceMock) UpdateOAuthProfile(ctx context.Con
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *model.OAuthProfile) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *providers.OAuthProfile) error); ok {
 		r0 = returnFunc(ctx, entityID, oauthProfile)
 	} else {
 		r0 = ret.Error(0)
@@ -741,12 +741,12 @@ type inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call struct {
 // UpdateOAuthProfile is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-//   - oauthProfile *model.OAuthProfile
+//   - oauthProfile *providers.OAuthProfile
 func (_e *inboundClientStoreInterfaceMock_Expecter) UpdateOAuthProfile(ctx interface{}, entityID interface{}, oauthProfile interface{}) *inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call {
 	return &inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call{Call: _e.mock.On("UpdateOAuthProfile", ctx, entityID, oauthProfile)}
 }
 
-func (_c *inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call) Run(run func(ctx context.Context, entityID string, oauthProfile *model.OAuthProfile)) *inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call {
+func (_c *inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call) Run(run func(ctx context.Context, entityID string, oauthProfile *providers.OAuthProfile)) *inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -756,9 +756,9 @@ func (_c *inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call) Run(run func(
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 *model.OAuthProfile
+		var arg2 *providers.OAuthProfile
 		if args[2] != nil {
-			arg2 = args[2].(*model.OAuthProfile)
+			arg2 = args[2].(*providers.OAuthProfile)
 		}
 		run(
 			arg0,
@@ -774,7 +774,7 @@ func (_c *inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call) Return(err er
 	return _c
 }
 
-func (_c *inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call) RunAndReturn(run func(ctx context.Context, entityID string, oauthProfile *model.OAuthProfile) error) *inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call {
+func (_c *inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call) RunAndReturn(run func(ctx context.Context, entityID string, oauthProfile *providers.OAuthProfile) error) *inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call {
 	_c.Call.Return(run)
 	return _c
 }

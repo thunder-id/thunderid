@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -39,7 +40,7 @@ func TestInMemoryCacheSuite(t *testing.T) {
 
 func (suite *InMemoryCacheTestSuite) SetupSuite() {
 	mockConfig := &config.Config{
-		Cache: config.CacheConfig{
+		Cache: engineconfig.CacheConfig{
 			Disabled:        false,
 			Size:            1000,
 			TTL:             3600,
@@ -58,44 +59,44 @@ func (suite *InMemoryCacheTestSuite) TestNewInMemoryCache() {
 	testCases := []struct {
 		name        string
 		enabled     bool
-		cacheConfig config.CacheConfig
+		cacheConfig engineconfig.CacheConfig
 		expectedMax int
 	}{
 		{
 			name:        "EnabledCache",
 			enabled:     true,
-			cacheConfig: config.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"},
+			cacheConfig: engineconfig.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"},
 			expectedMax: 100,
 		},
 		{
 			name:        "DisabledCache",
 			enabled:     false,
-			cacheConfig: config.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"},
+			cacheConfig: engineconfig.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"},
 			expectedMax: 0,
 		},
 		{
 			name:        "LFUEvictionPolicy",
 			enabled:     true,
-			cacheConfig: config.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LFU"},
+			cacheConfig: engineconfig.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LFU"},
 			expectedMax: 100,
 		},
 		{
 			name:        "ZeroSize",
 			enabled:     true,
-			cacheConfig: config.CacheConfig{Size: 0, TTL: 60, EvictionPolicy: "LRU"},
+			cacheConfig: engineconfig.CacheConfig{Size: 0, TTL: 60, EvictionPolicy: "LRU"},
 			expectedMax: 0,
 		},
 		{
 			name:        "ZeroTTL",
 			enabled:     true,
-			cacheConfig: config.CacheConfig{Size: 100, TTL: 0, EvictionPolicy: "LRU"},
+			cacheConfig: engineconfig.CacheConfig{Size: 100, TTL: 0, EvictionPolicy: "LRU"},
 			expectedMax: 100,
 		},
 	}
 
 	for _, tc := range testCases {
 		suite.T().Run(tc.name, func(t *testing.T) {
-			cache := newInMemoryCache[string](tc.name, tc.enabled, tc.cacheConfig, config.CacheProperty{})
+			cache := newInMemoryCache[string](tc.name, tc.enabled, tc.cacheConfig, engineconfig.CacheProperty{})
 
 			assert.NotNil(t, cache)
 			assert.Equal(t, tc.enabled, cache.IsEnabled())
@@ -116,21 +117,21 @@ func (suite *InMemoryCacheTestSuite) TestNewInMemoryCache() {
 func (suite *InMemoryCacheTestSuite) TestSetAndGet() {
 	testCases := []struct {
 		name        string
-		cacheConfig config.CacheConfig
+		cacheConfig engineconfig.CacheConfig
 	}{
 		{
 			name:        "LRUCache",
-			cacheConfig: config.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"},
+			cacheConfig: engineconfig.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"},
 		},
 		{
 			name:        "LFUCache",
-			cacheConfig: config.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LFU"},
+			cacheConfig: engineconfig.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LFU"},
 		},
 	}
 
 	for _, tc := range testCases {
 		suite.T().Run(tc.name, func(t *testing.T) {
-			cache := newInMemoryCache[string](tc.name, true, tc.cacheConfig, config.CacheProperty{})
+			cache := newInMemoryCache[string](tc.name, true, tc.cacheConfig, engineconfig.CacheProperty{})
 
 			// Test Set and Get operations
 			key := CacheKey{Key: "testKey"}
@@ -165,7 +166,7 @@ func (suite *InMemoryCacheTestSuite) TestSetAndGet() {
 
 func (suite *InMemoryCacheTestSuite) TestDelete() {
 	cache := newInMemoryCache[string]("testCache", true,
-		config.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"}, config.CacheProperty{})
+		engineconfig.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"}, engineconfig.CacheProperty{})
 
 	// Add an entry and verify it exists
 	key := CacheKey{Key: "testKey"}
@@ -190,7 +191,7 @@ func (suite *InMemoryCacheTestSuite) TestDelete() {
 
 func (suite *InMemoryCacheTestSuite) TestClear() {
 	cache := newInMemoryCache[string]("testCache", true,
-		config.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"}, config.CacheProperty{})
+		engineconfig.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"}, engineconfig.CacheProperty{})
 
 	// Add multiple entries
 	for i := 0; i < 5; i++ {
@@ -218,7 +219,7 @@ func (suite *InMemoryCacheTestSuite) TestClear() {
 func (suite *InMemoryCacheTestSuite) TestExpiry() {
 	// Create cache with 1-second TTL
 	cache := newInMemoryCache[string]("testCache", true,
-		config.CacheConfig{Size: 100, TTL: 1, EvictionPolicy: "LRU"}, config.CacheProperty{})
+		engineconfig.CacheConfig{Size: 100, TTL: 1, EvictionPolicy: "LRU"}, engineconfig.CacheProperty{})
 
 	// Add an entry
 	key := CacheKey{Key: "testKey"}
@@ -242,7 +243,7 @@ func (suite *InMemoryCacheTestSuite) TestExpiry() {
 func (suite *InMemoryCacheTestSuite) TestCleanupExpired() {
 	// Create cache with 1-second TTL
 	cache := newInMemoryCache[string]("testCache", true,
-		config.CacheConfig{Size: 100, TTL: 1, EvictionPolicy: "LRU"}, config.CacheProperty{})
+		engineconfig.CacheConfig{Size: 100, TTL: 1, EvictionPolicy: "LRU"}, engineconfig.CacheProperty{})
 
 	// Add multiple entries
 	for i := 0; i < 5; i++ {
@@ -270,22 +271,22 @@ func (suite *InMemoryCacheTestSuite) TestCleanupExpired() {
 func (suite *InMemoryCacheTestSuite) TestEviction() {
 	testCases := []struct {
 		name        string
-		cacheConfig config.CacheConfig
+		cacheConfig engineconfig.CacheConfig
 	}{
 		{
 			name:        "LRUEviction",
-			cacheConfig: config.CacheConfig{Size: 3, TTL: 60, EvictionPolicy: "LRU"},
+			cacheConfig: engineconfig.CacheConfig{Size: 3, TTL: 60, EvictionPolicy: "LRU"},
 		},
 		{
 			name:        "LFUEviction",
-			cacheConfig: config.CacheConfig{Size: 3, TTL: 60, EvictionPolicy: "LFU"},
+			cacheConfig: engineconfig.CacheConfig{Size: 3, TTL: 60, EvictionPolicy: "LFU"},
 		},
 	}
 
 	for _, tc := range testCases {
 		suite.T().Run(tc.name, func(t *testing.T) {
 			// Create small cache (size 3)
-			cache := newInMemoryCache[string](tc.name, true, tc.cacheConfig, config.CacheProperty{})
+			cache := newInMemoryCache[string](tc.name, true, tc.cacheConfig, engineconfig.CacheProperty{})
 
 			// Add 3 entries (fill the cache)
 			for i := 0; i < 3; i++ {
@@ -339,7 +340,7 @@ func (suite *InMemoryCacheTestSuite) TestEviction() {
 
 func (suite *InMemoryCacheTestSuite) TestDisabledCache() {
 	cache := newInMemoryCache[string]("testCache", false,
-		config.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"}, config.CacheProperty{})
+		engineconfig.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"}, engineconfig.CacheProperty{})
 
 	// Verify cache is disabled
 	assert.False(suite.T(), cache.IsEnabled())
@@ -403,7 +404,7 @@ func (suite *InMemoryCacheTestSuite) TestGetName() {
 	for _, tc := range testCases {
 		suite.T().Run(tc.name, func(t *testing.T) {
 			cache := newInMemoryCache[string](tc.cacheName, tc.enabled,
-				config.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"}, config.CacheProperty{})
+				engineconfig.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"}, engineconfig.CacheProperty{})
 
 			// Verify the cache name matches what was provided during creation
 			assert.Equal(t, tc.cacheName, cache.GetName())
@@ -415,7 +416,7 @@ func (suite *InMemoryCacheTestSuite) TestGetStats() {
 	// Test that GetStats returns the correct statistics for an enabled cache
 	suite.T().Run("EnabledCacheStats", func(t *testing.T) {
 		cache := newInMemoryCache[string]("statsTestCache", true,
-			config.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"}, config.CacheProperty{})
+			engineconfig.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"}, engineconfig.CacheProperty{})
 
 		// Initial stats should show an empty cache
 		initialStats := cache.GetStats()
@@ -470,7 +471,7 @@ func (suite *InMemoryCacheTestSuite) TestGetStats() {
 	// Test GetStats with a disabled cache
 	suite.T().Run("DisabledCacheStats", func(t *testing.T) {
 		cache := newInMemoryCache[string]("disabledStatsCache", false,
-			config.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"}, config.CacheProperty{})
+			engineconfig.CacheConfig{Size: 100, TTL: 60, EvictionPolicy: "LRU"}, engineconfig.CacheProperty{})
 
 		stats := cache.GetStats()
 		assert.False(t, stats.Enabled)

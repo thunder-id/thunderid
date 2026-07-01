@@ -19,7 +19,9 @@
 package tokenservice
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"context"
 	"encoding/base64"
@@ -33,11 +35,9 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/idp"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 )
@@ -52,7 +52,7 @@ type TokenValidatorTestSuite struct {
 	suite.Suite
 	mockJWTService *jwtmock.JWTServiceInterfaceMock
 	validator      *tokenValidator
-	oauthApp       *inboundmodel.OAuthClient
+	oauthApp       *providers.OAuthClient
 }
 
 func TestTokenValidatorTestSuite(t *testing.T) {
@@ -63,7 +63,7 @@ func (suite *TokenValidatorTestSuite) SetupTest() {
 	config.ResetServerRuntime()
 
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://example.com",
 			ValidityPeriod: 3600,
 			Audience:       "application", // Default audience for tests
@@ -75,7 +75,7 @@ func (suite *TokenValidatorTestSuite) SetupTest() {
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	suite.validator = &tokenValidator{
 		cfg: oauthconfig.Config{
-			JWT: config.JWTConfig{
+			JWT: engineconfig.JWTConfig{
 				Issuer:         "https://example.com",
 				ValidityPeriod: 3600,
 				Audience:       "application",
@@ -85,7 +85,7 @@ func (suite *TokenValidatorTestSuite) SetupTest() {
 		jwtService: suite.mockJWTService,
 	}
 
-	suite.oauthApp = &inboundmodel.OAuthClient{
+	suite.oauthApp = &providers.OAuthClient{
 		ClientID: "test-client",
 	}
 }
@@ -171,9 +171,9 @@ func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Success_BasicToke
 
 func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Success_WithTokenConfig() {
 	// App with token config should still validate using server-level issuer from config
-	customOAuthApp := &inboundmodel.OAuthClient{
+	customOAuthApp := &providers.OAuthClient{
 		ClientID: "test-client",
-		Token:    &inboundmodel.OAuthTokenConfig{},
+		Token:    &providers.OAuthTokenConfig{},
 	}
 
 	now := time.Now().Unix()
@@ -248,7 +248,7 @@ func (suite *TokenValidatorTestSuite) TestExtractSubjectTokenClaims_MapsReserved
 		"exp":        float64(now + 3600),
 		"given_name": "Jane",
 	}
-	mappings := []idp.AttributeMapping{
+	mappings := []providers.AttributeMapping{
 		{ExternalAttribute: "sub", LocalAttribute: "username"},
 		{ExternalAttribute: "sub", LocalAttribute: "email"},
 		{ExternalAttribute: "given_name", LocalAttribute: "firstName"},
@@ -347,13 +347,13 @@ func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Error_InvalidSign
 	token := suite.createTestJWT(claims)
 
 	suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).
-		Return(&serviceerror.ServiceError{
-			Type: serviceerror.ServerErrorType,
+		Return(&tidcommon.ServiceError{
+			Type: tidcommon.ServerErrorType,
 			Code: "SIGNATURE_VERIFICATION_FAILED",
-			Error: core.I18nMessage{
+			Error: tidcommon.I18nMessage{
 				Key: "error.test.signature_verification_failed", DefaultValue: "Signature verification failed",
 			},
-			ErrorDescription: core.I18nMessage{
+			ErrorDescription: tidcommon.I18nMessage{
 				Key:          "error.test.the_jwt_signature_verification_failed",
 				DefaultValue: "The JWT signature verification failed",
 			},
@@ -476,13 +476,13 @@ func (suite *TokenValidatorTestSuite) TestVerifyTokenSignatureByIssuer_Error_Sig
 	token := testJWTTokenString
 
 	suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).
-		Return(&serviceerror.ServiceError{
-			Type: serviceerror.ServerErrorType,
+		Return(&tidcommon.ServiceError{
+			Type: tidcommon.ServerErrorType,
 			Code: "SIGNATURE_MISMATCH",
-			Error: core.I18nMessage{
+			Error: tidcommon.I18nMessage{
 				Key: "error.test.signature_mismatch", DefaultValue: "Signature mismatch",
 			},
-			ErrorDescription: core.I18nMessage{
+			ErrorDescription: tidcommon.I18nMessage{
 				Key: "error.test.the_jwt_signature_does_not_match", DefaultValue: "The JWT signature does not match",
 			},
 		})
@@ -551,10 +551,10 @@ func (suite *TokenValidatorTestSuite) TestFederationScenario_FailFastOnUntrusted
 
 func (suite *TokenValidatorTestSuite) TestFederationScenario_OnlyServerIssuerIsValid() {
 	// Only the server-level issuer from config is accepted; app-level issuers are no longer supported
-	appWithTokenConfig := &inboundmodel.OAuthClient{
+	appWithTokenConfig := &providers.OAuthClient{
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{},
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{},
 		},
 	}
 
@@ -694,7 +694,7 @@ func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_NonAssertion_Acce
 	}
 	token := suite.createTestJWT(claims)
 
-	oauthAppWithID := &inboundmodel.OAuthClient{
+	oauthAppWithID := &providers.OAuthClient{
 		ClientID: "test-client",
 		ID:       "x", // Matches one element of the aud array.
 	}
@@ -841,13 +841,13 @@ func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Error_InvalidSign
 	token := "invalid.token.signature"
 
 	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "").
-		Return(&serviceerror.ServiceError{
-			Type: serviceerror.ServerErrorType,
+		Return(&tidcommon.ServiceError{
+			Type: tidcommon.ServerErrorType,
 			Code: "SIGNATURE_VERIFICATION_FAILED",
-			Error: core.I18nMessage{
+			Error: tidcommon.I18nMessage{
 				Key: "error.test.signature_verification_failed", DefaultValue: "Signature verification failed",
 			},
-			ErrorDescription: core.I18nMessage{
+			ErrorDescription: tidcommon.I18nMessage{
 				Key:          "error.test.the_jwt_signature_verification_failed",
 				DefaultValue: "The JWT signature verification failed",
 			},
@@ -866,13 +866,13 @@ func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Error_InvalidJWTF
 
 	// VerifyJWT is called first and should fail for invalid format
 	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "").
-		Return(&serviceerror.ServiceError{
-			Type: serviceerror.ClientErrorType,
+		Return(&tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType,
 			Code: "INVALID_JWT_FORMAT",
-			Error: core.I18nMessage{
+			Error: tidcommon.I18nMessage{
 				Key: "error.test.invalid_jwt_format", DefaultValue: "Invalid JWT format",
 			},
-			ErrorDescription: core.I18nMessage{
+			ErrorDescription: tidcommon.I18nMessage{
 				Key: "error.test.the_jwt_format_is_invalid", DefaultValue: "The JWT format is invalid",
 			},
 		})
@@ -892,13 +892,13 @@ func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Error_DecodeFailu
 
 	// VerifyJWT is called first and should fail for invalid base64
 	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "").
-		Return(&serviceerror.ServiceError{
-			Type: serviceerror.ServerErrorType,
+		Return(&tidcommon.ServiceError{
+			Type: tidcommon.ServerErrorType,
 			Code: "INVALID_JWT_SIGNATURE",
-			Error: core.I18nMessage{
+			Error: tidcommon.I18nMessage{
 				Key: "error.test.invalid_jwt_signature", DefaultValue: "Invalid JWT signature",
 			},
-			ErrorDescription: core.I18nMessage{
+			ErrorDescription: tidcommon.I18nMessage{
 				Key: "error.test.the_jwt_signature_is_invalid", DefaultValue: "The JWT signature is invalid",
 			},
 		})
@@ -955,11 +955,11 @@ func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Error_ExpiredToke
 
 	// VerifyJWT should catch expired tokens
 	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "").
-		Return(&serviceerror.ServiceError{
-			Type:  serviceerror.ClientErrorType,
+		Return(&tidcommon.ServiceError{
+			Type:  tidcommon.ClientErrorType,
 			Code:  "TOKEN_EXPIRED",
-			Error: core.I18nMessage{Key: "error.test.token_has_expired", DefaultValue: "Token has expired"},
-			ErrorDescription: core.I18nMessage{
+			Error: tidcommon.I18nMessage{Key: "error.test.token_has_expired", DefaultValue: "Token has expired"},
+			ErrorDescription: tidcommon.I18nMessage{
 				Key: "error.test.the_token_has_expired", DefaultValue: "The token has expired",
 			},
 		})
@@ -990,13 +990,13 @@ func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Error_NotYetValid
 
 	// VerifyJWT should catch not yet valid tokens
 	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "").
-		Return(&serviceerror.ServiceError{
-			Type: serviceerror.ClientErrorType,
+		Return(&tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType,
 			Code: "TOKEN_NOT_VALID_YET",
-			Error: core.I18nMessage{
+			Error: tidcommon.I18nMessage{
 				Key: "error.test.token_not_valid_yet", DefaultValue: "Token not valid yet",
 			},
-			ErrorDescription: core.I18nMessage{
+			ErrorDescription: tidcommon.I18nMessage{
 				Key: "error.test.token_not_valid_yet_nbf", DefaultValue: "Token not valid yet (nbf)",
 			},
 		})
@@ -1495,11 +1495,11 @@ func (suite *TokenValidatorTestSuite) TestValidateAuthAssertion_Error_InvalidSig
 
 	suite.oauthApp.ID = testAppID
 
-	suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(&serviceerror.ServiceError{
-		Type:  serviceerror.ServerErrorType,
+	suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(&tidcommon.ServiceError{
+		Type:  tidcommon.ServerErrorType,
 		Code:  "INVALID_SIGNATURE",
-		Error: core.I18nMessage{Key: "error.test.invalid_signature", DefaultValue: "Invalid signature"},
-		ErrorDescription: core.I18nMessage{
+		Error: tidcommon.I18nMessage{Key: "error.test.invalid_signature", DefaultValue: "Invalid signature"},
+		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.test.the_jwt_signature_is_invalid", DefaultValue: "The JWT signature is invalid",
 		},
 	})
@@ -1872,10 +1872,12 @@ func (suite *TokenValidatorTestSuite) TestValidateAccessToken_Error_VerifyFails(
 	token := "invalid.token.signature"
 
 	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "https://example.com").
-		Return(&serviceerror.ServiceError{
-			Type:  serviceerror.ServerErrorType,
-			Code:  "JWT-1004",
-			Error: core.I18nMessage{Key: "error.test.invalid_token_signature", DefaultValue: "Invalid token signature"},
+		Return(&tidcommon.ServiceError{
+			Type: tidcommon.ServerErrorType,
+			Code: "JWT-1004",
+			Error: tidcommon.I18nMessage{
+				Key: "error.test.invalid_token_signature", DefaultValue: "Invalid token signature",
+			},
 		})
 
 	result, err := suite.validator.ValidateAccessToken(context.Background(), token)
@@ -2055,7 +2057,7 @@ type ExternalIDPValidatorTestSuite struct {
 	mockJWTService *jwtmock.JWTServiceInterfaceMock
 	mockIDPService *idpmock.IDPServiceInterfaceMock
 	validator      *tokenValidator
-	oauthApp       *inboundmodel.OAuthClient
+	oauthApp       *providers.OAuthClient
 }
 
 func TestExternalIDPValidatorTestSuite(t *testing.T) {
@@ -2065,7 +2067,7 @@ func TestExternalIDPValidatorTestSuite(t *testing.T) {
 func (suite *ExternalIDPValidatorTestSuite) SetupTest() {
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://example.com",
 			ValidityPeriod: 3600,
 			Audience:       "application",
@@ -2078,7 +2080,7 @@ func (suite *ExternalIDPValidatorTestSuite) SetupTest() {
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
 	suite.validator = &tokenValidator{
 		cfg: oauthconfig.Config{
-			JWT: config.JWTConfig{
+			JWT: engineconfig.JWTConfig{
 				Issuer:         "https://example.com",
 				ValidityPeriod: 3600,
 				Audience:       "application",
@@ -2088,17 +2090,17 @@ func (suite *ExternalIDPValidatorTestSuite) SetupTest() {
 		jwtService: suite.mockJWTService,
 		idpService: suite.mockIDPService,
 	}
-	suite.oauthApp = &inboundmodel.OAuthClient{
+	suite.oauthApp = &providers.OAuthClient{
 		ClientID: "test-client",
 	}
 }
 
-// buildExternalIDPDTOs builds a minimal []idp.IDPDTO for the standard test external IDP.
-func buildExternalIDPDTOs() []idp.IDPDTO {
+// buildExternalIDPDTOs builds a minimal []providers.IDPDTO for the standard test external IDP.
+func buildExternalIDPDTOs() []providers.IDPDTO {
 	propTokenExchange, _ := cmodels.NewProperty(idp.PropTokenExchangeEnabled, "true", false)
 	propJWKS, _ := cmodels.NewProperty(idp.PropJwksEndpoint, testExternalJWKS, false)
 	propIssuer, _ := cmodels.NewProperty(idp.PropIssuer, testExternalIssuer, false)
-	return []idp.IDPDTO{
+	return []providers.IDPDTO{
 		{Properties: []cmodels.Property{*propTokenExchange, *propJWKS, *propIssuer}},
 	}
 }
@@ -2226,11 +2228,11 @@ func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP
 	suite.mockIDPService.On("GetIdentityProvidersByProperty", context.Background(),
 		idp.PropIssuer, testExternalIssuer).Return(idpDTOs, nil)
 	suite.mockJWTService.On("VerifyJWTSignatureWithJWKS", mock.Anything, token, testExternalJWKS).
-		Return(&serviceerror.ServiceError{
-			Type:  serviceerror.ServerErrorType,
+		Return(&tidcommon.ServiceError{
+			Type:  tidcommon.ServerErrorType,
 			Code:  "SIGNATURE_VERIFICATION_FAILED",
-			Error: core.I18nMessage{Key: "error.test.sig_failed", DefaultValue: "Signature verification failed"},
-			ErrorDescription: core.I18nMessage{
+			Error: tidcommon.I18nMessage{Key: "error.test.sig_failed", DefaultValue: "Signature verification failed"},
+			ErrorDescription: tidcommon.I18nMessage{
 				Key: "error.test.sig_failed_desc", DefaultValue: "JWT signature verification failed",
 			},
 		})
@@ -2257,7 +2259,7 @@ func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP
 	propTokenExchange, _ := cmodels.NewProperty(idp.PropTokenExchangeEnabled, "false", false)
 	propJWKS, _ := cmodels.NewProperty(idp.PropJwksEndpoint, testExternalJWKS, false)
 	propIssuer, _ := cmodels.NewProperty(idp.PropIssuer, testExternalIssuer, false)
-	idpDTOs := []idp.IDPDTO{
+	idpDTOs := []providers.IDPDTO{
 		{Properties: []cmodels.Property{*propTokenExchange, *propJWKS, *propIssuer}},
 	}
 
@@ -2284,7 +2286,7 @@ func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP
 
 	propTokenExchange, _ := cmodels.NewProperty(idp.PropTokenExchangeEnabled, "true", false)
 	propIssuer, _ := cmodels.NewProperty(idp.PropIssuer, testExternalIssuer, false)
-	idpDTOs := []idp.IDPDTO{
+	idpDTOs := []providers.IDPDTO{
 		{Properties: []cmodels.Property{*propTokenExchange, *propIssuer}},
 	}
 
@@ -2313,11 +2315,11 @@ func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP
 
 	suite.mockIDPService.On("GetIdentityProvidersByProperty", context.Background(),
 		idp.PropIssuer, unknownIssuer).
-		Return(nil, &serviceerror.ServiceError{
-			Type:  serviceerror.ClientErrorType,
+		Return(nil, &tidcommon.ServiceError{
+			Type:  tidcommon.ClientErrorType,
 			Code:  "IDP_NOT_FOUND",
-			Error: core.I18nMessage{Key: "error.test.idp_not_found", DefaultValue: "IDP not found"},
-			ErrorDescription: core.I18nMessage{
+			Error: tidcommon.I18nMessage{Key: "error.test.idp_not_found", DefaultValue: "IDP not found"},
+			ErrorDescription: tidcommon.I18nMessage{
 				Key: "error.test.idp_not_found_desc", DefaultValue: "No IDP found for the given issuer",
 			},
 		})
@@ -2331,11 +2333,11 @@ func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP
 }
 
 // buildExternalIDPDTOsWithMappings builds an external IDP with an attribute mapping.
-func buildExternalIDPDTOsWithMappings(mappings []idp.AttributeMapping) []idp.IDPDTO {
+func buildExternalIDPDTOsWithMappings(mappings []providers.AttributeMapping) []providers.IDPDTO {
 	dtos := buildExternalIDPDTOs()
-	dtos[0].AttributeConfiguration = &idp.AttributeConfiguration{
-		UserTypeResolution:        &idp.UserTypeResolution{Default: "person"},
-		UserTypeAttributeMappings: []idp.UserTypeAttributeMapping{{UserType: "person", Attributes: mappings}},
+	dtos[0].AttributeConfiguration = &providers.AttributeConfiguration{
+		UserTypeResolution:        &providers.UserTypeResolution{Default: "person"},
+		UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{UserType: "person", Attributes: mappings}},
 	}
 	return dtos
 }
@@ -2352,7 +2354,7 @@ func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP
 	}
 	token := suite.createExternalJWT(claims)
 	idpDTOs := buildExternalIDPDTOsWithMappings(
-		[]idp.AttributeMapping{{ExternalAttribute: externalAttribute, LocalAttribute: "email"}})
+		[]providers.AttributeMapping{{ExternalAttribute: externalAttribute, LocalAttribute: "email"}})
 
 	suite.mockIDPService.On("GetIdentityProvidersByProperty", context.Background(),
 		idp.PropIssuer, testExternalIssuer).Return(idpDTOs, nil)

@@ -119,8 +119,18 @@ func registerRoutes(mux *http.ServeMux, userHandler *userHandler) {
 				http.NotFound(w, r)
 			}
 		}, opts2))
-	mux.HandleFunc(middleware.WithCORS("PUT /users/", userHandler.HandleUserPutRequest, opts2))
-	mux.HandleFunc(middleware.WithCORS("DELETE /users/", userHandler.HandleUserDeleteRequest, opts2))
+	mux.HandleFunc(middleware.WithCORS("PUT /users/",
+		func(w http.ResponseWriter, r *http.Request) {
+			path := strings.TrimPrefix(r.URL.Path, "/users/")
+			r.SetPathValue("id", strings.Split(path, "/")[0])
+			userHandler.HandleUserPutRequest(w, r)
+		}, opts2))
+	mux.HandleFunc(middleware.WithCORS("DELETE /users/",
+		func(w http.ResponseWriter, r *http.Request) {
+			path := strings.TrimPrefix(r.URL.Path, "/users/")
+			r.SetPathValue("id", strings.Split(path, "/")[0])
+			userHandler.HandleUserDeleteRequest(w, r)
+		}, opts2))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /users/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}, opts2))

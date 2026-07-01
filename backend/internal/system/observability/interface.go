@@ -21,10 +21,10 @@ package observability
 import (
 	"context"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/observability/publisher"
 	"github.com/thunder-id/thunderid/internal/system/observability/subscriber"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 // ObservabilityServiceInterface defines the contract for the observability service.
@@ -40,7 +40,7 @@ type ObservabilityServiceInterface interface {
 	IsEnabled() bool
 
 	// GetConfig returns the current observability configuration.
-	GetConfig() *config.ObservabilityConfig
+	GetConfig() *engineconfig.ObservabilityConfig
 
 	// GetPublisher returns the underlying publisher for advanced use cases.
 	// Most users should use PublishEvent() instead.

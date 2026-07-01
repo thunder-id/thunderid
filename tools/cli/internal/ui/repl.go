@@ -32,6 +32,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/thunder-id/thunderid/tools/cli/internal/commands/integrate"
 	"github.com/thunder-id/thunderid/tools/cli/internal/commands/sample"
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/health"
@@ -52,19 +53,9 @@ type SlashCommand struct {
 
 var defaultCommands = []SlashCommand{
 	{
-		Name:        "/open-console",
-		Description: "Open the Console in your browser",
-		Action: func(baseURL string) ([]string, error) {
-			url := baseURL + "/console"
-			if err := utils.OpenBrowser(url); err != nil {
-				return nil, err
-			}
-			return []string{Dim("Opening " + url + "...")}, nil
-		},
-	},
-	{
 		Name:        "/status",
 		Description: "Show server status",
+		Section:     "Server",
 		Action: func(baseURL string) ([]string, error) {
 			if health.CheckReady(baseURL) {
 				return []string{Green("●") + " " + product.Name + " is running at " + Cyan(baseURL)}, nil
@@ -73,16 +64,38 @@ var defaultCommands = []SlashCommand{
 		},
 	},
 	{
+		Name:        "/stop",
+		Description: "Stop " + product.Name + " and exit",
+		Section:     "Server",
+		Action:      nil, // handled specially in Update
+	},
+	{
 		Name:        "/upgrade",
 		Description: "Upgrade " + product.Name + " to the latest version",
+		Section:     "Versioning",
 		AsyncAction: func(_ string) tea.Cmd {
 			return func() tea.Msg { return upgradeMsg{} }
 		},
 	},
 	{
-		Name:        "/stop",
-		Description: "Stop " + product.Name + " and exit",
-		Action:      nil, // handled specially in Update
+		Name:        "/switch",
+		Description: "Switch to another installed version",
+		Section:     "Versioning",
+		AsyncAction: func(_ string) tea.Cmd {
+			return func() tea.Msg { return switchVersionMsg{} }
+		},
+	},
+	{
+		Name:        "/open-console",
+		Description: "Open the Console in your browser",
+		Section:     "Apps",
+		Action: func(baseURL string) ([]string, error) {
+			url := baseURL + "/console"
+			if err := utils.OpenBrowser(url); err != nil {
+				return nil, err
+			}
+			return []string{Dim("Opening " + url + "...")}, nil
+		},
 	},
 }
 
@@ -91,6 +104,7 @@ var defaultCommands = []SlashCommand{
 type healthCheckMsg struct{ ready bool }
 type cutoverMsg struct{}
 type upgradeMsg struct{}
+type switchVersionMsg struct{}
 type thunderExitedMsg struct {
 	err error
 	pid int // PID of the process that exited — used to ignore stale watches
@@ -124,6 +138,9 @@ type sampleDoneMsg struct {
 
 // sampleErrMsg signals that the try-* operation failed.
 type sampleErrMsg struct{ err error }
+
+// integrateFrameworkMsg triggers the step-by-step integration guide for a framework.
+type integrateFrameworkMsg struct{ framework string }
 
 // usecaseConfigRequestMsg is sent when a use case requires additional config before starting.
 type usecaseConfigRequestMsg struct {
@@ -310,6 +327,7 @@ type ReplModel struct {
 	checkPort         int  // non-zero overrides health.DefaultPort for health checks
 	cutoverRequested  bool // set when the /cutover command is executed
 	upgradeRequested  bool // set when the /upgrade command is executed
+	switchRequested   bool // set when the /use command is executed
 	newVersion        string
 
 	showWalkthrough  bool
@@ -326,6 +344,16 @@ type ReplModel struct {
 	ucSampleName      string
 	ucEnvTarget       string
 	ucFeatures        []string
+	ucComplete        func(values map[string]string) tea.Cmd
+
+	// Step-by-step integration guide — active when showIntegrate is true.
+	showIntegrate       bool
+	integrateFramework  string // display label, e.g. "React", "Vue"
+	integrateSteps      []integrate.Step
+	integrateStepIdx    int
+	integrateValues     map[string]string
+	integrateInput      textinput.Model
+	integrateCollecting bool
 }
 
 // NewReplModel initializes the REPL model.
@@ -380,9 +408,31 @@ func NewReplModel(version string, proc *exec.Cmd, installPath string, verbose bo
 			})
 		}
 	}
+	for _, it := range []struct {
+		name      string
+		framework string
+		label     string
+	}{
+		{"/integrate-react", "react", "React"},
+		{"/integrate-vue", "vue", "Vue"},
+		{"/integrate-nextjs", "nextjs", "Next.js"},
+		{"/integrate-nuxt", "nuxt", "Nuxt"},
+	} {
+		it := it
+		commands = append(commands, SlashCommand{
+			Name:        it.name,
+			Description: "Add ThunderID auth to your " + it.label + " app",
+			Section:     "Integrate",
+			AsyncAction: func(_ string) tea.Cmd {
+				return func() tea.Msg { return integrateFrameworkMsg{framework: it.framework} }
+			},
+		})
+	}
+
 	logCmd := SlashCommand{
 		Name:        "/logs",
 		Description: "Show recent server logs",
+		Section:     "Server",
 		Action: func(_ string) ([]string, error) {
 			logPath := setup.LogFile(installPath)
 			data, err := os.ReadFile(logPath)
@@ -405,6 +455,10 @@ func NewReplModel(version string, proc *exec.Cmd, installPath string, verbose bo
 	commands = append(commands, logCmd)
 	commands = append(commands, defaultCommands...)
 
+	ii := textinput.New()
+	ii.Prompt = "> "
+	ii.CharLimit = 256
+
 	return ReplModel{
 		input:          ti,
 		spinner:        s,
@@ -417,6 +471,7 @@ func NewReplModel(version string, proc *exec.Cmd, installPath string, verbose bo
 		width:          80,
 		showOnboarding: isFirstRun,
 		onboardingList: newOnboardingList(80),
+		integrateInput: ii,
 	}
 }
 
@@ -536,7 +591,7 @@ func (m *ReplModel) initUCStep() {
 }
 
 // advanceUCStep records value for the current step then moves to the next.
-// When all steps are done it clears the config state and returns a makeTryCmd.
+// When all steps are done it clears the config state and invokes ucComplete.
 func (m *ReplModel) advanceUCStep(value string) tea.Cmd {
 	m.ucValues[m.ucInputs[m.ucStep].Key] = value
 	m.ucStep++
@@ -547,12 +602,7 @@ func (m *ReplModel) advanceUCStep(value string) tea.Cmd {
 	m.showUsecaseConfig = false
 	m.tryingOut = true
 	m.input.Blur()
-	opts := sample.Options{
-		Config:    m.ucValues,
-		EnvTarget: m.ucEnvTarget,
-		Features:  m.ucFeatures,
-	}
-	return makeTryCmd(m.ucSampleName, m.installPath, m.verbose, opts)
+	return m.ucComplete(m.ucValues)
 }
 
 // Update implements tea.Model.
@@ -623,6 +673,8 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 					m.input.Focus()
 					m.input.SetValue("/")
 					m.input.CursorEnd()
+					m.updateCompletions()
+					return m, tea.Batch(cmds...)
 				} else {
 					prevIdx := m.onboardingList.Index()
 					var listCmd tea.Cmd
@@ -652,7 +704,8 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 			} else {
 				switch msg.Type {
 				case tea.KeyEnter:
-					if val := strings.TrimSpace(m.ucText.Value()); val != "" {
+					val := strings.TrimSpace(m.ucText.Value())
+					if val != "" || m.ucInputs[m.ucStep].Optional {
 						if cmd := m.advanceUCStep(val); cmd != nil {
 							cmds = append(cmds, cmd)
 						}
@@ -686,6 +739,57 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 				m.input.Focus()
 				m.input.SetValue("/")
 				m.input.CursorEnd()
+				m.updateCompletions()
+				return m, tea.Batch(cmds...)
+			}
+		} else if m.showIntegrate {
+			// ── Integration guide navigation ───────────────────────────────────
+			if m.integrateCollecting {
+				switch msg.Type {
+				case tea.KeyEnter:
+					val := strings.TrimSpace(m.integrateInput.Value())
+					m.integrateValues[m.integrateSteps[m.integrateStepIdx].CollectKey] = val
+					m.integrateCollecting = false
+					m.integrateInput.Blur()
+					if len(m.integrateSteps[m.integrateStepIdx].Code) == 0 && m.integrateStepIdx < len(m.integrateSteps)-1 {
+						m.integrateStepIdx++
+					}
+				case tea.KeyEsc:
+					m.integrateCollecting = false
+					m.integrateInput.Blur()
+					if len(m.integrateSteps[m.integrateStepIdx].Code) == 0 && m.integrateStepIdx < len(m.integrateSteps)-1 {
+						m.integrateStepIdx++
+					}
+				default:
+					var tiCmd tea.Cmd
+					m.integrateInput, tiCmd = m.integrateInput.Update(msg)
+					cmds = append(cmds, tiCmd)
+				}
+			} else {
+				switch msg.Type {
+				case tea.KeyEnter:
+					step := m.integrateSteps[m.integrateStepIdx]
+					if step.CollectKey != "" && m.integrateValues[step.CollectKey] == "" {
+						m.integrateCollecting = true
+						m.integrateInput.SetValue("")
+						m.integrateInput.Placeholder = step.CollectHint
+						m.integrateInput.Focus()
+					} else if m.integrateStepIdx < len(m.integrateSteps)-1 {
+						m.integrateStepIdx++
+					} else {
+						m.showIntegrate = false
+						m.walkthroughPanes = integrateWalkthroughPanes(m.integrateFramework, m.baseURL)
+						m.walkthroughTab = 0
+						m.showWalkthrough = true
+					}
+				case tea.KeyLeft:
+					if m.integrateStepIdx > 0 {
+						m.integrateStepIdx--
+					}
+				case tea.KeyEsc:
+					m.showIntegrate = false
+					m.input.Focus()
+				}
 			}
 		} else {
 			// ── Regular REPL ───────────────────────────────────────────────────
@@ -730,6 +834,14 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 		m.ucEnvTarget = msg.envTarget
 		m.ucFeatures = msg.features
 
+		// Capture msg fields for the completion closure.
+		sampleName, ip, envTarget, features := msg.sampleName, m.installPath, msg.envTarget, msg.features
+		m.ucComplete = func(values map[string]string) tea.Cmd {
+			return makeTryCmd(sampleName, ip, m.verbose, sample.Options{
+				Config: values, EnvTarget: envTarget, Features: features,
+			})
+		}
+
 		// Pre-populate from a previous run so the user is not re-prompted.
 		sampleDir := sample.SampleDir(m.installPath, msg.sampleName)
 		m.ucValues = sample.ReadServiceEnv(sampleDir, msg.envTarget)
@@ -748,16 +860,42 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 			// All values already present — launch immediately without prompting.
 			m.tryingOut = true
 			m.input.Blur()
-			opts := sample.Options{
-				Config:    m.ucValues,
-				EnvTarget: m.ucEnvTarget,
-				Features:  m.ucFeatures,
-			}
-			cmds = append(cmds, makeTryCmd(m.ucSampleName, m.installPath, m.verbose, opts))
+			cmds = append(cmds, m.ucComplete(m.ucValues))
 		} else {
 			m.showUsecaseConfig = true
 			m.input.Blur()
 			m.initUCStep()
+		}
+
+	case integrateFrameworkMsg:
+		stepsFns := map[string]func(string) []integrate.Step{
+			"react":  integrate.ReactSteps,
+			"vue":    integrate.VueSteps,
+			"nextjs": integrate.NextJSSteps,
+			"nuxt":   integrate.NuxtSteps,
+		}
+		labels := map[string]string{
+			"react":  "React",
+			"vue":    "Vue",
+			"nextjs": "Next.js",
+			"nuxt":   "Nuxt",
+		}
+		if fn, ok := stepsFns[msg.framework]; ok {
+			m.integrateSteps = fn(m.baseURL)
+			m.integrateFramework = labels[msg.framework]
+			m.integrateStepIdx = 0
+			m.integrateValues = map[string]string{}
+			m.showIntegrate = true
+			m.input.Blur()
+			first := m.integrateSteps[0]
+			if first.CollectKey != "" && len(first.Code) == 0 {
+				m.integrateCollecting = true
+				m.integrateInput.SetValue("")
+				m.integrateInput.Placeholder = first.CollectHint
+				m.integrateInput.Focus()
+			} else {
+				m.integrateCollecting = false
+			}
 		}
 
 	case healthCheckMsg:
@@ -901,8 +1039,12 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 		return m, tea.Quit
 
 	case upgradeMsg:
-		m.killThunder()
 		m.upgradeRequested = true
+		m.quitting = true
+		return m, tea.Quit
+
+	case switchVersionMsg:
+		m.switchRequested = true
 		m.quitting = true
 		return m, tea.Quit
 
@@ -1069,6 +1211,158 @@ func renderWalkthrough(m ReplModel) string {
 	return b.String()
 }
 
+func integrateWalkthroughPanes(framework, baseURL string) []walkthroughPane {
+	return []walkthroughPane{
+		{
+			Title: "What's Next",
+			Lines: []string{
+				Green("✓") + " Your " + framework + " app is wired to ThunderID.",
+				"",
+				"  " + Cyan("Flow Designer") + "  " + Dim("— add MFA, passkeys, or social login"),
+				"  " + Cyan(framework+" SDK Docs") + "  " + Dim("— full API reference"),
+				"",
+				Dim("  Open the console to get started  →"),
+			},
+			URL: baseURL + "/console",
+		},
+		{
+			Title: "Find Your Client ID",
+			Lines: []string{
+				"  Open the ThunderID Console and navigate to:",
+				"",
+				"  " + Bold("Applications") + "  →  " + Bold("your app") + "  →  " + Bold("Client ID"),
+			},
+			URL: baseURL + "/console",
+		},
+	}
+}
+
+// substituteCodeLine replaces {{.KEY}} tokens in a code line with styled values.
+// If a key has a collected value it is rendered in brand blue; otherwise a dim
+// placeholder is shown so the code block still makes sense before collection.
+func substituteCodeLine(line string, values map[string]string) string {
+	codeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#AAAAAA"))
+	blueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colorBrandBlue))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colorGrey))
+
+	var result strings.Builder
+	remaining := line
+	for {
+		start := strings.Index(remaining, "{{.")
+		if start == -1 {
+			result.WriteString(codeStyle.Render(remaining))
+			break
+		}
+		if start > 0 {
+			result.WriteString(codeStyle.Render(remaining[:start]))
+		}
+		rest := remaining[start+3:]
+		end := strings.Index(rest, "}}")
+		if end == -1 {
+			result.WriteString(codeStyle.Render(remaining[start:]))
+			break
+		}
+		key := rest[:end]
+		if val, ok := values[key]; ok && val != "" {
+			result.WriteString(blueStyle.Render(val))
+		} else {
+			result.WriteString(dimStyle.Render("<your-" + strings.ToLower(key) + ">"))
+		}
+		remaining = rest[end+2:]
+	}
+	return result.String()
+}
+
+// renderCodeBlock draws a bordered box containing syntax-highlighted code lines.
+// Lines with {{.KEY}} tokens are substituted from values.
+func renderCodeBlock(codeFile string, lines []string, values map[string]string, boxWidth int) string {
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colorGrey))
+	codeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#AAAAAA"))
+
+	innerWidth := boxWidth - 4 // subtract "│ " and " │"
+
+	// Top border with filename label.
+	labelPart := "─ " + codeFile + " "
+	dashCount := clamp(innerWidth-len(labelPart), 0, innerWidth)
+	top := "┌" + labelPart + strings.Repeat("─", dashCount) + "─┐"
+
+	var b strings.Builder
+	b.WriteString("  " + borderStyle.Render(top) + "\n")
+
+	for _, line := range lines {
+		var rendered string
+		if strings.Contains(line, "{{.") {
+			rendered = substituteCodeLine(line, values)
+		} else {
+			rendered = codeStyle.Render(line)
+		}
+		visWidth := lipgloss.Width(rendered)
+		padding := clamp(innerWidth-visWidth, 0, innerWidth)
+		b.WriteString("  " + borderStyle.Render("│") + " " + rendered + strings.Repeat(" ", padding) + " " + borderStyle.Render("│") + "\n")
+	}
+
+	bottom := "└" + strings.Repeat("─", innerWidth+2) + "┘"
+	b.WriteString("  " + borderStyle.Render(bottom) + "\n")
+	return b.String()
+}
+
+func renderIntegrate(m ReplModel) string {
+	if len(m.integrateSteps) == 0 {
+		return ""
+	}
+	var b strings.Builder
+
+	total := len(m.integrateSteps)
+	idx := m.integrateStepIdx
+	step := m.integrateSteps[idx]
+
+	// Progress header.
+	progress := fmt.Sprintf("Step %d of %d", idx+1, total)
+	b.WriteString("  " + Dim(m.integrateFramework+" Integration") + "  " + Dim("·") + "  " + Bold(progress) + "\n")
+	b.WriteString("  " + Dim(strings.Repeat("─", clamp(m.width-4, 20, 76))) + "\n\n")
+
+	// Step title and body.
+	b.WriteString("  " + Bold(step.Title) + "\n\n")
+	for _, line := range step.Body {
+		b.WriteString("  " + Dim(line) + "\n")
+	}
+	if len(step.Body) > 0 {
+		b.WriteString("\n")
+	}
+
+	if m.integrateCollecting {
+		// Collect prompt — mirrors showUsecaseConfig style.
+		b.WriteString("  " + Bold(step.CollectLabel) + "\n\n")
+		if step.CollectURL != "" {
+			b.WriteString("  " + Cyan(step.CollectURL) + "\n\n")
+		}
+		b.WriteString("  " + Dim(step.CollectHint) + "\n")
+		b.WriteString("  " + Dim("(press Esc to skip — you can set it in src/main.jsx later)") + "\n\n")
+		b.WriteString(m.integrateInput.View() + "\n")
+		b.WriteString("\n" + Dim("  Enter to continue"))
+	} else {
+		// Code block.
+		boxWidth := clamp(m.width-6, 50, 78)
+		b.WriteString(renderCodeBlock(step.CodeFile, step.Code, m.integrateValues, boxWidth))
+		b.WriteString("\n")
+
+		// Key hints.
+		hint := ""
+		if step.CollectKey != "" && m.integrateValues[step.CollectKey] == "" {
+			hint = Dim("  Enter to set Client ID  •  ")
+		} else {
+			hint = Dim("  Enter to continue  •  ")
+		}
+		if idx > 0 {
+			hint += Dim("← back  •  ")
+		}
+		hint += Dim("esc dismiss")
+		b.WriteString(hint + "\n")
+	}
+
+	return b.String()
+}
+
 // View implements tea.Model.
 func (m ReplModel) View() string {
 	if m.quitting {
@@ -1109,12 +1403,22 @@ func (m ReplModel) View() string {
 	if m.showUsecaseConfig {
 		inp := m.ucInputs[m.ucStep]
 		b.WriteString("  " + Bold(inp.Label) + "\n\n")
+		for _, line := range inp.Instructions {
+			b.WriteString("  " + Dim(line) + "\n")
+		}
+		if len(inp.Instructions) > 0 {
+			b.WriteString("\n")
+		}
 		if len(inp.Choices) > 0 {
 			b.WriteString(m.ucList.View())
 			b.WriteString("\n" + Dim("  ↑/↓ select  •  Enter to continue"))
 		} else {
 			b.WriteString(m.ucText.View() + "\n")
-			b.WriteString("\n" + Dim("  Enter to continue"))
+			if inp.Optional {
+				b.WriteString("\n" + Dim("  Enter to continue  •  leave empty to skip"))
+			} else {
+				b.WriteString("\n" + Dim("  Enter to continue"))
+			}
 		}
 		return b.String()
 	}
@@ -1124,6 +1428,11 @@ func (m ReplModel) View() string {
 	}
 	if len(m.messages) > 0 {
 		b.WriteString("\n")
+	}
+
+	if m.showIntegrate {
+		b.WriteString(renderIntegrate(m))
+		return b.String()
 	}
 
 	if m.showWalkthrough {
@@ -1158,19 +1467,23 @@ func clamp(v, min, max int) int {
 
 // RunREPL starts the interactive REPL and blocks until the user exits.
 // newVersion, if non-empty, causes a banner to appear prompting the user to /upgrade.
-// Returns upgradeRequested=true when the user ran /upgrade.
+// port overrides the default health-check port when non-zero.
+// Returns upgradeRequested=true when the user ran /upgrade, switchRequested=true when /use.
 func RunREPL(
 	version string, proc *exec.Cmd, installPath string,
-	verbose, isFirstRun bool, newVersion string,
-) (upgradeRequested bool, err error) {
+	verbose, isFirstRun bool, newVersion string, port int,
+) (upgradeRequested, switchRequested bool, err error) {
 	m := NewReplModel(version, proc, installPath, verbose, isFirstRun)
 	m.newVersion = newVersion
+	if port > 0 {
+		m.checkPort = port
+	}
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	finalModel, runErr := p.Run()
 	if rm, ok := finalModel.(ReplModel); ok {
-		return rm.upgradeRequested, runErr
+		return rm.upgradeRequested, rm.switchRequested, runErr
 	}
-	return false, runErr
+	return false, false, runErr
 }
 
 // RunStagingREPL runs the REPL connected to a staging instance on stagingPort.

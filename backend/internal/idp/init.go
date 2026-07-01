@@ -30,6 +30,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the IDP service and registers its routes.
@@ -83,8 +84,8 @@ func Initialize(
 func initializeStore(cacheManager cache.CacheManagerInterface) (idpStoreInterface, transaction.Transactioner, error) {
 	storeMode := getIdentityProviderStoreMode()
 
-	idpByIDCache := cache.GetCache[*IDPDTO](cacheManager, "IDPByIDCache")
-	idpByPropertyCache := cache.GetCache[[]IDPDTO](cacheManager, "IDPByPropertyCache")
+	idpByIDCache := cache.GetCache[*providers.IDPDTO](cacheManager, "IDPByIDCache")
+	idpByPropertyCache := cache.GetCache[[]providers.IDPDTO](cacheManager, "IDPByPropertyCache")
 
 	switch storeMode {
 	case serverconst.StoreModeComposite:

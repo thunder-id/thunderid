@@ -24,10 +24,12 @@ import (
 	"strings"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"gopkg.in/yaml.v3"
 )
@@ -66,7 +68,7 @@ func (e *idpExporter) GetParameterizerType() string {
 }
 
 // GetAllResourceIDs retrieves all identity provider IDs.
-func (e *idpExporter) GetAllResourceIDs(ctx context.Context) ([]string, *serviceerror.ServiceError) {
+func (e *idpExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
 	idps, err := e.service.GetIdentityProviderList(ctx)
 	if err != nil {
 		return nil, err
@@ -80,7 +82,7 @@ func (e *idpExporter) GetAllResourceIDs(ctx context.Context) ([]string, *service
 
 // GetResourceByID retrieves an identity provider by its ID.
 func (e *idpExporter) GetResourceByID(ctx context.Context, id string) (
-	interface{}, string, *serviceerror.ServiceError,
+	interface{}, string, *tidcommon.ServiceError,
 ) {
 	idpDTO, err := e.service.GetIdentityProvider(ctx, id)
 	if err != nil {
@@ -92,7 +94,7 @@ func (e *idpExporter) GetResourceByID(ctx context.Context, id string) (
 // ValidateResource validates an identity provider resource.
 func (e *idpExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger) (string, *declarativeresource.ExportError) {
-	idpDTO, ok := resource.(*IDPDTO)
+	idpDTO, ok := resource.(*providers.IDPDTO)
 	if !ok {
 		return "", declarativeresource.CreateTypeError(resourceTypeIdentityProvider, id)
 	}
@@ -135,7 +137,7 @@ func loadDeclarativeResources(idpStore idpStoreInterface) error {
 		Parser:        parseToIDPDTOWrapper,
 		Validator:     validateIDPWrapper,
 		IDExtractor: func(dto interface{}) string {
-			return dto.(*IDPDTO).ID
+			return dto.(*providers.IDPDTO).ID
 		},
 	}
 
@@ -152,7 +154,7 @@ func parseToIDPDTOWrapper(data []byte) (interface{}, error) {
 	return parseToIDPDTO(data)
 }
 
-func parseToIDPDTO(data []byte) (*IDPDTO, error) {
+func parseToIDPDTO(data []byte) (*providers.IDPDTO, error) {
 	var idpRequest idpRequestWithID
 	err := yaml.Unmarshal(data, &idpRequest)
 	if err != nil {
@@ -162,8 +164,8 @@ func parseToIDPDTO(data []byte) (*IDPDTO, error) {
 	return buildIDPDTOFromRequest(idpRequest)
 }
 
-// ParseIDPDTOFromNode decodes a yaml.Node into an IDPDTO, converting PropertyDTOs to Properties.
-func ParseIDPDTOFromNode(node *yaml.Node) (*IDPDTO, error) {
+// ParseIDPDTOFromNode decodes a yaml.Node into an providers.IDPDTO, converting PropertyDTOs to Properties.
+func ParseIDPDTOFromNode(node *yaml.Node) (*providers.IDPDTO, error) {
 	var idpRequest idpRequestWithID
 	if err := node.Decode(&idpRequest); err != nil {
 		return nil, err
@@ -172,8 +174,8 @@ func ParseIDPDTOFromNode(node *yaml.Node) (*IDPDTO, error) {
 	return buildIDPDTOFromRequest(idpRequest)
 }
 
-func buildIDPDTOFromRequest(idpRequest idpRequestWithID) (*IDPDTO, error) {
-	idpDTO := &IDPDTO{
+func buildIDPDTOFromRequest(idpRequest idpRequestWithID) (*providers.IDPDTO, error) {
+	idpDTO := &providers.IDPDTO{
 		ID:          idpRequest.ID,
 		Name:        idpRequest.Name,
 		Description: idpRequest.Description,
@@ -202,12 +204,12 @@ func buildIDPDTOFromRequest(idpRequest idpRequestWithID) (*IDPDTO, error) {
 	return idpDTO, nil
 }
 
-func parseIDPType(typeStr string) (IDPType, error) {
+func parseIDPType(typeStr string) (providers.IDPType, error) {
 	// Convert string to uppercase for case-insensitive matching
-	typeStrUpper := IDPType(strings.ToUpper(typeStr))
+	typeStrUpper := providers.IDPType(strings.ToUpper(typeStr))
 
 	// Check if it's a valid type
-	for _, supportedType := range supportedIDPTypes {
+	for _, supportedType := range providers.SupportedIDPTypes {
 		if supportedType == typeStrUpper {
 			return supportedType, nil
 		}
@@ -218,9 +220,9 @@ func parseIDPType(typeStr string) (IDPType, error) {
 
 // validateIDPWrapper wraps validateIDP to match ResourceConfig.Validator signature.
 func validateIDPWrapper(dto interface{}) error {
-	idpDTO, ok := dto.(*IDPDTO)
+	idpDTO, ok := dto.(*providers.IDPDTO)
 	if !ok {
-		return fmt.Errorf("invalid type: expected *IDPDTO")
+		return fmt.Errorf("invalid type: expected *providers.IDPDTO")
 	}
 
 	// Use the full validateIDP function which validates properties and applies defaults

@@ -22,6 +22,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/thunder-id/thunderid/internal/notification/client"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -60,8 +61,9 @@ func Initialize(mux *http.ServeMux, jwtService jwt.JWTServiceInterface,
 		}
 	}
 
-	otpService := newOTPService(mgtService, jwtService, templateService)
-	notificationSenderService := newNotificationSenderService(mgtService)
+	clientFactory := client.Initialize()
+	otpService := newOTPService(mgtService, jwtService, templateService, clientFactory)
+	notificationSenderService := newNotificationSenderService(mgtService, clientFactory)
 	handler := newMessageNotificationSenderHandler(mgtService, otpService)
 	registerRoutes(mux, handler)
 

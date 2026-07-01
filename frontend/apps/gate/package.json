@@ -37,8 +37,8 @@
     "typecheck": "tsc -p tsconfig.app.json"
   },
   "dependencies": {
-    "@thunderid/react": "workspace:^",
-    "@thunderid/react-router": "workspace:^",
+    "@thunderid/react": "catalog:",
+    "@thunderid/react-router": "catalog:",
     "@fontsource-variable/inter": "5.2.8",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-query-devtools": "catalog:",

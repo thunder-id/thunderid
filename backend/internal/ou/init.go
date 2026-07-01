@@ -22,6 +22,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
@@ -133,8 +135,8 @@ func wrapWithCache(
 	if cacheManager == nil {
 		return store
 	}
-	ouByIDCache := cache.GetCache[*OrganizationUnit](cacheManager, "OUByIDCache")
-	ouByHandleParentCache := cache.GetCache[*OrganizationUnit](cacheManager, "OUByHandleParentCache")
+	ouByIDCache := cache.GetCache[*providers.OrganizationUnit](cacheManager, "OUByIDCache")
+	ouByHandleParentCache := cache.GetCache[*providers.OrganizationUnit](cacheManager, "OUByHandleParentCache")
 	return newCacheBackedOUStore(store, ouByIDCache, ouByHandleParentCache)
 }
 

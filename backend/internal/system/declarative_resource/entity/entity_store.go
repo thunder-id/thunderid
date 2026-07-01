@@ -30,25 +30,28 @@ type KeyType string
 
 // Predefined key types for common entities
 const (
-	KeyTypeApplication        KeyType = "application"
-	KeyTypeNotification       KeyType = "notification"
-	KeyTypeIDP                KeyType = "idp"
-	KeyTypeNotificationSender KeyType = "notification-sender"
-	KeyTypeEntityType         KeyType = "user-type"
-	KeyTypeOU                 KeyType = "ou"
-	KeyTypeFlow               KeyType = "flow"
-	KeyTypeTranslation        KeyType = "translation"
-	KeyTypeTheme              KeyType = "theme"
-	KeyTypeLayout             KeyType = "layout"
-	KeyTypeResourceServer     KeyType = "resource-server"
-	KeyTypeResource           KeyType = "resource"
-	KeyTypeAction             KeyType = "action"
-	KeyTypeRole               KeyType = "role"
-	KeyTypeUser               KeyType = "user"
-	KeyTypeTemplate           KeyType = "template"
-	KeyTypeEntity             KeyType = "entity"
-	KeyTypeInboundAuth        KeyType = "inbound-auth"
-	KeyTypeGroup              KeyType = "group"
+	KeyTypeApplication             KeyType = "application"
+	KeyTypeNotification            KeyType = "notification"
+	KeyTypeIDP                     KeyType = "idp"
+	KeyTypeNotificationSender      KeyType = "notification-sender"
+	KeyTypeEntityType              KeyType = "user-type"
+	KeyTypeOU                      KeyType = "ou"
+	KeyTypeFlow                    KeyType = "flow"
+	KeyTypeTranslation             KeyType = "translation"
+	KeyTypeTheme                   KeyType = "theme"
+	KeyTypeLayout                  KeyType = "layout"
+	KeyTypeResourceServer          KeyType = "resource-server"
+	KeyTypeResource                KeyType = "resource"
+	KeyTypeAction                  KeyType = "action"
+	KeyTypeRole                    KeyType = "role"
+	KeyTypeUser                    KeyType = "user"
+	KeyTypeTemplate                KeyType = "template"
+	KeyTypeEntity                  KeyType = "entity"
+	KeyTypeInboundAuth             KeyType = "inbound-auth"
+	KeyTypeGroup                   KeyType = "group"
+	KeyTypePresentationDefinition  KeyType = "presentation-definition"
+	KeyTypeCredentialConfiguration KeyType = "credential-configuration" //nolint:gosec
+	KeyTypeServerConfig            KeyType = "server-config"
 )
 
 // String returns the string representation of KeyType
@@ -62,7 +65,8 @@ func (kt KeyType) IsValid() bool {
 	case KeyTypeApplication, KeyTypeNotification, KeyTypeIDP, KeyTypeNotificationSender,
 		KeyTypeEntityType, KeyTypeOU, KeyTypeFlow, KeyTypeTranslation, KeyTypeTheme, KeyTypeLayout,
 		KeyTypeResourceServer, KeyTypeResource, KeyTypeAction, KeyTypeRole, KeyTypeUser, KeyTypeTemplate,
-		KeyTypeInboundAuth, KeyTypeGroup,
+		KeyTypeInboundAuth, KeyTypeGroup, KeyTypePresentationDefinition, KeyTypeCredentialConfiguration,
+		KeyTypeServerConfig,
 		KeyTypeEntity:
 		return true
 	default:

@@ -23,18 +23,18 @@ import (
 	"encoding/json"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
-	"github.com/thunder-id/thunderid/internal/design/common"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/ou"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/tests/mocks/design/resolvemock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/i18n/mgtmock"
@@ -94,9 +94,9 @@ func (suite *FlowMetaServiceTestSuite) expectInboundLookup(
 		Properties:                props,
 	}
 	sysAttrs, _ := json.Marshal(map[string]interface{}{"name": name})
-	entity := &entityprovider.Entity{
+	entity := &providers.Entity{
 		ID:               appID,
-		Category:         entityprovider.EntityCategoryApp,
+		Category:         providers.EntityCategoryApp,
 		SystemAttributes: sysAttrs,
 	}
 	suite.mockInboundClient.On("GetInboundClientByEntityID", mock.Anything, appID).Return(client, nil)
@@ -119,14 +119,14 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_APP_Success() {
 		"policy_uri": "https://example.com/policy",
 	})
 
-	mockOUList := &ou.OrganizationUnitListResponse{
+	mockOUList := &providers.OrganizationUnitListResponse{
 		TotalResults: 1,
-		OrganizationUnits: []ou.OrganizationUnitBasic{
+		OrganizationUnits: []providers.OrganizationUnitBasic{
 			{ID: ouID, Handle: "default", Name: "Default OU"},
 		},
 	}
 
-	mockOU := ou.OrganizationUnit{
+	mockOU := providers.OrganizationUnit{
 		ID:          ouID,
 		Handle:      "default",
 		Name:        "Default OU",
@@ -134,12 +134,12 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_APP_Success() {
 		LogoURL:     "https://example.com/ou-logo.png",
 	}
 
-	mockDesign := &common.DesignResponse{
+	mockDesign := &providers.DesignResponse{
 		Theme:  json.RawMessage(`{"primary":"#000000"}`),
 		Layout: json.RawMessage(`{"header":"simple"}`),
 	}
 
-	mockTranslations := &i18nmgt.LanguageTranslationsResponse{
+	mockTranslations := &providers.LanguageTranslationsResponse{
 		Language:     language,
 		TotalResults: 2,
 		Translations: map[string]map[string]string{
@@ -152,7 +152,7 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_APP_Success() {
 
 	suite.mockOUService.On("GetOrganizationUnitList", mock.Anything, 1, 0, mock.Anything).Return(mockOUList, nil)
 	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, ouID).Return(mockOU, nil)
-	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, common.DesignResolveTypeAPP, appID).
+	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, providers.DesignResolveTypeAPP, appID).
 		Return(mockDesign, nil)
 	suite.mockI18nService.On("ResolveTranslations", mock.Anything, language, namespace).Return(mockTranslations, nil)
 	suite.mockI18nService.On("ListLanguages", mock.Anything).Return([]string{"en", "es"}, nil)
@@ -182,7 +182,7 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_OU_Success() {
 	ouID := testOUID
 	metaType := MetaTypeOU
 
-	mockOU := ou.OrganizationUnit{
+	mockOU := providers.OrganizationUnit{
 		ID:          ouID,
 		Handle:      "engineering",
 		Name:        "Engineering OU",
@@ -190,19 +190,20 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_OU_Success() {
 		LogoURL:     "https://example.com/eng-logo.png",
 	}
 
-	mockDesign := &common.DesignResponse{
+	mockDesign := &providers.DesignResponse{
 		Theme:  json.RawMessage(`{}`),
 		Layout: json.RawMessage(`{}`),
 	}
 
-	mockTranslations := &i18nmgt.LanguageTranslationsResponse{
+	mockTranslations := &providers.LanguageTranslationsResponse{
 		Language:     "en",
 		TotalResults: 0,
 		Translations: map[string]map[string]string{},
 	}
 
 	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, ouID).Return(mockOU, nil)
-	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, common.DesignResolveTypeOU, ouID).Return(mockDesign, nil)
+	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, providers.DesignResolveTypeOU, ouID).
+		Return(mockDesign, nil)
 	suite.mockI18nService.On("ResolveTranslations", mock.Anything, "en-US", "").Return(mockTranslations, nil)
 	suite.mockI18nService.On("ListLanguages", mock.Anything).Return([]string{"en"}, nil)
 
@@ -256,7 +257,7 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_OUNotFound() {
 	ouID := "non-existent"
 
 	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, ouID).
-		Return(ou.OrganizationUnit{}, &ou.ErrorOrganizationUnitNotFound)
+		Return(providers.OrganizationUnit{}, &ou.ErrorOrganizationUnitNotFound)
 
 	// Act
 	result, svcErr := suite.service.GetFlowMetadata(suite.ctx, metaType, ouID, nil, nil)
@@ -275,14 +276,14 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_DesignResolveError_Co
 
 	suite.expectInboundLookup(appID, "Test App", false, nil)
 
-	mockOUList := &ou.OrganizationUnitListResponse{
+	mockOUList := &providers.OrganizationUnitListResponse{
 		TotalResults: 1,
-		OrganizationUnits: []ou.OrganizationUnitBasic{
+		OrganizationUnits: []providers.OrganizationUnitBasic{
 			{ID: ouID, Handle: "default", Name: "Default OU"},
 		},
 	}
 
-	mockOU := ou.OrganizationUnit{
+	mockOU := providers.OrganizationUnit{
 		ID:     ouID,
 		Handle: "default",
 		Name:   "Default OU",
@@ -290,10 +291,10 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_DesignResolveError_Co
 
 	suite.mockOUService.On("GetOrganizationUnitList", mock.Anything, 1, 0, mock.Anything).Return(mockOUList, nil)
 	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, ouID).Return(mockOU, nil)
-	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, common.DesignResolveTypeAPP, appID).
-		Return(nil, &serviceerror.InternalServerError)
+	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, providers.DesignResolveTypeAPP, appID).
+		Return(nil, &tidcommon.InternalServerError)
 	suite.mockI18nService.On("ResolveTranslations", mock.Anything, "en-US", "").
-		Return(&i18nmgt.LanguageTranslationsResponse{
+		Return(&providers.LanguageTranslationsResponse{
 			Language:     "en-US",
 			TotalResults: 0,
 			Translations: map[string]map[string]string{},
@@ -315,20 +316,20 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_I18nError_ContinuesWi
 	ouID := testOUID
 	metaType := MetaTypeOU
 
-	mockOU := ou.OrganizationUnit{
+	mockOU := providers.OrganizationUnit{
 		ID:     ouID,
 		Handle: "default",
 		Name:   "Default OU",
 	}
 
 	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, ouID).Return(mockOU, nil)
-	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, common.DesignResolveTypeOU, ouID).
-		Return(&common.DesignResponse{
+	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, providers.DesignResolveTypeOU, ouID).
+		Return(&providers.DesignResponse{
 			Theme:  json.RawMessage(`{}`),
 			Layout: json.RawMessage(`{}`),
 		}, nil)
 	suite.mockI18nService.On("ResolveTranslations", mock.Anything, "en-US", "").
-		Return(nil, &serviceerror.ServiceError{Code: "I18N-5000", Type: serviceerror.ServerErrorType})
+		Return(nil, &tidcommon.ServiceError{Code: "I18N-5000", Type: tidcommon.ServerErrorType})
 	suite.mockI18nService.On("ListLanguages", mock.Anything).Return([]string{"en"}, nil)
 
 	// Act
@@ -343,7 +344,7 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_I18nError_ContinuesWi
 
 func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_SystemFlow_NoTypeOrID() {
 	// Arrange: no type or id — system flow returns i18n only, skips app/OU/design
-	mockTranslations := &i18nmgt.LanguageTranslationsResponse{
+	mockTranslations := &providers.LanguageTranslationsResponse{
 		Language:     "en-US",
 		TotalResults: 3,
 		Translations: map[string]map[string]string{

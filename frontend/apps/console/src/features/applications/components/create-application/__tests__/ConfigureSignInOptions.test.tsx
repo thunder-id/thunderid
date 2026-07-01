@@ -17,9 +17,11 @@
  */
 
 import userEvent from '@testing-library/user-event';
-import {render, screen} from '@thunderid/test-utils';
+import {render, screen, within} from '@thunderid/test-utils';
+import type {JSX} from 'react';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import ApplicationCreateProvider from '../../../contexts/ApplicationCreate/ApplicationCreateProvider';
+import useApplicationCreateContext from '../../../hooks/useApplicationCreateContext';
 import ConfigureSignInOptions, {
   type ConfigureSignInOptionsProps,
 } from '../configure-signin-options/ConfigureSignInOptions';
@@ -907,6 +909,117 @@ describe('ConfigureSignInOptions', () => {
       expect(
         screen.getByText('You can always change these settings later in the application settings.'),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('Custom flow selection (issue #2959)', () => {
+    const customFlow = {
+      id: 'custom-flow-id',
+      handle: 'custom-passwordless',
+      name: 'Custom Passwordless',
+      flowType: 'AUTHENTICATION',
+      activeVersion: 1,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    };
+
+    const WiredHarness = ({onReadyChange = undefined}: {onReadyChange?: (isReady: boolean) => void}): JSX.Element => {
+      const {integrations, toggleIntegration, selectedAuthFlow} = useApplicationCreateContext();
+      return (
+        <>
+          <span data-testid="selected-flow-id">{selectedAuthFlow?.id ?? ''}</span>
+          <ConfigureSignInOptions
+            integrations={integrations}
+            onIntegrationToggle={toggleIntegration}
+            onReadyChange={onReadyChange}
+          />
+        </>
+      );
+    };
+
+    const renderWired = (onReadyChange?: (isReady: boolean) => void) =>
+      render(
+        <ApplicationCreateProvider>
+          <WiredHarness onReadyChange={onReadyChange} />
+        </ApplicationCreateProvider>,
+      );
+
+    const usernamePasswordSwitch = (): HTMLElement => {
+      const item = screen.getByText('Username & Password').closest('li');
+      if (!item) {
+        throw new Error('Username & Password list item not found');
+      }
+      return within(item).getByRole('switch');
+    };
+
+    beforeEach(() => {
+      vi.mocked(useIdentityProviders).mockReturnValue({
+        data: mockIdentityProviders,
+        isLoading: false,
+        error: null,
+      } as ReturnType<typeof useIdentityProviders>);
+
+      vi.mocked(useGetFlows).mockReturnValue({
+        data: {
+          totalResults: 1,
+          startIndex: 1,
+          count: 1,
+          flows: [customFlow],
+          links: [],
+        },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+        isFetching: false,
+        isStale: false,
+        isPending: false,
+        error: null,
+        status: 'success',
+        fetchStatus: 'idle',
+      } as unknown as ReturnType<typeof useGetFlows>);
+    });
+
+    it('unselects all integration toggles when a custom flow is selected', async () => {
+      const user = userEvent.setup();
+      renderWired();
+
+      expect(usernamePasswordSwitch()).toBeChecked();
+
+      await user.click(screen.getByRole('combobox'));
+      await user.click(await screen.findByText('Custom Passwordless'));
+
+      expect(usernamePasswordSwitch()).not.toBeChecked();
+      expect(screen.getByTestId('selected-flow-id')).toHaveTextContent('custom-flow-id');
+    });
+
+    it('keeps the step ready (Continue enabled) with all toggles off once a flow is selected', async () => {
+      const user = userEvent.setup();
+      const onReadyChange = vi.fn();
+      renderWired(onReadyChange);
+
+      await user.click(screen.getByRole('combobox'));
+      await user.click(await screen.findByText('Custom Passwordless'));
+
+      expect(usernamePasswordSwitch()).not.toBeChecked();
+      expect(onReadyChange).toHaveBeenLastCalledWith(true);
+    });
+
+    it('clears the selected flow and returns to toggle-driven mode when a method is re-enabled', async () => {
+      const user = userEvent.setup();
+      const onReadyChange = vi.fn();
+      renderWired(onReadyChange);
+
+      await user.click(screen.getByRole('combobox'));
+      await user.click(await screen.findByText('Custom Passwordless'));
+      expect(usernamePasswordSwitch()).not.toBeChecked();
+      expect(screen.getByTestId('selected-flow-id')).toHaveTextContent('custom-flow-id');
+
+      await user.click(screen.getByText('Username & Password'));
+
+      expect(usernamePasswordSwitch()).toBeChecked();
+      expect(screen.getByTestId('selected-flow-id')).toHaveTextContent('');
+      expect(screen.getByRole('combobox')).toHaveValue('');
+      expect(onReadyChange).toHaveBeenLastCalledWith(true);
     });
   });
 });

@@ -36,8 +36,8 @@ type Property struct {
 
 // PropertyDTO represents a property for API communication.
 type PropertyDTO struct {
-	Name     string `json:"name" yaml:"name"`
-	Value    string `json:"value" yaml:"value"`
+	Name     string `json:"name"     yaml:"name"`
+	Value    string `json:"value"    yaml:"value"`
 	IsSecret bool   `json:"isSecret" yaml:"isSecret,omitempty"`
 }
 

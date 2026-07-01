@@ -20,13 +20,16 @@ package resource
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -68,12 +71,17 @@ func (h *resourceHandler) HandleResourceServerPostRequest(w http.ResponseWriter,
 	ctx := r.Context()
 	req, err := sysutils.DecodeJSONBody[CreateResourceServerRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
 
 	sanitized := sanitizeCreateResourceServerRequest(req)
-	serviceReq := ResourceServer{
+	serviceReq := providers.ResourceServer{
 		Name:        sanitized.Name,
 		Description: sanitized.Description,
 		Handle:      sanitized.Handle,
@@ -113,12 +121,17 @@ func (h *resourceHandler) HandleResourceServerPutRequest(w http.ResponseWriter, 
 	id := r.PathValue("id")
 	req, err := sysutils.DecodeJSONBody[UpdateResourceServerRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
 
 	sanitized := sanitizeUpdateResourceServerRequest(req)
-	serviceReq := ResourceServer{
+	serviceReq := providers.ResourceServer{
 		Name:        sanitized.Name,
 		Description: sanitized.Description,
 		Handle:      sanitized.Handle,
@@ -185,12 +198,17 @@ func (h *resourceHandler) HandleResourcePostRequest(w http.ResponseWriter, r *ht
 	rsID := r.PathValue("rsId")
 	req, err := sysutils.DecodeJSONBody[CreateResourceRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
 
 	sanitized := sanitizeCreateResourceRequest(req)
-	serviceReq := Resource{
+	serviceReq := providers.Resource{
 		Name:        sanitized.Name,
 		Handle:      sanitized.Handle,
 		Description: sanitized.Description,
@@ -234,12 +252,18 @@ func (h *resourceHandler) HandleResourcePutRequest(w http.ResponseWriter, r *htt
 
 	req, err := sysutils.DecodeJSONBody[UpdateResourceRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
+
 		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
 
 	sanitized := sanitizeUpdateResourceRequest(req)
-	serviceReq := Resource{
+	serviceReq := providers.Resource{
 		Name:        sanitized.Name,
 		Description: sanitized.Description,
 	}
@@ -281,7 +305,13 @@ func (h *resourceHandler) HandleActionListAtResourceServerRequest(w http.Respons
 		return
 	}
 
-	result, svcErr := h.resourceService.GetActionList(ctx, rsID, nil, limit, offset)
+	kind, svcErr := parseActionKindParam(r.URL.Query())
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+
+	result, svcErr := h.resourceService.GetActionList(ctx, rsID, nil, kind, limit, offset)
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -297,15 +327,21 @@ func (h *resourceHandler) HandleActionPostAtResourceServerRequest(w http.Respons
 	rsID := r.PathValue("rsId")
 	req, err := sysutils.DecodeJSONBody[CreateActionRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
 
 	sanitized := sanitizeCreateActionRequest(req)
-	serviceReq := Action{
+	serviceReq := providers.Action{
 		Name:        sanitized.Name,
 		Handle:      sanitized.Handle,
 		Description: sanitized.Description,
+		Kind:        sanitized.Kind,
 	}
 
 	result, svcErr := h.resourceService.CreateAction(ctx, rsID, nil, serviceReq)
@@ -342,12 +378,17 @@ func (h *resourceHandler) HandleActionPutAtResourceServerRequest(w http.Response
 
 	req, err := sysutils.DecodeJSONBody[UpdateActionRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
 
 	sanitized := sanitizeUpdateActionRequest(req)
-	serviceReq := Action{
+	serviceReq := providers.Action{
 		Name:        sanitized.Name,
 		Description: sanitized.Description,
 	}
@@ -390,7 +431,13 @@ func (h *resourceHandler) HandleActionListAtResourceRequest(w http.ResponseWrite
 		return
 	}
 
-	result, svcErr := h.resourceService.GetActionList(ctx, rsID, &resourceID, limit, offset)
+	kind, svcErr := parseActionKindParam(r.URL.Query())
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+
+	result, svcErr := h.resourceService.GetActionList(ctx, rsID, &resourceID, kind, limit, offset)
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -408,15 +455,21 @@ func (h *resourceHandler) HandleActionPostAtResourceRequest(w http.ResponseWrite
 
 	req, err := sysutils.DecodeJSONBody[CreateActionRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
 
 	sanitized := sanitizeCreateActionRequest(req)
-	serviceReq := Action{
+	serviceReq := providers.Action{
 		Name:        sanitized.Name,
 		Handle:      sanitized.Handle,
 		Description: sanitized.Description,
+		Kind:        sanitized.Kind,
 	}
 
 	result, svcErr := h.resourceService.CreateAction(ctx, rsID, &resourceID, serviceReq)
@@ -460,7 +513,7 @@ func (h *resourceHandler) HandleActionPutAtResourceRequest(w http.ResponseWriter
 	}
 
 	sanitized := sanitizeUpdateActionRequest(req)
-	serviceReq := Action{
+	serviceReq := providers.Action{
 		Name:        sanitized.Name,
 		Description: sanitized.Description,
 	}
@@ -494,7 +547,7 @@ func (h *resourceHandler) HandleActionDeleteAtResourceRequest(w http.ResponseWri
 // Helper functions
 
 // parsePaginationParams parses 'limit' and 'offset' query parameters.
-func parsePaginationParams(query url.Values) (int, int, *serviceerror.ServiceError) {
+func parsePaginationParams(query url.Values) (int, int, *tidcommon.ServiceError) {
 	limit := serverconst.DefaultPageSize
 	offset := 0
 
@@ -517,10 +570,24 @@ func parsePaginationParams(query url.Values) (int, int, *serviceerror.ServiceErr
 	return limit, offset, nil
 }
 
+// parseActionKindParam parses the optional 'kind' query parameter for action-list endpoints.
+// An omitted parameter yields an empty kind (no filter); any value other than the supported action
+// kinds (tool|resource) is rejected with ErrorInvalidRequestFormat.
+func parseActionKindParam(query url.Values) (providers.ActionKind, *tidcommon.ServiceError) {
+	if !query.Has("kind") {
+		return "", nil
+	}
+	kind := providers.ActionKind(query.Get("kind"))
+	if !kind.IsValid() {
+		return "", &ErrorInvalidRequestFormat
+	}
+	return kind, nil
+}
+
 // handleError writes an error response based on the provided service error.
-func handleError(ctx context.Context, w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
+func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.ServiceError) {
 	statusCode := http.StatusInternalServerError
-	if svcErr.Type == serviceerror.ClientErrorType {
+	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
 		case ErrorResourceServerNotFound.Code, ErrorResourceNotFound.Code, ErrorActionNotFound.Code:
 			statusCode = http.StatusNotFound
@@ -597,6 +664,7 @@ func sanitizeCreateActionRequest(req *CreateActionRequest) CreateActionRequest {
 		Name:        sysutils.SanitizeString(req.Name),
 		Handle:      sysutils.SanitizeString(req.Handle),
 		Description: sysutils.SanitizeString(req.Description),
+		Kind:        req.Kind,
 	}
 }
 
@@ -610,11 +678,11 @@ func sanitizeUpdateActionRequest(req *UpdateActionRequest) UpdateActionRequest {
 
 // Response transformation functions
 
-// toResourceServerResponse transforms a ResourceServer to ResourceServerResponse.
-func toResourceServerResponse(rs *ResourceServer) *ResourceServerResponse {
+// toResourceServerResponse transforms a providers.ResourceServer to ResourceServerResponse.
+func toResourceServerResponse(rs *providers.ResourceServer) *ResourceServerResponse {
 	resType := rs.Type
 	if resType == "" {
-		resType = ResourceServerTypeCustom
+		resType = providers.ResourceServerTypeCustom
 	}
 	return &ResourceServerResponse{
 		ID:          rs.ID,
@@ -650,8 +718,8 @@ func toResourceServerListResponse(list *ResourceServerList) *ResourceServerListR
 	}
 }
 
-// toResourceResponse transforms a Resource to ResourceResponse.
-func toResourceResponse(res *Resource) *ResourceResponse {
+// toResourceResponse transforms a providers.Resource to ResourceResponse.
+func toResourceResponse(res *providers.Resource) *ResourceResponse {
 	return &ResourceResponse{
 		ID:          res.ID,
 		Name:        res.Name,
@@ -683,14 +751,15 @@ func toResourceListResponse(list *ResourceList) *ResourceListResponse {
 	}
 }
 
-// toActionResponse transforms an Action to ActionResponse.
-func toActionResponse(action *Action) *ActionResponse {
+// toActionResponse transforms an providers.Action to ActionResponse.
+func toActionResponse(action *providers.Action) *ActionResponse {
 	return &ActionResponse{
 		ID:          action.ID,
 		Name:        action.Name,
 		Handle:      action.Handle,
 		Description: action.Description,
 		Permission:  action.Permission,
+		Kind:        action.Kind,
 	}
 }
 

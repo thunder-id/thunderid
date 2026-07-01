@@ -50,7 +50,7 @@ export default [
     files: ['**/*.mjs'],
     languageOptions: {
       parserOptions: {
-        project: null,
+        project: false,
       },
     },
   },

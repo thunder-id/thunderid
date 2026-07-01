@@ -21,6 +21,8 @@ package application
 import (
 	"testing"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/application/model"
@@ -58,7 +60,7 @@ func (s *ApplicationServiceConsentTestSuite) TestValidateConsentConfig_NegativeV
 	svc := newTestApplicationService()
 
 	app := &model.ApplicationDTO{
-		InboundAuthProfile: inboundmodel.InboundAuthProfile{
+		InboundAuthProfile: providers.InboundAuthProfile{
 			LoginConsent: &inboundmodel.LoginConsentConfig{ValidityPeriod: -100},
 		},
 	}

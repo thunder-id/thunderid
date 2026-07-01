@@ -21,24 +21,14 @@ package flowexec
 import (
 	"context"
 
-	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/flow/core"
-	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // FlowExecServiceInterface defines the interface for flow orchestration and acts as the
 // entry point for flow execution.
 type FlowExecServiceInterface interface {
 	Execute(ctx context.Context, appID, executionID, flowType string, verbose bool,
-		action string, inputs map[string]string, challengeToken string) (*FlowStep, *serviceerror.ServiceError)
-	InitiateFlow(ctx context.Context, initContext *FlowInitContext) (string, *serviceerror.ServiceError)
-	InitiateAndExecute(ctx context.Context, initContext *FlowInitContext) (*FlowStep, *serviceerror.ServiceError)
-}
-
-// FlowProviderInterface defines the flow management operations required for flow execution.
-type FlowProviderInterface interface {
-	GetFlowByHandle(ctx context.Context, handle string, flowType common.FlowType) (
-		*flowmgt.CompleteFlowDefinition, *serviceerror.ServiceError)
-	GetGraph(ctx context.Context, flowID string) (core.GraphInterface, *serviceerror.ServiceError)
+		action string, inputs map[string]string, challengeToken string) (*FlowStep, *tidcommon.ServiceError)
+	InitiateFlow(ctx context.Context, initContext *FlowInitContext) (string, *tidcommon.ServiceError)
+	InitiateAndExecute(ctx context.Context, initContext *FlowInitContext) (*FlowStep, *tidcommon.ServiceError)
 }

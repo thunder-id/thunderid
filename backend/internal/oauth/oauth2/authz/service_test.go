@@ -24,6 +24,11 @@ import (
 	"strings"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -31,12 +36,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/actorprovider"
 	flowcm "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
@@ -54,7 +57,7 @@ func authorizeServiceCfgFromRuntime() oauthconfig.Config {
 	}
 }
 
-func resolveUserAttributesCacheTTLForTest(app *inboundmodel.OAuthClient) int64 {
+func resolveUserAttributesCacheTTLForTest(app *providers.OAuthClient) int64 {
 	return (&authorizeService{cfg: authorizeServiceCfgFromRuntime()}).resolveUserAttributesCacheTTL(app)
 }
 
@@ -91,7 +94,7 @@ func TestAuthorizeServiceTestSuite(t *testing.T) {
 func (suite *AuthorizeServiceTestSuite) BeforeTest(suiteName, testName string) {
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
-		GateClient: config.GateClientConfig{
+		GateClient: engineconfig.GateClientConfig{
 			Scheme:    "https",
 			Hostname:  "localhost",
 			Port:      3000,
@@ -102,11 +105,11 @@ func (suite *AuthorizeServiceTestSuite) BeforeTest(suiteName, testName string) {
 			Config:  config.DataSource{Type: "sqlite", SQLite: config.SQLiteDataSource{Path: ":memory:"}},
 			Runtime: config.DataSource{Type: "sqlite", SQLite: config.SQLiteDataSource{Path: ":memory:"}},
 		},
-		JWT: config.JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer: "https://localhost:8090",
 		},
-		OAuth: config.OAuthConfig{
-			AuthorizationCode: config.AuthorizationCodeConfig{ValidityPeriod: 600},
+		OAuth: engineconfig.OAuthConfig{
+			AuthorizationCode: engineconfig.AuthorizationCodeConfig{ValidityPeriod: 600},
 		},
 	}
 	_ = config.InitializeServerRuntime("test", testConfig)
@@ -138,12 +141,12 @@ func (suite *AuthorizeServiceTestSuite) newService() *authorizeService {
 }
 
 // testApp returns a minimal OAuthClient for use in tests.
-func (suite *AuthorizeServiceTestSuite) testApp() *inboundmodel.OAuthClient {
-	return &inboundmodel.OAuthClient{
+func (suite *AuthorizeServiceTestSuite) testApp() *providers.OAuthClient {
+	return &providers.OAuthClient{
 		ID:           "test-app-id",
 		ClientID:     "test-client-id",
 		RedirectURIs: []string{"https://client.example.com/callback"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		PKCERequired: false,
 	}
 }
@@ -267,7 +270,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Fl
 		Return(false, "", "")
 	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
 	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).
-		Return("", &serviceerror.InternalServerError)
+		Return("", &tidcommon.InternalServerError)
 
 	svc := suite.newService()
 	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), suite.testMsg())
@@ -397,15 +400,15 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Wi
 
 func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_SetsRuntimeRequiredAttrs() {
 	app := suite.testApp()
-	app.Token = &inboundmodel.OAuthTokenConfig{
-		AccessToken: &inboundmodel.AccessTokenConfig{
+	app.Token = &providers.OAuthTokenConfig{
+		AccessToken: &providers.AccessTokenConfig{
 			UserAttributes: []string{"user_id"},
 		},
-		IDToken: &inboundmodel.IDTokenConfig{
+		IDToken: &providers.IDTokenConfig{
 			UserAttributes: []string{"email"},
 		},
 	}
-	app.UserInfo = &inboundmodel.UserInfoConfig{
+	app.UserInfo = &providers.UserInfoConfig{
 		UserAttributes: []string{"phone_number"},
 	}
 
@@ -416,7 +419,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Se
 		mock.AnythingOfType("*flowexec.FlowInitContext")).
 		Run(func(_ context.Context, initContext *flowexec.FlowInitContext) {
 			assert.Equal(suite.T(), "test-app-id", initContext.ApplicationID)
-			assert.Equal(suite.T(), string(flowcm.FlowTypeAuthentication), initContext.FlowType)
+			assert.Equal(suite.T(), string(providers.FlowTypeAuthentication), initContext.FlowType)
 			assert.Equal(suite.T(), "test-client-id", initContext.RuntimeData[flowcm.RuntimeKeyClientID])
 			assert.Equal(suite.T(), testAuthID, initContext.RuntimeData[flowcm.RuntimeKeyAuthorizationRequestID])
 			assert.ElementsMatch(suite.T(), []string{"email"},
@@ -758,7 +761,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_NilApp() {
 	accessTokenClaims, idTokenClaims, userInfoClaims := determineClaimsForTokens(
 		[]string{"openid", "profile"},
 		nil,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		nil,
 	)
 
@@ -768,7 +771,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_NilApp() {
 }
 
 func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_NilTokenConfig() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
 		Token:    nil,
@@ -777,7 +780,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_NilTokenCon
 	accessTokenClaims, idTokenClaims, userInfoClaims := determineClaimsForTokens(
 		[]string{"openid", "profile"},
 		nil,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -787,11 +790,11 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_NilTokenCon
 }
 
 func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_AccessTokenClaimsOnly() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
 				UserAttributes: []string{"user_id", "org_id", "role"},
 			},
 		},
@@ -800,7 +803,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_AccessToken
 	accessTokenClaims, idTokenClaims, userInfoClaims := determineClaimsForTokens(
 		[]string{}, // No OIDC scopes
 		nil,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -813,18 +816,18 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_AccessToken
 }
 
 func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_NoOpenIDScope() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
 				UserAttributes: []string{"user_id"},
 			},
-			IDToken: &inboundmodel.IDTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "name"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"email", "name"},
 		},
 	}
@@ -832,7 +835,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_NoOpenIDSco
 	accessTokenClaims, idTokenClaims, userInfoClaims := determineClaimsForTokens(
 		[]string{"profile"}, // OIDC scope but no openid
 		nil,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -844,15 +847,15 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_NoOpenIDSco
 }
 
 func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_StandardOIDCScopes_CodeFlow() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "email_verified", "name"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"email", "email_verified", "name", "picture"},
 		},
 	}
@@ -860,7 +863,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_StandardOID
 	accessTokenClaims, idTokenClaims, userInfoClaims := determineClaimsForTokens(
 		[]string{"openid", "email"},
 		nil,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -873,15 +876,15 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_StandardOID
 }
 
 func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_StandardOIDCScopes_ImplicitFlow() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "email_verified", "name"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"email", "email_verified", "name", "picture"},
 		},
 	}
@@ -889,7 +892,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_StandardOID
 	accessTokenClaims, idTokenClaims, userInfoClaims := determineClaimsForTokens(
 		[]string{"openid", "email"},
 		nil,
-		string(oauth2const.ResponseTypeIDToken), // Implicit flow - no access token
+		string(providers.ResponseTypeIDToken), // Implicit flow - no access token
 		app,
 	)
 
@@ -909,11 +912,11 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_ClaimsParam
 		},
 	}
 
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "name", "picture"},
 			},
 		},
@@ -922,7 +925,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_ClaimsParam
 	accessTokenClaims, idTokenClaims, userInfoClaims := determineClaimsForTokens(
 		[]string{"openid"},
 		claimsRequest,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -941,11 +944,11 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_ClaimsParam
 		},
 	}
 
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token:    &inboundmodel.OAuthTokenConfig{}, // Need Token config for the method to process claims
-		UserInfo: &inboundmodel.UserInfoConfig{
+		Token:    &providers.OAuthTokenConfig{}, // Need Token config for the method to process claims
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"email", "name", "picture"},
 		},
 	}
@@ -953,7 +956,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_ClaimsParam
 	accessTokenClaims, idTokenClaims, userInfoClaims := determineClaimsForTokens(
 		[]string{"openid"},
 		claimsRequest,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -973,11 +976,11 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_ClaimsParam
 		},
 	}
 
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "name"}, // not_found is not allowed
 			},
 		},
@@ -986,7 +989,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_ClaimsParam
 	accessTokenClaims, idTokenClaims, userInfoClaims := determineClaimsForTokens(
 		[]string{"openid"},
 		claimsRequest,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1000,15 +1003,15 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_ClaimsParam
 }
 
 func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_CustomScopeMapping() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"org_id", "org_name", "department"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"org_id", "org_name", "department"},
 		},
 		ScopeClaims: map[string][]string{
@@ -1019,7 +1022,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_CustomScope
 	accessTokenClaims, idTokenClaims, userInfoClaims := determineClaimsForTokens(
 		[]string{"openid", "organization"},
 		nil,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1033,15 +1036,15 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_CustomScope
 
 func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_CustomScopeOverridesStandardScope() {
 	// If app defines custom mapping for a standard scope, it should override
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"custom_email", "email"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"custom_email", "email"},
 		},
 		ScopeClaims: map[string][]string{
@@ -1052,7 +1055,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_CustomScope
 	accessTokenClaims, idTokenClaims, userInfoClaims := determineClaimsForTokens(
 		[]string{"openid", "email"},
 		nil,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1066,18 +1069,18 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_CustomScope
 }
 
 func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_MultipleScopesCodeFlow() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
 				UserAttributes: []string{"user_id"},
 			},
-			IDToken: &inboundmodel.IDTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "email_verified", "name", "picture"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"email", "email_verified", "name", "picture", "phone_number"},
 		},
 	}
@@ -1085,7 +1088,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_MultipleSco
 	accessTokenClaims, idTokenClaims, userInfoClaims := determineClaimsForTokens(
 		[]string{"openid", "email", "profile"},
 		nil,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1115,18 +1118,18 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_CompleteSce
 		},
 	}
 
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
 				UserAttributes: []string{"user_id", "role"},
 			},
-			IDToken: &inboundmodel.IDTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "email_verified", "name"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"email", "email_verified", "name", "picture", "phone_number"},
 		},
 		ScopeClaims: map[string][]string{
@@ -1137,7 +1140,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_CompleteSce
 	accessTokenClaims, idTokenClaims, userInfoClaims := determineClaimsForTokens(
 		[]string{"openid", "custom"},
 		claimsRequest,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1157,15 +1160,15 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_CompleteSce
 }
 
 func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_EmptyAllowedSets() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{}, // Empty allowed set
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{}, // Empty allowed set
 		},
 	}
@@ -1173,7 +1176,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_EmptyAllowe
 	accessTokenClaims, idTokenClaims, userInfoClaims := determineClaimsForTokens(
 		[]string{"openid", "email", "profile"},
 		nil,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1186,7 +1189,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_NilApp() {
 	essential, optional := getRequiredAttributes(
 		[]string{"openid", "profile"},
 		nil,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		nil,
 	)
 
@@ -1195,7 +1198,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_NilApp() {
 }
 
 func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_NilTokenConfig() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
 		Token:    nil,
@@ -1204,7 +1207,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_NilTokenConfig
 	essential, optional := getRequiredAttributes(
 		[]string{"openid", "profile"},
 		nil,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1213,11 +1216,11 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_NilTokenConfig
 }
 
 func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_AccessTokenOnly() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
 				UserAttributes: []string{"user_id", "role"},
 			},
 		},
@@ -1226,7 +1229,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_AccessTokenOnl
 	essential, optional := getRequiredAttributes(
 		[]string{},
 		nil,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1240,18 +1243,18 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_AccessTokenOnl
 }
 
 func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_CodeFlowWithScopes() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
 				UserAttributes: []string{"user_id"},
 			},
-			IDToken: &inboundmodel.IDTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "email_verified", "name"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"email", "email_verified", "name", "picture"},
 		},
 	}
@@ -1259,7 +1262,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_CodeFlowWithSc
 	essential, optional := getRequiredAttributes(
 		[]string{"openid", "email"},
 		nil,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1275,11 +1278,11 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_CodeFlowWithSc
 }
 
 func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_ImplicitFlowWithScopes() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "email_verified", "name"},
 			},
 		},
@@ -1288,7 +1291,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_ImplicitFlowWi
 	essential, optional := getRequiredAttributes(
 		[]string{"openid", "email"},
 		nil,
-		string(oauth2const.ResponseTypeIDToken),
+		string(providers.ResponseTypeIDToken),
 		app,
 	)
 
@@ -1312,18 +1315,18 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_WithClaimsPara
 		},
 	}
 
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
 				UserAttributes: []string{"user_id"},
 			},
-			IDToken: &inboundmodel.IDTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "name"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"email", "phone_number"},
 		},
 	}
@@ -1331,7 +1334,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_WithClaimsPara
 	essential, optional := getRequiredAttributes(
 		[]string{"openid"},
 		claimsRequest,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1357,18 +1360,18 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_ClaimsParamete
 		},
 	}
 
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
 				UserAttributes: []string{"email", "role"},
 			},
-			IDToken: &inboundmodel.IDTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "name"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"email", "phone_number"},
 		},
 	}
@@ -1376,7 +1379,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_ClaimsParamete
 	essential, optional := getRequiredAttributes(
 		[]string{"openid"},
 		claimsRequest,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1397,18 +1400,18 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_DeduplicatesCl
 		},
 	}
 
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
 				UserAttributes: []string{"email"}, // Same claim in access token too
 			},
-			IDToken: &inboundmodel.IDTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"email"},
 		},
 	}
@@ -1416,7 +1419,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_DeduplicatesCl
 	essential, optional := getRequiredAttributes(
 		[]string{"openid"},
 		claimsRequest,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1426,15 +1429,15 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_DeduplicatesCl
 }
 
 func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_CustomScopeMapping() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			IDToken: &inboundmodel.IDTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"org_id", "org_name"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"org_id", "org_name"},
 		},
 		ScopeClaims: map[string][]string{
@@ -1445,7 +1448,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_CustomScopeMap
 	essential, optional := getRequiredAttributes(
 		[]string{"openid", "organization"},
 		nil,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1468,18 +1471,18 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_ComplexScenari
 		},
 	}
 
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
 				UserAttributes: []string{"user_id", "role"},
 			},
-			IDToken: &inboundmodel.IDTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "email_verified", "name"},
 			},
 		},
-		UserInfo: &inboundmodel.UserInfoConfig{
+		UserInfo: &providers.UserInfoConfig{
 			UserAttributes: []string{"email", "email_verified", "name", "picture", "phone_number"},
 		},
 		ScopeClaims: map[string][]string{
@@ -1490,7 +1493,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_ComplexScenari
 	essential, optional := getRequiredAttributes(
 		[]string{"openid", "custom"},
 		claimsRequest,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1512,14 +1515,14 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_ComplexScenari
 }
 
 func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_NoOpenIDScope() {
-	app := &inboundmodel.OAuthClient{
+	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
 				UserAttributes: []string{"user_id"},
 			},
-			IDToken: &inboundmodel.IDTokenConfig{
+			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "name"},
 			},
 		},
@@ -1528,7 +1531,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_NoOpenIDScope(
 	essential, optional := getRequiredAttributes(
 		[]string{"profile"}, // OIDC scope but no openid
 		nil,
-		string(oauth2const.ResponseTypeCode),
+		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1548,20 +1551,20 @@ func (suite *AuthorizeServiceTestSuite) TestResolveScopeAttributes_UnknownScope(
 func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_RefreshAllowed_UsesMaxOfRefreshAndAccessValidity() {
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test", &config.Config{
-		JWT: config.JWTConfig{ValidityPeriod: 900},
-		OAuth: config.OAuthConfig{
-			RefreshToken:      config.RefreshTokenConfig{ValidityPeriod: 7200},
-			AuthorizationCode: config.AuthorizationCodeConfig{ValidityPeriod: 600},
+		JWT: engineconfig.JWTConfig{ValidityPeriod: 900},
+		OAuth: engineconfig.OAuthConfig{
+			RefreshToken:      engineconfig.RefreshTokenConfig{ValidityPeriod: 7200},
+			AuthorizationCode: engineconfig.AuthorizationCodeConfig{ValidityPeriod: 600},
 		},
 	})
 
-	app := &inboundmodel.OAuthClient{
-		GrantTypes: []oauth2const.GrantType{
-			oauth2const.GrantTypeAuthorizationCode,
-			oauth2const.GrantTypeRefreshToken,
+	app := &providers.OAuthClient{
+		GrantTypes: []providers.GrantType{
+			providers.GrantTypeAuthorizationCode,
+			providers.GrantTypeRefreshToken,
 		},
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{ValidityPeriod: 3600},
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{ValidityPeriod: 3600},
 		},
 	}
 
@@ -1572,20 +1575,20 @@ func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_RefreshAllowed_U
 func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_RefreshTokenAllowed_UsesAccessTokenWhenLonger() {
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test", &config.Config{
-		JWT: config.JWTConfig{ValidityPeriod: 900},
-		OAuth: config.OAuthConfig{
-			RefreshToken:      config.RefreshTokenConfig{ValidityPeriod: 1800},
-			AuthorizationCode: config.AuthorizationCodeConfig{ValidityPeriod: 600},
+		JWT: engineconfig.JWTConfig{ValidityPeriod: 900},
+		OAuth: engineconfig.OAuthConfig{
+			RefreshToken:      engineconfig.RefreshTokenConfig{ValidityPeriod: 1800},
+			AuthorizationCode: engineconfig.AuthorizationCodeConfig{ValidityPeriod: 600},
 		},
 	})
 
-	app := &inboundmodel.OAuthClient{
-		GrantTypes: []oauth2const.GrantType{
-			oauth2const.GrantTypeAuthorizationCode,
-			oauth2const.GrantTypeRefreshToken,
+	app := &providers.OAuthClient{
+		GrantTypes: []providers.GrantType{
+			providers.GrantTypeAuthorizationCode,
+			providers.GrantTypeRefreshToken,
 		},
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{ValidityPeriod: 7200},
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{ValidityPeriod: 7200},
 		},
 	}
 
@@ -1596,18 +1599,18 @@ func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_RefreshTokenAllo
 func (suite *AuthorizeServiceTestSuite) TestResolveUserAttributesCacheTTL_RefreshTokenAllowed_FallsBackToGlobalJWT() {
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test", &config.Config{
-		JWT: config.JWTConfig{ValidityPeriod: 900},
-		OAuth: config.OAuthConfig{
+		JWT: engineconfig.JWTConfig{ValidityPeriod: 900},
+		OAuth: engineconfig.OAuthConfig{
 			// RefreshToken.ValidityPeriod is 0 → ResolveTokenConfig falls back to global JWT validity.
-			RefreshToken:      config.RefreshTokenConfig{ValidityPeriod: 0},
-			AuthorizationCode: config.AuthorizationCodeConfig{ValidityPeriod: 600},
+			RefreshToken:      engineconfig.RefreshTokenConfig{ValidityPeriod: 0},
+			AuthorizationCode: engineconfig.AuthorizationCodeConfig{ValidityPeriod: 600},
 		},
 	})
 
-	app := &inboundmodel.OAuthClient{
-		GrantTypes: []oauth2const.GrantType{
-			oauth2const.GrantTypeAuthorizationCode,
-			oauth2const.GrantTypeRefreshToken,
+	app := &providers.OAuthClient{
+		GrantTypes: []providers.GrantType{
+			providers.GrantTypeAuthorizationCode,
+			providers.GrantTypeRefreshToken,
 		},
 	}
 
@@ -1616,10 +1619,10 @@ func (suite *AuthorizeServiceTestSuite) TestResolveUserAttributesCacheTTL_Refres
 }
 
 func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_RefreshTokenNotAllowed_UsesAccessTokenValidity() {
-	app := &inboundmodel.OAuthClient{
-		GrantTypes: []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
-		Token: &inboundmodel.OAuthTokenConfig{
-			AccessToken: &inboundmodel.AccessTokenConfig{ValidityPeriod: 3600},
+	app := &providers.OAuthClient{
+		GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode},
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{ValidityPeriod: 3600},
 		},
 	}
 
@@ -1630,17 +1633,17 @@ func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_RefreshTokenNotA
 func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_NoRefreshToken_ZeroAccessTTL_FallsBackToGlobalJWT() {
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test", &config.Config{
-		JWT: config.JWTConfig{ValidityPeriod: 900},
-		OAuth: config.OAuthConfig{
-			AuthorizationCode: config.AuthorizationCodeConfig{ValidityPeriod: 600},
+		JWT: engineconfig.JWTConfig{ValidityPeriod: 900},
+		OAuth: engineconfig.OAuthConfig{
+			AuthorizationCode: engineconfig.AuthorizationCodeConfig{ValidityPeriod: 600},
 		},
 	})
 
-	app := &inboundmodel.OAuthClient{
-		GrantTypes: []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
-		Token: &inboundmodel.OAuthTokenConfig{
+	app := &providers.OAuthClient{
+		GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode},
+		Token: &providers.OAuthTokenConfig{
 			// ValidityPeriod 0 is treated as unset by ResolveTokenConfig → falls back to global JWT validity.
-			AccessToken: &inboundmodel.AccessTokenConfig{ValidityPeriod: 0},
+			AccessToken: &providers.AccessTokenConfig{ValidityPeriod: 0},
 		},
 	}
 
@@ -1651,14 +1654,14 @@ func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_NoRefreshToken_Z
 func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_NoRefreshToken_NilToken_FallsBackToGlobalJWT() {
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test", &config.Config{
-		JWT: config.JWTConfig{ValidityPeriod: 900},
-		OAuth: config.OAuthConfig{
-			AuthorizationCode: config.AuthorizationCodeConfig{ValidityPeriod: 600},
+		JWT: engineconfig.JWTConfig{ValidityPeriod: 900},
+		OAuth: engineconfig.OAuthConfig{
+			AuthorizationCode: engineconfig.AuthorizationCodeConfig{ValidityPeriod: 600},
 		},
 	})
 
-	app := &inboundmodel.OAuthClient{
-		GrantTypes: []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+	app := &providers.OAuthClient{
+		GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		Token:      nil,
 	}
 
@@ -1669,15 +1672,15 @@ func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_NoRefreshToken_N
 func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_NoRefreshToken_NilAccessToken_FallsBackToGlobalJWT() {
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test", &config.Config{
-		JWT: config.JWTConfig{ValidityPeriod: 900},
-		OAuth: config.OAuthConfig{
-			AuthorizationCode: config.AuthorizationCodeConfig{ValidityPeriod: 600},
+		JWT: engineconfig.JWTConfig{ValidityPeriod: 900},
+		OAuth: engineconfig.OAuthConfig{
+			AuthorizationCode: engineconfig.AuthorizationCodeConfig{ValidityPeriod: 600},
 		},
 	})
 
-	app := &inboundmodel.OAuthClient{
-		GrantTypes: []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
-		Token:      &inboundmodel.OAuthTokenConfig{AccessToken: nil},
+	app := &providers.OAuthClient{
+		GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode},
+		Token:      &providers.OAuthTokenConfig{AccessToken: nil},
 	}
 
 	// JWT fallback (900) + authCode(600) + buffer(60) = 1560.
@@ -1687,7 +1690,7 @@ func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_NoRefreshToken_N
 // determineClaimsForTokens is a test helper retained to keep existing token-claim tests readable.
 // It mirrors the token-specific split (access_token / id_token / userinfo) on top of current helper functions.
 func determineClaimsForTokens(oidcScopes []string, claimsRequest *oauth2model.ClaimsRequest,
-	responseType string, app *inboundmodel.OAuthClient) (
+	responseType string, app *providers.OAuthClient) (
 	map[string]bool, map[string]bool, map[string]bool) {
 	accessTokenClaims := make(map[string]bool)
 	idTokenClaims := make(map[string]bool)
@@ -1737,7 +1740,7 @@ func determineClaimsForTokens(oidcScopes []string, claimsRequest *oauth2model.Cl
 	for _, scope := range oidcScopes {
 		scopeAttributes := resolveScopeAttributes(scope, app.ScopeClaims)
 		for _, attribute := range scopeAttributes {
-			if responseType == string(oauth2const.ResponseTypeIDToken) {
+			if responseType == string(providers.ResponseTypeIDToken) {
 				if idTokenAllowedSet != nil && idTokenAllowedSet[attribute] {
 					idTokenClaims[attribute] = true
 				}

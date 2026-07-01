@@ -149,7 +149,7 @@
     "indexed_attributes": [
       "username",
       "email",
-      "mobileNumber",
+      "mobile_number",
       "sub"
     ],
     "store": "composite"
@@ -159,6 +159,9 @@
   },
   "declarative_resources": {
     "enabled": false
+  },
+  "server_config": {
+    "store": "composite"
   },
   "observability": {
     "enabled": false,
@@ -238,6 +241,7 @@
     "rest": {
       "base_url": "",
       "timeout": 10,
+      "correlation_id_header": "X-Correlation-ID",
       "security": {
         "api_key": ""
       }
@@ -253,33 +257,24 @@
     "type": "default"
   },
   "openid4vp": {
-    "client_id": "x509_hash:dev-placeholder",
-    "signing_key_id": "default-key",
-    "base_url": "https://localhost:8090",
+    "client_id": "x509_san_dns:localhost",
+    "signing_key_id": "",
     "ephemeral_key_id": "vp-enc",
-    "response_enc_values": ["A128GCM"],
-    "request_audience": "https://self-issued.me/v2",
+    "response_enc_values": ["A128GCM", "A256GCM", "A128CBC-HS256", "A256CBC-HS512"],
     "request_validity_seconds": 300,
     "state_ttl_seconds": 300,
     "leeway_seconds": 30,
     "key_binding_max_age_seconds": 300,
     "result_token_validity_seconds": 300,
-    "presentation_definitions": [
-      {
-        "id": "eudi-pid",
-        "display_name": "EUDI Wallet PID",
-        "credential_id": "pid-sd-jwt",
-        "vct": "urn:eudi:pid:de:1",
-        "mandatory_claims": ["given_name", "family_name"],
-        "optional_claims": ["birthdate"],
-        "subject_claims": ["family_name", "given_name", "birthdate"],
-        "trusted_issuers": [
-          {
-            "issuer": "https://demo.pid-issuer.bundesdruckerei.de/c",
-            "cert_file": "config/certs/signing.cert"
-          }
-        ]
-      }
-    ]
+    "enforce_key_binding": true,
+    "trusted_anchors": []
+  },
+  "openid4vci": {
+    "signing_key_id": "",
+    "nonce_ttl_seconds": 300,
+    "proof_max_age_seconds": 300,
+    "credential_validity_seconds": 2592000,
+    "batch_size": 5,
+    "enforce_scope": false
   }
 }

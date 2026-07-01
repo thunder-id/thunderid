@@ -20,6 +20,8 @@ package entityprovider
 
 import (
 	"encoding/json"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // EntityProviderInterface defines the boundary contract between the gateway layer and the
@@ -29,17 +31,17 @@ type EntityProviderInterface interface {
 	IdentifyEntity(filters map[string]interface{}) (*string, *EntityProviderError)
 
 	// SearchEntities searches for all entities matching the given filters.
-	SearchEntities(filters map[string]interface{}) ([]*Entity, *EntityProviderError)
+	SearchEntities(filters map[string]interface{}) ([]*providers.Entity, *EntityProviderError)
 
 	// GetEntity retrieves an entity by ID. Credentials are never returned.
-	GetEntity(entityID string) (*Entity, *EntityProviderError)
+	GetEntity(entityID string) (*providers.Entity, *EntityProviderError)
 
 	// CreateEntity creates a new entity.
-	CreateEntity(entity *Entity,
-		systemCredentials json.RawMessage) (*Entity, *EntityProviderError)
+	CreateEntity(entity *providers.Entity,
+		systemCredentials json.RawMessage) (*providers.Entity, *EntityProviderError)
 
 	// UpdateEntity updates an existing entity's core fields.
-	UpdateEntity(entityID string, entity *Entity) (*Entity, *EntityProviderError)
+	UpdateEntity(entityID string, entity *providers.Entity) (*providers.Entity, *EntityProviderError)
 
 	// DeleteEntity deletes an entity by ID. Cascades to identifiers.
 	DeleteEntity(entityID string) *EntityProviderError
@@ -61,18 +63,18 @@ type EntityProviderInterface interface {
 		credentials json.RawMessage) *EntityProviderError
 
 	// GetTransitiveEntityGroups retrieves all groups an entity belongs to, including inherited groups.
-	GetTransitiveEntityGroups(entityID string) ([]EntityGroup, *EntityProviderError)
+	GetTransitiveEntityGroups(entityID string) ([]providers.EntityGroup, *EntityProviderError)
 
 	// ValidateEntityIDs validates that the given entity IDs exist. Returns IDs that are invalid.
 	ValidateEntityIDs(entityIDs []string) ([]string, *EntityProviderError)
 
 	// GetEntitiesByIDs retrieves multiple entities by their IDs.
-	GetEntitiesByIDs(entityIDs []string) ([]Entity, *EntityProviderError)
+	GetEntitiesByIDs(entityIDs []string) ([]providers.Entity, *EntityProviderError)
 
 	// GetEntityListCount returns the total number of entities in the given category.
-	GetEntityListCount(category EntityCategory, filters map[string]interface{}) (int, *EntityProviderError)
+	GetEntityListCount(category providers.EntityCategory, filters map[string]interface{}) (int, *EntityProviderError)
 
 	// GetEntityList returns a page of entities in the given category.
-	GetEntityList(category EntityCategory, limit, offset int,
-		filters map[string]interface{}) ([]Entity, *EntityProviderError)
+	GetEntityList(category providers.EntityCategory, limit, offset int,
+		filters map[string]interface{}) ([]providers.Entity, *EntityProviderError)
 }

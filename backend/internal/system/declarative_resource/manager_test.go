@@ -26,6 +26,8 @@ import (
 	"runtime"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -52,7 +54,7 @@ func TestFileBasedRuntimeManagerTestSuite(t *testing.T) {
 func (suite *FileBasedRuntimeManagerTestSuite) SetupSuite() {
 	// Initialize minimal config for testing
 	testConfig := &config.Config{
-		Server: config.ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Hostname: "localhost",
 			Port:     8080,
 		},

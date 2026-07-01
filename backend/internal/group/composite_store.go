@@ -21,9 +21,9 @@ package group
 import (
 	"context"
 
-	"github.com/thunder-id/thunderid/internal/entity"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // compositeGroupStore implements a composite store that combines file-based (immutable) and
@@ -389,7 +389,7 @@ func (c *compositeGroupStore) IsGroupDeclarative(ctx context.Context, id string)
 // into the other store. Group nesting chains must stay within a single store.
 func (c *compositeGroupStore) GetTransitiveGroupsForEntity(
 	ctx context.Context, entityID string,
-) ([]entity.EntityGroup, error) {
+) ([]providers.EntityGroup, error) {
 	dbGroups, err := c.dbStore.GetTransitiveGroupsForEntity(ctx, entityID)
 	if err != nil {
 		return nil, err
@@ -401,7 +401,7 @@ func (c *compositeGroupStore) GetTransitiveGroupsForEntity(
 	}
 
 	seen := make(map[string]bool, len(dbGroups))
-	result := make([]entity.EntityGroup, 0, len(dbGroups)+len(fileGroups))
+	result := make([]providers.EntityGroup, 0, len(dbGroups)+len(fileGroups))
 	for _, g := range dbGroups {
 		result = append(result, g)
 		seen[g.ID] = true

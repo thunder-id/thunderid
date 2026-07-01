@@ -24,17 +24,19 @@ import (
 	"strings"
 	"testing"
 
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 	"github.com/thunder-id/thunderid/tests/testhelpers"
 )
@@ -56,8 +58,8 @@ func TestServiceTestSuite(t *testing.T) {
 
 func (s *ServiceTestSuite) SetupTest() {
 	testConfig := &config.Config{
-		OAuth: config.OAuthConfig{
-			PAR: config.PARConfig{
+		OAuth: engineconfig.OAuthConfig{
+			PAR: engineconfig.PARConfig{
 				ExpiresIn: 60,
 			},
 		},
@@ -72,13 +74,13 @@ func (s *ServiceTestSuite) TearDownTest() {
 	config.ResetServerRuntime()
 }
 
-func (s *ServiceTestSuite) newTestApp() *inboundmodel.OAuthClient {
-	return &inboundmodel.OAuthClient{
+func (s *ServiceTestSuite) newTestApp() *providers.OAuthClient {
+	return &providers.OAuthClient{
 		ClientID:                "test-client",
 		RedirectURIs:            []string{"https://example.com/callback"},
-		GrantTypes:              []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
-		ResponseTypes:           []oauth2const.ResponseType{oauth2const.ResponseTypeCode},
-		TokenEndpointAuthMethod: oauth2const.TokenEndpointAuthMethodClientSecretBasic,
+		GrantTypes:              []providers.GrantType{providers.GrantTypeAuthorizationCode},
+		ResponseTypes:           []providers.ResponseType{providers.ResponseTypeCode},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
 	}
 }
 
@@ -87,13 +89,13 @@ func (s *ServiceTestSuite) newTestApp() *inboundmodel.OAuthClient {
 func (s *ServiceTestSuite) newPermissiveResourceMock() *resourcemock.ResourceServiceInterfaceMock {
 	m := resourcemock.NewResourceServiceInterfaceMock(s.T())
 	m.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
-		Return(func(_ context.Context, identifier string) *resource.ResourceServer {
-			return &resource.ResourceServer{ID: identifier, Identifier: identifier}
-		}, func(_ context.Context, _ string) *serviceerror.ServiceError {
+		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
+			return &providers.ResourceServer{ID: identifier, Identifier: identifier}
+		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
 	m.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
-		Return([]string{}, (*serviceerror.ServiceError)(nil)).Maybe()
+		Return([]string{}, (*tidcommon.ServiceError)(nil)).Maybe()
 	return m
 }
 
@@ -165,7 +167,7 @@ func (s *ServiceTestSuite) TestHandlePAR_UnauthorizedGrantType() {
 	store := newParStoreInterfaceMock(s.T())
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
-	app.GrantTypes = []oauth2const.GrantType{oauth2const.GrantTypeClientCredentials}
+	app.GrantTypes = []providers.GrantType{providers.GrantTypeClientCredentials}
 	params := s.newValidParams()
 
 	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
@@ -299,8 +301,8 @@ func (s *ServiceTestSuite) TestHandlePAR_UnregisteredResource_InvalidTarget() {
 	store := newParStoreInterfaceMock(s.T())
 	rsMock := resourcemock.NewResourceServiceInterfaceMock(s.T())
 	rsMock.On("GetResourceServerByIdentifier", mock.Anything, "https://unknown.example.com").
-		Return((*resource.ResourceServer)(nil), &serviceerror.ServiceError{
-			Type: serviceerror.ClientErrorType,
+		Return((*providers.ResourceServer)(nil), &tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType,
 			Code: "RES-1001",
 		})
 	svc := newPARService(store, rsMock, s.testCfg)
@@ -318,8 +320,8 @@ func (s *ServiceTestSuite) TestHandlePAR_ResourceResolutionServerError() {
 	store := newParStoreInterfaceMock(s.T())
 	rsMock := resourcemock.NewResourceServiceInterfaceMock(s.T())
 	rsMock.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
-		Return((*resource.ResourceServer)(nil), &serviceerror.ServiceError{
-			Type: serviceerror.ServerErrorType,
+		Return((*providers.ResourceServer)(nil), &tidcommon.ServiceError{
+			Type: tidcommon.ServerErrorType,
 			Code: "RES-5000",
 		})
 	svc := newPARService(store, rsMock, s.testCfg)
@@ -343,14 +345,14 @@ func (s *ServiceTestSuite) TestHandlePAR_ScopesDownscopedAgainstResourceServers(
 
 	rsMock := resourcemock.NewResourceServiceInterfaceMock(s.T())
 	rsMock.On("GetResourceServerByIdentifier", mock.Anything, "https://api.example.com").
-		Return(&resource.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"},
-			(*serviceerror.ServiceError)(nil))
+		Return(&providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"},
+			(*tidcommon.ServiceError)(nil))
 	// "write" is not a permission on rs-1, so the helper should drop it.
 	rsMock.On("ValidatePermissions", mock.Anything, "rs-1",
 		mock.MatchedBy(func(scopes []string) bool {
 			return len(scopes) == 2 && scopes[0] == "read" && scopes[1] == "write"
 		})).
-		Return([]string{"write"}, (*serviceerror.ServiceError)(nil))
+		Return([]string{"write"}, (*tidcommon.ServiceError)(nil))
 
 	svc := newPARService(store, rsMock, s.testCfg)
 	app := s.newTestApp()

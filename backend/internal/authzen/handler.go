@@ -22,9 +22,10 @@ import (
 	"encoding/json"
 	"net/http"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -108,9 +109,9 @@ func (h *handler) HandleActionSearchRequest(w http.ResponseWriter, r *http.Reque
 }
 
 // handleError writes an AuthZEN transport error response for a service error.
-func handleError(w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
+func handleError(w http.ResponseWriter, svcErr *tidcommon.ServiceError) {
 	statusCode := http.StatusInternalServerError
-	if svcErr.Type == serviceerror.ClientErrorType {
+	if svcErr.Type == tidcommon.ClientErrorType {
 		statusCode = http.StatusBadRequest
 	}
 

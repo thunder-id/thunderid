@@ -21,8 +21,11 @@ package core
 import (
 	"encoding/json"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -32,10 +35,10 @@ type ExecutorBackedNodeInterface interface {
 	NodeInterface
 	GetExecutorName() string
 	SetExecutorName(name string)
-	GetExecutor() ExecutorInterface
-	SetExecutor(executor ExecutorInterface)
-	GetInputs() []common.Input
-	SetInputs(inputs []common.Input)
+	GetExecutor() providers.Executor
+	SetExecutor(executor providers.Executor)
+	GetInputs() []providers.Input
+	SetInputs(inputs []providers.Input)
 	GetOnSuccess() string
 	SetOnSuccess(nodeID string)
 	GetOnFailure() string
@@ -50,9 +53,9 @@ type ExecutorBackedNodeInterface interface {
 type taskExecutionNode struct {
 	*node
 	executorName string
-	executor     ExecutorInterface
+	executor     providers.Executor
 	mode         string
-	inputs       []common.Input
+	inputs       []providers.Input
 	onSuccess    string
 	onFailure    string
 	onIncomplete string
@@ -77,20 +80,20 @@ func newTaskExecutionNode(id string, properties map[string]interface{}, isStartN
 		},
 		executorName: "",
 		executor:     nil,
-		inputs:       []common.Input{},
+		inputs:       []providers.Input{},
 		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, "TaskExecutionNode"),
 			log.String(log.LoggerKeyNodeID, id)),
 	}
 }
 
 // Execute executes the node's executor.
-func (n *taskExecutionNode) Execute(ctx *NodeContext) (*common.NodeResponse, *serviceerror.ServiceError) {
+func (n *taskExecutionNode) Execute(ctx *providers.NodeContext) (*common.NodeResponse, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing task execution node")
 
 	if n.executor == nil {
 		logger.Error(ctx.Context, "No executor configured for the node")
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	// Set node properties in context
@@ -159,7 +162,7 @@ func (n *taskExecutionNode) Execute(ctx *NodeContext) (*common.NodeResponse, *se
 		// Executor returned INCOMPLETE+VIEW with no inputs — broken executor implementation.
 		// There is nothing for the client to act on; surface as a server error.
 		logger.Error(ctx.Context, "Executor returned INCOMPLETE with VIEW type but no inputs")
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return nodeResp, nil
@@ -167,7 +170,7 @@ func (n *taskExecutionNode) Execute(ctx *NodeContext) (*common.NodeResponse, *se
 
 // enrichRuntimeData initializes the runtime data map and attaches identifiers like application, IDP,
 // and sender IDs so downstream executors and placeholders can use them.
-func (n *taskExecutionNode) enrichRuntimeData(ctx *NodeContext) {
+func (n *taskExecutionNode) enrichRuntimeData(ctx *providers.NodeContext) {
 	if ctx.RuntimeData == nil {
 		ctx.RuntimeData = make(map[string]string)
 	}
@@ -186,23 +189,23 @@ func (n *taskExecutionNode) enrichRuntimeData(ctx *NodeContext) {
 }
 
 // triggerExecutor triggers the executor configured for the node.
-func (n *taskExecutionNode) triggerExecutor(ctx *NodeContext, logger *log.Logger) (
-	*common.ExecutorResponse, *serviceerror.ServiceError) {
+func (n *taskExecutionNode) triggerExecutor(ctx *providers.NodeContext, logger *log.Logger) (
+	*providers.ExecutorResponse, *tidcommon.ServiceError) {
 	execResp, err := n.executor.Execute(ctx)
 	if err != nil {
 		logger.Error(ctx.Context, "Error executing node executor", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	if execResp == nil {
 		logger.Error(ctx.Context, "Executor returned a nil response")
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return execResp, nil
 }
 
 // buildNodeResponse constructs a NodeResponse from the ExecutorResponse.
-func (n *taskExecutionNode) buildNodeResponse(execResp *common.ExecutorResponse) *common.NodeResponse {
+func (n *taskExecutionNode) buildNodeResponse(execResp *providers.ExecutorResponse) *common.NodeResponse {
 	nodeResp := &common.NodeResponse{
 		Error:          execResp.Error,
 		Inputs:         execResp.Inputs,
@@ -223,26 +226,26 @@ func (n *taskExecutionNode) buildNodeResponse(execResp *common.ExecutorResponse)
 		nodeResp.ForwardedData = make(map[string]interface{})
 	}
 	if nodeResp.Inputs == nil {
-		nodeResp.Inputs = make([]common.Input, 0)
+		nodeResp.Inputs = make([]providers.Input, 0)
 	}
 	if nodeResp.Actions == nil {
 		nodeResp.Actions = make([]common.Action, 0)
 	}
 
 	switch execResp.Status {
-	case common.ExecComplete:
+	case providers.ExecComplete:
 		nodeResp.Status = common.NodeStatusComplete
 		nodeResp.Type = ""
-	case common.ExecUserInputRequired:
+	case providers.ExecUserInputRequired:
 		nodeResp.Status = common.NodeStatusIncomplete
 		nodeResp.Type = common.NodeResponseTypeView
-	case common.ExecExternalRedirection:
+	case providers.ExecExternalRedirection:
 		nodeResp.Status = common.NodeStatusIncomplete
 		nodeResp.Type = common.NodeResponseTypeRedirection
-	case common.ExecRetry:
+	case providers.ExecRetry:
 		nodeResp.Status = common.NodeStatusIncomplete
 		nodeResp.Type = common.NodeResponseTypeRetry
-	case common.ExecFailure:
+	case providers.ExecFailure:
 		nodeResp.Status = common.NodeStatusFailure
 		nodeResp.Type = ""
 	default:
@@ -255,7 +258,7 @@ func (n *taskExecutionNode) buildNodeResponse(execResp *common.ExecutorResponse)
 
 // GetExecutionPolicy returns the execution policy for the current node by delegating to the
 // configured executor with the node's mode. Returns nil if no executor is set.
-func (n *taskExecutionNode) GetExecutionPolicy() *ExecutionPolicy {
+func (n *taskExecutionNode) GetExecutionPolicy() *providers.ExecutionPolicy {
 	if n.executor == nil {
 		return nil
 	}
@@ -273,12 +276,12 @@ func (n *taskExecutionNode) SetExecutorName(name string) {
 }
 
 // GetExecutor returns the executor instance associated with the task execution node
-func (n *taskExecutionNode) GetExecutor() ExecutorInterface {
+func (n *taskExecutionNode) GetExecutor() providers.Executor {
 	return n.executor
 }
 
 // SetExecutor sets the executor instance for the task execution node
-func (n *taskExecutionNode) SetExecutor(executor ExecutorInterface) {
+func (n *taskExecutionNode) SetExecutor(executor providers.Executor) {
 	n.executor = executor
 	if executor != nil {
 		n.executorName = executor.GetName()
@@ -326,11 +329,11 @@ func (n *taskExecutionNode) SetMode(mode string) {
 }
 
 // GetInputs returns the inputs required for the task execution node
-func (n *taskExecutionNode) GetInputs() []common.Input {
+func (n *taskExecutionNode) GetInputs() []providers.Input {
 	return n.inputs
 }
 
 // SetInputs sets the inputs required for the task execution node
-func (n *taskExecutionNode) SetInputs(inputs []common.Input) {
+func (n *taskExecutionNode) SetInputs(inputs []providers.Input) {
 	n.inputs = inputs
 }

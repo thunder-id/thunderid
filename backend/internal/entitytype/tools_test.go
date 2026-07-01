@@ -22,13 +22,12 @@ import (
 	"context"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 )
 
 type EntityTypeToolsTestSuite struct {
@@ -100,8 +99,8 @@ func (suite *EntityTypeToolsTestSuite) TestListUserTypes_ServiceError() {
 	tools := &entityTypeTools{entityTypeService: mockService}
 
 	mockService.On("GetEntityTypeList", mock.Anything, TypeCategoryUser, mock.Anything, mock.Anything, false).
-		Return(nil, &serviceerror.ServiceError{
-			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "database error"},
+		Return(nil, &tidcommon.ServiceError{
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "database error"},
 		})
 
 	ctx := context.Background()

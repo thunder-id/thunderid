@@ -1,0 +1,298 @@
+---
+title: ThunderIDClient
+description: Core authentication client for the {{ProductName}} Flutter SDK
+---
+
+# `ThunderIDClient`
+
+`ThunderIDClient` is the core authentication client in the `thunderid_flutter` package. It manages the full authentication lifecycle: initialization, sign-in (both app-native and redirect-based), session, token management, and user profile operations. All protocol operations are delegated to the native <ProductName /> iOS and Android SDKs via Flutter platform channels.
+
+When you use `ThunderIDProvider`, a `ThunderIDClient` instance is created and managed automatically. Access it via `ThunderIDProvider.of(context).client` from any widget.
+
+## Usage
+
+```dart
+import 'package:thunderid_flutter/thunderid_flutter.dart';
+
+// Access via ThunderIDProvider (recommended)
+final thunder = ThunderIDProvider.of(context);
+final token = await thunder.client.getAccessToken();
+
+// Or create directly (advanced)
+final client = ThunderIDClient();
+await client.initialize(
+  config: ThunderIDConfig(
+    baseUrl: 'https://localhost:8090',
+    clientId: '<your-client-id>',
+    scopes: const ['openid', 'profile', 'email'],
+  ),
+);
+```
+
+:::note
+When using `ThunderIDProvider`, you do not need to call `initialize()` directly. The provider initializes the client automatically and exposes it via `ThunderIDProvider.of(context).client`.
+:::
+
+---
+
+## Initialization
+
+### `initialize(config)`
+
+Initializes the SDK. You must call this before calling any other method when using the client directly.
+
+```dart
+Future<bool> initialize({required ThunderIDConfig config})
+```
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `config` | `ThunderIDConfig` | ✅ | SDK configuration. See [Configuration](/docs/next/sdks/flutter/apis/configuration). |
+
+**Returns:** `true` when initialization succeeds.
+
+**Throws:** `IAMException` with code `IAMErrorCode.alreadyInitialized` if the SDK is already initialized, or `IAMErrorCode.invalidConfiguration` if `baseUrl` is empty or does not use HTTPS.
+
+---
+
+### `reInitialize({baseUrl, clientId})`
+
+Updates the base URL or client ID and reinitializes the SDK without creating a new instance.
+
+```dart
+Future<bool> reInitialize({String? baseUrl, String? clientId})
+```
+
+**Throws:** `IAMException` with code `IAMErrorCode.sdkNotInitialized` if `initialize()` has not been called first.
+
+---
+
+## App-Native Authentication
+
+### `signIn({required payload, required request})`
+
+Submits a step in the sign-in flow. Call in a loop: first with an empty payload to initiate, then with user inputs to advance each step until `flowStatus` is `FlowStatus.complete`.
+
+```dart
+Future<EmbeddedFlowResponse> signIn({
+  required EmbeddedSignInPayload payload,
+  required EmbeddedFlowRequestConfig request,
+})
+```
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `payload` | `EmbeddedSignInPayload` | ✅ | Flow step payload. Set `flowId` to `null` on the first call to initiate. |
+| `request` | `EmbeddedFlowRequestConfig` | ✅ | Flow configuration including the application ID and flow type. |
+
+**Returns:** `EmbeddedFlowResponse` with `flowStatus` of `FlowStatus.promptOnly` (more steps needed), `FlowStatus.complete` (tokens issued), or `FlowStatus.error`.
+
+:::note
+The `SignIn` and `SignUp` widgets manage this loop for you. Use `signIn()` directly only when building fully custom sign-in UI.
+:::
+
+---
+
+### `signUp({payload, request})`
+
+Submits a step in the registration flow. Same loop pattern as `signIn`.
+
+```dart
+Future<EmbeddedFlowResponse> signUp({
+  EmbeddedSignInPayload? payload,
+  EmbeddedFlowRequestConfig? request,
+})
+```
+
+---
+
+## Redirect-Based Authentication
+
+### `buildSignInUrl({options})`
+
+Builds the OAuth 2.0 authorization URL to open in a browser or web view.
+
+```dart
+Future<String> buildSignInUrl({SignInOptions? options})
+```
+
+**Returns:** The authorization URL string with PKCE `code_challenge` and `code_challenge_method=S256` parameters.
+
+**Throws:** `IAMException` with code `IAMErrorCode.invalidConfiguration` if `clientId` is not set.
+
+---
+
+### `handleRedirectCallback(url)`
+
+Exchanges the authorization code from the callback URL for tokens and returns the signed-in user.
+
+```dart
+Future<User> handleRedirectCallback(String url)
+```
+
+**Throws:** `IAMException` with code `IAMErrorCode.invalidGrant` if the URL does not contain a valid authorization code.
+
+---
+
+## Session
+
+### `isSignedIn()`
+
+Returns `true` if an access token is present in the token store.
+
+```dart
+Future<bool> isSignedIn()
+```
+
+---
+
+### `signOut({options})`
+
+Revokes the refresh token, clears the local session, and returns the post-logout redirect URL.
+
+```dart
+Future<String> signOut({SignOutOptions? options})
+```
+
+**Returns:** The `afterSignOutUrl` from your configuration, or `"/"` if not set.
+
+---
+
+### `clearSession()`
+
+Clears the local session without revoking the refresh token on the server.
+
+```dart
+void clearSession()
+```
+
+---
+
+### `isLoading()`
+
+Returns `true` while a sign-in or sign-out operation is in progress.
+
+```dart
+bool isLoading()
+```
+
+---
+
+## Token Management
+
+### `getAccessToken()`
+
+Returns the current access token, automatically refreshing it if expired.
+
+```dart
+Future<String> getAccessToken()
+```
+
+**Throws:** `IAMException` with code `IAMErrorCode.sessionExpired` if the refresh token is also expired.
+
+---
+
+### `decodeJwtToken(token)`
+
+Decodes a JWT string into a `Map<String, dynamic>`.
+
+```dart
+Map<String, dynamic> decodeJwtToken(String token)
+```
+
+**Throws:** `IAMException` with code `IAMErrorCode.invalidInput` if the token is not a valid JWT.
+
+```dart
+final token = await client.getAccessToken();
+final claims = client.decodeJwtToken(token);
+final sub = claims['sub'] as String?;
+```
+
+---
+
+### `exchangeToken(config)`
+
+Performs an OAuth 2.0 token exchange (RFC 8693). Useful for Security Token Service (STS) scenarios.
+
+```dart
+Future<TokenResponse> exchangeToken(TokenExchangeConfig config)
+```
+
+---
+
+## User and Profile
+
+### `getUser()`
+
+Returns the authenticated user. Reads claims from the access token JWT if available; otherwise calls `/oauth2/userinfo`.
+
+```dart
+Future<User> getUser()
+```
+
+**Returns:** A `User` with `sub`, `username`, `email`, `displayName`, `profilePicture`, and raw `claims`.
+
+---
+
+### `getUserProfile()`
+
+Fetches the full user profile from `/scim2/Me`.
+
+```dart
+Future<UserProfile> getUserProfile()
+```
+
+---
+
+### `updateUserProfile(payload)`
+
+Updates the user profile via `/scim2/Me`.
+
+```dart
+Future<User> updateUserProfile(Map<String, dynamic> payload)
+```
+
+---
+
+## Error Handling
+
+All async methods throw `IAMException` on failure:
+
+```dart
+try {
+  final user = await client.getUser();
+} on IAMException catch (e) {
+  print('[${e.code.name}] ${e.message}');
+} catch (e) {
+  print('Unexpected error: $e');
+}
+```
+
+### Error Codes (`IAMErrorCode`)
+
+| Code | Description |
+| :--- | :--- |
+| `sdkNotInitialized` | A method was called before `initialize()` |
+| `alreadyInitialized` | `initialize()` was called more than once |
+| `invalidConfiguration` | Missing or invalid configuration value |
+| `invalidRedirectUri` | The redirect URI is not registered |
+| `authenticationFailed` | Credentials are incorrect |
+| `userAccountLocked` | The user account is locked |
+| `userAccountDisabled` | The user account is disabled |
+| `sessionExpired` | The session has expired and cannot be refreshed |
+| `mfaRequired` | Multi-factor authentication is required |
+| `mfaFailed` | Multi-factor authentication failed |
+| `invalidGrant` | The authorization code or token is invalid |
+| `consentRequired` | User consent is required |
+| `userAlreadyExists` | Registration failed because the user already exists |
+| `invalidInput` | Input validation failed |
+| `invitationCodeInvalid` | The invitation code is not valid |
+| `invitationCodeExpired` | The invitation code has expired |
+| `registrationDisabled` | Registration is disabled for this application |
+| `recoveryFailed` | Password recovery failed |
+| `confirmationCodeInvalid` | The confirmation code is not valid |
+| `confirmationCodeExpired` | The confirmation code has expired |
+| `networkError` | A network request failed |
+| `requestTimeout` | The request timed out |
+| `serverError` | The server returned an error response |
+| `unknownError` | An unexpected error occurred |

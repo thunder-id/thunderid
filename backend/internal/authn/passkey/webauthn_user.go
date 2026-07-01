@@ -21,7 +21,7 @@ package passkey
 import (
 	"github.com/go-webauthn/webauthn/webauthn"
 
-	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // webAuthnUser adapts generic model to implement the webauthn.User interface.
@@ -66,7 +66,7 @@ func newWebAuthnUser(entityID string, name, displayName string, credentials []we
 
 // newWebAuthnUserFromEntity creates a WebAuthn user from any entity, using its attributes
 // to derive the display name and username when available.
-func newWebAuthnUserFromEntity(e *entity.Entity, credentials []webauthnCredential) *webAuthnUser {
+func newWebAuthnUserFromEntity(e *providers.Entity, credentials []webauthnCredential) *webAuthnUser {
 	displayName, name := extractWebAuthnIdentity(e)
 	return newWebAuthnUser(e.ID, name, displayName, credentials)
 }

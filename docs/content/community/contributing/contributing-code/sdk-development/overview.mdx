@@ -1,0 +1,32 @@
+---
+title: Overview
+description: "Overview of the {{ProductName}} SDKs and how the product integrates with them."
+sidebar_position: 1
+hide_table_of_contents: false
+---
+
+# SDK Development
+
+<ProductName /> publishes client SDKs under the [thunder-id](https://github.com/thunder-id) GitHub organization. Each SDK targets a different language or framework and provides authentication and identity management capabilities for applications built on <ProductName />.
+
+## Available SDKs
+
+| SDK | Repository | Description |
+|-----|------------|-------------|
+| JavaScript | [thunderid-sdk-javascript](https://github.com/thunder-id/thunderid-sdk-javascript) | Core JavaScript/TypeScript SDK |
+| React | [thunderid-sdk-react](https://github.com/thunder-id/thunderid-sdk-react) | React hooks and components |
+| React Router | [thunderid-sdk-react-router](https://github.com/thunder-id/thunderid-sdk-react-router) | React Router integration |
+| iOS | [thunderid-sdk-ios](https://github.com/thunder-id/thunderid-sdk-ios) | Native iOS SDK |
+| Android | [thunderid-sdk-android](https://github.com/thunder-id/thunderid-sdk-android) | Native Android SDK |
+| Flutter | [thunderid-sdk-flutter](https://github.com/thunder-id/thunderid-sdk-flutter) | Flutter SDK |
+
+Visit the [thunder-id](https://github.com/thunder-id) organization for the full list of repositories.
+
+## How the Product Uses the SDKs
+
+The <ProductName /> product itself consumes two SDKs:
+
+- **React SDK** — provides the core authentication context, hooks (e.g. `useThunderID`), and identity state management used throughout the Gate and Console frontends.
+- **React Router SDK** — builds on the React SDK to add route-level guards and redirect helpers that protect pages requiring an authenticated session.
+
+Both SDKs are consumed as published npm packages in normal builds. Clone the SDK repositories only when you need to develop or debug the SDK itself, or test the product against unreleased SDK changes.

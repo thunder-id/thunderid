@@ -1,4 +1,5 @@
 {
+  "private": true,
   "name": "@thunderid/configure-translations",
   "version": "0.0.0",
   "description": "Translations feature for ⚡️ ThunderID applications",
@@ -54,7 +55,12 @@
     "@testing-library/jest-dom": "catalog:",
     "@testing-library/react": "catalog:",
     "@testing-library/user-event": "catalog:",
+    "@thunderid/components": "workspace:^",
+    "@thunderid/contexts": "workspace:^",
     "@thunderid/eslint-plugin": "workspace:^",
+    "@thunderid/hooks": "workspace:^",
+    "@thunderid/i18n": "workspace:^",
+    "@thunderid/logger": "workspace:^",
     "@thunderid/prettier-config": "workspace:^",
     "@thunderid/test-utils": "workspace:^",
     "@vitest/browser-playwright": "catalog:",
@@ -75,7 +81,7 @@
   },
   "dependencies": {},
   "peerDependencies": {
-    "@thunderid/react": "workspace:^",
+    "@thunderid/react": "catalog:",
     "@monaco-editor/react": "catalog:",
     "@wso2/oxygen-ui": "catalog:",
     "@wso2/oxygen-ui-icons-react": "catalog:",

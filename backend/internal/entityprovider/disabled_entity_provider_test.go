@@ -23,6 +23,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type DisabledEntityProviderTestSuite struct {
@@ -51,13 +53,13 @@ func (suite *DisabledEntityProviderTestSuite) TestGetEntity() {
 }
 
 func (suite *DisabledEntityProviderTestSuite) TestCreateEntity() {
-	e, err := suite.provider.CreateEntity(&Entity{}, json.RawMessage{})
+	e, err := suite.provider.CreateEntity(&providers.Entity{}, json.RawMessage{})
 	suite.Nil(e)
 	suite.Equal(errNotImplemented, err)
 }
 
 func (suite *DisabledEntityProviderTestSuite) TestUpdateEntity() {
-	e, err := suite.provider.UpdateEntity("entity-id", &Entity{})
+	e, err := suite.provider.UpdateEntity("entity-id", &providers.Entity{})
 	suite.Nil(e)
 	suite.Equal(errNotImplemented, err)
 }

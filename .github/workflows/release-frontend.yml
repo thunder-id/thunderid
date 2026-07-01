@@ -1,0 +1,118 @@
+# Entrypoint workflow for releasing frontend npm packages.
+
+name: 🖥️ Release Frontend
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+
+      confirm_major:
+        description: 'Check to confirm intentional major bump (required when bump_type is major)'
+        required: false
+        type: boolean
+        default: false
+
+      eslint_plugin:
+        description: 'Release @thunderid/eslint-plugin'
+        required: false
+        type: boolean
+        default: false
+
+      prettier_config:
+        description: 'Release @thunderid/prettier-config'
+        required: false
+        type: boolean
+        default: false
+
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/packages/prettier-config/**'
+      - 'frontend/packages/eslint-plugin/**'
+
+permissions:
+  contents: write
+  # IMPORTANT: DO NOT REMOVE. `id-token` is required for OIDC publishing.
+  id-token: write
+
+env:
+  RELEASE_GIT_USER_NAME: "thunderid-automation-bot"
+  RELEASE_GIT_USER_EMAIL: "thunderid-bot@wso2.com"
+  NODE_VERSION: "lts/*"
+  PNPM_VERSION: "latest"
+
+jobs:
+  validate:
+    name: ✅ Validate Inputs
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard against accidental major bump
+        if: github.event.inputs.bump_type == 'major' && github.event.inputs.confirm_major != 'true'
+        run: |
+          echo "❌ bump_type is 'major' but confirm_major is not checked. Enable confirm_major to proceed."
+          exit 1
+
+  release-prettier-config:
+    name: 🎨 Release @thunderid/prettier-config
+    # On push: auto-release when source files change (but not when the bot's own release commit lands).
+    # On dispatch: release only when explicitly requested.
+    needs: [validate]
+    if: |
+      always() &&
+      (needs.validate.result == 'success' || needs.validate.result == 'skipped') &&
+      ((github.event_name == 'workflow_dispatch' && github.event.inputs.prettier_config == 'true') ||
+       (github.event_name == 'push' && github.event.head_commit.author.name != 'thunderid-automation-bot'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
+
+      - name: 🚀 Release
+        uses: ./.github/actions/release-npm
+        with:
+          package-dir: frontend/packages/prettier-config
+          bump-type: ${{ github.event.inputs.bump_type || 'patch' }}
+          git-user-name: ${{ env.RELEASE_GIT_USER_NAME }}
+          git-user-email: ${{ env.RELEASE_GIT_USER_EMAIL }}
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+  release-eslint-plugin:
+    name: 🔍 Release @thunderid/eslint-plugin
+    runs-on: ubuntu-latest
+    # prettier-config is a devDep of eslint-plugin; release it first when both are triggered.
+    # always() lets this job run even when release-prettier-config was skipped.
+    needs: [validate, release-prettier-config]
+    if: |
+      always() &&
+      (needs.validate.result == 'success' || needs.validate.result == 'skipped') &&
+      (needs.release-prettier-config.result == 'success' || needs.release-prettier-config.result == 'skipped') &&
+      ((github.event_name == 'workflow_dispatch' && github.event.inputs.eslint_plugin == 'true') ||
+       (github.event_name == 'push' && github.event.head_commit.author.name != 'thunderid-automation-bot'))
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
+
+      - name: 🚀 Release
+        uses: ./.github/actions/release-npm
+        with:
+          package-dir: frontend/packages/eslint-plugin
+          bump-type: ${{ github.event.inputs.bump_type || 'patch' }}
+          git-user-name: ${{ env.RELEASE_GIT_USER_NAME }}
+          git-user-email: ${{ env.RELEASE_GIT_USER_EMAIL }}
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}

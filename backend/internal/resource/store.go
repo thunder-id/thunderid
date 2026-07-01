@@ -26,35 +26,36 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // resourceStoreInterface defines the interface for resource store operations.
 type resourceStoreInterface interface {
 	// Resource Server operations
-	CreateResourceServer(ctx context.Context, id string, rs ResourceServer) error
-	GetResourceServer(ctx context.Context, id string) (ResourceServer, error)
-	GetResourceServerList(ctx context.Context, limit, offset int) ([]ResourceServer, error)
+	CreateResourceServer(ctx context.Context, id string, rs providers.ResourceServer) error
+	GetResourceServer(ctx context.Context, id string) (providers.ResourceServer, error)
+	GetResourceServerList(ctx context.Context, limit, offset int) ([]providers.ResourceServer, error)
 	GetResourceServerListCount(ctx context.Context) (int, error)
-	UpdateResourceServer(ctx context.Context, id string, rs ResourceServer) error
+	UpdateResourceServer(ctx context.Context, id string, rs providers.ResourceServer) error
 	DeleteResourceServer(ctx context.Context, id string) error
 	CheckResourceServerNameExists(ctx context.Context, name string) (bool, error)
 	CheckResourceServerHandleExists(ctx context.Context, handle string) (bool, error)
 	CheckResourceServerIdentifierExists(ctx context.Context, identifier string) (bool, error)
-	GetResourceServerByHandle(ctx context.Context, handle string) (ResourceServer, error)
-	GetResourceServerByIdentifier(ctx context.Context, identifier string) (ResourceServer, error)
+	GetResourceServerByHandle(ctx context.Context, handle string) (providers.ResourceServer, error)
+	GetResourceServerByIdentifier(ctx context.Context, identifier string) (providers.ResourceServer, error)
 	CheckResourceServerHasDependencies(ctx context.Context, resServerID string) (bool, error)
 	IsResourceServerDeclarative(id string) bool
 
 	// Resource operations
-	CreateResource(ctx context.Context, uuid string, resServerID string, parentID *string, res Resource) error
-	GetResource(ctx context.Context, id string, resServerID string) (Resource, error)
-	GetResourceList(ctx context.Context, resServerID string, limit, offset int) ([]Resource, error)
+	CreateResource(ctx context.Context, uuid string, resServerID string, parentID *string, res providers.Resource) error
+	GetResource(ctx context.Context, id string, resServerID string) (providers.Resource, error)
+	GetResourceList(ctx context.Context, resServerID string, limit, offset int) ([]providers.Resource, error)
 	GetResourceListByParent(
 		ctx context.Context, resServerID string, parentID *string, limit, offset int,
-	) ([]Resource, error)
+	) ([]providers.Resource, error)
 	GetResourceListCount(ctx context.Context, resServerID string) (int, error)
 	GetResourceListCountByParent(ctx context.Context, resServerID string, parentID *string) (int, error)
-	UpdateResource(ctx context.Context, id string, resServerID string, res Resource) error
+	UpdateResource(ctx context.Context, id string, resServerID string, res providers.Resource) error
 	UpdateResourcePermission(ctx context.Context, id string, resServerID string, permission string) error
 	DeleteResource(ctx context.Context, id string, resServerID string) error
 	CheckResourceHandleExists(
@@ -64,11 +65,15 @@ type resourceStoreInterface interface {
 	CheckCircularDependency(ctx context.Context, resourceID, newParentID string) (bool, error)
 
 	// Action operations
-	CreateAction(ctx context.Context, uuid string, resServerID string, resID *string, action Action) error
-	GetAction(ctx context.Context, id string, resServerID string, resID *string) (Action, error)
-	GetActionList(ctx context.Context, resServerID string, resID *string, limit, offset int) ([]Action, error)
-	GetActionListCount(ctx context.Context, resServerID string, resID *string) (int, error)
-	UpdateAction(ctx context.Context, id string, resServerID string, resID *string, action Action) error
+	CreateAction(ctx context.Context, uuid string, resServerID string, resID *string, action providers.Action) error
+	GetAction(ctx context.Context, id string, resServerID string, resID *string) (providers.Action, error)
+	GetActionList(
+		ctx context.Context, resServerID string, resID *string, kind providers.ActionKind, limit, offset int,
+	) ([]providers.Action, error)
+	GetActionListCount(
+		ctx context.Context, resServerID string, resID *string, kind providers.ActionKind,
+	) (int, error)
+	UpdateAction(ctx context.Context, id string, resServerID string, resID *string, action providers.Action) error
 	UpdateActionPermission(ctx context.Context, id string, resServerID string, resID *string, permission string) error
 	DeleteAction(ctx context.Context, id string, resServerID string, resID *string) error
 	IsActionExist(ctx context.Context, id string, resServerID string, resID *string) (bool, error)
@@ -76,7 +81,7 @@ type resourceStoreInterface interface {
 		ctx context.Context, resServerID string, resID *string, handle string,
 	) (bool, error)
 	ValidatePermissions(ctx context.Context, resServerID string, permissions []string) ([]string, error)
-	FindResourceServersByPermissions(ctx context.Context, permissions []string) ([]ResourceServer, error)
+	FindResourceServersByPermissions(ctx context.Context, permissions []string) ([]providers.ResourceServer, error)
 }
 
 // resourceStore is the default implementation of resourceStoreInterface.
@@ -88,6 +93,11 @@ type resourceStore struct {
 // resourceServerProperties represents the JSON structure of PROPERTIES column.
 type resourceServerProperties struct {
 	Delimiter string `json:"delimiter"`
+}
+
+// actionProperties represents the JSON structure of the ACTION.PROPERTIES column.
+type actionProperties struct {
+	Kind providers.ActionKind `json:"kind,omitempty"`
 }
 
 // newResourceStore creates a new instance of resourceStore.
@@ -104,7 +114,7 @@ func newResourceStore() (resourceStoreInterface, transaction.Transactioner, erro
 }
 
 // CreateResourceServer creates a new resource server in the database.
-func (s *resourceStore) CreateResourceServer(ctx context.Context, id string, rs ResourceServer) error {
+func (s *resourceStore) CreateResourceServer(ctx context.Context, id string, rs providers.ResourceServer) error {
 	return s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(
 			ctx,
@@ -128,8 +138,8 @@ func (s *resourceStore) CreateResourceServer(ctx context.Context, id string, rs 
 }
 
 // GetResourceServer retrieves a resource server by UUID.
-func (s *resourceStore) GetResourceServer(ctx context.Context, id string) (ResourceServer, error) {
-	var rs ResourceServer
+func (s *resourceStore) GetResourceServer(ctx context.Context, id string) (providers.ResourceServer, error) {
+	var rs providers.ResourceServer
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		results, err := dbClient.QueryContext(ctx, queryGetResourceServerByID, id, s.deploymentID)
 		if err != nil {
@@ -147,15 +157,18 @@ func (s *resourceStore) GetResourceServer(ctx context.Context, id string) (Resou
 }
 
 // GetResourceServerList retrieves a list of resource servers with pagination.
-func (s *resourceStore) GetResourceServerList(ctx context.Context, limit, offset int) ([]ResourceServer, error) {
-	var resourceServers []ResourceServer
+func (s *resourceStore) GetResourceServerList(
+	ctx context.Context,
+	limit, offset int,
+) ([]providers.ResourceServer, error) {
+	var resourceServers []providers.ResourceServer
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		results, err := dbClient.QueryContext(ctx, queryGetResourceServerList, limit, offset, s.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to get resource server list: %w", err)
 		}
 
-		resourceServers = make([]ResourceServer, 0, len(results))
+		resourceServers = make([]providers.ResourceServer, 0, len(results))
 		for _, row := range results {
 			rs, err := buildResourceServerFromResultRow(row)
 			if err != nil {
@@ -188,7 +201,7 @@ func (s *resourceStore) GetResourceServerListCount(ctx context.Context) (int, er
 }
 
 // UpdateResourceServer updates a resource server.
-func (s *resourceStore) UpdateResourceServer(ctx context.Context, id string, rs ResourceServer) error {
+func (s *resourceStore) UpdateResourceServer(ctx context.Context, id string, rs providers.ResourceServer) error {
 	return s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(
 			ctx,
@@ -269,8 +282,11 @@ func (s *resourceStore) CheckResourceServerIdentifierExists(ctx context.Context,
 }
 
 // GetResourceServerByHandle retrieves a resource server by its handle.
-func (s *resourceStore) GetResourceServerByHandle(ctx context.Context, handle string) (ResourceServer, error) {
-	var rs ResourceServer
+func (s *resourceStore) GetResourceServerByHandle(
+	ctx context.Context,
+	handle string,
+) (providers.ResourceServer, error) {
+	var rs providers.ResourceServer
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		results, err := dbClient.QueryContext(ctx, queryGetResourceServerByHandle, handle, s.deploymentID)
 		if err != nil {
@@ -288,8 +304,11 @@ func (s *resourceStore) GetResourceServerByHandle(ctx context.Context, handle st
 }
 
 // GetResourceServerByIdentifier retrieves a resource server by its identifier.
-func (s *resourceStore) GetResourceServerByIdentifier(ctx context.Context, identifier string) (ResourceServer, error) {
-	var rs ResourceServer
+func (s *resourceStore) GetResourceServerByIdentifier(
+	ctx context.Context,
+	identifier string,
+) (providers.ResourceServer, error) {
+	var rs providers.ResourceServer
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		results, err := dbClient.QueryContext(ctx, queryGetResourceServerByIdentifier, identifier, s.deploymentID)
 		if err != nil {
@@ -337,7 +356,7 @@ func (s *resourceStore) CreateResource(
 	uuid string,
 	resServerID string,
 	parentID *string,
-	res Resource,
+	res providers.Resource,
 ) error {
 	return s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(
@@ -362,8 +381,8 @@ func (s *resourceStore) CreateResource(
 }
 
 // GetResource retrieves a resource by UUID.
-func (s *resourceStore) GetResource(ctx context.Context, id string, resServerID string) (Resource, error) {
-	var res Resource
+func (s *resourceStore) GetResource(ctx context.Context, id string, resServerID string) (providers.Resource, error) {
+	var res providers.Resource
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		results, err := dbClient.QueryContext(ctx, queryGetResourceByID, id, resServerID, s.deploymentID)
 		if err != nil {
@@ -383,8 +402,8 @@ func (s *resourceStore) GetResource(ctx context.Context, id string, resServerID 
 // GetResourceList retrieves all resources for a resource server.
 func (s *resourceStore) GetResourceList(
 	ctx context.Context, resServerID string, limit, offset int,
-) ([]Resource, error) {
-	var resources []Resource
+) ([]providers.Resource, error) {
+	var resources []providers.Resource
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		results, err := dbClient.QueryContext(
 			ctx, queryGetResourceList, resServerID, limit, offset, s.deploymentID,
@@ -393,7 +412,7 @@ func (s *resourceStore) GetResourceList(
 			return fmt.Errorf("failed to get resource list: %w", err)
 		}
 
-		resources = make([]Resource, 0, len(results))
+		resources = make([]providers.Resource, 0, len(results))
 		for _, row := range results {
 			res, err := buildResourceFromResultRow(row)
 			if err != nil {
@@ -414,8 +433,8 @@ func (s *resourceStore) GetResourceList(
 func (s *resourceStore) GetResourceListByParent(
 	ctx context.Context,
 	resServerID string, parentID *string, limit, offset int,
-) ([]Resource, error) {
-	var resources []Resource
+) ([]providers.Resource, error) {
+	var resources []providers.Resource
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		var results []map[string]interface{}
 		var err error
@@ -436,7 +455,7 @@ func (s *resourceStore) GetResourceListByParent(
 			return fmt.Errorf("failed to get resource list by parent: %w", err)
 		}
 
-		resources = make([]Resource, 0, len(results))
+		resources = make([]providers.Resource, 0, len(results))
 		for _, row := range results {
 			res, err := buildResourceFromResultRow(row)
 			if err != nil {
@@ -498,7 +517,12 @@ func (s *resourceStore) GetResourceListCountByParent(
 }
 
 // UpdateResource updates a resource.
-func (s *resourceStore) UpdateResource(ctx context.Context, id string, resServerID string, res Resource) error {
+func (s *resourceStore) UpdateResource(
+	ctx context.Context,
+	id string,
+	resServerID string,
+	res providers.Resource,
+) error {
 	return s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(
 			ctx,
@@ -614,7 +638,7 @@ func (s *resourceStore) CheckCircularDependency(ctx context.Context, resourceID,
 	return hasCircular, err
 }
 
-// Action Store Methods
+// providers.Action Store Methods
 
 // CreateAction creates a new action.
 func (s *resourceStore) CreateAction(
@@ -622,21 +646,21 @@ func (s *resourceStore) CreateAction(
 	uuid string,
 	resServerID string,
 	resID *string,
-	action Action,
+	action providers.Action,
 ) error {
 	return s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(
 			ctx,
 			queryCreateAction,
-			uuid,               // $1: ACTION_ID (UUID)
-			resServerID,        // $2: RESOURCE_SERVER_ID (UUID FK)
-			resID,              // $3: RESOURCE_ID (UUID FK or NULL)
-			action.Name,        // $4: NAME
-			action.Handle,      // $5: HANDLE
-			action.Description, // $6: DESCRIPTION
-			action.Permission,  // $7: PERMISSION
-			"{}",               // $8: PROPERTIES (empty JSON).
-			s.deploymentID,     // $9: DEPLOYMENT_ID
+			uuid,                              // $1: ACTION_ID (UUID)
+			resServerID,                       // $2: RESOURCE_SERVER_ID (UUID FK)
+			resID,                             // $3: RESOURCE_ID (UUID FK or NULL)
+			action.Name,                       // $4: NAME
+			action.Handle,                     // $5: HANDLE
+			action.Description,                // $6: DESCRIPTION
+			action.Permission,                 // $7: PERMISSION
+			buildActionPropertiesJSON(action), // $8: PROPERTIES (NULL when kind empty).
+			s.deploymentID,                    // $9: DEPLOYMENT_ID
 		)
 		if err != nil {
 			return fmt.Errorf("failed to create action: %w", err)
@@ -651,8 +675,8 @@ func (s *resourceStore) CreateAction(
 // If resID is provided, retrieves action at resource level.
 func (s *resourceStore) GetAction(
 	ctx context.Context, id string, resServerID string, resID *string,
-) (Action, error) {
-	var action Action
+) (providers.Action, error) {
+	var action providers.Action
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		// Single unified query handles both resource server and resource level via nullable parameter
 		results, err := dbClient.QueryContext(
@@ -672,22 +696,31 @@ func (s *resourceStore) GetAction(
 	return action, err
 }
 
-// GetActionList retrieves actions with pagination.
+// GetActionList retrieves actions with pagination, optionally filtered by kind.
 func (s *resourceStore) GetActionList(
 	ctx context.Context,
-	resServerID string, resID *string, limit, offset int,
-) ([]Action, error) {
-	var actions []Action
+	resServerID string, resID *string, kind providers.ActionKind, limit, offset int,
+) ([]providers.Action, error) {
+	var actions []providers.Action
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
-		results, err := dbClient.QueryContext(
-			ctx, queryGetActionList, resServerID, resID, limit, offset,
-			s.deploymentID,
-		)
+		var results []map[string]interface{}
+		var err error
+		if kind != "" {
+			results, err = dbClient.QueryContext(
+				ctx, queryGetActionListByKind, resServerID, resID, limit, offset,
+				string(kind), s.deploymentID,
+			)
+		} else {
+			results, err = dbClient.QueryContext(
+				ctx, queryGetActionList, resServerID, resID, limit, offset,
+				s.deploymentID,
+			)
+		}
 		if err != nil {
 			return fmt.Errorf("failed to get action list: %w", err)
 		}
 
-		actions = make([]Action, 0, len(results))
+		actions = make([]providers.Action, 0, len(results))
 		for _, row := range results {
 			action, err := buildActionFromResultRow(row)
 			if err != nil {
@@ -704,15 +737,23 @@ func (s *resourceStore) GetActionList(
 	return actions, nil
 }
 
-// GetActionListCount retrieves count of actions.
+// GetActionListCount retrieves count of actions, optionally filtered by kind.
 func (s *resourceStore) GetActionListCount(
-	ctx context.Context, resServerID string, resID *string,
+	ctx context.Context, resServerID string, resID *string, kind providers.ActionKind,
 ) (int, error) {
 	var count int
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
-		results, err := dbClient.QueryContext(
-			ctx, queryGetActionListCount, resServerID, resID, s.deploymentID,
-		)
+		var results []map[string]interface{}
+		var err error
+		if kind != "" {
+			results, err = dbClient.QueryContext(
+				ctx, queryGetActionListCountByKind, resServerID, resID, string(kind), s.deploymentID,
+			)
+		} else {
+			results, err = dbClient.QueryContext(
+				ctx, queryGetActionListCount, resServerID, resID, s.deploymentID,
+			)
+		}
 		if err != nil {
 			return fmt.Errorf("failed to get action count: %w", err)
 		}
@@ -725,20 +766,20 @@ func (s *resourceStore) GetActionListCount(
 
 // UpdateAction updates an action.
 func (s *resourceStore) UpdateAction(
-	ctx context.Context, id string, resServerID string, resID *string, action Action,
+	ctx context.Context, id string, resServerID string, resID *string, action providers.Action,
 ) error {
 	return s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		// Single unified query handles both levels via nullable parameter
 		_, err := dbClient.ExecuteContext(
 			ctx,
 			queryUpdateAction,
-			action.Name,        // $1: NAME
-			action.Description, // $2: DESCRIPTION
-			"{}",               // $3: PROPERTIES (empty JSON).
-			id,                 // $4: ACTION_ID
-			resServerID,        // $5: RESOURCE_SERVER_ID (UUID FK)
-			resID,              // $6: RESOURCE_ID (UUID FK or NULL)
-			s.deploymentID,     // $7: DEPLOYMENT_ID
+			action.Name,                       // $1: NAME
+			action.Description,                // $2: DESCRIPTION
+			buildActionPropertiesJSON(action), // $3: PROPERTIES (NULL when kind empty).
+			id,                                // $4: ACTION_ID
+			resServerID,                       // $5: RESOURCE_SERVER_ID (UUID FK)
+			resID,                             // $6: RESOURCE_ID (UUID FK or NULL)
+			s.deploymentID,                    // $7: DEPLOYMENT_ID
 		)
 		if err != nil {
 			return fmt.Errorf("failed to update action: %w", err)
@@ -884,12 +925,12 @@ func (s *resourceStore) ValidatePermissions(
 // the supplied permissions.
 func (s *resourceStore) FindResourceServersByPermissions(
 	ctx context.Context, permissions []string,
-) ([]ResourceServer, error) {
+) ([]providers.ResourceServer, error) {
 	if len(permissions) == 0 {
-		return []ResourceServer{}, nil
+		return []providers.ResourceServer{}, nil
 	}
 
-	var resourceServers []ResourceServer
+	var resourceServers []providers.ResourceServer
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		permissionsJSON, jsonErr := json.Marshal(permissions)
 		if jsonErr != nil {
@@ -906,7 +947,7 @@ func (s *resourceStore) FindResourceServersByPermissions(
 			return fmt.Errorf("failed to find resource servers by permissions: %w", err)
 		}
 
-		resourceServers = make([]ResourceServer, 0, len(results))
+		resourceServers = make([]providers.ResourceServer, 0, len(results))
 		for _, row := range results {
 			rs, buildErr := buildResourceServerFromResultRow(row)
 			if buildErr != nil {
@@ -986,7 +1027,7 @@ func parseBoolFromCount(results []map[string]interface{}) (bool, error) {
 }
 
 // resolveProperties extracts and sets the properties from the PROPERTIES column.
-func resolveProperties(row map[string]interface{}, rs *ResourceServer) {
+func resolveProperties(row map[string]interface{}, rs *providers.ResourceServer) {
 	if propsVal, ok := row["properties"]; ok && propsVal != nil {
 		var props resourceServerProperties
 		var propsBytes []byte
@@ -1006,8 +1047,8 @@ func resolveProperties(row map[string]interface{}, rs *ResourceServer) {
 	}
 }
 
-// buildPropertiesJSON builds the PROPERTIES JSON for a ResourceServer.
-func buildPropertiesJSON(rs ResourceServer) interface{} {
+// buildPropertiesJSON builds the PROPERTIES JSON for a providers.ResourceServer.
+func buildPropertiesJSON(rs providers.ResourceServer) interface{} {
 	properties := resourceServerProperties{Delimiter: rs.Delimiter}
 	if propsJSON, err := json.Marshal(properties); err == nil {
 		return propsJSON
@@ -1015,9 +1056,41 @@ func buildPropertiesJSON(rs ResourceServer) interface{} {
 	return json.RawMessage("{}")
 }
 
-// buildResourceServerFromResultRow builds a ResourceServer from a database result row.
-func buildResourceServerFromResultRow(row map[string]interface{}) (ResourceServer, error) {
-	rs := ResourceServer{}
+// resolveActionProperties extracts and sets the kind from the ACTION.PROPERTIES column.
+func resolveActionProperties(row map[string]interface{}, a *providers.Action) {
+	if propsVal, ok := row["properties"]; ok && propsVal != nil {
+		var props actionProperties
+		var propsBytes []byte
+
+		switch v := propsVal.(type) {
+		case string:
+			propsBytes = []byte(v)
+		case []byte:
+			propsBytes = v
+		}
+
+		if len(propsBytes) > 0 {
+			if err := json.Unmarshal(propsBytes, &props); err == nil {
+				a.Kind = props.Kind
+			}
+		}
+	}
+}
+
+// buildActionPropertiesJSON builds the PROPERTIES JSON for an Action, or NULL when kind is empty.
+func buildActionPropertiesJSON(a providers.Action) interface{} {
+	if a.Kind == "" {
+		return nil
+	}
+	if propsJSON, err := json.Marshal(actionProperties{Kind: a.Kind}); err == nil {
+		return propsJSON
+	}
+	return nil
+}
+
+// buildResourceServerFromResultRow builds a providers.ResourceServer from a database result row.
+func buildResourceServerFromResultRow(row map[string]interface{}) (providers.ResourceServer, error) {
+	rs := providers.ResourceServer{}
 
 	if id, ok := row["id"].(string); ok {
 		rs.ID = id
@@ -1050,7 +1123,7 @@ func buildResourceServerFromResultRow(row map[string]interface{}) (ResourceServe
 	}
 
 	if rsType, ok := row["type"].(string); ok {
-		rs.Type = ResourceServerType(rsType)
+		rs.Type = providers.ResourceServerType(rsType)
 	}
 
 	resolveProperties(row, &rs)
@@ -1058,9 +1131,9 @@ func buildResourceServerFromResultRow(row map[string]interface{}) (ResourceServe
 	return rs, nil
 }
 
-// buildResourceFromResultRow builds a Resource from a database result row.
-func buildResourceFromResultRow(row map[string]interface{}) (Resource, error) {
-	res := Resource{}
+// buildResourceFromResultRow builds a providers.Resource from a database result row.
+func buildResourceFromResultRow(row map[string]interface{}) (providers.Resource, error) {
+	res := providers.Resource{}
 
 	if id, ok := row["id"].(string); ok {
 		res.ID = id
@@ -1097,9 +1170,9 @@ func buildResourceFromResultRow(row map[string]interface{}) (Resource, error) {
 	return res, nil
 }
 
-// buildActionFromResultRow builds an Action from a database result row.
-func buildActionFromResultRow(row map[string]interface{}) (Action, error) {
-	action := Action{}
+// buildActionFromResultRow builds an providers.Action from a database result row.
+func buildActionFromResultRow(row map[string]interface{}) (providers.Action, error) {
+	action := providers.Action{}
 
 	if id, ok := row["id"].(string); ok {
 		action.ID = id
@@ -1127,7 +1200,7 @@ func buildActionFromResultRow(row map[string]interface{}) (Action, error) {
 		action.Permission = permission
 	}
 
-	// PROPERTIES column exists in DB but not mapped to model (store as empty JSON)
+	resolveActionProperties(row, &action)
 
 	return action, nil
 }

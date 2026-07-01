@@ -23,9 +23,11 @@ import (
 	"net/http"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/design/common"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -50,7 +52,7 @@ func newDesignResolveHandler(resolveService DesignResolveServiceInterface) *desi
 // HandleResolveRequest handles the resolve design configuration request.
 func (rh *designResolveHandler) HandleResolveRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	resolveType := common.DesignResolveType(strings.ToUpper(r.URL.Query().Get("type")))
+	resolveType := providers.DesignResolveType(strings.ToUpper(r.URL.Query().Get("type")))
 	id := r.URL.Query().Get("id")
 
 	designResponse, svcErr := rh.resolveService.ResolveDesign(ctx, resolveType, id)
@@ -70,9 +72,9 @@ func (rh *designResolveHandler) HandleResolveRequest(w http.ResponseWriter, r *h
 func (
 	rh *designResolveHandler) handleError(ctx context.Context,
 	w http.ResponseWriter,
-	svcErr *serviceerror.ServiceError) {
+	svcErr *tidcommon.ServiceError) {
 	statusCode := http.StatusInternalServerError
-	if svcErr.Type == serviceerror.ClientErrorType {
+	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
 		case common.ErrorInvalidResolveType.Code,
 			common.ErrorMissingResolveID.Code,

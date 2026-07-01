@@ -25,13 +25,15 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -53,28 +55,31 @@ var handleFormatRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0
 
 // FlowMgtServiceInterface defines the interface for the flow management service.
 type FlowMgtServiceInterface interface {
-	ListFlows(ctx context.Context, limit, offset int, flowType common.FlowType) (
-		*FlowListResponse, *serviceerror.ServiceError)
-	CreateFlow(ctx context.Context, flowDef *FlowDefinition) (*CompleteFlowDefinition, *serviceerror.ServiceError)
-	GetFlow(ctx context.Context, flowID string) (*CompleteFlowDefinition, *serviceerror.ServiceError)
-	GetFlowByHandle(ctx context.Context, handle string, flowType common.FlowType) (
-		*CompleteFlowDefinition, *serviceerror.ServiceError)
+	ListFlows(ctx context.Context, limit, offset int, flowType providers.FlowType) (
+		*FlowListResponse, *tidcommon.ServiceError)
+	CreateFlow(
+		ctx context.Context,
+		flowDef *FlowDefinition,
+	) (*providers.CompleteFlowDefinition, *tidcommon.ServiceError)
+	GetFlow(ctx context.Context, flowID string) (*providers.CompleteFlowDefinition, *tidcommon.ServiceError)
+	GetFlowByHandle(ctx context.Context, handle string, flowType providers.FlowType) (
+		*providers.CompleteFlowDefinition, *tidcommon.ServiceError)
 	UpdateFlow(ctx context.Context, flowID string, flowDef *FlowDefinition) (
-		*CompleteFlowDefinition, *serviceerror.ServiceError)
-	DeleteFlow(ctx context.Context, flowID string) *serviceerror.ServiceError
-	ListFlowVersions(ctx context.Context, flowID string) (*FlowVersionListResponse, *serviceerror.ServiceError)
-	GetFlowVersion(ctx context.Context, flowID string, version int) (*FlowVersion, *serviceerror.ServiceError)
+		*providers.CompleteFlowDefinition, *tidcommon.ServiceError)
+	DeleteFlow(ctx context.Context, flowID string) *tidcommon.ServiceError
+	ListFlowVersions(ctx context.Context, flowID string) (*FlowVersionListResponse, *tidcommon.ServiceError)
+	GetFlowVersion(ctx context.Context, flowID string, version int) (*FlowVersion, *tidcommon.ServiceError)
 	RestoreFlowVersion(ctx context.Context, flowID string, version int) (
-		*CompleteFlowDefinition, *serviceerror.ServiceError)
-	GetGraph(ctx context.Context, flowID string) (core.GraphInterface, *serviceerror.ServiceError)
-	IsValidFlow(ctx context.Context, flowID string, flowType common.FlowType) (bool, *serviceerror.ServiceError)
+		*providers.CompleteFlowDefinition, *tidcommon.ServiceError)
+	GetGraph(ctx context.Context, flowID string) (core.GraphInterface, *tidcommon.ServiceError)
+	IsValidFlow(ctx context.Context, flowID string, flowType providers.FlowType) (bool, *tidcommon.ServiceError)
 }
 
 // flowMgtService is the default implementation of the FlowMgtServiceInterface.
 type flowMgtService struct {
 	store               flowStoreInterface
 	inferenceService    flowInferenceServiceInterface
-	graphBuilder        graphBuilderInterface
+	graphBuilder        graphbuilder.GraphBuilderInterface
 	executorRegistry    executor.ExecutorRegistryInterface
 	interceptorRegistry interceptor.InterceptorRegistryInterface
 	compositeStore      *compositeFlowStore
@@ -86,7 +91,7 @@ type flowMgtService struct {
 func newFlowMgtService(
 	store flowStoreInterface,
 	inferenceService flowInferenceServiceInterface,
-	graphBuilder graphBuilderInterface,
+	graphBuilder graphbuilder.GraphBuilderInterface,
 	executorRegistry executor.ExecutorRegistryInterface,
 	interceptorRegistry interceptor.InterceptorRegistryInterface,
 	compositeStore *compositeFlowStore,
@@ -107,8 +112,8 @@ func newFlowMgtService(
 // Flow management methods
 
 // ListFlows retrieves a paginated list of flow definitions. Supports optional filtering by flow type.
-func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowType common.FlowType) (
-	*FlowListResponse, *serviceerror.ServiceError) {
+func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowType providers.FlowType) (
+	*FlowListResponse, *tidcommon.ServiceError) {
 	if limit <= 0 {
 		limit = defaultPageSize
 	}
@@ -126,7 +131,7 @@ func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowT
 	flows, totalCount, err := s.store.ListFlows(ctx, limit, offset, string(flowType))
 	if err != nil {
 		s.logger.Error(ctx, "Failed to list flows", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	listResponse := &FlowListResponse{
@@ -142,7 +147,7 @@ func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowT
 
 // CreateFlow creates a new flow definition with version 1.
 func (s *flowMgtService) CreateFlow(ctx context.Context, flowDef *FlowDefinition) (
-	*CompleteFlowDefinition, *serviceerror.ServiceError) {
+	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
 	if err := validateFlowDefinition(flowDef); err != nil {
 		return nil, err
 	}
@@ -155,12 +160,12 @@ func (s *flowMgtService) CreateFlow(ctx context.Context, flowDef *FlowDefinition
 		generated, genErr := utils.GenerateUUIDv7()
 		if genErr != nil {
 			s.logger.Error(ctx, "Failed to generate UUID v7", log.Error(genErr))
-			return nil, &serviceerror.InternalServerError
+			return nil, &tidcommon.InternalServerError
 		}
 		flowID = generated
 	}
 
-	var createdFlow *CompleteFlowDefinition
+	var createdFlow *providers.CompleteFlowDefinition
 	txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if flowDef.ID != "" {
 			_, err := s.store.GetFlowByID(txCtx, flowID)
@@ -192,7 +197,7 @@ func (s *flowMgtService) CreateFlow(ctx context.Context, flowDef *FlowDefinition
 			return nil, &ErrorDuplicateFlowHandle
 		}
 		s.logger.Error(ctx, "Failed to create flow", log.Error(txErr))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	s.logger.Debug(ctx, "Flow created successfully", log.String(logKeyFlowID, flowID))
@@ -204,7 +209,7 @@ func (s *flowMgtService) CreateFlow(ctx context.Context, flowDef *FlowDefinition
 
 // GetFlow retrieves a flow definition by its ID.
 func (s *flowMgtService) GetFlow(ctx context.Context, flowID string) (
-	*CompleteFlowDefinition, *serviceerror.ServiceError) {
+	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
 	if flowID == "" {
 		return nil, &ErrorMissingFlowID
 	}
@@ -215,15 +220,15 @@ func (s *flowMgtService) GetFlow(ctx context.Context, flowID string) (
 			return nil, &ErrorFlowNotFound
 		}
 		s.logger.Error(ctx, "Failed to get flow", log.String(logKeyFlowID, flowID), log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return flow, nil
 }
 
 // GetFlowByHandle retrieves a flow definition by its handle and type.
-func (s *flowMgtService) GetFlowByHandle(ctx context.Context, handle string, flowType common.FlowType) (
-	*CompleteFlowDefinition, *serviceerror.ServiceError) {
+func (s *flowMgtService) GetFlowByHandle(ctx context.Context, handle string, flowType providers.FlowType) (
+	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
 	if handle == "" {
 		return nil, &ErrorMissingFlowHandle
 	}
@@ -238,7 +243,7 @@ func (s *flowMgtService) GetFlowByHandle(ctx context.Context, handle string, flo
 		}
 		s.logger.Error(ctx, "Failed to get flow by handle", log.String("handle", handle),
 			log.String("flowType", string(flowType)), log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return flow, nil
@@ -247,7 +252,7 @@ func (s *flowMgtService) GetFlowByHandle(ctx context.Context, handle string, flo
 // UpdateFlow updates an existing flow definition with the incremented version.
 // Old versions are retained up to the configured max_version_history limit.
 func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef *FlowDefinition) (
-	*CompleteFlowDefinition, *serviceerror.ServiceError) {
+	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
 	if flowID == "" {
 		return nil, &ErrorMissingFlowID
 	}
@@ -260,8 +265,8 @@ func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef 
 
 	logger := s.logger.With(log.String(logKeyFlowID, flowID))
 
-	var updatedFlow *CompleteFlowDefinition
-	var validationSvcErr *serviceerror.ServiceError
+	var updatedFlow *providers.CompleteFlowDefinition
+	var validationSvcErr *tidcommon.ServiceError
 	txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		existingFlow, err := s.store.GetFlowByID(txCtx, flowID)
 		if err != nil {
@@ -297,7 +302,7 @@ func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef 
 			return nil, &ErrorFlowNotFound
 		}
 		logger.Error(ctx, "Failed to update flow", log.Error(txErr))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	logger.Debug(ctx, "Flow updated successfully")
@@ -309,7 +314,7 @@ func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef 
 }
 
 // DeleteFlow deletes a flow definition and all its version history.
-func (s *flowMgtService) DeleteFlow(ctx context.Context, flowID string) *serviceerror.ServiceError {
+func (s *flowMgtService) DeleteFlow(ctx context.Context, flowID string) *tidcommon.ServiceError {
 	if flowID == "" {
 		return &ErrorMissingFlowID
 	}
@@ -323,7 +328,7 @@ func (s *flowMgtService) DeleteFlow(ctx context.Context, flowID string) *service
 			return nil
 		}
 		logger.Error(ctx, "Failed to get existing flow", log.Error(err))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	if existingFlow.IsReadOnly {
@@ -333,7 +338,7 @@ func (s *flowMgtService) DeleteFlow(ctx context.Context, flowID string) *service
 	err = s.store.DeleteFlow(ctx, flowID)
 	if err != nil {
 		logger.Error(ctx, "Failed to delete flow", log.Error(err))
-		return &serviceerror.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 
 	logger.Debug(ctx, "Flow deleted successfully")
@@ -348,7 +353,7 @@ func (s *flowMgtService) DeleteFlow(ctx context.Context, flowID string) *service
 
 // ListFlowVersions retrieves all versions of a flow definition.
 func (s *flowMgtService) ListFlowVersions(ctx context.Context, flowID string) (
-	*FlowVersionListResponse, *serviceerror.ServiceError) {
+	*FlowVersionListResponse, *tidcommon.ServiceError) {
 	if flowID == "" {
 		return nil, &ErrorMissingFlowID
 	}
@@ -361,13 +366,13 @@ func (s *flowMgtService) ListFlowVersions(ctx context.Context, flowID string) (
 			return nil, &ErrorFlowNotFound
 		}
 		logger.Error(ctx, "Failed to get existing flow", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	versions, err := s.store.ListFlowVersions(ctx, flowID)
 	if err != nil {
 		logger.Error(ctx, "Failed to list flow versions", log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	response := &FlowVersionListResponse{
@@ -380,7 +385,7 @@ func (s *flowMgtService) ListFlowVersions(ctx context.Context, flowID string) (
 
 // GetFlowVersion retrieves a specific version of a flow definition.
 func (s *flowMgtService) GetFlowVersion(ctx context.Context, flowID string, version int) (
-	*FlowVersion, *serviceerror.ServiceError) {
+	*FlowVersion, *tidcommon.ServiceError) {
 	if flowID == "" {
 		return nil, &ErrorMissingFlowID
 	}
@@ -398,7 +403,7 @@ func (s *flowMgtService) GetFlowVersion(ctx context.Context, flowID string, vers
 		}
 		s.logger.Error(ctx, "Failed to get flow version", log.String(logKeyFlowID, flowID),
 			log.Int(logKeyVersion, version), log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return flowVersion, nil
@@ -407,7 +412,7 @@ func (s *flowMgtService) GetFlowVersion(ctx context.Context, flowID string, vers
 // RestoreFlowVersion restores a specific version as the active version.
 // Creates a new version by copying the configuration from the specified version.
 func (s *flowMgtService) RestoreFlowVersion(ctx context.Context, flowID string, version int) (
-	*CompleteFlowDefinition, *serviceerror.ServiceError) {
+	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
 	if flowID == "" {
 		return nil, &ErrorMissingFlowID
 	}
@@ -417,7 +422,7 @@ func (s *flowMgtService) RestoreFlowVersion(ctx context.Context, flowID string, 
 
 	logger := s.logger.With(log.String(logKeyFlowID, flowID), log.Int(logKeyVersion, version))
 
-	var restoredFlow *CompleteFlowDefinition
+	var restoredFlow *providers.CompleteFlowDefinition
 	txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		_, err := s.store.GetFlowVersion(txCtx, flowID, version)
 		if err != nil {
@@ -435,7 +440,7 @@ func (s *flowMgtService) RestoreFlowVersion(ctx context.Context, flowID string, 
 			return nil, &ErrorVersionNotFound
 		}
 		logger.Error(ctx, "Failed to restore flow version", log.Error(txErr))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	logger.Debug(ctx, "Flow version restored successfully")
@@ -450,7 +455,7 @@ func (s *flowMgtService) RestoreFlowVersion(ctx context.Context, flowID string, 
 
 // GetGraph retrieves or builds a graph for the given flow ID.
 func (s *flowMgtService) GetGraph(ctx context.Context, flowID string) (
-	core.GraphInterface, *serviceerror.ServiceError) {
+	core.GraphInterface, *tidcommon.ServiceError) {
 	if flowID == "" {
 		return nil, &ErrorMissingFlowID
 	}
@@ -463,7 +468,7 @@ func (s *flowMgtService) GetGraph(ctx context.Context, flowID string) (
 		}
 		s.logger.Error(ctx, "Failed to get flow for graph building", log.String(logKeyFlowID, flowID),
 			log.Error(err))
-		return nil, &serviceerror.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 
 	return s.graphBuilder.GetGraph(ctx, flow)
@@ -471,9 +476,9 @@ func (s *flowMgtService) GetGraph(ctx context.Context, flowID string) (
 
 // IsValidFlow checks if a flow exists for the given flow ID and matches the expected type.
 // Returns (false, nil) when the flow is not found or the type does not match (client error).
-// Returns (false, *serviceerror.ServiceError) when a store failure occurs (server error).
+// Returns (false, *tidcommon.ServiceError) when a store failure occurs (server error).
 func (s *flowMgtService) IsValidFlow(
-	ctx context.Context, flowID string, flowType common.FlowType) (bool, *serviceerror.ServiceError) {
+	ctx context.Context, flowID string, flowType providers.FlowType) (bool, *tidcommon.ServiceError) {
 	if flowID == "" {
 		return false, nil
 	}
@@ -483,7 +488,7 @@ func (s *flowMgtService) IsValidFlow(
 		if errors.Is(err, errFlowNotFound) {
 			return false, nil
 		}
-		return false, &serviceerror.InternalServerError
+		return false, &tidcommon.InternalServerError
 	}
 
 	return flow.FlowType == flowType, nil
@@ -492,11 +497,11 @@ func (s *flowMgtService) IsValidFlow(
 // Helper functions
 
 // isValidFlowType checks if the provided flow type is valid.
-func isValidFlowType(flowType common.FlowType) bool {
-	return flowType == common.FlowTypeAuthentication ||
-		flowType == common.FlowTypeRegistration ||
-		flowType == common.FlowTypeUserOnboarding ||
-		flowType == common.FlowTypeRecovery
+func isValidFlowType(flowType providers.FlowType) bool {
+	return flowType == providers.FlowTypeAuthentication ||
+		flowType == providers.FlowTypeRegistration ||
+		flowType == providers.FlowTypeUserOnboarding ||
+		flowType == providers.FlowTypeRecovery
 }
 
 // buildPaginationLinks constructs pagination links for the flow list response.
@@ -542,7 +547,7 @@ func buildPaginationLinks(limit, offset, totalCount int) []Link {
 }
 
 // validateFlowDefinition validates the flow definition request.
-func validateFlowDefinition(flowDef *FlowDefinition) *serviceerror.ServiceError {
+func validateFlowDefinition(flowDef *FlowDefinition) *tidcommon.ServiceError {
 	if flowDef == nil {
 		return &ErrorInvalidRequestFormat
 	}
@@ -563,12 +568,12 @@ func validateFlowDefinition(flowDef *FlowDefinition) *serviceerror.ServiceError 
 	}
 
 	if len(flowDef.Nodes) < 2 {
-		return serviceerror.CustomServiceError(ErrorInvalidFlowData, i18ncore.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidFlowData, tidcommon.I18nMessage{
 			Key:          "error.flowmgtservice.flow_requires_start_and_end_nodes_description",
 			DefaultValue: "Flow definition must contain at least a start and an end node",
 		})
 	} else if len(flowDef.Nodes) == 2 {
-		return serviceerror.CustomServiceError(ErrorInvalidFlowData, i18ncore.I18nMessage{
+		return tidcommon.CustomServiceError(ErrorInvalidFlowData, tidcommon.I18nMessage{
 			Key:          "error.flowmgtservice.flow_requires_intermediate_nodes_description",
 			DefaultValue: "Flow definition must contain nodes between start and end nodes",
 		})
@@ -582,38 +587,38 @@ func validateFlowDefinition(flowDef *FlowDefinition) *serviceerror.ServiceError 
 }
 
 // validateInterceptors validates the interceptor definitions declared in a flow.
-func validateInterceptors(interceptors []InterceptorDefinition) *serviceerror.ServiceError {
-	validModes := common.ValidInterceptorModes
-	validScopes := common.ValidInterceptorScopes
+func validateInterceptors(interceptors []providers.InterceptorDefinition) *tidcommon.ServiceError {
+	validModes := providers.ValidInterceptorModes
+	validScopes := providers.ValidInterceptorScopes
 
 	for i, ic := range interceptors {
 		if ic.Name == "" {
-			return serviceerror.CustomServiceError(ErrorInvalidFlowData, i18ncore.I18nMessage{
+			return tidcommon.CustomServiceError(ErrorInvalidFlowData, tidcommon.I18nMessage{
 				Key:          "error.flowmgtservice.interceptor_name_required",
 				DefaultValue: fmt.Sprintf("Interceptor at index %d must have a name", i),
 			})
 		}
 		if isDefaultInterceptor(ic.Name) {
 			msg := fmt.Sprintf("Default interceptor '%s' cannot be configured in a flow definition", ic.Name)
-			return serviceerror.CustomServiceError(ErrorInvalidFlowData, i18ncore.I18nMessage{
+			return tidcommon.CustomServiceError(ErrorInvalidFlowData, tidcommon.I18nMessage{
 				Key:          "error.flowmgtservice.interceptor_default_not_configurable",
 				DefaultValue: msg,
 			})
 		}
 		if !validModes[ic.Mode] {
-			return serviceerror.CustomServiceError(ErrorInvalidFlowData, i18ncore.I18nMessage{
+			return tidcommon.CustomServiceError(ErrorInvalidFlowData, tidcommon.I18nMessage{
 				Key:          "error.flowmgtservice.interceptor_invalid_mode",
 				DefaultValue: fmt.Sprintf("Interceptor '%s' has invalid mode '%s'", ic.Name, ic.Mode),
 			})
 		}
 		if ic.Scope != "" && !validScopes[ic.Scope] {
-			return serviceerror.CustomServiceError(ErrorInvalidFlowData, i18ncore.I18nMessage{
+			return tidcommon.CustomServiceError(ErrorInvalidFlowData, tidcommon.I18nMessage{
 				Key:          "error.flowmgtservice.interceptor_invalid_scope",
 				DefaultValue: fmt.Sprintf("Interceptor '%s' has invalid scope '%s'", ic.Name, ic.Scope),
 			})
 		}
-		if ic.Scope == common.InterceptorScopeSelected && len(ic.ApplyTo) == 0 {
-			return serviceerror.CustomServiceError(ErrorInvalidFlowData, i18ncore.I18nMessage{
+		if ic.Scope == providers.InterceptorScopeSelected && len(ic.ApplyTo) == 0 {
+			return tidcommon.CustomServiceError(ErrorInvalidFlowData, tidcommon.I18nMessage{
 				Key:          "error.flowmgtservice.interceptor_selected_scope_requires_apply_to",
 				DefaultValue: "Interceptor with scope SELECTED must specify at least one node in applyTo",
 			})
@@ -632,11 +637,11 @@ func isDefaultInterceptor(name string) bool {
 // validateInterceptorRegistration checks that every interceptor referenced in the flow
 // is registered in the interceptor registry.
 func (s *flowMgtService) validateInterceptorRegistration(
-	interceptors []InterceptorDefinition,
-) *serviceerror.ServiceError {
+	interceptors []providers.InterceptorDefinition,
+) *tidcommon.ServiceError {
 	for _, ic := range interceptors {
 		if !s.interceptorRegistry.IsRegistered(ic.Name) {
-			return serviceerror.CustomServiceError(ErrorInvalidFlowData, i18ncore.I18nMessage{
+			return tidcommon.CustomServiceError(ErrorInvalidFlowData, tidcommon.I18nMessage{
 				Key:          "error.flowmgtservice.interceptor_not_registered",
 				DefaultValue: fmt.Sprintf("Interceptor '%s' is not registered", ic.Name),
 			})
@@ -663,7 +668,7 @@ func (s *flowMgtService) tryInferRegistrationFlow(ctx context.Context, authFlowI
 		return
 	}
 
-	if authFlowDef.FlowType != common.FlowTypeAuthentication {
+	if authFlowDef.FlowType != providers.FlowTypeAuthentication {
 		logger.Debug(ctx, "Flow is not an authentication flow, skipping registration inference",
 			log.String("flowType", string(authFlowDef.FlowType)))
 		return

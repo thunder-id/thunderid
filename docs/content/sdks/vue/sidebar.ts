@@ -113,38 +113,6 @@ const sidebar: SidebarsConfig = {
                 },
               ],
             },
-            {
-              type: 'category',
-              label: 'Organization Components (B2B)',
-              collapsed: true,
-              items: [
-                {
-                  type: 'doc',
-                  id: 'sdks/vue/apis/components/create-organization',
-                  label: '<CreateOrganization />',
-                },
-                {
-                  type: 'doc',
-                  id: 'sdks/vue/apis/components/organization-profile',
-                  label: '<OrganizationProfile />',
-                },
-                {
-                  type: 'doc',
-                  id: 'sdks/vue/apis/components/organization-switcher',
-                  label: '<OrganizationSwitcher />',
-                },
-                {
-                  type: 'doc',
-                  id: 'sdks/vue/apis/components/organization-list',
-                  label: '<OrganizationList />',
-                },
-                {
-                  type: 'doc',
-                  id: 'sdks/vue/apis/components/organization',
-                  label: '<Organization />',
-                },
-              ],
-            },
           ],
         },
         {

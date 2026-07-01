@@ -190,13 +190,36 @@ packages:
       filename: "{{.InterfaceName}}_mock_test.go"
 
   github.com/thunder-id/thunderid/internal/openid4vp:
-    interfaces:
-      OpenID4VPServiceInterface:
-        config:
-          dir: internal/openid4vp
-          structname: '{{.InterfaceName}}Mock'
-          pkgname: openid4vp
-          filename: "{{.InterfaceName}}_mock_test.go"
+    config:
+      all: true
+      dir: internal/openid4vp
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: openid4vp
+      filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/openid4vci:
+    config:
+      all: true
+      dir: internal/openid4vci
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: openid4vci
+      filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/openid4vp/definition:
+    config:
+      all: true
+      dir: internal/openid4vp/definition
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: definition
+      filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/openid4vci/credential:
+    config:
+      all: true
+      dir: internal/openid4vci/credential
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: credential
+      filename: "{{.InterfaceName}}_mock_test.go"
 
   github.com/thunder-id/thunderid/internal/ou:
     config:
@@ -278,6 +301,14 @@ packages:
       pkgname: inboundclient
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/serverconfig:
+    config:
+      all: true
+      dir: internal/serverconfig
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: serverconfig
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/actorprovider:
     config:
       all: true
@@ -333,3 +364,21 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: template
       filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/pkg/thunderidengine/providers:
+    interfaces:
+      FlowProvider:
+        config:
+          dir: internal/flow/flowexec
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: flowexec
+          filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/flow/graphbuilder:
+    interfaces:
+      GraphBuilderInterface:
+        config:
+          dir: internal/flow/flowexec
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: flowexec
+          filename: "{{.InterfaceName}}_mock_test.go"

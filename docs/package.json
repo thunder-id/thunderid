@@ -30,6 +30,7 @@
     "docusaurus": "docusaurus",
     "generate:api-specs": "node ./scripts/merge-openapi-specs.mjs",
     "generate:changelog": "node ./scripts/generate-changelog.mjs",
+    "generate:contributors": "node ./scripts/generate-contributors.mjs",
     "generate:postman-collections": "node ./scripts/generate-postman-collections.mjs",
     "setup": "node ./scripts/prebuild.mjs",
     "lint": "eslint .",
@@ -41,6 +42,7 @@
     "write-heading-ids": "docusaurus write-heading-ids"
   },
   "dependencies": {
+    "@docsearch/docusaurus-adapter": "catalog:",
     "@docusaurus/core": "3.9.2",
     "@docusaurus/plugin-content-docs": "3.9.2",
     "@docusaurus/preset-classic": "3.9.2",

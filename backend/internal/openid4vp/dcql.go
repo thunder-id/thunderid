@@ -45,22 +45,36 @@ func buildQuery(cfg dcqlConfig) (*dcqlQuery, error) {
 		if err != nil {
 			return nil, err
 		}
-		dcqlClaims = append(dcqlClaims, dcqlClaim{Path: segments})
+		dcqlClaims = append(dcqlClaims, dcqlClaim{Path: segments, Values: dcqlValues(cfg.ClaimValues[path])})
+	}
+
+	credential := dcqlCredential{
+		ID:     credentialID,
+		Format: FormatSDJWTVC,
+		Meta:   &dcqlMeta{VCTValues: []string{vct}},
+		Claims: dcqlClaims,
+	}
+	if len(cfg.TrustedAuthorityKeyIDs) > 0 {
+		credential.TrustedAuthorities = []trustedAuthority{
+			{Type: "aki", Values: cfg.TrustedAuthorityKeyIDs},
+		}
 	}
 
 	return &dcqlQuery{
-		Credentials: []dcqlCredential{
-			{
-				ID:     credentialID,
-				Format: FormatSDJWTVC,
-				Meta:   &dcqlMeta{VCTValues: []string{vct}},
-				Claims: dcqlClaims,
-			},
-		},
-		CredentialSets: []dcqlCredentialSet{
-			{Options: [][]string{{credentialID}}},
-		},
+		Credentials: []dcqlCredential{credential},
 	}, nil
+}
+
+// dcqlValues converts the configured allowed values to the DCQL "values" array; nil when unconstrained.
+func dcqlValues(values []string) []interface{} {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]interface{}, 0, len(values))
+	for _, v := range values {
+		out = append(out, v)
+	}
+	return out
 }
 
 // claimPathToSegments converts a dotted claim path into DCQL path segments.

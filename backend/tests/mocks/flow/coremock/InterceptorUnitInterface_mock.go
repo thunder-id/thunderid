@@ -6,8 +6,8 @@ package coremock
 
 import (
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewInterceptorUnitInterfaceMock creates a new instance of InterceptorUnitInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -176,18 +176,18 @@ func (_c *InterceptorUnitInterfaceMock_GetInterceptor_Call) RunAndReturn(run fun
 }
 
 // GetMode provides a mock function for the type InterceptorUnitInterfaceMock
-func (_mock *InterceptorUnitInterfaceMock) GetMode() common.InterceptorMode {
+func (_mock *InterceptorUnitInterfaceMock) GetMode() providers.InterceptorMode {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetMode")
 	}
 
-	var r0 common.InterceptorMode
-	if returnFunc, ok := ret.Get(0).(func() common.InterceptorMode); ok {
+	var r0 providers.InterceptorMode
+	if returnFunc, ok := ret.Get(0).(func() providers.InterceptorMode); ok {
 		r0 = returnFunc()
 	} else {
-		r0 = ret.Get(0).(common.InterceptorMode)
+		r0 = ret.Get(0).(providers.InterceptorMode)
 	}
 	return r0
 }
@@ -209,12 +209,12 @@ func (_c *InterceptorUnitInterfaceMock_GetMode_Call) Run(run func()) *Intercepto
 	return _c
 }
 
-func (_c *InterceptorUnitInterfaceMock_GetMode_Call) Return(interceptorMode common.InterceptorMode) *InterceptorUnitInterfaceMock_GetMode_Call {
+func (_c *InterceptorUnitInterfaceMock_GetMode_Call) Return(interceptorMode providers.InterceptorMode) *InterceptorUnitInterfaceMock_GetMode_Call {
 	_c.Call.Return(interceptorMode)
 	return _c
 }
 
-func (_c *InterceptorUnitInterfaceMock_GetMode_Call) RunAndReturn(run func() common.InterceptorMode) *InterceptorUnitInterfaceMock_GetMode_Call {
+func (_c *InterceptorUnitInterfaceMock_GetMode_Call) RunAndReturn(run func() providers.InterceptorMode) *InterceptorUnitInterfaceMock_GetMode_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -310,18 +310,18 @@ func (_c *InterceptorUnitInterfaceMock_GetProperties_Call) RunAndReturn(run func
 }
 
 // GetScope provides a mock function for the type InterceptorUnitInterfaceMock
-func (_mock *InterceptorUnitInterfaceMock) GetScope() common.InterceptorScope {
+func (_mock *InterceptorUnitInterfaceMock) GetScope() providers.InterceptorScope {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetScope")
 	}
 
-	var r0 common.InterceptorScope
-	if returnFunc, ok := ret.Get(0).(func() common.InterceptorScope); ok {
+	var r0 providers.InterceptorScope
+	if returnFunc, ok := ret.Get(0).(func() providers.InterceptorScope); ok {
 		r0 = returnFunc()
 	} else {
-		r0 = ret.Get(0).(common.InterceptorScope)
+		r0 = ret.Get(0).(providers.InterceptorScope)
 	}
 	return r0
 }
@@ -343,12 +343,12 @@ func (_c *InterceptorUnitInterfaceMock_GetScope_Call) Run(run func()) *Intercept
 	return _c
 }
 
-func (_c *InterceptorUnitInterfaceMock_GetScope_Call) Return(interceptorScope common.InterceptorScope) *InterceptorUnitInterfaceMock_GetScope_Call {
+func (_c *InterceptorUnitInterfaceMock_GetScope_Call) Return(interceptorScope providers.InterceptorScope) *InterceptorUnitInterfaceMock_GetScope_Call {
 	_c.Call.Return(interceptorScope)
 	return _c
 }
 
-func (_c *InterceptorUnitInterfaceMock_GetScope_Call) RunAndReturn(run func() common.InterceptorScope) *InterceptorUnitInterfaceMock_GetScope_Call {
+func (_c *InterceptorUnitInterfaceMock_GetScope_Call) RunAndReturn(run func() providers.InterceptorScope) *InterceptorUnitInterfaceMock_GetScope_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -434,7 +434,7 @@ func (_c *InterceptorUnitInterfaceMock_SetInterceptor_Call) RunAndReturn(run fun
 }
 
 // SetMode provides a mock function for the type InterceptorUnitInterfaceMock
-func (_mock *InterceptorUnitInterfaceMock) SetMode(mode common.InterceptorMode) {
+func (_mock *InterceptorUnitInterfaceMock) SetMode(mode providers.InterceptorMode) {
 	_mock.Called(mode)
 	return
 }
@@ -445,16 +445,16 @@ type InterceptorUnitInterfaceMock_SetMode_Call struct {
 }
 
 // SetMode is a helper method to define mock.On call
-//   - mode common.InterceptorMode
+//   - mode providers.InterceptorMode
 func (_e *InterceptorUnitInterfaceMock_Expecter) SetMode(mode interface{}) *InterceptorUnitInterfaceMock_SetMode_Call {
 	return &InterceptorUnitInterfaceMock_SetMode_Call{Call: _e.mock.On("SetMode", mode)}
 }
 
-func (_c *InterceptorUnitInterfaceMock_SetMode_Call) Run(run func(mode common.InterceptorMode)) *InterceptorUnitInterfaceMock_SetMode_Call {
+func (_c *InterceptorUnitInterfaceMock_SetMode_Call) Run(run func(mode providers.InterceptorMode)) *InterceptorUnitInterfaceMock_SetMode_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 common.InterceptorMode
+		var arg0 providers.InterceptorMode
 		if args[0] != nil {
-			arg0 = args[0].(common.InterceptorMode)
+			arg0 = args[0].(providers.InterceptorMode)
 		}
 		run(
 			arg0,
@@ -468,7 +468,7 @@ func (_c *InterceptorUnitInterfaceMock_SetMode_Call) Return() *InterceptorUnitIn
 	return _c
 }
 
-func (_c *InterceptorUnitInterfaceMock_SetMode_Call) RunAndReturn(run func(mode common.InterceptorMode)) *InterceptorUnitInterfaceMock_SetMode_Call {
+func (_c *InterceptorUnitInterfaceMock_SetMode_Call) RunAndReturn(run func(mode providers.InterceptorMode)) *InterceptorUnitInterfaceMock_SetMode_Call {
 	_c.Run(run)
 	return _c
 }
@@ -554,7 +554,7 @@ func (_c *InterceptorUnitInterfaceMock_SetProperties_Call) RunAndReturn(run func
 }
 
 // SetScope provides a mock function for the type InterceptorUnitInterfaceMock
-func (_mock *InterceptorUnitInterfaceMock) SetScope(scope common.InterceptorScope) {
+func (_mock *InterceptorUnitInterfaceMock) SetScope(scope providers.InterceptorScope) {
 	_mock.Called(scope)
 	return
 }
@@ -565,16 +565,16 @@ type InterceptorUnitInterfaceMock_SetScope_Call struct {
 }
 
 // SetScope is a helper method to define mock.On call
-//   - scope common.InterceptorScope
+//   - scope providers.InterceptorScope
 func (_e *InterceptorUnitInterfaceMock_Expecter) SetScope(scope interface{}) *InterceptorUnitInterfaceMock_SetScope_Call {
 	return &InterceptorUnitInterfaceMock_SetScope_Call{Call: _e.mock.On("SetScope", scope)}
 }
 
-func (_c *InterceptorUnitInterfaceMock_SetScope_Call) Run(run func(scope common.InterceptorScope)) *InterceptorUnitInterfaceMock_SetScope_Call {
+func (_c *InterceptorUnitInterfaceMock_SetScope_Call) Run(run func(scope providers.InterceptorScope)) *InterceptorUnitInterfaceMock_SetScope_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 common.InterceptorScope
+		var arg0 providers.InterceptorScope
 		if args[0] != nil {
-			arg0 = args[0].(common.InterceptorScope)
+			arg0 = args[0].(providers.InterceptorScope)
 		}
 		run(
 			arg0,
@@ -588,7 +588,7 @@ func (_c *InterceptorUnitInterfaceMock_SetScope_Call) Return() *InterceptorUnitI
 	return _c
 }
 
-func (_c *InterceptorUnitInterfaceMock_SetScope_Call) RunAndReturn(run func(scope common.InterceptorScope)) *InterceptorUnitInterfaceMock_SetScope_Call {
+func (_c *InterceptorUnitInterfaceMock_SetScope_Call) RunAndReturn(run func(scope providers.InterceptorScope)) *InterceptorUnitInterfaceMock_SetScope_Call {
 	_c.Run(run)
 	return _c
 }

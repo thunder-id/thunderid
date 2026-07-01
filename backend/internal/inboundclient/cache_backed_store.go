@@ -25,6 +25,7 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 const (
@@ -37,14 +38,14 @@ const (
 // entries.
 type cachedBackStore struct {
 	inboundClientCache cache.CacheInterface[*inboundmodel.InboundClient]
-	oauthProfileCache  cache.CacheInterface[*inboundmodel.OAuthProfile]
+	oauthProfileCache  cache.CacheInterface[*providers.OAuthProfile]
 	inner              inboundClientStoreInterface
 }
 
 // newCachedBackStore wraps an existing inboundClientStoreInterface with caching.
 func newCachedBackStore(inner inboundClientStoreInterface,
 	inboundClientCache cache.CacheInterface[*inboundmodel.InboundClient],
-	oauthProfileCache cache.CacheInterface[*inboundmodel.OAuthProfile]) inboundClientStoreInterface {
+	oauthProfileCache cache.CacheInterface[*providers.OAuthProfile]) inboundClientStoreInterface {
 	return &cachedBackStore{
 		inboundClientCache: inboundClientCache,
 		oauthProfileCache:  oauthProfileCache,
@@ -61,7 +62,7 @@ func (c *cachedBackStore) CreateInboundClient(ctx context.Context, client inboun
 }
 
 func (c *cachedBackStore) CreateOAuthProfile(ctx context.Context, entityID string,
-	oauthProfile *inboundmodel.OAuthProfile) error {
+	oauthProfile *providers.OAuthProfile) error {
 	return c.inner.CreateOAuthProfile(ctx, entityID, oauthProfile)
 }
 
@@ -81,7 +82,7 @@ func (c *cachedBackStore) GetInboundClientByEntityID(ctx context.Context, entity
 }
 
 func (c *cachedBackStore) GetOAuthProfileByEntityID(ctx context.Context, entityID string) (
-	*inboundmodel.OAuthProfile, error) {
+	*providers.OAuthProfile, error) {
 	key := cache.CacheKey{Key: entityID}
 	if cached, ok := c.oauthProfileCache.Get(ctx, key); ok {
 		return cached, nil
@@ -113,7 +114,7 @@ func (c *cachedBackStore) UpdateInboundClient(ctx context.Context, client inboun
 }
 
 func (c *cachedBackStore) UpdateOAuthProfile(ctx context.Context, entityID string,
-	oauthProfile *inboundmodel.OAuthProfile) error {
+	oauthProfile *providers.OAuthProfile) error {
 	if err := c.inner.UpdateOAuthProfile(ctx, entityID, oauthProfile); err != nil {
 		return err
 	}
@@ -159,7 +160,7 @@ func (c *cachedBackStore) cacheInboundClient(ctx context.Context, client *inboun
 	}
 }
 
-func (c *cachedBackStore) cacheOAuthProfile(ctx context.Context, entityID string, profile *inboundmodel.OAuthProfile) {
+func (c *cachedBackStore) cacheOAuthProfile(ctx context.Context, entityID string, profile *providers.OAuthProfile) {
 	if profile == nil || entityID == "" {
 		return
 	}

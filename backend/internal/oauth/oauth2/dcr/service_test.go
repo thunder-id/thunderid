@@ -22,6 +22,9 @@ import (
 	"context"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
@@ -29,9 +32,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/cert"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
-	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
 	i18nmock "github.com/thunder-id/thunderid/tests/mocks/i18n/mgtmock"
@@ -83,7 +83,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_NilRequest() {
 func (s *DCRServiceTestSuite) TestRegisterClient_JWKSConflict() {
 	request := &DCRRegistrationRequest{
 		RedirectURIs: []string{"https://client.example.com/callback"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		JWKSUri:      "https://client.example.com/.well-known/jwks.json",
 		JWKS:         map[string]interface{}{"keys": []interface{}{}},
 	}
@@ -100,17 +100,17 @@ func (s *DCRServiceTestSuite) TestRegisterClient_ClientNameProvided() {
 	request := &DCRRegistrationRequest{
 		OUID:         "test-ou-1",
 		RedirectURIs: []string{"https://client.example.com/callback"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		ClientName:   "Test Client",
 	}
 
 	appDTO := &model.ApplicationDTO{
 		ID:   "app-id",
 		Name: "Test Client",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID:     "client-id",
 					ClientSecret: "client-secret",
 					Scopes:       []string{},
@@ -121,7 +121,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_ClientNameProvided() {
 
 	s.mockAppService.On(
 		"CreateApplication", mock.Anything, mock.AnythingOfType("*model.ApplicationDTO"),
-	).Return(appDTO, (*serviceerror.ServiceError)(nil))
+	).Return(appDTO, (*tidcommon.ServiceError)(nil))
 
 	response, err := s.service.RegisterClient(context.Background(), request)
 
@@ -136,7 +136,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_JWKSUriProvided() {
 	request := &DCRRegistrationRequest{
 		OUID:         "test-ou-1",
 		RedirectURIs: []string{"https://client.example.com/callback"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		ClientName:   "Test Client",
 		JWKSUri:      "https://client.example.com/.well-known/jwks.json",
 	}
@@ -144,27 +144,25 @@ func (s *DCRServiceTestSuite) TestRegisterClient_JWKSUriProvided() {
 	appDTO := &model.ApplicationDTO{
 		ID:   "app-id",
 		Name: "Test Client",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID:     "client-id",
 					ClientSecret: "client-secret",
 					Scopes:       []string{},
+					Certificate: &inboundmodel.Certificate{
+						Type:  cert.CertificateTypeJWKSURI,
+						Value: "https://client.example.com/.well-known/jwks.json",
+					},
 				},
-			},
-		},
-		InboundAuthProfile: inboundmodel.InboundAuthProfile{
-			Certificate: &inboundmodel.Certificate{
-				Type:  cert.CertificateTypeJWKSURI,
-				Value: "https://client.example.com/.well-known/jwks.json",
 			},
 		},
 	}
 
 	s.mockAppService.On(
 		"CreateApplication", mock.Anything, mock.AnythingOfType("*model.ApplicationDTO"),
-	).Return(appDTO, (*serviceerror.ServiceError)(nil))
+	).Return(appDTO, (*tidcommon.ServiceError)(nil))
 
 	response, err := s.service.RegisterClient(context.Background(), request)
 
@@ -178,14 +176,14 @@ func (s *DCRServiceTestSuite) TestRegisterClient_ApplicationServiceError() {
 	request := &DCRRegistrationRequest{
 		OUID:         "test-ou-1",
 		RedirectURIs: []string{"not-a-valid-uri"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 	}
 
-	appServiceErr := &serviceerror.ServiceError{
-		Type:             serviceerror.ClientErrorType,
+	appServiceErr := &tidcommon.ServiceError{
+		Type:             tidcommon.ClientErrorType,
 		Code:             "APP-1012",
-		Error:            i18ncore.I18nMessage{DefaultValue: "Invalid redirect URI"},
-		ErrorDescription: i18ncore.I18nMessage{DefaultValue: "The redirect URI is invalid"},
+		Error:            tidcommon.I18nMessage{DefaultValue: "Invalid redirect URI"},
+		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "The redirect URI is invalid"},
 	}
 
 	s.mockAppService.On("CreateApplication", mock.Anything, mock.AnythingOfType("*model.ApplicationDTO")).
@@ -244,7 +242,7 @@ func (s *DCRServiceTestSuite) TestMapApplicationErrorToDCRError() {
 
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
-			appErr := &serviceerror.ServiceError{
+			appErr := &tidcommon.ServiceError{
 				Code: tc.appErrCode,
 			}
 
@@ -262,7 +260,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_ConvertDCRToApplicationError() 
 	request := &DCRRegistrationRequest{
 		OUID:         "test-ou-1",
 		RedirectURIs: []string{"https://client.example.com/callback"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		JWKS:         map[string]interface{}{"keys": make(chan int)},
 	}
 
@@ -277,34 +275,32 @@ func (s *DCRServiceTestSuite) TestRegisterClient_ConvertApplicationToDCRResponse
 	request := &DCRRegistrationRequest{
 		OUID:         "test-ou-1",
 		RedirectURIs: []string{"https://client.example.com/callback"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		ClientName:   "Test Client",
 	}
 
 	appDTO := &model.ApplicationDTO{
 		ID:   "app-id",
 		Name: "Test Client",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID:     "client-id",
 					ClientSecret: "client-secret",
 					Scopes:       []string{},
+					Certificate: &inboundmodel.Certificate{
+						Type:  cert.CertificateTypeJWKS,
+						Value: "invalid json",
+					},
 				},
-			},
-		},
-		InboundAuthProfile: inboundmodel.InboundAuthProfile{
-			Certificate: &inboundmodel.Certificate{
-				Type:  cert.CertificateTypeJWKS,
-				Value: "invalid json",
 			},
 		},
 	}
 
 	s.mockAppService.On(
 		"CreateApplication", mock.Anything, mock.AnythingOfType("*model.ApplicationDTO"),
-	).Return(appDTO, (*serviceerror.ServiceError)(nil))
+	).Return(appDTO, (*tidcommon.ServiceError)(nil))
 
 	response, err := s.service.RegisterClient(context.Background(), request)
 
@@ -317,7 +313,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_WithJWKS() {
 	request := &DCRRegistrationRequest{
 		OUID:         "test-ou-1",
 		RedirectURIs: []string{"https://client.example.com/callback"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		ClientName:   "Test Client",
 		JWKS:         map[string]interface{}{"keys": []interface{}{}},
 	}
@@ -325,27 +321,25 @@ func (s *DCRServiceTestSuite) TestRegisterClient_WithJWKS() {
 	appDTO := &model.ApplicationDTO{
 		ID:   "app-id",
 		Name: "Test Client",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID:     "client-id",
 					ClientSecret: "client-secret",
 					Scopes:       []string{},
+					Certificate: &inboundmodel.Certificate{
+						Type:  cert.CertificateTypeJWKS,
+						Value: `{"keys":[]}`,
+					},
 				},
-			},
-		},
-		InboundAuthProfile: inboundmodel.InboundAuthProfile{
-			Certificate: &inboundmodel.Certificate{
-				Type:  cert.CertificateTypeJWKS,
-				Value: `{"keys":[]}`,
 			},
 		},
 	}
 
 	s.mockAppService.On(
 		"CreateApplication", mock.Anything, mock.AnythingOfType("*model.ApplicationDTO"),
-	).Return(appDTO, (*serviceerror.ServiceError)(nil))
+	).Return(appDTO, (*tidcommon.ServiceError)(nil))
 
 	response, err := s.service.RegisterClient(context.Background(), request)
 
@@ -358,7 +352,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_WithScope() {
 	request := &DCRRegistrationRequest{
 		OUID:         "test-ou-1",
 		RedirectURIs: []string{"https://client.example.com/callback"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		ClientName:   "Test Client",
 		Scope:        "read write admin",
 	}
@@ -366,10 +360,10 @@ func (s *DCRServiceTestSuite) TestRegisterClient_WithScope() {
 	appDTO := &model.ApplicationDTO{
 		ID:   "app-id",
 		Name: "Test Client",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID:     "client-id",
 					ClientSecret: "client-secret",
 					Scopes:       []string{"read", "write", "admin"},
@@ -380,7 +374,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_WithScope() {
 
 	s.mockAppService.On(
 		"CreateApplication", mock.Anything, mock.AnythingOfType("*model.ApplicationDTO"),
-	).Return(appDTO, (*serviceerror.ServiceError)(nil))
+	).Return(appDTO, (*tidcommon.ServiceError)(nil))
 
 	response, err := s.service.RegisterClient(context.Background(), request)
 
@@ -393,7 +387,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_RequirePushedAuthorizationReque
 	request := &DCRRegistrationRequest{
 		OUID:                               "test-ou-1",
 		RedirectURIs:                       []string{"https://client.example.com/callback"},
-		GrantTypes:                         []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:                         []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		ClientName:                         "Test Client",
 		RequirePushedAuthorizationRequests: true,
 	}
@@ -401,10 +395,10 @@ func (s *DCRServiceTestSuite) TestRegisterClient_RequirePushedAuthorizationReque
 	appDTO := &model.ApplicationDTO{
 		ID:   "app-id",
 		Name: "Test Client",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID:                           "client-id",
 					ClientSecret:                       "client-secret",
 					Scopes:                             []string{},
@@ -422,7 +416,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_RequirePushedAuthorizationReque
 			}
 			return dto.InboundAuthConfig[0].OAuthConfig.RequirePushedAuthorizationRequests
 		}),
-	).Return(appDTO, (*serviceerror.ServiceError)(nil))
+	).Return(appDTO, (*tidcommon.ServiceError)(nil))
 
 	response, err := s.service.RegisterClient(context.Background(), request)
 
@@ -438,19 +432,19 @@ func (s *DCRServiceTestSuite) TestRegisterClient_EmptyInboundAuthConfig() {
 	request := &DCRRegistrationRequest{
 		OUID:         "test-ou-1",
 		RedirectURIs: []string{"https://client.example.com/callback"},
-		GrantTypes:   []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		ClientName:   "Test Client",
 	}
 
 	appDTO := &model.ApplicationDTO{
 		ID:                "app-id",
 		Name:              "Test Client",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{},
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{},
 	}
 
 	s.mockAppService.On(
 		"CreateApplication", mock.Anything, mock.AnythingOfType("*model.ApplicationDTO"),
-	).Return(appDTO, (*serviceerror.ServiceError)(nil))
+	).Return(appDTO, (*tidcommon.ServiceError)(nil))
 
 	response, err := s.service.RegisterClient(context.Background(), request)
 
@@ -475,10 +469,10 @@ func (s *DCRServiceTestSuite) TestRegisterClient_WithLocalizedVariants() {
 	appDTO := &model.ApplicationDTO{
 		ID:   "app-id",
 		Name: "Test Client",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID:     "client-id",
 					ClientSecret: "client-secret",
 					Scopes:       []string{},
@@ -489,7 +483,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_WithLocalizedVariants() {
 
 	s.mockAppService.On(
 		"CreateApplication", mock.Anything, mock.AnythingOfType("*model.ApplicationDTO"),
-	).Return(appDTO, (*serviceerror.ServiceError)(nil))
+	).Return(appDTO, (*tidcommon.ServiceError)(nil))
 
 	mockI18n.On(
 		"SetTranslationOverridesForNamespace",
@@ -504,7 +498,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_WithLocalizedVariants() {
 				entries[logoKey]["fr"] == "https://example.fr/logo.png" &&
 				entries[logoKey][i18nmgt.SystemLanguage] == ""
 		}),
-	).Return((*serviceerror.ServiceError)(nil))
+	).Return((*tidcommon.ServiceError)(nil))
 
 	response, err := svc.RegisterClient(context.Background(), request)
 
@@ -528,10 +522,10 @@ func (s *DCRServiceTestSuite) TestRegisterClient_DefaultOnlyStoresSystemLanguage
 	appDTO := &model.ApplicationDTO{
 		ID:   "app-id",
 		Name: "My App",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID: "client-id",
 					Scopes:   []string{},
 				},
@@ -541,7 +535,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_DefaultOnlyStoresSystemLanguage
 
 	s.mockAppService.On(
 		"CreateApplication", mock.Anything, mock.AnythingOfType("*model.ApplicationDTO"),
-	).Return(appDTO, (*serviceerror.ServiceError)(nil))
+	).Return(appDTO, (*tidcommon.ServiceError)(nil))
 
 	mockI18n.On(
 		"SetTranslationOverridesForNamespace",
@@ -551,7 +545,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_DefaultOnlyStoresSystemLanguage
 			nameKey := application.AppI18nKey("app-id", "name")
 			return entries[nameKey][i18nmgt.SystemLanguage] == "My App"
 		}),
-	).Return((*serviceerror.ServiceError)(nil))
+	).Return((*tidcommon.ServiceError)(nil))
 
 	response, err := svc.RegisterClient(context.Background(), request)
 
@@ -574,10 +568,10 @@ func (s *DCRServiceTestSuite) TestRegisterClient_TaggedSystemLanguageWinsOverDef
 	appDTO := &model.ApplicationDTO{
 		ID:   "app-id",
 		Name: "My App",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID: "client-id",
 					Scopes:   []string{},
 				},
@@ -587,7 +581,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_TaggedSystemLanguageWinsOverDef
 
 	s.mockAppService.On(
 		"CreateApplication", mock.Anything, mock.AnythingOfType("*model.ApplicationDTO"),
-	).Return(appDTO, (*serviceerror.ServiceError)(nil))
+	).Return(appDTO, (*tidcommon.ServiceError)(nil))
 
 	mockI18n.On(
 		"SetTranslationOverridesForNamespace",
@@ -598,7 +592,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_TaggedSystemLanguageWinsOverDef
 			// Tagged variant wins — must be "My App US", not "My App".
 			return entries[nameKey][i18nmgt.SystemLanguage] == "My App US"
 		}),
-	).Return((*serviceerror.ServiceError)(nil))
+	).Return((*tidcommon.ServiceError)(nil))
 
 	response, err := svc.RegisterClient(context.Background(), request)
 
@@ -622,10 +616,10 @@ func (s *DCRServiceTestSuite) TestRegisterClient_LocalizedVariantsWriteFailure()
 	appDTO := &model.ApplicationDTO{
 		ID:   "app-id",
 		Name: "Test Client",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID: "client-id",
 					Scopes:   []string{},
 				},
@@ -633,11 +627,11 @@ func (s *DCRServiceTestSuite) TestRegisterClient_LocalizedVariantsWriteFailure()
 		},
 	}
 
-	i18nErr := &serviceerror.ServiceError{Code: "I18N-500"}
+	i18nErr := &tidcommon.ServiceError{Code: "I18N-500"}
 
 	s.mockAppService.On(
 		"CreateApplication", mock.Anything, mock.AnythingOfType("*model.ApplicationDTO"),
-	).Return(appDTO, (*serviceerror.ServiceError)(nil))
+	).Return(appDTO, (*tidcommon.ServiceError)(nil))
 	mockI18n.On(
 		"SetTranslationOverridesForNamespace",
 		mock.Anything,
@@ -645,9 +639,9 @@ func (s *DCRServiceTestSuite) TestRegisterClient_LocalizedVariantsWriteFailure()
 		mock.Anything,
 	).Return(i18nErr)
 	mockI18n.On("DeleteTranslationsByKey", mock.Anything, application.AppI18nNamespace(), mock.Anything).
-		Return((*serviceerror.ServiceError)(nil))
+		Return((*tidcommon.ServiceError)(nil))
 	s.mockAppService.On("DeleteApplication", mock.Anything, "app-id").
-		Return((*serviceerror.ServiceError)(nil))
+		Return((*tidcommon.ServiceError)(nil))
 
 	response, err := svc.RegisterClient(context.Background(), request)
 
@@ -673,10 +667,10 @@ func (s *DCRServiceTestSuite) TestRegisterClient_InvalidLocalizedURI() {
 	appDTO := &model.ApplicationDTO{
 		ID:   "app-id",
 		Name: "Test Client",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID: "client-id",
 					Scopes:   []string{},
 				},
@@ -686,12 +680,12 @@ func (s *DCRServiceTestSuite) TestRegisterClient_InvalidLocalizedURI() {
 
 	s.mockAppService.On(
 		"CreateApplication", mock.Anything, mock.AnythingOfType("*model.ApplicationDTO"),
-	).Return(appDTO, (*serviceerror.ServiceError)(nil))
+	).Return(appDTO, (*tidcommon.ServiceError)(nil))
 	// URI validation fails before any i18n writes; compensation still runs.
 	mockI18n.On("DeleteTranslationsByKey", mock.Anything, application.AppI18nNamespace(), mock.Anything).
-		Return((*serviceerror.ServiceError)(nil))
+		Return((*tidcommon.ServiceError)(nil))
 	s.mockAppService.On("DeleteApplication", mock.Anything, "app-id").
-		Return((*serviceerror.ServiceError)(nil))
+		Return((*tidcommon.ServiceError)(nil))
 
 	response, err := svc.RegisterClient(context.Background(), request)
 
@@ -737,14 +731,14 @@ func (s *DCRServiceTestSuite) TestRegisterClient_WithIDTokenEncryption() {
 	appDTO := &model.ApplicationDTO{
 		ID:   "app-id",
 		Name: "IDToken Encryption Client",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID: "client-id",
 					Scopes:   []string{"openid"},
-					Token: &inboundmodel.OAuthTokenConfig{
-						IDToken: &inboundmodel.IDTokenConfig{
+					Token: &providers.OAuthTokenConfig{
+						IDToken: &providers.IDTokenConfig{
 							EncryptionAlg: "RSA-OAEP-256",
 							EncryptionEnc: "A256GCM",
 						},
@@ -768,7 +762,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_WithIDTokenEncryption() {
 			}
 			return false
 		}),
-	).Return(appDTO, (*serviceerror.ServiceError)(nil))
+	).Return(appDTO, (*tidcommon.ServiceError)(nil))
 
 	response, err := s.service.RegisterClient(context.Background(), request)
 
@@ -794,10 +788,10 @@ func (s *DCRServiceTestSuite) TestRegisterClient_LocalizedVariantsWriteFailure_C
 	appDTO := &model.ApplicationDTO{
 		ID:   "app-id",
 		Name: "Test Client",
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID: "client-id",
 					Scopes:   []string{},
 				},
@@ -805,14 +799,14 @@ func (s *DCRServiceTestSuite) TestRegisterClient_LocalizedVariantsWriteFailure_C
 		},
 	}
 
-	i18nClientErr := &serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
+	i18nClientErr := &tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
 		Code: "I18N-4001",
 	}
 
 	s.mockAppService.On(
 		"CreateApplication", mock.Anything, mock.AnythingOfType("*model.ApplicationDTO"),
-	).Return(appDTO, (*serviceerror.ServiceError)(nil))
+	).Return(appDTO, (*tidcommon.ServiceError)(nil))
 	mockI18n.On(
 		"SetTranslationOverridesForNamespace",
 		mock.Anything,
@@ -820,9 +814,9 @@ func (s *DCRServiceTestSuite) TestRegisterClient_LocalizedVariantsWriteFailure_C
 		mock.Anything,
 	).Return(i18nClientErr)
 	mockI18n.On("DeleteTranslationsByKey", mock.Anything, application.AppI18nNamespace(), mock.Anything).
-		Return((*serviceerror.ServiceError)(nil))
+		Return((*tidcommon.ServiceError)(nil))
 	s.mockAppService.On("DeleteApplication", mock.Anything, "app-id").
-		Return((*serviceerror.ServiceError)(nil))
+		Return((*tidcommon.ServiceError)(nil))
 
 	response, err := svc.RegisterClient(context.Background(), request)
 

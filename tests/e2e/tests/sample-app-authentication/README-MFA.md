@@ -525,7 +525,7 @@ USER_RESPONSE=$(curl --location 'https://localhost:8090/users' \
     "password": "e2e-test-password",
     "given_name": "E2E User",
     "email": "e2e@example.com",
-    "mobileNumber": "+12345678920"
+    "mobile_number": "+12345678920"
   }
 }')
 ```
@@ -935,7 +935,7 @@ The tests use a TypeScript-based mock SMS server that:
 
 **Solutions**:
 1. Verify test user exists in the server
-2. Ensure user has `mobileNumber` attribute
+2. Ensure user has `mobile_number` attribute
 3. Check user is in correct organization unit
 4. Verify user credentials in `.env` file
 

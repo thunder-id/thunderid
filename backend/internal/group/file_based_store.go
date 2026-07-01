@@ -23,11 +23,11 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/thunder-id/thunderid/internal/entity"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	entitystore "github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type fileBasedGroupStore struct {
@@ -492,7 +492,7 @@ func groupFromDeclarativeData(id string, data interface{}) (groupDeclarativeReso
 // follow group-to-group references; a visited set prevents infinite loops on cyclic group graphs.
 func (f *fileBasedGroupStore) GetTransitiveGroupsForEntity(
 	ctx context.Context, entityID string,
-) ([]entity.EntityGroup, error) {
+) ([]providers.EntityGroup, error) {
 	list, err := f.GenericFileBasedStore.List()
 	if err != nil {
 		return nil, err
@@ -509,7 +509,7 @@ func (f *fileBasedGroupStore) GetTransitiveGroupsForEntity(
 	}
 
 	visited := make(map[string]bool)
-	result := make([]entity.EntityGroup, 0)
+	result := make([]providers.EntityGroup, 0)
 
 	// Seed: groups that directly contain entityID as a non-group member.
 	queue := make([]string, 0)
@@ -519,7 +519,7 @@ func (f *fileBasedGroupStore) GetTransitiveGroupsForEntity(
 				if !visited[grp.ID] {
 					visited[grp.ID] = true
 					queue = append(queue, grp.ID)
-					result = append(result, entity.EntityGroup{ID: grp.ID, Name: grp.Name, OUID: grp.OUID})
+					result = append(result, providers.EntityGroup{ID: grp.ID, Name: grp.Name, OUID: grp.OUID})
 				}
 				break
 			}
@@ -538,7 +538,7 @@ func (f *fileBasedGroupStore) GetTransitiveGroupsForEntity(
 				if member.Type == MemberTypeGroup && member.ID == currentID {
 					visited[grp.ID] = true
 					queue = append(queue, grp.ID)
-					result = append(result, entity.EntityGroup{ID: grp.ID, Name: grp.Name, OUID: grp.OUID})
+					result = append(result, providers.EntityGroup{ID: grp.ID, Name: grp.Name, OUID: grp.OUID})
 					break
 				}
 			}

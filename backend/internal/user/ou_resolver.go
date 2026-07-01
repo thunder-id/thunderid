@@ -26,6 +26,7 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // ouUserResolverAdapter implements oupkg.OUUserResolver using the entity service.
@@ -45,7 +46,7 @@ func newOUUserResolver(
 
 // GetUserCountByOUID returns the count of users belonging to the given organization unit.
 func (a *ouUserResolverAdapter) GetUserCountByOUID(ctx context.Context, ouID string) (int, error) {
-	return a.entityService.GetEntityListCountByOUIDs(ctx, entity.EntityCategoryUser, []string{ouID}, nil)
+	return a.entityService.GetEntityListCountByOUIDs(ctx, providers.EntityCategoryUser, []string{ouID}, nil)
 }
 
 // GetUserListByOUID returns a paginated list of users belonging to the given organization unit.
@@ -54,7 +55,7 @@ func (a *ouUserResolverAdapter) GetUserListByOUID(
 	ctx context.Context, ouID string, limit, offset int, includeDisplay bool,
 ) ([]oupkg.User, error) {
 	entities, err := a.entityService.GetEntityListByOUIDs(
-		ctx, entity.EntityCategoryUser, []string{ouID}, limit, offset, nil)
+		ctx, providers.EntityCategoryUser, []string{ouID}, limit, offset, nil)
 	if err != nil {
 		return nil, err
 	}

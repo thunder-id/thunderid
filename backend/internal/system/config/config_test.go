@@ -27,6 +27,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	yaml "gopkg.in/yaml.v3"
+
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 type ConfigTestSuite struct {
@@ -199,34 +201,34 @@ func (suite *ConfigTestSuite) TestLoadConfigWithDefaults_ErrorCases() {
 func (suite *ConfigTestSuite) TestMergeStructs() {
 	// Test merging complex nested structures
 	base := &Config{
-		Server: ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Hostname: "base-host",
 			Port:     8080,
 			HTTPOnly: false,
 		},
-		GateClient: GateClientConfig{
+		GateClient: engineconfig.GateClientConfig{
 			Hostname:  "base-gate",
 			Port:      9080,
 			Scheme:    "http",
 			LoginPath: "/base-login",
 			ErrorPath: "/base-error",
 		},
-		JWT: JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer:         "base-issuer",
 			ValidityPeriod: 3600,
 		},
-		OAuth: OAuthConfig{
-			RefreshToken: RefreshTokenConfig{
+		OAuth: engineconfig.OAuthConfig{
+			RefreshToken: engineconfig.RefreshTokenConfig{
 				RenewOnGrant:   false,
 				ValidityPeriod: 7200,
 			},
 		},
-		Cache: CacheConfig{
+		Cache: engineconfig.CacheConfig{
 			Disabled:        false,
 			Type:            "memory",
 			EvictionPolicy:  "LRU",
 			CleanupInterval: 60,
-			Properties: []CacheProperty{
+			Properties: []engineconfig.CacheProperty{
 				{Name: "base-cache", Size: 100, TTL: 300},
 			},
 		},
@@ -249,27 +251,27 @@ func (suite *ConfigTestSuite) TestMergeStructs() {
 	}
 
 	user := &Config{
-		Server: ServerConfig{
+		Server: engineconfig.ServerConfig{
 			Hostname: "user-host", // Override
 			Port:     8090,        // Override
 			// HTTPOnly: false (zero value, should not override)
 		},
-		GateClient: GateClientConfig{
+		GateClient: engineconfig.GateClientConfig{
 			Hostname: "user-gate", // Override
 			// Other fields are zero values, should not override
 		},
-		JWT: JWTConfig{
+		JWT: engineconfig.JWTConfig{
 			Issuer: "user-issuer", // Override
 			// ValidityPeriod: 0 (zero value, should not override)
 		},
-		OAuth: OAuthConfig{
-			RefreshToken: RefreshTokenConfig{
+		OAuth: engineconfig.OAuthConfig{
+			RefreshToken: engineconfig.RefreshTokenConfig{
 				RenewOnGrant: true, // Override
 				// ValidityPeriod: 0 (zero value, should not override)
 			},
 		},
-		Cache: CacheConfig{
-			Properties: []CacheProperty{
+		Cache: engineconfig.CacheConfig{
+			Properties: []engineconfig.CacheProperty{
 				{Name: "user-cache", Size: 200, TTL: 600},
 			}, // Override slice
 		},
@@ -615,8 +617,8 @@ notification:
 }
 
 func (suite *ConfigTestSuite) TestLoadConfig_SecurityValidation() {
-	// LoadConfig must surface validation errors from SecurityConfig.Validate, not just
-	// from individual fields. SecurityConfig.Validate has two error sources — its own
+	// LoadConfig must surface validation errors from engineconfig.SecurityConfig.Validate, not just
+	// from individual fields. engineconfig.SecurityConfig.Validate has two error sources — its own
 	// JWKSCacheTTL check and the delegated TrustedIssuer.Validate — and both must
 	// propagate out of LoadConfig. A positive case ensures a fully-valid security
 	// block loads end-to-end without false positives.
@@ -640,7 +642,7 @@ server:
 		},
 		{
 			// Trusted issuer is configured (issuer set) but jwks_url is missing —
-			// TrustedIssuer.Validate returns an error. SecurityConfig.Validate must
+			// TrustedIssuer.Validate returns an error. engineconfig.SecurityConfig.Validate must
 			// delegate to it, and LoadConfig must surface the error.
 			name: "TrustedIssuerMissingJWKSURL",
 			content: `
@@ -940,20 +942,20 @@ gate_client:
 }
 
 func (suite *ConfigTestSuite) TestTrustedIssuerConfig_IsConfigured() {
-	assert.False(suite.T(), (&TrustedIssuerConfig{}).IsConfigured())
-	assert.False(suite.T(), (&TrustedIssuerConfig{
+	assert.False(suite.T(), (&engineconfig.TrustedIssuerConfig{}).IsConfigured())
+	assert.False(suite.T(), (&engineconfig.TrustedIssuerConfig{
 		JWKSURL:  "https://a/jwks",
 		Audience: "https://b",
 	}).IsConfigured(),
 		"jwks_url and audience without issuer should not activate the feature")
-	assert.True(suite.T(), (&TrustedIssuerConfig{Issuer: "https://a"}).IsConfigured())
+	assert.True(suite.T(), (&engineconfig.TrustedIssuerConfig{Issuer: "https://a"}).IsConfigured())
 }
 
 func (suite *ConfigTestSuite) TestTrustedIssuerConfig_Validate_NotConfigured() {
 	// Empty config — feature is off, no validation errors.
-	assert.NoError(suite.T(), (&TrustedIssuerConfig{}).Validate())
+	assert.NoError(suite.T(), (&engineconfig.TrustedIssuerConfig{}).Validate())
 	// jwks_url/audience set without issuer is also "not configured" and silently ignored.
-	cfg := &TrustedIssuerConfig{
+	cfg := &engineconfig.TrustedIssuerConfig{
 		JWKSURL:  "https://auth.example.com/jwks",
 		Audience: "https://thunder.example.com",
 	}
@@ -961,7 +963,7 @@ func (suite *ConfigTestSuite) TestTrustedIssuerConfig_Validate_NotConfigured() {
 }
 
 func (suite *ConfigTestSuite) TestTrustedIssuerConfig_Validate_PartiallyConfigured_MissingJWKSURL() {
-	cfg := &TrustedIssuerConfig{
+	cfg := &engineconfig.TrustedIssuerConfig{
 		Issuer:   "https://auth.example.com",
 		Audience: "https://thunder.example.com",
 	}
@@ -971,7 +973,7 @@ func (suite *ConfigTestSuite) TestTrustedIssuerConfig_Validate_PartiallyConfigur
 }
 
 func (suite *ConfigTestSuite) TestTrustedIssuerConfig_Validate_PartiallyConfigured_MissingAudience() {
-	cfg := &TrustedIssuerConfig{
+	cfg := &engineconfig.TrustedIssuerConfig{
 		Issuer:  "https://auth.example.com",
 		JWKSURL: "https://auth.example.com/jwks",
 	}
@@ -981,7 +983,7 @@ func (suite *ConfigTestSuite) TestTrustedIssuerConfig_Validate_PartiallyConfigur
 }
 
 func (suite *ConfigTestSuite) TestTrustedIssuerConfig_Validate_HTTPS() {
-	cfg := &TrustedIssuerConfig{
+	cfg := &engineconfig.TrustedIssuerConfig{
 		Issuer:   "https://auth.example.com",
 		JWKSURL:  "https://auth.example.com/.well-known/jwks.json",
 		Audience: "https://thunder.example.com",
@@ -990,7 +992,7 @@ func (suite *ConfigTestSuite) TestTrustedIssuerConfig_Validate_HTTPS() {
 }
 
 func (suite *ConfigTestSuite) TestTrustedIssuerConfig_Validate_HTTPRejected() {
-	cfg := &TrustedIssuerConfig{
+	cfg := &engineconfig.TrustedIssuerConfig{
 		Issuer:   "https://auth.example.com",
 		JWKSURL:  "http://auth.example.com/jwks",
 		Audience: "https://thunder.example.com",
@@ -1007,7 +1009,7 @@ func (suite *ConfigTestSuite) TestTrustedIssuerConfig_Validate_HTTPLocalhostAllo
 		"http://[::1]:8090/oauth2/jwks",
 	}
 	for _, h := range hosts {
-		cfg := &TrustedIssuerConfig{
+		cfg := &engineconfig.TrustedIssuerConfig{
 			Issuer:   "https://auth.example.com",
 			JWKSURL:  h,
 			Audience: "https://thunder.example.com",
@@ -1017,7 +1019,7 @@ func (suite *ConfigTestSuite) TestTrustedIssuerConfig_Validate_HTTPLocalhostAllo
 }
 
 func (suite *ConfigTestSuite) TestTrustedIssuerConfig_Validate_InvalidScheme() {
-	cfg := &TrustedIssuerConfig{
+	cfg := &engineconfig.TrustedIssuerConfig{
 		Issuer:   "https://auth.example.com",
 		JWKSURL:  "ftp://auth.example.com/jwks",
 		Audience: "https://thunder.example.com",
@@ -1028,7 +1030,7 @@ func (suite *ConfigTestSuite) TestTrustedIssuerConfig_Validate_InvalidScheme() {
 }
 
 func (suite *ConfigTestSuite) TestTrustedIssuerConfig_Validate_InvalidURL() {
-	cfg := &TrustedIssuerConfig{
+	cfg := &engineconfig.TrustedIssuerConfig{
 		Issuer:   "https://auth.example.com",
 		JWKSURL:  "://bad-url",
 		Audience: "https://thunder.example.com",
@@ -1038,7 +1040,7 @@ func (suite *ConfigTestSuite) TestTrustedIssuerConfig_Validate_InvalidURL() {
 }
 
 func (suite *ConfigTestSuite) TestSecurityConfig_Validate_NegativeJWKSCacheTTL() {
-	cfg := &SecurityConfig{
+	cfg := &engineconfig.SecurityConfig{
 		JWKSCacheTTL: -1,
 	}
 	err := cfg.Validate()
@@ -1047,7 +1049,7 @@ func (suite *ConfigTestSuite) TestSecurityConfig_Validate_NegativeJWKSCacheTTL()
 }
 
 func (suite *ConfigTestSuite) TestSecurityConfig_Validate_ZeroJWKSCacheTTL() {
-	cfg := &SecurityConfig{
+	cfg := &engineconfig.SecurityConfig{
 		JWKSCacheTTL: 0,
 	}
 	err := cfg.Validate()
@@ -1056,10 +1058,10 @@ func (suite *ConfigTestSuite) TestSecurityConfig_Validate_ZeroJWKSCacheTTL() {
 
 func (suite *ConfigTestSuite) TestSecurityConfig_Validate_DelegatesToTrustedIssuer() {
 	// A security config with a misconfigured trusted issuer must surface that error
-	// through SecurityConfig.Validate, since the parent is now the entry point.
-	cfg := &SecurityConfig{
+	// through engineconfig.SecurityConfig.Validate, since the parent is now the entry point.
+	cfg := &engineconfig.SecurityConfig{
 		JWKSCacheTTL: 300,
-		TrustedIssuer: TrustedIssuerConfig{
+		TrustedIssuer: engineconfig.TrustedIssuerConfig{
 			Issuer:   "https://auth.example.com",
 			JWKSURL:  "", // missing, should fail validation
 			Audience: "https://thunder.example.com",
@@ -1084,12 +1086,12 @@ func (suite *ConfigTestSuite) createTempFile(dir, pattern, content string) strin
 }
 
 func (suite *ConfigTestSuite) TestAuthClassValidate_EmptyConfig() {
-	cfg := AuthClassConfig{}
+	cfg := engineconfig.AuthClassConfig{}
 	assert.NoError(suite.T(), cfg.Validate())
 }
 
 func (suite *ConfigTestSuite) TestAuthClassValidate_ValidMapping() {
-	cfg := AuthClassConfig{
+	cfg := engineconfig.AuthClassConfig{
 		Amrs: []string{"PWD", "OTP"},
 		AcrAMR: map[string][]string{
 			"urn:thunder:acr:password":       {"PWD"},
@@ -1101,7 +1103,7 @@ func (suite *ConfigTestSuite) TestAuthClassValidate_ValidMapping() {
 }
 
 func (suite *ConfigTestSuite) TestAuthClassValidate_EmptyAMRList() {
-	cfg := AuthClassConfig{
+	cfg := engineconfig.AuthClassConfig{
 		Amrs: []string{"PWD"},
 		AcrAMR: map[string][]string{
 			"urn:thunder:acr:password": {"PWD"},
@@ -1115,7 +1117,7 @@ func (suite *ConfigTestSuite) TestAuthClassValidate_EmptyAMRList() {
 }
 
 func (suite *ConfigTestSuite) TestAuthClassValidate_UnknownAMRKey() {
-	cfg := AuthClassConfig{
+	cfg := engineconfig.AuthClassConfig{
 		Amrs: []string{"PWD"},
 		AcrAMR: map[string][]string{
 			"urn:thunder:acr:password": {"PWD"},
@@ -1129,7 +1131,7 @@ func (suite *ConfigTestSuite) TestAuthClassValidate_UnknownAMRKey() {
 }
 
 func (suite *ConfigTestSuite) TestAuthClassValidate_NoAMRSection() {
-	cfg := AuthClassConfig{
+	cfg := engineconfig.AuthClassConfig{
 		AcrAMR: map[string][]string{
 			"urn:thunder:acr:password": {"PWD"},
 		},
@@ -1140,14 +1142,14 @@ func (suite *ConfigTestSuite) TestAuthClassValidate_NoAMRSection() {
 }
 
 func (suite *ConfigTestSuite) TestAuthClassValidate_AcrAMREmptyButAMRPresent() {
-	cfg := AuthClassConfig{
+	cfg := engineconfig.AuthClassConfig{
 		Amrs: []string{"PWD"},
 	}
 	assert.NoError(suite.T(), cfg.Validate())
 }
 
 func (suite *ConfigTestSuite) TestAuthClassValidate_EmptyACRKey() {
-	cfg := AuthClassConfig{
+	cfg := engineconfig.AuthClassConfig{
 		Amrs: []string{"PWD"},
 		AcrAMR: map[string][]string{
 			"": {"PWD"},
@@ -1159,7 +1161,7 @@ func (suite *ConfigTestSuite) TestAuthClassValidate_EmptyACRKey() {
 }
 
 func (suite *ConfigTestSuite) TestAuthClassValidate_EmptyAMREntry() {
-	cfg := AuthClassConfig{
+	cfg := engineconfig.AuthClassConfig{
 		Amrs: []string{"PWD", ""},
 	}
 	err := cfg.Validate()
@@ -1168,7 +1170,7 @@ func (suite *ConfigTestSuite) TestAuthClassValidate_EmptyAMREntry() {
 }
 
 func (suite *ConfigTestSuite) TestAuthClassValidate_EmptyAMRReference() {
-	cfg := AuthClassConfig{
+	cfg := engineconfig.AuthClassConfig{
 		Amrs: []string{"PWD"},
 		AcrAMR: map[string][]string{
 			"urn:thunder:acr:password": {"PWD", ""},

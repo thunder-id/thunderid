@@ -25,11 +25,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 )
 
 var fileStoreDirectoryByResourceType = map[string]string{
@@ -46,12 +46,12 @@ var fileStoreDirectoryByResourceType = map[string]string{
 	resourceTypeTranslation:      "translations",
 }
 
-func deleteFileBackedResource(resourceType, resourceKey string) (string, *serviceerror.ServiceError) {
+func deleteFileBackedResource(resourceType, resourceKey string) (string, *tidcommon.ServiceError) {
 	directory, ok := fileStoreDirectoryByResourceType[resourceType]
 	if !ok {
-		return "", serviceerror.CustomServiceError(
+		return "", tidcommon.CustomServiceError(
 			ErrorInvalidImportRequest,
-			core.I18nMessage{
+			tidcommon.I18nMessage{
 				Key:          "error.import.unsupportedResourceType",
 				DefaultValue: "unsupported resource type for declarative file management",
 			},
@@ -60,19 +60,21 @@ func deleteFileBackedResource(resourceType, resourceKey string) (string, *servic
 
 	serverHome, err := getThunderHome()
 	if err != nil {
-		return "", serviceerror.CustomServiceError(serviceerror.InternalServerError,
-			core.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
+		return "", tidcommon.CustomServiceError(tidcommon.InternalServerError,
+			tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
 	}
 
 	targetDir := filepath.Join(serverHome, "config", "resources", directory)
 	entries, readErr := os.ReadDir(targetDir)
 	if readErr != nil {
 		if errors.Is(readErr, os.ErrNotExist) {
-			return "", serviceerror.CustomServiceError(ErrorInvalidImportRequest,
-				core.I18nMessage{Key: "error.import.delete.dirNotFound", DefaultValue: "resource directory not found"})
+			return "", tidcommon.CustomServiceError(ErrorInvalidImportRequest,
+				tidcommon.I18nMessage{
+					Key: "error.import.delete.dirNotFound", DefaultValue: "resource directory not found",
+				})
 		}
-		return "", serviceerror.CustomServiceError(serviceerror.InternalServerError,
-			core.I18nMessage{Key: "error.import.dynamic", DefaultValue: readErr.Error()})
+		return "", tidcommon.CustomServiceError(tidcommon.InternalServerError,
+			tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: readErr.Error()})
 	}
 
 	for _, entry := range entries {
@@ -88,22 +90,22 @@ func deleteFileBackedResource(resourceType, resourceKey string) (string, *servic
 		filePath := filepath.Join(targetDir, entry.Name())
 		matches, matchErr := fileMatchesResourceKey(filePath, resourceType, resourceKey)
 		if matchErr != nil {
-			return "", serviceerror.CustomServiceError(serviceerror.InternalServerError,
-				core.I18nMessage{Key: "error.import.dynamic", DefaultValue: matchErr.Error()})
+			return "", tidcommon.CustomServiceError(tidcommon.InternalServerError,
+				tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: matchErr.Error()})
 		}
 		if !matches {
 			continue
 		}
 
 		if removeErr := os.Remove(filePath); removeErr != nil {
-			return "", serviceerror.CustomServiceError(serviceerror.InternalServerError,
-				core.I18nMessage{Key: "error.import.dynamic", DefaultValue: removeErr.Error()})
+			return "", tidcommon.CustomServiceError(tidcommon.InternalServerError,
+				tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: removeErr.Error()})
 		}
 		return entry.Name(), nil
 	}
 
-	return "", serviceerror.CustomServiceError(ErrorInvalidImportRequest,
-		core.I18nMessage{Key: "error.import.delete.fileNotFound", DefaultValue: "resource file not found"})
+	return "", tidcommon.CustomServiceError(ErrorInvalidImportRequest,
+		tidcommon.I18nMessage{Key: "error.import.delete.fileNotFound", DefaultValue: "resource file not found"})
 }
 
 func extractDocumentIdentity(doc parsedDocument) (string, string) {

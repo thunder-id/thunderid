@@ -51,7 +51,7 @@ schema: {
       "displayName": "Full Name",
       "required": false
     },
-    "mobileNumber": {
+    "mobile_number": {
       "type": "string",
       "displayName": "Mobile Number",
       "required": false

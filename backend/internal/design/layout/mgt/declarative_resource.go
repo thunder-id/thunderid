@@ -24,8 +24,9 @@ import (
 	"fmt"
 	"strings"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 
 	"gopkg.in/yaml.v3"
@@ -58,7 +59,7 @@ func (e *layoutExporter) GetParameterizerType() string {
 
 // GetAllResourceIDs retrieves all layout IDs from the database store.
 // In composite mode, this excludes declarative (YAML-based) layouts.
-func (e *layoutExporter) GetAllResourceIDs(ctx context.Context) ([]string, *serviceerror.ServiceError) {
+func (e *layoutExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
 	const pageSize = 100
 	var allIDs []string
 	offset := 0
@@ -88,7 +89,7 @@ func (e *layoutExporter) GetAllResourceIDs(ctx context.Context) ([]string, *serv
 
 // GetResourceByID retrieves a layout by its ID.
 func (e *layoutExporter) GetResourceByID(ctx context.Context, id string) (
-	interface{}, string, *serviceerror.ServiceError,
+	interface{}, string, *tidcommon.ServiceError,
 ) {
 	layout, err := e.service.GetLayout(ctx, id)
 	if err != nil {

@@ -29,8 +29,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -1040,90 +1040,6 @@ func (ts *ApplicationAPITestSuite) TestApplicationCreationWithPrivateKeyJWT() {
 	}
 }
 
-// TestApplicationWithJWKSURICertificate tests creating application with JWKS_URI certificate.
-func (ts *ApplicationAPITestSuite) TestApplicationWithJWKSURICertificate() {
-	app := Application{
-		OUID:        testOUID,
-		Name:        "JWKS URI Certificate Test App",
-		Description: "Test application with JWKS_URI certificate",
-		URL:         "https://jwksuri.example.com",
-		InboundAuthConfig: []InboundAuthConfig{
-			{
-				Type: "oauth2",
-				OAuthAppConfig: &OAuthAppConfig{
-					RedirectURIs:            []string{"https://jwksuri.example.com/callback"},
-					GrantTypes:              []string{"authorization_code"},
-					ResponseTypes:           []string{"code"},
-					TokenEndpointAuthMethod: "client_secret_basic",
-					Scopes:                  []string{"openid", "profile", "email"},
-				},
-			},
-		},
-		Certificate: &ApplicationCert{
-			Type:  "JWKS_URI",
-			Value: "https://jwksuri.example.com/.well-known/jwks.json",
-		},
-	}
-
-	appID, err := createApplication(app)
-	ts.Require().NoError(err)
-	ts.Require().NotEmpty(appID)
-
-	retrievedApp, err := getApplicationByID(appID)
-	ts.Require().NoError(err)
-	ts.Require().NotNil(retrievedApp.Certificate)
-	ts.Assert().Equal("JWKS_URI", retrievedApp.Certificate.Type)
-	ts.Assert().Equal("https://jwksuri.example.com/.well-known/jwks.json", retrievedApp.Certificate.Value)
-
-	err = deleteApplication(appID)
-	if err != nil {
-		ts.T().Logf("Failed to delete test application: %v", err)
-	}
-}
-
-// TestApplicationWithJWKSCertificate tests creating application with inline JWKS certificate.
-func (ts *ApplicationAPITestSuite) TestApplicationWithJWKSCertificate() {
-	jwksJSON := `{"keys":[{"kty":"RSA","use":"sig","kid":"test-key","n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw","e":"AQAB"}]}`
-
-	app := Application{
-		OUID:        testOUID,
-		Name:        "JWKS Inline Certificate Test App",
-		Description: "Test application with inline JWKS certificate",
-		URL:         "https://jwks.example.com",
-		InboundAuthConfig: []InboundAuthConfig{
-			{
-				Type: "oauth2",
-				OAuthAppConfig: &OAuthAppConfig{
-					RedirectURIs:            []string{"https://jwks.example.com/callback"},
-					GrantTypes:              []string{"authorization_code"},
-					ResponseTypes:           []string{"code"},
-					TokenEndpointAuthMethod: "client_secret_basic",
-					Scopes:                  []string{"openid", "profile"},
-				},
-			},
-		},
-		Certificate: &ApplicationCert{
-			Type:  "JWKS",
-			Value: jwksJSON,
-		},
-	}
-
-	appID, err := createApplication(app)
-	ts.Require().NoError(err)
-	ts.Require().NotEmpty(appID)
-
-	retrievedApp, err := getApplicationByID(appID)
-	ts.Require().NoError(err)
-	ts.Require().NotNil(retrievedApp.Certificate)
-	ts.Assert().Equal("JWKS", retrievedApp.Certificate.Type)
-	ts.Assert().Equal(jwksJSON, retrievedApp.Certificate.Value)
-
-	err = deleteApplication(appID)
-	if err != nil {
-		ts.T().Logf("Failed to delete test application: %v", err)
-	}
-}
-
 // TestCreateApplicationCertLifecycle verifies that a certificate created with an
 // application is also removed from the database when the application is deleted.
 // This confirms that the cert INSERT and the app INSERT are part of the same
@@ -1430,63 +1346,6 @@ func (ts *ApplicationAPITestSuite) TestApplicationEmptyScopesArray() {
 	}
 }
 
-// TestApplicationCertificateUpdate tests updating application certificate.
-func (ts *ApplicationAPITestSuite) TestApplicationCertificateUpdate() {
-	app := Application{
-		OUID:        testOUID,
-		Name:        "Certificate Update Test App",
-		Description: "Test certificate updates",
-		URL:         "https://certupdate.example.com",
-		Certificate: nil,
-		InboundAuthConfig: []InboundAuthConfig{
-			{
-				Type: "oauth2",
-				OAuthAppConfig: &OAuthAppConfig{
-					RedirectURIs:            []string{"https://certupdate.example.com/callback"},
-					GrantTypes:              []string{"authorization_code"},
-					ResponseTypes:           []string{"code"},
-					TokenEndpointAuthMethod: "client_secret_basic",
-					Scopes:                  []string{"openid"},
-				},
-			},
-		},
-	}
-
-	appID, err := createApplication(app)
-	ts.Require().NoError(err)
-	defer deleteApplication(appID)
-
-	// Update to add JWKS_URI certificate
-	app.Certificate = &ApplicationCert{
-		Type:  "JWKS_URI",
-		Value: "https://certupdate.example.com/.well-known/jwks.json",
-	}
-
-	appJSON, _ := json.Marshal(app)
-	req, _ := http.NewRequest("PUT", testServerURL+"/applications/"+appID, bytes.NewReader(appJSON))
-	req.Header.Set("Content-Type", "application/json")
-
-	client := testutils.GetHTTPClient()
-
-	resp, err := client.Do(req)
-	ts.Require().NoError(err)
-	defer resp.Body.Close()
-	ts.Assert().Equal(http.StatusOK, resp.StatusCode)
-
-	// Update to JWKS
-	app.Certificate = &ApplicationCert{
-		Type:  "JWKS",
-		Value: `{"keys":[{"kty":"RSA","use":"sig","kid":"test"}]}`,
-	}
-	appJSON, _ = json.Marshal(app)
-	req, _ = http.NewRequest("PUT", testServerURL+"/applications/"+appID, bytes.NewReader(appJSON))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err = client.Do(req)
-	ts.Require().NoError(err)
-	defer resp.Body.Close()
-	ts.Assert().Equal(http.StatusOK, resp.StatusCode)
-}
-
 // TestOAuthAppCertificateUpdate tests updating OAuth app certificate.
 func (ts *ApplicationAPITestSuite) TestOAuthAppCertificateUpdate() {
 	app := Application{
@@ -1502,8 +1361,12 @@ func (ts *ApplicationAPITestSuite) TestOAuthAppCertificateUpdate() {
 					RedirectURIs:            []string{"https://oauthcertupdate.example.com/callback"},
 					GrantTypes:              []string{"authorization_code"},
 					ResponseTypes:           []string{"code"},
-					TokenEndpointAuthMethod: "client_secret_basic",
+					TokenEndpointAuthMethod: "private_key_jwt",
 					Scopes:                  []string{"openid"},
+					Certificate: &ApplicationCert{
+						Type:  "JWKS_URI",
+						Value: "https://oauthcertupdate.example.com/.well-known/jwks.json",
+					},
 				},
 			},
 		},
@@ -1513,10 +1376,9 @@ func (ts *ApplicationAPITestSuite) TestOAuthAppCertificateUpdate() {
 	ts.Require().NoError(err)
 	defer deleteApplication(appID)
 
-	// Update to add JWKS_URI certificate at application level
-	app.Certificate = &ApplicationCert{
-		Type:  "JWKS_URI",
-		Value: "https://oauthcertupdate.example.com/.well-known/jwks.json",
+	app.InboundAuthConfig[0].OAuthAppConfig.Certificate = &ApplicationCert{
+		Type:  "JWKS",
+		Value: `{"keys":[{"kty":"RSA","use":"sig","kid":"test"}]}`,
 	}
 
 	appJSON, _ := json.Marshal(app)
@@ -1529,84 +1391,15 @@ func (ts *ApplicationAPITestSuite) TestOAuthAppCertificateUpdate() {
 	ts.Require().NoError(err)
 	defer resp.Body.Close()
 	ts.Assert().Equal(http.StatusOK, resp.StatusCode)
-}
 
-// TestApplicationInvalidCertificateType tests invalid certificate type rejection.
-func (ts *ApplicationAPITestSuite) TestApplicationInvalidCertificateType() {
-	app := Application{
-		OUID:        testOUID,
-		Name:        "Invalid Cert Type Test",
-		Description: "Test invalid certificate type",
-		URL:         "https://invalidcert.example.com",
-		Certificate: &ApplicationCert{Type: "INVALID_TYPE", Value: "some-value"},
-		InboundAuthConfig: []InboundAuthConfig{
-			{
-				Type: "oauth2",
-				OAuthAppConfig: &OAuthAppConfig{
-					RedirectURIs:            []string{"https://invalidcert.example.com/callback"},
-					GrantTypes:              []string{"authorization_code"},
-					ResponseTypes:           []string{"code"},
-					TokenEndpointAuthMethod: "client_secret_basic",
-					Scopes:                  []string{"openid"},
-				},
-			},
-		},
-	}
-
-	_, err := createApplication(app)
-	ts.Assert().Error(err)
-}
-
-// TestApplicationInvalidJWKSURI tests invalid JWKS_URI rejection.
-func (ts *ApplicationAPITestSuite) TestApplicationInvalidJWKSURI() {
-	app := Application{
-		OUID:        testOUID,
-		Name:        "Invalid JWKS URI Test",
-		Description: "Test invalid JWKS URI",
-		URL:         "https://invalidjwksuri.example.com",
-		Certificate: &ApplicationCert{Type: "JWKS_URI", Value: "not-a-valid-uri"},
-		InboundAuthConfig: []InboundAuthConfig{
-			{
-				Type: "oauth2",
-				OAuthAppConfig: &OAuthAppConfig{
-					RedirectURIs:            []string{"https://invalidjwksuri.example.com/callback"},
-					GrantTypes:              []string{"authorization_code"},
-					ResponseTypes:           []string{"code"},
-					TokenEndpointAuthMethod: "client_secret_basic",
-					Scopes:                  []string{"openid"},
-				},
-			},
-		},
-	}
-
-	_, err := createApplication(app)
-	ts.Assert().Error(err)
-}
-
-// TestApplicationEmptyJWKS tests empty JWKS value rejection.
-func (ts *ApplicationAPITestSuite) TestApplicationEmptyJWKS() {
-	app := Application{
-		OUID:        testOUID,
-		Name:        "Empty JWKS Test",
-		Description: "Test empty JWKS",
-		URL:         "https://emptyjwks.example.com",
-		Certificate: &ApplicationCert{Type: "JWKS", Value: ""},
-		InboundAuthConfig: []InboundAuthConfig{
-			{
-				Type: "oauth2",
-				OAuthAppConfig: &OAuthAppConfig{
-					RedirectURIs:            []string{"https://emptyjwks.example.com/callback"},
-					GrantTypes:              []string{"authorization_code"},
-					ResponseTypes:           []string{"code"},
-					TokenEndpointAuthMethod: "client_secret_basic",
-					Scopes:                  []string{"openid"},
-				},
-			},
-		},
-	}
-
-	_, err := createApplication(app)
-	ts.Assert().Error(err)
+	updatedApp, err := getApplicationByID(appID)
+	ts.Require().NoError(err)
+	ts.Require().Len(updatedApp.InboundAuthConfig, 1)
+	oauthConfig := updatedApp.InboundAuthConfig[0].OAuthAppConfig
+	ts.Require().NotNil(oauthConfig)
+	ts.Require().NotNil(oauthConfig.Certificate)
+	ts.Assert().Equal("JWKS", oauthConfig.Certificate.Type)
+	ts.Assert().Equal(`{"keys":[{"kty":"RSA","use":"sig","kid":"test"}]}`, oauthConfig.Certificate.Value)
 }
 
 // TestApplicationPublicClientValidations tests public client configuration validations.
@@ -1974,10 +1767,6 @@ func (ts *ApplicationAPITestSuite) TestApplicationUpdateCompleteOAuthConfig() {
 		"openid", "profile", "email", "address", "phone",
 	}
 	app.InboundAuthConfig[0].OAuthAppConfig.PKCERequired = true
-	app.Certificate = &ApplicationCert{
-		Type:  "JWKS_URI",
-		Value: "https://completeoauth.example.com/.well-known/jwks.json",
-	}
 
 	appJSON, _ := json.Marshal(app)
 	req, _ := http.NewRequest("PUT", testServerURL+"/applications/"+appID, bytes.NewReader(appJSON))
@@ -2354,10 +2143,6 @@ func (ts *ApplicationAPITestSuite) TestApplicationCertificateRollbackOnOAuthFail
 		Name:        "Certificate Rollback Test",
 		Description: "Test certificate rollback on OAuth failure",
 		URL:         "https://rollback.example.com",
-		Certificate: &ApplicationCert{
-			Type:  "JWKS_URI",
-			Value: "https://rollback.example.com/.well-known/jwks.json",
-		},
 		InboundAuthConfig: []InboundAuthConfig{
 			{
 				Type: "oauth2",
@@ -2427,14 +2212,14 @@ func (ts *ApplicationAPITestSuite) TestApplicationWithOAuthCertificateEmptyJWKSU
 					RedirectURIs:            []string{"https://oauthemptyjwksuri.example.com/callback"},
 					GrantTypes:              []string{"authorization_code"},
 					ResponseTypes:           []string{"code"},
-					TokenEndpointAuthMethod: "client_secret_basic",
+					TokenEndpointAuthMethod: "private_key_jwt",
 					Scopes:                  []string{"openid"},
+					Certificate: &ApplicationCert{
+						Type:  "JWKS_URI",
+						Value: "",
+					},
 				},
 			},
-		},
-		Certificate: &ApplicationCert{
-			Type:  "JWKS_URI",
-			Value: "",
 		},
 	}
 
@@ -3719,57 +3504,6 @@ func (ts *ApplicationAPITestSuite) TestApplicationCreateWithoutRegistrationFlowI
 
 	// Verify registration flow ID was not inferred (auto-inference is disabled by default)
 	ts.Assert().Empty(retrievedApp.RegistrationFlowID)
-}
-
-// TestApplicationUpdateRemoveCertificate tests updating application to remove certificate
-func (ts *ApplicationAPITestSuite) TestApplicationUpdateRemoveCertificate() {
-	// Create app with certificate
-	app := Application{
-		OUID:        testOUID,
-		Name:        "Remove Certificate Test",
-		Description: "Test removing certificate during update",
-		URL:         "https://removecert.example.com",
-		Certificate: &ApplicationCert{
-			Type:  "JWKS_URI",
-			Value: "https://removecert.example.com/.well-known/jwks.json",
-		},
-	}
-
-	appID, err := createApplication(app)
-	ts.Require().NoError(err)
-	defer deleteApplication(appID)
-
-	// Update to remove certificate
-	updateApp := Application{
-		OUID:        testOUID,
-		Name:        "Remove Certificate Test",
-		Description: "Updated description",
-		Certificate: nil, // Remove certificate
-	}
-
-	appJSON, err := json.Marshal(updateApp)
-	ts.Require().NoError(err)
-
-	reqBody := bytes.NewReader(appJSON)
-	req, err := http.NewRequest("PUT", testServerURL+"/applications/"+appID, reqBody)
-	ts.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := testutils.GetHTTPClient()
-
-	resp, err := client.Do(req)
-	ts.Require().NoError(err)
-	defer resp.Body.Close()
-
-	// Should succeed
-	ts.Assert().Equal(http.StatusOK, resp.StatusCode)
-
-	var updatedApp Application
-	err = json.NewDecoder(resp.Body).Decode(&updatedApp)
-	ts.Require().NoError(err)
-
-	// Verify certificate was removed
-	ts.Assert().Nil(updatedApp.Certificate)
 }
 
 // TestApplicationCreateWithDuplicateClientID tests creating application with duplicate client ID

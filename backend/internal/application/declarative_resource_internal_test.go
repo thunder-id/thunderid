@@ -28,8 +28,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/application/model"
-	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
-	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // ValidateApplicationWrapperTestSuite tests the validateApplicationWrapper function.
@@ -228,15 +227,15 @@ inboundAuthConfig:
 
 	// Verify OAuth configuration was parsed correctly
 	assert.Len(s.T(), appDTO.InboundAuthConfig, 1)
-	assert.Equal(s.T(), inboundmodel.OAuthInboundAuthType, appDTO.InboundAuthConfig[0].Type)
+	assert.Equal(s.T(), providers.OAuthInboundAuthType, appDTO.InboundAuthConfig[0].Type)
 
 	oauthConfig := appDTO.InboundAuthConfig[0].OAuthConfig
 	assert.NotNil(s.T(), oauthConfig)
 	assert.Equal(s.T(), "client-123", oauthConfig.ClientID)
 	assert.Equal(s.T(), "secret-456", oauthConfig.ClientSecret)
 	assert.Contains(s.T(), oauthConfig.RedirectURIs, "https://example.com/callback")
-	assert.Contains(s.T(), oauthConfig.GrantTypes, oauth2const.GrantType("authorization_code"))
-	assert.Contains(s.T(), oauthConfig.GrantTypes, oauth2const.GrantType("refresh_token"))
+	assert.Contains(s.T(), oauthConfig.GrantTypes, providers.GrantType("authorization_code"))
+	assert.Contains(s.T(), oauthConfig.GrantTypes, providers.GrantType("refresh_token"))
 	assert.True(s.T(), oauthConfig.PKCERequired)
 	assert.False(s.T(), oauthConfig.PublicClient)
 	assert.Contains(s.T(), oauthConfig.Scopes, "openid")
@@ -343,9 +342,9 @@ inboundAuthConfig:
 	mockAppService := NewApplicationServiceInterfaceMock(s.T())
 	mockAppService.EXPECT().ValidateApplication(mock.Anything, mock.Anything).Return(
 		&model.ApplicationProcessedDTO{ID: "public-oauth-app", Name: "Public OAuth Application"},
-		&inboundmodel.InboundAuthConfigWithSecret{
-			Type: inboundmodel.OAuthInboundAuthType,
-			OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+		&providers.InboundAuthConfigWithSecret{
+			Type: providers.OAuthInboundAuthType,
+			OAuthConfig: &providers.OAuthConfigWithSecret{
 				ClientID: "public-client-id-123",
 			},
 		},
@@ -380,9 +379,9 @@ inboundAuthConfig:
 	mockAppService := NewApplicationServiceInterfaceMock(s.T())
 	mockAppService.EXPECT().ValidateApplication(mock.Anything, mock.Anything).Return(
 		&model.ApplicationProcessedDTO{ID: "confidential-oauth-app", Name: "Confidential OAuth Application"},
-		&inboundmodel.InboundAuthConfigWithSecret{
-			Type: inboundmodel.OAuthInboundAuthType,
-			OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+		&providers.InboundAuthConfigWithSecret{
+			Type: providers.OAuthInboundAuthType,
+			OAuthConfig: &providers.OAuthConfigWithSecret{
 				ClientID:     "confidential-client-id-123",
 				ClientSecret: "confidential-secret-456",
 			},
@@ -427,9 +426,9 @@ inboundAuthConfig:
 		},
 	).Return(
 		&model.ApplicationProcessedDTO{ID: "generated-credentials-app", Name: "Generated Credentials App"},
-		&inboundmodel.InboundAuthConfigWithSecret{
-			Type: inboundmodel.OAuthInboundAuthType,
-			OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+		&providers.InboundAuthConfigWithSecret{
+			Type: providers.OAuthInboundAuthType,
+			OAuthConfig: &providers.OAuthConfigWithSecret{
 				ClientID:     "generated-client-id",
 				ClientSecret: "generated-client-secret",
 			},
@@ -472,14 +471,14 @@ inboundAuthConfig:
 	mockAppService.EXPECT().ValidateApplication(mock.Anything, mock.Anything).Run(
 		func(_ context.Context, app *model.ApplicationDTO) {
 			assert.Len(s.T(), app.InboundAuthConfig, 1)
-			assert.Equal(s.T(), inboundmodel.OAuthInboundAuthType, app.InboundAuthConfig[0].Type)
+			assert.Equal(s.T(), providers.OAuthInboundAuthType, app.InboundAuthConfig[0].Type)
 			assert.Equal(s.T(), "oauth-client-id", app.InboundAuthConfig[0].OAuthConfig.ClientID)
 		},
 	).Return(
 		&model.ApplicationProcessedDTO{ID: "mixed-inbound-app", Name: "Mixed Inbound App"},
-		&inboundmodel.InboundAuthConfigWithSecret{
-			Type: inboundmodel.OAuthInboundAuthType,
-			OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+		&providers.InboundAuthConfigWithSecret{
+			Type: providers.OAuthInboundAuthType,
+			OAuthConfig: &providers.OAuthConfigWithSecret{
 				ClientID:     "oauth-client-id",
 				ClientSecret: "oauth-client-secret",
 			},

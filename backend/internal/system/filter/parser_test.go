@@ -22,6 +22,8 @@ import (
 	"net/url"
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +33,7 @@ func TestParseFilterExpression(t *testing.T) {
 		name      string
 		input     string
 		wantAttr  string
-		wantOp    Operator
+		wantOp    tidcommon.Operator
 		wantValue interface{}
 		wantErr   bool
 	}{
@@ -39,63 +41,63 @@ func TestParseFilterExpression(t *testing.T) {
 			name:      "eq with quoted string",
 			input:     `name eq "engineering"`,
 			wantAttr:  "name",
-			wantOp:    OperatorEq,
+			wantOp:    tidcommon.OperatorEq,
 			wantValue: "engineering",
 		},
 		{
 			name:      "gt with quoted timestamp",
 			input:     `createdAt gt "2024-01-01T00:00:00Z"`,
 			wantAttr:  "createdAt",
-			wantOp:    OperatorGt,
+			wantOp:    tidcommon.OperatorGt,
 			wantValue: "2024-01-01T00:00:00Z",
 		},
 		{
 			name:      "lt with quoted timestamp",
 			input:     `updatedAt lt "2025-12-31T23:59:59Z"`,
 			wantAttr:  "updatedAt",
-			wantOp:    OperatorLt,
+			wantOp:    tidcommon.OperatorLt,
 			wantValue: "2025-12-31T23:59:59Z",
 		},
 		{
 			name:      "eq with unquoted integer",
 			input:     `count eq 42`,
 			wantAttr:  "count",
-			wantOp:    OperatorEq,
+			wantOp:    tidcommon.OperatorEq,
 			wantValue: int64(42),
 		},
 		{
 			name:      "gt with unquoted integer",
 			input:     `size gt 100`,
 			wantAttr:  "size",
-			wantOp:    OperatorGt,
+			wantOp:    tidcommon.OperatorGt,
 			wantValue: int64(100),
 		},
 		{
 			name:      "lt with unquoted float",
 			input:     `score lt 3.14`,
 			wantAttr:  "score",
-			wantOp:    OperatorLt,
+			wantOp:    tidcommon.OperatorLt,
 			wantValue: float64(3.14),
 		},
 		{
 			name:      "eq with boolean true",
 			input:     `active eq true`,
 			wantAttr:  "active",
-			wantOp:    OperatorEq,
+			wantOp:    tidcommon.OperatorEq,
 			wantValue: true,
 		},
 		{
 			name:      "eq with boolean false",
 			input:     `enabled eq false`,
 			wantAttr:  "enabled",
-			wantOp:    OperatorEq,
+			wantOp:    tidcommon.OperatorEq,
 			wantValue: false,
 		},
 		{
 			name:      "nested attribute with dot notation",
 			input:     `address.city eq "Colombo"`,
 			wantAttr:  "address.city",
-			wantOp:    OperatorEq,
+			wantOp:    tidcommon.OperatorEq,
 			wantValue: "Colombo",
 		},
 		{
@@ -145,44 +147,56 @@ func TestParseFilterGroup(t *testing.T) {
 		name        string
 		input       string
 		wantClauses int
-		wantFirst   FilterExpression
-		wantSecond  *FilterExpression
-		wantConn    LogicalOperator
+		wantFirst   tidcommon.FilterExpression
+		wantSecond  *tidcommon.FilterExpression
+		wantConn    tidcommon.LogicalOperator
 		wantErr     bool
 	}{
 		{
 			name:        "single expression",
 			input:       `name eq "Engineering"`,
 			wantClauses: 1,
-			wantFirst:   FilterExpression{Attribute: "name", Operator: OperatorEq, Value: "Engineering"},
+			wantFirst: tidcommon.FilterExpression{
+				Attribute: "name",
+				Operator:  tidcommon.OperatorEq,
+				Value:     "Engineering",
+			},
 		},
 		{
 			name:        "two clauses with AND",
 			input:       `name eq "Engineering" AND handle eq "eng"`,
 			wantClauses: 2,
-			wantFirst:   FilterExpression{Attribute: "name", Operator: OperatorEq, Value: "Engineering"},
-			wantSecond:  &FilterExpression{Attribute: "handle", Operator: OperatorEq, Value: "eng"},
-			wantConn:    LogicalAnd,
+			wantFirst: tidcommon.FilterExpression{
+				Attribute: "name",
+				Operator:  tidcommon.OperatorEq,
+				Value:     "Engineering",
+			},
+			wantSecond: &tidcommon.FilterExpression{Attribute: "handle", Operator: tidcommon.OperatorEq, Value: "eng"},
+			wantConn:   tidcommon.LogicalAnd,
 		},
 		{
 			name:        "two clauses with OR",
 			input:       `name eq "A" OR name eq "B"`,
 			wantClauses: 2,
-			wantFirst:   FilterExpression{Attribute: "name", Operator: OperatorEq, Value: "A"},
-			wantSecond:  &FilterExpression{Attribute: "name", Operator: OperatorEq, Value: "B"},
-			wantConn:    LogicalOr,
+			wantFirst:   tidcommon.FilterExpression{Attribute: "name", Operator: tidcommon.OperatorEq, Value: "A"},
+			wantSecond:  &tidcommon.FilterExpression{Attribute: "name", Operator: tidcommon.OperatorEq, Value: "B"},
+			wantConn:    tidcommon.LogicalOr,
 		},
 		{
 			name:        "three clauses mixed AND OR",
 			input:       `name eq "A" AND createdAt gt "2024" OR handle eq "b"`,
 			wantClauses: 3,
-			wantFirst:   FilterExpression{Attribute: "name", Operator: OperatorEq, Value: "A"},
+			wantFirst:   tidcommon.FilterExpression{Attribute: "name", Operator: tidcommon.OperatorEq, Value: "A"},
 		},
 		{
 			name:        "gt with timestamp",
 			input:       `createdAt gt "2024-01-01T00:00:00Z"`,
 			wantClauses: 1,
-			wantFirst:   FilterExpression{Attribute: "createdAt", Operator: OperatorGt, Value: "2024-01-01T00:00:00Z"},
+			wantFirst: tidcommon.FilterExpression{
+				Attribute: "createdAt",
+				Operator:  tidcommon.OperatorGt,
+				Value:     "2024-01-01T00:00:00Z",
+			},
 		},
 		{
 			name:    "invalid connector",
@@ -214,7 +228,7 @@ func TestParseFilterGroup(t *testing.T) {
 			assert.Equal(t, tc.wantFirst.Attribute, got.Clauses[0].Expr.Attribute)
 			assert.Equal(t, tc.wantFirst.Operator, got.Clauses[0].Expr.Operator)
 			assert.Equal(t, tc.wantFirst.Value, got.Clauses[0].Expr.Value)
-			assert.Equal(t, LogicalOperator(""), got.Clauses[0].Connector)
+			assert.Equal(t, tidcommon.LogicalOperator(""), got.Clauses[0].Connector)
 
 			if tc.wantSecond != nil {
 				assert.Equal(t, tc.wantSecond.Attribute, got.Clauses[1].Expr.Attribute)
@@ -241,7 +255,7 @@ func TestParseFilterParam(t *testing.T) {
 		require.NotNil(t, got)
 		require.Len(t, got.Clauses, 1)
 		assert.Equal(t, "name", got.Clauses[0].Expr.Attribute)
-		assert.Equal(t, OperatorEq, got.Clauses[0].Expr.Operator)
+		assert.Equal(t, tidcommon.OperatorEq, got.Clauses[0].Expr.Operator)
 		assert.Equal(t, "eng", got.Clauses[0].Expr.Value)
 	})
 

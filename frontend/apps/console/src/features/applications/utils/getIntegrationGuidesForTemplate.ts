@@ -19,6 +19,8 @@
 import normalizeTemplateId from './normalizeTemplateId';
 import PlatformBasedApplicationTemplateMetadata from '../config/PlatformBasedApplicationTemplateMetadata';
 import TechnologyBasedApplicationTemplateMetadata from '../config/TechnologyBasedApplicationTemplateMetadata';
+import TemplateConstants from '../constants/template-constants';
+import {ApplicationCreateFlowSignInApproach} from '../models/application-create-flow';
 import type {IntegrationGuides} from '../models/application-templates';
 
 /**
@@ -53,4 +55,39 @@ export default function getIntegrationGuidesForTemplate(templateId: string | und
   }
 
   return null;
+}
+
+/**
+ * Resolves the integration guide variant key for a template ID.
+ *
+ * Templates with the '-embedded' suffix (e.g., 'react-embedded') use the EMBEDDED
+ * variant; all others use the INBUILT variant.
+ *
+ * @param templateId - The template ID (e.g., 'react', 'react-embedded')
+ * @returns The guide variant key (EMBEDDED or INBUILT)
+ */
+export function getIntegrationGuideVariantKey(templateId: string | undefined | null): string {
+  const isEmbedded = templateId?.includes(TemplateConstants.EMBEDDED_SUFFIX) ?? false;
+
+  return isEmbedded ? ApplicationCreateFlowSignInApproach.EMBEDDED : ApplicationCreateFlowSignInApproach.INBUILT;
+}
+
+/**
+ * Gets the integration guide for the variant selected by a template ID.
+ *
+ * Unlike {@link getIntegrationGuidesForTemplate}, which returns the full guides object,
+ * this returns only the guide for the selected variant (EMBEDDED or INBUILT), or null
+ * when that variant has no content. Use this to decide whether a guide can be rendered.
+ *
+ * @param templateId - The template ID (e.g., 'react', 'react-embedded', 'express-embedded')
+ * @returns The guide for the selected variant, or null if not found
+ */
+export function getIntegrationGuideForTemplate(templateId: string | undefined): IntegrationGuides[string] | null {
+  const guides = getIntegrationGuidesForTemplate(templateId);
+
+  if (!guides) {
+    return null;
+  }
+
+  return guides[getIntegrationGuideVariantKey(templateId)] ?? null;
 }

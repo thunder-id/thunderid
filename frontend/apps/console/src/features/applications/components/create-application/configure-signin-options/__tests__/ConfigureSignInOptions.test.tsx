@@ -70,11 +70,13 @@ vi.mock('@/features/flows/api/useGetFlows', () => ({
 
 // Mock useApplicationCreateContext - need to mock the correct path used by the component
 const mockSetSelectedAuthFlow = vi.fn();
+const mockSetIntegrations = vi.fn();
 const mockSelectedAuthFlow: BasicFlowDefinition | null = null;
 vi.mock('@/features/applications/hooks/useApplicationCreateContext', () => ({
   default: () => ({
     selectedAuthFlow: mockSelectedAuthFlow,
     setSelectedAuthFlow: mockSetSelectedAuthFlow,
+    setIntegrations: mockSetIntegrations,
   }),
 }));
 

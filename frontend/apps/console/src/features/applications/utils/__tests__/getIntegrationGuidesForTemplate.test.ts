@@ -19,7 +19,10 @@
 import {describe, expect, it, vi} from 'vitest';
 import type {IntegrationGuides} from '../../models/application-templates';
 
-import getIntegrationGuidesForTemplate from '../getIntegrationGuidesForTemplate';
+import getIntegrationGuidesForTemplate, {
+  getIntegrationGuideForTemplate,
+  getIntegrationGuideVariantKey,
+} from '../getIntegrationGuidesForTemplate';
 
 // Mock the config files - must be defined before any imports that use them
 vi.mock('../../config/TechnologyBasedApplicationTemplateMetadata', () => ({
@@ -28,7 +31,7 @@ vi.mock('../../config/TechnologyBasedApplicationTemplateMetadata', () => ({
       template: {
         id: 'express',
         integrationGuides: {
-          inbuilt: {
+          INBUILT: {
             llm_prompt: {
               id: 'express-llm',
               title: 'AI-Assisted Integration',
@@ -57,7 +60,7 @@ vi.mock('../../config/TechnologyBasedApplicationTemplateMetadata', () => ({
       template: {
         id: 'react',
         integrationGuides: {
-          inbuilt: {
+          INBUILT: {
             llm_prompt: {
               id: 'react-llm',
               title: 'AI-Assisted Integration',
@@ -79,6 +82,23 @@ vi.mock('../../config/TechnologyBasedApplicationTemplateMetadata', () => ({
               },
             ],
           },
+          EMBEDDED: {
+            llm_prompt: {
+              id: 'react-embedded-llm',
+              title: 'AI-Assisted Integration',
+              description: 'React embedded integration guide',
+              type: 'llm' as const,
+              icon: 'react',
+              content: 'Embedded LLM prompt content',
+            },
+            manual_steps: [
+              {
+                step: 1,
+                title: 'Embedded Step 1',
+                description: 'First embedded step description',
+              },
+            ],
+          },
         },
       },
     },
@@ -86,7 +106,7 @@ vi.mock('../../config/TechnologyBasedApplicationTemplateMetadata', () => ({
       template: {
         id: 'nextjs',
         integrationGuides: {
-          inbuilt: {
+          INBUILT: {
             llm_prompt: {
               id: 'nextjs-llm',
               title: 'AI-Assisted Integration',
@@ -125,7 +145,7 @@ vi.mock('../../config/PlatformBasedApplicationTemplateMetadata', () => ({
       template: {
         id: 'browser',
         integrationGuides: {
-          inbuilt: {
+          INBUILT: {
             llm_prompt: {
               id: 'browser-llm',
               title: 'AI-Assisted Integration',
@@ -167,7 +187,7 @@ vi.mock('../normalizeTemplateId', () => ({
 
 // Test data - define after mocks
 const mockReactGuides: IntegrationGuides = {
-  inbuilt: {
+  INBUILT: {
     llm_prompt: {
       id: 'react-llm',
       title: 'AI-Assisted Integration',
@@ -189,10 +209,27 @@ const mockReactGuides: IntegrationGuides = {
       },
     ],
   },
+  EMBEDDED: {
+    llm_prompt: {
+      id: 'react-embedded-llm',
+      title: 'AI-Assisted Integration',
+      description: 'React embedded integration guide',
+      type: 'llm' as const,
+      icon: 'react',
+      content: 'Embedded LLM prompt content',
+    },
+    manual_steps: [
+      {
+        step: 1,
+        title: 'Embedded Step 1',
+        description: 'First embedded step description',
+      },
+    ],
+  },
 };
 
 const mockExpressGuides: IntegrationGuides = {
-  inbuilt: {
+  INBUILT: {
     llm_prompt: {
       id: 'express-llm',
       title: 'AI-Assisted Integration',
@@ -217,7 +254,7 @@ const mockExpressGuides: IntegrationGuides = {
 };
 
 const mockNextjsGuides: IntegrationGuides = {
-  inbuilt: {
+  INBUILT: {
     llm_prompt: {
       id: 'nextjs-llm',
       title: 'AI-Assisted Integration',
@@ -242,7 +279,7 @@ const mockNextjsGuides: IntegrationGuides = {
 };
 
 const mockBrowserGuides: IntegrationGuides = {
-  inbuilt: {
+  INBUILT: {
     llm_prompt: {
       id: 'browser-llm',
       title: 'AI-Assisted Integration',
@@ -339,5 +376,50 @@ describe('getIntegrationGuidesForTemplate', () => {
 
       expect(result).toBeNull();
     });
+  });
+});
+
+describe('getIntegrationGuideVariantKey', () => {
+  it('should resolve INBUILT for a template without the embedded suffix', () => {
+    expect(getIntegrationGuideVariantKey('react')).toBe('INBUILT');
+  });
+
+  it('should resolve EMBEDDED for a template with the embedded suffix', () => {
+    expect(getIntegrationGuideVariantKey('react-embedded')).toBe('EMBEDDED');
+  });
+
+  it('should resolve INBUILT for undefined and null template IDs', () => {
+    expect(getIntegrationGuideVariantKey(undefined)).toBe('INBUILT');
+    expect(getIntegrationGuideVariantKey(null)).toBe('INBUILT');
+  });
+});
+
+describe('getIntegrationGuideForTemplate', () => {
+  it('should return the INBUILT guide for the react template', () => {
+    expect(getIntegrationGuideForTemplate('react')).toEqual(mockReactGuides.INBUILT);
+  });
+
+  it('should return the EMBEDDED guide for the react-embedded template', () => {
+    expect(getIntegrationGuideForTemplate('react-embedded')).toEqual(mockReactGuides.EMBEDDED);
+  });
+
+  it('should return the INBUILT guide for the express template', () => {
+    expect(getIntegrationGuideForTemplate('express')).toEqual(mockExpressGuides.INBUILT);
+  });
+
+  it('should return null for express-embedded since no EMBEDDED variant exists', () => {
+    expect(getIntegrationGuideForTemplate('express-embedded')).toBeNull();
+  });
+
+  it('should return null for a template without any integration guides', () => {
+    expect(getIntegrationGuideForTemplate('angular')).toBeNull();
+  });
+
+  it('should return null for undefined template ID', () => {
+    expect(getIntegrationGuideForTemplate(undefined)).toBeNull();
+  });
+
+  it('should return null for a non-existent template ID', () => {
+    expect(getIntegrationGuideForTemplate('non-existent-template')).toBeNull();
   });
 });

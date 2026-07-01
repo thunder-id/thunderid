@@ -22,17 +22,17 @@ package provider
 import (
 	"context"
 
-	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // AuthnProviderInterface defines the interface for authentication providers.
 type AuthnProviderInterface interface {
 	Authenticate(ctx context.Context, identifiers, credentials map[string]interface{},
-		metadata *authnprovidercm.AuthnMetadata) (*authnprovidercm.AuthnResult, *serviceerror.ServiceError)
-	GetEntityReference(ctx context.Context, entityReferenceToken any) (*authnprovidercm.EntityReference,
-		*serviceerror.ServiceError)
-	GetAttributes(ctx context.Context, attributeToken any, consentedAttributes *authnprovidercm.RequestedAttributes,
-		metadata *authnprovidercm.GetAttributesMetadata) (
-		*authnprovidercm.AttributesResponse, *serviceerror.ServiceError)
+		metadata *providers.AuthnMetadata) (*providers.AuthnResult, *tidcommon.ServiceError)
+	GetEntityReference(ctx context.Context, entityReferenceToken any) (*providers.EntityReference,
+		*tidcommon.ServiceError)
+	GetAttributes(ctx context.Context, attributeToken any, consentedAttributes *providers.RequestedAttributes,
+		metadata *providers.GetAttributesMetadata) (
+		*providers.AttributesResponse, *tidcommon.ServiceError)
 }

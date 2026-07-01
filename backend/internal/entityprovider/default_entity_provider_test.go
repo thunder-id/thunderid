@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 )
 
@@ -78,9 +79,9 @@ func (suite *DefaultEntityProviderTestSuite) TestIdentifyEntity() {
 }
 
 func (suite *DefaultEntityProviderTestSuite) TestGetEntity() {
-	expected := &entity.Entity{
+	expected := &providers.Entity{
 		ID:       testEntityID,
-		Category: entity.EntityCategoryUser,
+		Category: providers.EntityCategoryUser,
 		Type:     "customer",
 	}
 
@@ -90,7 +91,7 @@ func (suite *DefaultEntityProviderTestSuite) TestGetEntity() {
 	e, err := suite.provider.GetEntity(testEntityID)
 	suite.Nil(err)
 	suite.Equal(testEntityID, e.ID)
-	suite.Equal(EntityCategory("user"), e.Category)
+	suite.Equal(providers.EntityCategory("user"), e.Category)
 
 	// Test Not Found
 	suite.mockService.On("GetEntity", mock.Anything, testEntityID).
@@ -103,14 +104,14 @@ func (suite *DefaultEntityProviderTestSuite) TestGetEntity() {
 }
 
 func (suite *DefaultEntityProviderTestSuite) TestCreateEntity() {
-	providerEntity := &Entity{
+	providerEntity := &providers.Entity{
 		ID:       testEntityID,
-		Category: EntityCategoryApp,
+		Category: providers.EntityCategoryApp,
 		Type:     "application",
 	}
-	created := &entity.Entity{
+	created := &providers.Entity{
 		ID:       testEntityID,
-		Category: entity.EntityCategoryApp,
+		Category: providers.EntityCategoryApp,
 		Type:     "application",
 	}
 
@@ -175,11 +176,11 @@ func (suite *DefaultEntityProviderTestSuite) TestCreateEntity() {
 }
 
 func (suite *DefaultEntityProviderTestSuite) TestUpdateEntity() {
-	providerEntity := &Entity{
+	providerEntity := &providers.Entity{
 		ID:   testEntityID,
 		Type: "customer",
 	}
-	updated := &entity.Entity{
+	updated := &providers.Entity{
 		ID:   testEntityID,
 		Type: "customer",
 	}
@@ -371,7 +372,7 @@ func (suite *DefaultEntityProviderTestSuite) TestMapEntityError() {
 }
 
 func (suite *DefaultEntityProviderTestSuite) TestGetTransitiveEntityGroups() {
-	groups := []entity.EntityGroup{
+	groups := []providers.EntityGroup{
 		{ID: "g1", Name: "Group 1", OUID: "ou1"},
 		{ID: "g2", Name: "Group 2", OUID: "ou1"},
 	}
@@ -435,8 +436,8 @@ func (suite *DefaultEntityProviderTestSuite) TestValidateEntityIDs() {
 
 func (suite *DefaultEntityProviderTestSuite) TestGetEntitiesByIDs() {
 	ids := []string{"id1"}
-	entities := []entity.Entity{
-		{ID: "id1", Category: entity.EntityCategoryUser, Type: "customer"},
+	entities := []providers.Entity{
+		{ID: "id1", Category: providers.EntityCategoryUser, Type: "customer"},
 	}
 
 	// Test Success
