@@ -230,12 +230,6 @@ func (rs *resourceService) CreateResourceServer(
 		resourceServer.Type = providers.ResourceServerTypeCustom
 	}
 
-	// MCP resource servers require a non-empty handle so server-level tools/resources derive a
-	// prefixed permission string and cannot collapse onto a bare action handle.
-	if resourceServer.Type == providers.ResourceServerTypeMCP && resourceServer.Handle == "" {
-		return nil, &ErrorInvalidRequestFormat
-	}
-
 	// Set default delimiter if not provided
 	if resourceServer.Delimiter == "" {
 		resourceServer.Delimiter = rs.defaultDelimiter
@@ -442,11 +436,6 @@ func (rs *resourceService) UpdateResourceServer(
 		resourceServer.Handle = existingResServer.Handle
 	} else if resourceServer.Handle != existingResServer.Handle {
 		return nil, &ErrorImmutableHandle
-	}
-
-	// MCP resource servers require a non-empty handle.
-	if resourceServer.Type == providers.ResourceServerTypeMCP && resourceServer.Handle == "" {
-		return nil, &ErrorInvalidRequestFormat
 	}
 
 	// Identifier: preserve existing if not provided; check uniqueness if changed

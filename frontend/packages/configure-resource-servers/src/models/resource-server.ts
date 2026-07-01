@@ -57,12 +57,15 @@ export interface ResourceListResponse {
   links?: {rel: string; href: string}[];
 }
 
+export type ActionKind = 'tool' | 'resource';
+
 export interface Action {
   id: string;
   name: string;
   handle: string;
   description?: string | null;
   permission: string;
+  kind?: ActionKind;
 }
 
 export interface ActionListResponse {
@@ -75,7 +78,7 @@ export interface ActionListResponse {
 
 export interface CreateResourceServerRequest {
   name: string;
-  handle: string | null;
+  handle?: string;
   description?: string;
   identifier?: string;
   delimiter?: PermissionDelimiter;
@@ -106,6 +109,7 @@ export interface CreateActionRequest {
   name: string;
   handle: string;
   description?: string;
+  kind?: ActionKind;
 }
 
 export interface UpdateActionRequest {

@@ -738,35 +738,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_PreservesType() 
 	suite.mockStore.AssertExpectations(suite.T())
 }
 
-func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_MCPRejectsEmptyHandle() {
-	// Guards pre-existing handle-less MCP rows (legacy rows created before the handle
-	// requirement) per spec §8: updating such a row without supplying a handle must be
-	// rejected so an MCP RS can never end up with an empty handle.
-	rs := providers.ResourceServer{
-		Name: "updated-rs",
-		OUID: "ou-123",
-	}
-
-	existingRS := providers.ResourceServer{
-		ID:        "rs-123",
-		Name:      "old-name",
-		Handle:    "",
-		Type:      providers.ResourceServerTypeMCP,
-		OUID:      "ou-123",
-		Delimiter: ":",
-	}
-
-	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
-	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(existingRS, nil)
-
-	result, err := suite.service.UpdateResourceServer(context.Background(), "rs-123", rs)
-
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(ErrorInvalidRequestFormat.Code, err.Code)
-	suite.Equal(tidcommon.ClientErrorType, err.Type)
-}
-
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_NotFound() {
 	rs := providers.ResourceServer{
 		Name: "test-rs",
@@ -3020,19 +2991,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateAction_KindChangeRejected() {
 
 	result, err := suite.service.UpdateAction(context.Background(), "rs-mcp", &resID, "act-1",
 		providers.Action{Name: testUpdatedName, Kind: providers.ActionKindTool})
-
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(ErrorInvalidRequestFormat.Code, err.Code)
-}
-
-func (suite *ResourceServiceTestSuite) TestCreateResourceServer_MCP_RequiresHandle() {
-	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
-		Return(providers.OrganizationUnit{ID: "ou-123"}, nil)
-	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "x").Return(false, nil)
-
-	result, err := suite.service.CreateResourceServer(context.Background(),
-		providers.ResourceServer{Name: "x", OUID: "ou-123", Type: providers.ResourceServerTypeMCP, Handle: ""})
 
 	suite.Nil(result)
 	suite.NotNil(err)

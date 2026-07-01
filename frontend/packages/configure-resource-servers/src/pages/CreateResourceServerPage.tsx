@@ -42,7 +42,6 @@ import ConfigureType from '../components/create-resource-server/ConfigureType';
 import {DEFAULT_PERMISSION_DELIMITER} from '../constants/permission-constants';
 import type {PermissionDelimiter} from '../models/permissions';
 import type {ResourceServerType} from '../models/resource-server';
-import {deriveHandle} from '../utils/deriveHandle';
 
 const ResourceServerCreateStep = {
   TYPE: 'TYPE',
@@ -69,7 +68,6 @@ export default function CreateResourceServerPage(): JSX.Element {
   const [delimiter, setDelimiter] = useState<PermissionDelimiter>(DEFAULT_PERMISSION_DELIMITER);
   const [ouId, setOuId] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [handleEdited, setHandleEdited] = useState(false);
 
   const [stepReady, setStepReady] = useState<Record<ResourceServerCreateStep, boolean>>({
     TYPE: false,
@@ -78,15 +76,9 @@ export default function CreateResourceServerPage(): JSX.Element {
     ORGANIZATION_UNIT: false,
   });
 
-  const handleDelimiterChange = useCallback(
-    (newDelimiter: PermissionDelimiter): void => {
-      setDelimiter(newDelimiter);
-      if (!handleEdited && name) {
-        setHandle(deriveHandle(name, newDelimiter));
-      }
-    },
-    [handleEdited, name],
-  );
+  const handleDelimiterChange = useCallback((newDelimiter: PermissionDelimiter): void => {
+    setDelimiter(newDelimiter);
+  }, []);
 
   const steps: Record<ResourceServerCreateStep, {label: string; order: number}> = useMemo(
     () => ({
@@ -162,7 +154,7 @@ export default function CreateResourceServerPage(): JSX.Element {
 
     const payload = {
       name: name.trim(),
-      handle: handle.trim() || null,
+      handle: handle.trim() || undefined,
       ouId: resolvedOuId,
       type: selectedType,
       delimiter,
@@ -223,8 +215,6 @@ export default function CreateResourceServerPage(): JSX.Element {
             name={name}
             handle={handle}
             delimiter={delimiter}
-            handleEdited={handleEdited}
-            onHandleEditedChange={setHandleEdited}
             onNameChange={setName}
             onHandleChange={setHandle}
             onReadyChange={handleNameReadyChange}
