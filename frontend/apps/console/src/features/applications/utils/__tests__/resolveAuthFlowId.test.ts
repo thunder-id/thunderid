@@ -17,10 +17,10 @@
  */
 
 import {describe, expect, it} from 'vitest';
-import {AuthenticatorTypes} from '../../../integrations/models/authenticators';
+import {AuthenticatorTypes} from '../../../connections/models/authenticators';
 import {AUTH_FLOW_GRAPHS} from '../../models/auth-flow-graphs';
 import resolveAuthFlowId from '../resolveAuthFlowId';
-import {IdentityProviderTypes, type IdentityProvider} from '@/features/integrations/models/identity-provider';
+import {IdentityProviderTypes, type IdentityProvider} from '@/features/connections/models/identity-provider';
 
 describe('resolveAuthFlowId', () => {
   describe('Constants', () => {

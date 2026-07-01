@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {AuthenticatorTypes} from '../../integrations/models/authenticators';
+import {AuthenticatorTypes} from '../../connections/models/authenticators';
 
 /**
  * Determines which integrations are supported by a given flow

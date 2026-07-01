@@ -18,8 +18,8 @@
 
 import {describe, it, expect} from 'vitest';
 import buildPreviewMock from '../buildPreviewMock';
-import {AuthenticatorTypes} from '@/features/integrations/models/authenticators';
-import {IdentityProviderTypes} from '@/features/integrations/models/identity-provider';
+import {AuthenticatorTypes} from '@/features/connections/models/authenticators';
+import {IdentityProviderTypes} from '@/features/connections/models/identity-provider';
 
 type MockComponent = Record<string, unknown>;
 

@@ -17,9 +17,9 @@
  */
 
 import type {EmbeddedFlowComponent} from '@thunderid/react';
-import {AuthenticatorTypes} from '@/features/integrations/models/authenticators';
-import type {IdentityProvider} from '@/features/integrations/models/identity-provider';
-import {IdentityProviderTypes} from '@/features/integrations/models/identity-provider';
+import {AuthenticatorTypes} from '@/features/connections/models/authenticators';
+import type {IdentityProvider} from '@/features/connections/models/identity-provider';
+import {IdentityProviderTypes} from '@/features/connections/models/identity-provider';
 
 interface PreviewMeta {
   application?: {

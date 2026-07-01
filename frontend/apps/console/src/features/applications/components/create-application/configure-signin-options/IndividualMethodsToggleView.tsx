@@ -21,9 +21,9 @@ import {UserRound, Google, GitHub, KeyRound} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import AuthenticationMethodItem from './AuthenticationMethodItem';
-import {AuthenticatorTypes} from '@/features/integrations/models/authenticators';
-import {type IdentityProvider, IdentityProviderTypes} from '@/features/integrations/models/identity-provider';
-import getIntegrationIcon from '@/features/integrations/utils/getIntegrationIcon';
+import {AuthenticatorTypes} from '@/features/connections/models/authenticators';
+import {type IdentityProvider, IdentityProviderTypes} from '@/features/connections/models/identity-provider';
+import getConnectionIcon from '@/features/connections/utils/getConnectionIcon';
 
 /**
  * Props for the IndividualMethodsToggleView component
@@ -125,7 +125,7 @@ export default function IndividualMethodsToggleView({
             <AuthenticationMethodItem
               id={provider.id}
               name={provider.name}
-              icon={getIntegrationIcon(provider.type)}
+              icon={getConnectionIcon(provider.type)}
               isEnabled={integrations[provider.id] ?? false}
               isAvailable
               onToggle={onIntegrationToggle}

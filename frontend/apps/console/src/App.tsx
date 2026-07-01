@@ -108,7 +108,10 @@ const ImportConfigurationUploadPage = lazy(
 const ImportConfigurationValidatePage = lazy(
   () => import('./features/import-export/pages/ImportConfigurationValidatePage'),
 );
-const IntegrationsPage = lazy(() => import('./features/integrations/pages/IntegrationsPage'));
+const ConnectionsListPage = lazy(() => import('./features/connections/pages/ConnectionsListPage'));
+const ConnectionDetailPage = lazy(() => import('./features/connections/pages/ConnectionDetailPage'));
+const ConnectionConfigureWizardPage = lazy(() => import('./features/connections/pages/ConnectionConfigureWizardPage'));
+const ConnectionCreateWizardPage = lazy(() => import('./features/connections/pages/ConnectionCreateWizardPage'));
 const LoginFlowBuilderPage = lazy(() => import('./features/login-flow/pages/LoginFlowPage'));
 const CreateRolePage = lazy(() => import('./features/roles/pages/CreateRolePage'));
 const RoleEditPage = lazy(() => import('./features/roles/pages/RoleEditPage'));
@@ -165,7 +168,9 @@ export default function App(): JSX.Element {
               <Route path="user-types" element={<UserTypesListPage />} />
               <Route path="user-types/:id" element={<ViewUserTypePage />} />
               <Route path="agent-types/:id" element={<ViewAgentTypePage />} />
-              <Route path="integrations" element={<IntegrationsPage />} />
+              <Route path="connections" element={<ConnectionsListPage />} />
+              <Route path="connections/:type" element={<ConnectionDetailPage />} />
+              <Route path="connections/:type/:id" element={<ConnectionDetailPage />} />
               <Route path="groups" element={<GroupsListPage />} />
               <Route path="groups/:groupId" element={<GroupEditPage />} />
               <Route path="roles" element={<RolesListPage />} />
@@ -320,6 +325,26 @@ export default function App(): JSX.Element {
               }
             >
               <Route index element={<FlowCreatePage />} />
+            </Route>
+            <Route
+              path="/connections/create"
+              element={
+                <ProtectedRoute>
+                  <FullScreenLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<ConnectionCreateWizardPage />} />
+            </Route>
+            <Route
+              path="/connections/:type/configure"
+              element={
+                <ProtectedRoute>
+                  <FullScreenLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<ConnectionConfigureWizardPage />} />
             </Route>
             <Route
               path="/flows/signin"

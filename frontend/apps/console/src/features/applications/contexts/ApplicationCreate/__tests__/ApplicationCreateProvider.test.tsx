@@ -23,7 +23,7 @@ import {ApplicationCreateFlowSignInApproach, ApplicationCreateFlowStep} from '..
 import {TechnologyApplicationTemplate, PlatformApplicationTemplate} from '../../../models/application-templates';
 import ApplicationCreateProvider from '../ApplicationCreateProvider';
 import useApplicationCreate from '../useApplicationCreate';
-import {AuthenticatorTypes} from '@/features/integrations/models/authenticators';
+import {AuthenticatorTypes} from '@/features/connections/models/authenticators';
 
 // Mock useGetApplications
 const mockUseGetApplications = vi.fn();

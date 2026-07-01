@@ -37,10 +37,10 @@ import {
 import {AppWindowMac, KeyRound} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import useIdentityProviders from '../../../integrations/api/useIdentityProviders';
-import {AuthenticatorTypes} from '@/features/integrations/models/authenticators';
-import {type IdentityProvider} from '@/features/integrations/models/identity-provider';
-import getIntegrationIcon from '@/features/integrations/utils/getIntegrationIcon';
+import useIdentityProviders from '../../../connections/api/useIdentityProviders';
+import {AuthenticatorTypes} from '@/features/connections/models/authenticators';
+import {type IdentityProvider} from '@/features/connections/models/identity-provider';
+import getConnectionIcon from '@/features/connections/utils/getConnectionIcon';
 
 /**
  * Props for the {@link Preview} component that displays a live preview of the application sign-in page.
@@ -344,7 +344,7 @@ export default function Preview({appLogo, selectedTheme, integrations}: PreviewP
                                 fullWidth
                                 variant="outlined"
                                 disabled
-                                startIcon={getIntegrationIcon(provider.type)}
+                                startIcon={getConnectionIcon(provider.type)}
                               >
                                 {t('applications:onboarding.preview.continueWith', {providerName: provider.name})}
                               </Button>

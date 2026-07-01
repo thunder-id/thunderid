@@ -36,13 +36,13 @@ import useSnackbarNotifications from '../hooks/useSnackbarNotifications';
 import useTemplateAndWidgetLoading from '../hooks/useTemplateAndWidgetLoading';
 import {mutateComponents} from '../utils/componentMutations';
 import GradientBorderButton from '@/features/applications/components/GradientBorderButton';
+import useIdentityProviders from '@/features/connections/api/useIdentityProviders';
 import useGetFlowById from '@/features/flows/api/useGetFlowById';
 import FlowBuilder from '@/features/flows/components/FlowBuilder';
 import useFlowConfig from '@/features/flows/hooks/useFlowConfig';
 import useFlowEvents from '@/features/flows/hooks/useFlowEvents';
 import useValidationStatus from '@/features/flows/hooks/useValidationStatus';
 import {ExecutionTypes, StepTypes, type StepData} from '@/features/flows/models/steps';
-import useIdentityProviders from '@/features/integrations/api/useIdentityProviders';
 import useNotificationSenders from '@/features/notification-senders/api/useNotificationSenders';
 
 const SMS_EXECUTORS = new Set<string>([ExecutionTypes.SMSOTPAuth, ExecutionTypes.SMSExecutor]);

@@ -79,7 +79,7 @@ import Droppable from '../dnd/Droppable';
 import ResourcePanel from '../resource-panel/ResourcePanel';
 import ResourcePropertyPanel from '../resource-property-panel/ResourcePropertyPanel';
 import ValidationPanel from '../validation-panel/ValidationPanel';
-import useIdentityProviders from '@/features/integrations/api/useIdentityProviders';
+import useIdentityProviders from '@/features/connections/api/useIdentityProviders';
 import useNotificationSenders from '@/features/notification-senders/api/useNotificationSenders';
 
 /**

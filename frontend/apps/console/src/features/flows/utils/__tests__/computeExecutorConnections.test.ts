@@ -19,8 +19,8 @@
 import {describe, expect, it} from 'vitest';
 import {ExecutionTypes} from '../../models/steps';
 import computeExecutorConnections from '../computeExecutorConnections';
-import {IdentityProviderTypes} from '@/features/integrations/models/identity-provider';
-import type {BasicIdentityProvider} from '@/features/integrations/models/identity-provider';
+import {IdentityProviderTypes} from '@/features/connections/models/identity-provider';
+import type {BasicIdentityProvider} from '@/features/connections/models/identity-provider';
 import type {NotificationSender} from '@/features/notification-senders/models/notification-sender';
 
 describe('computeExecutorConnections', () => {

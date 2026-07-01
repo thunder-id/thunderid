@@ -20,8 +20,8 @@ import type {Theme} from '@thunderid/design';
 import type {PropsWithChildren} from 'react';
 import {useState, useMemo, useCallback} from 'react';
 import ApplicationCreateContext, {type ApplicationCreateContextType} from './ApplicationCreateContext';
+import {AuthenticatorTypes} from '../../../connections/models/authenticators';
 import type {BasicFlowDefinition} from '../../../flows/models/responses';
-import {AuthenticatorTypes} from '../../../integrations/models/authenticators';
 import useGetApplications from '../../api/useGetApplications';
 import {ApplicationCreateFlowSignInApproach, ApplicationCreateFlowStep} from '../../models/application-create-flow';
 import type {

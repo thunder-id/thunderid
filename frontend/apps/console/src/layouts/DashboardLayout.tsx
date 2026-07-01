@@ -240,10 +240,10 @@ export default function DashboardLayout(): ReactNode {
             path: '/flows',
           },
           {
-            id: 'integrations',
-            text: t('navigation:pages.integrations'),
+            id: 'connections',
+            text: t('navigation:pages.connections'),
             icon: <Layers />,
-            path: '/integrations',
+            path: '/connections',
           },
           {
             id: 'verifiable-credentials',
