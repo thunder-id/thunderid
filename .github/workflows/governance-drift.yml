@@ -1,0 +1,51 @@
+# .github/workflows/governance-drift.yml
+#
+# Defense in depth: assume something slipped past the PR gates. On a schedule,
+#  1. re-lint main against the full effective ruleset (catches rules added after a merge),
+#  2. assert branch protection itself hasn't been weakened,
+#  3. surface expiring exemptions.
+# A failure here pages the platform team rather than a customer.
+#
+# The branch-protection check needs a token with repo admin:read; create it as the
+# GOVERNANCE_READ_TOKEN secret (see the PR follow-ups). Without it that job is skipped.
+
+name: governance-drift
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # daily 06:00 UTC
+  workflow_dispatch: {}
+
+env:
+  SPEC: api/group.yaml
+
+permissions:
+  contents: read
+
+jobs:
+  relint-main:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api-quality-gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci
+      - run: node scripts/validate-exemptions.mjs
+      - run: npx spectral lint "../$SPEC" -r .spectral.effective.yaml --fail-severity=warn
+
+  branch-protection:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.repository_owner != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert branch protection matches policy
+        env:
+          GH_TOKEN: ${{ secrets.GOVERNANCE_READ_TOKEN }}  # PAT/app token with repo admin:read
+          REPO: ${{ github.repository }}
+          BRANCH: main
+          REQUIRED_CHECKS: "api-lint,codegen-drift,breaking-changes,contract-tests,coverage-meta,exemptions"
+        run: bash api-quality-gate/scripts/check-branch-protection.sh

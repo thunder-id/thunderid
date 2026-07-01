@@ -72,6 +72,22 @@ test_unit:
 test_integration:
 	./build.sh test_integration "$(OS)" "$(ARCH)" "$(RUN)" "$(PACKAGE)"
 
+# Consumed by the API quality gate's codegen-drift check. ThunderID's HTTP layer is
+# hand-written (routes registered per-service in internal/*/init.go), so there is no
+# OpenAPI -> server codegen to run yet. This is a deliberate labelled no-op: it keeps the
+# target present and the codegen-drift gate wired without fabricating generation.
+# TODO(codegen): if the HTTP layer ever becomes generated from api/*.yaml, invoke the
+# generator here so scripts/check-codegen-drift.sh becomes meaningful.
+generate:
+	@echo "make generate: no OpenAPI/server codegen in this repo (routes are hand-written); nothing to generate."
+
+# Runtime contract tests for the API production-completeness quality gate. Reuses the
+# integration harness (boots the built distribution, hits the live server) but scopes to
+# the contract package. Requires a built distribution in target/dist (the CI job builds it
+# first; locally run a build such as `make build_with_coverage_only` beforehand).
+contract-test:
+	$(MAKE) test_integration PACKAGE=./contract/...
+
 build_with_coverage:
 	@echo "================================================================"
 	@echo "Building with coverage for unit and integration tests..."

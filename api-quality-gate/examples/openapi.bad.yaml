@@ -1,0 +1,43 @@
+openapi: 3.0.3
+info:
+  title: Sample (intentionally NON-compliant) API
+  version: 0.0.1
+  description: Used by scripts/selftest.sh to prove the rules actually fire.
+paths:
+  # --- Non-compliant collection: no pagination, no filter, no sort ----------
+  /applications:
+    get:
+      operationId: listApplications
+      tags: [applications]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { type: object } }
+        # error responses use the WRONG media type and are incomplete
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { type: object }
+    post:
+      operationId: createApplication
+      tags: [applications]
+      # no Idempotency-Key header
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "201": { description: Created }
+        # missing 400/401/403/409/500
+  /applications/{id}:
+    get:
+      operationId: getApplication
+      tags: [applications]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        # missing 404 and the rest
