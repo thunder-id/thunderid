@@ -16,21 +16,17 @@
  * under the License.
  */
 
-// Package jwt provides functionalities for handling JSON Web Tokens (JWTs).
-package jwt
+// Package joseconfig holds JOSE-specific configuration injected at initialization.
+package joseconfig
 
-import (
-	"time"
+import "time"
 
-	httpservice "github.com/thunder-id/thunderid/internal/system/http"
-	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
-	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
-)
-
-// Initialize initializes the JWT service.
-func Initialize(
-	runtimeProvider kmprovider.RuntimeCryptoProvider, cfg joseconfig.Config,
-) (JWTServiceInterface, error) {
-	httpClient := httpservice.NewHTTPClientWithTimeout(10 * time.Second)
-	return newJWTService(httpClient, runtimeProvider, cfg)
+// Config holds configuration values required by the JOSE (JWT/JWE) services.
+type Config struct {
+	Issuer         string
+	ValidityPeriod int64
+	Audience       string
+	PreferredKeyID string
+	Leeway         int64
+	JWKSCacheTTL   time.Duration
 }

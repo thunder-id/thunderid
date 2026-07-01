@@ -29,10 +29,8 @@ import (
 	"strings"
 	"testing"
 
-	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
-
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
@@ -54,20 +52,11 @@ func TestJWEServiceSuite(t *testing.T) {
 }
 
 func (suite *JWEServiceTestSuite) SetupTest() {
-	config.ResetServerRuntime()
-
 	rsaKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	suite.testRSAPrivateKey = rsaKey
 
 	ecKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	suite.testECPrivateKey = ecKey
-
-	testConfig := &config.Config{
-		JWT: engineconfig.JWTConfig{
-			PreferredKeyID: "test-kid",
-		},
-	}
-	_ = config.InitializeServerRuntime("", testConfig)
 }
 
 func (suite *JWEServiceTestSuite) TestEncryptDecrypt_RSA() {
@@ -233,7 +222,8 @@ func (suite *JWEServiceTestSuite) TestDecrypt_Errors() {
 func (suite *JWEServiceTestSuite) TestInitialize() {
 	mockProvider := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
 
-	service, err := Initialize(mockProvider)
+	cfg := joseconfig.Config{PreferredKeyID: "test-kid"}
+	service, err := Initialize(mockProvider, cfg)
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), service)
 }

@@ -32,6 +32,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
@@ -91,7 +92,7 @@ func (suite *JOSEInitTestSuite) TestInitialize_Success() {
 			},
 		}, nil)
 
-	jwtService, jweService, err := Initialize(suite.mockRuntime)
+	jwtService, jweService, err := Initialize(suite.mockRuntime, joseconfig.Config{PreferredKeyID: "test-key-id"})
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), jwtService)
@@ -105,7 +106,7 @@ func (suite *JOSEInitTestSuite) TestInitialize_JWTInitializationFailure() {
 		GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{KeyID: "test-key-id"}).
 		Return(nil, errors.New("provider unavailable"))
 
-	jwtService, jweService, err := Initialize(suite.mockRuntime)
+	jwtService, jweService, err := Initialize(suite.mockRuntime, joseconfig.Config{PreferredKeyID: "test-key-id"})
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), jwtService)
@@ -120,7 +121,7 @@ func (suite *JOSEInitTestSuite) TestInitialize_NilRuntimeProvider() {
 		}
 	}()
 
-	jwtService, jweService, err := Initialize(nil)
+	jwtService, jweService, err := Initialize(nil, joseconfig.Config{PreferredKeyID: "test-key-id"})
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), jwtService)
@@ -139,7 +140,7 @@ func (suite *JOSEInitTestSuite) TestInitialize_ValidatesServiceInterfaces() {
 			},
 		}, nil)
 
-	jwtService, jweService, err := Initialize(suite.mockRuntime)
+	jwtService, jweService, err := Initialize(suite.mockRuntime, joseconfig.Config{PreferredKeyID: "test-key-id"})
 
 	assert.NoError(suite.T(), err)
 	if jwtService != nil {

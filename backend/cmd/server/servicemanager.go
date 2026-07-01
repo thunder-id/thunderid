@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
 	"github.com/thunder-id/thunderid/internal/agent"
@@ -88,6 +89,7 @@ import (
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/importer"
 	"github.com/thunder-id/thunderid/internal/system/jose"
+	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki"
@@ -123,7 +125,16 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		logger.Fatal(ctx, "Failed to initialize key manager provider", log.Error(err))
 	}
 
-	jwtService, jweService, err := jose.Initialize(runtimeCryptoSvc)
+	runtime := config.GetServerRuntime()
+	joseCfg := joseconfig.Config{
+		Issuer:         runtime.Config.JWT.Issuer,
+		ValidityPeriod: runtime.Config.JWT.ValidityPeriod,
+		Audience:       runtime.Config.JWT.Audience,
+		PreferredKeyID: runtime.Config.JWT.PreferredKeyID,
+		Leeway:         runtime.Config.JWT.Leeway,
+		JWKSCacheTTL:   time.Duration(runtime.Config.Server.SecurityConfig.JWKSCacheTTL) * time.Second,
+	}
+	jwtService, jweService, err := jose.Initialize(runtimeCryptoSvc, joseCfg)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize JOSE services", log.Error(err))
 	}

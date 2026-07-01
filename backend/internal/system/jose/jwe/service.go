@@ -28,8 +28,8 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -49,13 +49,14 @@ type jweService struct {
 }
 
 // newJWEService creates a new JWE service instance.
-func newJWEService(cryptoProvider kmprovider.RuntimeCryptoProvider) (JWEServiceInterface, error) {
-	preferredKid := config.GetServerRuntime().Config.JWT.PreferredKeyID
+func newJWEService(
+	cryptoProvider kmprovider.RuntimeCryptoProvider, cfg joseconfig.Config,
+) (JWEServiceInterface, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "JWEService"))
 
 	return &jweService{
 		cryptoProvider: cryptoProvider,
-		keyRef:         kmprovider.KeyRef{KeyID: preferredKid},
+		keyRef:         kmprovider.KeyRef{KeyID: cfg.PreferredKeyID},
 		logger:         logger,
 	}, nil
 }

@@ -28,7 +28,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -41,8 +40,6 @@ import (
 	"testing"
 	"time"
 
-	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
-
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/stretchr/testify/assert"
@@ -53,6 +50,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
+	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jws"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -80,13 +78,6 @@ type JWTServiceTestSuite struct {
 
 func TestJWTServiceSuite(t *testing.T) {
 	suite.Run(t, new(JWTServiceTestSuite))
-}
-
-func generateTestEncryptionKey(t *testing.T) string {
-	key := make([]byte, 32)
-	_, err := rand.Read(key)
-	require.NoError(t, err)
-	return hex.EncodeToString(key)
 }
 
 func (suite *JWTServiceTestSuite) SetupSuite() {
@@ -131,8 +122,12 @@ func (suite *JWTServiceTestSuite) AfterTest(_, _ string) {
 }
 
 func (suite *JWTServiceTestSuite) SetupTest() {
-	// Reset server runtime before each test
+	// The JWT service reads no global config; the runtime is initialized only so
+	// httpservice.NewHTTPClientWithTimeout can read the TLS min-version config.
 	config.ResetServerRuntime()
+	if err := config.InitializeServerRuntime("", &config.Config{}); err != nil {
+		suite.T().Fatalf("Failed to initialize server runtime: %v", err)
+	}
 
 	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
 	cryptoMock.EXPECT().
@@ -169,38 +164,18 @@ func (suite *JWTServiceTestSuite) SetupTest() {
 
 	suite.jwtService = &jwtService{
 		cryptoProvider: cryptoMock,
-		keyRef:         kmprovider.KeyRef{KeyID: "test-kid"},
-		jwsAlg:         jws.RS256,
-		kid:            "test-kid",
-		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "JWTService")),
-	}
-
-	testConfig := &config.Config{
-		TLS: config.TLSConfig{
-			KeyFile: suite.testKeyPath,
-		},
-		JWT: engineconfig.JWTConfig{
+		cfg: joseconfig.Config{
 			Issuer:         "https://auth.example.com",
 			ValidityPeriod: 3600, // Default validity period
 			PreferredKeyID: "test-kid",
 			Leeway:         30, // 30 seconds leeway for clock skew
 		},
-		Crypto: config.CryptoConfig{
-			Encryption: engineconfig.EncryptionConfig{
-				Key: generateTestEncryptionKey(suite.T()),
-			},
-			Keys: []engineconfig.KeyConfig{
-				{
-					ID:       "test-kid",
-					CertFile: suite.testKeyPath,
-					KeyFile:  suite.testKeyPath,
-				},
-			},
-		},
+		keyRef:     kmprovider.KeyRef{KeyID: "test-kid"},
+		jwsAlg:     jws.RS256,
+		kid:        "test-kid",
+		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "JWTService")),
+		httpClient: httpservice.NewHTTPClientWithTimeout(10 * time.Second),
 	}
-	err := config.InitializeServerRuntime("", testConfig)
-	assert.NoError(suite.T(), err)
-	suite.jwtService.httpClient = httpservice.NewHTTPClientWithTimeout(10 * time.Second)
 }
 
 func (suite *JWTServiceTestSuite) TestNewJWTService() {
@@ -216,7 +191,8 @@ func (suite *JWTServiceTestSuite) TestNewJWTService() {
 			},
 		}, nil)
 
-	service, err := Initialize(cryptoMock)
+	cfg := joseconfig.Config{PreferredKeyID: "test-kid"}
+	service, err := Initialize(cryptoMock, cfg)
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), service)
 	assert.Implements(suite.T(), (*JWTServiceInterface)(nil), service)
@@ -283,7 +259,8 @@ func (suite *JWTServiceTestSuite) TestInitScenarios() {
 					}, nil)
 			}
 
-			service, err := Initialize(cryptoMock)
+			cfg := joseconfig.Config{PreferredKeyID: "test-kid"}
+			service, err := Initialize(cryptoMock, cfg)
 
 			if tc.expectSuccess {
 				assert.NoError(t, err)
@@ -1583,25 +1560,10 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSUsesCache() {
 	// Point 3 catches a buggy cache that stores or returns entries without keying by
 	// URL — without it, a single shared `cached` slot would still pass points 1 and 2.
 	//
-	// The default SetupTest config has SecurityConfig.JWKSCacheTTL == 0, which would
-	// cause the cache to expire instantly (Now().Before(Now()) == false). Re-initialize
-	// the runtime here with a positive TTL so the cache actually retains entries.
-	config.ResetServerRuntime()
-	defer config.ResetServerRuntime()
-	testConfig := &config.Config{
-		JWT: engineconfig.JWTConfig{
-			Issuer:         testIssuer,
-			ValidityPeriod: 3600,
-			Leeway:         30,
-		},
-		Server: engineconfig.ServerConfig{
-			SecurityConfig: engineconfig.SecurityConfig{
-				JWKSCacheTTL: 300,
-			},
-		},
-	}
-	err := config.InitializeServerRuntime("", testConfig)
-	assert.NoError(suite.T(), err)
+	// The default SetupTest config has JWKSCacheTTL == 0, which would cause the cache to
+	// expire instantly (Now().Before(Now()) == false). Inject a positive TTL here so the
+	// cache actually retains entries.
+	suite.jwtService.cfg.JWKSCacheTTL = 300 * time.Second
 
 	jwksData := suite.createMockJWKSData()
 	makeServer := func(counter *int32) *httptest.Server {
@@ -2068,7 +2030,8 @@ func (suite *JWTServiceTestSuite) TestInitWithECDSAKeys() {
 					return cryptolib.Verify(content, sig, tc.expectedSignAlg, &ecKey.PublicKey)
 				}).Maybe()
 
-			service, err := Initialize(cryptoMock)
+			cfg := joseconfig.Config{PreferredKeyID: "test-kid"}
+			service, err := Initialize(cryptoMock, cfg)
 
 			assert.NoError(t, err)
 			assert.NotNil(t, service)
@@ -2120,7 +2083,8 @@ func (suite *JWTServiceTestSuite) TestInitWithEd25519Key() {
 			return cryptolib.Verify(content, sig, cryptolib.ED25519, priv.Public())
 		}).Maybe()
 
-	service, err := Initialize(cryptoMock)
+	cfg := joseconfig.Config{PreferredKeyID: "test-kid"}
+	service, err := Initialize(cryptoMock, cfg)
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), service)
 
@@ -2155,7 +2119,8 @@ func (suite *JWTServiceTestSuite) TestInitWithECPrivateKeyFormat() {
 			Thumbprint: "test-kid",
 		}}, nil)
 
-	service, err := Initialize(cryptoMock)
+	cfg := joseconfig.Config{PreferredKeyID: "test-kid"}
+	service, err := Initialize(cryptoMock, cfg)
 
 	assert.NoError(suite.T(), err)
 
@@ -2178,7 +2143,8 @@ func (suite *JWTServiceTestSuite) TestInitWithUnsupportedECCurve() {
 			Thumbprint: "test-kid",
 		}}, nil)
 
-	_, err = Initialize(cryptoMock)
+	cfg := joseconfig.Config{PreferredKeyID: "test-kid"}
+	_, err = Initialize(cryptoMock, cfg)
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "unsupported algorithm")
@@ -2494,29 +2460,7 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTWithLeeway() {
 
 func (suite *JWTServiceTestSuite) TestVerifyJWTWithZeroLeeway() {
 	// Test behavior when leeway is set to 0
-	config.ResetServerRuntime()
-	testConfig := &config.Config{
-		TLS: config.TLSConfig{
-			KeyFile: suite.testKeyPath,
-		},
-		JWT: engineconfig.JWTConfig{
-			Issuer:         "https://auth.example.com",
-			ValidityPeriod: 3600,
-			PreferredKeyID: "test-kid",
-			Leeway:         0, // No leeway
-		},
-		Crypto: config.CryptoConfig{
-			Keys: []engineconfig.KeyConfig{
-				{
-					ID:       "test-kid",
-					CertFile: suite.testKeyPath,
-					KeyFile:  suite.testKeyPath,
-				},
-			},
-		},
-	}
-	err := config.InitializeServerRuntime("", testConfig)
-	assert.NoError(suite.T(), err)
+	suite.jwtService.cfg.Leeway = 0
 
 	// Token expired 1 second ago should fail with zero leeway
 	expiredTime := time.Now().Add(-1 * time.Second).Unix()

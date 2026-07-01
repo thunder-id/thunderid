@@ -19,9 +19,14 @@
 // Package jwe provides functionalities for handling JSON Web Encryption (JWE).
 package jwe
 
-import kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
+import (
+	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
+	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
+)
 
 // Initialize initializes the JWE service.
-func Initialize(cryptoProvider kmprovider.RuntimeCryptoProvider) (JWEServiceInterface, error) {
-	return newJWEService(cryptoProvider)
+func Initialize(
+	cryptoProvider kmprovider.RuntimeCryptoProvider, cfg joseconfig.Config,
+) (JWEServiceInterface, error) {
+	return newJWEService(cryptoProvider, cfg)
 }

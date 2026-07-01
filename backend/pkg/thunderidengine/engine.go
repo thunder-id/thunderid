@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/authn/assert"
@@ -38,6 +39,7 @@ import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/jose"
+	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
@@ -75,7 +77,15 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize key manager provider", log.Error(err))
 	}
-	engineCtx.jwtService, engineCtx.jweService, err = jose.Initialize(engineCtx.runtimeCryptoSvc)
+	joseCfg := joseconfig.Config{
+		Issuer:         engineCtx.jwtConfig.Issuer,
+		ValidityPeriod: engineCtx.jwtConfig.ValidityPeriod,
+		Audience:       engineCtx.jwtConfig.Audience,
+		PreferredKeyID: engineCtx.jwtConfig.PreferredKeyID,
+		Leeway:         engineCtx.jwtConfig.Leeway,
+		JWKSCacheTTL:   time.Duration(engineCtx.serverConfig.SecurityConfig.JWKSCacheTTL) * time.Second,
+	}
+	engineCtx.jwtService, engineCtx.jweService, err = jose.Initialize(engineCtx.runtimeCryptoSvc, joseCfg)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize JOSE services", log.Error(err))
 	}

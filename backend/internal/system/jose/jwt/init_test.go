@@ -27,14 +27,13 @@ import (
 	"os"
 	"testing"
 
-	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 )
@@ -92,20 +91,20 @@ func (suite *InitTestSuite) TearDownSuite() {
 }
 
 func (suite *InitTestSuite) SetupTest() {
-	// Reset server runtime before each test
+	// jwt.Initialize builds an HTTP client that reads the TLS config from the global
+	// runtime; initialize a minimal runtime so construction does not panic.
 	config.ResetServerRuntime()
+	if err := config.InitializeServerRuntime("", &config.Config{}); err != nil {
+		suite.T().Fatalf("Failed to initialize server runtime: %v", err)
+	}
 }
 
 func (suite *InitTestSuite) TestInitialize_Success() {
-	testConfig := &config.Config{
-		JWT: engineconfig.JWTConfig{
-			Issuer:         "https://auth.example.com",
-			ValidityPeriod: 3600,
-			PreferredKeyID: "test-kid",
-		},
+	cfg := joseconfig.Config{
+		Issuer:         "https://auth.example.com",
+		ValidityPeriod: 3600,
+		PreferredKeyID: "test-kid",
 	}
-	err := config.InitializeServerRuntime("", testConfig)
-	assert.NoError(suite.T(), err)
 
 	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
 	cryptoMock.EXPECT().
@@ -117,44 +116,36 @@ func (suite *InitTestSuite) TestInitialize_Success() {
 			Thumbprint: "test-kid",
 		}}, nil)
 
-	jwtService, err := Initialize(cryptoMock)
+	jwtService, err := Initialize(cryptoMock, cfg)
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), jwtService)
 	assert.Implements(suite.T(), (*JWTServiceInterface)(nil), jwtService)
 }
 
 func (suite *InitTestSuite) TestInitialize_PublicKeyRetrievalError() {
-	testConfig := &config.Config{
-		JWT: engineconfig.JWTConfig{
-			Issuer:         "https://auth.example.com",
-			ValidityPeriod: 3600,
-			PreferredKeyID: "test-kid",
-		},
+	cfg := joseconfig.Config{
+		Issuer:         "https://auth.example.com",
+		ValidityPeriod: 3600,
+		PreferredKeyID: "test-kid",
 	}
-	err := config.InitializeServerRuntime("", testConfig)
-	assert.NoError(suite.T(), err)
 
 	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
 	cryptoMock.EXPECT().
 		GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{KeyID: "test-kid"}).
 		Return(nil, errors.New("provider unavailable"))
 
-	jwtService, err := Initialize(cryptoMock)
+	jwtService, err := Initialize(cryptoMock, cfg)
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), jwtService)
 	assert.Contains(suite.T(), err.Error(), "failed to retrieve public key")
 }
 
 func (suite *InitTestSuite) TestInitialize_WithoutPreferredKeyID() {
-	testConfig := &config.Config{
-		JWT: engineconfig.JWTConfig{
-			Issuer:         "https://auth.example.com",
-			ValidityPeriod: 3600,
-			// PreferredKeyID is empty
-		},
+	cfg := joseconfig.Config{
+		Issuer:         "https://auth.example.com",
+		ValidityPeriod: 3600,
+		// PreferredKeyID is empty
 	}
-	err := config.InitializeServerRuntime("", testConfig)
-	assert.NoError(suite.T(), err)
 
 	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
 	cryptoMock.EXPECT().
@@ -166,7 +157,7 @@ func (suite *InitTestSuite) TestInitialize_WithoutPreferredKeyID() {
 			Thumbprint: "test-kid",
 		}}, nil)
 
-	jwtService, err := Initialize(cryptoMock)
+	jwtService, err := Initialize(cryptoMock, cfg)
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), jwtService)
 }
