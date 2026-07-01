@@ -1046,6 +1046,6 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OULookupFailu
 	execResp, err := executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
+	assert.Equal(suite.T(), providers.ExecComplete, execResp.Status)
 	assert.Equal(suite.T(), "{{ctx(ouHandle)}}", receivedBody["orgHandle"])
 }
