@@ -208,8 +208,33 @@ export interface SchemaPropertyInput {
   credential: boolean;
   enum: string[];
   regex: string;
+  /**
+   * Whether this is a custom property (fully editable). Properties seeded from
+   * the attribute library are not custom, so their name/type/unique/credential
+   * are all locked to the definition. Transient UI state; not sent to the API.
+   */
+  custom?: boolean;
   /** Preserved array item definition for round-trip fidelity. */
   items?: ArrayItemDefinition;
   /** Preserved nested object properties for round-trip fidelity. */
   properties?: Record<string, PropertyDefinition>;
+}
+
+/**
+ * Data type of a predefined attribute.
+ */
+export type AttributeDataType = 'string' | 'number' | 'boolean' | 'date';
+
+/**
+ * A predefined attribute from the front-end attribute library that can be
+ * added to a user type schema.
+ */
+export interface Attribute {
+  id: string;
+  displayName?: string;
+  dataType: AttributeDataType;
+  regex?: string;
+  required: boolean;
+  unique: boolean;
+  credential: boolean;
 }

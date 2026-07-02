@@ -294,6 +294,9 @@ export default function CreateUserTypePage(): JSX.Element {
   };
 
   const isLastStep = currentStep === UserTypeCreateFlowStep.PROPERTIES;
+  // The Properties step uses a two-panel builder that needs more horizontal room
+  // than the single-column Name/General forms.
+  const isPropertiesStep = currentStep === UserTypeCreateFlowStep.PROPERTIES;
 
   return (
     <Box sx={{minHeight: '100vh', display: 'flex', flexDirection: 'column'}}>
@@ -333,7 +336,7 @@ export default function CreateUserTypePage(): JSX.Element {
               display: 'flex',
               flexDirection: 'column',
               py: 8,
-              px: 20,
+              px: isPropertiesStep ? 8 : 20,
               mx: currentStep === UserTypeCreateFlowStep.NAME ? 'auto' : 0,
               alignItems: 'flex-start',
             }}
@@ -341,7 +344,7 @@ export default function CreateUserTypePage(): JSX.Element {
             <Box
               sx={{
                 width: '100%',
-                maxWidth: 800,
+                maxWidth: isPropertiesStep ? 1200 : 800,
                 display: 'flex',
                 flexDirection: 'column',
               }}

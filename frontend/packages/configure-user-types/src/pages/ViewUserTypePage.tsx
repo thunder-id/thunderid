@@ -81,6 +81,10 @@ function convertSchemaToProperties(schema: UserTypeDefinition): SchemaPropertyIn
     credential: 'credential' in value ? (value.credential ?? false) : false,
     enum: 'enum' in value ? (value.enum ?? []) : [],
     regex: 'regex' in value ? (value.regex ?? '') : '',
+    // Whether a saved property came from the library or was added as custom is
+    // not tracked, so existing properties are fully editable when editing a
+    // user type.
+    custom: true,
     ...('items' in value ? {items: value.items} : {}),
     ...('properties' in value ? {properties: value.properties} : {}),
   }));
