@@ -59,7 +59,7 @@ func (suite *BuiltInExecutorRegistrationTestSuite) mockFlowFactory() *coremock.F
 	mockBase := coremock.NewExecutorInterfaceMock(suite.T())
 	mockBase.On("GetName").Return("").Maybe()
 	mockBase.On("GetType").Return(providers.ExecutorTypeUtility).Maybe()
-	mockFactory.On("CreateExecutor", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	mockFactory.On("CreateExecutor", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(mockBase).Maybe()
 	return mockFactory
 }
@@ -246,6 +246,10 @@ func (n *nilSkippingRegistry) RegisterExecutor(name string, _ providers.Executor
 
 func (n *nilSkippingRegistry) IsRegistered(name string) bool {
 	return n.inner.IsRegistered(name)
+}
+
+func (n *nilSkippingRegistry) GetExecutorMeta(name string) (*providers.ExecutorMeta, error) {
+	return n.inner.GetExecutorMeta(name)
 }
 
 func (suite *BuiltInExecutorRegistrationTestSuite) TestRegisterBuiltInExecutor_RegistryNilExecutorSkipFails() {

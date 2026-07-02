@@ -47,7 +47,7 @@ func createTestAuthzExecutor(t *testing.T,
 
 	// Mock the CreateExecutor method to return a base executor
 	mockFlowFactory.On("CreateExecutor", ExecutorNameAuthorization, providers.ExecutorTypeUtility,
-		[]providers.Input{}, []providers.Input{}).
+		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(createMockExecutor(t, "AuthorizationExecutor", providers.ExecutorTypeUtility))
 
 	return newAuthorizationExecutor(mockFlowFactory, mockAuthzService, mockEntityProvider, mockAuthnProvider)

@@ -128,7 +128,14 @@ func newPasskeyAuthExecutor(
 	identifyExec := newIdentifyingExecutor(ExecutorNamePasskeyAuth, defaultInputs, prerequisites,
 		flowFactory, entityProvider)
 	base := flowFactory.CreateExecutor(ExecutorNamePasskeyAuth, providers.ExecutorTypeAuthentication,
-		defaultInputs, prerequisites)
+		defaultInputs, prerequisites, &providers.ExecutorMeta{
+			SupportedModes: []string{
+				passkeyExecutorModeChallenge,
+				passkeyExecutorModeVerify,
+				passkeyExecutorModeRegStart,
+				passkeyExecutorModeRegFinish,
+			},
+		})
 
 	return &passkeyAuthExecutor{
 		Executor:                     base,

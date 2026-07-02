@@ -62,7 +62,7 @@ func (suite *OUResolverExecutorTestSuite) SetupTest() {
 		ExecutorNameOUResolver,
 		providers.ExecutorTypeUtility,
 		defaultInputs,
-		[]providers.Input{}).Return(
+		[]providers.Input{}, mock.Anything).Return(
 		newMockExecutor("OUResolverExecutor", providers.ExecutorTypeUtility, defaultInputs, []providers.Input{}))
 
 	suite.executor = newOUResolverExecutor(suite.mockFlowFactory, suite.mockOUService)

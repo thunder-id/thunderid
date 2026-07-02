@@ -57,7 +57,7 @@ func (suite *OAuthExecutorTestSuite) SetupTest() {
 	defaultInputs := []providers.Input{{Identifier: "code", Type: "string", Required: true}}
 	mockExec := createMockAuthExecutor(suite.T(), ExecutorNameOAuth)
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameOAuth, providers.ExecutorTypeAuthentication,
-		defaultInputs, []providers.Input{}).Return(mockExec)
+		defaultInputs, []providers.Input{}, mock.Anything).Return(mockExec)
 
 	suite.executor = newOAuthExecutor(ExecutorNameOAuth, defaultInputs, []providers.Input{},
 		suite.mockFlowFactory, suite.mockIDPService, suite.mockOAuthService,

@@ -314,6 +314,52 @@ func (_c *oAuthExecutorInterfaceMock_GetIdpID_Call) RunAndReturn(run func(ctx *p
 	return _c
 }
 
+// GetMeta provides a mock function for the type oAuthExecutorInterfaceMock
+func (_mock *oAuthExecutorInterfaceMock) GetMeta() *providers.ExecutorMeta {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetMeta")
+	}
+
+	var r0 *providers.ExecutorMeta
+	if returnFunc, ok := ret.Get(0).(func() *providers.ExecutorMeta); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.ExecutorMeta)
+		}
+	}
+	return r0
+}
+
+// oAuthExecutorInterfaceMock_GetMeta_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetMeta'
+type oAuthExecutorInterfaceMock_GetMeta_Call struct {
+	*mock.Call
+}
+
+// GetMeta is a helper method to define mock.On call
+func (_e *oAuthExecutorInterfaceMock_Expecter) GetMeta() *oAuthExecutorInterfaceMock_GetMeta_Call {
+	return &oAuthExecutorInterfaceMock_GetMeta_Call{Call: _e.mock.On("GetMeta")}
+}
+
+func (_c *oAuthExecutorInterfaceMock_GetMeta_Call) Run(run func()) *oAuthExecutorInterfaceMock_GetMeta_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *oAuthExecutorInterfaceMock_GetMeta_Call) Return(executorMeta *providers.ExecutorMeta) *oAuthExecutorInterfaceMock_GetMeta_Call {
+	_c.Call.Return(executorMeta)
+	return _c
+}
+
+func (_c *oAuthExecutorInterfaceMock_GetMeta_Call) RunAndReturn(run func() *providers.ExecutorMeta) *oAuthExecutorInterfaceMock_GetMeta_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetName provides a mock function for the type oAuthExecutorInterfaceMock
 func (_mock *oAuthExecutorInterfaceMock) GetName() string {
 	ret := _mock.Called()

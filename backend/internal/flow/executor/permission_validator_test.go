@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -47,7 +48,7 @@ func (suite *PermissionValidatorTestSuite) SetupTest() {
 		ExecutorNamePermissionValidator,
 		providers.ExecutorTypeUtility,
 		[]providers.Input{},
-		[]providers.Input{}).Return(mockBaseExecutor)
+		[]providers.Input{}, mock.Anything).Return(mockBaseExecutor)
 
 	suite.executor = newPermissionValidator(suite.mockFlowFactory)
 }

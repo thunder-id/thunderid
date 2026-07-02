@@ -99,7 +99,7 @@ func newHTTPRequestExecutor(
 		log.String(log.LoggerKeyExecutorName, ExecutorNameHTTPRequest))
 
 	base := flowFactory.CreateExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
-		[]providers.Input{}, []providers.Input{})
+		[]providers.Input{}, []providers.Input{}, &providers.ExecutorMeta{})
 
 	return &httpRequestExecutor{
 		Executor:      base,

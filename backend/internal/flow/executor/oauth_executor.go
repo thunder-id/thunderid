@@ -99,7 +99,7 @@ func newOAuthExecutor(
 		log.String(log.LoggerKeyExecutorName, name))
 
 	base := flowFactory.CreateExecutor(name, providers.ExecutorTypeAuthentication,
-		defaultInputs, prerequisites)
+		defaultInputs, prerequisites, &providers.ExecutorMeta{})
 
 	return &oAuthExecutor{
 		Executor:      base,

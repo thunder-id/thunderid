@@ -65,7 +65,7 @@ func (suite *InviteExecutorTestSuite) SetupTest() {
 				Required:   true,
 			},
 		},
-		[]providers.Input{}).Return(mockBaseExecutor)
+		[]providers.Input{}, mock.Anything).Return(mockBaseExecutor)
 
 	suite.executor = newInviteExecutor(suite.mockFlowFactory)
 }

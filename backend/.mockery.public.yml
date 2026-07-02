@@ -547,6 +547,12 @@ packages:
           structname: '{{.InterfaceName}}Mock'
           pkgname: consentprovidermock
           filename: "{{.InterfaceName}}_mock.go"
+      Executor:
+        config:
+          dir: tests/mocks/flow/coremock
+          structname: ExecutorInterfaceMock
+          pkgname: coremock
+          filename: "ExecutorInterface_mock.go"
 
   github.com/thunder-id/thunderid/internal/authnprovider/provider:
     config:

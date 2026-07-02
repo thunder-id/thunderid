@@ -51,7 +51,8 @@ func (s *ExecutorTestSuite) TestNewExecutor() {
 	defaultInputs := []providers.Input{{Identifier: testInputName, Required: true}}
 	prerequisites := []providers.Input{{Identifier: userAttributeUserID, Required: true}}
 
-	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, defaultInputs, prerequisites)
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication,
+		defaultInputs, prerequisites, &providers.ExecutorMeta{})
 
 	s.NotNil(exec)
 	s.Equal(testExecutorName, exec.GetName())
@@ -61,17 +62,20 @@ func (s *ExecutorTestSuite) TestNewExecutor() {
 }
 
 func (s *ExecutorTestSuite) TestGetName() {
-	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication,
+		nil, nil, &providers.ExecutorMeta{})
 	s.Equal(testExecutorName, exec.GetName())
 }
 
 func (s *ExecutorTestSuite) TestGetType() {
-	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication,
+		nil, nil, &providers.ExecutorMeta{})
 	s.Equal(providers.ExecutorTypeAuthentication, exec.GetType())
 }
 
 func (s *ExecutorTestSuite) TestExecute() {
-	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication,
+		nil, nil, &providers.ExecutorMeta{})
 	ctx := &providers.NodeContext{ExecutionID: "test-flow"}
 
 	resp, err := exec.Execute(ctx)
@@ -85,7 +89,8 @@ func (s *ExecutorTestSuite) TestGetDefaultInputs() {
 		{Identifier: testInputName, Required: true},
 		{Identifier: "password", Required: true},
 	}
-	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, defaultInputs, nil)
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication,
+		defaultInputs, nil, &providers.ExecutorMeta{})
 
 	result := exec.GetDefaultInputs()
 
@@ -94,7 +99,8 @@ func (s *ExecutorTestSuite) TestGetDefaultInputs() {
 
 func (s *ExecutorTestSuite) TestGetPrerequisites() {
 	prerequisites := []providers.Input{{Identifier: userAttributeUserID, Required: true}}
-	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, prerequisites)
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication,
+		nil, prerequisites, &providers.ExecutorMeta{})
 
 	result := exec.GetPrerequisites()
 
@@ -208,7 +214,8 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, tt.defaultInputs, nil)
+			exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication,
+				tt.defaultInputs, nil, &providers.ExecutorMeta{})
 			ctx := &providers.NodeContext{
 				ExecutionID: "test-flow",
 				UserInputs:  tt.userInputs,
@@ -451,7 +458,8 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, tt.prerequisites)
+			exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication,
+				nil, tt.prerequisites, &providers.ExecutorMeta{})
 
 			var authnProvider providers.AuthnProviderManager
 			if tt.setupMock != nil {
@@ -560,7 +568,8 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+			exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication,
+				nil, nil, &providers.ExecutorMeta{})
 
 			var authnProvider providers.AuthnProviderManager
 			if tt.setupMock != nil {
@@ -628,7 +637,8 @@ func (s *ExecutorTestSuite) TestGetRequiredInputs() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, tt.defaultInputs, nil)
+			exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication,
+				tt.defaultInputs, nil, &providers.ExecutorMeta{})
 			ctx := &providers.NodeContext{ExecutionID: "test-flow", NodeInputs: tt.nodeInputs}
 
 			result := exec.GetRequiredInputs(ctx)
@@ -649,7 +659,8 @@ func (s *ExecutorTestSuite) TestGetRequiredInputs() {
 }
 
 func (s *ExecutorTestSuite) TestGetExecutionPolicy() {
-	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication,
+		nil, nil, &providers.ExecutorMeta{})
 
 	s.Nil(exec.GetExecutionPolicy("default"))
 	s.Nil(exec.GetExecutionPolicy(""))

@@ -179,7 +179,7 @@ func (s *FlowFactoryTestSuite) TestCreateExecutor() {
 	prerequisites := []providers.Input{{Identifier: "prereq1", Required: true}}
 
 	executor := s.factory.CreateExecutor("test-executor", providers.ExecutorTypeAuthentication,
-		defaultInputs, prerequisites)
+		defaultInputs, prerequisites, &providers.ExecutorMeta{})
 
 	s.NotNil(executor)
 	s.Equal("test-executor", executor.GetName())

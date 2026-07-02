@@ -72,7 +72,13 @@ func newProvisioningExecutor(
 		log.String(log.LoggerKeyExecutorName, ExecutorNameProvisioning))
 
 	base := flowFactory.CreateExecutor(ExecutorNameProvisioning, providers.ExecutorTypeRegistration,
-		[]providers.Input{}, []providers.Input{})
+		[]providers.Input{}, []providers.Input{}, &providers.ExecutorMeta{
+			SupportedFlowTypes: []providers.FlowType{
+				providers.FlowTypeAuthentication,
+				providers.FlowTypeRegistration,
+				providers.FlowTypeUserOnboarding,
+			},
+		})
 
 	identifyingExec := newIdentifyingExecutor(ExecutorNameProvisioning,
 		[]providers.Input{}, []providers.Input{}, flowFactory, entityProvider)

@@ -68,7 +68,7 @@ func (suite *SMSAuthExecutorTestSuite) SetupTest() {
 	// Mock identifying executor
 	identifyingMock := createMockIdentifyingExecutor(suite.T())
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameIdentifying, providers.ExecutorTypeUtility,
-		mock.Anything, mock.Anything).Return(identifyingMock).Maybe()
+		mock.Anything, mock.Anything, mock.Anything).Return(identifyingMock).Maybe()
 
 	// Mock base executor
 	mockExec := coremock.NewExecutorInterfaceMock(suite.T())
@@ -90,7 +90,7 @@ func (suite *SMSAuthExecutorTestSuite) SetupTest() {
 		}).Maybe()
 
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameSMSAuth, providers.ExecutorTypeAuthentication,
-		defaultInputs, []providers.Input(nil)).Return(mockExec)
+		defaultInputs, []providers.Input(nil), mock.Anything).Return(mockExec)
 
 	suite.executor = newSMSOTPAuthExecutor(suite.mockFlowFactory,
 		suite.mockOTPService, suite.mockAuthnProvider, suite.mockEntityProvider)

@@ -21,9 +21,10 @@ package executor
 import (
 	"testing"
 
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/githubmock"
@@ -64,7 +65,7 @@ func (suite *GithubAuthExecutorTestSuite) TestNewGithubOAuthExecutor_Success() {
 	}
 	baseExec := coremock.NewExecutorInterfaceMock(suite.T())
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameGitHubAuth,
-		providers.ExecutorTypeAuthentication, defaultInputs, []providers.Input{}).
+		providers.ExecutorTypeAuthentication, defaultInputs, []providers.Input{}, mock.Anything).
 		Return(baseExec).Once()
 
 	mockGithubSvc := &mockGithubServiceWithOAuth{

@@ -61,7 +61,12 @@ func newOpenID4VPVerifier(
 	authnProvider providers.AuthnProviderManager,
 ) providers.Executor {
 	base := flowFactory.CreateExecutor(
-		ExecutorNameOpenID4VPVerify, providers.ExecutorTypeAuthentication, []providers.Input{}, []providers.Input{})
+		ExecutorNameOpenID4VPVerify,
+		providers.ExecutorTypeAuthentication,
+		[]providers.Input{},
+		[]providers.Input{},
+		&providers.ExecutorMeta{},
+	)
 	return &openid4vpVerifier{
 		Executor:          base,
 		service:           service,

@@ -76,7 +76,7 @@ func newConsentExecutor(
 	}
 
 	base := flowFactory.CreateExecutor(ExecutorNameConsent, providers.ExecutorTypeUtility,
-		defaultInputs, prerequisites)
+		defaultInputs, prerequisites, &providers.ExecutorMeta{})
 
 	return &consentExecutor{
 		Executor:        base,

@@ -509,6 +509,76 @@ var (
 			DefaultValue: "Interceptor applyTo references a non-existent node",
 		},
 	}
+	// ErrorExecutorForbiddenForFlowType is the error returned when a flow definition includes an executor
+	// that is not permitted in the given flow type.
+	ErrorExecutorForbiddenForFlowType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1039",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.executor_forbidden_for_flow_type",
+			DefaultValue: "Executor not allowed in this flow type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.executor_forbidden_for_flow_type_description",
+			DefaultValue: "The executor is not permitted for the current flow type",
+		},
+	}
+	// ErrorRequiredExecutorMissing is the error returned when a flow definition is missing an executor
+	// that is mandatory for the flow to fulfill its purpose.
+	ErrorRequiredExecutorMissing = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1040",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.required_executor_missing",
+			DefaultValue: "Required executor missing",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.required_executor_missing_description",
+			DefaultValue: "A required executor for this flow type is not present in the flow definition",
+		},
+	}
+	// ErrorUnsupportedExecutorMode is the error returned when a node configures an executor mode
+	// that the executor does not support.
+	ErrorUnsupportedExecutorMode = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1041",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.unsupported_executor_mode",
+			DefaultValue: "Unsupported executor mode",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.unsupported_executor_mode_description",
+			DefaultValue: "The executor mode is not supported by this executor",
+		},
+	}
+	// ErrorUnsupportedExecutorFlowType is the error returned when an executor's declared SupportedFlowTypes
+	// does not include the flow's type.
+	ErrorUnsupportedExecutorFlowType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1042",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.unsupported_executor_flow_type",
+			DefaultValue: "Executor not compatible with flow type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.unsupported_executor_flow_type_description",
+			DefaultValue: "The executor does not support the current flow type",
+		},
+	}
+	// ErrorMissingRequiredExecutorProperty is the error returned when a node is missing a property
+	// that its executor requires to function correctly.
+	ErrorMissingRequiredExecutorProperty = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1043",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.missing_required_executor_property",
+			DefaultValue: "Missing required executor property",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.missing_required_executor_property_description",
+			DefaultValue: "A required node property for this executor is missing or empty",
+		},
+	}
 )
 
 // Internal errors

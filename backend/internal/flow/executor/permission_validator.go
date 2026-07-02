@@ -47,6 +47,7 @@ func newPermissionValidator(flowFactory core.FlowFactoryInterface) *permissionVa
 		providers.ExecutorTypeUtility,
 		[]providers.Input{},
 		[]providers.Input{},
+		&providers.ExecutorMeta{},
 	)
 	return &permissionValidator{
 		Executor: base,

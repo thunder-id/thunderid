@@ -59,7 +59,7 @@ func (suite *FederatedAuthResolverTestSuite) SetupTest() {
 		providers.ExecutorTypeAuthentication)
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameFederatedAuthResolver,
 		providers.ExecutorTypeAuthentication,
-		([]providers.Input)(nil), ([]providers.Input)(nil)).Return(mockExec)
+		([]providers.Input)(nil), ([]providers.Input)(nil), mock.Anything).Return(mockExec)
 
 	suite.executor = newFederatedAuthResolverExecutor(suite.mockFlowFactory, suite.mockAuthnProvider)
 }

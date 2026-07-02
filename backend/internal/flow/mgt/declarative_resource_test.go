@@ -91,7 +91,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateFlowGraphWrapper_ValidFlow() 
 		ID:       "flow-001",
 		Handle:   "basic-auth",
 		Name:     "Basic Auth",
-		FlowType: "AUTHENTICATION",
+		FlowType: "RECOVERY",
 		Nodes:    validFlowNodes(),
 	}
 

@@ -28,6 +28,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -52,7 +53,11 @@ func (s *flowMgtService) validateFlowDefinition(
 		return err
 	}
 
-	if err := s.validateNodes(flowDef.Nodes, nodeIndex); err != nil {
+	if err := validateFlowTypeBasedConstraints(flowDef.FlowType, flowDef.Nodes); err != nil {
+		return err
+	}
+
+	if err := s.validateNodes(flowDef.Nodes, nodeIndex, flowDef.FlowType); err != nil {
 		return err
 	}
 
@@ -90,6 +95,10 @@ func validateFlowDefinitionBasic(flowDef *FlowDefinition) *tidcommon.ServiceErro
 
 	nodeIndex, err := validateStructure(flowDef.Nodes)
 	if err != nil {
+		return err
+	}
+
+	if err := validateFlowTypeBasedConstraints(flowDef.FlowType, flowDef.Nodes); err != nil {
 		return err
 	}
 
@@ -160,6 +169,86 @@ func isValidFlowType(flowType providers.FlowType) bool {
 		flowType == providers.FlowTypeRegistration ||
 		flowType == providers.FlowTypeUserOnboarding ||
 		flowType == providers.FlowTypeRecovery
+}
+
+// ---------------------------------------------------------------------------
+// Scope: Flow type-based constraint validation (static maps, no registry)
+// ---------------------------------------------------------------------------
+
+// forbiddenExecutorsByFlowType maps flow type → set of executor names that must not appear.
+var forbiddenExecutorsByFlowType = map[providers.FlowType]map[string]bool{
+	providers.FlowTypeRecovery: {
+		executor.ExecutorNameProvisioning: true,
+	},
+}
+
+// requiredExecutorsByFlowType maps flow type → executor names that must appear at least once.
+var requiredExecutorsByFlowType = map[providers.FlowType][]string{
+	providers.FlowTypeAuthentication: {executor.ExecutorNameAuthAssert},
+	providers.FlowTypeRegistration:   {executor.ExecutorNameProvisioning, executor.ExecutorNameUserTypeResolver},
+	providers.FlowTypeUserOnboarding: {executor.ExecutorNameProvisioning, executor.ExecutorNameUserTypeResolver},
+}
+
+// validateFlowTypeBasedConstraints checks forbidden and required executor rules for the flow type.
+// Uses static maps only — no registry access required.
+func validateFlowTypeBasedConstraints(
+	flowType providers.FlowType, nodes []providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	if err := validateForbiddenExecutors(flowType, nodes); err != nil {
+		return err
+	}
+	return validateRequiredExecutors(flowType, nodes)
+}
+
+// validateForbiddenExecutors returns an error if any TASK_EXECUTION node uses an executor
+// that is forbidden in the given flow type.
+func validateForbiddenExecutors(
+	flowType providers.FlowType, nodes []providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	forbidden, ok := forbiddenExecutorsByFlowType[flowType]
+	if !ok {
+		return nil
+	}
+	for _, node := range nodes {
+		if node.Type != string(common.NodeTypeTaskExecution) || node.Executor == nil {
+			continue
+		}
+		if forbidden[node.Executor.Name] {
+			return tidcommon.CustomServiceError(ErrorExecutorForbiddenForFlowType, tidcommon.I18nMessage{
+				Key: "error.flowmgtservice.executor_forbidden_for_flow_type_description",
+				DefaultValue: fmt.Sprintf(
+					"Executor '%s' is not allowed in %s flows", node.Executor.Name, flowType),
+			})
+		}
+	}
+	return nil
+}
+
+// validateRequiredExecutors returns an error if a TASK_EXECUTION node with a required executor
+// is absent from the flow for the given flow type.
+func validateRequiredExecutors(
+	flowType providers.FlowType, nodes []providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	required, ok := requiredExecutorsByFlowType[flowType]
+	if !ok {
+		return nil
+	}
+	present := make(map[string]bool)
+	for _, node := range nodes {
+		if node.Type == string(common.NodeTypeTaskExecution) && node.Executor != nil {
+			present[node.Executor.Name] = true
+		}
+	}
+	for _, name := range required {
+		if !present[name] {
+			return tidcommon.CustomServiceError(ErrorRequiredExecutorMissing, tidcommon.I18nMessage{
+				Key: "error.flowmgtservice.required_executor_missing_description",
+				DefaultValue: fmt.Sprintf(
+					"Flow type %s requires executor '%s'", flowType, name),
+			})
+		}
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -428,6 +517,7 @@ func buildAdjacencyList(nodes []providers.NodeDefinition) map[string][]string {
 // validateNodes validates each node's configuration and registry-dependent checks.
 func (s *flowMgtService) validateNodes(
 	nodes []providers.NodeDefinition, nodeIndex map[string]*providers.NodeDefinition,
+	flowType providers.FlowType,
 ) *tidcommon.ServiceError {
 	for i := range nodes {
 		node := &nodes[i]
@@ -435,7 +525,7 @@ func (s *flowMgtService) validateNodes(
 			return err
 		}
 		if node.Type == string(common.NodeTypeTaskExecution) {
-			if err := s.validateExecutors(node); err != nil {
+			if err := s.validateExecutors(node, flowType); err != nil {
 				return err
 			}
 		}
@@ -688,8 +778,10 @@ func validateInputDefinitions(nodeID string, inputs []providers.InputDefinition)
 // ---------------------------------------------------------------------------
 
 // validateExecutors validates that the executor referenced in a task execution node
-// is registered in the executor registry.
-func (s *flowMgtService) validateExecutors(node *providers.NodeDefinition) *tidcommon.ServiceError {
+// is registered in the executor registry, then checks meta-based constraints.
+func (s *flowMgtService) validateExecutors(
+	node *providers.NodeDefinition, flowType providers.FlowType,
+) *tidcommon.ServiceError {
 	if !s.executorRegistry.IsRegistered(node.Executor.Name) {
 		return tidcommon.CustomServiceError(ErrorExecutorNotRegistered, tidcommon.I18nMessage{
 			Key: "error.flowmgtservice.executor_not_registered_description",
@@ -697,6 +789,72 @@ func (s *flowMgtService) validateExecutors(node *providers.NodeDefinition) *tidc
 				"Node '%s': executor '%s' is not registered", node.ID, node.Executor.Name),
 		})
 	}
+	return s.validateExecutorConstraints(node, flowType)
+}
+
+// validateExecutorConstraints performs meta-based validation for an executor node:
+// mode, flow type compatibility, and required node properties.
+// If no meta is declared for the executor, all checks are skipped (backward-compatible).
+func (s *flowMgtService) validateExecutorConstraints(
+	node *providers.NodeDefinition, flowType providers.FlowType,
+) *tidcommon.ServiceError {
+	meta, err := s.executorRegistry.GetExecutorMeta(node.Executor.Name)
+	if err != nil || meta == nil {
+		return nil
+	}
+
+	if node.Executor.Mode != "" && len(meta.SupportedModes) > 0 {
+		// TODO: Executors throws an error by default when non of the suported modes are defined for the node,
+		// except identifuing_executor which by default operates in "IDENTIFY" mode. 
+		// The executors who has defined modes should have a mode defined in the node, otherwise it will throw an error.
+		// should have the exception for the identifying_executor.
+		found := false
+		for _, m := range meta.SupportedModes {
+			if m == node.Executor.Mode {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return tidcommon.CustomServiceError(ErrorUnsupportedExecutorMode, tidcommon.I18nMessage{
+				Key: "error.flowmgtservice.unsupported_executor_mode_description",
+				DefaultValue: fmt.Sprintf(
+					"Node '%s': executor '%s' does not support mode '%s'",
+					node.ID, node.Executor.Name, node.Executor.Mode),
+			})
+		}
+	}
+
+	if len(meta.SupportedFlowTypes) > 0 {
+		found := false
+		for _, ft := range meta.SupportedFlowTypes {
+			if ft == flowType {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return tidcommon.CustomServiceError(ErrorUnsupportedExecutorFlowType, tidcommon.I18nMessage{
+				Key: "error.flowmgtservice.unsupported_executor_flow_type_description",
+				DefaultValue: fmt.Sprintf(
+					"Node '%s': executor '%s' is not compatible with flow type '%s'",
+					node.ID, node.Executor.Name, flowType),
+			})
+		}
+	}
+
+	for _, key := range meta.RequiredProperties {
+		val, ok := node.Properties[key]
+		if !ok || fmt.Sprintf("%v", val) == "" {
+			return tidcommon.CustomServiceError(ErrorMissingRequiredExecutorProperty, tidcommon.I18nMessage{
+				Key: "error.flowmgtservice.missing_required_executor_property_description",
+				DefaultValue: fmt.Sprintf(
+					"Node '%s': executor '%s' requires property '%s'",
+					node.ID, node.Executor.Name, key),
+			})
+		}
+	}
+
 	return nil
 }
 

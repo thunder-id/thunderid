@@ -69,7 +69,7 @@ func newCredentialsAuthExecutor(
 	identifyExec := newIdentifyingExecutor(ExecutorNameCredentialsAuth, defaultInputs, []providers.Input{},
 		flowFactory, entityProvider)
 	base := flowFactory.CreateExecutor(ExecutorNameCredentialsAuth, providers.ExecutorTypeAuthentication,
-		defaultInputs, []providers.Input{})
+		defaultInputs, []providers.Input{}, &providers.ExecutorMeta{})
 
 	return &credentialsAuthExecutor{
 		Executor:                     base,

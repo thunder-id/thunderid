@@ -51,7 +51,7 @@ func (suite *IdentifyingExecutorTestSuite) SetupTest() {
 
 	mockExec := createMockExecutor(suite.T(), ExecutorNameIdentifying, providers.ExecutorTypeUtility)
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameIdentifying, providers.ExecutorTypeUtility,
-		[]providers.Input{}, []providers.Input{}).Return(mockExec)
+		[]providers.Input{}, []providers.Input{}, mock.Anything).Return(mockExec)
 
 	suite.executor = newIdentifyingExecutor(ExecutorNameIdentifying, []providers.Input{},
 		[]providers.Input{}, suite.mockFlowFactory, suite.mockEntityProvider)

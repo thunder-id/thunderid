@@ -159,4 +159,5 @@ type Executor interface {
 		authnProvider AuthnProviderManager) string
 	GetRequiredInputs(ctx *NodeContext) []Input
 	GetExecutionPolicy(mode string) *ExecutionPolicy
+	GetMeta() *ExecutorMeta
 }

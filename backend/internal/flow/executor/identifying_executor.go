@@ -68,7 +68,9 @@ func newIdentifyingExecutor(
 		log.String(log.LoggerKeyExecutorName, name))
 
 	base := flowFactory.CreateExecutor(ExecutorNameIdentifying, providers.ExecutorTypeUtility,
-		defaultInputs, prerequisites)
+		defaultInputs, prerequisites, &providers.ExecutorMeta{
+			SupportedModes: []string{ExecutorModeIdentify, ExecutorModeResolve, ExecutorModeCheckState},
+		})
 	return &identifyingExecutor{
 		Executor:       base,
 		entityProvider: entityProvider,

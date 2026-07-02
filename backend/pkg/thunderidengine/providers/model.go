@@ -827,6 +827,17 @@ type Consent struct {
 	UpdatedTime int64
 }
 
+// ExecutorMeta describes the static capabilities of an executor.
+// Populated at construction time and used by the flow definition validator.
+type ExecutorMeta struct {
+	// SupportedModes lists valid executor modes. Empty means all modes are permitted.
+	SupportedModes []string `json:"supportedModes"`
+	// SupportedFlowTypes lists flow types this executor may be used in. Empty means all.
+	SupportedFlowTypes []FlowType `json:"supportedFlowTypes"`
+	// RequiredProperties lists NodeDefinition.Properties keys that must be non-empty.
+	RequiredProperties []string `json:"requiredProperties"`
+}
+
 // ExecutorResponse represents the response from an executor
 type ExecutorResponse struct {
 	Status         ExecutorStatus         `json:"status"`

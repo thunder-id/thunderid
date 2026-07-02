@@ -69,7 +69,7 @@ func newTestOpenID4VPExecutorWithProvider(t *testing.T, service openid4vpVerifie
 	factory := coremock.NewFlowFactoryInterfaceMock(t)
 	base := coremock.NewExecutorInterfaceMock(t)
 	factory.On("CreateExecutor", ExecutorNameOpenID4VPVerify, providers.ExecutorTypeAuthentication,
-		[]providers.Input{}, []providers.Input{}).Return(base).Maybe()
+		[]providers.Input{}, []providers.Input{}, mock.Anything).Return(base).Maybe()
 	return newOpenID4VPVerifier(factory, service, nil, authnProvider)
 }
 

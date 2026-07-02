@@ -80,7 +80,9 @@ func newSMSOTPAuthExecutor(
 	identifyExec := newIdentifyingExecutor(ExecutorNameSMSAuth, defaultInputs, prerequisites,
 		flowFactory, entityProvider)
 	base := flowFactory.CreateExecutor(ExecutorNameSMSAuth, providers.ExecutorTypeAuthentication,
-		defaultInputs, prerequisites)
+		defaultInputs, prerequisites, &providers.ExecutorMeta{
+			SupportedModes: []string{ExecutorModeSend, ExecutorModeVerify},
+		})
 
 	return &smsOTPAuthExecutor{
 		Executor:                     base,

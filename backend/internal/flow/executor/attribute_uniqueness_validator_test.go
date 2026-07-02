@@ -78,7 +78,7 @@ func (suite *AttributeUniquenessValidatorTestSuite) SetupTest() {
 		ExecutorNameAttributeUniquenessValidator,
 		providers.ExecutorTypeUtility,
 		[]providers.Input{},
-		prerequisites).Return(suite.mockBaseExecutor)
+		prerequisites, mock.Anything).Return(suite.mockBaseExecutor)
 
 	suite.executor = newAttributeUniquenessValidator(
 		suite.mockFlowFactory, suite.mockEntityTypeService, suite.mockEntityProvider, suite.mockAuthnProvider)

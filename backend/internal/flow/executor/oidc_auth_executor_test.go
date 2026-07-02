@@ -57,7 +57,7 @@ func (suite *OIDCAuthExecutorTestSuite) SetupTest() {
 	defaultInputs := []providers.Input{{Identifier: "code", Type: "string", Required: true}}
 	mockExec := createMockAuthExecutor(suite.T(), ExecutorNameOIDCAuth)
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameOIDCAuth, providers.ExecutorTypeAuthentication,
-		defaultInputs, []providers.Input{}).Return(mockExec)
+		defaultInputs, []providers.Input{}, mock.Anything).Return(mockExec)
 
 	suite.executor = newOIDCAuthExecutor(ExecutorNameOIDCAuth, defaultInputs, []providers.Input{},
 		suite.mockFlowFactory, suite.mockIDPService, suite.mockOIDCService,

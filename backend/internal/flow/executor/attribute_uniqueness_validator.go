@@ -57,7 +57,7 @@ func newAttributeUniquenessValidator(
 		},
 	}
 	base := flowFactory.CreateExecutor(ExecutorNameAttributeUniquenessValidator, providers.ExecutorTypeUtility,
-		[]providers.Input{}, prerequisites)
+		[]providers.Input{}, prerequisites, &providers.ExecutorMeta{})
 	return &attributeUniquenessValidator{
 		Executor:          base,
 		entityTypeService: entityTypeService,
