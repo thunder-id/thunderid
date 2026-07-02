@@ -20,6 +20,7 @@ package recovery
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -28,10 +29,7 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-// emailPatchRemove removes the email config to restore the original state.
-var emailPatchRemove = map[string]interface{}{
-	"email": map[string]interface{}{},
-}
+
 
 var (
 	basicRecoveryOU = testutils.OrganizationUnit{
@@ -68,6 +66,7 @@ type EmailLinkPasswordRecoveryTestSuite struct {
 	userSchemaID   string
 	testOUID       string
 	testAppID      string
+	emailSenderID  string
 	recoveryFlowID string
 	authFlowID     string
 	testUserID     string
@@ -113,25 +112,25 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) SetupSuite() {
 	ts.Require().NoError(ts.mockSMTP.Start(), "Failed to start mock SMTP server")
 	time.Sleep(100 * time.Millisecond)
 
-	emailPatch := map[string]interface{}{
-		"email": map[string]interface{}{
-			"smtp": map[string]interface{}{
-				"host":                  "localhost",
-				"port":                  ts.mockSMTP.GetPort(),
-				"from_address":          "noreply@thunder.test",
-				"enable_start_tls":      false,
-				"enable_authentication": false,
-			},
+	// Create email notification sender pointing at the mock SMTP server
+	senderID, err := testutils.CreateEmailNotificationSender(testutils.NotificationSender{
+		Name:        "Email Recovery Test Sender",
+		Description: "Email notification sender for Email recovery flow testing",
+		Provider:    "smtp",
+		Properties: []testutils.SenderProperty{
+			{Name: "host", Value: "localhost", IsSecret: false},
+			{Name: "port", Value: fmt.Sprintf("%d", ts.mockSMTP.GetPort()), IsSecret: false},
+			{Name: "from_address", Value: "noreply@thunder.test", IsSecret: false},
+			{Name: "enable_start_tls", Value: "false", IsSecret: false},
+			{Name: "enable_authentication", Value: "false", IsSecret: false},
 		},
-	}
-
-	// Patch deployment.yaml to point email at the mock SMTP server and restart
-	ts.Require().NoError(testutils.PatchDeploymentConfig(emailPatch), "Failed to patch email config")
-	ts.Require().NoError(testutils.RestartServer(), "Failed to restart server with email config")
-	ts.Require().NoError(testutils.ObtainAdminAccessToken(), "Failed to re-obtain admin token after restart")
+	})
+	ts.Require().NoError(err, "Failed to create Email notification sender")
+	ts.emailSenderID = senderID
+	ts.config.CreatedSenderIDs = append(ts.config.CreatedSenderIDs, senderID)
 
 	// Create the email-link recovery flow
-	recoveryFlowID, err := testutils.CreateFlow(buildEmailLinkPasswordRecoveryFlow())
+	recoveryFlowID, err := testutils.CreateFlow(buildEmailLinkPasswordRecoveryFlow(senderID))
 	ts.Require().NoError(err, "Failed to create email-link password recovery flow")
 	ts.recoveryFlowID = recoveryFlowID
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, recoveryFlowID)
@@ -201,15 +200,11 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) TearDownSuite() {
 		}
 	}
 
-	// Restore email config and restart server
-	if err := testutils.PatchDeploymentConfig(emailPatchRemove); err != nil {
-		ts.T().Logf("teardown: failed to restore email config: %v", err)
-	}
-	if err := testutils.RestartServer(); err != nil {
-		ts.T().Logf("teardown: server did not restart cleanly after config restore: %v", err)
-	}
-	if err := testutils.ObtainAdminAccessToken(); err != nil {
-		ts.T().Logf("teardown: failed to re-obtain admin token after restore: %v", err)
+	// Delete email sender
+	if ts.emailSenderID != "" {
+		if err := testutils.DeleteEmailNotificationSender(ts.emailSenderID); err != nil {
+			ts.T().Logf("teardown: failed to delete email sender: %v", err)
+		}
 	}
 }
 
@@ -388,7 +383,7 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_RecoveryDisa
 // Flow: prompt_username → identify_user → generate_recovery_token → send_recovery_email →
 //
 //	email_sent_status → verify_recovery_token → prompt_new_password → set_credential → recovery_complete → end
-func buildEmailLinkPasswordRecoveryFlow() testutils.Flow {
+func buildEmailLinkPasswordRecoveryFlow(senderID string) testutils.Flow {
 	return testutils.Flow{
 		Name:     "Email Link Password Recovery Flow Test",
 		Handle:   "email-link-based-password-recovery-test",
@@ -451,6 +446,7 @@ func buildEmailLinkPasswordRecoveryFlow() testutils.Flow {
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
 					"emailTemplate": "PASSWORD_RECOVERY",
+					"senderId":      senderID,
 				},
 				"executor": map[string]interface{}{
 					"name": "EmailExecutor",

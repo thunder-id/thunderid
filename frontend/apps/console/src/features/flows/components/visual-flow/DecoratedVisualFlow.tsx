@@ -208,7 +208,7 @@ function DecoratedVisualFlow({
 
   // Fetch identity providers and notification senders to compute executor connections
   const {data: identityProviders} = useIdentityProviders();
-  const {data: notificationSenders} = useNotificationSenders();
+  const {data: notificationSenders} = useNotificationSenders('message');
   const computedMetadata: MetadataInterface | undefined = useMemo(() => {
     const executorConnections = computeExecutorConnections({identityProviders, notificationSenders});
 

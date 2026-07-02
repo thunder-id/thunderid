@@ -43,6 +43,8 @@ func validateNotificationSender(sender common.NotificationSenderDTO) *tidcommon.
 	switch sender.Type {
 	case common.NotificationSenderTypeMessage:
 		return validateMessageNotificationSender(sender)
+	case common.NotificationSenderTypeEmail:
+		return validateEmailNotificationSender(sender)
 	default:
 		return &ErrorInvalidSenderType
 	}
@@ -101,6 +103,79 @@ func validateMessageNotificationSenderProperties(sender common.NotificationSende
 	default:
 		return errors.New("unsupported message notification sender")
 	}
+}
+
+// validateEmailNotificationSender validates an email notification sender.
+func validateEmailNotificationSender(sender common.NotificationSenderDTO) *tidcommon.ServiceError {
+	if sender.Provider == "" {
+		return &ErrorInvalidProvider
+	}
+	if sender.Provider != common.MessageProviderTypeSMTP &&
+		sender.Provider != common.MessageProviderTypeHTTP {
+		return &ErrorInvalidProvider
+	}
+
+	if err := validateEmailNotificationSenderProperties(sender); err != nil {
+		svcErr := ErrorInvalidRequestFormat
+		svcErr.ErrorDescription = tidcommon.I18nMessage{
+			Key:          "error.notificationservice.sender_property_validation_failed_description",
+			DefaultValue: err.Error(),
+		}
+		return &svcErr
+	}
+
+	return nil
+}
+
+// validateEmailNotificationSenderProperties validates the properties of an email notification sender.
+func validateEmailNotificationSenderProperties(sender common.NotificationSenderDTO) error {
+	if len(sender.Properties) == 0 {
+		return errors.New("email notification sender properties cannot be empty")
+	}
+
+	for _, prop := range sender.Properties {
+		if prop.GetName() == common.SenderPropertySupportedChannels {
+			val, err := prop.GetValue()
+			if err != nil {
+				return errors.New("failed to read supported channels property")
+			}
+			if val != string(common.ChannelTypeEmail) {
+				return fmt.Errorf("invalid supported channel: %s", val)
+			}
+			break
+		}
+	}
+
+	switch sender.Provider {
+	case common.MessageProviderTypeSMTP:
+		return validateSMTPProperties(sender.Properties)
+	case common.MessageProviderTypeHTTP:
+		return validateCustomProperties(sender.Properties)
+	default:
+		return errors.New("unsupported email notification sender")
+	}
+}
+
+// validateSMTPProperties validates the properties for an SMTP email sender.
+func validateSMTPProperties(properties []cmodels.Property) error {
+	requiredProps := map[string]bool{
+		common.SMTPPropKeyHost:        false,
+		common.SMTPPropKeyPort:        false,
+		common.SMTPPropKeyFromAddress: false,
+	}
+
+	for _, prop := range properties {
+		if prop.GetName() == common.SMTPPropKeyEnableAuth {
+			val, err := prop.GetValue()
+			if err == nil && strings.TrimSpace(strings.ToLower(val)) == "true" {
+				requiredProps[common.SMTPPropKeyUsername] = false
+				requiredProps[common.SMTPPropKeyPassword] = false
+			}
+			break
+		}
+	}
+
+	return validateSenderProperties(properties, requiredProps)
 }
 
 // validateTwilioProperties validates the message notification sender properties for a Twilio client.
@@ -216,7 +291,13 @@ func applyDefaultSenderProperties(sender *common.NotificationSenderDTO) {
 		}
 	}
 	if !hasSupportedChannels {
-		prop, _ := cmodels.NewProperty(common.SenderPropertySupportedChannels, string(common.ChannelTypeSMS), false)
+		var defaultChannel string
+		if sender.Type == common.NotificationSenderTypeEmail {
+			defaultChannel = string(common.ChannelTypeEmail)
+		} else {
+			defaultChannel = string(common.ChannelTypeSMS)
+		}
+		prop, _ := cmodels.NewProperty(common.SenderPropertySupportedChannels, defaultChannel, false)
 		sender.Properties = append(sender.Properties, *prop)
 	}
 }

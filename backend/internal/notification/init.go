@@ -23,6 +23,7 @@ import (
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/notification/client"
+	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -64,8 +65,9 @@ func Initialize(mux *http.ServeMux, jwtService jwt.JWTServiceInterface,
 	clientFactory := client.Initialize()
 	otpService := newOTPService(mgtService, jwtService, templateService, clientFactory)
 	notificationSenderService := newNotificationSenderService(mgtService, clientFactory)
-	handler := newMessageNotificationSenderHandler(mgtService, otpService)
-	registerRoutes(mux, handler)
+	messageHandler := newNotificationSenderHandler(mgtService, otpService, common.NotificationSenderTypeMessage)
+	emailHandler := newNotificationSenderHandler(mgtService, nil, common.NotificationSenderTypeEmail)
+	registerRoutes(mux, messageHandler, emailHandler)
 
 	// Create and return exporter
 	exporter := newNotificationSenderExporter(mgtService)
@@ -73,7 +75,11 @@ func Initialize(mux *http.ServeMux, jwtService jwt.JWTServiceInterface,
 }
 
 // registerRoutes registers the HTTP routes for notification services.
-func registerRoutes(mux *http.ServeMux, handler *messageNotificationSenderHandler) {
+func registerRoutes(
+	mux *http.ServeMux,
+	messageHandler *notificationSenderHandler,
+	emailHandler *notificationSenderHandler,
+) {
 	opts1 := middleware.CORSOptions{
 		AllowedMethods:   []string{"GET", "POST"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
@@ -81,10 +87,19 @@ func registerRoutes(mux *http.ServeMux, handler *messageNotificationSenderHandle
 		MaxAge:           600,
 	}
 	mux.HandleFunc(middleware.WithCORS("GET /notification-senders/message",
-		handler.HandleSenderListRequest, opts1))
+		messageHandler.HandleSenderListRequest, opts1))
 	mux.HandleFunc(middleware.WithCORS("POST /notification-senders/message",
-		handler.HandleSenderCreateRequest, opts1))
+		messageHandler.HandleSenderCreateRequest, opts1))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /notification-senders/message",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, opts1))
+
+	mux.HandleFunc(middleware.WithCORS("GET /notification-senders/email",
+		emailHandler.HandleSenderListRequest, opts1))
+	mux.HandleFunc(middleware.WithCORS("POST /notification-senders/email",
+		emailHandler.HandleSenderCreateRequest, opts1))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /notification-senders/email",
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}, opts1))
@@ -96,12 +111,23 @@ func registerRoutes(mux *http.ServeMux, handler *messageNotificationSenderHandle
 		MaxAge:           600,
 	}
 	mux.HandleFunc(middleware.WithCORS("GET /notification-senders/message/{id}",
-		handler.HandleSenderGetRequest, opts2))
+		messageHandler.HandleSenderGetRequest, opts2))
 	mux.HandleFunc(middleware.WithCORS("PUT /notification-senders/message/{id}",
-		handler.HandleSenderUpdateRequest, opts2))
+		messageHandler.HandleSenderUpdateRequest, opts2))
 	mux.HandleFunc(middleware.WithCORS("DELETE /notification-senders/message/{id}",
-		handler.HandleSenderDeleteRequest, opts2))
+		messageHandler.HandleSenderDeleteRequest, opts2))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /notification-senders/message/{id}",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, opts2))
+
+	mux.HandleFunc(middleware.WithCORS("GET /notification-senders/email/{id}",
+		emailHandler.HandleSenderGetRequest, opts2))
+	mux.HandleFunc(middleware.WithCORS("PUT /notification-senders/email/{id}",
+		emailHandler.HandleSenderUpdateRequest, opts2))
+	mux.HandleFunc(middleware.WithCORS("DELETE /notification-senders/email/{id}",
+		emailHandler.HandleSenderDeleteRequest, opts2))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /notification-senders/email/{id}",
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}, opts2))
@@ -113,13 +139,13 @@ func registerRoutes(mux *http.ServeMux, handler *messageNotificationSenderHandle
 		MaxAge:           600,
 	}
 	mux.HandleFunc(middleware.WithCORS("POST /notification-senders/otp/send",
-		handler.HandleOTPSendRequest, opts3))
+		messageHandler.HandleOTPSendRequest, opts3))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /notification-senders/otp/send",
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}, opts3))
 	mux.HandleFunc(middleware.WithCORS("POST /notification-senders/otp/verify",
-		handler.HandleOTPVerifyRequest, opts3))
+		messageHandler.HandleOTPVerifyRequest, opts3))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /notification-senders/otp/verify",
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)

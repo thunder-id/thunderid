@@ -271,12 +271,17 @@ func (s *otpService) sendSMSOTP(ctx context.Context, recipient, otp string,
 		return clientSvcErr
 	}
 
-	if !_client.IsChannelSupported(common.ChannelTypeSMS) {
+	messageClient, ok := _client.(client.MessageClientInterface)
+	if !ok {
+		return &ErrorRequestedSenderIsNotOfExpectedType
+	}
+
+	if !messageClient.IsChannelSupported(common.ChannelTypeSMS) {
 		return &ErrorUnsupportedChannel
 	}
 
-	notifData := common.NotificationData{Recipient: recipient, Body: rendered.Body}
-	if err := _client.Send(ctx, common.ChannelTypeSMS, notifData); err != nil {
+	notifData := common.MessageData{Recipient: recipient, Body: rendered.Body}
+	if err := messageClient.Send(ctx, common.ChannelTypeSMS, notifData); err != nil {
 		logger.Error(ctx, "Failed to send SMS OTP", log.Error(err))
 		return &tidcommon.InternalServerError
 	}

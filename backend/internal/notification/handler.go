@@ -33,24 +33,26 @@ import (
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
-// messageNotificationSenderHandler handles HTTP requests for message notification sender management
-type messageNotificationSenderHandler struct {
+// notificationSenderHandler handles HTTP requests for notification sender management
+type notificationSenderHandler struct {
 	mgtService NotificationSenderMgtSvcInterface
 	otpService OTPServiceInterface
+	senderType common.NotificationSenderType
 }
 
-// newMessageNotificationSenderHandler creates a new instance of MessageNotificationSenderHandler
-func newMessageNotificationSenderHandler(
+// newNotificationSenderHandler creates a new instance of notificationSenderHandler
+func newNotificationSenderHandler(
 	mgtService NotificationSenderMgtSvcInterface,
-	otpService OTPServiceInterface) *messageNotificationSenderHandler {
-	return &messageNotificationSenderHandler{
+	otpService OTPServiceInterface, senderType common.NotificationSenderType) *notificationSenderHandler {
+	return &notificationSenderHandler{
 		mgtService: mgtService,
 		otpService: otpService,
+		senderType: senderType,
 	}
 }
 
-// HandleSenderListRequest handles the request to list all message notification senders
-func (h *messageNotificationSenderHandler) HandleSenderListRequest(w http.ResponseWriter, r *http.Request) {
+// HandleSenderListRequest handles the request to list all notification senders
+func (h *notificationSenderHandler) HandleSenderListRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationHandler"))
 	senders, svcErr := h.mgtService.ListSenders(ctx)
@@ -61,6 +63,9 @@ func (h *messageNotificationSenderHandler) HandleSenderListRequest(w http.Respon
 
 	senderResponses := make([]common.NotificationSenderResponse, 0, len(senders))
 	for _, sender := range senders {
+		if sender.Type != h.senderType {
+			continue
+		}
 		senderResponse, err := getSenderResponseFromDTO(&sender)
 		if err != nil {
 			logger.Error(ctx, "Failed to convert sender to response",
@@ -78,8 +83,8 @@ func (h *messageNotificationSenderHandler) HandleSenderListRequest(w http.Respon
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, senderResponses)
 }
 
-// HandleSenderCreateRequest handles the request to create a new message notification sender
-func (h *messageNotificationSenderHandler) HandleSenderCreateRequest(w http.ResponseWriter, r *http.Request) {
+// HandleSenderCreateRequest handles the request to create a new notification sender
+func (h *notificationSenderHandler) HandleSenderCreateRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationHandler"))
 	sender, err := sysutils.DecodeJSONBody[common.NotificationSenderRequest](r)
@@ -88,7 +93,7 @@ func (h *messageNotificationSenderHandler) HandleSenderCreateRequest(w http.Resp
 		return
 	}
 
-	senderDTO, err := getDTOFromSenderRequest(sender)
+	senderDTO, err := getDTOFromSenderRequest(sender, h.senderType)
 	if err != nil {
 		logger.Error(ctx, "Failed to process sender request", log.Error(err))
 		h.handleError(ctx, w, &tidcommon.InternalServerError, "Failed to process sender request: "+err.Error())
@@ -123,8 +128,8 @@ func (h *messageNotificationSenderHandler) HandleSenderCreateRequest(w http.Resp
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, senderResponse)
 }
 
-// HandleSenderGetRequest handles the request to get a message notification sender by ID
-func (h *messageNotificationSenderHandler) HandleSenderGetRequest(w http.ResponseWriter, r *http.Request) {
+// HandleSenderGetRequest handles the request to get a notification sender by ID
+func (h *notificationSenderHandler) HandleSenderGetRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationHandler"))
 	id := r.PathValue("id")
@@ -137,7 +142,7 @@ func (h *messageNotificationSenderHandler) HandleSenderGetRequest(w http.Respons
 		h.handleError(ctx, w, svcErr, "")
 		return
 	}
-	if sender == nil {
+	if sender == nil || sender.Type != h.senderType {
 		errResp := apierror.ErrorResponse{
 			Code:        ErrorSenderNotFound.Code,
 			Message:     ErrorSenderNotFound.Error,
@@ -158,8 +163,8 @@ func (h *messageNotificationSenderHandler) HandleSenderGetRequest(w http.Respons
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, senderResponse)
 }
 
-// HandleSenderUpdateRequest handles the request to update a message notification sender
-func (h *messageNotificationSenderHandler) HandleSenderUpdateRequest(w http.ResponseWriter, r *http.Request) {
+// HandleSenderUpdateRequest handles the request to update a notification sender
+func (h *notificationSenderHandler) HandleSenderUpdateRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationHandler"))
 	id := r.PathValue("id")
@@ -173,7 +178,22 @@ func (h *messageNotificationSenderHandler) HandleSenderUpdateRequest(w http.Resp
 		return
 	}
 
-	senderDTO, err := getDTOFromSenderRequest(sender)
+	senderRetv, svcErr := h.mgtService.GetSender(ctx, id)
+	if svcErr != nil {
+		h.handleError(ctx, w, svcErr, "")
+		return
+	}
+	if senderRetv == nil || senderRetv.Type != h.senderType {
+		errResp := apierror.ErrorResponse{
+			Code:        ErrorSenderNotFound.Code,
+			Message:     ErrorSenderNotFound.Error,
+			Description: ErrorSenderNotFound.ErrorDescription,
+		}
+		sysutils.WriteErrorResponse(ctx, w, http.StatusNotFound, errResp)
+		return
+	}
+
+	senderDTO, err := getDTOFromSenderRequest(sender, h.senderType)
 	if err != nil {
 		logger.Error(ctx, "Failed to process sender request", log.Error(err))
 		h.handleError(ctx, w, &tidcommon.InternalServerError, "Failed to process sender request: "+err.Error())
@@ -197,15 +217,30 @@ func (h *messageNotificationSenderHandler) HandleSenderUpdateRequest(w http.Resp
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, senderResponse)
 }
 
-// HandleSenderDeleteRequest handles the request to delete a message notification sender
-func (h *messageNotificationSenderHandler) HandleSenderDeleteRequest(w http.ResponseWriter, r *http.Request) {
+// HandleSenderDeleteRequest handles the request to delete a notification sender
+func (h *notificationSenderHandler) HandleSenderDeleteRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := r.PathValue("id")
 	if !h.validateSenderID(ctx, w, id) {
 		return
 	}
 
-	svcErr := h.mgtService.DeleteSender(ctx, id)
+	senderRetv, svcErr := h.mgtService.GetSender(ctx, id)
+	if svcErr != nil {
+		h.handleError(ctx, w, svcErr, "")
+		return
+	}
+	if senderRetv == nil || senderRetv.Type != h.senderType {
+		errResp := apierror.ErrorResponse{
+			Code:        ErrorSenderNotFound.Code,
+			Message:     ErrorSenderNotFound.Error,
+			Description: ErrorSenderNotFound.ErrorDescription,
+		}
+		sysutils.WriteErrorResponse(ctx, w, http.StatusNotFound, errResp)
+		return
+	}
+
+	svcErr = h.mgtService.DeleteSender(ctx, id)
 	if svcErr != nil {
 		h.handleError(ctx, w, svcErr, "")
 		return
@@ -215,7 +250,7 @@ func (h *messageNotificationSenderHandler) HandleSenderDeleteRequest(w http.Resp
 }
 
 // HandleOTPSendRequest handles the request to send an OTP.
-func (h *messageNotificationSenderHandler) HandleOTPSendRequest(w http.ResponseWriter, r *http.Request) {
+func (h *notificationSenderHandler) HandleOTPSendRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	request, err := sysutils.DecodeJSONBody[common.SendOTPRequest](r)
 	if err != nil {
@@ -239,7 +274,7 @@ func (h *messageNotificationSenderHandler) HandleOTPSendRequest(w http.ResponseW
 }
 
 // HandleOTPVerifyRequest handles the request to verify an OTP.
-func (h *messageNotificationSenderHandler) HandleOTPVerifyRequest(w http.ResponseWriter, r *http.Request) {
+func (h *notificationSenderHandler) HandleOTPVerifyRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	request, err := sysutils.DecodeJSONBody[common.VerifyOTPRequest](r)
 	if err != nil {
@@ -262,7 +297,7 @@ func (h *messageNotificationSenderHandler) HandleOTPVerifyRequest(w http.Respons
 }
 
 // handleError handles service errors and returns appropriate HTTP responses.
-func (h *messageNotificationSenderHandler) handleError(ctx context.Context, w http.ResponseWriter,
+func (h *notificationSenderHandler) handleError(ctx context.Context, w http.ResponseWriter,
 	svcErr *tidcommon.ServiceError, customErrDesc string) {
 	errDesc := svcErr.ErrorDescription
 	if customErrDesc != "" {
@@ -294,7 +329,7 @@ func (h *messageNotificationSenderHandler) handleError(ctx context.Context, w ht
 
 // validateSenderID validates the sender ID and returns true if valid
 func (
-	h *messageNotificationSenderHandler) validateSenderID(ctx context.Context,
+	h *notificationSenderHandler) validateSenderID(ctx context.Context,
 	w http.ResponseWriter,
 	id string) bool {
 	if strings.TrimSpace(id) == "" {
@@ -305,7 +340,10 @@ func (
 }
 
 // getDTOFromSenderRequest sanitizes the sender request and converts it to a NotificationSenderDTO.
-func getDTOFromSenderRequest(sender *common.NotificationSenderRequest) (*common.NotificationSenderDTO, error) {
+func getDTOFromSenderRequest(
+	sender *common.NotificationSenderRequest,
+	senderType common.NotificationSenderType,
+) (*common.NotificationSenderDTO, error) {
 	name := sysutils.SanitizeString(sender.Name)
 	description := sysutils.SanitizeString(sender.Description)
 	providerStr := sysutils.SanitizeString(sender.Provider)
@@ -328,7 +366,7 @@ func getDTOFromSenderRequest(sender *common.NotificationSenderRequest) (*common.
 	senderDTO := common.NotificationSenderDTO{
 		Name:        name,
 		Description: description,
-		Type:        common.NotificationSenderTypeMessage,
+		Type:        senderType,
 		Provider:    common.MessageProviderType(providerStr),
 		Properties:  properties,
 	}

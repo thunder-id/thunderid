@@ -38,6 +38,10 @@ const (
 	MessageProviderTypeTwilio MessageProviderType = "twilio"
 	// MessageProviderTypeCustom represents a custom messaging provider.
 	MessageProviderTypeCustom MessageProviderType = "custom"
+	// MessageProviderTypeHTTP represents an HTTP webhook email provider.
+	MessageProviderTypeHTTP MessageProviderType = "http"
+	// MessageProviderTypeSMTP represents the SMTP email provider.
+	MessageProviderTypeSMTP MessageProviderType = "smtp"
 )
 
 // ChannelType defines the type of communication channel.
@@ -46,6 +50,8 @@ type ChannelType string
 const (
 	// ChannelTypeSMS represents the SMS channel.
 	ChannelTypeSMS ChannelType = "sms"
+	// ChannelTypeEmail represents the Email channel.
+	ChannelTypeEmail ChannelType = "email"
 )
 
 // OTPVerifyStatus defines the status of OTP verification.
@@ -85,6 +91,23 @@ const (
 	CustomPropKeyHTTPHeaders = "http_headers"
 	// CustomPropKeyContentType is the property key for the content type.
 	CustomPropKeyContentType = "content_type"
+)
+
+const (
+	// SMTPPropKeyHost is the property key for the SMTP host.
+	SMTPPropKeyHost = "host"
+	// SMTPPropKeyPort is the property key for the SMTP port.
+	SMTPPropKeyPort = "port"
+	// SMTPPropKeyUsername is the property key for the SMTP username.
+	SMTPPropKeyUsername = "username"
+	// SMTPPropKeyPassword is the property key for the SMTP password.
+	SMTPPropKeyPassword = "password"
+	// SMTPPropKeyFromAddress is the property key for the SMTP from address.
+	SMTPPropKeyFromAddress = "from_address"
+	// SMTPPropKeyEnableStartTLS is the property key to enable STARTTLS.
+	SMTPPropKeyEnableStartTLS = "enable_start_tls"
+	// SMTPPropKeyEnableAuth is the property key to enable authentication.
+	SMTPPropKeyEnableAuth = "enable_authentication"
 )
 
 const (

@@ -22,6 +22,7 @@
 const NotificationSenderQueryKeys = {
   NOTIFICATION_SENDERS: 'notification-senders',
   MESSAGE_SENDERS: 'message-senders',
+  EMAIL_SENDERS: 'email-senders',
 } as const;
 
 export default NotificationSenderQueryKeys;
