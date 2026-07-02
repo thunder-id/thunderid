@@ -177,10 +177,12 @@ func (g *githubOAuthAuthnService) Authenticate(ctx context.Context, idpID, code 
 		return nil, &authncm.ErrorSubClaimNotFound
 	}
 
-	return &authncm.AuthnResult{
-		Token: map[string]interface{}{
-			"sub": sub,
-		},
-		AuthenticatedClaims: userInfo,
-	}, nil
+	return g.internal.BuildFederatedAuthResult(ctx, idpID, sub, userInfo)
+}
+
+// BuildFederatedAuthResult delegates to the underlying OAuth service, which applies attribute mapping
+// and account-linking resolution uniformly for all federated authenticators.
+func (g *githubOAuthAuthnService) BuildFederatedAuthResult(ctx context.Context, idpID, sub string,
+	claims map[string]interface{}) (*authncm.AuthnResult, *tidcommon.ServiceError) {
+	return g.internal.BuildFederatedAuthResult(ctx, idpID, sub, claims)
 }

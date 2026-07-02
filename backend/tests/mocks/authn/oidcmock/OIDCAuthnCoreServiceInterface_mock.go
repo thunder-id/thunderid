@@ -184,6 +184,88 @@ func (_c *OIDCAuthnCoreServiceInterfaceMock_BuildAuthorizeURL_Call) RunAndReturn
 	return _c
 }
 
+// BuildFederatedAuthResult provides a mock function for the type OIDCAuthnCoreServiceInterfaceMock
+func (_mock *OIDCAuthnCoreServiceInterfaceMock) BuildFederatedAuthResult(ctx context.Context, idpID string, sub string, claims map[string]interface{}) (*common.AuthnResult, *common0.ServiceError) {
+	ret := _mock.Called(ctx, idpID, sub, claims)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BuildFederatedAuthResult")
+	}
+
+	var r0 *common.AuthnResult
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, map[string]interface{}) (*common.AuthnResult, *common0.ServiceError)); ok {
+		return returnFunc(ctx, idpID, sub, claims)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, map[string]interface{}) *common.AuthnResult); ok {
+		r0 = returnFunc(ctx, idpID, sub, claims)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.AuthnResult)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, map[string]interface{}) *common0.ServiceError); ok {
+		r1 = returnFunc(ctx, idpID, sub, claims)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common0.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// OIDCAuthnCoreServiceInterfaceMock_BuildFederatedAuthResult_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BuildFederatedAuthResult'
+type OIDCAuthnCoreServiceInterfaceMock_BuildFederatedAuthResult_Call struct {
+	*mock.Call
+}
+
+// BuildFederatedAuthResult is a helper method to define mock.On call
+//   - ctx context.Context
+//   - idpID string
+//   - sub string
+//   - claims map[string]interface{}
+func (_e *OIDCAuthnCoreServiceInterfaceMock_Expecter) BuildFederatedAuthResult(ctx interface{}, idpID interface{}, sub interface{}, claims interface{}) *OIDCAuthnCoreServiceInterfaceMock_BuildFederatedAuthResult_Call {
+	return &OIDCAuthnCoreServiceInterfaceMock_BuildFederatedAuthResult_Call{Call: _e.mock.On("BuildFederatedAuthResult", ctx, idpID, sub, claims)}
+}
+
+func (_c *OIDCAuthnCoreServiceInterfaceMock_BuildFederatedAuthResult_Call) Run(run func(ctx context.Context, idpID string, sub string, claims map[string]interface{})) *OIDCAuthnCoreServiceInterfaceMock_BuildFederatedAuthResult_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 map[string]interface{}
+		if args[3] != nil {
+			arg3 = args[3].(map[string]interface{})
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *OIDCAuthnCoreServiceInterfaceMock_BuildFederatedAuthResult_Call) Return(authnResult *common.AuthnResult, serviceError *common0.ServiceError) *OIDCAuthnCoreServiceInterfaceMock_BuildFederatedAuthResult_Call {
+	_c.Call.Return(authnResult, serviceError)
+	return _c
+}
+
+func (_c *OIDCAuthnCoreServiceInterfaceMock_BuildFederatedAuthResult_Call) RunAndReturn(run func(ctx context.Context, idpID string, sub string, claims map[string]interface{}) (*common.AuthnResult, *common0.ServiceError)) *OIDCAuthnCoreServiceInterfaceMock_BuildFederatedAuthResult_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ExchangeCodeForToken provides a mock function for the type OIDCAuthnCoreServiceInterfaceMock
 func (_mock *OIDCAuthnCoreServiceInterfaceMock) ExchangeCodeForToken(ctx context.Context, idpID string, code string, validateResponse bool) (*oauth.TokenResponse, *common0.ServiceError) {
 	ret := _mock.Called(ctx, idpID, code, validateResponse)
