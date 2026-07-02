@@ -23,7 +23,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -140,10 +139,8 @@ func (c *HTTPEmailClient) Send(ctx context.Context, data common.EmailData) error
 	logger.Debug(ctx, "Received response from HTTP Email provider", log.Int("statusCode", resp.StatusCode))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		logger.Error(ctx, "Failed to send Email via HTTP client", log.Int("statusCode", resp.StatusCode),
-			log.String("response", string(bodyBytes)))
-		return fmt.Errorf("HTTP Email send failed, status: %d, response: %s", resp.StatusCode, string(bodyBytes))
+		logger.Error(ctx, "Failed to send Email via HTTP client", log.Int("statusCode", resp.StatusCode))
+		return fmt.Errorf("HTTP Email send failed, status: %d", resp.StatusCode)
 	}
 
 	return nil
