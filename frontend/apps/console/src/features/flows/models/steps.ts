@@ -99,7 +99,7 @@ export const ExecutionTypes = {
   OIDCAuthExecutor: 'OIDCAuthExecutor',
   PasskeyAuth: 'PasskeyAuthExecutor',
   MagicLinkExecutor: 'MagicLinkExecutor',
-  SMSOTPAuth: 'SMSOTPAuthExecutor',
+  OTPExecutor: 'OTPExecutor',
   ConsentExecutor: 'ConsentExecutor',
   IdentifyingExecutor: 'IdentifyingExecutor',
   OUResolverExecutor: 'OUResolverExecutor',

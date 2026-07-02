@@ -547,7 +547,7 @@
                       "label": "Mobile Number",
                       "required": true,
                       "placeholder": "Enter your mobile number",
-                      "ref": "mobile"
+                      "ref": "mobile_number"
                     },
                     {
                       "id": "{{ID}}",
@@ -581,12 +581,47 @@
               "action": {
                 "type": "EXECUTOR",
                 "executor": {
-                  "name": "SMSOTPAuthExecutor",
-                  "mode": "send"
+                  "name": "OTPExecutor",
+                  "mode": "generate",
+                  "inputs": [
+                    {
+                      "ref": "mobile_number",
+                      "type": "PHONE_INPUT",
+                      "identifier": "mobile_number",
+                      "required": true
+                    }
+                  ]
+                },
+                "onSuccess": "{{SMS_EXECUTOR_ID}}",
+                "onFailure": "",
+                "onIncomplete": ""
+              }
+            }
+          },
+          {
+            "id": "{{SMS_EXECUTOR_ID}}",
+            "type": "TASK_EXECUTION",
+            "size": {
+              "width": 200,
+              "height": 100
+            },
+            "position": {
+              "x": 950,
+              "y": 400
+            },
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "SMSExecutor"
                 },
                 "onSuccess": "{{SMS_OTP_VERIFICATION_STEP_ID}}",
                 "onFailure": "",
                 "onIncomplete": ""
+              },
+              "properties": {
+                "senderId": "",
+                "smsTemplate": "OTP"
               }
             }
           },
@@ -668,7 +703,7 @@
               "action": {
                 "type": "EXECUTOR",
                 "executor": {
-                  "name": "SMSOTPAuthExecutor",
+                  "name": "OTPExecutor",
                   "mode": "verify"
                 },
                 "onSuccess": "{{AUTH_ASSERT_EXECUTOR_ID}}",

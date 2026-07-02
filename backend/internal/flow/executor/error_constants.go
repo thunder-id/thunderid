@@ -1174,18 +1174,3 @@ func errMaxOTPAttemptsReachedFor(count int) *tidcommon.ServiceError {
 		"The maximum number of OTP verification attempts (%d) has been reached", count)
 	return &e
 }
-
-// errAttributeNotFoundFor returns a ServiceError for a specific attribute not found for the user.
-func errAttributeNotFoundFor(attrName string) *tidcommon.ServiceError {
-	e := ErrAttributeNotFoundForUser
-	e.Error.DefaultValue = fmt.Sprintf("'%s' was not found for the user", attrName)
-	e.ErrorDescription.DefaultValue = fmt.Sprintf("The attribute '%s' was not found for the user", attrName)
-	return &e
-}
-
-// errFailedToRetrieveAttribute returns a ServiceError for failing to retrieve a specific attribute.
-func errFailedToRetrieveAttribute(attrName string) *tidcommon.ServiceError {
-	e := ErrAttributeRetrievalFailed
-	e.ErrorDescription.DefaultValue = fmt.Sprintf("An error occurred while retrieving the attribute '%s'", attrName)
-	return &e
-}

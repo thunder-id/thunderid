@@ -35,7 +35,7 @@ import (
 func getAuthnServiceName(executorName string) string {
 	executorToAuthnServiceMap := map[string]string{
 		ExecutorNameCredentialsAuth: authncm.AuthenticatorCredentials,
-		ExecutorNameSMSAuth:         authncm.AuthenticatorSMSOTP,
+		ExecutorNameOTPExecutor:     authncm.AuthenticatorOTP,
 		ExecutorNameOAuth:           authncm.AuthenticatorOAuth,
 		ExecutorNameOIDCAuth:        authncm.AuthenticatorOIDC,
 		ExecutorNameGitHubAuth:      authncm.AuthenticatorGithub,

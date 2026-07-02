@@ -123,7 +123,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -311,7 +312,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -405,7 +407,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -499,7 +502,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -711,7 +715,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -970,7 +975,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -1229,7 +1235,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -1542,7 +1549,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -1762,7 +1770,7 @@
               }
             ]
           },
-          "onSuccess": "send_sms",
+          "onSuccess": "generate_otp",
           "onIncomplete": "choose_auth"
         },
         {
@@ -1792,7 +1800,7 @@
               }
             ]
           },
-          "onSuccess": "send_sms"
+          "onSuccess": "generate_otp"
         },
         {
           "id": "github_auth",
@@ -1821,10 +1829,10 @@
               }
             ]
           },
-          "onSuccess": "send_sms"
+          "onSuccess": "generate_otp"
         },
         {
-          "id": "send_sms",
+          "id": "generate_otp",
           "type": "TASK_EXECUTION",
           "layout": {
             "size": {
@@ -1836,12 +1844,39 @@
               "y": 546
             }
           },
+          "executor": {
+            "name": "OTPExecutor",
+            "mode": "generate",
+            "inputs": [
+              {
+                "ref": "input_mobile",
+                "type": "PHONE_INPUT",
+                "identifier": "mobile_number",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "sms_send"
+        },
+        {
+          "id": "sms_send",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1395,
+              "y": 546
+            }
+          },
           "properties": {
-            "senderId": "{{SENDER_ID}}"
+            "senderId": "{{SENDER_ID}}",
+            "smsTemplate": "OTP"
           },
           "executor": {
-            "name": "SMSOTPAuthExecutor",
-            "mode": "send"
+            "name": "SMSExecutor"
           },
           "onSuccess": "prompt_otp"
         },
@@ -1948,11 +1983,8 @@
               "y": 541
             }
           },
-          "properties": {
-            "senderId": "{{SENDER_ID}}"
-          },
           "executor": {
-            "name": "SMSOTPAuthExecutor",
+            "name": "OTPExecutor",
             "mode": "verify"
           },
           "onSuccess": "auth_assert"
@@ -1990,7 +2022,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -2108,13 +2141,13 @@
               ],
               "action": {
                 "ref": "action_001",
-                "nextNode": "send_sms"
+                "nextNode": "generate_otp"
               }
             }
           ]
         },
         {
-          "id": "send_sms",
+          "id": "generate_otp",
           "type": "TASK_EXECUTION",
           "layout": {
             "size": {
@@ -2126,12 +2159,39 @@
               "y": 353
             }
           },
+          "executor": {
+            "name": "OTPExecutor",
+            "mode": "generate",
+            "inputs": [
+              {
+                "ref": "input_mobile",
+                "type": "PHONE_INPUT",
+                "identifier": "mobile_number",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "sms_send"
+        },
+        {
+          "id": "sms_send",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1100,
+              "y": 353
+            }
+          },
           "properties": {
-            "senderId": "{{SENDER_ID}}"
+            "senderId": "{{SENDER_ID}}",
+            "smsTemplate": "OTP"
           },
           "executor": {
-            "name": "SMSOTPAuthExecutor",
-            "mode": "send"
+            "name": "SMSExecutor"
           },
           "onSuccess": "prompt_otp"
         },
@@ -2238,11 +2298,8 @@
               "y": 353
             }
           },
-          "properties": {
-            "senderId": "{{SENDER_ID}}"
-          },
           "executor": {
-            "name": "SMSOTPAuthExecutor",
+            "name": "OTPExecutor",
             "mode": "verify"
           },
           "onSuccess": "auth_assert"
@@ -2280,7 +2337,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -2457,7 +2515,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -2986,7 +3045,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -3102,7 +3162,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -3423,7 +3484,8 @@
           "type": "END"
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -3633,13 +3695,13 @@
               ],
               "action": {
                 "ref": "action_001",
-                "nextNode": "send_sms"
+                "nextNode": "generate_otp"
               }
             }
           ]
         },
         {
-          "id": "send_sms",
+          "id": "generate_otp",
           "type": "TASK_EXECUTION",
           "layout": {
             "size": {
@@ -3651,20 +3713,39 @@
               "y": 367
             }
           },
-          "properties": {
-            "senderId": "{{SENDER_ID}}"
-          },
           "executor": {
-            "name": "SMSOTPAuthExecutor",
-            "mode": "send",
+            "name": "OTPExecutor",
+            "mode": "generate",
             "inputs": [
               {
                 "ref": "input_001",
-                "type": "TEXT_INPUT",
+                "type": "PHONE_INPUT",
                 "identifier": "mobile_number",
                 "required": true
               }
             ]
+          },
+          "onSuccess": "sms_send"
+        },
+        {
+          "id": "sms_send",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1412,
+              "y": 367
+            }
+          },
+          "properties": {
+            "senderId": "{{SENDER_ID}}",
+            "smsTemplate": "OTP"
+          },
+          "executor": {
+            "name": "SMSExecutor"
           },
           "onSuccess": "prompt_otp"
         },
@@ -3771,20 +3852,9 @@
               "y": 359
             }
           },
-          "properties": {
-            "senderId": "{{SENDER_ID}}"
-          },
           "executor": {
-            "name": "SMSOTPAuthExecutor",
-            "mode": "verify",
-            "inputs": [
-              {
-                "ref": "input_002",
-                "type": "OTP_INPUT",
-                "identifier": "otp",
-                "required": true
-              }
-            ]
+            "name": "OTPExecutor",
+            "mode": "verify"
           },
           "onSuccess": "provisioning"
         },
@@ -3839,7 +3909,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -4165,7 +4236,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -4874,7 +4946,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -5267,7 +5340,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -5585,7 +5659,7 @@
           "executor": {
             "name": "CredentialsAuthExecutor"
           },
-          "onSuccess": "send_sms",
+          "onSuccess": "generate_otp",
           "onIncomplete": "choose_auth"
         },
         {
@@ -5723,13 +5797,13 @@
               ],
               "action": {
                 "ref": "action_005",
-                "nextNode": "send_sms"
+                "nextNode": "generate_otp"
               }
             }
           ]
         },
         {
-          "id": "send_sms",
+          "id": "generate_otp",
           "type": "TASK_EXECUTION",
           "layout": {
             "size": {
@@ -5741,12 +5815,39 @@
               "y": 709
             }
           },
+          "executor": {
+            "name": "OTPExecutor",
+            "mode": "generate",
+            "inputs": [
+              {
+                "ref": "input_mobile",
+                "type": "PHONE_INPUT",
+                "identifier": "mobile_number",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "sms_send"
+        },
+        {
+          "id": "sms_send",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1926,
+              "y": 709
+            }
+          },
           "properties": {
-            "senderId": "{{SENDER_ID}}"
+            "senderId": "{{SENDER_ID}}",
+            "smsTemplate": "OTP"
           },
           "executor": {
-            "name": "SMSOTPAuthExecutor",
-            "mode": "send"
+            "name": "SMSExecutor"
           },
           "onSuccess": "prompt_otp"
         },
@@ -5851,11 +5952,8 @@
               "y": 753
             }
           },
-          "properties": {
-            "senderId": "{{SENDER_ID}}"
-          },
           "executor": {
-            "name": "SMSOTPAuthExecutor",
+            "name": "OTPExecutor",
             "mode": "verify"
           },
           "onSuccess": "provisioning"
@@ -5911,7 +6009,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -6264,7 +6363,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -6752,7 +6852,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -6868,7 +6969,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -7576,7 +7678,8 @@
           "type": "END"
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -7674,7 +7777,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -8061,7 +8165,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -8197,17 +8302,8 @@
           }
         },
         {
-          "id": "send_otp",
+          "id": "generate_otp",
           "type": "TASK_EXECUTION",
-          "properties": {
-            "senderId": "<your-sms-sender-id>"
-          },
-          "executor": {
-            "name": "SMSOTPAuthExecutor",
-            "mode": "send"
-          },
-          "onSuccess": "otp_sent_status",
-          "onFailure": "otp_sent_status",
           "layout": {
             "size": {
               "width": 206,
@@ -8217,7 +8313,42 @@
               "x": 960,
               "y": 340
             }
-          }
+          },
+          "executor": {
+            "name": "OTPExecutor",
+            "mode": "generate",
+            "inputs": [
+              {
+                "ref": "input_mobile",
+                "type": "PHONE_INPUT",
+                "identifier": "mobile_number",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "sms_send"
+        },
+        {
+          "id": "sms_send",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1290,
+              "y": 340
+            }
+          },
+          "properties": {
+            "senderId": "{{SENDER_ID}}",
+            "smsTemplate": "OTP"
+          },
+          "executor": {
+            "name": "SMSExecutor"
+          },
+          "onSuccess": "otp_sent_status"
         },
         {
           "id": "otp_sent_status",
@@ -8313,7 +8444,7 @@
             }
           ],
           "executor": {
-            "name": "SMSOTPAuthExecutor",
+            "name": "OTPExecutor",
             "mode": "verify"
           },
           "onSuccess": "prompt_new_password",
@@ -8471,7 +8602,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -8734,7 +8866,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -9133,7 +9266,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -9563,7 +9697,8 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   },
   {
     "resourceType": "TEMPLATE",
@@ -10025,6 +10160,7 @@
           }
         }
       ]
-    }
+    },
+    "nodes": []
   }
 ]

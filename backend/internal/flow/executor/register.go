@@ -154,10 +154,6 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 			reg.RegisterExecutor(ExecutorNameCredentialsAuth, newCredentialsAuthExecutor(
 				deps.FlowFactory, deps.EntityProvider, deps.AuthnProvider))
 		},
-		ExecutorNameSMSAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameSMSAuth, newSMSOTPAuthExecutor(
-				deps.FlowFactory, deps.OTPService, deps.AuthnProvider, deps.EntityProvider))
-		},
 		ExecutorNamePasskeyAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePasskeyAuth, newPasskeyAuthExecutor(
 				deps.FlowFactory, deps.PasskeyService, deps.AuthnProvider, deps.EntityProvider))
@@ -257,6 +253,10 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameOpenID4VPVerify: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOpenID4VPVerify, newOpenID4VPVerifier(
 				deps.FlowFactory, deps.OpenID4VPVerifierSvc, deps.AuthnProvider))
+		},
+		ExecutorNameOTPExecutor: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameOTPExecutor, newOTPExecutor(
+				deps.FlowFactory, deps.OTPService, deps.AuthnProvider, deps.EntityProvider))
 		},
 	}
 }

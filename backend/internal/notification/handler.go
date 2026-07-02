@@ -223,7 +223,11 @@ func (h *messageNotificationSenderHandler) HandleOTPSendRequest(w http.ResponseW
 		return
 	}
 
-	otpDTO := common.SendOTPDTO(*request)
+	otpDTO := common.SendOTPDTO{
+		Recipient: request.Recipient,
+		SenderID:  request.SenderID,
+		Channel:   request.Channel,
+	}
 	resultDTO, svcErr := h.otpService.SendOTP(ctx, otpDTO)
 	if svcErr != nil {
 		h.handleError(ctx, w, svcErr, "")

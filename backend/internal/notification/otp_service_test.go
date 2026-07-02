@@ -20,13 +20,11 @@ package notification
 
 import (
 	"context"
-	cryptorand "crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
-	"time"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
@@ -45,6 +43,17 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/notification/clientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/templatemock"
 )
+
+// buildTestJWT builds a minimal JWT whose payload encodes the given otpSessionData.
+// The header and signature are synthetic; VerifyJWT is mocked so no real crypto is needed.
+func buildTestJWT(sessionData otpSessionData) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))
+	payloadJSON, _ := json.Marshal(map[string]interface{}{
+		"otp_data": sessionData,
+	})
+	payload := base64.RawURLEncoding.EncodeToString(payloadJSON)
+	return fmt.Sprintf("%s.%s.sig", header, payload)
+}
 
 type OTPServiceTestSuite struct {
 	suite.Suite
@@ -94,6 +103,7 @@ func (suite *OTPServiceTestSuite) SetupTest() {
 	suite.mockTemplateService = templatemock.NewTemplateServiceInterfaceMock(suite.T())
 
 	suite.service = &otpService{
+		logger:           log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OTPService")),
 		jwtService:       suite.mockJWTService,
 		senderMgtService: suite.mockSenderService,
 		clientFactory:    clientmock.NewClientFactoryInterfaceMock(suite.T()),
@@ -114,6 +124,60 @@ func (suite *OTPServiceTestSuite) getValidSender() *common.NotificationSenderDTO
 		},
 	}
 }
+
+// --- GenerateOTP tests ---
+
+func (suite *OTPServiceTestSuite) TestGenerateOTP_EmptyRecipient() {
+	_, _, _, err := suite.service.GenerateOTP(context.Background(), "", "mobile_number")
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidRecipient.Code, err.Code)
+}
+
+func (suite *OTPServiceTestSuite) TestGenerateOTP_WhitespaceRecipient() {
+	_, _, _, err := suite.service.GenerateOTP(context.Background(), "   ", "mobile_number")
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidRecipient.Code, err.Code)
+}
+
+func (suite *OTPServiceTestSuite) TestGenerateOTP_Success() {
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, otpSessionAudience, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything,
+	).Return("session-token-123", int64(0), (*tidcommon.ServiceError)(nil)).Once()
+
+	sessionToken, otpValue, expirySeconds, err := suite.service.GenerateOTP(
+		context.Background(), "+15559876543", "mobile_number")
+
+	suite.Nil(err)
+	suite.Equal("session-token-123", sessionToken)
+	suite.Len(otpValue, 6)
+	suite.Greater(expirySeconds, int64(0))
+	for _, ch := range otpValue {
+		suite.Contains("9245378016", string(ch))
+	}
+}
+
+func (suite *OTPServiceTestSuite) TestGenerateOTP_JWTError() {
+	jwtErr := &tidcommon.ServiceError{
+		Type:  tidcommon.ServerErrorType,
+		Code:  "JWT-0001",
+		Error: tidcommon.I18nMessage{DefaultValue: "JWT generation failed"},
+	}
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything,
+	).Return("", int64(0), jwtErr).Once()
+
+	sessionToken, otpValue, _, err := suite.service.GenerateOTP(
+		context.Background(), "+15559876543", "mobile_number")
+
+	suite.Empty(sessionToken)
+	suite.Empty(otpValue)
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+// --- SendOTP tests ---
 
 func (suite *OTPServiceTestSuite) TestSendOTP_EmptyRecipient() {
 	request := common.SendOTPDTO{
@@ -207,6 +271,226 @@ func (suite *OTPServiceTestSuite) TestSendOTP_SenderServiceError() {
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
+func (suite *OTPServiceTestSuite) TestSendOTP_SenderServiceError_NotFound() {
+	req := common.SendOTPDTO{
+		Recipient: "+15559876543",
+		SenderID:  "sender-123",
+		Channel:   "sms",
+	}
+
+	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(nil, &ErrorSenderNotFound).Once()
+
+	res, err := suite.service.SendOTP(context.Background(), req)
+	suite.Nil(res)
+	suite.NotNil(err)
+	suite.Equal(ErrorSenderNotFound.Code, err.Code)
+}
+
+func (suite *OTPServiceTestSuite) TestSendOTP_GenerateOTPError() {
+	req := common.SendOTPDTO{
+		Recipient: "+15559876543",
+		SenderID:  "sender-123",
+		Channel:   "sms",
+	}
+
+	sender := suite.getValidSender()
+	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(sender, nil).Once()
+	jwtErr := &tidcommon.ServiceError{
+		Type:  tidcommon.ServerErrorType,
+		Code:  "JWT-0001",
+		Error: tidcommon.I18nMessage{DefaultValue: "JWT generation failed"},
+	}
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, otpSessionAudience, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything,
+	).Return("", int64(0), jwtErr).Once()
+
+	res, err := suite.service.SendOTP(context.Background(), req)
+
+	suite.Nil(res)
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (suite *OTPServiceTestSuite) TestSendOTP_Success() {
+	req := common.SendOTPDTO{
+		Recipient: "+15559876543",
+		SenderID:  "sender-123",
+		Channel:   "sms",
+	}
+
+	sender := suite.getValidSender()
+	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(sender, nil).Once()
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, otpSessionAudience, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything,
+	).Return("session-token-123", int64(0), (*tidcommon.ServiceError)(nil)).Once()
+
+	suite.mockTemplateService.On("Render", mock.Anything, template.ScenarioOTP,
+		template.TemplateTypeSMS, mock.Anything).
+		Return(&template.RenderedTemplate{Body: "Your code is: 123456. Expires in 2 minutes."}, nil).Once()
+
+	mm := clientmock.NewNotificationClientInterfaceMock(suite.T())
+	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(true).Once()
+	mm.EXPECT().Send(mock.Anything, common.ChannelTypeSMS, mock.Anything).Return(nil).Once()
+	cp := clientmock.NewClientFactoryInterfaceMock(suite.T())
+	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
+	suite.service.clientFactory = cp
+
+	res, err := suite.service.SendOTP(context.Background(), req)
+	suite.Nil(err)
+	suite.NotNil(res)
+	suite.Equal("session-token-123", res.SessionToken)
+}
+
+func (suite *OTPServiceTestSuite) TestSendOTP_SendSMSError() {
+	req := common.SendOTPDTO{
+		Recipient: "+15559876543",
+		SenderID:  "sender-123",
+		Channel:   "sms",
+	}
+	sender := suite.getValidSender()
+	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(sender, nil).Once()
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, otpSessionAudience, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything,
+	).Return("session-token-123", int64(0), (*tidcommon.ServiceError)(nil)).Once()
+
+	suite.mockTemplateService.On("Render", mock.Anything, template.ScenarioOTP,
+		template.TemplateTypeSMS, mock.Anything).
+		Return(&template.RenderedTemplate{Body: "Your code is: 123456. Expires in 2 minutes."}, nil).Once()
+
+	mm := clientmock.NewNotificationClientInterfaceMock(suite.T())
+	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(true).Once()
+	mm.EXPECT().Send(mock.Anything, common.ChannelTypeSMS, mock.Anything).Return(errors.New("send failed")).Once()
+	cp := clientmock.NewClientFactoryInterfaceMock(suite.T())
+	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
+	suite.service.clientFactory = cp
+
+	res, err := suite.service.SendOTP(context.Background(), req)
+	suite.Nil(res)
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (suite *OTPServiceTestSuite) TestSendOTP_ClientProviderError() {
+	req := common.SendOTPDTO{
+		Recipient: "+15559876543",
+		SenderID:  "sender-123",
+		Channel:   "sms",
+	}
+
+	sender := suite.getValidSender()
+	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(sender, nil).Once()
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, otpSessionAudience, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything,
+	).Return("session-token-123", int64(0), (*tidcommon.ServiceError)(nil)).Once()
+
+	suite.mockTemplateService.On("Render", mock.Anything, template.ScenarioOTP,
+		template.TemplateTypeSMS, mock.Anything).
+		Return(&template.RenderedTemplate{Body: "Your code is: 123456. Expires in 2 minutes."}, nil).Once()
+
+	cp := clientmock.NewClientFactoryInterfaceMock(suite.T())
+	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(nil, &tidcommon.InternalServerError).Once()
+	suite.service.clientFactory = cp
+
+	res, err := suite.service.SendOTP(context.Background(), req)
+	suite.Nil(res)
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (suite *OTPServiceTestSuite) TestSendOTP_ClientChannelNotSupported() {
+	req := common.SendOTPDTO{
+		Recipient: "+15559876543",
+		SenderID:  "sender-123",
+		Channel:   "sms",
+	}
+
+	sender := suite.getValidSender()
+	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(sender, nil).Once()
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, otpSessionAudience, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything,
+	).Return("session-token-123", int64(0), (*tidcommon.ServiceError)(nil)).Once()
+
+	suite.mockTemplateService.On("Render", mock.Anything, template.ScenarioOTP,
+		template.TemplateTypeSMS, mock.Anything).
+		Return(&template.RenderedTemplate{Body: "Your code is: 123456. Expires in 2 minutes."}, nil).Once()
+
+	mm := clientmock.NewNotificationClientInterfaceMock(suite.T())
+	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(false).Once()
+	cp := clientmock.NewClientFactoryInterfaceMock(suite.T())
+	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
+	suite.service.clientFactory = cp
+
+	res, err := suite.service.SendOTP(context.Background(), req)
+	suite.Nil(res)
+	suite.NotNil(err)
+	suite.Equal(ErrorUnsupportedChannel.Code, err.Code)
+}
+
+func (suite *OTPServiceTestSuite) TestSendOTP_TemplateRenderSuccess_UsesRenderedBody() {
+	req := common.SendOTPDTO{
+		Recipient: "+15559876543",
+		SenderID:  "sender-123",
+		Channel:   "sms",
+	}
+
+	sender := suite.getValidSender()
+	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(sender, nil).Once()
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, otpSessionAudience, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything,
+	).Return("token", int64(0), (*tidcommon.ServiceError)(nil)).Once()
+
+	renderedBody := "Your verification code is: 654321. This code will expire in 2 minutes."
+	suite.mockTemplateService.On("Render", mock.Anything, template.ScenarioOTP,
+		template.TemplateTypeSMS, mock.Anything).
+		Return(&template.RenderedTemplate{Body: renderedBody}, nil).Once()
+
+	mm := clientmock.NewNotificationClientInterfaceMock(suite.T())
+	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(true).Once()
+	mm.EXPECT().Send(mock.Anything, common.ChannelTypeSMS,
+		common.NotificationData{Recipient: "+15559876543", Body: renderedBody}).
+		Return(nil).Once()
+	cp := clientmock.NewClientFactoryInterfaceMock(suite.T())
+	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
+	suite.service.clientFactory = cp
+
+	res, err := suite.service.SendOTP(context.Background(), req)
+	suite.Nil(err)
+	suite.NotNil(res)
+}
+
+func (suite *OTPServiceTestSuite) TestSendOTP_TemplateRenderFailure_ReturnsInternalError() {
+	req := common.SendOTPDTO{
+		Recipient: "+15559876543",
+		SenderID:  "sender-123",
+		Channel:   "sms",
+	}
+
+	sender := suite.getValidSender()
+	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(sender, nil).Once()
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, otpSessionAudience, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything,
+	).Return("session-token-123", int64(0), (*tidcommon.ServiceError)(nil)).Once()
+
+	renderErr := &tidcommon.ServiceError{Code: "TPL-5000"}
+	suite.mockTemplateService.On("Render", mock.Anything, template.ScenarioOTP,
+		template.TemplateTypeSMS, mock.Anything).
+		Return(nil, renderErr).Once()
+
+	res, err := suite.service.SendOTP(context.Background(), req)
+	suite.Nil(res)
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+// --- VerifyOTP tests ---
+
 func (suite *OTPServiceTestSuite) TestVerifyOTP_EmptySessionToken() {
 	request := common.VerifyOTPDTO{
 		SessionToken: "",
@@ -233,505 +517,106 @@ func (suite *OTPServiceTestSuite) TestVerifyOTP_EmptyOTPCode() {
 	suite.Equal(ErrorInvalidOTP.Code, err.Code)
 }
 
-func (suite *OTPServiceTestSuite) TestVerifyOTP_InvalidSessionToken() {
-	request := common.VerifyOTPDTO{
-		SessionToken: "invalid-token",
-		OTPCode:      "123456",
-	}
-
-	// Expect VerifyJWT to be called; issuer can vary in tests so use Any
-	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, "invalid-token", "otp-svc", mock.Anything).
-		Return(&ErrorInvalidSessionToken).Once()
-
-	result, err := suite.service.VerifyOTP(context.Background(), request)
-
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(ErrorInvalidSessionToken.Code, err.Code)
-}
-
-func (suite *OTPServiceTestSuite) TestGenerateOTP() {
-	otp, err := suite.service.generateOTP()
-
-	suite.NoError(err)
-	suite.NotEmpty(otp.Value)
-	suite.Len(otp.Value, 6) // Default OTP length
-	suite.Greater(otp.ExpiryTimeInMillis, int64(0))
-	suite.Greater(otp.ValidityPeriodInMillis, int64(0))
-}
-
-func (suite *OTPServiceTestSuite) TestGetOTPCharset() {
-	charset := suite.service.getOTPCharset()
-
-	suite.NotEmpty(charset)
-	suite.Equal("9245378016", charset)
-}
-
-func (suite *OTPServiceTestSuite) TestGetOTPLength() {
-	length := suite.service.getOTPLength()
-
-	suite.Equal(6, length)
-}
-
-func (suite *OTPServiceTestSuite) TestUseOnlyNumericChars() {
-	useNumeric := suite.service.useOnlyNumericChars()
-
-	suite.True(useNumeric)
-}
-
-func (suite *OTPServiceTestSuite) TestGetOTPValidityPeriodInMillis() {
-	validity := suite.service.getOTPValidityPeriodInMillis()
-
-	suite.Equal(int64(120000), validity) // 2 minutes
-}
-
-func (suite *OTPServiceTestSuite) TestGetOTPCharset_NonNumeric() {
-	otpCfg := &config.GetServerRuntime().Config.Notification.OTP
-	prev := otpCfg.UseNumericOnly
-	otpCfg.UseNumericOnly = false
-	defer func() { otpCfg.UseNumericOnly = prev }()
-
-	charset := suite.service.getOTPCharset()
-	suite.NotEmpty(charset)
-	suite.NotEqual("9245378016", charset)
-	suite.Equal("KIGXHOYSPRWCEFMVUQLZDNABJT9245378016", charset)
-}
-
-func (suite *OTPServiceTestSuite) TestAccessors_ReadFromLiveConfig() {
-	otpCfg := &config.GetServerRuntime().Config.Notification.OTP
-	prev := *otpCfg
-	otpCfg.Length = 8
-	otpCfg.UseNumericOnly = false
-	otpCfg.ValidityPeriodSeconds = 300
-	defer func() { *otpCfg = prev }()
-
-	suite.Equal(8, suite.service.getOTPLength())
-	suite.False(suite.service.useOnlyNumericChars())
-	suite.Equal(int64(300000), suite.service.getOTPValidityPeriodInMillis())
-}
-
-// SendOTP when OTP generation fails (force rand.Reader to error)
-type badReader struct{}
-
-func (b *badReader) Read(p []byte) (n int, err error) { return 0, errors.New("read error") }
-
-func (suite *OTPServiceTestSuite) TestSendOTP_GenerateOTPError() {
-	req := common.SendOTPDTO{
-		Recipient: "+15559876543",
-		SenderID:  "sender-123",
-		Channel:   "sms",
-	}
-
-	sender := suite.getValidSender()
-	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(sender, nil).Once()
-
-	// replace crypto/rand.Reader to force generateOTP to return an error
-	orig := cryptorand.Reader
-	cryptorand.Reader = &badReader{}
-	defer func() { cryptorand.Reader = orig }()
-
-	// ensure clientFactory is a no-op (won't be reached if generateOTP fails early)
-	// mm := messagemock.NewMessageClientInterfaceMock(suite.T())
-	suite.service.clientFactory = clientmock.NewClientFactoryInterfaceMock(suite.T())
-
-	res, err := suite.service.SendOTP(context.Background(), req)
-
-	suite.Nil(res)
-	suite.NotNil(err)
-	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
-}
-
-func (suite *OTPServiceTestSuite) TestSendOTP_Success() {
-	req := common.SendOTPDTO{
-		Recipient: "+15559876543",
-		SenderID:  "sender-123",
-		Channel:   "sms",
-	}
-
-	sender := suite.getValidSender()
-	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(sender, nil).Once()
-
-	suite.mockTemplateService.On("Render", mock.Anything, template.ScenarioOTP,
-		template.TemplateTypeSMS, mock.Anything).
-		Return(&template.RenderedTemplate{Body: "Your code is: 123456. Expires in 2 minutes."}, nil).Once()
-
-	mm := clientmock.NewNotificationClientInterfaceMock(suite.T())
-	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(true).Once()
-	mm.EXPECT().Send(mock.Anything, common.ChannelTypeSMS, mock.Anything).Return(nil).Once()
-	cp := clientmock.NewClientFactoryInterfaceMock(suite.T())
-	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
-	suite.service.clientFactory = cp
-
-	suite.mockJWTService.EXPECT().GenerateJWT(mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("session-token-123", int64(0), nil).Once()
-
-	res, err := suite.service.SendOTP(context.Background(), req)
-	suite.Nil(err)
-	suite.NotNil(res)
-	suite.Equal("session-token-123", res.SessionToken)
-}
-
-func (suite *OTPServiceTestSuite) TestSendOTP_SendSMSError() {
-	req := common.SendOTPDTO{
-		Recipient: "+15559876543",
-		SenderID:  "sender-123",
-		Channel:   "sms",
-	}
-	sender := suite.getValidSender()
-	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(sender, nil).Once()
-
-	suite.mockTemplateService.On("Render", mock.Anything, template.ScenarioOTP,
-		template.TemplateTypeSMS, mock.Anything).
-		Return(&template.RenderedTemplate{Body: "Your code is: 123456. Expires in 2 minutes."}, nil).Once()
-
-	mm := clientmock.NewNotificationClientInterfaceMock(suite.T())
-	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(true).Once()
-	mm.EXPECT().Send(mock.Anything, common.ChannelTypeSMS, mock.Anything).Return(errors.New("send failed")).Once()
-	cp := clientmock.NewClientFactoryInterfaceMock(suite.T())
-	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
-	suite.service.clientFactory = cp
-
-	res, err := suite.service.SendOTP(context.Background(), req)
-	suite.Nil(res)
-	suite.NotNil(err)
-	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
-}
-
-func (suite *OTPServiceTestSuite) TestSendOTP_GenerateJWTError() {
-	req := common.SendOTPDTO{
-		Recipient: "+15559876543",
-		SenderID:  "sender-123",
-		Channel:   "sms",
-	}
-	sender := suite.getValidSender()
-	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(sender, nil).Once()
-
-	suite.mockTemplateService.On("Render", mock.Anything, template.ScenarioOTP,
-		template.TemplateTypeSMS, mock.Anything).
-		Return(&template.RenderedTemplate{Body: "Your code is: 123456. Expires in 2 minutes."}, nil).Once()
-
-	mm := clientmock.NewNotificationClientInterfaceMock(suite.T())
-	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(true).Once()
-	mm.EXPECT().Send(mock.Anything, common.ChannelTypeSMS, mock.Anything).Return(nil).Once()
-	cp := clientmock.NewClientFactoryInterfaceMock(suite.T())
-	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
-	suite.service.clientFactory = cp
-
-	suite.mockJWTService.EXPECT().GenerateJWT(
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-	).Return("", int64(0), &tidcommon.InternalServerError).Once()
-
-	res, err := suite.service.SendOTP(context.Background(), req)
-	suite.Nil(res)
-	suite.NotNil(err)
-	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
-}
-
 func (suite *OTPServiceTestSuite) TestVerifyOTP_Success() {
-	otpValue := "123456"
-	otpHash := cryptolib.GenerateThumbprintFromString(otpValue)
-	expiry := time.Now().Add(1 * time.Minute).UnixMilli()
-
-	payloadMap := map[string]interface{}{
-		"otp_data": map[string]interface{}{
-			"recipient":   "+15559876543",
-			"channel":     "sms",
-			"sender_id":   "sender-123",
-			"otp_value":   otpHash,
-			"expiry_time": expiry,
-		},
+	sessionData := otpSessionData{
+		Recipient:     "+15559876543",
+		RecipientAttr: "mobile_number",
+		OTPValue:      cryptolib.GenerateThumbprintFromString("123456"),
+		ExpiryTime:    9999999999999,
 	}
+	testToken := buildTestJWT(sessionData)
 
-	payloadBytes, _ := json.Marshal(payloadMap)
-	headerBytes, _ := json.Marshal(map[string]interface{}{"alg": "none"})
+	suite.mockJWTService.On("VerifyJWT",
+		mock.Anything, testToken, otpSessionAudience, mock.Anything,
+	).Return((*tidcommon.ServiceError)(nil)).Once()
 
-	headerEnc := base64.RawURLEncoding.EncodeToString(headerBytes)
-	payloadEnc := base64.RawURLEncoding.EncodeToString(payloadBytes)
-	token := fmt.Sprintf("%s.%s.", headerEnc, payloadEnc)
-
-	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, token, mock.Anything, mock.Anything).Return(nil).Once()
-
-	req := common.VerifyOTPDTO{SessionToken: token, OTPCode: otpValue}
+	req := common.VerifyOTPDTO{SessionToken: testToken, OTPCode: "123456"}
 	res, err := suite.service.VerifyOTP(context.Background(), req)
+
 	suite.Nil(err)
 	suite.NotNil(res)
 	suite.Equal(common.OTPVerifyStatusVerified, res.Status)
 	suite.Equal("+15559876543", res.Recipient)
+	suite.Equal("mobile_number", res.RecipientAttr)
 }
 
-func (suite *OTPServiceTestSuite) TestVerifyOTP_Expired() {
-	otpValue := "123456"
-	otpHash := cryptolib.GenerateThumbprintFromString(otpValue)
-	expiry := time.Now().Add(-1 * time.Minute).UnixMilli() // already expired
-
-	payloadMap := map[string]interface{}{
-		"otp_data": map[string]interface{}{
-			"recipient":   "+15559876543",
-			"channel":     "sms",
-			"sender_id":   "sender-123",
-			"otp_value":   otpHash,
-			"expiry_time": expiry,
-		},
+func (suite *OTPServiceTestSuite) TestVerifyOTP_IncorrectOTP() {
+	sessionData := otpSessionData{
+		Recipient:     "+15559876543",
+		RecipientAttr: "mobile_number",
+		OTPValue:      cryptolib.GenerateThumbprintFromString("123456"),
+		ExpiryTime:    9999999999999,
 	}
+	testToken := buildTestJWT(sessionData)
 
-	payloadBytes, _ := json.Marshal(payloadMap)
-	headerBytes, _ := json.Marshal(map[string]interface{}{"alg": "none"})
+	suite.mockJWTService.On("VerifyJWT",
+		mock.Anything, testToken, otpSessionAudience, mock.Anything,
+	).Return((*tidcommon.ServiceError)(nil)).Once()
 
-	headerEnc := base64.RawURLEncoding.EncodeToString(headerBytes)
-	payloadEnc := base64.RawURLEncoding.EncodeToString(payloadBytes)
-	token := fmt.Sprintf("%s.%s.", headerEnc, payloadEnc)
-
-	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, token, mock.Anything, mock.Anything).Return(nil).Once()
-
-	req := common.VerifyOTPDTO{SessionToken: token, OTPCode: otpValue}
+	req := common.VerifyOTPDTO{SessionToken: testToken, OTPCode: "000000"}
 	res, err := suite.service.VerifyOTP(context.Background(), req)
+
 	suite.Nil(err)
 	suite.NotNil(res)
 	suite.Equal(common.OTPVerifyStatusInvalid, res.Status)
 }
 
-func (suite *OTPServiceTestSuite) TestSendOTP_ClientProviderError() {
-	req := common.SendOTPDTO{
-		Recipient: "+15559876543",
-		SenderID:  "sender-123",
-		Channel:   "sms",
+func (suite *OTPServiceTestSuite) TestVerifyOTP_ExpiredOTP() {
+	sessionData := otpSessionData{
+		Recipient:     "+15559876543",
+		RecipientAttr: "mobile_number",
+		OTPValue:      cryptolib.GenerateThumbprintFromString("123456"),
+		ExpiryTime:    1, // expired
 	}
+	testToken := buildTestJWT(sessionData)
 
-	sender := suite.getValidSender()
-	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(sender, nil).Once()
+	suite.mockJWTService.On("VerifyJWT",
+		mock.Anything, testToken, otpSessionAudience, mock.Anything,
+	).Return((*tidcommon.ServiceError)(nil)).Once()
 
-	suite.mockTemplateService.On("Render", mock.Anything, template.ScenarioOTP,
-		template.TemplateTypeSMS, mock.Anything).
-		Return(&template.RenderedTemplate{Body: "Your code is: 123456. Expires in 2 minutes."}, nil).Once()
-
-	// client factory returns a service error
-	cp := clientmock.NewClientFactoryInterfaceMock(suite.T())
-	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(nil, &tidcommon.InternalServerError).Once()
-	suite.service.clientFactory = cp
-
-	res, err := suite.service.SendOTP(context.Background(), req)
-	suite.Nil(res)
-	suite.NotNil(err)
-	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
-}
-
-func (suite *OTPServiceTestSuite) TestSendOTP_ClientChannelNotSupported() {
-	req := common.SendOTPDTO{
-		Recipient: "+15559876543",
-		SenderID:  "sender-123",
-		Channel:   "sms",
-	}
-
-	sender := suite.getValidSender()
-	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(sender, nil).Once()
-
-	suite.mockTemplateService.On("Render", mock.Anything, template.ScenarioOTP,
-		template.TemplateTypeSMS, mock.Anything).
-		Return(&template.RenderedTemplate{Body: "Your code is: 123456. Expires in 2 minutes."}, nil).Once()
-
-	mm := clientmock.NewNotificationClientInterfaceMock(suite.T())
-	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(false).Once()
-	cp := clientmock.NewClientFactoryInterfaceMock(suite.T())
-	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
-	suite.service.clientFactory = cp
-
-	res, err := suite.service.SendOTP(context.Background(), req)
-	suite.Nil(res)
-	suite.NotNil(err)
-	suite.Equal(ErrorUnsupportedChannel.Code, err.Code)
-}
-
-func (suite *OTPServiceTestSuite) TestVerifyOTP_MissingOTPData() {
-	// build token with payload that lacks otp_data
-	payloadMap := map[string]interface{}{"some": "value"}
-	payloadBytes, _ := json.Marshal(payloadMap)
-	headerBytes, _ := json.Marshal(map[string]interface{}{"alg": "none"})
-	headerEnc := base64.RawURLEncoding.EncodeToString(headerBytes)
-	payloadEnc := base64.RawURLEncoding.EncodeToString(payloadBytes)
-	token := fmt.Sprintf("%s.%s.", headerEnc, payloadEnc)
-
-	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, token, mock.Anything, mock.Anything).Return(nil).Once()
-
-	req := common.VerifyOTPDTO{SessionToken: token, OTPCode: "123456"}
+	req := common.VerifyOTPDTO{SessionToken: testToken, OTPCode: "123456"}
 	res, err := suite.service.VerifyOTP(context.Background(), req)
-	suite.Nil(res)
-	suite.NotNil(err)
-	suite.Equal(ErrorInvalidSessionToken.Code, err.Code)
-}
 
-func (suite *OTPServiceTestSuite) TestVerifyOTP_BadPayloadDecode() {
-	// craft token with invalid base64 payload part
-	token := "hdr.invalid@@@.sig" // #nosec G101
-	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, token, mock.Anything, mock.Anything).Return(nil).Once()
-
-	req := common.VerifyOTPDTO{SessionToken: token, OTPCode: "123456"}
-	res, err := suite.service.VerifyOTP(context.Background(), req)
-	suite.Nil(res)
-	suite.NotNil(err)
-	suite.Equal(ErrorInvalidSessionToken.Code, err.Code)
-}
-
-func (suite *OTPServiceTestSuite) TestVerifyOTP_Mismatch() {
-	// prepare session data with a different OTP hash
-	otpValue := "123456"
-	wrongOTP := "000000"
-	otpHash := cryptolib.GenerateThumbprintFromString(wrongOTP) // stored hash is for wrongOTP
-	expiry := time.Now().Add(1 * time.Minute).UnixMilli()
-
-	payloadMap := map[string]interface{}{
-		"otp_data": map[string]interface{}{
-			"recipient":   "+15559876543",
-			"channel":     "sms",
-			"sender_id":   "sender-123",
-			"otp_value":   otpHash,
-			"expiry_time": expiry,
-		},
-	}
-
-	payloadBytes, _ := json.Marshal(payloadMap)
-	headerBytes, _ := json.Marshal(map[string]interface{}{"alg": "none"})
-
-	headerEnc := base64.RawURLEncoding.EncodeToString(headerBytes)
-	payloadEnc := base64.RawURLEncoding.EncodeToString(payloadBytes)
-	token := fmt.Sprintf("%s.%s.", headerEnc, payloadEnc)
-
-	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, token, mock.Anything, mock.Anything).Return(nil).Once()
-
-	req := common.VerifyOTPDTO{SessionToken: token, OTPCode: otpValue}
-	res, err := suite.service.VerifyOTP(context.Background(), req)
 	suite.Nil(err)
 	suite.NotNil(res)
 	suite.Equal(common.OTPVerifyStatusInvalid, res.Status)
 }
 
-func (suite *OTPServiceTestSuite) TestSendOTP_SenderServiceError_NotFound() {
-	req := common.SendOTPDTO{
-		Recipient: "+15559876543",
-		SenderID:  "sender-123",
-		Channel:   "sms",
+func (suite *OTPServiceTestSuite) TestVerifyOTP_InvalidSessionToken() {
+	jwtErr := &tidcommon.ServiceError{
+		Type:  tidcommon.ClientErrorType,
+		Code:  "JWT-0002",
+		Error: tidcommon.I18nMessage{DefaultValue: "Invalid JWT"},
 	}
+	suite.mockJWTService.On("VerifyJWT",
+		mock.Anything, "invalid-token", otpSessionAudience, mock.Anything,
+	).Return(jwtErr).Once()
 
-	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(nil, &ErrorSenderNotFound).Once()
-
-	res, err := suite.service.SendOTP(context.Background(), req)
-	suite.Nil(res)
-	suite.NotNil(err)
-	suite.Equal(ErrorSenderNotFound.Code, err.Code)
-}
-
-func (suite *OTPServiceTestSuite) TestVerifyOTP_UnmarshalError() {
-	// create payload where otp_value is an array (will cause unmarshal into struct to fail)
-	payloadMap := map[string]interface{}{
-		"otp_data": map[string]interface{}{
-			"recipient":   "+15559876543",
-			"channel":     "sms",
-			"sender_id":   "sender-123",
-			"otp_value":   []int{1, 2, 3},
-			"expiry_time": time.Now().Add(1 * time.Minute).UnixMilli(),
-		},
-	}
-
-	payloadBytes, _ := json.Marshal(payloadMap)
-	headerBytes, _ := json.Marshal(map[string]interface{}{"alg": "none"})
-
-	headerEnc := base64.RawURLEncoding.EncodeToString(headerBytes)
-	payloadEnc := base64.RawURLEncoding.EncodeToString(payloadBytes)
-	token := fmt.Sprintf("%s.%s.", headerEnc, payloadEnc)
-
-	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, token, mock.Anything, mock.Anything).Return(nil).Once()
-
-	req := common.VerifyOTPDTO{SessionToken: token, OTPCode: "123456"}
+	req := common.VerifyOTPDTO{SessionToken: "invalid-token", OTPCode: "123456"}
 	res, err := suite.service.VerifyOTP(context.Background(), req)
+
 	suite.Nil(res)
 	suite.NotNil(err)
 	suite.Equal(ErrorInvalidSessionToken.Code, err.Code)
 }
 
-func (suite *OTPServiceTestSuite) TestNewOTPService_Constructors() {
+func (suite *OTPServiceTestSuite) TestVerifyOTP_MalformedJWTPayload() {
+	malformedToken := "header.!!!invalid_base64!!!.sig"
+
+	suite.mockJWTService.On("VerifyJWT",
+		mock.Anything, malformedToken, otpSessionAudience, mock.Anything,
+	).Return((*tidcommon.ServiceError)(nil)).Once()
+
+	req := common.VerifyOTPDTO{SessionToken: malformedToken, OTPCode: "123456"}
+	res, err := suite.service.VerifyOTP(context.Background(), req)
+
+	suite.Nil(res)
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidSessionToken.Code, err.Code)
+}
+
+func (suite *OTPServiceTestSuite) TestNewOTPService_Constructor() {
 	svc := newOTPService(suite.mockSenderService, suite.mockJWTService,
 		suite.mockTemplateService, clientmock.NewClientFactoryInterfaceMock(suite.T()))
 	suite.NotNil(svc)
-}
-
-func (suite *OTPServiceTestSuite) TestSendOTP_TemplateRenderSuccess_UsesRenderedBody() {
-	req := common.SendOTPDTO{
-		Recipient: "+15559876543",
-		SenderID:  "sender-123",
-		Channel:   "sms",
-	}
-
-	sender := suite.getValidSender()
-	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(sender, nil).Once()
-
-	renderedBody := "Your verification code is: 654321. This code will expire in 2 minutes."
-	suite.mockTemplateService.On("Render", mock.Anything, template.ScenarioOTP,
-		template.TemplateTypeSMS, mock.Anything).
-		Return(&template.RenderedTemplate{Body: renderedBody}, nil).Once()
-
-	mm := clientmock.NewNotificationClientInterfaceMock(suite.T())
-	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(true).Once()
-	mm.EXPECT().Send(mock.Anything, common.ChannelTypeSMS,
-		common.NotificationData{Recipient: "+15559876543", Body: renderedBody}).
-		Return(nil).Once()
-	cp := clientmock.NewClientFactoryInterfaceMock(suite.T())
-	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
-	suite.service.clientFactory = cp
-
-	suite.mockJWTService.EXPECT().GenerateJWT(mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("token", int64(0), nil).Once()
-
-	res, err := suite.service.SendOTP(context.Background(), req)
-	suite.Nil(err)
-	suite.NotNil(res)
-}
-
-func (suite *OTPServiceTestSuite) TestSendOTP_TemplateRenderFailure_ReturnsInternalError() {
-	req := common.SendOTPDTO{
-		Recipient: "+15559876543",
-		SenderID:  "sender-123",
-		Channel:   "sms",
-	}
-
-	sender := suite.getValidSender()
-	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(sender, nil).Once()
-
-	renderErr := &tidcommon.ServiceError{Code: "TPL-5000"}
-	suite.mockTemplateService.On("Render", mock.Anything, template.ScenarioOTP,
-		template.TemplateTypeSMS, mock.Anything).
-		Return(nil, renderErr).Once()
-
-	res, err := suite.service.SendOTP(context.Background(), req)
-	suite.Nil(res)
-	suite.NotNil(err)
-	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
-}
-
-func (suite *OTPServiceTestSuite) TestVerifyAndDecode_Success() {
-	otpValue := "123456"
-	otpHash := cryptolib.GenerateThumbprintFromString(otpValue)
-	expiry := time.Now().Add(1 * time.Minute).UnixMilli()
-
-	payloadMap := map[string]interface{}{
-		"otp_data": map[string]interface{}{
-			"recipient":   "+15559876543",
-			"channel":     "sms",
-			"sender_id":   "sender-123",
-			"otp_value":   otpHash,
-			"expiry_time": expiry,
-		},
-	}
-
-	payloadBytes, _ := json.Marshal(payloadMap)
-	headerBytes, _ := json.Marshal(map[string]interface{}{"alg": "none"})
-
-	headerEnc := base64.RawURLEncoding.EncodeToString(headerBytes)
-	payloadEnc := base64.RawURLEncoding.EncodeToString(payloadBytes)
-	token := fmt.Sprintf("%s.%s.", headerEnc, payloadEnc)
-
-	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, token, mock.Anything, mock.Anything).Return(nil).Once()
-
-	sessionData, svcErr := suite.service.verifyAndDecodeSessionToken(context.Background(), token, log.GetLogger())
-	suite.Nil(svcErr)
-	suite.NotNil(sessionData)
-	suite.Equal("+15559876543", sessionData.Recipient)
 }

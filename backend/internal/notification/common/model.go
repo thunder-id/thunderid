@@ -33,15 +33,6 @@ type NotificationData struct {
 	Body      string
 }
 
-// OTP represents the data structure for an OTP (One-Time Password).
-type OTP struct {
-	Value                  string `json:"value"`
-	GeneratedTimeInMillis  int64  `json:"generated_time_in_millis"`
-	ValidityPeriodInMillis int64  `json:"validity_period_in_millis"`
-	ExpiryTimeInMillis     int64  `json:"expiry_time_in_millis"`
-	AttemptCount           int    `json:"attempt_count"`
-}
-
 // NotificationSenderDTO represents the data transfer object for a notification sender.
 type NotificationSenderDTO struct {
 	ID          string                 `yaml:"id,omitempty"`
@@ -113,17 +104,9 @@ type VerifyOTPDTO struct {
 
 // VerifyOTPResultDTO represents the service layer result for OTP verify operation.
 type VerifyOTPResultDTO struct {
-	Status    OTPVerifyStatus
-	Recipient string
-}
-
-// OTPSessionData represents the data stored in the OTP session token.
-type OTPSessionData struct {
-	Recipient  string `json:"recipient"`
-	Channel    string `json:"channel"`
-	SenderID   string `json:"senderId"`
-	OTPValue   string `json:"otp_value"`
-	ExpiryTime int64  `json:"expiry_time"`
+	Status        OTPVerifyStatus
+	Recipient     string
+	RecipientAttr string
 }
 
 // NotificationSenderRequestWithID represents the request structure for creating a notification sender

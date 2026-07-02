@@ -96,9 +96,6 @@ func (s *flowInferenceService) InferRegistrationFlow(
 		s.logger.Debug(ctx, "User type resolver node already exists, skipping insertion")
 	}
 
-	// Insert phone input prompt if SMS OTP send nodes are present
-	s.insertPhoneInputPromptIfNeeded(ctx, &regNodes, hasLayout)
-
 	return &FlowDefinition{
 		Name:     regFlowName,
 		FlowType: providers.FlowTypeRegistration,
@@ -520,23 +517,24 @@ func (s *flowInferenceService) createInputPromptNode(nodeID string, input provid
 	return node
 }
 
-// insertPhoneInputPromptIfNeeded scans all nodes to determine if an SMS OTP send node exists
-// and whether a PHONE_INPUT is already collected by any prompt node in the flow. If SMS OTP send
-// is present but no PHONE_INPUT prompt exists, it inserts a phone input prompt before the SMS send node.
+// insertPhoneInputPromptIfNeeded scans all nodes to determine if an OTP generate node exists
+// and whether a PHONE_INPUT is already collected by any prompt node in the flow. If an OTP
+// generate node is present but no PHONE_INPUT prompt exists, it inserts a phone input prompt
+// before the OTP generate node.
 func (s *flowInferenceService) insertPhoneInputPromptIfNeeded(
 	ctx context.Context, nodes *[]providers.NodeDefinition, includeLayout bool) {
-	var smsSendNodeID string
+	var otpGenerateNodeID string
 	var phoneInput *providers.Input
 	hasPhoneInputPrompt := false
 
 	// Scan all the existing nodes
 	for _, node := range *nodes {
-		// Check for SMS OTP send node and capture phone input from executor inputs if defined
+		// Check for OTP generate node and capture phone input from executor inputs if defined
 		if node.Executor != nil &&
-			node.Executor.Name == executor.ExecutorNameSMSAuth &&
-			node.Executor.Mode == executor.ExecutorModeSend &&
-			smsSendNodeID == "" {
-			smsSendNodeID = node.ID
+			node.Executor.Name == executor.ExecutorNameOTPExecutor &&
+			node.Executor.Mode == executor.ExecutorModeGenerate &&
+			otpGenerateNodeID == "" {
+			otpGenerateNodeID = node.ID
 			for _, input := range node.Executor.Inputs {
 				if input.Type == providers.InputTypePhone {
 					phoneInput = &providers.Input{
@@ -566,8 +564,8 @@ func (s *flowInferenceService) insertPhoneInputPromptIfNeeded(
 		}
 	}
 
-	// If no SMS OTP send node found, nothing to do
-	if smsSendNodeID == "" {
+	// If no OTP generate node found, nothing to do
+	if otpGenerateNodeID == "" {
 		return
 	}
 
@@ -588,19 +586,19 @@ func (s *flowInferenceService) insertPhoneInputPromptIfNeeded(
 	phonePromptNode := s.createInputPromptNode(
 		phoneInputPromptNodeID,
 		*phoneInput,
-		smsSendNodeID,
+		otpGenerateNodeID,
 		includeLayout,
 	)
 
-	err := s.insertNodeBefore(nodes, phonePromptNode, smsSendNodeID)
+	err := s.insertNodeBefore(nodes, phonePromptNode, otpGenerateNodeID)
 	if err != nil {
-		s.logger.Warn(ctx, "Failed to insert phone input prompt before SMS send node",
-			log.String("nodeID", smsSendNodeID), log.Error(err))
+		s.logger.Warn(ctx, "Failed to insert phone input prompt before OTP generate node",
+			log.String("nodeID", otpGenerateNodeID), log.Error(err))
 		return
 	}
 
-	s.logger.Debug(ctx, "Inserted phone input prompt before SMS send node",
-		log.String("smsNodeID", smsSendNodeID))
+	s.logger.Debug(ctx, "Inserted phone input prompt before OTP generate node",
+		log.String("otpGenerateNodeID", otpGenerateNodeID))
 }
 
 // insertNodeBefore inserts a node before the target node by updating all nodes that point to the target

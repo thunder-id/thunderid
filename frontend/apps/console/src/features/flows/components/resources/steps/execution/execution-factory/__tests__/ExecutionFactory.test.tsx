@@ -69,15 +69,6 @@ vi.mock('../GithubExecution', () => ({
   ),
 }));
 
-// Mock SmsOtpExecution
-vi.mock('../SmsOtpExecution', () => ({
-  default: ({resource}: {resource: Step}) => (
-    <div data-testid="sms-otp-execution" data-resource-id={resource?.id}>
-      SmsOtpExecution
-    </div>
-  ),
-}));
-
 // Create mock resource
 const createMockResource = (overrides: Partial<Step> = {}): Step =>
   ({
@@ -179,42 +170,6 @@ describe('ExecutionFactory', () => {
 
       const githubExecution = screen.getByTestId('github-execution');
       expect(githubExecution).toHaveAttribute('data-resource-id', 'github-resource-1');
-    });
-  });
-
-  describe('SMS OTP Auth', () => {
-    it('should render SmsOtpExecution for SMSOTPAuthExecutor', () => {
-      const resource = createMockResource({
-        data: {
-          action: {
-            executor: {
-              name: ExecutionTypes.SMSOTPAuth,
-            },
-          },
-        },
-      });
-      render(<ExecutionFactory resource={resource} />);
-
-      expect(screen.getByTestId('sms-otp-execution')).toBeInTheDocument();
-      expect(screen.queryByTestId('google-execution')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('github-execution')).not.toBeInTheDocument();
-    });
-
-    it('should pass resource to SmsOtpExecution', () => {
-      const resource = createMockResource({
-        id: 'sms-otp-resource-1',
-        data: {
-          action: {
-            executor: {
-              name: ExecutionTypes.SMSOTPAuth,
-            },
-          },
-        },
-      });
-      render(<ExecutionFactory resource={resource} />);
-
-      const smsOtpExecution = screen.getByTestId('sms-otp-execution');
-      expect(smsOtpExecution).toHaveAttribute('data-resource-id', 'sms-otp-resource-1');
     });
   });
 

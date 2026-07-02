@@ -172,12 +172,11 @@ const (
 	// RuntimeKeyPresentedOptionalInputs holds a space-separated list of optional input identifiers
 	// that have already been prompted to the user, even if the user left them empty.
 	RuntimeKeyPresentedOptionalInputs = "presentedOptionalInputs"
-	// RuntimeKeySMSOTPMobileNumber holds the resolved mobile number for SMS OTP verification.
-	// TODO: Revisit when the generic OTP executor is implemented.
-	RuntimeKeySMSOTPMobileNumber = "smsOTPMobileNumber"
-	// RuntimeKeySMSOTPPhoneAttr holds the schema attribute name used to look up the mobile number.
-	// TODO: Revisit when the generic OTP executor is implemented.
-	RuntimeKeySMSOTPPhoneAttr = "smsOTPPhoneAttr"
+	// RuntimeKeyOTPSessionToken holds the OTP session JWT produced by OTPExecutor in generate mode
+	// and consumed by OTPExecutor in verify mode.
+	RuntimeKeyOTPSessionToken = "otpSessionToken"
+	// RuntimeKeyOTPAttemptCount holds the number of OTP generation attempts for the current flow execution.
+	RuntimeKeyOTPAttemptCount = "attemptCount"
 	// RuntimeKeyMagicLinkUsedJti is the JWT ID claim value of a magic link token that has already been used.
 	RuntimeKeyMagicLinkUsedJti = "magicLinkUsedJti"
 	// RuntimeKeyOAuthState holds the generated OAuth state parameter for CSRF validation.
@@ -245,6 +244,12 @@ const (
 	ForwardedDataKeyActionType = "actionType"
 	// ForwardedDataKeyTemplateData holds template parameters for notification executors
 	ForwardedDataKeyTemplateData = "templateData"
+	// ForwardedDataKeyOTPCode is the key for the plaintext OTP value inside the
+	// ForwardedData[ForwardedDataKeyTemplateData] map forwarded by OTPExecutor to sender executors.
+	ForwardedDataKeyOTPCode = "otpCode"
+	// ForwardedDataKeyExpiryMinutes is the key for the OTP expiry duration (in minutes) inside the
+	// ForwardedData[ForwardedDataKeyTemplateData] map forwarded by OTPExecutor to sender executors.
+	ForwardedDataKeyExpiryMinutes = "expiryMinutes"
 )
 
 // InterceptorStatus represents the outcome of an interceptor execution.
