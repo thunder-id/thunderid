@@ -50,13 +50,13 @@ type smtpConfig struct {
 	enableAuthentication bool
 }
 
-// SMTPEmailClient implements the EmailClientInterface using SMTP.
-type SMTPEmailClient struct {
+// smtpEmailClient implements the EmailClientInterface using SMTP.
+type smtpEmailClient struct {
 	name   string
 	config smtpConfig
 }
 
-// newSMTPEmailClient creates a new instance of SMTPEmailClient.
+// newSMTPEmailClient creates a new instance of smtpEmailClient.
 func newSMTPEmailClient(ctx context.Context, sender common.NotificationSenderDTO) (EmailClientInterface, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, smtpLoggerComponentName))
 
@@ -110,19 +110,19 @@ func newSMTPEmailClient(ctx context.Context, sender common.NotificationSenderDTO
 		}
 	}
 
-	return &SMTPEmailClient{
+	return &smtpEmailClient{
 		name:   sender.Name,
 		config: config,
 	}, nil
 }
 
 // GetName returns the name of the SMTP email client.
-func (c *SMTPEmailClient) GetName() string {
+func (c *smtpEmailClient) GetName() string {
 	return c.name
 }
 
 // Send dispatches an email notification via SMTP.
-func (c *SMTPEmailClient) Send(ctx context.Context, emailData common.EmailData) error {
+func (c *smtpEmailClient) Send(ctx context.Context, emailData common.EmailData) error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, smtpLoggerComponentName))
 
 	if len(emailData.To) == 0 || len(strings.TrimSpace(emailData.To[0])) == 0 {
@@ -164,7 +164,7 @@ func (c *SMTPEmailClient) Send(ctx context.Context, emailData common.EmailData) 
 }
 
 // buildMessage constructs the raw email message string with headers and body.
-func (c *SMTPEmailClient) buildMessage(emailData common.EmailData) string {
+func (c *smtpEmailClient) buildMessage(emailData common.EmailData) string {
 	var builder strings.Builder
 
 	builder.WriteString(fmt.Sprintf("From: %s\r\n", c.config.from))
@@ -189,7 +189,7 @@ func (c *SMTPEmailClient) buildMessage(emailData common.EmailData) string {
 
 // sendViaSMTP handles the low-level SMTP communication, connection setup,
 // optional TLS upgrade, authentication, and message transmission.
-func (c *SMTPEmailClient) sendViaSMTP(
+func (c *smtpEmailClient) sendViaSMTP(
 	ctx context.Context, serverAddress string, recipients []string, message string) error {
 	conn, err := net.DialTimeout("tcp", serverAddress, smtpDialTimeout)
 	if err != nil {

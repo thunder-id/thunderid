@@ -225,7 +225,7 @@ func (suite *SMTPEmailClientTestSuite) TestSend_InvalidRecipient() {
 }
 
 func (suite *SMTPEmailClientTestSuite) TestBuildMessage_RecipientCombinations() {
-	client := &SMTPEmailClient{
+	client := &smtpEmailClient{
 		config: smtpConfig{
 			from: "sender@example.com",
 		},

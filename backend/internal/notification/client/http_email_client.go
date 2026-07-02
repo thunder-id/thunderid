@@ -37,18 +37,18 @@ const (
 	httpEmailClientLoggerComponentName = "HTTPEmailClient"
 )
 
-// HTTPEmailClient implements the EmailClientInterface for sending emails via a custom HTTP webhook.
-type HTTPEmailClient struct {
+// httpEmailClient implements the EmailClientInterface for sending emails via a custom HTTP webhook.
+type httpEmailClient struct {
 	name       string
 	config     httpWebhookConfig
 	httpClient syshttp.HTTPClientInterface
 }
 
-// newHTTPEmailClient creates a new instance of HTTPEmailClient.
+// newHTTPEmailClient creates a new instance of httpEmailClient.
 func newHTTPEmailClient(ctx context.Context, sender common.NotificationSenderDTO) (EmailClientInterface, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, httpEmailClientLoggerComponentName))
 
-	client := &HTTPEmailClient{}
+	client := &httpEmailClient{}
 	client.name = sender.Name
 
 	config, err := parseHTTPWebhookConfig(ctx, sender, logger)
@@ -62,12 +62,12 @@ func newHTTPEmailClient(ctx context.Context, sender common.NotificationSenderDTO
 }
 
 // GetName returns the name of the HTTP Email client.
-func (c *HTTPEmailClient) GetName() string {
+func (c *httpEmailClient) GetName() string {
 	return c.name
 }
 
 // Send dispatches an email notification via the custom webhook.
-func (c *HTTPEmailClient) Send(ctx context.Context, data common.EmailData) error {
+func (c *httpEmailClient) Send(ctx context.Context, data common.EmailData) error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, httpEmailClientLoggerComponentName))
 	if logger.IsDebugEnabled() {
 		maskedTo := log.MaskedStrings("to", data.To).Value.([]string)
