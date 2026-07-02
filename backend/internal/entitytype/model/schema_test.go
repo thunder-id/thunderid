@@ -256,6 +256,32 @@ func (s *SchemaValidateTestSuite) TestDisplayNameInvalidType_CompileError() {
 	s.Require().Contains(err.Error(), "'displayName' field must be a string")
 }
 
+func (s *SchemaValidateTestSuite) TestPropertyNameWithHyphen_CompileError() {
+	_, err := CompileSchema(json.RawMessage(`{
+		"silver-mail": {"type": "string", "unique": true}
+	}`))
+	s.Require().Error(err)
+	s.Require().Contains(err.Error(), "property name 'silver-mail' contains invalid characters")
+}
+
+func (s *SchemaValidateTestSuite) TestNestedPropertyNameWithHyphen_CompileError() {
+	_, err := CompileSchema(json.RawMessage(`{
+		"address": {"type": "object", "properties": {
+			"postal-code": {"type": "string"}
+		}}
+	}`))
+	s.Require().Error(err)
+	s.Require().Contains(err.Error(), "property name 'postal-code' contains invalid characters")
+}
+
+func (s *SchemaValidateTestSuite) TestPropertyNameWithUnderscore_CompileSuccess() {
+	schema, err := CompileSchema(json.RawMessage(`{
+		"family_name": {"type": "string", "unique": true}
+	}`))
+	s.Require().NoError(err)
+	s.Require().NotNil(schema)
+}
+
 func (s *SchemaValidateTestSuite) TestSchemaWithoutDisplayName_CompileSuccess() {
 	schema, err := CompileSchema(json.RawMessage(`{
 		"email": {"type": "string", "required": true}

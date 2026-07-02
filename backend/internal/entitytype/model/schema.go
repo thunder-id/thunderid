@@ -283,7 +283,29 @@ func CompileSchema(schema json.RawMessage) (*Schema, error) {
 	return compiled, nil
 }
 
+// validatePropertyName ensures a schema property name only contains characters
+// that are safe to use as a database filter key (letters, digits, and underscores).
+// Names are used directly as JSON filter keys during value and uniqueness lookups,
+// so characters such as hyphens would later be rejected by the query builder.
+func validatePropertyName(name string) error {
+	if name == "" {
+		return fmt.Errorf("property name must not be empty")
+	}
+	for _, char := range name {
+		if !(char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' ||
+			char >= '0' && char <= '9' || char == '_') {
+			return fmt.Errorf("property name '%s' contains invalid characters; "+
+				"only letters, digits, and underscores are allowed", name)
+		}
+	}
+	return nil
+}
+
 func compileProperty(propName string, propRaw json.RawMessage) (property, error) {
+	if err := validatePropertyName(propName); err != nil {
+		return nil, err
+	}
+
 	var propMap map[string]json.RawMessage
 	if err := json.Unmarshal(propRaw, &propMap); err != nil {
 		return nil, fmt.Errorf("property definition must be an object")
