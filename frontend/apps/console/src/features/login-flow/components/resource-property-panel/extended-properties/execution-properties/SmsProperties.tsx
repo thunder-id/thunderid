@@ -25,7 +25,7 @@ import useNotificationSenders from '@/features/notification-senders/api/useNotif
 
 function SmsProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
   const {t} = useTranslation();
-  const {data: notificationSenders, isLoading: isLoadingSenders} = useNotificationSenders();
+  const {data: notificationSenders, isLoading: isLoadingSenders} = useNotificationSenders('message');
 
   const properties = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -21,6 +21,7 @@ package client
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -34,21 +35,21 @@ import (
 )
 
 const (
-	customClientLoggerComponentName = "CustomMessageClient"
+	httpEmailClientLoggerComponentName = "HTTPEmailClient"
 )
 
-// CustomClient implements the NotificationClientInterface for sending messages via a custom message provider.
-type CustomClient struct {
+// HTTPEmailClient implements the EmailClientInterface for sending emails via a custom HTTP webhook.
+type HTTPEmailClient struct {
 	name       string
 	config     httpWebhookConfig
 	httpClient syshttp.HTTPClientInterface
 }
 
-// newCustomClient creates a new instance of CustomClient.
-func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (NotificationClientInterface, error) {
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, customClientLoggerComponentName))
+// newHTTPEmailClient creates a new instance of HTTPEmailClient.
+func newHTTPEmailClient(ctx context.Context, sender common.NotificationSenderDTO) (EmailClientInterface, error) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, httpEmailClientLoggerComponentName))
 
-	client := &CustomClient{}
+	client := &HTTPEmailClient{}
 	client.name = sender.Name
 
 	config, err := parseHTTPWebhookConfig(ctx, sender, logger)
@@ -61,49 +62,55 @@ func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (
 	return client, nil
 }
 
-// GetName returns the name of the Custom client.
-func (c *CustomClient) GetName() string {
+// GetName returns the name of the HTTP Email client.
+func (c *HTTPEmailClient) GetName() string {
 	return c.name
 }
 
-// IsChannelSupported reports whether the given channel is supported by the custom client.
-func (c *CustomClient) IsChannelSupported(channel common.ChannelType) bool {
-	return channel == common.ChannelTypeSMS
-}
-
-// Send dispatches a notification via the requested channel.
-func (c *CustomClient) Send(ctx context.Context, channel common.ChannelType, data common.MessageData) error {
-	switch channel {
-	case common.ChannelTypeSMS:
-		return c.sendSMS(ctx, data)
-	default:
-		return fmt.Errorf("unsupported channel: %s", channel)
-	}
-}
-
-// sendSMS sends an SMS via the custom webhook.
-func (c *CustomClient) sendSMS(ctx context.Context, data common.MessageData) error {
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, customClientLoggerComponentName))
-	logger.Debug(ctx, "Sending SMS via custom client", log.MaskedString("to", data.Recipient))
+// Send dispatches an email notification via the custom webhook.
+func (c *HTTPEmailClient) Send(ctx context.Context, data common.EmailData) error {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, httpEmailClientLoggerComponentName))
+	logger.Debug(ctx, "Sending Email via HTTP client", log.MaskedString("to", strings.Join(data.To, ",")))
 
 	var req *http.Request
 	var err error
 
 	if c.config.contentType == "JSON" {
-		req, err = http.NewRequest(c.config.httpMethod, c.config.url, bytes.NewBufferString(data.Body))
+		payload := map[string]interface{}{
+			"to":      data.To,
+			"cc":      data.CC,
+			"bcc":     data.BCC,
+			"subject": data.Subject,
+			"body":    data.Body,
+			"is_html": data.IsHTML,
+		}
+		jsonBytes, marshalErr := json.Marshal(payload)
+		if marshalErr != nil {
+			return fmt.Errorf("failed to marshal JSON payload: %w", marshalErr)
+		}
+
+		req, err = http.NewRequest(c.config.httpMethod, c.config.url, bytes.NewBuffer(jsonBytes))
 		if err != nil {
 			return fmt.Errorf("failed to create HTTP request: %w", err)
 		}
 		req.Header.Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeJSON)
 	} else if c.config.contentType == "FORM" {
 		formData := url.Values{}
-		lines := strings.Split(data.Body, "\n")
-		for _, line := range lines {
-			parts := strings.SplitN(line, "=", 2)
-			if len(parts) == 2 {
-				formData.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
-			}
+		formData.Add("to", strings.Join(data.To, ","))
+		if len(data.CC) > 0 {
+			formData.Add("cc", strings.Join(data.CC, ","))
 		}
+		if len(data.BCC) > 0 {
+			formData.Add("bcc", strings.Join(data.BCC, ","))
+		}
+		formData.Add("subject", data.Subject)
+		formData.Add("body", data.Body)
+		if data.IsHTML {
+			formData.Add("is_html", "true")
+		} else {
+			formData.Add("is_html", "false")
+		}
+
 		req, err = http.NewRequest(c.config.httpMethod, c.config.url, strings.NewReader(formData.Encode()))
 		if err != nil {
 			return fmt.Errorf("failed to create HTTP request: %w", err)
@@ -127,13 +134,13 @@ func (c *CustomClient) sendSMS(ctx context.Context, data common.MessageData) err
 		}
 	}()
 
-	logger.Debug(ctx, "Received response from custom provider", log.Int("statusCode", resp.StatusCode))
+	logger.Debug(ctx, "Received response from HTTP Email provider", log.Int("statusCode", resp.StatusCode))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		logger.Error(ctx, "Failed to send SMS via custom client", log.Int("statusCode", resp.StatusCode),
+		logger.Error(ctx, "Failed to send Email via HTTP client", log.Int("statusCode", resp.StatusCode),
 			log.String("response", string(bodyBytes)))
-		return fmt.Errorf("custom SMS send failed, status: %d, response: %s", resp.StatusCode, string(bodyBytes))
+		return fmt.Errorf("HTTP Email send failed, status: %d, response: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return nil

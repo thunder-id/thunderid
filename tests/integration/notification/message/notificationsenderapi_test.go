@@ -47,7 +47,7 @@ var (
 	// Vonage test data
 	vonageData = SenderTestData{
 		Name:        "Test Vonage",
-		Description: "Test Vonage notification sender",
+		Description: "Test Vonage message notification sender",
 		Provider:    "vonage",
 		Properties: []SenderProperty{
 			{
@@ -71,7 +71,7 @@ var (
 	// Twilio test data
 	twilioData = SenderTestData{
 		Name:        "Test Twilio",
-		Description: "Test Twilio notification sender",
+		Description: "Test Twilio message notification sender",
 		Provider:    "twilio",
 		Properties: []SenderProperty{
 			{
@@ -95,7 +95,7 @@ var (
 	// Custom test data
 	customData = SenderTestData{
 		Name:        "Test Custom",
-		Description: "Test Custom notification sender",
+		Description: "Test Custom message notification sender",
 		Provider:    "custom",
 		Properties: []SenderProperty{
 			{
@@ -127,7 +127,7 @@ var (
 	// Modified version of Vonage for update testing
 	senderToUpdate = NotificationSenderRequest{
 		Name:        "Updated Vonage",
-		Description: "Updated Vonage notification sender",
+		Description: "Updated Vonage message notification sender",
 		Provider:    "vonage",
 		Properties: []SenderProperty{
 			{
@@ -198,23 +198,23 @@ func TestNotificationSenderAPITestSuite(t *testing.T) {
 	suite.Run(t, new(NotificationSenderAPITestSuite))
 }
 
-// SetupSuite creates a test notification sender
+// SetupSuite creates a test message notification sender
 func (ts *NotificationSenderAPITestSuite) SetupSuite() {
 	id, err := createSender(ts)
 	if err != nil {
-		ts.T().Fatalf("Failed to create notification sender during setup: %v", err)
+		ts.T().Fatalf("Failed to create message notification sender during setup: %v", err)
 	} else {
 		createdSenderID = id
 	}
 }
 
-// TearDownSuite deletes the test notification sender
+// TearDownSuite deletes the test message notification sender
 func (ts *NotificationSenderAPITestSuite) TearDownSuite() {
 	// Delete main test sender
 	if createdSenderID != "" {
 		err := deleteSender(createdSenderID)
 		if err != nil {
-			ts.T().Fatalf("Failed to delete notification sender during teardown: %v", err)
+			ts.T().Fatalf("Failed to delete message notification sender during teardown: %v", err)
 		}
 	}
 
@@ -228,7 +228,7 @@ func (ts *NotificationSenderAPITestSuite) TearDownSuite() {
 	}
 }
 
-// TestNotificationSenderListing tests listing all notification senders
+// TestNotificationSenderListing tests listing all message notification senders
 func (ts *NotificationSenderAPITestSuite) TestNotificationSenderListing() {
 	req, err := http.NewRequest("GET", testServerURL+"/notification-senders/message", nil)
 	if err != nil {
@@ -259,7 +259,7 @@ func (ts *NotificationSenderAPITestSuite) TestNotificationSenderListing() {
 
 	senderListLength := len(senders)
 	if senderListLength == 0 {
-		ts.T().Fatalf("Response does not contain any notification senders")
+		ts.T().Fatalf("Response does not contain any message notification senders")
 	}
 
 	// Check if our created sender exists in the list
@@ -274,23 +274,23 @@ func (ts *NotificationSenderAPITestSuite) TestNotificationSenderListing() {
 		}
 	}
 
-	ts.Assert().True(foundCreated, "Created notification sender not found in the list")
+	ts.Assert().True(foundCreated, "Created message notification sender not found in the list")
 }
 
-// TestNotificationSenderGetByID tests getting a notification sender by ID
+// TestNotificationSenderGetByID tests getting a message notification sender by ID
 func (ts *NotificationSenderAPITestSuite) TestNotificationSenderGetByID() {
 	if createdSenderID == "" {
-		ts.T().Fatal("Notification sender ID is not available for retrieval")
+		ts.T().Fatal("Message notification sender ID is not available for retrieval")
 	}
 
 	sender := buildCreatedSender()
 	retrieveAndValidateSenderDetails(ts, sender)
 }
 
-// TestNotificationSenderUpdate tests updating a notification sender
+// TestNotificationSenderUpdate tests updating a message notification sender
 func (ts *NotificationSenderAPITestSuite) TestNotificationSenderUpdate() {
 	if createdSenderID == "" {
-		ts.T().Fatal("Notification sender ID is not available for update")
+		ts.T().Fatal("Message notification sender ID is not available for update")
 	}
 
 	senderJSON, err := json.Marshal(senderToUpdate)
@@ -328,11 +328,11 @@ func (ts *NotificationSenderAPITestSuite) TestNotificationSenderUpdate() {
 	})
 }
 
-// TestNotificationSenderCreateDuplicate tests creating a notification sender with a duplicate name
+// TestNotificationSenderCreateDuplicate tests creating a message notification sender with a duplicate name
 func (ts *NotificationSenderAPITestSuite) TestNotificationSenderCreateDuplicate() {
 	// First, make sure our updated sender exists with the updated name
 	if createdSenderID == "" {
-		ts.T().Fatal("Notification sender ID is not available for duplicate test")
+		ts.T().Fatal("Message notification sender ID is not available for duplicate test")
 	}
 
 	// Get the sender to confirm its current name
@@ -358,7 +358,7 @@ func (ts *NotificationSenderAPITestSuite) TestNotificationSenderCreateDuplicate(
 	// Now create a new sender with the exact same name but different properties
 	duplicateSender := NotificationSenderRequest{
 		Name:        existingSender.Name,
-		Description: "Duplicate notification sender test",
+		Description: "Duplicate message notification sender test",
 		Provider:    "twilio",
 		Properties: []SenderProperty{
 			{
@@ -421,7 +421,7 @@ func (ts *NotificationSenderAPITestSuite) TestNotificationSenderCreateDuplicate(
 		"Error description should mention that the name already exists")
 }
 
-// TestNotificationSenderInvalidProvider tests creating a notification sender with an invalid provider
+// TestNotificationSenderInvalidProvider tests creating a message notification sender with an invalid provider
 func (ts *NotificationSenderAPITestSuite) TestNotificationSenderInvalidProvider() {
 	invalidSender := NotificationSenderRequest{
 		Name:        "Invalid Provider Sender",

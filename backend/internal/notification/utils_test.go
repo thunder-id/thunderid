@@ -156,6 +156,66 @@ func (suite *UtilsTestSuite) TestValidateMessageNotificationSender_Custom() {
 	suite.Nil(err)
 }
 
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_EmptyProvider() {
+	sender := common.NotificationSenderDTO{
+		Name:     "Test Sender",
+		Type:     common.NotificationSenderTypeEmail,
+		Provider: "",
+	}
+
+	err := validateEmailNotificationSender(sender)
+
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidProvider.Code, err.Code)
+}
+
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_InvalidProvider() {
+	sender := common.NotificationSenderDTO{
+		Name:     "Test Sender",
+		Type:     common.NotificationSenderTypeEmail,
+		Provider: "invalid-provider",
+	}
+
+	err := validateEmailNotificationSender(sender)
+
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidProvider.Code, err.Code)
+}
+
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_SMTP() {
+	sender := common.NotificationSenderDTO{
+		Name:     "Test SMTP",
+		Type:     common.NotificationSenderTypeEmail,
+		Provider: common.MessageProviderTypeSMTP,
+		Properties: []cmodels.Property{
+			createTestProperty("host", "smtp.example.com", false),
+			createTestProperty("port", "587", false),
+			createTestProperty("from_address", "no-reply@example.com", false),
+		},
+	}
+
+	err := validateEmailNotificationSender(sender)
+
+	suite.Nil(err)
+}
+
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_HTTP() {
+	sender := common.NotificationSenderDTO{
+		Name:     "Test HTTP Email",
+		Type:     common.NotificationSenderTypeEmail,
+		Provider: common.MessageProviderTypeHTTP,
+		Properties: []cmodels.Property{
+			createTestProperty("url", "https://api.example.com/email", false),
+			createTestProperty("http_method", "POST", false),
+			createTestProperty("content_type", "JSON", false),
+		},
+	}
+
+	err := validateEmailNotificationSender(sender)
+
+	suite.Nil(err)
+}
+
 func (suite *UtilsTestSuite) TestValidateTwilioProperties() {
 	properties := []cmodels.Property{
 		createTestProperty("account_sid", "AC00112233445566778899aabbccddeeff", true),
@@ -466,6 +526,75 @@ func (suite *UtilsTestSuite) TestValidateMessageNotificationSender_SupportedChan
 	}
 
 	errSvc := validateMessageNotificationSender(sender)
+
+	suite.NotNil(errSvc)
+	suite.Equal(ErrorInvalidRequestFormat.Code, errSvc.Code)
+	suite.Contains(errSvc.ErrorDescription.DefaultValue, "failed to read supported channels property")
+}
+
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_EmptyProperties() {
+	sender := common.NotificationSenderDTO{
+		Name:       "Test SMTP Empty Props",
+		Type:       common.NotificationSenderTypeEmail,
+		Provider:   common.MessageProviderTypeSMTP,
+		Properties: []cmodels.Property{},
+	}
+
+	err := validateEmailNotificationSender(sender)
+
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidRequestFormat.Code, err.Code)
+	suite.Contains(err.ErrorDescription.DefaultValue, "email notification sender properties cannot be empty")
+}
+
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSenderProperties_UnsupportedProvider() {
+	sender := common.NotificationSenderDTO{
+		Provider:   "unsupported-provider",
+		Properties: []cmodels.Property{createTestProperty("k", "v", false)},
+	}
+
+	err := validateEmailNotificationSenderProperties(sender)
+	suite.NotNil(err)
+	suite.Contains(err.Error(), "unsupported email notification sender")
+}
+
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_InvalidSupportedChannel() {
+	sender := common.NotificationSenderDTO{
+		Name:     "Test Sender Invalid Channel",
+		Type:     common.NotificationSenderTypeEmail,
+		Provider: common.MessageProviderTypeSMTP,
+		Properties: []cmodels.Property{
+			createTestProperty(common.SMTPPropKeyHost, "smtp.example.com", false),
+			createTestProperty(common.SMTPPropKeyPort, "587", false),
+			createTestProperty(common.SMTPPropKeyFromAddress, "no-reply@example.com", false),
+			createTestProperty(common.SenderPropertySupportedChannels, "sms", false),
+		},
+	}
+
+	err := validateEmailNotificationSender(sender)
+
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidRequestFormat.Code, err.Code)
+	suite.Contains(err.ErrorDescription.DefaultValue, "invalid supported channel: sms")
+}
+
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_SupportedChannelReadError() {
+	properties, err := cmodels.DeserializePropertiesFromJSONObject(
+		`{"supported_channels": {"value": "invalid-secret", "isSecret": true}}`)
+	suite.NoError(err)
+
+	properties = append(properties, createTestProperty(common.SMTPPropKeyHost, "smtp.example.com", false))
+	properties = append(properties, createTestProperty(common.SMTPPropKeyPort, "587", false))
+	properties = append(properties, createTestProperty(common.SMTPPropKeyFromAddress, "no-reply@example.com", false))
+
+	sender := common.NotificationSenderDTO{
+		Name:       "Test Sender Read Error",
+		Type:       common.NotificationSenderTypeEmail,
+		Provider:   common.MessageProviderTypeSMTP,
+		Properties: properties,
+	}
+
+	errSvc := validateEmailNotificationSender(sender)
 
 	suite.NotNil(errSvc)
 	suite.Equal(ErrorInvalidRequestFormat.Code, errSvc.Code)

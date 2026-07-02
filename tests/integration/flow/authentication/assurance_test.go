@@ -397,7 +397,7 @@ func (ts *AssuranceTestSuite) SetupSuite() {
 	}
 	ts.config.CreatedUserIDs = userIDs
 
-	// Create notification sender
+	// Create message notification sender
 	customSender := testutils.NotificationSender{
 		Name:        "Assurance Test Sender",
 		Description: "Sender for assurance testing",
@@ -408,8 +408,8 @@ func (ts *AssuranceTestSuite) SetupSuite() {
 			{Name: "content_type", Value: "JSON", IsSecret: false},
 		},
 	}
-	senderID, err := testutils.CreateNotificationSender(customSender)
-	ts.Require().NoError(err, "Failed to create notification sender")
+	senderID, err := testutils.CreateMessageNotificationSender(customSender)
+	ts.Require().NoError(err, "Failed to create message notification sender")
 	assuranceTestSenderID = senderID
 	ts.config.CreatedSenderIDs = append(ts.config.CreatedSenderIDs, senderID)
 
@@ -468,7 +468,7 @@ func (ts *AssuranceTestSuite) TearDownSuite() {
 	}
 
 	for _, senderID := range ts.config.CreatedSenderIDs {
-		_ = testutils.DeleteNotificationSender(senderID)
+		_ = testutils.DeleteMessageNotificationSender(senderID)
 	}
 
 	if assuranceTestOU.ID != "" {

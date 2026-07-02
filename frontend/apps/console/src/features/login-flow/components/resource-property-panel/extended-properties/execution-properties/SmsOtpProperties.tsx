@@ -28,7 +28,7 @@ import useNotificationSenders from '@/features/notification-senders/api/useNotif
 function SmsOtpProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
   const {t} = useTranslation();
   const {selectedNotification} = useValidationStatus();
-  const {data: notificationSenders, isLoading: isLoadingSenders} = useNotificationSenders();
+  const {data: notificationSenders, isLoading: isLoadingSenders} = useNotificationSenders('message');
 
   const currentMode = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;

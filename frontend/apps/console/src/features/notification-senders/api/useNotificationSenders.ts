@@ -45,19 +45,24 @@ import type {NotificationSenderListResponse} from '../models/notification-sender
  * }
  * ```
  */
-export default function useNotificationSenders(): UseQueryResult<NotificationSenderListResponse> {
+export default function useNotificationSenders(
+  type: 'message' | 'email' = 'message',
+): UseQueryResult<NotificationSenderListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
 
+  const queryKeyType =
+    type === 'email' ? NotificationSenderQueryKeys.EMAIL_SENDERS : NotificationSenderQueryKeys.MESSAGE_SENDERS;
+
   return useQuery<NotificationSenderListResponse>({
-    queryKey: [NotificationSenderQueryKeys.NOTIFICATION_SENDERS, NotificationSenderQueryKeys.MESSAGE_SENDERS],
+    queryKey: [NotificationSenderQueryKeys.NOTIFICATION_SENDERS, queryKeyType],
     queryFn: async (): Promise<NotificationSenderListResponse> => {
       const serverUrl: string = getServerUrl();
 
       const response: {
         data: NotificationSenderListResponse;
       } = await http.request({
-        url: `${serverUrl}/notification-senders/message`,
+        url: `${serverUrl}/notification-senders/${type}`,
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

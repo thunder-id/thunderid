@@ -1,0 +1,155 @@
+---
+title: Configure an Email Provider
+description: Set up an Email notification sender to deliver emails in {{ProductName}}.
+---
+
+# Configure an Email Provider
+
+<ProductName /> sends emails through an Email Provider.
+
+Two types of email providers are supported:
+
+- **SMTP** — requires a Host, Port, and From Address.
+- **Custom (HTTP)** — connects to any email gateway via an HTTP webhook.
+
+## Prerequisites
+
+- A <ProductName /> instance running and accessible
+- An active account or server with your chosen email provider
+
+## Add an Email Provider
+
+### SMTP
+
+Configure a traditional SMTP server for sending emails. 
+
+Send a `POST` request to the notification sender API:
+
+```bash
+curl -X POST https://localhost:8090/notification-senders/email \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "name": "MySMTPSender",
+    "provider": "smtp",
+    "description": "SMTP provider for email delivery",
+    "properties": [
+      { "name": "host", "value": "smtp.example.com", "isSecret": false },
+      { "name": "port", "value": "587", "isSecret": false },
+      { "name": "username", "value": "user", "isSecret": false },
+      { "name": "password", "value": "pass", "isSecret": true },
+      { "name": "from_address", "value": "noreply@example.com", "isSecret": false },
+      { "name": "enable_start_tls", "value": "true", "isSecret": false },
+      { "name": "enable_authentication", "value": "true", "isSecret": false }
+    ]
+  }'
+```
+
+#### SMTP Properties
+
+| Property | Required | Secret | Description |
+| :--- | :---: | :---: | :--- |
+| `host` | ✅ | ❌ | Hostname of the SMTP server (for example, `smtp.gmail.com`). |
+| `port` | ✅ | ❌ | Port of the SMTP server. Use `587` for STARTTLS. |
+| `from_address` | ✅ | ❌ | Email address that appears in the **From** field of outgoing emails. |
+| `username` | ❌ | ❌ | Username for SMTP authentication. Required when `enable_authentication` is `true`. |
+| `password` | ❌ | ✅ | Password for SMTP authentication. Required when `enable_authentication` is `true`. |
+| `enable_start_tls` | ❌ | ❌ | Enables explicit STARTTLS encryption. Defaults to `true`. |
+| `enable_authentication` | ❌ | ❌ | Enables SMTP authentication. Defaults to `true`. |
+
+---
+
+### Custom HTTP Provider
+
+Use the custom HTTP provider to connect <ProductName /> to any email gateway that accepts HTTP webhook requests.
+
+```bash
+curl -X POST https://localhost:8090/notification-senders/email \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "name": "CustomEmailWebhook",
+    "provider": "http",
+    "description": "Custom HTTP webhook for email delivery",
+    "properties": [
+      { "name": "url",          "value": "https://email.example.com/send", "isSecret": false },
+      { "name": "http_method",  "value": "POST",                          "isSecret": false },
+      { "name": "content_type", "value": "JSON",                          "isSecret": false },
+      { "name": "http_headers", "value": "X-API-Key: <key>",              "isSecret": true  }
+    ]
+  }'
+```
+
+#### Custom Provider Properties
+
+| Property | Required | Secret | Description |
+| :--- | :---: | :---: | :--- |
+| `url` | ✅ | ❌ | Full URL of the email gateway endpoint. |
+| `http_method` | ❌ | ❌ | HTTP method to use. Supported values: `POST`, `GET`. |
+| `content_type` | ❌ | ❌ | Request body format. Supported values: `JSON`, `FORM`. |
+| `http_headers` | ❌ | ✅ | Comma-separated list of additional HTTP headers in `Key: Value` format. |
+
+## Update an Email Provider
+
+To update an existing sender, send a `PUT` request with the sender's ID. 
+
+### Update SMTP Provider
+
+```bash
+curl -X PUT https://localhost:8090/notification-senders/email/<sender-id> \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "name": "MySMTPSender",
+    "provider": "smtp",
+    "properties": [
+      { "name": "host", "value": "smtp.example.com", "isSecret": false },
+      { "name": "port", "value": "25", "isSecret": false },
+      { "name": "from_address", "value": "noreply@example.com", "isSecret": false },
+      { "name": "enable_start_tls", "value": "false", "isSecret": false },
+      { "name": "enable_authentication", "value": "false", "isSecret": false }
+    ]
+  }'
+```
+
+### Update Custom HTTP Provider
+
+```bash
+curl -X PUT https://localhost:8090/notification-senders/email/<sender-id> \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "name": "CustomEmailWebhook",
+    "provider": "http",
+    "properties": [
+      { "name": "url",          "value": "https://email.example.com/send", "isSecret": false },
+      { "name": "http_method",  "value": "POST",                          "isSecret": false },
+      { "name": "content_type", "value": "JSON",                          "isSecret": false },
+      { "name": "http_headers", "value": "X-API-Key: <new-key>",          "isSecret": true  }
+    ]
+  }'
+```
+
+:::note
+A notification sender's `provider` cannot be changed after creation. To switch providers, delete the existing sender and create a new one.
+:::
+
+## List and Remove Email Providers
+
+**List all Email providers:**
+
+```bash
+curl https://localhost:8090/notification-senders/email \
+  -H "Authorization: Bearer <access_token>"
+```
+
+**Delete an Email provider:**
+
+```bash
+curl -X DELETE https://localhost:8090/notification-senders/email/<sender-id> \
+  -H "Authorization: Bearer <access_token>"
+```
+
+## Next Steps
+
+- [Build a Flow](../../flows/build-a-flow) — Add an Email step to a sign-in or registration flow
