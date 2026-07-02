@@ -32,6 +32,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 )
@@ -40,6 +41,7 @@ type ActorProviderTestSuite struct {
 	suite.Suite
 	mockInbound *inboundclientmock.InboundClientServiceInterfaceMock
 	mockEntity  *entityprovidermock.EntityProviderInterfaceMock
+	mockAuthn   *managermock.AuthnProviderManagerMock
 	provider    providers.ActorProvider
 }
 
@@ -50,7 +52,8 @@ func TestActorProviderTestSuite(t *testing.T) {
 func (s *ActorProviderTestSuite) SetupTest() {
 	s.mockInbound = inboundclientmock.NewInboundClientServiceInterfaceMock(s.T())
 	s.mockEntity = entityprovidermock.NewEntityProviderInterfaceMock(s.T())
-	s.provider = Initialize(s.mockInbound, s.mockEntity)
+	s.mockAuthn = managermock.NewAuthnProviderManagerMock(s.T())
+	s.provider = Initialize(s.mockInbound, s.mockEntity, s.mockAuthn)
 }
 
 func (s *ActorProviderTestSuite) TestGetOAuthClientByClientID_Delegates() {
@@ -111,6 +114,35 @@ func (s *ActorProviderTestSuite) TestGetInboundClientByID_Delegates() {
 
 	s.Nil(svcErr)
 	s.Equal(expected, client)
+}
+
+func (s *ActorProviderTestSuite) TestAuthenticateActor_Delegates_Success() {
+	identifiers := map[string]interface{}{"userID": "app-1"}
+	creds := map[string]interface{}{"appSecret": "s3cret"}
+	s.mockAuthn.On("AuthenticateUser", mock.Anything,
+		identifiers, creds,
+		(*providers.RequestedAttributes)(nil), (*providers.AuthnMetadata)(nil),
+		providers.AuthUser{}).
+		Return(providers.AuthUser{}, providers.AuthenticatedClaims(nil),
+			(*tidcommon.ServiceError)(nil))
+
+	svcErr := s.provider.AuthenticateActor(context.Background(), identifiers, creds)
+
+	s.Nil(svcErr)
+}
+
+func (s *ActorProviderTestSuite) TestAuthenticateActor_Delegates_Failure() {
+	identifiers := map[string]interface{}{"userID": "app-1"}
+	creds := map[string]interface{}{"appSecret": "wrong"}
+	authFailed := &tidcommon.ServiceError{Code: "AUTH-FAIL", Type: tidcommon.ClientErrorType}
+	s.mockAuthn.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, providers.AuthenticatedClaims(nil), authFailed)
+
+	svcErr := s.provider.AuthenticateActor(context.Background(), identifiers, creds)
+
+	s.NotNil(svcErr)
+	s.Equal("AUTH-FAIL", svcErr.Code)
 }
 
 func (s *ActorProviderTestSuite) TestGetActor_Delegates() {

@@ -42,9 +42,33 @@ export interface ClientSecretSuccessDialogProps {
    */
   open: boolean;
   /**
-   * The new client secret to display
+   * The new secret to display
    */
   clientSecret: string;
+  /**
+   * Optional override for the dialog title. Defaults to the client secret title.
+   */
+  title?: string;
+  /**
+   * Optional override for the dialog subtitle. Defaults to the client secret subtitle.
+   */
+  subtitle?: string;
+  /**
+   * Optional override for the secret field label. Defaults to the client secret label.
+   */
+  secretLabel?: string;
+  /**
+   * Optional override for the primary copy button label. Defaults to the client secret label.
+   */
+  copySecretLabel?: string;
+  /**
+   * Optional override for the security reminder title. Defaults to the client secret reminder.
+   */
+  securityReminderTitle?: string;
+  /**
+   * Optional override for the security reminder description. Defaults to the client secret reminder.
+   */
+  securityReminderDescription?: string;
   /**
    * Callback when the dialog should be closed
    */
@@ -63,6 +87,12 @@ export interface ClientSecretSuccessDialogProps {
 export default function ClientSecretSuccessDialog({
   open,
   clientSecret,
+  title = undefined,
+  subtitle = undefined,
+  secretLabel = undefined,
+  copySecretLabel = undefined,
+  securityReminderTitle = undefined,
+  securityReminderDescription = undefined,
   onClose,
 }: ClientSecretSuccessDialogProps): JSX.Element {
   const {t} = useTranslation();
@@ -117,10 +147,10 @@ export default function ClientSecretSuccessDialog({
           {/* Header */}
           <Stack direction="column" spacing={1} sx={{textAlign: 'center'}}>
             <Typography variant="h5" component="h2">
-              {t('applications:regenerateSecret.success.title')}
+              {title ?? t('applications:regenerateSecret.success.title')}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {t('applications:regenerateSecret.success.subtitle')}
+              {subtitle ?? t('applications:regenerateSecret.success.subtitle')}
             </Typography>
           </Stack>
 
@@ -136,7 +166,7 @@ export default function ClientSecretSuccessDialog({
           >
             <Box>
               <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
-                {t('applications:regenerateSecret.success.secretLabel')}
+                {secretLabel ?? t('applications:regenerateSecret.success.secretLabel')}
               </Typography>
               <TextField
                 fullWidth
@@ -183,10 +213,10 @@ export default function ClientSecretSuccessDialog({
           {/* Security Reminder Alert */}
           <Alert severity="warning" icon={<AlertTriangle size={20} />}>
             <Typography variant="body2" sx={{fontWeight: 'medium', mb: 1}}>
-              {t('applications:regenerateSecret.success.securityReminder.title')}
+              {securityReminderTitle ?? t('applications:regenerateSecret.success.securityReminder.title')}
             </Typography>
             <Typography variant="body2">
-              {t('applications:regenerateSecret.success.securityReminder.description')}
+              {securityReminderDescription ?? t('applications:regenerateSecret.success.securityReminder.description')}
             </Typography>
           </Alert>
         </Stack>
@@ -206,7 +236,7 @@ export default function ClientSecretSuccessDialog({
           >
             {copied
               ? t('applications:regenerateSecret.success.copied')
-              : t('applications:regenerateSecret.success.copySecret')}
+              : (copySecretLabel ?? t('applications:regenerateSecret.success.copySecret'))}
           </Button>
           <Button variant="outlined" fullWidth onClick={handleClose}>
             {t('common:actions.done')}

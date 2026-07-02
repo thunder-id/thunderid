@@ -47,6 +47,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
@@ -85,7 +86,8 @@ func (s *UserInfoServiceTestSuite) SetupTest() {
 	s.mockAttributeCacheService = attributecachemock.NewAttributeCacheServiceInterfaceMock(s.T())
 	s.userInfoService = newUserInfoService(
 		s.mockJWTService, nil, nil, s.mockTokenValidator,
-		actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider), s.mockAttributeCacheService, nil,
+		actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider, noopAuthnMgr()),
+		s.mockAttributeCacheService, nil,
 		oauthconfig.Config{JWT: engineconfig.JWTConfig{Issuer: testUserInfoIssuer, ValidityPeriod: 600}},
 	)
 
@@ -1146,7 +1148,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_BearerScheme_DPoPBoundToken_R
 // presented under the DPoP scheme is rejected.
 func (s *UserInfoServiceTestSuite) TestGetUserInfoForDPoP_NotBoundToken_Rejected() {
 	verifier := dpopmock.NewVerifierInterfaceMock(s.T())
-	actorProv := actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider)
+	actorProv := actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider, noopAuthnMgr())
 	s.userInfoService = newUserInfoService(
 		s.mockJWTService, nil, nil, s.mockTokenValidator,
 		actorProv, s.mockAttributeCacheService, verifier, userInfoTestConfig())
@@ -1172,7 +1174,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfoForDPoP_NotBoundToken_Rejected
 // token whose proof fails verification is rejected.
 func (s *UserInfoServiceTestSuite) TestGetUserInfoForDPoP_VerifierFails_Rejected() {
 	verifier := dpopmock.NewVerifierInterfaceMock(s.T())
-	actorProv := actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider)
+	actorProv := actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider, noopAuthnMgr())
 	s.userInfoService = newUserInfoService(
 		s.mockJWTService, nil, nil, s.mockTokenValidator,
 		actorProv, s.mockAttributeCacheService, verifier, userInfoTestConfig())
@@ -1266,4 +1268,10 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_JWS_GenerateJWTFailure() {
 	s.mockTokenValidator.AssertExpectations(s.T())
 	s.mockJWTService.AssertExpectations(s.T())
 	s.mockAttributeCacheService.AssertExpectations(s.T())
+}
+
+// noopAuthnMgr returns an authentication-provider mock with no expectations, for tests that
+// build a real actor provider but never exercise actor authentication.
+func noopAuthnMgr() *managermock.AuthnProviderManagerMock {
+	return &managermock.AuthnProviderManagerMock{}
 }

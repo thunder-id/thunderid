@@ -90,7 +90,9 @@ func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
 	service, err := Initialize(
-		mux, actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider), suite.mockResourceService,
+		mux,
+		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr()),
+		suite.mockResourceService,
 		suite.mockJWTService, suite.mockFlowExecService, nil, testhelpers.OAuthConfig(),
 	)
 
@@ -103,7 +105,9 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 	mux := http.NewServeMux()
 
 	_, err := Initialize(
-		mux, actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider), suite.mockResourceService,
+		mux,
+		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr()),
+		suite.mockResourceService,
 		suite.mockJWTService, suite.mockFlowExecService, nil, testhelpers.OAuthConfig(),
 	)
 	assert.NoError(suite.T(), err)
@@ -118,7 +122,9 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSConfiguration() {
 	mux := http.NewServeMux()
 
 	_, err := Initialize(
-		mux, actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider), suite.mockResourceService,
+		mux,
+		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr()),
+		suite.mockResourceService,
 		suite.mockJWTService, suite.mockFlowExecService, nil, testhelpers.OAuthConfig(),
 	)
 	assert.NoError(suite.T(), err)

@@ -30,21 +30,26 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
-// actorProvider delegates actor resolution to inbound-client and entity-provider services.
+// actorProvider delegates actor resolution to inbound-client and entity-provider services, and
+// actor authentication to the authentication provider.
 type actorProvider struct {
 	inboundClient  inboundclient.InboundClientServiceInterface
 	entityProvider entityprovider.EntityProviderInterface
+	authnProvider  providers.AuthnProviderManager
 	logger         *log.Logger
 }
 
-// newActorProvider creates a new actorProvider backed by the given inbound-client and entity-provider.
+// newActorProvider creates a new actorProvider backed by the given inbound-client, entity-provider,
+// and authentication provider.
 func newActorProvider(
 	inboundClient inboundclient.InboundClientServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
+	authnProvider providers.AuthnProviderManager,
 ) providers.ActorProvider {
 	return &actorProvider{
 		inboundClient:  inboundClient,
 		entityProvider: entityProvider,
+		authnProvider:  authnProvider,
 		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ActorProvider")),
 	}
 }
@@ -93,6 +98,18 @@ func (p *actorProvider) GetInboundClientByID(
 		return nil, &tidcommon.InternalServerError
 	}
 	return client, nil
+}
+
+// AuthenticateActor verifies the supplied credentials against the actor resolved from the given
+// identifiers. It returns nil when authentication succeeds and a service error otherwise. The
+// default implementation delegates to the authentication provider, which performs the credential
+// lookup and constant-time verification generically through the entity layer. A custom actor
+// provider may implement its own scheme.
+func (p *actorProvider) AuthenticateActor(
+	ctx context.Context, identifiers, credentials map[string]interface{},
+) *tidcommon.ServiceError {
+	_, _, svcErr := p.authnProvider.AuthenticateUser(ctx, identifiers, credentials, nil, nil, providers.AuthUser{})
+	return svcErr
 }
 
 // GetActor returns the backing entity record for the given actor ID.

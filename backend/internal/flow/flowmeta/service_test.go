@@ -35,6 +35,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/design/resolvemock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/i18n/mgtmock"
@@ -71,7 +72,7 @@ func (suite *FlowMetaServiceTestSuite) SetupTest() {
 	suite.mockDesignResolve = resolvemock.NewDesignResolveServiceInterfaceMock(suite.T())
 	suite.mockI18nService = mgtmock.NewI18nServiceInterfaceMock(suite.T())
 	suite.service = newFlowMetaService(
-		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider),
+		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr()),
 		suite.mockOUService,
 		suite.mockDesignResolve,
 		suite.mockI18nService,
@@ -368,4 +369,10 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_SystemFlow_NoTypeOrID
 	assert.Equal(suite.T(), 3, result.I18n.TotalResults)
 	assert.Equal(suite.T(), []string{"en-US"}, result.I18n.Languages)
 	assert.Contains(suite.T(), result.I18n.Translations, "system")
+}
+
+// noopAuthnMgr returns an authentication-provider mock with no expectations, for tests that
+// build a real actor provider but never exercise actor authentication.
+func noopAuthnMgr() *managermock.AuthnProviderManagerMock {
+	return &managermock.AuthnProviderManagerMock{}
 }

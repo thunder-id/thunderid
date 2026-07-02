@@ -164,3 +164,33 @@ var ErrorDirectFlowInitiationNotPermitted = tidcommon.ServiceError{
 		DefaultValue: "Direct flow initiation is not permitted for this application type",
 	},
 }
+
+// ErrorAppSecretRequired defines the error when a backend application initiates a new flow
+// without providing its App Secret.
+var ErrorAppSecretRequired = tidcommon.ServiceError{
+	Code: "FES-1012",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.app_secret_required",
+		DefaultValue: "Authentication required",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.app_secret_required_description",
+		DefaultValue: "Backend applications must provide a valid app secret to initiate a new flow",
+	},
+}
+
+// ErrorAppSecretInvalid defines the error when a backend application provides an incorrect
+// App Secret when initiating a new flow.
+var ErrorAppSecretInvalid = tidcommon.ServiceError{
+	Code: "FES-1013",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.app_secret_invalid",
+		DefaultValue: "Authentication failed",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.app_secret_invalid_description",
+		DefaultValue: "The provided app secret is invalid",
+	},
+}

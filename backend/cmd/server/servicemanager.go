@@ -383,7 +383,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Initialize design resolve service for theme and layout resolution
 	designResolveService := resolve.Initialize(mux, themeMgtService, layoutMgtService, applicationService)
 
-	actorProvider := actorprovider.Initialize(inboundClientService, entityProvider)
+	actorProvider := actorprovider.Initialize(inboundClientService, entityProvider, authnProvider)
 
 	// Initialize flow metadata service
 	_ = flowmeta.Initialize(mux, actorProvider, ouService, designResolveService, i18nService)

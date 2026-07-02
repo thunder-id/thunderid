@@ -39,6 +39,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowexecmock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
@@ -75,7 +76,7 @@ func (suite *CIBAServiceTestSuite) SetupTest() {
 	suite.mockInboundClient = inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 	suite.mockResourceSvc = resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	actorProv := actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider)
+	actorProv := actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr())
 	suite.service = newCIBAService(suite.mockStore, suite.mockFlowExec,
 		suite.mockJWTService, actorProv, suite.mockResourceSvc, testhelpers.OAuthConfig())
 	suite.oauthApp = &providers.OAuthClient{
@@ -808,7 +809,7 @@ const testEntityID = "entity-abc-123"
 func (suite *CIBAServiceTestSuite) withIssuer() {
 	cfg := testhelpers.OAuthConfig()
 	cfg.JWT.Issuer = testIssuer
-	actorProv := actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider)
+	actorProv := actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr())
 	suite.service = newCIBAService(suite.mockStore, suite.mockFlowExec,
 		suite.mockJWTService, actorProv, suite.mockResourceSvc, cfg)
 }
@@ -1006,4 +1007,10 @@ func (suite *CIBAServiceTestSuite) TestInitiate_WithIDTokenHint_ExpiredWithinThr
 
 	suite.Nil(cibaErr)
 	suite.NotNil(resp)
+}
+
+// noopAuthnMgr returns an authentication-provider mock with no expectations, for tests that
+// build a real actor provider but never exercise actor authentication.
+func noopAuthnMgr() *managermock.AuthnProviderManagerMock {
+	return &managermock.AuthnProviderManagerMock{}
 }

@@ -27,8 +27,24 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 )
+
+// AppSecretRegistry maps application IDs to their plaintext App Secrets as returned at creation
+// time. Populated by CreateApplication; consumed by flow initiation helpers that need to present
+// the App Secret on behalf of non-redirect test applications.
+var (
+	appSecretRegistryMu sync.RWMutex
+	appSecretRegistry   = map[string]string{}
+)
+
+// GetAppSecret returns the App Secret stored for an application ID, or "" if none.
+func GetAppSecret(appID string) string {
+	appSecretRegistryMu.RLock()
+	defer appSecretRegistryMu.RUnlock()
+	return appSecretRegistry[appID]
+}
 
 const (
 	TestServerURL = "https://localhost:8095"
@@ -435,6 +451,13 @@ func CreateApplication(app Application) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("response does not contain id or id is not a string. Response: %s", string(bodyBytes))
 	}
+
+	if appSecret, ok := createdApp["appSecret"].(string); ok && appSecret != "" {
+		appSecretRegistryMu.Lock()
+		appSecretRegistry[appID] = appSecret
+		appSecretRegistryMu.Unlock()
+	}
+
 	return appID, nil
 }
 

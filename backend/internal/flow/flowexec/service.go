@@ -28,6 +28,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -40,13 +41,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-)
-
-const (
-	defaultAuthFlowExpiry           int64 = 1800  // 30 minutes in seconds
-	defaultRegistrationFlowExpiry   int64 = 3600  // 60 minutes in seconds
-	defaultUserOnboardingFlowExpiry int64 = 86400 // 24 hours in seconds
-	defaultRecoveryFlowExpiry       int64 = 1800  // 30 minutes in seconds
 )
 
 // flowExecService is the implementation of FlowExecServiceInterface
@@ -87,7 +81,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 // Execute executes a flow with the given data
 func (s *flowExecService) Execute(ctx context.Context,
 	appID, executionID, flowType string, verbose bool,
-	action string, inputs map[string]string, challengeToken string) (
+	action string, inputs map[string]string, challengeToken, appSecret string) (
 	*FlowStep, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowExecService"))
 
@@ -98,7 +92,7 @@ func (s *flowExecService) Execute(ctx context.Context,
 	var loadErr *tidcommon.ServiceError
 
 	if isNewFlow(executionID) {
-		engineCtx, loadErr = s.loadNewContext(ctx, appID, flowType, verbose, action, inputs, logger)
+		engineCtx, loadErr = s.loadNewContext(ctx, appID, flowType, verbose, action, inputs, appSecret, logger)
 		if loadErr != nil {
 			logger.Error(ctx, "Failed to load new flow context",
 				log.String("appID", appID),
@@ -176,14 +170,14 @@ func (s *flowExecService) Execute(ctx context.Context,
 
 // initContext initializes a new flow context with the given details.
 func (s *flowExecService) loadNewContext(ctx context.Context, appID, flowTypeStr string, verbose bool,
-	action string, inputs map[string]string, logger *log.Logger) (
+	action string, inputs map[string]string, appSecret string, logger *log.Logger) (
 	*EngineContext, *tidcommon.ServiceError) {
 	flowType, err := validateFlowType(flowTypeStr)
 	if err != nil {
 		return nil, err
 	}
 
-	if svcErr := s.checkDirectFlowInitiationAllowed(ctx, appID, flowType, logger); svcErr != nil {
+	if svcErr := s.checkDirectFlowInitiationAllowed(ctx, appID, flowType, appSecret, logger); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -196,13 +190,19 @@ func (s *flowExecService) loadNewContext(ctx context.Context, appID, flowTypeStr
 	return engineCtx, nil
 }
 
-// checkDirectFlowInitiationAllowed returns an error if the application's grant type does not
-// permit direct HTTP initiation of an authentication flow. Applications configured with the
-// authorization_code grant type must have their authentication flows initiated by the OAuth
-// component, not via a direct HTTP call. Other flow types (registration, recovery, user
-// onboarding) are not subject to this restriction.
+// checkDirectFlowInitiationAllowed governs which applications may initiate an authentication flow
+// directly over HTTP, based on how the application is classified:
+//   - RedirectOnly — the application signs users in through a redirect-based protocol component
+//     (currently OAuth 2.0 authorization_code apps) and must have its flows initiated by that
+//     component, not via a direct HTTP call.
+//   - AppSecret — a backend / server-side application (including embedded apps with no protocol
+//     profile) that must authenticate at flow initiation by presenting its App Secret.
+//
+// Other flow types (registration, recovery, user onboarding) are not restricted. The classification
+// is derived from neutral actor data resolved through the actor layer; App Secret verification is
+// the only credential check that remains here.
 func (s *flowExecService) checkDirectFlowInitiationAllowed(ctx context.Context, appID string,
-	flowType providers.FlowType, logger *log.Logger) *tidcommon.ServiceError {
+	flowType providers.FlowType, appSecret string, logger *log.Logger) *tidcommon.ServiceError {
 	if flowType != providers.FlowTypeAuthentication {
 		return nil
 	}
@@ -210,23 +210,66 @@ func (s *flowExecService) checkDirectFlowInitiationAllowed(ctx context.Context, 
 		return nil
 	}
 
-	oauthProfile, svcErr := s.actorProvider.GetOAuthProfileByID(ctx, appID)
+	mode, svcErr := s.resolveFlowInitiationMode(ctx, appID)
 	if svcErr != nil {
 		if svcErr.Code == actorprovider.ErrorActorNotFound.Code {
-			return nil
+			return &ErrorInvalidAppID
 		}
-		logger.Error(ctx, "Failed to retrieve OAuth profile for flow initiation guard",
+		logger.Error(ctx, "Failed to resolve flow initiation mode for guard",
 			log.String("appID", appID))
 		return &tidcommon.InternalServerError
 	}
-	if oauthProfile == nil {
+
+	switch mode {
+	case flowInitiationRedirectOnly:
+		return &ErrorDirectFlowInitiationNotPermitted
+	case flowInitiationAppSecret:
+		if appSecret == "" {
+			return &ErrorAppSecretRequired
+		}
+		if authErr := s.actorProvider.AuthenticateActor(ctx,
+			map[string]interface{}{authnprovidercm.UserAttributeUserID: appID},
+			map[string]interface{}{fieldAppSecret: appSecret}); authErr != nil {
+			logger.Debug(ctx, "Backend application provided an invalid App Secret",
+				log.String("appID", appID))
+			return &ErrorAppSecretInvalid
+		}
 		return nil
+	default:
+		logger.Error(ctx, "Unknown flow initiation mode for application",
+			log.String("appID", appID))
+		return &tidcommon.InternalServerError
+	}
+}
+
+// resolveFlowInitiationMode derives how the given application is permitted to initiate a new
+// authentication flow, using neutral actor data resolved through the actor layer. A non-existent
+// application returns ErrorActorNotFound so the caller can distinguish an unknown app from a
+// backend app.
+func (s *flowExecService) resolveFlowInitiationMode(
+	ctx context.Context, appID string,
+) (flowInitiationMode, *tidcommon.ServiceError) {
+	profile, svcErr := s.actorProvider.GetOAuthProfileByID(ctx, appID)
+	if svcErr != nil && svcErr.Code != actorprovider.ErrorActorNotFound.Code {
+		return 0, svcErr
 	}
 
-	if slices.Contains(oauthProfile.GrantTypes, string(providers.GrantTypeAuthorizationCode)) {
-		return &ErrorDirectFlowInitiationNotPermitted
+	// No protocol profile means either a server-side embedded app (exists, no OAuth config) or a
+	// non-existent application. Confirm existence so an unknown app surfaces as ErrorActorNotFound
+	// rather than being treated as a backend app.
+	if profile == nil {
+		if _, clientErr := s.actorProvider.GetInboundClientByID(ctx, appID); clientErr != nil {
+			return 0, clientErr
+		}
+		return flowInitiationAppSecret, nil
 	}
-	return nil
+
+	// A redirect-based (authorization_code) profile — public or confidential — must initiate flows
+	// through the protocol component, not via a direct HTTP call.
+	if slices.Contains(profile.GrantTypes, string(providers.GrantTypeAuthorizationCode)) {
+		return flowInitiationRedirectOnly, nil
+	}
+	return flowInitiationAppSecret, nil
 }
 
 // initContext initializes a new flow context with the given details.

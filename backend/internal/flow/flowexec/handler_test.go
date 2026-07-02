@@ -118,7 +118,8 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_ServiceError() {
 	t := s.T()
 	mockSvc := NewFlowExecServiceInterfaceMock(t)
 	mockSvc.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, &ErrorDirectFlowInitiationNotPermitted)
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, &ErrorDirectFlowInitiationNotPermitted)
 
 	h := newFlowExecutionHandler(mockSvc)
 	req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString(testFlowExecRequestBody))
@@ -137,7 +138,7 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_Success() {
 		Status:      providers.FlowStatusIncomplete,
 	}
 	mockSvc.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(flowStep, (*tidcommon.ServiceError)(nil))
 
 	h := newFlowExecutionHandler(mockSvc)
@@ -165,7 +166,7 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_StepWithError() {
 		Error:       stepErr,
 	}
 	mockSvc.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(flowStep, (*tidcommon.ServiceError)(nil))
 
 	h := newFlowExecutionHandler(mockSvc)
