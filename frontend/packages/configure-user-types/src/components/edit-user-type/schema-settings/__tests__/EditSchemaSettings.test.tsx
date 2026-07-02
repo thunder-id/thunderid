@@ -16,10 +16,19 @@
  * under the License.
  */
 
-import {render, screen, waitFor, within, userEvent} from '@thunderid/test-utils';
+import {render, screen, waitFor, userEvent} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import type {SchemaPropertyInput} from '../../../../types/user-types';
+import type {Attribute, SchemaPropertyInput} from '../../../../types/user-types';
 import EditSchemaSettings from '../EditSchemaSettings';
+
+const {mockAttributes} = vi.hoisted(() => ({
+  mockAttributes: [
+    {id: 'phone', displayName: 'Phone Number', dataType: 'string', required: false, unique: false, credential: false},
+    {id: 'username', displayName: 'Username', dataType: 'string', required: true, unique: true, credential: false},
+  ] as Attribute[],
+}));
+
+vi.mock('../../../../constants/attributes', () => ({default: mockAttributes}));
 
 describe('EditSchemaSettings', () => {
   const mockOnPropertiesChange = vi.fn();
@@ -53,85 +62,129 @@ describe('EditSchemaSettings', () => {
     vi.clearAllMocks();
   });
 
-  it('resets unique and credential when changing type to boolean', async () => {
-    const user = userEvent.setup();
+  it('renders existing properties as collapsed rows', () => {
     const props = {
-      properties: [{...baseProperties[0], unique: true, credential: true}],
+      properties: baseProperties,
       onPropertiesChange: mockOnPropertiesChange,
       userTypeName: 'Test',
     };
 
     render(<EditSchemaSettings {...props} />);
 
-    // Change type from string to boolean
-    const typeSelect = screen.getByRole('combobox');
-    await user.click(typeSelect);
-    const booleanOption = await screen.findByRole('option', {name: 'Boolean'});
-    await user.click(booleanOption);
+    // Row headers show the property name when there is no display name.
+    expect(screen.getByText('email')).toBeInTheDocument();
+    expect(screen.getByText('age')).toBeInTheDocument();
 
-    expect(mockOnPropertiesChange).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: 'boolean',
-          unique: false,
-          credential: false,
-        }),
-      ]),
-    );
+    // Bodies are collapsed by default, so the field inputs are not mounted.
+    expect(screen.queryByDisplayValue('email')).not.toBeInTheDocument();
   });
 
-  it('preserves enum values when changing type to enum', async () => {
+  it('expands a row to reveal locked name and type fields', async () => {
     const user = userEvent.setup();
     const props = {
-      properties: [{...baseProperties[0], enum: ['ACTIVE', 'INACTIVE']}],
+      properties: [baseProperties[0]],
       onPropertiesChange: mockOnPropertiesChange,
       userTypeName: 'Test',
     };
 
     render(<EditSchemaSettings {...props} />);
 
-    const typeSelect = screen.getByRole('combobox');
-    await user.click(typeSelect);
-    const enumOption = await screen.findByRole('option', {name: 'Enum'});
-    await user.click(enumOption);
+    await user.click(screen.getByText('email'));
 
-    expect(mockOnPropertiesChange).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: 'enum',
-          enum: ['ACTIVE', 'INACTIVE'],
-        }),
-      ]),
-    );
+    // The name is locked for a non-custom property.
+    const nameInput = await screen.findByDisplayValue('email');
+    expect(nameInput).toBeDisabled();
+
+    // Type select stays locked to the definition.
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-disabled', 'true');
   });
 
-  it('clears enum values when changing from enum to number', async () => {
+  it('shows the required, unique and credential fields as read-only except required', async () => {
     const user = userEvent.setup();
     const props = {
-      properties: [{...baseProperties[0], type: 'enum' as const, enum: ['A', 'B']}],
+      properties: [{...baseProperties[0], unique: true}],
       onPropertiesChange: mockOnPropertiesChange,
       userTypeName: 'Test',
     };
 
     render(<EditSchemaSettings {...props} />);
 
-    const typeSelect = screen.getByRole('combobox');
-    await user.click(typeSelect);
-    const numberOption = await screen.findByRole('option', {name: 'Number'});
-    await user.click(numberOption);
+    await user.click(screen.getByText('email'));
+
+    await screen.findByLabelText(/required/i);
+    const requiredCheckbox = screen.getByLabelText(/required/i);
+    const uniqueCheckbox = screen.getByLabelText(/unique/i);
+    const credentialCheckbox = screen.getByLabelText(/credential/i);
+
+    expect(requiredCheckbox).not.toBeDisabled();
+    expect(uniqueCheckbox).toBeChecked();
+    expect(uniqueCheckbox).toBeDisabled();
+    expect(credentialCheckbox).toBeDisabled();
+  });
+
+  it('toggles the required checkbox', async () => {
+    const user = userEvent.setup();
+    const props = {
+      properties: [baseProperties[0]],
+      onPropertiesChange: mockOnPropertiesChange,
+      userTypeName: 'Test',
+    };
+
+    render(<EditSchemaSettings {...props} />);
+
+    await user.click(screen.getByText('email'));
+
+    const requiredCheckbox = await screen.findByLabelText(/required/i);
+    expect(requiredCheckbox).toBeChecked();
+
+    await user.click(requiredCheckbox);
 
     expect(mockOnPropertiesChange).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: 'number',
-          enum: [],
-          regex: '',
-        }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({required: false})]),
     );
   });
 
-  it('does not add duplicate enum value', async () => {
+  it('allows editing the regex pattern for a string property', async () => {
+    const user = userEvent.setup();
+    const props = {
+      properties: [baseProperties[0]],
+      onPropertiesChange: mockOnPropertiesChange,
+      userTypeName: 'Test',
+    };
+
+    render(<EditSchemaSettings {...props} />);
+
+    await user.click(screen.getByText('email'));
+
+    const regexInput = await screen.findByPlaceholderText(/e.g., \^/i);
+    await user.click(regexInput);
+    await user.paste('^[a-z]+$');
+
+    expect(mockOnPropertiesChange).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({regex: '^[a-z]+$'})]),
+    );
+  });
+
+  it('preserves enum values for an enum-typed property', async () => {
+    const user = userEvent.setup();
+    const props = {
+      properties: [{...baseProperties[0], type: 'enum' as const, enum: ['ACTIVE', 'INACTIVE']}],
+      onPropertiesChange: mockOnPropertiesChange,
+      userTypeName: 'Test',
+    };
+
+    render(<EditSchemaSettings {...props} />);
+
+    await user.click(screen.getByText('email'));
+
+    expect(await screen.findByText('ACTIVE')).toBeInTheDocument();
+    expect(screen.getByText('INACTIVE')).toBeInTheDocument();
+
+    // Type select remains locked even for enum properties.
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('adds an enum value for an enum-typed property', async () => {
     const user = userEvent.setup();
     const props = {
       properties: [{...baseProperties[0], type: 'enum' as const, enum: ['ACTIVE']}],
@@ -141,89 +194,61 @@ describe('EditSchemaSettings', () => {
 
     render(<EditSchemaSettings {...props} />);
 
-    const enumInput = screen.getByPlaceholderText(/add value and press enter/i);
+    await user.click(screen.getByText('email'));
+
+    const enumInput = await screen.findByPlaceholderText(/add value and press enter/i);
+    await user.type(enumInput, 'PENDING');
+    const addButton = screen.getByRole('button', {name: /^add$/i});
+    await user.click(addButton);
+
+    expect(mockOnPropertiesChange).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({enum: ['ACTIVE', 'PENDING']})]),
+    );
+  });
+
+  it('does not add a duplicate enum value', async () => {
+    const user = userEvent.setup();
+    const props = {
+      properties: [{...baseProperties[0], type: 'enum' as const, enum: ['ACTIVE']}],
+      onPropertiesChange: mockOnPropertiesChange,
+      userTypeName: 'Test',
+    };
+
+    render(<EditSchemaSettings {...props} />);
+
+    await user.click(screen.getByText('email'));
+
+    const enumInput = await screen.findByPlaceholderText(/add value and press enter/i);
     await user.type(enumInput, 'ACTIVE');
     const addButton = screen.getByRole('button', {name: /^add$/i});
     await user.click(addButton);
 
-    // onPropertiesChange should NOT have been called for a duplicate
+    // onPropertiesChange should NOT have been called for a duplicate.
     expect(mockOnPropertiesChange).not.toHaveBeenCalled();
   });
 
-  it('shows credential removal confirmation dialog when unchecking credential', async () => {
+  it('removes an enum value for an enum-typed property', async () => {
     const user = userEvent.setup();
     const props = {
-      properties: [{...baseProperties[0], credential: true}],
+      properties: [{...baseProperties[0], type: 'enum' as const, enum: ['ACTIVE', 'INACTIVE']}],
       onPropertiesChange: mockOnPropertiesChange,
       userTypeName: 'Test',
     };
 
     render(<EditSchemaSettings {...props} />);
 
-    const credentialCheckbox = screen.getByRole('checkbox', {name: /values will be hashed/i});
-    await user.click(credentialCheckbox);
+    await user.click(screen.getByText('email'));
 
-    await waitFor(() => {
-      expect(screen.getByText(/removing the credential flag/i)).toBeInTheDocument();
-    });
+    const activeChipLabel = await screen.findByText('ACTIVE');
+    await user.click(activeChipLabel);
+    await user.keyboard('[Backspace]');
+
+    expect(mockOnPropertiesChange).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({enum: ['INACTIVE']})]),
+    );
   });
 
-  it('confirms credential removal via dialog', async () => {
-    const user = userEvent.setup();
-    const props = {
-      properties: [{...baseProperties[0], credential: true}],
-      onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
-    };
-
-    render(<EditSchemaSettings {...props} />);
-
-    // Uncheck credential
-    const credentialCheckbox = screen.getByRole('checkbox', {name: /values will be hashed/i});
-    await user.click(credentialCheckbox);
-
-    // Confirm removal
-    const dialog = screen.getByRole('dialog');
-    const confirmButton = within(dialog).getByRole('button', {name: /remove credential/i});
-    await user.click(confirmButton);
-
-    await waitFor(() => {
-      expect(mockOnPropertiesChange).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({
-            credential: false,
-          }),
-        ]),
-      );
-    });
-  });
-
-  it('cancels credential removal via dialog', async () => {
-    const user = userEvent.setup();
-    const props = {
-      properties: [{...baseProperties[0], credential: true}],
-      onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
-    };
-
-    render(<EditSchemaSettings {...props} />);
-
-    const credentialCheckbox = screen.getByRole('checkbox', {name: /values will be hashed/i});
-    await user.click(credentialCheckbox);
-
-    const dialog = screen.getByRole('dialog');
-    const cancelButton = within(dialog).getByRole('button', {name: /cancel/i});
-    await user.click(cancelButton);
-
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    });
-
-    // Should not have changed properties
-    expect(mockOnPropertiesChange).not.toHaveBeenCalled();
-  });
-
-  it('adds new property with incremented id', async () => {
+  it('adds a selected basic attribute as a property with incremented id', async () => {
     const user = userEvent.setup();
     const props = {
       properties: baseProperties,
@@ -233,30 +258,124 @@ describe('EditSchemaSettings', () => {
 
     render(<EditSchemaSettings {...props} />);
 
-    const addButton = screen.getByRole('button', {name: /add property/i});
-    await user.click(addButton);
+    await user.click(screen.getByRole('button', {name: /phone number/i}));
 
     expect(mockOnPropertiesChange).toHaveBeenCalledWith(
       expect.arrayContaining([
         ...baseProperties,
         expect.objectContaining({
           id: '2',
-          name: '',
+          name: 'phone',
           type: 'string',
         }),
       ]),
     );
   });
 
-  it('does not show remove button when there is only one property', () => {
+  it('seeds required and unique flags from the picked attribute definition', async () => {
+    const user = userEvent.setup();
     const props = {
-      properties: [baseProperties[0]],
+      properties: [],
       onPropertiesChange: mockOnPropertiesChange,
       userTypeName: 'Test',
     };
 
     render(<EditSchemaSettings {...props} />);
 
-    expect(screen.queryByRole('button', {name: /remove property/i})).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', {name: /username/i}));
+
+    expect(mockOnPropertiesChange).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'username',
+          required: true,
+          unique: true,
+        }),
+      ]),
+    );
+  });
+
+  it('adds a blank, fully-editable custom property when Add Custom Attribute is clicked', async () => {
+    const user = userEvent.setup();
+    const props = {
+      properties: [],
+      onPropertiesChange: mockOnPropertiesChange,
+      userTypeName: 'Test',
+    };
+
+    render(<EditSchemaSettings {...props} />);
+
+    await user.click(screen.getByRole('button', {name: /add custom attribute/i}));
+
+    expect(mockOnPropertiesChange).toHaveBeenCalledWith([
+      expect.objectContaining({name: '', type: 'string', custom: true}),
+    ]);
+  });
+
+  it('allows editing the type of a custom property', async () => {
+    const user = userEvent.setup();
+    const props = {
+      properties: [{...baseProperties[0], custom: true}],
+      onPropertiesChange: mockOnPropertiesChange,
+      userTypeName: 'Test',
+    };
+
+    render(<EditSchemaSettings {...props} />);
+
+    await user.click(screen.getByText('email'));
+
+    // The type select is editable for a custom property.
+    expect(screen.getByRole('combobox')).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('hides a picked attribute from the library once it is added', () => {
+    const props = {
+      properties: [{...baseProperties[0], name: 'phone'}],
+      onPropertiesChange: mockOnPropertiesChange,
+      userTypeName: 'Test',
+    };
+
+    render(<EditSchemaSettings {...props} />);
+
+    expect(screen.queryByRole('button', {name: /phone number/i})).not.toBeInTheDocument();
+    expect(screen.getByRole('button', {name: /username/i})).toBeInTheDocument();
+  });
+
+  it('allows editing the property name of a custom property', async () => {
+    const user = userEvent.setup();
+    const props = {
+      properties: [{...baseProperties[0], custom: true}],
+      onPropertiesChange: mockOnPropertiesChange,
+      userTypeName: 'Test',
+    };
+
+    render(<EditSchemaSettings {...props} />);
+
+    await user.click(screen.getByText('email'));
+
+    const nameInput = await screen.findByDisplayValue('email');
+    expect(nameInput).not.toBeDisabled();
+
+    await user.type(nameInput, 'x');
+
+    expect(mockOnPropertiesChange).toHaveBeenCalledWith([expect.objectContaining({name: 'emailx'})]);
+  });
+
+  it('removes a property when the delete button is clicked', async () => {
+    const user = userEvent.setup();
+    const props = {
+      properties: baseProperties,
+      onPropertiesChange: mockOnPropertiesChange,
+      userTypeName: 'Test',
+    };
+
+    render(<EditSchemaSettings {...props} />);
+
+    const removeButtons = screen.getAllByRole('button', {name: /remove property/i});
+    await user.click(removeButtons[0]);
+
+    await waitFor(() => {
+      expect(mockOnPropertiesChange).toHaveBeenCalledWith([baseProperties[1]]);
+    });
   });
 });
