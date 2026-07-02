@@ -70,7 +70,10 @@ func (c *HTTPEmailClient) GetName() string {
 // Send dispatches an email notification via the custom webhook.
 func (c *HTTPEmailClient) Send(ctx context.Context, data common.EmailData) error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, httpEmailClientLoggerComponentName))
-	logger.Debug(ctx, "Sending Email via HTTP client", log.MaskedString("to", strings.Join(data.To, ",")))
+	if logger.IsDebugEnabled() {
+		maskedTo := log.MaskedStrings("to", data.To).Value.([]string)
+		logger.Debug(ctx, "Sending Email via HTTP client", log.String("to", strings.Join(maskedTo, ",")))
+	}
 
 	var req *http.Request
 	var err error
