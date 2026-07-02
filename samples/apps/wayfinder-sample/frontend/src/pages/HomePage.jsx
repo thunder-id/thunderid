@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useThunderID } from "@thunderid/react";
+import { useAuth } from "../auth/useAuth";
 import {
   ArrowRight,
   Clock3,
@@ -393,7 +393,7 @@ export function HomePage({
 }
 
 export function SignedInHomePage({ category = "flights", locations, onSearch }) {
-  const { isSignedIn, user } = useThunderID();
+  const { isSignedIn, user } = useAuth();
 
   if (!isSignedIn) {
     return <HomePage category={category} locations={locations} onSearch={onSearch} />;

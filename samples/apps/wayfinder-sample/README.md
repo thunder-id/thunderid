@@ -30,7 +30,7 @@ graph LR
     Thunder -- "user sign-in<br/>(authorization_code)" --> UI
     Thunder -- "M2M token" --> Agent
     Thunder -. "OBO consent popup" .-> Chat
-```text
+```
 
 ### Token Flow
 
@@ -64,7 +64,7 @@ The sample uses two OAuth clients and three token types:
 
 ## Project Structure
 
-```text
+```
 wayfinder-sample/
 ├── frontend/          React + Vite UI. Hosts the chat widget and the
 │                      /agent-callback route used by the consent popup.
@@ -97,14 +97,16 @@ The importable bundle already adds `http://localhost:5173` to the server-config 
 
 ## ThunderID Setup
 
-The `thunderid-config/` directory contains a single importable YAML that creates all required ThunderID resources — resource servers, roles, users, the OAuth application, and the AI agent.
+The `thunderid-config/redirect/` directory contains an importable YAML that creates all required ThunderID resources — resource servers, roles, users, the OAuth application, and the AI agent. This is the config for the default redirect-based authentication mode.
+
+> **App-native mode** (embedded sign-in without a Login Gate redirect) is also supported. See [APP_NATIVE.md](APP_NATIVE.md) for setup and try-out instructions.
 
 ### Import Resources
 
 Import the bundle:
 
 1. Start ThunderID and open the Console.
-2. On the **welcome screen** (shown on first login, or accessible from the user profile menu), choose **Open** and upload `thunderid-config/thunderid-config.yaml`. Then for environment variables, upload `thunderid-config/thunderid.env`.
+2. On the **welcome screen** (shown on first login, or accessible from the user profile menu), choose **Open** and upload `thunderid-config/redirect/thunderid-config.yaml`. Then for environment variables, upload `thunderid-config/redirect/thunderid.env`.
 
 The import creates:
 
@@ -136,7 +138,7 @@ The import creates:
 
 The agent's client secret defaults to `wayfinder-agent-secret` (set in `thunderid.env`). Change it in the environment file before importing if you prefer a different value.
 
-### Environment variables in `thunderid.env`
+### Environment variables in `redirect/thunderid.env`
 
 | Variable | Required | Description |
 |---|---|---|
@@ -194,7 +196,7 @@ ThunderID can deliver notifications — including CIBA upgrade approvals — via
    SMS_SENDER_ID=<sender-id-from-api>
    ```
 
-   Re-import `thunderid-config.yaml` so the CIBA SMS flow picks up the new sender.
+   Re-import `thunderid-config/redirect/thunderid-config.yaml` so the CIBA SMS flow picks up the new sender.
 
 2. In the ThunderID Console, go to **Applications → WAYFINDER-UPGRADE-AGENT** and change the Authentication Flow to `wayfinder-ciba-sms-flow`. Save.
 
@@ -242,7 +244,7 @@ Open `http://localhost:5173`, sign in as `john.doe` / `john.doe`, open the chat 
 
 ```
 What flights are there from Colombo to Singapore?
-```text
+```
 
 These browsing tools use the agent's M2M token — no popup beyond the initial sign-in.
 
@@ -250,7 +252,7 @@ You can also ask the agent for general recommendations — for example:
 
 ```
 Suggest a few flight deals.
-```text
+```
 
 This calls the `recommend_bookings` MCP tool, which serves `GET /api/bookings/recommended` from the same service module with the agent's M2M token. The tool requires the `booking:recommend` scope, which is granted to the `WAYFINDER-CONCIERGE` agent via its **Recommender** role assignment.
 
@@ -258,7 +260,7 @@ Then:
 
 ```
 Book flight 2
-```text
+```
 
 The agent will pause and ask for your permission. A popup opens and you sign in as the demo user via the agent's OAuth application. You pick which booking permissions to grant in the consent screen. The booking then succeeds — or returns 403 if you denied `booking:create`.
 
@@ -286,7 +288,7 @@ What flights are available from Colombo to Singapore?
 Book flight-cmb-sin-01 for 1 traveler
 I want to upgrade my Colombo to Singapore booking to business class. What are my options?
 Upgrade my booking to flight-cmb-sin-01-biz
-```text
+```
 
 The agent submits the upgrade request and tells you that a notification will be sent. Make sure the scheduler is running (`UPGRADE_SCHEDULER_ENABLED=true`). Within 30 seconds it picks up the request and emails you an approval link. Open the link, enter your password, approve the consent screen (first time only), and the upgrade is processed automatically.
 
@@ -294,7 +296,7 @@ Sign back in and ask:
 
 ```
 Check my bookings
-```text
+```
 
 The booking now shows Business class.
 

@@ -36,7 +36,7 @@ schema: {
       "displayName": "Last Name",
       "required": false
     },
-    "mobile_number": {
+    "mobileNumber": {
       "type": "string",
       "displayName": "Mobile Number",
       "required": false
@@ -226,8 +226,8 @@ nodes:
             required: true
         action:
           ref: action_credentials
-          nextNode: credentials_auth
-  - id: credentials_auth
+          nextNode: basic_auth
+  - id: basic_auth
     type: TASK_EXECUTION
     executor:
       name: CredentialsAuthExecutor
@@ -373,6 +373,8 @@ nodes:
     onFailure: email_sent_status
   - id: generate_recovery_token
     type: TASK_EXECUTION
+    properties:
+      inviteBaseURL: "{{.WAYFINDER_RECOVERY_BASE_URL}}"
     executor:
       name: InviteExecutor
       mode: generate
@@ -840,6 +842,157 @@ nodes:
     type: END
 
 ---
+# resource_type: flow
+id: 0193b0a1-1001-7000-8000-000000000008
+name: Wayfinder Registration with Auto Sign-In Flow
+handle: wayfinder-registration-autosignin-flow
+flowType: REGISTRATION
+nodes:
+  - id: start
+    type: START
+    onSuccess: user_type_resolver
+  - id: user_type_resolver
+    type: TASK_EXECUTION
+    executor:
+      name: UserTypeResolver
+    onSuccess: prompt_credentials
+    onIncomplete: prompt_usertype
+  - id: prompt_usertype
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: heading_usertype
+          label: Choose your account type
+          variant: HEADING_1
+        - type: BLOCK
+          id: block_usertype
+          components:
+            - type: SELECT
+              id: usertype_input
+              ref: userType
+              label: Account type
+              placeholder: Select an account type
+              required: true
+              options: []
+            - type: ACTION
+              id: action_usertype
+              label: Continue
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: usertype_input
+            identifier: userType
+            type: SELECT
+            required: true
+        action:
+          ref: action_usertype
+          nextNode: user_type_resolver
+  - id: prompt_credentials
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: heading_credentials
+          label: Create your account
+          variant: HEADING_1
+        - type: BLOCK
+          id: block_credentials
+          components:
+            - type: TEXT_INPUT
+              id: input_username
+              ref: username
+              label: Username
+              placeholder: Pick a username
+              required: true
+            - type: PASSWORD_INPUT
+              id: input_password
+              ref: password
+              label: Password
+              placeholder: Choose a password
+              required: true
+            - type: ACTION
+              id: action_credentials
+              label: Continue
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: input_username
+            identifier: username
+            type: TEXT_INPUT
+            required: true
+          - ref: input_password
+            identifier: password
+            type: PASSWORD_INPUT
+            required: true
+        action:
+          ref: action_credentials
+          nextNode: basic_auth
+  - id: basic_auth
+    type: TASK_EXECUTION
+    executor:
+      name: CredentialsAuthExecutor
+    onSuccess: provisioning
+  - id: provisioning
+    type: TASK_EXECUTION
+    properties:
+      assignRole: wayfinder-traveler-role, chat-user-role
+      includeOptional: true
+    executor:
+      name: ProvisioningExecutor
+      inputs:
+        - ref: input_username
+          identifier: username
+          type: TEXT_INPUT
+          required: true
+        - ref: input_password
+          identifier: password
+          type: PASSWORD_INPUT
+          required: true
+    onSuccess: authorize
+    onIncomplete: prompt_schema_attrs
+  - id: prompt_schema_attrs
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: heading_schema_attrs
+          label: Tell us about you
+          variant: HEADING_1
+        - type: BLOCK
+          id: block_dynamic_user_inputs
+          components:
+            - type: DYNAMIC_INPUT_PLACEHOLDER
+              id: dynamic_inputs
+            - type: ACTION
+              id: action_schema_attrs
+              label: Continue
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs: []
+        action:
+          ref: action_schema_attrs
+          nextNode: provisioning
+  - id: authorize
+    type: TASK_EXECUTION
+    executor:
+      name: AuthorizationExecutor
+    onSuccess: auth_assert
+  - id: auth_assert
+    type: TASK_EXECUTION
+    executor:
+      name: AuthAssertExecutor
+    onSuccess: end
+  - id: end
+    type: END
+
+---
 # resource_type: application
 id: wayfinder-app
 name: Wayfinder
@@ -847,7 +1000,7 @@ description: Wayfinder Travel sample application
 ouHandle: default
 url: http://localhost:5173
 logoUrl: "emoji:✈️"
-registrationFlowHandle: wayfinder-registration-flow
+registrationFlowHandle: wayfinder-registration-autosignin-flow
 recoveryFlowHandle: wayfinder-recovery-flow
 isRegistrationFlowEnabled: true
 isRecoveryFlowEnabled: true
@@ -869,6 +1022,7 @@ inboundAuthConfig:
         - http://localhost:5173
       grantTypes:
         - authorization_code
+        - urn:ietf:params:oauth:grant-type:token-exchange
       responseTypes:
         - code
       tokenEndpointAuthMethod: none
@@ -1005,8 +1159,8 @@ nodes:
             required: true
         action:
           ref: action_approve
-          nextNode: credentials_auth
-  - id: credentials_auth
+          nextNode: basic_auth
+  - id: basic_auth
     type: TASK_EXECUTION
     executor:
       name: CredentialsAuthExecutor
@@ -1139,7 +1293,7 @@ nodes:
       name: SMSExecutor
       mode: send
       inputs:
-        - identifier: mobile_number
+        - identifier: mobileNumber
           type: PHONE_INPUT
           required: true
     onSuccess: notification_sent_status
@@ -1210,8 +1364,8 @@ nodes:
             required: true
         action:
           ref: action_approve
-          nextNode: credentials_auth
-  - id: credentials_auth
+          nextNode: basic_auth
+  - id: basic_auth
     type: TASK_EXECUTION
     executor:
       name: CredentialsAuthExecutor
@@ -1366,8 +1520,8 @@ nodes:
             required: true
         action:
           ref: action_001
-          nextNode: credentials_auth
-  - id: credentials_auth
+          nextNode: basic_auth
+  - id: basic_auth
     type: TASK_EXECUTION
     executor:
       name: CredentialsAuthExecutor
@@ -1664,7 +1818,7 @@ attributes:
   given_name: John
   family_name: Doe
   email: john.doe@example.com
-  mobile_number: "+15550192837"
+  mobileNumber: "+15550192837"
 credentials:
   password: "{{.JOHN_DOE_PASSWORD}}"
 
@@ -1678,7 +1832,7 @@ attributes:
   given_name: Jane
   family_name: Smith
   email: jane.smith@example.com
-  mobile_number: "+15550384756"
+  mobileNumber: "+15550384756"
 credentials:
   password: "{{.JANE_SMITH_PASSWORD}}"
 
@@ -1693,12 +1847,3 @@ attributes:
   displayName: Alex Carter
 credentials:
   password: "{{.ALEX_CARTER_PASSWORD}}"
-
----
-# resource_type: server_config
-# Allows the Wayfinder web app's browser origin to call Thunder. CORS origins come only from the
-# server-config "cors" section (no default ships), so importing this bundle sets the frontend origin.
-name: cors
-value:
-  allowedOrigins:
-    - "http://localhost:5173"

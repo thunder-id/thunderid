@@ -1,0 +1,1704 @@
+# resource_type: user_type
+id: wayfinder-customer-type
+category: user
+name: Customer
+ouHandle: default
+allowSelfRegistration: true
+systemAttributes:
+  display: username
+schema: {
+    "username": {
+      "type": "string",
+      "displayName": "Username",
+      "required": true,
+      "unique": true
+    },
+    "password": {
+      "type": "string",
+      "displayName": "Password",
+      "required": false,
+      "credential": true
+    },
+    "email": {
+      "type": "string",
+      "displayName": "Email",
+      "required": true,
+      "unique": true,
+      "regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    },
+    "given_name": {
+      "type": "string",
+      "displayName": "First Name",
+      "required": false
+    },
+    "family_name": {
+      "type": "string",
+      "displayName": "Last Name",
+      "required": false
+    },
+    "mobile_number": {
+      "type": "string",
+      "displayName": "Mobile Number",
+      "required": false
+    }
+  }
+
+---
+# resource_type: user_type
+id: wayfinder-staff-type
+category: user
+name: Staff
+ouHandle: default
+allowSelfRegistration: false
+systemAttributes:
+  display: username
+schema: {
+    "username": {
+      "type": "string",
+      "displayName": "Username",
+      "required": true,
+      "unique": true
+    },
+    "password": {
+      "type": "string",
+      "displayName": "Password",
+      "required": false,
+      "credential": true
+    },
+    "email": {
+      "type": "string",
+      "displayName": "Email",
+      "required": true,
+      "unique": true,
+      "regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    },
+    "displayName": {
+      "type": "string",
+      "displayName": "Display Name",
+      "required": false
+    }
+  }
+
+---
+# resource_type: resource_server
+id: wayfinder-agent-rs
+name: Wayfinder Agent
+description: Controls access to the Wayfinder Concierge agent
+identifier: wayfinder-agent
+ouHandle: default
+delimiter: ":"
+resources:
+  - name: Agent
+    handle: agent
+    actions:
+      - name: Access
+        handle: access
+        description: Grants access to the Wayfinder Concierge agent
+
+---
+# resource_type: resource_server
+id: wayfinder-booking-rs
+name: Wayfinder Booking
+description: Protects the Wayfinder booking domain — same scopes guard the REST API on /api/* and the MCP tools on /mcp.
+# URL-shaped identifier per RFC 8707 (resource indicators), matching what the
+# Wayfinder MCP server advertises in /.well-known/oauth-protected-resource.
+# MCP Inspector reads that metadata and passes the value back as resource=...
+# on /token; Thunder rejects with invalid_target unless this identifier matches.
+identifier: http://localhost:8787/mcp
+ouHandle: default
+delimiter: ":"
+resources:
+  - name: Booking
+    handle: booking
+    actions:
+      - name: Read
+        handle: read
+      - name: Create
+        handle: create
+      - name: Cancel
+        handle: cancel
+      - name: Recommend
+        handle: recommend
+        description: Grants access to surface flight recommendations
+      - name: Upgrade
+        handle: upgrade
+        description: Allows requesting and processing flight cabin upgrades
+  - name: Upgrade
+    handle: upgrade
+    actions:
+      - name: Read
+        handle: read
+        description: Allows the upgrade scheduler agent to list pending upgrade requests via M2M
+      - name: Search
+        handle: search
+        description: Allows the upgrade scheduler agent to search available Business class flights for a route
+      - name: Process
+        handle: process
+        description: Allows the upgrade scheduler agent to execute a pending upgrade via CIBA user token
+
+---
+# resource_type: flow
+id: 0193b0a1-1001-7000-8000-000000000001
+name: Wayfinder Registration Flow
+handle: wayfinder-registration-flow
+flowType: REGISTRATION
+nodes:
+  - id: start
+    type: START
+    onSuccess: user_type_resolver
+  - id: user_type_resolver
+    type: TASK_EXECUTION
+    executor:
+      name: UserTypeResolver
+    onSuccess: prompt_credentials
+    onIncomplete: prompt_usertype
+  - id: prompt_usertype
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: heading_usertype
+          label: Choose your account type
+          variant: HEADING_1
+        - type: BLOCK
+          id: block_usertype
+          components:
+            - type: SELECT
+              id: usertype_input
+              ref: userType
+              label: Account type
+              placeholder: Select an account type
+              required: true
+              options: []
+            - type: ACTION
+              id: action_usertype
+              label: Continue
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: usertype_input
+            identifier: userType
+            type: SELECT
+            required: true
+        action:
+          ref: action_usertype
+          nextNode: user_type_resolver
+  - id: prompt_credentials
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: heading_credentials
+          label: Create your account
+          variant: HEADING_1
+        - type: BLOCK
+          id: block_credentials
+          components:
+            - type: TEXT_INPUT
+              id: input_username
+              ref: username
+              label: Username
+              placeholder: Pick a username
+              required: true
+            - type: PASSWORD_INPUT
+              id: input_password
+              ref: password
+              label: Password
+              placeholder: Choose a password
+              required: true
+            - type: ACTION
+              id: action_credentials
+              label: Continue
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: input_username
+            identifier: username
+            type: TEXT_INPUT
+            required: true
+          - ref: input_password
+            identifier: password
+            type: PASSWORD_INPUT
+            required: true
+        action:
+          ref: action_credentials
+          nextNode: basic_auth
+  - id: basic_auth
+    type: TASK_EXECUTION
+    executor:
+      name: CredentialsAuthExecutor
+    onSuccess: provisioning
+  - id: provisioning
+    type: TASK_EXECUTION
+    properties:
+      assignRole: wayfinder-traveler-role, chat-user-role
+      includeOptional: true
+    executor:
+      name: ProvisioningExecutor
+      inputs:
+        - ref: input_username
+          identifier: username
+          type: TEXT_INPUT
+          required: true
+        - ref: input_password
+          identifier: password
+          type: PASSWORD_INPUT
+          required: true
+    onSuccess: registration_complete
+    onIncomplete: prompt_schema_attrs
+  - id: prompt_schema_attrs
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: heading_schema_attrs
+          label: Tell us about you
+          variant: HEADING_1
+        - type: BLOCK
+          id: block_dynamic_user_inputs
+          components:
+            - type: DYNAMIC_INPUT_PLACEHOLDER
+              id: dynamic_inputs
+            - type: ACTION
+              id: action_schema_attrs
+              label: Continue
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs: []
+        action:
+          ref: action_schema_attrs
+          nextNode: provisioning
+  - id: registration_complete
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: registration_complete_icon
+          label: "✅"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: registration_complete_heading
+          label: Account Created
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: registration_complete_message
+          label: Your Wayfinder account is ready. Sign in to start exploring.
+          variant: HEADING_6
+        - type: STACK
+          id: registration_complete_link_stack
+          category: BLOCK
+          align: center
+          direction: row
+          justify: center
+          gap: 2
+          items: 1
+          resourceType: ELEMENT
+          components:
+            - type: RICH_TEXT
+              id: registration_complete_link
+              category: DISPLAY
+              resourceType: ELEMENT
+              label: '<h3 class="rich-text-heading-h3"><a href="{{meta(application.url)}}" target="_blank" rel="noopener noreferrer" class="rich-text-link"><span class="rich-text-pre-wrap">Go to Wayfinder</span></a></h3>'
+    message: Registration complete
+    next: end
+  - id: end
+    type: END
+
+---
+# resource_type: flow
+id: 0193b0a1-1001-7000-8000-000000000002
+name: Wayfinder Password Recovery Flow
+handle: wayfinder-recovery-flow
+flowType: RECOVERY
+nodes:
+  - id: start
+    type: START
+    onSuccess: prompt_username
+  - id: prompt_username
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: text_header_username
+          label: Reset your password
+          variant: HEADING_1
+        - type: TEXT
+          id: text_subtitle_username
+          label: Enter your username and we'll email you a recovery link.
+          variant: HEADING_6
+        - type: BLOCK
+          id: block_username
+          components:
+            - id: input_username
+              ref: username
+              type: TEXT_INPUT
+              label: Username
+              required: true
+              placeholder: Your username
+            - type: ACTION
+              id: action_submit_username
+              label: Send recovery link
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: input_username
+            identifier: username
+            type: TEXT_INPUT
+            required: true
+        action:
+          ref: action_submit_username
+          nextNode: identify_user
+  - id: identify_user
+    type: TASK_EXECUTION
+    executor:
+      name: IdentifyingExecutor
+      mode: identify
+      inputs:
+        - ref: input_username
+          identifier: username
+          type: TEXT_INPUT
+          required: true
+    onSuccess: generate_recovery_token
+    onFailure: email_sent_status
+  - id: generate_recovery_token
+    type: TASK_EXECUTION
+    executor:
+      name: InviteExecutor
+      mode: generate
+    onSuccess: send_recovery_email
+  - id: send_recovery_email
+    type: TASK_EXECUTION
+    properties:
+      emailTemplate: PASSWORD_RECOVERY
+    executor:
+      name: EmailExecutor
+      mode: send
+    onSuccess: email_sent_status
+    onFailure: email_sent_status
+  - id: email_sent_status
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: email_sent_icon
+          label: "✉️"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: email_sent_heading
+          label: Check your email
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: email_sent_message
+          label: If an account matches, we've sent a recovery link.
+          variant: HEADING_6
+    message: Check Your Email
+    next: verify_recovery_token
+  - id: verify_recovery_token
+    type: TASK_EXECUTION
+    executor:
+      name: InviteExecutor
+      mode: verify
+      inputs:
+        - ref: input_recovery_token
+          identifier: inviteToken
+          type: HIDDEN
+          required: true
+    onSuccess: prompt_new_password
+  - id: prompt_new_password
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: text_header_password
+          label: Set a new password
+          variant: HEADING_1
+        - type: BLOCK
+          id: block_password
+          components:
+            - id: input_new_password
+              ref: password
+              type: PASSWORD_INPUT
+              label: New password
+              required: true
+              placeholder: New password
+            - type: ACTION
+              id: action_submit_password
+              label: Update password
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: input_new_password
+            identifier: password
+            type: PASSWORD_INPUT
+            required: true
+        action:
+          ref: action_submit_password
+          nextNode: set_credential
+  - id: set_credential
+    type: TASK_EXECUTION
+    executor:
+      name: CredentialSetter
+    onSuccess: recovery_complete
+  - id: recovery_complete
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: recovery_complete_icon
+          label: "✅"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: recovery_complete_heading
+          label: Password updated
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: recovery_complete_message
+          label: Return to Wayfinder and sign in with your new password.
+          variant: HEADING_6
+    message: Password Reset Successful
+    next: end
+  - id: end
+    type: END
+
+---
+# resource_type: flow
+id: 0193b0a1-1001-7000-8000-000000000005
+name: Wayfinder Staff Onboarding Flow
+handle: wayfinder-onboarding-flow
+flowType: USER_ONBOARDING
+nodes:
+  - id: start
+    type: START
+    onSuccess: permission_validator
+  - id: permission_validator
+    type: TASK_EXECUTION
+    properties:
+      requiredScopes: ["system"]
+    executor:
+      name: PermissionValidator
+    onSuccess: user_type_resolver
+  - id: user_type_resolver
+    type: TASK_EXECUTION
+    executor:
+      name: UserTypeResolver
+    onSuccess: prompt_staff_role
+    onIncomplete: prompt_usertype
+  - id: prompt_usertype
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: heading_usertype
+          label: Who are you inviting?
+          variant: HEADING_1
+        - type: BLOCK
+          id: block_usertype
+          components:
+            - type: SELECT
+              id: usertype_input
+              ref: userType
+              label: User type
+              placeholder: Select a user type
+              required: true
+              options: []
+            - type: ACTION
+              id: action_usertype
+              label: Continue
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: usertype_input
+            identifier: userType
+            type: SELECT
+            required: true
+        action:
+          ref: action_usertype
+          nextNode: user_type_resolver
+  - id: prompt_staff_role
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: heading_staff_role
+          label: Which staff role?
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: subtitle_staff_role
+          label: Pick the role to attach when the invitee accepts.
+          variant: HEADING_6
+        - type: BLOCK
+          id: block_staff_role_actions
+          components:
+            - type: STACK
+              id: stack_staff_role_actions
+              direction: row
+              justify: center
+              components:
+                - type: ACTION
+                  id: action_role_support
+                  label: Support
+                  variant: PRIMARY
+                  eventType: SUBMIT
+                - type: ACTION
+                  id: action_role_destinations
+                  label: DestinationsAdmin
+                  variant: OUTLINED
+                  eventType: SUBMIT
+    prompts:
+      - action:
+          ref: action_role_support
+          nextNode: prompt_email_support
+      - action:
+          ref: action_role_destinations
+          nextNode: prompt_email_destinations
+  # ---- Support branch ----
+  - id: prompt_email_support
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: text_header_email_s
+          label: Invitee email
+          variant: HEADING_1
+        - type: BLOCK
+          id: block_email_s
+          components:
+            - id: input_prompt_email_s
+              ref: email
+              type: EMAIL_INPUT
+              label: Email
+              required: true
+              placeholder: name@example.com
+            - type: ACTION
+              id: action_submit_email_s
+              label: Send invitation
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: input_prompt_email_s
+            identifier: email
+            type: EMAIL_INPUT
+            required: true
+        action:
+          ref: action_submit_email_s
+          nextNode: check_email_uniqueness_support
+  - id: check_email_uniqueness_support
+    type: TASK_EXECUTION
+    executor:
+      name: AttributeUniquenessValidator
+    onSuccess: invite_generate_support
+    onIncomplete: prompt_email_support
+  - id: invite_generate_support
+    type: TASK_EXECUTION
+    executor:
+      name: InviteExecutor
+      mode: generate
+    onSuccess: send_invite_email_support
+  - id: send_invite_email_support
+    type: TASK_EXECUTION
+    properties:
+      emailTemplate: USER_INVITE
+    executor:
+      name: EmailExecutor
+      mode: send
+    onSuccess: email_invite_status_support
+    onFailure: email_invite_status_support
+  - id: email_invite_status_support
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: email_status_icon_s
+          label: "✅"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: email_status_heading_s
+          label: Invitation sent
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: email_status_message_s
+          label: The invitee can now accept from email and become a Support staff member.
+          variant: HEADING_6
+    message: Invitation sent
+    next: invite_verify_support
+  - id: invite_verify_support
+    type: TASK_EXECUTION
+    inputs:
+      - ref: input_invite_token_s
+        identifier: inviteToken
+        type: HIDDEN
+        required: true
+    executor:
+      name: InviteExecutor
+      mode: verify
+    onSuccess: provisioning_support
+  - id: provisioning_support
+    type: TASK_EXECUTION
+    properties:
+      includeOptional: true
+      includeOptionalCredentials: true
+      assignRole: wayfinder-support-role
+    executor:
+      name: ProvisioningExecutor
+    onSuccess: registration_complete
+    onIncomplete: prompt_user_details_support
+  - id: prompt_user_details_support
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: text_header_user_details_s
+          label: Complete Your Profile
+          variant: HEADING_1
+        - type: BLOCK
+          id: block_user_details_s
+          components:
+            - type: DYNAMIC_INPUT_PLACEHOLDER
+              id: dynamic_inputs_user_details_s
+            - type: ACTION
+              id: action_user_details_s
+              label: Finish
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs: []
+        action:
+          ref: action_user_details_s
+          nextNode: provisioning_support
+  # ---- DestinationsAdmin branch ----
+  - id: prompt_email_destinations
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: text_header_email_d
+          label: Invitee email
+          variant: HEADING_1
+        - type: BLOCK
+          id: block_email_d
+          components:
+            - id: input_prompt_email_d
+              ref: email
+              type: EMAIL_INPUT
+              label: Email
+              required: true
+              placeholder: name@example.com
+            - type: ACTION
+              id: action_submit_email_d
+              label: Send invitation
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: input_prompt_email_d
+            identifier: email
+            type: EMAIL_INPUT
+            required: true
+        action:
+          ref: action_submit_email_d
+          nextNode: check_email_uniqueness_destinations
+  - id: check_email_uniqueness_destinations
+    type: TASK_EXECUTION
+    executor:
+      name: AttributeUniquenessValidator
+    onSuccess: invite_generate_destinations
+    onIncomplete: prompt_email_destinations
+  - id: invite_generate_destinations
+    type: TASK_EXECUTION
+    executor:
+      name: InviteExecutor
+      mode: generate
+    onSuccess: send_invite_email_destinations
+  - id: send_invite_email_destinations
+    type: TASK_EXECUTION
+    properties:
+      emailTemplate: USER_INVITE
+    executor:
+      name: EmailExecutor
+      mode: send
+    onSuccess: email_invite_status_destinations
+    onFailure: email_invite_status_destinations
+  - id: email_invite_status_destinations
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: email_status_icon_d
+          label: "✅"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: email_status_heading_d
+          label: Invitation sent
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: email_status_message_d
+          label: The invitee can now accept from email and become a DestinationsAdmin staff member.
+          variant: HEADING_6
+    message: Invitation sent
+    next: invite_verify_destinations
+  - id: invite_verify_destinations
+    type: TASK_EXECUTION
+    inputs:
+      - ref: input_invite_token_d
+        identifier: inviteToken
+        type: HIDDEN
+        required: true
+    executor:
+      name: InviteExecutor
+      mode: verify
+    onSuccess: provisioning_destinations
+  - id: provisioning_destinations
+    type: TASK_EXECUTION
+    properties:
+      includeOptional: true
+      includeOptionalCredentials: true
+      assignRole: wayfinder-destinations-admin-role
+    executor:
+      name: ProvisioningExecutor
+    onSuccess: registration_complete
+    onIncomplete: prompt_user_details_destinations
+  - id: prompt_user_details_destinations
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: text_header_user_details_d
+          label: Complete Your Profile
+          variant: HEADING_1
+        - type: BLOCK
+          id: block_user_details_d
+          components:
+            - type: DYNAMIC_INPUT_PLACEHOLDER
+              id: dynamic_inputs_user_details_d
+            - type: ACTION
+              id: action_user_details_d
+              label: Finish
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs: []
+        action:
+          ref: action_user_details_d
+          nextNode: provisioning_destinations
+  # ---- Shared completion ----
+  - id: registration_complete
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: registration_complete_icon
+          label: "✅"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: registration_complete_heading
+          label: Welcome to Wayfinder
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: registration_complete_message
+          label: Your staff account is ready.
+          variant: HEADING_6
+    message: Registration complete
+    next: end
+  - id: end
+    type: END
+
+---
+# resource_type: application
+id: wayfinder-app
+name: Wayfinder
+description: Wayfinder Travel sample application
+ouHandle: default
+url: http://localhost:5173
+logoUrl: "emoji:✈️"
+registrationFlowHandle: wayfinder-registration-flow
+recoveryFlowHandle: wayfinder-recovery-flow
+isRegistrationFlowEnabled: true
+isRecoveryFlowEnabled: true
+assertion:
+  validityPeriod: 3600
+  userAttributes:
+    - given_name
+    - family_name
+    - email
+    - groups
+    - username
+allowedUserTypes:
+  - Customer
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: "{{.WAYFINDER_CLIENT_ID}}"
+      redirectUris:
+        - http://localhost:5173
+      grantTypes:
+        - authorization_code
+      responseTypes:
+        - code
+      tokenEndpointAuthMethod: none
+      pkceRequired: true
+      publicClient: true
+      token:
+        accessToken:
+          validityPeriod: 3600
+          userAttributes:
+            - given_name
+            - family_name
+            - email
+            - groups
+        idToken:
+          validityPeriod: 3600
+          userAttributes:
+            - given_name
+            - family_name
+            - email
+            - groups
+      scopeClaims:
+        email:
+          - email
+        profile:
+          - username
+          - given_name
+          - family_name
+        group:
+          - groups
+
+---
+# resource_type: flow
+id: 0193b0a1-1001-7000-8000-000000000006
+name: Default Wayfinder CIBA Email Notification Flow
+handle: wayfinder-ciba-email-flow
+flowType: AUTHENTICATION
+nodes:
+  - id: start
+    type: START
+    onSuccess: identify_user
+  - id: identify_user
+    type: TASK_EXECUTION
+    properties:
+      loginHintAttribute: "{{.CIBA_LOGIN_HINT_ATTRIBUTE}}"
+    executor:
+      name: IdentifyingExecutor
+      inputs:
+        - identifier: login_hint
+          type: TEXT_INPUT
+          required: true
+    onSuccess: generate_invite
+  - id: generate_invite
+    type: TASK_EXECUTION
+    executor:
+      name: InviteExecutor
+      mode: generate
+    onSuccess: send_notification_email
+  - id: send_notification_email
+    type: TASK_EXECUTION
+    properties:
+      emailTemplate: CIBA_NOTIFICATION
+    executor:
+      name: EmailExecutor
+      mode: send
+      inputs:
+        - identifier: email
+          type: EMAIL_INPUT
+          required: true
+    onSuccess: notification_sent_status
+  - id: notification_sent_status
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: notification_icon
+          label: "✉️"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: notification_heading
+          label: Authentication Request Sent
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: notification_message
+          label: A notification has been sent. Follow the link in the notification to continue.
+          variant: HEADING_6
+    message: Authentication notification sent
+    next: verify_invite
+  - id: verify_invite
+    type: TASK_EXECUTION
+    executor:
+      name: InviteExecutor
+      mode: verify
+      inputs:
+        - identifier: inviteToken
+          type: HIDDEN
+          required: true
+    onSuccess: prompt_credentials
+  - id: prompt_credentials
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: credentials_heading
+          label: Confirm Your Identity
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: credentials_message
+          label: Enter your password to approve the authentication request.
+          variant: HEADING_6
+        - type: BLOCK
+          id: block_credentials
+          components:
+            - id: input_password
+              ref: password
+              type: PASSWORD_INPUT
+              label: Password
+              required: true
+              placeholder: Enter your password
+            - type: ACTION
+              id: action_approve
+              label: Approve
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: input_password
+            identifier: password
+            type: PASSWORD_INPUT
+            required: true
+        action:
+          ref: action_approve
+          nextNode: basic_auth
+  - id: basic_auth
+    type: TASK_EXECUTION
+    executor:
+      name: CredentialsAuthExecutor
+    onSuccess: authorization_check
+    onIncomplete: prompt_credentials
+  - id: authorization_check
+    type: TASK_EXECUTION
+    executor:
+      name: AuthorizationExecutor
+    onSuccess: consent_check
+  - id: consent_check
+    type: TASK_EXECUTION
+    executor:
+      name: ConsentExecutor
+    onSuccess: auth_assert
+    onIncomplete: prompt_consent
+  - id: prompt_consent
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: consent_heading
+          label: "{{ meta(application.name) }} is requesting authorization"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: consent_message
+          label: Review the permissions being requested and confirm your authorization.
+          variant: HEADING_6
+        - type: BLOCK
+          id: consent_block
+          components:
+            - id: consent_input
+              ref: consent_decisions
+              type: CONSENT
+              required: true
+            - type: ACTION
+              id: consent_action_deny
+              label: Deny
+              variant: SECONDARY
+              eventType: SUBMIT
+            - type: ACTION
+              id: consent_action_allow
+              label: Approve
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: consent_input
+            identifier: consent_decisions
+            type: CONSENT
+            required: true
+        action:
+          ref: consent_action_allow
+          nextNode: consent_check
+      - inputs:
+          - ref: consent_input
+            identifier: consent_decisions
+            type: CONSENT
+            required: true
+        action:
+          ref: consent_action_deny
+          nextNode: consent_check
+  - id: auth_assert
+    type: TASK_EXECUTION
+    properties:
+      callbackType: "urn:openid:params:grant-type:ciba"
+    executor:
+      name: AuthAssertExecutor
+    onSuccess: auth_success
+  - id: auth_success
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: success_icon
+          label: "✅"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: success_heading
+          label: Authentication Successful
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: success_message
+          label: You have successfully authenticated. You may close this window.
+          variant: HEADING_6
+    message: Authentication successful
+    next: end
+  - id: end
+    type: END
+
+
+---
+# resource_type: flow
+id: 0193b0a1-1001-7000-8000-000000000007
+name: Default Wayfinder CIBA SMS Notification Flow
+handle: wayfinder-ciba-sms-flow
+flowType: AUTHENTICATION
+nodes:
+  - id: start
+    type: START
+    onSuccess: identify_user
+  - id: identify_user
+    type: TASK_EXECUTION
+    properties:
+      loginHintAttribute: "{{.CIBA_LOGIN_HINT_ATTRIBUTE}}"
+    executor:
+      name: IdentifyingExecutor
+      inputs:
+        - identifier: login_hint
+          type: TEXT_INPUT
+          required: true
+    onSuccess: generate_invite
+  - id: generate_invite
+    type: TASK_EXECUTION
+    executor:
+      name: InviteExecutor
+      mode: generate
+    onSuccess: send_notification_sms
+  - id: send_notification_sms
+    type: TASK_EXECUTION
+    properties:
+      smsTemplate: CIBA_NOTIFICATION
+      senderId: "{{.SMS_SENDER_ID}}"
+    executor:
+      name: SMSExecutor
+      mode: send
+      inputs:
+        - identifier: mobile_number
+          type: PHONE_INPUT
+          required: true
+    onSuccess: notification_sent_status
+  - id: notification_sent_status
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: notification_icon
+          label: "📱"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: notification_heading
+          label: Authentication Request Sent
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: notification_message
+          label: A notification has been sent. Follow the link in the notification to continue.
+          variant: HEADING_6
+    message: Authentication notification sent
+    next: verify_invite
+  - id: verify_invite
+    type: TASK_EXECUTION
+    executor:
+      name: InviteExecutor
+      mode: verify
+      inputs:
+        - identifier: inviteToken
+          type: HIDDEN
+          required: true
+    onSuccess: prompt_credentials
+  - id: prompt_credentials
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: credentials_heading
+          label: Confirm Your Identity
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: credentials_message
+          label: Enter your password to approve the authentication request.
+          variant: HEADING_6
+        - type: BLOCK
+          id: block_credentials
+          components:
+            - id: input_password
+              ref: password
+              type: PASSWORD_INPUT
+              label: Password
+              required: true
+              placeholder: Enter your password
+            - type: ACTION
+              id: action_approve
+              label: Approve
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: input_password
+            identifier: password
+            type: PASSWORD_INPUT
+            required: true
+        action:
+          ref: action_approve
+          nextNode: basic_auth
+  - id: basic_auth
+    type: TASK_EXECUTION
+    executor:
+      name: CredentialsAuthExecutor
+    onSuccess: authorization_check
+    onIncomplete: prompt_credentials
+  - id: authorization_check
+    type: TASK_EXECUTION
+    executor:
+      name: AuthorizationExecutor
+    onSuccess: consent_check
+  - id: consent_check
+    type: TASK_EXECUTION
+    executor:
+      name: ConsentExecutor
+    onSuccess: auth_assert
+    onIncomplete: prompt_consent
+  - id: prompt_consent
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: consent_heading
+          label: "{{ meta(application.name) }} is requesting authorization"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: consent_message
+          label: Review the permissions being requested and confirm your authorization.
+          variant: HEADING_6
+        - type: BLOCK
+          id: consent_block
+          components:
+            - id: consent_input
+              ref: consent_decisions
+              type: CONSENT
+              required: true
+            - type: ACTION
+              id: consent_action_deny
+              label: Deny
+              variant: SECONDARY
+              eventType: SUBMIT
+            - type: ACTION
+              id: consent_action_allow
+              label: Approve
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: consent_input
+            identifier: consent_decisions
+            type: CONSENT
+            required: true
+        action:
+          ref: consent_action_allow
+          nextNode: consent_check
+      - inputs:
+          - ref: consent_input
+            identifier: consent_decisions
+            type: CONSENT
+            required: true
+        action:
+          ref: consent_action_deny
+          nextNode: consent_check
+  - id: auth_assert
+    type: TASK_EXECUTION
+    properties:
+      callbackType: "urn:openid:params:grant-type:ciba"
+    executor:
+      name: AuthAssertExecutor
+    onSuccess: auth_success
+  - id: auth_success
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: success_icon
+          label: "✅"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: success_heading
+          label: Authentication Successful
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: success_message
+          label: You have successfully authenticated. You may close this window.
+          variant: HEADING_6
+    message: Authentication successful
+    next: end
+  - id: end
+    type: END
+
+---
+# resource_type: flow
+id: 0193b0a1-1001-7000-8000-000000000004
+name: Wayfinder Agent Authentication Flow
+handle: wayfinder-agent-auth-flow
+flowType: AUTHENTICATION
+nodes:
+  - id: start
+    type: START
+    onSuccess: prompt_credentials
+  - id: prompt_credentials
+    type: PROMPT
+    meta:
+      components:
+        - alt: "{{ t(signin:images.app_logo.alt) }}"
+          category: DISPLAY
+          height: "60"
+          id: image
+          resourceType: ELEMENT
+          src: "{{ meta(application.logoUrl) }}"
+          type: IMAGE
+          width: ""
+        - align: center
+          type: TEXT
+          id: text_001
+          label: "{{ t(signin:forms.credentials.title) }}"
+          variant: HEADING_1
+        - type: BLOCK
+          id: block_001
+          components:
+            - id: input_001
+              ref: username
+              type: TEXT_INPUT
+              label: "{{ t(signin:forms.credentials.fields.username.label) }}"
+              required: true
+              placeholder: "{{ t(signin:forms.credentials.fields.username.placeholder) }}"
+            - id: input_002
+              ref: password
+              type: PASSWORD_INPUT
+              label: "{{ t(signin:forms.credentials.fields.password.label) }}"
+              required: true
+              placeholder: "{{ t(signin:forms.credentials.fields.password.placeholder) }}"
+            - type: ACTION
+              id: action_001
+              label: "{{ t(signin:forms.credentials.actions.submit.label) }}"
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: input_001
+            identifier: username
+            type: TEXT_INPUT
+            required: true
+          - ref: input_002
+            identifier: password
+            type: PASSWORD_INPUT
+            required: true
+        action:
+          ref: action_001
+          nextNode: basic_auth
+  - id: basic_auth
+    type: TASK_EXECUTION
+    executor:
+      name: CredentialsAuthExecutor
+    onSuccess: authorization_check
+    onIncomplete: prompt_credentials
+  - id: authorization_check
+    type: TASK_EXECUTION
+    executor:
+      name: AuthorizationExecutor
+    onSuccess: consent_check
+  - id: consent_check
+    type: TASK_EXECUTION
+    executor:
+      name: ConsentExecutor
+    onSuccess: auth_assert
+    onIncomplete: prompt_consent
+  - id: prompt_consent
+    type: PROMPT
+    meta:
+      components:
+        - alt: "{{ t(signin:images.app_logo.alt) }}"
+          category: DISPLAY
+          height: "60"
+          id: consent_image
+          resourceType: ELEMENT
+          src: "{{ meta(application.logoUrl) }}"
+          type: IMAGE
+          width: ""
+        - align: center
+          type: TEXT
+          id: consent_heading
+          label: "{{ meta(application.name) }} is requesting access"
+          variant: HEADING_1
+        - type: BLOCK
+          id: consent_block
+          components:
+            - id: consent_input
+              ref: consent_decisions
+              type: CONSENT_INPUT
+              required: true
+            - type: ACTION
+              id: consent_action_deny
+              label: Deny
+              variant: SECONDARY
+              eventType: SUBMIT
+            - type: ACTION
+              id: consent_action_allow
+              label: Allow
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: consent_input
+            identifier: consent_decisions
+            type: CONSENT_INPUT
+            required: true
+        action:
+          ref: consent_action_allow
+          nextNode: consent_check
+      - inputs:
+          - ref: consent_input
+            identifier: consent_decisions
+            type: CONSENT_INPUT
+            required: true
+        action:
+          ref: consent_action_deny
+          nextNode: consent_check
+  - id: auth_assert
+    type: TASK_EXECUTION
+    executor:
+      name: AuthAssertExecutor
+    onSuccess: end
+  - id: end
+    type: END
+
+---
+# resource_type: agent
+id: wayfinder-concierge
+name: WAYFINDER-CONCIERGE
+description: Wayfinder Concierge AI agent for the Wayfinder Travel sample
+ouHandle: default
+type: default
+logoUrl: "emoji:✈️"
+authFlowHandle: wayfinder-agent-auth-flow
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: "{{.AGENT_CLIENT_ID}}"
+      clientSecret: "{{.AGENT_CLIENT_SECRET}}"
+      redirectUris:
+        - http://localhost:5173/agent-callback
+      grantTypes:
+        - client_credentials
+        - authorization_code
+      responseTypes:
+        - code
+      tokenEndpointAuthMethod: client_secret_basic
+      pkceRequired: false
+      publicClient: false
+      token:
+        accessToken:
+          validityPeriod: 3600
+          userAttributes:
+            - email
+
+---
+# resource_type: agent
+# CIBA-only client used by the upgrade scheduler to initiate backchannel
+# authentication for users who have a pending upgrade request.
+# Uses default-ciba-email-flow so Thunder sends an email notification to the
+# user's registered address. Kept separate from wayfinder-concierge because
+# auth_flow_handle is shared between authorization_code and CIBA — they need
+# different flows (interactive vs backchannel notification).
+id: wayfinder-upgrade-agent
+name: WAYFINDER-UPGRADE-AGENT
+description: Upgrade scheduler agent — initiates CIBA for users with pending flight upgrade requests
+ouHandle: default
+type: default
+logoUrl: "emoji:✈️"
+authFlowHandle: wayfinder-ciba-email-flow
+allowedUserTypes:
+  - Customer
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: "{{.UPGRADE_AGENT_CLIENT_ID}}"
+      clientSecret: "{{.UPGRADE_AGENT_CLIENT_SECRET}}"
+      grantTypes:
+        - client_credentials
+        - urn:openid:params:grant-type:ciba
+      tokenEndpointAuthMethod: client_secret_basic
+      publicClient: false
+      token:
+        accessToken:
+          validityPeriod: 3600
+          userAttributes:
+            - given_name
+            - family_name
+            - email
+            - username
+
+---
+# resource_type: application
+# Public OAuth client used by external MCP clients (e.g. MCP Inspector)
+# to call the Wayfinder MCP server on /mcp.
+# Used by the MCP Authorization tryout to demonstrate Thunder-secured MCP
+# access from clients that are not part of the Wayfinder product itself.
+id: external-mcp-client
+name: External MCP Client
+description: Public OAuth client for external MCP clients connecting to the Wayfinder MCP server.
+ouHandle: default
+url: http://localhost:8787/mcp
+# Reuse the Concierge's auth flow so the OAuth consent screen surfaces the
+# requested booking:* scopes during the MCP Authorization tryout. Without
+# this, Thunder falls back to the default sign-in-only flow and no consent
+# step is shown.
+authFlowHandle: wayfinder-agent-auth-flow
+allowedUserTypes:
+  - Customer
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: EXTERNAL-MCP-CLIENT
+      redirectUris:
+        - http://localhost:6274/oauth/callback/debug
+        - http://localhost:6274/oauth/callback
+      grantTypes:
+        - authorization_code
+        - refresh_token
+      responseTypes:
+        - code
+      tokenEndpointAuthMethod: none
+      pkceRequired: true
+      publicClient: true
+      token:
+        accessToken:
+          validityPeriod: 3600
+
+---
+# resource_type: role
+id: wayfinder-traveler-role
+name: Traveler
+description: Consumer role with full booking permissions
+ouHandle: default
+permissions:
+  - resourceServerId: wayfinder-booking-rs
+    permissions:
+      - booking:read
+      - booking:create
+      - booking:cancel
+assignments:
+  - id: wayfinder-john-doe
+    type: user
+  - id: wayfinder-jane-smith
+    type: user
+
+---
+# resource_type: role
+id: wayfinder-support-role
+name: Support
+description: Staff role for consumer support workflows
+ouHandle: default
+
+---
+# resource_type: role
+id: wayfinder-destinations-admin-role
+name: DestinationsAdmin
+description: Staff role for curating featured destinations
+ouHandle: default
+
+---
+# resource_type: role
+id: wayfinder-ops-admin-role
+name: OpsAdmin
+description: Staff role for inviting and managing other staff
+ouHandle: default
+assignments:
+  - id: wayfinder-alex-carter
+    type: user
+
+---
+# resource_type: role
+id: chat-user-role
+name: Chat User
+description: Grants access to use the Wayfinder Concierge agent and request flight upgrades through it
+ouHandle: default
+permissions:
+  - resourceServerId: wayfinder-agent-rs
+    permissions:
+      - agent:access
+  - resourceServerId: wayfinder-booking-rs
+    permissions:
+      - booking:upgrade
+      - upgrade:process
+assignments:
+  - id: wayfinder-john-doe
+    type: user
+
+---
+# resource_type: role
+id: booking-user-role
+name: Booking User
+description: Grants booking permissions for the Wayfinder sample
+ouHandle: default
+permissions:
+  - resourceServerId: wayfinder-booking-rs
+    permissions:
+      - booking:read
+      - booking:create
+      - booking:cancel
+assignments:
+  - id: wayfinder-john-doe
+    type: user
+  - id: wayfinder-jane-smith
+    type: user
+
+---
+# resource_type: role
+id: recommender-role
+name: Recommender
+description: Grants access to booking:recommend and upgrade:search permissions, assigned to the Wayfinder Concierge agent
+ouHandle: default
+permissions:
+  - resourceServerId: wayfinder-booking-rs
+    permissions:
+      - booking:recommend
+      - upgrade:search
+assignments:
+  - id: wayfinder-concierge
+    type: agent
+
+---
+# resource_type: role
+id: upgrade-scheduler-role
+name: Upgrade Scheduler
+description: Grants upgrade:read to the upgrade scheduler agent so its M2M token can list pending upgrade requests
+ouHandle: default
+permissions:
+  - resourceServerId: wayfinder-booking-rs
+    permissions:
+      - upgrade:read
+      - upgrade:search
+assignments:
+  - id: wayfinder-upgrade-agent
+    type: agent
+
+---
+# resource_type: user
+id: wayfinder-john-doe
+type: Customer
+ouHandle: default
+attributes:
+  username: john.doe
+  given_name: John
+  family_name: Doe
+  email: john.doe@example.com
+  mobile_number: "+15550192837"
+credentials:
+  password: "{{.JOHN_DOE_PASSWORD}}"
+
+---
+# resource_type: user
+id: wayfinder-jane-smith
+type: Customer
+ouHandle: default
+attributes:
+  username: jane.smith
+  given_name: Jane
+  family_name: Smith
+  email: jane.smith@example.com
+  mobile_number: "+15550384756"
+credentials:
+  password: "{{.JANE_SMITH_PASSWORD}}"
+
+---
+# resource_type: user
+id: wayfinder-alex-carter
+type: Staff
+ouHandle: default
+attributes:
+  username: alex.carter
+  email: alex.carter@example.com
+  displayName: Alex Carter
+credentials:
+  password: "{{.ALEX_CARTER_PASSWORD}}"
+
+---
+# resource_type: server_config
+# Allows the Wayfinder web app's browser origin to call Thunder. CORS origins come only from the
+# server-config "cors" section (no default ships), so importing this bundle sets the frontend origin.
+name: cors
+value:
+  allowedOrigins:
+    - "http://localhost:5173"

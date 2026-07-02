@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { useThunderID } from "@thunderid/react";
+import { useAuth } from "../auth/useAuth";
 import { Link } from "react-router-dom";
 import { ChevronLeft, Plane, ShieldCheck } from "lucide-react";
 import { getBookedFlights } from "../api";
@@ -26,7 +26,7 @@ import { formatPrice, getBookingReference } from "../utils/bookings";
 const walletCredentialOffer = import.meta.env.VITE_WALLET_CREDENTIAL_OFFER || "";
 
 export function BookingDetailsPageWithAuth({ bookingId }) {
-  const { getAccessToken, isSignedIn, signIn, user } = useThunderID();
+  const { getAccessToken, isSignedIn, signIn, user } = useAuth();
   const [booking, setBooking] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -84,7 +84,7 @@ export function BookingDetailsPageWithAuth({ bookingId }) {
             <h1>Sign in to view this booking.</h1>
             <p>Booking details are available after authentication.</p>
           </div>
-          <button className="dashboard-action dashboard-action--secondary" type="button" onClick={() => signIn({ acr_values: "urn:thunder:auth:user" })}>
+          <button className="dashboard-action dashboard-action--secondary" type="button" onClick={() => signIn()}>
             Sign in
           </button>
         </section>

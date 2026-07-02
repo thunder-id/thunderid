@@ -22,14 +22,15 @@ import { ThunderIDProvider } from "@thunderid/react";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import "./styles.css";
+import { NativeAuthProvider } from "./auth/NativeAuthContext.jsx";
+import { AUTH_CONFIG, SCOPES } from "./auth/config.js";
+import { nativeVerboseAuthExtensions } from "./pages/NativeVerboseAuthPage.jsx";
 
 const clientId = import.meta.env.VITE_THUNDER_CLIENT_ID;
+const appId = import.meta.env.VITE_THUNDER_APP_ID || clientId;
 const baseUrl = import.meta.env.VITE_THUNDER_BASE_URL;
 const thunderidReady = Boolean(clientId && baseUrl);
-
-const AI_FEATURES_ENABLED = import.meta.env.VITE_AI_FEATURES_ENABLED === "true";
-const SCOPES = ["openid", "profile", "email", "ou", "booking:read", "booking:create", "booking:cancel",
-  ...(AI_FEATURES_ENABLED ? ["agent:access"] : [])];
+const afterSignInUrl = AUTH_CONFIG.isRedirectBased ? window.location.origin : "";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
@@ -37,16 +38,22 @@ createRoot(document.getElementById("root")).render(
       {thunderidReady ? (
         <ThunderIDProvider
           clientId={clientId}
+          applicationId={appId}
           baseUrl={baseUrl}
-          afterSignInUrl={window.location.origin}
+          afterSignInUrl={afterSignInUrl}
           afterSignOutUrl={window.location.origin}
           scopes={SCOPES}
+          extensions={nativeVerboseAuthExtensions}
           discovery={{ wellKnown: { enabled: true } }}
         >
-          <App authReady />
+          <NativeAuthProvider>
+            <App authReady />
+          </NativeAuthProvider>
         </ThunderIDProvider>
       ) : (
-        <App authReady={false} />
+        <NativeAuthProvider>
+          <App authReady={false} />
+        </NativeAuthProvider>
       )}
     </BrowserRouter>
   </StrictMode>

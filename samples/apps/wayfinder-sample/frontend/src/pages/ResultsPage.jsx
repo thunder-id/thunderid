@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { useThunderID } from "@thunderid/react";
+import { useAuth } from "../auth/useAuth";
 import { useNavigate } from "react-router-dom";
 import { SearchPanel } from "../components/SearchPanel";
 import {
@@ -273,7 +273,7 @@ export function ResultsPage({ criteria, getAccessToken, locations, onSearch }) {
 }
 
 export function ResultsPageWithAuth(props) {
-  const { getAccessToken } = useThunderID();
+  const { getAccessToken, isSignedIn } = useAuth();
 
-  return <ResultsPage {...props} getAccessToken={getAccessToken} />;
+  return <ResultsPage {...props} getAccessToken={isSignedIn ? getAccessToken : undefined} />;
 }
