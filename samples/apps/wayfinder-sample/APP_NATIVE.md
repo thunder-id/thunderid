@@ -1,6 +1,6 @@
 # App-Native Authentication
 
-By default the Wayfinder sample authenticates users through a browser redirect to the ThunderID-hosted Login Gate. This document describes how to run the sample in **app-native mode**, where authentication happens inside the application itself — no redirect to a hosted page.
+By default the Wayfinder sample authenticates users through a browser redirect to the ThunderID-hosted Login Gate. This document describes how to run the sample in **app-native mode**. Authentication happens inside the application instead of through a redirect to a hosted page.
 
 Two variants are available:
 
@@ -20,25 +20,9 @@ The app-native config is in `thunderid-config/app-native/`. Use it **instead of*
 
 Key differences from the redirect config:
 
-- Uses `wayfinder-registration-autosignin-flow` — registration completes with an automatic sign-in.
+- Uses `wayfinder-registration-autosignin-flow`. Registration completes with an automatic sign-in.
 - Password recovery links redirect back to `http://localhost:5173/recovery` (set via `WAYFINDER_RECOVERY_BASE_URL`).
-- No AI agent client or CIBA flows — app-native mode is focused on B2C flows only.
-
-### SMTP (for Password Recovery)
-
-Update `deployment.yaml` to deliver recovery emails to the sample inbox:
-
-```yaml
-email:
-  smtp:
-    host: "127.0.0.1"
-    port: 2525
-    username: "dev"
-    password: "dev"
-    from_address: "noreply@thunderid.dev"
-    enable_start_tls: false
-    enable_authentication: true
-```
+- No AI agent client or CIBA flows. App-native mode is focused on B2C flows only.
 
 ## Configure the Frontend
 
@@ -85,5 +69,5 @@ Change `VITE_AUTH_IS_VERBOSE` in `frontend/.env` and restart the dev server:
 
 | Value | Behaviour |
 |---|---|
-| `false` | Standard — each flow step rendered by the app's own UI |
-| `true` | Verbose — `SignIn`/`SignUp` components from the React SDK handle step rendering |
+| `false` | Standard. The app renders each flow step in its own UI. |
+| `true` | Verbose. The `SignIn`/`SignUp` components from the React SDK handle step rendering. |

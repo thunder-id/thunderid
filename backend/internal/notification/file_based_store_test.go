@@ -89,7 +89,7 @@ func (suite *FileBasedStoreTestSuite) createTestSender(id, name string) *common.
 		Name:        name,
 		Description: "Test notification sender",
 		Type:        common.NotificationSenderTypeMessage,
-		Provider:    common.MessageProviderTypeTwilio,
+		Provider:    common.NotificationProviderTypeTwilio,
 		Properties:  properties,
 	}
 }
@@ -110,13 +110,13 @@ func (suite *FileBasedStoreTestSuite) TestCreateSender_Success() {
 	suite.NotNil(actualSender)
 	suite.Equal("sender-001", actualSender.ID)
 	suite.Equal("Twilio Test Sender", actualSender.Name)
-	suite.Equal(common.MessageProviderTypeTwilio, actualSender.Provider)
+	suite.Equal(common.NotificationProviderTypeTwilio, actualSender.Provider)
 }
 
 func (suite *FileBasedStoreTestSuite) TestGetSenderByID_Success() {
 	// Arrange
 	sender := suite.createTestSender("sender-002", "Vonage Test Sender")
-	sender.Provider = common.MessageProviderTypeVonage
+	sender.Provider = common.NotificationProviderTypeVonage
 	_ = suite.store.createSender(context.Background(), *sender)
 
 	// Act
@@ -127,7 +127,7 @@ func (suite *FileBasedStoreTestSuite) TestGetSenderByID_Success() {
 	suite.NotNil(retrieved)
 	suite.Equal("sender-002", retrieved.ID)
 	suite.Equal("Vonage Test Sender", retrieved.Name)
-	suite.Equal(common.MessageProviderTypeVonage, retrieved.Provider)
+	suite.Equal(common.NotificationProviderTypeVonage, retrieved.Provider)
 }
 
 func (suite *FileBasedStoreTestSuite) TestGetSenderByID_NotFound() {
@@ -142,7 +142,7 @@ func (suite *FileBasedStoreTestSuite) TestGetSenderByID_NotFound() {
 func (suite *FileBasedStoreTestSuite) TestGetSenderByName_Success() {
 	// Arrange
 	sender := suite.createTestSender("sender-003", "Custom SMS Sender")
-	sender.Provider = common.MessageProviderTypeCustom
+	sender.Provider = common.NotificationProviderTypeCustom
 	_ = suite.store.createSender(context.Background(), *sender)
 
 	// Act
@@ -153,7 +153,7 @@ func (suite *FileBasedStoreTestSuite) TestGetSenderByName_Success() {
 	suite.NotNil(retrieved)
 	suite.Equal("sender-003", retrieved.ID)
 	suite.Equal("Custom SMS Sender", retrieved.Name)
-	suite.Equal(common.MessageProviderTypeCustom, retrieved.Provider)
+	suite.Equal(common.NotificationProviderTypeCustom, retrieved.Provider)
 }
 
 func (suite *FileBasedStoreTestSuite) TestGetSenderByName_NotFound() {
@@ -268,7 +268,7 @@ func (suite *FileBasedStoreTestSuite) TestCreateMultipleSenders_WithProperties()
 		Name:        "Vonage Production",
 		Description: "Vonage notification sender",
 		Type:        common.NotificationSenderTypeMessage,
-		Provider:    common.MessageProviderTypeVonage,
+		Provider:    common.NotificationProviderTypeVonage,
 		Properties:  vonageProps,
 	}
 

@@ -1,0 +1,163 @@
+---
+title: Configure an Email Provider
+docType: guide
+description: Set up an Email notification sender to deliver emails in {{ProductName}}.
+---
+
+# Configure an Email Provider
+
+<ProductName /> sends emails through an Email Provider.
+
+Two types of email providers are supported:
+
+- **SMTP**, which requires a Host, Port, and From Address.
+- **Custom (HTTP)**, which connects to any email gateway through an HTTP webhook.
+
+## Prerequisites
+
+- A <ProductName /> instance running and accessible
+- An active account or server with your chosen email provider
+
+## Add an Email Provider
+
+### SMTP
+
+Configure a traditional SMTP server for sending emails. 
+
+Send a `POST` request to the connections API:
+
+```bash
+curl -X POST https://localhost:8090/connections/smtp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "name": "MySMTPSender",
+    "description": "SMTP provider for email delivery",
+    "host": "smtp.example.com",
+    "port": "587",
+    "username": "user",
+    "password": "pass",
+    "fromAddress": "noreply@example.com",
+    "tls": "true",
+    "enableAuthentication": "true"
+  }'
+```
+
+#### SMTP Properties
+
+| Property | Required | Description |
+| :--- | :---: | :--- |
+| `name` | ✅ | The name of the connection. |
+| `description` | ❌ | A description for the connection. |
+| `host` | ✅ | Hostname of the SMTP server (for example, `smtp.gmail.com`). |
+| `port` | ✅ | Port of the SMTP server. Use `587` for STARTTLS. |
+| `fromAddress` | ✅ | Email address that appears in the **From** field of outgoing emails. |
+| `username` | ❌ | Username for SMTP authentication. Required when `enableAuthentication` is `true`. |
+| `password` | ❌ | Password for SMTP authentication. Required when `enableAuthentication` is `true`. |
+| `tls` | ❌ | Enables explicit STARTTLS encryption. Defaults to `true`. |
+| `enableAuthentication` | ❌ | Enables SMTP authentication. Defaults to `true`. |
+
+### Custom HTTP Provider
+
+Use the custom HTTP provider to connect <ProductName /> to any email gateway that accepts HTTP webhook requests.
+
+```bash
+curl -X POST https://localhost:8090/connections/http \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "name": "CustomEmailWebhook",
+    "description": "Custom HTTP webhook for email delivery",
+    "url": "https://email.example.com/send",
+    "httpMethod": "POST",
+    "contentType": "JSON",
+    "httpHeaders": "Authorization: Bearer token"
+  }'
+```
+
+#### Custom Provider Properties
+
+| Property | Required | Description |
+| :--- | :---: | :--- |
+| `name` | ✅ | The name of the connection. |
+| `description` | ❌ | A description for the connection. |
+| `url` | ✅ | Full URL of the email gateway endpoint. |
+| `httpMethod` | ❌ | HTTP method to use. Supported values: `POST`, `GET`. |
+| `contentType` | ❌ | Request body format. Supported values: `JSON`, `FORM`. |
+| `httpHeaders` | ❌ | Comma-separated `"Key: value"` pairs, e.g. `Authorization: Bearer token`. |
+
+## Update an Email Provider
+
+To update an existing connection, send a `PUT` request with the connection's ID. 
+
+### Update SMTP Provider
+
+```bash
+curl -X PUT https://localhost:8090/connections/smtp/<sender-id> \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "name": "MySMTPSender",
+    "description": "SMTP provider for email delivery updated",
+    "host": "smtp.example.com",
+    "port": "25",
+    "fromAddress": "noreply@example.com",
+    "tls": "false",
+    "enableAuthentication": "false"
+  }'
+```
+
+*(Note: Omit `password` to keep the existing stored password.)*
+
+### Update Custom HTTP Provider
+
+```bash
+curl -X PUT https://localhost:8090/connections/http/<sender-id> \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "name": "CustomEmailWebhook",
+    "url": "https://email.example.com/send",
+    "httpMethod": "POST",
+    "contentType": "JSON",
+    "httpHeaders": "Authorization: Bearer <new-token>"
+  }'
+```
+
+:::note
+A connection's type cannot be changed after creation. To switch providers, delete the existing connection and create a new one.
+:::
+
+## List and Remove Email Providers
+
+**List SMTP providers:**
+
+```bash
+curl https://localhost:8090/connections/smtp \
+  -H "Authorization: Bearer <access_token>"
+```
+
+**List HTTP providers:**
+
+```bash
+curl https://localhost:8090/connections/http \
+  -H "Authorization: Bearer <access_token>"
+```
+
+**Delete SMTP provider:**
+
+```bash
+curl -X DELETE https://localhost:8090/connections/smtp/<sender-id> \
+  -H "Authorization: Bearer <access_token>"
+```
+
+**Delete HTTP provider:**
+
+```bash
+curl -X DELETE https://localhost:8090/connections/http/<sender-id> \
+  -H "Authorization: Bearer <access_token>"
+```
+
+## Next Steps
+
+- [Build a Flow](../../flows/build-a-flow), Add an Email step to a sign-in or registration flow

@@ -90,7 +90,7 @@ func (s *DeclarativeResourceTestSuite) TestConnectionModelFromIDPDTORejectsUnreg
 func (s *DeclarativeResourceTestSuite) TestConnectionModelFromSenderDTOUnmasksSecret() {
 	dto := ncommon.NotificationSenderDTO{
 		ID: "tw-1", Name: "My Twilio", Type: ncommon.NotificationSenderTypeMessage,
-		Provider: ncommon.MessageProviderTypeTwilio,
+		Provider: ncommon.NotificationProviderTypeTwilio,
 		Properties: []cmodels.Property{
 			mustProperty(s.T(), ncommon.TwilioPropKeyAccountSID, "AC00000000000000000000000000000000", false),
 			mustProperty(s.T(), ncommon.TwilioPropKeyAuthToken, "tok", true),
@@ -106,7 +106,7 @@ func (s *DeclarativeResourceTestSuite) TestConnectionModelFromSenderDTOUnmasksSe
 func (s *DeclarativeResourceTestSuite) TestConnectionModelFromSenderDTOSMSGateway() {
 	dto := ncommon.NotificationSenderDTO{
 		ID: "sg-1", Name: "Gateway", Type: ncommon.NotificationSenderTypeMessage,
-		Provider: ncommon.MessageProviderTypeCustom,
+		Provider: ncommon.NotificationProviderTypeCustom,
 		Properties: []cmodels.Property{
 			mustProperty(s.T(), ncommon.CustomPropKeyURL, "https://sms.example.com/send", false),
 		},
@@ -169,7 +169,7 @@ func (s *DeclarativeResourceTestSuite) TestConnectionModelToDTORoundTripsSMSVend
 	cases := []struct {
 		name         string
 		model        connectionExportModel
-		wantProvider ncommon.MessageProviderType
+		wantProvider ncommon.NotificationProviderType
 	}{
 		{
 			"twilio",
@@ -177,19 +177,53 @@ func (s *DeclarativeResourceTestSuite) TestConnectionModelToDTORoundTripsSMSVend
 				ID: "s1", Type: "twilio", Name: "n", AccountSID: "AC00000000000000000000000000000000",
 				AuthToken: "t", SenderID: "+1",
 			},
-			ncommon.MessageProviderTypeTwilio,
+			ncommon.NotificationProviderTypeTwilio,
 		},
 		{
 			"vonage",
 			connectionExportModel{
 				ID: "s2", Type: "vonage", Name: "n", APIKey: "k", APISecret: "s", SenderID: "ThunderID",
 			},
-			ncommon.MessageProviderTypeVonage,
+			ncommon.NotificationProviderTypeVonage,
 		},
 		{
 			"sms-gateway",
 			connectionExportModel{ID: "s3", Type: smsGatewayVendorName, Name: "n", URL: "https://x/send"},
-			ncommon.MessageProviderTypeCustom,
+			ncommon.NotificationProviderTypeCustom,
+		},
+	}
+	for _, tc := range cases {
+		idpDTO, senderDTO, err := connectionModelToDTO(tc.model)
+		s.Require().NoError(err, tc.name)
+		s.Nil(idpDTO, tc.name)
+		s.Require().NotNil(senderDTO, tc.name)
+		s.Equal(tc.model.ID, senderDTO.ID, tc.name)
+		s.Equal(tc.wantProvider, senderDTO.Provider, tc.name)
+	}
+}
+
+func (s *DeclarativeResourceTestSuite) TestConnectionModelToDTORoundTripsEmailVendors() {
+	cases := []struct {
+		name         string
+		model        connectionExportModel
+		wantProvider ncommon.NotificationProviderType
+	}{
+		{
+			"smtp",
+			connectionExportModel{
+				ID: "s4", Type: "smtp", Name: "n", Host: "smtp.example.com", Port: "587",
+				Username: "user", Password: "pwd", SenderAddress: "no-reply@example.com",
+				TLS: "starttls", EnableAuthentication: "true",
+			},
+			ncommon.NotificationProviderTypeSMTP,
+		},
+		{
+			"http",
+			connectionExportModel{
+				ID: "s5", Type: "http", Name: "n", URL: "https://api.example.com/email",
+				HTTPMethod: "POST", HTTPHeaders: "Auth: token", ContentType: "application/json",
+			},
+			ncommon.NotificationProviderTypeHTTP,
 		},
 	}
 	for _, tc := range cases {
@@ -267,7 +301,50 @@ httpMethod: POST
 	s.Nil(idpDTO)
 	s.Require().NotNil(senderDTO)
 	s.Equal("prod-sms", senderDTO.ID)
-	s.Equal(ncommon.MessageProviderTypeCustom, senderDTO.Provider)
+	s.Equal(ncommon.NotificationProviderTypeCustom, senderDTO.Provider)
+}
+
+func (s *DeclarativeResourceTestSuite) TestParseConnectionFromNodeSMTPEmailVendor() {
+	doc := `
+id: prod-smtp
+type: smtp
+name: Prod SMTP
+host: smtp.example.com
+port: 587
+username: user
+password: pwd
+fromAddress: no-reply@example.com
+tls: starttls
+enableAuthentication: "true"
+`
+	var node yaml.Node
+	s.Require().NoError(yaml.Unmarshal([]byte(doc), &node))
+	idpDTO, senderDTO, err := ParseConnectionFromNode(node.Content[0])
+	s.Require().NoError(err)
+	s.Nil(idpDTO)
+	s.Require().NotNil(senderDTO)
+	s.Equal("prod-smtp", senderDTO.ID)
+	s.Equal(ncommon.NotificationProviderTypeSMTP, senderDTO.Provider)
+}
+
+func (s *DeclarativeResourceTestSuite) TestParseConnectionFromNodeHTTPEmailVendor() {
+	doc := `
+id: prod-http
+type: http
+name: Prod HTTP Email
+url: https://api.example.com/send
+httpMethod: POST
+httpHeaders: "Authorization: Bearer token"
+contentType: JSON
+`
+	var node yaml.Node
+	s.Require().NoError(yaml.Unmarshal([]byte(doc), &node))
+	idpDTO, senderDTO, err := ParseConnectionFromNode(node.Content[0])
+	s.Require().NoError(err)
+	s.Nil(idpDTO)
+	s.Require().NotNil(senderDTO)
+	s.Equal("prod-http", senderDTO.ID)
+	s.Equal(ncommon.NotificationProviderTypeHTTP, senderDTO.Provider)
 }
 
 func (s *DeclarativeResourceTestSuite) TestParseToConnectionDTOWrapperIDPVendor() {
@@ -362,6 +439,8 @@ func (s *DeclarativeResourceTestSuite) TestGetResourceRulesForResourceSecretSele
 		{connectionExportModel{Type: "google"}, nil}, // no secret set -> nothing to externalize
 		{connectionExportModel{Type: "twilio"}, []string{"AuthToken"}},
 		{connectionExportModel{Type: "vonage"}, []string{"APISecret"}},
+		{connectionExportModel{Type: "smtp", Password: "p"}, []string{"Password"}},
+		{connectionExportModel{Type: "http"}, nil},
 		{connectionExportModel{Type: smsGatewayVendorName}, nil},
 	}
 	for _, tc := range cases {
@@ -377,7 +456,7 @@ func (s *DeclarativeResourceTestSuite) TestGetResourceByIDFallsBackToSender() {
 	s.mockNotif.On("GetSender", mock.Anything, "tw-1").
 		Return(&ncommon.NotificationSenderDTO{
 			ID: "tw-1", Name: "My Twilio", Type: ncommon.NotificationSenderTypeMessage,
-			Provider: ncommon.MessageProviderTypeTwilio,
+			Provider: ncommon.NotificationProviderTypeTwilio,
 			Properties: []cmodels.Property{
 				mustProperty(s.T(), ncommon.TwilioPropKeyAccountSID, "AC00000000000000000000000000000000", false),
 			},
@@ -391,14 +470,46 @@ func (s *DeclarativeResourceTestSuite) TestGetResourceByIDFallsBackToSender() {
 	s.Equal("twilio", model.Type)
 }
 
+func (s *DeclarativeResourceTestSuite) TestGetResourceByIDSmtp() {
+	s.mockIDP.On("GetIdentityProvider", mock.Anything, "smtp-1").
+		Return((*providers.IDPDTO)(nil), &idp.ErrorIDPNotFound)
+	s.mockNotif.On("GetSender", mock.Anything, "smtp-1").
+		Return(&ncommon.NotificationSenderDTO{
+			ID: "smtp-1", Name: "My SMTP", Type: ncommon.NotificationSenderTypeEmail,
+			Provider: ncommon.NotificationProviderTypeSMTP,
+			Properties: []cmodels.Property{
+				mustProperty(s.T(), ncommon.SMTPPropKeyHost, "smtp.example.com", false),
+				mustProperty(s.T(), ncommon.SMTPPropKeyPort, "587", false),
+				mustProperty(s.T(), ncommon.SMTPPropKeyUsername, "user", false),
+				mustProperty(s.T(), ncommon.SMTPPropKeyPassword, "pass", true),
+				mustProperty(s.T(), ncommon.SMTPPropKeyFromAddress, "no-reply@example.com", false),
+			},
+		}, (*tidcommon.ServiceError)(nil))
+
+	resource, name, svcErr := s.exporter.GetResourceByID(context.Background(), "smtp-1")
+	s.Require().Nil(svcErr)
+	s.Equal("My SMTP", name)
+	model, ok := resource.(*connectionExportModel)
+	s.Require().True(ok)
+	s.Equal("smtp", model.Type)
+	s.Equal("smtp.example.com", model.Host)
+}
+
+func (s *DeclarativeResourceTestSuite) TestConnectionModelFromSenderDTOUnsupportedProvider() {
+	_, err := connectionModelFromSenderDTO(ncommon.NotificationSenderDTO{
+		Provider: ncommon.NotificationProviderType("unsupported"),
+	})
+	s.Error(err)
+}
+
 func (s *DeclarativeResourceTestSuite) TestGetAllResourceIDsFiltersUnregisteredVendors() {
 	s.mockIDP.On("GetIdentityProviderList", mock.Anything).Return([]idp.BasicIDPDTO{
 		{ID: "1", Type: providers.IDPTypeGoogle},
 		{ID: "2", Type: providers.IDPType("SAML")}, // unregistered -> excluded
 	}, (*tidcommon.ServiceError)(nil))
 	s.mockNotif.On("ListSenders", mock.Anything).Return([]ncommon.NotificationSenderDTO{
-		{ID: "s1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeTwilio},
-		{ID: "s2", Type: ncommon.NotificationSenderTypeEmail, Provider: ncommon.MessageProviderType("mailer")},
+		{ID: "s1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeTwilio},
+		{ID: "s2", Type: ncommon.NotificationSenderTypeEmail, Provider: ncommon.NotificationProviderType("mailer")},
 	}, (*tidcommon.ServiceError)(nil))
 
 	ids, svcErr := s.exporter.GetAllResourceIDs(context.Background())
@@ -433,7 +544,7 @@ func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreDispatchesB
 	s.Require().NoError(err)
 	s.Equal(idpDTO, got)
 
-	senderDTO := &ncommon.NotificationSenderDTO{ID: "sender-1", Provider: ncommon.MessageProviderTypeTwilio}
+	senderDTO := &ncommon.NotificationSenderDTO{ID: "sender-1", Provider: ncommon.NotificationProviderTypeTwilio}
 	s.Require().NoError(store.Create("sender-1", senderDTO))
 	got, err = store.senderStore.Get("sender-1")
 	s.Require().NoError(err)
@@ -463,7 +574,7 @@ func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreSkipsIDPWhe
 	_, err := store.idpStore.Get("idp-1")
 	s.Error(err, "IDP declarative resource should not be stored when idp store mode is mutable")
 
-	senderDTO := &ncommon.NotificationSenderDTO{ID: "sender-1", Provider: ncommon.MessageProviderTypeTwilio}
+	senderDTO := &ncommon.NotificationSenderDTO{ID: "sender-1", Provider: ncommon.NotificationProviderTypeTwilio}
 	s.Require().NoError(store.Create("sender-1", senderDTO))
 	got, err := store.senderStore.Get("sender-1")
 	s.Require().NoError(err)

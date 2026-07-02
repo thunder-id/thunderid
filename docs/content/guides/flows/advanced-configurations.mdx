@@ -1686,8 +1686,8 @@ Sends a transactional email using a configured template. Runs in the background:
 - **Recovery flows:** Send a password reset link to the user's registered email.
 
 **Prerequisites:**
-- `email` (required): the recipient email address must be resolvable before this executor runs. Not a configurable node input. Resolved in priority order: forwarded data from prior executors (e.g., Generate Invite, Magic Link) → user inputs → user store (looked up via `userID`). The executor fails if none of these resolve to a non-empty address.
-- An email service must be configured in <ProductName />. See [SMTP Server Configuration](../../smtp-server/smtp-server-configuration/). The executor returns failure status if no email client is configured.
+- `email` (required), the recipient email address must be resolvable before this executor runs. It is not a configurable node input. The executor resolves it in priority order: forwarded data from prior executors (e.g., Generate Invite, Magic Link), user inputs, then the user store, looked up via `userID`. The executor fails if none of these resolve to a non-empty address.
+- An email service must be configured in <ProductName />. See [Email Providers](../notifications/email-providers.mdx). The executor returns failure status if no email client is configured.
 
 **Skip delivery:** If `skipDelivery` is set to `true`, the executor returns complete immediately without sending anything. Use this in test environments.
 

@@ -35,7 +35,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.connectionservice.invalid_category_description",
-			DefaultValue: "The category must be one of: identity-provider, sms-provider",
+			DefaultValue: "The category must be one of: identity-provider, sms-provider, email-provider",
 		},
 	}
 	// ErrorInvalidLimit is the error returned when an invalid limit query parameter is provided.

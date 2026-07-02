@@ -72,6 +72,7 @@ const (
 	testCredentialID     = "credential-id-123" // #nosec G101
 	testCredentialType   = "public-key"
 	testSenderID         = "sender_123"
+	testEmailAddr        = "test@example.com"
 )
 
 type AuthenticationServiceTestSuite struct {
@@ -468,7 +469,7 @@ func (suite *AuthenticationServiceTestSuite) TestSendOTPSuccess() {
 	suite.mockTemplateService.On("Render",
 		mock.Anything, template.ScenarioOTP, template.TemplateTypeSMS, mock.Anything).
 		Return(&template.RenderedTemplate{Body: "Your OTP is 123456"}, nil)
-	suite.mockNotifSenderSvc.On("Send",
+	suite.mockNotifSenderSvc.On("SendMessage",
 		mock.Anything, notifcommon.ChannelTypeSMS, senderID, mock.Anything).
 		Return(nil)
 
@@ -500,31 +501,61 @@ func (suite *AuthenticationServiceTestSuite) TestSendOTPGenerateError() {
 }
 
 func (suite *AuthenticationServiceTestSuite) TestSendOTPSendError() {
+	suite.testSendOTPSendErrorHelper(
+		notifcommon.ChannelTypeSMS,
+		"mobile_number",
+		template.TemplateTypeSMS,
+		"+1234567890",
+	)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestSendOTPEmailSuccess() {
 	senderID := testSenderID
-	recipient := "+1234567890"
+	recipient := testEmailAddr
+
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, recipient, "email_address").
+		Return(testSessionTkn, "123456", int64(300), nil)
+	suite.mockTemplateService.On("Render",
+		mock.Anything, template.ScenarioOTP, template.TemplateTypeEmail, mock.Anything).
+		Return(&template.RenderedTemplate{Body: "Your OTP is 123456"}, nil)
+	suite.mockNotifSenderSvc.On("SendMessage",
+		mock.Anything, notifcommon.ChannelTypeEmail, senderID, mock.Anything).
+		Return(nil)
+
+	result, err := suite.service.SendOTP(context.Background(), senderID, notifcommon.ChannelTypeEmail, recipient)
+
+	suite.Nil(err)
+	suite.Equal(testSessionTkn, result)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestSendOTPEmailGenerateError() {
+	senderID := testSenderID
+	recipient := testEmailAddr
 	svcErr := &tidcommon.ServiceError{
 		Type:  tidcommon.ClientErrorType,
 		Code:  "OTP_ERROR",
 		Error: tidcommon.I18nMessage{Key: "error.test.otp_error", DefaultValue: "OTP error"},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key: "error.test.failed_to_send_otp", DefaultValue: "Failed to send OTP",
-		},
+			Key: "error.test.failed_to_generate_otp", DefaultValue: "Failed to generate OTP"},
 	}
 
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, recipient, "mobile_number").
-		Return(testSessionTkn, "123456", int64(300), nil)
-	suite.mockTemplateService.On("Render",
-		mock.Anything, template.ScenarioOTP, template.TemplateTypeSMS, mock.Anything).
-		Return(&template.RenderedTemplate{Body: "Your OTP is 123456"}, nil)
-	suite.mockNotifSenderSvc.On("Send",
-		mock.Anything, notifcommon.ChannelTypeSMS, senderID, mock.Anything).
-		Return(svcErr)
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, recipient, "email_address").
+		Return("", "", int64(0), svcErr)
 
-	result, err := suite.service.SendOTP(context.Background(), senderID, notifcommon.ChannelTypeSMS, recipient)
+	result, err := suite.service.SendOTP(context.Background(), senderID, notifcommon.ChannelTypeEmail, recipient)
 
 	suite.Empty(result)
 	suite.NotNil(err)
 	suite.Equal(svcErr.Code, err.Code)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestSendOTPEmailSendError() {
+	suite.testSendOTPSendErrorHelper(
+		notifcommon.ChannelTypeEmail,
+		"email_address",
+		template.TemplateTypeEmail,
+		testEmailAddr,
+	)
 }
 
 func (suite *AuthenticationServiceTestSuite) TestVerifyOTP() {
@@ -2352,4 +2383,36 @@ func (suite *AuthenticationServiceTestSuite) createTestAssertionWithoutAssurance
 	encodedPayload := base64.RawURLEncoding.EncodeToString(payloadBytes)
 
 	return fmt.Sprintf("header.%s.signature", encodedPayload)
+}
+
+func (suite *AuthenticationServiceTestSuite) testSendOTPSendErrorHelper(
+	channelType notifcommon.ChannelType,
+	claimType string,
+	templateType template.TemplateType,
+	recipient string,
+) {
+	senderID := testSenderID
+	svcErr := &tidcommon.ServiceError{
+		Type:  tidcommon.ClientErrorType,
+		Code:  "OTP_ERROR",
+		Error: tidcommon.I18nMessage{Key: "error.test.otp_error", DefaultValue: "OTP error"},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.test.failed_to_send_otp", DefaultValue: "Failed to send OTP",
+		},
+	}
+
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, recipient, claimType).
+		Return(testSessionTkn, "123456", int64(300), nil)
+	suite.mockTemplateService.On("Render",
+		mock.Anything, template.ScenarioOTP, templateType, mock.Anything).
+		Return(&template.RenderedTemplate{Body: "Your OTP is 123456"}, nil)
+	suite.mockNotifSenderSvc.On("SendMessage",
+		mock.Anything, channelType, senderID, mock.Anything).
+		Return(svcErr)
+
+	result, err := suite.service.SendOTP(context.Background(), senderID, channelType, recipient)
+
+	suite.Empty(result)
+	suite.NotNil(err)
+	suite.Equal(svcErr.Code, err.Code)
 }

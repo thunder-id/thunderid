@@ -272,7 +272,7 @@ The recovery flow drives [Account Recovery](../account-recovery). It:
 - Verifies the token from the email link.
 - Lands the user on a **Set new password** screen and updates the credential.
 
-SMTP must be configured for the recovery email to reach the user. The SMTP step is covered in the [Set Up Account Recovery](../account-recovery/#set-up-account-recovery) and is required regardless of which path you took.
+An Email Sender must be configured for the recovery email to reach the user. The Notification Sender setup is covered in [Email Providers](../../../../guides/notifications/email-providers) and is required regardless of which path you took.
 
 1. Save the JSON below as `wayfinder-recovery-flow.json` and POST it to the flows API:
 

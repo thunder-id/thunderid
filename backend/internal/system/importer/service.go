@@ -75,6 +75,7 @@ type senderAdapter interface {
 		*tidcommon.ServiceError,
 	)
 	GetSender(ctx context.Context, id string) (*ncommon.NotificationSenderDTO, *tidcommon.ServiceError)
+	GetSenderByName(ctx context.Context, name string) (*ncommon.NotificationSenderDTO, *tidcommon.ServiceError)
 	UpdateSender(ctx context.Context, id string, sender ncommon.NotificationSenderDTO) (
 		*ncommon.NotificationSenderDTO,
 		*tidcommon.ServiceError,
@@ -1056,3 +1057,5 @@ func isNotFoundServiceError(svcErr *tidcommon.ServiceError) bool {
 	_, ok := notFoundErrorCodes[svcErr.Code]
 	return ok
 }
+
+// importNotificationSender imports a notification sender resource from a YAML document.

@@ -118,12 +118,14 @@ func (s *InitTestSuite) TestRouteTable() {
 
 	twilioDTO := &ncommon.NotificationSenderDTO{
 		ID: "tw-1", Name: "TW", Type: ncommon.NotificationSenderTypeMessage,
-		Provider: ncommon.MessageProviderTypeTwilio,
+		Provider: ncommon.NotificationProviderTypeTwilio,
 	}
 	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
 		Return([]ncommon.NotificationSenderDTO{*twilioDTO}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeEmail).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
 	s.mockNotif.On("CreateSender", mock.Anything, mock.MatchedBy(func(dto ncommon.NotificationSenderDTO) bool {
-		return dto.Provider == ncommon.MessageProviderTypeTwilio
+		return dto.Provider == ncommon.NotificationProviderTypeTwilio
 	})).Return(twilioDTO, (*tidcommon.ServiceError)(nil))
 	s.mockNotif.On("GetSender", mock.Anything, "tw-1").
 		Return(twilioDTO, (*tidcommon.ServiceError)(nil))
@@ -134,10 +136,10 @@ func (s *InitTestSuite) TestRouteTable() {
 
 	smsGatewayDTO := &ncommon.NotificationSenderDTO{
 		ID: "sg-1", Name: "SG", Type: ncommon.NotificationSenderTypeMessage,
-		Provider: ncommon.MessageProviderTypeCustom,
+		Provider: ncommon.NotificationProviderTypeCustom,
 	}
 	s.mockNotif.On("CreateSender", mock.Anything, mock.MatchedBy(func(dto ncommon.NotificationSenderDTO) bool {
-		return dto.Provider == ncommon.MessageProviderTypeCustom
+		return dto.Provider == ncommon.NotificationProviderTypeCustom
 	})).Return(smsGatewayDTO, (*tidcommon.ServiceError)(nil))
 	s.mockNotif.On("GetSender", mock.Anything, "sg-1").
 		Return(smsGatewayDTO, (*tidcommon.ServiceError)(nil))

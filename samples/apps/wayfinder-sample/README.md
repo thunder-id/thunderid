@@ -172,21 +172,9 @@ After the import, complete the following local configuration and restart the ser
     user_onboarding_flow_handle: "wayfinder-onboarding-flow"
   ```
 
-- Configure SMTP so recovery and invitation emails can be delivered. The sample ships with a built-in local SMTP server (`smtp-server/`) that listens on `127.0.0.1:2525`. No external relay is required. The defaults below match its credentials exactly, so no further editing is needed for local development:
+- The sample ships with a built-in local SMTP server (`smtp-server/`) that listens on `127.0.0.1:2525` — no external relay required. You will configure this via the API or Console.
 
-  ```yaml
-  email:
-    smtp:
-      host: "127.0.0.1"
-      port: 2525
-      username: "dev"
-      password: "dev"
-      from_address: "noreply@thunderid.dev"
-      enable_start_tls: false
-      enable_authentication: true
-  ```
-
-  Once the sample is running, open `http://localhost:8788` to view captured emails in the inbox UI.
+- Once the sample is running, open `http://localhost:8788` to view captured emails in the inbox UI.
 
 - Configure the Direct Auth Secret used by AuthZEN mode. Keep the file-backed setting in `deployment.yaml` unchanged:
 

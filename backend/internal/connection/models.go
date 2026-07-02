@@ -53,14 +53,25 @@ const smsGatewayVendorName = "sms-gateway"
 // smsBackedVendor maps a connection path segment to an underlying message provider.
 type smsBackedVendor struct {
 	name     string
-	provider ncommon.MessageProviderType
+	provider ncommon.NotificationProviderType
 }
 
-// smsBackedVendors is the set of connection types backed by the notification-sender service.
 var smsBackedVendors = []smsBackedVendor{
-	{name: "twilio", provider: ncommon.MessageProviderTypeTwilio},
-	{name: "vonage", provider: ncommon.MessageProviderTypeVonage},
-	{name: smsGatewayVendorName, provider: ncommon.MessageProviderTypeCustom},
+	{name: "twilio", provider: ncommon.NotificationProviderTypeTwilio},
+	{name: "vonage", provider: ncommon.NotificationProviderTypeVonage},
+	{name: smsGatewayVendorName, provider: ncommon.NotificationProviderTypeCustom},
+}
+
+// emailBackedVendor maps a connection path segment to an underlying email provider.
+type emailBackedVendor struct {
+	name     string
+	provider ncommon.NotificationProviderType
+}
+
+// emailBackedVendors is the set of connection types backed by the email notification-sender service.
+var emailBackedVendors = []emailBackedVendor{
+	{name: "smtp", provider: ncommon.NotificationProviderTypeSMTP},
+	{name: "http", provider: ncommon.NotificationProviderTypeHTTP},
 }
 
 // connectionCategory is the functional category of a connection instance, used as the
@@ -70,13 +81,14 @@ type connectionCategory string
 const (
 	categoryIdentityProvider connectionCategory = "identity-provider"
 	categorySMSProvider      connectionCategory = "sms-provider"
+	categoryEmailProvider    connectionCategory = "email-provider"
 )
 
 // parseConnectionCategory validates the raw category query value. Empty means "no filter";
 // any other unrecognized value returns false.
 func parseConnectionCategory(raw string) (connectionCategory, bool) {
 	switch connectionCategory(raw) {
-	case "", categoryIdentityProvider, categorySMSProvider:
+	case "", categoryIdentityProvider, categorySMSProvider, categoryEmailProvider:
 		return connectionCategory(raw), true
 	default:
 		return "", false

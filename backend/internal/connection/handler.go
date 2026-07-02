@@ -19,6 +19,7 @@
 package connection
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -259,11 +260,12 @@ func (h *handler) handleListConnections(w http.ResponseWriter, r *http.Request) 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
 }
 
-// createSMSConnection decodes a typed request, maps it to a notification-sender DTO via the
-// vendor's mapper, delegates creation, and writes the encoded response.
-func createSMSConnection[Req any, Resp any](h *handler, w http.ResponseWriter, r *http.Request,
+// createConnectionHelper decodes a typed request, maps it to a DTO, delegates creation, and writes the response.
+func createConnectionHelper[Req any, Resp any](w http.ResponseWriter, r *http.Request,
 	toDTO func(Req) (*ncommon.NotificationSenderDTO, error),
-	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) {
+	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error),
+	createSender func(context.Context, ncommon.NotificationSenderDTO) (
+		*ncommon.NotificationSenderDTO, *tidcommon.ServiceError)) {
 	ctx := r.Context()
 	req, err := sysutils.DecodeJSONBody[Req](r)
 	if err != nil {
@@ -275,7 +277,7 @@ func createSMSConnection[Req any, Resp any](h *handler, w http.ResponseWriter, r
 		writeServiceError(ctx, w, &tidcommon.InternalServerError)
 		return
 	}
-	created, svcErr := h.svc.createSMS(ctx, *dto)
+	created, svcErr := createSender(ctx, *dto)
 	if svcErr != nil {
 		writeServiceError(ctx, w, svcErr)
 		return
@@ -288,9 +290,16 @@ func createSMSConnection[Req any, Resp any](h *handler, w http.ResponseWriter, r
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, resp)
 }
 
+// createSMSConnection decodes a typed request, maps it, delegates the creation, and writes the response.
+func createSMSConnection[Req any, Resp any](h *handler, w http.ResponseWriter, r *http.Request,
+	toDTO func(Req) (*ncommon.NotificationSenderDTO, error),
+	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) {
+	createConnectionHelper(w, r, toDTO, fromDTO, h.svc.createSMS)
+}
+
 // getSMSConnection fetches a message sender of the given provider and writes the encoded response.
 func getSMSConnection[Resp any](h *handler, w http.ResponseWriter, r *http.Request,
-	provider ncommon.MessageProviderType, fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) {
+	provider ncommon.NotificationProviderType, fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) {
 	ctx := r.Context()
 	id := r.PathValue("id")
 	if strings.TrimSpace(id) == "" {
@@ -310,11 +319,12 @@ func getSMSConnection[Resp any](h *handler, w http.ResponseWriter, r *http.Reque
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
 }
 
-// updateSMSConnection decodes a typed request, maps it, delegates the update (which preserves
-// any secret the request omits), and writes the encoded response.
-func updateSMSConnection[Req any, Resp any](h *handler, w http.ResponseWriter, r *http.Request,
-	provider ncommon.MessageProviderType, toDTO func(Req) (*ncommon.NotificationSenderDTO, error),
-	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) {
+// updateConnectionHelper decodes a typed request, maps it, delegates the update, and writes the encoded response.
+func updateConnectionHelper[Req any, Resp any](w http.ResponseWriter, r *http.Request,
+	provider ncommon.NotificationProviderType, toDTO func(Req) (*ncommon.NotificationSenderDTO, error),
+	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error),
+	updateSender func(context.Context, ncommon.NotificationProviderType, string,
+		ncommon.NotificationSenderDTO) (*ncommon.NotificationSenderDTO, *tidcommon.ServiceError)) {
 	ctx := r.Context()
 	id := r.PathValue("id")
 	if strings.TrimSpace(id) == "" {
@@ -331,7 +341,7 @@ func updateSMSConnection[Req any, Resp any](h *handler, w http.ResponseWriter, r
 		writeServiceError(ctx, w, &tidcommon.InternalServerError)
 		return
 	}
-	updated, svcErr := h.svc.updateSMS(ctx, provider, id, *dto)
+	updated, svcErr := updateSender(ctx, provider, id, *dto)
 	if svcErr != nil {
 		writeServiceError(ctx, w, svcErr)
 		return
@@ -344,6 +354,14 @@ func updateSMSConnection[Req any, Resp any](h *handler, w http.ResponseWriter, r
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
 }
 
+// updateSMSConnection decodes a typed request, maps it, delegates the update (which preserves
+// any secret the request omits), and writes the encoded response.
+func updateSMSConnection[Req any, Resp any](h *handler, w http.ResponseWriter, r *http.Request,
+	provider ncommon.NotificationProviderType, toDTO func(Req) (*ncommon.NotificationSenderDTO, error),
+	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) {
+	updateConnectionHelper(w, r, provider, toDTO, fromDTO, h.svc.updateSMS)
+}
+
 // createSMSHandler binds a vendor's mappers to createSMSConnection, yielding a registerable handler.
 func createSMSHandler[Req any, Resp any](h *handler,
 	toDTO func(Req) (*ncommon.NotificationSenderDTO, error),
@@ -354,7 +372,7 @@ func createSMSHandler[Req any, Resp any](h *handler,
 }
 
 // getSMSHandler binds a vendor's provider and mapper to getSMSConnection, yielding a handler.
-func getSMSHandler[Resp any](h *handler, provider ncommon.MessageProviderType,
+func getSMSHandler[Resp any](h *handler, provider ncommon.NotificationProviderType,
 	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		getSMSConnection(h, w, r, provider, fromDTO)
@@ -362,7 +380,7 @@ func getSMSHandler[Resp any](h *handler, provider ncommon.MessageProviderType,
 }
 
 // updateSMSHandler binds a vendor's provider and mappers to updateSMSConnection.
-func updateSMSHandler[Req any, Resp any](h *handler, provider ncommon.MessageProviderType,
+func updateSMSHandler[Req any, Resp any](h *handler, provider ncommon.NotificationProviderType,
 	toDTO func(Req) (*ncommon.NotificationSenderDTO, error),
 	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -371,7 +389,7 @@ func updateSMSHandler[Req any, Resp any](h *handler, provider ncommon.MessagePro
 }
 
 // listSMSInstances returns a handler that lists the configured senders of a message provider.
-func (h *handler) listSMSInstances(provider ncommon.MessageProviderType) http.HandlerFunc {
+func (h *handler) listSMSInstances(provider ncommon.NotificationProviderType) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		instances, svcErr := h.svc.listSMSByProvider(ctx, provider)
@@ -392,7 +410,7 @@ func (h *handler) listSMSInstances(provider ncommon.MessageProviderType) http.Ha
 }
 
 // deleteSMSInstance returns a handler that deletes a sender of a message provider.
-func (h *handler) deleteSMSInstance(provider ncommon.MessageProviderType) http.HandlerFunc {
+func (h *handler) deleteSMSInstance(provider ncommon.NotificationProviderType) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		id := r.PathValue("id")
@@ -401,6 +419,108 @@ func (h *handler) deleteSMSInstance(provider ncommon.MessageProviderType) http.H
 			return
 		}
 		if svcErr := h.svc.deleteSMSByProvider(ctx, provider, id); svcErr != nil {
+			writeServiceError(ctx, w, svcErr)
+			return
+		}
+		sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+	}
+}
+
+// createEmailConnection decodes a typed request, maps it to a DTO, delegates creation, and writes
+// the encoded response.
+func createEmailConnection[Req any, Resp any](h *handler, w http.ResponseWriter, r *http.Request,
+	toDTO func(Req) (*ncommon.NotificationSenderDTO, error),
+	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) {
+	createConnectionHelper(w, r, toDTO, fromDTO, h.svc.createEmail)
+}
+
+// getEmailConnection fetches an email sender of the given provider and writes the encoded response.
+func getEmailConnection[Resp any](h *handler, w http.ResponseWriter, r *http.Request,
+	provider ncommon.NotificationProviderType, fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if strings.TrimSpace(id) == "" {
+		writeServiceError(ctx, w, &notification.ErrorInvalidSenderID)
+		return
+	}
+	dto, svcErr := h.svc.getEmailByProvider(ctx, provider, id)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	resp, err := fromDTO(*dto)
+	if err != nil {
+		writeServiceError(ctx, w, &tidcommon.InternalServerError)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
+}
+
+// updateEmailConnection decodes a typed request, maps it, delegates the update (which preserves
+// any secret the request omits), and writes the encoded response.
+func updateEmailConnection[Req any, Resp any](h *handler, w http.ResponseWriter, r *http.Request,
+	provider ncommon.NotificationProviderType, toDTO func(Req) (*ncommon.NotificationSenderDTO, error),
+	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) {
+	updateConnectionHelper(w, r, provider, toDTO, fromDTO, h.svc.updateEmail)
+}
+
+// createEmailHandler binds a vendor's mappers to createEmailConnection, yielding a registerable handler.
+func createEmailHandler[Req any, Resp any](h *handler,
+	toDTO func(Req) (*ncommon.NotificationSenderDTO, error),
+	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		createEmailConnection(h, w, r, toDTO, fromDTO)
+	}
+}
+
+// getEmailHandler binds a vendor's provider and mapper to getEmailConnection, yielding a handler.
+func getEmailHandler[Resp any](h *handler, provider ncommon.NotificationProviderType,
+	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		getEmailConnection(h, w, r, provider, fromDTO)
+	}
+}
+
+// updateEmailHandler binds a vendor's provider and mappers to updateEmailConnection.
+func updateEmailHandler[Req any, Resp any](h *handler, provider ncommon.NotificationProviderType,
+	toDTO func(Req) (*ncommon.NotificationSenderDTO, error),
+	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		updateEmailConnection(h, w, r, provider, toDTO, fromDTO)
+	}
+}
+
+// listEmailInstances returns a handler that lists the configured senders of an email provider.
+func (h *handler) listEmailInstances(provider ncommon.NotificationProviderType) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		instances, svcErr := h.svc.listEmailByProvider(ctx, provider)
+		if svcErr != nil {
+			writeServiceError(ctx, w, svcErr)
+			return
+		}
+		summaries := make([]connectionInstanceSummary, 0, len(instances))
+		for _, instance := range instances {
+			summaries = append(summaries, connectionInstanceSummary{
+				ID:          instance.ID,
+				Name:        instance.Name,
+				Description: instance.Description,
+			})
+		}
+		sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, summaries)
+	}
+}
+
+// deleteEmailInstance returns a handler that deletes a sender of an email provider.
+func (h *handler) deleteEmailInstance(provider ncommon.NotificationProviderType) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		id := r.PathValue("id")
+		if strings.TrimSpace(id) == "" {
+			writeServiceError(ctx, w, &notification.ErrorInvalidSenderID)
+			return
+		}
+		if svcErr := h.svc.deleteEmailByProvider(ctx, provider, id); svcErr != nil {
 			writeServiceError(ctx, w, svcErr)
 			return
 		}

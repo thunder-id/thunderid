@@ -419,7 +419,7 @@ func (ts *HTTPRequestRuntimeDataRegistrationFlowTestSuite) SetupSuite() {
 	}
 
 	senderID, err := testutils.CreateNotificationSender(notificationSender)
-	ts.Require().NoError(err, "Failed to create notification sender")
+	ts.Require().NoError(err, "Failed to create message notification sender")
 	ts.senderID = senderID
 	ts.config.CreatedSenderIDs = append(ts.config.CreatedSenderIDs, senderID)
 
@@ -486,7 +486,7 @@ func (ts *HTTPRequestRuntimeDataRegistrationFlowTestSuite) TearDownSuite() {
 
 	for _, senderID := range ts.config.CreatedSenderIDs {
 		if err := testutils.DeleteNotificationSender(senderID); err != nil {
-			ts.T().Logf("Failed to delete notification sender during teardown: %v", err)
+			ts.T().Logf("Failed to delete message notification sender during teardown: %v", err)
 		}
 	}
 

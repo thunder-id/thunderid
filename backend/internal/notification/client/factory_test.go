@@ -77,7 +77,8 @@ func (suite *ClientFactoryTestSuite) TestGetClient() {
 			name: "twilio",
 			sender: common.NotificationSenderDTO{
 				Name:     "Test Twilio",
-				Provider: common.MessageProviderTypeTwilio,
+				Provider: common.NotificationProviderTypeTwilio,
+				Type:     common.NotificationSenderTypeMessage,
 				Properties: []cmodels.Property{
 					createTestProperty("account_sid", "AC00112233445566778899aabbccddeeff", true),
 					createTestProperty("auth_token", "test-token", true),
@@ -90,7 +91,8 @@ func (suite *ClientFactoryTestSuite) TestGetClient() {
 			name: "vonage",
 			sender: common.NotificationSenderDTO{
 				Name:     "Test Vonage",
-				Provider: common.MessageProviderTypeVonage,
+				Provider: common.NotificationProviderTypeVonage,
+				Type:     common.NotificationSenderTypeMessage,
 				Properties: []cmodels.Property{
 					createTestProperty("api_key", "test-key", true),
 					createTestProperty("api_secret", "test-secret", true),
@@ -100,10 +102,11 @@ func (suite *ClientFactoryTestSuite) TestGetClient() {
 			expected: "Test Vonage",
 		},
 		{
-			name: "custom",
+			name: "custom_message",
 			sender: common.NotificationSenderDTO{
 				Name:     "Test Custom",
-				Provider: common.MessageProviderTypeCustom,
+				Provider: common.NotificationProviderTypeCustom,
+				Type:     common.NotificationSenderTypeMessage,
 				Properties: []cmodels.Property{
 					createTestProperty("url", "https://api.example.com/sms", false),
 					createTestProperty("http_method", "POST", false),
@@ -111,6 +114,34 @@ func (suite *ClientFactoryTestSuite) TestGetClient() {
 				},
 			},
 			expected: "Test Custom",
+		},
+		{
+			name: "http_email",
+			sender: common.NotificationSenderDTO{
+				Name:     "Test HTTP Email",
+				Provider: common.NotificationProviderTypeHTTP,
+				Type:     common.NotificationSenderTypeEmail,
+				Properties: []cmodels.Property{
+					createTestProperty("url", "https://api.example.com/email", false),
+					createTestProperty("http_method", "POST", false),
+					createTestProperty("content_type", "JSON", false),
+				},
+			},
+			expected: "Test HTTP Email",
+		},
+		{
+			name: "smtp_email",
+			sender: common.NotificationSenderDTO{
+				Name:     "Test SMTP Email",
+				Provider: common.NotificationProviderTypeSMTP,
+				Type:     common.NotificationSenderTypeEmail,
+				Properties: []cmodels.Property{
+					createTestProperty(common.SMTPPropKeyHost, "smtp.example.com", false),
+					createTestProperty(common.SMTPPropKeyPort, "587", false),
+					createTestProperty(common.SMTPPropKeyFromAddress, "no-reply@example.com", false),
+				},
+			},
+			expected: "Test SMTP Email",
 		},
 	}
 
@@ -142,7 +173,8 @@ func (suite *ClientFactoryTestSuite) TestGetClientWithError() {
 			name: "twilio_decryption_error",
 			sender: common.NotificationSenderDTO{
 				Name:     "Bad Twilio",
-				Provider: common.MessageProviderTypeTwilio,
+				Provider: common.NotificationProviderTypeTwilio,
+				Type:     common.NotificationSenderTypeMessage,
 				// account_sid is required and marked secret but value will fail decryption
 				Properties: append(makeInvalidSecretProps("account_sid"),
 					createTestProperty("auth_token", "test-token", true)),
@@ -152,7 +184,8 @@ func (suite *ClientFactoryTestSuite) TestGetClientWithError() {
 			name: "vonage_decryption_error",
 			sender: common.NotificationSenderDTO{
 				Name:     "Bad Vonage",
-				Provider: common.MessageProviderTypeVonage,
+				Provider: common.NotificationProviderTypeVonage,
+				Type:     common.NotificationSenderTypeMessage,
 				Properties: append(makeInvalidSecretProps("api_key"),
 					createTestProperty("api_secret", "test-secret", true)),
 			},
@@ -161,9 +194,23 @@ func (suite *ClientFactoryTestSuite) TestGetClientWithError() {
 			name: "custom_decryption_error",
 			sender: common.NotificationSenderDTO{
 				Name:     "Bad Custom",
-				Provider: common.MessageProviderTypeCustom,
+				Provider: common.NotificationProviderTypeCustom,
+				Type:     common.NotificationSenderTypeMessage,
 				// url is secret here and invalid ciphertext
 				Properties: makeInvalidSecretProps("url"),
+			},
+		},
+		{
+			name: "smtp_decryption_error",
+			sender: common.NotificationSenderDTO{
+				Name:     "Bad SMTP",
+				Provider: common.NotificationProviderTypeSMTP,
+				Type:     common.NotificationSenderTypeEmail,
+				Properties: append(makeInvalidSecretProps(common.SMTPPropKeyPassword),
+					createTestProperty(common.SMTPPropKeyHost, "smtp.example.com", false),
+					createTestProperty(common.SMTPPropKeyPort, "587", false),
+					createTestProperty(common.SMTPPropKeyFromAddress, "test@example.com", false),
+					createTestProperty(common.SMTPPropKeyEnableAuth, "true", false)),
 			},
 		},
 	}
@@ -183,6 +230,34 @@ func (suite *ClientFactoryTestSuite) TestGetClientWithError() {
 func (suite *ClientFactoryTestSuite) TestGetClient_InvalidProvider() {
 	sender := common.NotificationSenderDTO{
 		Name:     "Test Sender",
+		Provider: "invalid-provider",
+	}
+
+	client, err := suite.factory.GetClient(context.Background(), sender)
+
+	suite.Nil(client)
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidProvider.Code, err.Code)
+}
+
+func (suite *ClientFactoryTestSuite) TestGetClient_InvalidProvider_Message() {
+	sender := common.NotificationSenderDTO{
+		Name:     "Test Sender",
+		Type:     common.NotificationSenderTypeMessage,
+		Provider: "invalid-provider",
+	}
+
+	client, err := suite.factory.GetClient(context.Background(), sender)
+
+	suite.Nil(client)
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidProvider.Code, err.Code)
+}
+
+func (suite *ClientFactoryTestSuite) TestGetClient_InvalidProvider_Email() {
+	sender := common.NotificationSenderDTO{
+		Name:     "Test Sender",
+		Type:     common.NotificationSenderTypeEmail,
 		Provider: "invalid-provider",
 	}
 

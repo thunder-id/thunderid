@@ -26,18 +26,26 @@ const (
 	NotificationSenderTypeMessage NotificationSenderType = "MESSAGE"
 	// NotificationSenderTypeEmail represents an email notification sender.
 	NotificationSenderTypeEmail NotificationSenderType = "EMAIL"
+
+	// CRLF is theStandard line ending used in network protocols (e.g., SMTP, HTTP).
+	CRLF = "\r\n"
 )
 
-// MessageProviderType defines the type of messaging provider.
-type MessageProviderType string
+// NotificationProviderType defines the type of messaging provider.
+type NotificationProviderType string
 
 const (
-	// MessageProviderTypeVonage represents the Vonage messaging provider.
-	MessageProviderTypeVonage MessageProviderType = "vonage"
-	// MessageProviderTypeTwilio represents the Twilio messaging provider.
-	MessageProviderTypeTwilio MessageProviderType = "twilio"
-	// MessageProviderTypeCustom represents a custom messaging provider.
-	MessageProviderTypeCustom MessageProviderType = "custom"
+	// NotificationProviderTypeVonage represents the Vonage messaging provider.
+	NotificationProviderTypeVonage NotificationProviderType = "vonage"
+	// NotificationProviderTypeTwilio represents the Twilio messaging provider.
+	NotificationProviderTypeTwilio NotificationProviderType = "twilio"
+	// NotificationProviderTypeCustom represents a custom messaging provider.
+	NotificationProviderTypeCustom NotificationProviderType = "custom"
+
+	// NotificationProviderTypeSMTP represents the SMTP email provider.
+	NotificationProviderTypeSMTP NotificationProviderType = "smtp"
+	// NotificationProviderTypeHTTP represents an HTTP webhook email provider.
+	NotificationProviderTypeHTTP NotificationProviderType = "http"
 )
 
 // ChannelType defines the type of communication channel.
@@ -46,6 +54,8 @@ type ChannelType string
 const (
 	// ChannelTypeSMS represents the SMS channel.
 	ChannelTypeSMS ChannelType = "sms"
+	// ChannelTypeEmail represents the Email channel.
+	ChannelTypeEmail ChannelType = "email"
 )
 
 // OTPVerifyStatus defines the status of OTP verification.
@@ -85,6 +95,35 @@ const (
 	CustomPropKeyHTTPHeaders = "http_headers"
 	// CustomPropKeyContentType is the property key for the content type.
 	CustomPropKeyContentType = "content_type"
+)
+
+const (
+	// SMTPPropKeyHost is the property key for the SMTP host.
+	SMTPPropKeyHost = "host"
+	// SMTPPropKeyPort is the property key for the SMTP port.
+	SMTPPropKeyPort = "port"
+	// SMTPPropKeyUsername is the property key for the SMTP username.
+	SMTPPropKeyUsername = "username"
+	// SMTPPropKeyPassword is the property key for the SMTP password.
+	SMTPPropKeyPassword = "password"
+	// SMTPPropKeyFromAddress is the property key for the SMTP from address.
+	SMTPPropKeyFromAddress = "from_address"
+	// SMTPPropKeyTLS is the property key for the SMTP TLS mode.
+	SMTPPropKeyTLS = "tls"
+	// SMTPPropKeyEnableAuth is the property key to enable authentication.
+	SMTPPropKeyEnableAuth = "enable_authentication"
+)
+
+// TLSMode defines the TLS mode for SMTP connections.
+type TLSMode string
+
+const (
+	// TLSModeNone represents a plaintext connection.
+	TLSModeNone TLSMode = "none"
+	// TLSModeSTARTTLS represents an explicit TLS connection using STARTTLS.
+	TLSModeSTARTTLS TLSMode = "starttls"
+	// TLSModeImplicit represents an implicit TLS connection (SMTPS).
+	TLSModeImplicit TLSMode = "implicit"
 )
 
 const (

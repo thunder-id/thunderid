@@ -51,6 +51,14 @@ type connectionExportModel struct {
 	//nolint:lll // long struct tag: both yaml and json keys needed for declarative load/export and import
 	AttributeConfiguration *providers.AttributeConfiguration `yaml:"attributeConfiguration,omitempty" json:"attributeConfiguration,omitempty"`
 
+	// Email-backed vendor fields (smtp, http-email).
+	Host                 string `yaml:"host,omitempty"                 json:"host,omitempty"`
+	Port                 string `yaml:"port,omitempty"                 json:"port,omitempty"`
+	Username             string `yaml:"username,omitempty"             json:"username,omitempty"`
+	Password             string `yaml:"password,omitempty"             json:"password,omitempty"`
+	SenderAddress        string `yaml:"fromAddress,omitempty"          json:"fromAddress,omitempty"`
+	TLS                  string `yaml:"tls,omitempty"                  json:"tls,omitempty"`
+	EnableAuthentication string `yaml:"enableAuthentication,omitempty" json:"enableAuthentication,omitempty"`
 	// SMS-backed vendor fields (twilio, vonage, sms-gateway).
 	AccountSID  string `yaml:"accountSid,omitempty"  json:"accountSid,omitempty"`
 	AuthToken   string `yaml:"authToken,omitempty"   json:"authToken,omitempty"`
