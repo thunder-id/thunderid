@@ -23,14 +23,14 @@ import {useEffect, useMemo, useCallback} from 'react';
 import {useTranslation} from 'react-i18next';
 import FlowsListView from './FlowsListView';
 import IndividualMethodsToggleView from './IndividualMethodsToggleView';
+import useIdentityProviders from '../../../../connections/api/useIdentityProviders';
 import useGetFlows from '../../../../flows/api/useGetFlows';
 import {FlowType} from '../../../../flows/models/flows';
 import {type BasicFlowDefinition} from '../../../../flows/models/responses';
 import findMatchingFlowForIntegrations from '../../../../flows/utils/findMatchingFlowForIntegrations';
-import useIdentityProviders from '../../../../integrations/api/useIdentityProviders';
 import useApplicationCreateContext from '../../../hooks/useApplicationCreateContext';
-import {AuthenticatorTypes} from '@/features/integrations/models/authenticators';
-import {type IdentityProvider, IdentityProviderTypes} from '@/features/integrations/models/identity-provider';
+import {AuthenticatorTypes} from '@/features/connections/models/authenticators';
+import {type IdentityProvider, IdentityProviderTypes} from '@/features/connections/models/identity-provider';
 
 /**
  * Props for the {@link ConfigureSignInOptions} component.

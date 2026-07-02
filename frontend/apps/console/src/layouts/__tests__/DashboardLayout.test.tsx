@@ -153,7 +153,7 @@ describe('DashboardLayout', () => {
     expect(screen.getByText('navigation:pages.users')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.userTypes')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.applications')).toBeInTheDocument();
-    expect(screen.getByText('navigation:pages.integrations')).toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.connections')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.flows')).toBeInTheDocument();
   });
 

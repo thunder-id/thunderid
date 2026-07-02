@@ -85,7 +85,7 @@ vi.mock('@thunderid/configure-user-types', () => ({
 }));
 
 // Mock integrations API
-vi.mock('../../../integrations/api/useIdentityProviders', () => ({
+vi.mock('../../../connections/api/useIdentityProviders', () => ({
   default: () => ({
     data: [
       {id: 'google', name: 'Google', type: 'social'},

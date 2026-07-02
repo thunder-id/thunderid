@@ -20,8 +20,8 @@ import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import IndividualMethodsToggleView, {type IndividualMethodsToggleViewProps} from '../IndividualMethodsToggleView';
-import {AuthenticatorTypes} from '@/features/integrations/models/authenticators';
-import {IdentityProviderTypes, type IdentityProvider} from '@/features/integrations/models/identity-provider';
+import {AuthenticatorTypes} from '@/features/connections/models/authenticators';
+import {IdentityProviderTypes, type IdentityProvider} from '@/features/connections/models/identity-provider';
 
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
@@ -40,7 +40,7 @@ vi.mock('react-i18next', () => ({
 }));
 
 // Mock the integration icon utility
-vi.mock('@/features/integrations/utils/getIntegrationIcon', () => ({
+vi.mock('@/features/connections/utils/getConnectionIcon', () => ({
   default: vi.fn((type: string) => <div data-testid={`icon-${type}`}>Mock Icon</div>),
 }));
 

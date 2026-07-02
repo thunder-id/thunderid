@@ -21,7 +21,7 @@ import {
   IdentityProviderTypes,
   type IdentityProvider,
   type IdentityProviderType,
-} from '@/features/integrations/models/identity-provider';
+} from '@/features/connections/models/identity-provider';
 
 /**
  * Options for resolving authentication flow configuration.

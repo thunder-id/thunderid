@@ -125,7 +125,7 @@ vi.mock('../../../utils/computeExecutorConnections', () => ({
   default: vi.fn(() => []),
 }));
 
-vi.mock('@/features/integrations/api/useIdentityProviders', () => ({
+vi.mock('@/features/connections/api/useIdentityProviders', () => ({
   default: () => ({data: []}),
 }));
 

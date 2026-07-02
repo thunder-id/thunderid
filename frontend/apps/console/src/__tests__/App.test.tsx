@@ -56,8 +56,17 @@ vi.mock('@thunderid/configure-user-types', () => ({
   ViewUserTypePage: () => <div data-testid="view-user-type-page">View User Type Page</div>,
 }));
 
-vi.mock('../features/integrations/pages/IntegrationsPage', () => ({
-  default: () => <div data-testid="integrations-page">Integrations Page</div>,
+vi.mock('../features/connections/pages/ConnectionsListPage', () => ({
+  default: () => <div data-testid="connections-list-page">Connections List Page</div>,
+}));
+vi.mock('../features/connections/pages/ConnectionDetailPage', () => ({
+  default: () => <div data-testid="connection-detail-page">Connection Detail Page</div>,
+}));
+vi.mock('../features/connections/pages/ConnectionConfigureWizardPage', () => ({
+  default: () => <div data-testid="connection-configure-wizard-page">Connection Configure Wizard Page</div>,
+}));
+vi.mock('../features/connections/pages/ConnectionCreateWizardPage', () => ({
+  default: () => <div data-testid="connection-create-wizard-page">Connection Create Wizard Page</div>,
 }));
 
 vi.mock('../features/applications/pages/ApplicationsListPage', () => ({

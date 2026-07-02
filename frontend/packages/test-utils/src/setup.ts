@@ -32,7 +32,7 @@ beforeAll(async () => {
         navigation: enUS.navigation,
         users: enUS.users,
         userTypes: enUS.userTypes,
-        integrations: enUS.integrations,
+        connections: enUS.connections,
         applications: enUS.applications,
         groups: enUS.groups,
         auth: enUS.auth,

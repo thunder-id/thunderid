@@ -502,7 +502,7 @@ vi.mock('@/features/flows/api/useGetFlowById', () => ({
   }),
 }));
 
-vi.mock('@/features/integrations/api/useIdentityProviders', () => ({
+vi.mock('@/features/connections/api/useIdentityProviders', () => ({
   default: () => ({data: [], isLoading: false}),
 }));
 

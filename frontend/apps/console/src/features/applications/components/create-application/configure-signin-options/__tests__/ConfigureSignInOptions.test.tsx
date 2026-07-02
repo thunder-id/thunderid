@@ -20,10 +20,10 @@ import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import ConfigureSignInOptions, {type ConfigureSignInOptionsProps} from '../ConfigureSignInOptions';
+import {AuthenticatorTypes} from '@/features/connections/models/authenticators';
+import {IdentityProviderTypes, type IdentityProvider} from '@/features/connections/models/identity-provider';
 import type {BasicFlowDefinition} from '@/features/flows/models/responses';
 import findMatchingFlowForIntegrations from '@/features/flows/utils/findMatchingFlowForIntegrations';
-import {AuthenticatorTypes} from '@/features/integrations/models/authenticators';
-import {IdentityProviderTypes, type IdentityProvider} from '@/features/integrations/models/identity-provider';
 
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
@@ -53,7 +53,7 @@ interface MockIdentityProviderResponse {
   error: Error | null;
 }
 const mockUseIdentityProviders = vi.fn<() => MockIdentityProviderResponse>();
-vi.mock('@/features/integrations/api/useIdentityProviders', () => ({
+vi.mock('@/features/connections/api/useIdentityProviders', () => ({
   default: () => mockUseIdentityProviders(),
 }));
 

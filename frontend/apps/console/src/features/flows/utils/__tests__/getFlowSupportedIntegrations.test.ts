@@ -17,7 +17,7 @@
  */
 
 import {describe, it, expect} from 'vitest';
-import {AuthenticatorTypes} from '../../../integrations/models/authenticators';
+import {AuthenticatorTypes} from '../../../connections/models/authenticators';
 import getFlowSupportedIntegrations from '../getFlowSupportedIntegrations';
 
 describe('getFlowSupportedIntegrations', () => {

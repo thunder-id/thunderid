@@ -20,9 +20,9 @@ import {render, screen, fireEvent} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ExecutionExtendedProperties from '../ExecutionExtendedProperties';
+import {IdentityProviderTypes} from '@/features/connections/models/identity-provider';
 import type {Resource} from '@/features/flows/models/resources';
 import {ExecutionTypes, type StepData} from '@/features/flows/models/steps';
-import {IdentityProviderTypes} from '@/features/integrations/models/identity-provider';
 
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
@@ -89,7 +89,7 @@ vi.mock('@/features/flows/hooks/useValidationStatus', () => ({
 
 // Mock useIdentityProviders
 const mockIdentityProviders = vi.fn<() => {data: unknown[]; isLoading: boolean}>();
-vi.mock('@/features/integrations/api/useIdentityProviders', () => ({
+vi.mock('@/features/connections/api/useIdentityProviders', () => ({
   default: () => mockIdentityProviders(),
 }));
 

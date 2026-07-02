@@ -22,8 +22,8 @@ import {type RecursivePartial} from '@thunderid/types';
 import type {ReactNode} from 'react';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import Preview, {type PreviewProps} from '../Preview';
-import {AuthenticatorTypes} from '@/features/integrations/models/authenticators';
-import {IdentityProviderTypes, type IdentityProvider} from '@/features/integrations/models/identity-provider';
+import {AuthenticatorTypes} from '@/features/connections/models/authenticators';
+import {IdentityProviderTypes, type IdentityProvider} from '@/features/connections/models/identity-provider';
 
 // Mock the @thunderid/react module
 vi.mock('@thunderid/react', () => ({
@@ -32,7 +32,7 @@ vi.mock('@thunderid/react', () => ({
 }));
 
 // Mock the useIdentityProviders hook
-vi.mock('@/features/integrations/api/useIdentityProviders');
+vi.mock('@/features/connections/api/useIdentityProviders');
 
 // Mock useColorScheme to test dark mode
 const mockUseColorScheme = vi.fn<() => {mode: 'light' | 'dark'}>();
@@ -47,7 +47,7 @@ vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
   };
 });
 
-const {default: useIdentityProviders} = await import('@/features/integrations/api/useIdentityProviders');
+const {default: useIdentityProviders} = await import('@/features/connections/api/useIdentityProviders');
 
 const mockTheme: RecursivePartial<Theme> = {
   direction: 'ltr',

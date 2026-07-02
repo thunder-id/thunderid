@@ -16,9 +16,9 @@
  * under the License.
  */
 
+import type {IdentityProviderType} from '@/features/connections/models/identity-provider';
+import {IdentityProviderTypes} from '@/features/connections/models/identity-provider';
 import {ExecutionTypes} from '@/features/flows/models/steps';
-import type {IdentityProviderType} from '@/features/integrations/models/identity-provider';
-import {IdentityProviderTypes} from '@/features/integrations/models/identity-provider';
 
 /**
  * Maps executor names to their corresponding identity provider types.

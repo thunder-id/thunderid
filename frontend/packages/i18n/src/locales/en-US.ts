@@ -640,7 +640,7 @@ const translations = {
     'pages.organizationUnits': 'Organization Units',
     'pages.groups': 'Groups',
     'pages.roles': 'Roles',
-    'pages.integrations': 'Integrations',
+    'pages.connections': 'Connections',
     'pages.applications': 'Applications',
     'pages.apis': 'APIs',
     'pages.verifiablePresentations': 'Verifiable Presentations',
@@ -1472,25 +1472,166 @@ const translations = {
   },
 
   // ============================================================================
-  // Integrations namespace - Integrations feature translations
+  // Connections namespace - Connections feature translations
   // ============================================================================
-  integrations: {
-    title: 'Integrations',
-    subtitle: 'Manage your integrations and connections',
-    addIntegration: 'Add Integration',
-    editIntegration: 'Edit Integration',
-    deleteIntegration: 'Delete Integration',
-    integrationDetails: 'Integration Details',
-    provider: 'Provider',
-    apiKey: 'API Key',
-    endpoint: 'Endpoint',
-    status: 'Status',
-    connected: 'Connected',
-    disconnected: 'Disconnected',
-    testConnection: 'Test Connection',
-    noIntegrations: 'No integrations found',
-    comingSoon: 'Coming Soon',
-    comingSoonDescription: 'Integrations management functionality will be available soon.',
+  connections: {
+    // Listing page
+    'listing.title': 'Connections',
+    'listing.subtitle': 'Configure the external services ThunderID connects to.',
+    'listing.search.placeholder': 'Search ..',
+    'listing.showingCount': 'Showing {{count}} connections',
+    'listing.loading': 'Loading connections...',
+    'listing.clearFilters': 'Clear filters',
+    'listing.empty.title': 'No connections match your filters',
+    'listing.empty.description':
+      'Try a different search term, or clear the active filters to see all available connections.',
+
+    // Filters / categories
+    'filters.label': 'Filter',
+    'categories.all': 'All',
+    'categories.social-login': 'Social Login',
+    'categories.enterprise': 'Enterprise',
+    'categories.sms': 'SMS',
+    'categories.email': 'Email',
+    'categories.identity-verification': 'Identity Verification',
+    'categories.crm': 'CRM',
+    'categories.data-store': 'Data store',
+
+    // Card
+    'card.configured': 'Configured',
+    'card.notConfigured': 'Not configured',
+    'card.comingSoon': 'Coming soon',
+    'card.addCustom.title': 'Add custom connection',
+    'card.addCustom.description': "Set up a connection that isn't in the catalog.",
+
+    // Vendor descriptions
+    'vendor.google.description': 'Let users sign in with their Google account.',
+    'vendor.github.description': 'Let users sign in with their GitHub account.',
+    'vendor.oidc.description': 'Connect any OpenID Connect identity provider.',
+    'vendor.twilio.description': 'Send SMS one-time passcodes via Twilio.',
+    'vendor.vonage.description': 'Deliver SMS and email passcodes through Vonage.',
+    'vendor.custom-sms.description': 'Route SMS through your own HTTP gateway.',
+
+    // Add custom connection wizard
+    'wizard.title': 'Add custom connection',
+    'wizard.steps.type': 'Connection type',
+    'wizard.steps.configure': 'Configure',
+    'wizard.steps.attributeMapping': 'Attribute mapping',
+    'wizard.type.heading': 'What kind of connection do you want to add?',
+    'wizard.type.subheading':
+      'Custom connections aren’t in the vendor catalog — pick the type of integration you want to wire up.',
+    'wizard.type.oidc.label': 'Custom OIDC',
+    'wizard.type.oidc.description': 'Connect any OpenID Connect identity provider.',
+    'wizard.type.oidc.tag': 'Login provider · Enterprise',
+    'wizard.type.sms.label': 'Custom SMS gateway',
+    'wizard.type.sms.description': 'Route SMS through your own HTTP gateway.',
+    'wizard.type.sms.tag': 'Message sender · SMS',
+    'wizard.configure.heading': 'Configure your connection',
+    'wizard.configure.subheading':
+      'Enter the credentials and endpoints for your custom connection. Secrets are stored write-only.',
+
+    // Branded configure wizard
+    'configure.heading': 'Configure your {{vendor}} connection',
+    'configure.subheading': 'Enter the credentials and endpoints for this connection. Secrets are stored write-only.',
+
+    // Connection detail / edit page
+    'detail.backToConnections': 'Back to Connections',
+    'detail.subtitle': '{{name}} connection',
+    'detail.tabs.general': 'General',
+    'detail.tabs.attributeMapping': 'Attribute Mapping',
+    'detail.quickCopy.title': 'Quick copy',
+    'detail.quickCopy.description': 'Copy connection identifiers for use in your integration.',
+    'detail.connectionId': 'Connection ID',
+    'detail.connectionId.hint': 'Unique identifier for this connection.',
+    'detail.credentials.title': 'Credentials',
+    'detail.credentials.description': 'Credentials and endpoints for this connection. Secrets are stored write-only.',
+    'detail.provisioning.title': 'User provisioning',
+    'detail.provisioning.description':
+      'Choose the default user type and map the attributes this provider returns onto your local user schema.',
+    'detail.dangerZone.title': 'Danger zone',
+    'detail.dangerZone.description': 'Actions in this section are irreversible. Proceed with caution.',
+    'detail.dangerZone.delete.title': 'Delete connection',
+    'detail.dangerZone.delete.description':
+      'Permanently delete this connection and all associated data. Any application relying on it will stop accepting logins through this provider. This action cannot be undone.',
+    'detail.saveBar.unsaved': 'You have unsaved changes',
+    'detail.saveBar.save': 'Save changes',
+    'detail.saveBar.saving': 'Saving...',
+    'detail.saveBar.discard': 'Discard',
+
+    // Per-vendor configure / edit form
+    'form.chrome.configure': 'Configure connection',
+    'form.configureTitle': 'Configure {{vendor}}',
+    'form.fields.name.label': 'Connection name',
+    'form.fields.name.hint': 'Friendly name used to identify this connection in ThunderID.',
+    'form.fields.name.placeholder': 'e.g. {{example}}',
+    'form.fields.clientId.label': 'Client ID',
+    'form.fields.clientId.hint': 'OAuth2 client identifier used for authentication.',
+    'form.fields.clientSecret.label': 'Client secret',
+    'form.fields.clientSecret.hint': 'OAuth2 client secret issued by your identity provider.',
+    'form.fields.redirectUri.label': 'Redirect URI',
+    'form.fields.redirectUri.help': 'Add this exact URI to your {{vendor}} OAuth client.',
+    'form.fields.scopes.label': 'Scopes',
+    'form.fields.scopes.hint': 'Space-separated scopes to request during sign-in.',
+    'form.fields.scopes.placeholder': 'openid email profile',
+    'form.fields.authorizationEndpoint.label': 'Authorization endpoint',
+    'form.fields.authorizationEndpoint.hint': 'Authorization endpoint used to start the OAuth2 sign-in flow.',
+    'form.fields.tokenEndpoint.label': 'Token endpoint',
+    'form.fields.tokenEndpoint.hint': 'Token endpoint used to exchange the authorization code for tokens.',
+    'form.fields.userInfoEndpoint.label': 'UserInfo endpoint',
+    'form.fields.userInfoEndpoint.hint': 'Endpoint used to fetch additional profile claims for the signed-in user.',
+    'form.fields.jwksEndpoint.label': 'JWKS endpoint',
+    'form.fields.jwksEndpoint.hint': 'Endpoint that exposes signing keys for verifying identity tokens.',
+    'form.fields.logoutEndpoint.label': 'Logout endpoint',
+    'form.fields.issuer.label': 'Issuer',
+    'form.fields.issuer.hint': 'Issuer identifier expected in tokens from this provider.',
+    'form.fields.tokenExchangeEnabled.label': 'Enable token exchange',
+    'form.optional': 'Optional',
+    'form.secret.update': 'Update',
+    'form.secret.keepHelp': 'Leave unchanged to keep the stored secret.',
+    'form.copy': 'Copy',
+    'form.copied': 'Copied to clipboard',
+    'form.actions.create': 'Create connection',
+    'form.actions.save': 'Save changes',
+    'form.actions.delete': 'Delete connection',
+
+    // Attribute mapping (authentication providers)
+    'attributeMapping.title': 'Attribute mapping',
+    'attributeMapping.cardDescription': 'Map the attributes this provider returns onto your local user schema.',
+    'attributeMapping.cardOptionalNote': 'Optional — defaults work for most providers.',
+    'attributeMapping.stepTitle': 'Map provider attributes to your users',
+    'attributeMapping.stepSubtitle':
+      'Choose the default user type and map the attributes {{vendor}} returns onto your local user schema. This step is optional.',
+    'attributeMapping.userType.label': 'Default user type',
+    'attributeMapping.userType.placeholder': 'Select a user type',
+    'attributeMapping.userType.helper': 'New users signing in through this connection are provisioned as this type.',
+    'attributeMapping.userTypeRequired': 'Select a user type for the attribute mappings.',
+    'attributeMapping.add': 'Add mapping',
+    'attributeMapping.skipAndCreate': 'Skip and Create connection',
+    'attributeMapping.empty.title': 'No custom mappings',
+    'attributeMapping.empty.description':
+      "The provider's standard attributes are applied automatically. Add a mapping only to override how a specific attribute lands on your user schema.",
+    'attributeMapping.externalAttribute.label': 'External attribute',
+    'attributeMapping.externalAttribute.placeholder': 'e.g. given_name',
+    'attributeMapping.localAttribute.label': 'Local attribute',
+    'attributeMapping.localAttribute.placeholder': 'e.g. firstName',
+
+    // Delete dialog
+    'delete.title': 'Delete connection',
+    'delete.message': 'Are you sure you want to delete “{{name}}”? This action cannot be undone.',
+
+    // Toasts
+    'create.success': 'Connection created successfully.',
+    'create.error': 'Failed to create connection.',
+    'update.success': 'Connection updated successfully.',
+    'update.error': 'Failed to update connection.',
+    'delete.success': 'Connection deleted successfully.',
+    'delete.error': 'Failed to delete connection.',
+
+    // Errors / validation
+    'error.duplicateName': 'A connection with this name already exists.',
+    'error.loadFailed': 'Failed to load connection.',
+    'validation.required': 'This field is required.',
+    'validation.url': 'Enter a valid URL.',
   },
 
   // ============================================================================

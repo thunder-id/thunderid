@@ -25,8 +25,8 @@ import useApplicationCreateContext from '../../../hooks/useApplicationCreateCont
 import ConfigureSignInOptions, {
   type ConfigureSignInOptionsProps,
 } from '../configure-signin-options/ConfigureSignInOptions';
-import {AuthenticatorTypes} from '@/features/integrations/models/authenticators';
-import {IdentityProviderTypes, type IdentityProvider} from '@/features/integrations/models/identity-provider';
+import {AuthenticatorTypes} from '@/features/connections/models/authenticators';
+import {IdentityProviderTypes, type IdentityProvider} from '@/features/connections/models/identity-provider';
 
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
@@ -51,8 +51,8 @@ vi.mock('react-i18next', () => ({
 }));
 
 // Mock the dependencies
-vi.mock('@/features/integrations/api/useIdentityProviders');
-vi.mock('@/features/integrations/utils/getIntegrationIcon');
+vi.mock('@/features/connections/api/useIdentityProviders');
+vi.mock('@/features/connections/utils/getConnectionIcon');
 vi.mock('@/features/flows/api/useGetFlows');
 
 // Mock useGetApplications
@@ -80,8 +80,8 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   };
 });
 
-const {default: useIdentityProviders} = await import('@/features/integrations/api/useIdentityProviders');
-const {default: getIntegrationIcon} = await import('@/features/integrations/utils/getIntegrationIcon');
+const {default: useIdentityProviders} = await import('@/features/connections/api/useIdentityProviders');
+const {default: getConnectionIcon} = await import('@/features/connections/utils/getConnectionIcon');
 const {default: useGetFlows} = await import('@/features/flows/api/useGetFlows');
 const {default: useGetApplications} = await import('../../../api/useGetApplications');
 
@@ -112,7 +112,7 @@ describe('ConfigureSignInOptions', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getIntegrationIcon).mockReturnValue(<div>Icon</div>);
+    vi.mocked(getConnectionIcon).mockReturnValue(<div>Icon</div>);
     // Default mock: no applications
     vi.mocked(useGetApplications).mockReturnValue({
       data: {
@@ -371,8 +371,8 @@ describe('ConfigureSignInOptions', () => {
 
     renderComponent();
 
-    // Google and GitHub use direct icons, not getIntegrationIcon
-    // Other providers (if any) would use getIntegrationIcon
+    // Google and GitHub use direct icons, not getConnectionIcon
+    // Other providers (if any) would use getConnectionIcon
     expect(screen.getByText('Google')).toBeInTheDocument();
     expect(screen.getByText('GitHub')).toBeInTheDocument();
   });
