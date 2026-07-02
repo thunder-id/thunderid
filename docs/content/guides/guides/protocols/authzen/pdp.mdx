@@ -1,0 +1,322 @@
+---
+title: Policy Decision Point
+sidebar_position: 1
+description:
+  Use {{ProductName}} as an AuthZEN policy decision point for metadata discovery, access evaluation, batch evaluation,
+  and action search.
+---
+
+import {AuthZENPDPDiagram} from '../../../../../src/components/AuthZENPDPDiagram';
+
+# Policy Decision Point
+
+<ProductName /> acts as an AuthZEN policy decision point (PDP). A Policy Enforcement Point (PEP), such as a gateway,
+adapter, service, or application, calls <ProductName /> before it allows access to a protected resource.
+
+## How the PDP Flow Works
+
+<AuthZENPDPDiagram />
+
+The PEP calls <ProductName /> with an access token that can invoke the AuthZEN API. Protected AuthZEN endpoints require
+the `system` scope. For service-to-service integrations, use the
+[Client Credentials](/docs/next/guides/guides/protocols/oauth-oidc/client-credentials) grant to issue the PEP token.
+
+```json
+{
+  "subject": {
+    "type": "user",
+    "id": "<subject-id>"
+  },
+  "resource": {
+    "type": "booking-api",
+    "id": "<booking-id>"
+  },
+  "action": {
+    "name": "booking-api:reservations:view"
+  }
+}
+```
+
+<ProductName /> evaluates the request and returns a decision:
+
+```json
+{
+  "decision": true
+}
+```
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect                   | Behavior                                                                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PDP metadata             | `GET /.well-known/authzen-configuration`                                                                                                          |
+| Single access evaluation | `POST /access/v1/evaluation`                                                                                                                      |
+| Batch access evaluation  | `POST /access/v1/evaluations`                                                                                                                     |
+| Action search            | `POST /access/v1/search/action`                                                                                                                   |
+| `subject.id`             | Required. Identifies the user, application, or agent being evaluated.                                                                             |
+| `subject.type`           | Optional. When provided, <ProductName /> validates that the subject ID matches the subject category.                                              |
+| `resource.type`          | Required. Maps to the <ProductName /> resource server handle.                                                                                     |
+| `resource.id`            | Optional in <ProductName />. Identifies the protected resource instance when provided and is reserved for future resource-instance authorization. |
+| `action.name`            | Required. Must match a permission registered on the resource server.                                                                              |
+| `context`                | Optional object for request-time attributes.                                                                                                      |
+
+</details>
+
+## Configure <ProductName />
+
+The following example creates the `booking-api:reservations:view` permission and assigns it to a subject that can view
+reservations.
+
+### Create a Resource Server
+
+1. Sign in to the <ProductName /> Console at `https://<HOST>:<PORT>/console`.
+2. Select **Resource Servers**, then select **New Resource Server**.
+3. Enter the following values:
+   - **Name**: `Booking API`
+   - **Handle**: `booking-api`
+   - **Delimiter**: `:`
+4. Select **Create**.
+
+For details about resource server fields and permission formats, see
+[Resource Servers](/docs/next/guides/guides/resource-servers).
+
+### Create a Resource
+
+1. Open the **Booking API** resource server.
+2. Select the **Resources** tab, then select **New Resource**.
+3. Enter the following values:
+   - **Name**: `Reservations`
+   - **Handle**: `reservations`
+4. Select **Create**.
+
+### Create an Action
+
+1. Open the **Reservations** resource.
+2. Select the **Actions** tab, then select **New Action**.
+3. Enter the following values:
+   - **Name**: `View Reservations`
+   - **Handle**: `view`
+4. Select **Create**.
+5. Confirm that the generated permission is `booking-api:reservations:view`.
+
+The `action.name` value in an AuthZEN request must match this complete permission string.
+
+### Assign the Permission to a Subject
+
+1. Select **Roles**, then select **New Role**.
+2. Create a role named `Booking API Viewer`.
+3. Add the `booking-api:reservations:view` permission to the role.
+4. Complete the role creation.
+5. Open the role and select the **Assignments** tab.
+6. Add the users, groups, applications, or agents that can view reservations.
+
+The authorization decision evaluates the user, application, or agent identified by `subject.id`. For a group assignment,
+use the ID of a group member as `subject.id`; <ProductName /> includes the subject's group memberships in the
+evaluation. For more information, see [Roles](/docs/next/guides/guides/users/manage-roles).
+
+### Configure the PEP Application
+
+The PEP uses a separate application identity to call the protected AuthZEN endpoints. This application does not replace
+the subject in the evaluation request.
+
+1. Select **Applications**, then select **Add Application**.
+2. Select **Backend Service**.
+3. Enter a name such as `AuthZEN PEP`, select an organization unit, and create the application.
+4. Save the client ID and client secret.
+5. Assign the application to a role that grants the `system` permission. The default **Administrator** role grants this
+   permission.
+
+Request a Client Credentials token for the PEP application:
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/oauth2/token \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -d "grant_type=client_credentials" \
+  -d "scope=system"
+```
+
+Use the returned access token in the `Authorization` header when the PEP calls an AuthZEN endpoint. For more
+information, see [Client Credentials](/docs/next/guides/guides/protocols/oauth-oidc/client-credentials).
+
+### Map the Configuration to AuthZEN
+
+Use the configured values in an access evaluation request:
+
+- Set `subject.id` to the ID of the user, application, or agent being evaluated.
+- Set `resource.type` to the resource server handle, `booking-api`.
+- Optionally set `resource.id` to the reservation instance identifier.
+- Set `action.name` to the generated permission, `booking-api:reservations:view`.
+
+## Discover AuthZEN Metadata
+
+Use the metadata endpoint to discover the <ProductName /> PDP base URL and supported AuthZEN API endpoints. This
+endpoint does not require authentication.
+
+```bash
+curl https://{{productSlug}}.example.com/.well-known/authzen-configuration
+```
+
+Response:
+
+```json
+{
+  "policy_decision_point": "https://{{productSlug}}.example.com",
+  "access_evaluation_endpoint": "https://{{productSlug}}.example.com/access/v1/evaluation",
+  "access_evaluations_endpoint": "https://{{productSlug}}.example.com/access/v1/evaluations",
+  "search_action_endpoint": "https://{{productSlug}}.example.com/access/v1/search/action"
+}
+```
+
+## Evaluate Single Access Request
+
+Use `/access/v1/evaluation` when the PEP needs one allow or deny decision. The response contains `decision: true` when
+the subject has the requested permission.
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/access/v1/evaluation \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "subject": {
+      "type": "user",
+      "id": "<subject-id>"
+    },
+    "resource": {
+      "type": "booking-api",
+      "id": "<booking-id>"
+    },
+    "action": {
+      "name": "booking-api:reservations:view"
+    }
+  }'
+```
+
+Allowed response:
+
+```json
+{
+  "decision": true
+}
+```
+
+Denied response:
+
+```json
+{
+  "decision": false,
+  "context": {
+    "reason": "Subject is not authorized to perform the requested action"
+  }
+}
+```
+
+If `resource.type` does not match a resource server handle, or `action.name` does not match a registered permission,
+
+<ProductName /> returns a denied decision with error context instead of allowing the request.
+
+## Evaluate Multiple Access Requests
+
+Use `/access/v1/evaluations` when the PEP needs decisions for multiple access requests in one call. <ProductName />
+preserves request order in the response, so each result maps to the evaluation at the same array index.
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/access/v1/evaluations \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "evaluations": [
+      {
+        "subject": {
+          "type": "user",
+          "id": "<subject-id>"
+        },
+        "resource": {
+          "type": "booking-api",
+          "id": "<booking-id>"
+        },
+        "action": {
+          "name": "booking-api:reservations:view"
+        }
+      },
+      {
+        "subject": {
+          "type": "user",
+          "id": "<subject-id>"
+        },
+        "resource": {
+          "type": "booking-api",
+          "id": "<booking-id>"
+        },
+        "action": {
+          "name": "booking-api:reservations:delete"
+        }
+      }
+    ]
+  }'
+```
+
+Response:
+
+```json
+{
+  "evaluations": [
+    {
+      "decision": true
+    },
+    {
+      "decision": false,
+      "context": {
+        "reason": "Subject is not authorized to perform the requested action"
+      }
+    }
+  ]
+}
+```
+
+An empty `evaluations` array returns a request error.
+
+## Search Allowed Actions
+
+Use `/access/v1/search/action` when the PEP needs to know which registered actions the subject can perform on a
+resource. <ProductName /> checks the permissions under the target resource server and returns only the allowed actions.
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/access/v1/search/action \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "subject": {
+      "type": "user",
+      "id": "<subject-id>"
+    },
+    "resource": {
+      "type": "booking-api",
+      "id": "<booking-id>"
+    }
+  }'
+```
+
+Response:
+
+```json
+{
+  "results": [
+    {
+      "name": "booking-api:reservations:view"
+    },
+    {
+      "name": "booking-api:reservations:update"
+    }
+  ]
+}
+```
+
+## Related Guides
+
+- [Resource Servers](/docs/next/guides/guides/resource-servers) — define protected APIs, resources, and actions.
+- [Roles](/docs/next/guides/guides/users/manage-roles) — assign permissions to users, groups, applications, and agents.
+- [Client Credentials](/docs/next/guides/guides/protocols/oauth-oidc/client-credentials) — issue service tokens for
+  machine-to-machine integrations.
+- [Envoy](/docs/next/guides/guides/integrations/apim-gateways/envoy) — configure Envoy to call <ProductName /> as an
+  AuthZEN PDP.
