@@ -19,12 +19,11 @@
 import {Alert, Box, Snackbar, Stack} from '@wso2/oxygen-ui';
 import type {Edge, Node} from '@xyflow/react';
 import {useEdgesState, useNodesState, useUpdateNodeInternals} from '@xyflow/react';
-import {useCallback, useEffect, useMemo, useRef} from 'react';
+import {useCallback, useEffect, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useParams} from 'react-router';
 import '@xyflow/react/dist/style.css';
 import useGetLoginFlowBuilderResources from '../api/useGetLoginFlowBuilderResources';
-import {EXECUTOR_TO_IDP_TYPE_MAP} from '../components/resource-property-panel/extended-properties/execution-properties/constants';
 import LoginFlowConstants from '../constants/LoginFlowConstants';
 import useEdgeGeneration from '../hooks/useEdgeGeneration';
 import useElementAddition from '../hooks/useElementAddition';
@@ -41,11 +40,7 @@ import FlowBuilder from '@/features/flows/components/FlowBuilder';
 import useFlowConfig from '@/features/flows/hooks/useFlowConfig';
 import useFlowEvents from '@/features/flows/hooks/useFlowEvents';
 import useValidationStatus from '@/features/flows/hooks/useValidationStatus';
-import {ExecutionTypes, StepTypes, type StepData} from '@/features/flows/models/steps';
-import useIdentityProviders from '@/features/integrations/api/useIdentityProviders';
-import useNotificationSenders from '@/features/notification-senders/api/useNotificationSenders';
-
-const SMS_EXECUTORS = new Set<string>([ExecutionTypes.SMSOTPAuth, ExecutionTypes.SMSExecutor]);
+import {StepTypes} from '@/features/flows/models/steps';
 
 function LoginFlowBuilder() {
   const {flowId} = useParams<{flowId: string}>();
@@ -108,82 +103,6 @@ function LoginFlowBuilder() {
     edgeStyle,
     onNeedsAutoLayout: setNeedsAutoLayout,
   });
-
-  // Auto-assign connections for executor nodes with placeholder IDP/sender IDs
-  const {data: identityProviders} = useIdentityProviders();
-  const {data: notificationSenders} = useNotificationSenders();
-  const hasAutoAssignedRef = useRef<boolean>(false);
-
-  useEffect(() => {
-    if (nodes.length === 0 || hasAutoAssignedRef.current) {
-      return;
-    }
-
-    // Wait until both data sources are available
-    if (!identityProviders || !notificationSenders) {
-      return;
-    }
-
-    setNodes((currentNodes: Node[]) => {
-      let changed = false;
-
-      const updated = currentNodes.map((node: Node) => {
-        if (node.type !== StepTypes.Execution) return node;
-
-        const stepData = node.data as StepData | undefined;
-        const executorName = (stepData?.action as {executor?: {name?: string}} | undefined)?.executor?.name;
-        if (!executorName) return node;
-
-        const {senderId: currentSenderId = '', idpId: currentIdpId = ''} =
-          (stepData?.properties as Record<string, string> | undefined) ?? {};
-
-        // Handle SMS executors - auto-assign senderId
-        if (SMS_EXECUTORS.has(executorName) && notificationSenders) {
-          if (currentSenderId === '{{SENDER_ID}}' || currentSenderId === '') {
-            if (notificationSenders.length === 1) {
-              changed = true;
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  properties: {
-                    ...((stepData?.properties as Record<string, unknown>) ?? {}),
-                    senderId: notificationSenders[0].id,
-                  },
-                },
-              };
-            }
-          }
-          return node;
-        }
-
-        // Handle IDP executors - auto-assign idpId
-        const idpType = EXECUTOR_TO_IDP_TYPE_MAP[executorName];
-        if (!idpType || !identityProviders) return node;
-
-        if (currentIdpId !== '{{IDP_ID}}' && currentIdpId !== '') return node;
-
-        const matching = identityProviders.filter((idp) => idp.type === idpType);
-        if (matching.length !== 1) return node;
-
-        changed = true;
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            properties: {...((stepData?.properties as Record<string, unknown>) ?? {}), idpId: matching[0].id},
-          },
-        };
-      });
-
-      if (changed) {
-        hasAutoAssignedRef.current = true;
-        return updated;
-      }
-
-      return currentNodes;
-    });
-  }, [identityProviders, notificationSenders, nodes.length, setNodes]);
 
   // Element addition hook
   const {handleAddElementToView, handleAddElementToForm} = useElementAddition({
