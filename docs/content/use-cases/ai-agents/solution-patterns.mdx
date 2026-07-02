@@ -73,7 +73,7 @@ A resource server in <ProductName /> groups related capabilities into a protecte
 
 Audience locking is the primary defense against token replay. When the parent agent in a chain exchanges its token, it specifies a target resource indicator, and <ProductName /> binds the new token to that target. If the child agent tries to use the token against a different service, the service rejects it.
 
-#### How ThunderID Helps
+#### How <ProductName /> Helps
 
 - Lets you group related capabilities into resource servers.
 - Lets each resource server define scopes for individual capabilities or capability groups.
@@ -86,7 +86,7 @@ Scopes describe what the bearer of the token may do. The right granularity depen
 
 For agents, scope granularity also shapes downscoping during multi-agent delegation. A parent that holds a coarse `analytics:*` scope can downscope to `analytics:read` for a child; a parent that only holds `analytics:read` cannot widen to `analytics:write` no matter what it does.
 
-#### How ThunderID Helps
+#### How <ProductName /> Helps
 
 - Supports fine-grained scopes when you need per-endpoint control.
 - Supports capability-level scopes for a simpler and more readable permission model.
@@ -97,7 +97,7 @@ For agents, scope granularity also shapes downscoping during multi-agent delegat
 
 When multiple agents participate in a single request, every hop should be visible to the final service. The token carries the original user as subject, and each agent in the chain as a successive actor. The final service can inspect this chain to attribute the action and enforce policies based on how the request arrived — for example, "only allow this if a human user initiated the chain."
 
-#### How ThunderID Helps
+#### How <ProductName /> Helps
 
 - Issues tokens with a subject claim for the originating user when user context exists.
 - Preserves the actor chain across agent-to-agent delegation.
@@ -108,7 +108,7 @@ When multiple agents participate in a single request, every hop should be visibl
 
 Each agent has its own Client ID and Client Secret. These credentials need a lifecycle: issuance at registration, rotation on a schedule, and revocation when the agent is decommissioned or compromised. Because each agent is a distinct identity, revoking one agent's credentials does not affect any other agent's operation.
 
-#### How ThunderID Helps
+#### How <ProductName /> Helps
 
 - Generates agent credentials during registration.
 - Supports credential rotation on a schedule or on demand.
