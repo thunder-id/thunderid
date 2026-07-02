@@ -54,23 +54,25 @@ var corsCacheKey = cache.CacheKey{Key: string(ConfigNameCORS)}
 
 func (suite *CacheBackedStoreTestSuite) TestGetServerConfig_CacheHit() {
 	suite.mockCache.EXPECT().Get(mock.Anything, corsCacheKey).
-		Return(&ServerConfig{Name: ConfigNameCORS, Value: corsValue}, true)
+		Return(&ServerConfig{Name: ConfigNameCORS, Value: corsValue, Version: 5}, true)
 
 	layers, err := suite.cached.GetServerConfig(suite.ctx, ConfigNameCORS)
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), corsValue, layers.Writable)
+	assert.Equal(suite.T(), 5, layers.Version)
 	suite.mockInner.AssertNotCalled(suite.T(), "GetServerConfig", mock.Anything, mock.Anything)
 }
 
 func (suite *CacheBackedStoreTestSuite) TestGetServerConfig_CacheMiss_PopulatesCache() {
 	suite.mockCache.EXPECT().Get(mock.Anything, corsCacheKey).Return(nil, false)
 	suite.mockInner.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
-		Return(storeLayers{Writable: corsValue}, nil)
+		Return(storeLayers{Writable: corsValue, Version: 5}, nil)
 	suite.mockCache.EXPECT().Set(mock.Anything, corsCacheKey, mock.Anything).Return(nil)
 
 	layers, err := suite.cached.GetServerConfig(suite.ctx, ConfigNameCORS)
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), corsValue, layers.Writable)
+	assert.Equal(suite.T(), 5, layers.Version)
 }
 
 func (suite *CacheBackedStoreTestSuite) TestGetServerConfig_MissUnset_CachesNegativeLookup() {

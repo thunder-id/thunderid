@@ -23,8 +23,9 @@ import "encoding/json"
 // ServerConfig represents a single server-wide configuration section in the writable (db) layer. Its
 // value is the raw JSON persisted to the config database.
 type ServerConfig struct {
-	Name  ConfigName
-	Value json.RawMessage
+	Name    ConfigName
+	Value   json.RawMessage
+	Version int
 }
 
 // storeLayers is the raw (byte) form returned by the store: the read-only (declarative) and writable
@@ -32,6 +33,7 @@ type ServerConfig struct {
 type storeLayers struct {
 	ReadOnly json.RawMessage
 	Writable json.RawMessage
+	Version  int
 }
 
 // ServerConfigLayers is the per-section read result with decoded values: the read-only (declarative)

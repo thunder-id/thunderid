@@ -63,7 +63,7 @@ packages:
 
   github.com/thunder-id/thunderid/internal/system/cors:
     interfaces:
-      MergedConfigReader:
+      ServerConfigReader:
         config:
           dir: tests/mocks/corsmock
           structname: '{{.InterfaceName}}Mock'

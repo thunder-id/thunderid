@@ -19,27 +19,35 @@
 package serverconfig
 
 import (
+	"fmt"
+
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 )
+
+// serverConfigVersionModulus bounds the rotating VERSION token below the 32-bit INTEGER max to avoid
+// overflow; VERSION is compared only for equality, not ordering.
+const serverConfigVersionModulus = 2000000000
 
 var (
 	// queryGetServerConfigByName retrieves a single server config by name.
 	queryGetServerConfigByName = dbmodel.DBQuery{
 		ID: "SCF-01",
-		Query: `SELECT NAME, VALUE FROM "SERVER_CONFIG" ` +
+		Query: `SELECT NAME, VALUE, VERSION FROM "SERVER_CONFIG" ` +
 			`WHERE NAME = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
-	// queryUpsertServerConfig inserts or updates a server config by name.
+	// queryUpsertServerConfig inserts or updates a server config by name, rotating VERSION on update.
 	queryUpsertServerConfig = dbmodel.DBQuery{
-		ID: "SCF-03",
-		Query: `INSERT INTO "SERVER_CONFIG" (NAME, VALUE, DEPLOYMENT_ID) ` +
-			`VALUES ($1, $2, $3) ` +
-			`ON CONFLICT (DEPLOYMENT_ID, NAME) ` +
-			`DO UPDATE SET VALUE = EXCLUDED.VALUE, UPDATED_AT = NOW()`,
-		SQLiteQuery: `INSERT INTO "SERVER_CONFIG" (NAME, VALUE, DEPLOYMENT_ID) ` +
-			`VALUES ($1, $2, $3) ` +
-			`ON CONFLICT (DEPLOYMENT_ID, NAME) ` +
-			`DO UPDATE SET VALUE = excluded.VALUE, UPDATED_AT = datetime('now')`,
+		ID: "SCF-02",
+		Query: fmt.Sprintf(`INSERT INTO "SERVER_CONFIG" (NAME, VALUE, DEPLOYMENT_ID) `+
+			`VALUES ($1, $2, $3) `+
+			`ON CONFLICT (DEPLOYMENT_ID, NAME) `+
+			`DO UPDATE SET VALUE = EXCLUDED.VALUE, `+
+			`VERSION = ("SERVER_CONFIG".VERSION %% %d) + 1, UPDATED_AT = NOW()`, serverConfigVersionModulus),
+		SQLiteQuery: fmt.Sprintf(`INSERT INTO "SERVER_CONFIG" (NAME, VALUE, DEPLOYMENT_ID) `+
+			`VALUES ($1, $2, $3) `+
+			`ON CONFLICT (DEPLOYMENT_ID, NAME) `+
+			`DO UPDATE SET VALUE = excluded.VALUE, `+
+			`VERSION = (VERSION %% %d) + 1, UPDATED_AT = datetime('now')`, serverConfigVersionModulus),
 	}
 )

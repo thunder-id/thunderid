@@ -46,7 +46,7 @@ func newCachedBackStore(inner serverConfigStoreInterface,
 func (c *cachedBackStore) GetServerConfig(ctx context.Context, name ConfigName) (storeLayers, error) {
 	key := cache.CacheKey{Key: string(name)}
 	if cached, ok := c.configCache.Get(ctx, key); ok {
-		return storeLayers{Writable: cached.Value}, nil
+		return storeLayers{Writable: cached.Value, Version: cached.Version}, nil
 	}
 
 	layers, err := c.inner.GetServerConfig(ctx, name)
@@ -55,7 +55,7 @@ func (c *cachedBackStore) GetServerConfig(ctx context.Context, name ConfigName) 
 	}
 	// Cache the result even when the section is unset (Value == nil) so repeated reads of an absent
 	// section are served from the cache; writes invalidate the key.
-	c.cacheServerConfig(ctx, ServerConfig{Name: name, Value: layers.Writable})
+	c.cacheServerConfig(ctx, ServerConfig{Name: name, Value: layers.Writable, Version: layers.Version})
 	return layers, nil
 }
 

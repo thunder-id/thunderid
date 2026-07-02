@@ -30,7 +30,11 @@ import (
 
 // InstallMatcherEntries installs a CORS matcher for the duration of the test.
 func InstallMatcherEntries(t *testing.T, entries cors.OriginEntries) {
-	reader := corsmock.NewMergedConfigReaderMock(t)
+	reader := corsmock.NewServerConfigReaderMock(t)
+	reader.EXPECT().
+		GetConfigVersion(mock.Anything, "cors").
+		Return(1, nil).
+		Maybe()
 	reader.EXPECT().
 		GetMergedConfig(mock.Anything, "cors").
 		Return(cors.OriginConfig{AllowedOrigins: entries}, nil).

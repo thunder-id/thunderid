@@ -73,13 +73,17 @@ func (s *fileBasedStore) GetByName(name ConfigName) (json.RawMessage, bool) {
 	return doc.Value, true
 }
 
+// fileBasedConfigVersion is the version reported for any declarative (read-only) config: the layer is
+// loaded at startup and never mutated, so it carries no change-detection version.
+const fileBasedConfigVersion = 0
+
 // GetServerConfig serves the declarative value as the read-only layer; the writable layer is never set.
 func (s *fileBasedStore) GetServerConfig(_ context.Context, name ConfigName) (storeLayers, error) {
 	value, ok := s.GetByName(name)
 	if !ok {
 		return storeLayers{}, nil
 	}
-	return storeLayers{ReadOnly: value}, nil
+	return storeLayers{ReadOnly: value, Version: fileBasedConfigVersion}, nil
 }
 
 // UpsertServerConfig is rejected: the declarative layer is read-only.

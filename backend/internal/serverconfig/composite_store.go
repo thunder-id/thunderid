@@ -46,7 +46,7 @@ func (c *compositeServerConfigStore) GetServerConfig(ctx context.Context,
 	if err != nil {
 		return storeLayers{}, err
 	}
-	return storeLayers{ReadOnly: fileLayers.ReadOnly, Writable: dbLayers.Writable}, nil
+	return storeLayers{ReadOnly: fileLayers.ReadOnly, Writable: dbLayers.Writable, Version: dbLayers.Version}, nil
 }
 
 func (c *compositeServerConfigStore) UpsertServerConfig(ctx context.Context, cfg ServerConfig) error {

@@ -65,12 +65,13 @@ func (suite *StoreTestSuite) TestGetServerConfig_Found() {
 	suite.expectDBClient()
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetServerConfigByName,
 		string(ConfigNameCORS), testDeploymentID).
-		Return([]map[string]interface{}{{"name": "cors", "value": `["https://x.com"]`}}, nil)
+		Return([]map[string]interface{}{{"name": "cors", "value": `["https://x.com"]`, "version": int64(7)}}, nil)
 
 	layers, err := suite.store.GetServerConfig(suite.ctx, ConfigNameCORS)
 
 	suite.NoError(err)
 	suite.Equal(json.RawMessage(`["https://x.com"]`), layers.Writable)
+	suite.Equal(7, layers.Version)
 	suite.Nil(layers.ReadOnly)
 }
 
@@ -78,12 +79,13 @@ func (suite *StoreTestSuite) TestGetServerConfig_Found_ByteValue() {
 	suite.expectDBClient()
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetServerConfigByName,
 		string(ConfigNameCORS), testDeploymentID).
-		Return([]map[string]interface{}{{"value": []byte(`["https://x.com"]`)}}, nil)
+		Return([]map[string]interface{}{{"value": []byte(`["https://x.com"]`), "version": int64(3)}}, nil)
 
 	layers, err := suite.store.GetServerConfig(suite.ctx, ConfigNameCORS)
 
 	suite.NoError(err)
 	suite.Equal(json.RawMessage(`["https://x.com"]`), layers.Writable)
+	suite.Equal(3, layers.Version)
 }
 
 func (suite *StoreTestSuite) TestGetServerConfig_NotFound() {
@@ -113,6 +115,16 @@ func (suite *StoreTestSuite) TestGetServerConfig_BadValueType() {
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetServerConfigByName,
 		string(ConfigNameCORS), testDeploymentID).
 		Return([]map[string]interface{}{{"value": 123}}, nil) // value not string/[]byte
+
+	_, err := suite.store.GetServerConfig(suite.ctx, ConfigNameCORS)
+	suite.Error(err)
+}
+
+func (suite *StoreTestSuite) TestGetServerConfig_MissingVersion() {
+	suite.expectDBClient()
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetServerConfigByName,
+		string(ConfigNameCORS), testDeploymentID).
+		Return([]map[string]interface{}{{"value": `["https://x.com"]`}}, nil) // row present but no version
 
 	_, err := suite.store.GetServerConfig(suite.ctx, ConfigNameCORS)
 	suite.Error(err)
@@ -149,4 +161,10 @@ func (suite *StoreTestSuite) TestUpsertServerConfig_Error() {
 func (suite *StoreTestSuite) TestUpsertServerConfig_DBClientError() {
 	suite.expectDBClientError()
 	suite.Error(suite.store.UpsertServerConfig(suite.ctx, ServerConfig{Name: ConfigNameCORS, Value: corsValue}))
+}
+
+func (suite *StoreTestSuite) TestUpsertQueryRotatesVersion() {
+	// Guards the fmt.Sprintf wiring: the upsert must rotate VERSION below the modulus in both variants.
+	suite.Contains(queryUpsertServerConfig.Query, `("SERVER_CONFIG".VERSION % 2000000000) + 1`)
+	suite.Contains(queryUpsertServerConfig.SQLiteQuery, `(VERSION % 2000000000) + 1`)
 }

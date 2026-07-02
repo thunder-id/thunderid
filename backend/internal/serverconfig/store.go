@@ -77,7 +77,11 @@ func (s *serverConfigStore) GetServerConfig(ctx context.Context, name ConfigName
 	if err != nil {
 		return storeLayers{}, err
 	}
-	return storeLayers{Writable: value}, nil
+	version, err := versionFromRow(results[0])
+	if err != nil {
+		return storeLayers{}, err
+	}
+	return storeLayers{Writable: value, Version: version}, nil
 }
 
 // UpsertServerConfig inserts or updates a single server config in the writable layer.
@@ -104,5 +108,19 @@ func valueFromRow(row map[string]interface{}) (json.RawMessage, error) {
 		return json.RawMessage(v), nil
 	default:
 		return nil, fmt.Errorf("failed to parse value")
+	}
+}
+
+// versionFromRow extracts the VERSION column from a database result row.
+func versionFromRow(row map[string]interface{}) (int, error) {
+	switch v := row["version"].(type) {
+	case int64:
+		return int(v), nil
+	case int:
+		return v, nil
+	case float64:
+		return int(v), nil
+	default:
+		return 0, fmt.Errorf("failed to parse version")
 	}
 }

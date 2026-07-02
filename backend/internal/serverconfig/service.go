@@ -33,6 +33,7 @@ type ServerConfigService interface {
 	ListConfigNames(ctx context.Context) ([]ConfigName, *common.ServiceError)
 	GetConfig(ctx context.Context, name ConfigName) (ServerConfigLayers, *common.ServiceError)
 	GetMergedConfig(ctx context.Context, name string) (any, *common.ServiceError)
+	GetConfigVersion(ctx context.Context, name string) (int, *common.ServiceError)
 	SetConfig(ctx context.Context, name ConfigName, value json.RawMessage) *common.ServiceError
 }
 
@@ -100,6 +101,23 @@ func (s *serverConfigService) GetMergedConfig(ctx context.Context,
 		return nil, svcErr
 	}
 	return layers.Merged, nil
+}
+
+// GetConfigVersion returns a section's change-detection version, read from the store without decoding
+// or merging.
+func (s *serverConfigService) GetConfigVersion(ctx context.Context,
+	name string) (int, *common.ServiceError) {
+	configName := ConfigName(name)
+	if !configName.IsValid() {
+		return 0, &ErrorUnsupportedConfigName
+	}
+	layers, err := s.store.GetServerConfig(ctx, configName)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to get server config version",
+			log.String("name", name), log.Error(err))
+		return 0, &common.InternalServerError
+	}
+	return layers.Version, nil
 }
 
 // SetConfig decodes and validates an incoming value against the current layers and persists the raw

@@ -48,15 +48,17 @@ func (suite *CompositeStoreTestSuite) SetupTest() {
 }
 
 func (suite *CompositeStoreTestSuite) TestGetServerConfig_CombinesLayers() {
+	// Version comes from the db layer; the file layer's version must be ignored.
 	suite.mockFile.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
-		Return(storeLayers{ReadOnly: declarative}, nil)
+		Return(storeLayers{ReadOnly: declarative, Version: 999}, nil)
 	suite.mockDB.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
-		Return(storeLayers{Writable: corsValue}, nil)
+		Return(storeLayers{Writable: corsValue, Version: 9}, nil)
 
 	layers, err := suite.composite.GetServerConfig(suite.ctx, ConfigNameCORS)
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), declarative, layers.ReadOnly)
 	assert.Equal(suite.T(), corsValue, layers.Writable)
+	assert.Equal(suite.T(), 9, layers.Version)
 }
 
 func (suite *CompositeStoreTestSuite) TestGetServerConfig_FileError() {

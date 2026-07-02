@@ -166,6 +166,32 @@ func (suite *ServiceTestSuite) TestGetMergedConfig_StoreError() {
 	assert.Same(suite.T(), &common.InternalServerError, svcErr)
 }
 
+// --- GetConfigVersion ---
+
+func (suite *ServiceTestSuite) TestGetConfigVersion_OK() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
+		Return(storeLayers{Writable: corsValue, Version: 5}, nil)
+
+	version, svcErr := suite.service.GetConfigVersion(suite.ctx, string(ConfigNameCORS))
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), 5, version)
+}
+
+func (suite *ServiceTestSuite) TestGetConfigVersion_UnsupportedName() {
+	version, svcErr := suite.service.GetConfigVersion(suite.ctx, "bogus")
+	assert.Equal(suite.T(), 0, version)
+	assert.Same(suite.T(), &ErrorUnsupportedConfigName, svcErr)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetServerConfig", mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestGetConfigVersion_StoreError() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
+		Return(storeLayers{}, errors.New("db error"))
+	version, svcErr := suite.service.GetConfigVersion(suite.ctx, string(ConfigNameCORS))
+	assert.Equal(suite.T(), 0, version)
+	assert.Same(suite.T(), &common.InternalServerError, svcErr)
+}
+
 // --- SetConfig ---
 
 func (suite *ServiceTestSuite) TestSetConfig_UnsupportedName() {

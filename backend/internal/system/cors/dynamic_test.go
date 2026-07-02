@@ -28,12 +28,19 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
-// readerFunc adapts a function to the MergedConfigReader interface for tests, so a test can vary the merged
-// value (and error) returned across successive resolve calls.
-type readerFunc func() (any, *common.ServiceError)
+// fakeReader adapts functions to the ServerConfigReader interface for tests, so a test can vary the version
+// and merged value (and errors) returned across successive resolve calls.
+type fakeReader struct {
+	version func() (int, *common.ServiceError)
+	merged  func() (any, *common.ServiceError)
+}
 
-func (r readerFunc) GetMergedConfig(_ context.Context, _ string) (any, *common.ServiceError) {
-	return r()
+func (r fakeReader) GetConfigVersion(_ context.Context, _ string) (int, *common.ServiceError) {
+	return r.version()
+}
+
+func (r fakeReader) GetMergedConfig(_ context.Context, _ string) (any, *common.ServiceError) {
+	return r.merged()
 }
 
 // originConfig builds an OriginConfig from literal origin strings, for the dynamic matcher tests.
@@ -61,9 +68,10 @@ func TestGetDynamicMatcher_NilReaderReturnsNil(t *testing.T) {
 
 func TestGetDynamicMatcher_CompilesAndMatches(t *testing.T) {
 	t.Cleanup(func() { InitializeDynamicMatcher(nil) })
-	InitializeDynamicMatcher(readerFunc(func() (any, *common.ServiceError) {
-		return originConfig("https://app.example.com"), nil
-	}))
+	InitializeDynamicMatcher(fakeReader{
+		version: func() (int, *common.ServiceError) { return 1, nil },
+		merged:  func() (any, *common.ServiceError) { return originConfig("https://app.example.com"), nil },
+	})
 
 	m := GetDynamicMatcher(context.Background())
 	require.NotNil(t, m)
@@ -73,22 +81,35 @@ func TestGetDynamicMatcher_CompilesAndMatches(t *testing.T) {
 
 func TestGetDynamicMatcher_UnchangedReusesMatcher(t *testing.T) {
 	t.Cleanup(func() { InitializeDynamicMatcher(nil) })
-	InitializeDynamicMatcher(readerFunc(func() (any, *common.ServiceError) {
-		return originConfig("https://app.example.com"), nil
-	}))
+	mergedCalls := 0
+	InitializeDynamicMatcher(fakeReader{
+		version: func() (int, *common.ServiceError) { return 1, nil },
+		merged: func() (any, *common.ServiceError) {
+			mergedCalls++
+			return originConfig("https://app.example.com"), nil
+		},
+	})
 
-	// The same merged value across calls must yield the identical compiled matcher (no recompilation).
-	assert.Same(t, GetDynamicMatcher(context.Background()), GetDynamicMatcher(context.Background()))
+	// A stable version yields the identical compiled matcher without re-reading the merged config.
+	first := GetDynamicMatcher(context.Background())
+	second := GetDynamicMatcher(context.Background())
+	assert.Same(t, first, second)
+	assert.Equal(t, 1, mergedCalls)
 }
 
 func TestGetDynamicMatcher_ChangeRecompiles(t *testing.T) {
 	t.Cleanup(func() { InitializeDynamicMatcher(nil) })
+	version := 1
 	current := originConfig("https://a.example.com")
-	InitializeDynamicMatcher(readerFunc(func() (any, *common.ServiceError) { return current, nil }))
+	InitializeDynamicMatcher(fakeReader{
+		version: func() (int, *common.ServiceError) { return version, nil },
+		merged:  func() (any, *common.ServiceError) { return current, nil },
+	})
 
 	first := GetDynamicMatcher(context.Background())
 	require.NotNil(t, first)
 
+	version = 2
 	current = originConfig("https://b.example.com")
 	second := GetDynamicMatcher(context.Background())
 	require.NotNil(t, second)
@@ -100,11 +121,16 @@ func TestGetDynamicMatcher_ChangeRecompiles(t *testing.T) {
 
 func TestGetDynamicMatcher_ClearRevokes(t *testing.T) {
 	t.Cleanup(func() { InitializeDynamicMatcher(nil) })
+	version := 1
 	current := originConfig("https://app.example.com")
-	InitializeDynamicMatcher(readerFunc(func() (any, *common.ServiceError) { return current, nil }))
+	InitializeDynamicMatcher(fakeReader{
+		version: func() (int, *common.ServiceError) { return version, nil },
+		merged:  func() (any, *common.ServiceError) { return current, nil },
+	})
 
 	require.True(t, mustMatch(t, GetDynamicMatcher(context.Background()), "https://app.example.com"))
 
+	version = 2
 	current = OriginConfig{AllowedOrigins: OriginEntries{}}
 	cleared := GetDynamicMatcher(context.Background())
 	require.NotNil(t, cleared)
@@ -113,24 +139,43 @@ func TestGetDynamicMatcher_ClearRevokes(t *testing.T) {
 
 func TestGetDynamicMatcher_BadEntriesReturnNil(t *testing.T) {
 	t.Cleanup(func() { InitializeDynamicMatcher(nil) })
+	version := 1
 	current := originConfig("https://good.example.com")
-	InitializeDynamicMatcher(readerFunc(func() (any, *common.ServiceError) { return current, nil }))
+	mergedCalls := 0
+	InitializeDynamicMatcher(fakeReader{
+		version: func() (int, *common.ServiceError) { return version, nil },
+		merged: func() (any, *common.ServiceError) {
+			mergedCalls++
+			return current, nil
+		},
+	})
 
 	require.NotNil(t, GetDynamicMatcher(context.Background()))
 
 	// Invalid regex entries remove the matcher until the config is fixed.
+	version = 2
 	current = OriginConfig{AllowedOrigins: OriginEntries{regexEntry{Pattern: "("}}}
 	assert.Nil(t, GetDynamicMatcher(context.Background()))
+
+	// The bad version is cached: a second call at the same version returns nil without recompiling.
+	callsAfterBad := mergedCalls
+	assert.Nil(t, GetDynamicMatcher(context.Background()))
+	assert.Equal(t, callsAfterBad, mergedCalls)
 }
 
 func TestGetDynamicMatcher_WrongTypeReturnsNil(t *testing.T) {
 	t.Cleanup(func() { InitializeDynamicMatcher(nil) })
+	version := 1
 	var merged any = originConfig("https://good.example.com")
-	InitializeDynamicMatcher(readerFunc(func() (any, *common.ServiceError) { return merged, nil }))
+	InitializeDynamicMatcher(fakeReader{
+		version: func() (int, *common.ServiceError) { return version, nil },
+		merged:  func() (any, *common.ServiceError) { return merged, nil },
+	})
 
 	require.NotNil(t, GetDynamicMatcher(context.Background()))
 
 	// Unexpected merged values are rejected.
+	version = 2
 	merged = "not an origin config"
 	assert.Nil(t, GetDynamicMatcher(context.Background()))
 }
@@ -138,37 +183,66 @@ func TestGetDynamicMatcher_WrongTypeReturnsNil(t *testing.T) {
 func TestGetDynamicMatcher_ReadErrorReturnsNil(t *testing.T) {
 	t.Cleanup(func() { InitializeDynamicMatcher(nil) })
 	fail := false
-	InitializeDynamicMatcher(readerFunc(func() (any, *common.ServiceError) {
-		if fail {
-			return nil, &common.InternalServerError
-		}
-		return originConfig("https://app.example.com"), nil
-	}))
+	InitializeDynamicMatcher(fakeReader{
+		version: func() (int, *common.ServiceError) {
+			if fail {
+				return 0, &common.InternalServerError
+			}
+			return 1, nil
+		},
+		merged: func() (any, *common.ServiceError) { return originConfig("https://app.example.com"), nil },
+	})
 
 	require.NotNil(t, GetDynamicMatcher(context.Background()))
 
-	// Read errors remove the matcher even if an earlier value compiled.
+	// A failed version read removes the matcher even if an earlier value compiled.
 	fail = true
+	assert.Nil(t, GetDynamicMatcher(context.Background()))
+}
+
+func TestGetDynamicMatcher_MergedReadErrorReturnsNil(t *testing.T) {
+	t.Cleanup(func() { InitializeDynamicMatcher(nil) })
+	version := 1
+	mergedFail := false
+	InitializeDynamicMatcher(fakeReader{
+		version: func() (int, *common.ServiceError) { return version, nil },
+		merged: func() (any, *common.ServiceError) {
+			if mergedFail {
+				return nil, &common.InternalServerError
+			}
+			return originConfig("https://app.example.com"), nil
+		},
+	})
+
+	require.NotNil(t, GetDynamicMatcher(context.Background()))
+
+	// A new version forces a re-read; a failed merged read removes the matcher.
+	version = 2
+	mergedFail = true
 	assert.Nil(t, GetDynamicMatcher(context.Background()))
 }
 
 func TestGetDynamicMatcher_ReadErrorBeforeAnyGoodReturnsNil(t *testing.T) {
 	t.Cleanup(func() { InitializeDynamicMatcher(nil) })
-	InitializeDynamicMatcher(readerFunc(func() (any, *common.ServiceError) {
-		return nil, &common.InternalServerError
-	}))
+	InitializeDynamicMatcher(fakeReader{
+		version: func() (int, *common.ServiceError) { return 0, &common.InternalServerError },
+		merged:  func() (any, *common.ServiceError) { return nil, &common.InternalServerError },
+	})
 	assert.Nil(t, GetDynamicMatcher(context.Background()))
 }
 
 func TestGetDynamicMatcher_RecoversAfterError(t *testing.T) {
 	t.Cleanup(func() { InitializeDynamicMatcher(nil) })
 	fail := false
-	InitializeDynamicMatcher(readerFunc(func() (any, *common.ServiceError) {
-		if fail {
-			return nil, &common.InternalServerError
-		}
-		return originConfig("https://app.example.com"), nil
-	}))
+	InitializeDynamicMatcher(fakeReader{
+		version: func() (int, *common.ServiceError) {
+			if fail {
+				return 0, &common.InternalServerError
+			}
+			return 1, nil
+		},
+		merged: func() (any, *common.ServiceError) { return originConfig("https://app.example.com"), nil },
+	})
 
 	require.NotNil(t, GetDynamicMatcher(context.Background()))
 

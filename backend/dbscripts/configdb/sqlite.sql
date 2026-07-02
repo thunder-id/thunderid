@@ -363,6 +363,7 @@ CREATE TABLE "SERVER_CONFIG" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     NAME          VARCHAR(255) NOT NULL,
     VALUE         TEXT         NOT NULL,
+    VERSION       INTEGER      NOT NULL DEFAULT 1,
     CREATED_AT    TEXT         DEFAULT (datetime('now')),
     UPDATED_AT    TEXT         DEFAULT (datetime('now')),
     PRIMARY KEY (DEPLOYMENT_ID, NAME)

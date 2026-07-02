@@ -21,10 +21,7 @@ package cors
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
-	"hash/fnv"
-	"io"
 	"sync"
 	"sync/atomic"
 
@@ -32,23 +29,24 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
-// MergedConfigReader reads the merged value of a server-config section.
-type MergedConfigReader interface {
+// ServerConfigReader reads the merged value and change-detection version of a server-config section.
+type ServerConfigReader interface {
 	GetMergedConfig(ctx context.Context, name string) (any, *common.ServiceError)
+	GetConfigVersion(ctx context.Context, name string) (int, *common.ServiceError)
 }
 
 // configSectionCORS is the section the dynamic matcher reads origins from.
 const configSectionCORS = "cors"
 
-// dynamicCachedMatcher pairs a compiled matcher with the signature it was built from.
+// dynamicCachedMatcher pairs a compiled matcher with the config version it was built from.
 type dynamicCachedMatcher struct {
-	sig     uint64
+	version int
 	matcher *Matcher
 }
 
 // dynamicMatcherState stores the runtime CORS matcher and serializes recompilation.
 type dynamicMatcherState struct {
-	reader MergedConfigReader
+	reader ServerConfigReader
 	cache  atomic.Pointer[dynamicCachedMatcher]
 	mu     sync.Mutex
 }
@@ -57,15 +55,15 @@ type dynamicMatcherState struct {
 var dynamic dynamicMatcherState
 
 // InitializeDynamicMatcher installs the server-config reader used by CORS matching.
-func InitializeDynamicMatcher(reader MergedConfigReader) {
+func InitializeDynamicMatcher(reader ServerConfigReader) {
 	dynamic.mu.Lock()
 	defer dynamic.mu.Unlock()
 	dynamic.reader = reader
 	dynamic.cache.Store(nil)
 }
 
-// GetDynamicMatcher returns the current CORS matcher, recompiling it when the configured origins change.
-// A nil matcher means no origins are allowed.
+// GetDynamicMatcher returns the current CORS matcher, recompiling it when the config section's version
+// changes. A nil matcher means no origins are allowed.
 func GetDynamicMatcher(ctx context.Context) *Matcher {
 	return dynamic.resolve(ctx)
 }
@@ -74,6 +72,20 @@ func (d *dynamicMatcherState) resolve(ctx context.Context) *Matcher {
 	reader := d.reader
 	if reader == nil {
 		return nil
+	}
+	currentVersion, svcErr := reader.GetConfigVersion(ctx, configSectionCORS)
+	if svcErr != nil {
+		logUnavailable("Failed to read the CORS server-config version", log.String("code", svcErr.Code))
+		return nil
+	}
+	if c := d.cache.Load(); c != nil && c.version == currentVersion {
+		return c.matcher
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if c := d.cache.Load(); c != nil && c.version == currentVersion {
+		return c.matcher
 	}
 	merged, svcErr := reader.GetMergedConfig(ctx, configSectionCORS)
 	if svcErr != nil {
@@ -86,26 +98,15 @@ func (d *dynamicMatcherState) resolve(ctx context.Context) *Matcher {
 			log.String("type", fmt.Sprintf("%T", merged)))
 		return nil
 	}
-
-	sig := signature(cfg.AllowedOrigins)
-	if c := d.cache.Load(); c != nil && c.sig == sig {
-		return c.matcher
-	}
-
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if c := d.cache.Load(); c != nil && c.sig == sig {
-		return c.matcher
-	}
 	m, err := CompileMatcher(cfg.AllowedOrigins)
 	if err != nil {
-		// Cache the bad signature so repeated requests do not recompile the same invalid value.
-		d.cache.Store(&dynamicCachedMatcher{sig: sig, matcher: nil})
+		// Cache the version with a nil matcher so repeated requests do not recompile the same invalid value.
+		d.cache.Store(&dynamicCachedMatcher{version: currentVersion, matcher: nil})
 		logUnavailable("Failed to compile the CORS allowed origins", log.Error(err))
 		return nil
 	}
 	warnUnanchoredRegexes(cfg.AllowedOrigins)
-	d.cache.Store(&dynamicCachedMatcher{sig: sig, matcher: m})
+	d.cache.Store(&dynamicCachedMatcher{version: currentVersion, matcher: m})
 	return m
 }
 
@@ -133,17 +134,4 @@ func warnUnanchoredRegexes(entries OriginEntries) {
 // corsLogger returns the package logger tagged with the CORS component name.
 func corsLogger() *log.Logger {
 	return log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CORS"))
-}
-
-// signature returns a stable digest used to detect changes to the origin list.
-func signature(entries OriginEntries) uint64 {
-	h := fnv.New64a()
-	var lenBuf [8]byte
-	for _, e := range entries {
-		key := entryKey(e)
-		binary.LittleEndian.PutUint64(lenBuf[:], uint64(len(key)))
-		_, _ = h.Write(lenBuf[:])
-		_, _ = io.WriteString(h, key)
-	}
-	return h.Sum64()
 }

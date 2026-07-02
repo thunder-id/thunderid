@@ -107,6 +107,74 @@ func (_c *ServerConfigServiceMock_GetConfig_Call) RunAndReturn(run func(ctx cont
 	return _c
 }
 
+// GetConfigVersion provides a mock function for the type ServerConfigServiceMock
+func (_mock *ServerConfigServiceMock) GetConfigVersion(ctx context.Context, name string) (int, *common.ServiceError) {
+	ret := _mock.Called(ctx, name)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetConfigVersion")
+	}
+
+	var r0 int
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (int, *common.ServiceError)); ok {
+		return returnFunc(ctx, name)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) int); ok {
+		r0 = returnFunc(ctx, name)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, name)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ServerConfigServiceMock_GetConfigVersion_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetConfigVersion'
+type ServerConfigServiceMock_GetConfigVersion_Call struct {
+	*mock.Call
+}
+
+// GetConfigVersion is a helper method to define mock.On call
+//   - ctx context.Context
+//   - name string
+func (_e *ServerConfigServiceMock_Expecter) GetConfigVersion(ctx interface{}, name interface{}) *ServerConfigServiceMock_GetConfigVersion_Call {
+	return &ServerConfigServiceMock_GetConfigVersion_Call{Call: _e.mock.On("GetConfigVersion", ctx, name)}
+}
+
+func (_c *ServerConfigServiceMock_GetConfigVersion_Call) Run(run func(ctx context.Context, name string)) *ServerConfigServiceMock_GetConfigVersion_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ServerConfigServiceMock_GetConfigVersion_Call) Return(n int, serviceError *common.ServiceError) *ServerConfigServiceMock_GetConfigVersion_Call {
+	_c.Call.Return(n, serviceError)
+	return _c
+}
+
+func (_c *ServerConfigServiceMock_GetConfigVersion_Call) RunAndReturn(run func(ctx context.Context, name string) (int, *common.ServiceError)) *ServerConfigServiceMock_GetConfigVersion_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetMergedConfig provides a mock function for the type ServerConfigServiceMock
 func (_mock *ServerConfigServiceMock) GetMergedConfig(ctx context.Context, name string) (any, *common.ServiceError) {
 	ret := _mock.Called(ctx, name)
