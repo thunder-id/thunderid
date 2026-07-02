@@ -62,6 +62,10 @@ var publicPaths = []string{
 	"/i18n/languages/*/translations/resolve",
 	"/i18n/languages/*/translations/ns/*/keys/*/resolve",
 	"/mcp/**", // MCP authorization is handled at MCP server handler.
+	// SCIM discovery endpoints — RFC 7644 §2: no authentication required.
+	"/scim/v2/ServiceProviderConfig",
+	"/scim/v2/ResourceTypes",
+	"/scim/v2/ResourceTypes/**",
 }
 
 // ---- Resource types ----

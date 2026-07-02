@@ -73,6 +73,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
+	"github.com/thunder-id/thunderid/internal/scim"
+	scimconfig "github.com/thunder-id/thunderid/internal/scim/config"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -211,6 +213,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		logger.Fatal(ctx, "Failed to initialize UserService", log.Error(err))
 	}
 	exporters = append(exporters, userExporter)
+
+	// Initialize SCIM service.
+	scim.Initialize(
+		mux,
+		userService,
+		entityTypeService,
+		scimconfig.FromServerRuntime(),
+	)
 
 	groupService, ouGroupResolver, groupExporter, err := group.Initialize(
 		mux, dbprovider.GetDBProvider(), ouService, entityService, entityTypeService, ouAuthzService,
