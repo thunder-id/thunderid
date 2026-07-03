@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thunderid/governance/exemptions.schema.json",
+  "title": "API quality-gate exemptions",
+  "description": "Every Spectral rule waiver must be explicit, owned, justified, and time-boxed. Unbounded silent waivers are how a clean ruleset rots.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "exemptions"],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "exemptions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/exemption" }
+    }
+  },
+  "$defs": {
+    "exemption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule", "file", "pointer", "justification", "owner", "created", "expires", "issue"],
+      "properties": {
+        "rule": {
+          "type": "string",
+          "description": "Spectral rule id being waived, e.g. collection-get-has-pagination."
+        },
+        "file": {
+          "type": "string",
+          "description": "Path/glob of the spec the waiver applies to, e.g. api/openapi.yaml."
+        },
+        "pointer": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "JSON Pointer to the operation/location, slashes encoded as ~1, e.g. /paths/~1applications/get."
+        },
+        "justification": {
+          "type": "string",
+          "minLength": 30,
+          "description": "Why this is acceptable. One sentence of real reasoning, not 'TODO'."
+        },
+        "owner": {
+          "type": "string",
+          "pattern": "^@[A-Za-z0-9-]+(/[A-Za-z0-9-]+)?$",
+          "description": "GitHub handle or team that owns the debt, e.g. @maduranga or @org/api-stewards."
+        },
+        "created": { "type": "string", "format": "date" },
+        "expires": {
+          "type": "string",
+          "format": "date",
+          "description": "Hard expiry. After this date the build fails until the waiver is fixed or renewed."
+        },
+        "issue": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Tracking issue URL/ref for paying down the debt."
+        }
+      }
+    }
+  }
+}

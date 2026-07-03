@@ -1,0 +1,51 @@
+version: 1
+# Time-boxed waivers for the enforced pilot spec (api/group.yaml).
+# Each entry is a real, tracked, expiring gap — NOT a way to permanently silence
+# a rule. `file` is relative to this ruleset's directory (api-quality-gate/), so
+# the pilot spec at repo-root api/group.yaml is referenced as ../api/group.yaml.
+# Issue refs are placeholders to be created by the maintainer (see PR follow-ups).
+exemptions:
+  - rule: errors-use-problem-json
+    file: ../api/group.yaml
+    pointer: /paths
+    justification: "Product-wide error model uses a structured Error schema over application/json (i18n code/message/description), not RFC 9457 problem+json. Migration is a cross-cutting change tracked separately."
+    owner: "@darshanasbg"
+    created: "2026-07-01"
+    expires: "2027-01-01"
+    issue: "https://github.com/thunder-id/thunderid/issues/TODO-problem-json"
+
+  - rule: operation-has-standard-errors
+    file: ../api/group.yaml
+    pointer: /paths
+    justification: "401/403 are enforced by shared OAuth2 middleware and not yet declared per operation; 409 is declared only where a real name-conflict exists. Full per-operation standard-error declaration is tracked."
+    owner: "@darshanasbg"
+    created: "2026-07-01"
+    expires: "2027-01-01"
+    issue: "https://github.com/thunder-id/thunderid/issues/TODO-standard-errors"
+
+  - rule: collection-get-has-filter
+    file: ../api/group.yaml
+    pointer: /paths
+    justification: "Group collection endpoints do not implement SCIM-style filtering yet; the list handler only parses limit/offset. Adding filter support is tracked as a feature."
+    owner: "@darshanasbg"
+    created: "2026-07-01"
+    expires: "2027-01-01"
+    issue: "https://github.com/thunder-id/thunderid/issues/TODO-collection-filter"
+
+  - rule: collection-get-has-sort
+    file: ../api/group.yaml
+    pointer: /paths
+    justification: "Group collection endpoints do not implement sorting yet; results follow the store's natural order. Adding sort support is tracked as a feature."
+    owner: "@darshanasbg"
+    created: "2026-07-01"
+    expires: "2027-01-01"
+    issue: "https://github.com/thunder-id/thunderid/issues/TODO-collection-sort"
+
+  - rule: write-has-idempotency-key
+    file: ../api/group.yaml
+    pointer: /paths
+    justification: "The group create/write endpoints do not honor an Idempotency-Key header yet; safe-retry semantics require server-side dedupe that is not implemented. Tracked as a feature."
+    owner: "@darshanasbg"
+    created: "2026-07-01"
+    expires: "2027-01-01"
+    issue: "https://github.com/thunder-id/thunderid/issues/TODO-idempotency"

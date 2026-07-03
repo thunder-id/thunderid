@@ -1,0 +1,96 @@
+# ThunderID API quality gate — base ruleset.
+# Run:  spectral lint <spec> -r .spectral.yaml
+# In CI we lint against .spectral.effective.yaml (base + governed exemptions),
+# produced by scripts/validate-exemptions.mjs. Never lint the base directly in CI,
+# or exemptions won't apply.
+
+extends: ["spectral:oas"]
+
+functionsDir: "./functions"
+functions:
+  - requiredCollectionQueryParams
+  - requiredErrorResponses
+  - errorsUseProblemJson
+  - writeHasIdempotency
+
+rules:
+  # --- Tighten a few built-ins so codegen + tooling can rely on them ----------
+  operation-operationId: error        # oapi-codegen maps operationId -> handler/test
+  operation-operationId-unique: error
+  operation-tag-defined: error
+  oas3-unused-component: warn
+
+  # --- Pagination: every collection GET must page ----------------------------
+  collection-get-has-pagination:
+    description: >
+      Collection GET endpoints must support pagination. Identity collections
+      mutate under the reader, so prefer cursor pagination (`cursor`) over
+      offset; `limit` is always required.
+    message: "{{error}}"
+    severity: error
+    given: "$.paths[*]"
+    then:
+      function: requiredCollectionQueryParams
+      functionOptions:
+        requireAll: ["limit"]
+        requireOneOf: ["cursor", "offset"]
+
+  # --- Filtering: every collection GET must filter ---------------------------
+  collection-get-has-filter:
+    description: >
+      Collection GET endpoints must support filtering. Anchor the grammar to
+      SCIM 2.0 (RFC 7644 §3.4.2) rather than inventing per-endpoint query syntax.
+    message: "{{error}}"
+    severity: error
+    given: "$.paths[*]"
+    then:
+      function: requiredCollectionQueryParams
+      functionOptions:
+        requireAll: ["filter"]
+
+  # --- Sorting: recommended on collections -----------------------------------
+  collection-get-has-sort:
+    description: Collection GET endpoints should support sorting (`sort`).
+    message: "{{error}}"
+    severity: warn
+    given: "$.paths[*]"
+    then:
+      function: requiredCollectionQueryParams
+      functionOptions:
+        requireAll: ["sort"]
+
+  # --- Consistent error model ------------------------------------------------
+  operation-has-standard-errors:
+    description: >
+      Every operation must declare the standard error responses. Item endpoints
+      additionally declare 404; writes additionally declare 409 (conflict).
+    message: "{{error}}"
+    severity: error
+    given: "$.paths[*][get,post,put,patch,delete]"
+    then:
+      function: requiredErrorResponses
+      functionOptions:
+        base: ["400", "401", "403", "500"]
+        write: ["409"]
+
+  errors-use-problem-json:
+    description: All error responses must use application/problem+json (RFC 9457).
+    message: "{{error}}"
+    severity: error
+    given: "$.paths[*][get,post,put,patch,delete]"
+    then:
+      function: errorsUseProblemJson
+
+  # --- Idempotency on creates ------------------------------------------------
+  write-has-idempotency-key:
+    description: >
+      POST creates must accept an Idempotency-Key header so a retried request
+      after a dropped response does not create a duplicate resource.
+    message: "{{error}}"
+    severity: error
+    given: "$.paths[*][post]"
+    then:
+      function: writeHasIdempotency
+      functionOptions:
+        methods: ["post"]
+        header: "Idempotency-Key"

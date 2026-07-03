@@ -66,3 +66,24 @@
 ## sample apps
 
 /samples/apps/ @brionmario @DonOmalVindula
+
+
+## API production-completeness quality gate (added by ci/api-quality-gate)
+## Guards the API surface AND the gate that protects it.
+## TODO(owner): the two teams below do NOT exist yet. Create them (or replace with
+## real handles/teams). Until then GitHub flags them as unknown owners and cannot
+## satisfy required code-owner review for these paths. See the PR follow-ups.
+
+# The enforced pilot API contract — a spec change needs an API steward's review.
+/api/group.yaml                            @thunder-id/api-stewards
+
+# The gate's own machinery — loosening a rule, editing a function to return [],
+# or weakening governance all require steward sign-off.
+/api-quality-gate/.spectral.yaml           @thunder-id/api-stewards
+/api-quality-gate/functions/               @thunder-id/api-stewards
+/api-quality-gate/governance/              @thunder-id/api-stewards
+/api-quality-gate/scripts/                 @thunder-id/platform-leads @thunder-id/api-stewards
+
+# CI definitions — prevent silently turning a gate into `exit 0`.
+/.github/workflows/api-quality-gate.yml    @thunder-id/platform-leads
+/.github/workflows/governance-drift.yml    @thunder-id/platform-leads

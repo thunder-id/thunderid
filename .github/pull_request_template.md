@@ -44,3 +44,14 @@ _How should users update their code/configuration to adapt to the breaking chang
 ### Security checks
 - [ ] Followed secure coding standards in [WSO2 Secure Coding Guidelines](https://security.docs.wso2.com/en/latest/security-guidelines/secure-engineering-guidelines/secure-coding-guidlines/introduction/)
 - [ ] Confirmed that this PR doesn't commit any keys, passwords, tokens, usernames, or other secrets.
+
+### API production-readiness (only if this PR touches `api/*.yaml`)
+<!-- The API quality gate enforces the mechanical items below in CI; these boxes are the
+     human attestation. If a box is intentionally N/A, say why on the line. -->
+- [ ] New/changed collection endpoints support pagination (and filtering/sorting, or a tracked exemption)
+- [ ] Every operation declares an `operationId` and the standard error responses
+- [ ] Write operations are idempotent and tenant-scoped (or a tracked exemption exists)
+- [ ] Backward compatible, or a breaking change called out above with a version bump
+- [ ] Contract tests added/updated for every changed operation (`tests/integration/contract`)
+- [ ] No rule exemptions added, OR each new entry in `api-quality-gate/governance/exemptions.yaml`
+      has a justification, owner, expiry, and tracking issue

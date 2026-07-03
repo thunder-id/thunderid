@@ -1,0 +1,26 @@
+{
+  "name": "thunderid-api-quality-gate",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Executable fitness functions for the ThunderID API contract.",
+  "scripts": {
+    "exemptions": "node scripts/validate-exemptions.mjs",
+    "lint": "npm run exemptions && spectral lint $npm_config_spec -r .spectral.effective.yaml --fail-severity=warn",
+    "lint:sample:bad": "spectral lint examples/openapi.bad.yaml -r .spectral.yaml --fail-severity=warn",
+    "lint:sample:good": "spectral lint examples/openapi.good.yaml -r .spectral.yaml --fail-severity=warn",
+    "test:rules": "bash scripts/selftest.sh"
+  },
+  "devDependencies": {
+    "@stoplight/spectral-cli": "^6.16.1",
+    "ajv": "8.17.1",
+    "ajv-formats": "3.0.1",
+    "js-yaml": "4.1.0"
+  },
+  "engines": {
+    "node": "^18.18 || >=20.17"
+  },
+  "overrides": {
+    "ajv": "8.17.1"
+  }
+}

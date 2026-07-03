@@ -17,6 +17,9 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+# API quality gate: generated effective ruleset (base + governed exemptions)
+api-quality-gate/.spectral.effective.yaml
+
 # Dependency directories
 node_modules
 .pnp

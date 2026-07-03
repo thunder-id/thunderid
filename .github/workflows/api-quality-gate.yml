@@ -1,0 +1,174 @@
+# .github/workflows/api-quality-gate.yml
+#
+# API production-completeness quality gate (Plan A — API contract gate).
+#
+# Every job here is intended to be wired as a REQUIRED status check in branch
+# protection (api-quality-gate/governance/branch-protection.json). Job `name:`
+# values MUST match the contexts listed there:
+#   exemptions, api-lint, codegen-drift, breaking-changes, contract-tests, coverage-meta
+#
+# Tooling layout note: the npm-based gate tooling lives in api-quality-gate/ (a
+# self-contained package) rather than the repo root, because the root is a pnpm
+# monorepo — a second npm package.json at the root would collide with pnpm. The
+# ruleset resolves override globs relative to its own directory, so the enforced
+# pilot spec (repo-root api/group.yaml) is referenced from the tooling dir as
+# ../api/group.yaml.
+#
+# Node follows the repo .nvmrc. Spectral 6.x supports node ">= 20.17" (incl. 22/24);
+# the transitive ajv codegen crash is fixed by the ajv `overrides` pin in
+# api-quality-gate/package.json, not by constraining the Node version.
+
+name: api-quality-gate
+
+on:
+  pull_request:
+    branches: [main]
+  merge_group: {}   # run again against the merged state in the merge queue
+
+env:
+  # Repo-root-relative path to the enforced pilot spec.
+  SPEC: api/group.yaml
+
+permissions:
+  contents: read
+
+jobs:
+  exemptions:
+    name: exemptions
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api-quality-gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci
+      - name: Validate + expire exemptions, emit effective ruleset
+        run: node scripts/validate-exemptions.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: effective-ruleset
+          path: api-quality-gate/.spectral.effective.yaml
+          retention-days: 5
+
+  api-lint:
+    name: api-lint
+    needs: exemptions
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api-quality-gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci
+      - name: Rebuild effective ruleset (base + governed exemptions)
+        run: node scripts/validate-exemptions.mjs
+      - name: Lint OpenAPI against effective ruleset
+        run: npx spectral lint "../$SPEC" -r .spectral.effective.yaml --fail-severity=warn
+
+  codegen-drift:
+    name: codegen-drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # DELIBERATE LABELLED NO-OP (not silently dropped).
+      # ThunderID's HTTP layer is hand-written (routes registered per-service in
+      # backend/internal/*/init.go); there is no OpenAPI -> server codegen, so there
+      # is no committed generated code that could drift from the spec yet.
+      # `make generate` is a matching no-op. When/if the server is generated from
+      # api/*.yaml, replace this step with:
+      #     run: bash api-quality-gate/scripts/check-codegen-drift.sh
+      # and make `make generate` invoke the real generator.
+      - name: Codegen drift (no-op — no OpenAPI codegen in this repo)
+        run: |
+          echo "codegen-drift: ThunderID has no OpenAPI->server codegen (routes are hand-written)."
+          echo "TODO(codegen): wire scripts/check-codegen-drift.sh once the HTTP layer is generated."
+          make generate
+
+  breaking-changes:
+    name: breaking-changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Extract base spec
+        run: |
+          git show "origin/${{ github.base_ref || 'main' }}:${SPEC}" > /tmp/base-spec.yaml || \
+            (echo "No base spec found; treating as new." && cp "$SPEC" /tmp/base-spec.yaml)
+      - name: Detect breaking changes (oasdiff)
+        run: |
+          docker run --rm -v "$PWD:/work" -v /tmp:/tmp tufin/oasdiff:latest \
+            breaking /tmp/base-spec.yaml "/work/${SPEC}" --fail-on ERR
+
+  contract-tests:
+    name: contract-tests
+    needs: api-lint
+    runs-on: ubuntu-latest
+    # Secret-free by design so it runs on fork PRs. Never switch to pull_request_target.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: dbuser
+          POSTGRES_PASSWORD: dbpassword
+          POSTGRES_DB: postgredb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dbuser" --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go environment
+        uses: ./.github/actions/setup-go
+      - name: Install dependencies
+        run: |
+          cd backend && go mod download
+          cd ../tests/integration && go mod download
+      - name: Build distribution
+        run: make build_with_coverage_only OS=$(go env GOOS) ARCH=$(go env GOARCH)
+      - name: Set up PostgreSQL databases
+        run: |
+          PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d postgredb -c "CREATE DATABASE configdb;"
+          PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d postgredb -c "CREATE DATABASE runtimedb;"
+          PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d postgredb -c "CREATE DATABASE userdb;"
+          PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d configdb  < backend/dbscripts/configdb/postgres.sql
+          PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d runtimedb < backend/dbscripts/runtimedb/postgres.sql
+          PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d userdb    < backend/dbscripts/userdb/postgres.sql
+      - name: Configure test database
+        run: |
+          chmod +x tests/integration/resources/scripts/setup-test-config.sh
+          ./tests/integration/resources/scripts/setup-test-config.sh
+        env:
+          DB_TYPE: postgres
+      # Boots the built distribution against Postgres and asserts the contract at
+      # runtime (usable next link, 409 conflict; filter/idempotency/cross-tenant are
+      # scaffolded — see tests/integration/contract).
+      - name: Run contract tests against a live instance
+        run: make contract-test
+        env:
+          DB_TYPE: postgres
+
+  coverage-meta:
+    name: coverage-meta
+    needs: api-lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api-quality-gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci
+      - name: Every operation has an operationId and a contract test
+        run: node scripts/check-coverage.mjs "../$SPEC"
+        env:
+          CONTRACT_DIR: ../tests/integration/contract
