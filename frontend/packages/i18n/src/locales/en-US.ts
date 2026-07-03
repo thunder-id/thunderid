@@ -3536,10 +3536,11 @@ const translations = {
       'Build themes and attach them to your applications to personalise the sign-in experience.',
     'next_steps.login_box.actions.primary.label': 'Open Design Studio',
 
-    // Social Login card
-    'next_steps.social_login.title': 'Social Integrations',
-    'next_steps.social_login.description':
-      'Let users sign in with their favourite identity providers — Google, GitHub, and more.',
+    // Connections card
+    'next_steps.connections.title': 'Connections',
+    'next_steps.connections.description':
+      'Manage the external services {{product}} connects to for social login, enterprise OIDC, SMS delivery, and more.',
+    'next_steps.connections.actions.primary.label': 'Manage Connections',
 
     // Multi-factor Authentication card
     'next_steps.mfa.title': 'Multi-factor Authentication',

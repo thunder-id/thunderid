@@ -52,8 +52,8 @@ vi.mock('../cards/MFACard', () => ({
   default: () => <div data-testid="mfa-card" />,
 }));
 
-vi.mock('../cards/SocialLoginCard', () => ({
-  default: () => <div data-testid="social-login-card" />,
+vi.mock('../cards/ConnectionsCard', () => ({
+  default: () => <div data-testid="connections-card" />,
 }));
 
 describe('NextStepsSection', () => {
@@ -72,9 +72,9 @@ describe('NextStepsSection', () => {
     expect(screen.getByTestId('login-box-card')).toBeInTheDocument();
   });
 
-  it('renders SocialLoginCard', () => {
+  it('renders ConnectionsCard', () => {
     render(<NextStepsSection />);
-    expect(screen.getByTestId('social-login-card')).toBeInTheDocument();
+    expect(screen.getByTestId('connections-card')).toBeInTheDocument();
   });
 
   it('renders MFACard', () => {

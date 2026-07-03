@@ -20,10 +20,10 @@ import {Box, Grid, Typography} from '@wso2/oxygen-ui';
 import {motion} from 'framer-motion';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import ConnectionsCard from './cards/ConnectionsCard';
 import InviteMembersCard from './cards/InviteMembersCard';
 import LoginBoxCard from './cards/LoginBoxCard';
 import MFACard from './cards/MFACard';
-import SocialLoginCard from './cards/SocialLoginCard';
 
 const MotionBox = motion.create(Box);
 
@@ -69,7 +69,7 @@ export default function NextStepsSection(): JSX.Element {
         </Grid>
         <Grid size={{xs: 12, sm: 6}}>
           <MotionBox variants={cardVariants} sx={{height: '100%'}}>
-            <SocialLoginCard />
+            <ConnectionsCard />
           </MotionBox>
         </Grid>
         <Grid size={{xs: 12, sm: 6}}>

@@ -16,24 +16,28 @@
  * under the License.
  */
 
+import {useConfig} from '@thunderid/contexts';
 import {Layers} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import HomeNextStepCard from './HomeNextStepCard';
 
-export default function SocialLoginCard(): JSX.Element {
+export default function ConnectionsCard(): JSX.Element {
   const {t} = useTranslation('home');
+  const {config} = useConfig();
+  const {product_name: productName} = config.brand || {};
 
   return (
     <HomeNextStepCard
       icon={<Layers size={24} />}
-      title={t('next_steps.social_login.title', 'Social Integrations')}
-      description={t(
-        'next_steps.social_login.description',
-        'Let users sign in with their favourite identity providers — Google, GitHub, and more.',
-      )}
-      featureStatus="coming_soon"
-      cardSx={{opacity: 0.72, pointerEvents: 'none', cursor: 'default'}}
+      title={t('next_steps.connections.title', 'Connections')}
+      description={t('next_steps.connections.description', {
+        product: productName,
+        defaultValue:
+          'Manage the external services {{product}} connects to for social login, enterprise OIDC, SMS delivery, and more.',
+      })}
+      primaryLabel={t('next_steps.connections.actions.primary.label', 'Manage Connections')}
+      primaryRoute="/connections"
     />
   );
 }
