@@ -23,7 +23,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
+	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -52,7 +54,7 @@ func (sh *scimHandler) HandleServiceProviderConfigGetRequest(w http.ResponseWrit
 	logger := sh.logger
 
 	config := sh.svc.GetServiceProviderConfig(ctx, sh.baseURL)
-	writeSCIMSuccessResponse(ctx, w, config)
+	writeSCIMSuccessResponse(ctx, w, http.StatusOK, config)
 
 	logger.Debug(ctx, "SCIM ServiceProviderConfig GET response sent")
 }
@@ -69,7 +71,7 @@ func (sh *scimHandler) HandleSchemaListRequest(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	writeSCIMSuccessResponse(ctx, w, listResp)
+	writeSCIMSuccessResponse(ctx, w, http.StatusOK, listResp)
 	logger.Debug(ctx, "SCIM Schemas list response sent",
 		log.Int("totalResults", listResp.TotalResults))
 }
@@ -92,7 +94,7 @@ func (sh *scimHandler) HandleSchemaGetRequest(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	writeSCIMSuccessResponse(ctx, w, schema)
+	writeSCIMSuccessResponse(ctx, w, http.StatusOK, schema)
 	logger.Debug(ctx, "SCIM Schema GET response sent", log.String("urn", schemaURN))
 }
 
@@ -107,7 +109,7 @@ func (sh *scimHandler) HandleResourceTypeListRequest(w http.ResponseWriter, r *h
 		return
 	}
 
-	writeSCIMSuccessResponse(ctx, w, listResp)
+	writeSCIMSuccessResponse(ctx, w, http.StatusOK, listResp)
 	logger.Debug(ctx, "SCIM ResourceTypes list response sent",
 		log.Int("totalResults", listResp.TotalResults))
 }
@@ -130,7 +132,7 @@ func (sh *scimHandler) HandleResourceTypeGetRequest(w http.ResponseWriter, r *ht
 		return
 	}
 
-	writeSCIMSuccessResponse(ctx, w, rt)
+	writeSCIMSuccessResponse(ctx, w, http.StatusOK, rt)
 	logger.Debug(ctx, "SCIM ResourceType GET response sent", log.String("id", resourceTypeID))
 }
 
@@ -138,6 +140,58 @@ func (sh *scimHandler) HandleResourceTypeGetRequest(w http.ResponseWriter, r *ht
 // Delegates to handleSCIMError so that all error paths go through the same translator.
 func (sh *scimHandler) handleUnsupportedRequest(w http.ResponseWriter, r *http.Request) {
 	sh.handleSCIMError(w, r, &ErrorUnsupportedOperation)
+}
+
+// mapSCIMError translates a ServiceError code into an HTTP status code and
+// SCIM scimType string. Both scimHandler and scimUsersHandler delegate to this
+// function so that the mapping cannot drift between the two handlers.
+func mapSCIMError(svcErr *tidcommon.ServiceError) (httpStatus int, scimType string) {
+	switch svcErr.Code {
+	// 400 invalidSyntax — body could not be parsed at all.
+	case ErrorInvalidRequestBody.Code, ErrorInvalidContentType.Code:
+		return http.StatusBadRequest, "invalidSyntax"
+
+	// 400 invalidValue — missing or malformed fields/schemas/URNs.
+	case ErrorMissingSchemas.Code,
+		ErrorDuplicateSchemas.Code,
+		ErrorMissingCoreUserSchema.Code,
+		ErrorMissingCustomSchema.Code,
+		ErrorMultipleCustomSchemas.Code,
+		ErrorInvalidCustomSchemaURN.Code,
+		ErrorMissingCustomSchemaObject.Code,
+		ErrorUnknownUserType.Code,
+		ErrorSchemaValidationFailed.Code,
+		ErrorMutabilityViolation.Code:
+		return http.StatusBadRequest, scimErrorTypeInvalidValue
+
+	// 400 invalidFilter — filter query parameter is not supported.
+	case ErrorFilterNotSupported.Code:
+		return http.StatusBadRequest, "invalidFilter"
+
+	// 404 — resource not found.
+	case ErrorUserNotFound.Code,
+		ErrorSchemaNotFound.Code,
+		ErrorResourceTypeNotFound.Code:
+		return http.StatusNotFound, ""
+
+	// 409 — uniqueness conflict.
+	case ErrorUniquenessConflict.Code:
+		return http.StatusConflict, "uniqueness"
+
+	// 501 — unsupported operation.
+	case ErrorUnsupportedOperation.Code:
+		return http.StatusNotImplemented, "notImplemented"
+
+	// 403 — authorization failure.
+	case tidcommon.ErrorUnauthorized.Code:
+		return http.StatusForbidden, ""
+
+	case ErrorInternalServer.Code:
+		return http.StatusInternalServerError, ""
+
+	default:
+		return http.StatusBadRequest, scimErrorTypeInvalidValue
+	}
 }
 
 // handleSCIMError translates an internal ThunderID ServiceError into the
@@ -156,54 +210,7 @@ func (sh *scimHandler) handleSCIMError(w http.ResponseWriter, r *http.Request, s
 		return
 	}
 
-	// Map internal client error codes → SCIM standard HTTP status + scimType.
-	var httpStatus int
-	var scimType string
-
-	switch svcErr.Code {
-	// 400 invalidSyntax — body could not be parsed at all.
-	case ErrorInvalidRequestBody.Code:
-		httpStatus = http.StatusBadRequest
-		scimType = "invalidSyntax"
-
-	// 400 invalidValue — missing or malformed fields/schemas/URNs.
-	case ErrorMissingSchemas.Code,
-		ErrorDuplicateSchemas.Code,
-		ErrorMissingCoreUserSchema.Code,
-		ErrorMissingCustomSchema.Code,
-		ErrorMultipleCustomSchemas.Code,
-		ErrorInvalidCustomSchemaURN.Code,
-		ErrorMissingCustomSchemaObject.Code,
-		ErrorUnknownUserType.Code:
-		httpStatus = http.StatusBadRequest
-		scimType = "invalidValue"
-
-	// 404 — resource not found.
-	case ErrorUserNotFound.Code,
-		ErrorSchemaNotFound.Code,
-		ErrorResourceTypeNotFound.Code:
-		httpStatus = http.StatusNotFound
-		scimType = ""
-
-	// 501 — unsupported operation.
-	case ErrorUnsupportedOperation.Code:
-		httpStatus = http.StatusNotImplemented
-		scimType = "notImplemented"
-
-	// 403 — authorization failure.
-	case tidcommon.ErrorUnauthorized.Code:
-		httpStatus = http.StatusForbidden
-		scimType = ""
-
-	case ErrorInternalServer.Code:
-		httpStatus = http.StatusInternalServerError
-		scimType = ""
-
-	default:
-		httpStatus = http.StatusBadRequest
-		scimType = "invalidValue"
-	}
-
+	httpStatus, scimType := mapSCIMError(svcErr)
 	writeSCIMErrorResponse(ctx, w, httpStatus, SCIMErrorResponse{
 		Schemas:  []string{SCIMErrorSchemaURN},
 		Status:   fmt.Sprintf("%d", httpStatus),
@@ -215,7 +222,12 @@ func (sh *scimHandler) handleSCIMError(w http.ResponseWriter, r *http.Request, s
 // writeSCIMSuccessResponse writes a SCIM-compliant success response.
 // Uses application/scim+json as required by RFC 7644, and uses a
 // buffer-first pattern to avoid sending headers before encoding succeeds.
-func writeSCIMSuccessResponse(ctx context.Context, w http.ResponseWriter, data any) {
+func writeSCIMSuccessResponse(ctx context.Context, w http.ResponseWriter, statusCode int, data any) {
+	if statusCode == http.StatusNoContent {
+		w.WriteHeader(statusCode)
+		return
+	}
+
 	logger := log.GetLogger()
 
 	var buf bytes.Buffer
@@ -227,7 +239,7 @@ func writeSCIMSuccessResponse(ctx context.Context, w http.ResponseWriter, data a
 	}
 
 	w.Header().Set("Content-Type", constants.SCIMContentType)
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(statusCode)
 	_, _ = w.Write(buf.Bytes())
 }
 
@@ -253,4 +265,14 @@ func writeSCIMErrorResponse(ctx context.Context, w http.ResponseWriter, statusCo
 	w.Header().Set("Content-Type", constants.SCIMContentType)
 	w.WriteHeader(statusCode)
 	_, _ = w.Write(buf.Bytes())
+}
+
+// validateSCIMContentType enforces RFC 7644 §3.1 — write requests must carry
+// Content-Type: application/scim+json.
+func validateSCIMContentType(r *http.Request) *tidcommon.ServiceError {
+	mediaType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if !strings.EqualFold(mediaType, constants.SCIMContentType) {
+		return &ErrorInvalidContentType
+	}
+	return nil
 }

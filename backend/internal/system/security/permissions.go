@@ -270,6 +270,15 @@ func InitSystemPermissions(handle string) {
 		{"PUT /users/**", p.User},
 		{"DELETE /users/**", p.User},
 
+		// SCIM API.
+		{"GET /scim/v2/Schemas", ""},
+		{"GET /scim/v2/Schemas/**", ""},
+		{"GET /scim/v2/Users", p.UserView},
+		{"POST /scim/v2/Users", p.User},
+		{"GET /scim/v2/Users/**", p.UserView},
+		{"PUT /scim/v2/Users/**", p.User},
+		{"DELETE /scim/v2/Users/**", p.User},
+
 		// Group APIs.
 		{"GET /groups", p.GroupView},
 		{"POST /groups", p.Group},

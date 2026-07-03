@@ -631,4 +631,4 @@ packages:
       dir: tests/mocks/scim
       structname: '{{.InterfaceName}}Mock'
       pkgname: scim
-      filename: "{{.InterfaceName}}_mock_test.go"
+      filename: "{{.InterfaceName}}_mock.go"

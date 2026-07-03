@@ -30,6 +30,7 @@ import (
 	scimconfig "github.com/thunder-id/thunderid/internal/scim/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/user"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -179,9 +180,10 @@ func (s *scimService) ListSchemas(
 	schemas = append(schemas, buildCoreUserSchema(baseURL))
 
 	// --- 3. One extension schema per entity type ---
+	runtimeCtx := security.WithRuntimeContext(ctx)
 	for _, name := range names {
 		et, svcErr := s.entityTypeService.GetEntityTypeByName(
-			ctx, entitytype.TypeCategoryUser, name,
+			runtimeCtx, entitytype.TypeCategoryUser, name,
 		)
 		if svcErr != nil {
 			logger.Warn(ctx, "Failed to load entity type for SCIM schema list, skipping",
@@ -243,7 +245,8 @@ func (s *scimService) GetSchema(
 		return nil, &ErrorSchemaNotFound
 	}
 
-	entityTypeName, svcErr := s.resolveEntityTypeNameForSchemaURN(ctx, userTypeName)
+	runtimeCtx := security.WithRuntimeContext(ctx)
+	entityTypeName, svcErr := resolveEntityTypeNameForSchemaURN(runtimeCtx, s.entityTypeService, userTypeName)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -256,7 +259,7 @@ func (s *scimService) GetSchema(
 	}
 
 	et, svcErr := s.entityTypeService.GetEntityTypeByName(
-		ctx, entitytype.TypeCategoryUser, entityTypeName,
+		runtimeCtx, entitytype.TypeCategoryUser, entityTypeName,
 	)
 	if svcErr != nil {
 		// Entity type not found or any other non-auth error → schema not found.
@@ -324,16 +327,16 @@ func (s *scimService) GetResourceType(
 // This is the single authoritative pagination loop for entity type name discovery.
 // ListSchemas uses it to avoid duplicating pagination logic.
 func (s *scimService) listUserEntityTypeNames(ctx context.Context) ([]string, *tidcommon.ServiceError) {
+	runtimeCtx := security.WithRuntimeContext(ctx)
 	logger := s.logger
-
 	names := make([]string, 0, 16)
 	offset := 0
 	for {
 		page, svcErr := s.entityTypeService.GetEntityTypeList(
-			ctx, entitytype.TypeCategoryUser, serverconst.MaxPageSize, offset, false,
+			runtimeCtx, entitytype.TypeCategoryUser, serverconst.MaxPageSize, offset, false,
 		)
 		if svcErr != nil {
-			logger.Error(ctx, "Failed to list entity types",
+			logger.Error(runtimeCtx, "Failed to list entity types",
 				log.Int("offset", offset), log.Any("error", svcErr))
 			return nil, svcErr
 		}
@@ -397,18 +400,15 @@ func (s *scimService) buildUserResourceType(
 // resolveEntityTypeNameForSchemaURN searches all user-type entity types for one
 // whose name matches userTypeName (case-insensitive). Returns the canonical name
 // and nil on success, or empty string and nil if no match is found.
-func (s *scimService) resolveEntityTypeNameForSchemaURN(
-	ctx context.Context, userTypeName string,
+func resolveEntityTypeNameForSchemaURN(
+	ctx context.Context, entityTypeService entitytype.EntityTypeServiceInterface, userTypeName string,
 ) (string, *tidcommon.ServiceError) {
 	offset := 0
 	for {
-		page, svcErr := s.entityTypeService.GetEntityTypeList(
+		page, svcErr := entityTypeService.GetEntityTypeList(
 			ctx, entitytype.TypeCategoryUser, serverconst.MaxPageSize, offset, false,
 		)
 		if svcErr != nil {
-			if svcErr.Code == tidcommon.ErrorUnauthorized.Code {
-				return "", &ErrorSchemaNotFound
-			}
 			if svcErr.Type == tidcommon.ServerErrorType {
 				return "", &ErrorInternalServer
 			}

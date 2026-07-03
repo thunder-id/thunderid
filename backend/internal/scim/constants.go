@@ -94,3 +94,8 @@ const (
 	scimResourceTypeUserEndpoint = "/Users"
 	scimResourceTypeUserDesc     = "User Account"
 )
+
+// SCIM Error types
+const (
+	scimErrorTypeInvalidValue = "invalidValue"
+)
