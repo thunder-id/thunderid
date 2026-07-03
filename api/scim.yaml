@@ -1,0 +1,155 @@
+openapi: 3.0.3
+
+info:
+  title: SCIM API
+  version: "2.0"
+  description: |
+    System for Cross-domain Identity Management (SCIM) v2.0 API.
+    Provides standardized endpoints for identity discovery and provisioning as defined by RFC 7643 and RFC 7644.
+
+    ### Authentication and Authorization
+    - **`/ServiceProviderConfig`**: Public endpoint. No authentication required.
+    - **`/ResourceTypes`**: Public endpoint. No authentication required.
+    - **`/Schemas`**: Protected endpoint. Requires a valid bearer token. Tenant isolation is enforced based on the authenticated context.
+
+    ### Unimplemented Endpoints
+    Per the SCIM specification, endpoints that are not yet implemented by the server (such as `/Users`, `/Groups`, `/Bulk`, and `/.search`) will return a **501 Not Implemented** HTTP status code rather than a generic 404. This correctly signals to SCIM clients that the feature is unsupported.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://{host}:{port}/scim/v2
+    variables:
+      host:
+        default: "localhost"
+      port:
+        default: "8090"
+
+tags:
+  - name: SCIM Discovery
+    description: Endpoints for discovering supported SCIM capabilities, schemas, and resource types.
+
+security:
+  - bearerAuth: []
+
+paths:
+  /ServiceProviderConfig:
+    get:
+      tags:
+        - SCIM Discovery
+      summary: Get Service Provider Configuration
+      description: Returns the SCIM service provider configuration, including supported protocol capabilities (e.g., PATCH, Filter, ETag). This is a public endpoint that does not require authentication.
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ServiceProviderConfig'
+        '500':
+          description: Internal Server Error
+
+  /Schemas:
+    get:
+      tags:
+        - SCIM Discovery
+      summary: List Schemas
+      description: Returns all supported SCIM schemas, including core schemas and any tenant-specific custom extensions. Requires authentication to ensure tenant isolation.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ListResponse'
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal Server Error
+
+  /Schemas/{id}:
+    get:
+      tags:
+        - SCIM Discovery
+      summary: Get Schema by URN
+      description: Returns a specific SCIM schema by its URN. Requires authentication to ensure tenant isolation.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The URN of the schema to retrieve
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/scim+json:
+              schema:
+                type: object
+        '401':
+          description: Unauthorized
+        '404':
+          description: Schema not found
+        '500':
+          description: Internal Server Error
+
+  /ResourceTypes:
+    get:
+      tags:
+        - SCIM Discovery
+      summary: List Resource Types
+      description: Returns all supported SCIM resource types (e.g., User, Group). This endpoint is public and does not require authentication.
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ListResponse'
+        '500':
+          description: Internal Server Error
+
+  /ResourceTypes/{id}:
+    get:
+      tags:
+        - SCIM Discovery
+      summary: Get Resource Type by ID
+      description: Returns a specific SCIM resource type by its ID (e.g., "User" or "Group"). This endpoint is public and does not require authentication.
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The ID of the resource type to retrieve
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/scim+json:
+              schema:
+                type: object
+        '404':
+          description: Resource type not found
+        '500':
+          description: Internal Server Error
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ServiceProviderConfig:
+      type: object
+      description: SCIM Service Provider Configuration
+    ListResponse:
+      type: object
+      description: SCIM List Response containing an array of resources
