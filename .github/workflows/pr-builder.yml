@@ -488,6 +488,12 @@ jobs:
           name: sample-app-react-sdk
           path: target/dist/sample-app-react-sdk-*.zip
 
+      - name: 📦 Upload Built Wayfinder Sample App
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sample-app-wayfinder
+          path: target/dist/sample-app-wayfinder-*.zip
+
   test-integration:
     name: 🧪 Integration Tests (${{ matrix.database }})
     needs: [build, build_samples, detect-code-changes]
@@ -640,6 +646,12 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: sample-app-react-sdk
+          path: target/dist/
+
+      - name: 📥 Download Built Wayfinder Sample App
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sample-app-wayfinder
           path: target/dist/
 
       - name: 📂 Extract Server to E2E
@@ -939,6 +951,54 @@ jobs:
           
           echo "Sample App started successfully!"
 
+      - name: 🧳 Extract and Start Wayfinder Sample
+        run: |
+          echo "Extracting Wayfinder Sample..."
+          mkdir -p tests/e2e/wayfinder-sample
+
+          WAYFINDER_ZIP=$(find target/dist -name "sample-app-wayfinder-*.zip" | head -n 1)
+
+          if [ -z "$WAYFINDER_ZIP" ]; then
+            echo "⚠️  Warning: Wayfinder sample zip not found in target/dist"
+            ls -la target/dist/
+            exit 1
+          fi
+
+          echo "Found wayfinder sample: $WAYFINDER_ZIP"
+          unzip -q "$WAYFINDER_ZIP" -d tests/e2e/wayfinder-sample
+
+          cd tests/e2e/wayfinder-sample
+          EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "sample-app-wayfinder-*" | head -n 1)
+          if [ -n "$EXTRACTED_DIR" ]; then
+            mv "$EXTRACTED_DIR"/* .
+            rmdir "$EXTRACTED_DIR"
+          fi
+
+          echo "Installing wayfinder workspace dependencies..."
+          npm install --no-audit --no-fund
+
+          echo "Seeding backend SQLite database..."
+          npm --workspace backend run seed
+
+          echo "Starting Wayfinder Sample (backend + smtp + frontend + lounge)..."
+          npm run dev:b2c > wayfinder.log 2>&1 &
+
+          echo "Waiting for Wayfinder frontend on http://localhost:5173..."
+          for i in {1..60}; do
+            if curl -s http://localhost:5173 > /dev/null 2>&1; then
+              echo "Wayfinder frontend is UP!"
+              break
+            fi
+            echo "Still waiting ($i/60)..."
+            sleep 2
+          done
+
+          if ! curl -s http://localhost:5173 > /dev/null 2>&1; then
+            echo "Wayfinder frontend failed to start within 2 minutes"
+            cat wayfinder.log || true
+            exit 1
+          fi
+
       - name: 📦 Install E2E Dependencies
         run: pnpm install --frozen-lockfile
 
@@ -969,6 +1029,10 @@ jobs:
           MOCK_SMS_SERVER_PORT: ${{ vars.MOCK_SMS_SERVER_PORT || 8098 }}
           SAMPLE_APP_USERNAME: ${{ secrets.SAMPLE_APP_USERNAME || 'e2e-test-user' }}
           SAMPLE_APP_PASSWORD: ${{ secrets.SAMPLE_APP_PASSWORD || 'e2e-test-password' }}
+          # Wayfinder Sample (welcome try-it-out tests)
+          WAYFINDER_APP_URL: 'http://localhost:5173'
+          WAYFINDER_TEST_USERNAME: 'john.doe'
+          WAYFINDER_TEST_PASSWORD: 'john.doe'
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ !cancelled() }}
