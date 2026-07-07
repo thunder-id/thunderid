@@ -593,11 +593,11 @@ components:
       type: object
       description: >
         Configures how an incoming federated identity is resolved to an existing local user.
-        The first configured attribute with a value is used to look up the local user.
+        When subject resolution fails, all configured attributes that have a value are combined into a single lookup filter.
       properties:
         attributes:
           type: array
-          description: Ordered list of external attribute names used to resolve the local user.
+          description: List of external attribute names used together to resolve the local user.
           items:
             type: string
           example:
