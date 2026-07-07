@@ -766,6 +766,7 @@ const translations = {
     schemaProperties: 'Schema Properties',
     propertyName: 'Property Name',
     propertyNamePlaceholder: 'e.g., email, age, address',
+    propertyNameInvalid: 'Only letters, digits, and underscores are allowed.',
     propertyType: 'Type',
     addProperty: 'Add Property',
     credential: 'Credential',
