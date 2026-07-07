@@ -390,17 +390,14 @@ func (s *oAuthAuthnService) buildAccountLinkingFilter(idpDTO *providers.IDPDTO, 
 	return subFilter
 }
 
-// resolveFilter looks up the filter and reports whether it identifies an existing user. On a unique
-// match it returns a userID token instead of the original filter, so the caller (default authn
-// provider) can use it directly without repeating the same lookup. An ambiguous match returns the
-// original filter unchanged so the ambiguity is surfaced when the caller looks it up.
+// resolveFilter looks up the filter and reports whether it uniquely identifies an existing user. On a
+// unique match it returns a userID token instead of the original filter, so the caller (default authn
+// provider) can use it directly without repeating the same lookup. An ambiguous or not-found match
+// returns false so the caller can fall back to account-linking attributes.
 func (s *oAuthAuthnService) resolveFilter(filter map[string]interface{}) (map[string]interface{}, bool) {
 	entityID, epErr := s.entityProvider.IdentifyEntity(filter)
 	if epErr == nil {
 		return map[string]interface{}{common.UserAttributeUserID: *entityID}, true
-	}
-	if epErr.Code == entityprovider.ErrorCodeAmbiguousEntity {
-		return filter, true
 	}
 	return nil, false
 }

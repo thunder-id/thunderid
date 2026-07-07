@@ -1067,9 +1067,9 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultResolvesExt
 	suite.NotContains(result.Token, "sub")
 }
 
-func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultAmbiguousSubKeepsOriginalFilter() {
-	// An ambiguous match cannot be collapsed into a single userID token, so the original filter is
-	// returned unchanged and the ambiguity is surfaced when the caller looks it up.
+func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultAmbiguousSubFallsBackToSub() {
+	// An ambiguous sub match triggers the account-linking fallback; when no claim values are
+	// available the function falls back to the sub filter so the ambiguity is surfaced by the caller.
 	idpDTO := createTestIDPDTO()
 	idpDTO.AttributeConfiguration = &providers.AttributeConfiguration{
 		AccountLinking: &providers.AccountLinking{Attributes: []string{"email"}},
