@@ -800,6 +800,38 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_UserEligibleForProvision
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
+func (suite *ProvisioningExecutorTestSuite) TestExecute_LocalUserAlreadyResolved_SkipsProvisioning() {
+	var authUser providers.AuthUser
+	err := authUser.UnmarshalJSON([]byte(
+		`{"entityReference":{"entityId":"user-linked"},"attributes":{}}`))
+	suite.Require().NoError(err)
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    authUser,
+		UserInputs: map[string]string{
+			attributeEmail: "resolved@example.com",
+		},
+		RuntimeData: map[string]string{
+			common.RuntimeKeyUserEligibleForProvisioning: dataValueTrue,
+			attributeEmail: "resolved@example.com",
+			ouIDKey:        testOUID,
+			userTypeKey:    testUserType,
+		},
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.Empty(suite.T(), resp.RuntimeData[common.RuntimeKeyUserAutoProvisioned])
+	// Neither identification nor creation should be attempted once a local user is resolved.
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "CreateEntity", mock.Anything, mock.Anything)
+}
+
 func (suite *ProvisioningExecutorTestSuite) TestExecute_UserAutoProvisionedFlag_SetAfterCreation() {
 	suite.expectSchemaForProvisioning()
 	attrs := map[string]interface{}{"username": "newuser", attributeEmail: "new@example.com"}

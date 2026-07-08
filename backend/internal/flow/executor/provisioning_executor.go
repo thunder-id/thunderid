@@ -101,14 +101,11 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		AuthUser:       ctx.AuthUser,
 	}
 
-	// If it's an authentication flow, skip execution if the user is not eligible for provisioning
-	if ctx.FlowType == providers.FlowTypeAuthentication {
-		eligible, ok := ctx.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning]
-		if !ok || eligible != dataValueTrue {
-			logger.Debug(ctx.Context, "User is not eligible for provisioning, skipping execution")
-			execResp.Status = providers.ExecComplete
-			return execResp, nil
-		}
+	// In an authentication flow, provisioning is only performed when the user is eligible for it
+	// and no local user has already been resolved.
+	if p.shouldSkipProvisioningInAuthFlow(ctx, logger) {
+		execResp.Status = providers.ExecComplete
+		return execResp, nil
 	}
 
 	if !p.HasRequiredInputs(ctx, execResp) {
@@ -214,6 +211,30 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 	}
 
 	return execResp, nil
+}
+
+// shouldSkipProvisioningInAuthFlow reports whether provisioning must be skipped in an authentication
+// flow. Provisioning is skipped when the user is not eligible for it, or when a local user has already
+// been resolved during federated authentication (for example via account linking on a configured IdP
+// attribute), in which case the flow continues with the resolved user instead of provisioning a new one.
+func (p *provisioningExecutor) shouldSkipProvisioningInAuthFlow(ctx *providers.NodeContext,
+	logger *log.Logger) bool {
+	if ctx.FlowType != providers.FlowTypeAuthentication {
+		return false
+	}
+
+	eligible, ok := ctx.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning]
+	if !ok || eligible != dataValueTrue {
+		logger.Debug(ctx.Context, "User is not eligible for provisioning, skipping execution")
+		return true
+	}
+
+	if ref := ctx.AuthUser.EntityReference(); ref != nil && ref.EntityID != "" {
+		logger.Debug(ctx.Context, "A local user is already resolved, skipping provisioning")
+		return true
+	}
+
+	return false
 }
 
 // authenticateProvisionedUser authenticates the newly provisioned user and updates the executor response.
