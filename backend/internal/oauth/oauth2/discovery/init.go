@@ -22,13 +22,13 @@ import (
 	"net/http"
 
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
-	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the discovery service and registers its routes
 func Initialize(
-	mux *http.ServeMux, cryptoProvider kmprovider.RuntimeCryptoProvider, cfg oauthconfig.Config,
+	mux *http.ServeMux, cryptoProvider providers.RuntimeCryptoProvider, cfg oauthconfig.Config,
 ) DiscoveryServiceInterface {
 	discoveryService := newDiscoveryService(cryptoProvider, cfg)
 	discoveryHandler := newDiscoveryHandler(discoveryService)

@@ -92,7 +92,7 @@ import (
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
-	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki"
+	"github.com/thunder-id/thunderid/internal/system/kmprovider/runtimekm/pki"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/mcp"
 	"github.com/thunder-id/thunderid/internal/system/observability"
@@ -302,7 +302,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Shared DPoP verifier (and its JTI replay cache) so OAuth and OpenID4VCI
 	// share JTI replay protection.
 	oauthCfg := oauthconfig.FromServerRuntime()
-	dpopVerifier := dpop.Initialize(oauthCfg, jti.Initialize(oauthCfg))
+	dpopVerifier := dpop.Initialize(oauthCfg, jti.Initialize(oauthCfg), jwtService)
 
 	openid4vpSvc, openid4vpDefSvc, openid4vciCredSvc, exporters :=
 		initializeVCServices(ctx, logger, mux, runtimeCryptoSvc, configCryptoSvc, jwtService, userService,

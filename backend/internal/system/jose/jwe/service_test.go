@@ -31,8 +31,8 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
-	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 
 	"github.com/stretchr/testify/assert"
@@ -59,21 +59,67 @@ func (suite *JWEServiceTestSuite) SetupTest() {
 	suite.testECPrivateKey = ecKey
 }
 
+// mockIsSupportedEncAlgorithm wires the real cryptolib support-check onto the mock,
+// matching production RuntimeCryptoProvider behavior.
+func mockIsSupportedEncAlgorithm(mockProvider *cryptomock.RuntimeCryptoProviderMock) {
+	mockProvider.EXPECT().IsSupportedEncAlgorithm(mock.Anything).
+		RunAndReturn(func(alg string) bool {
+			_, err := cryptolib.EncryptionAlgorithmFor(cryptolib.Algorithm(alg))
+			return err == nil
+		}).Maybe()
+}
+
+// mockEncrypt wires real cryptolib key-establishment onto the mock, matching
+// production RuntimeCryptoProvider.Encrypt behavior for RSA/EC key refs.
+func mockEncrypt(mockProvider *cryptomock.RuntimeCryptoProviderMock) {
+	mockProvider.EXPECT().
+		Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(
+			ctx context.Context, keyRef *providers.KeyRef, algorithm string,
+			paramsMap map[string]interface{}, content []byte,
+		) ([]byte, *providers.CryptoDetails, error) {
+			params, err := cryptolib.AlgorithmParamsFromMap(algorithm, paramsMap)
+			if err != nil {
+				return nil, nil, err
+			}
+			var key any
+			if keyRef != nil {
+				key = keyRef.PublicKey
+			}
+			encryptedKey, details, err := cryptolib.Encrypt(key, &params, content)
+			if err != nil {
+				return nil, nil, err
+			}
+			if details == nil {
+				return encryptedKey, nil, nil
+			}
+			return encryptedKey, &providers.CryptoDetails{
+				EPK: details.EPK, CEK: details.CEK, IV: details.IV, Tag: details.Tag,
+			}, nil
+		}).Maybe()
+}
+
 func (suite *JWEServiceTestSuite) TestEncryptDecrypt_RSA() {
 	encAlgs := []ContentEncAlgorithm{A128GCM, A192GCM, A256GCM}
 
 	mockProvider := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
-	mockProvider.EXPECT().Decrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	mockIsSupportedEncAlgorithm(mockProvider)
+	mockEncrypt(mockProvider)
+	mockProvider.EXPECT().Decrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(
-			ctx context.Context, keyRef *kmprovider.KeyRef,
-			params cryptolib.AlgorithmParams, content []byte,
+			ctx context.Context, keyRef *providers.KeyRef, algorithm string,
+			paramsMap map[string]interface{}, content []byte,
 		) ([]byte, error) {
+			params, err := cryptolib.AlgorithmParamsFromMap(algorithm, paramsMap)
+			if err != nil {
+				return nil, err
+			}
 			return cryptolib.Decrypt(suite.testRSAPrivateKey, params, content)
 		}).Times(len(encAlgs))
 
 	suite.jweService = &jweService{
 		cryptoProvider: mockProvider,
-		keyRef:         kmprovider.KeyRef{KeyID: "test-kid"},
+		keyRef:         providers.KeyRef{KeyID: "test-kid"},
 		logger:         log.GetLogger(),
 	}
 
@@ -85,7 +131,7 @@ func (suite *JWEServiceTestSuite) TestEncryptDecrypt_RSA() {
 			context.Background(),
 			payload,
 			recipientPublicKey,
-			RSAOAEP256,
+			string(RSAOAEP256),
 			enc,
 			"",
 			"")
@@ -109,17 +155,23 @@ func (suite *JWEServiceTestSuite) TestEncryptDecrypt_ECDH() {
 	}
 
 	mockProvider := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
-	mockProvider.EXPECT().Decrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	mockIsSupportedEncAlgorithm(mockProvider)
+	mockEncrypt(mockProvider)
+	mockProvider.EXPECT().Decrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(
-			ctx context.Context, keyRef *kmprovider.KeyRef,
-			params cryptolib.AlgorithmParams, content []byte,
+			ctx context.Context, keyRef *providers.KeyRef, algorithm string,
+			paramsMap map[string]interface{}, content []byte,
 		) ([]byte, error) {
+			params, err := cryptolib.AlgorithmParamsFromMap(algorithm, paramsMap)
+			if err != nil {
+				return nil, err
+			}
 			return cryptolib.Decrypt(suite.testECPrivateKey, params, content)
 		}).Times(len(testCases))
 
 	suite.jweService = &jweService{
 		cryptoProvider: mockProvider,
-		keyRef:         kmprovider.KeyRef{KeyID: "test-kid"},
+		keyRef:         providers.KeyRef{KeyID: "test-kid"},
 		logger:         log.GetLogger(),
 	}
 
@@ -131,7 +183,7 @@ func (suite *JWEServiceTestSuite) TestEncryptDecrypt_ECDH() {
 			context.Background(),
 			payload,
 			recipientPublicKey,
-			tc.alg,
+			string(tc.alg),
 			tc.enc,
 			"",
 			"")
@@ -143,16 +195,33 @@ func (suite *JWEServiceTestSuite) TestEncryptDecrypt_ECDH() {
 }
 
 func (suite *JWEServiceTestSuite) TestEncrypt_Errors() {
+	mockProvider := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
+	mockIsSupportedEncAlgorithm(mockProvider)
+	mockEncrypt(mockProvider)
+
 	suite.jweService = &jweService{
-		logger: log.GetLogger(),
+		cryptoProvider: mockProvider,
+		logger:         log.GetLogger(),
 	}
 
-	// Unsupported Encryption algorithm
+	// Unsupported key-management algorithm
 	_, sErr := suite.jweService.Encrypt(
 		context.Background(),
 		[]byte("p"),
 		&suite.testRSAPrivateKey.PublicKey,
-		RSAOAEP256,
+		"INVALID-ALG",
+		A128GCM,
+		"",
+		"")
+	assert.NotNil(suite.T(), sErr)
+	assert.Equal(suite.T(), ErrorUnsupportedEncryptionAlgorithm, *sErr)
+
+	// Unsupported Encryption algorithm
+	_, sErr = suite.jweService.Encrypt(
+		context.Background(),
+		[]byte("p"),
+		&suite.testRSAPrivateKey.PublicKey,
+		string(RSAOAEP256),
 		"INVALID",
 		"",
 		"")
@@ -164,7 +233,7 @@ func (suite *JWEServiceTestSuite) TestEncrypt_Errors() {
 		context.Background(),
 		[]byte("p"),
 		&suite.testECPrivateKey.PublicKey,
-		RSAOAEP256,
+		string(RSAOAEP256),
 		A128GCM,
 		"",
 		"")
@@ -174,9 +243,11 @@ func (suite *JWEServiceTestSuite) TestEncrypt_Errors() {
 
 func (suite *JWEServiceTestSuite) TestDecrypt_Errors() {
 	mockProvider := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
+	mockIsSupportedEncAlgorithm(mockProvider)
+	mockEncrypt(mockProvider)
 	suite.jweService = &jweService{
 		cryptoProvider: mockProvider,
-		keyRef:         kmprovider.KeyRef{KeyID: "test-kid"},
+		keyRef:         providers.KeyRef{KeyID: "test-kid"},
 		logger:         log.GetLogger(),
 	}
 
@@ -185,30 +256,34 @@ func (suite *JWEServiceTestSuite) TestDecrypt_Errors() {
 	assert.NotNil(suite.T(), sErr)
 	assert.Equal(suite.T(), ErrorDecodingJWE, *sErr)
 
-	// Encrypt a valid token (Encrypt does not use the provider)
+	// Encrypt a valid token
 	payload := []byte("data")
 	jweToken, _ := suite.jweService.Encrypt(
 		context.Background(),
 		payload,
 		&suite.testRSAPrivateKey.PublicKey,
-		RSAOAEP256,
+		string(RSAOAEP256),
 		A128GCM,
 		"",
 		"")
 
 	// DecryptKey failure: provider returns an error
-	mockProvider.EXPECT().Decrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	mockProvider.EXPECT().Decrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, errors.New("key decryption error")).Once()
 	_, sErr = suite.jweService.Decrypt(context.Background(), jweToken)
 	assert.NotNil(suite.T(), sErr)
 	assert.Equal(suite.T(), ErrorJWEDecryptionFailed, *sErr)
 
 	// DecryptContent failure (tampered tag): provider returns correct CEK but tag is wrong
-	mockProvider.EXPECT().Decrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	mockProvider.EXPECT().Decrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(
-			ctx context.Context, keyRef *kmprovider.KeyRef,
-			params cryptolib.AlgorithmParams, content []byte,
+			ctx context.Context, keyRef *providers.KeyRef, algorithm string,
+			paramsMap map[string]interface{}, content []byte,
 		) ([]byte, error) {
+			params, err := cryptolib.AlgorithmParamsFromMap(algorithm, paramsMap)
+			if err != nil {
+				return nil, err
+			}
 			return cryptolib.Decrypt(suite.testRSAPrivateKey, params, content)
 		}).Once()
 	parts := strings.Split(jweToken, ".")
@@ -229,19 +304,23 @@ func (suite *JWEServiceTestSuite) TestInitialize() {
 }
 
 func (suite *JWEServiceTestSuite) TestEncrypt_ErrorCases() {
+	mockProvider := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
+	mockIsSupportedEncAlgorithm(mockProvider)
+	mockEncrypt(mockProvider)
 	suite.jweService = &jweService{
-		logger: log.GetLogger(),
+		cryptoProvider: mockProvider,
+		logger:         log.GetLogger(),
 	}
 
 	payload := []byte("test data")
 
 	// Nil recipient key
-	_, sErr := suite.jweService.Encrypt(context.Background(), payload, nil, RSAOAEP256, A128GCM, "", "")
+	_, sErr := suite.jweService.Encrypt(context.Background(), payload, nil, string(RSAOAEP256), A128GCM, "", "")
 	assert.NotNil(suite.T(), sErr)
 
 	// Unsupported key type
 	fakeKey := "not-a-real-key"
-	_, sErr = suite.jweService.Encrypt(context.Background(), payload, fakeKey, RSAOAEP256, A128GCM, "", "")
+	_, sErr = suite.jweService.Encrypt(context.Background(), payload, fakeKey, string(RSAOAEP256), A128GCM, "", "")
 	assert.NotNil(suite.T(), sErr)
 }
 
@@ -282,39 +361,6 @@ func (suite *JWEServiceTestSuite) TestIsSupportedEnc() {
 	assert.False(suite.T(), isSupportedEnc(""))
 }
 
-func (suite *JWEServiceTestSuite) TestBuildEncryptParams() {
-	testCases := []struct {
-		alg         KeyEncAlgorithm
-		expectError bool
-	}{
-		{RSAOAEP, false},
-		{RSAOAEP256, false},
-		{ECDHES, false},
-		{ECDHESA128KW, false},
-		{ECDHESA192KW, false},
-		{ECDHESA256KW, false},
-		{A128KW, false},
-		{A192KW, false},
-		{A256KW, false},
-		{A128GCMKW, false},
-		{A192GCMKW, false},
-		{A256GCMKW, false},
-		{"UNSUPPORTED", true},
-	}
-
-	for _, tc := range testCases {
-		suite.T().Run(string(tc.alg), func(t *testing.T) {
-			params, err := buildEncryptParams(tc.alg, A128GCM)
-			if tc.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.NotEmpty(t, params.Algorithm)
-			}
-		})
-	}
-}
-
 func (suite *JWEServiceTestSuite) TestBuildDecryptParams() {
 	// RSAOAEP — no EPK needed
 	header := map[string]interface{}{"alg": "RSA-OAEP", "enc": "A128GCM"}
@@ -348,14 +394,17 @@ func (suite *JWEServiceTestSuite) TestBuildDecryptParams() {
 }
 
 func (suite *JWEServiceTestSuite) TestEncrypt_WithKidAndCty() {
+	mockProvider := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
+	mockIsSupportedEncAlgorithm(mockProvider)
+	mockEncrypt(mockProvider)
 	suite.jweService = &jweService{
-		cryptoProvider: nil,
-		keyRef:         kmprovider.KeyRef{KeyID: "test-kid"},
+		cryptoProvider: mockProvider,
+		keyRef:         providers.KeyRef{KeyID: "test-kid"},
 		logger:         log.GetLogger(),
 	}
 
 	token, sErr := suite.jweService.Encrypt(context.Background(),
-		[]byte("payload"), &suite.testRSAPrivateKey.PublicKey, RSAOAEP256, A128GCM, "JWT", "my-kid")
+		[]byte("payload"), &suite.testRSAPrivateKey.PublicKey, string(RSAOAEP256), A128GCM, "JWT", "my-kid")
 	assert.Nil(suite.T(), sErr)
 
 	parsedHeader, _, _, _, _, _, err := DecodeJWE(token)
@@ -391,17 +440,23 @@ func (suite *JWEServiceTestSuite) TestEncryptDecrypt_CBC() {
 	encAlgs := []ContentEncAlgorithm{A128CBCHS256, A192CBCHS384, A256CBCHS512}
 
 	mockProvider := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
-	mockProvider.EXPECT().Decrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	mockIsSupportedEncAlgorithm(mockProvider)
+	mockEncrypt(mockProvider)
+	mockProvider.EXPECT().Decrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(
-			ctx context.Context, keyRef *kmprovider.KeyRef,
-			params cryptolib.AlgorithmParams, content []byte,
+			ctx context.Context, keyRef *providers.KeyRef, algorithm string,
+			paramsMap map[string]interface{}, content []byte,
 		) ([]byte, error) {
+			params, err := cryptolib.AlgorithmParamsFromMap(algorithm, paramsMap)
+			if err != nil {
+				return nil, err
+			}
 			return cryptolib.Decrypt(suite.testRSAPrivateKey, params, content)
 		}).Times(len(encAlgs))
 
 	suite.jweService = &jweService{
 		cryptoProvider: mockProvider,
-		keyRef:         kmprovider.KeyRef{KeyID: "test-kid"},
+		keyRef:         providers.KeyRef{KeyID: "test-kid"},
 		logger:         log.GetLogger(),
 	}
 
@@ -411,7 +466,7 @@ func (suite *JWEServiceTestSuite) TestEncryptDecrypt_CBC() {
 			context.Background(),
 			payload,
 			&suite.testRSAPrivateKey.PublicKey,
-			RSAOAEP256,
+			string(RSAOAEP256),
 			enc,
 			"",
 			"")

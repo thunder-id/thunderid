@@ -201,3 +201,30 @@ type RuntimeStoreProvider interface {
 	// Take retrieves and removes a value from the runtime store by its key.
 	Take(ctx context.Context, namespace RuntimeStoreNamespace, key string) ([]byte, error)
 }
+
+// RuntimeCryptoProvider provides asymmetric cryptographic operations including
+// encryption, decryption, signing, verification, and key discovery.
+type RuntimeCryptoProvider interface {
+	//	 Encrypt encrypts the given content using the specified key reference, algorithm, and parameters.
+	Encrypt(ctx context.Context, keyRef *KeyRef, algorithm string, params map[string]interface{},
+		content []byte) ([]byte, *CryptoDetails, error)
+
+	// Decrypt decrypts the given content using the specified key reference, algorithm, and parameters.
+	Decrypt(ctx context.Context, keyRef *KeyRef, algorithm string, params map[string]interface{},
+		content []byte) ([]byte, error)
+
+	// Sign signs the given content using the specified key reference and algorithm.
+	Sign(ctx context.Context, keyRef KeyRef, alg string, content []byte) ([]byte, error)
+
+	// Verify verifies the signature of the given content using the specified key reference and algorithm.
+	Verify(ctx context.Context, keyRef KeyRef, alg string, content, signature []byte) error
+
+	// GetPublicKeys retrieves public keys based on the provided filter criteria.
+	GetPublicKeys(ctx context.Context, filter PublicKeyFilter) ([]PublicKeyInfo, error)
+
+	// IsSupportedSigningAlgorithm checks if the specified signing algorithm is supported.
+	IsSupportedSigningAlgorithm(alg string) bool
+
+	// IsSupportedEncAlgorithm checks if the specified encryption algorithm is supported.
+	IsSupportedEncAlgorithm(alg string) bool
+}

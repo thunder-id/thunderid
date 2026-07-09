@@ -247,7 +247,7 @@ func (s *userInfoService) generateJWEUserInfo(
 
 	compact, svcErr := s.jweService.Encrypt(ctx,
 		payload, rpKey,
-		jwe.KeyEncAlgorithm(cfg.EncryptionAlg),
+		cfg.EncryptionAlg,
 		jwe.ContentEncAlgorithm(cfg.EncryptionEnc),
 		"json",
 		rpKID,
@@ -282,7 +282,7 @@ func (s *userInfoService) generateNestedJWTUserInfo(
 
 	compact, svcErr := s.jweService.Encrypt(ctx,
 		[]byte(jwsResp.JWTBody), rpKey,
-		jwe.KeyEncAlgorithm(cfg.EncryptionAlg),
+		cfg.EncryptionAlg,
 		jwe.ContentEncAlgorithm(cfg.EncryptionEnc),
 		"JWT",
 		rpKID,

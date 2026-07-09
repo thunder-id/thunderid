@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package defaultkm
+package configkm
 
 import (
 	"context"

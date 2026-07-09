@@ -44,9 +44,9 @@ import (
 	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/jose/sdjwt"
-	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/vc/presentationmock"
@@ -102,7 +102,7 @@ func newStatefulDefinitionReader(
 }
 
 // newTestCryptoProvider returns a mock RuntimeCryptoProvider that signs with key (ES256).
-func newTestCryptoProvider(t *testing.T, key *ecdsa.PrivateKey) kmprovider.RuntimeCryptoProvider {
+func newTestCryptoProvider(t *testing.T, key *ecdsa.PrivateKey) providers.RuntimeCryptoProvider {
 	t.Helper()
 	if key == nil {
 		var err error
@@ -111,7 +111,7 @@ func newTestCryptoProvider(t *testing.T, key *ecdsa.PrivateKey) kmprovider.Runti
 	}
 	provider := cryptomock.NewRuntimeCryptoProviderMock(t)
 	provider.EXPECT().Sign(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ kmprovider.KeyRef, _ string, data []byte) ([]byte, error) {
+		RunAndReturn(func(_ context.Context, _ providers.KeyRef, _ string, data []byte) ([]byte, error) {
 			h := sha256.Sum256(data)
 			return ecdsa.SignASN1(rand.Reader, key, h[:])
 		}).Maybe()
@@ -202,7 +202,7 @@ func newTestServiceWithDefs(
 	defStore := newStatefulDefinitionReader(t, byHandle)
 	provider := newTestCryptoProvider(t, signerKey)
 	svc, err := newOpenID4VPService(cfg, store, testAudience,
-		provider, kmprovider.KeyRef{KeyID: "test-key"}, "ES256", nil,
+		provider, providers.KeyRef{KeyID: "test-key"}, "ES256", nil,
 		b.trustStore(), defStore, nil, "")
 	require.NoError(t, err)
 	return svc, stateEntries, byHandle
@@ -221,7 +221,7 @@ func (suite *OpenID4VPServiceTestSuite) TestNewServiceValidation() {
 		ResponseURIBase: "https://x/resp",
 		TTL:             5 * time.Minute,
 	}
-	keyRef := kmprovider.KeyRef{KeyID: "test-key"}
+	keyRef := providers.KeyRef{KeyID: "test-key"}
 
 	_, err := newOpenID4VPService(valid, nil, "x509_hash:x", provider, keyRef, "ES256", nil, nil, defStore, nil, "")
 	suite.ErrorIs(err, ErrPolicy)

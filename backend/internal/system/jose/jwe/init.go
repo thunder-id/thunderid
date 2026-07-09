@@ -21,12 +21,12 @@ package jwe
 
 import (
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
-	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the JWE service.
 func Initialize(
-	cryptoProvider kmprovider.RuntimeCryptoProvider, cfg joseconfig.Config,
+	cryptoProvider providers.RuntimeCryptoProvider, cfg joseconfig.Config,
 ) (JWEServiceInterface, error) {
 	return newJWEService(cryptoProvider, cfg)
 }

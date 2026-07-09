@@ -35,7 +35,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
-	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
@@ -52,7 +51,7 @@ type flowExecService struct {
 	actorProvider    providers.ActorProvider
 	observabilitySvc providers.ObservabilityProvider
 	transactioner    transaction.Transactioner
-	cryptoSvc        kmprovider.RuntimeCryptoProvider
+	cryptoSvc        providers.RuntimeCryptoProvider
 	cfg              flowconfig.Config
 }
 
@@ -62,7 +61,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 	actorProvider providers.ActorProvider,
 	observabilitySvc providers.ObservabilityProvider,
 	transactioner transaction.Transactioner,
-	cryptoSvc kmprovider.RuntimeCryptoProvider,
+	cryptoSvc providers.RuntimeCryptoProvider,
 	graphBuilder graphbuilder.GraphBuilderInterface,
 	cfg flowconfig.Config) FlowExecServiceInterface {
 	return &flowExecService{
@@ -520,8 +519,8 @@ func (s *flowExecService) encryptEngineContext(ctx context.Context, engineCtx *E
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize engine context: %w", err)
 	}
-	params := cryptolib.AlgorithmParams{Algorithm: cryptolib.AlgorithmAESGCM}
-	ciphertext, _, err := s.cryptoSvc.Encrypt(ctx, nil, params, []byte(serialized.Context))
+	ciphertext, _, err := s.cryptoSvc.Encrypt(
+		ctx, nil, string(cryptolib.AlgorithmAESGCM), nil, []byte(serialized.Context))
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt context: %w", err)
 	}
@@ -784,8 +783,8 @@ func (s *flowExecService) getFlowContext(ctx context.Context, executionID string
 	}
 
 	if isContextEncrypted(dbModel.Context) {
-		decryptParams := cryptolib.AlgorithmParams{Algorithm: cryptolib.AlgorithmAESGCM}
-		decrypted, decryptErr := s.cryptoSvc.Decrypt(ctx, nil, decryptParams, []byte(dbModel.Context))
+		decrypted, decryptErr := s.cryptoSvc.Decrypt(
+			ctx, nil, string(cryptolib.AlgorithmAESGCM), nil, []byte(dbModel.Context))
 		if decryptErr != nil {
 			logger.Error(ctx, "Failed to decrypt flow context",
 				log.String(log.LoggerKeyExecutionID, executionID), log.Error(decryptErr))

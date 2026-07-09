@@ -21,17 +21,13 @@ package dpop
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
-	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/jose/jws"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -51,6 +47,7 @@ type verifier struct {
 	leeway       time.Duration
 	maxJTILength int
 	now          func() time.Time
+	jwtService   jwt.JWTServiceInterface
 }
 
 // newVerifier constructs a DPoP proof verifier with the given replay store and policy settings.
@@ -59,6 +56,7 @@ func newVerifier(
 	allowedAlgs []string,
 	iatWindow, leeway int,
 	maxJTILength int,
+	jwtService jwt.JWTServiceInterface,
 ) VerifierInterface {
 	algSet := make(map[string]struct{}, len(allowedAlgs))
 	for _, a := range allowedAlgs {
@@ -71,6 +69,7 @@ func newVerifier(
 		leeway:       time.Duration(leeway) * time.Second,
 		maxJTILength: maxJTILength,
 		now:          time.Now,
+		jwtService:   jwtService,
 	}
 }
 
@@ -86,7 +85,7 @@ func (v *verifier) Verify(ctx context.Context, params VerifyParams) (*ProofResul
 		return nil, err
 	}
 
-	if err := verifyProofSignature(params.Proof, alg, jwk); err != nil {
+	if err := v.verifyProofSignature(params.Proof, jwk); err != nil {
 		return nil, err
 	}
 
@@ -170,88 +169,17 @@ func (v *verifier) validateHeader(proof string) (string, map[string]any, error) 
 }
 
 // verifyProofSignature verifies the proof's JWS signature using the public key from its jwk header.
-func verifyProofSignature(proof, alg string, jwk map[string]any) error {
-	signAlg, err := jws.MapAlgorithmToSignAlg(jws.Algorithm(alg))
+func (v *verifier) verifyProofSignature(proof string, jwk map[string]any) error {
+	pubKey, err := jws.JWKToPublicKey(jwk)
 	if err != nil {
 		return fmt.Errorf("%w: %s", ErrInvalidProof, err.Error())
 	}
-	parts := strings.Split(proof, ".")
-	if len(parts) != 3 {
-		return fmt.Errorf("%w: invalid JWS format", ErrInvalidProof)
-	}
-	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
-	if err != nil {
-		return fmt.Errorf("%w: invalid JWS signature encoding: %s", ErrInvalidProof, err.Error())
-	}
-	signingInput := []byte(parts[0] + "." + parts[1])
 
-	switch signAlg {
-	case cryptolib.ECDSASHA256, cryptolib.ECDSASHA384, cryptolib.ECDSASHA512:
-		pubKey, err := ecJWKToECDSAPublicKey(jwk)
-		if err != nil {
-			return fmt.Errorf("%w: %s", ErrInvalidProof, err.Error())
-		}
-		// cryptolib.Verify expects P1363 (r||s) format for ECDSA (RFC 7518 §3.4); pass through unchanged.
-		if err := cryptolib.Verify(signingInput, signature, signAlg, pubKey); err != nil {
-			return fmt.Errorf("%w: signature verification failed: %s", ErrInvalidProof, err.Error())
-		}
-		return nil
-	default:
-		pubKey, err := jws.JWKToPublicKey(jwk)
-		if err != nil {
-			return fmt.Errorf("%w: %s", ErrInvalidProof, err.Error())
-		}
-		if err := cryptolib.Verify(signingInput, signature, signAlg, pubKey); err != nil {
-			return fmt.Errorf("%w: signature verification failed: %s", ErrInvalidProof, err.Error())
-		}
-		return nil
+	validationErr := v.jwtService.VerifyJWTSignatureWithPublicKey(proof, pubKey)
+	if validationErr != nil {
+		return fmt.Errorf("%w: %s", ErrInvalidProof, validationErr)
 	}
-}
-
-// ecJWKToECDSAPublicKey builds an *ecdsa.PublicKey from an EC JWK for cryptolib's ECDSA verify path.
-func ecJWKToECDSAPublicKey(jwk map[string]any) (*ecdsa.PublicKey, error) {
-	crv, _ := jwk["crv"].(string)
-	xStr, _ := jwk["x"].(string)
-	yStr, _ := jwk["y"].(string)
-	if crv == "" || xStr == "" || yStr == "" {
-		return nil, fmt.Errorf("EC JWK missing crv/x/y")
-	}
-
-	var curve elliptic.Curve
-	var coordLen int
-	switch crv {
-	case "P-256":
-		curve, coordLen = elliptic.P256(), 32
-	case "P-384":
-		curve, coordLen = elliptic.P384(), 48
-	case "P-521":
-		curve, coordLen = elliptic.P521(), 66
-	default:
-		return nil, fmt.Errorf("unsupported EC curve: %s", crv)
-	}
-
-	xBytes, err := base64.RawURLEncoding.DecodeString(xStr)
-	if err != nil {
-		return nil, fmt.Errorf("decode EC x: %w", err)
-	}
-	yBytes, err := base64.RawURLEncoding.DecodeString(yStr)
-	if err != nil {
-		return nil, fmt.Errorf("decode EC y: %w", err)
-	}
-	if len(xBytes) > coordLen || len(yBytes) > coordLen {
-		return nil, fmt.Errorf("EC coordinate exceeds curve size for %s", crv)
-	}
-
-	uncompressed := make([]byte, 1+2*coordLen)
-	uncompressed[0] = 0x04
-	copy(uncompressed[1+coordLen-len(xBytes):1+coordLen], xBytes)
-	copy(uncompressed[1+2*coordLen-len(yBytes):], yBytes)
-
-	pubKey, err := ecdsa.ParseUncompressedPublicKey(curve, uncompressed)
-	if err != nil {
-		return nil, fmt.Errorf("invalid EC public key: %w", err)
-	}
-	return pubKey, nil
+	return nil
 }
 
 // validatePayloadClaims checks htm/htu binding, the iat acceptance window, and jti presence/length.

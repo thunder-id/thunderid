@@ -30,33 +30,33 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
-	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // JWEServiceInterface defines the interface for JWE operations.
 type JWEServiceInterface interface {
 	Encrypt(ctx context.Context, payload []byte, recipientPublicKey crypto.PublicKey,
-		alg KeyEncAlgorithm, enc ContentEncAlgorithm, cty string, kid string) (string, *tidcommon.ServiceError)
+		alg string, enc ContentEncAlgorithm, cty string, kid string) (string, *tidcommon.ServiceError)
 	Decrypt(ctx context.Context, jweToken string) ([]byte, *tidcommon.ServiceError)
 }
 
 // jweService implements the JWEServiceInterface.
 type jweService struct {
-	cryptoProvider kmprovider.RuntimeCryptoProvider
-	keyRef         kmprovider.KeyRef
+	cryptoProvider providers.RuntimeCryptoProvider
+	keyRef         providers.KeyRef
 	logger         *log.Logger
 }
 
 // newJWEService creates a new JWE service instance.
 func newJWEService(
-	cryptoProvider kmprovider.RuntimeCryptoProvider, cfg joseconfig.Config,
+	cryptoProvider providers.RuntimeCryptoProvider, cfg joseconfig.Config,
 ) (JWEServiceInterface, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "JWEService"))
 
 	return &jweService{
 		cryptoProvider: cryptoProvider,
-		keyRef:         kmprovider.KeyRef{KeyID: cfg.PreferredKeyID},
+		keyRef:         providers.KeyRef{KeyID: cfg.PreferredKeyID},
 		logger:         logger,
 	}, nil
 }
@@ -65,18 +65,21 @@ func newJWEService(
 // cty is the content type placed in the JWE protected header (e.g. "json" or "JWT").
 // kid identifies the recipient's key; it is stamped in the header only when non-empty.
 func (js *jweService) Encrypt(ctx context.Context, payload []byte, recipientPublicKey crypto.PublicKey,
-	alg KeyEncAlgorithm, enc ContentEncAlgorithm, cty string, kid string) (string, *tidcommon.ServiceError) {
-	if !isSupportedEnc(enc) {
+	alg string, enc ContentEncAlgorithm, cty string, kid string) (string, *tidcommon.ServiceError) {
+	if !js.cryptoProvider.IsSupportedEncAlgorithm(alg) {
 		return "", &ErrorUnsupportedEncryptionAlgorithm
 	}
 
-	params, paramsErr := buildEncryptParams(alg, enc)
-	if paramsErr != nil {
-		return "", &ErrorUnsupportedJWEAlgorithm
+	if !isSupportedEnc(enc) {
+		return "", &ErrorUnsupportedEncryptionAlgorithm
+	}
+	params := map[string]interface{}{
+		"contentEncryptionAlgorithm": string(enc),
 	}
 
 	// Establish the CEK via cryptolib key establishment.
-	encryptedKey, details, err := cryptolib.Encrypt(recipientPublicKey, &params, nil)
+	keyRef := providers.KeyRef{PublicKey: recipientPublicKey}
+	encryptedKey, details, err := js.cryptoProvider.Encrypt(ctx, &keyRef, alg, params, payload)
 	if err != nil {
 		js.logger.Error(ctx, "Failed to encrypt CEK: "+err.Error())
 		return "", &ErrorUnsupportedJWEAlgorithm
@@ -87,7 +90,7 @@ func (js *jweService) Encrypt(ctx context.Context, payload []byte, recipientPubl
 	// Build the JWE protected header.
 	header := map[string]interface{}{
 		"typ": "JWE",
-		"alg": string(alg),
+		"alg": alg,
 		"enc": string(enc),
 	}
 	if kid != "" {
@@ -167,7 +170,8 @@ func (js *jweService) Decrypt(ctx context.Context, jweToken string) ([]byte, *ti
 	}
 
 	// Decrypt CEK via the runtime crypto provider (uses server's private key).
-	cek, err := js.cryptoProvider.Decrypt(ctx, &js.keyRef, params, encryptedKey)
+	algName, paramsMap := params.ToParamsMap()
+	cek, err := js.cryptoProvider.Decrypt(ctx, &js.keyRef, algName, paramsMap, encryptedKey)
 	if err != nil {
 		js.logger.Error(ctx, "Failed to decrypt CEK: "+err.Error())
 		return nil, &ErrorJWEDecryptionFailed
@@ -229,76 +233,6 @@ func isSupportedEnc(enc ContentEncAlgorithm) bool {
 		return true
 	default:
 		return false
-	}
-}
-
-// buildEncryptParams converts a JWE key management algorithm and content encryption algorithm
-// into a cryptolib.AlgorithmParams for key establishment during Encrypt.
-func buildEncryptParams(alg KeyEncAlgorithm, enc ContentEncAlgorithm) (cryptolib.AlgorithmParams, error) {
-	encAlg := cryptolib.Algorithm(enc)
-	switch alg {
-	case RSAOAEP:
-		return cryptolib.AlgorithmParams{
-			Algorithm: cryptolib.AlgorithmRSAOAEP,
-			RSAOAEP:   cryptolib.RSAOAEPParams{ContentEncryptionAlgorithm: encAlg},
-		}, nil
-	case RSAOAEP256:
-		return cryptolib.AlgorithmParams{
-			Algorithm:  cryptolib.AlgorithmRSAOAEP256,
-			RSAOAEP256: cryptolib.RSAOAEP256Params{ContentEncryptionAlgorithm: encAlg},
-		}, nil
-	case ECDHES:
-		return cryptolib.AlgorithmParams{
-			Algorithm: cryptolib.AlgorithmECDHES,
-			ECDHES:    cryptolib.ECDHESParams{ContentEncryptionAlgorithm: encAlg},
-		}, nil
-	case ECDHESA128KW:
-		return cryptolib.AlgorithmParams{
-			Algorithm: cryptolib.AlgorithmECDHESA128KW,
-			ECDHES:    cryptolib.ECDHESParams{ContentEncryptionAlgorithm: encAlg},
-		}, nil
-	case ECDHESA192KW:
-		return cryptolib.AlgorithmParams{
-			Algorithm: cryptolib.AlgorithmECDHESA192KW,
-			ECDHES:    cryptolib.ECDHESParams{ContentEncryptionAlgorithm: encAlg},
-		}, nil
-	case ECDHESA256KW:
-		return cryptolib.AlgorithmParams{
-			Algorithm: cryptolib.AlgorithmECDHESA256KW,
-			ECDHES:    cryptolib.ECDHESParams{ContentEncryptionAlgorithm: encAlg},
-		}, nil
-	case A128KW:
-		return cryptolib.AlgorithmParams{
-			Algorithm: cryptolib.AlgorithmA128KW,
-			AESKW:     cryptolib.AESKWParams{ContentEncryptionAlgorithm: encAlg},
-		}, nil
-	case A192KW:
-		return cryptolib.AlgorithmParams{
-			Algorithm: cryptolib.AlgorithmA192KW,
-			AESKW:     cryptolib.AESKWParams{ContentEncryptionAlgorithm: encAlg},
-		}, nil
-	case A256KW:
-		return cryptolib.AlgorithmParams{
-			Algorithm: cryptolib.AlgorithmA256KW,
-			AESKW:     cryptolib.AESKWParams{ContentEncryptionAlgorithm: encAlg},
-		}, nil
-	case A128GCMKW:
-		return cryptolib.AlgorithmParams{
-			Algorithm: cryptolib.AlgorithmA128GCMKW,
-			AESGCMKW:  cryptolib.AESGCMKWParams{ContentEncryptionAlgorithm: encAlg},
-		}, nil
-	case A192GCMKW:
-		return cryptolib.AlgorithmParams{
-			Algorithm: cryptolib.AlgorithmA192GCMKW,
-			AESGCMKW:  cryptolib.AESGCMKWParams{ContentEncryptionAlgorithm: encAlg},
-		}, nil
-	case A256GCMKW:
-		return cryptolib.AlgorithmParams{
-			Algorithm: cryptolib.AlgorithmA256GCMKW,
-			AESGCMKW:  cryptolib.AESGCMKWParams{ContentEncryptionAlgorithm: encAlg},
-		}, nil
-	default:
-		return cryptolib.AlgorithmParams{}, fmt.Errorf("unsupported JWE algorithm: %s", alg)
 	}
 }
 

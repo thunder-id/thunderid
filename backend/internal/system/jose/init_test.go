@@ -35,7 +35,7 @@ import (
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
-	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 )
 
@@ -82,15 +82,16 @@ func (suite *JOSEInitTestSuite) TearDownTest() {
 
 func (suite *JOSEInitTestSuite) TestInitialize_Success() {
 	suite.mockRuntime.EXPECT().
-		GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{KeyID: "test-key-id"}).
-		Return([]kmprovider.PublicKeyInfo{
+		GetPublicKeys(mock.Anything, providers.PublicKeyFilter{KeyID: "test-key-id"}).
+		Return([]providers.PublicKeyInfo{
 			{
 				KeyID:      "test-key-id",
-				Algorithm:  cryptolib.AlgorithmRS256,
+				Algorithm:  string(cryptolib.AlgorithmRS256),
 				PublicKey:  &suite.testPrivateKey.PublicKey,
 				Thumbprint: "test-thumbprint",
 			},
 		}, nil)
+	suite.mockRuntime.EXPECT().IsSupportedSigningAlgorithm(mock.Anything).Return(true).Maybe()
 
 	jwtService, jweService, err := Initialize(suite.mockRuntime, joseconfig.Config{PreferredKeyID: "test-key-id"})
 
@@ -103,7 +104,7 @@ func (suite *JOSEInitTestSuite) TestInitialize_Success() {
 
 func (suite *JOSEInitTestSuite) TestInitialize_JWTInitializationFailure() {
 	suite.mockRuntime.EXPECT().
-		GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{KeyID: "test-key-id"}).
+		GetPublicKeys(mock.Anything, providers.PublicKeyFilter{KeyID: "test-key-id"}).
 		Return(nil, errors.New("provider unavailable"))
 
 	jwtService, jweService, err := Initialize(suite.mockRuntime, joseconfig.Config{PreferredKeyID: "test-key-id"})
@@ -130,15 +131,16 @@ func (suite *JOSEInitTestSuite) TestInitialize_NilRuntimeProvider() {
 
 func (suite *JOSEInitTestSuite) TestInitialize_ValidatesServiceInterfaces() {
 	suite.mockRuntime.EXPECT().
-		GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{KeyID: "test-key-id"}).
-		Return([]kmprovider.PublicKeyInfo{
+		GetPublicKeys(mock.Anything, providers.PublicKeyFilter{KeyID: "test-key-id"}).
+		Return([]providers.PublicKeyInfo{
 			{
 				KeyID:      "test-key-id",
-				Algorithm:  cryptolib.AlgorithmRS256,
+				Algorithm:  string(cryptolib.AlgorithmRS256),
 				PublicKey:  &suite.testPrivateKey.PublicKey,
 				Thumbprint: "test-thumbprint",
 			},
 		}, nil)
+	suite.mockRuntime.EXPECT().IsSupportedSigningAlgorithm(mock.Anything).Return(true).Maybe()
 
 	jwtService, jweService, err := Initialize(suite.mockRuntime, joseconfig.Config{PreferredKeyID: "test-key-id"})
 

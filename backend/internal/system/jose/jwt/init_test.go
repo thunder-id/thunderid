@@ -34,7 +34,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
-	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 )
 
@@ -108,13 +108,14 @@ func (suite *InitTestSuite) TestInitialize_Success() {
 
 	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
 	cryptoMock.EXPECT().
-		GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{KeyID: "test-kid"}).
-		Return([]kmprovider.PublicKeyInfo{{
+		GetPublicKeys(mock.Anything, providers.PublicKeyFilter{KeyID: "test-kid"}).
+		Return([]providers.PublicKeyInfo{{
 			KeyID:      "test-kid",
-			Algorithm:  cryptolib.AlgorithmRS256,
+			Algorithm:  string(cryptolib.AlgorithmRS256),
 			PublicKey:  &suite.testPrivateKey.PublicKey,
 			Thumbprint: "test-kid",
 		}}, nil)
+	mockIsSupportedSigningAlgorithm(cryptoMock)
 
 	jwtService, err := Initialize(cryptoMock, cfg)
 	assert.NoError(suite.T(), err)
@@ -131,7 +132,7 @@ func (suite *InitTestSuite) TestInitialize_PublicKeyRetrievalError() {
 
 	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
 	cryptoMock.EXPECT().
-		GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{KeyID: "test-kid"}).
+		GetPublicKeys(mock.Anything, providers.PublicKeyFilter{KeyID: "test-kid"}).
 		Return(nil, errors.New("provider unavailable"))
 
 	jwtService, err := Initialize(cryptoMock, cfg)
@@ -149,13 +150,14 @@ func (suite *InitTestSuite) TestInitialize_WithoutPreferredKeyID() {
 
 	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
 	cryptoMock.EXPECT().
-		GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{KeyID: ""}).
-		Return([]kmprovider.PublicKeyInfo{{
+		GetPublicKeys(mock.Anything, providers.PublicKeyFilter{KeyID: ""}).
+		Return([]providers.PublicKeyInfo{{
 			KeyID:      "",
-			Algorithm:  cryptolib.AlgorithmRS256,
+			Algorithm:  string(cryptolib.AlgorithmRS256),
 			PublicKey:  &suite.testPrivateKey.PublicKey,
 			Thumbprint: "test-kid",
 		}}, nil)
+	mockIsSupportedSigningAlgorithm(cryptoMock)
 
 	jwtService, err := Initialize(cryptoMock, cfg)
 	assert.NoError(suite.T(), err)

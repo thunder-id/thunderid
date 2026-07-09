@@ -33,8 +33,8 @@ import (
 	"crypto/sha1" //nolint:gosec
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
-	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // JWKSServiceInterface defines the interface for JWKS service.
@@ -44,12 +44,12 @@ type JWKSServiceInterface interface {
 
 // jwksService implements the JWKSServiceInterface.
 type jwksService struct {
-	cryptoProvider kmprovider.RuntimeCryptoProvider
+	cryptoProvider providers.RuntimeCryptoProvider
 	logger         *log.Logger
 }
 
 // newJWKSService creates a new instance of JWKSService.
-func newJWKSService(cryptoProvider kmprovider.RuntimeCryptoProvider) JWKSServiceInterface {
+func newJWKSService(cryptoProvider providers.RuntimeCryptoProvider) JWKSServiceInterface {
 	return &jwksService{
 		cryptoProvider: cryptoProvider,
 		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "JWKSService")),
@@ -58,7 +58,7 @@ func newJWKSService(cryptoProvider kmprovider.RuntimeCryptoProvider) JWKSService
 
 // GetJWKS retrieves the JSON Web Key Set (JWKS) from the runtime crypto provider.
 func (s *jwksService) GetJWKS(ctx context.Context) (*JWKSResponse, *tidcommon.ServiceError) {
-	publicKeys, err := s.cryptoProvider.GetPublicKeys(ctx, kmprovider.PublicKeyFilter{})
+	publicKeys, err := s.cryptoProvider.GetPublicKeys(ctx, providers.PublicKeyFilter{})
 	if err != nil {
 		s.logger.Error(ctx, "Failed to retrieve public keys", log.Error(err))
 		return nil, &tidcommon.InternalServerError

@@ -16,21 +16,25 @@
  * under the License.
  */
 
-// Package jwt provides functionalities for handling JSON Web Tokens (JWTs).
-package jwt
+// Package runtimekm provides the default key manager implementation backed by PKI key material.
+package runtimekm
 
 import (
-	"time"
-
-	httpservice "github.com/thunder-id/thunderid/internal/system/http"
-	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
+	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
+	"github.com/thunder-id/thunderid/internal/system/kmprovider/configkm"
+	"github.com/thunder-id/thunderid/internal/system/kmprovider/runtimekm/pki"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// Initialize initializes the JWT service.
-func Initialize(
-	runtimeProvider providers.RuntimeCryptoProvider, cfg joseconfig.Config,
-) (JWTServiceInterface, error) {
-	httpClient := httpservice.NewHTTPClientWithTimeout(10 * time.Second)
-	return newJWTService(httpClient, runtimeProvider, cfg)
+// Initialize returns a fully wired RuntimeCryptoProvider and ConfigCryptoProvider.
+func Initialize(pkiSvc pki.PKIServiceInterface) (
+	providers.RuntimeCryptoProvider, kmprovider.ConfigCryptoProvider, error,
+) {
+	cfgSvc, err := configkm.InitConfigProvider()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	runtimeSvc := NewRuntimeCryptoService(pkiSvc, cfgSvc)
+	return runtimeSvc, cfgSvc, nil
 }

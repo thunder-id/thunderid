@@ -16,8 +16,9 @@
  * under the License.
  */
 
-// Package defaultkm provides the default key manager implementation backed by PKI key material.
-package defaultkm
+// Package configkm provides the default config crypto provider implementation
+// backed by statically configured symmetric keys.
+package configkm
 
 import (
 	"encoding/hex"
@@ -26,7 +27,6 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
-	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki"
 )
 
 var (
@@ -40,7 +40,7 @@ var (
 // Deprecated
 func GetConfigCryptoService() (kmprovider.ConfigCryptoProvider, error) {
 	globalOnce.Do(func() {
-		globalCfgSvc, initErr = initConfigProvider()
+		globalCfgSvc, initErr = InitConfigProvider()
 	})
 	if initErr != nil {
 		return nil, initErr
@@ -48,20 +48,8 @@ func GetConfigCryptoService() (kmprovider.ConfigCryptoProvider, error) {
 	return globalCfgSvc, nil
 }
 
-// Initialize returns a fully wired RuntimeCryptoProvider and ConfigCryptoProvider.
-func Initialize(pkiSvc pki.PKIServiceInterface) (
-	kmprovider.RuntimeCryptoProvider, kmprovider.ConfigCryptoProvider, error,
-) {
-	cfgSvc, err := initConfigProvider()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	runtimeSvc := NewRuntimeCryptoService(pkiSvc, cfgSvc)
-	return runtimeSvc, cfgSvc, nil
-}
-
-func initConfigProvider() (kmprovider.ConfigCryptoProvider, error) {
+// InitConfigProvider builds a new ConfigCryptoProvider from the configured encryption key.
+func InitConfigProvider() (kmprovider.ConfigCryptoProvider, error) {
 	encryptionKey := config.GetServerRuntime().Config.Crypto.Encryption.Key
 	if encryptionKey == "" {
 		return nil, errors.New("encryption key not configured in crypto.encryption.key")

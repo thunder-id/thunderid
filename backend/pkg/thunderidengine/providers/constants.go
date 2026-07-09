@@ -19,6 +19,8 @@
 // Package providers provides constants for the providers module.
 package providers
 
+import "errors"
+
 // IDPType represents the type of an identity provider.
 type IDPType string
 
@@ -491,3 +493,11 @@ const (
 	NamespaceVCIOffer  RuntimeStoreNamespace = "vci:offer"
 	NamespaceVPState   RuntimeStoreNamespace = "vp:state"
 )
+
+// ErrKeyNotFound indicates that no key managed by the provider matches the
+// requested identifier.
+var ErrKeyNotFound = errors.New("kmprovider: no key found matching the requested identifier")
+
+// ErrUnsupportedAlgorithm indicates the requested signature algorithm is not
+// supported by the provider or is incompatible with the resolved key.
+var ErrUnsupportedAlgorithm = errors.New("kmprovider: unsupported signature algorithm")
