@@ -36,10 +36,10 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
-	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/usermock"
@@ -64,7 +64,7 @@ func (s *ServiceTestSuite) TestNewOpenID4VCIService() {
 	s.Run("Success", func() {
 		svc, err := newOpenID4VCIService(
 			serviceConfig{CredentialIssuer: testIssuer},
-			provider, kmprovider.KeyRef{}, "ES256", "", nil,
+			provider, providers.KeyRef{}, "ES256", "", nil,
 			store, jwtSvc, userSvc, creds)
 		s.Require().NoError(err)
 		s.Require().NotNil(svc)
@@ -73,7 +73,7 @@ func (s *ServiceTestSuite) TestNewOpenID4VCIService() {
 	s.Run("MissingDependency", func() {
 		svc, err := newOpenID4VCIService(
 			serviceConfig{CredentialIssuer: testIssuer},
-			nil, kmprovider.KeyRef{}, "ES256", "", nil,
+			nil, providers.KeyRef{}, "ES256", "", nil,
 			store, jwtSvc, userSvc, creds)
 		s.ErrorIs(err, ErrPolicy)
 		s.Nil(svc)
@@ -82,7 +82,7 @@ func (s *ServiceTestSuite) TestNewOpenID4VCIService() {
 	s.Run("MissingCredentialIssuer", func() {
 		svc, err := newOpenID4VCIService(
 			serviceConfig{},
-			provider, kmprovider.KeyRef{}, "ES256", "", nil,
+			provider, providers.KeyRef{}, "ES256", "", nil,
 			store, jwtSvc, userSvc, creds)
 		s.ErrorIs(err, ErrPolicy)
 		s.Nil(svc)
@@ -726,7 +726,7 @@ func (s *CredentialTestSuite) TestIssueCredentialSuccess() {
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	provider := cryptomock.NewRuntimeCryptoProviderMock(s.T())
 	provider.EXPECT().Sign(mock.Anything, mock.Anything, "ES256", mock.Anything).
-		RunAndReturn(func(_ context.Context, _ kmprovider.KeyRef, _ string, content []byte) ([]byte, error) {
+		RunAndReturn(func(_ context.Context, _ providers.KeyRef, _ string, content []byte) ([]byte, error) {
 			digest := sha256.Sum256(content)
 			return ecdsa.SignASN1(rand.Reader, key, digest[:])
 		}).Maybe()
@@ -753,7 +753,7 @@ func (s *CredentialTestSuite) TestIssueCredentialSuccess() {
 	svc := &openid4vciService{
 		cfg:            serviceConfig{CredentialIssuer: testIssuer, ProofMaxAge: time.Minute, BatchSize: 5},
 		cryptoProvider: provider,
-		signingKeyRef:  kmprovider.KeyRef{KeyID: "kid"},
+		signingKeyRef:  providers.KeyRef{KeyID: "kid"},
 		signingAlg:     "ES256",
 		kid:            "kid",
 		x5c:            []string{base64.StdEncoding.EncodeToString([]byte("cert"))},

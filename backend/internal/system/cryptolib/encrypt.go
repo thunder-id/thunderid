@@ -301,3 +301,15 @@ func encryptAESGCMKW(kek []byte, alg Algorithm, params AlgorithmParams) ([]byte,
 	tag := sealed[len(sealed)-tagSize:]
 	return encryptedKey, &CryptoDetails{CEK: cek, IV: iv, Tag: tag}, nil
 }
+
+// EncryptionAlgorithmFor validates that alg is a supported key-management algorithm and returns it.
+func EncryptionAlgorithmFor(alg Algorithm) (Algorithm, error) {
+	switch alg {
+	case AlgorithmRSAOAEP, AlgorithmRSAOAEP256, AlgorithmECDHES, AlgorithmECDHESA128KW,
+		AlgorithmECDHESA192KW, AlgorithmECDHESA256KW, AlgorithmA128KW, AlgorithmA192KW,
+		AlgorithmA256KW, AlgorithmA128GCMKW, AlgorithmA192GCMKW, AlgorithmA256GCMKW:
+		return alg, nil
+	default:
+		return "", fmt.Errorf("%w: %q", ErrUnsupportedAlgorithm, alg)
+	}
+}

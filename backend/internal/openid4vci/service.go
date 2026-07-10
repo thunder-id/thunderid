@@ -36,10 +36,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jws"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/jose/sdjwt"
-	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // OpenID4VCIServiceInterface is the contract for the OpenID4VCI issuer service,
@@ -59,8 +59,8 @@ var _ OpenID4VCIServiceInterface = (*openid4vciService)(nil)
 // access token and holder proof.
 type openid4vciService struct {
 	cfg            serviceConfig
-	cryptoProvider kmprovider.RuntimeCryptoProvider
-	signingKeyRef  kmprovider.KeyRef
+	cryptoProvider providers.RuntimeCryptoProvider
+	signingKeyRef  providers.KeyRef
 	signingAlg     string
 	kid            string
 	x5c            []string
@@ -73,7 +73,7 @@ type openid4vciService struct {
 // newOpenID4VCIService creates an OpenID4VCI issuer engine.
 func newOpenID4VCIService(
 	cfg serviceConfig,
-	cryptoProvider kmprovider.RuntimeCryptoProvider, signingKeyRef kmprovider.KeyRef,
+	cryptoProvider providers.RuntimeCryptoProvider, signingKeyRef providers.KeyRef,
 	signingAlg, kid string, x5c []string,
 	store openID4VCIStoreInterface,
 	jwtService jwt.JWTServiceInterface, userService user.UserServiceInterface,

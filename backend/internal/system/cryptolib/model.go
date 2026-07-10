@@ -23,6 +23,7 @@ package cryptolib
 
 import (
 	gocrypto "crypto"
+	"fmt"
 )
 
 // Algorithm represents a cryptographic algorithm identifier (JWA-aligned, RFC 7518).
@@ -144,6 +145,120 @@ type ECDHESParams struct {
 	ContentEncryptionAlgorithm Algorithm
 	APU                        []byte
 	APV                        []byte
+}
+
+// ToParamsMap converts AlgorithmParams into the algorithm string and generic params map consumed by
+// AlgorithmParamsFromMap, for passing algorithm-specific inputs across the RuntimeCryptoProvider interface.
+func (p AlgorithmParams) ToParamsMap() (string, map[string]interface{}) {
+	switch p.Algorithm {
+	case AlgorithmRSAOAEP256:
+		return string(p.Algorithm), map[string]interface{}{
+			"contentEncryptionAlgorithm": string(p.RSAOAEP256.ContentEncryptionAlgorithm),
+		}
+	case AlgorithmRSAOAEP:
+		return string(p.Algorithm), map[string]interface{}{
+			"contentEncryptionAlgorithm": string(p.RSAOAEP.ContentEncryptionAlgorithm),
+		}
+	case AlgorithmECDHES, AlgorithmECDHESA128KW, AlgorithmECDHESA192KW, AlgorithmECDHESA256KW:
+		params := map[string]interface{}{
+			"contentEncryptionAlgorithm": string(p.ECDHES.ContentEncryptionAlgorithm),
+		}
+		if p.ECDHES.EPK != nil {
+			params["epk"] = p.ECDHES.EPK
+		}
+		if p.ECDHES.APU != nil {
+			params["apu"] = p.ECDHES.APU
+		}
+		if p.ECDHES.APV != nil {
+			params["apv"] = p.ECDHES.APV
+		}
+		return string(p.Algorithm), params
+	case AlgorithmA128KW, AlgorithmA192KW, AlgorithmA256KW:
+		return string(p.Algorithm), map[string]interface{}{
+			"contentEncryptionAlgorithm": string(p.AESKW.ContentEncryptionAlgorithm),
+		}
+	default:
+		return string(p.Algorithm), nil
+	}
+}
+
+// AlgorithmParamsFromMap builds AlgorithmParams from an algorithm string and its generic params map,
+// the inverse of AlgorithmParams.ToParamsMap, for reconstructing algorithm-specific inputs received
+// across the RuntimeCryptoProvider interface.
+func AlgorithmParamsFromMap(algorithm string, params map[string]interface{}) (AlgorithmParams, error) {
+	switch algorithm {
+	case string(AlgorithmAESGCM):
+		return AlgorithmParams{Algorithm: AlgorithmAESGCM}, nil
+	case string(AlgorithmRSAOAEP256):
+		ceAlg, ok := params["contentEncryptionAlgorithm"].(string)
+		if !ok {
+			return AlgorithmParams{}, fmt.Errorf("missing or invalid contentEncryptionAlgorithm for RSA-OAEP-256")
+		}
+		return AlgorithmParams{
+			Algorithm: AlgorithmRSAOAEP256,
+			RSAOAEP256: RSAOAEP256Params{
+				ContentEncryptionAlgorithm: Algorithm(ceAlg),
+			},
+		}, nil
+	case string(AlgorithmRSAOAEP):
+		ceAlg, ok := params["contentEncryptionAlgorithm"].(string)
+		if !ok {
+			return AlgorithmParams{}, fmt.Errorf("missing or invalid contentEncryptionAlgorithm for RSA-OAEP")
+		}
+		return AlgorithmParams{
+			Algorithm: AlgorithmRSAOAEP,
+			RSAOAEP: RSAOAEPParams{
+				ContentEncryptionAlgorithm: Algorithm(ceAlg),
+			},
+		}, nil
+	case string(AlgorithmECDHES), string(AlgorithmECDHESA128KW),
+		string(AlgorithmECDHESA192KW), string(AlgorithmECDHESA256KW):
+		ceAlg, ok := params["contentEncryptionAlgorithm"].(string)
+		if !ok {
+			return AlgorithmParams{}, fmt.Errorf("missing or invalid contentEncryptionAlgorithm for %s", algorithm)
+		}
+		var epk gocrypto.PublicKey
+		if epkVal, ok := params["epk"]; ok {
+			epk, ok = epkVal.(gocrypto.PublicKey)
+			if !ok {
+				return AlgorithmParams{}, fmt.Errorf("invalid epk for %s", algorithm)
+			}
+		}
+		var apu, apv []byte
+		if apuVal, ok := params["apu"]; ok {
+			apu, ok = apuVal.([]byte)
+			if !ok {
+				return AlgorithmParams{}, fmt.Errorf("invalid apu for %s", algorithm)
+			}
+		}
+		if apvVal, ok := params["apv"]; ok {
+			apv, ok = apvVal.([]byte)
+			if !ok {
+				return AlgorithmParams{}, fmt.Errorf("invalid apv for %s", algorithm)
+			}
+		}
+		return AlgorithmParams{
+			Algorithm: Algorithm(algorithm),
+			ECDHES: ECDHESParams{
+				EPK:                        epk,
+				ContentEncryptionAlgorithm: Algorithm(ceAlg),
+				APU:                        apu,
+				APV:                        apv,
+			},
+		}, nil
+	case string(AlgorithmA128KW), string(AlgorithmA192KW), string(AlgorithmA256KW):
+		ceAlg, ok := params["contentEncryptionAlgorithm"].(string)
+		if !ok {
+			return AlgorithmParams{}, fmt.Errorf("missing or invalid contentEncryptionAlgorithm for %s", algorithm)
+		}
+		return AlgorithmParams{
+			Algorithm: Algorithm(algorithm),
+			AESKW: AESKWParams{
+				ContentEncryptionAlgorithm: Algorithm(ceAlg),
+			},
+		}, nil
+	}
+	return AlgorithmParams{}, fmt.Errorf("unsupported algorithm: %s", algorithm)
 }
 
 // CryptoDetails carries algorithm-specific outputs from an Encrypt operation.

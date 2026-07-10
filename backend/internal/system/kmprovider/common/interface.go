@@ -21,10 +21,7 @@ package common
 
 import (
 	"context"
-	gocrypto "crypto"
 	"crypto/tls"
-
-	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 )
 
 // ConfigCryptoProvider provides symmetric encryption and decryption functionality
@@ -34,38 +31,9 @@ type ConfigCryptoProvider interface {
 	Decrypt(ctx context.Context, content []byte) ([]byte, error)
 }
 
-// RuntimeCryptoProvider provides asymmetric cryptographic operations including
-// encryption, decryption, signing, verification, and key discovery.
-type RuntimeCryptoProvider interface {
-	Encrypt(
-		ctx context.Context, keyRef *KeyRef, params cryptolib.AlgorithmParams, content []byte,
-	) ([]byte, *cryptolib.CryptoDetails, error)
-	Decrypt(ctx context.Context, keyRef *KeyRef, params cryptolib.AlgorithmParams, content []byte) ([]byte, error)
-	Sign(ctx context.Context, keyRef KeyRef, alg string, content []byte) ([]byte, error)
-	Verify(ctx context.Context, kid string, alg string, content, signature []byte) error
-	GetPublicKeys(ctx context.Context, filter PublicKeyFilter) ([]PublicKeyInfo, error)
+// TLSMaterialProvider provides TLS certificate material for a given key reference.
+type TLSMaterialProvider interface {
 	GetTLSMaterial(ctx context.Context) (*TLSMaterial, error)
-}
-
-// KeyRef identifies a cryptographic key by its ID.
-type KeyRef struct {
-	KeyID string
-}
-
-// PublicKeyFilter specifies criteria for filtering public keys in GetPublicKeys.
-type PublicKeyFilter struct {
-	KeyID     string
-	Algorithm cryptolib.Algorithm
-}
-
-// PublicKeyInfo describes a public key returned by GetPublicKeys.
-type PublicKeyInfo struct {
-	KeyID               string
-	Algorithm           cryptolib.Algorithm
-	PublicKey           gocrypto.PublicKey
-	Thumbprint          string
-	CertificateDER      []byte
-	CertificateChainDER [][]byte // leaf first, then intermediates; nil if not certificate-backed
 }
 
 // TLSMaterial holds the TLS certificate material for a key reference.

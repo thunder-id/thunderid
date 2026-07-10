@@ -29,10 +29,10 @@ import (
 
 	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
-	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // OpenID4VPServiceInterface is the external contract for the OpenID4VP verifier.
@@ -55,8 +55,8 @@ type openid4vpService struct {
 	store          openID4VPStoreInterface
 	defStore       presentation.PresentationDefinitionServiceInterface
 	clientID       string
-	cryptoProvider kmprovider.RuntimeCryptoProvider
-	signingKeyRef  kmprovider.KeyRef
+	cryptoProvider providers.RuntimeCryptoProvider
+	signingKeyRef  providers.KeyRef
 	signingAlg     string
 	x5c            []string
 	jwtSvc         jwt.JWTServiceInterface
@@ -68,7 +68,7 @@ type openid4vpService struct {
 // newOpenID4VPService creates an OpenID4VP verifier engine.
 func newOpenID4VPService(
 	cfg serviceConfig, store openID4VPStoreInterface, clientID string,
-	cryptoProvider kmprovider.RuntimeCryptoProvider, signingKeyRef kmprovider.KeyRef, signingAlg string, x5c []string,
+	cryptoProvider providers.RuntimeCryptoProvider, signingKeyRef providers.KeyRef, signingAlg string, x5c []string,
 	trust *trustAnchorStore, defStore presentation.PresentationDefinitionServiceInterface,
 	jwtSvc jwt.JWTServiceInterface, issuerURL string,
 ) (*openid4vpService, error) {

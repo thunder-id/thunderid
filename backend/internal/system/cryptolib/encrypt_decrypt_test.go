@@ -581,3 +581,20 @@ func TestAESGCMKWMissingTagFails(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "authentication tag required")
 }
+
+func TestEncryptionAlgorithmForSupportedAlgorithms(t *testing.T) {
+	for _, alg := range []Algorithm{
+		AlgorithmRSAOAEP, AlgorithmRSAOAEP256, AlgorithmECDHES, AlgorithmECDHESA128KW,
+		AlgorithmECDHESA192KW, AlgorithmECDHESA256KW, AlgorithmA128KW, AlgorithmA192KW,
+		AlgorithmA256KW, AlgorithmA128GCMKW, AlgorithmA192GCMKW, AlgorithmA256GCMKW,
+	} {
+		got, err := EncryptionAlgorithmFor(alg)
+		assert.NoError(t, err)
+		assert.Equal(t, alg, got)
+	}
+}
+
+func TestEncryptionAlgorithmForUnsupportedAlgorithmFails(t *testing.T) {
+	_, err := EncryptionAlgorithmFor(AlgorithmAESGCM)
+	assert.ErrorIs(t, err, ErrUnsupportedAlgorithm)
+}

@@ -24,7 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
+	"github.com/thunder-id/thunderid/internal/system/kmprovider/configkm"
 )
 
 // Property represents a generic property with name, value, and isSecret fields.
@@ -75,7 +75,7 @@ func (p *Property) GetValue() (string, error) {
 		return p.value, nil
 	}
 
-	cryptoProvider, err := defaultkm.GetConfigCryptoService()
+	cryptoProvider, err := configkm.GetConfigCryptoService()
 	if err != nil {
 		return "", fmt.Errorf("failed to initialize encryption service: %w", err)
 	}
@@ -93,7 +93,7 @@ func (p *Property) Encrypt() error {
 		return nil
 	}
 
-	cryptoProvider, err := defaultkm.GetConfigCryptoService()
+	cryptoProvider, err := configkm.GetConfigCryptoService()
 	if err != nil {
 		return fmt.Errorf("failed to initialize encryption service: %w", err)
 	}

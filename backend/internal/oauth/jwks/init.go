@@ -21,12 +21,12 @@ package jwks
 import (
 	"net/http"
 
-	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the JWKS service and registers its routes.
-func Initialize(mux *http.ServeMux, cryptoProvider kmprovider.RuntimeCryptoProvider) JWKSServiceInterface {
+func Initialize(mux *http.ServeMux, cryptoProvider providers.RuntimeCryptoProvider) JWKSServiceInterface {
 	// Initialize the JWKS service
 	jwksService := newJWKSService(cryptoProvider)
 	jwksHandler := newJWKSHandler(jwksService)

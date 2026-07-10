@@ -32,7 +32,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
-	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 )
 
@@ -69,16 +69,16 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 
 	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(suite.T(), err)
-	keys := []kmprovider.PublicKeyInfo{
+	keys := []providers.PublicKeyInfo{
 		{
 			KeyID:          "test-kid",
-			Algorithm:      cryptolib.AlgorithmRS256,
+			Algorithm:      string(cryptolib.AlgorithmRS256),
 			PublicKey:      &rsaKey.PublicKey,
 			Thumbprint:     "test-kid",
 			CertificateDER: []byte("raw-cert"),
 		},
 	}
-	cryptoMock.EXPECT().GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{}).Return(keys, nil)
+	cryptoMock.EXPECT().GetPublicKeys(mock.Anything, providers.PublicKeyFilter{}).Return(keys, nil)
 
 	_ = Initialize(mux, cryptoMock)
 

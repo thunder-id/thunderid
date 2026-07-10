@@ -500,3 +500,11 @@ var (
 	// ErrRuntimeStoreKeyNotFound to identify key not found error in the runtime store providers
 	ErrRuntimeStoreKeyNotFound = errors.New("RuntimeStore key not found")
 )
+
+// ErrKeyNotFound indicates that no key managed by the provider matches the
+// requested identifier.
+var ErrKeyNotFound = errors.New("kmprovider: no key found matching the requested identifier")
+
+// ErrUnsupportedAlgorithm indicates the requested signature algorithm is not
+// supported by the provider or is incompatible with the resolved key.
+var ErrUnsupportedAlgorithm = errors.New("kmprovider: unsupported signature algorithm")

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package defaultkm
+package configkm
 
 // CryptoAlgorithm represents the supported encryption algorithms.
 type CryptoAlgorithm string

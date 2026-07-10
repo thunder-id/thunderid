@@ -496,7 +496,7 @@ packages:
       pkgname: hashmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki:
+  github.com/thunder-id/thunderid/internal/system/kmprovider/runtimekm/pki:
     config:
       all: true
       dir: tests/mocks/crypto/pki/pkimock

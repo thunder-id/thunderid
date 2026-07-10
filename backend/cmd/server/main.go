@@ -128,7 +128,7 @@ func main() {
 		logger.Info(ctx, "TLS is not enabled, starting server without TLS")
 		ln = createListener(ctx, logger, server)
 	} else {
-		tlsConfig := loadCertConfig(ctx, logger, runtimeCryptoSvc)
+		tlsConfig := loadCertConfig(ctx, logger, runtimeCryptoSvc.(kmprovider.TLSMaterialProvider))
 		ln = createTLSListener(ctx, logger, server, tlsConfig)
 	}
 
@@ -211,7 +211,7 @@ func initThunderConfigurations(ctx context.Context, logger *log.Logger, serverHo
 }
 
 // loadCertConfig loads the TLS material via the runtime crypto provider.
-func loadCertConfig(ctx context.Context, logger *log.Logger, runtimeSvc kmprovider.RuntimeCryptoProvider) *tls.Config {
+func loadCertConfig(ctx context.Context, logger *log.Logger, runtimeSvc kmprovider.TLSMaterialProvider) *tls.Config {
 	mat, err := runtimeSvc.GetTLSMaterial(ctx)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to load TLS material", log.Error(err))
