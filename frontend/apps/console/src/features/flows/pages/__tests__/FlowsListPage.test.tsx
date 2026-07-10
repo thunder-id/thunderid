@@ -62,9 +62,27 @@ vi.mock('../../components/FlowsList', () => ({
   default: () => <div data-testid="flows-list">FlowsList Component</div>,
 }));
 
+// Mock CapabilityCatalog component
+vi.mock('../../components/CapabilityCatalog', () => ({
+  default: ({variant}: {variant?: string}) => (
+    <div data-testid={`capability-catalog-${variant ?? 'full'}`}>CapabilityCatalog Component</div>
+  ),
+}));
+
+// Mock useGetFlows
+const mockUseGetFlows = vi.fn();
+vi.mock('../../api/useGetFlows', () => ({
+  default: () => mockUseGetFlows() as unknown,
+}));
+
 describe('FlowsListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseGetFlows.mockReturnValue({
+      data: {flows: [{id: 'flow-1'}]},
+      error: null,
+      isLoading: false,
+    });
   });
 
   describe('Rendering', () => {
@@ -105,6 +123,60 @@ describe('FlowsListPage', () => {
         </MemoryRouter>,
       );
 
+      expect(screen.getByTestId('flows-list')).toBeInTheDocument();
+    });
+  });
+
+  describe('Capability Catalog', () => {
+    it('should render the compact catalog alongside the list when flows exist', () => {
+      render(
+        <MemoryRouter>
+          <FlowsListPage />
+        </MemoryRouter>,
+      );
+
+      expect(screen.getByTestId('capability-catalog-compact')).toBeInTheDocument();
+      expect(screen.getByTestId('flows-list')).toBeInTheDocument();
+    });
+
+    it('should render the full catalog instead of the list when there are no flows', () => {
+      mockUseGetFlows.mockReturnValue({data: {flows: []}, error: null, isLoading: false});
+
+      render(
+        <MemoryRouter>
+          <FlowsListPage />
+        </MemoryRouter>,
+      );
+
+      expect(screen.getByTestId('capability-catalog-full')).toBeInTheDocument();
+      expect(screen.queryByTestId('flows-list')).not.toBeInTheDocument();
+    });
+
+    it('should not render any catalog while flows are loading', () => {
+      mockUseGetFlows.mockReturnValue({data: undefined, error: null, isLoading: true});
+
+      render(
+        <MemoryRouter>
+          <FlowsListPage />
+        </MemoryRouter>,
+      );
+
+      expect(screen.queryByTestId('capability-catalog-full')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('capability-catalog-compact')).not.toBeInTheDocument();
+      expect(screen.getByTestId('flows-list')).toBeInTheDocument();
+    });
+
+    it('should render the list without a catalog when loading fails', () => {
+      mockUseGetFlows.mockReturnValue({data: undefined, error: new Error('boom'), isLoading: false});
+
+      render(
+        <MemoryRouter>
+          <FlowsListPage />
+        </MemoryRouter>,
+      );
+
+      expect(screen.queryByTestId('capability-catalog-full')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('capability-catalog-compact')).not.toBeInTheDocument();
       expect(screen.getByTestId('flows-list')).toBeInTheDocument();
     });
   });

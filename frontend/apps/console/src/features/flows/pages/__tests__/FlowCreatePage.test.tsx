@@ -37,14 +37,16 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-// Mock useNavigate
+// Mock useNavigate and useSearchParams
 const mockNavigate = vi.fn().mockResolvedValue(undefined);
+let mockSearchParams = new URLSearchParams();
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual('react-router');
   return {
     ...actual,
     useNavigate: () => mockNavigate,
+    useSearchParams: () => [mockSearchParams, vi.fn()],
   };
 });
 
@@ -90,9 +92,38 @@ describe('FlowCreatePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreateFlow.isPending = false;
+    mockSearchParams = new URLSearchParams();
     capturedTypeProps = {};
     capturedTemplateProps = {};
     capturedConfigureProps = {};
+  });
+
+  describe('Deep Linking', () => {
+    it('should start at the template step when a valid flowType param is provided', () => {
+      mockSearchParams = new URLSearchParams('flowType=RECOVERY');
+
+      render(<FlowCreatePage />);
+
+      expect(screen.getByTestId('select-flow-template')).toBeInTheDocument();
+      expect(capturedTemplateProps.flowType).toBe('RECOVERY');
+    });
+
+    it('should ignore an invalid flowType param and start at the type step', () => {
+      mockSearchParams = new URLSearchParams('flowType=NOT_A_TYPE');
+
+      render(<FlowCreatePage />);
+
+      expect(screen.getByTestId('select-flow-type')).toBeInTheDocument();
+    });
+
+    it('should forward the category param to the template step', () => {
+      mockSearchParams = new URLSearchParams('flowType=AUTHENTICATION&category=MFA');
+
+      render(<FlowCreatePage />);
+
+      expect(screen.getByTestId('select-flow-template')).toBeInTheDocument();
+      expect(capturedTemplateProps.initialCategory).toBe('MFA');
+    });
   });
 
   describe('Initial Rendering', () => {

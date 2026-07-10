@@ -239,7 +239,7 @@ vi.mock('classnames', () => ({
 
 // Mock child components
 vi.mock('../VisualFlow', () => ({
-  default: ({nodes, edges, onNodeDragStop}: any) => (
+  default: ({nodes, edges, onNodeDragStop, onNodeClick}: any) => (
     <div
       data-testid="visual-flow"
       data-nodes={JSON.stringify(nodes)}
@@ -248,6 +248,17 @@ vi.mock('../VisualFlow', () => ({
     >
       <button data-testid="node-drag-stop-trigger" onClick={onNodeDragStop}>
         Node Drag Stop
+      </button>
+      <button
+        data-testid="node-click-trigger"
+        onClick={(event) =>
+          (onNodeClick as ((e: unknown, n: unknown) => void) | undefined)?.(event, {
+            id: 'clicked-node',
+            position: {x: 0, y: 0},
+          })
+        }
+      >
+        Node Click
       </button>
     </div>
   ),
@@ -395,6 +406,25 @@ describe('DecoratedVisualFlow', () => {
       renderComponent(<DecoratedVisualFlow {...defaultProps} />);
 
       expect(screen.getByTestId('visual-flow')).toBeInTheDocument();
+    });
+
+    it('should render a prominent simulate button in the top bar', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      expect(screen.getByTestId('simulate-flow-button')).toBeInTheDocument();
+    });
+
+    it('should focus the clicked node via fitView', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      fireEvent.click(screen.getByTestId('node-click-trigger'));
+
+      expect(mockFitView).toHaveBeenCalledWith({
+        nodes: [{id: 'clicked-node'}],
+        padding: 0.3,
+        maxZoom: 1.2,
+        duration: 500,
+      });
     });
 
     it('should render ValidationPanel', () => {

@@ -21,7 +21,7 @@ import {move} from '@dnd-kit/helpers';
 import {DragDropProvider, DragOverlay, type DragDropEventHandlers} from '@dnd-kit/react';
 import {useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
 import {Box, Button, Card, CardContent, Tooltip, Typography} from '@wso2/oxygen-ui';
-import {ArrowLeft, Save} from '@wso2/oxygen-ui-icons-react';
+import {ArrowLeft, Play, Save, Square} from '@wso2/oxygen-ui-icons-react';
 import {
   type Connection,
   type Edge,
@@ -46,6 +46,7 @@ import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import CanvasToolbar from './CanvasToolbar';
 import FormRequiresViewDialog from './FormRequiresViewDialog';
+import SimulationStepPreview from './SimulationStepPreview';
 import ValidationBadge from './ValidationBadge';
 import VisualFlow, {type VisualFlowPropsInterface} from './VisualFlow';
 import VisualFlowConstants from '../../constants/VisualFlowConstants';
@@ -56,6 +57,7 @@ import useDeleteExecutionResource from '../../hooks/useDeleteExecutionResource';
 import useDragDropHandlers from '../../hooks/useDragDropHandlers';
 import useFlowConfig from '../../hooks/useFlowConfig';
 import useFlowEvents from '../../hooks/useFlowEvents';
+import useFlowSimulation from '../../hooks/useFlowSimulation';
 import useGenerateStepElement from '../../hooks/useGenerateStepElement';
 import useInteractionState from '../../hooks/useInteractionState';
 import useResourceAdd from '../../hooks/useResourceAdd';
@@ -75,6 +77,7 @@ import applyAutoLayout from '../../utils/applyAutoLayout';
 import computeExecutorConnections from '../../utils/computeExecutorConnections';
 import generateResourceId from '../../utils/generateResourceId';
 import {resolveCollisions} from '../../utils/resolveCollisions';
+import {stripSimulationEdgeClasses, stripSimulationNodeClasses} from '../../utils/stripSimulationClasses';
 import {widgetNeedsViewContainer} from '../../utils/widgetUtils';
 import Droppable from '../dnd/Droppable';
 import ResourcePanel from '../resource-panel/ResourcePanel';
@@ -277,19 +280,21 @@ function DecoratedVisualFlow({
     metadata: computedMetadata,
   });
 
-  // Memoized handleSave
+  // Memoized handleSave. Nodes/edges come back from the React Flow store, which
+  // holds the decorated display arrays while previewing — strip the simulation
+  // styling so it is never persisted into the flow's layout data.
   const handleSave = useCallback((): void => {
     const {viewport} = toObject();
     const canvasData = {
-      nodes: getNodes(),
-      edges: getEdges(),
+      nodes: stripSimulationNodeClasses(getNodes()),
+      edges: stripSimulationEdgeClasses(getEdges()),
       viewport,
     };
     onSave?.(canvasData);
   }, [toObject, getNodes, getEdges, onSave]);
 
   const handleAutoLayout = useCallback((): void => {
-    const currentNodes = getNodes();
+    const currentNodes = stripSimulationNodeClasses(getNodes());
     const currentEdges = getEdges();
     applyAutoLayout(currentNodes, currentEdges, {
       direction: 'RIGHT',
@@ -346,8 +351,71 @@ function DecoratedVisualFlow({
     }
   }, [triggerAutoLayoutOnLoad, getNodes, handleAutoLayout]);
 
+  const simulation = useFlowSimulation(nodes, edges);
+
+  const handleToggleSimulation = useCallback((): void => {
+    if (simulation.isSimulating) {
+      simulation.stop();
+    } else {
+      simulation.start();
+    }
+  }, [simulation]);
+
+  // Derived presentation state: while simulating, dim everything off the walked
+  // path and animate the traversed edges. Returns the original arrays untouched
+  // when not simulating so rendering behavior is unchanged.
+  const displayNodes: Node[] = useMemo(() => {
+    if (!simulation.isSimulating) {
+      // Self-heals canvas state that picked up simulation styling (e.g. via a
+      // drag-collision write while previewing) so nothing stays dimmed.
+      return stripSimulationNodeClasses(nodes);
+    }
+    const pathNodes = new Set(simulation.pathNodeIds);
+    const preview = simulation.previewedOption;
+    return nodes.map((node: Node) => {
+      // While hovering an option, spotlight the node it leads to in the
+      // option's kind color so the destination reads at a glance.
+      if (node.id === preview?.targetNodeId) {
+        return {...node, className: `simulation-preview-target simulation-kind-${preview.kind}`};
+      }
+      return {
+        ...node,
+        className: pathNodes.has(node.id) ? 'simulation-path' : 'simulation-dimmed',
+      };
+    });
+  }, [nodes, simulation.isSimulating, simulation.pathNodeIds, simulation.previewedOption]);
+
+  const displayEdges: Edge[] = useMemo(() => {
+    if (!simulation.isSimulating) {
+      return stripSimulationEdgeClasses(edges);
+    }
+    const edgeKinds = new Map(simulation.pathEdges.map((traversed) => [traversed.edgeId, traversed.kind]));
+    if (simulation.previewedOption) {
+      edgeKinds.set(simulation.previewedOption.edgeId, simulation.previewedOption.kind);
+    }
+    return edges.map((edge: Edge) => {
+      const kind = edgeKinds.get(edge.id);
+      return {
+        ...edge,
+        animated: Boolean(kind),
+        className: kind ? `simulation-path simulation-kind-${kind}` : 'simulation-dimmed',
+      };
+    });
+  }, [edges, simulation.isSimulating, simulation.pathEdges, simulation.previewedOption]);
+
+  const handleNodeClick = useCallback(
+    (_event: unknown, node: Node): void => {
+      // Bring the clicked node into focus so it is comfortable to configure,
+      // especially in large flows viewed zoomed-out.
+      fitView({nodes: [{id: node.id}], padding: 0.3, maxZoom: 1.2, duration: 500}).catch(() => {
+        // Ignore fitView errors - focusing is best-effort
+      });
+    },
+    [fitView],
+  );
+
   const handleNodeDragStop = useCallback((): void => {
-    const currentNodes = getNodes();
+    const currentNodes = stripSimulationNodeClasses(getNodes());
     const resolvedNodes = resolveCollisions(currentNodes, {
       maxIterations: 10,
       overlapThreshold: 0.5,
@@ -591,9 +659,30 @@ function DecoratedVisualFlow({
     navigate('/flows');
   }, [navigate]);
 
+  const simulationNode = useMemo(
+    () => nodes.find((node: Node) => node.id === simulation.currentNodeId) ?? null,
+    [nodes, simulation.currentNodeId],
+  );
+
+  // Memoized so the element reference stays stable across node drag ticks and React
+  // can skip reconciling the property and validation panel subtrees.
+  const rightPanel = useMemo(
+    () => (
+      <Box marginLeft={1} display="flex" flexDirection="row">
+        <ResourcePropertyPanel
+          open={isResourcePropertiesPanelOpen && !openValidationPanel}
+          onComponentDelete={deleteComponent}
+        />
+        <ValidationPanel open={openValidationPanel ?? false} />
+        <SimulationStepPreview node={simulationNode} simulation={simulation} />
+      </Box>
+    ),
+    [isResourcePropertiesPanelOpen, openValidationPanel, deleteComponent, simulationNode, simulation],
+  );
+
   return (
     <Box
-      sx={() => ({
+      sx={(theme: {palette: Record<'primary' | 'success' | 'warning' | 'error', {main: string}>}) => ({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
@@ -604,6 +693,46 @@ function DecoratedVisualFlow({
           height: 10,
           zIndex: 10000,
           '&:hover': {borderColor: 'var(--oxygen-palette-primary-main)'},
+        },
+        '& .react-flow__node.simulation-dimmed': {opacity: 0.25, transition: 'opacity 0.3s ease'},
+        '& .react-flow__edge.simulation-dimmed': {opacity: 0.15, transition: 'opacity 0.3s ease'},
+        '& .react-flow__edge.simulation-kind-action .react-flow__edge-path': {
+          stroke: `${theme.palette.primary.main} !important`,
+        },
+        '& .react-flow__edge.simulation-kind-success .react-flow__edge-path': {
+          stroke: `${theme.palette.success.main} !important`,
+        },
+        '& .react-flow__edge.simulation-kind-incomplete .react-flow__edge-path': {
+          stroke: `${theme.palette.warning.main} !important`,
+        },
+        '& .react-flow__edge.simulation-kind-failure .react-flow__edge-path': {
+          stroke: `${theme.palette.error.main} !important`,
+        },
+        // Mirrors the validation error-pulse (ValidationErrorBoundary.scss) in the
+        // previewed option's kind color — same palette values as the edge strokes above.
+        '& .react-flow__node.simulation-preview-target': {
+          opacity: 1,
+          transition: 'opacity 0.3s ease',
+          '&.simulation-kind-action': {'--simulation-preview-color': theme.palette.primary.main},
+          '&.simulation-kind-success': {'--simulation-preview-color': theme.palette.success.main},
+          '&.simulation-kind-incomplete': {'--simulation-preview-color': theme.palette.warning.main},
+          '&.simulation-kind-failure': {'--simulation-preview-color': theme.palette.error.main},
+        },
+        // The ring sits on the node's own card element so it follows each node type's
+        // border radius. Cards are addressed by class because node roots are wrapped
+        // in unstyled divs (e.g. ValidationErrorBoundary) whose radius doesn't match.
+        ['& .react-flow__node.simulation-preview-target .flow-builder-step, ' +
+        '& .react-flow__node.simulation-preview-target .execution-minimal-step, ' +
+        '& .react-flow__node.simulation-preview-target .flow-builder-rule, ' +
+        '& .react-flow__node.simulation-preview-target .MuiFab-root']: {
+          outline: '2px solid var(--simulation-preview-color)',
+          outlineOffset: '4px',
+          animation: 'simulation-preview-target-pulse 1s infinite',
+        },
+        '@keyframes simulation-preview-target-pulse': {
+          '0%': {boxShadow: '0 0 0 0 var(--simulation-preview-color)'},
+          '70%': {boxShadow: '0 0 0 15px transparent'},
+          '100%': {boxShadow: '0 0 0 0 transparent'},
         },
       })}
     >
@@ -626,6 +755,16 @@ function DecoratedVisualFlow({
 
         <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
           <ValidationBadge errorCount={errorCount} warningCount={warningCount} />
+          <Button
+            variant="outlined"
+            startIcon={simulation.isSimulating ? <Square size={16} /> : <Play size={16} />}
+            onClick={handleToggleSimulation}
+            data-testid="simulate-flow-button"
+          >
+            {simulation.isSimulating
+              ? t('flows:core.headerPanel.stopSimulation')
+              : t('flows:core.headerPanel.simulate')}
+          </Button>
           <Tooltip
             title={
               hasErrors ? t('flows:core.headerPanel.saveDisabledTooltip', 'Fix validation errors before saving') : ''
@@ -646,7 +785,7 @@ function DecoratedVisualFlow({
       </Box>
 
       {/* ── Three-column builder area ── */}
-      <Box sx={{flex: 1, overflow: 'hidden', p: 1, pt: 0}}>
+      <Box sx={{position: 'relative', flex: 1, overflow: 'hidden', p: 1, pt: 0}}>
         <DragDropProvider onDragEnd={handleDragEnd} onDragOver={handleDragOver}>
           <ResourcePanel
             resources={resources}
@@ -656,15 +795,7 @@ function DecoratedVisualFlow({
             flowTitle={flowTitle}
             flowHandle={flowHandle}
             onFlowTitleChange={onFlowTitleChange}
-            rightPanel={
-              <Box marginLeft={1} display="flex" flexDirection="row">
-                <ResourcePropertyPanel
-                  open={isResourcePropertiesPanelOpen && !openValidationPanel}
-                  onComponentDelete={deleteComponent}
-                />
-                <ValidationPanel open={openValidationPanel ?? false} />
-              </Box>
-            }
+            rightPanel={rightPanel}
           >
             <Droppable
               id={generateResourceId(VisualFlowConstants.FLOW_BUILDER_CANVAS_ID)}
@@ -674,15 +805,16 @@ function DecoratedVisualFlow({
               collisionPriority={CollisionPriority.Low}
             >
               <VisualFlow
-                nodes={nodes}
+                nodes={displayNodes}
                 onNodesChange={onNodesChange}
-                edges={edges}
+                edges={displayEdges}
                 edgeTypes={edgeTypes}
                 onEdgesChange={onEdgesChange}
                 onConnect={handleConnect}
                 onNodesDelete={handleNodesDelete}
                 onEdgesDelete={handleEdgesDelete}
                 onNodeDragStop={handleNodeDragStop}
+                onNodeClick={handleNodeClick}
                 {...rest}
               />
             </Droppable>

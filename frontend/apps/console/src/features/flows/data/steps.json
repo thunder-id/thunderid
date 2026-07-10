@@ -5,6 +5,7 @@
     "type": "VIEW",
     "display": {
       "label": "Blank View",
+      "description": "Empty screen to compose with your own components",
       "image": "assets/images/icons/step.svg",
       "showOnResourcePanel": true
     }
@@ -15,6 +16,7 @@
     "type": "VIEW",
     "display": {
       "label": "SMS OTP View",
+      "description": "Screen for entering a one-time passcode sent via SMS",
       "image": "assets/images/icons/mobile-message.svg",
       "showOnResourcePanel": true
     },
@@ -74,6 +76,7 @@
     "type": "VIEW",
     "display": {
       "label": "Email OTP View",
+      "description": "Screen for entering a one-time passcode sent via email",
       "image": "assets/images/icons/email-down.svg",
       "showOnResourcePanel": true
     },
@@ -133,6 +136,7 @@
     "type": "RULE",
     "display": {
       "label": "Rule",
+      "description": "Branch the flow based on a condition",
       "image": "assets/images/icons/decide.svg",
       "showOnResourcePanel": false
     }
@@ -143,6 +147,7 @@
     "type": "TASK_EXECUTION",
     "display": {
       "label": "Execution",
+      "description": "Run a backend action such as an authenticator or task",
       "image": "assets/images/icons/play.svg",
       "showOnResourcePanel": false
     }
@@ -153,6 +158,7 @@
     "type": "TASK_EXECUTION",
     "display": {
       "label": "Magic Link View",
+      "description": "Screen prompting the user to check their email for a sign-in link",
       "image": "assets/images/icons/link.svg",
       "showOnResourcePanel": false
     },
@@ -180,6 +186,7 @@
     "type": "VIEW",
     "display": {
       "label": "Passkey View",
+      "description": "Screen prompting the user to sign in with a passkey",
       "image": "assets/images/icons/passkey.svg",
       "showOnResourcePanel": true
     },
@@ -231,6 +238,7 @@
     "type": "VIEW",
     "display": {
       "label": "Status Screen",
+      "description": "Display a status or progress message to the user",
       "image": "assets/images/icons/display-rich-text.svg",
       "showOnResourcePanel": true
     },
@@ -262,6 +270,7 @@
     "deletable": false,
     "display": {
       "label": "End Screen",
+      "description": "Final screen shown when the flow completes",
       "image": "assets/images/icons/check-mark-inside-a-black-box.svg",
       "showOnResourcePanel": false
     }

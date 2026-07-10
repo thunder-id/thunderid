@@ -22,12 +22,18 @@ import {Plus} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import useGetFlows from '../api/useGetFlows';
+import CapabilityCatalog from '../components/CapabilityCatalog';
 import FlowsList from '../components/FlowsList';
 
 export default function FlowsListPage(): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('FlowsListPage');
+  const {data, isLoading, error} = useGetFlows();
+
+  const hasFlows = (data?.flows?.length ?? 0) > 0;
+  const isEmpty = !isLoading && !error && !hasFlows;
 
   return (
     <PageContent>
@@ -54,7 +60,14 @@ export default function FlowsListPage(): JSX.Element {
         </PageTitle.Actions>
       </PageTitle>
 
-      <FlowsList />
+      {isEmpty ? (
+        <CapabilityCatalog variant="full" />
+      ) : (
+        <>
+          {hasFlows && <CapabilityCatalog variant="compact" />}
+          <FlowsList />
+        </>
+      )}
     </PageContent>
   );
 }

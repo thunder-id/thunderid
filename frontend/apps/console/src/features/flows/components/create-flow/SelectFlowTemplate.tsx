@@ -41,6 +41,10 @@ interface SelectFlowTemplateProps {
   flowType: FlowType;
   selectedTemplate: FlowTemplate | null;
   onTemplateChange: (template: FlowTemplate) => void;
+  /**
+   * Template category to pre-filter (e.g. when deep-linked from the capability catalog).
+   */
+  initialCategory?: string;
 }
 
 const CATEGORY_ORDER = ['PASSWORD', 'SOCIAL_LOGIN', 'MFA', 'PASSWORDLESS'];
@@ -93,6 +97,7 @@ export default function SelectFlowTemplate({
   flowType,
   selectedTemplate,
   onTemplateChange,
+  initialCategory = undefined,
 }: SelectFlowTemplateProps): JSX.Element {
   const {t} = useTranslation();
   const {data} = useGetFlowsMeta({flowType});
@@ -101,7 +106,9 @@ export default function SelectFlowTemplate({
   const {mode, systemMode} = useColorScheme();
   const effectiveMode = mode === 'system' ? systemMode : mode;
 
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(
+    initialCategory && CATEGORY_ORDER.includes(initialCategory) ? initialCategory : null,
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [prevFlowType, setPrevFlowType] = useState(flowType);
 

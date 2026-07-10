@@ -22,13 +22,13 @@ import {X} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate} from 'react-router';
+import {useNavigate, useSearchParams} from 'react-router';
 import useCreateFlow from '../api/useCreateFlow';
 import ConfigureFlowName from '../components/create-flow/ConfigureFlowName';
 import type {ConfigureFlowNameValue} from '../components/create-flow/ConfigureFlowName';
 import SelectFlowTemplate from '../components/create-flow/SelectFlowTemplate';
 import SelectFlowType from '../components/create-flow/SelectFlowType';
-import type {FlowType} from '../models/flows';
+import {FlowType} from '../models/flows';
 import type {FlowTemplate} from '../models/templates';
 
 const FlowCreateStep = {
@@ -46,11 +46,19 @@ export default function FlowCreatePage(): JSX.Element {
   const navigate = useNavigate();
   const logger = useLogger('FlowCreatePage');
   const createFlow = useCreateFlow();
+  const [searchParams] = useSearchParams();
 
-  const [currentStep, setCurrentStep] = useState<FlowCreateStep>(FlowCreateStep.TYPE);
-  const [selectedType, setSelectedType] = useState<FlowType | null>(null);
+  const flowTypeParam = searchParams.get('flowType');
+  const initialFlowType: FlowType | null =
+    flowTypeParam && (Object.values(FlowType) as string[]).includes(flowTypeParam) ? (flowTypeParam as FlowType) : null;
+  const initialCategory = searchParams.get('category');
+
+  const [currentStep, setCurrentStep] = useState<FlowCreateStep>(
+    initialFlowType ? FlowCreateStep.TEMPLATE : FlowCreateStep.TYPE,
+  );
+  const [selectedType, setSelectedType] = useState<FlowType | null>(initialFlowType);
   const [selectedTemplate, setSelectedTemplate] = useState<FlowTemplate | null>(null);
-  const [typeReady, setTypeReady] = useState(false);
+  const [typeReady, setTypeReady] = useState(Boolean(initialFlowType));
   const [nameValue, setNameValue] = useState<ConfigureFlowNameValue>({name: '', handle: ''});
   const [nameReady, setNameReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -151,6 +159,7 @@ export default function FlowCreatePage(): JSX.Element {
           flowType={selectedType}
           selectedTemplate={selectedTemplate}
           onTemplateChange={handleTemplateChange}
+          initialCategory={initialCategory ?? undefined}
         />
       );
     }
