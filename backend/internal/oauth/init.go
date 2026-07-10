@@ -44,6 +44,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -65,6 +66,8 @@ func Initialize(
 	idpService providers.IDPProvider,
 	dpopVerifier dpop.VerifierInterface,
 	cfg oauthconfig.Config,
+	storeProvider providers.RuntimeStoreProvider,
+	transactioner transaction.Transactioner,
 ) error {
 	jwks.Initialize(mux, runtimeCrypto)
 	httpClient := syshttp.NewHTTPClientWithCheckRedirect(func(req *http.Request, _ []*http.Request) error {
@@ -80,11 +83,13 @@ func Initialize(
 	tokenBuilder, tokenValidator := tokenservice.Initialize(
 		cfg, jwtService, jweService, resolver, idpService, enforcementService)
 	parService := par.Initialize(mux, actorProvider, authnProvider, jwtService, discoveryService,
-		resourceService, dpopVerifier, cfg)
+		resourceService, dpopVerifier, cfg, storeProvider)
+
 	cibaService := ciba.Initialize(mux, jwtService, actorProvider, authnProvider, flowExecService,
 		discoveryService, resourceService, cfg)
+
 	oauth2AuthzService, err := oauth2authz.Initialize(mux, actorProvider, resourceService,
-		jwtService, flowExecService, parService, cfg)
+		jwtService, flowExecService, parService, cfg, storeProvider, transactioner)
 	if err != nil {
 		return err
 	}

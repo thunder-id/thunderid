@@ -198,7 +198,8 @@ type DPoPConfig struct {
 
 // CIBAConfig holds the CIBA configuration.
 type CIBAConfig struct {
-	IDTokenHintMaxAgeDays int `yaml:"id_token_hint_max_age_days" json:"id_token_hint_max_age_days"`
+	Enabled               bool `yaml:"enabled"            json:"enabled"`
+	IDTokenHintMaxAgeDays int  `yaml:"id_token_hint_max_age_days" json:"id_token_hint_max_age_days"`
 }
 
 // OAuthConfig holds the OAuth configuration details.
@@ -210,9 +211,12 @@ type OAuthConfig struct {
 	DPoP              DPoPConfig              `yaml:"dpop"                        json:"dpop"`
 	AuthClass         AuthClassConfig         `yaml:"auth_class"                  json:"auth_class"`
 	CIBA              CIBAConfig              `yaml:"ciba"                        json:"ciba"`
+
 	// AllowWildcardRedirectURI enables wildcard pattern matching for redirect URIs.
 	// When false (default), only exact redirect URI matching is performed.
 	AllowWildcardRedirectURI bool `yaml:"allow_wildcard_redirect_uri" json:"allow_wildcard_redirect_uri"`
+
+	TokenRevocation TokenRevocationConfig `yaml:"token_revocation" json:"token_revocation"`
 }
 
 // FlowConfig holds the configuration details for the flow service.

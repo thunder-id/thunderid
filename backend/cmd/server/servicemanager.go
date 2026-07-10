@@ -300,10 +300,17 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		providers.IDPTypeGitHub: githubAuthnService,
 	}
 
+	// Initialize the runtime store provider.
+	runtimeStoreProvider, transactioner, err := runtimestore.Initialize(runtime.Config.Database.Runtime.Type,
+		runtime.Config.Server.Identifier)
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize runtime store", log.Error(err))
+	}
+
 	// Shared DPoP verifier (and its JTI replay cache) so OAuth and OpenID4VCI
 	// share JTI replay protection.
 	oauthCfg := oauthconfig.FromServerRuntime()
-	dpopVerifier := dpop.Initialize(oauthCfg, jti.Initialize(oauthCfg))
+	dpopVerifier := dpop.Initialize(oauthCfg, jti.Initialize(runtimeStoreProvider))
 
 	openid4vpSvc, openid4vpDefSvc, openid4vciCredSvc, exporters :=
 		initializeVCServices(ctx, logger, mux, runtimeCryptoSvc, configCryptoSvc, jwtService, userService,
@@ -320,12 +327,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	authn.Initialize(mux, mcpServer, idpService, jwtService, authnProvider, authAssertGen, passkeyService,
 		otpCoreService, notifSenderSvc, templateService, magicLinkService, oauthAuthnService, oidcAuthnService,
 		googleAuthnService, githubAuthnService)
-
-	runtimeStoreProvider, transactioner, err := runtimestore.Initialize(runtime.Config.Database.Runtime.Type,
-		runtime.Config.Server.Identifier)
-	if err != nil {
-		logger.Fatal(ctx, "Failed to initialize runtime store", log.Error(err))
-	}
 
 	attributeCacheService := attributecache.Initialize(runtimeStoreProvider)
 
@@ -471,7 +472,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Initialize OAuth services.
 	err = oauth.Initialize(mux, actorProvider, authnProvider, jwtService, jweService,
 		flowExecService, observabilitySvc, runtimeCryptoSvc, ouService, attributeCacheService, authZService,
-		resourceService, i18nService, idpService, dpopVerifier, oauthCfg)
+		resourceService, i18nService, idpService, dpopVerifier, oauthCfg, runtimeStoreProvider, transactioner)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}

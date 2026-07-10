@@ -22,15 +22,17 @@ package runtimestore
 import (
 	"github.com/thunder-id/thunderid/internal/runtimestore/dbstore"
 	"github.com/thunder-id/thunderid/internal/runtimestore/redisstore"
-	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// DataSourceTypeRedis is the type identifier for a Redis data source.
+const DataSourceTypeRedis = "redis"
+
 // Initialize returns the runtime store provider backing the given runtime datasource type.
 // Redis-backed runtimes use the Redis store; all others use the relational database store.
 func Initialize(runtimeDBType, deploymentID string) (providers.RuntimeStoreProvider, transaction.Transactioner, error) {
-	if runtimeDBType == dbprovider.DataSourceTypeRedis {
+	if runtimeDBType == DataSourceTypeRedis {
 		return redisstore.Initialize(deploymentID)
 	}
 	return dbstore.Initialize(deploymentID)

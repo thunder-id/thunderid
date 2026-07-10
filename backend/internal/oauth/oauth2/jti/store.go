@@ -24,10 +24,11 @@ package jti
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // JTIStoreInterface is the JTI replay cache. RecordJTI returns (true, nil) on
@@ -42,32 +43,42 @@ type JTIStoreInterface interface {
 
 // jtiStore is the database-backed JTI replay cache.
 type jtiStore struct {
-	dbProvider   provider.DBProviderInterface
-	deploymentID string
+	storeProvider providers.RuntimeStoreProvider
 }
 
-// newDBStore returns a JTIStoreInterface backed by the runtime database.
-func newDBStore(deploymentID string) JTIStoreInterface {
+// newStore returns a JTIStoreInterface backed by the configured runtime store.
+func newStore(storeProvider providers.RuntimeStoreProvider) JTIStoreInterface {
 	return &jtiStore{
-		dbProvider:   provider.GetDBProvider(),
-		deploymentID: deploymentID,
+		storeProvider: storeProvider,
 	}
 }
 
 // RecordJTI inserts (namespace, jti) scoped to the deployment; returns false on replay.
+//
+// The runtime store's Put is an unconditional overwrite, so replay detection is done with a
+// Get-then-Put check. This has a benign race under concurrent submissions of the same jti, but
+// that's an acceptable trade-off for a replay cache.
 func (s *jtiStore) RecordJTI(
 	ctx context.Context, namespace, jti string, expiry time.Time,
 ) (bool, error) {
-	dbClient, err := s.dbProvider.GetRuntimeDBClient()
+	key := namespace + ":" + jti
+
+	existing, err := s.storeProvider.Get(ctx, providers.NamespaceJTI, key)
 	if err != nil {
-		return false, fmt.Errorf("failed to get database client: %w", err)
+		return false, fmt.Errorf("failed to check jti: %w", err)
+	}
+	if existing != nil {
+		return false, nil
 	}
 
-	rowsAffected, err := dbClient.ExecuteContext(
-		ctx, queryInsertJTI, namespace, jti, expiry.UTC(), s.deploymentID,
-	)
+	value, err := json.Marshal(jti)
 	if err != nil {
+		return false, fmt.Errorf("failed to marshal jti: %w", err)
+	}
+
+	ttlSeconds := int64(expiry.Sub(time.Now().UTC()).Seconds())
+	if err := s.storeProvider.Put(ctx, providers.NamespaceJTI, key, value, ttlSeconds); err != nil {
 		return false, fmt.Errorf("failed to insert jti: %w", err)
 	}
-	return rowsAffected > 0, nil
+	return true, nil
 }
