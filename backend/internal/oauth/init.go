@@ -76,17 +76,26 @@ func Initialize(
 	resolver := jwksresolver.Initialize(httpClient)
 	scopeValidator := scope.Initialize()
 	discoveryService := discovery.Initialize(mux, runtimeCrypto, cfg)
-	// The enforcement service (revocation read path) is built before the token service so it can be
-	// injected into the validator, which enforces the deny list as the final step of every validation.
-	enforcementService, refreshTokenRevoker := revocation.Initialize(
-		mux, jwtService, actorProvider, authnProvider, discoveryService, observabilitySvc)
+
+	var enforcementService revocation.EnforcementServiceInterface
+	var refreshTokenRevoker revocation.RefreshTokenRevokerInterface
+	if cfg.OAuth.TokenRevocation.Enabled {
+		// The enforcement service (revocation read path) is built before the token service so it can be
+		// injected into the validator, which enforces the deny list as the final step of every validation.
+		enforcementService, refreshTokenRevoker = revocation.Initialize(
+			mux, jwtService, actorProvider, authnProvider, discoveryService, observabilitySvc)
+	}
+
 	tokenBuilder, tokenValidator := tokenservice.Initialize(
 		cfg, jwtService, jweService, resolver, idpService, enforcementService)
 	parService := par.Initialize(mux, actorProvider, authnProvider, jwtService, discoveryService,
 		resourceService, dpopVerifier, cfg, storeProvider)
 
-	cibaService := ciba.Initialize(mux, jwtService, actorProvider, authnProvider, flowExecService,
-		discoveryService, resourceService, cfg)
+	var cibaService ciba.CIBAServiceInterface
+	if cfg.OAuth.CIBA.Enabled {
+		cibaService = ciba.Initialize(mux, jwtService, actorProvider, authnProvider, flowExecService,
+			discoveryService, resourceService, cfg)
+	}
 
 	oauth2AuthzService, err := oauth2authz.Initialize(mux, actorProvider, resourceService,
 		jwtService, flowExecService, parService, cfg, storeProvider, transactioner)

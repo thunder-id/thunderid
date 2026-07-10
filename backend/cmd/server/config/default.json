@@ -112,6 +112,7 @@
   },
   "oauth": {
     "refresh_token": {
+      "enabled" : true,
       "renew_on_grant": false,
       "revoke_previous_on_renew": true,
       "validity_period": 86400
@@ -133,7 +134,10 @@
       "allowed_algs": ["ES256", "PS256", "ES384", "ES512", "EdDSA", "RS256"],
       "max_jti_length": 256
     },
-    "allow_wildcard_redirect_uri": false
+    "allow_wildcard_redirect_uri": false,
+    "token_revocation" : {
+      "enabled" : true
+    }
   },
   "flow": {
     "default_auth_flow_handle": "default-flow",

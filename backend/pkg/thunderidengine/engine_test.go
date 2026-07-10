@@ -29,11 +29,28 @@ import (
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
+	"github.com/thunder-id/thunderid/tests/mocks/consentprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
+	"github.com/thunder-id/thunderid/tests/mocks/flow/flowexecmock"
 	"github.com/thunder-id/thunderid/tests/mocks/observabilityprovidermock"
 )
+
+// fakeResourceProvider, fakeOUProvider, fakeDesignProvider, fakeI18nProvider, and fakeIDPProvider
+// satisfy their respective provider interfaces via embedding, purely to serve as non-nil values in
+// validateEngineContext tests where no method calls are exercised.
+type fakeResourceProvider struct {
+	providers.ResourceServerProvider
+}
+type fakeOUProvider struct {
+	providers.OrganizationUnitProvider
+}
+type fakeDesignProvider struct{ providers.DesignProvider }
+type fakeI18nProvider struct{ providers.I18nProvider }
+type fakeIDPProvider struct{ providers.IDPProvider }
 
 type EngineTestSuite struct {
 	suite.Suite
@@ -62,10 +79,19 @@ func newTestExecutor(t *testing.T, name string) providers.Executor {
 
 func validEngineContext(t *testing.T) *engineContext {
 	return &engineContext{
-		serverHome:       "/tmp/server",
-		serverConfig:     engineconfig.ServerConfig{Identifier: "test-server"},
-		observabilitySvc: newTestObservabilityProvider(t),
-		authzProvider:    newTestAuthzProvider(t),
+		serverHome:            "/tmp/server",
+		serverConfig:          engineconfig.ServerConfig{Identifier: "test-server"},
+		observabilitySvc:      newTestObservabilityProvider(t),
+		authzProvider:         newTestAuthzProvider(t),
+		actorProvider:         actorprovidermock.NewActorProviderMock(t),
+		authnProvider:         managermock.NewAuthnProviderManagerMock(t),
+		resourceProvider:      fakeResourceProvider{},
+		ouProvider:            fakeOUProvider{},
+		designResolveProvider: fakeDesignProvider{},
+		flowProvider:          flowexecmock.NewFlowProviderMock(t),
+		i18nProvider:          fakeI18nProvider{},
+		idpProvider:           fakeIDPProvider{},
+		consentProvider:       consentprovidermock.NewConsentProviderMock(t),
 	}
 }
 
@@ -96,6 +122,60 @@ func (suite *EngineTestSuite) TestValidateEngineContext() {
 		ctx := validEngineContext(t)
 		ctx.authzProvider = nil
 		assert.ErrorContains(t, validateEngineContext(ctx), "authorization provider")
+	})
+
+	suite.T().Run("missing actor provider", func(t *testing.T) {
+		ctx := validEngineContext(t)
+		ctx.actorProvider = nil
+		assert.ErrorContains(t, validateEngineContext(ctx), "actor provider")
+	})
+
+	suite.T().Run("missing authn provider", func(t *testing.T) {
+		ctx := validEngineContext(t)
+		ctx.authnProvider = nil
+		assert.ErrorContains(t, validateEngineContext(ctx), "authn provider")
+	})
+
+	suite.T().Run("missing resource provider", func(t *testing.T) {
+		ctx := validEngineContext(t)
+		ctx.resourceProvider = nil
+		assert.ErrorContains(t, validateEngineContext(ctx), "resource server provider")
+	})
+
+	suite.T().Run("missing ou provider", func(t *testing.T) {
+		ctx := validEngineContext(t)
+		ctx.ouProvider = nil
+		assert.ErrorContains(t, validateEngineContext(ctx), "organization unit provider")
+	})
+
+	suite.T().Run("missing design provider", func(t *testing.T) {
+		ctx := validEngineContext(t)
+		ctx.designResolveProvider = nil
+		assert.ErrorContains(t, validateEngineContext(ctx), "design provider")
+	})
+
+	suite.T().Run("missing flow provider", func(t *testing.T) {
+		ctx := validEngineContext(t)
+		ctx.flowProvider = nil
+		assert.ErrorContains(t, validateEngineContext(ctx), "flow provider")
+	})
+
+	suite.T().Run("missing i18n provider", func(t *testing.T) {
+		ctx := validEngineContext(t)
+		ctx.i18nProvider = nil
+		assert.ErrorContains(t, validateEngineContext(ctx), "i18n provider")
+	})
+
+	suite.T().Run("missing idp provider", func(t *testing.T) {
+		ctx := validEngineContext(t)
+		ctx.idpProvider = nil
+		assert.ErrorContains(t, validateEngineContext(ctx), "idp provider")
+	})
+
+	suite.T().Run("missing consent provider", func(t *testing.T) {
+		ctx := validEngineContext(t)
+		ctx.consentProvider = nil
+		assert.ErrorContains(t, validateEngineContext(ctx), "consent provider")
 	})
 }
 

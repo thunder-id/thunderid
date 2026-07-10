@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
@@ -58,6 +59,14 @@ func TestGrantHandlerProviderSuite(t *testing.T) {
 	suite.Run(t, new(GrantHandlerProviderTestSuite))
 }
 
+// enabledOAuthConfig returns a config with the refresh token and CIBA grant handlers enabled.
+func enabledOAuthConfig() oauthconfig.Config {
+	cfg := testhelpers.OAuthConfig()
+	cfg.OAuth.RefreshToken.Enabled = true
+	cfg.OAuth.CIBA.Enabled = true
+	return cfg
+}
+
 func (suite *GrantHandlerProviderTestSuite) SetupTest() {
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	suite.authzService = authzmock.NewAuthorizeServiceInterfaceMock(suite.T())
@@ -81,7 +90,7 @@ func (suite *GrantHandlerProviderTestSuite) SetupTest() {
 		suite.mockResourceService,
 		suite.mockCIBAService,
 		revocationmock.NewRefreshTokenRevokerInterfaceMock(suite.T()),
-		testhelpers.OAuthConfig(),
+		enabledOAuthConfig(),
 	)
 }
 
@@ -98,7 +107,7 @@ func (suite *GrantHandlerProviderTestSuite) TestNewGrantHandlerProvider() {
 		suite.mockResourceService,
 		suite.mockCIBAService,
 		revocationmock.NewRefreshTokenRevokerInterfaceMock(suite.T()),
-		testhelpers.OAuthConfig(),
+		enabledOAuthConfig(),
 	)
 	assert.NotNil(suite.T(), provider)
 	assert.Implements(suite.T(), (*GrantHandlerProviderInterface)(nil), provider)
@@ -129,12 +138,64 @@ func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_RefreshToken() {
 	assert.Implements(suite.T(), (*RefreshTokenGrantHandlerInterface)(nil), handler)
 }
 
+func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_TokenExchange() {
+	handler, err := suite.provider.GetGrantHandler(providers.GrantTypeTokenExchange)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), handler)
+	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
+}
+
 func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_CIBA() {
 	handler, err := suite.provider.GetGrantHandler(providers.GrantTypeCIBA)
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
+}
+
+func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_RefreshTokenDisabled() {
+	provider := newGrantHandlerProvider(
+		suite.mockJWTService,
+		suite.authzService,
+		suite.mockTokenBuilder,
+		suite.mockTokenValidator,
+		suite.mockAttrCacheService,
+		suite.mockOUService,
+		suite.mockRBACAuthzService,
+		suite.mockEntityProvider,
+		suite.mockResourceService,
+		suite.mockCIBAService,
+		revocationmock.NewRefreshTokenRevokerInterfaceMock(suite.T()),
+		testhelpers.OAuthConfig(),
+	)
+
+	handler, err := provider.GetGrantHandler(providers.GrantTypeRefreshToken)
+
+	assert.Nil(suite.T(), handler)
+	assert.Equal(suite.T(), constants.UnSupportedGrantTypeError, err)
+}
+
+func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_CIBADisabled() {
+	provider := newGrantHandlerProvider(
+		suite.mockJWTService,
+		suite.authzService,
+		suite.mockTokenBuilder,
+		suite.mockTokenValidator,
+		suite.mockAttrCacheService,
+		suite.mockOUService,
+		suite.mockRBACAuthzService,
+		suite.mockEntityProvider,
+		suite.mockResourceService,
+		suite.mockCIBAService,
+		revocationmock.NewRefreshTokenRevokerInterfaceMock(suite.T()),
+		testhelpers.OAuthConfig(),
+	)
+
+	handler, err := provider.GetGrantHandler(providers.GrantTypeCIBA)
+
+	assert.Nil(suite.T(), handler)
+	assert.Equal(suite.T(), constants.UnSupportedGrantTypeError, err)
 }
 
 func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_UnsupportedGrantType() {
@@ -162,6 +223,7 @@ func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_AllSupportedType
 		providers.GrantTypeClientCredentials,
 		providers.GrantTypeAuthorizationCode,
 		providers.GrantTypeRefreshToken,
+		providers.GrantTypeTokenExchange,
 		providers.GrantTypeCIBA,
 	}
 

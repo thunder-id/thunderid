@@ -2062,6 +2062,88 @@ func (suite *TokenValidatorTestSuite) TestValidateToken_RevocationEnforced() {
 	}
 }
 
+// When no enforcement service is configured (nil), ensureNotRevoked treats every token as
+// not revoked instead of panicking, so validation proceeds normally for all four call sites
+// that consult the deny list.
+func (suite *TokenValidatorTestSuite) TestEnsureNotRevoked_NilEnforcementService_SkipsCheck() {
+	validator := &tokenValidator{cfg: suite.validator.cfg, jwtService: suite.mockJWTService}
+
+	suite.T().Run("ValidateAccessToken", func(t *testing.T) {
+		claims := map[string]interface{}{
+			"sub":       "user123",
+			"iss":       "https://example.com",
+			"aud":       "test-app",
+			"client_id": "test-client",
+			"jti":       "at-jti-noenforcement",
+		}
+		token := suite.createTestAccessToken(claims)
+		suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "https://example.com").Return(nil).Once()
+
+		result, err := validator.ValidateAccessToken(context.Background(), token)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+	})
+
+	suite.T().Run("ValidateRefreshToken", func(t *testing.T) {
+		now := time.Now().Unix()
+		claims := map[string]interface{}{
+			"sub":              "test-client",
+			"iss":              "https://example.com",
+			"aud":              "test-client",
+			"exp":              float64(now + 3600),
+			"iat":              float64(now),
+			"access_token_sub": "user123",
+			"access_token_aud": testAppID,
+			"grant_type":       "authorization_code",
+			"jti":              "rt-jti-noenforcement",
+		}
+		token := suite.createTestJWT(claims)
+		suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "").Return(nil).Once()
+
+		result, err := validator.ValidateRefreshToken(context.Background(), token, "test-client")
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+	})
+
+	suite.T().Run("ValidateSubjectToken", func(t *testing.T) {
+		defaultAudience := suite.getDefaultAudience()
+		now := time.Now().Unix()
+		claims := map[string]interface{}{
+			"sub":   "user123",
+			"iss":   "https://example.com",
+			"aud":   defaultAudience,
+			"exp":   float64(now + 3600),
+			"nbf":   float64(now - 60),
+			"scope": "read write",
+			"jti":   "st-jti-noenforcement",
+		}
+		token := suite.createTestJWT(claims)
+		suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(nil).Once()
+
+		result, err := validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+	})
+
+	suite.T().Run("ValidateToken", func(t *testing.T) {
+		claims := map[string]interface{}{
+			"sub": "user123",
+			"iss": "https://example.com",
+			"jti": "vt-jti-noenforcement",
+		}
+		token := suite.createTestJWT(claims)
+		suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "").Return(nil).Once()
+
+		result, err := validator.ValidateToken(context.Background(), token)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+	})
+}
+
 func (suite *TokenValidatorTestSuite) TestValidateAccessToken_Error_VerifyFails() {
 	token := "invalid.token.signature"
 

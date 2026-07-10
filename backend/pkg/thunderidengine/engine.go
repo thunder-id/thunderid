@@ -36,6 +36,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	"github.com/thunder-id/thunderid/internal/oauth"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/runtimestore"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/jose"
@@ -45,6 +46,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -89,13 +91,13 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		logger.Fatal(ctx, "Failed to initialize JOSE services", log.Error(err))
 	}
 
-	runtimeStoreProvider, transactioner, err := runtimestore.Initialize(engineCtx.runtimeDBType,
+	engineCtx.runtimeStoreProvider, engineCtx.transactioner, err = runtimestore.Initialize(engineCtx.runtimeDBType,
 		engineCtx.serverConfig.Identifier)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize runtime store", log.Error(err))
 	}
 
-	attributeCacheService := attributecache.Initialize(runtimeStoreProvider)
+	engineCtx.attributeCacheService = attributecache.Initialize(engineCtx.runtimeStoreProvider)
 	engineCtx.authAssertGen = assert.Initialize()
 
 	// Initialize flow metadata service
@@ -110,7 +112,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	engineCtx.flowFactory = flowFactory
 	execDeps := executor.ExecutorDependencies{
 		FlowFactory:       engineCtx.flowFactory,
-		AttributeCacheSvc: attributeCacheService,
+		AttributeCacheSvc: engineCtx.attributeCacheService,
 		AuthZService:      engineCtx.authzProvider,
 		ConsentEnforcer:   engineCtx.consentProvider,
 		AuthnProvider:     engineCtx.authnProvider,
@@ -138,14 +140,15 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	engineCtx.graphBuilder = graphbuilder.Initialize(engineCtx.flowFactory, engineCtx.execRegistry,
 		engineCtx.interceptorRegistry, graphCache)
 
-	flowExecService, err := flowexec.Initialize(mux, engineCtx.flowProvider, engineCtx.actorProvider,
+	engineCtx.flowExecService, err = flowexec.Initialize(mux, engineCtx.flowProvider, engineCtx.actorProvider,
 		engineCtx.execRegistry, engineCtx.interceptorRegistry, engineCtx.observabilitySvc,
-		engineCtx.runtimeCryptoSvc, engineCtx.graphBuilder, runtimeStoreProvider, transactioner, flowConfig)
+		engineCtx.runtimeCryptoSvc, engineCtx.graphBuilder, engineCtx.runtimeStoreProvider,
+		engineCtx.transactioner, flowConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))
 	}
 
-	oauthConfig := oauthconfig.Config{
+	oauthCfg := oauthconfig.Config{
 		DeploymentID:  engineCtx.serverConfig.Identifier,
 		RuntimeDBType: engineCtx.runtimeDBType,
 		BaseURL:       config.GetServerURL(&engineCtx.serverConfig),
@@ -153,10 +156,12 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		OAuth:         engineCtx.oauthConfig,
 		GateClient:    engineCtx.gateClientConfig,
 	}
+	// Initialize OAuth services.
 	err = oauth.Initialize(mux, engineCtx.actorProvider, engineCtx.authnProvider, engineCtx.jwtService,
-		engineCtx.jweService, flowExecService, engineCtx.observabilitySvc, engineCtx.runtimeCryptoSvc,
-		engineCtx.ouProvider, attributeCacheService, engineCtx.authzProvider, engineCtx.resourceProvider,
-		engineCtx.i18nProvider, engineCtx.idpProvider, nil, oauthConfig, runtimeStoreProvider, transactioner)
+		engineCtx.jweService, engineCtx.flowExecService, engineCtx.observabilitySvc, engineCtx.runtimeCryptoSvc,
+		engineCtx.ouProvider, engineCtx.attributeCacheService, engineCtx.authzProvider,
+		engineCtx.resourceProvider, engineCtx.i18nProvider, engineCtx.idpProvider, engineCtx.dpopVerifier,
+		oauthCfg, engineCtx.runtimeStoreProvider, engineCtx.transactioner)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}
@@ -179,6 +184,33 @@ func validateEngineContext(ctx *engineContext) error {
 	}
 	if ctx.authzProvider == nil {
 		return errors.New("thunderidengine: authorization provider is not set")
+	}
+	if ctx.actorProvider == nil {
+		return errors.New("thunderidengine: actor provider is not set")
+	}
+	if ctx.authnProvider == nil {
+		return errors.New("thunderidengine: authn provider is not set")
+	}
+	if ctx.resourceProvider == nil {
+		return errors.New("thunderidengine: resource server provider is not set")
+	}
+	if ctx.ouProvider == nil {
+		return errors.New("thunderidengine: organization unit provider is not set")
+	}
+	if ctx.designResolveProvider == nil {
+		return errors.New("thunderidengine: design provider is not set")
+	}
+	if ctx.flowProvider == nil {
+		return errors.New("thunderidengine: flow provider is not set")
+	}
+	if ctx.i18nProvider == nil {
+		return errors.New("thunderidengine: i18n provider is not set")
+	}
+	if ctx.idpProvider == nil {
+		return errors.New("thunderidengine: idp provider is not set")
+	}
+	if ctx.consentProvider == nil {
+		return errors.New("thunderidengine: consent provider is not set")
 	}
 	return nil
 }
@@ -211,15 +243,19 @@ func (e *engineContext) applyCustomExecutors() error {
 }
 
 type engineContext struct {
-	cacheManager        cache.CacheManagerInterface
-	jwtService          jwt.JWTServiceInterface
-	jweService          jwe.JWEServiceInterface
-	runtimeCryptoSvc    kmprovider.RuntimeCryptoProvider
-	flowFactory         core.FlowFactoryInterface
-	execRegistry        executor.ExecutorRegistryInterface
-	interceptorRegistry interceptor.InterceptorRegistryInterface
-	graphBuilder        graphbuilder.GraphBuilderInterface
-	authAssertGen       assert.AuthAssertGeneratorInterface
+	cacheManager          cache.CacheManagerInterface
+	jwtService            jwt.JWTServiceInterface
+	jweService            jwe.JWEServiceInterface
+	runtimeCryptoSvc      kmprovider.RuntimeCryptoProvider
+	flowFactory           core.FlowFactoryInterface
+	execRegistry          executor.ExecutorRegistryInterface
+	interceptorRegistry   interceptor.InterceptorRegistryInterface
+	graphBuilder          graphbuilder.GraphBuilderInterface
+	authAssertGen         assert.AuthAssertGeneratorInterface
+	dpopVerifier          dpop.VerifierInterface
+	transactioner         transaction.Transactioner
+	flowExecService       flowexec.FlowExecServiceInterface
+	attributeCacheService attributecache.AttributeCacheServiceInterface
 
 	serverHome          string
 	runtimeDBType       string
@@ -243,6 +279,8 @@ type engineContext struct {
 	customExecutors       map[string]providers.Executor
 	observabilitySvc      providers.ObservabilityProvider
 	authzProvider         providers.AuthorizationProvider
+
+	runtimeStoreProvider providers.RuntimeStoreProvider
 }
 
 // Option configures engine initialization.

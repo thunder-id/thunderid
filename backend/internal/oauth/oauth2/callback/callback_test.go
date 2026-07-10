@@ -31,6 +31,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -51,10 +52,17 @@ func TestCallbackDispatcherSuite(t *testing.T) {
 	suite.Run(t, new(CallbackDispatcherTestSuite))
 }
 
+// cibaEnabledOAuthConfig returns a config with the CIBA callback type enabled.
+func cibaEnabledOAuthConfig() oauthconfig.Config {
+	cfg := testhelpers.OAuthConfig()
+	cfg.OAuth.CIBA.Enabled = true
+	return cfg
+}
+
 func (suite *CallbackDispatcherTestSuite) SetupTest() {
 	suite.mockAuthZ = authzmock.NewAuthorizeServiceInterfaceMock(suite.T())
 	suite.mockCIBA = cibamock.NewCIBAServiceInterfaceMock(suite.T())
-	suite.dispatcher = newCallbackDispatcher(testhelpers.OAuthConfig(), suite.mockAuthZ, suite.mockCIBA)
+	suite.dispatcher = newCallbackDispatcher(cibaEnabledOAuthConfig(), suite.mockAuthZ, suite.mockCIBA)
 
 	_ = config.InitializeServerRuntime("test", &config.Config{
 		JWT: engineconfig.JWTConfig{
@@ -251,6 +259,22 @@ func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_CIBA_Error() {
 	var body map[string]string
 	suite.NoError(json.NewDecoder(w.Body).Decode(&body))
 	suite.Equal(oauth2const.ErrorAccessDenied, body["error"])
+}
+
+func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_CIBA_Disabled_ReturnsBadRequest() {
+	dispatcher := newCallbackDispatcher(testhelpers.OAuthConfig(), suite.mockAuthZ, suite.mockCIBA)
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth2/auth/callback", strings.NewReader(
+		`{"authId":"auth-req-1","assertion":"ciba-assertion","type":"urn:openid:params:grant-type:ciba"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	dispatcher.handleFlowCallback(w, req)
+
+	suite.Equal(http.StatusBadRequest, w.Code)
+	var body map[string]string
+	suite.NoError(json.NewDecoder(w.Body).Decode(&body))
+	suite.Equal(oauth2const.ErrorInvalidRequest, body["error"])
+	suite.Contains(body["error_description"], "Unsupported callback type")
 }
 
 // --- handleFlowCallback: unsupported type ---

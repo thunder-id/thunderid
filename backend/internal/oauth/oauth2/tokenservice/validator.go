@@ -120,7 +120,7 @@ func (tv *tokenValidator) ValidateAccessToken(ctx context.Context, token string)
 	scopes := extractScopesFromClaims(claims, false)
 
 	jti, _ := extractStringClaim(claims, constants.ClaimJTI)
-	if err := tv.enforcementService.EnsureNotRevoked(ctx, jti); err != nil {
+	if err := tv.ensureNotRevoked(ctx, jti); err != nil {
 		return nil, err
 	}
 
@@ -186,7 +186,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 		dpopJkt = s
 	}
 
-	if err := tv.enforcementService.EnsureNotRevoked(ctx, jti); err != nil {
+	if err := tv.ensureNotRevoked(ctx, jti); err != nil {
 		return nil, err
 	}
 
@@ -232,7 +232,7 @@ func (tv *tokenValidator) ValidateSubjectToken(
 		if err != nil {
 			return nil, err
 		}
-		if err := tv.enforcementService.EnsureNotRevoked(ctx, selfClaims.JTI); err != nil {
+		if err := tv.ensureNotRevoked(ctx, selfClaims.JTI); err != nil {
 			return nil, err
 		}
 		return selfClaims, nil
@@ -274,7 +274,7 @@ func (tv *tokenValidator) ValidateToken(ctx context.Context, token string) (map[
 	}
 
 	jti, _ := extractStringClaim(claims, constants.ClaimJTI)
-	if err := tv.enforcementService.EnsureNotRevoked(ctx, jti); err != nil {
+	if err := tv.ensureNotRevoked(ctx, jti); err != nil {
 		return nil, err
 	}
 
@@ -502,4 +502,11 @@ func (tv *tokenValidator) isAuthAssertion(
 	}
 
 	return false
+}
+
+func (tv *tokenValidator) ensureNotRevoked(ctx context.Context, jti string) error {
+	if tv.enforcementService != nil {
+		return tv.enforcementService.EnsureNotRevoked(ctx, jti)
+	}
+	return nil
 }

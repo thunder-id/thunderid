@@ -59,17 +59,27 @@ func newGrantHandlerProvider(
 	refreshTokenRevoker revocation.RefreshTokenRevokerInterface,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {
+	var refreshTokenGrantHandler GrantHandlerInterface
+	if cfg.OAuth.RefreshToken.Enabled {
+		refreshTokenGrantHandler = newRefreshTokenGrantHandler(
+			jwtService, tokenBuilder, tokenValidator, attrCacheService, resourceService,
+			refreshTokenRevoker, cfg)
+	}
+
+	var cibaGrantHandler GrantHandlerInterface
+	if cfg.OAuth.CIBA.Enabled {
+		cibaGrantHandler = newCIBAGrantHandler(cibaService, tokenBuilder, attrCacheService)
+	}
+
 	return &GrantHandlerProvider{
 		clientCredentialsGrantHandler: newClientCredentialsGrantHandler(
 			tokenBuilder, ouService, rbacAuthzService, actorProvider, resourceService),
 		authorizationCodeGrantHandler: newAuthorizationCodeGrantHandler(
 			authzService, tokenBuilder, attrCacheService, resourceService),
-		refreshTokenGrantHandler: newRefreshTokenGrantHandler(
-			jwtService, tokenBuilder, tokenValidator, attrCacheService, resourceService,
-			refreshTokenRevoker, cfg),
+		refreshTokenGrantHandler: refreshTokenGrantHandler,
 		tokenExchangeGrantHandler: newTokenExchangeGrantHandler(
 			tokenBuilder, tokenValidator, resourceService),
-		cibaGrantHandler: newCIBAGrantHandler(cibaService, tokenBuilder, attrCacheService),
+		cibaGrantHandler: cibaGrantHandler,
 	}
 }
 
@@ -81,11 +91,17 @@ func (p *GrantHandlerProvider) GetGrantHandler(grantType providers.GrantType) (G
 	case providers.GrantTypeAuthorizationCode:
 		return p.authorizationCodeGrantHandler, nil
 	case providers.GrantTypeRefreshToken:
-		return p.refreshTokenGrantHandler, nil
+		if p.refreshTokenGrantHandler != nil {
+			return p.refreshTokenGrantHandler, nil
+		}
+		return nil, constants.UnSupportedGrantTypeError
 	case providers.GrantTypeTokenExchange:
 		return p.tokenExchangeGrantHandler, nil
 	case providers.GrantTypeCIBA:
-		return p.cibaGrantHandler, nil
+		if p.cibaGrantHandler != nil {
+			return p.cibaGrantHandler, nil
+		}
+		return nil, constants.UnSupportedGrantTypeError
 	default:
 		return nil, constants.UnSupportedGrantTypeError
 	}
