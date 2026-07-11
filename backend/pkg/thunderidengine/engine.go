@@ -39,6 +39,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/runtimestore"
 	"github.com/thunder-id/thunderid/internal/system/cache"
+	systemconfig "github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
@@ -74,6 +75,19 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 
 	// Initialize the cache manager.
 	engineCtx.cacheManager = cache.Initialize(engineCtx.cacheConfig, engineCtx.serverConfig.Identifier)
+
+	sysConfig := systemconfig.Config{
+		GateClient: engineCtx.gateClientConfig,
+		Crypto: systemconfig.CryptoConfig{
+			Keys:       engineCtx.keyConfigs,
+			Encryption: engineCtx.encryptionConfig,
+		},
+	}
+
+	err = systemconfig.InitializeServerRuntime(engineCtx.serverHome, &sysConfig)
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize Server Runtime", log.Error(err))
+	}
 	// Load the server's private key for signing JWTs.
 	pkiService, err := pki.Initialize()
 	if err != nil {
@@ -91,10 +105,16 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		logger.Fatal(ctx, "Failed to initialize JOSE services", log.Error(err))
 	}
 
-	engineCtx.runtimeStoreProvider, engineCtx.transactioner, err = runtimestore.Initialize(engineCtx.runtimeDBType,
-		engineCtx.serverConfig.Identifier)
-	if err != nil {
-		logger.Fatal(ctx, "Failed to initialize runtime store", log.Error(err))
+	if engineCtx.runtimeStoreProvider == nil {
+		engineCtx.runtimeStoreProvider, engineCtx.transactioner, err = runtimestore.Initialize(engineCtx.runtimeDBType,
+			engineCtx.serverConfig.Identifier)
+		if err != nil {
+			logger.Fatal(ctx, "Failed to initialize runtime store", log.Error(err))
+		}
+	}
+
+	if engineCtx.transactioner == nil {
+		engineCtx.transactioner = transaction.NewNoOpTransactioner()
 	}
 
 	engineCtx.attributeCacheService = attributecache.Initialize(engineCtx.runtimeStoreProvider)
@@ -266,6 +286,8 @@ type engineContext struct {
 	cacheConfig         engineconfig.CacheConfig
 	observabilityConfig engineconfig.ObservabilityConfig
 	gateClientConfig    engineconfig.GateClientConfig
+	keyConfigs          []engineconfig.KeyConfig
+	encryptionConfig    engineconfig.EncryptionConfig
 
 	actorProvider         providers.ActorProvider
 	authnProvider         providers.AuthnProviderManager
@@ -292,6 +314,21 @@ func WithServerHome(serverHome string) Option {
 	return func(c *engineContext) { c.serverHome = serverHome }
 }
 
+// WithRuntimeDBType supplies the RuntimeStore DB type
+func WithRuntimeDBType(runtimeDBType string) Option {
+	return func(c *engineContext) { c.runtimeDBType = runtimeDBType }
+}
+
+// WithKeyConfigs supplies the keyconfigs
+func WithKeyConfigs(keyConfigs []engineconfig.KeyConfig) Option {
+	return func(c *engineContext) { c.keyConfigs = keyConfigs }
+}
+
+// WithEncryptionConfig supplies the encryption configs
+func WithEncryptionConfig(encryptionConfig engineconfig.EncryptionConfig) Option {
+	return func(c *engineContext) { c.encryptionConfig = encryptionConfig }
+}
+
 // WithServerConfig supplies the server configuration.
 func WithServerConfig(config engineconfig.ServerConfig) Option {
 	return func(c *engineContext) { c.serverConfig = config }
@@ -300,6 +337,11 @@ func WithServerConfig(config engineconfig.ServerConfig) Option {
 // WithCacheConfig supplies the cache configuration.
 func WithCacheConfig(config engineconfig.CacheConfig) Option {
 	return func(c *engineContext) { c.cacheConfig = config }
+}
+
+// WithGateClientConfig supplies the gate client configuration.
+func WithGateClientConfig(config engineconfig.GateClientConfig) Option {
+	return func(c *engineContext) { c.gateClientConfig = config }
 }
 
 // WithOAuthConfig supplies the OAuth configuration.
@@ -357,6 +399,11 @@ func WithI18nProvider(provider providers.I18nProvider) Option {
 	return func(c *engineContext) { c.i18nProvider = provider }
 }
 
+// WithIDPProvider supplies the IDP provider.
+func WithIDPProvider(provider providers.IDPProvider) Option {
+	return func(c *engineContext) { c.idpProvider = provider }
+}
+
 // WithConsentProvider supplies the consent provider.
 func WithConsentProvider(provider providers.ConsentProvider) Option {
 	return func(c *engineContext) { c.consentProvider = provider }
@@ -382,4 +429,9 @@ func WithObservabilityProvider(provider providers.ObservabilityProvider) Option 
 // WithAuthorizationProvider supplies the authorization provider.
 func WithAuthorizationProvider(provider providers.AuthorizationProvider) Option {
 	return func(c *engineContext) { c.authzProvider = provider }
+}
+
+// WithRuntimeStoreProvider supplies the RuntimeStore provider.
+func WithRuntimeStoreProvider(provider providers.RuntimeStoreProvider) Option {
+	return func(c *engineContext) { c.runtimeStoreProvider = provider }
 }
