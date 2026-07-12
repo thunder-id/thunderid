@@ -119,9 +119,9 @@ When deploying with Docker, mount the certificates as volumes:
 ```bash
 docker run --rm \
   -p 8090:8090 \
-  -v $(pwd)/deployment.yaml:/opt/thunder/deployment.yaml \
-  -v $(pwd)/certs/server.cert:/opt/thunder/config/certs/server.cert \
-  -v $(pwd)/certs/server.key:/opt/thunder/config/certs/server.key \
+  -v $(pwd)/deployment.yaml:/opt/thunderid/deployment.yaml \
+  -v $(pwd)/certs/server.cert:/opt/thunderid/config/certs/server.cert \
+  -v $(pwd)/certs/server.key:/opt/thunderid/config/certs/server.key \
   ghcr.io/thunder-id/thunderid:latest
 ```
 
