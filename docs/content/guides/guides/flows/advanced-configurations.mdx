@@ -2237,7 +2237,7 @@ GET /oauth2/authorize
   &nonce=xyz789
 ```
 
-ACR filtering only takes effect when the flow contains a [`LOGIN_OPTIONS` PROMPT node](#login-options-variant) with `authMethodMapping` configured. Without it, `acr_values` have no effect on the flow.
+ACR filtering only takes effect when the flow contains a [`LOGIN_OPTIONS` PROMPT node](#prompt-node) with `authMethodMapping` configured. Without it, `acr_values` have no effect on the flow.
 
 **Using `acr_values` with the `LOGIN_OPTIONS` node**
 
