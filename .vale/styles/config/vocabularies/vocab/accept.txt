@@ -228,3 +228,4 @@ Lissi
 [Cc]allee
 kgateway
 Hostnames
+namespaced

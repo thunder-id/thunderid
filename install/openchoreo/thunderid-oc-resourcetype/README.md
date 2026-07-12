@@ -11,8 +11,7 @@ Provisioning is **fully declarative**: all ThunderID resources
 from a single resources YAML supplied at Resource creation time. Nothing is
 bootstrapped or seeded into the database. Sensitive values live in the
 platform secret store and are materialized onto the data plane by External
-Secrets Operator. They never touch the control plane, and no Kubernetes
-Secrets are created by hand.
+Secrets Operator. They never touch the control plane.
 
 ## How It Works
 
