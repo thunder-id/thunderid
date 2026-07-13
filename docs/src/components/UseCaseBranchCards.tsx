@@ -59,8 +59,7 @@ const cards: BranchCard[] = [
     iconBackground: 'rgba(16,185,129,0.10)',
     category: 'SaaS Apps',
     title: 'B2B - Multi-Tenant SaaS',
-    description:
-      'Organizations, invitations, enterprise SSO, delegated admin, and workspace-level policies.',
+    description: 'Organizations, invitations, enterprise SSO, delegated admin, and workspace-level policies.',
     bullets: [
       'Each customer is a business with its own workspace',
       'You need org-scoped roles, policies, and branding',
@@ -89,11 +88,11 @@ export default function UseCaseBranchCards() {
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '1.25rem',
-        justifyContent: 'center',
-        maxWidth: '900px',
+        display: 'grid',
+        gap: {xs: '1rem', md: '1.25rem'},
+        gridTemplateColumns: {xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))'},
+        justifyContent: 'stretch',
+        maxWidth: '100%',
         width: '100%',
       }}
     >
