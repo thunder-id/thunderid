@@ -37,6 +37,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/runtimestore"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	systemconfig "github.com/thunder-id/thunderid/internal/system/config"
@@ -176,6 +177,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		OAuth:         engineCtx.oauthConfig,
 		GateClient:    engineCtx.gateClientConfig,
 	}
+	engineCtx.dpopVerifier = dpop.Initialize(oauthCfg, jti.Initialize(engineCtx.runtimeStoreProvider))
 	// Initialize OAuth services.
 	err = oauth.Initialize(mux, engineCtx.actorProvider, engineCtx.authnProvider, engineCtx.jwtService,
 		engineCtx.jweService, engineCtx.flowExecService, engineCtx.observabilitySvc, engineCtx.runtimeCryptoSvc,
