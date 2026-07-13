@@ -125,6 +125,12 @@ packages:
           structname: '{{.InterfaceName}}Mock'
           pkgname: revocationmock
           filename: "{{.InterfaceName}}_mock.go"
+      RefreshTokenRevokerInterface:
+        config:
+          dir: tests/mocks/oauth/oauth2/revocationmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: revocationmock
+          filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers:
     config:
@@ -377,7 +383,18 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: flowexecmock
       filename: "{{.InterfaceName}}_mock.go"
-  
+
+  github.com/thunder-id/thunderid/internal/flow/session:
+    config:
+      dir: tests/mocks/flow/sessionmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: sessionmock
+      filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      Service:
+      Resolver:
+      HandleTransport:
+
   github.com/thunder-id/thunderid/internal/flow/mgt:
     config:
       all: true
@@ -559,6 +576,12 @@ packages:
           dir: tests/mocks/observabilityprovidermock
           structname: '{{.InterfaceName}}Mock'
           pkgname: observabilityprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      CaptchaValidationProvider:
+        config:
+          dir: tests/mocks/captchamock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: captchamock
           filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/authnprovider/provider:

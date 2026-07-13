@@ -29,6 +29,8 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -44,12 +46,14 @@ func TestLayoutHandlerTestSuite(t *testing.T) {
 
 // mockLayoutService implements LayoutMgtServiceInterface for handler tests
 type mockLayoutService struct {
-	getLayoutListFunc func(limit, offset int) (*LayoutList, *tidcommon.ServiceError)
-	createLayoutFunc  func(layout CreateLayoutRequest) (*Layout, *tidcommon.ServiceError)
-	getLayoutFunc     func(id string) (*Layout, *tidcommon.ServiceError)
-	updateLayoutFunc  func(id string, layout UpdateLayoutRequest) (*Layout, *tidcommon.ServiceError)
-	deleteLayoutFunc  func(id string) *tidcommon.ServiceError
-	isLayoutExistFunc func(id string) (bool, *tidcommon.ServiceError)
+	getLayoutListFunc   func(limit, offset int) (*LayoutList, *tidcommon.ServiceError)
+	createLayoutFunc    func(layout CreateLayoutRequest) (*Layout, *tidcommon.ServiceError)
+	getLayoutFunc       func(id string) (*Layout, *tidcommon.ServiceError)
+	updateLayoutFunc    func(id string, layout UpdateLayoutRequest) (*Layout, *tidcommon.ServiceError)
+	deleteLayoutFunc    func(id string) *tidcommon.ServiceError
+	isLayoutExistFunc   func(id string) (bool, *tidcommon.ServiceError)
+	getLayoutUsagesFunc func(id string, limit, offset int) (
+		*resourcedependency.DependenciesResponse, *tidcommon.ServiceError)
 }
 
 func (m *mockLayoutService) GetLayoutList(
@@ -77,6 +81,14 @@ func (m *mockLayoutService) DeleteLayout(_ context.Context, id string) *tidcommo
 
 func (m *mockLayoutService) IsLayoutExist(_ context.Context, id string) (bool, *tidcommon.ServiceError) {
 	return m.isLayoutExistFunc(id)
+}
+
+func (m *mockLayoutService) SetDependencyRegistry(_ resourcedependency.Registry) {}
+
+func (m *mockLayoutService) GetLayoutUsages(
+	_ context.Context, id string, limit, offset int,
+) (*resourcedependency.DependenciesResponse, *tidcommon.ServiceError) {
+	return m.getLayoutUsagesFunc(id, limit, offset)
 }
 
 // Test HandleLayoutListRequest - Success

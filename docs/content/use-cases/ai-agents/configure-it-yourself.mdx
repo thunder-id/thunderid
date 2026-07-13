@@ -59,9 +59,9 @@ The foundation creates the two resource servers, three roles, two demo users, an
 
    See [Resource Servers](/docs/next/guides/guides/resource-servers).
 
-2. **Create the `wayfinder-booking` resource server.**
+2. **Create the `wayfinder` resource server.**
 
-   Invoke the **Resource Management API** again. The identifier is `http://localhost:8787/mcp` — a URL-shaped identifier per [RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707) that matches what the Wayfinder MCP server advertises in `/.well-known/oauth-protected-resource`. MCP Inspector reads that metadata and passes the value back as `resource=...` on `/oauth2/token`; <ProductName /> would reject the request with `invalid_target` otherwise. This resource server protects both the REST surface (`/api/*`) and the MCP surface (`/mcp`) of the Wayfinder server — both check the same `booking:*` permissions:
+   Invoke the **Resource Management API** again. The identifier is `http://localhost:8787/mcp` — a URL-shaped identifier per [RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707) that matches what the Wayfinder MCP server advertises in `/.well-known/oauth-protected-resource`. MCP Inspector reads that metadata and passes the value back as `resource=...` on `/oauth2/token`; <ProductName /> would reject the request with `invalid_target` otherwise. This resource server protects both the REST surface (`/api/*`) and the MCP surface (`/mcp`) of the Wayfinder server — both check the same `wayfinder:booking:*` permissions:
 
    ```bash
    curl -kL -X POST https://localhost:8090/resource-servers \
@@ -71,6 +71,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
        "name": "Wayfinder Booking",
        "description": "Protects the Wayfinder booking domain (REST and MCP surfaces)",
        "identifier": "http://localhost:8787/mcp",
+       "handle": "wayfinder",
        "ouId": "<organization-unit-id>",
        "delimiter": ":"
      }'
@@ -79,7 +80,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    Add a resource with handle `booking`:
 
    ```bash
-   curl -kL -X POST https://localhost:8090/resource-servers/<wayfinder-booking-rs-id>/resources \
+   curl -kL -X POST https://localhost:8090/resource-servers/<wayfinder-rs-id>/resources \
      -H 'Content-Type: application/json' \
      -H 'Authorization: Bearer <access-token>' \
      -d '{ "name": "Booking", "handle": "booking" }'
@@ -88,7 +89,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    Then add four actions under the resource — repeat the call below for each handle (`read`, `create`, `cancel`, `recommend`):
 
    ```bash
-   curl -kL -X POST https://localhost:8090/resource-servers/<wayfinder-booking-rs-id>/resources/<booking-resource-id>/actions \
+   curl -kL -X POST https://localhost:8090/resource-servers/<wayfinder-rs-id>/resources/<booking-resource-id>/actions \
      -H 'Content-Type: application/json' \
      -H 'Authorization: Bearer <access-token>' \
      -d '{ "name": "Read", "handle": "read" }'
@@ -96,10 +97,10 @@ The foundation creates the two resource servers, three roles, two demo users, an
 
    | Action      | Generated permission |
    | ----------- | -------------------- |
-   | `read`      | `booking:read`       |
-   | `create`    | `booking:create`     |
-   | `cancel`    | `booking:cancel`     |
-   | `recommend` | `booking:recommend`  |
+   | `read`      | `wayfinder:booking:read`       |
+   | `create`    | `wayfinder:booking:create`     |
+   | `cancel`    | `wayfinder:booking:cancel`     |
+   | `recommend` | `wayfinder:booking:recommend`  |
 
 3. **Create the `Chat User` role.**
 
@@ -124,7 +125,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
 
 4. **Create the `Booking User` role.**
 
-   Grant it `booking:read`, `booking:create`, and `booking:cancel` on `wayfinder-booking`:
+   Grant it `wayfinder:booking:read`, `wayfinder:booking:create`, and `wayfinder:booking:cancel` on `wayfinder`:
 
    ```bash
    curl -kL -X POST https://localhost:8090/roles \
@@ -136,8 +137,8 @@ The foundation creates the two resource servers, three roles, two demo users, an
        "ouId": "<organization-unit-id>",
        "permissions": [
          {
-           "resourceServerId": "<wayfinder-booking-rs-id>",
-           "permissions": ["booking:read", "booking:create", "booking:cancel"]
+           "resourceServerId": "<wayfinder-rs-id>",
+           "permissions": ["wayfinder:booking:read", "wayfinder:booking:create", "wayfinder:booking:cancel"]
          }
        ]
      }'
@@ -145,7 +146,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
 
 5. **Create the `Recommender` role.**
 
-   Grant it `booking:recommend` on `wayfinder-booking`. This role will be assigned to the Wayfinder Concierge in a later step, not to a user:
+   Grant it `wayfinder:booking:recommend` on `wayfinder`. This role will be assigned to the Wayfinder Concierge in a later step, not to a user:
 
    ```bash
    curl -kL -X POST https://localhost:8090/roles \
@@ -153,12 +154,12 @@ The foundation creates the two resource servers, three roles, two demo users, an
      -H 'Authorization: Bearer <access-token>' \
      -d '{
        "name": "Recommender",
-       "description": "Grants the booking:recommend permission to the Wayfinder Concierge",
+       "description": "Grants the wayfinder:booking:recommend permission to the Wayfinder Concierge",
        "ouId": "<organization-unit-id>",
        "permissions": [
          {
-           "resourceServerId": "<wayfinder-booking-rs-id>",
-           "permissions": ["booking:recommend"]
+           "resourceServerId": "<wayfinder-rs-id>",
+           "permissions": ["wayfinder:booking:recommend"]
          }
        ]
      }'
@@ -232,7 +233,7 @@ The Concierge runs as a first-class agent in <ProductName />. It needs its own c
 
 ## Build the Agent Authentication Flow
 
-The Wayfinder Concierge needs a separate authentication flow that drives the on-behalf-of (OBO) consent screen when a chat request triggers a mutating tool. The flow authenticates the user with username and password, then shows a consent screen listing the `booking:*` permissions the agent is requesting.
+The Wayfinder Concierge needs a separate authentication flow that drives the on-behalf-of (OBO) consent screen when a chat request triggers a mutating tool. The flow authenticates the user with username and password, then shows a consent screen listing the `wayfinder:booking:*` permissions the agent is requesting.
 
 Navigate to **Flows** and create a flow with these steps:
 

@@ -2795,8 +2795,10 @@ func (suite *ServiceTestSuite) TestUpdateApplication_OAuthTokenConfigUpdate() {
 					TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
 					Token: &providers.OAuthTokenConfig{
 						AccessToken: &providers.AccessTokenConfig{
-							ValidityPeriod: 7200,
-							UserAttributes: []string{"email", "name"},
+							UserConfig: &providers.AccessTokenSubConfig{
+								ValidityPeriod: 7200,
+								Attributes:     []string{"email", "name"},
+							},
 						},
 						IDToken: &providers.IDTokenConfig{
 							ValidityPeriod: 3600,
@@ -2821,7 +2823,8 @@ func (suite *ServiceTestSuite) TestUpdateApplication_OAuthTokenConfigUpdate() {
 	assert.Nil(suite.T(), svcErr)
 	require.Len(suite.T(), result.InboundAuthConfig, 1)
 	assert.NotNil(suite.T(), result.InboundAuthConfig[0].OAuthConfig.Token)
-	assert.Equal(suite.T(), int64(7200), result.InboundAuthConfig[0].OAuthConfig.Token.AccessToken.ValidityPeriod)
+	assert.Equal(suite.T(), int64(7200),
+		result.InboundAuthConfig[0].OAuthConfig.Token.AccessToken.UserConfig.ValidityPeriod)
 	assert.Equal(suite.T(), int64(3600), result.InboundAuthConfig[0].OAuthConfig.Token.IDToken.ValidityPeriod)
 	mockStore.AssertExpectations(suite.T())
 }

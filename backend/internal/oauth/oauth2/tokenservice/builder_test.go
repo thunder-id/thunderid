@@ -98,8 +98,10 @@ func (suite *TokenBuilderTestSuite) SetupTest() {
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				ValidityPeriod: 3600,
-				UserAttributes: []string{"name"}, // Configure user attributes for tests
+				UserConfig: &providers.AccessTokenSubConfig{
+					ValidityPeriod: 3600,
+					Attributes:     []string{"name"}, // Configure user attributes for tests
+				},
 			},
 		},
 	}
@@ -117,13 +119,13 @@ func (suite *TokenBuilderTestSuite) TestNewTokenBuilder() {
 
 func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_Basic() {
 	ctx := &AccessTokenBuildContext{
-		Subject:        "user123",
-		Audiences:      []string{"app123"},
-		ClientID:       "test-client",
-		Scopes:         []string{"read", "write"},
-		UserAttributes: map[string]interface{}{"name": testUserName},
-		GrantType:      string(providers.GrantTypeAuthorizationCode),
-		OAuthApp:       suite.oauthApp,
+		Subject:           "user123",
+		Audiences:         []string{"app123"},
+		ClientID:          "test-client",
+		Scopes:            []string{"read", "write"},
+		SubjectAttributes: map[string]interface{}{"name": testUserName},
+		GrantType:         string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:          suite.oauthApp,
 	}
 
 	expectedToken := testAccessToken
@@ -156,6 +158,77 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_Basic() {
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
 
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_ClientAttributes_MergesOUAndOwnClaims() {
+	ctx := &AccessTokenBuildContext{
+		Subject:   "agent123",
+		Audiences: []string{"agent123"},
+		ClientID:  "test-client",
+		Scopes:    []string{"read"},
+		GrantType: string(providers.GrantTypeClientCredentials),
+		OAuthApp:  suite.oauthApp,
+		SubjectAttributes: map[string]interface{}{
+			"ouId":          "ou-456",
+			"ouName":        "Engineering",
+			"ouHandle":      "eng",
+			"modelProvider": "anthropic",
+		},
+	}
+
+	expectedToken := testAccessToken
+	expectedIat := time.Now().Unix()
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything,
+		"agent123",
+		"https://example.com",
+		int64(3600),
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			return claims["ouId"] == "ou-456" && claims["ouName"] == "Engineering" &&
+				claims["ouHandle"] == "eng" && claims["modelProvider"] == "anthropic"
+		}), mock.Anything, mock.Anything,
+	).Return(expectedToken, expectedIat, nil)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_UserAttributes_EmbedsComputedOUClaims() {
+	oauthApp := &providers.OAuthClient{
+		ClientID: "test-client",
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"email", "ouId"}},
+			},
+		},
+	}
+	ctx := &AccessTokenBuildContext{
+		Subject:           "user123",
+		Audiences:         []string{"app123"},
+		ClientID:          "test-client",
+		Scopes:            []string{"read"},
+		SubjectAttributes: map[string]interface{}{"email": "a@b.com", "ouId": "ou-789"},
+		GrantType:         string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:          oauthApp,
+		ValidityPeriod:    oauthApp.UserAccessTokenConfig().ValidityPeriodOrZero(),
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, "user123", "https://example.com", int64(3600),
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			return claims["email"] == "a@b.com" && claims["ouId"] == "ou-789"
+		}), mock.Anything, mock.Anything,
+	).Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
 func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_WithActorClaim() {
 	actorClaims := &SubjectTokenClaims{
 		Sub:            "actor123",
@@ -166,14 +239,14 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_WithActorClaim(
 	}
 
 	ctx := &AccessTokenBuildContext{
-		Subject:        "user123",
-		Audiences:      []string{"app123"},
-		ClientID:       "test-client",
-		Scopes:         []string{"read"},
-		UserAttributes: map[string]interface{}{},
-		GrantType:      string(providers.GrantTypeTokenExchange),
-		OAuthApp:       suite.oauthApp,
-		ActorClaims:    actorClaims,
+		Subject:           "user123",
+		Audiences:         []string{"app123"},
+		ClientID:          "test-client",
+		Scopes:            []string{"read"},
+		SubjectAttributes: map[string]interface{}{},
+		GrantType:         string(providers.GrantTypeTokenExchange),
+		OAuthApp:          suite.oauthApp,
+		ActorClaims:       actorClaims,
 	}
 
 	expectedToken := testAccessToken
@@ -209,14 +282,14 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_WithNestedActor
 	}
 
 	ctx := &AccessTokenBuildContext{
-		Subject:        "user123",
-		Audiences:      []string{"app123"},
-		ClientID:       "test-client",
-		Scopes:         []string{"read"},
-		UserAttributes: map[string]interface{}{},
-		GrantType:      string(providers.GrantTypeTokenExchange),
-		OAuthApp:       suite.oauthApp,
-		ActorClaims:    nestedActorClaims,
+		Subject:           "user123",
+		Audiences:         []string{"app123"},
+		ClientID:          "test-client",
+		Scopes:            []string{"read"},
+		SubjectAttributes: map[string]interface{}{},
+		GrantType:         string(providers.GrantTypeTokenExchange),
+		OAuthApp:          suite.oauthApp,
+		ActorClaims:       nestedActorClaims,
 	}
 
 	expectedToken := testAccessToken
@@ -242,13 +315,13 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_WithNestedActor
 
 func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_EmptyScopes() {
 	ctx := &AccessTokenBuildContext{
-		Subject:        "user123",
-		Audiences:      []string{"app123"},
-		ClientID:       "test-client",
-		Scopes:         []string{},
-		UserAttributes: map[string]interface{}{},
-		GrantType:      string(providers.GrantTypeAuthorizationCode),
-		OAuthApp:       suite.oauthApp,
+		Subject:           "user123",
+		Audiences:         []string{"app123"},
+		ClientID:          "test-client",
+		Scopes:            []string{},
+		SubjectAttributes: map[string]interface{}{},
+		GrantType:         string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:          suite.oauthApp,
 	}
 
 	expectedToken := testAccessToken
@@ -274,13 +347,13 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_EmptyScopes() {
 
 func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_EmptyClientID() {
 	ctx := &AccessTokenBuildContext{
-		Subject:        "user123",
-		Audiences:      []string{"app123"},
-		ClientID:       "",
-		Scopes:         []string{"read"},
-		UserAttributes: map[string]interface{}{},
-		GrantType:      string(providers.GrantTypeAuthorizationCode),
-		OAuthApp:       suite.oauthApp,
+		Subject:           "user123",
+		Audiences:         []string{"app123"},
+		ClientID:          "",
+		Scopes:            []string{"read"},
+		SubjectAttributes: map[string]interface{}{},
+		GrantType:         string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:          suite.oauthApp,
 	}
 
 	expectedToken := testAccessToken
@@ -306,13 +379,13 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_EmptyClientID()
 
 func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_EmptyGrantType() {
 	ctx := &AccessTokenBuildContext{
-		Subject:        "user123",
-		Audiences:      []string{"app123"},
-		ClientID:       "test-client",
-		Scopes:         []string{"read"},
-		UserAttributes: map[string]interface{}{},
-		GrantType:      "",
-		OAuthApp:       suite.oauthApp,
+		Subject:           "user123",
+		Audiences:         []string{"app123"},
+		ClientID:          "test-client",
+		Scopes:            []string{"read"},
+		SubjectAttributes: map[string]interface{}{},
+		GrantType:         "",
+		OAuthApp:          suite.oauthApp,
 	}
 
 	expectedToken := testAccessToken
@@ -341,19 +414,22 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_CustomValidityP
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				ValidityPeriod: 7200,
+				UserConfig: &providers.AccessTokenSubConfig{
+					ValidityPeriod: 7200,
+				},
 			},
 		},
 	}
 
 	ctx := &AccessTokenBuildContext{
-		Subject:        "user123",
-		Audiences:      []string{"app123"},
-		ClientID:       "test-client",
-		Scopes:         []string{"read"},
-		UserAttributes: map[string]interface{}{},
-		GrantType:      string(providers.GrantTypeAuthorizationCode),
-		OAuthApp:       customOAuthApp,
+		Subject:           "user123",
+		Audiences:         []string{"app123"},
+		ClientID:          "test-client",
+		Scopes:            []string{"read"},
+		SubjectAttributes: map[string]interface{}{},
+		GrantType:         string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:          customOAuthApp,
+		ValidityPeriod:    customOAuthApp.UserAccessTokenConfig().ValidityPeriodOrZero(),
 	}
 
 	expectedToken := testAccessToken
@@ -385,13 +461,13 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Error_NilContext() {
 
 func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Error_JWTGenerationFailed() {
 	ctx := &AccessTokenBuildContext{
-		Subject:        "user123",
-		Audiences:      []string{"app123"},
-		ClientID:       "test-client",
-		Scopes:         []string{"read"},
-		UserAttributes: map[string]interface{}{},
-		GrantType:      string(providers.GrantTypeAuthorizationCode),
-		OAuthApp:       suite.oauthApp,
+		Subject:           "user123",
+		Audiences:         []string{"app123"},
+		ClientID:          "test-client",
+		Scopes:            []string{"read"},
+		SubjectAttributes: map[string]interface{}{},
+		GrantType:         string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:          suite.oauthApp,
 	}
 
 	suite.mockJWTService.On("GenerateJWT",
@@ -421,14 +497,14 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Error_JWTGenerationFail
 
 func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_WithClaimsLocales() {
 	ctx := &AccessTokenBuildContext{
-		Subject:        "user123",
-		Audiences:      []string{"app123"},
-		ClientID:       "test-client",
-		Scopes:         []string{"openid", "profile"},
-		UserAttributes: map[string]interface{}{"name": testUserName},
-		GrantType:      string(providers.GrantTypeAuthorizationCode),
-		OAuthApp:       suite.oauthApp,
-		ClaimsLocales:  "en-US fr-CA ja",
+		Subject:           "user123",
+		Audiences:         []string{"app123"},
+		ClientID:          "test-client",
+		Scopes:            []string{"openid", "profile"},
+		SubjectAttributes: map[string]interface{}{"name": testUserName},
+		GrantType:         string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:          suite.oauthApp,
+		ClaimsLocales:     "en-US fr-CA ja",
 	}
 
 	expectedToken := testAccessToken
@@ -461,14 +537,14 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_WithDPoPJkt() {
 	const testJkt = "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I"
 
 	ctx := &AccessTokenBuildContext{
-		Subject:        "user123",
-		Audiences:      []string{"app123"},
-		ClientID:       "test-client",
-		Scopes:         []string{"read"},
-		UserAttributes: map[string]any{},
-		GrantType:      string(providers.GrantTypeAuthorizationCode),
-		OAuthApp:       suite.oauthApp,
-		DPoPJkt:        testJkt,
+		Subject:           "user123",
+		Audiences:         []string{"app123"},
+		ClientID:          "test-client",
+		Scopes:            []string{"read"},
+		SubjectAttributes: map[string]any{},
+		GrantType:         string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:          suite.oauthApp,
+		DPoPJkt:           testJkt,
 	}
 
 	suite.mockJWTService.On("GenerateJWT",
@@ -492,13 +568,13 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_WithDPoPJkt() {
 
 func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_WithoutDPoPJkt_BearerType() {
 	ctx := &AccessTokenBuildContext{
-		Subject:        "user123",
-		Audiences:      []string{"app123"},
-		ClientID:       "test-client",
-		Scopes:         []string{"read"},
-		UserAttributes: map[string]any{},
-		GrantType:      string(providers.GrantTypeAuthorizationCode),
-		OAuthApp:       suite.oauthApp,
+		Subject:           "user123",
+		Audiences:         []string{"app123"},
+		ClientID:          "test-client",
+		Scopes:            []string{"read"},
+		SubjectAttributes: map[string]any{},
+		GrantType:         string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:          suite.oauthApp,
 	}
 
 	suite.mockJWTService.On("GenerateJWT",
@@ -525,8 +601,10 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_Basic() {
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				ValidityPeriod: 3600,
-				UserAttributes: []string{"name"}, // Configure user attributes
+				UserConfig: &providers.AccessTokenSubConfig{
+					ValidityPeriod: 3600,
+					Attributes:     []string{"name"}, // Configure user attributes
+				},
 			},
 		},
 	}

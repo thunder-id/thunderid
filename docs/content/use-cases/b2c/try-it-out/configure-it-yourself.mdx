@@ -38,7 +38,7 @@ These resources are shared by every B2C walkthrough.
 
    See [User Types](/docs/next/guides/guides/users/user-types).
 
-2. **Create the `booking-api` resource server.**
+2. **Create the `wayfinder` resource server.**
 
    Resource servers are managed through the Resource Management API. Create the resource server, the `booking` resource, and three actions in one call:
 
@@ -47,8 +47,9 @@ These resources are shared by every B2C walkthrough.
      -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
      -d '{
-       "name": "Booking API",
-       "identifier": "booking-api",
+       "name": "Wayfinder Booking",
+       "identifier": "http://localhost:8787/mcp",
+       "handle": "wayfinder",
        "delimiter": ":",
        "resources": [
          {
@@ -64,13 +65,13 @@ These resources are shared by every B2C walkthrough.
      }'
    ```
 
-   This generates three permissions: `booking:read`, `booking:create`, and `booking:cancel`.
+   This generates three permissions: `wayfinder:booking:read`, `wayfinder:booking:create`, and `wayfinder:booking:cancel`.
 
    See [Resource Servers](/docs/next/guides/guides/resource-servers).
 
 3. **Create the `Traveler` role.**
 
-   Roles and their permissions are managed through the Role Management API. Create the role with the three `booking:*` permissions in one call. Replace `<default-ou-id>` with the ID of your default organization unit (look it up via `GET /organization-units`).
+   Roles and their permissions are managed through the Role Management API. Create the role with the three `wayfinder:booking:*` permissions in one call. Replace `<default-ou-id>` with the ID of your default organization unit (look it up via `GET /organization-units`) and `<wayfinder-rs-id>` with the ID returned when you created the `wayfinder` resource server.
 
    ```bash
    curl -k -X POST https://localhost:8090/roles \
@@ -82,8 +83,8 @@ These resources are shared by every B2C walkthrough.
        "ouId": "<default-ou-id>",
        "permissions": [
          {
-           "resourceServerId": "booking-api",
-           "permissions": ["booking:read", "booking:create", "booking:cancel"]
+           "resourceServerId": "<wayfinder-rs-id>",
+           "permissions": ["wayfinder:booking:read", "wayfinder:booking:create", "wayfinder:booking:cancel"]
          }
        ]
      }'

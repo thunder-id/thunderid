@@ -33,10 +33,10 @@ export default function OrganizationUnitSection({agent, copiedField, onCopyToCli
 
   return (
     <SettingsCard
-      title={t('groups:edit.general.sections.organizationUnit.title', 'Organization Unit')}
+      title={t('agents:edit.general.sections.organizationUnit.title', 'Organization Unit')}
       description={t(
-        'groups:edit.general.sections.organizationUnit.description',
-        'The organization unit that this resource belongs to.',
+        'agents:edit.general.sections.organizationUnit.description',
+        'The organization unit this agent belongs to.',
       )}
     >
       <Stack spacing={2}>

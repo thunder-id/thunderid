@@ -48,6 +48,8 @@ type OAuthAuthnCoreServiceInterface interface {
 		map[string]interface{}, *tidcommon.ServiceError)
 	GetOAuthClientConfig(ctx context.Context, idpID string) (*OAuthClientConfig, *tidcommon.ServiceError)
 	Authenticate(ctx context.Context, idpID, code string) (*common.AuthnResult, *tidcommon.ServiceError)
+	BuildFederatedAuthResult(ctx context.Context, idpID, sub string, claims map[string]interface{}) (
+		*common.AuthnResult, *tidcommon.ServiceError)
 }
 
 // OAuthAuthnServiceInterface defines the contract for OAuth based authenticator services.
@@ -328,23 +330,99 @@ func (s *oAuthAuthnService) Authenticate(ctx context.Context, idpID, code string
 		return nil, &common.ErrorSubClaimNotFound
 	}
 
-	mappedClaims, svcErr := s.resolveAttributeMappings(ctx, idpID, userInfo)
+	return s.BuildFederatedAuthResult(ctx, idpID, sub, userInfo)
+}
+
+// BuildFederatedAuthResult maps the federated identity's raw claims to local attributes and derives
+// the local-user lookup filter. It is the shared entry point every federated authenticator (OAuth,
+// OIDC, Google, GitHub) calls, so mapping and account-linking resolution are applied uniformly.
+func (s *oAuthAuthnService) BuildFederatedAuthResult(ctx context.Context, idpID, sub string,
+	claims map[string]interface{}) (*common.AuthnResult, *tidcommon.ServiceError) {
+	idpDTO, svcErr := s.getIDP(ctx, idpID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	mappings := idp.GetAttributeMappings(idpDTO)
+	mappedClaims := idp.ApplyAttributeMappings(claims, mappings)
+
+	token, svcErr := s.buildAccountLinkingFilter(ctx, idpDTO, sub, mappedClaims, mappings)
 	if svcErr != nil {
 		return nil, svcErr
 	}
 
 	return &common.AuthnResult{
-		Token: map[string]interface{}{
-			"sub": sub,
-		},
+		Token:               token,
 		AuthenticatedClaims: mappedClaims,
 	}, nil
 }
 
-// resolveAttributeMappings loads the identity provider and applies its configured attribute mappings to
-// claims. IDP-retrieval errors are wrapped in the authn domain so the IDP error code is not leaked.
-func (s *oAuthAuthnService) resolveAttributeMappings(ctx context.Context, idpID string,
-	claims map[string]interface{}) (map[string]interface{}, *tidcommon.ServiceError) {
+// buildAccountLinkingFilter resolves the local-user lookup filter for the federated identity: without
+// account linking configured it returns the subject filter unchanged; otherwise it tries the subject
+// first, then the configured account-linking attributes, falling back to the subject filter.
+func (s *oAuthAuthnService) buildAccountLinkingFilter(ctx context.Context, idpDTO *providers.IDPDTO,
+	sub string, mappedClaims map[string]interface{}, mappings []providers.AttributeMapping) (
+	map[string]interface{}, *tidcommon.ServiceError) {
+	subFilter := map[string]interface{}{"sub": sub}
+	if idpDTO.AttributeConfiguration == nil || idpDTO.AttributeConfiguration.AccountLinking == nil {
+		return subFilter, nil
+	}
+
+	resolved, ok, svcErr := s.resolveFilter(ctx, subFilter)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if ok {
+		return resolved, nil
+	}
+
+	externalToLocal := make(map[string]string)
+	for _, m := range mappings {
+		externalToLocal[m.ExternalAttribute] = m.LocalAttribute
+	}
+
+	linkFilter := make(map[string]interface{})
+	for _, attr := range idpDTO.AttributeConfiguration.AccountLinking.Attributes {
+		local := attr
+		if mapped, ok := externalToLocal[attr]; ok {
+			local = mapped
+		}
+		if value := sysutils.ConvertInterfaceValueToString(mappedClaims[local]); value != "" {
+			linkFilter[local] = value
+		}
+	}
+	if len(linkFilter) > 0 {
+		return linkFilter, nil
+	}
+
+	return subFilter, nil
+}
+
+// resolveFilter looks up the filter and, on a unique match, returns a userID token so the caller need
+// not repeat the lookup. "Not found" and "ambiguous" report ok=false with no error so the caller can
+// try the next candidate filter; any other (server) error is surfaced.
+func (s *oAuthAuthnService) resolveFilter(ctx context.Context, filter map[string]interface{}) (
+	map[string]interface{}, bool, *tidcommon.ServiceError) {
+	entityID, epErr := s.entityProvider.IdentifyEntity(filter)
+	if epErr != nil {
+		if epErr.Code == entityprovider.ErrorCodeEntityNotFound ||
+			epErr.Code == entityprovider.ErrorCodeAmbiguousEntity {
+			return nil, false, nil
+		}
+		s.logger.Error(ctx, "Error while identifying user for account linking",
+			log.String("errorCode", string(epErr.Code)), log.String("description", epErr.Description))
+		return nil, false, &tidcommon.InternalServerError
+	}
+	if entityID == nil {
+		return nil, false, nil
+	}
+	return map[string]interface{}{common.UserAttributeUserID: *entityID}, true, nil
+}
+
+// getIDP loads the identity provider, wrapping IDP-retrieval errors in the authn domain so the IDP
+// error code is not leaked to the caller.
+func (s *oAuthAuthnService) getIDP(ctx context.Context, idpID string) (
+	*providers.IDPDTO, *tidcommon.ServiceError) {
 	idpDTO, svcErr := s.idpService.GetIdentityProvider(ctx, idpID)
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
@@ -360,5 +438,5 @@ func (s *oAuthAuthnService) resolveAttributeMappings(ctx context.Context, idpID 
 	if idpDTO == nil {
 		return nil, &ErrorInvalidIDP
 	}
-	return idp.ApplyAttributeMappings(claims, idp.GetAttributeMappings(idpDTO)), nil
+	return idpDTO, nil
 }

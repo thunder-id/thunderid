@@ -117,11 +117,11 @@ func (s *AgentImportExportSuite) SetupSuite() {
 	})
 	s.Require().NoError(err, "failed to ensure default agent type exists")
 
-	authFlowID, err := testutils.GetFlowIDByHandle("default-basic-flow", "AUTHENTICATION")
+	authFlowID, err := testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
 	s.Require().NoError(err, "failed to get default auth flow ID")
 	s.authFlowID = authFlowID
 
-	regFlowID, err := testutils.GetFlowIDByHandle("default-basic-flow", "REGISTRATION")
+	regFlowID, err := testutils.GetFlowIDByHandle("default-flow", "REGISTRATION")
 	s.Require().NoError(err, "failed to get default registration flow ID")
 	s.registrationFlowID = regFlowID
 }

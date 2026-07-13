@@ -27,6 +27,7 @@ import (
 	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -83,7 +84,7 @@ func (s *attributeCacheService) CreateAttributeCache(
 		return nil, &ErrorMissingAttributes
 	}
 
-	if cache.TTLSeconds <= 0 || int64(cache.TTLSeconds) > MaxTTLSeconds {
+	if cache.TTLSeconds <= 0 || cache.TTLSeconds > MaxTTLSeconds {
 		return nil, &ErrorInvalidExpiryTime
 	}
 
@@ -146,7 +147,7 @@ func (s *attributeCacheService) ExtendAttributeCacheTTL(
 
 	err := s.store.ExtendAttributeCacheTTL(ctx, id, ttlSeconds)
 	if err != nil {
-		if errors.Is(err, errAttributeCacheNotFound) {
+		if errors.Is(err, providers.ErrRuntimeStoreKeyNotFound) {
 			logger.Debug(ctx, "Attribute cache not found", log.String("id", id))
 			return &ErrorAttributeCacheNotFound
 		}
@@ -171,10 +172,6 @@ func (s *attributeCacheService) DeleteAttributeCache(
 
 	err := s.store.DeleteAttributeCache(ctx, id)
 	if err != nil {
-		if errors.Is(err, errAttributeCacheNotFound) {
-			logger.Debug(ctx, "Attribute cache not found", log.String("id", id))
-			return &ErrorAttributeCacheNotFound
-		}
 		logger.Error(ctx, "Failed to delete attribute cache", log.Error(err), log.String("id", id))
 		return &tidcommon.InternalServerError
 	}

@@ -76,6 +76,11 @@ interface OAuth2ConfigSectionProps {
    * Whether inputs should be disabled (e.g. read-only resource).
    */
   disabled?: boolean;
+  /**
+   * When set, restricts the offered grant types to the intersection of this list and
+   * discovery's `grant_types_supported`. Omit to offer every discovery-advertised grant type.
+   */
+  allowedGrantTypes?: string[];
 }
 
 function OAuth2Logo() {
@@ -153,13 +158,17 @@ export default function OAuth2ConfigSection({
   oauth2Constraints = undefined,
   onOAuth2ConfigChange = undefined,
   disabled = false,
+  allowedGrantTypes = undefined,
 }: OAuth2ConfigSectionProps) {
   const {t} = useTranslation();
   const {discovery} = useThunderID();
 
   if (!oauth2Config) return null;
 
-  const availableGrantTypes = discovery?.wellKnown?.grant_types_supported ?? [];
+  const discoveredGrantTypes = discovery?.wellKnown?.grant_types_supported ?? [];
+  const availableGrantTypes = allowedGrantTypes
+    ? discoveredGrantTypes.filter((grant) => allowedGrantTypes.includes(grant))
+    : discoveredGrantTypes;
   const availableResponseTypes = discovery?.wellKnown?.response_types_supported ?? [];
   const availableTokenEndpointAuthMethods: string[] =
     (discovery as {wellKnown?: OidcDiscovery} | undefined)?.wellKnown?.token_endpoint_auth_methods_supported ?? [];

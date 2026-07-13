@@ -2,7 +2,10 @@ openapi: 3.0.3
 
 info:
   title: Authentication API
-  description: Execute authentication challenges using supported factor types. Callers initiate a session and step through one or more challenges — password, OTP, passkey, or a federated identity provider — until authentication succeeds or fails.
+  description: |
+    Execute authentication challenges using supported factor types. Callers initiate a session and step through one or more challenges — password, OTP, passkey, or a federated identity provider — until authentication succeeds or fails.
+
+    These endpoints are secure by default: they are gated by a server-level secret (`server.security.direct_auth_secret`). While no secret is configured they are blocked with `401`. Once configured, every request must include that value in the `Direct-Auth-Secret` header (see the `DirectAuthSecret` security scheme); requests with a missing or incorrect value are rejected with `401`.
   version: "1.0"
   license:
     name: Apache 2.0
@@ -30,7 +33,8 @@ tags:
   - name: Passkeys
     description: Passkey authentication operations based on WebAuthn.
 
-security: []
+security:
+  - DirectAuthSecret: []
 
 paths:
   /auth/credentials/authenticate:
@@ -611,6 +615,15 @@ paths:
                 $ref: '#/components/schemas/Error'
 
 components:
+  securitySchemes:
+    DirectAuthSecret:
+      type: apiKey
+      in: header
+      name: Direct-Auth-Secret
+      description: >-
+        Server-level secret gating the Direct API authentication endpoints. These endpoints are secure
+        by default: they are blocked until `server.security.direct_auth_secret` is configured, after
+        which this header is required on every request.
   schemas:
     CredentialAuthRequest:
       type: object

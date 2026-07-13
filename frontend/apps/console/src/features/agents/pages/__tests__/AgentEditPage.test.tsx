@@ -60,8 +60,8 @@ vi.mock('../../api/useUpdateAgent', () => ({
   default: () => mockUseUpdateAgent(),
 }));
 
-// Mock heavy child components — focus on page wiring
-vi.mock('../../components/edit-agent/general-settings/EditGeneralSettings', () => ({
+// Mock heavy child components — focus on page wiring.
+vi.mock('../../components/edit-agent/general/EditGeneralSettings', () => ({
   default: ({onDeleteSuccess}: {onDeleteSuccess?: () => void}) => (
     <div data-testid="edit-general">
       <button type="button" onClick={() => onDeleteSuccess?.()}>
@@ -72,37 +72,48 @@ vi.mock('../../components/edit-agent/general-settings/EditGeneralSettings', () =
 }));
 
 vi.mock('../../components/edit-agent/attributes/EditAgentAttributes', () => ({
-  default: ({onSaved}: {onSaved?: () => void}) => (
+  default: ({onFieldChange}: {onFieldChange: (field: string, value: unknown) => void}) => (
     <div data-testid="edit-attributes">
-      <button type="button" onClick={() => onSaved?.()}>
-        Saved
+      <button type="button" onClick={() => onFieldChange('attributes', {department: 'sales'})}>
+        Edit an attribute
       </button>
     </div>
   ),
 }));
 
-vi.mock('../../components/edit-agent/flows-settings/AllowedUserTypesSection', () => ({
-  default: () => <div data-testid="allowed-user-types" />,
+vi.mock('../../components/edit-agent/credentials/EditCredentialsSettings', () => ({
+  default: () => <div data-testid="edit-credentials" />,
+}));
+
+vi.mock('../../components/edit-agent/flows/EditFlowsSettings', () => ({
+  default: () => <div data-testid="edit-flows" />,
+}));
+
+vi.mock('../../components/edit-agent/tokens/EditTokensSettings', () => ({
+  default: () => <div data-testid="edit-tokens" />,
+}));
+
+vi.mock('../../components/edit-agent/access/EditAccessSettings', () => ({
+  default: () => <div data-testid="edit-access" />,
 }));
 
 vi.mock('../../components/edit-agent/advanced-settings/EditAdvancedSettings', () => ({
   default: () => <div data-testid="edit-advanced" />,
 }));
 
-vi.mock('../../../applications/components/edit-application/flows-settings/EditFlowsSettings', () => ({
-  default: () => <div data-testid="edit-flows" />,
-}));
-
-vi.mock('../../../applications/components/edit-application/token-settings/EditTokenSettings', () => ({
-  default: () => <div data-testid="edit-token" />,
-}));
-
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string | {defaultValue?: string}) => {
-      if (typeof fallback === 'string') return fallback || key;
-      if (fallback && typeof fallback === 'object') return fallback.defaultValue ?? key;
-      return key;
+    t: (key: string, fallback?: string | {defaultValue?: string}, options?: Record<string, unknown>) => {
+      let result: string;
+      if (typeof fallback === 'string') result = fallback || key;
+      else if (fallback && typeof fallback === 'object') result = fallback.defaultValue ?? key;
+      else result = key;
+      if (options) {
+        Object.entries(options).forEach(([optionKey, value]) => {
+          result = result.replace(`{{${optionKey}}}`, String(value));
+        });
+      }
+      return result;
     },
   }),
 }));
@@ -189,28 +200,45 @@ describe('AgentEditPage', () => {
   });
 
   describe('Tabs', () => {
-    it('renders General and Attributes tabs by default', () => {
+    it('renders General, Attributes, and Access tabs by default', () => {
       render(<AgentEditPage />);
 
-      expect(screen.getByRole('tab', {name: /General/i})).toBeInTheDocument();
-      expect(screen.getByRole('tab', {name: /Attributes/i})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'General'})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Attributes'})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: /Access/i})).toBeInTheDocument();
+    });
+
+    it('does not render icons on any tab', () => {
+      render(<AgentEditPage />);
+
+      screen.getAllByRole('tab').forEach((tab) => {
+        expect(tab.querySelector('svg')).not.toBeInTheDocument();
+      });
     });
 
     it('renders OAuth-specific tabs when the agent has an OAuth2 inbound config', () => {
       render(<AgentEditPage />);
 
-      expect(screen.getByRole('tab', {name: /Flows/i})).toBeInTheDocument();
-      expect(screen.getByRole('tab', {name: /Token/i})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: /Credentials/i})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Flows'})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Tokens'})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: /Advanced/i})).toBeInTheDocument();
+    });
+
+    it('orders tabs as General, Attributes, Credentials, Access, Flows, Tokens, Advanced', () => {
+      render(<AgentEditPage />);
+
+      const tabNames = screen.getAllByRole('tab').map((tab) => tab.textContent);
+      expect(tabNames).toEqual(['General', 'Attributes', 'Credentials', 'Access', 'Flows', 'Tokens', 'Advanced']);
     });
 
     it('switches tabs when clicked', async () => {
       const user = userEvent.setup();
       render(<AgentEditPage />);
 
-      await user.click(screen.getByRole('tab', {name: /Attributes/i}));
+      await user.click(screen.getByRole('tab', {name: /Access/i}));
 
-      expect(screen.getByTestId('edit-attributes')).toBeInTheDocument();
+      expect(screen.getByTestId('edit-access')).toBeInTheDocument();
     });
 
     it('does not render OAuth tabs when agent has no OAuth config', () => {
@@ -224,9 +252,12 @@ describe('AgentEditPage', () => {
 
       render(<AgentEditPage />);
 
-      expect(screen.queryByRole('tab', {name: /Flows/i})).not.toBeInTheDocument();
-      expect(screen.queryByRole('tab', {name: /Token/i})).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', {name: /Credentials/i})).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', {name: 'Flows'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', {name: 'Tokens'})).not.toBeInTheDocument();
       expect(screen.queryByRole('tab', {name: /Advanced/i})).not.toBeInTheDocument();
+      // Access still renders — groups/roles apply regardless of OAuth.
+      expect(screen.getByRole('tab', {name: /Access/i})).toBeInTheDocument();
     });
   });
 
@@ -288,16 +319,31 @@ describe('AgentEditPage', () => {
     });
   });
 
-  describe('Attributes Saved', () => {
-    it('refetches the agent when Attributes reports onSaved', async () => {
+  describe('Attribute edits', () => {
+    it('surfaces the page-level unsaved-changes bar when an attribute is edited', async () => {
       const user = userEvent.setup();
       render(<AgentEditPage />);
 
-      await user.click(screen.getByRole('tab', {name: /Attributes/i}));
-      await user.click(screen.getByText('Saved'));
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+
+      expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
+    });
+
+    it('includes staged attribute edits when the page-level Save button is clicked', async () => {
+      const user = userEvent.setup();
+      render(<AgentEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      await user.click(screen.getByRole('button', {name: 'Save'}));
 
       await waitFor(() => {
-        expect(mockRefetch).toHaveBeenCalled();
+        expect(mockMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({attributes: {department: 'sales'}}) as Record<string, unknown>,
+          }),
+        );
       });
     });
   });
@@ -308,6 +354,191 @@ describe('AgentEditPage', () => {
 
       const backLink = screen.getByRole('link', {name: /Back to agents/i});
       expect(backLink).toHaveAttribute('href', '/agents');
+    });
+  });
+
+  describe('Save validation', () => {
+    // Any field edit is enough to surface the Save bar — renaming is the simplest one available
+    // without depending on any of the (mocked) tab content components.
+    const triggerAChange = async (user: ReturnType<typeof userEvent.setup>) => {
+      const editIcons = screen.getAllByRole('button').filter((b) => b.querySelector('svg'));
+      const nameEditButton = editIcons.find((btn) => btn.parentElement?.textContent?.includes('Test Agent'));
+      if (!nameEditButton) throw new Error('name edit button not found');
+      await user.click(nameEditButton);
+      const input = screen.getAllByRole('textbox')[0];
+      await user.type(input, ' Renamed');
+      await user.keyboard('{Enter}');
+    };
+
+    it('disables Save when authorization_code is selected but no redirect URI or allowed user type is set, even without visiting those tabs', async () => {
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {
+          ...baseAgent,
+          allowedUserTypes: [],
+          inboundAuthConfig: [
+            {
+              type: 'oauth2' as const,
+              config: {
+                grantTypes: ['authorization_code'],
+                responseTypes: ['code'],
+                redirectUris: [],
+                clientId: 'client-id-xyz',
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+      await triggerAChange(user);
+
+      expect(
+        screen.getByText('Before saving, add a redirect URI and select at least one allowed user type.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+    });
+
+    it('names only the single failing check when just one is missing', async () => {
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {
+          ...baseAgent,
+          allowedUserTypes: ['employee'],
+          inboundAuthConfig: [
+            {
+              type: 'oauth2' as const,
+              config: {
+                grantTypes: ['authorization_code'],
+                responseTypes: ['code'],
+                redirectUris: [],
+                clientId: 'client-id-xyz',
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+      await triggerAChange(user);
+
+      expect(screen.getByText('Before saving, add a redirect URI.')).toBeInTheDocument();
+    });
+
+    it('enables Save once a redirect URI and an allowed user type are both set', async () => {
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {
+          ...baseAgent,
+          allowedUserTypes: ['employee'],
+          inboundAuthConfig: [
+            {
+              type: 'oauth2' as const,
+              config: {
+                grantTypes: ['authorization_code'],
+                responseTypes: ['code'],
+                redirectUris: ['https://example.com/cb'],
+                clientId: 'client-id-xyz',
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+      await triggerAChange(user);
+
+      expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
+      expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
+    });
+
+    it('does not block Save when authorization_code is not selected', async () => {
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, allowedUserTypes: []},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+      await triggerAChange(user);
+
+      expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
+    });
+
+    it('disables Save when private_key_jwt is selected but no certificate is configured, even without visiting the credentials/advanced tabs', async () => {
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {
+          ...baseAgent,
+          inboundAuthConfig: [
+            {
+              type: 'oauth2' as const,
+              config: {
+                grantTypes: ['client_credentials'],
+                responseTypes: [],
+                tokenEndpointAuthMethod: 'private_key_jwt',
+                clientId: 'client-id-xyz',
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+      await triggerAChange(user);
+
+      expect(screen.getByText('Before saving, add a certificate.')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+    });
+
+    it('enables Save once a certificate is configured for private_key_jwt', async () => {
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {
+          ...baseAgent,
+          inboundAuthConfig: [
+            {
+              type: 'oauth2' as const,
+              config: {
+                grantTypes: ['client_credentials'],
+                responseTypes: [],
+                tokenEndpointAuthMethod: 'private_key_jwt',
+                certificate: {type: 'JWKS', value: '{"keys":[]}'},
+                clientId: 'client-id-xyz',
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+      await triggerAChange(user);
+
+      expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
     });
   });
 });

@@ -238,15 +238,6 @@ func (suite *LayoutFileBasedStoreTestSuite) TestDeleteLayout_NotSupported() {
 	suite.Contains(err.Error(), "not supported")
 }
 
-func (suite *LayoutFileBasedStoreTestSuite) TestGetApplicationsCountByLayoutID() {
-	// Act
-	count, err := suite.store.GetApplicationsCountByLayoutID("layout-001")
-
-	// Assert
-	suite.NoError(err)
-	suite.Equal(0, count)
-}
-
 func (suite *LayoutFileBasedStoreTestSuite) TestCreate_StorerInterface() {
 	// Arrange
 	layoutConfig := map[string]interface{}{

@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import {AuthenticatorTypes, IdentityProviderTypes, useIdentityProviders} from '@thunderid/configure-connections';
 import {useHasMultipleOUs} from '@thunderid/configure-organization-units';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
 import {useLogger} from '@thunderid/logger/react';
@@ -25,9 +26,6 @@ import type {JSX} from 'react';
 import {useState, useCallback, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useLocation, useNavigate} from 'react-router';
-import useIdentityProviders from '../../connections/api/useIdentityProviders';
-import {AuthenticatorTypes} from '../../connections/models/authenticators';
-import {IdentityProviderTypes} from '../../connections/models/identity-provider';
 import useCreateFlow from '../../flows/api/useCreateFlow';
 import useGetFlowById from '../../flows/api/useGetFlowById';
 import type {BasicFlowDefinition} from '../../flows/models/responses';
@@ -42,6 +40,8 @@ import ConfigureExperience from '../components/create-application/ConfigureExper
 import ConfigureName from '../components/create-application/ConfigureName';
 import ConfigureOrganizationUnit from '../components/create-application/ConfigureOrganizationUnit';
 import ConfigureStack from '../components/create-application/ConfigureStack';
+import ConfigureMcpClientType from '../components/create-application/mcp/ConfigureMcpClientType';
+import McpConnectComplete from '../components/create-application/mcp/McpConnectComplete';
 import ShowClientSecret from '../components/create-application/ShowClientSecret';
 import TemplateConstants from '../constants/template-constants';
 import useApplicationCreate from '../contexts/ApplicationCreate/useApplicationCreate';
@@ -52,7 +52,8 @@ import {
   ApplicationCreateFlowStep,
 } from '../models/application-create-flow';
 import {PlatformApplicationTemplate} from '../models/application-templates';
-import type {OAuth2Config} from '../models/oauth';
+import {McpClientTypes} from '../models/mcp-client';
+import {OAuth2GrantTypes, TokenEndpointAuthMethods, type OAuth2Config} from '../models/oauth';
 import type {CreateApplicationRequest} from '../models/requests';
 import getConfigurationTypeFromTemplate from '../utils/getConfigurationTypeFromTemplate';
 import resolveCreationFlow from '../utils/resolveCreationFlow';
@@ -83,6 +84,10 @@ export default function ApplicationCreatePage(): JSX.Element {
     setSignInApproach,
     selectedTechnology,
     selectedPlatform,
+    mcpClientType,
+    setMcpClientType,
+    mcpRedirectUris,
+    setMcpRedirectUris,
     hostingUrl,
     setHostingUrl,
     callbackUrlFromConfig,
@@ -93,6 +98,8 @@ export default function ApplicationCreatePage(): JSX.Element {
     error,
     setError,
   } = useApplicationCreate();
+
+  const isMcpClientTemplate = selectedTemplateConfig?.id === TemplateConstants.MCP_CLIENT_TEMPLATE_ID;
 
   const steps: Record<ApplicationCreateFlowStep, {label: string; order: number}> = useMemo(
     () => ({
@@ -109,6 +116,7 @@ export default function ApplicationCreatePage(): JSX.Element {
             : t('applications:onboarding.steps.configure'),
         order: 7,
       },
+      CLIENT_TYPE: {label: t('applications:onboarding.steps.clientType'), order: 4},
       COMPLETE: {label: t('applications:onboarding.steps.complete'), order: 8},
     }),
     [t, selectedPlatform],
@@ -163,6 +171,7 @@ export default function ApplicationCreatePage(): JSX.Element {
     OPTIONS: true,
     EXPERIENCE: true,
     CONFIGURE: true,
+    CLIENT_TYPE: false,
     COMPLETE: true,
   });
 
@@ -264,6 +273,25 @@ export default function ApplicationCreatePage(): JSX.Element {
         ? `${templateId}${TemplateConstants.EMBEDDED_SUFFIX}`
         : templateId;
 
+    // The mcp-client template branches the oauth2 config off the template-seeded config (never
+    // rebuilt from scratch): user-delegated keeps the seeded authorization_code/refresh_token/PKCE/
+    // public-client shape and adds the collected redirect URIs; machine-to-machine overrides it to a
+    // confidential client_credentials shape with no redirect URIs.
+    const mcpOAuth2Config: OAuth2Config | null =
+      isMcpClientTemplate && oauthConfig
+        ? mcpClientType === McpClientTypes.M2M
+          ? {
+              ...oauthConfig,
+              grantTypes: [OAuth2GrantTypes.CLIENT_CREDENTIALS],
+              responseTypes: [],
+              redirectUris: [],
+              pkceRequired: false,
+              publicClient: false,
+              tokenEndpointAuthMethod: TokenEndpointAuthMethods.CLIENT_SECRET_BASIC,
+            }
+          : {...oauthConfig, redirectUris: mcpRedirectUris.filter((uri) => uri.trim() !== '')}
+        : null;
+
     const applicationData: CreateApplicationRequest = {
       name: appName,
       ...(hostingUrl && {url: hostingUrl}),
@@ -274,18 +302,26 @@ export default function ApplicationCreatePage(): JSX.Element {
         logoUrl: appLogo ?? undefined,
         ...(themeId && {themeId}),
       }),
-      ...(includesOptions && {
+      ...((includesOptions || (isMcpClientTemplate && mcpClientType === McpClientTypes.USER_DELEGATED)) && {
         userAttributes: ['given_name', 'family_name', 'email', 'groups'],
         isRegistrationFlowEnabled: true,
       }),
       ...(includesExperience && allowedUserTypes && {allowedUserTypes}),
       ...(!skipOAuthConfig && {
-        inboundAuthConfig: [{type: 'oauth2', config: effectiveOauthConfig}],
+        inboundAuthConfig: [{type: 'oauth2', config: mcpOAuth2Config ?? effectiveOauthConfig}],
       }),
     };
 
     createApplication.mutate(applicationData, {
       onSuccess: (createdApp: Application): void => {
+        // The mcp-client template always routes to its Connect completion screen, even when no
+        // secret is returned (the user-delegated variant has none).
+        if (isMcpClientTemplate) {
+          setCreatedApplication(createdApp);
+          setCurrentStep(ApplicationCreateFlowStep.COMPLETE);
+          return;
+        }
+
         const hasClientSecret = createdApp.inboundAuthConfig?.some(
           (config) => config.type === 'oauth2' && config.config?.clientSecret,
         );
@@ -455,11 +491,29 @@ export default function ApplicationCreatePage(): JSX.Element {
     [handleStepReadyChange],
   );
 
+  const handleClientTypeStepReadyChange = useCallback(
+    (isReady: boolean): void => {
+      handleStepReadyChange(ApplicationCreateFlowStep.CLIENT_TYPE, isReady);
+    },
+    [handleStepReadyChange],
+  );
+
   const renderStepContent = (): JSX.Element | null => {
     switch (currentStep) {
       case ApplicationCreateFlowStep.NAME:
         return (
           <ConfigureName appName={appName} onAppNameChange={setAppName} onReadyChange={handleNameStepReadyChange} />
+        );
+
+      case ApplicationCreateFlowStep.CLIENT_TYPE:
+        return (
+          <ConfigureMcpClientType
+            selectedType={mcpClientType}
+            onSelect={setMcpClientType}
+            redirectUris={mcpRedirectUris}
+            onRedirectUrisChange={setMcpRedirectUris}
+            onReadyChange={handleClientTypeStepReadyChange}
+          />
         );
 
       case ApplicationCreateFlowStep.ORGANIZATION_UNIT:
@@ -540,6 +594,19 @@ export default function ApplicationCreatePage(): JSX.Element {
         const clientSecret = oauth2Config?.config?.clientSecret;
         const {flowSecret} = createdApplication;
 
+        if (isMcpClientTemplate) {
+          return (
+            <McpConnectComplete
+              appName={appName}
+              clientId={clientId}
+              clientSecret={clientSecret}
+              redirectUris={oauth2Config?.config?.redirectUris ?? []}
+              clientType={mcpClientType}
+              onContinue={handleNextStep}
+            />
+          );
+        }
+
         if (!clientSecret && !flowSecret) {
           return null;
         }
@@ -560,9 +627,15 @@ export default function ApplicationCreatePage(): JSX.Element {
     }
   };
 
+  // visibleSteps excludes the terminal COMPLETE step (it's set explicitly post-create), so it's
+  // padded by one here to represent that final screen. Computing progress against visibleSteps
+  // rather than creationFlow.steps keeps the bar filling smoothly even when steps are filtered
+  // out (e.g. ORGANIZATION_UNIT for a single OU).
   const getStepProgress = (): number => {
-    const stepNames = creationFlow.steps;
-    return ((stepNames.indexOf(currentStep) + 1) / stepNames.length) * 100;
+    const totalSteps = visibleSteps.length + 1;
+    const currentIndex =
+      currentStep === ApplicationCreateFlowStep.COMPLETE ? totalSteps - 1 : visibleSteps.indexOf(currentStep);
+    return ((currentIndex + 1) / totalSteps) * 100;
   };
 
   const getBreadcrumbSteps = (): ApplicationCreateFlowStep[] => {
@@ -604,6 +677,7 @@ export default function ApplicationCreatePage(): JSX.Element {
               currentStep === ApplicationCreateFlowStep.STACK ||
               currentStep === ApplicationCreateFlowStep.NAME ||
               currentStep === ApplicationCreateFlowStep.ORGANIZATION_UNIT ||
+              currentStep === ApplicationCreateFlowStep.CLIENT_TYPE ||
               currentStep === ApplicationCreateFlowStep.COMPLETE ||
               isWalletConfigureStep
                 ? 1
@@ -652,6 +726,7 @@ export default function ApplicationCreatePage(): JSX.Element {
                   currentStep === ApplicationCreateFlowStep.STACK ||
                   currentStep === ApplicationCreateFlowStep.NAME ||
                   currentStep === ApplicationCreateFlowStep.ORGANIZATION_UNIT ||
+                  currentStep === ApplicationCreateFlowStep.CLIENT_TYPE ||
                   isWalletConfigureStep
                     ? 'auto'
                     : 0,
@@ -724,6 +799,7 @@ export default function ApplicationCreatePage(): JSX.Element {
         {currentStep !== ApplicationCreateFlowStep.STACK &&
           currentStep !== ApplicationCreateFlowStep.NAME &&
           currentStep !== ApplicationCreateFlowStep.ORGANIZATION_UNIT &&
+          currentStep !== ApplicationCreateFlowStep.CLIENT_TYPE &&
           currentStep !== ApplicationCreateFlowStep.COMPLETE &&
           !isWalletConfigureStep && (
             <Box sx={{flex: '0 0 50%', display: 'flex', flexDirection: 'column', p: 5}}>

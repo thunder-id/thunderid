@@ -86,19 +86,24 @@ export default function ConfigProvider({children}: ConfigProviderProps) {
       config,
       getServerUrl: () => {
         // If public_url is provided, use it directly
-        if (config.server.public_url) {
+        if (config.server?.public_url) {
           return config.server.public_url;
         }
-        // Otherwise, construct from hostname, port, and http_only
-        const {hostname, port, http_only: httpOnly} = config.server;
-        const protocol: string = httpOnly ? 'http' : 'https';
-        return `${protocol}://${hostname}:${port}`;
+        // Otherwise, construct from hostname, port, and http_only when configured
+        const {hostname, port, http_only: httpOnly} = config.server ?? {};
+        if (hostname && port !== undefined) {
+          const protocol: string = httpOnly ? 'http' : 'https';
+          return `${protocol}://${hostname}:${port}`;
+        }
+        // Fall back to the URL the app is served from
+        return typeof window !== 'undefined' ? window.location.origin : '';
       },
-      getServerHostname: () => config.server.hostname,
-      getServerPort: () => config.server.port,
-      isHttpOnly: () => config.server.http_only,
+      getServerHostname: () => config.server?.hostname,
+      getServerPort: () => config.server?.port,
+      isHttpOnly: () => config.server?.http_only,
       getClientId: () => config.client.client_id,
       getScopes: () => config.client.scopes ?? [],
+      getResourceIdentifier: () => config.client.resource_identifier,
       getClientUrl: () => {
         const {hostname, port, http_only: httpOnly, base} = config.client;
 
@@ -140,12 +145,16 @@ export default function ConfigProvider({children}: ConfigProviderProps) {
           return `${protocol}://${hostname}:${port}`;
         }
         // Fall back to resource server URL
-        if (config.server.public_url) {
+        if (config.server?.public_url) {
           return config.server.public_url;
         }
-        const {hostname, port, http_only: httpOnly} = config.server;
-        const protocol: string = httpOnly ? 'http' : 'https';
-        return `${protocol}://${hostname}:${port}`;
+        const {hostname, port, http_only: httpOnly} = config.server ?? {};
+        if (hostname && port !== undefined) {
+          const protocol: string = httpOnly ? 'http' : 'https';
+          return `${protocol}://${hostname}:${port}`;
+        }
+        // Fall back to the URL the app is served from
+        return typeof window !== 'undefined' ? window.location.origin : '';
       },
       getTrustedIssuerClientId: () => {
         if (config.trusted_issuer?.client_id) {

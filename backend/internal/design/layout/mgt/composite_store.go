@@ -142,12 +142,6 @@ func (c *compositeLayoutStore) DeleteLayout(id string) error {
 	)
 }
 
-// GetApplicationsCountByLayoutID retrieves the count of applications using a layout.
-// Only queries database store since declarative layouts don't track application references.
-func (c *compositeLayoutStore) GetApplicationsCountByLayoutID(id string) (int, error) {
-	return c.dbStore.GetApplicationsCountByLayoutID(id)
-}
-
 // IsLayoutDeclarative checks if a layout is immutable (exists in file store).
 func (c *compositeLayoutStore) IsLayoutDeclarative(id string) bool {
 	exists, err := c.fileStore.IsLayoutExist(id)

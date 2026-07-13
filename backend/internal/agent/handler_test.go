@@ -52,6 +52,9 @@ type InlineStubAgentService struct {
 	OnGetAgentGroups func(
 		ctx context.Context, id string, limit, offset int,
 	) (*model.AgentGroupListResponse, *tidcommon.ServiceError)
+	OnGetAgentRoles func(
+		ctx context.Context, id string, limit, offset int,
+	) (*model.AgentRoleListResponse, *tidcommon.ServiceError)
 }
 
 func (s *InlineStubAgentService) CreateAgent(
@@ -102,6 +105,14 @@ func (s *InlineStubAgentService) GetAgentGroups(
 		return s.OnGetAgentGroups(ctx, id, limit, offset)
 	}
 	return &model.AgentGroupListResponse{}, nil
+}
+
+func (s *InlineStubAgentService) GetAgentRoles(
+	ctx context.Context, id string, limit, offset int) (*model.AgentRoleListResponse, *tidcommon.ServiceError) {
+	if s.OnGetAgentRoles != nil {
+		return s.OnGetAgentRoles(ctx, id, limit, offset)
+	}
+	return &model.AgentRoleListResponse{}, nil
 }
 
 func (s *InlineStubAgentService) ValidateAgent(
@@ -348,6 +359,59 @@ func TestHandleAgentGroupsRequest_ServiceError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	handler.HandleAgentGroupsRequest(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorAgentNotFound.Code)
+}
+
+func TestHandleAgentRolesRequest_Success(t *testing.T) {
+	stubService := &InlineStubAgentService{}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodGet, "/agents/agent-123/roles", nil)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentRolesRequest(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestHandleAgentRolesRequest_MissingID(t *testing.T) {
+	stubService := &InlineStubAgentService{}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodGet, "/agents//roles", nil)
+	req.SetPathValue("id", "")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentRolesRequest(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorMissingAgentID.Code)
+}
+
+func TestHandleAgentRolesRequest_InvalidLimit(t *testing.T) {
+	stubService := &InlineStubAgentService{}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodGet, "/agents/agent1/roles?limit=abc", nil)
+	req.SetPathValue("id", "agent1")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentRolesRequest(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorInvalidLimit.Code)
+}
+
+func TestHandleAgentRolesRequest_ServiceError(t *testing.T) {
+	stubService := &InlineStubAgentService{
+		OnGetAgentRoles: func(
+			ctx context.Context, id string, limit, offset int,
+		) (*model.AgentRoleListResponse, *tidcommon.ServiceError) {
+			return nil, &ErrorAgentNotFound
+		},
+	}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodGet, "/agents/agent1/roles", nil)
+	req.SetPathValue("id", "agent1")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentRolesRequest(w, req)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.Contains(t, w.Body.String(), ErrorAgentNotFound.Code)
 }

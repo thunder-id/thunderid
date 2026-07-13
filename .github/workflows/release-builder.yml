@@ -163,6 +163,7 @@ jobs:
           sed -i -E "s/^appVersion: .*/appVersion: \"${SEMVER_VERSION}\"/" install/openchoreo/helm/Chart.yaml
           sed -i -E "s/^version: .*/version: ${SEMVER_VERSION}/" install/openchoreo/helm/charts/${PRODUCT_NAME_LOWER}-oc-componenttype/Chart.yaml
           sed -i -E "s/^version: .*/version: ${SEMVER_VERSION}/" install/openchoreo/helm/charts/${PRODUCT_NAME_LOWER}-component/Chart.yaml
+          sed -i -E "s/^version: .*/version: ${SEMVER_VERSION}/" install/openchoreo/${PRODUCT_NAME_LOWER}-oc-resourcetype/Chart.yaml
           # Update sub-chart dependency versions in the umbrella chart (indented version: entries)
           sed -i -E "s/(^[[:space:]]+version: \")[^\"]*/\1${SEMVER_VERSION}/" install/openchoreo/helm/Chart.yaml
 
@@ -200,6 +201,7 @@ jobs:
             install/openchoreo/helm/Chart.yaml \
             install/openchoreo/helm/charts/${PRODUCT_NAME_LOWER}-oc-componenttype/Chart.yaml \
             install/openchoreo/helm/charts/${PRODUCT_NAME_LOWER}-component/Chart.yaml \
+            install/openchoreo/${PRODUCT_NAME_LOWER}-oc-resourcetype/Chart.yaml \
             samples/apps/react-api-based-sample/package.json \
             samples/apps/react-sdk-sample/package.json \
             samples/apps/react-vanilla-sample/package.json \
@@ -575,6 +577,14 @@ jobs:
             --destination target/dist/openchoreo/
           helm push "target/dist/openchoreo/${PRODUCT_NAME_LOWER}-oc-componenttype-${CHART_VERSION}.tgz" "oci://${HELM_REGISTRY}"
           echo "✅ ${PRODUCT_NAME_LOWER}-oc-componenttype pushed to oci://${HELM_REGISTRY}"
+
+          # Package and push oc-resourcetype
+          echo "📦 Packaging ${PRODUCT_NAME_LOWER}-oc-resourcetype ${CHART_VERSION}"
+          helm package install/openchoreo/${PRODUCT_NAME_LOWER}-oc-resourcetype \
+            --version "${CHART_VERSION}" --app-version "${CHART_VERSION}" \
+            --destination target/dist/openchoreo/
+          helm push "target/dist/openchoreo/${PRODUCT_NAME_LOWER}-oc-resourcetype-${CHART_VERSION}.tgz" "oci://${HELM_REGISTRY}"
+          echo "✅ ${PRODUCT_NAME_LOWER}-oc-resourcetype pushed to oci://${HELM_REGISTRY}"
 
       - name: 📝 Calculate Next Version
         id: next_version

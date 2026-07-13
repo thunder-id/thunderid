@@ -236,15 +236,6 @@ func (suite *ThemeFileBasedStoreTestSuite) TestDeleteTheme_NotSupported() {
 	suite.Contains(err.Error(), "not supported")
 }
 
-func (suite *ThemeFileBasedStoreTestSuite) TestGetApplicationsCountByThemeID() {
-	// Act
-	count, err := suite.store.GetApplicationsCountByThemeID("theme-001")
-
-	// Assert
-	suite.NoError(err)
-	suite.Equal(0, count)
-}
-
 func (suite *ThemeFileBasedStoreTestSuite) TestCreate_StorerInterface() {
 	// Arrange
 	themeConfig := map[string]interface{}{

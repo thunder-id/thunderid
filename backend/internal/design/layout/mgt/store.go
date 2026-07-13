@@ -39,7 +39,6 @@ type layoutMgtStoreInterface interface {
 	IsLayoutExist(id string) (bool, error)
 	UpdateLayout(id string, layout UpdateLayoutRequest) error
 	DeleteLayout(id string) error
-	GetApplicationsCountByLayoutID(id string) (int, error)
 	IsLayoutDeclarative(id string) bool
 	IsLayoutHandleConflict(handle string, excludeID string) (bool, error)
 }
@@ -198,21 +197,6 @@ func (s *layoutMgtStore) DeleteLayout(id string) error {
 	}
 
 	return nil
-}
-
-// GetApplicationsCountByLayoutID returns the count of applications using a specific layout.
-func (s *layoutMgtStore) GetApplicationsCountByLayoutID(id string) (int, error) {
-	dbClient, err := s.getConfigDBClient()
-	if err != nil {
-		return 0, err
-	}
-
-	results, err := dbClient.Query(queryGetApplicationsCountByLayoutID, id, s.deploymentID)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get applications count: %w", err)
-	}
-
-	return parseCountResult(results)
 }
 
 // IsLayoutDeclarative checks if a layout is immutable (in database store, all layouts are mutable).

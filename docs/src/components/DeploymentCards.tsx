@@ -42,18 +42,18 @@ interface Station {
 const LOGO_STYLE: React.CSSProperties = {display: 'block', height: '26px', objectFit: 'contain', width: '26px'};
 
 function DockerLogo() {
-  return <img src="/img/docker-logo.svg" alt="Docker" style={LOGO_STYLE} />;
+  return <img src="/assets/images/docker-logo.svg" alt="Docker" style={LOGO_STYLE} />;
 }
 
 function KubernetesLogo() {
-  return <img src="/img/kubernetes-logo.svg" alt="Kubernetes" style={LOGO_STYLE} />;
+  return <img src="/assets/images/kubernetes-logo.svg" alt="Kubernetes" style={LOGO_STYLE} />;
 }
 
 function OpenChoreoLogo() {
   return (
     <>
       <Box component="span" sx={{'[data-theme="dark"] &': {display: 'none'}}}>
-        <img src="/img/openchoreo-logo.svg" alt="OpenChoreo" style={LOGO_STYLE} />
+        <img src="/assets/images/openchoreo-logo.svg" alt="OpenChoreo" style={LOGO_STYLE} />
       </Box>
       <Box component="span" sx={{display: 'none', '[data-theme="dark"] &': {display: 'inline'}}}>
         <img src="https://openchoreo.dev/img/openchoreo-logo-dark.svg" alt="OpenChoreo" style={LOGO_STYLE} />

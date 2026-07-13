@@ -32,8 +32,8 @@
  * ```typescript
  * const error: ApiError = {
  *   code: 'OU-60001',
- *   message: 'Organization unit not found',
- *   description: 'No organization unit exists with the given ID'
+ *   message: {key: 'error.ouservice.not_found', defaultValue: 'Organization unit not found'},
+ *   description: {key: 'error.ouservice.not_found_description', defaultValue: 'No organization unit exists with the given ID'}
  * };
  * ```
  */
@@ -45,14 +45,39 @@ export interface ApiError {
   code: string;
 
   /**
-   * Short error message
-   * @example 'Organization unit not found'
+   * Short error message. The backend serializes this as a translatable
+   * {@link I18nMessage} object, but plain strings are tolerated for safety.
    */
-  message: string;
+  message: I18nMessage | string;
 
   /**
-   * Detailed error description
-   * @example 'No organization unit exists with the given ID'
+   * Detailed error description. The backend serializes this as a translatable
+   * {@link I18nMessage} object, but plain strings are tolerated for safety.
    */
-  description: string;
+  description: I18nMessage | string;
+}
+
+/**
+ * Translatable message returned by the backend, carrying a translation key
+ * and a human-readable default value.
+ *
+ * @public
+ */
+export interface I18nMessage {
+  /**
+   * Translation key
+   * @example 'error.ouservice.organization_unit_has_children_description'
+   */
+  key: string;
+
+  /**
+   * Human-readable fallback used when no translation is available
+   * @example 'Cannot delete organization unit with children or users/groups'
+   */
+  defaultValue: string;
+
+  /**
+   * Optional parameters substituted into the default value
+   */
+  params?: Record<string, string>;
 }

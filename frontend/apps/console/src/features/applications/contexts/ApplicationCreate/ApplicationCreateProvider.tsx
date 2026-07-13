@@ -16,11 +16,11 @@
  * under the License.
  */
 
+import {AuthenticatorTypes} from '@thunderid/configure-connections';
 import type {Theme} from '@thunderid/design';
 import type {PropsWithChildren} from 'react';
 import {useState, useMemo, useCallback} from 'react';
 import ApplicationCreateContext, {type ApplicationCreateContextType} from './ApplicationCreateContext';
-import {AuthenticatorTypes} from '../../../connections/models/authenticators';
 import type {BasicFlowDefinition} from '../../../flows/models/responses';
 import useGetApplications from '../../api/useGetApplications';
 import {ApplicationCreateFlowSignInApproach, ApplicationCreateFlowStep} from '../../models/application-create-flow';
@@ -29,6 +29,7 @@ import type {
   PlatformApplicationTemplate,
   ApplicationTemplate,
 } from '../../models/application-templates';
+import {McpClientTypes, type McpClientType} from '../../models/mcp-client';
 
 /**
  * Props for the {@link ApplicationCreateProvider} component.
@@ -55,6 +56,8 @@ const INITIAL_STATE: {
   signInApproach: ApplicationCreateFlowSignInApproach;
   selectedTechnology: TechnologyApplicationTemplate | null;
   selectedPlatform: PlatformApplicationTemplate | null;
+  mcpClientType: McpClientType;
+  mcpRedirectUris: string[];
   hostingUrl: string;
   callbackUrlFromConfig: string;
   relyingPartyId: string;
@@ -76,6 +79,8 @@ const INITIAL_STATE: {
   signInApproach: ApplicationCreateFlowSignInApproach.INBUILT as ApplicationCreateFlowSignInApproach,
   selectedTechnology: null,
   selectedPlatform: null,
+  mcpClientType: McpClientTypes.USER_DELEGATED,
+  mcpRedirectUris: [],
   hostingUrl: '',
   callbackUrlFromConfig: '',
   relyingPartyId: '',
@@ -137,6 +142,8 @@ export default function ApplicationCreateProvider({children}: ApplicationCreateP
     INITIAL_STATE.selectedPlatform,
   );
   const [selectedTemplateConfig, setSelectedTemplateConfig] = useState<ApplicationTemplate | null>(null);
+  const [mcpClientType, setMcpClientType] = useState<McpClientType>(INITIAL_STATE.mcpClientType);
+  const [mcpRedirectUris, setMcpRedirectUris] = useState<string[]>(INITIAL_STATE.mcpRedirectUris);
   const [hostingUrl, setHostingUrl] = useState<string>(INITIAL_STATE.hostingUrl);
   const [callbackUrlFromConfig, setCallbackUrlFromConfig] = useState<string>(INITIAL_STATE.callbackUrlFromConfig);
   const [relyingPartyId, setRelyingPartyId] = useState<string>('');
@@ -172,6 +179,8 @@ export default function ApplicationCreateProvider({children}: ApplicationCreateP
     setSignInApproach(INITIAL_STATE.signInApproach);
     setSelectedTechnology(INITIAL_STATE.selectedTechnology);
     setSelectedPlatform(INITIAL_STATE.selectedPlatform);
+    setMcpClientType(INITIAL_STATE.mcpClientType);
+    setMcpRedirectUris(INITIAL_STATE.mcpRedirectUris);
     setHostingUrl(INITIAL_STATE.hostingUrl);
     setCallbackUrlFromConfig(INITIAL_STATE.callbackUrlFromConfig);
     setRelyingPartyId('');
@@ -208,6 +217,10 @@ export default function ApplicationCreateProvider({children}: ApplicationCreateP
       setSelectedPlatform,
       selectedTemplateConfig,
       setSelectedTemplateConfig,
+      mcpClientType,
+      setMcpClientType,
+      mcpRedirectUris,
+      setMcpRedirectUris,
       hostingUrl,
       setHostingUrl,
       callbackUrlFromConfig,
@@ -237,6 +250,8 @@ export default function ApplicationCreateProvider({children}: ApplicationCreateP
       selectedTechnology,
       selectedPlatform,
       selectedTemplateConfig,
+      mcpClientType,
+      mcpRedirectUris,
       hostingUrl,
       callbackUrlFromConfig,
       relyingPartyId,

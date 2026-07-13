@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import {useIdentityProviders} from '@thunderid/configure-connections';
 import {Alert, Box, Snackbar, Stack} from '@wso2/oxygen-ui';
 import type {Edge, Node} from '@xyflow/react';
 import {useEdgesState, useNodesState, useUpdateNodeInternals} from '@xyflow/react';
@@ -36,7 +37,6 @@ import useSnackbarNotifications from '../hooks/useSnackbarNotifications';
 import useTemplateAndWidgetLoading from '../hooks/useTemplateAndWidgetLoading';
 import {mutateComponents} from '../utils/componentMutations';
 import GradientBorderButton from '@/features/applications/components/GradientBorderButton';
-import useIdentityProviders from '@/features/connections/api/useIdentityProviders';
 import useGetFlowById from '@/features/flows/api/useGetFlowById';
 import FlowBuilder from '@/features/flows/components/FlowBuilder';
 import useFlowConfig from '@/features/flows/hooks/useFlowConfig';

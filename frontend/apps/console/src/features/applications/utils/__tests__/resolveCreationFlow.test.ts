@@ -18,11 +18,13 @@
 
 import {describe, expect, it} from 'vitest';
 import CustomPlatformTemplateJson from '../../data/application-templates/platform-based/custom.json';
+import MCPClientTemplateJson from '../../data/application-templates/technology-based/mcp-client.json';
 import {ApplicationCreateFlowStep} from '../../models/application-create-flow';
 import type {ApplicationTemplate} from '../../models/application-templates';
 import resolveCreationFlow from '../resolveCreationFlow';
 
 const CustomPlatformTemplate = CustomPlatformTemplateJson as ApplicationTemplate;
+const MCPClientTemplate = MCPClientTemplateJson as ApplicationTemplate;
 
 describe('resolveCreationFlow', () => {
   it('returns the default user-facing flow (8 steps) when template is null', () => {
@@ -72,6 +74,17 @@ describe('resolveCreationFlow', () => {
     expect(flow.steps).toEqual([
       ApplicationCreateFlowStep.NAME,
       ApplicationCreateFlowStep.ORGANIZATION_UNIT,
+      ApplicationCreateFlowStep.COMPLETE,
+    ]);
+  });
+
+  it('returns STACK, NAME, ORGANIZATION_UNIT, CLIENT_TYPE, and COMPLETE steps for the mcp-client template', () => {
+    const flow = resolveCreationFlow(MCPClientTemplate);
+    expect(flow.steps).toEqual([
+      ApplicationCreateFlowStep.STACK,
+      ApplicationCreateFlowStep.NAME,
+      ApplicationCreateFlowStep.ORGANIZATION_UNIT,
+      ApplicationCreateFlowStep.CLIENT_TYPE,
       ApplicationCreateFlowStep.COMPLETE,
     ]);
   });

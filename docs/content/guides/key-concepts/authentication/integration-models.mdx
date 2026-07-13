@@ -291,6 +291,26 @@ Choose this approach when your application needs direct control over individual 
 
 See the [API Reference](/docs/next/apis/#tag/credentials) for endpoint specifications.
 
+### Direct Auth Secret
+
+Because Direct API endpoints take no application identifier and require no application registration, <ProductName /> gates them with a server-level secret. These endpoints are **secure by default**: they are blocked until you set `server.security.direct_auth_secret` in the deployment configuration. Once set, every call to a Direct API endpoint (`/auth/**` and `/register/passkey/**`) must include that value in the `Direct-Auth-Secret` header. A request with a missing or incorrect value — or any request while no secret is configured — is rejected with `401`.
+
+On a fresh setup, the `setup.sh` / `setup.ps1` script generates a secret, writes it to `deployment.yaml`, and prints it once — use that value, override it with `--direct-auth-secret`, or set your own in the configuration.
+
+This suits the intended Direct API callers — CLI tools, automation scripts, and server-to-server integrations — which can hold a configured secret. Browser and mobile applications, which cannot safely store a static secret, should use the [Redirect-Based](#redirect-based) or [App-Native](#app-native) model instead.
+
+```bash
+curl -X POST https://localhost:8090/auth/credentials/authenticate \
+  -H 'Content-Type: application/json' \
+  -H 'Direct-Auth-Secret: <direct-auth-secret>' \
+  -d '{
+    "identifiers": { "username": "thor" },
+    "credentials": { "password": "<password>" }
+  }'
+```
+
+See [Security Configuration](/docs/next/guides/getting-started/configuration#security-configuration) for details.
+
 ### Step-Up Authentication
 
 Direct API authentication supports step-up authentication. Pass an existing assertion token to any supported endpoint to enrich it with the new authentication method. Each additional method strengthens the authentication context.

@@ -237,6 +237,15 @@ describe('AgentCreatePage', () => {
         type: 'default',
         name: 'My Agent',
         owner: 'user-1',
+        inboundAuthConfig: [
+          expect.objectContaining({
+            type: 'oauth2',
+            config: expect.objectContaining({
+              grantTypes: ['client_credentials'],
+              pkceRequired: false,
+            }) as Record<string, unknown>,
+          }),
+        ],
       }),
       expect.any(Object),
     );

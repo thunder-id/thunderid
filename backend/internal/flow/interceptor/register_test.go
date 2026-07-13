@@ -22,11 +22,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/tests/mocks/captchamock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
-	"github.com/thunder-id/thunderid/tests/mocks/flow/interceptormock"
 )
 
 type InterceptorRegistryTestSuite struct {
@@ -208,18 +207,6 @@ func (s *InterceptorRegistryTestSuite) TestregisterInterceptors_NameWithWhitespa
 	assert.True(s.T(), registry.IsRegistered(ChallengeTokenInterceptor))
 }
 
-func (s *InterceptorRegistryTestSuite) TestregisterInterceptors_RegistryNotUpdated_ReturnsError() {
-	noOpReg := interceptormock.NewInterceptorRegistryInterfaceMock(s.T())
-	noOpReg.On("IsRegistered", ChallengeTokenInterceptor).Return(false)
-	noOpReg.On("RegisterInterceptor", mock.Anything, mock.Anything).Return()
-	deps := InterceptorDependencies{FlowFactory: newMockFlowFactory(s.T())}
-
-	err := registerInterceptors(deps, noOpReg, []string{ChallengeTokenInterceptor})
-
-	assert.Error(s.T(), err)
-	assert.Contains(s.T(), err.Error(), "was not registered successfully")
-}
-
 // --- sanitizeAndValidate ---
 
 func (s *InterceptorRegistryTestSuite) TestSanitizeAndValidate_ValidNames_ReturnsAll() {
@@ -284,4 +271,39 @@ func (s *InterceptorRegistryTestSuite) TestRegisterChallengeToken_ValidDeps_Regi
 
 	assert.NoError(s.T(), err)
 	assert.True(s.T(), registry.IsRegistered(ChallengeTokenInterceptor))
+}
+
+// --- registerCaptchaInterceptor ---
+
+func (s *InterceptorRegistryTestSuite) TestRegisterCaptcha_NilFlowFactory_Skips() {
+	registry := newInterceptorRegistry()
+	deps := InterceptorDependencies{FlowFactory: nil}
+
+	err := registerCaptchaInterceptor(deps, registry)
+
+	assert.NoError(s.T(), err)
+	assert.False(s.T(), registry.IsRegistered(CaptchaInterceptor))
+}
+
+func (s *InterceptorRegistryTestSuite) TestRegisterCaptcha_NilCaptchaService_Skips() {
+	registry := newInterceptorRegistry()
+	deps := InterceptorDependencies{FlowFactory: newCaptchaMockFlowFactory(s.T())}
+
+	err := registerCaptchaInterceptor(deps, registry)
+
+	assert.NoError(s.T(), err)
+	assert.False(s.T(), registry.IsRegistered(CaptchaInterceptor))
+}
+
+func (s *InterceptorRegistryTestSuite) TestRegisterCaptcha_ValidDeps_Registers() {
+	registry := newInterceptorRegistry()
+	deps := InterceptorDependencies{
+		FlowFactory:    newCaptchaMockFlowFactory(s.T()),
+		CaptchaService: captchamock.NewCaptchaValidationProviderMock(s.T()),
+	}
+
+	err := registerCaptchaInterceptor(deps, registry)
+
+	assert.NoError(s.T(), err)
+	assert.True(s.T(), registry.IsRegistered(CaptchaInterceptor))
 }

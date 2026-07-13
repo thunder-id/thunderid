@@ -71,12 +71,6 @@ var (
 		Query: `SELECT COUNT(*) as total FROM "THEME" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
-	// queryGetApplicationsCountByThemeID retrieves the count of inbound auth profiles using a theme.
-	queryGetApplicationsCountByThemeID = dbmodel.DBQuery{
-		ID:    "THQ-THEME_MGT-08",
-		Query: `SELECT COUNT(*) as total FROM "INBOUND_CLIENT" WHERE THEME_ID = $1 AND DEPLOYMENT_ID = $2`,
-	}
-
 	// queryCheckThemeHandleConflict checks if a theme handle already exists for a deployment (excluding a given ID).
 	queryCheckThemeHandleConflict = dbmodel.DBQuery{
 		ID:    "THQ-THEME_MGT-09",

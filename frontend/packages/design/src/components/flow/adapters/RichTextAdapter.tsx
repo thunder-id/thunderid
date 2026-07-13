@@ -157,7 +157,8 @@ export default function RichTextAdapter({
 
     return (
       <Box
-        className={cn('Flow--richText')}
+        id={component.id}
+        className={[cn('Flow--richText'), component.classes].filter(Boolean).join(' ')}
         sx={{mb: 1, textAlign: isDesignEnabled ? 'center' : 'left'}}
         onClick={handleClick}
         // eslint-disable-next-line react/no-danger
@@ -188,7 +189,8 @@ export default function RichTextAdapter({
 
     return (
       <Box
-        className={cn('Flow--richText')}
+        id={component.id}
+        className={[cn('Flow--richText'), component.classes].filter(Boolean).join(' ')}
         sx={{mb: 1, textAlign: isDesignEnabled ? 'center' : 'left'}}
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(resolvedLabel, {ADD_ATTR: ['target']})}}
@@ -213,7 +215,8 @@ export default function RichTextAdapter({
 
     return (
       <Box
-        className={cn('Flow--richText')}
+        id={component.id}
+        className={[cn('Flow--richText'), component.classes].filter(Boolean).join(' ')}
         sx={{mb: 1, textAlign: isDesignEnabled ? 'center' : 'left'}}
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(resolvedLabel)}}
@@ -232,7 +235,8 @@ export default function RichTextAdapter({
 
     return (
       <Box
-        className={cn('Flow--richText')}
+        id={component.id}
+        className={[cn('Flow--richText'), component.classes].filter(Boolean).join(' ')}
         sx={{mb: 1, textAlign: isDesignEnabled ? 'center' : 'left'}}
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(resolvedLabel)}}
@@ -257,7 +261,8 @@ export default function RichTextAdapter({
 
     return (
       <Box
-        className={cn('Flow--richText')}
+        id={component.id}
+        className={[cn('Flow--richText'), component.classes].filter(Boolean).join(' ')}
         sx={{mb: 1, textAlign: isDesignEnabled ? 'center' : 'left'}}
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(resolvedLabel)}}
@@ -269,7 +274,8 @@ export default function RichTextAdapter({
 
   return (
     <Box
-      className={cn('Flow--richText')}
+      id={component.id}
+      className={[cn('Flow--richText'), component.classes].filter(Boolean).join(' ')}
       sx={{mb: 1, textAlign: isDesignEnabled ? 'center' : 'left'}}
       // eslint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={{

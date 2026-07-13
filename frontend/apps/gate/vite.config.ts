@@ -34,9 +34,22 @@ const BASE_URL = process.env.BASE_URL ?? '/gate';
 const ANALYZER_ENABLED = process.env.ANALYZE === 'true';
 const BUNDLE_ANALYSIS_ENABLED = process.env.CODECOV_BUNDLE_UPLOAD === 'true';
 
+// Dev backend URL, from THUNDERID_DEV_SERVER_URL (default https://localhost:8090). Injected into
+// __DEV_SERVER_URL__ only for the dev server; production builds receive an empty string.
+const DEV_SERVER_URL = process.env.THUNDERID_DEV_SERVER_URL?.trim();
+
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({command}) => ({
   base: BASE_URL,
+  define: {
+    __DEV_SERVER_URL__: JSON.stringify(
+      command === 'serve'
+        ? DEV_SERVER_URL && DEV_SERVER_URL.length > 0
+          ? DEV_SERVER_URL
+          : 'https://localhost:8090'
+        : '',
+    ),
+  },
   build: {
     rollupOptions: {
       output: {
@@ -155,4 +168,4 @@ export default defineConfig({
       ],
     },
   },
-});
+}));

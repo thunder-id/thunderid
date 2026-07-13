@@ -1442,12 +1442,13 @@ inboundAuthConfig:
       requirePushedAuthorizationRequests: false
       token:
         accessToken:
-          validityPeriod: 3600
-          userAttributes:
-            - given_name
-            - family_name
-            - email
-            - groups
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - groups
         idToken:
           validityPeriod: 3600
           userAttributes:

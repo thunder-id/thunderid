@@ -46,9 +46,10 @@ interface MonacoLike {
  */
 interface JwtPreviewProps {
   /**
-   * The payload object to render as formatted JSON.
+   * The payload object to render as formatted JSON. Values are normally placeholder
+   * strings, but a claim like `act` may be a nested object.
    */
-  payload: Record<string, string>;
+  payload: Record<string, unknown>;
   /**
    * Claims that are always present by default. These are highlighted with a
    * dotted underline and show a descriptive tooltip on hover (like jwt.io).

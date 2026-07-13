@@ -1,13 +1,35 @@
 # Project Overview
 
-ThunderID is a lightweight user and identity management product. Go backend + React frontend in a monorepo. It provides authentication and authorization via OAuth2/OIDC, flexible orchestration flows, and individual auth mechanisms (password, passwordless, social login).
+ThunderID is a lightweight user and identity management product: a Go backend (`backend/`) and React frontend (`frontend/`) in a monorepo. It provides authentication and authorization via OAuth2/OIDC, flexible orchestration flows, and individual auth mechanisms (password, passwordless, social login).
 
-- [ARCHITECTURE.md](ARCHITECTURE.md)
-- For build and running - [Makefile](Makefile) and [README.md](README.md)
+- [ARCHITECTURE.md](ARCHITECTURE.md) — read only for cross-cutting changes
+- Build and run: [Makefile](Makefile) and [README.md](README.md)
 - Documentation at [docs/content](docs/content)
 
-Login Gate leverages v2 of the [ThunderID JavaScript SDK](https://github.com/thunder-id/thunderid/tree/main/sdks/javascript), consumed via its published package in typical setups.
-Clone the SDK repository only if you are developing or debugging the SDK itself, or testing the product against unreleased SDK changes.
+## Where to Look Next
+
+Load only the guidance the task needs:
+
+| Working on… | Read |
+|---|---|
+| Backend Go code | [backend/AGENTS.md](backend/AGENTS.md) |
+| Frontend React code | [frontend/AGENTS.md](frontend/AGENTS.md) |
+| Documentation | [docs/AGENTS.md](docs/AGENTS.md) |
+| Database schema, queries, or stores | [.agent/skills/db/SKILL.md](.agent/skills/db/SKILL.md) |
+| Browser automation / Console UI verification | [.agent/skills/console/SKILL.md](.agent/skills/console/SKILL.md) |
+
+The `.agent/skills/` entries above are internal guidance for **developing** ThunderID. Consumer-facing setup and framework-integration skills (`setup-thunderid`, `integrate-*`) live in the separate ThunderID Skills repository (installable via `/plugin marketplace add thunder-id/skills`) and are not used when working in this repo.
+
+## Search Hygiene
+
+- `rg` honors `.gitignore`, which already excludes build outputs, `node_modules`, `.claude/`, `/coverage`, `tests/e2e/distribution/`, `.turbo`, and generated API specs — don't search them.
+- Do not search mirror worktrees under `.claude/worktrees/` (they duplicate the repo and double your results).
+
+## Validation Ladder
+
+- **Inner loop**: run the smallest relevant checks for the area you touched. The scoped AGENTS files say which tests to run.
+- **Pre-PR gate**: `make pr_checks` — the authoritative gate (verify_mocks → lint → format_check → unit/frontend/integration tests → builds).
+- Note: `make test` is backend-only (unit + integration), not full-repo validation.
 
 ## Product Name Rules
 
@@ -22,43 +44,18 @@ Clone the SDK repository only if you are developing or debugging the SDK itself,
 - Prefer editing existing files over creating new ones.
 - Do not add new dependencies or modify CI/CD pipelines, GitHub Actions, or Makefiles without explicit approval.
 - Do not over-engineer. No premature abstractions, no feature flags, no backwards-compatibility shims.
-- Mocks are auto-generated via `make mockery`. Do not generate or modify mock files manually.
 - Delete dead code cleanly. No `// removed` or `// deprecated` placeholder comments. No renaming unused variables to `_` prefixed names — remove them entirely unless required by an interface, callback, or framework signature.
 - Do not create fallback tests with mock/hardcoded data when original tests fail. Fix the actual failing tests.
-- Do not add error handling for scenarios that cannot happen.
 - Write tests for new features and bug fixes (target 80%+ coverage).
-- Ensure proper error handling and logging at appropriate layers — not everywhere, just where failures are expected and actionable.
-- Ensure all identity-related code aligns with relevant RFC specifications.
-- Declarative resource attributes use camelCase, matching the REST API. The `yaml` struct tag must use the same camelCase name as the field's `json` tag (for example `yaml:"ouId"`, not `yaml:"ou_id"`). This does not apply to non-declarative YAML such as `deployment.yaml` server config, or to `json` tags for protocol payloads (OAuth, DCR) that follow their own RFC conventions.
-- Use `make lint` and `make test` to verify code quality and correctness before committing.
-- For architecture diagrams, flow diagrams, sequence diagrams, and similar visuals in documentation, prefer Mermaid over hand-drawn rect/box components (e.g. raw SVG, ASCII art, or manually positioned shapes). Only fall back to non-Mermaid components when the diagram requires layout Mermaid cannot express.
+- Add error handling and logging only where failures are expected and actionable — not for scenarios that cannot happen, and not everywhere.
 
 ## Git and PR Conventions
 
-- Adhere to .github/pull_request_template.md
+- Adhere to [.github/pull_request_template.md](.github/pull_request_template.md).
 
 ### Commit Messages
 - Use short imperative sentences without conventional commit prefixes (no `feat:`, `fix:`, etc.).
 - Reference the related issue or pull request when applicable (e.g., `Refs #123` or `Fixes #123`).
 
 ### One Commit Per Pull Request
-- Each PR must have a single commit. Only add a second commit when strictly necessary. Never leave intermediate or fixup commits in the PR.
-
-## Agent Skills
-
-- [Console Navigator](.agent/skills/console/SKILL.md) — Browse and interact with the Console UI using `playwright-cli`. Use when asked to navigate the console, test UI changes, or create/edit resources through the browser.
-- [Database](.agent/skills/db/SKILL.md) — Database schema design principles and query conventions. Use for any database-related work.
-
-## Contributing Guidelines
-
-- [`docs/content/community/contributing/contributing-code/backend-development/overview.mdx`](docs/content/community/contributing/contributing-code/backend-development/overview.mdx) — Go backend: package structure, database patterns, error handling, service initialization, transactions, testing
-- [`docs/content/community/contributing/contributing-code/frontend-development/overview.mdx`](docs/content/community/contributing/contributing-code/frontend-development/overview.mdx) — React/TypeScript: component patterns, testing, linting
-- [`docs/AGENTS.md`](/docs/AGENTS.md) — Documentation authoring standards and component development standards (product name templating, Oxygen UI components, icons, styling, custom.css governance)
-
-# Agent Guidance Index
-
-Agent skills live under `.agent/skills/`.
-
-- Database schema and query conventions: `.agent/skills/db/SKILL.md`
-
-For any database-related work, follow `.agent/skills/db/SKILL.md`.
+- Each PR must have a single commit. Never leave intermediate or fixup commits in the PR.

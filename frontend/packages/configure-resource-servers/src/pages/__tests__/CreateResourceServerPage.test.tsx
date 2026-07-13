@@ -18,6 +18,7 @@
 
 import {renderWithProviders, screen, fireEvent, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
+import type {ResourceServer} from '../../models/resource-server';
 import CreateResourceServerPage from '../CreateResourceServerPage';
 
 const mockNavigate = vi.fn();
@@ -34,12 +35,14 @@ vi.mock('@thunderid/react', () => ({
   useThunderID: () => ({http: {request: vi.fn()}}),
 }));
 
+const mockShowToast = vi.fn();
+
 vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
     ...actual,
     useConfig: () => ({getServerUrl: () => 'http://localhost:8090'}),
-    useToast: () => ({showToast: vi.fn()}),
+    useToast: () => ({showToast: mockShowToast}),
   };
 });
 
@@ -51,8 +54,10 @@ vi.mock('@thunderid/utils', () => ({
   generateRandomHumanReadableIdentifiers: () => ['Alpha Service', 'Beta Platform'],
 }));
 
+const mockCreateResourceServerMutate = vi.fn();
+
 vi.mock('../../api/useCreateResourceServer', () => ({
-  default: () => ({mutate: vi.fn(), isPending: false}),
+  default: () => ({mutate: mockCreateResourceServerMutate, isPending: false}),
 }));
 
 vi.mock('@thunderid/configure-organization-units', () => ({
@@ -150,6 +155,93 @@ describe('CreateResourceServerPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/payments-api/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows the MCP server name label after selecting the MCP type', async () => {
+    renderWithProviders(<CreateResourceServerPage />);
+
+    fireEvent.click(screen.getByRole('button', {name: /MCP/i}));
+    fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', {name: /mcp server name/i})).toBeInTheDocument();
+    });
+  });
+
+  it('shows the Create MCP server submit button on the last step after selecting the MCP type', async () => {
+    renderWithProviders(<CreateResourceServerPage />);
+
+    fireEvent.click(screen.getByRole('button', {name: /MCP/i}));
+    fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', {name: /mcp server name/i})).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByRole('textbox', {name: /mcp server name/i}), {
+      target: {value: 'Payments MCP'},
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', {name: /Create MCP server/i})).toBeInTheDocument();
+    });
+  });
+
+  it('shows the Create resource server submit button on the last step after selecting the API type', async () => {
+    renderWithProviders(<CreateResourceServerPage />);
+
+    fireEvent.click(screen.getByRole('button', {name: /API/i}));
+    fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', {name: /resource server name/i})).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByRole('textbox', {name: /resource server name/i}), {
+      target: {value: 'Payments API'},
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', {name: /Create resource server/i})).toBeInTheDocument();
+    });
+  });
+
+  it('shows the MCP server created success toast after a successful MCP server creation', async () => {
+    mockCreateResourceServerMutate.mockImplementationOnce(
+      (_payload: unknown, options: {onSuccess: (created: ResourceServer) => void}) => {
+        options.onSuccess({id: 'mcp-rs-1'} as ResourceServer);
+      },
+    );
+
+    renderWithProviders(<CreateResourceServerPage />);
+
+    fireEvent.click(screen.getByRole('button', {name: /MCP/i}));
+    fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', {name: /mcp server name/i})).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByRole('textbox', {name: /mcp server name/i}), {
+      target: {value: 'Payments MCP'},
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', {name: /Create MCP server/i})).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: /Create MCP server/i}));
+
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith('MCP server created successfully.', 'success');
+      expect(mockNavigate).toHaveBeenCalledWith('/resource-servers/mcp-rs-1?tab=resources');
     });
   });
 });

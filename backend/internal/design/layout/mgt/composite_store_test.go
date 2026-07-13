@@ -349,27 +349,6 @@ func (suite *CompositeLayoutStoreTestSuite) TestDeleteLayout_FileStoreCheckError
 	suite.Equal(testErr, err)
 }
 
-// Test GetApplicationsCountByLayoutID - Delegates to DB store
-func (suite *CompositeLayoutStoreTestSuite) TestGetApplicationsCountByLayoutID() {
-	suite.mockDBStore.On("GetApplicationsCountByLayoutID", "layout1").Return(5, nil)
-
-	count, err := suite.store.GetApplicationsCountByLayoutID("layout1")
-
-	suite.NoError(err)
-	suite.Equal(5, count)
-}
-
-// Test GetApplicationsCountByLayoutID - DB store error
-func (suite *CompositeLayoutStoreTestSuite) TestGetApplicationsCountByLayoutID_Error() {
-	testErr := errors.New("db error")
-	suite.mockDBStore.On("GetApplicationsCountByLayoutID", "layout1").Return(0, testErr)
-
-	_, err := suite.store.GetApplicationsCountByLayoutID("layout1")
-
-	suite.Error(err)
-	suite.Equal(testErr, err)
-}
-
 // Test IsLayoutDeclarative - True for file-based layout
 func (suite *CompositeLayoutStoreTestSuite) TestIsLayoutDeclarative_True() {
 	suite.mockFileStore.On("IsLayoutExist", "layout1").Return(true, nil)

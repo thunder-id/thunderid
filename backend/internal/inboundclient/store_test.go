@@ -834,7 +834,7 @@ func (suite *InboundClientStoreTestSuite) TestGetEntityIDsByReference_Flow() {
 
 func (suite *InboundClientStoreTestSuite) TestGetEntityIDsByReference_UnknownTypeSkipsDB() {
 	ids, total, err := suite.store.GetEntityIDsByReference(
-		context.Background(), "layout", "layout-1", 10, 0)
+		context.Background(), "unknownReferenceType", "ref-1", 10, 0)
 	suite.NoError(err)
 	suite.Equal(0, total)
 	suite.Empty(ids)

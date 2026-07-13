@@ -17,10 +17,25 @@
  */
 
 import {useBaseUrlUtils} from '@docusaurus/useBaseUrl';
+import {styled} from '@wso2/oxygen-ui';
 import React, {ReactNode, useEffect, useMemo, useState} from 'react';
 import IOSLogo from '@site/src/components/icons/IOSLogo';
 import LinuxLogo from '@site/src/components/icons/LinuxLogo';
 import WindowsLogo from '@site/src/components/icons/WindowsLogo';
+import {
+  OtherDownloadsActionIcon,
+  OtherDownloadsArchitecture,
+  OtherDownloadsArchitectureBadge,
+  OtherDownloadsArchitectureInfo,
+  OtherDownloadsArchitectureMeta,
+  OtherDownloadsArchitectureTitle,
+  OtherDownloadsArchitectures,
+  OtherDownloadsCard,
+  OtherDownloadsGrid,
+  OtherDownloadsHeader,
+  OtherDownloadsHeaderTitle,
+  OtherDownloadsOsIcon,
+} from '@site/src/components/OtherDownloadsGrid';
 import usePlatform from '@site/src/hooks/usePlatform';
 import {
   groupAssetsByOs,
@@ -81,6 +96,101 @@ const OS_LABELS: Record<OsKey, string> = {
   win: 'Windows',
 };
 
+const DownloadFeature = styled('div')<{ownerState: {compact: boolean}}>(({ownerState}) => ({
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) auto',
+  gap: ownerState.compact ? '1rem' : '1.25rem',
+  alignItems: 'center',
+  marginBottom: '1rem',
+  padding: ownerState.compact ? '1rem 1.1rem' : '1.35rem',
+  borderRadius: ownerState.compact ? '1rem' : '1.25rem',
+  border: '1px solid var(--ifm-color-emphasis-200)',
+  background: 'var(--oxygen-palette-background-paper)',
+  '@media (max-width: 996px)': {
+    gridTemplateColumns: '1fr',
+  },
+}));
+
+const DownloadFeatureCopy = styled('div')({
+  display: 'grid',
+  gap: '0.65rem',
+  minWidth: 0,
+});
+
+const DownloadFeatureKicker = styled('span')<{ownerState: {compact: boolean}}>(({ownerState}) => ({
+  color: 'var(--ifm-color-primary)',
+  fontSize: ownerState.compact ? '0.7rem' : '0.78rem',
+  fontWeight: 700,
+  letterSpacing: '0.04em',
+  textTransform: 'uppercase',
+}));
+
+const DownloadFeatureTitle = styled('h3')<{ownerState: {compact: boolean}}>(({ownerState}) => ({
+  margin: 0,
+  fontSize: ownerState.compact ? '1.15rem' : '1.5rem',
+}));
+
+const DownloadFeatureMeta = styled('div')<{ownerState: {compact: boolean}}>(({ownerState}) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: ownerState.compact ? '0.4rem 0.85rem' : '0.65rem 1rem',
+  minWidth: 0,
+  overflowWrap: 'anywhere',
+  color: 'var(--ifm-color-emphasis-600)',
+  fontSize: ownerState.compact ? '0.82rem' : '0.9rem',
+}));
+
+const DownloadPrimaryButton = styled('a')<{ownerState: {compact: boolean}}>(({ownerState}) => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.75rem',
+  minHeight: ownerState.compact ? '2.4rem' : '2.9rem',
+  padding: ownerState.compact ? '0.45rem 0.85rem' : '0.65rem 1rem',
+  borderRadius: '999px',
+  background: 'var(--ifm-color-primary)',
+  color: '#fff',
+  fontSize: ownerState.compact ? '0.82rem' : '0.92rem',
+  fontWeight: 700,
+  textDecoration: 'none',
+  transition: 'background 0.15s, transform 0.15s, box-shadow 0.15s',
+  '&:hover': {
+    background: 'var(--ifm-color-primary-dark)',
+    color: '#fff',
+    textDecoration: 'none',
+    transform: 'translateY(-2px)',
+    boxShadow: '0 14px 30px rgb(var(--oxygen-palette-primary-mainChannel) / 0.35)',
+  },
+  '@media (max-width: 996px)': {
+    width: '100%',
+  },
+}));
+
+const DownloadIcon = styled('span')<{ownerState: {compact: boolean}}>(({ownerState}) => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: ownerState.compact ? '1.45rem' : '1.8rem',
+  height: ownerState.compact ? '1.45rem' : '1.8rem',
+  borderRadius: '999px',
+  background: 'rgb(var(--oxygen-palette-primary-mainChannel) / 0.1)',
+  color: 'var(--ifm-color-primary)',
+}));
+
+const OtherDownloadsDetails = styled('details')({
+  marginTop: '1rem',
+  '& > summary': {
+    cursor: 'pointer',
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    color: 'var(--ifm-color-emphasis-700)',
+    padding: '0.4rem 0',
+  },
+  '&[open] > summary': {
+    marginBottom: '0.75rem',
+  },
+});
+
 /**
  * A card component that displays a download link for the latest release asset matching a specified pattern,
  * with optional support for showing all platform options and additional footer content.
@@ -98,6 +208,7 @@ export default function DownloadCard({
   const [assets, setAssets] = useState<DistributionAsset[] | null>(null);
   const [tag, setTag] = useState<string>('');
   const [errored, setErrored] = useState(false);
+  const ownerState = {compact};
 
   useEffect(() => {
     const controller = new AbortController();
@@ -135,31 +246,25 @@ export default function DownloadCard({
     return null;
   }
 
-  const wrapperClass = `download-card${compact ? ' download-card--compact' : ''}`;
-
   return (
-    <div className={wrapperClass}>
-      <div className="releases-download-feature">
-        <div className="releases-download-feature-copy">
-          <span className="releases-download-feature-kicker">
+    <div>
+      <DownloadFeature ownerState={ownerState}>
+        <DownloadFeatureCopy>
+          <DownloadFeatureKicker ownerState={ownerState}>
             {matched ? 'Recommended for this device' : 'Selected download'}
-          </span>
-          <h3>
+          </DownloadFeatureKicker>
+          <DownloadFeatureTitle ownerState={ownerState}>
             {selected.osLabel} · {selected.archLabel}
-          </h3>
-          <div className="releases-download-feature-meta">
+          </DownloadFeatureTitle>
+          <DownloadFeatureMeta ownerState={ownerState}>
             <span>{selected.sizeLabel}</span>
             {tag ? <span>{tag}</span> : null}
             <span>{selected.name}</span>
-          </div>
-        </div>
-        <a className="releases-download-primary" href={selected.downloadUrl} target="_blank" rel="noreferrer">
+          </DownloadFeatureMeta>
+        </DownloadFeatureCopy>
+        <DownloadPrimaryButton ownerState={ownerState} href={selected.downloadUrl} target="_blank" rel="noreferrer">
           <span>Download for {selected.osLabel}</span>
-          <span
-            className="releases-download-icon"
-            aria-hidden="true"
-            style={{display: 'inline-flex', alignItems: 'center'}}
-          >
+          <DownloadIcon ownerState={ownerState} aria-hidden="true">
             <svg
               viewBox="0 0 24 24"
               fill="none"
@@ -173,50 +278,50 @@ export default function DownloadCard({
               <path d="m7 10 5 5 5-5" />
               <path d="M5 21h14" />
             </svg>
-          </span>
-        </a>
-      </div>
+          </DownloadIcon>
+        </DownloadPrimaryButton>
+      </DownloadFeature>
       {showAllPlatforms && groups.length > 0
         ? (() => {
             const grid = (
-              <div className="releases-other-downloads-grid">
+              <OtherDownloadsGrid ownerState={ownerState}>
                 {groups.map(({os, assets: osAssets}) => (
-                  <section key={os} className="releases-other-downloads-card">
-                    <header className="releases-other-downloads-header">
-                      <span aria-hidden="true" className="releases-other-downloads-os-icon">
-                        {OS_ICONS[os]}
-                      </span>
-                      <h4>{OS_LABELS[os]}</h4>
-                    </header>
-                    <div className="releases-other-downloads-architectures">
+                  <OtherDownloadsCard key={os}>
+                    <OtherDownloadsHeader>
+                      <OtherDownloadsOsIcon aria-hidden="true">{OS_ICONS[os]}</OtherDownloadsOsIcon>
+                      <OtherDownloadsHeaderTitle>{OS_LABELS[os]}</OtherDownloadsHeaderTitle>
+                    </OtherDownloadsHeader>
+                    <OtherDownloadsArchitectures>
                       {osAssets.map((asset) => {
                         const isRecommended = asset.downloadUrl === selected.downloadUrl;
                         return (
-                          <a
+                          <OtherDownloadsArchitecture
                             key={asset.name}
-                            className="releases-other-downloads-architecture"
                             href={asset.downloadUrl}
                             target="_blank"
                             rel="noreferrer"
                           >
-                            <span className="releases-other-downloads-architecture-title">
-                              {asset.osLabel} {asset.archLabel} ({asset.name.slice(asset.name.lastIndexOf('.'))})
-                            </span>
-                            <span className="releases-other-downloads-architecture-meta">{asset.sizeLabel}</span>
-                            {isRecommended ? <em>Recommended</em> : null}
-                          </a>
+                            <OtherDownloadsArchitectureInfo>
+                              <OtherDownloadsArchitectureTitle>
+                                {asset.osLabel} {asset.archLabel} ({asset.name.slice(asset.name.lastIndexOf('.'))})
+                              </OtherDownloadsArchitectureTitle>
+                              <OtherDownloadsArchitectureMeta>{asset.sizeLabel}</OtherDownloadsArchitectureMeta>
+                              {isRecommended ? <OtherDownloadsArchitectureBadge>Recommended</OtherDownloadsArchitectureBadge> : null}
+                            </OtherDownloadsArchitectureInfo>
+                            <OtherDownloadsActionIcon />
+                          </OtherDownloadsArchitecture>
                         );
                       })}
-                    </div>
-                  </section>
+                    </OtherDownloadsArchitectures>
+                  </OtherDownloadsCard>
                 ))}
-              </div>
+              </OtherDownloadsGrid>
             );
             return collapseOtherPlatforms ? (
-              <details className="download-card__other">
+              <OtherDownloadsDetails>
                 <summary>Other Download Options</summary>
                 {grid}
-              </details>
+              </OtherDownloadsDetails>
             ) : (
               grid
             );

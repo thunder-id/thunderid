@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/role"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
@@ -36,8 +37,9 @@ func Initialize(
 	entityService entity.EntityServiceInterface,
 	inboundClientService inboundclient.InboundClientServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
+	roleService role.RoleServiceInterface,
 ) (AgentServiceInterface, declarativeresource.ResourceExporter, error) {
-	service := newAgentService(entityService, inboundClientService, ouService)
+	service := newAgentService(entityService, inboundClientService, ouService, roleService)
 
 	storeMode := getAgentStoreMode()
 	if storeMode == serverconst.StoreModeComposite || storeMode == serverconst.StoreModeDeclarative {
@@ -93,4 +95,6 @@ func registerRoutes(mux *http.ServeMux, h *agentHandler) {
 	}
 	mux.HandleFunc(middleware.WithCORS("GET /agents/{id}/groups",
 		h.HandleAgentGroupsRequest, groupsOpts))
+	mux.HandleFunc(middleware.WithCORS("GET /agents/{id}/roles",
+		h.HandleAgentRolesRequest, groupsOpts))
 }

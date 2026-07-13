@@ -40,21 +40,21 @@ export interface ConfigContextType {
 
   /**
    * Gets the server hostname from the configuration
-   * @returns The server hostname (e.g., "localhost")
+   * @returns The server hostname (e.g., "localhost"), or undefined when not configured
    */
-  getServerHostname: () => string;
+  getServerHostname: () => string | undefined;
 
   /**
    * Gets the server port from the configuration
-   * @returns The server port number (e.g., 8090)
+   * @returns The server port number (e.g., 8090), or undefined when not configured
    */
-  getServerPort: () => number;
+  getServerPort: () => number | undefined;
 
   /**
    * Checks if HTTP-only mode is enabled in the configuration
-   * @returns True if HTTP-only mode is enabled, false if HTTPS is used
+   * @returns True if HTTP-only mode is enabled, false if HTTPS is used, or undefined when not configured
    */
-  isHttpOnly: () => boolean;
+  isHttpOnly: () => boolean | undefined;
 
   /**
    * Gets the client ID from the configuration
@@ -67,6 +67,12 @@ export interface ConfigContextType {
    * @returns The scopes array (e.g., ["openid", "profile", "email", "system"])
    */
   getScopes: () => string[];
+
+  /**
+   * Gets the resource server identifier from the configuration
+   * @returns The identifier string, or undefined if not configured
+   */
+  getResourceIdentifier: () => string | undefined;
 
   /**
    * Gets the complete client URL including protocol, hostname, port, and base path

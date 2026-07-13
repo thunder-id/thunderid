@@ -16,14 +16,17 @@
  * under the License.
  */
 
+import {
+  AuthenticatorTypes,
+  IdentityProviderTypes,
+  getConnectionIcon,
+  type IdentityProvider,
+} from '@thunderid/configure-connections';
 import {List, Divider} from '@wso2/oxygen-ui';
 import {UserRound, Google, GitHub, KeyRound} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import AuthenticationMethodItem from './AuthenticationMethodItem';
-import {AuthenticatorTypes} from '@/features/connections/models/authenticators';
-import {type IdentityProvider, IdentityProviderTypes} from '@/features/connections/models/identity-provider';
-import getConnectionIcon from '@/features/connections/utils/getConnectionIcon';
 
 /**
  * Props for the IndividualMethodsToggleView component

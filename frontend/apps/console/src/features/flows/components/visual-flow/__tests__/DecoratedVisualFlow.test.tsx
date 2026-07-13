@@ -125,8 +125,9 @@ vi.mock('../../../utils/computeExecutorConnections', () => ({
   default: vi.fn(() => []),
 }));
 
-vi.mock('@/features/connections/api/useIdentityProviders', () => ({
-  default: () => ({data: []}),
+vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
+  useIdentityProviders: () => ({data: []}),
 }));
 
 vi.mock('@/features/notification-senders/api/useNotificationSenders', () => ({

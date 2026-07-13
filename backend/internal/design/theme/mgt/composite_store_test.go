@@ -349,27 +349,6 @@ func (suite *CompositeThemeStoreTestSuite) TestDeleteTheme_FileStoreCheckError()
 	suite.Equal(testErr, err)
 }
 
-// Test GetApplicationsCountByThemeID - Delegates to DB store
-func (suite *CompositeThemeStoreTestSuite) TestGetApplicationsCountByThemeID() {
-	suite.mockDBStore.On("GetApplicationsCountByThemeID", "theme1").Return(5, nil)
-
-	count, err := suite.store.GetApplicationsCountByThemeID("theme1")
-
-	suite.NoError(err)
-	suite.Equal(5, count)
-}
-
-// Test GetApplicationsCountByThemeID - DB store error
-func (suite *CompositeThemeStoreTestSuite) TestGetApplicationsCountByThemeID_Error() {
-	testErr := errors.New("db error")
-	suite.mockDBStore.On("GetApplicationsCountByThemeID", "theme1").Return(0, testErr)
-
-	_, err := suite.store.GetApplicationsCountByThemeID("theme1")
-
-	suite.Error(err)
-	suite.Equal(testErr, err)
-}
-
 // Test IsThemeDeclarative - True for file-based theme
 func (suite *CompositeThemeStoreTestSuite) TestIsThemeDeclarative_True() {
 	suite.mockFileStore.On("IsThemeExist", "theme1").Return(true, nil)

@@ -236,20 +236,6 @@ func (suite *ThemeStoreTestSuite) TestDeleteTheme_Success() {
 	assert.NoError(suite.T(), err)
 }
 
-// Test GetApplicationsCountByThemeID - Success
-func (suite *ThemeStoreTestSuite) TestGetApplicationsCountByThemeID_Success() {
-	results := []map[string]interface{}{
-		{"total": int64(3)},
-	}
-	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-	suite.mockDBClient.On("Query", mock.Anything, "theme-123", "test-deployment").Return(results, nil)
-
-	count, err := suite.store.GetApplicationsCountByThemeID("theme-123")
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), 3, count)
-}
-
 // Test parseCountResult helper
 func (suite *ThemeStoreTestSuite) TestParseCountResult_Int64() {
 	results := []map[string]interface{}{{"total": int64(42)}}

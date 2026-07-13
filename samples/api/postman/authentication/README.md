@@ -4,7 +4,7 @@ This Postman collection demonstrates the main authentication/registration capabi
 
 ## Demo Scenarios
 
-### 1. Authenticate with Atomic APIs
+### 1. Authenticate with Direct API endpoints
 Individual authentication endpoints that can be used independently for specific authentication mechanisms:
 - **Credential Login** - Username/password and email/password authentication
 - **SMS OTP Login** - Send and verify SMS OTP
@@ -35,7 +35,7 @@ User self-registration flows:
 ```
 ├── 01 - Set Token              # Obtain access token for management APIs
 ├── 02 - Setup Resources        # Create demo resources (OU, schemas, integrations, users, apps, flows)
-├── 03 - Authenticate with Atomic APIs
+├── 03 - Authenticate with Direct API endpoints
 │   ├── 03.01 - Credential Login
 │   ├── 03.02 - SMS OTP Login
 │   ├── 03.03 - Google Login
@@ -245,7 +245,7 @@ Run the requests in `02 - Setup Resources` folder to create:
 ### Step 4: Run Authentication Demos
 
 Choose any of the authentication demo folders:
-- `03 - Authenticate with Atomic APIs` - For individual authentication mechanism demos
+- `03 - Authenticate with Direct API endpoints` - For individual authentication mechanism demos
 - `04 - Authenticate with Flow Native APIs` - For flow-based authentication demos
 - `05 - Registration with Flow Native APIs` - For user registration demos
 - `06 - Authenticate with OAuth (Standard Based)` - For OAuth 2.0 flow demo

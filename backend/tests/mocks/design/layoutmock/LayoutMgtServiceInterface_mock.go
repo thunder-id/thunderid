@@ -9,6 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/design/layout/mgt"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -314,6 +315,88 @@ func (_c *LayoutMgtServiceInterfaceMock_GetLayoutList_Call) RunAndReturn(run fun
 	return _c
 }
 
+// GetLayoutUsages provides a mock function for the type LayoutMgtServiceInterfaceMock
+func (_mock *LayoutMgtServiceInterfaceMock) GetLayoutUsages(ctx context.Context, id string, limit int, offset int) (*resourcedependency.DependenciesResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, id, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLayoutUsages")
+	}
+
+	var r0 *resourcedependency.DependenciesResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*resourcedependency.DependenciesResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, id, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) *resourcedependency.DependenciesResponse); ok {
+		r0 = returnFunc(ctx, id, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*resourcedependency.DependenciesResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, id, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// LayoutMgtServiceInterfaceMock_GetLayoutUsages_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLayoutUsages'
+type LayoutMgtServiceInterfaceMock_GetLayoutUsages_Call struct {
+	*mock.Call
+}
+
+// GetLayoutUsages is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+//   - limit int
+//   - offset int
+func (_e *LayoutMgtServiceInterfaceMock_Expecter) GetLayoutUsages(ctx interface{}, id interface{}, limit interface{}, offset interface{}) *LayoutMgtServiceInterfaceMock_GetLayoutUsages_Call {
+	return &LayoutMgtServiceInterfaceMock_GetLayoutUsages_Call{Call: _e.mock.On("GetLayoutUsages", ctx, id, limit, offset)}
+}
+
+func (_c *LayoutMgtServiceInterfaceMock_GetLayoutUsages_Call) Run(run func(ctx context.Context, id string, limit int, offset int)) *LayoutMgtServiceInterfaceMock_GetLayoutUsages_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *LayoutMgtServiceInterfaceMock_GetLayoutUsages_Call) Return(dependenciesResponse *resourcedependency.DependenciesResponse, serviceError *common.ServiceError) *LayoutMgtServiceInterfaceMock_GetLayoutUsages_Call {
+	_c.Call.Return(dependenciesResponse, serviceError)
+	return _c
+}
+
+func (_c *LayoutMgtServiceInterfaceMock_GetLayoutUsages_Call) RunAndReturn(run func(ctx context.Context, id string, limit int, offset int) (*resourcedependency.DependenciesResponse, *common.ServiceError)) *LayoutMgtServiceInterfaceMock_GetLayoutUsages_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IsLayoutExist provides a mock function for the type LayoutMgtServiceInterfaceMock
 func (_mock *LayoutMgtServiceInterfaceMock) IsLayoutExist(ctx context.Context, id string) (bool, *common.ServiceError) {
 	ret := _mock.Called(ctx, id)
@@ -379,6 +462,46 @@ func (_c *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call) Return(b bool, servi
 
 func (_c *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call) RunAndReturn(run func(ctx context.Context, id string) (bool, *common.ServiceError)) *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call {
 	_c.Call.Return(run)
+	return _c
+}
+
+// SetDependencyRegistry provides a mock function for the type LayoutMgtServiceInterfaceMock
+func (_mock *LayoutMgtServiceInterfaceMock) SetDependencyRegistry(r resourcedependency.Registry) {
+	_mock.Called(r)
+	return
+}
+
+// LayoutMgtServiceInterfaceMock_SetDependencyRegistry_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetDependencyRegistry'
+type LayoutMgtServiceInterfaceMock_SetDependencyRegistry_Call struct {
+	*mock.Call
+}
+
+// SetDependencyRegistry is a helper method to define mock.On call
+//   - r resourcedependency.Registry
+func (_e *LayoutMgtServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *LayoutMgtServiceInterfaceMock_SetDependencyRegistry_Call {
+	return &LayoutMgtServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
+}
+
+func (_c *LayoutMgtServiceInterfaceMock_SetDependencyRegistry_Call) Run(run func(r resourcedependency.Registry)) *LayoutMgtServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 resourcedependency.Registry
+		if args[0] != nil {
+			arg0 = args[0].(resourcedependency.Registry)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *LayoutMgtServiceInterfaceMock_SetDependencyRegistry_Call) Return() *LayoutMgtServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *LayoutMgtServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run func(r resourcedependency.Registry)) *LayoutMgtServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Run(run)
 	return _c
 }
 

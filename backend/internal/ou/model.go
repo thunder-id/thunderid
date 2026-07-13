@@ -21,6 +21,7 @@ package ou
 import (
 	"context"
 
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -65,6 +66,8 @@ type UserListResponse struct {
 type OUUserResolver interface {
 	GetUserCountByOUID(ctx context.Context, ouID string) (int, error)
 	GetUserListByOUID(ctx context.Context, ouID string, limit, offset int, includeDisplay bool) ([]User, error)
+	GetResourceDependencies(
+		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 }
 
 // OUGroupResolver provides access to group data for an organization unit
@@ -72,6 +75,8 @@ type OUUserResolver interface {
 type OUGroupResolver interface {
 	GetGroupCountByOUID(ctx context.Context, ouID string) (int, error)
 	GetGroupListByOUID(ctx context.Context, ouID string, limit, offset int) ([]Group, error)
+	GetResourceDependencies(
+		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 }
 
 // GroupListResponse represents the response for listing groups in an organization unit.

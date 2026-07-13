@@ -2242,8 +2242,9 @@ func (suite *TokenValidatorTestSuite) TestValidateAccessToken_Error_EmptyClientI
 // ============================================================================
 
 const (
-	testExternalIssuer = "https://external-idp.example.com"
-	testExternalJWKS   = "https://external-idp.example.com/.well-known/jwks.json"
+	testExternalIssuer       = "https://external-idp.example.com"
+	testExternalJWKS         = "https://external-idp.example.com/.well-known/jwks.json"
+	testTrustedTokenAudience = "google-client-id.apps.googleusercontent.com"
 )
 
 type ExternalIDPValidatorTestSuite struct {
@@ -2301,6 +2302,68 @@ func buildExternalIDPDTOs() []providers.IDPDTO {
 	return []providers.IDPDTO{
 		{Properties: []cmodels.Property{*propTokenExchange, *propJWKS, *propIssuer}},
 	}
+}
+
+func buildExternalIDPDTOsWithAudience() []providers.IDPDTO {
+	idpDTOs := buildExternalIDPDTOs()
+	propAudience, _ := cmodels.NewProperty(idp.PropTrustedTokenAudience, testTrustedTokenAudience, false)
+	idpDTOs[0].Properties = append(idpDTOs[0].Properties, *propAudience)
+	return idpDTOs
+}
+
+func (suite *ExternalIDPValidatorTestSuite) validateConfiguredAudienceSubjectToken(
+	aud interface{},
+) *SubjectTokenClaims {
+	now := time.Now().Unix()
+	claims := map[string]interface{}{
+		"sub": "ext-user-123",
+		"iss": testExternalIssuer,
+		"aud": aud,
+		"exp": float64(now + 3600),
+		"nbf": float64(now - 60),
+	}
+	token := suite.createExternalJWT(claims)
+	idpDTOs := buildExternalIDPDTOsWithAudience()
+
+	suite.mockIDPService.On("GetIdentityProvidersByProperty", context.Background(),
+		idp.PropIssuer, testExternalIssuer).Return(idpDTOs, nil)
+	suite.mockJWTService.On("VerifyJWTSignatureWithJWKS", mock.Anything, token, testExternalJWKS).Return(nil)
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockIDPService.AssertExpectations(suite.T())
+	suite.mockJWTService.AssertExpectations(suite.T())
+	return result
+}
+
+func (suite *ExternalIDPValidatorTestSuite) validateRejectedExternalAudience(
+	aud interface{},
+	idpDTOs []providers.IDPDTO,
+) {
+	now := time.Now().Unix()
+	claims := map[string]interface{}{
+		"sub": "ext-user-123",
+		"iss": testExternalIssuer,
+		"aud": aud,
+		"exp": float64(now + 3600),
+		"nbf": float64(now - 60),
+	}
+	token := suite.createExternalJWT(claims)
+
+	suite.mockIDPService.On("GetIdentityProvidersByProperty", context.Background(),
+		idp.PropIssuer, testExternalIssuer).Return(idpDTOs, nil)
+	suite.mockJWTService.On("VerifyJWTSignatureWithJWKS", mock.Anything, token, testExternalJWKS).Return(nil)
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Contains(suite.T(), err.Error(),
+		"external token audience does not contain expected server issuer")
+	suite.mockIDPService.AssertExpectations(suite.T())
+	suite.mockJWTService.AssertExpectations(suite.T())
 }
 
 // createExternalJWT creates a signed-looking JWT for an external IDP test.
@@ -2364,29 +2427,27 @@ func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
 
+func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP_Success_ConfiguredAudience() {
+	result := suite.validateConfiguredAudienceSubjectToken(testTrustedTokenAudience)
+	assert.Equal(suite.T(), "ext-user-123", result.Sub)
+}
+
+func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP_Success_ServerIssuerAud() {
+	result := suite.validateConfiguredAudienceSubjectToken("https://example.com")
+	assert.Equal(suite.T(), "ext-user-123", result.Sub)
+}
+
+func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP_Success_ConfiguredAudienceList() {
+	result := suite.validateConfiguredAudienceSubjectToken([]interface{}{testTrustedTokenAudience, "other-audience"})
+	assert.Equal(suite.T(), "ext-user-123", result.Sub)
+}
+
 func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP_Error_AudNotServerIssuer() {
-	now := time.Now().Unix()
-	claims := map[string]interface{}{
-		"sub": "ext-user-123",
-		"iss": testExternalIssuer,
-		"aud": "some-client-id",
-		"exp": float64(now + 3600),
-		"nbf": float64(now - 60),
-	}
-	token := suite.createExternalJWT(claims)
-	idpDTOs := buildExternalIDPDTOs()
+	suite.validateRejectedExternalAudience("some-client-id", buildExternalIDPDTOs())
+}
 
-	suite.mockIDPService.On("GetIdentityProvidersByProperty", context.Background(),
-		idp.PropIssuer, testExternalIssuer).Return(idpDTOs, nil)
-	suite.mockJWTService.On("VerifyJWTSignatureWithJWKS", mock.Anything, token, testExternalJWKS).Return(nil)
-
-	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
-
-	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), result)
-	assert.Contains(suite.T(), err.Error(), "external token audience does not contain expected server issuer")
-	suite.mockIDPService.AssertExpectations(suite.T())
-	suite.mockJWTService.AssertExpectations(suite.T())
+func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP_Error_AudNotConfiguredAudience() {
+	suite.validateRejectedExternalAudience("unexpected-client-id", buildExternalIDPDTOsWithAudience())
 }
 
 func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP_Error_MissingAudClaim() {

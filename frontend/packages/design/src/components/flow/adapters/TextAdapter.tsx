@@ -38,7 +38,8 @@ export default function TextAdapter({component, resolve}: TextAdapterProps): JSX
 
   return (
     <Typography
-      className={cn('Flow--text', `Text--${typographyVariant}`)}
+      id={component.id}
+      className={[cn('Flow--text', `Text--${typographyVariant}`), component.classes].filter(Boolean).join(' ')}
       variant={typographyVariant}
       sx={{mb: 1, textAlign}}
     >

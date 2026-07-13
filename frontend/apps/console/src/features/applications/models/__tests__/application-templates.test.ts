@@ -18,7 +18,7 @@
 
 import {describe, expect, it} from 'vitest';
 import {TechnologyApplicationTemplate, PlatformApplicationTemplate} from '../application-templates';
-import type {IntegrationGuide, IntegrationStepCode} from '../application-templates';
+import type {IntegrationGuide, IntegrationStepCode, TemplateCategory} from '../application-templates';
 
 describe('Application Templates Models', () => {
   describe('TechnologyApplicationTemplate', () => {
@@ -42,8 +42,12 @@ describe('Application Templates Models', () => {
       expect(TechnologyApplicationTemplate.OTHER).toBe('OTHER');
     });
 
+    it('should have MCP_CLIENT template', () => {
+      expect(TechnologyApplicationTemplate.MCP_CLIENT).toBe('MCP_CLIENT');
+    });
+
     it('should have all expected properties', () => {
-      const expectedKeys = ['REACT', 'EXPRESS', 'NEXTJS', 'VANILLA_JS', 'VUE', 'NUXT', 'NODEJS', 'OTHER'];
+      const expectedKeys = ['REACT', 'EXPRESS', 'NEXTJS', 'VANILLA_JS', 'VUE', 'NUXT', 'NODEJS', 'OTHER', 'MCP_CLIENT'];
 
       expect(Object.keys(TechnologyApplicationTemplate)).toEqual(expectedKeys);
     });
@@ -78,6 +82,14 @@ describe('Application Templates Models', () => {
       const expectedKeys = ['BACKEND', 'BROWSER', 'MOBILE', 'FULL_STACK', 'WALLET', 'CUSTOM'];
 
       expect(Object.keys(PlatformApplicationTemplate)).toEqual(expectedKeys);
+    });
+  });
+
+  describe('TemplateCategory', () => {
+    it('should allow "ai" as a template category', () => {
+      const category: TemplateCategory = 'ai';
+
+      expect(category).toBe('ai');
     });
   });
 

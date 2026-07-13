@@ -111,6 +111,71 @@ func (_c *redisClientMock_Del_Call) RunAndReturn(run func(ctx context.Context, k
 	return _c
 }
 
+// Expire provides a mock function for the type redisClientMock
+func (_mock *redisClientMock) Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd {
+	ret := _mock.Called(ctx, key, expiration)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Expire")
+	}
+
+	var r0 *redis.BoolCmd
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Duration) *redis.BoolCmd); ok {
+		r0 = returnFunc(ctx, key, expiration)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*redis.BoolCmd)
+		}
+	}
+	return r0
+}
+
+// redisClientMock_Expire_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Expire'
+type redisClientMock_Expire_Call struct {
+	*mock.Call
+}
+
+// Expire is a helper method to define mock.On call
+//   - ctx context.Context
+//   - key string
+//   - expiration time.Duration
+func (_e *redisClientMock_Expecter) Expire(ctx interface{}, key interface{}, expiration interface{}) *redisClientMock_Expire_Call {
+	return &redisClientMock_Expire_Call{Call: _e.mock.On("Expire", ctx, key, expiration)}
+}
+
+func (_c *redisClientMock_Expire_Call) Run(run func(ctx context.Context, key string, expiration time.Duration)) *redisClientMock_Expire_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Duration
+		if args[2] != nil {
+			arg2 = args[2].(time.Duration)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *redisClientMock_Expire_Call) Return(boolCmd *redis.BoolCmd) *redisClientMock_Expire_Call {
+	_c.Call.Return(boolCmd)
+	return _c
+}
+
+func (_c *redisClientMock_Expire_Call) RunAndReturn(run func(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd) *redisClientMock_Expire_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Get provides a mock function for the type redisClientMock
 func (_mock *redisClientMock) Get(ctx context.Context, key string) *redis.StringCmd {
 	ret := _mock.Called(ctx, key)

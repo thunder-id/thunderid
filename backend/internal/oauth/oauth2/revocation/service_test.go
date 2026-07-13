@@ -151,3 +151,33 @@ func (s *RevocationServiceTestSuite) TestRevokeToken_StoreErrorReturnsError() {
 	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
 	assert.Contains(s.T(), err.Error(), "failed to record token revocation")
 }
+
+func (s *RevocationServiceTestSuite) TestRevokeRefreshToken_RecordsWithRotationReason() {
+	revoker := s.service.(RefreshTokenRevokerInterface)
+	expiry := time.Now().Add(time.Hour).UTC()
+	s.storeMock.On("InsertRevokedToken", mock.Anything, mock.MatchedBy(func(rt RevokedToken) bool {
+		return rt.JTI == "rotated-jti" &&
+			rt.RevocationReason == RevocationReasonRefreshRotation &&
+			rt.ExpiryTime.Equal(expiry)
+	})).Return(nil)
+
+	err := revoker.RevokeRefreshToken(context.Background(), "rotated-jti", expiry)
+	assert.NoError(s.T(), err)
+}
+
+func (s *RevocationServiceTestSuite) TestRevokeRefreshToken_EmptyJTIIsNoOp() {
+	revoker := s.service.(RefreshTokenRevokerInterface)
+
+	err := revoker.RevokeRefreshToken(context.Background(), "", time.Now().UTC())
+	assert.NoError(s.T(), err)
+	s.storeMock.AssertNotCalled(s.T(), "InsertRevokedToken", mock.Anything, mock.Anything)
+}
+
+func (s *RevocationServiceTestSuite) TestRevokeRefreshToken_StoreErrorPropagates() {
+	revoker := s.service.(RefreshTokenRevokerInterface)
+	s.storeMock.On("InsertRevokedToken", mock.Anything, mock.Anything).
+		Return(errors.New("operation database unavailable"))
+
+	err := revoker.RevokeRefreshToken(context.Background(), "jti-x", time.Now().UTC())
+	assert.Error(s.T(), err)
+}

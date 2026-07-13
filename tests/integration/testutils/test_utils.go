@@ -655,6 +655,10 @@ func StartServer(port string, _ string) error {
 // startServerInternal launches the server binary with the standard args plus any extra args supplied.
 // All callers share this implementation so logging and env-var setup stay consistent.
 func startServerInternal(port string, extraArgs ...string) error {
+	if err := ensureDirectAuthSecretInDeploymentConfig(); err != nil {
+		return fmt.Errorf("failed to ensure Direct Auth secret in deployment.yaml: %w", err)
+	}
+
 	serverPath := filepath.Join(extractedProductHome, ServerBinary)
 	args := append([]string{"-serverHome=" + extractedProductHome}, extraArgs...)
 	cmd := exec.Command(serverPath, args...)
@@ -908,6 +912,53 @@ func PatchDeploymentConfig(patch map[string]interface{}) error {
 	return nil
 }
 
+// ensureDirectAuthSecretInDeploymentConfig guarantees server.security.direct_auth_secret is set to the
+// fixture value in the extracted product's deployment.yaml. The server is secure by default (an empty
+// secret blocks the Direct API endpoints), and suites that rewrite deployment.yaml via UpdateDeploymentConfig
+// can drop server.security. Reapplying the secret before every server start keeps the gate satisfied
+// regardless of prior config churn, matching the header the test clients inject.
+func ensureDirectAuthSecretInDeploymentConfig() error {
+	configPath := filepath.Join(extractedProductHome, "deployment.yaml")
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read deployment.yaml: %w", err)
+	}
+
+	var cfg map[string]interface{}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("failed to parse deployment.yaml: %w", err)
+	}
+	if cfg == nil {
+		cfg = make(map[string]interface{})
+	}
+
+	server, ok := cfg["server"].(map[string]interface{})
+	if !ok {
+		server = make(map[string]interface{})
+	}
+	security, ok := server["security"].(map[string]interface{})
+	if !ok {
+		security = make(map[string]interface{})
+	}
+	if security["direct_auth_secret"] == DirectAuthHeaderValue {
+		return nil
+	}
+	security["direct_auth_secret"] = DirectAuthHeaderValue
+	server["security"] = security
+	cfg["server"] = server
+
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal updated deployment.yaml: %w", err)
+	}
+	if err := os.WriteFile(configPath, out, 0644); err != nil {
+		return fmt.Errorf("failed to write updated deployment.yaml: %w", err)
+	}
+
+	return nil
+}
+
 // ReadDeploymentConfigKey returns a top-level key from the deployment.yaml, or nil if missing.
 func ReadDeploymentConfigKey(key string) (interface{}, error) {
 	ensureInitialized()
@@ -952,7 +1003,9 @@ func RunSetupScript() error {
 	cmd.Dir = absProductHome // Run from product directory
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = os.Environ()
+	// Pin the Direct Auth Secret so every setup run (main and re-runs) writes the same value the test
+	// clients send, instead of generating a fresh random secret each time.
+	cmd.Env = append(os.Environ(), "DIRECT_AUTH_SECRET="+DirectAuthHeaderValue)
 
 	log.Println("Setup script will start server, run bootstrap, and stop server automatically")
 

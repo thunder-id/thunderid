@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { getConfig } from '../config';
+import { getDirectAuthHeaders, getConfig } from '../config';
 
 export interface OrganizationUnit {
   id: string;
@@ -185,6 +185,7 @@ export async function sendSMSOTP(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getDirectAuthHeaders(),
     },
     body: JSON.stringify({
       sender_id: senderId,
@@ -229,6 +230,7 @@ export async function verifySMSOTP(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getDirectAuthHeaders(),
     },
     body: JSON.stringify({
       session_token: sessionToken,

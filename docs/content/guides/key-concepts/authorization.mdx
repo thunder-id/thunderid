@@ -26,4 +26,4 @@ See [Resource Indicators](/docs/next/guides/guides/resource-indicators) for usag
 
 ## Scope Filtering
 
-<ProductName /> validates requested scopes against the targeted resource server's permission set. Scopes not defined on the resource server are silently removed from the issued token. OpenID Connect standard scopes (`openid`, `profile`, `email`, `address`, `phone`) and any custom scopes defined in the application's `scope_claims` mapping are not subject to resource server filtering and pass through unchanged.
+<ProductName /> validates requested scopes against the targeted resource server's permission set. Scopes not defined on the resource server are silently removed from the issued token. OpenID Connect standard scopes (`openid`, `profile`, `email`, `address`, `phone`) and any custom scopes defined in the application's `scope_claims` mapping are not subject to resource server filtering. When an application has a scopes allowlist, <ProductName /> still removes any requested OpenID Connect or custom scope-to-claim scope that the application does not allow.

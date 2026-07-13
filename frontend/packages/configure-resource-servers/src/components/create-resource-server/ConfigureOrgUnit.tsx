@@ -20,15 +20,19 @@ import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-unit
 import {FormControl, FormLabel, Stack, Typography} from '@wso2/oxygen-ui';
 import {useEffect, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import type {ResourceServerType} from '../../models/resource-server';
 
 interface ConfigureOrgUnitProps {
   selectedOuId: string;
+  /** The resource server type selected in the previous step, used to tailor copy for MCP servers. */
+  selectedType?: ResourceServerType;
   onOuIdChange: (ouId: string) => void;
   onReadyChange?: (isReady: boolean) => void;
 }
 
 export default function ConfigureOrgUnit({
   selectedOuId,
+  selectedType = undefined,
   onOuIdChange,
   onReadyChange = undefined,
 }: ConfigureOrgUnitProps): JSX.Element {
@@ -46,10 +50,15 @@ export default function ConfigureOrgUnit({
         {t('resourceServers:create.orgUnit.title', 'Choose an organization unit')}
       </Typography>
       <Typography variant="body1" color="text.secondary">
-        {t(
-          'resourceServers:create.orgUnit.subtitle',
-          'Select which organization unit this resource server belongs to.',
-        )}
+        {selectedType === 'MCP'
+          ? t(
+              'resourceServers:create.orgUnit.subtitleMcp',
+              'Select which organization unit this MCP server belongs to.',
+            )
+          : t(
+              'resourceServers:create.orgUnit.subtitle',
+              'Select which organization unit this resource server belongs to.',
+            )}
       </Typography>
 
       <FormControl fullWidth required>

@@ -113,7 +113,7 @@ export default function Footer(): JSX.Element {
             links={[
               {label: 'Docs', href: '/docs/next/guides/getting-started/what-is-thunderid'},
               {label: 'APIs', href: '/docs/next/apis'},
-              {label: 'SDKs', href: '/docs/next/sdks/overview'},
+              {label: 'SDKs', href: '/sdks'},
             ]}
           />
 

@@ -263,10 +263,12 @@ func (g *googleOIDCAuthnService) Authenticate(ctx context.Context, idpID, code s
 		return nil, &common.ErrorSubClaimNotFound
 	}
 
-	return &common.AuthnResult{
-		Token: map[string]interface{}{
-			"sub": sub,
-		},
-		AuthenticatedClaims: claims,
-	}, nil
+	return g.internal.BuildFederatedAuthResult(ctx, idpID, sub, claims)
+}
+
+// BuildFederatedAuthResult delegates to the underlying OIDC service, which applies attribute mapping
+// and account-linking resolution uniformly for all federated authenticators.
+func (g *googleOIDCAuthnService) BuildFederatedAuthResult(ctx context.Context, idpID, sub string,
+	claims map[string]interface{}) (*common.AuthnResult, *tidcommon.ServiceError) {
+	return g.internal.BuildFederatedAuthResult(ctx, idpID, sub, claims)
 }

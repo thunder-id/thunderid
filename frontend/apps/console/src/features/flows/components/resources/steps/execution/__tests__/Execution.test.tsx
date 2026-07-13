@@ -82,8 +82,13 @@ vi.mock('../../view/View', () => ({
 
 // Mock ExecutionMinimal component
 vi.mock('../ExecutionMinimal', () => ({
-  default: ({resource}: {resource: {display?: {label?: string}}}) => (
-    <div data-testid="execution-minimal" data-label={resource?.display?.label}>
+  default: ({resource}: {resource: {display?: {label?: string; description?: string; outcomes?: unknown}}}) => (
+    <div
+      data-testid="execution-minimal"
+      data-label={resource?.display?.label}
+      data-description={resource?.display?.description}
+      data-outcomes={JSON.stringify(resource?.display?.outcomes)}
+    >
       Execution Minimal: {resource?.display?.label}
     </div>
   ),
@@ -322,6 +327,42 @@ describe('Execution', () => {
 
       // Component renders successfully with display.image
       expect(screen.getByTestId('execution-minimal')).toBeInTheDocument();
+    });
+
+    it('should map display.description into the resource display', () => {
+      render(
+        <Execution
+          {...createMockProps({
+            data: {
+              action: {executor: {name: 'SSOCheckExecutor'}},
+              display: {description: 'Can the following authentication be skipped by reusing the existing session?'},
+            },
+          })}
+        />,
+      );
+
+      expect(screen.getByTestId('execution-minimal')).toHaveAttribute(
+        'data-description',
+        'Can the following authentication be skipped by reusing the existing session?',
+      );
+    });
+
+    it('should map display.outcomes into the resource display', () => {
+      render(
+        <Execution
+          {...createMockProps({
+            data: {
+              action: {executor: {name: 'SSOCheckExecutor'}},
+              display: {outcomes: {success: 'Skip to', failure: 'Authenticate'}},
+            },
+          })}
+        />,
+      );
+
+      expect(screen.getByTestId('execution-minimal')).toHaveAttribute(
+        'data-outcomes',
+        JSON.stringify({success: 'Skip to', failure: 'Authenticate'}),
+      );
     });
   });
 

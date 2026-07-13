@@ -1153,8 +1153,8 @@ func collectConfiguredUserAttributes(
 	}
 	if oauthProfile != nil {
 		if oauthProfile.Token != nil {
-			if oauthProfile.Token.AccessToken != nil {
-				for _, a := range oauthProfile.Token.AccessToken.UserAttributes {
+			if oauthProfile.Token.AccessToken != nil && oauthProfile.Token.AccessToken.UserConfig != nil {
+				for _, a := range oauthProfile.Token.AccessToken.UserConfig.Attributes {
 					attrs[a] = true
 				}
 			}
@@ -1236,25 +1236,11 @@ func resolveOAuthTokens(in *providers.OAuthTokenConfig,
 		assertion = &inboundmodel.AssertionConfig{}
 	}
 
-	var accessToken *providers.AccessTokenConfig
-	if in != nil && in.AccessToken != nil {
-		accessToken = &providers.AccessTokenConfig{
-			ValidityPeriod: in.AccessToken.ValidityPeriod,
-			UserAttributes: in.AccessToken.UserAttributes,
-		}
+	accessToken := &providers.AccessTokenConfig{
+		UserConfig: resolveUserAccessTokenSubConfig(in, assertion),
 	}
-	if accessToken != nil {
-		if accessToken.ValidityPeriod == 0 {
-			accessToken.ValidityPeriod = assertion.ValidityPeriod
-		}
-		if accessToken.UserAttributes == nil {
-			accessToken.UserAttributes = make([]string, 0)
-		}
-	} else {
-		accessToken = &providers.AccessTokenConfig{
-			ValidityPeriod: assertion.ValidityPeriod,
-			UserAttributes: assertion.UserAttributes,
-		}
+	if in != nil && in.AccessToken != nil {
+		accessToken.ClientConfig = in.AccessToken.ClientConfig
 	}
 
 	var idToken *providers.IDTokenConfig
@@ -1301,6 +1287,36 @@ func resolveOAuthTokens(in *providers.OAuthTokenConfig,
 	}
 
 	return accessToken, idToken, refreshToken
+}
+
+// resolveUserAccessTokenSubConfig resolves the user-subject access token sub-config, defaulting
+// validity period and attributes from the assertion config when not explicitly set — preserving
+// the pre-split AccessTokenConfig defaulting behavior. ClientConfig has no equivalent default:
+// it is new and only ever set when the caller explicitly provides it.
+func resolveUserAccessTokenSubConfig(
+	in *providers.OAuthTokenConfig, assertion *inboundmodel.AssertionConfig,
+) *providers.AccessTokenSubConfig {
+	var userConfig *providers.AccessTokenSubConfig
+	if in != nil && in.AccessToken != nil && in.AccessToken.UserConfig != nil {
+		userConfig = &providers.AccessTokenSubConfig{
+			ValidityPeriod: in.AccessToken.UserConfig.ValidityPeriod,
+			Attributes:     in.AccessToken.UserConfig.Attributes,
+		}
+	}
+	if userConfig != nil {
+		if userConfig.ValidityPeriod == 0 {
+			userConfig.ValidityPeriod = assertion.ValidityPeriod
+		}
+		if userConfig.Attributes == nil {
+			userConfig.Attributes = make([]string, 0)
+		}
+	} else {
+		userConfig = &providers.AccessTokenSubConfig{
+			ValidityPeriod: assertion.ValidityPeriod,
+			Attributes:     assertion.UserAttributes,
+		}
+	}
+	return userConfig
 }
 
 // resolveUserInfo resolves user info config, defaulting user attributes to the ID token config.
@@ -1489,8 +1505,8 @@ func extractRequestedAttributesFromInbound(
 	}
 	if profile != nil {
 		if profile.Token != nil {
-			if profile.Token.AccessToken != nil {
-				for _, a := range profile.Token.AccessToken.UserAttributes {
+			if profile.Token.AccessToken != nil && profile.Token.AccessToken.UserConfig != nil {
+				for _, a := range profile.Token.AccessToken.UserConfig.Attributes {
 					attrMap[a] = true
 				}
 			}

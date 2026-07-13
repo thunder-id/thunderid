@@ -171,6 +171,37 @@ func (s *InMemoryStoreTestSuite) TestTake_ExpiredKey_ReturnsNil() {
 	s.Nil(got)
 }
 
+func (s *InMemoryStoreTestSuite) TestExtendTTL_UpdatesExpiryPreservesValue() {
+	fk := s.store.getFormattedKey(testNamespace, testKey)
+	s.store.data[fk] = &entry{value: []byte("v"), expiresAt: time.Now().Add(time.Second)}
+
+	err := s.store.ExtendTTL(s.ctx, testNamespace, testKey, 60)
+	s.NoError(err)
+
+	got, err := s.store.Get(s.ctx, testNamespace, testKey)
+	s.NoError(err)
+	s.Equal([]byte("v"), got)
+
+	expected := time.Now().Add(60 * time.Second)
+	s.WithinDuration(expected, s.store.data[fk].expiresAt, time.Second)
+}
+
+func (s *InMemoryStoreTestSuite) TestExtendTTL_MissingKey_ReturnsError() {
+	err := s.store.ExtendTTL(s.ctx, testNamespace, "no-such-key", 60)
+	s.ErrorIs(err, providers.ErrRuntimeStoreKeyNotFound)
+}
+
+func (s *InMemoryStoreTestSuite) TestExtendTTL_ExpiredKey_ReturnsError() {
+	fk := s.store.getFormattedKey(testNamespace, testKey)
+	s.store.data[fk] = &entry{
+		value:     []byte("stale"),
+		expiresAt: time.Now().Add(-time.Second),
+	}
+
+	err := s.store.ExtendTTL(s.ctx, testNamespace, testKey, 60)
+	s.ErrorIs(err, providers.ErrRuntimeStoreKeyNotFound)
+}
+
 func (s *InMemoryStoreTestSuite) TestGetFormattedKey() {
 	key := s.store.getFormattedKey("ns", "k")
 	s.Equal("runtime:test-deployment:ns:k", key)

@@ -1,6 +1,8 @@
 server:
   hostname: "localhost"
   port: 8095
+  security:
+    direct_auth_secret: "integration-direct-auth-secret"
 
 tls:
   cert_file: "config/certs/server.cert"

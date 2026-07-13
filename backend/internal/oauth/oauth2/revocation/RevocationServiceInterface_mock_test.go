@@ -6,6 +6,7 @@ package revocation
 
 import (
 	"context"
+	"time"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -35,6 +36,69 @@ type RevocationServiceInterfaceMock_Expecter struct {
 
 func (_m *RevocationServiceInterfaceMock) EXPECT() *RevocationServiceInterfaceMock_Expecter {
 	return &RevocationServiceInterfaceMock_Expecter{mock: &_m.Mock}
+}
+
+// RevokeRefreshToken provides a mock function for the type RevocationServiceInterfaceMock
+func (_mock *RevocationServiceInterfaceMock) RevokeRefreshToken(ctx context.Context, jti string, expiryTime time.Time) error {
+	ret := _mock.Called(ctx, jti, expiryTime)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RevokeRefreshToken")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) error); ok {
+		r0 = returnFunc(ctx, jti, expiryTime)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// RevocationServiceInterfaceMock_RevokeRefreshToken_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RevokeRefreshToken'
+type RevocationServiceInterfaceMock_RevokeRefreshToken_Call struct {
+	*mock.Call
+}
+
+// RevokeRefreshToken is a helper method to define mock.On call
+//   - ctx context.Context
+//   - jti string
+//   - expiryTime time.Time
+func (_e *RevocationServiceInterfaceMock_Expecter) RevokeRefreshToken(ctx interface{}, jti interface{}, expiryTime interface{}) *RevocationServiceInterfaceMock_RevokeRefreshToken_Call {
+	return &RevocationServiceInterfaceMock_RevokeRefreshToken_Call{Call: _e.mock.On("RevokeRefreshToken", ctx, jti, expiryTime)}
+}
+
+func (_c *RevocationServiceInterfaceMock_RevokeRefreshToken_Call) Run(run func(ctx context.Context, jti string, expiryTime time.Time)) *RevocationServiceInterfaceMock_RevokeRefreshToken_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *RevocationServiceInterfaceMock_RevokeRefreshToken_Call) Return(err error) *RevocationServiceInterfaceMock_RevokeRefreshToken_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *RevocationServiceInterfaceMock_RevokeRefreshToken_Call) RunAndReturn(run func(ctx context.Context, jti string, expiryTime time.Time) error) *RevocationServiceInterfaceMock_RevokeRefreshToken_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // RevokeToken provides a mock function for the type RevocationServiceInterfaceMock

@@ -231,8 +231,9 @@ paths:
                           value: "https://calendar-agent.example.com/.well-known/jwks"
                         token:
                           accessToken:
-                            validityPeriod: 3600
-                            userAttributes: ["email", "username"]
+                            userConfig:
+                              validityPeriod: 3600
+                              attributes: ["email", "username"]
                           idToken:
                             validityPeriod: 1800
                             userAttributes: ["email", "name"]
@@ -298,8 +299,9 @@ paths:
                         value: "https://calendar-agent.example.com/.well-known/jwks"
                       token:
                         accessToken:
-                          validityPeriod: 3600
-                          userAttributes: ["email", "username"]
+                          userConfig:
+                            validityPeriod: 3600
+                            attributes: ["email", "username"]
                         idToken:
                           validityPeriod: 1800
                           userAttributes: ["email", "name"]
@@ -702,8 +704,9 @@ paths:
                         value: "https://calendar-agent.example.com/.well-known/jwks"
                       token:
                         accessToken:
-                          validityPeriod: 3600
-                          userAttributes: ["email", "username"]
+                          userConfig:
+                            validityPeriod: 3600
+                            attributes: ["email", "username"]
                         idToken:
                           validityPeriod: 1800
                           userAttributes: ["email", "name"]
@@ -814,8 +817,9 @@ paths:
                           value: "https://calendar-agent.example.com/.well-known/jwks"
                         token:
                           accessToken:
-                            validityPeriod: 3600
-                            userAttributes: ["email", "username"]
+                            userConfig:
+                              validityPeriod: 3600
+                              attributes: ["email", "username"]
                           idToken:
                             validityPeriod: 1800
                             userAttributes: ["email", "name"]
@@ -882,8 +886,9 @@ paths:
                         value: "https://calendar-agent.example.com/.well-known/jwks"
                       token:
                         accessToken:
-                          validityPeriod: 3600
-                          userAttributes: ["email", "username"]
+                          userConfig:
+                            validityPeriod: 3600
+                            attributes: ["email", "username"]
                         idToken:
                           validityPeriod: 1800
                           userAttributes: ["email", "name"]
@@ -1283,6 +1288,76 @@ paths:
                   - id: "660e8400-e29b-41d4-a716-446655440001"
                     name: "Production Agents"
                     ouId: "456e8400-e29b-41d4-a716-446655440001"
+                links: []
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missing-id:
+                  summary: Missing agent ID
+                  value:
+                    code: "AGT-1008"
+                    message:
+                      key: "error.agentservice.missing_agent_id"
+                      defaultValue: "Missing agent ID"
+                    description:
+                      key: "error.agentservice.missing_agent_id_description"
+                      defaultValue: "The agent ID is required"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1004"
+                message:
+                  key: "error.agentservice.agent_not_found"
+                  defaultValue: "Agent not found"
+                description:
+                  key: "error.agentservice.agent_not_found_description"
+                  defaultValue: "The agent with the specified id does not exist"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          description: Internal server error
+
+  /agents/{id}/roles:
+    get:
+      tags:
+        - Agents
+      summary: List roles assigned to the agent
+      description: |
+        Returns a paginated list of role names assigned to the agent, both directly and through
+        group membership. Use the group and role APIs to manage the underlying assignments.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "The unique identifier of the agent"
+          example: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+      responses:
+        "200":
+          description: List of roles assigned to the agent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRoleListResponse'
+              example:
+                totalResults: 2
+                startIndex: 1
+                count: 2
+                roles:
+                  - "agent-operator"
+                  - "billing-viewer"
                 links: []
         "400":
           description: Bad request
@@ -2232,6 +2307,28 @@ components:
           items:
             $ref: '#/components/schemas/Link'
 
+    AgentRoleListResponse:
+      type: object
+      properties:
+        totalResults:
+          type: integer
+          example: 2
+        startIndex:
+          type: integer
+          example: 1
+        count:
+          type: integer
+          example: 2
+        roles:
+          type: array
+          items:
+            type: string
+          example: ["agent-operator", "billing-viewer"]
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
+
     AssertionConfig:
       type: object
       description: |
@@ -2263,16 +2360,31 @@ components:
 
     AccessTokenConfig:
       type: object
+      description: Access token configuration, split by token subject.
+      properties:
+        userConfig:
+          allOf:
+            - $ref: '#/components/schemas/AccessTokenSubConfig'
+          description: Configuration applied when the access token's subject is an end user.
+        clientConfig:
+          allOf:
+            - $ref: '#/components/schemas/AccessTokenSubConfig'
+          description: >
+            Configuration applied when the access token's subject is the agent itself, issued
+            only via the client_credentials grant.
+
+    AccessTokenSubConfig:
+      type: object
       properties:
         validityPeriod:
           type: integer
           description: Access token validity period in seconds.
           example: 3600
-        userAttributes:
+        attributes:
           type: array
           items:
             type: string
-          description: User attributes to embed in the access token payload.
+          description: Attributes to embed in the access token payload.
           example: ["email", "username"]
 
     IDTokenConfig:

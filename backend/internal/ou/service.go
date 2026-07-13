@@ -31,6 +31,7 @@ import (
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
@@ -100,20 +101,30 @@ type ConfigurableOUService interface {
 	SetOUUserResolver(resolver OUUserResolver)
 	SetOUGroupResolver(resolver OUGroupResolver)
 	SetOURoleResolver(resolver OURoleResolver)
+	SetDependencyRegistry(r resourcedependency.Registry)
+	GetResourceDependencies(
+		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 }
 
 // OrganizationUnitService provides organization unit management operations.
 type organizationUnitService struct {
-	authzService  sysauthz.SystemAuthorizationServiceInterface
-	ouStore       organizationUnitStoreInterface
-	transactioner transaction.Transactioner
-	userResolver  OUUserResolver
-	groupResolver OUGroupResolver
-	roleResolver  OURoleResolver
+	authzService       sysauthz.SystemAuthorizationServiceInterface
+	ouStore            organizationUnitStoreInterface
+	transactioner      transaction.Transactioner
+	userResolver       OUUserResolver
+	groupResolver      OUGroupResolver
+	roleResolver       OURoleResolver
+	dependencyRegistry resourcedependency.Registry
 }
 
 func (ous *organizationUnitService) SetOUUserResolver(resolver OUUserResolver) {
 	ous.userResolver = resolver
+}
+
+// SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
+// provider services are initialized to avoid a cyclic import.
+func (ous *organizationUnitService) SetDependencyRegistry(r resourcedependency.Registry) {
+	ous.dependencyRegistry = r
 }
 
 func (ous *organizationUnitService) SetOUGroupResolver(resolver OUGroupResolver) {
@@ -809,45 +820,13 @@ func (ous *organizationUnitService) deleteOUInternal(
 		return &ErrorCannotModifyDeclarativeResource
 	}
 
-	// Check child OUs (own table).
-	childCount, err := ous.ouStore.GetOrganizationUnitChildrenCount(ctx, id, nil)
-	if err != nil {
-		logger.Error(ctx, "Failed to check child organization units", log.Error(err))
-		return &tidcommon.InternalServerError
-	}
-	if childCount > 0 {
-		return &ErrorCannotDeleteOrganizationUnit
+	// Refuse deletion when child organization units, users or groups still depend on this
+	// organization unit. Dependencies are aggregated through the dependency registry.
+	if svcErr := ous.ensureNoBlockingDependencies(ctx, id, logger); svcErr != nil {
+		return svcErr
 	}
 
-	// Check users via resolver.
-	if ous.userResolver == nil {
-		logger.Error(ctx, "OUUserResolver not initialized")
-		return &tidcommon.InternalServerError
-	}
-	userCount, err := ous.userResolver.GetUserCountByOUID(ctx, id)
-	if err != nil {
-		logger.Error(ctx, "Failed to check organization unit users", log.Error(err))
-		return &tidcommon.InternalServerError
-	}
-	if userCount > 0 {
-		return &ErrorCannotDeleteOrganizationUnit
-	}
-
-	// Check groups via resolver.
-	if ous.groupResolver == nil {
-		logger.Error(ctx, "OUGroupResolver not initialized")
-		return &tidcommon.InternalServerError
-	}
-	groupCount, err := ous.groupResolver.GetGroupCountByOUID(ctx, id)
-	if err != nil {
-		logger.Error(ctx, "Failed to check organization unit groups", log.Error(err))
-		return &tidcommon.InternalServerError
-	}
-	if groupCount > 0 {
-		return &ErrorCannotDeleteOrganizationUnit
-	}
-
-	err = ous.ouStore.DeleteOrganizationUnit(ctx, id)
+	err := ous.ouStore.DeleteOrganizationUnit(ctx, id)
 	if err != nil {
 		if errors.Is(err, ErrOrganizationUnitNotFound) {
 			return &ErrorOrganizationUnitNotFound
@@ -856,6 +835,64 @@ func (ous *organizationUnitService) deleteOUInternal(
 		return &tidcommon.InternalServerError
 	}
 	return nil
+}
+
+// ensureNoBlockingDependencies refuses deletion when other resources depend on the organization unit
+// in a way that forbids it (behaviorOnDelete == restrict), such as child organization units, users or
+// groups. Because deletion is destructive, it fails closed: if dependency data cannot be determined,
+// the deletion is refused rather than allowed.
+func (ous *organizationUnitService) ensureNoBlockingDependencies(
+	ctx context.Context, id string, logger *log.Logger,
+) *tidcommon.ServiceError {
+	if ous.dependencyRegistry == nil {
+		logger.Error(ctx, "Dependency registry not set; refusing to delete organization unit")
+		return &tidcommon.InternalServerError
+	}
+
+	deps, err := ous.dependencyRegistry.GetDependencies(ctx, resourcedependency.ResourceTypeOU, id)
+	if err != nil {
+		logger.Error(ctx, "Failed to evaluate organization unit dependencies", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	// Fail closed: nil TotalResults means a provider failed to report, so usage is unknown.
+	if deps == nil || deps.TotalResults == nil {
+		logger.Error(ctx, "Organization unit dependency data unavailable; refusing to delete")
+		return &tidcommon.InternalServerError
+	}
+
+	if len(resourcedependency.BlockingUsages(deps)) == 0 {
+		return nil
+	}
+
+	return &ErrorCannotDeleteOrganizationUnit
+}
+
+// GetResourceDependencies implements resourcedependency.Provider. It reports the child organization
+// units of the given organization unit, which block its deletion (a child cannot exist without its
+// parent). Only organization unit targets are handled; other resource types have no child
+// dependencies. The number of children scanned is bounded by MaxCompositeStoreRecords.
+func (ous *organizationUnitService) GetResourceDependencies(
+	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
+	if resourceType != resourcedependency.ResourceTypeOU {
+		return []resourcedependency.ResourceDependency{}, nil
+	}
+
+	children, err := ous.ouStore.GetOrganizationUnitChildrenList(
+		ctx, id, serverconst.MaxCompositeStoreRecords, 0, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	deps := make([]resourcedependency.ResourceDependency, 0, len(children))
+	for _, child := range children {
+		deps = append(deps, resourcedependency.ResourceDependency{
+			ResourceType:     resourcedependency.ResourceTypeOU,
+			ID:               child.ID,
+			DisplayName:      child.Name,
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		})
+	}
+	return deps, nil
 }
 
 // checkOUAccess validates that the caller is authorized to perform the given action on an organization unit.

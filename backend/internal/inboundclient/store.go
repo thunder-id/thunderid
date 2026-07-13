@@ -291,6 +291,9 @@ func referenceQueries(refType, refID, deploymentID string) (
 	case resourcedependency.ResourceTypeTheme:
 		return queryGetEntityIDsByThemeIDCount, queryGetEntityIDsByThemeID,
 			[]interface{}{refID, deploymentID}, true
+	case resourcedependency.ResourceTypeLayout:
+		return queryGetEntityIDsByLayoutIDCount, queryGetEntityIDsByLayoutID,
+			[]interface{}{refID, deploymentID}, true
 	case resourcedependency.ResourceTypeFlow:
 		return queryGetEntityIDsByFlowIDCount, queryGetEntityIDsByFlowID,
 			[]interface{}{refID, refID, refID, deploymentID}, true
@@ -305,6 +308,8 @@ func clientReferences(c *inboundmodel.InboundClient, refType, refID string) bool
 	switch refType {
 	case resourcedependency.ResourceTypeTheme:
 		return c.ThemeID == refID
+	case resourcedependency.ResourceTypeLayout:
+		return c.LayoutID == refID
 	case resourcedependency.ResourceTypeFlow:
 		return c.AuthFlowID == refID || c.RegistrationFlowID == refID || c.RecoveryFlowID == refID
 	default:

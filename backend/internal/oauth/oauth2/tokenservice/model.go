@@ -46,18 +46,24 @@ type TokenConfig struct {
 // The aud claim is serialized as a JSON array when Audiences has 2+ entries, and as a string
 // when it has a single entry.
 type AccessTokenBuildContext struct {
-	Subject          string
-	Audiences        []string
-	ClientID         string
-	Scopes           []string
-	UserAttributes   map[string]interface{}
-	AttributeCacheID string
-	GrantType        string
-	OAuthApp         *providers.OAuthClient
-	ActorClaims      *SubjectTokenClaims
-	ClaimsRequest    *oauth2model.ClaimsRequest
-	ClaimsLocales    string
-	ClientAttributes map[string]interface{}
+	Subject   string
+	Audiences []string
+	ClientID  string
+	Scopes    []string
+	// SubjectAttributes holds the token subject's attributes, already resolved and filtered by
+	// the grant handler (user attributes for user-subject grants; OU claims plus own attributes
+	// for client_credentials). The token builder embeds them as-is without any subject-specific
+	// handling.
+	SubjectAttributes map[string]interface{}
+	AttributeCacheID  string
+	GrantType         string
+	OAuthApp          *providers.OAuthClient
+	ActorClaims       *SubjectTokenClaims
+	ClaimsRequest     *oauth2model.ClaimsRequest
+	ClaimsLocales     string
+	// ValidityPeriod is the subject's configured access-token validity in seconds (0 to use the
+	// global default), resolved by the grant handler from the subject's access token sub-config.
+	ValidityPeriod int64
 	// DPoPJkt, when set, sender-constrains the access token to the supplied JWK thumbprint.
 	// The token receives a `cnf.jkt` claim and is issued with `token_type=DPoP`.
 	DPoPJkt string
@@ -105,6 +111,9 @@ type RefreshTokenClaims struct {
 	ActorSub         string
 	// JTI is the refresh token's unique identifier, used for deny-list (revocation) enforcement.
 	JTI string
+	// Exp is the refresh token's expiry (exp claim); used to bound the deny-list entry when the token
+	// is revoked on rotation.
+	Exp int64
 }
 
 // SubjectTokenClaims represents the validated claims from a subject token (for token exchange).

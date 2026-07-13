@@ -1173,8 +1173,10 @@ function run_frontend() {
     pnpm build:frontend
     
     echo "Starting frontend applications in the background..."
-    # Start frontend processes in background
-    pnpm -r --parallel --filter "@thunderid/console" --filter "@thunderid/gate" dev &
+    # In dev the apps are served on their own origins, so point them at the backend via
+    # THUNDERID_DEV_SERVER_URL (injected into __DEV_SERVER_URL__; applied only in dev builds).
+    THUNDERID_DEV_SERVER_URL="$PUBLIC_URL" \
+        pnpm -r --parallel --filter "@thunderid/console" --filter "@thunderid/gate" dev &
     FRONTEND_PID=$!
     
     # Return to script directory

@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import {useIdentityProviders, type IdentityProviderType} from '@thunderid/configure-connections';
 import {
   Alert,
   Checkbox,
@@ -31,8 +32,6 @@ import {useCallback, useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {EXECUTOR_TO_IDP_TYPE_MAP, FEDERATED_EXECUTORS} from './constants';
 import type {CommonResourcePropertiesPropsInterface} from './types';
-import useIdentityProviders from '@/features/connections/api/useIdentityProviders';
-import type {IdentityProviderType} from '@/features/connections/models/identity-provider';
 import useValidationStatus from '@/features/flows/hooks/useValidationStatus';
 import type {StepData} from '@/features/flows/models/steps';
 

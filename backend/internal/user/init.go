@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -100,7 +100,7 @@ func registerRoutes(mux *http.ServeMux, userHandler *userHandler) {
 	}, opts1))
 
 	opts2 := middleware.CORSOptions{
-		AllowedMethods:   []string{"GET", "PUT", "DELETE"},
+		AllowedMethods:   []string{"GET", "PUT", "DELETE", "POST"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
 		AllowCredentials: true,
 		MaxAge:           600,
@@ -132,6 +132,17 @@ func registerRoutes(mux *http.ServeMux, userHandler *userHandler) {
 			path := strings.TrimPrefix(r.URL.Path, "/users/")
 			r.SetPathValue("id", strings.Split(path, "/")[0])
 			userHandler.HandleUserDeleteRequest(w, r)
+		}, opts2))
+	mux.HandleFunc(middleware.WithCORS("POST /users/",
+		func(w http.ResponseWriter, r *http.Request) {
+			path := strings.TrimPrefix(r.URL.Path, "/users/")
+			segments := strings.Split(path, "/")
+			if len(segments) == 2 && segments[1] == "update-credentials" {
+				r.SetPathValue("id", segments[0])
+				userHandler.HandleUserCredentialUpdateRequest(w, r)
+			} else {
+				http.NotFound(w, r)
+			}
 		}, opts2))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /users/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

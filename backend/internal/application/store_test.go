@@ -76,8 +76,10 @@ func (suite *ApplicationStoreTestSuite) createTestApplication() model.Applicatio
 					Scopes:                  []string{"openid", "profile", "email"},
 					Token: &providers.OAuthTokenConfig{
 						AccessToken: &providers.AccessTokenConfig{
-							ValidityPeriod: 7200,
-							UserAttributes: []string{"sub", "email", "name"},
+							UserConfig: &providers.AccessTokenSubConfig{
+								ValidityPeriod: 7200,
+								Attributes:     []string{"sub", "email", "name"},
+							},
 						},
 						IDToken: &providers.IDTokenConfig{
 							ValidityPeriod: 3600,
@@ -111,7 +113,7 @@ func (suite *ApplicationStoreTestSuite) TestBuildOAuthProfileFromProcessed_Succe
 	suite.Len(cfg.RedirectURIs, 2)
 	suite.NotNil(cfg.Token)
 	suite.NotNil(cfg.Token.AccessToken)
-	suite.Equal(int64(7200), cfg.Token.AccessToken.ValidityPeriod)
+	suite.Equal(int64(7200), cfg.Token.AccessToken.UserConfig.ValidityPeriod)
 	suite.NotNil(cfg.Token.IDToken)
 	suite.Equal(int64(3600), cfg.Token.IDToken.ValidityPeriod)
 	suite.NotNil(cfg.ScopeClaims)

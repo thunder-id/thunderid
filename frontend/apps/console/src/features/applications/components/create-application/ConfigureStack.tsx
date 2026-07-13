@@ -39,12 +39,14 @@ const CATEGORIES: {value: CategoryFilter; titleKey: string}[] = [
   {value: 'web', titleKey: 'applications:onboarding.configure.stack.category.web'},
   {value: 'backend', titleKey: 'applications:onboarding.configure.stack.category.backend'},
   {value: 'mobile', titleKey: 'applications:onboarding.configure.stack.category.mobile'},
+  {value: 'ai', titleKey: 'applications:onboarding.configure.stack.category.ai'},
 ];
 
 const CATEGORY_I18N_KEY: Record<TemplateCategory, string> = {
   web: 'applications:onboarding.configure.stack.category.web',
   backend: 'applications:onboarding.configure.stack.category.backend',
   mobile: 'applications:onboarding.configure.stack.category.mobile',
+  ai: 'applications:onboarding.configure.stack.category.ai',
 };
 
 type AnyTemplateMetadata = ApplicationTemplateMetadata<TechnologyApplicationTemplate | PlatformApplicationTemplate>;

@@ -22,22 +22,22 @@ See [User Types](/docs/next/guides/guides/users/user-types).
 
 The **AI Agent API** and the **Wayfinder Server** both need protection in the sample. The AI Agent API decides who is allowed to chat with the agent at all, and the Wayfinder Server decides who can book travel. Each is registered as a resource server, with its actions generating one permission per action.
 
-A **resource server** groups the APIs of one backend. Each resource server defines one or more **resources**, each resource defines **actions**, and <ProductName /> automatically generates a **permission** of the form `<resource>:<action>` for every action.
+A **resource server** groups the APIs of one backend. Each resource server defines one or more **resources**, each resource defines **actions**, and <ProductName /> automatically generates one permission per action. When a resource server has a handle, the complete permission string uses the form `<resource-server-handle>:<resource>:<action>`.
 
 ```
 wayfinder-agent                         (Resource Server)
 └── agent                               (Resource)
     └── access     →  agent:access      (Permission)
 
-wayfinder-booking                       (Resource Server)
+wayfinder                               (Resource Server)
 └── booking                             (Resource)
-    ├── read       →  booking:read      (Permission)
-    ├── create     →  booking:create
-    ├── cancel     →  booking:cancel
-    └── recommend  →  booking:recommend
+    ├── read       →  wayfinder:booking:read      (Permission)
+    ├── create     →  wayfinder:booking:create
+    ├── cancel     →  wayfinder:booking:cancel
+    └── recommend  →  wayfinder:booking:recommend
 ```
 
-`wayfinder-booking` protects both the booking REST API on `/api/*` and the MCP tools on `/mcp` — the Wayfinder Server checks the same `booking:*` permissions on both surfaces.
+`wayfinder` protects both the booking REST API on `/api/*` and the MCP tools on `/mcp`. The Wayfinder Server checks the same `wayfinder:booking:*` permissions on both surfaces in scope mode. In AuthZEN mode, the MCP server sends the same complete permission string as `action.name` in an AuthZEN access evaluation request.
 
 Permissions are included in access tokens. See [Resource Servers](/docs/next/guides/guides/resource-servers).
 
@@ -46,8 +46,8 @@ Permissions are included in access tokens. See [Resource Servers](/docs/next/gui
 A role bundles permissions for a class of principal. A user's or agent's effective permissions are the union of permissions across their roles. Wayfinder defines three roles for the AI agent tryout:
 
 - `Chat User`: grants `agent:access`, the permission required to talk to the Wayfinder Concierge.
-- `Booking User`: grants `booking:read`, `booking:create`, and `booking:cancel` for booking travel through the UI.
-- `Recommender`: grants `booking:recommend`, the permission the Wayfinder Concierge needs to surface flight recommendations on its own.
+- `Booking User`: grants `wayfinder:booking:read`, `wayfinder:booking:create`, and `wayfinder:booking:cancel` for booking travel through the UI.
+- `Recommender`: grants `wayfinder:booking:recommend`, the permission the Wayfinder Concierge needs to surface flight recommendations on its own.
 
 John Doe carries both user roles; Jane Smith carries only `Booking User`. The `Recommender` role is assigned to the `WAYFINDER-CONCIERGE` agent, not to a user.
 
@@ -70,8 +70,8 @@ See [Manage Agents](/docs/next/guides/guides/agents/manage-agents) and [Agent Au
 
 ## Flows
 
-A flow is the sequence of steps a user moves through when signing in or granting consent. Wayfinder Web uses the bundled `default-basic-flow` for sign-in. The agent uses a separate **Wayfinder Agent Authentication Flow** that drives the OBO consent screen.
+A flow is the sequence of steps a user moves through when signing in or granting consent. Wayfinder Web uses the bundled `default-flow` for sign-in. The agent uses a separate **Wayfinder Agent Authentication Flow** that drives the OBO consent screen.
 
-The consent screen surfaces each requested `booking:*` permission as an individual toggle. The user picks which ones to grant, and the issued token carries only what they ticked — the agent cannot widen its access after the fact. The resulting OBO token identifies *both* the user (as the subject) and the agent (as the actor), so downstream services know the request was made by an agent acting for that user. The token's effective permissions are the intersection of what the user holds and what the user just consented to.
+The consent screen surfaces each requested `wayfinder:booking:*` permission as an individual toggle. The user picks which ones to grant, and the issued token carries only what they ticked — the agent cannot widen its access after the fact. The resulting OBO token identifies *both* the user (as the subject) and the agent (as the actor), so downstream services know the request was made by an agent acting for that user. The token's effective permissions are the intersection of what the user holds and what the user just consented to.
 
 See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow) and [Agent Authentication](/docs/next/guides/guides/agents/agent-authentication).

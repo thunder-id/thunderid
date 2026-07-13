@@ -26,9 +26,15 @@ paths:
   /flow/execute:
     post:
       summary: Execute a flow step
-      description: Execute a step in an authentication flow.
+      description: >-
+        Execute a step in an authentication flow. Backend/server-side applications must present
+        their Flow Secret in the `Flow-Secret` header (see the `FlowSecret` security scheme) when
+        initiating a new flow; the header is ignored for other application types.
       tags:
         - Flow Execution
+      security:
+        - {}
+        - FlowSecret: []
       requestBody:
         required: true
         content:
@@ -44,11 +50,10 @@ paths:
                   applicationId: "550e8400-e29b-41d4-a716-446655440000"
                   flowType: "AUTHENTICATION"
               initialRequestBackendApp:
-                summary: Initial request from a backend/server-side application
+                summary: Initial request from a backend/server-side application (requires the Flow-Secret header)
                 value:
                   applicationId: "550e8400-e29b-41d4-a716-446655440000"
                   flowType: "AUTHENTICATION"
-                  flowSecret: "550e8400e29b41d4a716446655440000abcdef0123456789"
               subSequentRequestExample:
                 summary: Subsequent request
                 value:
@@ -202,6 +207,15 @@ paths:
                 $ref: '#/components/schemas/Error'
 
 components:
+  securitySchemes:
+    FlowSecret:
+      type: apiKey
+      in: header
+      name: Flow-Secret
+      description: >-
+        Flow Secret used to authenticate backend/server-side applications when initiating a flow
+        directly. Required for non-public clients that do not use the redirect-based
+        authorization_code flow; ignored for other applications.
   schemas:
     InitialFlowRequest:
       type: object
@@ -221,13 +235,6 @@ components:
             - REGISTRATION
             - RECOVERY
           example: "AUTHENTICATION"
-        flowSecret:
-          type: string
-          description: >
-            Flow Secret used to authenticate backend/server-side applications when
-            initiating a flow directly. Required for non-public clients that do not
-            use the redirect-based authorization_code flow; ignored for other applications.
-          example: "550e8400e29b41d4a716446655440000abcdef0123456789"
         verbose:
           type: boolean
           description: When true, the response includes full UI metadata (meta/components) for prompt nodes

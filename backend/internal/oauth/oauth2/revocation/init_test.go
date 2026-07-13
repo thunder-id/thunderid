@@ -69,10 +69,13 @@ func (suite *InitTestSuite) TearDownTest() {
 func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
-	enforcementService := Initialize(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService, nil)
+	enforcementService, refreshTokenRevoker := Initialize(
+		mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService, nil)
 
 	assert.NotNil(suite.T(), enforcementService)
 	assert.Implements(suite.T(), (*EnforcementServiceInterface)(nil), enforcementService)
+	assert.NotNil(suite.T(), refreshTokenRevoker)
+	assert.Implements(suite.T(), (*RefreshTokenRevokerInterface)(nil), refreshTokenRevoker)
 }
 
 func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {

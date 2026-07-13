@@ -37,6 +37,14 @@ const readOnlyResourceServer: ResourceServer = {
   isReadOnly: true,
 };
 
+const mockMcpServer: ResourceServer = {
+  ...mockResourceServer,
+  id: 'rs-2',
+  name: 'Test MCP Server',
+  handle: 'test-mcp',
+  type: 'MCP',
+};
+
 describe('AdvancedTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -119,5 +127,39 @@ describe('AdvancedTab', () => {
 
     expect(screen.queryByRole('button', {name: /Save/i})).not.toBeInTheDocument();
     expect(screen.queryByRole('button', {name: /Discard/i})).not.toBeInTheDocument();
+  });
+
+  it('renders the resource server copy for non-MCP resource servers', () => {
+    renderWithProviders(
+      <AdvancedTab
+        resourceServer={mockResourceServer}
+        identifier={mockResourceServer.identifier ?? ''}
+        onIdentifierChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Configuration settings for this resource server.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'A unique value that identifies this resource server. When set as an URI, enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('renders the MCP server copy for MCP resource servers', () => {
+    renderWithProviders(
+      <AdvancedTab
+        resourceServer={mockMcpServer}
+        identifier={mockMcpServer.identifier ?? ''}
+        onIdentifierChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Configuration settings for this MCP server.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'A unique value that identifies this MCP server. When set as an URI, enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
+      ),
+    ).toBeInTheDocument();
   });
 });

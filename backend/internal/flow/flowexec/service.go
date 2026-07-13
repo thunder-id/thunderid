@@ -33,6 +33,7 @@ import (
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
+	"github.com/thunder-id/thunderid/internal/flow/session"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
@@ -128,6 +129,9 @@ func (s *flowExecService) Execute(ctx context.Context,
 	// Set trace ID to engine context (request context is already set during context loading)
 	engineCtx.TraceID = traceID
 
+	// Resolve the inbound SSO handle for this flow from the request-scoped transport inputs.
+	applyInboundSSO(engineCtx, ctx)
+
 	flowStep, flowErr := s.flowEngine.Execute(engineCtx)
 
 	if flowErr != nil {
@@ -166,6 +170,20 @@ func (s *flowExecService) Execute(ctx context.Context,
 	}
 
 	return &flowStep, nil
+}
+
+// applyInboundSSO selects the SSO handle carried for this flow from the request-scoped
+// transport inputs and stashes it on the engine context for the SSO-Check node to consume.
+// It is a no-op when no inbound transport is present.
+func applyInboundSSO(engineCtx *EngineContext, ctx context.Context) {
+	if engineCtx == nil || engineCtx.Graph == nil {
+		return
+	}
+	inbound, ok := session.InboundFrom(ctx)
+	if !ok {
+		return
+	}
+	engineCtx.SSOHandleIn = inbound.HandleFor(engineCtx.Graph.GetID())
 }
 
 // initContext initializes a new flow context with the given details.
@@ -304,6 +322,7 @@ func (s *flowExecService) initContext(ctx context.Context, appID string, flowTyp
 	}
 
 	engineCtx.FlowType = flow.FlowType
+	engineCtx.SSOFlowVersion = flow.ActiveVersion
 	graph, svcErr := s.graphBuilder.GetGraph(ctx, flow)
 	if svcErr != nil {
 		logger.Error(ctx, "Error retrieving graph from graph builder",
@@ -403,6 +422,7 @@ func (s *flowExecService) loadContextFromStore(ctx context.Context, executionID 
 			log.String(log.LoggerKeyExecutionID, executionID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	engineContext.SSOFlowVersion = flow.ActiveVersion
 
 	// Set application context if required
 	if err := s.setApplicationToContext(&engineContext, logger); err != nil {

@@ -35,6 +35,7 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/role"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -55,6 +56,8 @@ type AgentServiceInterface interface {
 	DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError
 	GetAgentGroups(ctx context.Context, agentID string, limit, offset int) (
 		*model.AgentGroupListResponse, *tidcommon.ServiceError)
+	GetAgentRoles(ctx context.Context, agentID string, limit, offset int) (
+		*model.AgentRoleListResponse, *tidcommon.ServiceError)
 	ValidateAgent(ctx context.Context, agent *model.Agent, excludeID string) (
 		clientID, clientSecret string, client inboundmodel.InboundClient, svcErr *tidcommon.ServiceError)
 	GetResourceDependencies(
@@ -68,18 +71,21 @@ type agentService struct {
 	inboundClientService inboundclient.InboundClientServiceInterface
 	ouService            oupkg.OrganizationUnitServiceInterface
 	dependencyRegistry   resourcedependency.Registry
+	roleService          role.RoleServiceInterface
 }
 
 func newAgentService(
 	entityService entity.EntityServiceInterface,
 	inboundClientService inboundclient.InboundClientServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
+	roleService role.RoleServiceInterface,
 ) AgentServiceInterface {
 	return &agentService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentService")),
 		entityService:        entityService,
 		inboundClientService: inboundClientService,
 		ouService:            ouService,
+		roleService:          roleService,
 	}
 }
 
@@ -543,6 +549,80 @@ func (s *agentService) GetAgentGroups(ctx context.Context, agentID string, limit
 		Groups:       out,
 		Links: sysutils.BuildPaginationLinks(
 			fmt.Sprintf("%s/%s/groups", agentBasePath, agentID), limit, offset, totalCount, ""),
+	}
+	return resp, nil
+}
+
+// GetAgentRoles returns the roles assigned to the agent, either directly or through its
+// group memberships.
+func (s *agentService) GetAgentRoles(ctx context.Context, agentID string, limit, offset int) (
+	*model.AgentRoleListResponse, *tidcommon.ServiceError) {
+	if agentID == "" {
+		return nil, &ErrorMissingAgentID
+	}
+	if svcErr := validatePaginationParams(limit, offset); svcErr != nil {
+		return nil, svcErr
+	}
+	if limit == 0 {
+		limit = 30
+	}
+
+	existing, err := s.entityService.GetEntity(ctx, agentID)
+	if err != nil {
+		if errors.Is(err, entity.ErrEntityNotFound) {
+			return nil, &ErrorAgentNotFound
+		}
+		s.logger.Error(ctx, "Failed to retrieve agent for roles",
+			log.String("agentID", agentID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if existing.Category != providers.EntityCategoryAgent {
+		return nil, &ErrorAgentNotFound
+	}
+
+	groupCount, err := s.entityService.GetGroupCountForEntity(ctx, agentID)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to get agent group count",
+			log.String("agentID", agentID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	groupIDs := make([]string, 0, groupCount)
+	if groupCount > 0 {
+		groups, groupErr := s.entityService.GetEntityGroups(ctx, agentID, groupCount, 0)
+		if groupErr != nil {
+			s.logger.Error(ctx, "Failed to get agent groups for role lookup",
+				log.String("agentID", agentID), log.Error(groupErr))
+			return nil, &tidcommon.InternalServerError
+		}
+		for _, g := range groups {
+			groupIDs = append(groupIDs, g.ID)
+		}
+	}
+
+	roles, svcErr := s.roleService.GetUserRoles(ctx, agentID, groupIDs)
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to get agent roles", log.String("agentID", agentID))
+		return nil, svcErr
+	}
+
+	totalCount := len(roles)
+	end := offset + limit
+	if offset > totalCount {
+		offset = totalCount
+	}
+	if end > totalCount {
+		end = totalCount
+	}
+	page := roles[offset:end]
+
+	resp := &model.AgentRoleListResponse{
+		TotalResults: totalCount,
+		StartIndex:   offset + 1,
+		Count:        len(page),
+		Roles:        page,
+		Links: sysutils.BuildPaginationLinks(
+			fmt.Sprintf("%s/%s/roles", agentBasePath, agentID), limit, offset, totalCount, ""),
 	}
 	return resp, nil
 }

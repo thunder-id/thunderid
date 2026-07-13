@@ -46,6 +46,10 @@ describe('OAuth Models', () => {
       expect(OAuth2GrantTypes.CIBA).toBe('urn:openid:params:grant-type:ciba');
     });
 
+    it('should have TOKEN_EXCHANGE grant type', () => {
+      expect(OAuth2GrantTypes.TOKEN_EXCHANGE).toBe('urn:ietf:params:oauth:grant-type:token-exchange');
+    });
+
     it('should have all expected grant types', () => {
       const expectedKeys = [
         'AUTHORIZATION_CODE',
@@ -54,6 +58,7 @@ describe('OAuth Models', () => {
         'PASSWORD',
         'IMPLICIT',
         'CIBA',
+        'TOKEN_EXCHANGE',
       ];
 
       expect(Object.keys(OAuth2GrantTypes)).toEqual(expectedKeys);

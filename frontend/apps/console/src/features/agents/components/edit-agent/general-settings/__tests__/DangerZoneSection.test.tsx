@@ -24,16 +24,12 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, fallback?: string) => {
       const translations: Record<string, string> = {
-        'applications:edit.general.sections.dangerZone.title': 'Danger Zone',
-        'applications:edit.general.sections.dangerZone.description':
-          'Actions in this section are irreversible. Proceed with caution.',
-        'applications:edit.general.sections.dangerZone.regenerateSecret.title': 'Regenerate Client Secret',
-        'applications:edit.general.sections.dangerZone.regenerateSecret.description':
-          'Regenerating the client secret will immediately invalidate the current client secret and cannot be undone.',
-        'applications:edit.general.sections.dangerZone.regenerateSecret.button': 'Regenerate Client Secret',
+        'agents:edit.general.sections.dangerZone.title': 'Danger Zone',
+        'agents:edit.general.sections.dangerZone.description':
+          'Actions here are permanent. Make sure before you proceed.',
         'agents:edit.general.dangerZone.deleteAgent.title': 'Delete Agent',
         'agents:edit.general.dangerZone.deleteAgent.description':
-          'Permanently delete this agent and all associated data. This action cannot be undone.',
+          'Permanently deletes this agent and immediately invalidates any tokens it has issued. This action cannot be undone.',
         'agents:edit.general.dangerZone.deleteAgent.button': 'Delete Agent',
       };
       return translations[key] ?? fallback ?? key;
@@ -42,7 +38,6 @@ vi.mock('react-i18next', () => ({
 }));
 
 describe('DangerZoneSection (agent)', () => {
-  const mockOnRegenerateClick = vi.fn();
   const mockOnDeleteClick = vi.fn();
 
   beforeEach(() => {
@@ -57,7 +52,7 @@ describe('DangerZoneSection (agent)', () => {
     render(<DangerZoneSection onDeleteClick={mockOnDeleteClick} />);
 
     expect(screen.getByText('Danger Zone')).toBeInTheDocument();
-    expect(screen.getByText('Actions in this section are irreversible. Proceed with caution.')).toBeInTheDocument();
+    expect(screen.getByText('Actions here are permanent. Make sure before you proceed.')).toBeInTheDocument();
   });
 
   it('always renders the delete agent section', () => {
@@ -65,7 +60,9 @@ describe('DangerZoneSection (agent)', () => {
 
     expect(screen.getByRole('heading', {name: 'Delete Agent', level: 6})).toBeInTheDocument();
     expect(
-      screen.getByText('Permanently delete this agent and all associated data. This action cannot be undone.'),
+      screen.getByText(
+        'Permanently deletes this agent and immediately invalidates any tokens it has issued. This action cannot be undone.',
+      ),
     ).toBeInTheDocument();
   });
 
@@ -89,36 +86,9 @@ describe('DangerZoneSection (agent)', () => {
     expect(screen.getByTestId('delete-agent-button')).toHaveClass('MuiButton-colorError');
   });
 
-  it('does not render the regenerate-secret section by default', () => {
+  it('does not render the regenerate-secret section', () => {
     render(<DangerZoneSection onDeleteClick={mockOnDeleteClick} />);
 
     expect(screen.queryByRole('button', {name: 'Regenerate Client Secret'})).not.toBeInTheDocument();
-  });
-
-  it('renders the regenerate-secret section when showRegenerateSecret is true', () => {
-    render(
-      <DangerZoneSection
-        showRegenerateSecret
-        onRegenerateClick={mockOnRegenerateClick}
-        onDeleteClick={mockOnDeleteClick}
-      />,
-    );
-
-    expect(screen.getByRole('heading', {name: 'Regenerate Client Secret', level: 6})).toBeInTheDocument();
-    expect(screen.getByRole('button', {name: 'Regenerate Client Secret'})).toBeInTheDocument();
-  });
-
-  it('calls onRegenerateClick when the regenerate button is clicked', () => {
-    render(
-      <DangerZoneSection
-        showRegenerateSecret
-        onRegenerateClick={mockOnRegenerateClick}
-        onDeleteClick={mockOnDeleteClick}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', {name: 'Regenerate Client Secret'}));
-
-    expect(mockOnRegenerateClick).toHaveBeenCalledTimes(1);
   });
 });

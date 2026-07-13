@@ -542,6 +542,11 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestAuthenticateSuccess() {
 	suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).Return(oauthConfig, nil)
 	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, oauthConfig, testAccessToken).
 		Return(userInfo, nil)
+	suite.mockOAuthService.On("BuildFederatedAuthResult", mock.Anything, testGithubIDPID, "12345", mock.Anything).
+		Return(&authncm.AuthnResult{
+			Token:               map[string]interface{}{"sub": "12345"},
+			AuthenticatedClaims: map[string]interface{}{"email": "test@example.com"},
+		}, nil)
 
 	result, err := suite.service.Authenticate(context.Background(), testGithubIDPID, code)
 	suite.Nil(err)
@@ -673,4 +678,18 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestAuthenticateSubClaimNonString
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(authncm.ErrorSubClaimNotFound.Code, err.Code)
+}
+
+func (suite *GithubOAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultDelegates() {
+	expected := &authncm.AuthnResult{
+		Token:               map[string]interface{}{"email": "user@example.com"},
+		AuthenticatedClaims: map[string]interface{}{"email": "user@example.com"},
+	}
+	suite.mockOAuthService.On("BuildFederatedAuthResult", mock.Anything, testGithubIDPID, "sub-1", mock.Anything).
+		Return(expected, nil)
+
+	result, err := suite.service.BuildFederatedAuthResult(
+		context.Background(), testGithubIDPID, "sub-1", map[string]interface{}{"email": "user@example.com"})
+	suite.Nil(err)
+	suite.Equal(expected, result)
 }

@@ -144,66 +144,6 @@ func (_c *layoutMgtStoreInterfaceMock_DeleteLayout_Call) RunAndReturn(run func(i
 	return _c
 }
 
-// GetApplicationsCountByLayoutID provides a mock function for the type layoutMgtStoreInterfaceMock
-func (_mock *layoutMgtStoreInterfaceMock) GetApplicationsCountByLayoutID(id string) (int, error) {
-	ret := _mock.Called(id)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetApplicationsCountByLayoutID")
-	}
-
-	var r0 int
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(string) (int, error)); ok {
-		return returnFunc(id)
-	}
-	if returnFunc, ok := ret.Get(0).(func(string) int); ok {
-		r0 = returnFunc(id)
-	} else {
-		r0 = ret.Get(0).(int)
-	}
-	if returnFunc, ok := ret.Get(1).(func(string) error); ok {
-		r1 = returnFunc(id)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// layoutMgtStoreInterfaceMock_GetApplicationsCountByLayoutID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetApplicationsCountByLayoutID'
-type layoutMgtStoreInterfaceMock_GetApplicationsCountByLayoutID_Call struct {
-	*mock.Call
-}
-
-// GetApplicationsCountByLayoutID is a helper method to define mock.On call
-//   - id string
-func (_e *layoutMgtStoreInterfaceMock_Expecter) GetApplicationsCountByLayoutID(id interface{}) *layoutMgtStoreInterfaceMock_GetApplicationsCountByLayoutID_Call {
-	return &layoutMgtStoreInterfaceMock_GetApplicationsCountByLayoutID_Call{Call: _e.mock.On("GetApplicationsCountByLayoutID", id)}
-}
-
-func (_c *layoutMgtStoreInterfaceMock_GetApplicationsCountByLayoutID_Call) Run(run func(id string)) *layoutMgtStoreInterfaceMock_GetApplicationsCountByLayoutID_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
-		if args[0] != nil {
-			arg0 = args[0].(string)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
-func (_c *layoutMgtStoreInterfaceMock_GetApplicationsCountByLayoutID_Call) Return(n int, err error) *layoutMgtStoreInterfaceMock_GetApplicationsCountByLayoutID_Call {
-	_c.Call.Return(n, err)
-	return _c
-}
-
-func (_c *layoutMgtStoreInterfaceMock_GetApplicationsCountByLayoutID_Call) RunAndReturn(run func(id string) (int, error)) *layoutMgtStoreInterfaceMock_GetApplicationsCountByLayoutID_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // GetLayout provides a mock function for the type layoutMgtStoreInterfaceMock
 func (_mock *layoutMgtStoreInterfaceMock) GetLayout(id string) (layoutmgt.Layout, error) {
 	ret := _mock.Called(id)

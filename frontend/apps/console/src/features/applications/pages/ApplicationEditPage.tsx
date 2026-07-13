@@ -43,12 +43,23 @@ import EditCustomizationSettings from '../components/edit-application/customizat
 import EditFlowsSettings from '../components/edit-application/flows-settings/EditFlowsSettings';
 import EditGeneralSettings from '../components/edit-application/general-settings/EditGeneralSettings';
 import IntegrationGuides from '../components/edit-application/integration-guides/IntegrationGuides';
+import McpConnectTab from '../components/edit-application/mcp/McpConnectTab';
 import EditTokenSettings from '../components/edit-application/token-settings/EditTokenSettings';
+import TemplateConstants from '../constants/template-constants';
 import type {Application} from '../models/application';
+import {McpClientTypes} from '../models/mcp-client';
 import type {OAuth2Config} from '../models/oauth';
+import deriveMcpClientType from '../utils/deriveMcpClientType';
 import {getIntegrationGuideForTemplate} from '../utils/getIntegrationGuidesForTemplate';
 import getTemplateFieldConstraints from '../utils/getTemplateFieldConstraints';
 import getTemplateMetadata from '../utils/getTemplateMetadata';
+
+interface McpTabConfig {
+  key: string;
+  label: string;
+  panel: React.ReactNode;
+  hidden?: boolean;
+}
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -87,6 +98,7 @@ export default function ApplicationEditPage() {
   const [tempName, setTempName] = useState('');
   const [tempDescription, setTempDescription] = useState('');
   const [hasValidationErrors, setHasValidationErrors] = useState(false);
+  const [mcpAccessInvalid, setMcpAccessInvalid] = useState(false);
 
   const handleBack = async () => {
     await navigate('/applications');
@@ -189,6 +201,83 @@ export default function ApplicationEditPage() {
   const oauth2Config: OAuth2Config | undefined = (editedApp.inboundAuthConfig ?? application.inboundAuthConfig)?.find(
     (config) => config.type === 'oauth2',
   )?.config;
+
+  const isMcpClient = application.template === TemplateConstants.MCP_CLIENT_TEMPLATE_ID;
+  const isMcpM2mOnly = deriveMcpClientType(oauth2Config?.grantTypes) === McpClientTypes.M2M;
+
+  const mcpTabs: McpTabConfig[] = isMcpClient
+    ? (
+        [
+          {
+            key: 'general',
+            label: t('applications:edit.page.tabs.general'),
+            panel: (
+              <McpConnectTab
+                application={application}
+                oauth2Config={oauth2Config}
+                onFieldChange={handleFieldChange}
+                isReadOnly={application.isReadOnly === true}
+                onDeleteSuccess={() => {
+                  handleBack().catch(() => null);
+                }}
+                onValidationChange={setMcpAccessInvalid}
+              />
+            ),
+          },
+          {
+            key: 'flows',
+            label: t('applications:edit.page.tabs.flows'),
+            panel: (
+              <EditFlowsSettings application={application} editedApp={editedApp} onFieldChange={handleFieldChange} />
+            ),
+            hidden: isMcpM2mOnly,
+          },
+          {
+            key: 'customization',
+            label: t('applications:edit.page.tabs.customization'),
+            panel: (
+              <EditCustomizationSettings
+                application={application}
+                editedApp={editedApp}
+                onFieldChange={handleFieldChange}
+              />
+            ),
+            hidden: isMcpM2mOnly,
+          },
+          {
+            key: 'token',
+            label: t('applications:edit.page.tabs.token'),
+            panel: (
+              <EditTokenSettings
+                application={application}
+                oauth2Config={oauth2Config}
+                onFieldChange={handleFieldChange}
+                onValidationChange={setHasValidationErrors}
+              />
+            ),
+          },
+          {
+            key: 'advanced',
+            label: t('applications:edit.page.tabs.advanced'),
+            panel: (
+              <EditAdvancedSettings
+                application={application}
+                editedApp={editedApp}
+                oauth2Config={oauth2Config}
+                // The backend rejects pkceRequired: true without the authorization_code grant, so
+                // the template's PKCE lock only applies to user-delegated clients — an M2M-only
+                // client is stored with pkceRequired: false and must remain editable.
+                oauth2Constraints={isMcpM2mOnly ? undefined : oauth2Constraints}
+                onFieldChange={handleFieldChange}
+                allowedGrantTypes={[...TemplateConstants.MCP_CLIENT_ALLOWED_GRANT_TYPES]}
+              />
+            ),
+          },
+        ] satisfies McpTabConfig[]
+      ).filter((tab) => !tab.hidden)
+    : [];
+
+  const safeActiveTab = mcpTabs.length > 0 ? Math.min(activeTab, mcpTabs.length - 1) : 0;
 
   return (
     <PageContent>
@@ -341,107 +430,135 @@ export default function ApplicationEditPage() {
         </PageTitle.SubHeader>
       </PageTitle>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onChange={handleTabChange} aria-label="application settings tabs">
-        {hasIntegrationGuides && (
-          <Tab
-            label={t('applications:edit.page.tabs.overview')}
-            id="edit-tab-0"
-            aria-controls="edit-tabpanel-0"
-            sx={{textTransform: 'none'}}
-          />
-        )}
-        <Tab
-          label={t('applications:edit.page.tabs.general')}
-          id={`edit-tab-${hasIntegrationGuides ? 1 : 0}`}
-          aria-controls={`edit-tabpanel-${hasIntegrationGuides ? 1 : 0}`}
-          sx={{textTransform: 'none'}}
-        />
-        <Tab
-          label={t('applications:edit.page.tabs.flows')}
-          id={`edit-tab-${hasIntegrationGuides ? 2 : 1}`}
-          aria-controls={`edit-tabpanel-${hasIntegrationGuides ? 2 : 1}`}
-          sx={{textTransform: 'none'}}
-        />
-        <Tab
-          label={t('applications:edit.page.tabs.customization')}
-          id={`edit-tab-${hasIntegrationGuides ? 3 : 2}`}
-          aria-controls={`edit-tabpanel-${hasIntegrationGuides ? 3 : 2}`}
-          sx={{textTransform: 'none'}}
-        />
-        <Tab
-          label={t('applications:edit.page.tabs.token')}
-          id={`edit-tab-${hasIntegrationGuides ? 4 : 3}`}
-          aria-controls={`edit-tabpanel-${hasIntegrationGuides ? 4 : 3}`}
-          sx={{textTransform: 'none'}}
-        />
-        <Tab
-          label={t('applications:edit.page.tabs.advanced')}
-          id={`edit-tab-${hasIntegrationGuides ? 5 : 4}`}
-          aria-controls={`edit-tabpanel-${hasIntegrationGuides ? 5 : 4}`}
-          sx={{textTransform: 'none'}}
-        />
-      </Tabs>
+      {isMcpClient ? (
+        <>
+          {/* MCP Tabs */}
+          <Tabs value={safeActiveTab} onChange={handleTabChange} aria-label="application settings tabs">
+            {mcpTabs.map((tab, index) => (
+              <Tab
+                key={tab.key}
+                label={tab.label}
+                id={`edit-tab-${index}`}
+                aria-controls={`edit-tabpanel-${index}`}
+                sx={{textTransform: 'none'}}
+              />
+            ))}
+          </Tabs>
 
-      {/* Tab Panels */}
-      <>
-        {/* Overview Tab */}
-        {hasIntegrationGuides && (
-          <TabPanel value={activeTab} index={0}>
-            <IntegrationGuides application={application} oauth2Config={oauth2Config} />
-          </TabPanel>
-        )}
+          {/* MCP Tab Panels */}
+          <>
+            {mcpTabs.map((tab, index) => (
+              <TabPanel key={tab.key} value={safeActiveTab} index={index}>
+                {tab.panel}
+              </TabPanel>
+            ))}
+          </>
+        </>
+      ) : (
+        <>
+          {/* Tabs */}
+          <Tabs value={activeTab} onChange={handleTabChange} aria-label="application settings tabs">
+            {hasIntegrationGuides && (
+              <Tab
+                label={t('applications:edit.page.tabs.overview')}
+                id="edit-tab-0"
+                aria-controls="edit-tabpanel-0"
+                sx={{textTransform: 'none'}}
+              />
+            )}
+            <Tab
+              label={t('applications:edit.page.tabs.general')}
+              id={`edit-tab-${hasIntegrationGuides ? 1 : 0}`}
+              aria-controls={`edit-tabpanel-${hasIntegrationGuides ? 1 : 0}`}
+              sx={{textTransform: 'none'}}
+            />
+            <Tab
+              label={t('applications:edit.page.tabs.flows')}
+              id={`edit-tab-${hasIntegrationGuides ? 2 : 1}`}
+              aria-controls={`edit-tabpanel-${hasIntegrationGuides ? 2 : 1}`}
+              sx={{textTransform: 'none'}}
+            />
+            <Tab
+              label={t('applications:edit.page.tabs.customization')}
+              id={`edit-tab-${hasIntegrationGuides ? 3 : 2}`}
+              aria-controls={`edit-tabpanel-${hasIntegrationGuides ? 3 : 2}`}
+              sx={{textTransform: 'none'}}
+            />
+            <Tab
+              label={t('applications:edit.page.tabs.token')}
+              id={`edit-tab-${hasIntegrationGuides ? 4 : 3}`}
+              aria-controls={`edit-tabpanel-${hasIntegrationGuides ? 4 : 3}`}
+              sx={{textTransform: 'none'}}
+            />
+            <Tab
+              label={t('applications:edit.page.tabs.advanced')}
+              id={`edit-tab-${hasIntegrationGuides ? 5 : 4}`}
+              aria-controls={`edit-tabpanel-${hasIntegrationGuides ? 5 : 4}`}
+              sx={{textTransform: 'none'}}
+            />
+          </Tabs>
 
-        {/* General Tab */}
-        <TabPanel value={activeTab} index={hasIntegrationGuides ? 1 : 0}>
-          <EditGeneralSettings
-            application={application}
-            editedApp={editedApp}
-            onFieldChange={handleFieldChange}
-            oauth2Config={oauth2Config}
-            copiedField={copiedField}
-            onCopyToClipboard={handleCopyToClipboard}
-            onDeleteSuccess={() => {
-              handleBack().catch(() => null);
-            }}
-          />
-        </TabPanel>
+          {/* Tab Panels */}
+          <>
+            {/* Overview Tab */}
+            {hasIntegrationGuides && (
+              <TabPanel value={activeTab} index={0}>
+                <IntegrationGuides application={application} oauth2Config={oauth2Config} />
+              </TabPanel>
+            )}
 
-        {/* Flows Tab */}
-        <TabPanel value={activeTab} index={hasIntegrationGuides ? 2 : 1}>
-          <EditFlowsSettings application={application} editedApp={editedApp} onFieldChange={handleFieldChange} />
-        </TabPanel>
+            {/* General Tab */}
+            <TabPanel value={activeTab} index={hasIntegrationGuides ? 1 : 0}>
+              <EditGeneralSettings
+                application={application}
+                editedApp={editedApp}
+                onFieldChange={handleFieldChange}
+                oauth2Config={oauth2Config}
+                copiedField={copiedField}
+                onCopyToClipboard={handleCopyToClipboard}
+                onDeleteSuccess={() => {
+                  handleBack().catch(() => null);
+                }}
+              />
+            </TabPanel>
 
-        {/* Customization Tab */}
-        <TabPanel value={activeTab} index={hasIntegrationGuides ? 3 : 2}>
-          <EditCustomizationSettings
-            application={application}
-            editedApp={editedApp}
-            onFieldChange={handleFieldChange}
-          />
-        </TabPanel>
+            {/* Flows Tab */}
+            <TabPanel value={activeTab} index={hasIntegrationGuides ? 2 : 1}>
+              <EditFlowsSettings application={application} editedApp={editedApp} onFieldChange={handleFieldChange} />
+            </TabPanel>
 
-        {/* Token Tab */}
-        <TabPanel value={activeTab} index={hasIntegrationGuides ? 4 : 3}>
-          <EditTokenSettings
-            application={application}
-            oauth2Config={oauth2Config}
-            onFieldChange={handleFieldChange}
-            onValidationChange={setHasValidationErrors}
-          />
-        </TabPanel>
+            {/* Customization Tab */}
+            <TabPanel value={activeTab} index={hasIntegrationGuides ? 3 : 2}>
+              <EditCustomizationSettings
+                application={application}
+                editedApp={editedApp}
+                onFieldChange={handleFieldChange}
+              />
+            </TabPanel>
 
-        {/* Advanced Settings Tab */}
-        <TabPanel value={activeTab} index={hasIntegrationGuides ? 5 : 4}>
-          <EditAdvancedSettings
-            application={application}
-            editedApp={editedApp}
-            oauth2Config={oauth2Config}
-            oauth2Constraints={oauth2Constraints}
-            onFieldChange={handleFieldChange}
-          />
-        </TabPanel>
-      </>
+            {/* Token Tab */}
+            <TabPanel value={activeTab} index={hasIntegrationGuides ? 4 : 3}>
+              <EditTokenSettings
+                application={application}
+                oauth2Config={oauth2Config}
+                onFieldChange={handleFieldChange}
+                onValidationChange={setHasValidationErrors}
+              />
+            </TabPanel>
+
+            {/* Advanced Settings Tab */}
+            <TabPanel value={activeTab} index={hasIntegrationGuides ? 5 : 4}>
+              <EditAdvancedSettings
+                application={application}
+                editedApp={editedApp}
+                oauth2Config={oauth2Config}
+                oauth2Constraints={oauth2Constraints}
+                onFieldChange={handleFieldChange}
+              />
+            </TabPanel>
+          </>
+        </>
+      )}
 
       {/* Floating Action Bar */}
       {hasChanges && (
@@ -451,7 +568,7 @@ export default function ApplicationEditPage() {
           saveLabel={t('applications:edit.page.save')}
           savingLabel={t('applications:edit.page.saving')}
           isSaving={updateApplication.isPending}
-          saveDisabled={hasValidationErrors || application.isReadOnly === true}
+          saveDisabled={hasValidationErrors || mcpAccessInvalid || application.isReadOnly === true}
           onReset={() => setEditedApp({})}
           onSave={() => {
             handleSave().catch(() => null);

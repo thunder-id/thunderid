@@ -1,0 +1,38 @@
+extends: capitalization
+message: "Use Title Case for the page H1. Headings below H1 use sentence case."
+level: error
+scope: heading.h1
+match: $title
+exceptions:
+  - a
+  - an
+  - and
+  - as
+  - at
+  - but
+  - by
+  - for
+  - from
+  - in
+  - into
+  - nor
+  - of
+  - on
+  - onto
+  - or
+  - per
+  - the
+  - to
+  - via
+  - with
+  - without
+  - i18n
+  - v7
+  - Basepath
+  - Basename
+  - Per-Cache
+  - act
+  - Sign-In
+  - Sign-Out
+  - Sign-Up
+  - iOS

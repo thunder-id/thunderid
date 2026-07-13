@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type {TokenConfig} from './token';
+import type {AccessTokenConfig, TokenConfig} from './token';
 
 /**
  * OAuth2 Grant Type
@@ -31,7 +31,8 @@ export type OAuth2GrantType =
   | 'client_credentials'
   | 'password'
   | 'implicit'
-  | 'urn:openid:params:grant-type:ciba';
+  | 'urn:openid:params:grant-type:ciba'
+  | 'urn:ietf:params:oauth:grant-type:token-exchange';
 
 /**
  * OAuth2 Grant Type Constants
@@ -60,6 +61,8 @@ export const OAuth2GrantTypes = {
   IMPLICIT: 'implicit',
   /** Client-Initiated Backchannel Authentication (CIBA) - Decoupled authentication flow */
   CIBA: 'urn:openid:params:grant-type:ciba',
+  /** Token Exchange (RFC 8693) - Exchange a token for one scoped to a different resource/audience */
+  TOKEN_EXCHANGE: 'urn:ietf:params:oauth:grant-type:token-exchange',
 } as const;
 
 /**
@@ -236,8 +239,10 @@ export interface RefreshTokenConfig {
  * ```typescript
  * const tokenSettings: OAuth2Token = {
  *   accessToken: {
- *     validityPeriod: 3600,
- *     userAttributes: ['email', 'username']
+ *     userConfig: {
+ *       validityPeriod: 3600,
+ *       attributes: ['email', 'username']
+ *     }
  *   },
  *   idToken: {
  *     validityPeriod: 3600,
@@ -256,9 +261,9 @@ export interface RefreshTokenConfig {
 export interface OAuth2Token {
   /**
    * Access token configuration
-   * Defines the validity period and included user attributes for access tokens
+   * Split by token subject: userConfig (end-user grants) and clientConfig (client_credentials).
    */
-  accessToken: TokenConfig;
+  accessToken: AccessTokenConfig;
 
   /**
    * ID token configuration

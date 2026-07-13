@@ -136,7 +136,7 @@ func (ts *SMSOTPRecoveryFlowTestSuite) SetupSuite() {
 	ts.smsFlowID = customFlowID
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, customFlowID)
 
-	authFlowID, err := testutils.GetFlowIDByHandle("default-basic-flow", "AUTHENTICATION")
+	authFlowID, err := testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
 	ts.Require().NoError(err, "Failed to get default auth flow ID")
 	ts.authFlowID = authFlowID
 

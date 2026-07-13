@@ -17,31 +17,31 @@ The application registers redirect URIs for MCP Inspector:
 - `http://localhost:6274/oauth/callback/debug` — MCP Inspector's debug callback.
 - `http://localhost:6274/oauth/callback` — MCP Inspector's standard callback.
 
-`EXTERNAL-MCP-CLIENT` is wired to the same authentication flow as the Wayfinder Concierge, so the OAuth consent screen surfaces each requested `booking:*` permission as an individual toggle at sign-in time.
+`EXTERNAL-MCP-CLIENT` is wired to the same authentication flow as the Wayfinder Concierge, so the OAuth consent screen surfaces each requested `wayfinder:booking:*` permission as an individual toggle at sign-in time.
 
 See [Manage Applications](/docs/next/guides/guides/applications/manage-applications).
 
 ## Consent at Sign-In
 
-`john.doe` already holds the `Booking User` role — read, create, and cancel. The tryout doesn't add a narrower role; instead, the narrowing happens at the **consent screen** the first time `john.doe` signs in through Inspector. He picks which `booking:*` permissions to release to the external client.
+`john.doe` already holds the `Booking User` role — read, create, and cancel. The tryout doesn't add a narrower role; instead, the narrowing happens at the **consent screen** the first time `john.doe` signs in through Inspector. He picks which `wayfinder:booking:*` permissions to release to the external client.
 
-The token Inspector receives carries only the permissions he ticked. The MCP server enforces those per-tool, so the walkthrough can demonstrate scope enforcement by leaving `booking:cancel` unchecked the first time and including it on a later retry — without touching the user's roles.
+The token Inspector receives carries only the permissions he ticked. The MCP server enforces those per-tool, so the walkthrough can demonstrate scope enforcement by leaving `wayfinder:booking:cancel` unchecked the first time and including it on a later retry — without touching the user's roles.
 
 See [Authorization](/docs/next/guides/key-concepts/authorization).
 
 ## Resource Server
 
-This tryout reuses the `wayfinder-booking` resource server defined under [Resources and Permissions](../../identity-concepts#resources-and-permissions). The same `booking:*` permissions protect both `/api/*` (REST) and `/mcp` (MCP tools) — the Wayfinder Server enforces them per-route on the REST side and per-tool on the MCP side, against the same service layer.
+This tryout reuses the `wayfinder` resource server defined under [Resources and Permissions](../../identity-concepts#resources-and-permissions). The same `wayfinder:booking:*` permissions protect both `/api/*` (REST) and `/mcp` (MCP tools). The Wayfinder Server enforces them per-route on the REST side and per-tool on the MCP side, against the same service layer.
 
 Each MCP tool checks for the same scope its REST counterpart checks for:
 
 | MCP tool | REST endpoint | Required scope |
 | --- | --- | --- |
 | `search_flights` | `GET /api/flights` | — *(token only)* |
-| `recommend_bookings` | `GET /api/bookings/recommended` | `booking:recommend` |
-| `get_flight_bookings` | `GET /api/bookings/flights` | `booking:read` |
-| `create_booking` | `POST /api/bookings` | `booking:create` |
-| `delete_all_bookings` | `DELETE /api/bookings/flights` | `booking:cancel` |
+| `recommend_bookings` | `GET /api/bookings/recommended` | `wayfinder:booking:recommend` |
+| `get_flight_bookings` | `GET /api/bookings/flights` | `wayfinder:booking:read` |
+| `create_booking` | `POST /api/bookings` | `wayfinder:booking:create` |
+| `delete_all_bookings` | `DELETE /api/bookings/flights` | `wayfinder:booking:cancel` |
 
 See [Resource Servers](/docs/next/guides/guides/resource-servers).
 

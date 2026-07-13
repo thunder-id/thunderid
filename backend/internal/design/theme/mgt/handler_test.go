@@ -447,25 +447,6 @@ func (suite *ThemeHandlerTestSuite) TestHandleThemeDeleteRequest_NotFound() {
 	assert.Equal(suite.T(), http.StatusNoContent, w.Code)
 }
 
-// Test HandleThemeDeleteRequest - Conflict (theme in use)
-func (suite *ThemeHandlerTestSuite) TestHandleThemeDeleteRequest_Conflict() {
-	mockSvc := &mockThemeService{
-		deleteThemeFunc: func(id string) *tidcommon.ServiceError {
-			return &ErrorThemeInUse
-		},
-	}
-
-	handler := newThemeMgtHandler(mockSvc)
-	mux := http.NewServeMux()
-	mux.HandleFunc("DELETE /design/themes/{id}", handler.HandleThemeDeleteRequest)
-
-	req := httptest.NewRequest(http.MethodDelete, "/design/themes/theme-123", nil)
-	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
-
-	assert.Equal(suite.T(), http.StatusConflict, w.Code)
-}
-
 // Test HandleThemeUsagesGetRequest - Success
 func (suite *ThemeHandlerTestSuite) TestHandleThemeUsagesGetRequest_Success() {
 	total := 2
@@ -608,11 +589,6 @@ func (suite *ThemeHandlerTestSuite) TestHandleError_StatusCodeMapping() {
 			name:           "ThemeNotFound",
 			svcErr:         &ErrorThemeNotFound,
 			expectedStatus: http.StatusNotFound,
-		},
-		{
-			name:           "ThemeInUse",
-			svcErr:         &ErrorThemeInUse,
-			expectedStatus: http.StatusConflict,
 		},
 		{
 			name:           "InvalidThemeID",

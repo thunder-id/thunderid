@@ -85,6 +85,7 @@ curl -kL -X POST https://localhost:8090/identity-providers \
 | `logout_endpoint` | The provider's end-session endpoint. |
 | `prompt` | The `prompt` parameter to send in authorization requests (for example, `login`, `consent`). |
 | `token_exchange_enabled` | Set to `true` to enable token exchange with this provider. Requires `issuer` and `jwks_endpoint`. |
+| `trusted_token_audience` | The accepted `aud` claim value for tokens from this provider during token exchange. Use this when the provider issues tokens whose audience is the provider client ID or API audience instead of the <ProductName /> issuer. |
 
 ## Attribute Configuration
 
@@ -114,7 +115,7 @@ External providers emit attributes under their own names, which may differ from 
 
 | Field | Description |
 |-------|-------------|
-| `userTypeResolution` | **Required.** Resolves the local user type for an incoming identity. |
+| `userTypeResolution` | Resolves the local user type for an incoming identity. **Required** when `userTypeAttributeMappings` is configured (it selects which mapping profile applies); otherwise optional. |
 | `userTypeAttributeMappings` | An array where each entry holds the attribute mappings for one user type. |
 
 Each entry has a `userType` (the user type whose schema defines the valid local targets) and an `attributes` array. Each item in `attributes` has the following fields:
@@ -151,10 +152,36 @@ curl -kL -X POST https://localhost:8090/identity-providers \
       { "name": "jwks_endpoint", "value": "https://<provider>/oauth2/v1/keys", "isSecret": false },
       { "name": "issuer", "value": "https://<provider>", "isSecret": false },
       { "name": "scopes", "value": "openid email profile", "isSecret": false },
-      { "name": "token_exchange_enabled", "value": "true", "isSecret": false }
+      { "name": "token_exchange_enabled", "value": "true", "isSecret": false },
+      { "name": "trusted_token_audience", "value": "<provider-client-id>", "isSecret": false }
     ]
   }'
 ```
+
+## Account Linking
+
+To resolve an incoming federated identity to an existing local user by attributes when the subject identifier (`sub`) does not match, configure `accountLinking` under `attributeConfiguration`:
+
+```json
+{
+  "attributeConfiguration": {
+    "accountLinking": {
+      "attributes": ["email"]
+    }
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `accountLinking.attributes` | External attribute names matched together to resolve a unique local user when `sub` does not. |
+
+Behavior:
+
+- Resolution tries the subject identifier (`sub`) first. If it resolves an existing user, that user is used.
+- Otherwise, all configured attributes that have a value are matched together (as a single query) to resolve a unique local user.
+- Each attribute is an external claim name; if it's mapped via `userTypeAttributeMappings` (e.g. `email` → `work_email`), the mapped local attribute is used for the lookup instead.
+- If neither `sub` nor the configured attributes resolve a user, the user is treated as new (subject to the flow's provisioning configuration).
 
 ## Next Steps
 

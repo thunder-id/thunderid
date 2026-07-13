@@ -63,3 +63,11 @@ var queryTakeRuntimeStore = dbmodel.DBQuery{
 		`AND (EXPIRY_TIME IS NULL OR EXPIRY_TIME > $4) ` +
 		`RETURNING VALUE`,
 }
+
+// queryExtendTTLRuntimeStore extends the TTL of an existing, non-expired entry.
+var queryExtendTTLRuntimeStore = dbmodel.DBQuery{
+	ID: "RTS-06",
+	Query: `UPDATE "RUNTIME_STORE" SET EXPIRY_TIME = $4, UPDATED_AT = CURRENT_TIMESTAMP ` +
+		`WHERE DEPLOYMENT_ID = $1 AND NAMESPACE = $2 AND KEY = $3 ` +
+		`AND (EXPIRY_TIME IS NULL OR EXPIRY_TIME > $5)`,
+}

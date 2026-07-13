@@ -60,7 +60,7 @@ tosUri: https://localhost:3000/terms
 policyUri: https://localhost:3000/privacy
 contacts:
   - admin@example.com
-authFlowHandle: default-basic-flow
+authFlowHandle: default-flow
 isRegistrationFlowEnabled: true
 isRecoveryFlowEnabled: false
 assertion:
@@ -87,13 +87,14 @@ inboundAuthConfig:
       requirePushedAuthorizationRequests: false
       token:
         accessToken:
-          validityPeriod: 3600
-          userAttributes:
-            - given_name
-            - family_name
-            - email
-            - groups
-            - name
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - groups
+              - name
         idToken:
           validityPeriod: 3600
           userAttributes:

@@ -36,6 +36,7 @@ import {
 import {Check, Copy} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import {PANEL_HEADER_ROW_HEIGHT} from './constants';
 import type {SelectedNode} from './ResourceTree';
 import useUpdateAction from '../../api/useUpdateAction';
 import useUpdateResource from '../../api/useUpdateResource';
@@ -200,22 +201,9 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
 
   const kindNoun = resolveMcpKindLabel().toLowerCase() || 'item';
 
-  return (
-    <Box sx={{display: 'flex', flexDirection: 'column', gap: 2, p: 2, height: '100%', overflowY: 'auto'}}>
-      {/* MCP non-server: Quick-Copy-style header (name + kind subtitle) */}
-      {isMcpNonServer ? (
-        <Stack spacing={0}>
-          <Typography variant="h5">{name}</Typography>
-          {resolveMcpKindLabel() && (
-            <Stack direction="row" alignItems="center" spacing={0.5} sx={{mt: 0.5, color: 'text.disabled'}}>
-              {getActionKindIcon(selectedNode.type === 'resource' ? undefined : selectedNode.data.kind, 14)}
-              <Typography variant="body2" color="inherit">
-                {resolveMcpKindLabel()}
-              </Typography>
-            </Stack>
-          )}
-        </Stack>
-      ) : (
+  const formContent = (
+    <>
+      {!isMcpNonServer && (
         <Typography variant="caption" color="text.secondary" sx={{textTransform: 'uppercase', letterSpacing: 0.5}}>
           {resolveNodeTypeLabel()}
         </Typography>
@@ -297,9 +285,9 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
             multiline
             rows={3}
             disabled={isReadOnly}
-            helperText={
+            placeholder={
               isMcpNonServer
-                ? t('resourceServers:mcp.detail.descriptionHint', 'Optional. Describe what this {{kind}} is for.', {
+                ? t('resourceServers:mcp.detail.descriptionPlaceholder', 'Describe what this {{kind}} is for.', {
                     kind: kindNoun,
                   })
                 : undefined
@@ -307,8 +295,7 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
           />
         </FormControl>
       </Stack>
-
-      <Divider />
+      <Divider sx={{my: 1, borderColor: 'divider', borderBottomWidth: 2}} />
 
       {/* MCP non-server: read-only Permission field */}
       {isMcpNonServer ? (
@@ -419,6 +406,44 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
           </Button>
         </Box>
       )}
+    </>
+  );
+
+  if (isMcpNonServer) {
+    return (
+      <Box sx={{display: 'flex', flexDirection: 'column', height: '100%'}}>
+        <Box
+          sx={{
+            height: PANEL_HEADER_ROW_HEIGHT * 2,
+            px: 2,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            flexShrink: 0,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
+          <Typography variant="h5">{name}</Typography>
+          {resolveMcpKindLabel() && (
+            <Stack direction="row" alignItems="center" spacing={0.5} sx={{mt: 0.5, color: 'text.disabled'}}>
+              {getActionKindIcon(selectedNode.type === 'resource' ? undefined : selectedNode.data.kind, 14)}
+              <Typography variant="body2" color="inherit">
+                {resolveMcpKindLabel()}
+              </Typography>
+            </Stack>
+          )}
+        </Box>
+        <Box sx={{p: 2, display: 'flex', flexDirection: 'column', gap: 2, flex: 1, overflowY: 'auto'}}>
+          {formContent}
+        </Box>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{display: 'flex', flexDirection: 'column', gap: 2, p: 2, height: '100%', overflowY: 'auto'}}>
+      {formContent}
     </Box>
   );
 }

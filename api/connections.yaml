@@ -4,9 +4,10 @@ info:
   title: Connections API
   description: >-
     Configure the external services ThunderID connects to. This is a thin layer over the
-    identity-provider service: each connection type has a strict, vendor-specific schema and
-    is delegated to the underlying provider, so a configured connection is a real identity
-    provider. Multiple instances per type are supported.
+    identity-provider and notification-sender services: each connection type has a strict,
+    vendor-specific schema and is delegated to the underlying provider, so a configured
+    connection is a real identity provider or message sender. Multiple instances per type
+    are supported.
   version: "1.0"
   license:
     name: Apache 2.0
@@ -46,6 +47,12 @@ paths:
                     configured: true
                     instanceCount: 1
                   - type: "github"
+                    configured: false
+                    instanceCount: 0
+                  - type: "twilio"
+                    configured: false
+                    instanceCount: 0
+                  - type: "vonage"
                     configured: false
                     instanceCount: 0
         "401": { $ref: '#/components/responses/Unauthorized' }
@@ -356,6 +363,259 @@ paths:
         "403": { $ref: '#/components/responses/Forbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
 
+  /connections/twilio:
+    get:
+      tags: [Connections]
+      summary: List configured Twilio connections
+      responses:
+        "200": { $ref: '#/components/responses/InstanceList' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create a Twilio connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TwilioConnectionCreateRequest' }
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TwilioConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/twilio/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get a Twilio connection
+      responses:
+        "200":
+          description: Connection details (secrets masked)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TwilioConnectionResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update a Twilio connection
+      description: Omit authToken to keep the stored value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TwilioConnectionUpdateRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TwilioConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete a Twilio connection
+      responses:
+        "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/vonage:
+    get:
+      tags: [Connections]
+      summary: List configured Vonage connections
+      responses:
+        "200": { $ref: '#/components/responses/InstanceList' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create a Vonage connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VonageConnectionCreateRequest' }
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VonageConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/vonage/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get a Vonage connection
+      responses:
+        "200":
+          description: Connection details (secrets masked)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VonageConnectionResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update a Vonage connection
+      description: Omit apiSecret to keep the stored value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VonageConnectionUpdateRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VonageConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete a Vonage connection
+      responses:
+        "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/oauth:
+    get:
+      tags: [Connections]
+      summary: List configured OAuth 2.0 connections
+      responses:
+        "200": { $ref: '#/components/responses/InstanceList' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create an OAuth 2.0 connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OAuthConnectionCreateRequest' }
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/oauth/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get an OAuth 2.0 connection
+      responses:
+        "200":
+          description: Connection details (secrets masked)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthConnectionResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update an OAuth 2.0 connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OAuthConnectionUpdateRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete an OAuth 2.0 connection
+      responses:
+        "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/oauth/{id}/usages:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get OAuth 2.0 connection usages
+      description: |
+        Returns the resources that reference this connection, aggregated across all resource
+        types (for example, flows that use it). Informational only — it drives the pre-delete
+        confirmation dialog in the UI and does not gate deletion on the server.
+
+        Each usage entry includes a `behaviorOnDelete` field describing what happens to the
+        referencing resource if the connection is deleted:
+        - `fallback`: the reference is kept as-is.
+        - `cascade`: the resource is permanently deleted along with the connection.
+        - `restrict`: the resource blocks deletion of the connection.
+
+        When usage data is unavailable (e.g. the server has not fully initialised),
+        `totalResults` and `summary` are `null` rather than `0`/empty. Consumers must treat
+        `null` as "unknown" and `0` as "confirmed empty".
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionUsages' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
 components:
   securitySchemes:
     OAuth2:
@@ -447,7 +707,7 @@ components:
       properties:
         type:
           type: string
-          enum: [google, github, oidc]
+          enum: [google, github, oidc, oauth, twilio, vonage]
           example: "google"
         configured:
           type: boolean
@@ -638,6 +898,98 @@ components:
         prompt: { type: string }
         tokenExchangeEnabled: { type: boolean }
         attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+
+    OAuthConnectionUpdateRequest:
+      type: object
+      description: |
+        Generic OAuth 2.0 connection (no OpenID Connect discovery, no id_token). The user
+        profile is always fetched from userInfoEndpoint, so it is required here — unlike OIDC.
+      required: [name, clientId, redirectUri, authorizationEndpoint, tokenEndpoint, userInfoEndpoint]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        clientId: { type: string }
+        clientSecret: { type: string, description: "Write-only. Omit to keep the stored value on update." }
+        redirectUri: { type: string }
+        authorizationEndpoint: { type: string }
+        tokenEndpoint: { type: string }
+        userInfoEndpoint: { type: string }
+        logoutEndpoint: { type: string }
+        scopes: { type: array, items: { type: string } }
+        prompt: { type: string }
+        attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+    OAuthConnectionCreateRequest:
+      allOf:
+        - $ref: '#/components/schemas/OAuthConnectionUpdateRequest'
+        - type: object
+          required: [clientSecret]
+    OAuthConnectionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        type: { type: string, example: "oauth" }
+        clientId: { type: string }
+        clientSecret: { type: string, example: "******" }
+        redirectUri: { type: string }
+        authorizationEndpoint: { type: string }
+        tokenEndpoint: { type: string }
+        userInfoEndpoint: { type: string }
+        logoutEndpoint: { type: string }
+        scopes: { type: array, items: { type: string } }
+        prompt: { type: string }
+        attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+
+    TwilioConnectionUpdateRequest:
+      type: object
+      required: [name, accountSid, senderId]
+      properties:
+        name: { type: string, example: "My Twilio" }
+        description: { type: string }
+        accountSid: { type: string, description: "Twilio Account SID (AC followed by 32 hex characters).", example: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
+        authToken: { type: string, description: "Write-only. Omit to keep the stored value on update." }
+        senderId: { type: string, description: "Sender phone number or alphanumeric sender ID.", example: "+15005550006" }
+    TwilioConnectionCreateRequest:
+      allOf:
+        - $ref: '#/components/schemas/TwilioConnectionUpdateRequest'
+        - type: object
+          required: [authToken]
+    TwilioConnectionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        type: { type: string, example: "twilio" }
+        accountSid: { type: string }
+        authToken: { type: string, description: "Masked as \"******\".", example: "******" }
+        senderId: { type: string }
+
+    VonageConnectionUpdateRequest:
+      type: object
+      required: [name, apiKey, senderId]
+      properties:
+        name: { type: string, example: "My Vonage" }
+        description: { type: string }
+        apiKey: { type: string, description: "Vonage API key." }
+        apiSecret: { type: string, description: "Write-only. Omit to keep the stored value on update." }
+        senderId: { type: string, description: "Sender phone number or alphanumeric sender ID.", example: "ThunderID" }
+    VonageConnectionCreateRequest:
+      allOf:
+        - $ref: '#/components/schemas/VonageConnectionUpdateRequest'
+        - type: object
+          required: [apiSecret]
+    VonageConnectionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        type: { type: string, example: "vonage" }
+        apiKey: { type: string }
+        apiSecret: { type: string, description: "Masked as \"******\".", example: "******" }
+        senderId: { type: string }
 
     AttributeConfiguration:
       type: object

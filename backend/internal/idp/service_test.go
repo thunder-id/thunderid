@@ -1217,6 +1217,13 @@ func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_NilMapping_OK()
 	s.Nil(svcErr)
 }
 
+func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_AccountLinkingOnly_NoUserTypeResolutionRequired() {
+	idp := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		AccountLinking: &providers.AccountLinking{Attributes: []string{"email"}},
+	}}
+	s.Nil(s.idpService.validateAttributeConfiguration(context.Background(), idp))
+}
+
 func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_Valid() {
 	s.mockET.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "person", false, true, false).
 		Return([]entitytype.AttributeInfo{{Attribute: "firstName"}, {Attribute: "email"}},

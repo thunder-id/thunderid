@@ -76,8 +76,8 @@ How the request-time scope list becomes the issued-token scope list:
 
 | Scope category | Filtered by resource indicators? | Notes |
 |---|---|---|
-| `openid`, `profile`, `email`, `phone`, `address` | ❌ Always kept | OIDC standard scopes are reserved and pass through unchanged |
-| Custom scopes covered by `scopeClaims` | ❌ Always kept | The application owns these |
+| `openid`, `profile`, `email`, `phone`, `address` | ❌ Not by resource indicators | OpenID Connect standard scopes are reserved. When the application has a scopes allowlist, <ProductName /> only keeps requested scopes that the application allows. |
+| Custom scopes covered by `scopeClaims` | ❌ Not by resource indicators | The application owns these scopes. When the application has a scopes allowlist, <ProductName /> only keeps requested scopes that the application allows. |
 | Permissions owned by a targeted resource server (see [Resource Indicators](../resource-indicators)) | ✅ Kept | RS-defined |
 | Permissions owned by a different resource server | ❌ Dropped silently | RS-defined |
 | Permissions not allowed on the application | ❌ Rejected | Request fails with `invalid_scope` |

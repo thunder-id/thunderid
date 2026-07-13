@@ -143,8 +143,9 @@ paths:
                       - "email"
                     token:
                       accessToken:
-                        validityPeriod: 3600
-                        userAttributes: ["email", "username"]
+                        userConfig:
+                          validityPeriod: 3600
+                          attributes: ["email", "username"]
                       idToken:
                         validityPeriod: 3600
                         userAttributes: ["email", "name", "given_name", "family_name"]
@@ -219,8 +220,9 @@ paths:
                         - "email"
                       token:
                         accessToken:
-                          validityPeriod: 3600
-                          userAttributes: ["email", "username"]
+                          userConfig:
+                            validityPeriod: 3600
+                            attributes: ["email", "username"]
                         idToken:
                           validityPeriod: 1800
                           userAttributes: ["email", "email_verified", "name", "given_name", "family_name"]
@@ -361,8 +363,9 @@ paths:
                         - "email"
                       token:
                         accessToken:
-                          validityPeriod: 3600
-                          userAttributes: ["email", "username"]
+                          userConfig:
+                            validityPeriod: 3600
+                            attributes: ["email", "username"]
                         idToken:
                           validityPeriod: 1800
                           userAttributes: ["email", "email_verified", "name", "given_name", "family_name"]
@@ -491,8 +494,9 @@ paths:
                       - "email"
                     token:
                       accessToken:
-                        validityPeriod: 3600
-                        userAttributes: ["email", "username"]
+                        userConfig:
+                          validityPeriod: 3600
+                          attributes: ["email", "username"]
                       idToken:
                         validityPeriod: 1800
                         userAttributes: ["email", "email_verified", "name", "given_name", "family_name"]
@@ -569,8 +573,9 @@ paths:
                         - "email"
                       token:
                         accessToken:
-                          validityPeriod: 3600
-                          userAttributes: ["email", "username"]
+                          userConfig:
+                            validityPeriod: 3600
+                            attributes: ["email", "username"]
                         idToken:
                           validityPeriod: 1800
                           userAttributes: ["email", "email_verified", "name", "given_name", "family_name"]
@@ -1188,17 +1193,33 @@ components:
     AccessTokenConfig:
       type: object
       description: |
-        Access token configuration for OAuth applications.
+        Access token configuration for OAuth applications, split by token subject.
+      properties:
+        userConfig:
+          allOf:
+            - $ref: '#/components/schemas/AccessTokenSubConfig'
+          description: Configuration applied when the access token's subject is an end user.
+        clientConfig:
+          allOf:
+            - $ref: '#/components/schemas/AccessTokenSubConfig'
+          description: >
+            Configuration applied when the access token's subject is the OAuth client itself,
+            issued only via the client_credentials grant.
+
+    AccessTokenSubConfig:
+      type: object
+      description: |
+        Validity period and attribute selection for one access token subject type.
       properties:
         validityPeriod:
           type: integer
           description: The validity period of the access token in seconds. If not specified, falls back to application-level or deployment default.
           example: 3600
-        userAttributes:
+        attributes:
           type: array
           items:
             type: string
-          description: The user attributes to include in the access token.
+          description: The attributes to include in the access token.
           example: ["email", "username"]
 
     IDTokenConfig:

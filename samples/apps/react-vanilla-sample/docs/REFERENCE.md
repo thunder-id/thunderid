@@ -10,7 +10,7 @@ Two configuration sets are available under `thunderid-config/`. Each contains a 
 
 Sets up:
 - `Customer` user type (username, password, email, name fields)
-- `Sample App` application using the built-in `default-basic-flow`
+- `Sample App` application using the built-in `default-flow`
 - Registration enabled, recovery disabled
 
 Required environment values:

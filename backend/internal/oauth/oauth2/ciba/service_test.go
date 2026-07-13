@@ -280,7 +280,9 @@ func (suite *CIBAServiceTestSuite) TestInitiate_InjectsRequiredAttributes() {
 		GrantTypes: []providers.GrantType{providers.GrantTypeCIBA},
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"email", "given_name", "family_name", "name"},
+				UserConfig: &providers.AccessTokenSubConfig{
+					Attributes: []string{"email", "given_name", "family_name", "name"},
+				},
 			},
 		},
 		UserInfo: &providers.UserInfoConfig{
@@ -506,7 +508,9 @@ func (suite *CIBAServiceTestSuite) TestResolveUserAttributesCacheTTL_RefreshToke
 	app := &providers.OAuthClient{
 		GrantTypes: []providers.GrantType{providers.GrantTypeCIBA, providers.GrantTypeRefreshToken},
 		Token: &providers.OAuthTokenConfig{
-			AccessToken:  &providers.AccessTokenConfig{ValidityPeriod: 3600},
+			AccessToken: &providers.AccessTokenConfig{
+				UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 3600},
+			},
 			RefreshToken: &providers.RefreshTokenConfig{ValidityPeriod: 86400},
 		},
 	}
@@ -549,7 +553,7 @@ func (suite *CIBAServiceTestSuite) TestGetRequiredOptionalAttributes_AccessToken
 	app := &providers.OAuthClient{
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id", "role"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id", "role"}},
 			},
 		},
 	}
@@ -560,7 +564,7 @@ func (suite *CIBAServiceTestSuite) TestGetRequiredOptionalAttributes_ScopeDerive
 	app := &providers.OAuthClient{
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id"}},
 			},
 		},
 		UserInfo: &providers.UserInfoConfig{

@@ -215,6 +215,28 @@ describe('ExecutionMinimal', () => {
       expect(screen.getByTestId('handle-source-execution-handle-failure')).toBeInTheDocument();
     });
 
+    it('should use custom outcome labels from display.outcomes', () => {
+      const resource = createMockResource({
+        display: {
+          label: 'SSO Check',
+          image: '',
+          showOnResourcePanel: true,
+          outcomes: {success: 'Available', failure: 'Unavailable'},
+        },
+        data: {
+          action: {
+            executor: {name: 'SSOCheckExecutor'},
+            onSuccess: '',
+            onFailure: '',
+          },
+        },
+      });
+      render(<ExecutionMinimal resource={resource} />);
+
+      expect(screen.getByLabelText('Available')).toBeInTheDocument();
+      expect(screen.getByLabelText('Unavailable')).toBeInTheDocument();
+    });
+
     it('should wrap handles in tooltips when both handles are present', () => {
       const resource = createMockResource({
         data: {

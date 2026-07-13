@@ -137,13 +137,20 @@ resources:
 ---
 # resource_type: flow
 id: 01900000-0000-7000-8000-000000000061
-name: Default Basic Authentication Flow
-handle: default-basic-flow
+name: Default Authentication Flow
+handle: default-flow
 flowType: AUTHENTICATION
 nodes:
 - id: start
   type: START
   onSuccess: prompt_credentials
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 248
+      y: 711
 - id: prompt_credentials
   type: PROMPT
   meta:
@@ -176,21 +183,25 @@ nodes:
         label: '{{ t(signin:forms.credentials.fields.password.label) }}'
         required: true
         placeholder: '{{ t(signin:forms.credentials.fields.password.placeholder) }}'
-      - category: DISPLAY
-        id: rich_text_forgot_password
-        label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.prefix) }} </span><a href="{{meta(application.forgot_password_url)}}" target="_blank" rel="noopener noreferrer" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.label) }}</span></a></p>
-        resourceType: ELEMENT
-        type: RICH_TEXT
       - type: ACTION
         id: action_001
         label: '{{ t(signin:forms.credentials.actions.submit.label) }}'
         variant: PRIMARY
         eventType: SUBMIT
-      - category: DISPLAY
-        id: rich_text_signup
-        label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.sign_up.prefix) }} </span><a href="{{meta(application.sign_up_url)}}" target="_blank" rel="noopener noreferrer" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.sign_up.label) }}</span></a></p>
-        resourceType: ELEMENT
-        type: RICH_TEXT
+    - category: DISPLAY
+      id: rich_text_forgot_password
+      action:
+        ref: action_forgot_password
+      label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.prefix) }} </span><a href="#" data-action-ref="action_forgot_password" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.label) }}</span></a></p>
+      resourceType: ELEMENT
+      type: RICH_TEXT
+    - category: DISPLAY
+      id: rich_text_signup
+      action:
+        ref: action_signup
+      label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.sign_up.prefix) }} </span><a href="#" data-action-ref="action_signup" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.sign_up.label) }}</span></a></p>
+      resourceType: ELEMENT
+      type: RICH_TEXT
   prompts:
   - inputs:
     - ref: input_001
@@ -204,24 +215,89 @@ nodes:
     action:
       ref: action_001
       nextNode: credentials_auth
+  - action:
+      ref: action_forgot_password
+      nextNode: call_recovery
+  - action:
+      ref: action_signup
+      nextNode: call_registration
+  layout:
+    size:
+      width: 350
+      height: 834
+    position:
+      x: 562
+      y: 312
 - id: credentials_auth
   type: TASK_EXECUTION
   executor:
     name: CredentialsAuthExecutor
   onSuccess: authorization_check
   onIncomplete: prompt_credentials
+  layout:
+    size:
+      width: 217
+      height: 113
+    position:
+      x: 1283
+      y: 470
 - id: authorization_check
   type: TASK_EXECUTION
   executor:
     name: AuthorizationExecutor
   onSuccess: auth_assert
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 1774
+      y: 470
 - id: auth_assert
   type: TASK_EXECUTION
   executor:
     name: AuthAssertExecutor
   onSuccess: end
+  layout:
+    size:
+      width: 244
+      height: 113
+    position:
+      x: 2168
+      y: 469
+- id: call_recovery
+  type: CALL
+  flow:
+    ref: 01900000-0000-7000-8000-000000000067
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 129
+    position:
+      x: 1255
+      y: 773
+- id: call_registration
+  type: CALL
+  flow:
+    ref: 01900000-0000-7000-8000-000000000064
+  onSuccess: auth_assert
+  layout:
+    size:
+      width: 260
+      height: 129
+    position:
+      x: 1771
+      y: 934
 - id: end
   type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2527
+      y: 509
 ---
 # resource_type: flow
 id: 01900000-0000-7000-8000-000000000068
@@ -304,8 +380,8 @@ nodes:
 ---
 # resource_type: flow
 id: 01900000-0000-7000-8000-000000000067
-name: Email Link Password Recovery Flow
-handle: email-link-based-password-recovery
+name: Default Recovery Flow
+handle: default-flow
 flowType: RECOVERY
 nodes:
 - id: start
@@ -322,6 +398,14 @@ nodes:
   type: PROMPT
   meta:
     components:
+    - alt: '{{ t(signin:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
     - align: center
       type: TEXT
       id: text_header_username
@@ -345,11 +429,13 @@ nodes:
         label: '{{ t(recovery:forms.username.actions.submit.label) }}'
         variant: PRIMARY
         eventType: SUBMIT
-      - category: DISPLAY
-        id: rich_text_signup
-        label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(recovery:forms.username.links.sign_in.prefix) }} </span><a href="{{meta(application.sign_in_url)}}" target="_blank" rel="noopener noreferrer" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(recovery:forms.username.links.sign_in.label) }}</span></a></p>
-        resourceType: ELEMENT
-        type: RICH_TEXT
+    - category: DISPLAY
+      id: rich_text_signin
+      action:
+        ref: action_signin
+      label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(recovery:forms.username.links.sign_in.prefix) }} </span><a href="#" data-action-ref="action_signin" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(recovery:forms.username.links.sign_in.label) }}</span></a></p>
+      resourceType: ELEMENT
+      type: RICH_TEXT
   prompts:
   - inputs:
     - ref: input_username
@@ -359,6 +445,9 @@ nodes:
     action:
       ref: action_submit_username
       nextNode: identify_user
+  - action:
+      ref: action_signin
+      nextNode: call_authentication
   layout:
     size:
       width: 350
@@ -468,6 +557,14 @@ nodes:
   type: PROMPT
   meta:
     components:
+    - alt: '{{ t(signin:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
     - align: center
       type: TEXT
       id: text_header_password
@@ -547,6 +644,18 @@ nodes:
     position:
       x: 3140
       y: 250
+- id: call_authentication
+  type: CALL
+  flow:
+    ref: 01900000-0000-7000-8000-000000000061
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 130
+    position:
+      x: 800
+      y: 1000
 - id: end
   type: END
   layout:
@@ -559,8 +668,8 @@ nodes:
 ---
 # resource_type: flow
 id: 01900000-0000-7000-8000-000000000064
-name: Default Basic Registration Flow
-handle: default-basic-flow
+name: Default Registration Flow
+handle: default-flow
 flowType: REGISTRATION
 nodes:
 - id: start
@@ -571,8 +680,8 @@ nodes:
       width: 101
       height: 34
     position:
-      x: 62
-      y: 481
+      x: -2
+      y: 479
 - id: user_type_resolver
   type: TASK_EXECUTION
   executor:
@@ -584,8 +693,8 @@ nodes:
       width: 244
       height: 113
     position:
-      x: 363
-      y: 442
+      x: 244
+      y: 440
 - id: prompt_usertype
   type: PROMPT
   meta:
@@ -618,6 +727,13 @@ nodes:
         label: '{{ t(signup:forms.user_type.actions.continue.label) }}'
         variant: PRIMARY
         eventType: SUBMIT
+    - category: DISPLAY
+      id: rich_text_signin_usertype
+      action:
+        ref: action_signin_usertype
+      label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signup:forms.credentials.links.sign_in.prefix) }} </span><a href="#" data-action-ref="action_signin_usertype" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signup:forms.credentials.links.sign_in.label) }}</span></a></p>
+      resourceType: ELEMENT
+      type: RICH_TEXT
   prompts:
   - inputs:
     - ref: usertype_input
@@ -627,13 +743,16 @@ nodes:
     action:
       ref: action_usertype
       nextNode: user_type_resolver
+  - action:
+      ref: action_signin_usertype
+      nextNode: call_authentication
   layout:
     size:
       width: 350
       height: 500
     position:
-      x: 363
-      y: -500
+      x: 370
+      y: -319
 - id: prompt_credentials
   type: PROMPT
   meta:
@@ -671,6 +790,13 @@ nodes:
         label: '{{ t(signup:forms.credentials.actions.continue.label) }}'
         variant: PRIMARY
         eventType: SUBMIT
+    - category: DISPLAY
+      id: rich_text_signin
+      action:
+        ref: action_signin
+      label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signup:forms.credentials.links.sign_in.prefix) }} </span><a href="#" data-action-ref="action_signin" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signup:forms.credentials.links.sign_in.label) }}</span></a></p>
+      resourceType: ELEMENT
+      type: RICH_TEXT
   prompts:
   - inputs:
     - ref: input_username
@@ -684,13 +810,16 @@ nodes:
     action:
       ref: action_credentials
       nextNode: credentials_auth
+  - action:
+      ref: action_signin
+      nextNode: call_authentication
   layout:
     size:
       width: 350
       height: 500
     position:
-      x: 807
-      y: 248
+      x: 870
+      y: 120
 - id: credentials_auth
   type: TASK_EXECUTION
   executor:
@@ -701,8 +830,8 @@ nodes:
       width: 244
       height: 113
     position:
-      x: 1357
-      y: 442
+      x: 1427
+      y: 589
 - id: provisioning
   type: TASK_EXECUTION
   executor:
@@ -714,8 +843,8 @@ nodes:
       width: 244
       height: 113
     position:
-      x: 1801
-      y: 442
+      x: 1861
+      y: 591
 - id: prompt_schema_attrs
   type: PROMPT
   meta:
@@ -753,8 +882,20 @@ nodes:
       width: 350
       height: 500
     position:
-      x: 1801
-      y: -500
+      x: 1986
+      y: -188
+- id: call_authentication
+  type: CALL
+  flow:
+    ref: 01900000-0000-7000-8000-000000000061
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 130
+    position:
+      x: 1402
+      y: 828
 - id: end
   type: END
   layout:
@@ -762,8 +903,8 @@ nodes:
       width: 85
       height: 34
     position:
-      x: 2245
-      y: 481
+      x: 2451
+      y: 629
 ---
 # resource_type: flow
 id: 01900000-0000-7000-8000-000000000069
@@ -925,8 +1066,8 @@ nodes:
 ---
 # resource_type: flow
 id: 01900000-0000-7000-8000-000000000066
-name: User Onboarding Flow
-handle: default-user-onboarding
+name: Default User Onboarding Flow
+handle: default-flow
 flowType: USER_ONBOARDING
 nodes:
 - id: start
@@ -943,7 +1084,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system
+    - system:user
   executor:
     name: PermissionValidator
   onSuccess: user_type_resolver
@@ -4577,14 +4718,15 @@ inboundAuthConfig:
       publicClient: true
       token:
         accessToken:
-          validityPeriod: 3600
-          userAttributes:
-            - given_name
-            - family_name
-            - email
-            - groups
-            - name
-            - ouId
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - groups
+              - name
+              - ouId
         idToken:
           validityPeriod: 3600
           userAttributes:
@@ -4818,6 +4960,8 @@ translations:
     forms.credentials.actions.continue.label: Continue
     forms.credentials.actions.submit.label: Sign Up
     forms.credentials.divider.or: OR
+    forms.credentials.links.sign_in.prefix: Already have an account?
+    forms.credentials.links.sign_in.label: Sign in
     forms.passkey.title: Sign Up
     forms.passkey.description: Sign up with a passkey for secure access without a password
     forms.passkey.actions.submit.label: Sign up with Passkey

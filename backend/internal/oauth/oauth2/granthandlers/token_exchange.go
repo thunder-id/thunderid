@@ -211,16 +211,18 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 	finalAudiences := mergeAudiences(tokenRequest.Audiences, rsAudiences, tokenRequest.ClientID)
 
 	// Build access token using token builder
+	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, &tokenservice.AccessTokenBuildContext{
-		Subject:        subjectClaims.Sub,
-		Audiences:      finalAudiences,
-		ClientID:       tokenRequest.ClientID,
-		Scopes:         finalScopes,
-		UserAttributes: subjectClaims.UserAttributes,
-		GrantType:      string(providers.GrantTypeTokenExchange),
-		OAuthApp:       oauthApp,
-		ActorClaims:    actorClaims,
-		DPoPJkt:        dpop.GetJkt(ctx),
+		Subject:           subjectClaims.Sub,
+		Audiences:         finalAudiences,
+		ClientID:          tokenRequest.ClientID,
+		Scopes:            finalScopes,
+		SubjectAttributes: tokenservice.FilterAttributesByAllowList(subjectClaims.UserAttributes, userSubConfig),
+		GrantType:         string(providers.GrantTypeTokenExchange),
+		OAuthApp:          oauthApp,
+		ActorClaims:       actorClaims,
+		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
+		DPoPJkt:           dpop.GetJkt(ctx),
 	})
 	if err != nil {
 		logger.Error(ctx, "Failed to generate token", log.Error(err))

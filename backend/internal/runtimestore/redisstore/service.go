@@ -38,6 +38,7 @@ type redisClient interface {
 	SetArgs(ctx context.Context, key string, value any, a redis.SetArgs) *redis.StatusCmd
 	Del(ctx context.Context, keys ...string) *redis.IntCmd
 	GetDel(ctx context.Context, key string) *redis.StringCmd
+	Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd
 }
 
 // keyFormat is the format string used to build Redis store keys.
@@ -99,7 +100,7 @@ func (r *redisStore) Update(ctx context.Context, namespace providers.RuntimeStor
 	}).Err()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return fmt.Errorf("value not found for key: %s", formattedKey)
+			return providers.ErrRuntimeStoreKeyNotFound
 		}
 		return fmt.Errorf("failed to update in Redis: %w", err)
 	}
@@ -128,6 +129,21 @@ func (r *redisStore) Take(ctx context.Context, namespace providers.RuntimeStoreN
 
 	r.logger.Debug(ctx, "Taken from Redis", log.String("key", key))
 	return data, nil
+}
+
+// ExtendTTL extends the TTL of an existing entry in the Redis store.
+func (r *redisStore) ExtendTTL(ctx context.Context, namespace providers.RuntimeStoreNamespace,
+	key string, ttlSeconds int64) error {
+	formattedKey := r.getFormattedKey(namespace, key)
+	ttl := time.Duration(ttlSeconds) * time.Second
+	ok, err := r.client.Expire(ctx, formattedKey, ttl).Result()
+	if err != nil {
+		return fmt.Errorf("failed to extend TTL in Redis: %w", err)
+	}
+	if !ok {
+		return providers.ErrRuntimeStoreKeyNotFound
+	}
+	return nil
 }
 
 // getFormattedKey builds the Redis key.

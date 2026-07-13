@@ -148,11 +148,11 @@ func (ts *ApplicationAPITestSuite) SetupSuite() {
 	appToUpdate.OUID = testOUID
 
 	// Get Flow IDs
-	defaultAuthFlowID, err = testutils.GetFlowIDByHandle("default-basic-flow", "AUTHENTICATION")
+	defaultAuthFlowID, err = testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
 	ts.Require().NoError(err, "Failed to get basic auth flow ID")
 	testApp.AuthFlowID = defaultAuthFlowID
 
-	defaultRegistrationFlowID, err = testutils.GetFlowIDByHandle("default-basic-flow", "REGISTRATION")
+	defaultRegistrationFlowID, err = testutils.GetFlowIDByHandle("default-flow", "REGISTRATION")
 	ts.Require().NoError(err, "Failed to get basic registration flow ID")
 	testApp.RegistrationFlowID = defaultRegistrationFlowID
 
@@ -1499,8 +1499,10 @@ func (ts *ApplicationAPITestSuite) TestApplicationWithTokenConfiguration() {
 					Scopes:                  []string{"openid", "profile"},
 					Token: &OAuthTokenConfig{
 						AccessToken: &AccessTokenConfig{
-							ValidityPeriod: 3600,
-							UserAttributes: []string{"email", "username"},
+							UserConfig: &AccessTokenSubConfig{
+								ValidityPeriod: 3600,
+								Attributes:     []string{"email", "username"},
+							},
 						},
 						IDToken: &IDTokenConfig{
 							ValidityPeriod: 3600,
@@ -1526,7 +1528,7 @@ func (ts *ApplicationAPITestSuite) TestApplicationWithTokenConfiguration() {
 	ts.Require().NoError(err)
 	ts.Assert().NotNil(retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token)
 	ts.Assert().NotNil(retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken)
-	ts.Assert().Equal(int64(3600), retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken.ValidityPeriod)
+	ts.Assert().Equal(int64(3600), retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken.UserConfig.ValidityPeriod)
 }
 
 // TestApplicationWithIDTokenScopeClaims tests ID token scope claims configuration.
@@ -1595,7 +1597,9 @@ func (ts *ApplicationAPITestSuite) TestApplicationUpdateWithTokenConfigChanges()
 					Scopes:                  []string{"openid"},
 					Token: &OAuthTokenConfig{
 						AccessToken: &AccessTokenConfig{
-							ValidityPeriod: 1800,
+							UserConfig: &AccessTokenSubConfig{
+								ValidityPeriod: 1800,
+							},
 						},
 					},
 				},
@@ -1610,8 +1614,10 @@ func (ts *ApplicationAPITestSuite) TestApplicationUpdateWithTokenConfigChanges()
 	// Update with more complex token config
 	app.InboundAuthConfig[0].OAuthAppConfig.Token = &OAuthTokenConfig{
 		AccessToken: &AccessTokenConfig{
-			ValidityPeriod: 7200,
-			UserAttributes: []string{"email", "username", "role"},
+			UserConfig: &AccessTokenSubConfig{
+				ValidityPeriod: 7200,
+				Attributes:     []string{"email", "username", "role"},
+			},
 		},
 		IDToken: &IDTokenConfig{
 			ValidityPeriod: 3600,
@@ -1636,7 +1642,7 @@ func (ts *ApplicationAPITestSuite) TestApplicationUpdateWithTokenConfigChanges()
 	// Verify the updated config
 	retrievedApp, err := getApplicationByID(appID)
 	ts.Require().NoError(err)
-	ts.Assert().Equal(int64(7200), retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken.ValidityPeriod)
+	ts.Assert().Equal(int64(7200), retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken.UserConfig.ValidityPeriod)
 	ts.Assert().NotNil(retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.IDToken)
 }
 
@@ -1834,8 +1840,10 @@ func (ts *ApplicationAPITestSuite) TestApplicationWithOnlyAccessToken() {
 					Scopes:                  []string{"api.read", "api.write"},
 					Token: &OAuthTokenConfig{
 						AccessToken: &AccessTokenConfig{
-							ValidityPeriod: 7200,
-							UserAttributes: []string{"email", "username", "role", "department"},
+							UserConfig: &AccessTokenSubConfig{
+								ValidityPeriod: 7200,
+								Attributes:     []string{"email", "username", "role", "department"},
+							},
 						},
 						// No IDToken
 					},
@@ -1853,8 +1861,8 @@ func (ts *ApplicationAPITestSuite) TestApplicationWithOnlyAccessToken() {
 	ts.Require().NoError(err)
 	ts.Assert().NotNil(retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token)
 	ts.Assert().NotNil(retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken)
-	ts.Assert().Equal(int64(7200), retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken.ValidityPeriod)
-	ts.Assert().Len(retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken.UserAttributes, 4)
+	ts.Assert().Equal(int64(7200), retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken.UserConfig.ValidityPeriod)
+	ts.Assert().Len(retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken.UserConfig.Attributes, 4)
 }
 
 // TestApplicationWithOnlyIDToken tests creating application with only IDToken config.
@@ -1922,8 +1930,10 @@ func (ts *ApplicationAPITestSuite) TestApplicationWithBothTokenTypes() {
 					Scopes:                  []string{"openid", "profile", "email"},
 					Token: &OAuthTokenConfig{
 						AccessToken: &AccessTokenConfig{
-							ValidityPeriod: 5400,
-							UserAttributes: []string{"email", "username"},
+							UserConfig: &AccessTokenSubConfig{
+								ValidityPeriod: 5400,
+								Attributes:     []string{"email", "username"},
+							},
 						},
 						IDToken: &IDTokenConfig{
 							ValidityPeriod: 3600,
@@ -1949,7 +1959,7 @@ func (ts *ApplicationAPITestSuite) TestApplicationWithBothTokenTypes() {
 	ts.Assert().NotNil(retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token)
 	ts.Assert().NotNil(retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken)
 	ts.Assert().NotNil(retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.IDToken)
-	ts.Assert().Equal(int64(5400), retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken.ValidityPeriod)
+	ts.Assert().Equal(int64(5400), retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken.UserConfig.ValidityPeriod)
 	ts.Assert().Equal(int64(3600), retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.IDToken.ValidityPeriod)
 }
 
@@ -2408,8 +2418,10 @@ func (ts *ApplicationAPITestSuite) TestApplicationWithCompleteMetadata() {
 					Scopes:                  []string{"openid", "profile", "email"},
 					Token: &OAuthTokenConfig{
 						AccessToken: &AccessTokenConfig{
-							ValidityPeriod: 3600,
-							UserAttributes: []string{"sub", "email"},
+							UserConfig: &AccessTokenSubConfig{
+								ValidityPeriod: 3600,
+								Attributes:     []string{"sub", "email"},
+							},
 						},
 						IDToken: &IDTokenConfig{
 							ValidityPeriod: 3600,
@@ -2462,8 +2474,8 @@ func (ts *ApplicationAPITestSuite) TestApplicationWithCompleteMetadata() {
 
 	// Verify access token config
 	ts.Require().NotNil(retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken)
-	ts.Assert().Equal(int64(3600), retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken.ValidityPeriod)
-	ts.Assert().Equal([]string{"sub", "email"}, retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken.UserAttributes)
+	ts.Assert().Equal(int64(3600), retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken.UserConfig.ValidityPeriod)
+	ts.Assert().Equal([]string{"sub", "email"}, retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.AccessToken.UserConfig.Attributes)
 
 	// Verify ID token config
 	ts.Require().NotNil(retrievedApp.InboundAuthConfig[0].OAuthAppConfig.Token.IDToken)
@@ -4006,7 +4018,7 @@ func (ts *ApplicationAPITestSuite) TestApplicationUpdateWithInvalidThemeAndLayou
 }
 
 // TestThemeAndLayoutCannotDeleteWhenAssociatedWithApplication tests that theme/layout cannot be deleted when associated with an application
-func (ts *ApplicationAPITestSuite) TestThemeAndLayoutCannotDeleteWhenAssociatedWithApplication() {
+func (ts *ApplicationAPITestSuite) TestThemeAndLayoutDeletableWhenAssociatedWithApplication() {
 	// Create a theme configuration
 	themePreferences := []byte(`{
 		"activeColorScheme": "dark",
@@ -4026,18 +4038,23 @@ func (ts *ApplicationAPITestSuite) TestThemeAndLayoutCannotDeleteWhenAssociatedW
 	ts.Require().NoError(err, "Failed to create theme for test")
 	defer deleteThemeForTest(themeID)
 
-	// Create application with theme ID
+	layoutID, err := createLayoutForTest([]byte(`{"structure": "grid"}`), "Layout for delete test")
+	ts.Require().NoError(err, "Failed to create layout for test")
+	defer deleteLayoutForTest(layoutID)
+
+	// Create application referencing the theme and layout
 	app := Application{
 		OUID:        testOUID,
-		Name:        "App Preventing Theme Delete",
-		Description: "Application that prevents theme deletion",
+		Name:        "App With Theme And Layout",
+		Description: "Application that references a theme and a layout",
 		ThemeID:     themeID,
+		LayoutID:    layoutID,
 		Certificate: nil,
 		InboundAuthConfig: []InboundAuthConfig{
 			{
 				Type: "oauth2",
 				OAuthAppConfig: &OAuthAppConfig{
-					RedirectURIs:            []string{"https://prevent-delete.example.com/callback"},
+					RedirectURIs:            []string{"https://theme-layout.example.com/callback"},
 					GrantTypes:              []string{"authorization_code"},
 					ResponseTypes:           []string{"code"},
 					TokenEndpointAuthMethod: "client_secret_basic",
@@ -4050,36 +4067,43 @@ func (ts *ApplicationAPITestSuite) TestThemeAndLayoutCannotDeleteWhenAssociatedW
 	ts.Require().NoError(err)
 	defer deleteApplication(appID)
 
-	// Try to delete the theme - should fail
-	req, err := http.NewRequest("DELETE", testServerURL+"/design/themes/"+themeID, nil)
-	ts.Require().NoError(err)
-
 	client := testutils.GetHTTPClient()
 
-	resp, err := client.Do(req)
+	// Deleting the theme while associated with an application succeeds; the application falls back
+	// to the default theme at read time.
+	themeReq, err := http.NewRequest("DELETE", testServerURL+"/design/themes/"+themeID, nil)
 	ts.Require().NoError(err)
-	defer resp.Body.Close()
-
-	ts.Assert().Equal(http.StatusConflict, resp.StatusCode)
-
-	bodyBytes, err := io.ReadAll(resp.Body)
+	themeResp, err := client.Do(themeReq)
 	ts.Require().NoError(err)
+	themeResp.Body.Close()
+	ts.Assert().Equal(http.StatusNoContent, themeResp.StatusCode)
 
-	var errResp map[string]interface{}
-	err = json.Unmarshal(bodyBytes, &errResp)
+	// Deleting the layout while associated with an application succeeds similarly.
+	layoutReq, err := http.NewRequest("DELETE", testServerURL+"/design/layouts/"+layoutID, nil)
 	ts.Require().NoError(err)
-	ts.Assert().Equal("THM-1004", errResp["code"])
-
-	// Delete the application first
-	err = deleteApplication(appID)
+	layoutResp, err := client.Do(layoutReq)
 	ts.Require().NoError(err)
+	layoutResp.Body.Close()
+	ts.Assert().Equal(http.StatusNoContent, layoutResp.StatusCode)
 
-	// Now the theme should be deletable
-	resp, err = client.Do(req)
+	// The theme and layout are gone.
+	themeGetReq, err := http.NewRequest("GET", testServerURL+"/design/themes/"+themeID, nil)
 	ts.Require().NoError(err)
-	defer resp.Body.Close()
+	themeGetResp, err := client.Do(themeGetReq)
+	ts.Require().NoError(err)
+	themeGetResp.Body.Close()
+	ts.Assert().Equal(http.StatusNotFound, themeGetResp.StatusCode)
 
-	ts.Assert().Equal(http.StatusNoContent, resp.StatusCode)
+	layoutGetReq, err := http.NewRequest("GET", testServerURL+"/design/layouts/"+layoutID, nil)
+	ts.Require().NoError(err)
+	layoutGetResp, err := client.Do(layoutGetReq)
+	ts.Require().NoError(err)
+	layoutGetResp.Body.Close()
+	ts.Assert().Equal(http.StatusNotFound, layoutGetResp.StatusCode)
+
+	// The application remains retrievable after its theme and layout are removed.
+	_, err = getApplicationByID(appID)
+	ts.Require().NoError(err)
 }
 
 // TestApplicationWithAllowedUserTypes tests creating an application with valid allowed_user_types

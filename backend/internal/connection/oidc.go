@@ -42,6 +42,7 @@ type oidcConnectionRequest struct {
 	Scopes                []string `json:"scopes,omitempty"`
 	Prompt                string   `json:"prompt,omitempty"`
 	TokenExchangeEnabled  *bool    `json:"tokenExchangeEnabled,omitempty"`
+	TrustedTokenAudience  string   `json:"trustedTokenAudience,omitempty"`
 
 	AttributeConfiguration *providers.AttributeConfiguration `json:"attributeConfiguration,omitempty"`
 }
@@ -64,6 +65,7 @@ type oidcConnectionResponse struct {
 	Scopes                []string `json:"scopes,omitempty"`
 	Prompt                string   `json:"prompt,omitempty"`
 	TokenExchangeEnabled  *bool    `json:"tokenExchangeEnabled,omitempty"`
+	TrustedTokenAudience  string   `json:"trustedTokenAudience,omitempty"`
 
 	AttributeConfiguration *providers.AttributeConfiguration `json:"attributeConfiguration,omitempty"`
 }
@@ -87,6 +89,7 @@ func oidcToIDPDTO(req oidcConnectionRequest) (*providers.IDPDTO, error) {
 		{idp.PropIssuer, req.Issuer, false},
 		{idp.PropScopes, joinScopes(req.Scopes), false},
 		{idp.PropPrompt, req.Prompt, false},
+		{idp.PropTrustedTokenAudience, req.TrustedTokenAudience, false},
 	}
 	if req.TokenExchangeEnabled != nil {
 		fields = append(fields, struct {
@@ -94,6 +97,12 @@ func oidcToIDPDTO(req oidcConnectionRequest) (*providers.IDPDTO, error) {
 			value    string
 			isSecret bool
 		}{idp.PropTokenExchangeEnabled, strconv.FormatBool(*req.TokenExchangeEnabled), false})
+	} else if req.TrustedTokenAudience != "" {
+		fields = append(fields, struct {
+			name     string
+			value    string
+			isSecret bool
+		}{idp.PropTokenExchangeEnabled, "true", false})
 	}
 	for _, field := range fields {
 		if props, err = appendProperty(props, field.name, field.value, field.isSecret); err != nil {
@@ -130,6 +139,7 @@ func oidcFromIDPDTO(dto providers.IDPDTO) (oidcConnectionResponse, error) {
 		Issuer:                values[idp.PropIssuer],
 		Scopes:                splitScopes(values[idp.PropScopes]),
 		Prompt:                values[idp.PropPrompt],
+		TrustedTokenAudience:  values[idp.PropTrustedTokenAudience],
 	}
 	if raw, ok := values[idp.PropTokenExchangeEnabled]; ok {
 		if enabled, parseErr := strconv.ParseBool(raw); parseErr == nil {

@@ -422,9 +422,11 @@ func (is *idpService) ensureNoBlockingDependencies(ctx context.Context, idpID st
 	})
 }
 
-// validateAttributeConfiguration validates the IDP's attribute configuration: a required default user type, and
-// for each user type's attributes a valid claim-mapping shape with every local (target) claim a
-// non-credential attribute defined in that user type's schema. No-op when no profile is configured.
+// validateAttributeConfiguration validates the IDP's attribute configuration: a default user type is
+// required only when user-type attribute mappings are configured (it selects which mapping profile
+// applies), and for each user type's attributes a valid claim-mapping shape with every local (target)
+// claim a non-credential attribute defined in that user type's schema. No-op when no profile is
+// configured.
 func (is *idpService) validateAttributeConfiguration(
 	ctx context.Context,
 	idp *providers.IDPDTO,
@@ -433,7 +435,8 @@ func (is *idpService) validateAttributeConfiguration(
 	if profile == nil {
 		return nil
 	}
-	if profile.UserTypeResolution == nil || strings.TrimSpace(profile.UserTypeResolution.Default) == "" {
+	if len(profile.UserTypeAttributeMappings) > 0 &&
+		(profile.UserTypeResolution == nil || strings.TrimSpace(profile.UserTypeResolution.Default) == "") {
 		return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 			Key:          "error.idpservice.attribute_configuration_user_type_required_description",
 			DefaultValue: "attribute configuration requires an user type",

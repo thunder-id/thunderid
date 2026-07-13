@@ -125,4 +125,15 @@ func registerRoutes(mux *http.ServeMux, layoutMgtHandler *layoutMgtHandler) {
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /design/layouts/{id}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}, opts2))
+
+	opts3 := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("GET /design/layouts/{id}/usages",
+		layoutMgtHandler.HandleLayoutUsagesGetRequest, opts3))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /design/layouts/{id}/usages",
+		func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }, opts3))
 }

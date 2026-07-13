@@ -72,10 +72,9 @@ func (tb *tokenBuilder) BuildAccessToken(
 		return nil, fmt.Errorf("build context cannot be nil")
 	}
 
-	tokenConfig := ResolveTokenConfig(tb.cfg, tokenCtx.OAuthApp, TokenTypeAccess)
+	tokenConfig := ResolveTokenConfig(tb.cfg, tokenCtx.OAuthApp, TokenTypeAccess, tokenCtx.ValidityPeriod)
 
-	userAttributes := tb.buildAccessTokenUserAttributes(tokenCtx.UserAttributes, tokenCtx.OAuthApp)
-	jwtClaims, claimsErr := tb.buildAccessTokenClaims(tokenCtx, userAttributes)
+	jwtClaims, claimsErr := tb.buildAccessTokenClaims(tokenCtx)
 	if claimsErr != nil {
 		return nil, fmt.Errorf("failed to build access token claims: %w", claimsErr)
 	}
@@ -90,7 +89,7 @@ func (tb *tokenBuilder) BuildAccessToken(
 		ExpiresIn:        tokenConfig.ValidityPeriod,
 		Scopes:           tokenCtx.Scopes,
 		ClientID:         tokenCtx.ClientID,
-		UserAttributes:   userAttributes,
+		UserAttributes:   tokenCtx.SubjectAttributes,
 		AttributeCacheID: tokenCtx.AttributeCacheID,
 		Subject:          tokenCtx.Subject,
 		Audiences:        tokenCtx.Audiences,
@@ -121,7 +120,6 @@ func (tb *tokenBuilder) BuildAccessToken(
 // buildAccessTokenClaims builds the claims map for an access token.
 func (tb *tokenBuilder) buildAccessTokenClaims(
 	ctx *AccessTokenBuildContext,
-	filteredAttributes map[string]interface{},
 ) (map[string]interface{}, error) {
 	claims := make(map[string]interface{})
 
@@ -137,17 +135,12 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 		claims["grant_type"] = ctx.GrantType
 	}
 
-	// Add filtered user attributes to claims
-	for key, value := range filteredAttributes {
+	// Merge the subject's attributes (already resolved and filtered by the grant handler).
+	for key, value := range ctx.SubjectAttributes {
 		claims[key] = value
 	}
 
-	// Merge OAuth client/application-scoped attributes.
-	for key, value := range ctx.ClientAttributes {
-		claims[key] = value
-	}
-
-	// Set after merging user attributes to prevent user attributes from overwriting this system claim.
+	// Set after merging subject attributes to prevent them from overwriting this system claim.
 	if ctx.AttributeCacheID != "" {
 		claims["aci"] = ctx.AttributeCacheID
 	}
@@ -186,40 +179,6 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 	return claims, nil
 }
 
-// buildAccessTokenUserAttributes builds user attributes for the access token based on app configuration.
-func (tb *tokenBuilder) buildAccessTokenUserAttributes(
-	attrs map[string]interface{},
-	oauthApp *providers.OAuthClient,
-) map[string]interface{} {
-	accessTokenAttributes := make(map[string]interface{})
-
-	if attrs == nil {
-		attrs = make(map[string]interface{})
-	}
-
-	// Get access token user attributes from config if available
-	var accessTokenUserAttributes []string
-	if oauthApp != nil && oauthApp.Token != nil && oauthApp.Token.AccessToken != nil {
-		accessTokenUserAttributes = oauthApp.Token.AccessToken.UserAttributes
-	}
-
-	if accessTokenUserAttributes == nil {
-		accessTokenUserAttributes = []string{}
-	}
-
-	// If app config specifies which attributes to include, filter them
-	if len(accessTokenUserAttributes) > 0 {
-		for _, attr := range accessTokenUserAttributes {
-			if val, ok := attrs[attr]; ok {
-				accessTokenAttributes[attr] = val
-			}
-		}
-	}
-	// If no filtering configured, return empty attributes
-
-	return accessTokenAttributes
-}
-
 // buildActorClaim builds the actor claim for token exchange.
 func (tb *tokenBuilder) buildActorClaim(actorClaims *SubjectTokenClaims) map[string]interface{} {
 	actClaim := map[string]interface{}{
@@ -246,7 +205,7 @@ func (tb *tokenBuilder) BuildRefreshToken(
 		return nil, fmt.Errorf("build context cannot be nil")
 	}
 
-	tokenConfig := ResolveTokenConfig(tb.cfg, tokenCtx.OAuthApp, TokenTypeRefresh)
+	tokenConfig := ResolveTokenConfig(tb.cfg, tokenCtx.OAuthApp, TokenTypeRefresh, 0)
 
 	claims, claimsErr := tb.buildRefreshTokenClaims(tokenCtx)
 	if claimsErr != nil {
@@ -336,7 +295,7 @@ func (tb *tokenBuilder) BuildIDToken(
 		return nil, fmt.Errorf("build context cannot be nil")
 	}
 
-	tokenConfig := ResolveTokenConfig(tb.cfg, tokenCtx.OAuthApp, TokenTypeID)
+	tokenConfig := ResolveTokenConfig(tb.cfg, tokenCtx.OAuthApp, TokenTypeID, 0)
 
 	jwtClaims := tb.buildIDTokenClaims(tokenCtx)
 

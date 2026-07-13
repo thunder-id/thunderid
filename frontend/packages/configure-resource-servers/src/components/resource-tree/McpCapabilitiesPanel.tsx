@@ -18,8 +18,10 @@
 
 import {
   Box,
+  Button,
   Chip,
   CircularProgress,
+  Divider,
   IconButton,
   ListItemIcon,
   ListItemText,
@@ -29,14 +31,14 @@ import {
   Stack,
   Typography,
 } from '@wso2/oxygen-ui';
-import {Database, Folder, Plus, Wrench} from '@wso2/oxygen-ui-icons-react';
+import {Database, Plus, Wrench} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import AddNodeDialog, {type AddNodeMode} from './AddNodeDialog';
+import {PANEL_HEADER_ROW_HEIGHT} from './constants';
 import ResourceDetailPanel from './ResourceDetailPanel';
 import type {KindFilter, SelectedNode} from './ResourceTree';
-import {ActionNode, ResourceNode} from './ResourceTreeNode';
-import useGetResources from '../../api/useGetResources';
+import {ActionNode} from './ResourceTreeNode';
 import useGetServerActions from '../../api/useGetServerActions';
 import type {ResourceServer} from '../../models/resource-server';
 
@@ -56,10 +58,8 @@ export default function McpCapabilitiesPanel({resourceServer, onRefresh}: McpCap
   const [addMenuAnchor, setAddMenuAnchor] = useState<HTMLElement | null>(null);
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
 
-  const {data: topLevelResources, isLoading: loadingResources} = useGetResources(resourceServer.id);
   const {data: serverActionsData, isLoading: loadingActions} = useGetServerActions(resourceServer.id);
 
-  const namespaces = useMemo(() => topLevelResources?.resources ?? [], [topLevelResources]);
   const serverActions = useMemo(() => serverActionsData?.actions ?? [], [serverActionsData]);
 
   const serverTools = useMemo(() => serverActions.filter((a) => a.kind === 'tool'), [serverActions]);
@@ -73,16 +73,15 @@ export default function McpCapabilitiesPanel({resourceServer, onRefresh}: McpCap
     });
   };
 
-  const isLoading = loadingResources || loadingActions;
-  const isEmpty = serverActions.length === 0 && namespaces.length === 0;
+  const isLoading = loadingActions;
+  const isEmpty = serverActions.length === 0;
 
   const effectiveSelectedNode = useMemo<SelectedNode | null>(() => {
     if (selectedNode) return selectedNode;
     if (serverTools.length > 0) return {type: 'server-action', id: serverTools[0].id, data: serverTools[0]};
     if (serverResources.length > 0) return {type: 'server-action', id: serverResources[0].id, data: serverResources[0]};
-    if (namespaces.length > 0) return {type: 'resource', id: namespaces[0].id, data: namespaces[0]};
     return null;
-  }, [selectedNode, serverTools, serverResources, namespaces]);
+  }, [selectedNode, serverTools, serverResources]);
 
   const filteredServerActions = useMemo(
     () =>
@@ -95,13 +94,14 @@ export default function McpCapabilitiesPanel({resourceServer, onRefresh}: McpCap
   );
 
   return (
-    <Box sx={{display: 'flex', gap: 2, height: '100%'}}>
+    <Box sx={{display: 'flex', flexDirection: {xs: 'column', md: 'row'}, gap: 2, height: {md: '100%'}}}>
       {/* Left: Capabilities panel */}
       <Paper
         variant="outlined"
         sx={{
           flex: 1,
-          minWidth: 300,
+          minWidth: {md: 300},
+          minHeight: {xs: 320, md: 0},
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -111,7 +111,7 @@ export default function McpCapabilitiesPanel({resourceServer, onRefresh}: McpCap
         <Box
           sx={{
             px: 1.5,
-            py: 1,
+            height: PANEL_HEADER_ROW_HEIGHT,
             bgcolor: 'background.default',
             borderBottom: '1px solid',
             borderColor: 'divider',
@@ -127,95 +127,101 @@ export default function McpCapabilitiesPanel({resourceServer, onRefresh}: McpCap
           >
             {t('resourceServers:mcp.panel.title', 'Capabilities')}
           </Typography>
-          <IconButton
-            size="small"
-            aria-label={t('resourceServers:mcp.add', 'Add')}
-            onClick={(e) => setAddMenuAnchor(e.currentTarget)}
-          >
-            <Plus size={16} />
-          </IconButton>
-          <Menu anchorEl={addMenuAnchor} open={Boolean(addMenuAnchor)} onClose={() => setAddMenuAnchor(null)}>
-            <MenuItem
-              onClick={() => {
-                openAdd('mcp-server-tool');
-                setAddMenuAnchor(null);
-              }}
-            >
-              <ListItemIcon>
-                <Wrench size={16} />
-              </ListItemIcon>
-              <ListItemText>{t('resourceServers:mcp.addTool', 'Add tool')}</ListItemText>
-            </MenuItem>
-            <MenuItem
-              onClick={() => {
-                openAdd('mcp-server-resource');
-                setAddMenuAnchor(null);
-              }}
-            >
-              <ListItemIcon>
-                <Database size={16} />
-              </ListItemIcon>
-              <ListItemText>{t('resourceServers:mcp.addResource', 'Add resource')}</ListItemText>
-            </MenuItem>
-            <MenuItem
-              onClick={() => {
-                openAdd('mcp-namespace');
-                setAddMenuAnchor(null);
-              }}
-            >
-              <ListItemIcon>
-                <Folder size={16} />
-              </ListItemIcon>
-              <ListItemText>{t('resourceServers:mcp.addNamespace', 'Add namespace')}</ListItemText>
-            </MenuItem>
-          </Menu>
+          {(!isEmpty || isLoading) && (
+            <>
+              <IconButton
+                size="small"
+                aria-label={t('resourceServers:mcp.add', 'Add')}
+                onClick={(e) => setAddMenuAnchor(e.currentTarget)}
+              >
+                <Plus size={16} />
+              </IconButton>
+              <Menu anchorEl={addMenuAnchor} open={Boolean(addMenuAnchor)} onClose={() => setAddMenuAnchor(null)}>
+                <MenuItem
+                  onClick={() => {
+                    openAdd('mcp-server-tool');
+                    setAddMenuAnchor(null);
+                  }}
+                >
+                  <ListItemIcon>
+                    <Wrench size={16} />
+                  </ListItemIcon>
+                  <ListItemText>{t('resourceServers:mcp.addTool', 'Add tool permission')}</ListItemText>
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    openAdd('mcp-server-resource');
+                    setAddMenuAnchor(null);
+                  }}
+                >
+                  <ListItemIcon>
+                    <Database size={16} />
+                  </ListItemIcon>
+                  <ListItemText>{t('resourceServers:mcp.addResource', 'Add resource permission')}</ListItemText>
+                </MenuItem>
+              </Menu>
+            </>
+          )}
         </Box>
 
         {/* Toolbar: filter chips */}
-        <Box sx={{px: 1.5, py: 1, borderBottom: '1px solid', borderColor: 'divider'}}>
-          <Stack
-            direction="row"
-            flexWrap="wrap"
-            useFlexGap
-            gap={0.75}
-            role="radiogroup"
-            aria-label={t('resourceServers:mcp.filter.label', 'Filter capabilities')}
+        {!isEmpty && !isLoading && (
+          <Box
+            sx={{
+              px: 1.5,
+              height: PANEL_HEADER_ROW_HEIGHT,
+              display: 'flex',
+              alignItems: 'center',
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+            }}
           >
-            <Chip
-              label={t('resourceServers:mcp.filter.all', 'All')}
-              size="small"
-              color={kindFilter === 'all' ? 'primary' : 'default'}
-              variant={kindFilter === 'all' ? 'filled' : 'outlined'}
-              onClick={() => setKindFilter('all')}
-              role="radio"
-              aria-checked={kindFilter === 'all'}
-              disabled={isLoading}
-              sx={{cursor: 'pointer'}}
-            />
-            <Chip
-              label={t('resourceServers:mcp.filter.tools', 'Tools')}
-              size="small"
-              color={kindFilter === 'tool' ? 'primary' : 'default'}
-              variant={kindFilter === 'tool' ? 'filled' : 'outlined'}
-              onClick={() => setKindFilter('tool')}
-              role="radio"
-              aria-checked={kindFilter === 'tool'}
-              disabled={isLoading}
-              sx={{cursor: 'pointer'}}
-            />
-            <Chip
-              label={t('resourceServers:mcp.filter.resources', 'Resources')}
-              size="small"
-              color={kindFilter === 'resource' ? 'primary' : 'default'}
-              variant={kindFilter === 'resource' ? 'filled' : 'outlined'}
-              onClick={() => setKindFilter('resource')}
-              role="radio"
-              aria-checked={kindFilter === 'resource'}
-              disabled={isLoading}
-              sx={{cursor: 'pointer'}}
-            />
-          </Stack>
-        </Box>
+            <Stack
+              direction="row"
+              flexWrap="wrap"
+              useFlexGap
+              gap={0.75}
+              role="radiogroup"
+              aria-label={t('resourceServers:mcp.filter.label', 'Filter capabilities')}
+            >
+              <Chip
+                label={t('resourceServers:mcp.filter.all', 'All')}
+                size="small"
+                color={kindFilter === 'all' ? 'primary' : 'default'}
+                variant={kindFilter === 'all' ? 'filled' : 'outlined'}
+                onClick={() => setKindFilter('all')}
+                role="radio"
+                aria-checked={kindFilter === 'all'}
+                disabled={isLoading}
+                sx={{cursor: 'pointer'}}
+              />
+              <Chip
+                label={t('resourceServers:mcp.filter.tools', 'Tools')}
+                icon={<Wrench size={14} />}
+                size="small"
+                color={kindFilter === 'tool' ? 'primary' : 'default'}
+                variant={kindFilter === 'tool' ? 'filled' : 'outlined'}
+                onClick={() => setKindFilter('tool')}
+                role="radio"
+                aria-checked={kindFilter === 'tool'}
+                disabled={isLoading}
+                sx={{cursor: 'pointer'}}
+              />
+              <Chip
+                label={t('resourceServers:mcp.filter.resources', 'Resources')}
+                icon={<Database size={14} />}
+                size="small"
+                color={kindFilter === 'resource' ? 'primary' : 'default'}
+                variant={kindFilter === 'resource' ? 'filled' : 'outlined'}
+                onClick={() => setKindFilter('resource')}
+                role="radio"
+                aria-checked={kindFilter === 'resource'}
+                disabled={isLoading}
+                sx={{cursor: 'pointer'}}
+              />
+            </Stack>
+          </Box>
+        )}
 
         {/* Scroll body */}
         <Box role="tree" sx={{flex: 1, overflowY: 'auto', height: '100%', pt: 1}}>
@@ -224,52 +230,71 @@ export default function McpCapabilitiesPanel({resourceServer, onRefresh}: McpCap
               <CircularProgress size={24} />
             </Box>
           ) : isEmpty ? (
-            <Box sx={{px: 2, py: 2}}>
-              <Typography variant="body2" color="text.disabled" sx={{textAlign: 'center'}}>
-                {t('resourceServers:mcp.empty', 'No capabilities yet. Use + to add a tool, resource, or namespace.')}
+            <Box
+              sx={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+              }}
+            >
+              <Typography variant="body2" color="text.disabled" sx={{mb: 3, textAlign: 'center', maxWidth: 360}}>
+                {t(
+                  'resourceServers:mcp.empty',
+                  'No capabilities have been added to this MCP server yet. Add tool permissions to control which tools can be invoked, or resource permissions to control access to data sources.',
+                )}
               </Typography>
+              <Stack spacing={1.5} alignItems="center" sx={{width: '100%', maxWidth: 280}}>
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  startIcon={<Wrench size={16} />}
+                  onClick={() => openAdd('mcp-server-tool')}
+                >
+                  {t('resourceServers:mcp.addTool', 'Add tool permission')}
+                </Button>
+                <Divider sx={{width: '100%'}}>
+                  <Typography variant="caption" color="text.disabled">
+                    {t('common:or', 'or')}
+                  </Typography>
+                </Divider>
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  startIcon={<Database size={16} />}
+                  onClick={() => openAdd('mcp-server-resource')}
+                >
+                  {t('resourceServers:mcp.addResource', 'Add resource permission')}
+                </Button>
+              </Stack>
             </Box>
           ) : (
-            <>
-              {namespaces.map((ns) => (
-                <ResourceNode
-                  key={ns.id}
-                  resourceServerId={resourceServer.id}
-                  delimiter={resourceServer.delimiter}
-                  node={ns}
-                  depth={0}
-                  selectedNodeId={effectiveSelectedNode?.id ?? null}
-                  onSelect={setSelectedNode}
-                  onAddChild={(mode, parentResourceId, parentPermission) =>
-                    openAdd(mode, parentResourceId, parentPermission)
-                  }
-                  isMcp
-                  kindFilter={kindFilter}
-                />
-              ))}
-              {filteredServerActions.map((action) => (
-                <ActionNode
-                  key={action.id}
-                  resourceServerId={resourceServer.id}
-                  action={action}
-                  depth={0}
-                  selectedNodeId={effectiveSelectedNode?.id ?? null}
-                  onSelect={setSelectedNode}
-                />
-              ))}
-            </>
+            filteredServerActions.map((action) => (
+              <ActionNode
+                key={action.id}
+                resourceServerId={resourceServer.id}
+                action={action}
+                depth={0}
+                selectedNodeId={effectiveSelectedNode?.id ?? null}
+                onSelect={setSelectedNode}
+              />
+            ))
           )}
         </Box>
       </Paper>
 
       {/* Right: Detail Panel */}
-      <Paper variant="outlined" sx={{flex: 1, minWidth: 280, overflow: 'hidden'}}>
-        <ResourceDetailPanel
-          selectedNode={effectiveSelectedNode}
-          resourceServer={resourceServer}
-          onRefresh={onRefresh}
-        />
-      </Paper>
+      {(!isEmpty || isLoading) && (
+        <Paper variant="outlined" sx={{flex: 1, minWidth: {md: 280}, overflow: 'hidden'}}>
+          <ResourceDetailPanel
+            selectedNode={effectiveSelectedNode}
+            resourceServer={resourceServer}
+            onRefresh={onRefresh}
+          />
+        </Paper>
+      )}
 
       {addDialog && (
         <AddNodeDialog

@@ -197,6 +197,25 @@ func (lh *layoutMgtHandler) HandleLayoutDeleteRequest(w http.ResponseWriter, r *
 	lh.logger.Debug(ctx, "Successfully deleted layout configuration", log.String("id", id))
 }
 
+// HandleLayoutUsagesGetRequest handles the get layout usages request.
+func (lh *layoutMgtHandler) HandleLayoutUsagesGetRequest(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
+	if svcErr != nil {
+		handleError(r.Context(), w, svcErr)
+		return
+	}
+
+	result, svcErr := lh.layoutMgtService.GetLayoutUsages(r.Context(), id, limit, offset)
+	if svcErr != nil {
+		handleError(r.Context(), w, svcErr)
+		return
+	}
+
+	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusOK, result)
+	lh.logger.Debug(r.Context(), "Successfully retrieved layout usages", log.String("id", id))
+}
+
 // parsePaginationParams parses limit and offset query parameters from the request.
 func parsePaginationParams(query url.Values) (int, int, *tidcommon.ServiceError) {
 	limit := 0

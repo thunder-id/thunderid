@@ -63,6 +63,7 @@
     "@thunderid/design": "workspace:^",
     "@thunderid/hooks": "workspace:^",
     "@thunderid/configure-agent-types": "workspace:^",
+    "@thunderid/configure-connections": "workspace:^",
     "@thunderid/configure-users": "workspace:^",
     "@thunderid/configure-user-types": "workspace:^",
     "@thunderid/configure-organization-units": "workspace:^",

@@ -118,8 +118,10 @@ export type BasicApplication = Pick<
  *       scopes: ['openid', 'profile', 'email'],
  *       token: {
  *         accessToken: {
- *           validityPeriod: 3600,
- *           userAttributes: ['email', 'username']
+ *           userConfig: {
+ *             validityPeriod: 3600,
+ *             attributes: ['email', 'username']
+ *           }
  *         },
  *         idToken: {
  *           validityPeriod: 3600,

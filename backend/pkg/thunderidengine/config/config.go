@@ -53,10 +53,32 @@ type TrustedIssuerConfig struct {
 // rather than nested under any particular consumer. Value is in seconds; zero disables
 // the cache; negative values are rejected at load time.
 type SecurityConfig struct {
-	JWKSCacheTTL           int                 `yaml:"jwks_cache_ttl"           json:"jwks_cache_ttl"`
-	TrustedIssuer          TrustedIssuerConfig `yaml:"trusted_issuer"           json:"trusted_issuer"`
-	SystemPermissionPrefix string              `yaml:"system_permission_prefix" json:"system_permission_prefix"`
+	JWKSCacheTTL           int                   `yaml:"jwks_cache_ttl"           json:"jwks_cache_ttl"`
+	TrustedIssuer          TrustedIssuerConfig   `yaml:"trusted_issuer"           json:"trusted_issuer"`
+	SystemPermissionPrefix string                `yaml:"system_permission_prefix" json:"system_permission_prefix"`
+	TokenRevocation        TokenRevocationConfig `yaml:"token_revocation"         json:"token_revocation"`
+	// DirectAuthSecret gates the Direct API endpoints (/auth/**, /register/passkey/**). When
+	// set, callers must present this value in the Direct-Auth-Secret header; when empty, those
+	// endpoints are blocked (secure by default).
+	DirectAuthSecret string `yaml:"direct_auth_secret" json:"direct_auth_secret"`
 }
+
+// TokenRevocationConfig configures the Resource Server's token-revocation enforcement: an in-memory
+// cache of revoked tokens synced from a source on a fixed interval. When disabled, protected
+// endpoints do not check revocation.
+//
+// Source selects where the deny list is synced from. Only "db" (the operation database) is supported
+// today; future values may include an endpoint or event stream. SyncIntervalSeconds bounds how stale
+// the cache may be; a non-positive value falls back to the built-in default.
+type TokenRevocationConfig struct {
+	Enabled             bool   `yaml:"enabled"               json:"enabled"`
+	Source              string `yaml:"source"                json:"source"`
+	SyncIntervalSeconds int    `yaml:"sync_interval_seconds" json:"sync_interval_seconds"`
+}
+
+// tokenRevocationSourceDB is the operation-database sync source, the only supported
+// token_revocation.source value today.
+const tokenRevocationSourceDB = "db"
 
 // KeyConfig holds the key configuration details.
 type KeyConfig struct {
@@ -144,8 +166,9 @@ type AuthClassConfig struct {
 
 // RefreshTokenConfig holds the refresh token configuration details.
 type RefreshTokenConfig struct {
-	RenewOnGrant   bool  `yaml:"renew_on_grant"  json:"renew_on_grant"`
-	ValidityPeriod int64 `yaml:"validity_period" json:"validity_period"`
+	RenewOnGrant          bool  `yaml:"renew_on_grant"           json:"renew_on_grant"`
+	RevokePreviousOnRenew bool  `yaml:"revoke_previous_on_renew" json:"revoke_previous_on_renew"`
+	ValidityPeriod        int64 `yaml:"validity_period"          json:"validity_period"`
 }
 
 // AuthorizationCodeConfig holds the authorization code configuration details.

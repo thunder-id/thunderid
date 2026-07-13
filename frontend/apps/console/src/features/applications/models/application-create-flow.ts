@@ -48,6 +48,7 @@ export const ApplicationCreateFlowStep = {
   OPTIONS: 'OPTIONS',
   EXPERIENCE: 'EXPERIENCE',
   CONFIGURE: 'CONFIGURE',
+  CLIENT_TYPE: 'CLIENT_TYPE',
   COMPLETE: 'COMPLETE',
 } as const;
 

@@ -27,8 +27,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -119,7 +119,7 @@ func (ts *AgentAPITestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create agent schema (user type)")
 	agentSchemaID = schemaID
 
-	defaultAuthFlowID, err = testutils.GetFlowIDByHandle("default-basic-flow", "AUTHENTICATION")
+	defaultAuthFlowID, err = testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
 	ts.Require().NoError(err, "Failed to get default auth flow ID")
 
 	// Create the primary agent used by list/get/update/groups tests.
@@ -208,7 +208,7 @@ func (ts *AgentAPITestSuite) TestAgentPagination() {
 func (ts *AgentAPITestSuite) TestAgentGetByID() {
 	ts.Require().NotEmpty(createdAgentID, "agent ID not available")
 
-	resp, err := doGet(testServerURL+agentBasePath+"/"+createdAgentID)
+	resp, err := doGet(testServerURL + agentBasePath + "/" + createdAgentID)
 	ts.Require().NoError(err)
 	defer resp.Body.Close()
 	ts.Require().Equal(http.StatusOK, resp.StatusCode, readBody(resp))
@@ -445,8 +445,8 @@ func (ts *AgentAPITestSuite) TestAgentGroupMembership() {
 
 	// Create a group with the agent as a member.
 	groupID, err := testutils.CreateGroup(testutils.Group{
-		Name:  "agent-group-membership-test",
-		OUID:  testOUID,
+		Name:    "agent-group-membership-test",
+		OUID:    testOUID,
 		Members: []testutils.Member{{Id: agentID, Type: "agent"}},
 	})
 	ts.Require().NoError(err)

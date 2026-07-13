@@ -1158,6 +1158,42 @@ var (
 			DefaultValue: "User provisioning failed because one or more unique attribute values are already taken",
 		},
 	}
+
+	// ErrNoLiveSSOSession is returned by the SSO-Check node when no live, compatible session is
+	// available for the current flow. It is not a hard failure: it routes the node's "Unavailable"
+	// (onFailure) outcome to the full-authentication path.
+	ErrNoLiveSSOSession = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1082",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.no_live_sso_session",
+			DefaultValue: "No live SSO session",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.no_live_sso_session_desc",
+			DefaultValue: "No live, compatible SSO session exists for this flow; full authentication is required",
+		},
+	}
+
+	// ErrInteractionRequired is returned when the assurance accumulated in this execution does
+	// not satisfy the request's acr_values / max_age, so user interaction (step-up or
+	// re-authentication) is required before an assertion can be issued. Its code maps to the
+	// OAuth2 `interaction_required` error.
+	// TODO(sso): wire this to an OAuth2 `interaction_required` authorize-error redirect and
+	// drive step-up re-authentication.
+	ErrInteractionRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1083",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.interaction_required",
+			DefaultValue: "Interaction required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "flows.executor.errors.interaction_required_desc",
+			DefaultValue: "The accumulated authentication assurance does not satisfy the requested " +
+				"acr_values or max_age",
+		},
+	}
 )
 
 // errAttributeNotUniqueFor returns a ServiceError for a specific attribute that is not unique.

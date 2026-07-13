@@ -156,8 +156,7 @@ func (s *RedisStoreTestSuite) TestUpdate_MissingKey_ReturnsError() {
 		Return(redis.NewStatusResult("", redis.Nil))
 
 	err := s.store.Update(s.ctx, providers.NamespaceFlow, "k", []byte("v"))
-	s.Error(err)
-	s.Contains(err.Error(), "value not found for key")
+	s.ErrorIs(err, providers.ErrRuntimeStoreKeyNotFound)
 }
 
 func (s *RedisStoreTestSuite) TestUpdate_BackendError() {
@@ -211,4 +210,72 @@ func (s *RedisStoreTestSuite) TestTake_BackendError() {
 	s.Error(err)
 	s.Nil(got)
 	s.Contains(err.Error(), "failed to take data from Redis")
+}
+
+func (s *RedisStoreTestSuite) TestExtendTTL_Success() {
+	key := s.store.getFormattedKey(providers.NamespaceFlow, "k")
+	s.client.On("Expire", mock.Anything, key, 60*time.Second).
+		Return(redis.NewBoolResult(true, nil))
+
+	err := s.store.ExtendTTL(s.ctx, providers.NamespaceFlow, "k", 60)
+	s.NoError(err)
+}
+
+func (s *RedisStoreTestSuite) TestExtendTTL_ZeroTTL_CallsExpireWithZeroDuration() {
+	key := s.store.getFormattedKey(providers.NamespaceFlow, "k")
+	s.client.On("Expire", mock.Anything, key, time.Duration(0)).
+		Return(redis.NewBoolResult(true, nil))
+
+	err := s.store.ExtendTTL(s.ctx, providers.NamespaceFlow, "k", 0)
+	s.NoError(err)
+}
+
+func (s *RedisStoreTestSuite) TestExtendTTL_NegativeTTL_CallsExpireWithNegativeDuration() {
+	key := s.store.getFormattedKey(providers.NamespaceFlow, "k")
+	s.client.On("Expire", mock.Anything, key, -1*time.Second).
+		Return(redis.NewBoolResult(true, nil))
+
+	err := s.store.ExtendTTL(s.ctx, providers.NamespaceFlow, "k", -1)
+	s.NoError(err)
+}
+
+func (s *RedisStoreTestSuite) TestExtendTTL_MissingKey_ReturnsError() {
+	s.client.On("Expire", mock.Anything, mock.Anything, mock.Anything).
+		Return(redis.NewBoolResult(false, nil))
+
+	err := s.store.ExtendTTL(s.ctx, providers.NamespaceFlow, "k", 60)
+	s.ErrorIs(err, providers.ErrRuntimeStoreKeyNotFound)
+}
+
+func (s *RedisStoreTestSuite) TestExtendTTL_ZeroTTL_MissingKey_ReturnsError() {
+	s.client.On("Expire", mock.Anything, mock.Anything, time.Duration(0)).
+		Return(redis.NewBoolResult(false, nil))
+
+	err := s.store.ExtendTTL(s.ctx, providers.NamespaceFlow, "k", 0)
+	s.ErrorIs(err, providers.ErrRuntimeStoreKeyNotFound)
+}
+
+func (s *RedisStoreTestSuite) TestExtendTTL_BackendError() {
+	s.client.On("Expire", mock.Anything, mock.Anything, mock.Anything).
+		Return(redis.NewBoolResult(false, errors.New("connection refused")))
+
+	err := s.store.ExtendTTL(s.ctx, providers.NamespaceFlow, "k", 60)
+	s.Error(err)
+	s.Contains(err.Error(), "failed to extend TTL in Redis")
+}
+
+func (s *RedisStoreTestSuite) TestExtendTTL_ValuePreserved() {
+	key := s.store.getFormattedKey(providers.NamespaceFlow, "k")
+	s.client.On("Set", mock.Anything, key, []byte("v"), time.Duration(0)).
+		Return(redis.NewStatusResult("OK", nil))
+	s.client.On("Expire", mock.Anything, key, 60*time.Second).
+		Return(redis.NewBoolResult(true, nil))
+	s.client.On("Get", mock.Anything, key).Return(redis.NewStringResult("v", nil))
+
+	s.Require().NoError(s.store.Put(s.ctx, providers.NamespaceFlow, "k", []byte("v"), 0))
+	s.Require().NoError(s.store.ExtendTTL(s.ctx, providers.NamespaceFlow, "k", 60))
+
+	got, err := s.store.Get(s.ctx, providers.NamespaceFlow, "k")
+	s.NoError(err)
+	s.Equal([]byte("v"), got)
 }

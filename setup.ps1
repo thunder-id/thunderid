@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
 # ----------------------------------------------------------------------------
-# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+# Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
 #
 # WSO2 LLC. licenses this file to you under the Apache License,
 # Version 2.0 (the "License"); you may not use this file except
@@ -57,6 +57,10 @@ $BOOTSTRAP_SKIP_PATTERN = if ($env:BOOTSTRAP_SKIP_PATTERN) { $env:BOOTSTRAP_SKIP
 $BOOTSTRAP_ONLY_PATTERN = if ($env:BOOTSTRAP_ONLY_PATTERN) { $env:BOOTSTRAP_ONLY_PATTERN } else { "" }
 $BOOTSTRAP_DIR = if ($env:BOOTSTRAP_DIR) { $env:BOOTSTRAP_DIR } else { ".\bootstrap" }
 $WITH_CONSENT = if ($env:WITH_CONSENT -eq 'false') { $false } else { $true }
+# Direct Auth Secret gates the Direct API endpoints (secure by default). When not supplied, one is
+# generated during setup and written to deployment.yaml.
+$DIRECT_AUTH_SECRET = if ($env:DIRECT_AUTH_SECRET) { $env:DIRECT_AUTH_SECRET } else { "" }
+$DIRECT_AUTH_SECRET_GENERATED = $false
 
 # ============================================================================
 # Logging Functions
@@ -113,6 +117,8 @@ function Show-Help {
     Write-Host "  --debug                  Enable debug mode with remote debugging"
     Write-Host "  --debug-port PORT        Set debug port (default: 2345)"
     Write-Host "  --without-consent        Disable the bundled consent server"
+    Write-Host "  --direct-auth-secret VALUE Secret gating the Direct API endpoints"
+    Write-Host "                           Falls back to DIRECT_AUTH_SECRET env var; generated if unset"
     Write-Host "  --help                   Show this help message"
     Write-Host ""
     Write-Host "Description:"
@@ -158,6 +164,18 @@ while ($i -lt $args.Count) {
         '--without-consent' {
             $WITH_CONSENT = $false
             $i++
+            break
+        }
+        '--direct-auth-secret' {
+            $i++
+            if ($i -lt $args.Count -and $args[$i] -notlike '--*') {
+                $DIRECT_AUTH_SECRET = $args[$i]
+                $i++
+            }
+            else {
+                Write-Host "--direct-auth-secret requires a non-empty value" -ForegroundColor Red
+                exit 1
+            }
             break
         }
         '--help' {
@@ -252,8 +270,94 @@ function Read-Config {
     return $true
 }
 
+# Resolve-ConfigFile returns the path to the deployment.yaml in use, or "" if not found.
+function Resolve-ConfigFile {
+    if (Test-Path $CONFIG_FILE) { return $CONFIG_FILE }
+    if (Test-Path ".\backend\cmd\server\deployment.yaml") { return ".\backend\cmd\server\deployment.yaml" }
+    return ""
+}
+
+# Write-DirectAuthSecret writes the Direct Auth Secret into server.security.direct_auth_secret of the given
+# deployment.yaml, updating an existing key, adding it under an existing security block, or creating a
+# security block under server.
+function Write-DirectAuthSecret {
+    param([string]$File, [string]$Value)
+    # Escape for a YAML double-quoted scalar: backslash first, then double-quote.
+    $escaped = ($Value -replace '\\', '\\') -replace '"', '\"'
+    $lines = @(Get-Content $File)
+    $out = New-Object System.Collections.Generic.List[string]
+    $done = $false
+    if ($lines -match '^\s*direct_auth_secret:') {
+        foreach ($line in $lines) {
+            if (-not $done -and $line -match '^(\s*)direct_auth_secret:') {
+                $out.Add("$($matches[1])direct_auth_secret: `"$escaped`"")
+                $done = $true
+            }
+            else { $out.Add($line) }
+        }
+    }
+    elseif ($lines -match '^\s*security:\s*$') {
+        foreach ($line in $lines) {
+            $out.Add($line)
+            if (-not $done -and $line -match '^\s*security:\s*$') {
+                $out.Add("    direct_auth_secret: `"$escaped`"")
+                $done = $true
+            }
+        }
+    }
+    else {
+        foreach ($line in $lines) {
+            $out.Add($line)
+            if (-not $done -and $line -match '^server:\s*$') {
+                $out.Add("  security:")
+                $out.Add("    direct_auth_secret: `"$escaped`"")
+                $done = $true
+            }
+        }
+    }
+    Set-Content -Path $File -Value $out
+}
+
+# Set-DirectAuthSecret ensures the Direct API is usable out of the box while staying secure by default:
+# it respects an existing non-empty secret, otherwise uses the provided value or generates a random
+# one, and writes it into deployment.yaml.
+function Set-DirectAuthSecret {
+    $configFile = Resolve-ConfigFile
+    if (-not $configFile) {
+        Log-Warning "deployment.yaml not found; skipping Direct Auth Secret configuration"
+        return
+    }
+
+    $content = Get-Content $configFile -Raw
+    if ($content -match '(?m)^\s*direct_auth_secret:\s*[''"]?([^''"\s]+)[''"]?') {
+        $script:DIRECT_AUTH_SECRET = $matches[1]
+        return
+    }
+
+    if (-not $DIRECT_AUTH_SECRET) {
+        $bytes = New-Object 'System.Byte[]' 32
+        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+        $script:DIRECT_AUTH_SECRET = ($bytes | ForEach-Object { $_.ToString('x2') }) -join ''
+        $script:DIRECT_AUTH_SECRET_GENERATED = $true
+    }
+
+    Write-DirectAuthSecret -File $configFile -Value $DIRECT_AUTH_SECRET
+}
+
+# Show-DirectAuthSecretNotice prints the generated Direct Auth Secret once, so the operator can capture it.
+function Show-DirectAuthSecretNotice {
+    if (-not $DIRECT_AUTH_SECRET_GENERATED) { return }
+    Write-Host "Direct Auth Secret (Direct API): $DIRECT_AUTH_SECRET"
+    Write-Host "  Send it in the 'Direct-Auth-Secret' header when calling the Direct API endpoints."
+    Write-Host "  It has been written to deployment.yaml (server.security.direct_auth_secret)."
+    Write-Host ""
+}
+
 # Read configuration
 Read-Config | Out-Null
+
+# Configure the Direct Auth Secret before bootstrap so the Direct API is ready to use.
+Set-DirectAuthSecret
 
 # Construct base URL (internal API endpoint)
 $BASE_URL = "$($script:PROTOCOL)://$($script:HOSTNAME):$($script:PORT)"
@@ -445,6 +549,7 @@ try {
         Write-Host ""
         Write-Host "Console URL: ${PUBLIC_URL}/console"
         Write-Host ""
+        Show-DirectAuthSecretNotice
         Write-Host "Run .\start.ps1 to start ${PRODUCT_NAME}."
         Write-Host ""
     }
@@ -453,6 +558,7 @@ try {
         Write-Host "[OK] Setup completed successfully!" -ForegroundColor Green
         Write-Host "========================================="
         Write-Host ""
+        Show-DirectAuthSecretNotice
         Write-Host "[INFO] Next steps:"
         Write-Host "   1. Start the server: .\start.ps1" -ForegroundColor Cyan
         Write-Host "   2. Access $PRODUCT_NAME at: $BASE_URL" -ForegroundColor Cyan

@@ -35,16 +35,16 @@ Complete [Setup](../#setup) before starting this walkthrough.
    ```
 
 3. The agent decides this is a mutating tool and returns `need_user_consent`. A popup opens, hosted by <ProductName />. Sign in inside the popup as `john.doe`.
-4. On the consent screen, pick which permissions to grant. Tick **at least** `booking:create` for the booking to succeed. You can also grant `booking:read` and `booking:cancel` if you want the agent to manage existing bookings in the same session.
+4. On the consent screen, pick which permissions to grant. Tick **at least** `wayfinder:booking:create` for the booking to succeed. You can also grant `wayfinder:booking:read` and `wayfinder:booking:cancel` if you want the agent to manage existing bookings in the same session.
 5. Approve. The popup closes. The agent picks up where it paused, calls `create_booking` with the OBO token, and confirms the booking in the chat.
 
 ## Try a Variant
 
-- Repeat the walkthrough but **uncheck `booking:create`** on the consent screen. The agent retries, the tool returns `403`, and the agent surfaces the failure honestly in the chat.
-- Ask the agent to cancel a booking without granting `booking:cancel`. Same outcome — the OBO token doesn't carry the scope, the API rejects, and the agent reports back.
+- Repeat the walkthrough but **uncheck `wayfinder:booking:create`** on the consent screen. The agent retries, the tool returns `403`, and the agent surfaces the failure honestly in the chat.
+- Ask the agent to cancel a booking without granting `wayfinder:booking:cancel`. Same outcome — the OBO token doesn't carry the scope, the API rejects, and the agent reports back.
 
 :::info[Concepts]
-**Consent.** This walkthrough is consent in action. John doesn't grant the agent a blanket "do anything bookings-related" — the consent screen surfaces the individual `booking:*` permissions and the issued token carries only what he ticked. The agent cannot widen its access after the fact.
+**Consent.** This walkthrough is consent in action. John doesn't grant the agent a blanket "do anything bookings-related" — the consent screen surfaces the individual `wayfinder:booking:*` permissions and the issued token carries only what he ticked. The agent cannot widen its access after the fact.
 
 **Delegation.** The OBO token identifies *both* John (as the subject) and the agent (as the actor). Downstream services know the booking was triggered by an agent acting for John, not by John directly. The token's effective permissions are the intersection of what John holds and what John just consented to. See [Agent Authentication](/docs/next/guides/guides/agents/agent-authentication) for the full OBO exchange.
 

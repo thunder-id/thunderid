@@ -100,10 +100,17 @@ type LoginConsentConfig struct {
 	ValidityPeriod int64 `json:"validityPeriod,omitempty"`
 }
 
-// AccessTokenConfig represents the access token configuration.
+// AccessTokenConfig represents the access token configuration, split by token subject.
 type AccessTokenConfig struct {
+	UserConfig   *AccessTokenSubConfig `json:"userConfig,omitempty"`
+	ClientConfig *AccessTokenSubConfig `json:"clientConfig,omitempty"`
+}
+
+// AccessTokenSubConfig represents the validity period and attribute selection for one
+// access token subject type (user or client).
+type AccessTokenSubConfig struct {
 	ValidityPeriod int64    `json:"validityPeriod,omitempty"`
-	UserAttributes []string `json:"userAttributes,omitempty"`
+	Attributes     []string `json:"attributes,omitempty"`
 }
 
 // IDTokenConfig represents the ID token configuration.

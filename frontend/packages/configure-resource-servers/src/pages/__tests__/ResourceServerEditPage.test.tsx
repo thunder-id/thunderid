@@ -147,6 +147,11 @@ const readOnlyResourceServer: ResourceServer = {
   isReadOnly: true,
 };
 
+const mockMcpResourceServer: ResourceServer = {
+  ...mockResourceServer,
+  type: 'MCP',
+};
+
 describe('ResourceServerEditPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -301,6 +306,47 @@ describe('ResourceServerEditPage', () => {
       },
       expect.any(Object),
     );
+  });
+
+  it('renders the MCP-specific Danger Zone title for an MCP server', () => {
+    mockUseGetResourceServer.mockReturnValue({
+      data: mockMcpResourceServer,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderWithProviders(<ResourceServerEditPage />);
+
+    expect(screen.getByRole('heading', {name: 'Delete MCP server'})).toBeInTheDocument();
+  });
+
+  it('renders the MCP-specific Danger Zone description for an MCP server', () => {
+    mockUseGetResourceServer.mockReturnValue({
+      data: mockMcpResourceServer,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderWithProviders(<ResourceServerEditPage />);
+
+    expect(
+      screen.getByText('Permanently delete this MCP server and all associated data. This action cannot be undone.'),
+    ).toBeInTheDocument();
+  });
+
+  it('renders the MCP-specific delete button label for an MCP server', () => {
+    mockUseGetResourceServer.mockReturnValue({
+      data: mockMcpResourceServer,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderWithProviders(<ResourceServerEditPage />);
+
+    expect(screen.getByRole('button', {name: 'Delete MCP server'})).toBeInTheDocument();
   });
 
   it('shows the name text field when the edit icon button is clicked', async () => {

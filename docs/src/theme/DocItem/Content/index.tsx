@@ -19,7 +19,6 @@
 import {useDoc} from '@docusaurus/plugin-content-docs/client';
 import Heading from '@theme/Heading';
 import MDXContent from '@theme/MDXContent';
-import CopyPageButton from 'docusaurus-plugin-copy-page-button/src/CopyPageButton';
 import {type ReactNode, useEffect, useRef} from 'react';
 import GettingStartedJourney from '@site/src/components/GettingStartedJourney';
 import {getGettingStartedStepIndex} from '@site/src/components/GettingStartedSteps';
@@ -35,10 +34,8 @@ function useSyntheticTitle(): string | null {
 
 export default function DocItemContent({children}: {children: ReactNode}): ReactNode {
   const syntheticTitle = useSyntheticTitle();
-  const {metadata, frontMatter} = useDoc();
+  const {metadata} = useDoc();
   const currentJourneyStep = getGettingStartedStepIndex(metadata.id);
-  const isHomePage = metadata.id === 'index';
-  const showButton = !isHomePage && !frontMatter.hide_title;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const journeyContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -77,11 +74,6 @@ export default function DocItemContent({children}: {children: ReactNode}): React
       {currentJourneyStep !== null && (
         <div ref={journeyContainerRef}>
           <GettingStartedJourney current={currentJourneyStep} />
-        </div>
-      )}
-      {showButton && (
-        <div className="copy-page-btn-wrapper">
-          <CopyPageButton enabledActions={['copy', 'view', 'chatgpt', 'claude', 'gemini']} />
         </div>
       )}
       <MDXContent>{children}</MDXContent>

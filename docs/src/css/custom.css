@@ -257,12 +257,6 @@ h5 {
   max-width: none;
 }
 
-.docs-doc-id-sdks\/overview .theme-doc-markdown.markdown {
-  max-width: 1100px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
 /* Constrain paragraph/list text for long-prose pages, let rich content break out */
 .theme-doc-markdown.markdown p,
 .theme-doc-markdown.markdown li {
@@ -1621,24 +1615,9 @@ html[data-connect-type='mcp'] .connect-section--agent {
   padding: 15px;
 }
 
-/* Prevent breadcrumb text from running under the button */
-nav.theme-doc-breadcrumbs {
-  padding-right: 175px;
-}
-
-/* Ensure copy dropdown positions against its trigger container */
-.theme-doc-markdown.markdown [class*='copyPageContainer'] {
-  position: relative;
-  display: inline-block;
-}
-
 @media (max-width: 996px) {
 
   /* Let breadcrumbs use full width and wrap on smaller screens */
-  nav.theme-doc-breadcrumbs {
-    padding-right: 0;
-  }
-
   nav.theme-doc-breadcrumbs .breadcrumbs {
     display: flex;
     flex-wrap: wrap;
@@ -1664,27 +1643,6 @@ nav.theme-doc-breadcrumbs {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  /* Reflow copy page action below breadcrumb row to avoid overlap */
-  .theme-doc-markdown.markdown .copy-page-btn-wrapper {
-    position: static;
-    top: auto;
-    right: auto;
-    margin: 0.4rem 0 0.8rem;
-    display: flex;
-    justify-content: flex-end;
-    width: 100%;
-    z-index: 4;
-  }
-
-  /* Keep dropdown within viewport on mobile */
-  [class*='copyPageDropdown'] {
-    min-width: min(320px, calc(100vw - 1.5rem)) !important;
-    max-width: calc(100vw - 1.5rem) !important;
-    max-height: min(60vh, 420px) !important;
-    overflow: auto !important;
-    -webkit-overflow-scrolling: touch !important;
   }
 }
 
@@ -4008,4 +3966,432 @@ a.connect-card {
 .DocSearch-Sidepanel-Container.inline.is-open {
   opacity: 1;
   transform: none !important;
+}
+
+/* ------------------------------ OneTrust Cookie Consent ---------------------- */
+/* OneTrust (CookiePro) injects its banner and preference-center modal outside the
+   React tree with inline styles, so we override it here rather than via sx/styled(). */
+
+/* Note: --oxygen-palette-background-paper is intentionally translucent
+   (used for frosted-glass panels with backdrop-filter elsewhere on the site).
+   OneTrust's own markup has no backdrop-filter, so using it here makes the
+   card see-through — use the opaque background-default instead. */
+#onetrust-consent-sdk #onetrust-banner-sdk,
+#onetrust-consent-sdk #onetrust-pc-sdk,
+#onetrust-consent-sdk #ot-sdk-cookie-policy {
+  background-color: var(--oxygen-palette-background-default) !important;
+  color: var(--oxygen-palette-text-primary) !important;
+  border-color: var(--oxygen-palette-divider) !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.16) !important;
+  opacity: 1 !important;
+}
+
+/* Match the rounded-card language used elsewhere on the site (admonitions,
+   code blocks, cards) instead of OneTrust's sharp default corners. */
+#onetrust-consent-sdk #onetrust-pc-sdk {
+  border-radius: 16px !important;
+  overflow: hidden;
+}
+
+#onetrust-consent-sdk .ot-pc-header {
+  border-radius: 16px 16px 0 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+#onetrust-consent-sdk .ot-pc-footer {
+  border-radius: 0 0 16px 16px !important;
+}
+
+/* Headings inject real h2/h3 tags, but OneTrust's own ID-scoped font-family
+   rule outranks the site's global h1-h5 selector — restate it here. Category
+   row labels (.ot-cat-header, an h4) are body copy, not a heading, and keep
+   the base font — see the dedicated rule further down. */
+#onetrust-consent-sdk #ot-pc-title,
+#onetrust-consent-sdk #ot-category-title {
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif !important;
+  font-weight: 700 !important;
+}
+
+#onetrust-consent-sdk .ot-pc-footer,
+#onetrust-consent-sdk .ot-pc-footer-logo {
+  background-color: var(--oxygen-palette-background-default) !important;
+}
+
+/* "Powered by OneTrust" is a fixed-color CDN image, not text — mute it in
+   line with the design's low-emphasis footer branding, and invert it in dark
+   mode so it stays legible instead of showing dark-on-dark. */
+#onetrust-consent-sdk .ot-pc-footer-logo img {
+  opacity: 0.5;
+}
+
+[data-theme='dark'] #onetrust-consent-sdk .ot-pc-footer-logo img {
+  filter: invert(1);
+}
+
+/* ---- Bottom cookie banner: a frosted glass bar with a glowing accent line,
+   rather than the flat opaque strip used for the modal. ---- */
+#onetrust-consent-sdk #onetrust-banner-sdk {
+  padding: 1.5rem 2rem !important;
+  background-color: color-mix(in srgb, var(--oxygen-palette-background-default) 94%, transparent) !important;
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  border-top: none !important;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.12) !important;
+}
+
+[data-theme='dark'] #onetrust-consent-sdk #onetrust-banner-sdk {
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.4) !important;
+}
+
+#onetrust-consent-sdk #onetrust-banner-sdk::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+      transparent,
+      color-mix(in srgb, var(--oxygen-palette-primary-main) 50%, transparent) 30%,
+      color-mix(in srgb, var(--oxygen-palette-primary-main) 50%, transparent) 70%,
+      transparent);
+}
+
+#onetrust-consent-sdk #onetrust-policy-text {
+  line-height: 1.6;
+}
+
+#onetrust-consent-sdk #onetrust-button-group-parent {
+  display: flex;
+  align-items: center;
+}
+
+#onetrust-consent-sdk #onetrust-button-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+/* OneTrust's banner uses a 12-column float grid (.ot-sdk-eight / .ot-sdk-three)
+   that doesn't reflow at narrow widths, leaving text and buttons squeezed
+   side-by-side. Below tablet, drop the button group to its own row; below
+   mobile, stack each button full-width. */
+@media (max-width: 1024px) {
+  #onetrust-consent-sdk #onetrust-banner-sdk {
+    padding: 1.25rem 1.25rem !important;
+  }
+
+  #onetrust-consent-sdk #onetrust-banner-sdk .ot-sdk-row {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  #onetrust-consent-sdk #onetrust-group-container,
+  #onetrust-consent-sdk #onetrust-button-group-parent {
+    width: 100% !important;
+    max-width: 100% !important;
+    float: none !important;
+  }
+
+  #onetrust-consent-sdk #onetrust-policy {
+    margin-bottom: 1rem;
+  }
+
+  #onetrust-consent-sdk #onetrust-button-group-parent {
+    justify-content: center !important;
+  }
+
+  #onetrust-consent-sdk #onetrust-button-group {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 600px) {
+  #onetrust-consent-sdk #onetrust-button-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #onetrust-consent-sdk .cookie-setting-link,
+  #onetrust-consent-sdk #onetrust-reject-all-handler,
+  #onetrust-consent-sdk #onetrust-accept-btn-handler {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* Pill-shaped, matching the site's actual CTA buttons (e.g. hero "Get Started").
+   Scoped to the named action buttons only — the accordion header buttons are
+   invisible full-row hit targets and must not get padding/radius applied. */
+#onetrust-consent-sdk #onetrust-banner-sdk button,
+#onetrust-consent-sdk #onetrust-accept-btn-handler,
+#onetrust-consent-sdk #accept-recommended-btn-handler,
+#onetrust-consent-sdk #onetrust-reject-all-handler,
+#onetrust-consent-sdk .ot-pc-refuse-all-handler,
+#onetrust-consent-sdk .save-preference-btn-handler,
+#onetrust-consent-sdk .cookie-setting-link {
+  border-radius: 999px !important;
+  padding: 0.6rem 1.5rem !important;
+  font-weight: 600 !important;
+  font-size: 0.85rem !important;
+  text-transform: none !important;
+  text-decoration: none !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease, filter 0.15s ease, opacity 0.15s ease, color 0.15s ease;
+}
+
+/* In the banner, "Cookie settings" and "Necessary cookies only" are both
+   plain text links (matching the hero's "Learn More →" treatment) — only
+   "Accept all cookies" is a filled pill. The modal's footer buttons keep
+   their bordered-pill/solid treatment (handled separately below). */
+#onetrust-consent-sdk .cookie-setting-link,
+#onetrust-consent-sdk #onetrust-reject-all-handler {
+  border-radius: 999px !important;
+  background-color: transparent !important;
+  border: none !important;
+  font-weight: 500 !important;
+  color: var(--oxygen-palette-text-secondary) !important;
+}
+
+/* Hover just darkens the text, matching the hero "Learn More" link — no
+   background. The filled pill only appears on keyboard focus (selected). */
+#onetrust-consent-sdk .cookie-setting-link:hover,
+#onetrust-consent-sdk #onetrust-reject-all-handler:hover {
+  background-color: transparent !important;
+  color: var(--oxygen-palette-text-primary) !important;
+}
+
+#onetrust-consent-sdk .cookie-setting-link:focus-visible,
+#onetrust-consent-sdk #onetrust-reject-all-handler:focus-visible {
+  outline: none !important;
+  background-color: color-mix(in srgb, var(--oxygen-palette-text-primary) 8%, transparent) !important;
+  color: var(--oxygen-palette-text-primary) !important;
+}
+
+/* The banner's primary CTA gets the design's gradient + glow treatment; the
+   modal's flat "Allow All" / "Confirm My Choices" buttons stay solid. */
+#onetrust-consent-sdk #onetrust-accept-btn-handler {
+  background: linear-gradient(135deg, var(--oxygen-palette-primary-main), var(--oxygen-palette-primary-dark)) !important;
+  border-color: transparent !important;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--oxygen-palette-primary-main) 35%, transparent) !important;
+}
+
+#onetrust-consent-sdk #onetrust-accept-btn-handler:hover,
+#onetrust-consent-sdk #accept-recommended-btn-handler:hover,
+#onetrust-consent-sdk .save-preference-btn-handler:hover {
+  filter: brightness(0.92);
+}
+
+/* Replace the default browser focus rectangle with a themed ring. */
+#onetrust-consent-sdk #onetrust-banner-sdk button:focus-visible,
+#onetrust-consent-sdk .cookie-setting-link:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px var(--oxygen-palette-primary-main) !important;
+}
+
+/* The CDN-hosted logo image isn't legible on a dark background. Swap it for
+   the site's own logo assets, which already have a dark-theme variant. */
+#onetrust-consent-sdk .ot-pc-logo img {
+  display: none !important;
+}
+
+#onetrust-consent-sdk .ot-pc-logo {
+  background-image: url('/assets/images/logo.svg');
+  background-repeat: no-repeat;
+  background-position: left center;
+  background-size: contain;
+  min-height: 32px;
+}
+
+[data-theme='dark'] #onetrust-consent-sdk .ot-pc-logo {
+  background-image: url('/assets/images/logo-inverted.svg');
+}
+
+#onetrust-consent-sdk #ot-pc-desc,
+#onetrust-consent-sdk .ot-cat-item h3,
+#onetrust-consent-sdk #ot-pc-title,
+#onetrust-consent-sdk #ot-lst-title h3,
+#onetrust-consent-sdk #ot-category-title {
+  color: var(--oxygen-palette-text-primary) !important;
+}
+
+/* Category row labels use the base body font, weighted by whether the
+   category is user-toggleable ("Strictly Necessary" is emphasized full-
+   color/weight; the others sit a tier down until interacted with). */
+#onetrust-consent-sdk .ot-cat-header {
+  color: var(--oxygen-palette-text-secondary) !important;
+  font-weight: 500 !important;
+}
+
+#onetrust-consent-sdk .ot-always-active-group .ot-cat-header {
+  color: var(--oxygen-palette-text-primary) !important;
+  font-weight: 600 !important;
+}
+
+#onetrust-consent-sdk .ot-always-active {
+  color: var(--oxygen-palette-primary-main) !important;
+}
+
+/* Category descriptions sit a tier below the main policy copy. */
+#onetrust-consent-sdk .ot-acc-grpdesc {
+  color: var(--oxygen-palette-text-disabled) !important;
+}
+
+/* Match the site's secondary-body-copy style (MuiTypography secondary
+   variant: text-secondary color, 0.875rem, 1.7 line-height). */
+#onetrust-consent-sdk #onetrust-policy-text,
+#onetrust-consent-sdk #onetrust-policy-text * {
+  color: var(--oxygen-palette-text-secondary) !important;
+  font: var(--oxygen-font-body1) !important;
+}
+
+#onetrust-consent-sdk .ot-cookie-policy-link,
+#onetrust-consent-sdk .privacy-notice-link {
+  color: var(--oxygen-palette-primary-main) !important;
+}
+
+#onetrust-consent-sdk #onetrust-accept-btn-handler,
+#onetrust-consent-sdk #accept-recommended-btn-handler {
+  background-color: var(--oxygen-palette-primary-main) !important;
+  border-color: var(--oxygen-palette-primary-main) !important;
+  color: var(--oxygen-palette-primary-contrastText, #fff) !important;
+}
+
+/* Note: #onetrust-pc-btn-handler ("Cookie settings") and the banner's
+   #onetrust-reject-all-handler are deliberately excluded here — both are
+   styled as plain text links further up. This rule is for the MODAL's
+   footer "Necessary Cookies Only" button only, which keeps a bordered pill. */
+#onetrust-consent-sdk .ot-pc-refuse-all-handler {
+  background-color: transparent !important;
+  border: 1px solid var(--oxygen-palette-divider) !important;
+  color: var(--oxygen-palette-text-primary) !important;
+}
+
+/* #ot-pc-content carries tabindex="-1" purely for programmatic scroll focus
+   management, not as a real interactive target — suppress the resulting
+   visible focus ring. */
+#onetrust-consent-sdk #ot-pc-content:focus,
+#onetrust-consent-sdk #ot-pc-content:focus-visible {
+  outline: none !important;
+}
+
+#onetrust-consent-sdk .save-preference-btn-handler {
+  background-color: var(--oxygen-palette-primary-main) !important;
+  border-color: var(--oxygen-palette-primary-main) !important;
+  color: var(--oxygen-palette-primary-contrastText, #fff) !important;
+}
+
+#onetrust-consent-sdk .ot-acc-hdr,
+#onetrust-consent-sdk #ot-pc-content,
+#onetrust-consent-sdk .ot-pc-footer,
+#onetrust-consent-sdk .ot-pc-header {
+  border-color: var(--oxygen-palette-divider) !important;
+}
+
+/* Each cookie category is its own rounded, bordered card (header + expanded
+   description together), per the design — rather than flat rows separated
+   only by a divider line. */
+#onetrust-consent-sdk .ot-accordion-layout {
+  border: 1px solid var(--oxygen-palette-divider) !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+  margin-bottom: 0.75rem !important;
+  background-color: color-mix(in srgb, var(--oxygen-palette-divider) 6%, transparent) !important;
+}
+
+#onetrust-consent-sdk .ot-accordion-layout:last-child {
+  margin-bottom: 0 !important;
+}
+
+/* The accordion detail panel (cookie category description) keeps its own
+   opaque white background by default, which OneTrust never themes. Make it
+   transparent so it shares the parent .ot-accordion-layout card's tinted
+   background instead of showing a separate block underneath. */
+#onetrust-consent-sdk .ot-acc-grpcntr,
+#onetrust-consent-sdk .ot-acc-txt {
+  background-color: transparent !important;
+}
+
+
+/* The visible pill fill is .ot-switch-nob (it covers the whole track); its
+   :before pseudo is the small white knob. .ot-switch itself sits underneath
+   and isn't visible, so it must be themed here instead. OneTrust's own
+   checked-state rule on .ot-switch-nob also carries !important at equal
+   specificity and loads after ours, so the redundant class/attribute
+   selectors below are there purely to outrank it. */
+#onetrust-consent-sdk .ot-tgl .ot-switch .ot-switch-nob {
+  background-color: var(--oxygen-palette-divider) !important;
+}
+
+#onetrust-consent-sdk .ot-tgl input.category-switch-handler[type='checkbox']:checked~.ot-switch .ot-switch-nob {
+  background-color: var(--oxygen-palette-primary-main) !important;
+}
+
+/* The checkbox driving the switch is visually hidden but still sized to match
+   it, so the browser's default focus outline renders as a rectangle around
+   the switch. Suppress it there and show a themed ring on the switch instead. */
+#onetrust-consent-sdk .ot-tgl input {
+  outline: none !important;
+}
+
+#onetrust-consent-sdk .ot-tgl input:focus-visible~.ot-switch {
+  box-shadow: 0 0 0 2px var(--oxygen-palette-primary-main) !important;
+}
+
+#onetrust-consent-sdk #ot-search-cntr input,
+#onetrust-consent-sdk #vendor-search-handler {
+  background-color: var(--oxygen-palette-background-default) !important;
+  color: var(--oxygen-palette-text-primary) !important;
+  border-color: var(--oxygen-palette-divider) !important;
+}
+
+/* Replace the CDN close icon (a fixed-color image needing a dark-mode invert
+   hack) with a self-contained masked icon button matching the design. */
+#onetrust-consent-sdk #close-pc-btn-handler {
+  background-image: none !important;
+  width: 28px !important;
+  height: 28px !important;
+  margin-top: 0.5rem;
+  margin-right: 0.75rem;
+  border-radius: 8px !important;
+  border: none !important;
+  background-color: color-mix(in srgb, var(--oxygen-palette-divider) 20%, transparent) !important;
+  position: relative;
+  outline: none !important;
+  transition: background-color 0.15s ease;
+}
+
+#onetrust-consent-sdk #close-pc-btn-handler:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px var(--oxygen-palette-primary-main) !important;
+}
+
+#onetrust-consent-sdk #close-pc-btn-handler::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 14px;
+  height: 14px;
+  background-color: var(--oxygen-palette-text-secondary);
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M18 6L6 18M6 6l12 12'/%3E%3C/svg%3E");
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M18 6L6 18M6 6l12 12'/%3E%3C/svg%3E");
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+
+#onetrust-consent-sdk #close-pc-btn-handler:hover {
+  background-color: color-mix(in srgb, var(--oxygen-palette-divider) 40%, transparent) !important;
+}
+
+#onetrust-consent-sdk #close-pc-btn-handler:hover::before {
+  background-color: var(--oxygen-palette-text-primary);
 }

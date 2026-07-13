@@ -416,6 +416,88 @@ func (_c *AgentServiceInterfaceMock_GetAgentList_Call) RunAndReturn(run func(ctx
 	return _c
 }
 
+// GetAgentRoles provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) GetAgentRoles(ctx context.Context, agentID string, limit int, offset int) (*model.AgentRoleListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, agentID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetAgentRoles")
+	}
+
+	var r0 *model.AgentRoleListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*model.AgentRoleListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, agentID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) *model.AgentRoleListResponse); ok {
+		r0 = returnFunc(ctx, agentID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.AgentRoleListResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, agentID, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AgentServiceInterfaceMock_GetAgentRoles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetAgentRoles'
+type AgentServiceInterfaceMock_GetAgentRoles_Call struct {
+	*mock.Call
+}
+
+// GetAgentRoles is a helper method to define mock.On call
+//   - ctx context.Context
+//   - agentID string
+//   - limit int
+//   - offset int
+func (_e *AgentServiceInterfaceMock_Expecter) GetAgentRoles(ctx interface{}, agentID interface{}, limit interface{}, offset interface{}) *AgentServiceInterfaceMock_GetAgentRoles_Call {
+	return &AgentServiceInterfaceMock_GetAgentRoles_Call{Call: _e.mock.On("GetAgentRoles", ctx, agentID, limit, offset)}
+}
+
+func (_c *AgentServiceInterfaceMock_GetAgentRoles_Call) Run(run func(ctx context.Context, agentID string, limit int, offset int)) *AgentServiceInterfaceMock_GetAgentRoles_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_GetAgentRoles_Call) Return(agentRoleListResponse *model.AgentRoleListResponse, serviceError *common.ServiceError) *AgentServiceInterfaceMock_GetAgentRoles_Call {
+	_c.Call.Return(agentRoleListResponse, serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_GetAgentRoles_Call) RunAndReturn(run func(ctx context.Context, agentID string, limit int, offset int) (*model.AgentRoleListResponse, *common.ServiceError)) *AgentServiceInterfaceMock_GetAgentRoles_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetResourceDependencies provides a mock function for the type AgentServiceInterfaceMock
 func (_mock *AgentServiceInterfaceMock) GetResourceDependencies(ctx context.Context, resourceType string, id string) ([]resourcedependency.ResourceDependency, error) {
 	ret := _mock.Called(ctx, resourceType, id)

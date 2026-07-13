@@ -264,8 +264,6 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 	switch {
 	case svcErr == &ErrorThemeNotFound:
 		statusCode = http.StatusNotFound
-	case svcErr == &ErrorThemeInUse:
-		statusCode = http.StatusConflict
 	case svcErr.Type == tidcommon.ClientErrorType:
 		statusCode = http.StatusBadRequest
 	}

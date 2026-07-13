@@ -845,5 +845,51 @@
         "allowAuthenticationWithoutLocalUser": true
       }
     }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "SSO Check Executor",
+      "label": "Check SSO Session",
+      "description": "Can the following authentication be skipped by reusing the existing session?",
+      "image": "assets/images/icons/magnifying-glass.svg",
+      "showOnResourcePanel": true,
+      "outcomes": {
+        "success": "Skip to",
+        "failure": "Authenticate"
+      }
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "SSOCheckExecutor"
+        },
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Session Executor",
+      "label": "Save / Load Session",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "SessionExecutor"
+        },
+        "onSuccess": ""
+      }
+    }
   }
 ]

@@ -22,7 +22,10 @@
 // configured connection remains a real identity provider.
 package connection
 
-import "github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+import (
+	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+)
 
 // idpBackedVendor maps a connection path segment to an underlying identity-provider type.
 type idpBackedVendor struct {
@@ -31,12 +34,27 @@ type idpBackedVendor struct {
 }
 
 // idpBackedVendors is the set of connection types backed by the identity-provider service.
-// A single generic "oidc" connection (shown as "Custom OIDC" in the console) covers custom
-// providers; a dedicated generic OAuth type can be added later if a non-OIDC provider needs it.
+// The generic "oidc" connection covers custom OIDC providers;
+// "oauth" covers OAuth 2.0 providers that don't implement OIDC discovery and have no id_token,
+// relying on userInfoEndpoint instead.
 var idpBackedVendors = []idpBackedVendor{
 	{name: "google", idpType: providers.IDPTypeGoogle},
 	{name: "github", idpType: providers.IDPTypeGitHub},
 	{name: "oidc", idpType: providers.IDPTypeOIDC},
+	{name: "oauth", idpType: providers.IDPTypeOAuth},
+}
+
+// smsBackedVendor maps a connection path segment to an underlying message-provider type.
+type smsBackedVendor struct {
+	name     string
+	provider ncommon.MessageProviderType
+}
+
+// smsBackedVendors is the set of connection types backed by the notification-sender service.
+// The custom SMS gateway (ncommon.MessageProviderTypeCustom) is intentionally not exposed here.
+var smsBackedVendors = []smsBackedVendor{
+	{name: "twilio", provider: ncommon.MessageProviderTypeTwilio},
+	{name: "vonage", provider: ncommon.MessageProviderTypeVonage},
 }
 
 // connectionTypeSummary is a single entry in the GET /connections listing. It carries only

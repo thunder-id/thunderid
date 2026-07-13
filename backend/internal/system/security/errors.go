@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -38,4 +38,12 @@ var (
 
 	// errMissingAuthHeader indicates that the Authorization header is missing.
 	errMissingAuthHeader = errors.New("missing authorization header")
+
+	// errInvalidDirectAuthSecret indicates that an Direct API request presented a missing or incorrect
+	// Direct Auth Secret.
+	errInvalidDirectAuthSecret = errors.New("invalid direct auth secret")
+
+	// errDirectAuthSecretNotConfigured indicates the Direct API endpoints are blocked because no Direct API
+	// Secret is configured on the server (secure by default).
+	errDirectAuthSecretNotConfigured = errors.New("direct auth secret not configured")
 )

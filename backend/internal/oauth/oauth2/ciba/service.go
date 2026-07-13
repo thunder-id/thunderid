@@ -491,9 +491,10 @@ func defaultBindingMessage(authReqID string) string {
 // fixed buffer. Setting this in the flow runtime data is what makes the auth assertion cache the
 // resolved attributes and emit the aci claim (consumed by the CIBA callback).
 func (s *cibaService) resolveUserAttributesCacheTTL(app *providers.OAuthClient) int64 {
-	maxTTL := tokenservice.ResolveTokenConfig(s.cfg, app, tokenservice.TokenTypeAccess).ValidityPeriod
+	maxTTL := tokenservice.ResolveTokenConfig(
+		s.cfg, app, tokenservice.TokenTypeAccess, app.UserAccessTokenConfig().ValidityPeriodOrZero()).ValidityPeriod
 	if app.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
-		refreshTTL := tokenservice.ResolveTokenConfig(s.cfg, app, tokenservice.TokenTypeRefresh).ValidityPeriod
+		refreshTTL := tokenservice.ResolveTokenConfig(s.cfg, app, tokenservice.TokenTypeRefresh, 0).ValidityPeriod
 		if refreshTTL > maxTTL {
 			maxTTL = refreshTTL
 		}

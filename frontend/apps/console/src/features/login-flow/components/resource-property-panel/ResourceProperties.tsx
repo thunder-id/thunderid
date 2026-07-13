@@ -25,6 +25,7 @@ import ExecutionExtendedProperties from './extended-properties/ExecutionExtended
 import FieldExtendedProperties from './extended-properties/FieldExtendedProperties';
 import RulesProperties from './nodes/RulesProperties';
 import ResourcePropertyFactory from './ResourcePropertyFactory';
+import ClassesPropertyField from '@/features/flows/components/resource-property-panel/ClassesPropertyField';
 import TextPropertyField from '@/features/flows/components/resource-property-panel/TextPropertyField';
 import VariantSelect from '@/features/flows/components/resource-property-panel/VariantSelect';
 import type {ResourcePropertiesProps} from '@/features/flows/context/FlowBuilderCoreProvider';
@@ -86,6 +87,16 @@ function ResourceProperties({
     />
   );
 
+  const renderElementClasses = (): ReactElement => (
+    <ClassesPropertyField
+      key={`${resource.id}-$classes`}
+      resource={resource}
+      propertyKey="classes"
+      propertyValue={(resource as Element & {classes?: string}).classes ?? ''}
+      onChange={handleChange}
+    />
+  );
+
   const renderElementPropertyFactory = () => {
     return (
       <>
@@ -121,6 +132,7 @@ function ResourceProperties({
       return (
         <>
           {renderElementId()}
+          {renderElementClasses()}
           <FieldExtendedProperties resource={resource} onChange={handleChange} />
           {renderElementPropertyFactory()}
         </>
@@ -129,6 +141,7 @@ function ResourceProperties({
       return (
         <>
           {renderElementId()}
+          {renderElementClasses()}
           {resource.type === ElementTypes.Action && (
             <ButtonExtendedProperties resource={resource} onChange={handleChange} onVariantChange={onVariantChange} />
           )}
@@ -166,6 +179,7 @@ function ResourceProperties({
         return (
           <>
             {renderElementId()}
+            {renderElementClasses()}
             <VariantSelect resource={resource} selectedVariant={selectedVariant} onVariantChange={onVariantChange} />
             <TextPropertyField
               resource={resource}
@@ -194,6 +208,7 @@ function ResourceProperties({
         return (
           <>
             {renderElementId()}
+            {renderElementClasses()}
             <TextPropertyField
               resource={resource}
               propertyKey="src"
@@ -224,6 +239,7 @@ function ResourceProperties({
       return (
         <>
           {renderElementId()}
+          {renderElementClasses()}
           {renderElementPropertyFactory()}
         </>
       );
@@ -232,6 +248,7 @@ function ResourceProperties({
       return (
         <>
           {renderElementId()}
+          {renderElementClasses()}
           {renderElementPropertyFactory()}
         </>
       );

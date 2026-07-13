@@ -29,4 +29,18 @@ describe('TemplateConstants', () => {
     expect(TemplateConstants).toHaveProperty('EMBEDDED_SUFFIX');
     expect(TemplateConstants.EMBEDDED_SUFFIX).toBe('-embedded');
   });
+
+  it('should have MCP_CLIENT_TEMPLATE_ID constant', () => {
+    expect(TemplateConstants).toHaveProperty('MCP_CLIENT_TEMPLATE_ID');
+    expect(TemplateConstants.MCP_CLIENT_TEMPLATE_ID).toBe('mcp-client');
+  });
+
+  it('should have MCP_CLIENT_ALLOWED_GRANT_TYPES constant', () => {
+    expect(TemplateConstants).toHaveProperty('MCP_CLIENT_ALLOWED_GRANT_TYPES');
+    expect(TemplateConstants.MCP_CLIENT_ALLOWED_GRANT_TYPES).toEqual([
+      'authorization_code',
+      'refresh_token',
+      'client_credentials',
+    ]);
+  });
 });

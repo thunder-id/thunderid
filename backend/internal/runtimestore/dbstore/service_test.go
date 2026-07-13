@@ -209,8 +209,7 @@ func (s *DBStoreTestSuite) TestUpdate_NotFound_ReturnsError() {
 
 	err := s.store.Update(s.ctx, testNamespace, testKey, testValue)
 
-	s.Error(err)
-	s.Contains(err.Error(), "value not found for key")
+	s.ErrorIs(err, providers.ErrRuntimeStoreKeyNotFound)
 }
 
 func (s *DBStoreTestSuite) TestUpdate_DBClientError() {
@@ -325,4 +324,69 @@ func (s *DBStoreTestSuite) TestTake_QueryError() {
 	s.Error(err)
 	s.Nil(got)
 	s.Contains(err.Error(), "failed to take data from database")
+}
+
+// ExtendTTL
+
+func (s *DBStoreTestSuite) TestExtendTTL_Success() {
+	const ttlSeconds int64 = 60
+	before := time.Now().UTC()
+	s.mockDBProvider.On("GetRuntimeDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("ExecuteContext", mock.Anything, queryExtendTTLRuntimeStore,
+		testDeploymentID, string(testNamespace), testKey,
+		mock.MatchedBy(func(t time.Time) bool {
+			expected := before.Add(time.Duration(ttlSeconds) * time.Second)
+			diff := t.Sub(expected)
+			return diff >= -time.Second && diff <= time.Second
+		}), mock.Anything,
+	).Return(int64(1), nil)
+
+	err := s.store.ExtendTTL(s.ctx, testNamespace, testKey, ttlSeconds)
+
+	s.NoError(err)
+}
+
+func (s *DBStoreTestSuite) TestExtendTTL_ZeroTTL_ReturnsError() {
+	err := s.store.ExtendTTL(s.ctx, testNamespace, testKey, 0)
+
+	s.Error(err)
+	s.Contains(err.Error(), "ttl seconds cannot be negative or zero")
+}
+
+func (s *DBStoreTestSuite) TestExtendTTL_NegativeTTL_ReturnsError() {
+	err := s.store.ExtendTTL(s.ctx, testNamespace, testKey, -1)
+
+	s.Error(err)
+	s.Contains(err.Error(), "ttl seconds cannot be negative or zero")
+}
+
+func (s *DBStoreTestSuite) TestExtendTTL_DBClientError() {
+	s.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+
+	err := s.store.ExtendTTL(s.ctx, testNamespace, testKey, 60)
+
+	s.Error(err)
+}
+
+func (s *DBStoreTestSuite) TestExtendTTL_ExecuteError() {
+	s.mockDBProvider.On("GetRuntimeDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("ExecuteContext", mock.Anything, queryExtendTTLRuntimeStore,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+	).Return(int64(0), errors.New("update failed"))
+
+	err := s.store.ExtendTTL(s.ctx, testNamespace, testKey, 60)
+
+	s.Error(err)
+	s.Contains(err.Error(), "failed to extend TTL in database")
+}
+
+func (s *DBStoreTestSuite) TestExtendTTL_NotFound_ReturnsError() {
+	s.mockDBProvider.On("GetRuntimeDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("ExecuteContext", mock.Anything, queryExtendTTLRuntimeStore,
+		testDeploymentID, string(testNamespace), testKey, mock.Anything, mock.Anything,
+	).Return(int64(0), nil)
+
+	err := s.store.ExtendTTL(s.ctx, testNamespace, testKey, 60)
+
+	s.ErrorIs(err, providers.ErrRuntimeStoreKeyNotFound)
 }

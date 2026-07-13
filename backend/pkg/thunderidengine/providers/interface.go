@@ -141,6 +141,14 @@ type ConsentProvider interface {
 		*Consent, *common.ServiceError)
 }
 
+// CaptchaValidationProvider defines the contract for verifying captcha tokens.
+type CaptchaValidationProvider interface {
+	// Verify validates the given captcha token and returns the verification result. An invalid
+	// token is reported through the result's negative verdict, while operational failures (provider
+	// unavailable or misconfigured) are returned as a server-side service error.
+	Verify(ctx context.Context, token string) (*CaptchaVerificationResult, *common.ServiceError)
+}
+
 // Executor defines the interface for executors.
 type Executor interface {
 	Execute(ctx *NodeContext) (*ExecutorResponse, error)
@@ -200,4 +208,6 @@ type RuntimeStoreProvider interface {
 
 	// Take retrieves and removes a value from the runtime store by its key.
 	Take(ctx context.Context, namespace RuntimeStoreNamespace, key string) ([]byte, error)
+
+	ExtendTTL(ctx context.Context, namespace RuntimeStoreNamespace, key string, ttlSeconds int64) error
 }

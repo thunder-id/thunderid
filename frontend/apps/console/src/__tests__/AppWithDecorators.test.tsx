@@ -26,6 +26,7 @@ const mockGetTrustedIssuerClientId = vi.fn();
 const mockGetTrustedIssuerScopes = vi.fn();
 const mockGetClientUrl = vi.fn();
 const mockGetServerUrl = vi.fn();
+const mockGetResourceIdentifier = vi.fn();
 const mockIsTrustedIssuerGenericOidc = vi.fn().mockReturnValue(false);
 const mockConfig: Record<string, unknown> = {};
 
@@ -37,6 +38,7 @@ vi.mock('@thunderid/contexts', () => ({
     getTrustedIssuerScopes: mockGetTrustedIssuerScopes,
     getClientUrl: mockGetClientUrl,
     getServerUrl: mockGetServerUrl,
+    getResourceIdentifier: mockGetResourceIdentifier,
     isTrustedIssuerGenericOidc: mockIsTrustedIssuerGenericOidc,
     config: mockConfig,
   }),

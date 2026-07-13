@@ -38,7 +38,6 @@ vi.mock('@thunderid/components', async (importOriginal) => {
 const mockNavigate = vi.fn();
 const mockUpdateMutateAsync = vi.fn();
 const mockDeleteMutate = vi.fn();
-const mockResetUpdateError = vi.fn();
 const mockResetDeleteError = vi.fn();
 
 // Mock logger
@@ -78,6 +77,7 @@ interface UseGetUserReturn {
   data: User | undefined;
   isLoading: boolean;
   error: Error | null;
+  refetch: ReturnType<typeof vi.fn>;
 }
 
 interface UseGetUserTypesReturn {
@@ -116,6 +116,7 @@ interface UseDeleteUserReturn {
   reset: () => void;
 }
 
+const mockRefetch = vi.fn();
 const mockUseGetUser = vi.fn<() => UseGetUserReturn>();
 const mockUseGetUserTypes = vi.fn<() => UseGetUserTypesReturn>();
 const mockUseGetUserType = vi.fn<() => UseGetUserTypeReturn>();
@@ -142,6 +143,34 @@ vi.mock('@/api/useDeleteUser', () => ({
   default: () => mockUseDeleteUser(),
 }));
 
+// Mock the heavy child components — focus on page-level wiring. Their own deep behavior is
+// covered by AttributesSummarySection.test.tsx and EditUserAttributes.test.tsx.
+vi.mock('@/components/edit-user/QuickCopySection', () => ({
+  default: () => <div data-testid="quick-copy" />,
+}));
+
+vi.mock('@/components/edit-user/AttributesSummarySection', () => ({
+  default: () => <div data-testid="attributes-summary" />,
+}));
+
+vi.mock('@/components/edit-user/EditUserAttributes', () => ({
+  default: ({onFieldChange}: {onFieldChange: (field: string, value: unknown) => void}) => (
+    <div data-testid="edit-user-attributes">
+      <button type="button" onClick={() => onFieldChange('attributes', {department: 'sales'})}>
+        Edit an attribute
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock('@/components/edit-user/CredentialsTabPanel', () => ({
+  default: ({userId, credentialFields}: {userId: string; credentialFields: {fieldName: string}[]}) => (
+    <div data-testid="credentials-tab-panel" data-user-id={userId}>
+      {credentialFields.map((field) => field.fieldName).join(',')}
+    </div>
+  ),
+}));
+
 describe('UserEditPage', () => {
   const mockUserData: User = {
     id: 'user123',
@@ -166,22 +195,8 @@ describe('UserEditPage', () => {
     id: 'employee',
     name: 'Employee',
     schema: {
-      username: {
-        type: 'string',
-        required: true,
-      },
-      email: {
-        type: 'string',
-        required: true,
-      },
-      age: {
-        type: 'number',
-        required: false,
-      },
-      active: {
-        type: 'boolean',
-        required: false,
-      },
+      username: {type: 'string', required: true},
+      email: {type: 'string', required: true},
     },
   };
 
@@ -194,7 +209,7 @@ describe('UserEditPage', () => {
     isError: false,
     isSuccess: false,
     isIdle: true,
-    reset: mockResetUpdateError,
+    reset: vi.fn(),
   };
 
   const defaultDeleteReturn: UseDeleteUserReturn = {
@@ -213,6 +228,7 @@ describe('UserEditPage', () => {
     vi.clearAllMocks();
     mockNavigate.mockResolvedValue(undefined);
     mockUpdateMutateAsync.mockResolvedValue(mockUserData);
+    mockRefetch.mockResolvedValue({});
     mockDeleteMutate.mockImplementation((_userId: string, options?: {onSuccess?: () => void}) => {
       options?.onSuccess?.();
     });
@@ -220,6 +236,7 @@ describe('UserEditPage', () => {
       data: mockUserData,
       isLoading: false,
       error: null,
+      refetch: mockRefetch,
     });
     mockUseGetUserTypes.mockReturnValue({
       data: mockSchemasData,
@@ -241,6 +258,7 @@ describe('UserEditPage', () => {
         data: undefined,
         isLoading: true,
         error: null,
+        refetch: mockRefetch,
       });
 
       render(<UserEditPage />);
@@ -265,6 +283,7 @@ describe('UserEditPage', () => {
         data: undefined,
         isLoading: false,
         error: new Error('User not found'),
+        refetch: mockRefetch,
       });
 
       render(<UserEditPage />);
@@ -281,6 +300,7 @@ describe('UserEditPage', () => {
         data: undefined,
         isLoading: false,
         error: new Error('User not found'),
+        refetch: mockRefetch,
       });
 
       mockNavigate.mockRejectedValueOnce(new Error('Navigation failed'));
@@ -314,11 +334,11 @@ describe('UserEditPage', () => {
         data: undefined,
         isLoading: false,
         error: new Error(''),
+        refetch: mockRefetch,
       });
 
       render(<UserEditPage />);
 
-      // Should display the fallback message since error.message is empty
       expect(screen.getByRole('alert')).toHaveTextContent('');
     });
 
@@ -327,6 +347,7 @@ describe('UserEditPage', () => {
         data: undefined,
         isLoading: false,
         error: null,
+        refetch: mockRefetch,
       });
 
       render(<UserEditPage />);
@@ -342,6 +363,7 @@ describe('UserEditPage', () => {
         data: undefined,
         isLoading: false,
         error: null,
+        refetch: mockRefetch,
       });
 
       mockNavigate.mockRejectedValueOnce(new Error('Navigation failed'));
@@ -357,6 +379,24 @@ describe('UserEditPage', () => {
 
       consoleSpy.mockRestore();
     });
+
+    it('displays fallback error message when error messages are undefined', () => {
+      mockUseGetUser.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        error: new Error(),
+        refetch: mockRefetch,
+      });
+      mockUseGetUserType.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        error: null,
+      });
+
+      render(<UserEditPage />);
+
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
   });
 
   describe('View Mode', () => {
@@ -370,69 +410,23 @@ describe('UserEditPage', () => {
     it('displays basic user information', () => {
       render(<UserEditPage />);
 
-      // User ID shown in heading and CopyableId
       expect(screen.getAllByText('user123').length).toBeGreaterThanOrEqual(1);
-      // User type shown as chip
       expect(screen.getByText('Employee')).toBeInTheDocument();
     });
 
-    it('displays user attributes in view mode', () => {
+    it('renders the General and Attributes tabs, and the Delete button', () => {
       render(<UserEditPage />);
 
-      expect(screen.getByText('username')).toBeInTheDocument();
-      expect(screen.getByText('john_doe')).toBeInTheDocument();
-
-      expect(screen.getByText('email')).toBeInTheDocument();
-      expect(screen.getByText('john@example.com')).toBeInTheDocument();
-
-      expect(screen.getByText('age')).toBeInTheDocument();
-      expect(screen.getByText('30')).toBeInTheDocument();
-
-      expect(screen.getByText('active')).toBeInTheDocument();
-      expect(screen.getByText('Yes')).toBeInTheDocument();
+      expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['General', 'Attributes']);
+      expect(screen.getByRole('button', {name: /^delete$/i})).toBeInTheDocument();
     });
 
-    it('displays "No" for false boolean values', () => {
-      mockUseGetUser.mockReturnValue({
-        data: {...mockUserData, attributes: {active: false}},
-        isLoading: false,
-        error: null,
-      });
-
+    it('shows the read-only attributes summary and QuickCopy on the General tab', () => {
       render(<UserEditPage />);
 
-      expect(screen.getByText('No')).toBeInTheDocument();
-    });
-
-    it('displays array values as comma-separated list', () => {
-      mockUseGetUser.mockReturnValue({
-        data: {...mockUserData, attributes: {tags: ['admin', 'developer', 'manager']}},
-        isLoading: false,
-        error: null,
-      });
-
-      render(<UserEditPage />);
-
-      expect(screen.getByText('admin, developer, manager')).toBeInTheDocument();
-    });
-
-    it('displays "No attributes available" when user has no attributes', () => {
-      mockUseGetUser.mockReturnValue({
-        data: {...mockUserData, attributes: {}},
-        isLoading: false,
-        error: null,
-      });
-
-      render(<UserEditPage />);
-
-      expect(screen.getByText('No attributes available')).toBeInTheDocument();
-    });
-
-    it('renders Edit and Delete buttons in view mode', () => {
-      render(<UserEditPage />);
-
-      expect(screen.getByRole('button', {name: /edit/i})).toBeInTheDocument();
-      expect(screen.getByRole('button', {name: /delete/i})).toBeInTheDocument();
+      expect(screen.getByTestId('quick-copy')).toBeInTheDocument();
+      expect(screen.getByTestId('attributes-summary')).toBeInTheDocument();
+      expect(screen.queryByTestId('edit-user-attributes')).not.toBeInTheDocument();
     });
 
     it('navigates back when Back button is clicked', async () => {
@@ -465,42 +459,26 @@ describe('UserEditPage', () => {
     });
   });
 
-  describe('Edit Mode', () => {
-    it('enters edit mode when Edit button is clicked', async () => {
+  describe('Attributes tab', () => {
+    it('switches to the Attributes tab content when clicked', async () => {
       const user = userEvent.setup();
       render(<UserEditPage />);
 
-      const editButton = screen.getByRole('button', {name: /edit/i});
-      await user.click(editButton);
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', {name: /^save$/i})).toBeInTheDocument();
-        expect(screen.getByRole('button', {name: /cancel/i})).toBeInTheDocument();
-      });
-
-      // Edit button should not be visible in edit mode (replaced by Save/Cancel)
-      expect(screen.queryByRole('button', {name: /^edit$/i})).not.toBeInTheDocument();
+      expect(screen.getByTestId('edit-user-attributes')).toBeInTheDocument();
     });
 
-    it('does not submit if userId is missing from params', async () => {
+    it('surfaces the page-level unsaved-changes bar when an attribute is edited', async () => {
       const user = userEvent.setup();
-      // When userId is undefined, useGetUser will be called with undefined
-      // Let's test the guard clause by simulating missing required fields instead
-      mockUseGetUser.mockReturnValue({
-        data: {...mockUserData, ouId: '', type: ''},
-        isLoading: false,
-        error: null,
-      });
-
       render(<UserEditPage />);
 
-      await user.click(screen.getByRole('button', {name: /edit/i}));
-      await user.click(screen.getByRole('button', {name: /^save$/i}));
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
 
-      // Should not call mutateAsync when ouId or type is empty
-      await waitFor(() => {
-        expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
-      });
+      expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Save'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Reset'})).toBeInTheDocument();
     });
 
     it('does not submit if user ouId is missing', async () => {
@@ -509,20 +487,19 @@ describe('UserEditPage', () => {
         data: {...mockUserData, ouId: undefined as unknown as string},
         isLoading: false,
         error: null,
+        refetch: mockRefetch,
       });
       mockUseGetUserTypes.mockReturnValue({
-        data: {
-          ...mockSchemasData,
-          types: [{...mockSchemasData.types[0], ouId: ''}],
-        },
+        data: {...mockSchemasData, types: [{...mockSchemasData.types[0], ouId: ''}]},
         isLoading: false,
         error: null,
       });
 
       render(<UserEditPage />);
 
-      await user.click(screen.getByRole('button', {name: /edit/i}));
-      await user.click(screen.getByRole('button', {name: /^save$/i}));
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      await user.click(screen.getByRole('button', {name: 'Save'}));
 
       await waitFor(() => {
         expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
@@ -535,252 +512,27 @@ describe('UserEditPage', () => {
         data: {...mockUserData, type: undefined as unknown as string},
         isLoading: false,
         error: null,
+        refetch: mockRefetch,
       });
 
       render(<UserEditPage />);
 
-      await user.click(screen.getByRole('button', {name: /edit/i}));
-      await user.click(screen.getByRole('button', {name: /^save$/i}));
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      await user.click(screen.getByRole('button', {name: 'Save'}));
 
       await waitFor(() => {
         expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
       });
     });
 
-    it('displays form fields in edit mode', async () => {
+    it('successfully updates the user with the staged attribute edit', async () => {
       const user = userEvent.setup();
       render(<UserEditPage />);
 
-      await user.click(screen.getByRole('button', {name: /edit/i}));
-
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText(/Enter username/i)).toBeInTheDocument();
-        expect(screen.getByPlaceholderText(/Enter email/i)).toBeInTheDocument();
-        expect(screen.getByPlaceholderText(/Enter age/i)).toBeInTheDocument();
-        expect(screen.getByRole('checkbox')).toBeInTheDocument();
-      });
-    });
-
-    it('filters out password field from schema in edit mode', async () => {
-      const user = userEvent.setup();
-      const schemaWithPassword: ApiUserType = {
-        id: 'employee',
-        name: 'Employee',
-        schema: {
-          username: {
-            type: 'string',
-            required: true,
-          },
-          password: {
-            type: 'string',
-            required: true,
-            credential: true,
-          },
-          email: {
-            type: 'string',
-            required: true,
-          },
-        },
-      };
-
-      mockUseGetUserType.mockReturnValue({
-        data: schemaWithPassword,
-        isLoading: false,
-        error: null,
-      });
-
-      render(<UserEditPage />);
-
-      await user.click(screen.getByRole('button', {name: /edit/i}));
-
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText(/Enter username/i)).toBeInTheDocument();
-        expect(screen.getByPlaceholderText(/Enter email/i)).toBeInTheDocument();
-        // Password field should not be present
-        expect(screen.queryByPlaceholderText(/Enter password/i)).not.toBeInTheDocument();
-      });
-    });
-
-    it('filters out all credential fields from schema in edit mode', async () => {
-      const user = userEvent.setup();
-      const schemaWithMultipleCredentials: ApiUserType = {
-        id: 'employee',
-        name: 'Employee',
-        schema: {
-          username: {
-            type: 'string',
-            required: true,
-          },
-          password: {
-            type: 'string',
-            required: true,
-            credential: true,
-          },
-          pin: {
-            type: 'string',
-            credential: true,
-          },
-          email: {
-            type: 'string',
-            required: true,
-          },
-        },
-      };
-
-      mockUseGetUserType.mockReturnValue({
-        data: schemaWithMultipleCredentials,
-        isLoading: false,
-        error: null,
-      });
-
-      render(<UserEditPage />);
-
-      await user.click(screen.getByRole('button', {name: /edit/i}));
-
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText(/Enter username/i)).toBeInTheDocument();
-        expect(screen.getByPlaceholderText(/Enter email/i)).toBeInTheDocument();
-        // All credential fields should be filtered out
-        expect(screen.queryByPlaceholderText(/Enter password/i)).not.toBeInTheDocument();
-        expect(screen.queryByPlaceholderText(/Enter pin/i)).not.toBeInTheDocument();
-      });
-    });
-
-    it('does not filter non-credential fields with similar names', async () => {
-      const user = userEvent.setup();
-      const schemaWithoutCredential: ApiUserType = {
-        id: 'employee',
-        name: 'Employee',
-        schema: {
-          username: {
-            type: 'string',
-            required: true,
-          },
-          password: {
-            type: 'string',
-            required: true,
-          },
-        },
-      };
-
-      mockUseGetUserType.mockReturnValue({
-        data: schemaWithoutCredential,
-        isLoading: false,
-        error: null,
-      });
-
-      render(<UserEditPage />);
-
-      await user.click(screen.getByRole('button', {name: /edit/i}));
-
-      await waitFor(() => {
-        // A field named "password" without credential: true should still appear
-        expect(screen.getByPlaceholderText(/Enter password/i)).toBeInTheDocument();
-        expect(screen.getByPlaceholderText(/Enter username/i)).toBeInTheDocument();
-      });
-    });
-
-    it('hides edit button when schema has only credential fields', () => {
-      const credentialOnlySchema: ApiUserType = {
-        id: 'credential-only',
-        name: 'CredentialOnly',
-        schema: {
-          password: {
-            type: 'string',
-            required: true,
-            credential: true,
-          },
-          pin: {
-            type: 'number',
-            credential: true,
-          },
-        },
-      };
-
-      mockUseGetUserType.mockReturnValue({
-        data: credentialOnlySchema,
-        isLoading: false,
-        error: null,
-      });
-
-      render(<UserEditPage />);
-
-      expect(screen.queryByRole('button', {name: /edit/i})).not.toBeInTheDocument();
-    });
-
-    it('shows edit button when schema has at least one non-credential field', () => {
-      const mixedSchema: ApiUserType = {
-        id: 'mixed',
-        name: 'Mixed',
-        schema: {
-          password: {
-            type: 'string',
-            required: true,
-            credential: true,
-          },
-          email: {
-            type: 'string',
-            required: true,
-          },
-        },
-      };
-
-      mockUseGetUserType.mockReturnValue({
-        data: mixedSchema,
-        isLoading: false,
-        error: null,
-      });
-
-      render(<UserEditPage />);
-
-      expect(screen.getByRole('button', {name: /edit/i})).toBeInTheDocument();
-    });
-
-    it('populates form fields with current user data', async () => {
-      const user = userEvent.setup();
-      render(<UserEditPage />);
-
-      await user.click(screen.getByRole('button', {name: /edit/i}));
-
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText(/Enter username/i)).toHaveValue('john_doe');
-        expect(screen.getByPlaceholderText(/Enter email/i)).toHaveValue('john@example.com');
-        expect(screen.getByPlaceholderText(/Enter age/i)).toHaveValue(30);
-        expect(screen.getByRole('checkbox')).toBeChecked();
-      });
-    });
-
-    it('allows editing form fields', async () => {
-      const user = userEvent.setup();
-      render(<UserEditPage />);
-
-      await user.click(screen.getByRole('button', {name: /edit/i}));
-
-      const emailInput = await screen.findByPlaceholderText(/Enter email/i);
-      await user.clear(emailInput);
-      await user.type(emailInput, 'newemail@example.com');
-
-      expect(emailInput).toHaveValue('newemail@example.com');
-    });
-
-    it('successfully updates user', async () => {
-      const user = userEvent.setup();
-      const updatedUser: User = {
-        ...mockUserData,
-        attributes: {...mockUserData.attributes, email: 'updated@example.com'},
-      };
-      mockUpdateMutateAsync.mockResolvedValue(updatedUser);
-
-      render(<UserEditPage />);
-
-      await user.click(screen.getByRole('button', {name: /edit/i}));
-
-      const emailInput = await screen.findByPlaceholderText(/Enter email/i);
-      await user.clear(emailInput);
-      await user.type(emailInput, 'updated@example.com');
-
-      const saveButton = screen.getByRole('button', {name: /^save$/i});
-      await user.click(saveButton);
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      await user.click(screen.getByRole('button', {name: 'Save'}));
 
       await waitFor(() => {
         expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
@@ -788,12 +540,7 @@ describe('UserEditPage', () => {
           data: {
             ouId: 'test-ou',
             type: 'Employee',
-            attributes: {
-              username: 'john_doe',
-              email: 'updated@example.com',
-              age: 30,
-              active: true,
-            },
+            attributes: {department: 'sales'},
           },
         });
       });
@@ -805,20 +552,19 @@ describe('UserEditPage', () => {
         data: {...mockUserData, ouId: 'stale-ou'},
         isLoading: false,
         error: null,
+        refetch: mockRefetch,
       });
       mockUseGetUserTypes.mockReturnValue({
-        data: {
-          ...mockSchemasData,
-          types: [{...mockSchemasData.types[0], ouId: 'schema-ou'}],
-        },
+        data: {...mockSchemasData, types: [{...mockSchemasData.types[0], ouId: 'schema-ou'}]},
         isLoading: false,
         error: null,
       });
 
       render(<UserEditPage />);
 
-      await user.click(screen.getByRole('button', {name: /edit/i}));
-      await user.click(screen.getByRole('button', {name: /^save$/i}));
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      await user.click(screen.getByRole('button', {name: 'Save'}));
 
       await waitFor(() => {
         expect(mockUpdateMutateAsync).toHaveBeenCalled();
@@ -830,18 +576,16 @@ describe('UserEditPage', () => {
     it('falls back to user organization unit when schema does not provide one', async () => {
       const user = userEvent.setup();
       mockUseGetUserTypes.mockReturnValue({
-        data: {
-          ...mockSchemasData,
-          types: [{...mockSchemasData.types[0], ouId: ''}],
-        },
+        data: {...mockSchemasData, types: [{...mockSchemasData.types[0], ouId: ''}]},
         isLoading: false,
         error: null,
       });
 
       render(<UserEditPage />);
 
-      await user.click(screen.getByRole('button', {name: /edit/i}));
-      await user.click(screen.getByRole('button', {name: /^save$/i}));
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      await user.click(screen.getByRole('button', {name: 'Save'}));
 
       await waitFor(() => {
         expect(mockUpdateMutateAsync).toHaveBeenCalled();
@@ -850,85 +594,51 @@ describe('UserEditPage', () => {
       });
     });
 
-    it('exits edit mode after successful save', async () => {
-      const user = userEvent.setup();
-      mockUpdateMutateAsync.mockResolvedValue(mockUserData);
-
-      render(<UserEditPage />);
-
-      await user.click(screen.getByRole('button', {name: /edit/i}));
-      await user.click(screen.getByRole('button', {name: /^save$/i}));
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', {name: /edit/i})).toBeInTheDocument();
-        expect(screen.queryByRole('button', {name: /^save$/i})).not.toBeInTheDocument();
-      });
-    });
-
-    it('displays update error when save fails', async () => {
-      const user = userEvent.setup();
-      mockUpdateMutateAsync.mockRejectedValue(new Error('Failed to update user'));
-      mockUseUpdateUser.mockReturnValue({
-        ...defaultUpdateReturn,
-        error: new Error('Failed to update user'),
-        isError: true,
-        isIdle: false,
-      });
-
-      render(<UserEditPage />);
-
-      await user.click(screen.getByRole('button', {name: /edit/i}));
-      await user.click(screen.getByRole('button', {name: /^save$/i}));
-
-      await waitFor(() => {
-        expect(screen.getByRole('alert')).toHaveTextContent('Failed to update user');
-      });
-    });
-
-    it('cancels edit mode and resets form', async () => {
+    it('hides the unsaved-changes bar after a successful save', async () => {
       const user = userEvent.setup();
       render(<UserEditPage />);
 
-      await user.click(screen.getByRole('button', {name: /edit/i}));
-
-      const emailInput = await screen.findByPlaceholderText(/Enter email/i);
-      await user.clear(emailInput);
-      await user.type(emailInput, 'changed@example.com');
-
-      const cancelButton = screen.getByRole('button', {name: /cancel/i});
-      await user.click(cancelButton);
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      await user.click(screen.getByRole('button', {name: 'Save'}));
 
       await waitFor(() => {
-        expect(screen.getByRole('button', {name: /edit/i})).toBeInTheDocument();
-        expect(mockResetUpdateError).toHaveBeenCalled();
+        expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
       });
     });
 
-    it('disables buttons during submission', async () => {
+    it('clears the staged edit and hides the bar when Reset is clicked', async () => {
       const user = userEvent.setup();
-      const neverResolvingUpdate = vi.fn().mockImplementation(() => new Promise(() => null)); // Never resolves
+      render(<UserEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      await user.click(screen.getByRole('button', {name: 'Reset'}));
+
+      expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
+      expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
+    });
+
+    it('disables Save and Reset while saving', async () => {
+      const user = userEvent.setup();
+      const neverResolvingUpdate = vi.fn().mockImplementation(() => new Promise(() => null));
       mockUseUpdateUser.mockReturnValue({
         ...defaultUpdateReturn,
         mutateAsync: neverResolvingUpdate,
+        isPending: true,
       });
 
       render(<UserEditPage />);
 
-      await user.click(screen.getByRole('button', {name: /edit/i}));
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
 
-      const saveButton = screen.getByRole('button', {name: /^save$/i});
-      await user.click(saveButton);
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', {name: /saving.../i})).toBeDisabled();
-        expect(screen.getByRole('button', {name: /cancel/i})).toBeDisabled();
-      });
+      expect(screen.getByRole('button', {name: 'Saving…'})).toBeDisabled();
     });
 
-    it('logs error when update fails', async () => {
+    it('logs an error when the update fails', async () => {
       const user = userEvent.setup();
       const error = new Error('Update failed');
-
       const failingUpdateMutateAsync = vi.fn().mockRejectedValue(error);
       mockUseUpdateUser.mockReturnValue({
         ...defaultUpdateReturn,
@@ -937,12 +647,82 @@ describe('UserEditPage', () => {
 
       render(<UserEditPage />);
 
-      await user.click(screen.getByRole('button', {name: /edit/i}));
-      await user.click(screen.getByRole('button', {name: /^save$/i}));
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      await user.click(screen.getByRole('button', {name: 'Save'}));
 
       await waitFor(() => {
         expect(mockLoggerError).toHaveBeenCalledWith('Failed to update user', {error});
       });
+    });
+  });
+
+  describe('Credentials tab', () => {
+    const schemaWithCredentials: ApiUserType = {
+      id: 'employee',
+      name: 'Employee',
+      schema: {
+        username: {type: 'string', required: true},
+        password: {type: 'string', required: true, credential: true},
+        pin: {type: 'string', credential: true},
+      },
+    };
+
+    it('does not render a Credentials tab when the schema has no credential fields', () => {
+      render(<UserEditPage />);
+
+      expect(screen.queryByRole('tab', {name: 'Credentials'})).not.toBeInTheDocument();
+    });
+
+    it('renders a Credentials tab when the schema has credential fields', () => {
+      mockUseGetUserType.mockReturnValue({
+        data: schemaWithCredentials,
+        isLoading: false,
+        error: null,
+      });
+
+      render(<UserEditPage />);
+
+      expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+        'General',
+        'Attributes',
+        'Credentials',
+      ]);
+    });
+
+    it('does not render a Credentials tab for a read-only user, even with credential fields', () => {
+      mockUseGetUser.mockReturnValue({
+        data: {...mockUserData, isReadOnly: true},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+      mockUseGetUserType.mockReturnValue({
+        data: schemaWithCredentials,
+        isLoading: false,
+        error: null,
+      });
+
+      render(<UserEditPage />);
+
+      expect(screen.queryByRole('tab', {name: 'Credentials'})).not.toBeInTheDocument();
+    });
+
+    it('passes the userId and derived credential fields to CredentialsTabPanel when selected', async () => {
+      const user = userEvent.setup();
+      mockUseGetUserType.mockReturnValue({
+        data: schemaWithCredentials,
+        isLoading: false,
+        error: null,
+      });
+
+      render(<UserEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Credentials'}));
+
+      const panel = screen.getByTestId('credentials-tab-panel');
+      expect(panel).toHaveAttribute('data-user-id', 'user123');
+      expect(panel).toHaveTextContent('password,pin');
     });
   });
 
@@ -973,7 +753,6 @@ describe('UserEditPage', () => {
       const confirmButton = within(dialog).getByRole('button', {name: /^delete$/i});
       await user.click(confirmButton);
 
-      // Verify userId is passed correctly
       await waitFor(() => {
         expect(mockDeleteMutate).toHaveBeenCalledWith('user123', expect.any(Object));
       });
@@ -1087,161 +866,6 @@ describe('UserEditPage', () => {
         expect(screen.getByRole('dialog')).toBeInTheDocument();
         expect(within(dialog).getByText('Delete failed')).toBeInTheDocument();
       });
-    });
-  });
-
-  describe('Attribute Display Edge Cases', () => {
-    it('displays dash for null attribute values', () => {
-      const userWithNullAttr: User = {
-        id: 'user123',
-        ouId: 'test-ou',
-        type: 'Employee',
-        attributes: {
-          username: 'john_doe',
-          middleName: null as unknown as string,
-        },
-      };
-
-      mockUseGetUser.mockReturnValue({
-        data: userWithNullAttr,
-        isLoading: false,
-        error: null,
-      });
-
-      render(<UserEditPage />);
-
-      const middleNameSection = screen.getByText('middleName').parentElement;
-      expect(middleNameSection).toHaveTextContent('-');
-    });
-
-    it('displays dash for undefined attribute values', () => {
-      const userWithUndefinedAttr: User = {
-        id: 'user123',
-        ouId: 'test-ou',
-        type: 'Employee',
-        attributes: {
-          username: 'john_doe',
-          nickname: undefined as unknown as string,
-        },
-      };
-
-      mockUseGetUser.mockReturnValue({
-        data: userWithUndefinedAttr,
-        isLoading: false,
-        error: null,
-      });
-
-      render(<UserEditPage />);
-
-      const nicknameSection = screen.getByText('nickname').parentElement;
-      expect(nicknameSection).toHaveTextContent('-');
-    });
-
-    it('displays comma-separated values for array attributes', () => {
-      const userWithArrayAttr: User = {
-        id: 'user123',
-        ouId: 'test-ou',
-        type: 'Employee',
-        attributes: {
-          username: 'john_doe',
-          tags: ['developer', 'senior', 'fullstack'] as unknown as string,
-        },
-      };
-
-      mockUseGetUser.mockReturnValue({
-        data: userWithArrayAttr,
-        isLoading: false,
-        error: null,
-      });
-
-      render(<UserEditPage />);
-
-      expect(screen.getByText('tags')).toBeInTheDocument();
-      expect(screen.getByText('developer, senior, fullstack')).toBeInTheDocument();
-    });
-
-    it('displays JSON string for object attributes', () => {
-      const userWithObjectAttr: User = {
-        id: 'user123',
-        ouId: 'test-ou',
-        type: 'Employee',
-        attributes: {
-          username: 'john_doe',
-          address: {city: 'New York', country: 'USA'} as unknown as string,
-        },
-      };
-
-      mockUseGetUser.mockReturnValue({
-        data: userWithObjectAttr,
-        isLoading: false,
-        error: null,
-      });
-
-      render(<UserEditPage />);
-
-      expect(screen.getByText('address')).toBeInTheDocument();
-      expect(screen.getByText('{"city":"New York","country":"USA"}')).toBeInTheDocument();
-    });
-
-    it('displays dash for unknown attribute types', () => {
-      const userWithUnknownType: User = {
-        id: 'user123',
-        ouId: 'test-ou',
-        type: 'Employee',
-        attributes: {
-          username: 'john_doe',
-          // Symbol is not a standard JSON type
-          unknownType: Symbol('test') as unknown as string,
-        },
-      };
-
-      mockUseGetUser.mockReturnValue({
-        data: userWithUnknownType,
-        isLoading: false,
-        error: null,
-      });
-
-      render(<UserEditPage />);
-
-      const unknownTypeSection = screen.getByText('unknownType').parentElement;
-      expect(unknownTypeSection).toHaveTextContent('-');
-    });
-  });
-
-  describe('Edge Cases', () => {
-    it('displays fallback error message when error messages are undefined', () => {
-      mockUseGetUser.mockReturnValue({
-        data: undefined,
-        isLoading: false,
-        error: new Error(),
-      });
-
-      mockUseGetUserType.mockReturnValue({
-        data: undefined,
-        isLoading: false,
-        error: null,
-      });
-
-      render(<UserEditPage />);
-
-      const alert = screen.getByRole('alert');
-      expect(alert).toBeInTheDocument();
-    });
-
-    it('hides edit button when schema is null', () => {
-      mockUseGetUserType.mockReturnValue({
-        data: {
-          id: 'employee',
-          name: 'Employee',
-          schema: null as unknown as ApiUserType['schema'],
-        },
-        isLoading: false,
-        error: null,
-      });
-
-      render(<UserEditPage />);
-
-      expect(screen.queryByRole('button', {name: /edit/i})).not.toBeInTheDocument();
     });
   });
 });

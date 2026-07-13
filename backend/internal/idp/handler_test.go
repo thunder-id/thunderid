@@ -607,3 +607,19 @@ func (s *IDPHandlerTestSuite) TestSanitizeAttributeConfiguration_TrimsMappings()
 	s.Equal("given_name", result.UserTypeAttributeMappings[0].Attributes[0].ExternalAttribute)
 	s.Equal("firstName", result.UserTypeAttributeMappings[0].Attributes[0].LocalAttribute)
 }
+
+func (s *IDPHandlerTestSuite) TestSanitizeAttributeConfiguration_TrimsAccountLinkingAttributes() {
+	am := &providers.AttributeConfiguration{
+		AccountLinking: &providers.AccountLinking{Attributes: []string{" email ", "  ", "username"}},
+	}
+	result := sanitizeAttributeConfiguration(am)
+	s.Require().NotNil(result.AccountLinking)
+	s.Equal([]string{"email", "username"}, result.AccountLinking.Attributes)
+}
+
+func (s *IDPHandlerTestSuite) TestSanitizeAttributeConfiguration_NilAccountLinking() {
+	result := sanitizeAttributeConfiguration(&providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{Default: "person"},
+	})
+	s.Nil(result.AccountLinking)
+}

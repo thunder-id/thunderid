@@ -33,7 +33,8 @@ export default function DividerAdapter({component, resolve}: DividerAdapterProps
 
   return (
     <Divider
-      className={cn('Flow--divider', 'Divider--root')}
+      id={component.id}
+      className={[cn('Flow--divider', 'Divider--root'), component.classes].filter(Boolean).join(' ')}
       orientation={component.variant === 'VERTICAL' ? 'vertical' : 'horizontal'}
       sx={{my: 2}}
     >

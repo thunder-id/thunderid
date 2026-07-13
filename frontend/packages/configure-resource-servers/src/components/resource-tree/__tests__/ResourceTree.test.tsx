@@ -148,13 +148,6 @@ const withMcpResources: ActionListResponse = {
   ],
 };
 
-const withNamespaces: ResourceListResponse = {
-  totalResults: 1,
-  startIndex: 0,
-  count: 1,
-  resources: [{id: 'ns-1', name: 'Booking', handle: 'booking', permission: 'my-mcp:booking'}],
-};
-
 const withMcpMixed: ActionListResponse = {
   totalResults: 2,
   startIndex: 0,
@@ -335,38 +328,67 @@ describe('ResourceTree (MCP type — Capabilities panel)', () => {
     expect(screen.getByRole('progressbar')).toBeInTheDocument();
   });
 
-  it('shows the MCP empty message when all sections are empty', () => {
+  it('shows the MCP empty message and action buttons when all sections are empty', () => {
     renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
 
-    expect(screen.getByText('No capabilities yet. Use + to add a tool, resource, or namespace.')).toBeInTheDocument();
+    expect(screen.getByText(/No capabilities have been added to this MCP server yet/)).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Add tool permission'})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Add resource permission'})).toBeInTheDocument();
   });
 
-  it('shows the whole-RS empty message (not subsection messages) when everything is empty', () => {
+  it('does not render the filter chips toolbar when there are no capabilities', () => {
     renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
 
-    expect(screen.getByText('No capabilities yet. Use + to add a tool, resource, or namespace.')).toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', {name: /All/i})).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', {name: /Tools/i})).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', {name: /Resources/i})).not.toBeInTheDocument();
+  });
+
+  it('does not render the detail panel when all sections are empty', () => {
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.queryByTestId('resource-detail-panel')).not.toBeInTheDocument();
+  });
+
+  it('renders the detail panel once capabilities exist', () => {
+    mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.getByTestId('resource-detail-panel')).toBeInTheDocument();
+  });
+
+  it('does not show the old empty hint text (not subsection messages) when everything is empty', () => {
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(
+      screen.queryByText('No capabilities yet. Use + to add a tool permission or resource permission.'),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText('No tools yet.')).not.toBeInTheDocument();
     expect(screen.queryByText('No resources yet.')).not.toBeInTheDocument();
   });
 
-  it('renders a namespace node exactly once in the unified tree', () => {
-    mockUseGetResources.mockReturnValue({data: withNamespaces, isLoading: false});
-
+  it('opens the add dialog in mcp-server-tool mode from the empty-state Add tool permission button', async () => {
     renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
 
-    // Single-pass: a namespace appears once, not duplicated across two sections
-    expect(screen.getAllByTestId('resource-node').length).toBe(1);
-    expect(screen.getAllByText('Booking').length).toBe(1);
+    fireEvent.click(screen.getByRole('button', {name: 'Add tool permission'}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', {name: 'add-node-dialog'})).toBeInTheDocument();
+      expect(screen.getByTestId('dialog-mode').textContent).toBe('mcp-server-tool');
+    });
   });
 
-  it('passes the active kindFilter down to namespace ResourceNodes', () => {
-    mockUseGetResources.mockReturnValue({data: withNamespaces, isLoading: false});
-    mockUseGetServerActions.mockReturnValue({data: emptyActions, isLoading: false});
-
+  it('opens the add dialog in mcp-server-resource mode from the empty-state Add resource permission button', async () => {
     renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
 
-    const nsNode = screen.getByTestId('resource-node');
-    expect(nsNode).toHaveAttribute('data-kind-filter', 'all');
+    fireEvent.click(screen.getByRole('button', {name: 'Add resource permission'}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', {name: 'add-node-dialog'})).toBeInTheDocument();
+      expect(screen.getByTestId('dialog-mode').textContent).toBe('mcp-server-resource');
+    });
   });
 
   it('renders tools and resources intermixed in a single list (no section grouping)', () => {
@@ -399,24 +421,17 @@ describe('ResourceTree (MCP type — Capabilities panel)', () => {
     expect(screen.getByText('File Contents')).toBeInTheDocument();
   });
 
-  it('renders namespace nodes once even when both tools and resources exist', () => {
-    mockUseGetResources.mockReturnValue({data: withNamespaces, isLoading: false});
-    mockUseGetServerActions.mockReturnValue({data: emptyActions, isLoading: false});
-
-    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
-
-    const namespaceNodes = screen.getAllByTestId('resource-node');
-    expect(namespaceNodes.length).toBe(1);
-    expect(screen.getAllByText('Booking').length).toBe(1);
-  });
-
   it('renders the filter chip group for MCP', () => {
+    mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
+
     renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
 
     expect(screen.getByRole('radiogroup', {name: /Filter capabilities/i})).toBeInTheDocument();
   });
 
   it('renders All, Tools, Resources filter chips', () => {
+    mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
+
     renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
 
     const radioGroup = screen.getByRole('radiogroup');
@@ -452,34 +467,6 @@ describe('ResourceTree (MCP type — Capabilities panel)', () => {
     });
   });
 
-  it('passes kindFilter=tool to namespace ResourceNodes when Tools chip is selected', async () => {
-    mockUseGetResources.mockReturnValue({data: withNamespaces, isLoading: false});
-    mockUseGetServerActions.mockReturnValue({data: emptyActions, isLoading: false});
-
-    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
-
-    fireEvent.click(screen.getByRole('radio', {name: /Tools/i}));
-
-    await waitFor(() => {
-      const nsNode = screen.getByTestId('resource-node');
-      expect(nsNode).toHaveAttribute('data-kind-filter', 'tool');
-    });
-  });
-
-  it('passes kindFilter=resource to namespace ResourceNodes when Resources chip is selected', async () => {
-    mockUseGetResources.mockReturnValue({data: withNamespaces, isLoading: false});
-    mockUseGetServerActions.mockReturnValue({data: emptyActions, isLoading: false});
-
-    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
-
-    fireEvent.click(screen.getByRole('radio', {name: /Resources/i}));
-
-    await waitFor(() => {
-      const nsNode = screen.getByTestId('resource-node');
-      expect(nsNode).toHaveAttribute('data-kind-filter', 'resource');
-    });
-  });
-
   it('shows All filter as active restores both tools and resources', async () => {
     mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
 
@@ -500,15 +487,16 @@ describe('ResourceTree (MCP type — Capabilities panel)', () => {
   });
 
   it('opens the add dialog in mcp-server-tool mode from the header + menu', async () => {
+    mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
     renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', {name: 'Add'}));
 
     await waitFor(() => {
-      expect(screen.getByText('Add tool')).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', {name: 'Add tool permission'})).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('Add tool'));
+    fireEvent.click(screen.getByRole('menuitem', {name: 'Add tool permission'}));
 
     await waitFor(() => {
       expect(screen.getByRole('dialog', {name: 'add-node-dialog'})).toBeInTheDocument();
@@ -517,15 +505,16 @@ describe('ResourceTree (MCP type — Capabilities panel)', () => {
   });
 
   it('opens the add dialog in mcp-server-resource mode from the header + menu', async () => {
+    mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
     renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', {name: 'Add'}));
 
     await waitFor(() => {
-      expect(screen.getByText('Add resource')).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', {name: 'Add resource permission'})).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('Add resource'));
+    fireEvent.click(screen.getByRole('menuitem', {name: 'Add resource permission'}));
 
     await waitFor(() => {
       expect(screen.getByRole('dialog', {name: 'add-node-dialog'})).toBeInTheDocument();
@@ -533,21 +522,17 @@ describe('ResourceTree (MCP type — Capabilities panel)', () => {
     });
   });
 
-  it('opens the add dialog in mcp-namespace mode from the header + menu', async () => {
+  it('does not render an Add namespace menu item for an MCP server', async () => {
+    mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
     renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', {name: 'Add'}));
 
     await waitFor(() => {
-      expect(screen.getByText('Add namespace')).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', {name: 'Add tool permission'})).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('Add namespace'));
-
-    await waitFor(() => {
-      expect(screen.getByRole('dialog', {name: 'add-node-dialog'})).toBeInTheDocument();
-      expect(screen.getByTestId('dialog-mode').textContent).toBe('mcp-namespace');
-    });
+    expect(screen.queryByText('Add namespace')).not.toBeInTheDocument();
   });
 
   it('does not render the generic Resource Hierarchy header for an MCP server', () => {
@@ -557,6 +542,8 @@ describe('ResourceTree (MCP type — Capabilities panel)', () => {
   });
 
   it('shows the All filter chip as selected by default (aria-checked=true)', () => {
+    mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
+
     renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
 
     expect(screen.getByRole('radio', {name: /All/i})).toHaveAttribute('aria-checked', 'true');
@@ -564,31 +551,9 @@ describe('ResourceTree (MCP type — Capabilities panel)', () => {
     expect(screen.getByRole('radio', {name: /Resources/i})).toHaveAttribute('aria-checked', 'false');
   });
 
-  it('shows filter chip labels without counts when the server has no namespaces', () => {
+  it('shows filter chip labels without counts', () => {
     mockUseGetResources.mockReturnValue({data: emptyResources, isLoading: false});
     mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
-
-    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
-
-    expect(screen.getByRole('radio', {name: /^All$/})).toBeInTheDocument();
-    expect(screen.getByRole('radio', {name: /^Tools$/})).toBeInTheDocument();
-    expect(screen.getByRole('radio', {name: /^Resources$/})).toBeInTheDocument();
-  });
-
-  it('shows filter chip labels without counts when the server has namespaces', () => {
-    mockUseGetResources.mockReturnValue({data: withNamespaces, isLoading: false});
-    mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
-
-    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
-
-    expect(screen.getByRole('radio', {name: /^All$/})).toBeInTheDocument();
-    expect(screen.getByRole('radio', {name: /^Tools$/})).toBeInTheDocument();
-    expect(screen.getByRole('radio', {name: /^Resources$/})).toBeInTheDocument();
-  });
-
-  it('shows filter chip labels without counts when namespaces exist but no server-level actions exist', () => {
-    mockUseGetResources.mockReturnValue({data: withNamespaces, isLoading: false});
-    mockUseGetServerActions.mockReturnValue({data: emptyActions, isLoading: false});
 
     renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
 

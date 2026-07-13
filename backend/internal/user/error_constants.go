@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -325,6 +325,20 @@ var (
 			Key: "error.userservice.user_has_blocking_dependencies_description",
 			DefaultValue: "The user cannot be deleted because other resources depend on it. " +
 				"Remove or reassign them first.",
+		},
+	}
+	// ErrorCredentialUpdateNotAllowed is returned when an attempt is made to update credentials
+	// for a user that does not allow it.
+	ErrorCredentialUpdateNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1028",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.credential_update_not_allowed",
+			DefaultValue: "Credential update not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.credential_update_not_allowed_description",
+			DefaultValue: "The credential updates through this endpoint are not allowed",
 		},
 	}
 )

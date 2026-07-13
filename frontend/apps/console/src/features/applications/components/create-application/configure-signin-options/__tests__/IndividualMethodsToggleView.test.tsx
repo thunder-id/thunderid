@@ -18,10 +18,9 @@
 
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {AuthenticatorTypes, IdentityProviderTypes, type IdentityProvider} from '@thunderid/configure-connections';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import IndividualMethodsToggleView, {type IndividualMethodsToggleViewProps} from '../IndividualMethodsToggleView';
-import {AuthenticatorTypes} from '@/features/connections/models/authenticators';
-import {IdentityProviderTypes, type IdentityProvider} from '@/features/connections/models/identity-provider';
 
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
@@ -40,8 +39,9 @@ vi.mock('react-i18next', () => ({
 }));
 
 // Mock the integration icon utility
-vi.mock('@/features/connections/utils/getConnectionIcon', () => ({
-  default: vi.fn((type: string) => <div data-testid={`icon-${type}`}>Mock Icon</div>),
+vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
+  getConnectionIcon: vi.fn((type: string) => <div data-testid={`icon-${type}`}>Mock Icon</div>),
 }));
 
 describe('IndividualMethodsToggleView', () => {

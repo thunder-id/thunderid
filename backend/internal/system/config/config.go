@@ -22,10 +22,13 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	urlpath "path"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -594,6 +597,43 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 
 	// Merge user configuration with defaults
 	mergeConfigs(&cfg, &userCfg)
+
+	// Default gate_client to the server's own URL when not explicitly configured, so the gate only
+	// needs configuring when it is hosted separately from the server.
+	if cfg.GateClient.Hostname == "" || cfg.GateClient.Port == 0 || cfg.GateClient.Scheme == "" {
+		serverURL, err := url.Parse(engineconfig.GetServerURL(&cfg.Server))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse server URL for gate_client derivation: %w", err)
+		}
+		if cfg.GateClient.Scheme == "" {
+			cfg.GateClient.Scheme = serverURL.Scheme
+		}
+		if cfg.GateClient.Hostname == "" {
+			cfg.GateClient.Hostname = serverURL.Hostname()
+		}
+		if cfg.GateClient.Port == 0 {
+			if portStr := serverURL.Port(); portStr != "" {
+				if port, perr := strconv.Atoi(portStr); perr == nil {
+					cfg.GateClient.Port = port
+				}
+			} else if serverURL.Scheme == "http" {
+				cfg.GateClient.Port = 80
+			} else {
+				cfg.GateClient.Port = 443
+			}
+		}
+	}
+
+	// The resolved gate client host must be reachable by a browser. A bind-all address
+	// (0.0.0.0 or ::) produces broken login/error redirects. This happens when server.hostname
+	// is a bind address and neither server.public_url nor gate_client.hostname is configured,
+	// so fail fast with actionable guidance.
+	if isBindAllHost(cfg.GateClient.Hostname) {
+		return nil, fmt.Errorf("gate client hostname resolved to an unreachable bind-all address %q; "+
+			"set server.public_url (or gate_client.hostname) to a browser-reachable host",
+			cfg.GateClient.Hostname)
+	}
+
 	// Derive login_path and error_path from path if not explicitly set
 	if cfg.GateClient.Path != "" {
 		if cfg.GateClient.LoginPath == "" {
@@ -729,6 +769,15 @@ func mergeStructs(base, user reflect.Value) {
 			base.Set(user)
 		}
 	}
+}
+
+// isBindAllHost reports whether host is an unspecified/bind-all IP address (0.0.0.0 or ::).
+// Such an address is valid to bind a listener to but can never be reached by a browser, so it
+// is invalid as a redirect target. Empty hosts and hostnames such as "localhost" are not
+// treated as bind-all.
+func isBindAllHost(host string) bool {
+	ip := net.ParseIP(strings.TrimSpace(host))
+	return ip != nil && ip.IsUnspecified()
 }
 
 // isZeroValue checks if a reflect.Value represents the zero value for its type.

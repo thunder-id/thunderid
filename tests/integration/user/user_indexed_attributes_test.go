@@ -359,7 +359,6 @@ func (suite *IndexedAttributesTestSuite) TestUpdateUserAddIndexedAttribute() {
 		"username":    "update_user1",
 		"email":       "alice@example.com",
 		"displayName": "Alice Updated",
-		"password":    "Pass123!",
 	}
 
 	updatedAttrsJSON, err := json.Marshal(updatedAttributes)
@@ -416,7 +415,6 @@ func (suite *IndexedAttributesTestSuite) TestUpdateUserModifyIndexedAttributeVal
 	updatedAttributes := map[string]interface{}{
 		"username": "update_user2",
 		"email":    "bob@new.com",
-		"password": "Pass123!",
 	}
 
 	updatedAttrsJSON, err := json.Marshal(updatedAttributes)
@@ -475,7 +473,6 @@ func (suite *IndexedAttributesTestSuite) TestUpdateUserRemoveIndexedAttribute() 
 		"username": "update_user3",
 		"email":    "charlie@example.com",
 		"sub":      "sub-charlie",
-		"password": "Pass123!",
 	}
 
 	updatedAttrsJSON, err := json.Marshal(updatedAttributes)

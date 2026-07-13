@@ -189,6 +189,46 @@ describe('TechnologyBasedApplicationTemplateMetadata', () => {
     });
   });
 
+  describe('MCP Client Technology', () => {
+    const mcpClientMetadata = TechnologyBasedApplicationTemplateMetadata.find(
+      (m) => m.value === TechnologyApplicationTemplate.MCP_CLIENT,
+    );
+
+    it('should exist', () => {
+      expect(mcpClientMetadata).toBeDefined();
+    });
+
+    it('should have correct value', () => {
+      expect(mcpClientMetadata?.value).toBe(TechnologyApplicationTemplate.MCP_CLIENT);
+    });
+
+    it('should have icon component', () => {
+      expect(mcpClientMetadata?.icon).toBeDefined();
+      const {container} = render(<div>{mcpClientMetadata?.icon}</div>);
+      expect(container.querySelector('svg')).toBeInTheDocument();
+    });
+
+    it('should have correct i18n keys', () => {
+      expect(mcpClientMetadata?.titleKey).toBe('applications:onboarding.configure.stack.technology.mcpClient.title');
+      expect(mcpClientMetadata?.descriptionKey).toBe(
+        'applications:onboarding.configure.stack.technology.mcpClient.description',
+      );
+    });
+
+    it('should have the mcp-client template with id "mcp-client"', () => {
+      expect(mcpClientMetadata?.template).toBeDefined();
+      expect(mcpClientMetadata?.template.id).toBe('mcp-client');
+    });
+
+    it('should have the "ai" category', () => {
+      expect(mcpClientMetadata?.categories).toEqual(['ai']);
+    });
+
+    it('should not be disabled', () => {
+      expect(mcpClientMetadata?.disabled).not.toBe(true);
+    });
+  });
+
   describe('Templates', () => {
     it('should have unique values', () => {
       const values = TechnologyBasedApplicationTemplateMetadata.map((m) => m.value);

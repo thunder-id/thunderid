@@ -54,3 +54,43 @@ export interface TokenConfig {
  * This is an alias for TokenConfig with the same properties.
  */
 export type AssertionConfig = TokenConfig;
+
+/**
+ * Access Token Sub-Configuration
+ *
+ * Validity period and attribute selection for one access-token subject type.
+ *
+ * @public
+ */
+export interface AccessTokenSubConfig {
+  /**
+   * Token validity period in seconds.
+   */
+  validityPeriod?: number;
+
+  /**
+   * Attributes to include in the access token.
+   */
+  attributes?: string[];
+}
+
+/**
+ * Access Token Configuration
+ *
+ * Access token configuration split by token subject: an end user (userConfig) or the OAuth
+ * client itself, issued only via the client_credentials grant (clientConfig).
+ *
+ * @public
+ */
+export interface AccessTokenConfig {
+  /**
+   * Configuration applied when the access token's subject is an end user.
+   */
+  userConfig?: AccessTokenSubConfig;
+
+  /**
+   * Configuration applied when the access token's subject is the OAuth client itself
+   * (client_credentials grant).
+   */
+  clientConfig?: AccessTokenSubConfig;
+}

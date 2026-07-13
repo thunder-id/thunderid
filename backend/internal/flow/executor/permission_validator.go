@@ -82,9 +82,10 @@ func (e *permissionValidator) Execute(ctx *providers.NodeContext) (*providers.Ex
 		log.Int("permissionCount", len(userPermissions)),
 		log.String("permissions", strings.Join(userPermissions, ", ")))
 
-	// Check if any of the required permissions are present
+	// Check if any of the required permissions are satisfied, using hierarchical
+	// scope matching (e.g. a "system" permission satisfies a "system:user" requirement).
 	if !slices.ContainsFunc(requiredScopes, func(reqScope string) bool {
-		return slices.Contains(userPermissions, reqScope)
+		return security.HasSufficientPermission(userPermissions, reqScope)
 	}) {
 		logger.Debug(ctx.Context, "Request lacks required scope",
 			log.Any("requiredScopes", requiredScopes))

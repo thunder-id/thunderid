@@ -18,9 +18,9 @@
 
 import {render, screen, fireEvent} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {IdentityProviderTypes} from '@thunderid/configure-connections';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ExecutionExtendedProperties from '../ExecutionExtendedProperties';
-import {IdentityProviderTypes} from '@/features/connections/models/identity-provider';
 import type {Resource} from '@/features/flows/models/resources';
 import {ExecutionTypes, type StepData} from '@/features/flows/models/steps';
 
@@ -89,8 +89,9 @@ vi.mock('@/features/flows/hooks/useValidationStatus', () => ({
 
 // Mock useIdentityProviders
 const mockIdentityProviders = vi.fn<() => {data: unknown[]; isLoading: boolean}>();
-vi.mock('@/features/connections/api/useIdentityProviders', () => ({
-  default: () => mockIdentityProviders(),
+vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
+  useIdentityProviders: () => mockIdentityProviders(),
 }));
 
 // Mock useNotificationSenders

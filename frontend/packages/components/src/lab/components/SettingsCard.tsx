@@ -49,9 +49,10 @@ interface SettingsCardProps {
    */
   title: string;
   /**
-   * Optional description text shown below the title
+   * Optional description shown below the title. Accepts a plain string or, for descriptions
+   * that need an inline link, a ReactNode.
    */
-  description?: string;
+  description?: ReactNode;
   /**
    * Content of the card
    */

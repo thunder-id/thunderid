@@ -114,6 +114,7 @@ resources:
 # resource_type: resource_server
 id: wayfinder-booking-rs
 name: Wayfinder Booking
+handle: wayfinder
 description: Protects the Wayfinder booking domain — same scopes guard the REST API on /api/* and the MCP tools on /mcp.
 # URL-shaped identifier per RFC 8707 (resource indicators), matching what the
 # Wayfinder MCP server advertises in /.well-known/oauth-protected-resource.
@@ -327,6 +328,7 @@ nodes:
     next: end
   - id: end
     type: END
+
 
 ---
 # resource_type: flow
@@ -891,12 +893,13 @@ inboundAuthConfig:
       publicClient: true
       token:
         accessToken:
-          validityPeriod: 3600
-          userAttributes:
-            - given_name
-            - family_name
-            - email
-            - groups
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - groups
         idToken:
           validityPeriod: 3600
           userAttributes:
@@ -1116,7 +1119,6 @@ nodes:
     next: end
   - id: end
     type: END
-
 
 ---
 # resource_type: flow
@@ -1484,9 +1486,10 @@ inboundAuthConfig:
       publicClient: false
       token:
         accessToken:
-          validityPeriod: 3600
-          userAttributes:
-            - email
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - email
 
 ---
 # resource_type: agent
@@ -1517,18 +1520,41 @@ inboundAuthConfig:
       publicClient: false
       token:
         accessToken:
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - username
+
+---
+# resource_type: application
+# Confidential OAuth client used by the Wayfinder backend to call the
+# ThunderID AuthZEN PDP. This client authenticates the backend and is not the
+# subject of the access evaluation.
+id: wayfinder-authzen-client
+name: Wayfinder AuthZEN Client
+description: Backend service that requests MCP tool authorization decisions from the ThunderID AuthZEN PDP.
+ouHandle: default
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: "{{.AUTHZEN_CLIENT_ID}}"
+      clientSecret: "{{.AUTHZEN_CLIENT_SECRET}}"
+      grantTypes:
+        - client_credentials
+      tokenEndpointAuthMethod: client_secret_basic
+      publicClient: false
+      token:
+        accessToken:
           validityPeriod: 3600
-          userAttributes:
-            - given_name
-            - family_name
-            - email
-            - username
 
 ---
 # resource_type: application
 # Public OAuth client used by external MCP clients (e.g. MCP Inspector)
 # to call the Wayfinder MCP server on /mcp.
-# Used by the MCP Authorization tryout to demonstrate Thunder-secured MCP
+# Used by the MCP Authorization tryout to demonstrate ThunderID-secured MCP
 # access from clients that are not part of the Wayfinder product itself.
 id: external-mcp-client
 name: External MCP Client
@@ -1536,8 +1562,8 @@ description: Public OAuth client for external MCP clients connecting to the Wayf
 ouHandle: default
 url: http://localhost:8787/mcp
 # Reuse the Concierge's auth flow so the OAuth consent screen surfaces the
-# requested booking:* scopes during the MCP Authorization tryout. Without
-# this, Thunder falls back to the default sign-in-only flow and no consent
+# requested wayfinder:booking:* scopes during the MCP Authorization tryout. Without
+# this, ThunderID falls back to the default sign-in-only flow and no consent
 # step is shown.
 authFlowHandle: wayfinder-agent-auth-flow
 allowedUserTypes:
@@ -1559,7 +1585,8 @@ inboundAuthConfig:
       publicClient: true
       token:
         accessToken:
-          validityPeriod: 3600
+          userConfig:
+            validityPeriod: 3600
 
 ---
 # resource_type: role
@@ -1570,9 +1597,9 @@ ouHandle: default
 permissions:
   - resourceServerId: wayfinder-booking-rs
     permissions:
-      - booking:read
-      - booking:create
-      - booking:cancel
+      - wayfinder:booking:read
+      - wayfinder:booking:create
+      - wayfinder:booking:cancel
 assignments:
   - id: wayfinder-john-doe
     type: user
@@ -1615,11 +1642,25 @@ permissions:
       - agent:access
   - resourceServerId: wayfinder-booking-rs
     permissions:
-      - booking:upgrade
-      - upgrade:process
+      - wayfinder:booking:upgrade
+      - wayfinder:upgrade:process
 assignments:
   - id: wayfinder-john-doe
     type: user
+
+---
+# resource_type: role
+id: wayfinder-authzen-client-role
+name: Wayfinder AuthZEN Client
+description: Grants the Wayfinder backend permission to call the ThunderID AuthZEN PDP.
+ouHandle: default
+permissions:
+  - resourceServerId: 01900000-0000-7000-8000-000000000020
+    permissions:
+      - system
+assignments:
+  - id: wayfinder-authzen-client
+    type: app
 
 ---
 # resource_type: role
@@ -1630,9 +1671,9 @@ ouHandle: default
 permissions:
   - resourceServerId: wayfinder-booking-rs
     permissions:
-      - booking:read
-      - booking:create
-      - booking:cancel
+      - wayfinder:booking:read
+      - wayfinder:booking:create
+      - wayfinder:booking:cancel
 assignments:
   - id: wayfinder-john-doe
     type: user
@@ -1643,13 +1684,13 @@ assignments:
 # resource_type: role
 id: recommender-role
 name: Recommender
-description: Grants access to booking:recommend and upgrade:search permissions, assigned to the Wayfinder Concierge agent
+description: Grants access to wayfinder:booking:recommend and wayfinder:upgrade:search permissions, assigned to the Wayfinder Concierge agent
 ouHandle: default
 permissions:
   - resourceServerId: wayfinder-booking-rs
     permissions:
-      - booking:recommend
-      - upgrade:search
+      - wayfinder:booking:recommend
+      - wayfinder:upgrade:search
 assignments:
   - id: wayfinder-concierge
     type: agent
@@ -1658,13 +1699,13 @@ assignments:
 # resource_type: role
 id: upgrade-scheduler-role
 name: Upgrade Scheduler
-description: Grants upgrade:read to the upgrade scheduler agent so its M2M token can list pending upgrade requests
+description: Grants wayfinder:upgrade:read to the upgrade scheduler agent so its M2M token can list pending upgrade requests
 ouHandle: default
 permissions:
   - resourceServerId: wayfinder-booking-rs
     permissions:
-      - upgrade:read
-      - upgrade:search
+      - wayfinder:upgrade:read
+      - wayfinder:upgrade:search
 assignments:
   - id: wayfinder-upgrade-agent
     type: agent
@@ -1764,7 +1805,7 @@ template: wallet
 ouHandle: default
 url: http://localhost:3000
 logoUrl: "emoji:🪪"
-authFlowHandle: default-basic-flow
+authFlowHandle: default-flow
 isRegistrationFlowEnabled: false
 isRecoveryFlowEnabled: false
 allowedUserTypes:
@@ -1794,7 +1835,7 @@ template: wallet
 ouHandle: default
 url: http://localhost:3000
 logoUrl: "emoji:🪪"
-authFlowHandle: default-basic-flow
+authFlowHandle: default-flow
 isRegistrationFlowEnabled: false
 isRecoveryFlowEnabled: false
 allowedUserTypes:

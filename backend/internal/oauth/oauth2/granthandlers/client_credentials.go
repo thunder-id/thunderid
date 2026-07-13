@@ -143,7 +143,7 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		return nil, errResp
 	}
 
-	clientAttributes, clientAttrErr := tokenservice.BuildClientAttributes(ctx, oauthApp, h.ouService)
+	clientAttributes, clientAttrErr := tokenservice.BuildClientAttributes(ctx, oauthApp, h.ouService, h.actorProvider)
 	if clientAttrErr != nil {
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorServerError,
@@ -152,15 +152,15 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	}
 
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, &tokenservice.AccessTokenBuildContext{
-		Subject:          oauthApp.ID,
-		Audiences:        audiences,
-		ClientID:         tokenRequest.ClientID,
-		Scopes:           scopes,
-		UserAttributes:   make(map[string]interface{}),
-		GrantType:        string(providers.GrantTypeClientCredentials),
-		OAuthApp:         oauthApp,
-		ClientAttributes: clientAttributes,
-		DPoPJkt:          dpop.GetJkt(ctx),
+		Subject:           oauthApp.ID,
+		Audiences:         audiences,
+		ClientID:          tokenRequest.ClientID,
+		Scopes:            scopes,
+		SubjectAttributes: clientAttributes,
+		GrantType:         string(providers.GrantTypeClientCredentials),
+		OAuthApp:          oauthApp,
+		ValidityPeriod:    oauthApp.ClientAccessTokenConfig().ValidityPeriodOrZero(),
+		DPoPJkt:           dpop.GetJkt(ctx),
 	})
 	if err != nil {
 		return nil, &model.ErrorResponse{

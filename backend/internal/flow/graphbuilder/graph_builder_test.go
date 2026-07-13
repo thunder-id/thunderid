@@ -30,7 +30,9 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
+	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -1955,4 +1957,100 @@ func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_InvalidRegexFailsBuild(
 	s.Contains(err.Error(), "prompt-1")
 	s.Contains(err.Error(), "password")
 	s.Contains(err.Error(), "invalid validation regex")
+}
+
+// TestSSOFlowDefinitionBuilds validates that the SSO sample flow parses, references only
+// registered executors, and builds into a graph with all expected nodes. It exercises the
+// real executor registry so a typo'd executor name or dangling node reference fails here.
+func (s *GraphBuilderTestSuite) TestSSOFlowDefinitionBuilds() {
+	def := providers.CompleteFlowDefinition{
+		ID:       "auth-sso-flow-test",
+		Name:     "Default SSO Authentication Flow",
+		Handle:   "default-sso-flow",
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
+			{ID: "start", Type: "START", OnSuccess: "sso_check"},
+			{
+				ID:         "sso_check",
+				Type:       "TASK_EXECUTION",
+				Executor:   &providers.ExecutorDefinition{Name: executor.ExecutorNameSSOCheck},
+				Properties: map[string]interface{}{common.NodePropertyCheckpointRef: "session"},
+				OnSuccess:  "session",
+				OnFailure:  "prompt_credentials",
+			},
+			{
+				ID:           "basic_auth",
+				Type:         "TASK_EXECUTION",
+				Executor:     &providers.ExecutorDefinition{Name: executor.ExecutorNameCredentialsAuth},
+				OnSuccess:    "session",
+				OnIncomplete: "prompt_credentials",
+			},
+			{
+				ID:   "prompt_credentials",
+				Type: "PROMPT",
+				Prompts: []providers.PromptDefinition{
+					{
+						Inputs: []providers.InputDefinition{
+							{Ref: "input_001", Identifier: "username", Type: "TEXT_INPUT", Required: true},
+							{Ref: "input_002", Identifier: "password", Type: "PASSWORD_INPUT", Required: true},
+						},
+						Action: &providers.ActionDefinition{Ref: "action_001", NextNode: "basic_auth"},
+					},
+				},
+			},
+			{
+				ID:        "session",
+				Type:      "TASK_EXECUTION",
+				Executor:  &providers.ExecutorDefinition{Name: executor.ExecutorNameSession},
+				OnSuccess: "authorization_check",
+			},
+			{
+				ID:        "authorization_check",
+				Type:      "TASK_EXECUTION",
+				Executor:  &providers.ExecutorDefinition{Name: executor.ExecutorNameAuthorization},
+				OnSuccess: "auth_assert",
+			},
+			{
+				ID:        "auth_assert",
+				Type:      "TASK_EXECUTION",
+				Executor:  &providers.ExecutorDefinition{Name: executor.ExecutorNameAuthAssert},
+				OnSuccess: "end",
+			},
+			{ID: "end", Type: "END"},
+		},
+	}
+
+	flowFactory, graphCache := core.Initialize(
+		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+	// Register only the executors this flow uses; their constructors tolerate nil services,
+	// whereas some others dereference dependencies at construction time.
+	registry, err := executor.Initialize(
+		executor.ExecutorDependencies{FlowFactory: flowFactory},
+		engineconfig.FlowConfig{Executors: []string{
+			executor.ExecutorNameSSOCheck,
+			executor.ExecutorNameSession,
+			executor.ExecutorNameCredentialsAuth,
+			executor.ExecutorNameAuthorization,
+			executor.ExecutorNameAuthAssert,
+		}})
+	s.Require().NoError(err)
+
+	interceptorRegistry, err := interceptor.Initialize(
+		interceptor.InterceptorDependencies{FlowFactory: flowFactory},
+		engineconfig.FlowConfig{})
+	s.Require().NoError(err)
+
+	builder := Initialize(flowFactory, registry, interceptorRegistry, graphCache)
+	graph, svcErr := builder.GetGraph(context.Background(), &def)
+
+	s.Require().Nil(svcErr)
+	s.Require().NotNil(graph)
+
+	for _, nodeID := range []string{
+		"start", "sso_check", "prompt_credentials", "basic_auth",
+		"session", "authorization_check", "auth_assert", "end",
+	} {
+		_, ok := graph.GetNode(nodeID)
+		s.Require().True(ok, "expected node %q in built graph", nodeID)
+	}
 }

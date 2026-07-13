@@ -18,7 +18,7 @@ Passkeys are a modern, secure alternative to passwords based on the WebAuthn sta
 <ProductName /> supports passkeys through three approaches:
 
 1. **<ProductName /> Gate (Hosted UI)**: Use <ProductName />'s hosted authentication pages (`gate`) by configuring passkeys in your application settings—no custom UI or API calls needed
-2. **Atomic API approach**: Direct HTTP endpoints (`/register/passkey/*` and `/auth/passkey/*`) for full control over the registration and authentication flow
+2. **Direct API approach**: Direct HTTP endpoints (`/register/passkey/*` and `/auth/passkey/*`) for full control over the registration and authentication flow
 3. **Flow-based approach**: Integrate passkeys into orchestrated authentication/registration flows via the `/flow/execute` API, combining passkeys with other authentication methods
 
 All approaches follow the WebAuthn standard ceremony:
@@ -76,8 +76,8 @@ This approach requires **no custom UI development** or direct WebAuthn API calls
 - You're building a mobile application or SPA with custom authentication flows that don't fit OAuth2 redirect flow
 - You want to embed authentication directly in your application without redirects
 
-## Use Passkey Atomic API in Your Application
-> The registration and authentication flows below describe the **atomic API** approach (direct `/register/passkey/*` and `/auth/passkey/*` calls).
+## Use Passkey Direct API in Your Application
+> The registration and authentication flows below describe the **Direct API** approach (direct `/register/passkey/*` and `/auth/passkey/*` calls).
 
 ### Registration Flow
 

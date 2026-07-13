@@ -152,6 +152,26 @@ func SeparateOIDCAndNonOIDCScopes(scopes string, scopeClaimsMapping map[string][
 	return oidcScopes, nonOidcScopes
 }
 
+// FilterOIDCScopesByAllowedScopes filters requested OIDC scopes against the application's active scopes.
+func FilterOIDCScopesByAllowedScopes(oidcScopes []string, allowedScopes []string) []string {
+	if allowedScopes == nil {
+		return oidcScopes
+	}
+
+	allowedScopeSet := make(map[string]struct{}, len(allowedScopes))
+	for _, scope := range allowedScopes {
+		allowedScopeSet[scope] = struct{}{}
+	}
+
+	filteredScopes := make([]string, 0, len(oidcScopes))
+	for _, scope := range oidcScopes {
+		if _, ok := allowedScopeSet[scope]; ok {
+			filteredScopes = append(filteredScopes, scope)
+		}
+	}
+	return filteredScopes
+}
+
 // ParseClaimsRequest parses the claims parameter JSON string into a ClaimsRequest struct.
 // Returns nil if the input is empty.
 // Returns an error if the JSON is malformed or violates OIDC spec constraints.

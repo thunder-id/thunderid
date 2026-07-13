@@ -66,8 +66,10 @@ describe('useRegenerateClientSecret', () => {
           publicClient: false,
           token: {
             accessToken: {
-              validityPeriod: 3600,
-              userAttributes: ['email'],
+              userConfig: {
+                validityPeriod: 3600,
+                attributes: ['email'],
+              },
             },
             idToken: {
               validityPeriod: 3600,

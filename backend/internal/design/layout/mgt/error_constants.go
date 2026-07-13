@@ -123,20 +123,6 @@ var (
 		},
 	}
 
-	// ErrorLayoutInUse is returned when trying to delete a layout that is being used by applications.
-	ErrorLayoutInUse = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "LAY-1008",
-		Error: tidcommon.I18nMessage{
-			Key:          "layout.error.in_use",
-			DefaultValue: "Layout in use",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "layout.error.in_use_description",
-			DefaultValue: "Cannot delete layout that is currently associated with one or more applications",
-		},
-	}
-
 	// ErrorInvalidLimitValue is returned when limit validation fails in service layer.
 	ErrorInvalidLimitValue = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

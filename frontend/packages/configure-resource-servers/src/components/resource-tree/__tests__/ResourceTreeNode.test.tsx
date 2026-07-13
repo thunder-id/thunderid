@@ -149,7 +149,6 @@ describe('ResourceNode', () => {
       type: 'resource',
       id: 'r-1',
       data: mockResource,
-      breadcrumb: [],
     });
   });
 

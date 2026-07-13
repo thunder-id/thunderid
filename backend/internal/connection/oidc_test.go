@@ -46,7 +46,7 @@ func TestOIDCSuite(t *testing.T) {
 }
 
 func (s *OIDCTestSuite) SetupTest() {
-	s.handler, s.mockIDP = newConnectionTestHandler(s.T())
+	s.handler, s.mockIDP, _ = newConnectionTestHandler(s.T())
 }
 
 func (s *OIDCTestSuite) TestToIDPDTOMapsEndpointsAndTokenExchange() {
@@ -54,6 +54,7 @@ func (s *OIDCTestSuite) TestToIDPDTOMapsEndpointsAndTokenExchange() {
 		Name: "Okta", ClientID: "c", ClientSecret: "s", RedirectURI: "https://app/cb",
 		AuthorizationEndpoint: "https://okta/auth", TokenEndpoint: "https://okta/token",
 		Issuer: "https://okta", TokenExchangeEnabled: boolPtr(true),
+		TrustedTokenAudience: "okta-client-id",
 	})
 	s.Require().NoError(err)
 	s.Equal(providers.IDPTypeOIDC, dto.Type)
@@ -63,6 +64,21 @@ func (s *OIDCTestSuite) TestToIDPDTOMapsEndpointsAndTokenExchange() {
 	s.Equal("https://okta/auth", values[idp.PropAuthorizationEndpoint])
 	s.Equal("https://okta", values[idp.PropIssuer])
 	s.Equal("true", values[idp.PropTokenExchangeEnabled])
+	s.Equal("okta-client-id", values[idp.PropTrustedTokenAudience])
+}
+
+func (s *OIDCTestSuite) TestToIDPDTOEnablesTokenExchangeWithTrustedAudience() {
+	dto, err := oidcToIDPDTO(oidcConnectionRequest{
+		Name: "Okta", ClientID: "c", ClientSecret: "s", RedirectURI: "https://app/cb",
+		AuthorizationEndpoint: "https://okta/auth", TokenEndpoint: "https://okta/token",
+		Issuer: "https://okta", TrustedTokenAudience: "okta-client-id",
+	})
+	s.Require().NoError(err)
+
+	values, err := propertyValues(dto.Properties)
+	s.Require().NoError(err)
+	s.Equal("true", values[idp.PropTokenExchangeEnabled])
+	s.Equal("okta-client-id", values[idp.PropTrustedTokenAudience])
 }
 
 func (s *OIDCTestSuite) TestAttributeConfigurationRoundTrips() {
@@ -100,6 +116,7 @@ func (s *OIDCTestSuite) TestGetParsesTokenExchangeAndMasks() {
 			Properties: []cmodels.Property{
 				mustProperty(s.T(), idp.PropClientSecret, "s3cret", true),
 				mustProperty(s.T(), idp.PropTokenExchangeEnabled, "true", false),
+				mustProperty(s.T(), idp.PropTrustedTokenAudience, "okta-client-id", false),
 			},
 		}, (*tidcommon.ServiceError)(nil))
 
@@ -114,6 +131,7 @@ func (s *OIDCTestSuite) TestGetParsesTokenExchangeAndMasks() {
 	s.Equal(maskedSecretValue, resp.ClientSecret)
 	s.Require().NotNil(resp.TokenExchangeEnabled)
 	s.True(*resp.TokenExchangeEnabled)
+	s.Equal("okta-client-id", resp.TrustedTokenAudience)
 }
 
 func (s *OIDCTestSuite) TestUpdateAndDelete() {

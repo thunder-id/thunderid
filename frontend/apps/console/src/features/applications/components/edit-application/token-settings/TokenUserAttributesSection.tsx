@@ -150,6 +150,18 @@ interface TokenUserAttributesSectionProps {
    * Callback when a UserInfo config field changes
    */
   onUserInfoConfigChange?: (field: string, value: string) => void;
+  /**
+   * Whether to show the "User Info Endpoint" tab (OAuth mode only). Defaults to true;
+   * agents hide this tab since they don't expose a userinfo endpoint of their own.
+   */
+  showUserInfoTab?: boolean;
+  /**
+   * Whether the access token preview should include the RFC 8693 `act` (actor) claim.
+   * The backend always adds this claim to access tokens issued to an agent acting on
+   * behalf of a user, so agents pass true; applications only get it when they've opted
+   * in to `IncludeActClaim`, which isn't exposed in this UI, so they default to false.
+   */
+  showActorClaim?: boolean;
 }
 
 /**
@@ -193,6 +205,8 @@ export default function TokenUserAttributesSection({
   userInfoEncryptionAlg = undefined,
   userInfoEncryptionEnc = undefined,
   onUserInfoConfigChange = undefined,
+  showUserInfoTab = true,
+  showActorClaim = false,
 }: TokenUserAttributesSectionProps) {
   const {t} = useTranslation();
 
@@ -204,8 +218,8 @@ export default function TokenUserAttributesSection({
   const buildPreview = (
     currentAttrs: string[],
     tokenType: 'shared' | 'access' | 'id' | 'userinfo',
-  ): Record<string, string> => {
-    const preview: Record<string, string> = {};
+  ): Record<string, unknown> => {
+    const preview: Record<string, unknown> = {};
     const defaultAttrs =
       tokenType === 'userinfo' ? TokenConstants.USER_INFO_DEFAULT_ATTRIBUTES : TokenConstants.DEFAULT_TOKEN_ATTRIBUTES;
 
@@ -225,6 +239,12 @@ export default function TokenUserAttributesSection({
       pendingAdditions.forEach((attr) => {
         preview[attr] = `<${attr}>`;
       });
+    }
+
+    // The backend always adds this claim to access tokens an agent uses to act on
+    // behalf of a user (see OAuthClient.ShouldAppendActorClaim in the backend).
+    if (tokenType === 'access' && showActorClaim) {
+      preview.act = {sub: '<agent-id>', iss: '<issuer>'};
     }
 
     return preview;
@@ -370,6 +390,15 @@ export default function TokenUserAttributesSection({
       <Grid container spacing={3}>
         <Grid size={{xs: 12, md: 7}}>{renderAttributeChips(currentAttrs, tokenType)}</Grid>
         <Grid size={{xs: 12, md: 5}}>
+          {tokenType === 'access' && showActorClaim && (
+            <Alert severity="info" sx={{mb: 2}}>
+              {t(
+                'applications:edit.token.actorClaim.description',
+                'The "act" claim identifies this {{entity}} as the party acting on behalf of the subject (sub). It is added automatically and is not one of the attributes you pick below.',
+                {entity: entityLabel},
+              )}
+            </Alert>
+          )}
           <JwtPreview payload={jwtPreview} defaultClaims={defaultAttrs} />
         </Grid>
       </Grid>
@@ -377,12 +406,18 @@ export default function TokenUserAttributesSection({
   };
 
   const cardTitle = t('applications:edit.token.token_profile_card.title', 'Token Attributes & Response');
-  const cardDescription = t(
-    'applications:edit.token.token_profile_card.description',
-    'Configure the response types and user attributes included in your tokens and user info responses',
-  );
+  const cardDescription = showUserInfoTab
+    ? t(
+        'applications:edit.token.token_profile_card.description',
+        'Configure the response types and user attributes included in your tokens and user info responses',
+      )
+    : t(
+        'applications:edit.token.token_profile_card.description.noUserInfo',
+        'Configure the response types and user attributes included in the tokens issued to this {{entity}}.',
+        {entity: entityLabel},
+      );
   if (isOAuthMode) {
-    let tabIndex = 2;
+    let tabIndex = showUserInfoTab ? 2 : 0;
 
     if (activeTab === 'access') {
       tabIndex = 0;
@@ -390,20 +425,25 @@ export default function TokenUserAttributesSection({
       tabIndex = 1;
     }
 
+    const availableTabs: ('access' | 'id' | 'userinfo')[] = showUserInfoTab
+      ? ['access', 'id', 'userinfo']
+      : ['access', 'id'];
+
     return (
       <SettingsCard slotProps={{content: {sx: {p: 0}}}} title={cardTitle} description={cardDescription}>
         <Stack spacing={3}>
           <Tabs
             value={tabIndex}
             onChange={(_, newValue: number) => {
-              const tabs: ('access' | 'id' | 'userinfo')[] = ['access', 'id', 'userinfo'];
-              onTabChange?.(tabs[newValue]);
+              onTabChange?.(availableTabs[newValue]);
             }}
             sx={{borderBottom: 1, borderColor: 'divider'}}
           >
             <Tab label={t('applications:edit.token.tabs.access_token', 'Access Token')} />
             <Tab label={t('applications:edit.token.tabs.id_token', 'ID Token')} />
-            <Tab label={t('applications:edit.token.tabs.user_info_endpoint', 'User Info Endpoint')} />
+            {showUserInfoTab && (
+              <Tab label={t('applications:edit.token.tabs.user_info_endpoint', 'User Info Endpoint')} />
+            )}
           </Tabs>
 
           <Box sx={{p: 3}}>
@@ -536,7 +576,8 @@ export default function TokenUserAttributesSection({
               })()}
 
             {/* User Info Endpoint Tab Panel */}
-            {activeTab === 'userinfo' &&
+            {showUserInfoTab &&
+              activeTab === 'userinfo' &&
               (() => {
                 const effectiveAttrs = isUserInfoCustomAttributes
                   ? (userInfoAttributes ?? [])

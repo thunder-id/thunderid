@@ -33,6 +33,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 )
 
 func setupAgentConfig(t *testing.T, agentStore string, declarativeEnabled bool) {
@@ -100,12 +101,13 @@ func (suite *InitializeTestSuite) TestInitialize_DeclarativeMode_EntityLoadError
 	mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
 	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
 
 	mockEntity.On("LoadDeclarativeResources", mock.Anything).
 		Return(errors.New("entity load error")).Once()
 
 	mux := http.NewServeMux()
-	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU)
+	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole)
 
 	suite.Error(err)
 	suite.Equal("entity load error", err.Error())
@@ -125,13 +127,14 @@ func (suite *InitializeTestSuite) TestInitialize_InboundLoadError_AllDeclarative
 			mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
 			mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 			mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+			mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
 
 			mockEntity.On("LoadDeclarativeResources", mock.Anything).Return(nil).Once()
 			mockInbound.On("LoadDeclarativeResources", mock.Anything, mock.Anything).
 				Return(errors.New("inbound load error")).Once()
 
 			mux := http.NewServeMux()
-			svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU)
+			svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole)
 
 			suite.Error(err)
 			suite.Equal("inbound load error", err.Error())
@@ -149,12 +152,13 @@ func (suite *InitializeTestSuite) TestInitialize_DeclarativeMode_Success() {
 	mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
 	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
 
 	mockEntity.On("LoadDeclarativeResources", mock.Anything).Return(nil).Once()
 	mockInbound.On("LoadDeclarativeResources", mock.Anything, mock.Anything).Return(nil).Once()
 
 	mux := http.NewServeMux()
-	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU)
+	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole)
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -169,12 +173,13 @@ func (suite *InitializeTestSuite) TestInitialize_CompositeMode_EntityLoadError()
 	mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
 	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
 
 	mockEntity.On("LoadDeclarativeResources", mock.Anything).
 		Return(errors.New("entity composite load error")).Once()
 
 	mux := http.NewServeMux()
-	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU)
+	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole)
 
 	suite.Error(err)
 	suite.Equal("entity composite load error", err.Error())
@@ -189,9 +194,10 @@ func (suite *InitializeTestSuite) TestInitialize_MutableMode_SkipsDeclarativeLoa
 	mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
 	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
 
 	mux := http.NewServeMux()
-	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU)
+	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole)
 
 	suite.NoError(err)
 	suite.NotNil(svc)

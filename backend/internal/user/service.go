@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -553,11 +553,35 @@ func (us *userService) UpdateUser(
 		return nil, svcErr
 	}
 
-	// Entity service handles schema validation, credential extraction from attributes,
-	// hashing, merging with existing credentials, and entity update.
+	// Reject credential fields: this endpoint is for attribute and user metadata updates only.
+	// Credentials must go through the dedicated update-credentials endpoint.
+	if len(user.Attributes) > 0 {
+		schemaCredentialInfos, svcErr := us.entityTypeService.GetAttributes(ctx,
+			entitytype.TypeCategoryUser, user.Type, true, false, false)
+		if svcErr != nil {
+			if svcErr.Code == entitytype.ErrorEntityTypeNotFound.Code {
+				return nil, &ErrorEntityTypeNotFound
+			}
+			return nil, logErrorAndReturnServerError(ctx, logger, "Failed to get credential attributes from schema",
+				fmt.Errorf("schema service error: %s", svcErr.ErrorDescription.DefaultValue),
+				log.MaskedString(log.LoggerKeyUserID, userID))
+		}
+		if len(schemaCredentialInfos) > 0 {
+			var attrs map[string]any
+			if err := json.Unmarshal(user.Attributes, &attrs); err != nil {
+				return nil, &ErrorInvalidRequestFormat
+			}
+			for _, credInfo := range schemaCredentialInfos {
+				if _, ok := attrs[credInfo.Attribute]; ok {
+					return nil, &ErrorCredentialUpdateNotAllowed
+				}
+			}
+		}
+	}
+
 	e := userToEntity(user)
 	e.SystemAttributes = existingEntity.SystemAttributes
-	_, err = us.entityService.UpdateEntity(ctx, userID, e)
+	updated, err := us.entityService.UpdateEntity(ctx, userID, e)
 	if err != nil {
 		if svcErr := mapEntityError(err); svcErr != nil {
 			return nil, svcErr
@@ -566,6 +590,8 @@ func (us *userService) UpdateUser(
 			log.MaskedString(log.LoggerKeyUserID, userID))
 	}
 
+	// Sync cleaned attributes back — entity service removed credential fields from Attributes.
+	user.Attributes = updated.Attributes
 	logger.Debug(ctx, "Successfully updated user", log.MaskedString(log.LoggerKeyUserID, userID))
 	return user, nil
 }
@@ -679,6 +705,14 @@ func (us *userService) UpdateUserCredentials(
 
 	if len(credentialsMap) == 0 {
 		return &ErrorMissingCredentials
+	}
+
+	// Reject system-managed credential types (e.g., passkey). Only schema-defined
+	// credentials may be updated through this endpoint.
+	for credTypeStr := range credentialsMap {
+		if CredentialType(credTypeStr).IsSystemManaged() {
+			return &ErrorInvalidCredential
+		}
 	}
 
 	// Fetch user outside the transaction to resolve the OU ID for the authorization check.

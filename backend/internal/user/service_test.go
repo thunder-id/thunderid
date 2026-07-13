@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -636,13 +636,11 @@ func TestUserService_UpdateUserCredentials_Rejections(t *testing.T) {
 		wantErrCode   string
 	}{
 		{
-			// Passkeys are not schema credentials and must be rejected via the user
-			// credentials API. They are managed via the dedicated passkey registration flows.
-			// Entity service surfaces ErrInvalidCredential via the allowlist.
-			name:          "RejectsPasskeys",
-			payload:       `{"passkey":"passkey-credential-1"}`,
-			mockEntityErr: entitypkg.ErrInvalidCredential,
-			wantErrCode:   ErrorInvalidCredential.Code,
+			// Passkeys are system-managed credentials and must be rejected explicitly
+			// at the user service level before reaching the entity service.
+			name:        "RejectsPasskeys",
+			payload:     `{"passkey":"passkey-credential-1"}`,
+			wantErrCode: ErrorInvalidCredential.Code,
 		},
 		{
 			// Schema credentials must be plain strings; arrays/objects fail JSON unmarshal
@@ -661,13 +659,7 @@ func TestUserService_UpdateUserCredentials_Rejections(t *testing.T) {
 				Return(&providers.Entity{
 					Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: "Person",
 				}, nil).
-				Once()
-			if tc.mockEntityErr != nil {
-				userStoreMock.
-					On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).
-					Return(tc.mockEntityErr).
-					Once()
-			}
+				Maybe()
 
 			service := &userService{
 				entityService: userStoreMock,
@@ -915,7 +907,10 @@ func TestUserService_UpdateUser(t *testing.T) {
 	// Mock UpdateEntity call
 	storeMock.On("UpdateEntity", mock.Anything, userID, mock.MatchedBy(func(e *providers.Entity) bool {
 		return e.ID == userID
-	})).Return((*providers.Entity)(nil), nil).Once()
+	})).Return(&providers.Entity{
+		ID:         userID,
+		Attributes: updatedUser.Attributes,
+	}, nil).Once()
 
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
@@ -926,6 +921,8 @@ func TestUserService_UpdateUser(t *testing.T) {
 	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
 		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).
 		Once()
+	entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType, true, false, false).
+		Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{
 		entityService:     storeMock,
@@ -940,10 +937,9 @@ func TestUserService_UpdateUser(t *testing.T) {
 	storeMock.AssertNumberOfCalls(t, "UpdateEntity", 1)
 }
 
-func TestUserService_UpdateUser_WithCredentials(t *testing.T) {
+func TestUserService_UpdateUser_RejectsCredentialAttributes(t *testing.T) {
 	userID := svcTestUserID1
 
-	// Test that UpdateUser passes credentials in attributes through to entity service
 	updatedUser := User{
 		ID:         userID,
 		OUID:       testOrgID,
@@ -956,22 +952,17 @@ func TestUserService_UpdateUser_WithCredentials(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 
-	// Mock GetUser pre-fetch for authz check
 	storeMock.On("GetEntity", mock.Anything, userID).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID, Type: testUserType,
 		}, nil).Once()
 
-	// Mock validation calls
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
 		Return(true, (*tidcommon.ServiceError)(nil)).Once()
 	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
 		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Once()
-
-	// Mock UpdateEntity - entity service handles credential extraction internally
-	storeMock.On("UpdateEntity", mock.Anything, userID, mock.MatchedBy(func(e *providers.Entity) bool {
-		return e.ID == userID
-	})).Return((*providers.Entity)(nil), nil).Once()
+	entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType, true, false, false).
+		Return([]entitytype.AttributeInfo{{Attribute: "password"}}, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{
 		entityService:     storeMock,
@@ -982,15 +973,9 @@ func TestUserService_UpdateUser_WithCredentials(t *testing.T) {
 
 	resp, err := service.UpdateUser(context.Background(), userID, &updatedUser)
 
-	// Assertions
-	require.Nil(t, err)
-	require.NotNil(t, resp)
-	require.Equal(t, userID, resp.ID)
-
-	// Verify all expected calls were made
-	storeMock.AssertExpectations(t)
-	ouServiceMock.AssertExpectations(t)
-	entityTypeMock.AssertExpectations(t)
+	require.Nil(t, resp)
+	require.NotNil(t, err)
+	require.Equal(t, ErrorCredentialUpdateNotAllowed.Code, err.Code)
 }
 
 func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
@@ -1009,7 +994,7 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 	}{
 		{
 			name:       "UpdateEntity_EntityNotFound",
-			attributes: `{"email":"test@example.com","password":"newPassword"}`,
+			attributes: `{"email":"test@example.com"}`,
 			setupMocks: func(
 				storeMock *entitymock.EntityServiceInterfaceMock,
 				ouServiceMock *oumock.OrganizationUnitServiceInterfaceMock,
@@ -1020,6 +1005,8 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{OUID: testOrgID},
 						(*tidcommon.ServiceError)(nil)).Maybe()
+				entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType, true, false, false).
+					Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser,
@@ -1034,7 +1021,7 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 		},
 		{
 			name:       "UpdateEntity_StoreError",
-			attributes: `{"email":"test@example.com","password":"newPass"}`,
+			attributes: `{"email":"test@example.com"}`,
 			setupMocks: func(
 				storeMock *entitymock.EntityServiceInterfaceMock,
 				ouServiceMock *oumock.OrganizationUnitServiceInterfaceMock,
@@ -1045,6 +1032,8 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{OUID: testOrgID},
 						(*tidcommon.ServiceError)(nil)).Maybe()
+				entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType, true, false, false).
+					Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Maybe()
 				storeMock.On("GetEntity", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser,
@@ -1070,6 +1059,8 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{OUID: testOrgID},
 						(*tidcommon.ServiceError)(nil)).Once()
+				entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType, true, false, false).
+					Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Once()
 				storeMock.On("GetEntity", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser,
@@ -1078,7 +1069,123 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 						Type:     testUserType,
 					}, nil).Once()
 				storeMock.On("UpdateEntity", mock.Anything, userID, mock.Anything).
-					Return((*providers.Entity)(nil), nil).Once()
+					Return(&providers.Entity{
+						Category:   providers.EntityCategoryUser,
+						ID:         userID,
+						OUID:       testOrgID,
+						Type:       testUserType,
+						Attributes: json.RawMessage(`{"email":"updated@example.com"}`),
+					}, nil).Once()
+			},
+			expectedError: nil,
+		},
+		{
+			name:       "GetAttributes_EntityTypeNotFound",
+			attributes: `{"email":"test@example.com"}`,
+			setupMocks: func(
+				storeMock *entitymock.EntityServiceInterfaceMock,
+				ouServiceMock *oumock.OrganizationUnitServiceInterfaceMock,
+				entityTypeMock *entitytypemock.EntityTypeServiceInterfaceMock,
+			) {
+				storeMock.On("GetEntity", mock.Anything, userID).
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser,
+						ID:       userID,
+						OUID:     testOrgID,
+						Type:     testUserType,
+					}, nil).Once()
+				ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
+					Return(true, (*tidcommon.ServiceError)(nil)).Once()
+				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+					Return(&entitytype.EntityType{OUID: testOrgID},
+						(*tidcommon.ServiceError)(nil)).Once()
+				entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType, true, false, false).
+					Return(nil, &entitytype.ErrorEntityTypeNotFound).Once()
+			},
+			expectedError: &ErrorEntityTypeNotFound,
+		},
+		{
+			name:       "GetAttributes_GenericError",
+			attributes: `{"email":"test@example.com"}`,
+			setupMocks: func(
+				storeMock *entitymock.EntityServiceInterfaceMock,
+				ouServiceMock *oumock.OrganizationUnitServiceInterfaceMock,
+				entityTypeMock *entitytypemock.EntityTypeServiceInterfaceMock,
+			) {
+				storeMock.On("GetEntity", mock.Anything, userID).
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser,
+						ID:       userID,
+						OUID:     testOrgID,
+						Type:     testUserType,
+					}, nil).Once()
+				ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
+					Return(true, (*tidcommon.ServiceError)(nil)).Once()
+				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+					Return(&entitytype.EntityType{OUID: testOrgID},
+						(*tidcommon.ServiceError)(nil)).Once()
+				entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType, true, false, false).
+					Return(nil, &tidcommon.ServiceError{
+						Code:             "USRS-9999",
+						ErrorDescription: tidcommon.I18nMessage{DefaultValue: "unexpected schema error"},
+					}).Once()
+			},
+			expectedError: &tidcommon.InternalServerError,
+		},
+		{
+			name:       "CredentialCheck_InvalidJSON",
+			attributes: `{not valid json`,
+			setupMocks: func(
+				storeMock *entitymock.EntityServiceInterfaceMock,
+				ouServiceMock *oumock.OrganizationUnitServiceInterfaceMock,
+				entityTypeMock *entitytypemock.EntityTypeServiceInterfaceMock,
+			) {
+				storeMock.On("GetEntity", mock.Anything, userID).
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser,
+						ID:       userID,
+						OUID:     testOrgID,
+						Type:     testUserType,
+					}, nil).Once()
+				ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
+					Return(true, (*tidcommon.ServiceError)(nil)).Once()
+				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+					Return(&entitytype.EntityType{OUID: testOrgID},
+						(*tidcommon.ServiceError)(nil)).Once()
+				entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType, true, false, false).
+					Return([]entitytype.AttributeInfo{{Attribute: "password"}},
+						(*tidcommon.ServiceError)(nil)).Once()
+			},
+			expectedError: &ErrorInvalidRequestFormat,
+		},
+		{
+			name:       "CredentialCheck_NoMatchingCredentialFields",
+			attributes: `{"email":"test@example.com","username":"john"}`,
+			setupMocks: func(
+				storeMock *entitymock.EntityServiceInterfaceMock,
+				ouServiceMock *oumock.OrganizationUnitServiceInterfaceMock,
+				entityTypeMock *entitytypemock.EntityTypeServiceInterfaceMock,
+			) {
+				ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
+					Return(true, (*tidcommon.ServiceError)(nil)).Once()
+				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+					Return(&entitytype.EntityType{OUID: testOrgID},
+						(*tidcommon.ServiceError)(nil)).Once()
+				entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType, true, false, false).
+					Return([]entitytype.AttributeInfo{{Attribute: "password"}},
+						(*tidcommon.ServiceError)(nil)).Once()
+				storeMock.On("GetEntity", mock.Anything, userID).
+					Return(&providers.Entity{
+						Category: providers.EntityCategoryUser,
+						ID:       userID,
+						OUID:     testOrgID,
+						Type:     testUserType,
+					}, nil).Once()
+				storeMock.On("UpdateEntity", mock.Anything, userID, mock.Anything).
+					Return(&providers.Entity{
+						ID:         userID,
+						Attributes: json.RawMessage(`{"email":"updated@example.com"}`),
+					}, nil).Once()
 			},
 			expectedError: nil,
 		},
@@ -1347,8 +1454,13 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{OUID: existingOU},
 						(*tidcommon.ServiceError)(nil)).Maybe()
+				entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType, true, false, false).
+					Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Maybe()
 				storeMock.On("UpdateEntity", mock.Anything, userID, mock.Anything).
-					Return((*providers.Entity)(nil), nil).Maybe()
+					Return(&providers.Entity{
+						ID:         userID,
+						Attributes: json.RawMessage(`{"email":"test@example.com"}`),
+					}, nil).Maybe()
 			}
 
 			if tt.setupExtraMocks != nil {
@@ -1386,12 +1498,11 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 	}
 }
 
-func TestUserService_UpdateUser_PreservesMultipleCredentials(t *testing.T) {
+func TestUserService_UpdateUser_RejectsCredentialInMixedAttributes(t *testing.T) {
 	ctx := context.Background()
 	userID := svcTestUserID123
 	testOU := testOrgID
 
-	// User update with password in attributes — entity service handles credential extraction internally
 	updatedUser := User{
 		ID:   userID,
 		Type: testUserType,
@@ -1399,41 +1510,29 @@ func TestUserService_UpdateUser_PreservesMultipleCredentials(t *testing.T) {
 		Attributes: json.RawMessage(`{
 			"username": "john.doe",
 			"email": "john.updated@example.com",
-			"given_name": "John",
-			"family_name": "Doe",
 			"password": "NewPassword456!"
 		}`),
 	}
 
-	// Setup mocks
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 
-	// Mock GetUser pre-fetch for authz check
 	storeMock.On("GetEntity", mock.Anything, userID).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: userID, OUID: testOU, Type: testUserType,
 		}, nil).Once()
 
-	// Mock OU validation
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOU).
 		Return(true, (*tidcommon.ServiceError)(nil)).Once()
-	ouServiceMock.On("IsParent", mock.Anything, testOU).
-		Return(true, (*tidcommon.ServiceError)(nil)).Maybe()
-
-	// Mock schema validation
 	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
 		Return(&entitytype.EntityType{
 			Name: testUserType,
 			OUID: testOU,
 		}, (*tidcommon.ServiceError)(nil)).Once()
-
-	// Mock UpdateEntity — entity service handles credential extraction, hashing, and merging internally
-	storeMock.On("UpdateEntity", mock.Anything, userID, mock.MatchedBy(func(e *providers.Entity) bool {
-		return e.ID == userID
-	})).Return((*providers.Entity)(nil), nil).Once()
+	entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType, true, false, false).
+		Return([]entitytype.AttributeInfo{{Attribute: "password"}}, (*tidcommon.ServiceError)(nil)).Once()
 
 	// Create service
 	service := &userService{
@@ -1443,18 +1542,11 @@ func TestUserService_UpdateUser_PreservesMultipleCredentials(t *testing.T) {
 		authzService:      newAllowAllAuthz(t),
 	}
 
-	// Execute UpdateUser
 	result, svcErr := service.UpdateUser(ctx, userID, &updatedUser)
 
-	// Assertions
-	require.Nil(t, svcErr)
-	require.NotNil(t, result)
-	require.Equal(t, userID, result.ID)
-
-	// Verify all mocks were called
-	storeMock.AssertExpectations(t)
-	ouServiceMock.AssertExpectations(t)
-	entityTypeMock.AssertExpectations(t)
+	require.Nil(t, result)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorCredentialUpdateNotAllowed.Code, svcErr.Code)
 }
 
 func TestUserService_GetUserList(t *testing.T) {
@@ -1969,6 +2061,8 @@ func TestUserService_UpdateUser_SchemaNotFound(t *testing.T) {
 	resp, svcErr := service.UpdateUser(context.Background(), svcTestUserID1, user)
 	require.Nil(t, resp)
 	require.NotNil(t, svcErr)
+	// The error can come from either validateOrganizationUnitForUserType or the credential check.
+	// Both map entitytype.ErrorEntityTypeNotFound to ErrorEntityTypeNotFound.
 	require.Equal(t, ErrorEntityTypeNotFound, *svcErr)
 }
 

@@ -120,10 +120,10 @@ func (ts *ConsentAPITestSuite) SetupSuite() {
 	)
 
 	// 6. Fetch flow IDs
-	ts.consentAuthFlowID, err = testutils.GetFlowIDByHandle("default-basic-flow", "AUTHENTICATION")
+	ts.consentAuthFlowID, err = testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
 	ts.Require().NoError(err, "failed to get default authentication flow ID")
 
-	ts.consentRegistrationFlowID, err = testutils.GetFlowIDByHandle("default-basic-flow", "REGISTRATION")
+	ts.consentRegistrationFlowID, err = testutils.GetFlowIDByHandle("default-flow", "REGISTRATION")
 	ts.Require().NoError(err, "failed to get default registration flow ID")
 }
 

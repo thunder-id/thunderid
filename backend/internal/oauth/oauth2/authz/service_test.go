@@ -165,6 +165,7 @@ func (suite *AuthorizeServiceTestSuite) testApp() *providers.OAuthClient {
 		RedirectURIs: []string{"https://client.example.com/callback"},
 		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		PKCERequired: false,
+		Scopes:       []string{"openid", "profile", "email"},
 	}
 }
 
@@ -337,6 +338,39 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Su
 	assert.Equal(suite.T(), "test-flow-id", result.QueryParams[oauth2const.ExecutionID])
 }
 
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_FiltersOIDCScopesByAppScopes() {
+	app := suite.testApp()
+	app.Scopes = []string{"profile"}
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, app).
+		Return(false, "", "")
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).Return("test-flow-id", nil)
+
+	var captured authRequestContext
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, value authRequestContext) {
+			captured = value
+		}).Return(testAuthID, nil)
+
+	msg := &OAuthMessage{
+		RequestType: oauth2const.TypeInitialAuthorizationRequest,
+		RequestQueryParams: map[string]string{
+			"client_id":     "test-client-id",
+			"redirect_uri":  "https://client.example.com/callback",
+			"response_type": "code",
+			"scope":         "openid email profile",
+			"state":         "test-state",
+		},
+	}
+
+	svc := suite.newService()
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
+
+	assert.Nil(suite.T(), authErr)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), []string{"profile"}, captured.OAuthParameters.StandardScopes)
+}
+
 func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_InsecureRedirectURI() {
 	app := suite.testApp()
 	app.RedirectURIs = []string{"http://client.example.com/callback"}
@@ -419,7 +453,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Se
 	app := suite.testApp()
 	app.Token = &providers.OAuthTokenConfig{
 		AccessToken: &providers.AccessTokenConfig{
-			UserAttributes: []string{"user_id"},
+			UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id"}},
 		},
 		IDToken: &providers.IDTokenConfig{
 			UserAttributes: []string{"email"},
@@ -884,7 +918,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_AccessToken
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id", "org_id", "role"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id", "org_id", "role"}},
 			},
 		},
 	}
@@ -910,7 +944,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_NoOpenIDSco
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id"}},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "name"},
@@ -1163,7 +1197,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_MultipleSco
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id"}},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "email_verified", "name", "picture"},
@@ -1212,7 +1246,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_CompleteSce
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id", "role"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id", "role"}},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "email_verified", "name"},
@@ -1310,7 +1344,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_AccessTokenOnl
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id", "role"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id", "role"}},
 			},
 		},
 	}
@@ -1337,7 +1371,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_CodeFlowWithSc
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id"}},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "email_verified", "name"},
@@ -1409,7 +1443,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_WithClaimsPara
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id"}},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "name"},
@@ -1454,7 +1488,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_ClaimsParamete
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"email", "role"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"email", "role"}},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "name"},
@@ -1494,7 +1528,9 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_DeduplicatesCl
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"email"}, // Same claim in access token too
+				UserConfig: &providers.AccessTokenSubConfig{
+					Attributes: []string{"email"}, // Same claim in access token too
+				},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email"},
@@ -1565,7 +1601,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_ComplexScenari
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id", "role"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id", "role"}},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "email_verified", "name"},
@@ -1609,7 +1645,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_NoOpenIDScope(
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id"}},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "name"},
@@ -1653,7 +1689,9 @@ func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_RefreshAllowed_U
 			providers.GrantTypeRefreshToken,
 		},
 		Token: &providers.OAuthTokenConfig{
-			AccessToken: &providers.AccessTokenConfig{ValidityPeriod: 3600},
+			AccessToken: &providers.AccessTokenConfig{
+				UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 3600},
+			},
 		},
 	}
 
@@ -1677,7 +1715,9 @@ func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_RefreshTokenAllo
 			providers.GrantTypeRefreshToken,
 		},
 		Token: &providers.OAuthTokenConfig{
-			AccessToken: &providers.AccessTokenConfig{ValidityPeriod: 7200},
+			AccessToken: &providers.AccessTokenConfig{
+				UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 7200},
+			},
 		},
 	}
 
@@ -1711,7 +1751,9 @@ func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_RefreshTokenNotA
 	app := &providers.OAuthClient{
 		GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		Token: &providers.OAuthTokenConfig{
-			AccessToken: &providers.AccessTokenConfig{ValidityPeriod: 3600},
+			AccessToken: &providers.AccessTokenConfig{
+				UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 3600},
+			},
 		},
 	}
 
@@ -1732,7 +1774,9 @@ func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_NoRefreshToken_Z
 		GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		Token: &providers.OAuthTokenConfig{
 			// ValidityPeriod 0 is treated as unset by ResolveTokenConfig → falls back to global JWT validity.
-			AccessToken: &providers.AccessTokenConfig{ValidityPeriod: 0},
+			AccessToken: &providers.AccessTokenConfig{
+				UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 0},
+			},
 		},
 	}
 
@@ -1789,8 +1833,8 @@ func determineClaimsForTokens(oidcScopes []string, claimsRequest *oauth2model.Cl
 		return accessTokenClaims, idTokenClaims, userInfoClaims
 	}
 
-	if app.Token.AccessToken != nil {
-		for _, claim := range app.Token.AccessToken.UserAttributes {
+	if app.Token.AccessToken != nil && app.Token.AccessToken.UserConfig != nil {
+		for _, claim := range app.Token.AccessToken.UserConfig.Attributes {
 			accessTokenClaims[claim] = true
 		}
 	}

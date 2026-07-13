@@ -1,7 +1,4 @@
-# This workflow validates that content follows the style rules defined in .vale.ini using Vale.
-# It only runs on changed md and mdx files in pull requests.
-
-name: 🥒 Vale Lint (Changed Markdown Only)
+name: 🥒 Docs Lint (Changed Files Only)
 
 on:
   pull_request:
@@ -11,19 +8,26 @@ on:
   merge_group:
 
 jobs:
-  vale:
-    name: Vale style check
+  docs-lint:
+    name: Docs lint
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      checks: write
-      pull-requests: read
 
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+
+      - name: 🔧 Install Vale
+        run: |
+          gh release download --repo errata-ai/vale --pattern 'vale_*_Linux_64-bit.tar.gz' --dir /tmp --clobber
+          tar -xzf /tmp/vale_*_Linux_64-bit.tar.gz -C /tmp vale
+          sudo mv /tmp/vale /usr/local/bin/vale
+          vale sync
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: 🔍 Get changed markdown files
         id: changed-files
@@ -36,27 +40,19 @@ jobs:
           else
             BASE_REF="${{ github.base_ref }}"
           fi
-          # Get list of changed md/mdx files in this PR
-          FILES=$(git diff --name-only --diff-filter=ACMR origin/${BASE_REF}...HEAD -- '*.md' '*.mdx')
+          FILES=$(git diff --name-only --diff-filter=ACMR "origin/${BASE_REF}...HEAD" -- '*.md' '*.mdx' ':!.agent/skills/**')
           if [ -z "$FILES" ]; then
             echo "No markdown files changed."
             echo "has_files=false" >> "$GITHUB_OUTPUT"
           else
             echo "Changed markdown files:"
             echo "$FILES"
-            # Convert newline-separated list to comma-separated for vale-action
-            COMMA_FILES=$(echo "$FILES" | paste -sd ',' -)
-            echo "files=$COMMA_FILES" >> "$GITHUB_OUTPUT"
             echo "has_files=true" >> "$GITHUB_OUTPUT"
+            printf '%s\n' "$FILES" > /tmp/changed-docs.txt
           fi
 
-      - name: 🔍 Run Vale
+      - name: 🔍 Run docs-lint
         if: steps.changed-files.outputs.has_files == 'true'
-        uses: errata-ai/vale-action@d89dee975228ae261d22c15adcd03578634d429c # v2.1.1
-        with:
-          files: ${{ steps.changed-files.outputs.files }}
-          separator: ","
-          reporter: github-pr-check
-          filter_mode: added
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mapfile -t FILES < /tmp/changed-docs.txt
+          ./scripts/docs-lint.sh "${FILES[@]}"

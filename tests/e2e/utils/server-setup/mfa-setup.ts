@@ -189,9 +189,9 @@ export class MFASetup {
     const flowResponse = await this.request.post(`${this.config.serverUrl}/flow/execute`, {
       data: {
         applicationId: adminAppId,
-        flowSecret: adminFlowSecret,
         flowType: "AUTHENTICATION",
       },
+      headers: { "Flow-Secret": adminFlowSecret },
       ignoreHTTPSErrors: true,
     });
 

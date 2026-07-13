@@ -2589,6 +2589,7 @@ func (s *EngineTestSuite) TestExecuteNodePackage_IncompleteExitClearsNodeScopeBe
 
 	mockGraph := coremock.NewGraphInterfaceMock(t)
 	mockGraph.On("HasSegments").Return(false).Maybe()
+	mockGraph.On("GetID").Return("flow-incomplete").Maybe()
 	mockGraph.On("GetInterceptors", providers.InterceptorModePreNode).
 		Return([]core.InterceptorUnitInterface{unit}).Maybe()
 	mockGraph.On("GetInterceptors", providers.InterceptorModePostNode).

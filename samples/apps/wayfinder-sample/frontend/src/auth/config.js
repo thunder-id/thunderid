@@ -28,8 +28,8 @@ export const SCOPES = [
   "profile",
   "email",
   "ou",
-  "booking:read",
-  "booking:create",
-  "booking:cancel",
+  "wayfinder:booking:read",
+  "wayfinder:booking:create",
+  "wayfinder:booking:cancel",
   ...(AI_FEATURES_ENABLED ? ["agent:access"] : []),
 ];

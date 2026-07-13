@@ -36,6 +36,7 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/tests/mocks/consentmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
@@ -142,6 +143,9 @@ func (suite *ResourceServiceTestSuite) SetupTest() {
 		suite.mockOU, newDisabledConsentServiceMock(suite.T()), suite.mockStore, suite.mockTransactioner,
 	)
 	suite.NoError(err)
+	// The resource service is its own dependency provider: deletion consults the registry, which
+	// resolves resource/action dependents back through the service.
+	suite.service.SetDependencyRegistry(resourcedependency.Initialize(suite.service))
 }
 
 func (suite *ResourceServiceTestSuite) TearDownTest() {
@@ -5442,7 +5446,7 @@ func (suite *ResourceServiceTestSuite) newEnabledConsentServiceMock() *consentmo
 func (suite *ResourceServiceTestSuite) newServiceWithConsent(
 	cm consent.ConsentServiceInterface,
 ) ResourceServiceInterface {
-	return &resourceService{
+	svc := &resourceService{
 		logger:           *log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 		resourceStore:    suite.mockStore,
 		ouService:        suite.mockOU,
@@ -5450,6 +5454,8 @@ func (suite *ResourceServiceTestSuite) newServiceWithConsent(
 		defaultDelimiter: ":",
 		transactioner:    suite.mockTransactioner,
 	}
+	svc.SetDependencyRegistry(resourcedependency.Initialize(svc))
+	return svc
 }
 
 func (suite *ResourceServiceTestSuite) TestCreateResourceServer_CheckHandleError() {

@@ -49,7 +49,15 @@ function Execution({data, resources}: ExecutionPropsInterface): ReactElement | n
 
   const executorName = (data?.action as StepAction | undefined)?.executor?.name ?? 'Executor';
   // Get display metadata from data (set by resolveStepMetadata)
-  const displayFromData = data?.display as {label?: string; image?: string; showOnResourcePanel?: boolean} | undefined;
+  const displayFromData = data?.display as
+    | {
+        label?: string;
+        image?: string;
+        description?: string;
+        showOnResourcePanel?: boolean;
+        outcomes?: {success?: string; failure?: string; incomplete?: string};
+      }
+    | undefined;
 
   const hasComponents = useMemo(() => {
     const components = (data?.components as Element[]) ?? [];
@@ -67,7 +75,9 @@ function Execution({data, resources}: ExecutionPropsInterface): ReactElement | n
         display: {
           label: displayFromData?.label ?? executorName,
           image: displayFromData?.image ?? '',
+          description: displayFromData?.description,
           showOnResourcePanel: displayFromData?.showOnResourcePanel ?? false,
+          outcomes: displayFromData?.outcomes,
         },
       }) as Step,
     [stepId, data, executorName, displayFromData],

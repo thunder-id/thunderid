@@ -1740,7 +1740,9 @@ function Run-Frontend {
         & pnpm build:frontend
         
         Write-Host "Starting frontend applications in the background..."
-        # Start frontend processes in background
+        # In dev the apps are served on their own origins, so point them at the backend via
+        # THUNDERID_DEV_SERVER_URL (injected into __DEV_SERVER_URL__; applied only in dev builds).
+        $env:THUNDERID_DEV_SERVER_URL = $PUBLIC_URL
         $frontendProcess = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "pnpm", "-r", "--parallel", "--filter", "@thunderid/console", "--filter", "@thunderid/gate", "dev" -PassThru -NoNewWindow
         $script:FRONTEND_PID = $frontendProcess.Id
     }

@@ -31,17 +31,20 @@ Controls the <ProductName /> server's network settings and identity.
 | `server.hostname` | `localhost` | The hostname or IP address the server binds to |
 | `server.port` | `8090` | Port the server listens on |
 | `server.http_only` | `false` | If `true`, disables HTTPS and uses HTTP only (not recommended for production) |
+| `server.public_url` | _(derived from server hostname, port and protocol)_ | The public URL clients use to reach the server, if it differs from the bind address. Derived when unset. |
 | `server.identifier` | `default-deployment` | Unique identifier for this deployment instance |
+
+When `server.public_url` is set, the `gate_client` settings below default to the corresponding hostname, port, and protocol from that URL. Most deployments only need to configure the server section.
 
 ## Gate Client Configuration
 
-Configures the connection to <ProductName /> Gate (the login UI).
+Configures the connection to <ProductName /> Gate (the login UI). Every setting is optional. By default, the `gate_client` settings are derived from `server.public_url`, so you only need to configure this section when Gate is hosted separately from the server.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `gate_client.hostname` | `localhost` | The hostname where <ProductName /> Gate is hosted |
-| `gate_client.port` | `8090` | Port where <ProductName /> Gate is accessible |
-| `gate_client.scheme` | `https` | Protocol scheme (`http` or `https`) |
+| `gate_client.hostname` | _(server's hostname)_ | The hostname where <ProductName /> Gate is hosted |
+| `gate_client.port` | _(server's port)_ | Port where <ProductName /> Gate is accessible |
+| `gate_client.scheme` | _(server's scheme)_ | Protocol scheme (`http` or `https`) |
 | `gate_client.path` | `/gate` | Base path for <ProductName /> Gate |
 
 ## TLS Configuration
@@ -404,8 +407,8 @@ Authentication and registration flow settings.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `flow.default_auth_flow_handle` | `default-basic-flow` | Handle of the default authentication flow |
-| `flow.user_onboarding_flow_handle` | `default-user-onboarding` | Handle of the default user onboarding flow |
+| `flow.default_auth_flow_handle` | `default-flow` | Handle of the default authentication flow |
+| `flow.user_onboarding_flow_handle` | `default-flow` | Handle of the default user onboarding flow |
 | `flow.max_version_history` | `10` | Maximum number of flow versions to retain |
 | `flow.auto_infer_registration` | `true` | If `true`, automatically infers registration from authentication flows |
 | `flow.executors` | *(all built-in executors)* | Whitelist of built-in executor names to register at startup. Omit the key or leave the list empty to register every built-in executor. When set, only the listed executors are available; flows that reference other executors fail validation at startup. Unknown names cause startup to fail. Duplicate names are ignored. |
@@ -493,7 +496,7 @@ Example single file:
 # resource_type: application
 name: My App
 ouHandle: default
-authFlowHandle: default-basic-flow
+authFlowHandle: default-flow
 ---
 # resource_type: group
 name: admins
@@ -832,6 +835,7 @@ Controls server-wide security behavior that is not specific to any single authen
 |---------|---------|-------------|
 | `server.security.jwks_cache_ttl` | `300` | JWKS cache TTL in seconds. Applies to every JWKS consumer in the server (trusted issuer validation, federated OIDC authenticators such as Google, and so on). Fetched signing keys are reused from the in-process cache for this duration before being re-fetched. Plan external-server key rotations with at least this much overlap. Set to `0` to disable caching |
 | `server.security.system_permission_prefix` | `""` (empty) | Prefix for system permission strings used in API authorization. When empty, permissions use their base names (for example, `system`, `system:ou`). When set, the prefix is prepended to every system permission (for example, `mgmt:system`, `mgmt:system:ou`). This value must match the system resource server's current handle. Changes require a server restart |
+| `server.security.direct_auth_secret` | `""` (empty) | Secret that gates the Direct API authentication endpoints (`/auth/**` and `/register/passkey/**`). These endpoints are **secure by default**. While this is empty they are blocked with `401`. When set, callers must send the value in the `Direct-Auth-Secret` header; a missing or incorrect value is rejected with `401`. See [Integration Models](/docs/next/guides/key-concepts/authentication/integration-models#direct-api) |
 
 :::tip
 If the system resource server has a custom handle, set `system_permission_prefix` to match the handle value and restart the server. You must also update the Console scopes to match the new permission strings.

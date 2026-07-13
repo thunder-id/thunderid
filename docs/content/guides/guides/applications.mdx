@@ -160,7 +160,7 @@ The Flow Secret is distinct from the Client Secret and serves a different purpos
 
 Copy the Flow Secret from the application details page immediately after creation — like the Client Secret, it is shown only once. To rotate it later, open the application's settings and click **Regenerate Flow Secret**.
 
-To initiate a new flow, pass the Flow Secret in the `flowSecret` field of the Flow Execution request. See the [Flow Execution API Reference](/docs/next/apis/#tag/flow-execution) for the full request payload.
+To initiate a new flow, pass the Flow Secret in the `Flow-Secret` request header of the Flow Execution request. See the [Flow Execution API Reference](/docs/next/apis/#tag/flow-execution) for the full request payload.
 
 Applications that cannot initiate flows directly — redirect-based apps and `client_credentials`-only Backend Services — are rejected with `403 Forbidden`. Flow-native apps must present a valid Flow Secret (`401` if missing or invalid). Flow **continuation** requests (those carrying an `executionId`) do not require the Flow Secret.
 

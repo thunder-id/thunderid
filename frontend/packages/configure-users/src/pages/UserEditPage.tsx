@@ -16,9 +16,16 @@
  * under the License.
  */
 
-import {PageLoadingAnimation, ResourceAvatar, SettingsCard, getInitials} from '@thunderid/components';
+import {
+  PageLoadingAnimation,
+  ResourceAvatar,
+  SettingsCard,
+  UnsavedChangesBar,
+  getInitials,
+} from '@thunderid/components';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
+import type {User} from '@thunderid/types';
 import {
   Box,
   Stack,
@@ -37,20 +44,19 @@ import {
   FormControl,
   FormLabel,
 } from '@wso2/oxygen-ui';
-import {ArrowLeft, Save, X, Copy, Check} from '@wso2/oxygen-ui-icons-react';
+import {ArrowLeft, Copy, Check} from '@wso2/oxygen-ui-icons-react';
 import {useState, useEffect, useMemo, useCallback, useRef, type SyntheticEvent, type ReactNode, type JSX} from 'react';
-import {useForm} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import {Link, useNavigate, useParams} from 'react-router';
 import useGetUser from '../api/useGetUser';
 import useGetUserType from '../api/useGetUserType';
 import useGetUserTypes from '../api/useGetUserTypes';
 import useUpdateUser from '../api/useUpdateUser';
+import AttributesSummarySection from '../components/edit-user/AttributesSummarySection';
+import CredentialsTabPanel, {type CredentialFieldInfo} from '../components/edit-user/CredentialsTabPanel';
+import EditUserAttributes from '../components/edit-user/EditUserAttributes';
 import QuickCopySection from '../components/edit-user/QuickCopySection';
 import UserDeleteDialog from '../components/UserDeleteDialog';
-import renderSchemaField from '../utils/renderSchemaField';
-
-type UpdateUserFormData = Record<string, string | number | boolean>;
 
 interface TabPanelProps {
   children?: ReactNode;
@@ -72,6 +78,12 @@ function TabPanel({children = null, value, index, ...other}: TabPanelProps): JSX
   );
 }
 
+interface TabConfig {
+  key: string;
+  label: string;
+  render: () => ReactNode;
+}
+
 export default function UserEditPage() {
   const navigate = useNavigate();
   const {t} = useTranslation();
@@ -80,26 +92,22 @@ export default function UserEditPage() {
   const {userId} = useParams<{userId: string}>();
 
   const [activeTab, setActiveTab] = useState(0);
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editedUser, setEditedUser] = useState<Partial<User>>({});
+  // Bumped on Save/Reset to force EditUserAttributes to remount with a clean form — it keeps
+  // its own react-hook-form state locally, which a `setEditedUser({})` alone wouldn't reset.
+  const [attributesResetKey, setAttributesResetKey] = useState(0);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const {data: user, isLoading: isUserLoading, error: userError} = useGetUser(userId);
+  const {data: user, isLoading: isUserLoading, error: userError, refetch} = useGetUser(userId);
   const updateUserMutation = useUpdateUser();
 
   // Get all schemas to find the schema ID from the schema name
   const {data: userTypeList} = useGetUserTypes();
 
   // Find the schema ID based on the user's type (which is the schema name)
-  const matchedSchema = useMemo(() => {
-    if (!user?.type || !userTypeList?.types) {
-      return undefined;
-    }
-
-    return userTypeList.types.find((s) => s.name === user.type);
-  }, [user?.type, userTypeList?.types]);
+  const matchedSchema = userTypeList?.types?.find((s) => s.name === user?.type);
 
   const schemaId = matchedSchema?.id;
   const trimmedOuId = matchedSchema?.ouId?.trim();
@@ -107,32 +115,21 @@ export default function UserEditPage() {
 
   const {data: userTypeDetails, isLoading: isSchemaLoading, error: schemaError} = useGetUserType(schemaId);
 
-  const hasEditableFields = useMemo(() => {
-    if (!userTypeDetails?.schema) return false;
-    return Object.entries(userTypeDetails.schema).some(
-      ([, fieldDef]) => !((fieldDef.type === 'string' || fieldDef.type === 'number') && fieldDef.credential),
-    );
-  }, [userTypeDetails]);
+  const credentialFields: CredentialFieldInfo[] = useMemo(() => {
+    if (!userTypeDetails?.schema) return [];
+    return Object.entries(userTypeDetails.schema)
+      .filter(([, fieldDef]) => (fieldDef.type === 'string' || fieldDef.type === 'number') && fieldDef.credential)
+      .map(([fieldName, fieldDef]) => {
+        let label = fieldName;
+        if (fieldDef.displayName) {
+          const resolved = resolveDisplayName(fieldDef.displayName);
+          if (resolved) label = resolved;
+        }
+        return {fieldName, label};
+      });
+  }, [userTypeDetails, resolveDisplayName]);
 
   const displayName = user?.display ?? user?.id ?? '';
-
-  const {
-    control,
-    handleSubmit,
-    setValue,
-    formState: {errors},
-  } = useForm<UpdateUserFormData>({
-    defaultValues: {},
-  });
-
-  // Populate form with user data when user data is loaded
-  useEffect(() => {
-    if (user?.attributes && userTypeDetails?.schema) {
-      Object.entries(user.attributes).forEach(([key, value]) => {
-        setValue(key, value as string | number | boolean);
-      });
-    }
-  }, [user, userTypeDetails, setValue]);
 
   useEffect(
     () => () => {
@@ -158,39 +155,32 @@ export default function UserEditPage() {
     setActiveTab(newValue);
   };
 
-  const onSubmit = async (data: UpdateUserFormData) => {
-    const organizationUnitId = schemaOuId ?? user?.ouId;
+  const handleFieldChange = useCallback((field: keyof User, value: unknown) => {
+    setEditedUser((prev) => ({...prev, [field]: value}));
+  }, []);
 
+  const handleSave = useCallback(async () => {
+    const organizationUnitId = schemaOuId ?? user?.ouId;
     if (!userId || !organizationUnitId || !user?.type) return;
 
     try {
-      setIsSubmitting(true);
-
-      const requestBody = {
-        ouId: organizationUnitId,
-        type: user.type,
-        attributes: data,
-      };
-
-      await updateUserMutation.mutateAsync({userId, data: requestBody});
-
-      setIsEditMode(false);
+      await updateUserMutation.mutateAsync({
+        userId,
+        data: {
+          ouId: organizationUnitId,
+          type: user.type,
+          attributes: editedUser.attributes ?? user.attributes,
+        },
+      });
+      setEditedUser({});
+      setAttributesResetKey((key) => key + 1);
+      await refetch();
     } catch (err) {
       logger.error('Failed to update user', {error: err});
-    } finally {
-      setIsSubmitting(false);
     }
-  };
+  }, [schemaOuId, user, userId, editedUser, updateUserMutation, refetch, logger]);
 
-  const handleCancel = () => {
-    setIsEditMode(false);
-    updateUserMutation.reset();
-    if (user?.attributes && userTypeDetails?.schema) {
-      Object.entries(user.attributes).forEach(([key, value]) => {
-        setValue(key, value as string | number | boolean);
-      });
-    }
-  };
+  const hasChanges = Object.keys(editedUser).length > 0;
 
   const handleBack = async () => {
     await navigate('/users');
@@ -249,6 +239,163 @@ export default function UserEditPage() {
 
   const picture = user.attributes?.['picture'] as string | undefined;
 
+  const tabs: TabConfig[] = [
+    {
+      key: 'general',
+      label: t('users:manageUser.tabs.general', 'General'),
+      render: () => (
+        <Stack spacing={3}>
+          <QuickCopySection user={user} copiedField={copiedField} onCopyToClipboard={handleCopyToClipboard} />
+
+          <AttributesSummarySection user={user} />
+
+          {/* Organization Unit */}
+          <SettingsCard
+            title={t('users:manageUser.sections.organizationUnit.title', 'Organization Unit')}
+            description={t(
+              'users:manageUser.sections.organizationUnit.description',
+              'The organization unit this user belongs to.',
+            )}
+          >
+            <Stack spacing={2}>
+              <FormControl fullWidth>
+                <FormLabel htmlFor="ou-handle-input">
+                  {t('users:manageUser.sections.organizationUnit.handleLabel', 'Handle')}
+                </FormLabel>
+                <TextField
+                  id="ou-handle-input"
+                  value={user.ouHandle ?? '-'}
+                  fullWidth
+                  size="small"
+                  slotProps={{
+                    input: {
+                      readOnly: true,
+                      endAdornment: user.ouHandle ? (
+                        <InputAdornment position="end">
+                          <Tooltip
+                            title={
+                              copiedField === 'ouHandle'
+                                ? t('common:actions.copied')
+                                : t(
+                                    'users:manageUser.sections.organizationUnit.copyHandle',
+                                    'Copy Organization Unit Handle',
+                                  )
+                            }
+                          >
+                            <IconButton
+                              aria-label={t(
+                                'users:manageUser.sections.organizationUnit.copyHandle',
+                                'Copy Organization Unit Handle',
+                              )}
+                              onClick={() => {
+                                handleCopyToClipboard(user.ouHandle!, 'ouHandle').catch(() => null);
+                              }}
+                              edge="end"
+                            >
+                              {copiedField === 'ouHandle' ? <Check size={16} /> : <Copy size={16} />}
+                            </IconButton>
+                          </Tooltip>
+                        </InputAdornment>
+                      ) : undefined,
+                    },
+                  }}
+                  sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                />
+              </FormControl>
+              <FormControl fullWidth>
+                <FormLabel htmlFor="ou-id-input">
+                  {t('users:manageUser.sections.organizationUnit.idLabel', 'ID')}
+                </FormLabel>
+                <TextField
+                  id="ou-id-input"
+                  value={user.ouId}
+                  fullWidth
+                  size="small"
+                  slotProps={{
+                    input: {
+                      readOnly: true,
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <Tooltip
+                            title={
+                              copiedField === 'ouId'
+                                ? t('common:actions.copied')
+                                : t('users:manageUser.sections.organizationUnit.copyId', 'Copy Organization Unit ID')
+                            }
+                          >
+                            <IconButton
+                              aria-label={t(
+                                'users:manageUser.sections.organizationUnit.copyId',
+                                'Copy Organization Unit ID',
+                              )}
+                              onClick={() => {
+                                handleCopyToClipboard(user.ouId, 'ouId').catch(() => null);
+                              }}
+                              edge="end"
+                            >
+                              {copiedField === 'ouId' ? <Check size={16} /> : <Copy size={16} />}
+                            </IconButton>
+                          </Tooltip>
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                  sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                />
+              </FormControl>
+            </Stack>
+          </SettingsCard>
+
+          {/* Danger Zone */}
+          {!user.isReadOnly && (
+            <SettingsCard
+              title={t('users:manageUser.sections.dangerZone.title', 'Danger Zone')}
+              description={t(
+                'users:manageUser.sections.dangerZone.description',
+                'Irreversible and destructive actions.',
+              )}
+            >
+              <Typography variant="h6" gutterBottom color="error">
+                {t('users:manageUser.sections.dangerZone.deleteUser', 'Delete User')}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
+                {t(
+                  'users:manageUser.sections.dangerZone.deleteUserDescription',
+                  'Once deleted, this user cannot be recovered. All associated data will be permanently removed.',
+                )}
+              </Typography>
+              <Button variant="contained" color="error" onClick={() => setDeleteDialogOpen(true)}>
+                {t('common:actions.delete', 'Delete')}
+              </Button>
+            </SettingsCard>
+          )}
+        </Stack>
+      ),
+    },
+    {
+      key: 'attributes',
+      label: t('users:manageUser.tabs.attributes', 'Attributes'),
+      render: () => (
+        <EditUserAttributes
+          key={attributesResetKey}
+          user={user}
+          editedUser={editedUser}
+          onFieldChange={handleFieldChange}
+        />
+      ),
+    },
+  ];
+
+  if (!user.isReadOnly && credentialFields.length > 0) {
+    tabs.push({
+      key: 'credentials',
+      label: t('users:manageUser.tabs.credentials', 'Credentials'),
+      render: () => <CredentialsTabPanel userId={userId!} credentialFields={credentialFields} />,
+    });
+  }
+
+  const safeActiveTab = activeTab >= tabs.length ? 0 : activeTab;
+
   return (
     <PageContent>
       {user.isReadOnly && (
@@ -275,255 +422,23 @@ export default function UserEditPage() {
       </PageTitle>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onChange={handleTabChange} aria-label="user settings tabs">
-        <Tab
-          label={t('users:manageUser.tabs.general', 'General')}
-          id="user-tab-0"
-          aria-controls="user-tabpanel-0"
-          sx={{textTransform: 'none'}}
-        />
+      <Tabs value={safeActiveTab} onChange={handleTabChange} aria-label="user settings tabs">
+        {tabs.map((tab, idx) => (
+          <Tab
+            key={tab.key}
+            label={tab.label}
+            id={`user-tab-${idx}`}
+            aria-controls={`user-tabpanel-${idx}`}
+            sx={{textTransform: 'none'}}
+          />
+        ))}
       </Tabs>
 
-      {/* Tab Panels */}
-      <>
-        {/* General Tab */}
-        <TabPanel value={activeTab} index={0}>
-          <Stack spacing={3}>
-            <QuickCopySection user={user} copiedField={copiedField} onCopyToClipboard={handleCopyToClipboard} />
-
-            {/* User Attributes */}
-            <SettingsCard
-              title={t('users:manageUser.sections.attributes.title', 'User Attributes')}
-              description={t(
-                'users:manageUser.sections.attributes.description',
-                'View and manage user attribute values.',
-              )}
-              headerAction={
-                !isEditMode && hasEditableFields && !user.isReadOnly ? (
-                  <Button variant="outlined" size="small" onClick={() => setIsEditMode(true)}>
-                    {t('common:actions.edit', 'Edit')}
-                  </Button>
-                ) : undefined
-              }
-            >
-              {!isEditMode ? (
-                <Stack spacing={2}>
-                  {user.attributes && Object.keys(user.attributes).length > 0 ? (
-                    Object.entries(user.attributes).map(([key, value]) => {
-                      let displayValue: string;
-                      if (value === null || value === undefined) {
-                        displayValue = '-';
-                      } else if (typeof value === 'boolean') {
-                        displayValue = value ? t('common:actions.yes') : t('common:actions.no');
-                      } else if (Array.isArray(value)) {
-                        displayValue = value.join(', ');
-                      } else if (typeof value === 'object') {
-                        displayValue = JSON.stringify(value);
-                      } else if (typeof value === 'string' || typeof value === 'number') {
-                        displayValue = String(value);
-                      } else {
-                        displayValue = '-';
-                      }
-
-                      const fieldDef = userTypeDetails?.schema?.[key];
-                      let attributeLabel = key;
-                      if (fieldDef?.displayName) {
-                        const resolved = resolveDisplayName(fieldDef.displayName);
-                        attributeLabel = resolved || key;
-                      }
-
-                      return (
-                        <Box key={key}>
-                          <Typography variant="caption" color="text.secondary">
-                            {attributeLabel}
-                          </Typography>
-                          <Typography variant="body1">{displayValue}</Typography>
-                        </Box>
-                      );
-                    })
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      {t('users:manageUser.sections.attributes.empty', 'No attributes available')}
-                    </Typography>
-                  )}
-                </Stack>
-              ) : (
-                <Box
-                  component="form"
-                  onSubmit={(event) => {
-                    handleSubmit(onSubmit)(event).catch(() => null);
-                  }}
-                  noValidate
-                  sx={{display: 'flex', flexDirection: 'column', gap: 2}}
-                >
-                  {userTypeDetails?.schema ? (
-                    Object.entries(userTypeDetails.schema)
-                      .filter(
-                        ([, fieldDef]) =>
-                          !((fieldDef.type === 'string' || fieldDef.type === 'number') && fieldDef.credential),
-                      )
-                      .map(([fieldName, fieldDef]) =>
-                        renderSchemaField(fieldName, fieldDef, control, errors, resolveDisplayName),
-                      )
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      {t('users:manageUser.sections.attributes.noSchema', 'No schema available for editing')}
-                    </Typography>
-                  )}
-
-                  {updateUserMutation.error && (
-                    <Alert severity="error" sx={{mt: 2}}>
-                      <Typography variant="body2" sx={{fontWeight: 'bold', mb: 0.5}}>
-                        {updateUserMutation.error.message}
-                      </Typography>
-                    </Alert>
-                  )}
-
-                  <Stack direction="row" spacing={2} justifyContent="flex-end" sx={{mt: 2}}>
-                    <Button
-                      variant="outlined"
-                      onClick={handleCancel}
-                      disabled={isSubmitting}
-                      startIcon={<X size={16} />}
-                    >
-                      {t('common:actions.cancel', 'Cancel')}
-                    </Button>
-                    <Button
-                      type="submit"
-                      variant="contained"
-                      startIcon={isSubmitting ? null : <Save size={16} />}
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? t('common:status.saving', 'Saving...') : t('common:actions.save', 'Save Changes')}
-                    </Button>
-                  </Stack>
-                </Box>
-              )}
-            </SettingsCard>
-
-            {/* Organization Unit */}
-            <SettingsCard
-              title={t('users:manageUser.sections.organizationUnit.title', 'Organization Unit')}
-              description={t(
-                'users:manageUser.sections.organizationUnit.description',
-                'The organization unit this user belongs to.',
-              )}
-            >
-              <Stack spacing={2}>
-                <FormControl fullWidth>
-                  <FormLabel htmlFor="ou-handle-input">
-                    {t('users:manageUser.sections.organizationUnit.handleLabel', 'Handle')}
-                  </FormLabel>
-                  <TextField
-                    id="ou-handle-input"
-                    value={user.ouHandle ?? '-'}
-                    fullWidth
-                    size="small"
-                    slotProps={{
-                      input: {
-                        readOnly: true,
-                        endAdornment: user.ouHandle ? (
-                          <InputAdornment position="end">
-                            <Tooltip
-                              title={
-                                copiedField === 'ouHandle'
-                                  ? t('common:actions.copied')
-                                  : t(
-                                      'users:manageUser.sections.organizationUnit.copyHandle',
-                                      'Copy Organization Unit Handle',
-                                    )
-                              }
-                            >
-                              <IconButton
-                                aria-label={t(
-                                  'users:manageUser.sections.organizationUnit.copyHandle',
-                                  'Copy Organization Unit Handle',
-                                )}
-                                onClick={() => {
-                                  handleCopyToClipboard(user.ouHandle!, 'ouHandle').catch(() => null);
-                                }}
-                                edge="end"
-                              >
-                                {copiedField === 'ouHandle' ? <Check size={16} /> : <Copy size={16} />}
-                              </IconButton>
-                            </Tooltip>
-                          </InputAdornment>
-                        ) : undefined,
-                      },
-                    }}
-                    sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-                  />
-                </FormControl>
-                <FormControl fullWidth>
-                  <FormLabel htmlFor="ou-id-input">
-                    {t('users:manageUser.sections.organizationUnit.idLabel', 'ID')}
-                  </FormLabel>
-                  <TextField
-                    id="ou-id-input"
-                    value={user.ouId}
-                    fullWidth
-                    size="small"
-                    slotProps={{
-                      input: {
-                        readOnly: true,
-                        endAdornment: (
-                          <InputAdornment position="end">
-                            <Tooltip
-                              title={
-                                copiedField === 'ouId'
-                                  ? t('common:actions.copied')
-                                  : t('users:manageUser.sections.organizationUnit.copyId', 'Copy Organization Unit ID')
-                              }
-                            >
-                              <IconButton
-                                aria-label={t(
-                                  'users:manageUser.sections.organizationUnit.copyId',
-                                  'Copy Organization Unit ID',
-                                )}
-                                onClick={() => {
-                                  handleCopyToClipboard(user.ouId, 'ouId').catch(() => null);
-                                }}
-                                edge="end"
-                              >
-                                {copiedField === 'ouId' ? <Check size={16} /> : <Copy size={16} />}
-                              </IconButton>
-                            </Tooltip>
-                          </InputAdornment>
-                        ),
-                      },
-                    }}
-                    sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-                  />
-                </FormControl>
-              </Stack>
-            </SettingsCard>
-
-            {/* Danger Zone */}
-            {!user.isReadOnly && (
-              <SettingsCard
-                title={t('users:manageUser.sections.dangerZone.title', 'Danger Zone')}
-                description={t(
-                  'users:manageUser.sections.dangerZone.description',
-                  'Irreversible and destructive actions.',
-                )}
-              >
-                <Typography variant="h6" gutterBottom color="error">
-                  {t('users:manageUser.sections.dangerZone.deleteUser', 'Delete User')}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
-                  {t(
-                    'users:manageUser.sections.dangerZone.deleteUserDescription',
-                    'Once deleted, this user cannot be recovered. All associated data will be permanently removed.',
-                  )}
-                </Typography>
-                <Button variant="contained" color="error" onClick={() => setDeleteDialogOpen(true)}>
-                  {t('common:actions.delete', 'Delete')}
-                </Button>
-              </SettingsCard>
-            )}
-          </Stack>
+      {tabs.map((tab, idx) => (
+        <TabPanel key={tab.key} value={safeActiveTab} index={idx}>
+          {tab.render()}
         </TabPanel>
-      </>
+      ))}
 
       {/* Delete Dialog */}
       <UserDeleteDialog
@@ -532,6 +447,24 @@ export default function UserEditPage() {
         onClose={() => setDeleteDialogOpen(false)}
         onSuccess={handleDeleteSuccess}
       />
+
+      {hasChanges && (
+        <UnsavedChangesBar
+          message={t('users:manageUser.unsavedChanges', 'You have unsaved changes')}
+          resetLabel={t('users:manageUser.reset', 'Reset')}
+          saveLabel={t('users:manageUser.save', 'Save')}
+          savingLabel={t('users:manageUser.saving', 'Saving…')}
+          isSaving={updateUserMutation.isPending}
+          saveDisabled={user.isReadOnly === true}
+          onReset={() => {
+            setEditedUser({});
+            setAttributesResetKey((key) => key + 1);
+          }}
+          onSave={() => {
+            void handleSave();
+          }}
+        />
+      )}
     </PageContent>
   );
 }

@@ -31,15 +31,13 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
     client_id: {{ .Values.configuration.consoleClient.clientId | quote }},
     scopes: {{ .Values.configuration.consoleClient.scopes }},
   },
+  {{- if .Values.configuration.server.publicUrl }}
+  // Defaults to the origin this app is served from. Required only when the server's
+  // external URL differs.
   server: {
-    // Not used when public_url is set
-    hostname: "0.0.0.0",
-    port: {{ .Values.configuration.server.port }},
-    http_only: {{ .Values.configuration.server.httpOnly }},
-    {{- if .Values.configuration.server.publicUrl }}
     public_url: {{ .Values.configuration.server.publicUrl | quote }},
-    {{- end }}
   },
+  {{- end }}
   {{- if .Values.configuration.consoleClient.trustedIssuer }}
   trusted_issuer: {
     hostname: {{ .Values.configuration.consoleClient.trustedIssuer.hostname | quote }},

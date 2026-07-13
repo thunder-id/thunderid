@@ -1,6 +1,6 @@
 #!/bin/bash
 # ----------------------------------------------------------------------------
-# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+# Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
 #
 # WSO2 LLC. licenses this file to you under the Apache License,
 # Version 2.0 (the "License"); you may not use this file except
@@ -55,6 +55,10 @@ if [[ -n "${ADMIN_PASSWORD:-}" ]]; then
 fi
 ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}"
+# Direct Auth Secret gates the Direct API endpoints (secure by default). When not supplied, one is
+# generated during setup and written to deployment.yaml.
+DIRECT_AUTH_SECRET="${DIRECT_AUTH_SECRET:-}"
+DIRECT_AUTH_SECRET_GENERATED=false
 
 # Color codes
 RED='\033[0;31m'
@@ -115,6 +119,8 @@ print_help() {
     echo "                           Falls back to ADMIN_USERNAME env var if flag not set"
     echo "  --admin-password VALUE   Password for the default admin user (default: admin)"
     echo "                           Falls back to ADMIN_PASSWORD env var if flag not set"
+    echo "  --direct-auth-secret VALUE Secret gating the Direct API endpoints"
+    echo "                           Falls back to DIRECT_AUTH_SECRET env var; generated if unset"
     echo "  --help                   Show this help message"
     echo ""
     echo "Description:"
@@ -166,6 +172,14 @@ while [[ $# -gt 0 ]]; do
             fi
             ADMIN_PASSWORD="$2"
             ADMIN_PASSWORD_PROVIDED=true
+            shift 2
+            ;;
+        --direct-auth-secret)
+            if [[ -z "${2:-}" || "${2:-}" == --* ]]; then
+                echo -e "${RED}--direct-auth-secret requires a non-empty value${NC}"
+                exit 1
+            fi
+            DIRECT_AUTH_SECRET="$2"
             shift 2
             ;;
         --help)
@@ -262,8 +276,96 @@ read_config() {
     return 0
 }
 
+# resolveConfigFile prints the path to the deployment.yaml in use, or nothing if not found.
+resolve_config_file() {
+    if [ -f "$CONFIG_FILE" ]; then
+        echo "$CONFIG_FILE"
+    elif [ -f "./backend/cmd/server/deployment.yaml" ]; then
+        echo "./backend/cmd/server/deployment.yaml"
+    fi
+}
+
+# write_direct_auth_secret writes the Direct Auth Secret into server.security.direct_auth_secret of the
+# given deployment.yaml, updating an existing key, adding it under an existing security block, or
+# creating a security block under server. Uses awk (portable across macOS/Linux) instead of sed -i.
+write_direct_auth_secret() {
+    local file="$1" val="$2" tmp esc
+    # Escape for a YAML double-quoted scalar: backslash first, then double-quote. Pass via the
+    # environment (ENVIRON) so awk does not re-process the backslash escapes.
+    esc=${val//\\/\\\\}
+    esc=${esc//\"/\\\"}
+    tmp="$(mktemp)"
+    if grep -qE '^[[:space:]]*direct_auth_secret:' "$file"; then
+        esc="$esc" awk '
+            /^[[:space:]]*direct_auth_secret:/ && !done {
+                match($0, /^[[:space:]]*/); print substr($0, 1, RLENGTH) "direct_auth_secret: \"" ENVIRON["esc"] "\""
+                done=1; next
+            }
+            { print }
+        ' "$file" >"$tmp"
+    elif grep -qE '^[[:space:]]*security:[[:space:]]*$' "$file"; then
+        esc="$esc" awk '
+            { print }
+            /^[[:space:]]*security:[[:space:]]*$/ && !done { print "    direct_auth_secret: \"" ENVIRON["esc"] "\""; done=1 }
+        ' "$file" >"$tmp"
+    else
+        esc="$esc" awk '
+            { print }
+            /^server:[[:space:]]*$/ && !done { print "  security:"; print "    direct_auth_secret: \"" ENVIRON["esc"] "\""; done=1 }
+        ' "$file" >"$tmp"
+    fi
+    mv "$tmp" "$file"
+}
+
+# configure_direct_auth_secret ensures the Direct API is usable out of the box while staying secure by
+# default: it respects an existing non-empty secret, otherwise uses the provided value or generates a
+# random one, and writes it into deployment.yaml.
+configure_direct_auth_secret() {
+    local config_file existing
+    config_file="$(resolve_config_file)"
+    if [ -z "$config_file" ]; then
+        log_warning "deployment.yaml not found; skipping Direct Auth Secret configuration"
+        return 0
+    fi
+
+    # Respect an existing non-empty value (e.g. from a prior setup run or manual config).
+    existing=$(grep -E '^[[:space:]]*direct_auth_secret:' "$config_file" | sed 's/#.*//' \
+        | sed -E 's/^[[:space:]]*direct_auth_secret:[[:space:]]*//' | tr -d '"'\''[:space:]' | head -1)
+    if [ -n "$existing" ]; then
+        DIRECT_AUTH_SECRET="$existing"
+        return 0
+    fi
+
+    # Use the provided value, or generate a random one. Guard openssl with '|| true' so a failure
+    # does not abort the script under 'set -e' before the /dev/urandom fallback runs.
+    if [ -z "$DIRECT_AUTH_SECRET" ]; then
+        DIRECT_AUTH_SECRET="$(openssl rand -hex 32 2>/dev/null || true)"
+        if [ -z "$DIRECT_AUTH_SECRET" ]; then
+            DIRECT_AUTH_SECRET="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+        fi
+        DIRECT_AUTH_SECRET_GENERATED=true
+    fi
+
+    write_direct_auth_secret "$config_file" "$DIRECT_AUTH_SECRET"
+}
+
+# print_direct_auth_secret_notice shows the generated Direct Auth Secret once, so the operator can capture
+# it. Only shown when the secret was generated during this run (not for operator-supplied values).
+print_direct_auth_secret_notice() {
+    if [ "$DIRECT_AUTH_SECRET_GENERATED" != "true" ]; then
+        return 0
+    fi
+    echo "Direct Auth Secret (Direct API): ${DIRECT_AUTH_SECRET}"
+    echo "  Send it in the 'Direct-Auth-Secret' header when calling the Direct API endpoints."
+    echo "  It has been written to deployment.yaml (server.security.direct_auth_secret)."
+    echo ""
+}
+
 # Read configuration
 read_config
+
+# Configure the Direct Auth Secret before bootstrap so the Direct API is ready to use.
+configure_direct_auth_secret
 
 # Construct base URL (internal API endpoint)
 BASE_URL="${PROTOCOL}://${HOSTNAME}:${PORT}"
@@ -428,6 +530,7 @@ if [ "$SILENT_MODE" = "true" ]; then
     echo ""
     echo "Console URL: ${PUBLIC_URL}/console"
     echo ""
+    print_direct_auth_secret_notice
     echo "Run ./start.sh to start ${PRODUCT_NAME}."
     echo ""
 else
@@ -435,6 +538,7 @@ else
     echo -e "${GREEN}✅ Setup completed successfully!${NC}"
     echo "========================================="
     echo ""
+    print_direct_auth_secret_notice
 fi
 
 # Cleanup will be called automatically via trap

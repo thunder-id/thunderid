@@ -19,6 +19,8 @@
 // Package providers provides constants for the providers module.
 package providers
 
+import "errors"
+
 // IDPType represents the type of an identity provider.
 type IDPType string
 
@@ -481,13 +483,20 @@ type RuntimeStoreNamespace string
 
 // Namespace constants for the runtime store. All namespaces follow the <category>:<type> format.
 const (
-	NamespaceFlow      RuntimeStoreNamespace = "flow:state"
-	NamespaceAuthzCode RuntimeStoreNamespace = "authz:code"
-	NamespaceAuthzReq  RuntimeStoreNamespace = "authz:req"
-	NamespacePAR       RuntimeStoreNamespace = "par:req"
-	NamespaceCIBA      RuntimeStoreNamespace = "ciba:req"
-	NamespaceJTI       RuntimeStoreNamespace = "jti:token"
-	NamespaceVCINonce  RuntimeStoreNamespace = "vci:nonce"
-	NamespaceVCIOffer  RuntimeStoreNamespace = "vci:offer"
-	NamespaceVPState   RuntimeStoreNamespace = "vp:state"
+	NamespaceAttributeCache RuntimeStoreNamespace = "attribute:cache"
+	NamespaceFlow           RuntimeStoreNamespace = "flow:state"
+	NamespaceAuthzCode      RuntimeStoreNamespace = "authz:code"
+	NamespaceAuthzReq       RuntimeStoreNamespace = "authz:req"
+	NamespacePAR            RuntimeStoreNamespace = "par:req"
+	NamespaceCIBA           RuntimeStoreNamespace = "ciba:req"
+	NamespaceJTI            RuntimeStoreNamespace = "jti:token"
+	NamespaceVCINonce       RuntimeStoreNamespace = "vci:nonce"
+	NamespaceVCIOffer       RuntimeStoreNamespace = "vci:offer"
+	NamespaceVPState        RuntimeStoreNamespace = "vp:state"
+)
+
+// Error constants
+var (
+	// ErrRuntimeStoreKeyNotFound to identify key not found error in the runtime store providers
+	ErrRuntimeStoreKeyNotFound = errors.New("RuntimeStore key not found")
 )

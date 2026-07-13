@@ -25,16 +25,16 @@ See [User Types](/docs/next/guides/guides/users/user-types).
 
 Wayfinder Server protects its API endpoints using permissions issued by <ProductName />.
 
-A **resource server** represents the APIs of a single backend. Each resource server defines one or more **resources**, and each resource defines **actions**. <ProductName /> automatically generates a **permission** of the form `<resource>:<action>` for every action.
+A **resource server** represents the APIs of a single backend. Each resource server defines one or more **resources**, and each resource defines **actions**. <ProductName /> automatically generates a **permission** of the form `<resource-server>:<resource>:<action>` for every action.
 
-Wayfinder's booking API is one resource server with a single `booking` resource that has three actions: `read`, `create`, and `cancel`. The generated permissions are `booking:read`, `booking:create`, and `booking:cancel`.
+Wayfinder's API is one resource server with the `wayfinder` handle. It includes a `booking` resource that has three actions: `read`, `create`, and `cancel`. The generated permissions are `wayfinder:booking:read`, `wayfinder:booking:create`, and `wayfinder:booking:cancel`.
 
 ```
-booking-api                             (Resource Server)
+wayfinder                               (Resource Server)
 └── booking                             (Resource)
-    ├── read     →  booking:read        (Permission)
-    ├── create   →  booking:create
-    └── cancel   →  booking:cancel
+    ├── read     →  wayfinder:booking:read        (Permission)
+    ├── create   →  wayfinder:booking:create
+    └── cancel   →  wayfinder:booking:cancel
 ```
 
 Permissions are included in access tokens. See [Resource Servers](/docs/next/guides/guides/resource-servers).
@@ -43,7 +43,7 @@ Permissions are included in access tokens. See [Resource Servers](/docs/next/gui
 
 A role groups permissions for a user category. A user's effective permissions are the combined set of permissions across all their assigned roles. Wayfinder defines four roles:
 
-- `Traveler`: consumer role with all three `booking:*` permissions.
+- `Traveler`: consumer role with all three `wayfinder:booking:*` permissions.
 - `Support`: staff role for consumer support workflows.
 - `DestinationsAdmin`: staff role for curating featured destinations.
 - `OpsAdmin`: staff role for inviting and managing other staff.
@@ -58,6 +58,6 @@ See [Manage Applications](/docs/next/guides/guides/applications/manage-applicati
 
 ## Flows
 
-A flow is the sequence of steps a user moves through when signing in, signing up, or recovering. Wayfinder uses the bundled `default-basic-flow` for sign-in, plus separate registration, recovery, and staff onboarding flows for the other use cases.
+A flow is the sequence of steps a user moves through when signing in, signing up, or recovering. Wayfinder uses the bundled `default-flow` for sign-in, plus separate registration, recovery, and staff onboarding flows for the other use cases.
 
 See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow).

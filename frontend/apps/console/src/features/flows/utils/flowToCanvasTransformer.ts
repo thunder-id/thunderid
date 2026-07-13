@@ -272,7 +272,10 @@ function transformNodeToCanvas(apiNode: FlowNode): CanvasNode {
         type: 'EXECUTOR',
         executor: apiNode.executor,
         onSuccess: apiNode.onSuccess,
-        onFailure: apiNode.onFailure,
+        // Only carry the branching outcomes the node actually declares. Their presence drives
+        // the failure/incomplete output handles, so a node without them stays single-outcome
+        // rather than showing a dangling handle.
+        ...(apiNode.onFailure !== undefined ? {onFailure: apiNode.onFailure} : {}),
         ...(apiNode.onIncomplete !== undefined ? {onIncomplete: apiNode.onIncomplete} : {}),
       },
     };

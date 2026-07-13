@@ -180,18 +180,20 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	}
 
 	// Generate access token using tokenBuilder (attributes will be filtered in BuildAccessToken)
+	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessTokenCtx := &tokenservice.AccessTokenBuildContext{
-		Subject:          authCode.AuthorizedUserID,
-		Audiences:        accessTokenAudiences,
-		ClientID:         tokenRequest.ClientID,
-		Scopes:           accessTokenScopes,
-		UserAttributes:   attrs,
-		AttributeCacheID: authCode.AttributeCacheID,
-		GrantType:        string(providers.GrantTypeAuthorizationCode),
-		OAuthApp:         oauthApp,
-		ClaimsRequest:    authCode.ClaimsRequest,
-		ClaimsLocales:    authCode.ClaimsLocales,
-		DPoPJkt:          dpop.GetJkt(ctx),
+		Subject:           authCode.AuthorizedUserID,
+		Audiences:         accessTokenAudiences,
+		ClientID:          tokenRequest.ClientID,
+		Scopes:            accessTokenScopes,
+		SubjectAttributes: tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
+		AttributeCacheID:  authCode.AttributeCacheID,
+		GrantType:         string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:          oauthApp,
+		ClaimsRequest:     authCode.ClaimsRequest,
+		ClaimsLocales:     authCode.ClaimsLocales,
+		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
+		DPoPJkt:           dpop.GetJkt(ctx),
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}

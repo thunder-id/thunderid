@@ -218,7 +218,7 @@ describe('DefaultInputAdapter', () => {
 
   describe('Custom Styling', () => {
     it('should apply className when provided', () => {
-      const resource = createMockElement({className: 'custom-input'});
+      const resource = createMockElement({classes: 'custom-input'});
 
       const {container} = render(<DefaultInputAdapter resource={resource} />);
 

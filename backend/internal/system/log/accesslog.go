@@ -55,7 +55,7 @@ func AccessLogHandler(logger *Logger, next http.Handler) http.Handler {
 			host,
 			start.Format("02/Jan/2006:15:04:05 -0700"),
 			r.Method,
-			r.RequestURI,
+			r.URL.Path,
 			r.Proto,
 			lrw.statusCode,
 			lrw.size,

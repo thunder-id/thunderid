@@ -30,7 +30,6 @@ vi.mock('react-i18next', () => ({
 
 describe('RedirectURIsSection', () => {
   const mockOnChange = vi.fn();
-  const mockOnValidationChange = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -61,7 +60,7 @@ describe('RedirectURIsSection', () => {
 
     render(<RedirectURIsSection oauth2Config={oauth2Config} onOAuth2ConfigChange={mockOnChange} />);
 
-    expect(screen.getByText('Redirect URIs')).toBeInTheDocument();
+    expect(screen.getByText('Authorized redirect URIs')).toBeInTheDocument();
     expect(screen.getByDisplayValue('https://example.com/cb')).toBeInTheDocument();
   });
 
@@ -72,35 +71,21 @@ describe('RedirectURIsSection', () => {
       redirectUris: [],
     };
 
-    render(
-      <RedirectURIsSection
-        oauth2Config={oauth2Config}
-        onOAuth2ConfigChange={mockOnChange}
-        onValidationChange={mockOnValidationChange}
-      />,
-    );
+    render(<RedirectURIsSection oauth2Config={oauth2Config} onOAuth2ConfigChange={mockOnChange} />);
 
     expect(screen.getByTestId('agent-redirect-uris-required')).toBeInTheDocument();
-    expect(mockOnValidationChange).toHaveBeenCalledWith(true);
   });
 
-  it('reports no error when at least one valid URI is configured', () => {
+  it('shows no error when at least one valid URI is configured', () => {
     const oauth2Config: OAuthAgentConfig = {
       grantTypes: ['authorization_code'],
       responseTypes: ['code'],
       redirectUris: ['https://example.com/cb'],
     };
 
-    render(
-      <RedirectURIsSection
-        oauth2Config={oauth2Config}
-        onOAuth2ConfigChange={mockOnChange}
-        onValidationChange={mockOnValidationChange}
-      />,
-    );
+    render(<RedirectURIsSection oauth2Config={oauth2Config} onOAuth2ConfigChange={mockOnChange} />);
 
     expect(screen.queryByTestId('agent-redirect-uris-required')).not.toBeInTheDocument();
-    expect(mockOnValidationChange).toHaveBeenCalledWith(false);
   });
 
   it('treats blank entries as invalid', () => {
@@ -110,18 +95,12 @@ describe('RedirectURIsSection', () => {
       redirectUris: ['  '],
     };
 
-    render(
-      <RedirectURIsSection
-        oauth2Config={oauth2Config}
-        onOAuth2ConfigChange={mockOnChange}
-        onValidationChange={mockOnValidationChange}
-      />,
-    );
+    render(<RedirectURIsSection oauth2Config={oauth2Config} onOAuth2ConfigChange={mockOnChange} />);
 
     expect(screen.getByTestId('agent-redirect-uris-required')).toBeInTheDocument();
   });
 
-  it('appends a new URI when "Add Redirect URI" is clicked', async () => {
+  it('appends a new URI when "Add URI" is clicked', async () => {
     const user = userEvent.setup();
     const oauth2Config: OAuthAgentConfig = {
       grantTypes: ['authorization_code'],
@@ -131,7 +110,7 @@ describe('RedirectURIsSection', () => {
 
     render(<RedirectURIsSection oauth2Config={oauth2Config} onOAuth2ConfigChange={mockOnChange} />);
 
-    await user.click(screen.getByRole('button', {name: /Add Redirect URI/i}));
+    await user.click(screen.getByRole('button', {name: /Add URI/i}));
 
     expect(mockOnChange).toHaveBeenCalledWith({redirectUris: ['https://a.example.com', '']});
   });
@@ -150,6 +129,32 @@ describe('RedirectURIsSection', () => {
     await user.click(deleteButtons[0]);
 
     expect(mockOnChange).toHaveBeenCalledWith({redirectUris: ['https://b.example.com']});
+  });
+
+  it('shifts error indices down after removing an earlier URI', async () => {
+    const user = userEvent.setup();
+    const oauth2Config: OAuthAgentConfig = {
+      grantTypes: ['authorization_code'],
+      responseTypes: ['code'],
+      redirectUris: ['', '', ''],
+    };
+
+    const {container} = render(<RedirectURIsSection oauth2Config={oauth2Config} onOAuth2ConfigChange={mockOnChange} />);
+
+    const inputs = container.querySelectorAll('input');
+    await user.click(inputs[0]);
+    await user.tab();
+    await user.click(inputs[2]);
+    await user.tab();
+
+    expect(screen.getAllByText('URI cannot be empty')).toHaveLength(2);
+
+    const deleteButtons = screen.getAllByRole('button', {name: /Delete/i});
+    await user.click(deleteButtons[1]);
+
+    expect(container.querySelector('#agent-redirect-uri-0')).toHaveAttribute('aria-invalid', 'true');
+    expect(container.querySelector('#agent-redirect-uri-1')).toHaveAttribute('aria-invalid', 'true');
+    expect(container.querySelector('#agent-redirect-uri-2')).not.toHaveAttribute('aria-invalid', 'true');
   });
 
   it('updates a URI when typed', async () => {
@@ -212,7 +217,7 @@ describe('RedirectURIsSection', () => {
 
     render(<RedirectURIsSection oauth2Config={oauth2Config} />);
 
-    expect(screen.queryByRole('button', {name: /Add Redirect URI/i})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /Add URI/i})).not.toBeInTheDocument();
     expect(screen.queryByRole('button', {name: /Delete/i})).not.toBeInTheDocument();
   });
 });

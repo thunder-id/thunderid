@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -181,7 +181,11 @@ func (suite *APIAuthTestSuite) TestInvalidTokenIsUnauthorized() {
 
 	suite.assertSecurityError(resp, http.StatusUnauthorized, "AUTH-4010",
 		"Authentication is required to access this resource")
-	suite.Equal("Bearer", resp.Header.Get("WWW-Authenticate"))
+	// A presented-but-rejected token returns the RFC 6750 invalid_token challenge with a generic
+	// description that does not disclose why the token was rejected.
+	suite.Equal(
+		`Bearer error="invalid_token", error_description="The access token is invalid, expired, or malformed"`,
+		resp.Header.Get("WWW-Authenticate"))
 }
 
 // Authorization: non-system token is forbidden.
@@ -197,7 +201,8 @@ func (suite *APIAuthTestSuite) TestNonSystemScopeIsForbidden() {
 
 	suite.assertSecurityError(resp, http.StatusForbidden, "AUTH-4030",
 		"You do not have sufficient permissions to access this resource")
-	suite.Equal("Bearer", resp.Header.Get("WWW-Authenticate"))
+	// A 403 is an authorization failure, not an authentication challenge: no WWW-Authenticate header.
+	suite.Empty(resp.Header.Get("WWW-Authenticate"))
 }
 
 func (suite *APIAuthTestSuite) assertSecurityError(resp *http.Response, expectedStatus int,

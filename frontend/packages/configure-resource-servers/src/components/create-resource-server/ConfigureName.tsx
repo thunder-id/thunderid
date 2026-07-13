@@ -21,11 +21,14 @@ import {Box, Chip, FormControl, FormLabel, Stack, TextField, Typography, useThem
 import {Lightbulb} from '@wso2/oxygen-ui-icons-react';
 import {useEffect, useMemo, type ChangeEvent, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import type {ResourceServerType} from '../../models/resource-server';
 
 interface ConfigureNameProps {
   name: string;
   handle: string;
   delimiter?: string;
+  /** The resource server type selected in the previous step, used to tailor copy for MCP servers. */
+  selectedType?: ResourceServerType;
   onNameChange: (name: string) => void;
   onHandleChange: (handle: string) => void;
   onReadyChange?: (isReady: boolean) => void;
@@ -35,6 +38,7 @@ export default function ConfigureName({
   name,
   handle,
   delimiter = undefined,
+  selectedType = undefined,
   onNameChange,
   onHandleChange,
   onReadyChange = undefined,
@@ -66,12 +70,16 @@ export default function ConfigureName({
   return (
     <Stack direction="column" spacing={4}>
       <Typography variant="h1" gutterBottom>
-        {t('resourceServers:create.name.title', 'Name your resource server')}
+        {selectedType === 'MCP'
+          ? t('resourceServers:create.name.titleMcp', 'Name your MCP server')
+          : t('resourceServers:create.name.title', 'Name your resource server')}
       </Typography>
 
       <FormControl fullWidth required>
         <FormLabel htmlFor="resource-server-name-input">
-          {t('resourceServers:create.name.nameLabel', 'Resource Server Name')}
+          {selectedType === 'MCP'
+            ? t('resourceServers:create.name.nameLabelMcp', 'MCP Server Name')
+            : t('resourceServers:create.name.nameLabel', 'Resource Server Name')}
         </FormLabel>
         <TextField
           id="resource-server-name-input"
@@ -121,10 +129,17 @@ export default function ConfigureName({
           value={handle}
           onChange={handleHandleChange}
           placeholder={t('resourceServers:create.name.handlePlaceholder', 'e.g. payments-api')}
-          helperText={t(
-            'resourceServers:create.name.handleHint',
-            'The handle prefixes every permission in this resource server. It cannot be changed after creation.',
-          )}
+          helperText={
+            selectedType === 'MCP'
+              ? t(
+                  'resourceServers:create.name.handleHintMcp',
+                  'The handle prefixes every permission in this MCP server. It cannot be changed after creation.',
+                )
+              : t(
+                  'resourceServers:create.name.handleHint',
+                  'The handle prefixes every permission in this resource server. It cannot be changed after creation.',
+                )
+          }
         />
       </FormControl>
     </Stack>

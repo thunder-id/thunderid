@@ -95,6 +95,7 @@ const TOP_LEVEL_EDITABLE_PROPS = [
   'name',
   'size',
   'color',
+  'classes',
 ] as const;
 
 function ResourceProperties(): ReactElement {

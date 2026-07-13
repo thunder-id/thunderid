@@ -28,8 +28,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 type exportRequest struct {
@@ -176,6 +176,67 @@ func (suite *ImportExportFreshPackSuite) putServerConfigCORS(allowedOrigins stri
 
 func (suite *ImportExportFreshPackSuite) getServerConfigCORS() string {
 	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+"/server-config/cors", nil)
+	suite.Require().NoError(err)
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	return string(body)
+}
+
+func (suite *ImportExportFreshPackSuite) TestDefaultResourceServerExportImportRoundTrip() {
+	const resourceServerID = "01900000-0000-7000-8000-000000000020"
+
+	suite.putServerConfigDefaultResourceServer(resourceServerID)
+
+	exported, err := suite.exportResources(exportRequest{ServerConfigs: []string{"defaultResourceServer"}})
+	suite.Require().NoError(err)
+	suite.Require().Contains(exported, resourceServerID)
+
+	suite.putServerConfigDefaultResourceServer("")
+	suite.Require().NotContains(suite.getServerConfigDefaultResourceServer(), resourceServerID)
+
+	importResp, err := suite.importResources(importRequest{
+		Content: exported,
+		Options: importOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+	})
+	suite.Require().NoError(err)
+
+	var serverConfigResult *importItem
+	for i := range importResp.Results {
+		if importResp.Results[i].ResourceType == "server_config" {
+			serverConfigResult = &importResp.Results[i]
+			break
+		}
+	}
+	suite.Require().NotNil(serverConfigResult, "import results should include a server_config item")
+	suite.Equal("success", serverConfigResult.Status)
+
+	suite.Require().Contains(suite.getServerConfigDefaultResourceServer(), resourceServerID)
+
+	suite.putServerConfigDefaultResourceServer("")
+}
+
+func (suite *ImportExportFreshPackSuite) putServerConfigDefaultResourceServer(resourceServerID string) {
+	body := `{"resourceServerId":"` + resourceServerID + `"}`
+	req, err := http.NewRequest(http.MethodPut,
+		testutils.TestServerURL+"/server-config/defaultResourceServer", bytes.NewReader([]byte(body)))
+	suite.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+}
+
+func (suite *ImportExportFreshPackSuite) getServerConfigDefaultResourceServer() string {
+	req, err := http.NewRequest(http.MethodGet,
+		testutils.TestServerURL+"/server-config/defaultResourceServer", nil)
 	suite.Require().NoError(err)
 
 	resp, err := testutils.GetHTTPClient().Do(req)

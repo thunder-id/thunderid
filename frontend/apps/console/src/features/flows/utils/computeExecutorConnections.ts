@@ -16,10 +16,9 @@
  * under the License.
  */
 
+import {IdentityProviderTypes, type BasicIdentityProvider} from '@thunderid/configure-connections';
 import type {ExecutorConnectionInterface} from '../models/metadata';
 import {ExecutionTypes} from '../models/steps';
-import type {BasicIdentityProvider} from '@/features/connections/models/identity-provider';
-import {IdentityProviderTypes} from '@/features/connections/models/identity-provider';
 import type {NotificationSender} from '@/features/notification-senders/models/notification-sender';
 
 /**

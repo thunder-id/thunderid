@@ -39,7 +39,6 @@ type themeMgtStoreInterface interface {
 	IsThemeExist(id string) (bool, error)
 	UpdateTheme(id string, theme UpdateThemeRequest) error
 	DeleteTheme(id string) error
-	GetApplicationsCountByThemeID(id string) (int, error)
 	IsThemeDeclarative(id string) bool
 	IsThemeHandleConflict(handle string, excludeID string) (bool, error)
 }
@@ -198,21 +197,6 @@ func (s *themeMgtStore) DeleteTheme(id string) error {
 	}
 
 	return nil
-}
-
-// GetApplicationsCountByThemeID returns the count of applications using a specific theme.
-func (s *themeMgtStore) GetApplicationsCountByThemeID(id string) (int, error) {
-	dbClient, err := s.getConfigDBClient()
-	if err != nil {
-		return 0, err
-	}
-
-	results, err := dbClient.Query(queryGetApplicationsCountByThemeID, id, s.deploymentID)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get applications count: %w", err)
-	}
-
-	return parseCountResult(results)
 }
 
 // IsThemeDeclarative checks if a theme is immutable (in database store, all themes are mutable).

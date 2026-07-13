@@ -75,7 +75,7 @@ func Initialize(
 	discoveryService := discovery.Initialize(mux, runtimeCrypto, cfg)
 	// The enforcement service (revocation read path) is built before the token service so it can be
 	// injected into the validator, which enforces the deny list as the final step of every validation.
-	enforcementService := revocation.Initialize(
+	enforcementService, refreshTokenRevoker := revocation.Initialize(
 		mux, jwtService, actorProvider, authnProvider, discoveryService, observabilitySvc)
 	tokenBuilder, tokenValidator := tokenservice.Initialize(
 		cfg, jwtService, jweService, resolver, idpService, enforcementService)
@@ -90,7 +90,8 @@ func Initialize(
 	}
 	grantHandlerProvider := granthandlers.Initialize(
 		jwtService, oauth2AuthzService, tokenBuilder, tokenValidator,
-		attributeCacheSvc, ouService, authzService, actorProvider, resourceService, cibaService, cfg)
+		attributeCacheSvc, ouService, authzService, actorProvider, resourceService, cibaService,
+		refreshTokenRevoker, cfg)
 	token.Initialize(mux, jwtService, actorProvider, authnProvider, grantHandlerProvider,
 		scopeValidator, observabilitySvc, discoveryService, dpopVerifier, cfg)
 	introspect.Initialize(mux, jwtService, actorProvider, authnProvider, discoveryService, tokenValidator)

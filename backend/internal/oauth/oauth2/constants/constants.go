@@ -62,6 +62,7 @@ const (
 	RequestParamPrompt              string = "prompt"
 	RequestParamRequestURI          string = "request_uri"
 	RequestParamAcrValues           string = "acr_values"
+	RequestParamMaxAge              string = "max_age"
 	RequestParamDPoPJkt             string = "dpop_jkt"
 	RequestParamLoginHint           string = "login_hint"
 	RequestParamIDTokenHint         string = "id_token_hint"

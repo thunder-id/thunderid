@@ -1,0 +1,30 @@
+{
+  "id": "mcp-client",
+  "displayName": "MCP Client",
+  "description": "AI application that connects to MCP servers using the Model Context Protocol",
+  "creationFlow": {
+    "steps": ["STACK", "NAME", "ORGANIZATION_UNIT", "CLIENT_TYPE", "COMPLETE"]
+  },
+  "defaults": {
+    "name": "MCP Client Application",
+    "inboundAuthConfig": [
+      {
+        "type": "oauth2",
+        "config": {
+          "grantTypes": ["authorization_code", "refresh_token"],
+          "responseTypes": ["code"],
+          "redirectUris": [],
+          "pkceRequired": true,
+          "tokenEndpointAuthMethod": "none",
+          "publicClient": true
+        }
+      }
+    ],
+    "allowedUserTypes": []
+  },
+  "fieldConstraints": {
+    "oauth2": {
+      "pkceRequired": {"readOnly": true, "value": true}
+    }
+  }
+}

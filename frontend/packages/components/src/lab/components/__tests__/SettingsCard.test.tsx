@@ -45,6 +45,23 @@ describe('SettingsCard', () => {
       expect(screen.getByText('This is a description')).toBeInTheDocument();
     });
 
+    it('should render a ReactNode description with an inline link', () => {
+      render(
+        <SettingsCard
+          title="Test Settings"
+          description={
+            <>
+              Manage this from the <a href="/elsewhere">elsewhere page</a>.
+            </>
+          }
+        >
+          <div>Content</div>
+        </SettingsCard>,
+      );
+
+      expect(screen.getByRole('link', {name: 'elsewhere page'})).toHaveAttribute('href', '/elsewhere');
+    });
+
     it('should not render description when not provided', () => {
       render(
         <SettingsCard title="Test Settings">

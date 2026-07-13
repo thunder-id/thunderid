@@ -33,6 +33,8 @@ import (
 
 // RevocationServiceInterface defines the OAuth2 token revocation service (RFC 7009).
 type RevocationServiceInterface interface {
+	RefreshTokenRevokerInterface
+
 	// RevokeToken revokes the presented token on behalf of the authenticated client.
 	//
 	// token_type_hint is accepted per RFC 7009 §2.1 but intentionally not acted on. The hint exists to help
@@ -45,6 +47,16 @@ type RevocationServiceInterface interface {
 	RevokeToken(ctx context.Context, token, tokenTypeHint, authenticatedClientID string) (RevokeOutcome, error)
 }
 
+// RefreshTokenRevokerInterface is the narrow write seam the refresh grant uses to enforce single-use
+// refresh tokens (RFC 9700 §4.14.2): the consumed refresh token is recorded on the deny list so it
+// cannot be replayed. It exposes no read or client-facing revocation.
+type RefreshTokenRevokerInterface interface {
+	// RevokeRefreshToken records the refresh token's jti on the deny list with the refresh_rotation
+	// reason. expiryTime is the token's original expiry, which bounds the deny-list entry's lifetime.
+	// An empty jti is a no-op.
+	RevokeRefreshToken(ctx context.Context, jti string, expiryTime time.Time) error
+}
+
 // revocationService implements RevocationServiceInterface.
 type revocationService struct {
 	jwtService       jwt.JWTServiceInterface
@@ -53,7 +65,9 @@ type revocationService struct {
 	logger           *log.Logger
 }
 
-// newRevocationService creates a new revocationService (internal use).
+// newRevocationService creates a new revocationService (internal use). It returns
+// RevocationServiceInterface; the same instance is handed to the refresh grant narrowed to the
+// embedded RefreshTokenRevokerInterface subset, so the grant cannot invoke the full revocation API.
 func newRevocationService(
 	jwtService jwt.JWTServiceInterface,
 	store RevokedTokenStoreInterface,
@@ -117,6 +131,26 @@ func (s *revocationService) RevokeToken(
 
 	s.publishTokenRevokedEvent(ctx, authenticatedClientID, jti)
 	return RevokeOutcomeRevoked, nil
+}
+
+// RevokeRefreshToken records a refresh token on the deny list with the refresh_rotation reason,
+// enforcing single-use on rotation. The token was already validated by the refresh grant, so no
+// signature or ownership check is repeated here. An empty jti is a no-op.
+func (s *revocationService) RevokeRefreshToken(ctx context.Context, jti string, expiryTime time.Time) error {
+	if jti == "" {
+		return nil
+	}
+	revoked := RevokedToken{
+		JTI:              jti,
+		RevocationReason: RevocationReasonRefreshRotation,
+		RevokedAt:        time.Now().UTC(),
+		ExpiryTime:       expiryTime,
+	}
+	if err := s.store.InsertRevokedToken(ctx, revoked); err != nil {
+		return fmt.Errorf("failed to record refresh token revocation: %w", err)
+	}
+	s.logger.Debug(ctx, "Revoked refresh token")
+	return nil
 }
 
 // extractExpiryTime returns the token's exp claim as a time, falling back to now when absent

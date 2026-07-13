@@ -83,6 +83,24 @@ func (o *OAuthClient) ShouldAppendActorClaim() bool {
 		(o.EntityCategory == EntityCategoryApp && o.IncludeActClaim)
 }
 
+// UserAccessTokenConfig returns the access token sub-config for user-subject tokens
+// (authorization_code, refresh_token, token_exchange, ciba), or nil if unset.
+func (o *OAuthClient) UserAccessTokenConfig() *AccessTokenSubConfig {
+	if o == nil || o.Token == nil || o.Token.AccessToken == nil {
+		return nil
+	}
+	return o.Token.AccessToken.UserConfig
+}
+
+// ClientAccessTokenConfig returns the access token sub-config for client-subject tokens
+// (client_credentials only), or nil if unset.
+func (o *OAuthClient) ClientAccessTokenConfig() *AccessTokenSubConfig {
+	if o == nil || o.Token == nil || o.Token.AccessToken == nil {
+		return nil
+	}
+	return o.Token.AccessToken.ClientConfig
+}
+
 // ValidateRedirectURI validates the provided redirect URI against the registered list.
 func ValidateRedirectURI(ctx context.Context, redirectURIs []string, redirectURI string) error {
 	logger := log.GetLogger()

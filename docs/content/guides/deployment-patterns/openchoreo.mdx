@@ -2,23 +2,30 @@
 title: OpenChoreo
 sidebar_position: 3
 persona: iam
-description: Deploy on the OpenChoreo platform using Helm, with PostgreSQL as the backing database.
+description: Run {{ProductName}} as a fully declarative OpenChoreo ResourceType, with secrets sourced from the platform secret store and a choice of SQLite or PostgreSQL.
 ---
 
 import {NextSteps, NextStepsCard} from '../../../src/components/NextSteps';
 
-# Deploy <ProductName /> on OpenChoreo
+# Deploy <ProductName /> as an OpenChoreo Resource
 
-This guide walks you through deploying <ProductName /> on OpenChoreo using Helm. It covers prerequisites, installation, database configuration, and the built-in environment management that OpenChoreo provides.
+This guide walks you through running <ProductName /> as an OpenChoreo `Resource`. A platform administrator registers the `ResourceType` once, and teams then create a `Resource` from it to provision a <ProductName /> instance.
+
+Key characteristics of this deployment model:
+
+- Provisioning is **fully declarative**. Every <ProductName /> resource — organization units, user types, applications, flows, themes, and users — comes from a single resources file supplied at `Resource` creation time.
+- Sensitive values are **materialized from the platform secret store** by External Secrets Operator.
+- The database backend is a parameter. The default `sqlite` mode needs no external database; `postgres` mode targets an externally hosted PostgreSQL instance.
 
 ## Prerequisites
 
 Before you begin, ensure the following are available:
 
 **Infrastructure:**
-- A running Kubernetes cluster (v1.19 or later) with OpenChoreo v0.3.2 installed and configured.
-- Proper RBAC permissions for OpenChoreo custom resources.
-- A PostgreSQL database, either in-cluster or external.
+
+- A running Kubernetes cluster with OpenChoreo installed (control plane and data plane).
+- External Secrets Operator with a `ClusterSecretStore` (or namespaced `SecretStore`) configured for the data plane. The OpenChoreo quick-start installs one backed by OpenBao.
+- For `postgres` mode only: an accessible PostgreSQL instance, in-cluster or external.
 
 **Required Tools:**
 
@@ -27,244 +34,191 @@ Before you begin, ensure the following are available:
 | Git | [Install Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git) | `git --version` |
 | Helm | [Install Helm](https://helm.sh/docs/intro/install/) | `helm version` |
 | kubectl | [Install kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) | `kubectl version` |
-| OpenChoreo | [Install OpenChoreo](https://openchoreo.dev/docs/getting-started/quick-start-guide/) | `helm list -n openchoreo-control-plane -o json \| jq -r '.[] \| "\(.name) \(.app_version)"'` |
+| OpenChoreo | [Install OpenChoreo](https://openchoreo.dev/docs/getting-started/quick-start-guide/) | `kubectl get crd \| grep openchoreo` |
 
-Verify cluster access before proceeding:
+Verify cluster access and the required custom resource definitions before proceeding:
 
 ```bash
 kubectl cluster-info
-helm version
-kubectl get crd | grep openchoreo
+kubectl get crd | grep -E 'resourcetypes|resources|resourcereleases|resourcereleasebindings'
+kubectl get clustersecretstore
 ```
 
-## Install <ProductName />
+## How It Works
 
-### Step 1: Configure Database Credentials
+1. The `thunderid-oc-resourcetype` chart registers the `thunderid` `ClusterResourceType`, which holds the schema and the Kubernetes templates.
+2. You create a `Resource` that references the `ClusterResourceType` and supplies the instance parameters. OpenChoreo cuts a `ResourceRelease` from it.
+3. A `ResourceReleaseBinding` pins the `ResourceRelease` to an environment.
+4. OpenChoreo renders the workload into the data-plane namespace: an `ExternalSecret` materialized from the platform secret store, the configuration `ConfigMap` resources, the `Deployment`, the `Service`, and the `HTTPRoute`.
 
-Export your database connection details as environment variables:
+## Install the ResourceType
+
+A platform administrator installs the chart once per cluster:
 
 ```bash
-export DB_HOST="postgres.default.svc.cluster.local"
-export DB_USER="thunderid_user"
-export DB_PASS="<your-database-password>"
+helm install thunderid-type install/openchoreo/thunderid-oc-resourcetype
 ```
 
-### Step 2: Install the Helm Chart
+This registers the `thunderid` `ClusterResourceType`. To register a namespaced `ResourceType` instead, set `resourceType.cluster=false`.
 
-Clone the <ProductName /> repository if you have not already done so. Then install <ProductName /> using the OpenChoreo Helm chart:
+## Store the Environment Values
+
+Push the sensitive values to the platform secret store as properties of one secret per environment. The following example uses the OpenBao instance installed with the OpenChoreo quick-start:
 
 ```bash
-helm install thunderid install/openchoreo/helm/ \
-  --namespace identity-platform \
-  --create-namespace \
-  --set database.host="$DB_HOST" \
-  --set database.config.username="$DB_USER" \
-  --set database.config.password="$DB_PASS" \
-  --set database.runtime.username="$DB_USER" \
-  --set database.runtime.password="$DB_PASS" \
-  --set organization.name="identity-platform"
+bao kv put secret/thunderid/dev \
+  CRYPTO_ENCRYPTION_KEY=<64-hex-character-key> \
+  ADMIN_PASSWORD=<admin-password>
 ```
 
-### Step 3: Verify the Installation
+:::note
+The quick-start OpenBao is not exposed outside the cluster, so run the `bao` command inside its pod. In development mode the root token is `root`:
 
 ```bash
-# Check OpenChoreo resources
-kubectl get components,workloads,services -n identity-platform
-
-# Check pod status
-kubectl get pods -n identity-platform
-
-# Check organization and platform resources
-kubectl get organizations,projects,deploymentpipelines,environments
+kubectl exec -n openbao openbao-0 -- env BAO_TOKEN=root \
+  bao kv put secret/thunderid/dev \
+  CRYPTO_ENCRYPTION_KEY=<64-hex-character-key> \
+  ADMIN_PASSWORD=<admin-password>
 ```
+:::
 
-## Installation Options
-
-### Option 1: Inline Value Overrides
-
-Pass configuration values directly on the command line:
+For `postgres` mode, add the database connection properties for each of the four databases:
 
 ```bash
-helm upgrade --install thunderid install/openchoreo/helm/ \
-  --namespace identity-platform \
-  --create-namespace \
-  --set database.host="postgres.example.com" \
-  --set database.config.username="thunderid_user" \
-  --set database.config.password="<config-db-password>" \
-  --set database.runtime.username="thunderid_user" \
-  --set database.runtime.password="<runtime-db-password>" \
-  --set database.config.sslmode="require" \
-  --set database.runtime.sslmode="require" \
-  --set organization.name="my-organization"
+bao kv put secret/thunderid/dev \
+  CRYPTO_ENCRYPTION_KEY=<64-hex-character-key> \
+  ADMIN_PASSWORD=<admin-password> \
+  DB_CONFIG_HOSTNAME=<db-host> DB_CONFIG_PORT=5432 DB_CONFIG_NAME=configdb \
+  DB_CONFIG_USERNAME=<db-user> DB_CONFIG_PASSWORD=<db-password> DB_CONFIG_SSLMODE=require \
+  # ... repeat the six properties for DB_RUNTIME_*, DB_USER_*, and DB_OPERATION_*
 ```
 
-### Option 2: Custom Values File
+The `ResourceType` renders an `ExternalSecret` that extracts every property at the store path into the container environment. <ProductName /> resolves the `{{.VAR}}` placeholders in its configuration at startup.
 
-For a repeatable deployment, use a values file:
+:::note
+Populate every value before the first deployment. Because the rendered release name is stable, an `ExternalSecret` created on the first deployment does not pick up later store changes until its refresh interval elapses.
+:::
 
-1. Create a `custom-values.yaml` file:
+## Create the Resource
 
-    ```yaml
-    # Component configuration
-    componentName: thunderid-identity
-    pipelineName: identity-platform-pipeline
+Use the sample manifests at `install/openchoreo/thunderid-oc-resourcetype/samples/resource.yaml` as a starting point. Replace the `<SERVER_PUBLIC_URL>` and `<GATEWAY_HOSTNAME>` placeholders, then apply:
 
-    # Container image configuration
-    image:
-      repository: ghcr.io/thunder-id/thunderid
-      tag: "0.11.0"
+```bash
+kubectl apply -f install/openchoreo/thunderid-oc-resourcetype/samples/resource.yaml
+```
 
-    # Database configuration
-    database:
-      host: postgres.example.com
-      port: 5432
-      identity:
-        database: configdb
-        username: thunderid_user
-        password: <config-db-password>
-        type: postgres
-        sslmode: require
-      runtime:
-        database: runtimedb
-        username: thunderid_user
-        password: <runtime-db-password>
-        type: postgres
-        sslmode: require
-      user:
-        database: userdb
-        username: thunderid_user
-        password: <user-db-password>
-        type: postgres
-        sslmode: require
+A minimal `Resource` references the secret store and provides the declarative resources file:
 
-    # JWT configuration
-    jwt:
-      issuer: thunderid-identity-platform
-      validity: 7200
-
-    # OAuth configuration
-    oauth:
-      refresh_token_validity: 604800
-
-    # Cache configuration
-    cache:
-      type: memory
-      size: 50000
-      ttl: 7200
-
-    # Gateway configuration
-    gateway:
-      dnsPrefixDev: dev
-      dnsPrefixStaging: staging
-      dnsPrefixProd: prod
-
-    # Platform resources
-    organization:
-      name: identity-platform
-      displayName: Identity Platform Organization
-      description: {{ProductName}}-powered identity management platform
-
-    # Cluster-scoped resources (only created in non-default namespaces)
-    serviceClass:
+```yaml
+apiVersion: openchoreo.dev/v1alpha1
+kind: Resource
+metadata:
+  name: thunderid
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  type:
+    kind: ClusterResourceType
+    name: thunderid
+  parameters:
+    secretStore:
       name: default
-      create: true
+      key: thunderid/dev
+    declarativeResources: |
+      # Multi-document resources file — organization units, user types,
+      # applications, flows, themes, and users. Export one from an existing
+      # instance through the /export API and paste it here.
+```
 
-    apiClass:
-      name: default
-      create: true
-    ```
+Applying the `Resource` cuts a `ResourceRelease` automatically.
 
-2. Install using the values file:
+:::note
+Exports strip user credentials. Add a `credentials:` block to each user that must sign in, and resolve the password from the secret store so it never appears in the manifest:
 
-    ```bash
-    helm upgrade --install thunderid install/openchoreo/helm/ \
-      --namespace identity-platform \
-      --create-namespace \
-      -f custom-values.yaml
-    ```
+```yaml
+credentials:
+  password: "{{.ADMIN_PASSWORD}}"
+```
+:::
 
-## Database Setup
+## Deploy to an Environment
 
-<ProductName /> requires PostgreSQL for the identity, runtime, and user databases.
+Applying the sample manifest in the previous step also created a `ResourceReleaseBinding` named `thunderid-development`. This binding deploys the release to the `development` environment, and stays pending until you pin a release to it.
 
-Before deploying <ProductName />, prepare the PostgreSQL instance:
+List the releases cut from the `Resource`, then pin the one you want to the binding:
 
-1. Create the three required databases:
+```bash
+kubectl get resourcerelease -n default
+
+kubectl patch resourcereleasebinding thunderid-development -n default \
+  --type=merge -p '{"spec":{"resourceRelease":"<release-name>"}}'
+```
+
+Use the release name from the `kubectl get resourcerelease` output as `<release-name>`.
+
+## Verify the Deployment
+
+```bash
+# Binding status
+kubectl get resourcereleasebinding thunderid-development -n default \
+  -o jsonpath='{range .status.conditions[*]}{.type}={.status}{"\n"}{end}'
+
+# Rendered workload in the data-plane namespace
+kubectl get all,externalsecret -n <data-plane-namespace>
+```
+
+The <ProductName /> server is reachable at the external gateway hostname the `HTTPRoute` generates, in the form `<environmentName>-<resourceName>-<resourceNamespace>.<gateway-host>`. The `<gateway-host>` comes from the data plane's `gateway.ingress.external.http` (or `.https`) host.
+
+## Database Modes
+
+Set the database engine through the `runtime.dbType` parameter.
+
+### SQLite (Default)
+
+`sqlite` mode uses the database files bundled in the container image. It needs no external database and no `DB_*` properties in the secret store.
+
+:::warning
+SQLite storage is pod-local and ephemeral. Runtime data — sessions, tokens, and database-backed stores — is lost on pod restart, and replicas must stay at 1. Use SQLite for development and evaluation only.
+:::
+
+### PostgreSQL
+
+`postgres` mode targets an externally hosted PostgreSQL instance. Set `runtime.dbType: postgres`, and provide the `DB_*` properties in the secret store.
+
+Prepare the PostgreSQL instance before deployment:
+
+1. Create the four required databases:
 
     ```sql
     CREATE DATABASE configdb;
     CREATE DATABASE runtimedb;
     CREATE DATABASE userdb;
+    CREATE DATABASE operationdb;
     ```
 
-2. Create a dedicated user:
+2. Load the schema into each database. The scripts ship in the <ProductName /> repository under `backend/dbscripts`; clone it if you have not already. Run each script against its database:
 
-    ```sql
-    CREATE USER thunderid_user WITH PASSWORD '<secure-password>';
+    ```bash
+    psql -h <db-host> -U <db-user> -d configdb    -f backend/dbscripts/configdb/postgres.sql
+    psql -h <db-host> -U <db-user> -d runtimedb   -f backend/dbscripts/runtimedb/postgres.sql
+    psql -h <db-host> -U <db-user> -d userdb      -f backend/dbscripts/userdb/postgres.sql
+    psql -h <db-host> -U <db-user> -d operationdb -f backend/dbscripts/operationdb/postgres.sql
     ```
 
-3. Grant the required privileges in each database:
+:::warning
+Load the schema scripts from the same version as the container image set in `parameters.image`. A mismatch between the schema and the running server causes startup or runtime failures.
+:::
 
-    ```sql
-    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO thunderid_user;
-    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO thunderid_user;
-    ```
+## Certificates, TLS, and Configuration Overrides
 
-4. Run the initialization scripts from `backend/dbscripts` to create the schema.
+The `ResourceType` exposes further parameters for production hardening:
 
-For a PostgreSQL setup using Helm, refer to the [Bitnami PostgreSQL Helm Chart](https://bitnami.com/stacks/postgresql).
+- `runtime.tls.enabled` serves HTTPS from the container and configures the gateway to originate TLS to the backend.
+- `runtime.certs` overrides the bundled certificate material — the serving pair and the JWT signing pair — from the secret store.
+- `configOverrides` replaces the generated `deployment.yaml`, Gate `config.js`, or Console `config.js` files when the built-in templates do not cover a setting.
 
-### External PostgreSQL
-
-```yaml
-database:
-  host: postgres.example.com
-  port: 5432
-  identity:
-    database: configdb
-    username: thunderid_user
-    password: <config-db-password>
-    type: postgres
-    sslmode: require
-  runtime:
-    database: runtimedb
-    username: thunderid_user
-    password: <runtime-db-password>
-    type: postgres
-    sslmode: require
-  user:
-    database: userdb
-    username: thunderid_user
-    password: <user-db-password>
-    type: postgres
-    sslmode: require
-```
-
-### PostgreSQL Running in the Cluster
-
-```yaml
-database:
-  host: postgres.default.svc.cluster.local
-  port: 5432
-  identity:
-    database: configdb
-    username: thunderid_user
-    password: <config-db-password>
-    type: postgres
-    sslmode: disable
-  runtime:
-    database: runtimedb
-    username: thunderid_user
-    password: <runtime-db-password>
-    type: postgres
-    sslmode: disable
-  user:
-    database: userdb
-    username: thunderid_user
-    password: <user-db-password>
-    type: postgres
-    sslmode: disable
-```
+For the full parameter reference, see the chart documentation at `install/openchoreo/thunderid-oc-resourcetype/README.md`.
 
 ## Environment Management
 
@@ -274,12 +228,14 @@ OpenChoreo provides built-in environment management with promotion workflows. Th
 2. **Staging** — for pre-production validation.
 3. **Production** — for live traffic.
 
+To promote <ProductName /> to another environment, create a `ResourceReleaseBinding` for that environment, provide its secret store values, and pin the same release.
+
 ## Next Steps
 
 <NextSteps>
   <NextStepsCard
     title="Production Deployment Guidelines"
-    description="Apply security hardening for production: replace TLS certificates, generate a unique encryption key, configure a CORS allowlist, and set up Redis caching for multi-pod deployments."
+    description="Apply security hardening for production: serve HTTPS, override the bundled certificates and JWT signing keys, restrict CORS origins, and use PostgreSQL as the backing database."
     href="../production-guidelines"
     cta="Go to production guidelines"
   />

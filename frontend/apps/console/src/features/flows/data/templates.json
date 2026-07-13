@@ -317,6 +317,263 @@
   },
   {
     "resourceType": "TEMPLATE",
+    "category": "PASSWORD",
+    "type": "BASIC_SSO",
+    "flowType": "AUTHENTICATION",
+    "display": {
+      "label": "Basic with SSO",
+      "description": "Username and password authentication with single sign-on",
+      "image": "assets/images/icons/lock.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Basic Sign-in Flow with SSO",
+      "handle": "basic-sso-signin-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "layout": {
+            "size": {
+              "width": 101,
+              "height": 34
+            },
+            "position": {
+              "x": 29,
+              "y": 434
+            }
+          },
+          "onSuccess": "sso_check"
+        },
+        {
+          "id": "sso_check",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 517,
+              "height": 132
+            },
+            "position": {
+              "x": 230,
+              "y": 386
+            }
+          },
+          "properties": {
+            "checkpointRef": "session"
+          },
+          "executor": {
+            "name": "SSOCheckExecutor"
+          },
+          "onSuccess": "session",
+          "onFailure": "prompt_credentials"
+        },
+        {
+          "id": "prompt_credentials",
+          "type": "PROMPT",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 683
+            },
+            "position": {
+              "x": 605,
+              "y": 666
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signin:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "category": "DISPLAY",
+                "id": "text_001",
+                "label": "{{ t(signin:forms.credentials.title) }}",
+                "resourceType": "ELEMENT",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "category": "BLOCK",
+                "components": [
+                  {
+                    "category": "FIELD",
+                    "hint": "",
+                    "id": "input_001",
+                    "inputType": "text",
+                    "label": "{{ t(signin:forms.credentials.fields.username.label) }}",
+                    "placeholder": "{{ t(signin:forms.credentials.fields.username.placeholder) }}",
+                    "ref": "username",
+                    "required": true,
+                    "resourceType": "ELEMENT",
+                    "type": "TEXT_INPUT"
+                  },
+                  {
+                    "category": "FIELD",
+                    "hint": "",
+                    "id": "input_002",
+                    "inputType": "text",
+                    "label": "{{ t(signin:forms.credentials.fields.password.label) }}",
+                    "placeholder": "{{ t(signin:forms.credentials.fields.password.placeholder) }}",
+                    "ref": "password",
+                    "required": true,
+                    "resourceType": "ELEMENT",
+                    "type": "PASSWORD_INPUT"
+                  },
+                  {
+                    "category": "ACTION",
+                    "eventType": "SUBMIT",
+                    "id": "action_001",
+                    "label": "{{ t(signin:forms.credentials.actions.submit.label) }}",
+                    "resourceType": "ELEMENT",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_001",
+                "resourceType": "ELEMENT",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_001",
+                  "type": "TEXT_INPUT",
+                  "identifier": "username",
+                  "required": true
+                },
+                {
+                  "ref": "input_002",
+                  "type": "PASSWORD_INPUT",
+                  "identifier": "password",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_001",
+                "nextNode": "credentials_auth"
+              }
+            }
+          ]
+        },
+        {
+          "id": "credentials_auth",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 217,
+              "height": 113
+            },
+            "position": {
+              "x": 1115,
+              "y": 658
+            }
+          },
+          "executor": {
+            "name": "CredentialsAuthExecutor",
+            "inputs": [
+              {
+                "ref": "input_001",
+                "type": "TEXT_INPUT",
+                "identifier": "username",
+                "required": true
+              },
+              {
+                "ref": "input_002",
+                "type": "PASSWORD_INPUT",
+                "identifier": "password",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "session",
+          "onIncomplete": "prompt_credentials"
+        },
+        {
+          "id": "session",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 210,
+              "height": 113
+            },
+            "position": {
+              "x": 1470,
+              "y": 442
+            }
+          },
+          "executor": {
+            "name": "SessionExecutor"
+          },
+          "onSuccess": "authorization_check"
+        },
+        {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1820,
+              "y": 442
+            }
+          },
+          "executor": {
+            "name": "AuthorizationExecutor"
+          },
+          "onSuccess": "auth_assert"
+        },
+        {
+          "id": "auth_assert",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 244,
+              "height": 113
+            },
+            "position": {
+              "x": 2120,
+              "y": 442
+            }
+          },
+          "executor": {
+            "name": "AuthAssertExecutor"
+          },
+          "onSuccess": "end"
+        },
+        {
+          "id": "end",
+          "type": "END",
+          "layout": {
+            "size": {
+              "width": 85,
+              "height": 34
+            },
+            "position": {
+              "x": 2500,
+              "y": 482
+            }
+          }
+        }
+      ]
+    },
+    "nodes": []
+  },
+  {
+    "resourceType": "TEMPLATE",
     "category": "PASSWORDLESS",
     "type": "PASSKEY",
     "flowType": "AUTHENTICATION",
@@ -12233,7 +12490,7 @@
             "name": "IdentifyingExecutor",
             "mode": "identify"
           },
-          "onSuccess": "send_otp",
+          "onSuccess": "generate_otp",
           "onFailure": "otp_sent_status",
           "layout": {
             "size": {

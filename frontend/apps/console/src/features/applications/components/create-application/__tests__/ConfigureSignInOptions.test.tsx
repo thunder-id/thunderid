@@ -17,6 +17,13 @@
  */
 
 import userEvent from '@testing-library/user-event';
+import {
+  AuthenticatorTypes,
+  IdentityProviderTypes,
+  getConnectionIcon,
+  useIdentityProviders,
+  type IdentityProvider,
+} from '@thunderid/configure-connections';
 import {render, screen, within} from '@thunderid/test-utils';
 import type {JSX} from 'react';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
@@ -25,8 +32,6 @@ import useApplicationCreateContext from '../../../hooks/useApplicationCreateCont
 import ConfigureSignInOptions, {
   type ConfigureSignInOptionsProps,
 } from '../configure-signin-options/ConfigureSignInOptions';
-import {AuthenticatorTypes} from '@/features/connections/models/authenticators';
-import {IdentityProviderTypes, type IdentityProvider} from '@/features/connections/models/identity-provider';
 
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
@@ -51,8 +56,11 @@ vi.mock('react-i18next', () => ({
 }));
 
 // Mock the dependencies
-vi.mock('@/features/connections/api/useIdentityProviders');
-vi.mock('@/features/connections/utils/getConnectionIcon');
+vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
+  useIdentityProviders: vi.fn(),
+  getConnectionIcon: vi.fn(),
+}));
 vi.mock('@/features/flows/api/useGetFlows');
 
 // Mock useGetApplications
@@ -80,8 +88,6 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   };
 });
 
-const {default: useIdentityProviders} = await import('@/features/connections/api/useIdentityProviders');
-const {default: getConnectionIcon} = await import('@/features/connections/utils/getConnectionIcon');
 const {default: useGetFlows} = await import('@/features/flows/api/useGetFlows');
 const {default: useGetApplications} = await import('../../../api/useGetApplications');
 

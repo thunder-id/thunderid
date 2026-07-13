@@ -21,12 +21,13 @@ package authz
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -401,6 +402,116 @@ func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_WithNoAuthorizedScopes() 
 	}
 }
 
+// TestOAuthAuthzFlow_FiltersOIDCScopesByApplicationScopes verifies that requested OIDC scopes are
+// filtered by the application's active scopes before token issuance.
+func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_FiltersOIDCScopesByApplicationScopes() {
+	const (
+		clientID     = "oidc_scope_filter_test_client"
+		clientSecret = "oidc_scope_filter_test_secret"
+	)
+
+	appConfig := map[string]interface{}{
+		"name":                      "OIDCScopeFilterTestApp",
+		"description":               "OAuth application for OIDC scope filtering integration test",
+		"ouId":                      scopeTestOUID,
+		"authFlowId":                ts.flowID,
+		"isRegistrationFlowEnabled": false,
+		"allowedUserTypes":          []string{"authz-test-person"},
+		"inboundAuthConfig": []map[string]interface{}{
+			{
+				"type": "oauth2",
+				"config": map[string]interface{}{
+					"clientId":                clientID,
+					"clientSecret":            clientSecret,
+					"redirectUris":            []string{scopeTestRedirectURI},
+					"grantTypes":              []string{"authorization_code", "refresh_token"},
+					"responseTypes":           []string{"code"},
+					"tokenEndpointAuthMethod": "client_secret_post",
+					"scopes":                  []string{"profile"},
+				},
+			},
+		},
+	}
+
+	appID, err := ts.createApplicationRaw(appConfig)
+	ts.Require().NoError(err, "Failed to create OAuth application")
+	defer func() {
+		_ = testutils.DeleteApplication(appID)
+	}()
+
+	persistedScopes, err := ts.getApplicationOAuthScopes(appID)
+	ts.Require().NoError(err, "Failed to get persisted OAuth application scopes")
+	ts.Require().ElementsMatch([]string{"profile"}, persistedScopes,
+		"Application should persist only the active OIDC scope used by this test")
+
+	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
+		clientID,
+		scopeTestRedirectURI,
+		"openid email profile",
+		"oauth_authorized_user",
+		"SecurePass123!",
+		false,
+		clientSecret,
+	)
+	ts.Require().NoError(err, "Failed to obtain access token")
+	ts.Require().NotNil(tokenResp, "Token response should not be nil")
+	ts.Require().NotEmpty(tokenResp.AccessToken, "Access token should not be empty")
+
+	tokenResponseScopes := strings.Fields(tokenResp.Scope)
+	ts.Require().ElementsMatch([]string{"profile"}, tokenResponseScopes,
+		"Token response scope should only include active requested OIDC scopes")
+
+	claims, err := testutils.DecodeJWT(tokenResp.AccessToken)
+	ts.Require().NoError(err, "Failed to decode access token")
+
+	scopeRaw, ok := claims.Additional["scope"]
+	ts.Require().True(ok, "scope claim should be present in access token")
+
+	scopeStr, ok := scopeRaw.(string)
+	ts.Require().True(ok, "scope claim should be a string")
+
+	accessTokenScopes := strings.Fields(scopeStr)
+	ts.Require().ElementsMatch([]string{"profile"}, accessTokenScopes,
+		"Access token scope should only include active requested OIDC scopes")
+	ts.Require().Empty(tokenResp.IDToken, "ID token should not be issued when openid is not active")
+}
+
+func (ts *OAuthAuthzScopeTestSuite) getApplicationOAuthScopes(appID string) ([]string, error) {
+	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+"/applications/"+appID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := ts.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get application, status: %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	var app struct {
+		InboundAuthConfig []struct {
+			OAuthConfig struct {
+				Scopes []string `json:"scopes"`
+			} `json:"config"`
+		} `json:"inboundAuthConfig"`
+	}
+	if err := json.Unmarshal(body, &app); err != nil {
+		return nil, err
+	}
+	if len(app.InboundAuthConfig) == 0 {
+		return nil, fmt.Errorf("application has no inbound auth config")
+	}
+	return app.InboundAuthConfig[0].OAuthConfig.Scopes, nil
+}
+
 // createOAuthApplication creates an OAuth application using the low-level API
 func (ts *OAuthAuthzScopeTestSuite) createOAuthApplication(authFlowID string) (string, error) {
 	app := map[string]interface{}{
@@ -576,7 +687,9 @@ func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_WithRequiredAttributes() 
 							"userAttributes": []string{"sub", "name", "email"}, // Only allow these in ID token
 						},
 						"accessToken": map[string]interface{}{
-							"userAttributes": []string{"groups", "roles"}, // Access token attributes
+							"userConfig": map[string]interface{}{
+								"attributes": []string{"groups", "roles"}, // Access token attributes
+							},
 						},
 					},
 					"scopeClaims": map[string]interface{}{

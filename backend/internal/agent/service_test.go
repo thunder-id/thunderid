@@ -43,6 +43,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 )
 
 const (
@@ -68,10 +69,12 @@ func (suite *AgentServiceTestSuite) setupService() (
 	*entitymock.EntityServiceInterfaceMock,
 	*inboundclientmock.InboundClientServiceInterfaceMock,
 	*oumock.OrganizationUnitServiceInterfaceMock,
+	*rolemock.RoleServiceInterfaceMock,
 ) {
 	mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
 	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
 
 	// Permissive defaults — tests narrow these as needed.
 	mockEntity.On("GetEntity", mock.Anything, mock.Anything).
@@ -132,8 +135,9 @@ func (suite *AgentServiceTestSuite) setupService() (
 		inboundClientService: mockInbound,
 		ouService:            mockOU,
 		dependencyRegistry:   noopDepRegistry{},
+		roleService:          mockRole,
 	}
-	return svc, mockEntity, mockInbound, mockOU
+	return svc, mockEntity, mockInbound, mockOU, mockRole
 }
 
 // noopDepRegistry is a no-op resourcedependency.Registry for tests that don't exercise cascade.
@@ -336,7 +340,7 @@ func (suite *AgentServiceTestSuite) TestValidatePaginationParams_Valid() {
 // --- CreateAgent ---
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_NilRequest() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	resp, svcErr := svc.CreateAgent(context.Background(), nil)
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -344,7 +348,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_NilRequest() {
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_MissingName() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	req := &model.Agent{Type: testAgentType, OUID: testOUID}
 	resp, svcErr := svc.CreateAgent(context.Background(), req)
 	assert.Nil(suite.T(), resp)
@@ -353,7 +357,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_MissingName() {
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_MissingType() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	req := &model.Agent{Name: testAgentName, OUID: testOUID}
 	resp, svcErr := svc.CreateAgent(context.Background(), req)
 	assert.Nil(suite.T(), resp)
@@ -362,7 +366,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_MissingType() {
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_OUNotFound() {
-	svc, _, _, mockOU := suite.setupService()
+	svc, _, _, mockOU, _ := suite.setupService()
 	clearMockCalls(mockOU, "IsOrganizationUnitExists")
 	mockOU.On("IsOrganizationUnitExists", mock.Anything, testOUID).Return(false, (*tidcommon.ServiceError)(nil))
 
@@ -374,7 +378,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_OUNotFound() {
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_NameAlreadyExists() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	existingID := "existing-agent-id"
 	clearMockCalls(mockEntity, "IdentifyEntity")
 	mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).Return(&existingID, nil)
@@ -390,7 +394,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_NameAlreadyExists() {
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_EntityOnly_Success() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "CreateEntity")
@@ -413,7 +417,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_EntityOnly_Success() {
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_GeneratesUUIDWhenNoID() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "CreateEntity")
@@ -432,7 +436,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_GeneratesUUIDWhenNoID() {
 func (suite *AgentServiceTestSuite) TestCreateAgent_PresetIDSkipsGeneration() {
 	const presetID = "preset-agent-id-abc123"
 
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	createdEntity.ID = presetID
@@ -450,7 +454,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_PresetIDSkipsGeneration() {
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_WithInboundAuth_Success() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "CreateEntity")
@@ -476,7 +480,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_WithInboundAuth_Success() {
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_FlowIDResolvedToDefault() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "CreateEntity")
@@ -514,7 +518,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_FlowIDResolvedToDefault() {
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_WithOAuth_Success() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "cid-xxx")
 	clearMockCalls(mockEntity, "CreateEntity")
@@ -550,7 +554,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_WithOAuth_Success() {
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_EntityCreationFails() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	clearMockCalls(mockEntity, "CreateEntity")
 	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
@@ -564,7 +568,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_EntityCreationFails() {
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_InboundCreationFails_CompensatesEntity() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "CreateEntity")
@@ -595,7 +599,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_InboundCreationFails_Compens
 // --- GetAgent ---
 
 func (suite *AgentServiceTestSuite) TestGetAgent_EmptyID() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	resp, svcErr := svc.GetAgent(context.Background(), "", false)
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -603,7 +607,7 @@ func (suite *AgentServiceTestSuite) TestGetAgent_EmptyID() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgent_NotFound() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	// Default mock returns ErrEntityNotFound.
 	resp, svcErr := svc.GetAgent(context.Background(), testAgentID, false)
 	assert.Nil(suite.T(), resp)
@@ -612,7 +616,7 @@ func (suite *AgentServiceTestSuite) TestGetAgent_NotFound() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgent_WrongCategory() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	wrongCatEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	wrongCatEntity.Category = providers.EntityCategoryUser
@@ -627,7 +631,7 @@ func (suite *AgentServiceTestSuite) TestGetAgent_WrongCategory() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgent_Success_NoInbound() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "desc", "alice", "")
 
@@ -645,7 +649,7 @@ func (suite *AgentServiceTestSuite) TestGetAgent_Success_NoInbound() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgent_Success_WithOAuth() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "cid-123")
 
@@ -674,21 +678,21 @@ func (suite *AgentServiceTestSuite) TestGetAgent_Success_WithOAuth() {
 // --- DeleteAgent ---
 
 func (suite *AgentServiceTestSuite) TestDeleteAgent_EmptyID() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	svcErr := svc.DeleteAgent(context.Background(), "")
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), ErrorMissingAgentID.Code, svcErr.Code)
 }
 
 func (suite *AgentServiceTestSuite) TestDeleteAgent_NotFound() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	svcErr := svc.DeleteAgent(context.Background(), testAgentID)
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), ErrorAgentNotFound.Code, svcErr.Code)
 }
 
 func (suite *AgentServiceTestSuite) TestDeleteAgent_Success_NoInboundClient() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -707,7 +711,7 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_Success_NoInboundClient() {
 }
 
 func (suite *AgentServiceTestSuite) TestDeleteAgent_Success_WithInboundClient() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "cid-abc")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -728,7 +732,7 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_Success_WithInboundClient() 
 // --- GetAgentList ---
 
 func (suite *AgentServiceTestSuite) TestGetAgentList_InvalidLimit() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	resp, svcErr := svc.GetAgentList(context.Background(), -1, 0, nil, false)
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -736,7 +740,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_InvalidLimit() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgentList_Success() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "desc", "alice", "")
 	clearMockCalls(mockEntity, "GetEntityList")
@@ -757,7 +761,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_Success() {
 // --- GetAgentGroups ---
 
 func (suite *AgentServiceTestSuite) TestGetAgentGroups_EmptyID() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	resp, svcErr := svc.GetAgentGroups(context.Background(), "", 10, 0)
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -765,7 +769,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentGroups_EmptyID() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgentGroups_AgentNotFound() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	resp, svcErr := svc.GetAgentGroups(context.Background(), testAgentID, 10, 0)
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -773,7 +777,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentGroups_AgentNotFound() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgentGroups_Success() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -796,10 +800,220 @@ func (suite *AgentServiceTestSuite) TestGetAgentGroups_Success() {
 	assert.Len(suite.T(), resp.Groups, 2)
 }
 
+// --- GetAgentRoles ---
+
+func (suite *AgentServiceTestSuite) TestGetAgentRoles_EmptyID() {
+	svc, _, _, _, _ := suite.setupService()
+	resp, svcErr := svc.GetAgentRoles(context.Background(), "", 10, 0)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorMissingAgentID.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentRoles_AgentNotFound() {
+	svc, _, _, _, _ := suite.setupService()
+	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 0)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorAgentNotFound.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentRoles_DirectAndGroupInherited() {
+	svc, mockEntity, _, _, mockRole := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockEntity, "GetGroupCountForEntity")
+	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(1, nil)
+
+	clearMockCalls(mockEntity, "GetEntityGroups")
+	mockEntity.On("GetEntityGroups", mock.Anything, testAgentID, 1, 0).
+		Return([]providers.EntityGroup{{ID: "g1", Name: "group-one", OUID: testOUID}}, nil)
+
+	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{"g1"}).
+		Return([]string{"order-service-reader", "platform-agent"}, nil)
+
+	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 0)
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+	assert.Equal(suite.T(), 2, resp.TotalResults)
+	assert.Equal(suite.T(), []string{"order-service-reader", "platform-agent"}, resp.Roles)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentRoles_NoGroups() {
+	svc, mockEntity, _, _, mockRole := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockEntity, "GetGroupCountForEntity")
+	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(0, nil)
+
+	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{}).
+		Return([]string{"order-service-reader"}, nil)
+
+	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 0)
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+	assert.Equal(suite.T(), 1, resp.TotalResults)
+	assert.Equal(suite.T(), []string{"order-service-reader"}, resp.Roles)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentRoles_Pagination() {
+	svc, mockEntity, _, _, mockRole := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockEntity, "GetGroupCountForEntity")
+	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(0, nil)
+
+	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{}).
+		Return([]string{"role-a", "role-b", "role-c"}, nil)
+
+	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 1, 1)
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+	assert.Equal(suite.T(), 3, resp.TotalResults)
+	assert.Equal(suite.T(), []string{"role-b"}, resp.Roles)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentRoles_InvalidPagination() {
+	svc, _, _, _, _ := suite.setupService()
+	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, -1, 0)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorInvalidLimit.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentRoles_DefaultLimit() {
+	svc, mockEntity, _, _, mockRole := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockEntity, "GetGroupCountForEntity")
+	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(0, nil)
+
+	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{}).
+		Return([]string{}, nil)
+
+	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 0, 0)
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentRoles_EntityStoreError() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+		Return((*providers.Entity)(nil), errors.New("db error"))
+
+	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 0)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentRoles_WrongCategory() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+
+	wrongCatEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	wrongCatEntity.Category = providers.EntityCategoryUser
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(wrongCatEntity, nil)
+
+	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 0)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorAgentNotFound.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentRoles_CountError() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockEntity, "GetGroupCountForEntity")
+	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).
+		Return(0, errors.New("db error"))
+
+	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 0)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentRoles_GroupListError() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockEntity, "GetGroupCountForEntity")
+	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(1, nil)
+
+	clearMockCalls(mockEntity, "GetEntityGroups")
+	mockEntity.On("GetEntityGroups", mock.Anything, testAgentID, 1, 0).
+		Return(nil, errors.New("db error"))
+
+	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 0)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentRoles_RoleServiceError() {
+	svc, mockEntity, _, _, mockRole := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockEntity, "GetGroupCountForEntity")
+	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(0, nil)
+
+	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{}).
+		Return(nil, &tidcommon.InternalServerError)
+
+	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 0)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentRoles_OffsetBeyondTotal() {
+	svc, mockEntity, _, _, mockRole := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockEntity, "GetGroupCountForEntity")
+	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(0, nil)
+
+	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{}).
+		Return([]string{"role-a"}, nil)
+
+	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 50)
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+	assert.Equal(suite.T(), 1, resp.TotalResults)
+	assert.Empty(suite.T(), resp.Roles)
+}
+
 // --- UpdateAgent ---
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_EmptyID() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	resp, svcErr := svc.UpdateAgent(context.Background(), "", &model.UpdateAgentRequest{
 		Name: testAgentName, Type: testAgentType,
 	})
@@ -809,7 +1023,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_EmptyID() {
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_NilRequest() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, nil)
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -817,7 +1031,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_NilRequest() {
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_AgentNotFound() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
 		Name: testAgentName, Type: testAgentType,
 	})
@@ -827,7 +1041,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_AgentNotFound() {
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_Success_EntityOnly() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -846,7 +1060,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_Success_EntityOnly() {
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_FlowIDResolvedToDefault() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -891,12 +1105,12 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_FlowIDResolvedToDefault() {
 // --- owner validation ---
 
 func (suite *AgentServiceTestSuite) TestValidateOwnerExists_Empty() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	assert.Nil(suite.T(), svc.validateOwnerExists(context.Background(), ""))
 }
 
 func (suite *AgentServiceTestSuite) TestValidateOwnerExists_NotFound() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntity")
 	mockEntity.On("GetEntity", mock.Anything, "missing-owner").
 		Return((*providers.Entity)(nil), entity.ErrEntityNotFound)
@@ -907,7 +1121,7 @@ func (suite *AgentServiceTestSuite) TestValidateOwnerExists_NotFound() {
 }
 
 func (suite *AgentServiceTestSuite) TestValidateOwnerExists_StoreError() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntity")
 	mockEntity.On("GetEntity", mock.Anything, "owner-x").
 		Return((*providers.Entity)(nil), errors.New("db error"))
@@ -918,7 +1132,7 @@ func (suite *AgentServiceTestSuite) TestValidateOwnerExists_StoreError() {
 }
 
 func (suite *AgentServiceTestSuite) TestValidateOwnerExists_Success() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntity")
 	mockEntity.On("GetEntity", mock.Anything, "owner-y").
 		Return(&providers.Entity{ID: "owner-y"}, nil)
@@ -927,7 +1141,7 @@ func (suite *AgentServiceTestSuite) TestValidateOwnerExists_Success() {
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_OwnerNotFound() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntity")
 	mockEntity.On("GetEntity", mock.Anything, "ghost").
 		Return((*providers.Entity)(nil), entity.ErrEntityNotFound)
@@ -941,7 +1155,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_OwnerNotFound() {
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_OwnerChanged_OwnerNotFound() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "current-owner", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -958,7 +1172,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_OwnerChanged_OwnerNotFound()
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_OwnerChanged_Success() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "current-owner", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -1000,21 +1214,21 @@ func (suite *AgentServiceTestSuite) TestMapEntityError_Unknown() {
 // --- translateInboundClientError ---
 
 func (suite *AgentServiceTestSuite) TestTranslateInboundClientError_InvalidRedirectURI() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	svcErr := svc.translateInboundClientError(context.Background(), inboundclient.ErrOAuthInvalidRedirectURI)
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), ErrorInvalidRedirectURI.Code, svcErr.Code)
 }
 
 func (suite *AgentServiceTestSuite) TestTranslateInboundClientError_InvalidGrantType() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	svcErr := svc.translateInboundClientError(context.Background(), inboundclient.ErrOAuthInvalidGrantType)
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), ErrorInvalidGrantType.Code, svcErr.Code)
 }
 
 func (suite *AgentServiceTestSuite) TestTranslateInboundClientError_Unknown() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	svcErr := svc.translateInboundClientError(context.Background(), errors.New("unknown error"))
 	assert.Nil(suite.T(), svcErr)
 }
@@ -1312,7 +1526,7 @@ func (suite *AgentServiceTestSuite) TestTranslateConsentSyncError() {
 // When the update request has no inbound config and the existing inbound client delete returns
 // ErrInboundClientNotFound, the update should still succeed (no-op).
 func (suite *AgentServiceTestSuite) TestUpdateAgent_NoInboundWanted_DeleteNotFound_Succeeds() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "cid-abc")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -1342,7 +1556,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_NoInboundWanted_DeleteNotFou
 // --- GetAgent additional error paths ---
 
 func (suite *AgentServiceTestSuite) TestGetAgent_EntityStoreError() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntity")
 	mockEntity.On("GetEntity", mock.Anything, testAgentID).
 		Return((*providers.Entity)(nil), errors.New("db error"))
@@ -1354,7 +1568,7 @@ func (suite *AgentServiceTestSuite) TestGetAgent_EntityStoreError() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgent_InboundClientError() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -1371,7 +1585,7 @@ func (suite *AgentServiceTestSuite) TestGetAgent_InboundClientError() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgent_OAuthProfileError() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -1392,7 +1606,7 @@ func (suite *AgentServiceTestSuite) TestGetAgent_OAuthProfileError() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgent_OAuthCertError() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "cid-123")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -1422,7 +1636,7 @@ func (suite *AgentServiceTestSuite) TestGetAgent_OAuthCertError() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgent_IncludeDisplay_PopulatesOUHandle() {
-	svc, mockEntity, _, mockOU := suite.setupService()
+	svc, mockEntity, _, mockOU, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -1439,7 +1653,7 @@ func (suite *AgentServiceTestSuite) TestGetAgent_IncludeDisplay_PopulatesOUHandl
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgent_IncludeDisplay_SkipsWhenOUIDEmpty() {
-	svc, mockEntity, _, mockOU := suite.setupService()
+	svc, mockEntity, _, mockOU, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	agentEntity.OUID = ""
@@ -1454,7 +1668,7 @@ func (suite *AgentServiceTestSuite) TestGetAgent_IncludeDisplay_SkipsWhenOUIDEmp
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgent_IncludeDisplay_SkipsWhenHandleAlreadySet() {
-	svc, mockEntity, _, mockOU := suite.setupService()
+	svc, mockEntity, _, mockOU, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	agentEntity.OUHandle = "pre-set-handle"
@@ -1469,7 +1683,7 @@ func (suite *AgentServiceTestSuite) TestGetAgent_IncludeDisplay_SkipsWhenHandleA
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgent_IncludeDisplay_LookupError() {
-	svc, mockEntity, _, mockOU := suite.setupService()
+	svc, mockEntity, _, mockOU, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -1489,7 +1703,7 @@ func (suite *AgentServiceTestSuite) TestGetAgent_IncludeDisplay_LookupError() {
 // --- GetAgentList additional paths ---
 
 func (suite *AgentServiceTestSuite) TestGetAgentList_CountError() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntityListCount")
 	mockEntity.On("GetEntityListCount", mock.Anything, providers.EntityCategoryAgent, mock.Anything).
 		Return(0, errors.New("db error"))
@@ -1501,7 +1715,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_CountError() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgentList_ListError() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntityList")
 	mockEntity.On("GetEntityList", mock.Anything, providers.EntityCategoryAgent,
 		mock.Anything, mock.Anything, mock.Anything).
@@ -1514,7 +1728,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_ListError() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgentList_DefaultLimit() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntityList")
 	mockEntity.On("GetEntityList", mock.Anything, providers.EntityCategoryAgent, 30, 0, mock.Anything).
 		Return([]providers.Entity{}, nil)
@@ -1526,7 +1740,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_DefaultLimit() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgentList_IncludeDisplay() {
-	svc, mockEntity, _, mockOU := suite.setupService()
+	svc, mockEntity, _, mockOU, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntityList")
@@ -1549,7 +1763,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_IncludeDisplay() {
 // --- UpdateAgent additional paths ---
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_MissingName() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
 		Type: testAgentType,
 	})
@@ -1559,7 +1773,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_MissingName() {
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_EntityStoreError() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntity")
 	mockEntity.On("GetEntity", mock.Anything, testAgentID).
 		Return((*providers.Entity)(nil), errors.New("db error"))
@@ -1573,7 +1787,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_EntityStoreError() {
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_WrongCategory() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	wrongCatEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	wrongCatEntity.Category = providers.EntityCategoryUser
@@ -1589,7 +1803,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_WrongCategory() {
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_IsReadOnly() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	agentEntity.IsReadOnly = true
@@ -1605,7 +1819,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_IsReadOnly() {
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_OUHandleResolution() {
-	svc, mockEntity, _, mockOU := suite.setupService()
+	svc, mockEntity, _, mockOU, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -1629,7 +1843,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_OUHandleResolution() {
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_ExplicitOUIDChanged() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -1651,7 +1865,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ExplicitOUIDChanged() {
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_WantsInbound_NoExisting_CreatesInbound() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -1682,7 +1896,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_WantsInbound_NoExisting_Crea
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_PopulatesOUHandle_SkipsWhenOUIDEmpty() {
-	svc, mockEntity, _, mockOU := suite.setupService()
+	svc, mockEntity, _, mockOU, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	agentEntity.OUID = ""
@@ -1705,7 +1919,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_PopulatesOUHandle_SkipsWhenO
 // --- DeleteAgent additional paths ---
 
 func (suite *AgentServiceTestSuite) TestDeleteAgent_EntityStoreError() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntity")
 	mockEntity.On("GetEntity", mock.Anything, testAgentID).
 		Return((*providers.Entity)(nil), errors.New("db error"))
@@ -1716,7 +1930,7 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_EntityStoreError() {
 }
 
 func (suite *AgentServiceTestSuite) TestDeleteAgent_WrongCategory() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	wrongCatEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	wrongCatEntity.Category = providers.EntityCategoryUser
@@ -1729,7 +1943,7 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_WrongCategory() {
 }
 
 func (suite *AgentServiceTestSuite) TestDeleteAgent_IsReadOnly() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	agentEntity.IsReadOnly = true
@@ -1744,7 +1958,7 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_IsReadOnly() {
 // --- GetAgentGroups additional paths ---
 
 func (suite *AgentServiceTestSuite) TestGetAgentGroups_InvalidPagination() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	resp, svcErr := svc.GetAgentGroups(context.Background(), testAgentID, -1, 0)
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -1752,7 +1966,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentGroups_InvalidPagination() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgentGroups_DefaultLimit() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -1771,7 +1985,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentGroups_DefaultLimit() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgentGroups_EntityStoreError() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntity")
 	mockEntity.On("GetEntity", mock.Anything, testAgentID).
 		Return((*providers.Entity)(nil), errors.New("db error"))
@@ -1783,7 +1997,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentGroups_EntityStoreError() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgentGroups_WrongCategory() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	wrongCatEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	wrongCatEntity.Category = providers.EntityCategoryUser
@@ -1797,7 +2011,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentGroups_WrongCategory() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgentGroups_CountError() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -1814,7 +2028,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentGroups_CountError() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgentGroups_ListError() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -1836,7 +2050,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentGroups_ListError() {
 // --- validateNameUnique direct tests ---
 
 func (suite *AgentServiceTestSuite) TestValidateNameUnique_AmbiguousEntity() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "IdentifyEntity")
 	mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).
 		Return((*string)(nil), entity.ErrAmbiguousEntity)
@@ -1847,7 +2061,7 @@ func (suite *AgentServiceTestSuite) TestValidateNameUnique_AmbiguousEntity() {
 }
 
 func (suite *AgentServiceTestSuite) TestValidateNameUnique_StoreError() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "IdentifyEntity")
 	mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).
 		Return((*string)(nil), errors.New("db error"))
@@ -1858,7 +2072,7 @@ func (suite *AgentServiceTestSuite) TestValidateNameUnique_StoreError() {
 }
 
 func (suite *AgentServiceTestSuite) TestValidateNameUnique_NilID() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "IdentifyEntity")
 	mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).
 		Return((*string)(nil), nil)
@@ -1868,7 +2082,7 @@ func (suite *AgentServiceTestSuite) TestValidateNameUnique_NilID() {
 }
 
 func (suite *AgentServiceTestSuite) TestValidateNameUnique_ExcludeIDMatch() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	foundID := testAgentID
 	clearMockCalls(mockEntity, "IdentifyEntity")
@@ -1879,7 +2093,7 @@ func (suite *AgentServiceTestSuite) TestValidateNameUnique_ExcludeIDMatch() {
 }
 
 func (suite *AgentServiceTestSuite) TestValidateNameUnique_NonAgentEntity() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	foundID := "some-app-id"
 	clearMockCalls(mockEntity, "IdentifyEntity")
@@ -1896,7 +2110,7 @@ func (suite *AgentServiceTestSuite) TestValidateNameUnique_NonAgentEntity() {
 // --- isClientIDTaken direct tests ---
 
 func (suite *AgentServiceTestSuite) TestIsClientIDTaken_StoreError() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "IdentifyEntity")
 	mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).
 		Return((*string)(nil), errors.New("db error"))
@@ -1908,7 +2122,7 @@ func (suite *AgentServiceTestSuite) TestIsClientIDTaken_StoreError() {
 }
 
 func (suite *AgentServiceTestSuite) TestIsClientIDTaken_NilID() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "IdentifyEntity")
 	mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).
 		Return((*string)(nil), nil)
@@ -1919,7 +2133,7 @@ func (suite *AgentServiceTestSuite) TestIsClientIDTaken_NilID() {
 }
 
 func (suite *AgentServiceTestSuite) TestIsClientIDTaken_ExcludeIDMatch() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	foundID := "exclude-agent"
 	clearMockCalls(mockEntity, "IdentifyEntity")
@@ -1931,7 +2145,7 @@ func (suite *AgentServiceTestSuite) TestIsClientIDTaken_ExcludeIDMatch() {
 }
 
 func (suite *AgentServiceTestSuite) TestIsClientIDTaken_Taken() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	foundID := "other-agent"
 	clearMockCalls(mockEntity, "IdentifyEntity")
@@ -1945,14 +2159,14 @@ func (suite *AgentServiceTestSuite) TestIsClientIDTaken_Taken() {
 // --- populateOUHandlesForList direct tests ---
 
 func (suite *AgentServiceTestSuite) TestPopulateOUHandlesForList_Empty() {
-	svc, _, _, mockOU := suite.setupService()
+	svc, _, _, mockOU, _ := suite.setupService()
 	agents := []model.BasicAgentResponse{}
 	svc.populateOUHandlesForList(context.Background(), agents)
 	mockOU.AssertNotCalled(suite.T(), "GetOrganizationUnitHandlesByIDs")
 }
 
 func (suite *AgentServiceTestSuite) TestPopulateOUHandlesForList_AllEmptyOUIDs() {
-	svc, _, _, mockOU := suite.setupService()
+	svc, _, _, mockOU, _ := suite.setupService()
 	agents := []model.BasicAgentResponse{
 		{ID: "a1", OUID: ""},
 		{ID: "a2", OUID: ""},
@@ -1962,7 +2176,7 @@ func (suite *AgentServiceTestSuite) TestPopulateOUHandlesForList_AllEmptyOUIDs()
 }
 
 func (suite *AgentServiceTestSuite) TestPopulateOUHandlesForList_LookupError() {
-	svc, _, _, mockOU := suite.setupService()
+	svc, _, _, mockOU, _ := suite.setupService()
 
 	ouErr := &tidcommon.ServiceError{Code: "LOOKUP_ERR"}
 	clearMockCalls(mockOU, "GetOrganizationUnitHandlesByIDs")
@@ -1975,7 +2189,7 @@ func (suite *AgentServiceTestSuite) TestPopulateOUHandlesForList_LookupError() {
 }
 
 func (suite *AgentServiceTestSuite) TestPopulateOUHandlesForList_Success() {
-	svc, _, _, mockOU := suite.setupService()
+	svc, _, _, mockOU, _ := suite.setupService()
 
 	clearMockCalls(mockOU, "GetOrganizationUnitHandlesByIDs")
 	mockOU.On("GetOrganizationUnitHandlesByIDs", mock.Anything, []string{testOUID}).
@@ -2015,14 +2229,14 @@ func clearMockCalls(m any, method string) {
 // --- ValidateAgent ---
 
 func (suite *AgentServiceTestSuite) TestValidateAgent_NilRequest() {
-	svc, _, _, _ := suite.setupService()
+	svc, _, _, _, _ := suite.setupService()
 	_, _, _, svcErr := svc.ValidateAgent(context.Background(), nil, "")
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), ErrorInvalidRequestFormat.Code, svcErr.Code)
 }
 
 func (suite *AgentServiceTestSuite) TestValidateAgent_OUHandleNotFound() {
-	svc, _, _, mockOU := suite.setupService()
+	svc, _, _, mockOU, _ := suite.setupService()
 
 	notFound := &oupkg.ErrorOrganizationUnitNotFound
 	clearMockCalls(mockOU, "GetOrganizationUnitByPath")
@@ -2038,7 +2252,7 @@ func (suite *AgentServiceTestSuite) TestValidateAgent_OUHandleNotFound() {
 }
 
 func (suite *AgentServiceTestSuite) TestValidateAgent_OUHandleInternalError() {
-	svc, _, _, mockOU := suite.setupService()
+	svc, _, _, mockOU, _ := suite.setupService()
 
 	internalErr := &tidcommon.ServiceError{Code: "SOME_OTHER_ERROR"}
 	clearMockCalls(mockOU, "GetOrganizationUnitByPath")
@@ -2056,7 +2270,7 @@ func (suite *AgentServiceTestSuite) TestValidateAgent_OUHandleInternalError() {
 // --- resolveUpdateOUID via UpdateAgent ---
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_OUHandleResolution_OUNotFound() {
-	svc, mockEntity, _, mockOU := suite.setupService()
+	svc, mockEntity, _, mockOU, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -2076,7 +2290,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_OUHandleResolution_OUNotFoun
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_OUHandleResolution_InternalError() {
-	svc, mockEntity, _, mockOU := suite.setupService()
+	svc, mockEntity, _, mockOU, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -2096,7 +2310,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_OUHandleResolution_InternalE
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_ExplicitOUIDChanged_ValidateOUFails() {
-	svc, mockEntity, _, mockOU := suite.setupService()
+	svc, mockEntity, _, mockOU, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -2118,7 +2332,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ExplicitOUIDChanged_Validate
 // --- GetResourceDependencies tests ---
 
 func (suite *AgentServiceTestSuite) TestGetResourceDependencies_UnknownResourceType() {
-	svc, _, mockInbound, _ := suite.setupService()
+	svc, _, mockInbound, _, _ := suite.setupService()
 	mockInbound.On("GetEntityIDsByReference", mock.Anything, "unknown", "id-1",
 		serverconst.MaxCompositeStoreRecords, 0).Return([]string{}, 0, nil)
 
@@ -2128,7 +2342,7 @@ func (suite *AgentServiceTestSuite) TestGetResourceDependencies_UnknownResourceT
 }
 
 func (suite *AgentServiceTestSuite) TestGetResourceDependencies_InboundClientError() {
-	svc, _, mockInbound, _ := suite.setupService()
+	svc, _, mockInbound, _, _ := suite.setupService()
 	mockInbound.On("GetEntityIDsByReference", mock.Anything, resourcedependency.ResourceTypeTheme, "theme-1",
 		serverconst.MaxCompositeStoreRecords, 0).
 		Return(nil, 0, errors.New("store error"))
@@ -2139,7 +2353,7 @@ func (suite *AgentServiceTestSuite) TestGetResourceDependencies_InboundClientErr
 }
 
 func (suite *AgentServiceTestSuite) TestGetResourceDependencies_EmptyIDs() {
-	svc, _, mockInbound, _ := suite.setupService()
+	svc, _, mockInbound, _, _ := suite.setupService()
 	mockInbound.On("GetEntityIDsByReference", mock.Anything, resourcedependency.ResourceTypeTheme, "theme-1",
 		serverconst.MaxCompositeStoreRecords, 0).
 		Return([]string{}, 0, nil)
@@ -2150,7 +2364,7 @@ func (suite *AgentServiceTestSuite) TestGetResourceDependencies_EmptyIDs() {
 }
 
 func (suite *AgentServiceTestSuite) TestGetResourceDependencies_Success() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 	mockInbound.On("GetEntityIDsByReference", mock.Anything, resourcedependency.ResourceTypeTheme, "theme-1",
 		serverconst.MaxCompositeStoreRecords, 0).
 		Return([]string{"agent-1"}, 1, nil)
@@ -2171,7 +2385,7 @@ func (suite *AgentServiceTestSuite) TestGetResourceDependencies_Success() {
 
 // Applications share the inbound-client store; the agent provider must skip non-agent entities.
 func (suite *AgentServiceTestSuite) TestGetResourceDependencies_FiltersOutNonAgentEntities() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 	mockInbound.On("GetEntityIDsByReference", mock.Anything, resourcedependency.ResourceTypeTheme, "theme-1",
 		serverconst.MaxCompositeStoreRecords, 0).
 		Return([]string{"agent-1", "app-1"}, 2, nil)
@@ -2191,7 +2405,7 @@ func (suite *AgentServiceTestSuite) TestGetResourceDependencies_FiltersOutNonAge
 // Owner dependencies are resolved by listing agents and matching the owner system attribute in
 // memory, because the entity list filter only searches the public attributes column.
 func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByOwner_Success() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntityList")
 
 	ownedAttrs, _ := json.Marshal(map[string]interface{}{"name": "Agent One", "owner": "user-1"})
@@ -2213,7 +2427,7 @@ func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByOwner_Success(
 }
 
 func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByOwner_Empty() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntityList")
 
 	otherAttrs, _ := json.Marshal(map[string]interface{}{"name": "Agent Two", "owner": "user-2"})
@@ -2229,7 +2443,7 @@ func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByOwner_Empty() 
 }
 
 func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByOwner_Error() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntityList")
 	mockEntity.On("GetEntityList", mock.Anything, providers.EntityCategoryAgent,
 		serverconst.MaxCompositeStoreRecords, 0, mock.Anything).
@@ -2243,7 +2457,7 @@ func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByOwner_Error() 
 // --- error-branch coverage ---
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_EntityCreationFails_NonMappableError() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	clearMockCalls(mockEntity, "CreateEntity")
 	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
@@ -2257,7 +2471,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_EntityCreationFails_NonMappa
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_InboundCreationFails_NonTranslatableError() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "CreateEntity")
@@ -2286,7 +2500,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_InboundCreationFails_NonTran
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_InboundFails_CompensationDeleteFails() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "CreateEntity")
@@ -2316,7 +2530,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_InboundFails_CompensationDel
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_ExistingOAuthProfileLoadError() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -2335,7 +2549,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ExistingOAuthProfileLoadErro
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_UpdateEntityFails_NonMappableError() {
-	svc, mockEntity, _, _ := suite.setupService()
+	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -2354,7 +2568,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_UpdateEntityFails_NonMappabl
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_UpdateSystemCredentialsFails() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -2396,7 +2610,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_UpdateSystemCredentialsFails
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileUpdateInboundFails_NonTranslatableError() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -2423,7 +2637,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileUpdateInboundFails_
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileCreateInboundFails_NonTranslatableError() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -2450,7 +2664,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileCreateInboundFails_
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileDeleteInboundFails_NonTranslatableError() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -2472,7 +2686,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileDeleteInboundFails_
 }
 
 func (suite *AgentServiceTestSuite) TestDeleteAgent_DeleteInboundClientFails_NonTranslatableError() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -2488,7 +2702,7 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_DeleteInboundClientFails_Non
 }
 
 func (suite *AgentServiceTestSuite) TestDeleteAgent_DeleteEntityFails() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntity")
@@ -2508,7 +2722,7 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_DeleteEntityFails() {
 }
 
 func (suite *AgentServiceTestSuite) TestValidateAgent_ResolveHandlesFails_NonFKError() {
-	svc, _, mockInbound, _ := suite.setupService()
+	svc, _, mockInbound, _, _ := suite.setupService()
 
 	clearMockCalls(mockInbound, "ResolveInboundAuthProfileHandles")
 	mockInbound.On("ResolveInboundAuthProfileHandles", mock.Anything, mock.Anything).
@@ -2521,7 +2735,7 @@ func (suite *AgentServiceTestSuite) TestValidateAgent_ResolveHandlesFails_NonFKE
 }
 
 func (suite *AgentServiceTestSuite) TestValidateAgent_InboundValidateFails_NonTranslatableError() {
-	svc, _, mockInbound, _ := suite.setupService()
+	svc, _, mockInbound, _, _ := suite.setupService()
 
 	clearMockCalls(mockInbound, "Validate")
 	mockInbound.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -2539,7 +2753,7 @@ func (suite *AgentServiceTestSuite) TestValidateAgent_InboundValidateFails_NonTr
 }
 
 func (suite *AgentServiceTestSuite) TestValidateOUExists_StoreError_NonNotFound() {
-	svc, _, _, mockOU := suite.setupService()
+	svc, _, _, mockOU, _ := suite.setupService()
 
 	otherErr := &tidcommon.ServiceError{Code: "SOME_OTHER_ERROR"}
 	clearMockCalls(mockOU, "IsOrganizationUnitExists")
@@ -2552,7 +2766,7 @@ func (suite *AgentServiceTestSuite) TestValidateOUExists_StoreError_NonNotFound(
 }
 
 func (suite *AgentServiceTestSuite) TestDeleteAgent_AbortedWhenCascadeFails() {
-	svc, mockEntity, mockInbound, _ := suite.setupService()
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 	svc.SetDependencyRegistry(noopDepRegistry{cascadeErr: errors.New("cascade failed")})
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")

@@ -196,15 +196,17 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 		attrs = cacheEntry.Attributes
 	}
 
+	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, &tokenservice.AccessTokenBuildContext{
-		Subject:          record.UserID,
-		Audiences:        []string{oauthApp.ClientID},
-		ClientID:         oauthApp.ClientID,
-		Scopes:           scopes,
-		UserAttributes:   attrs,
-		AttributeCacheID: record.AttributeCacheID,
-		GrantType:        string(providers.GrantTypeCIBA),
-		OAuthApp:         oauthApp,
+		Subject:           record.UserID,
+		Audiences:         []string{oauthApp.ClientID},
+		ClientID:          oauthApp.ClientID,
+		Scopes:            scopes,
+		SubjectAttributes: tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
+		AttributeCacheID:  record.AttributeCacheID,
+		GrantType:         string(providers.GrantTypeCIBA),
+		OAuthApp:          oauthApp,
+		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
 	})
 	if err != nil {
 		h.logger.Error(ctx, "Failed to generate access token", log.Error(err))

@@ -98,10 +98,14 @@ var (
 )
 
 var (
-	createdUserID  string
-	testOUID       string
-	createdGroupID string
-	entityTypeID   string
+	createdUserID            string
+	testOUID                 string
+	createdGroupID           string
+	entityTypeID             string
+	credentialEntityTypeID   string
+	credentialUserID         string
+	credentialUsername        string
+	credentialPassword       string
 )
 
 type UserAPITestSuite struct {
@@ -140,6 +144,44 @@ func (ts *UserAPITestSuite) SetupSuite() {
 	}
 	createdUserID = userID
 
+	// Create user type with credential fields for credential update tests.
+	credentialUsername = "admin.cred.user"
+	credentialPassword = "InitialP@ssw0rd!"
+
+	credentialType := testutils.UserType{
+		Name: "admin-cred-update-type",
+		OUID: testOUID,
+		Schema: map[string]interface{}{
+			"username": map[string]interface{}{"type": "string", "required": true, "unique": true},
+			"email":    map[string]interface{}{"type": "string", "required": true, "unique": true},
+			"password": map[string]interface{}{"type": "string", "credential": true},
+		},
+	}
+	credTypeID, err := testutils.CreateUserType(credentialType)
+	if err != nil {
+		ts.T().Fatalf("Failed to create credential user type during setup: %v", err)
+	}
+	credentialEntityTypeID = credTypeID
+
+	credAttrs, err := json.Marshal(map[string]interface{}{
+		"username": credentialUsername,
+		"email":    "admin.cred.user@example.com",
+		"password": credentialPassword,
+	})
+	if err != nil {
+		ts.T().Fatalf("Failed to marshal credential user attributes: %v", err)
+	}
+
+	credUserID, err := testutils.CreateUser(testutils.User{
+		OUID:       testOUID,
+		Type:       "admin-cred-update-type",
+		Attributes: credAttrs,
+	})
+	if err != nil {
+		ts.T().Fatalf("Failed to create credential user during setup: %v", err)
+	}
+	credentialUserID = credUserID
+
 	// Create a group and add the created user as a member
 	groupToCreate := testGroup
 	groupToCreate.OUID = testOUID
@@ -164,6 +206,18 @@ func (ts *UserAPITestSuite) TearDownSuite() {
 		err := deleteGroup(createdGroupID)
 		if err != nil {
 			ts.T().Logf("Failed to delete group during teardown: %v", err)
+		}
+	}
+
+	// Delete the credential test user and type
+	if credentialUserID != "" {
+		if err := deleteUser(credentialUserID); err != nil {
+			ts.T().Logf("Failed to delete credential user during teardown: %v", err)
+		}
+	}
+	if credentialEntityTypeID != "" {
+		if err := testutils.DeleteUserType(credentialEntityTypeID); err != nil {
+			ts.T().Logf("Failed to delete credential user type during teardown: %v", err)
 		}
 	}
 
@@ -496,6 +550,149 @@ func (ts *UserAPITestSuite) TestUserGroupsListingNonExistingUser() {
 	if errorResp.Code != "USR-1003" {
 		ts.T().Fatalf("Expected error code USR-1003, got %s", errorResp.Code)
 	}
+}
+
+func (ts *UserAPITestSuite) TestCredentialUpdateByAdmin() {
+	newPassword := credentialPassword + "Updated!"
+
+	payload, err := json.Marshal(map[string]interface{}{
+		"credentials": map[string]interface{}{
+			"password": newPassword,
+		},
+	})
+	ts.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPost,
+		fmt.Sprintf("%s/users/%s/update-credentials", testServerURL, credentialUserID),
+		bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	ts.Require().Equal(http.StatusNoContent, resp.StatusCode)
+
+	// Verify the new password works by authenticating.
+	authenticated, err := testutils.AuthenticateWithCredential(
+		"username", credentialUsername, "password", newPassword)
+	ts.Require().NoError(err)
+	ts.True(authenticated)
+
+	// Verify the old password no longer works.
+	authenticated, err = testutils.AuthenticateWithCredential(
+		"username", credentialUsername, "password", credentialPassword)
+	ts.Require().NoError(err)
+	ts.False(authenticated)
+
+	credentialPassword = newPassword
+}
+
+func (ts *UserAPITestSuite) TestCredentialUpdateByAdmin_EmptyCredentials() {
+	payload, err := json.Marshal(map[string]interface{}{
+		"credentials": map[string]interface{}{},
+	})
+	ts.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPost,
+		fmt.Sprintf("%s/users/%s/update-credentials", testServerURL, credentialUserID),
+		bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	ts.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+}
+
+func (ts *UserAPITestSuite) TestCredentialUpdateByAdmin_MissingCredentialsField() {
+	payload, err := json.Marshal(map[string]interface{}{})
+	ts.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPost,
+		fmt.Sprintf("%s/users/%s/update-credentials", testServerURL, credentialUserID),
+		bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	ts.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+}
+
+func (ts *UserAPITestSuite) TestCredentialUpdateByAdmin_NonExistentUser() {
+	payload, err := json.Marshal(map[string]interface{}{
+		"credentials": map[string]interface{}{
+			"password": "newpassword",
+		},
+	})
+	ts.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPost,
+		fmt.Sprintf("%s/users/%s/update-credentials", testServerURL, "non-existent-user-id"),
+		bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	ts.Require().Equal(http.StatusNotFound, resp.StatusCode)
+}
+
+func (ts *UserAPITestSuite) TestCredentialUpdateByAdmin_SystemManagedCredential() {
+	payload, err := json.Marshal(map[string]interface{}{
+		"credentials": map[string]interface{}{
+			"passkey": "some-passkey-value",
+		},
+	})
+	ts.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPost,
+		fmt.Sprintf("%s/users/%s/update-credentials", testServerURL, credentialUserID),
+		bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	ts.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+}
+
+func (ts *UserAPITestSuite) TestCredentialUpdateByAdmin_PutUserRejectsCredentials() {
+	attrs, err := json.Marshal(map[string]interface{}{
+		"username": credentialUsername,
+		"email":    "admin.cred.user@example.com",
+		"password": "ShouldBeRejected!",
+	})
+	ts.Require().NoError(err)
+
+	payload, err := json.Marshal(map[string]interface{}{
+		"ouId":       testOUID,
+		"type":       "admin-cred-update-type",
+		"attributes": json.RawMessage(attrs),
+	})
+	ts.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPut,
+		fmt.Sprintf("%s/users/%s", testServerURL, credentialUserID),
+		bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	ts.Require().Equal(http.StatusBadRequest, resp.StatusCode)
 }
 
 func retrieveAndValidateUserDetails(ts *UserAPITestSuite, expectedUser testutils.User) {

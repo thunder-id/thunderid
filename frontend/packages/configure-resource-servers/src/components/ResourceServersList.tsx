@@ -95,7 +95,7 @@ export default function ResourceServersList(): JSX.Element {
             </Typography>
           ) : (
             <Typography variant="body2" color="text.disabled">
-              —
+              -
             </Typography>
           ),
       },
@@ -113,7 +113,7 @@ export default function ResourceServersList(): JSX.Element {
             />
           ) : (
             <Typography variant="body2" color="text.disabled">
-              —
+              -
             </Typography>
           ),
       },

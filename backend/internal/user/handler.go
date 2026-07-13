@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -475,6 +475,47 @@ func (uh *userHandler) HandleSelfUserCredentialUpdateRequest(w http.ResponseWrit
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
 	logger.Debug(ctx, "Self user credential update response sent",
 		log.MaskedString(log.LoggerKeyUserID, userID))
+}
+
+// HandleUserCredentialUpdateRequest handles credential updates for a user by an admin.
+func (uh *userHandler) HandleUserCredentialUpdateRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, handlerLoggerComponentName))
+
+	id := r.PathValue("id")
+	if strings.TrimSpace(id) == "" {
+		handleError(ctx, w, &ErrorMissingUserID)
+		return
+	}
+
+	updateRequest, err := sysutils.DecodeJSONBody[UpdateUserCredentialsRequest](r)
+	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
+		handleError(ctx, w, &ErrorInvalidRequestFormat)
+		return
+	}
+	if updateRequest == nil {
+		handleError(ctx, w, &ErrorInvalidRequestFormat)
+		return
+	}
+	attrStr := strings.TrimSpace(string(updateRequest.Credentials))
+	if len(updateRequest.Credentials) == 0 || attrStr == "{}" {
+		handleError(ctx, w, &ErrorMissingCredentials)
+		return
+	}
+
+	if svcErr := uh.userService.UpdateUserCredentials(ctx, id, updateRequest.Credentials); svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+	logger.Debug(ctx, "User credential update response sent",
+		log.MaskedString(log.LoggerKeyUserID, id))
 }
 
 // parsePaginationParams parses limit and offset query parameters from the request.

@@ -21,9 +21,9 @@ package registration
 import (
 	"testing"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 type UserTypeResolverRuntimeTestSuite struct {
@@ -92,7 +92,7 @@ func (ts *UserTypeResolverRuntimeTestSuite) SetupSuite() {
 	ts.testUserTypeName2 = userType2.Name
 
 	// Look up the default registration flow ID
-	regFlowID, err := testutils.GetFlowIDByHandle("default-basic-flow", "REGISTRATION")
+	regFlowID, err := testutils.GetFlowIDByHandle("default-flow", "REGISTRATION")
 	if err != nil {
 		ts.T().Fatalf("Failed to get default registration flow ID: %v", err)
 	}

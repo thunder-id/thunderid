@@ -53,8 +53,12 @@ describe('application-create-flow models', () => {
       expect(ApplicationCreateFlowStep.COMPLETE).toBe('COMPLETE');
     });
 
-    it('should have exactly 8 steps', () => {
-      expect(Object.keys(ApplicationCreateFlowStep)).toHaveLength(8);
+    it('should have CLIENT_TYPE step', () => {
+      expect(ApplicationCreateFlowStep.CLIENT_TYPE).toBe('CLIENT_TYPE');
+    });
+
+    it('should have exactly 9 steps', () => {
+      expect(Object.keys(ApplicationCreateFlowStep)).toHaveLength(9);
     });
   });
 

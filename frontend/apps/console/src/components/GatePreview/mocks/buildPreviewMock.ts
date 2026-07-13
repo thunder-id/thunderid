@@ -16,10 +16,8 @@
  * under the License.
  */
 
+import {AuthenticatorTypes, IdentityProviderTypes, type IdentityProvider} from '@thunderid/configure-connections';
 import type {EmbeddedFlowComponent} from '@thunderid/react';
-import {AuthenticatorTypes} from '@/features/connections/models/authenticators';
-import type {IdentityProvider} from '@/features/connections/models/identity-provider';
-import {IdentityProviderTypes} from '@/features/connections/models/identity-provider';
 
 interface PreviewMeta {
   application?: {

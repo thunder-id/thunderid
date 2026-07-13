@@ -81,6 +81,7 @@ func (s *ServiceTestSuite) newTestApp() *providers.OAuthClient {
 		GrantTypes:              []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		ResponseTypes:           []providers.ResponseType{providers.ResponseTypeCode},
 		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
+		Scopes:                  []string{"openid", "profile", "email"},
 	}
 }
 
@@ -365,6 +366,27 @@ func (s *ServiceTestSuite) TestHandlePAR_ScopesDownscopedAgainstResourceServers(
 	assert.Empty(s.T(), errCode)
 	assert.NotNil(s.T(), resp)
 	assert.Equal(s.T(), []string{"read"}, captured.OAuthParameters.PermissionScopes)
+}
+
+func (s *ServiceTestSuite) TestHandlePAR_FiltersOIDCScopesByAppScopes() {
+	store := newParStoreInterfaceMock(s.T())
+	var captured pushedAuthorizationRequest
+	store.EXPECT().Store(mock.Anything, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, req pushedAuthorizationRequest, _ int64) {
+			captured = req
+		}).Return("test-uri", nil)
+
+	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
+	app := s.newTestApp()
+	app.Scopes = []string{"profile"}
+	params := s.newValidParams()
+	params[oauth2const.RequestParamScope] = "openid email profile"
+
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
+
+	assert.Empty(s.T(), errCode)
+	assert.NotNil(s.T(), resp)
+	assert.Equal(s.T(), []string{"profile"}, captured.OAuthParameters.StandardScopes)
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_AcrValuesPropagated() {

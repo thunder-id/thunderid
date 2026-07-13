@@ -107,7 +107,7 @@ const BROWSE_TOPICS = [
   {
     label: 'SDKs',
     description: 'Client libraries and integrations',
-    href: '/docs/next/sdks/overview',
+    href: '/sdks',
     icon: (
       <svg
         width="18"

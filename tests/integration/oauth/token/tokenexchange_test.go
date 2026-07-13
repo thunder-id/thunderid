@@ -30,8 +30,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -41,6 +41,7 @@ const (
 	tokenExchangeTestUser     = "te_test_user"
 	tokenExchangeTestPassword = "TePassword123!"
 	tokenExchangeTestEmail    = "te_test@example.com"
+	tokenExchangeMockOIDCPort = 8094
 )
 
 type TokenExchangeTestSuite struct {
@@ -389,6 +390,65 @@ type TokenExchangeResponse struct {
 	ErrorDescription string `json:"error_description,omitempty"`
 }
 
+func (ts *TokenExchangeTestSuite) getMockOIDCIDToken(
+	mockOIDCServer *testutils.MockOIDCServer,
+	clientID, clientSecret, redirectURI string,
+) string {
+	ts.T().Helper()
+
+	authURL, err := url.Parse(mockOIDCServer.GetAuthorizeURL())
+	ts.Require().NoError(err, "Failed to parse mock OIDC authorize URL")
+
+	query := authURL.Query()
+	query.Set("client_id", clientID)
+	query.Set("redirect_uri", redirectURI)
+	query.Set("response_type", "code")
+	query.Set("scope", "openid email profile")
+	query.Set("state", "token-exchange-state")
+	authURL.RawQuery = query.Encode()
+
+	noRedirectClient := &http.Client{
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	authResp, err := noRedirectClient.Get(authURL.String())
+	ts.Require().NoError(err, "Failed to call mock OIDC authorize endpoint")
+	defer authResp.Body.Close()
+	ts.Require().Equal(http.StatusFound, authResp.StatusCode, "Mock OIDC authorize should redirect with a code")
+
+	location := authResp.Header.Get("Location")
+	ts.Require().NotEmpty(location, "Mock OIDC authorize response should include Location header")
+
+	redirectedURL, err := url.Parse(location)
+	ts.Require().NoError(err, "Failed to parse mock OIDC redirect URL")
+	code := redirectedURL.Query().Get("code")
+	ts.Require().NotEmpty(code, "Mock OIDC redirect should include authorization code")
+
+	formData := url.Values{}
+	formData.Set("grant_type", "authorization_code")
+	formData.Set("code", code)
+	formData.Set("client_id", clientID)
+	formData.Set("client_secret", clientSecret)
+	formData.Set("redirect_uri", redirectURI)
+
+	tokenResp, err := http.PostForm(mockOIDCServer.GetTokenURL(), formData)
+	ts.Require().NoError(err, "Failed to call mock OIDC token endpoint")
+	defer tokenResp.Body.Close()
+	ts.Require().Equal(http.StatusOK, tokenResp.StatusCode, "Mock OIDC token endpoint should return tokens")
+
+	var tokenData map[string]interface{}
+	err = json.NewDecoder(tokenResp.Body).Decode(&tokenData)
+	ts.Require().NoError(err, "Failed to parse mock OIDC token response")
+
+	idToken, ok := tokenData["id_token"].(string)
+	ts.Require().True(ok, "Mock OIDC token response should contain id_token")
+	ts.Require().NotEmpty(idToken, "Mock OIDC id_token should not be empty")
+
+	return idToken
+}
+
 // TestTokenExchange_BasicSuccess tests basic successful token exchange
 func (ts *TokenExchangeTestSuite) TestTokenExchange_BasicSuccess() {
 	formData := url.Values{}
@@ -410,6 +470,81 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_BasicSuccess() {
 	claims, err := testutils.DecodeJWT(resp.AccessToken)
 	ts.Require().NoError(err, "Access token should be a valid JWT")
 	ts.Equal(ts.userID, claims.Sub, "Subject should match user ID")
+}
+
+func (ts *TokenExchangeTestSuite) TestTokenExchange_ExternalIDP_WithTrustedTokenAudience() {
+	const (
+		externalClientID     = "external-oidc-client-id"
+		externalClientSecret = "mock-oidc-secret"
+		externalSubject      = "external-oidc-subject"
+		redirectURI          = "https://localhost:3000/callback"
+	)
+
+	mockOIDCServer, err := testutils.NewMockOIDCServer(
+		tokenExchangeMockOIDCPort, externalClientID, externalClientSecret)
+	ts.Require().NoError(err, "Failed to create mock OIDC server")
+
+	mockOIDCServer.AddUser(&testutils.OIDCUserInfo{
+		Sub:           externalSubject,
+		Email:         "external-user@example.com",
+		EmailVerified: true,
+		Name:          "External User",
+	})
+
+	err = mockOIDCServer.Start()
+	ts.Require().NoError(err, "Failed to start mock OIDC server")
+	defer func() {
+		if stopErr := mockOIDCServer.Stop(); stopErr != nil {
+			ts.T().Logf("Failed to stop mock OIDC server: %v", stopErr)
+		}
+	}()
+
+	idpID, err := testutils.CreateIDP(testutils.IDP{
+		Name:        fmt.Sprintf("Token Exchange Trusted Audience IdP %d", time.Now().UnixNano()),
+		Description: "Mock OIDC IdP for trusted token audience token exchange test",
+		Type:        "OIDC",
+		Properties: []testutils.IDPProperty{
+			{Name: "issuer", Value: mockOIDCServer.GetURL(), IsSecret: false},
+			{Name: "jwks_endpoint", Value: mockOIDCServer.GetJWKSURL(), IsSecret: false},
+			{Name: "token_exchange_enabled", Value: "true", IsSecret: false},
+			{Name: "trusted_token_audience", Value: externalClientID, IsSecret: false},
+		},
+	})
+	ts.Require().NoError(err, "Failed to create mock OIDC IdP")
+	defer func() {
+		if deleteErr := testutils.DeleteIDP(idpID); deleteErr != nil {
+			ts.T().Logf("Failed to delete mock OIDC IdP: %v", deleteErr)
+		}
+	}()
+
+	externalIDToken := ts.getMockOIDCIDToken(mockOIDCServer, externalClientID, externalClientSecret, redirectURI)
+	externalClaims, err := testutils.DecodeJWT(externalIDToken)
+	ts.Require().NoError(err, "Mock OIDC id_token should be a valid JWT")
+	ts.Equal(mockOIDCServer.GetURL(), externalClaims.Iss, "External token issuer should match IdP issuer")
+	ts.Equal(externalClientID, externalClaims.Aud, "External token audience should be the external client ID")
+
+	formData := url.Values{}
+	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+	formData.Set("subject_token", externalIDToken)
+	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt")
+
+	authHeader := "Basic " + basicAuth(tokenExchangeClientID, tokenExchangeClientSecret)
+
+	resp, statusCode, err := ts.exchangeToken(formData.Encode(), authHeader)
+	ts.Require().NoError(err)
+	ts.Equal(http.StatusOK, statusCode)
+	ts.NotEmpty(resp.AccessToken, "Access token should be present")
+	ts.Equal("urn:ietf:params:oauth:token-type:access_token", resp.IssuedTokenType)
+
+	claims, err := testutils.DecodeJWT(resp.AccessToken)
+	ts.Require().NoError(err, "Access token should be a valid JWT")
+	ts.Equal(externalSubject, claims.Sub, "Issued token subject should match external token subject")
+	ts.assertAudienceContains(claims, tokenExchangeClientID)
+	ts.Equal(
+		"urn:ietf:params:oauth:grant-type:token-exchange",
+		claims.Additional["grant_type"],
+		"Issued token should record token exchange grant type",
+	)
 }
 
 // TestTokenExchange_WithAudience tests token exchange with audience parameter

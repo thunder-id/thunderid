@@ -38,7 +38,11 @@ export default function IconAdapter({component}: IconAdapterProps): JSX.Element 
   if (!IconComponent) return null;
 
   return (
-    <Box className={cn('Flow--icon')} sx={{display: 'flex', alignItems: 'center'}}>
+    <Box
+      id={component.id}
+      className={[cn('Flow--icon'), component.classes].filter(Boolean).join(' ')}
+      sx={{display: 'flex', alignItems: 'center'}}
+    >
       <IconComponent fontSize={component.size ?? 24} sx={{color: component.color ?? 'currentColor'}} />
     </Box>
   );

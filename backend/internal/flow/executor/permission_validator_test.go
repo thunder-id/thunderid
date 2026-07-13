@@ -223,6 +223,78 @@ func (suite *PermissionValidatorTestSuite) TestExecute_AuthorizedPermissionsChec
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 }
 
+func (suite *PermissionValidatorTestSuite) TestExecute_HierarchicalScopeCheck_Success() {
+	type testCase struct {
+		name           string
+		requiredScopes []interface{}
+		contextScopes  []string
+	}
+
+	testCases := []testCase{
+		{
+			name:           "Root scope satisfies a narrower required scope",
+			requiredScopes: []interface{}{"system:user"},
+			contextScopes:  []string{"system"},
+		},
+		{
+			name:           "Exact scoped permission still satisfies its own requirement",
+			requiredScopes: []interface{}{"system:user"},
+			contextScopes:  []string{"system:user"},
+		},
+		{
+			name:           "Parent scope satisfies a deeply nested required scope",
+			requiredScopes: []interface{}{"system:user:view"},
+			contextScopes:  []string{"system"},
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.T().Run(tc.name, func(t *testing.T) {
+			httpCtx := context.Background()
+			authCtx := security.NewSecurityContextForTest(
+				"user1", "ou1", "token",
+				tc.contextScopes, nil,
+			)
+			httpCtx = security.WithSecurityContextTest(httpCtx, authCtx)
+
+			ctx := &providers.NodeContext{
+				ExecutionID: "test-flow",
+				Context:     httpCtx,
+				NodeProperties: map[string]interface{}{
+					propertyKeyRequiredScopes: tc.requiredScopes,
+				},
+			}
+
+			resp, err := suite.executor.Execute(ctx)
+
+			assert.NoError(t, err)
+			assert.Equal(t, providers.ExecComplete, resp.Status)
+		})
+	}
+}
+
+func (suite *PermissionValidatorTestSuite) TestExecute_HierarchicalScopeCheck_Failure() {
+	httpCtx := context.Background()
+	authCtx := security.NewSecurityContextForTest(
+		"user1", "ou1", "token",
+		[]string{"system:user"}, nil,
+	)
+	httpCtx = security.WithSecurityContextTest(httpCtx, authCtx)
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		Context:     httpCtx,
+		NodeProperties: map[string]interface{}{
+			propertyKeyRequiredScopes: []interface{}{"system"},
+		},
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+}
+
 func (suite *PermissionValidatorTestSuite) TestExecute_NoHTTPContext() {
 	ctx := &providers.NodeContext{
 		ExecutionID: "test-flow",

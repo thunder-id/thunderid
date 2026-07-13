@@ -69,8 +69,10 @@ describe('useUpdateApplication', () => {
           publicClient: true,
           token: {
             accessToken: {
-              validityPeriod: 3600,
-              userAttributes: ['given_name', 'family_name', 'email', 'groups', 'name'],
+              userConfig: {
+                validityPeriod: 3600,
+                attributes: ['given_name', 'family_name', 'email', 'groups', 'name'],
+              },
             },
             idToken: {
               validityPeriod: 3600,

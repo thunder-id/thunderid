@@ -93,11 +93,8 @@ server:
   port: <your-port>                              # e.g. 8090
   public_url: "https://<your-host>:<your-port>" # e.g. https://thunderid.local:8090
 
-gate_client:
-  hostname: "<your-host>"
-  port: <your-port>
-  scheme: "https"
-  path: "/gate"
+# gate_client is optional and defaults to server.public_url.
+# Required only when Gate is hosted separately from the server.
 
 passkey:
   allowed_origins:

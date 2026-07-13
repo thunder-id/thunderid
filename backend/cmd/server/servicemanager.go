@@ -62,6 +62,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
+	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
@@ -160,19 +161,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Add to exporters list (must be done after initializing list)
 	exporters = append(exporters, i18nExporter)
 
-	// Initialize the server-wide configuration service with the CORS section handler.
-	serverConfigHandlers := map[serverconfig.ConfigName]serverconfig.ServerConfigHandlerInterface{
-		serverconfig.ConfigNameCORS: cors.OriginHandler{},
-	}
-	serverConfigService, serverConfigExporter, err := serverconfig.Initialize(mux, cacheManager, serverConfigHandlers)
-	if err != nil {
-		logger.Fatal(ctx, "Failed to initialize server config service", log.Error(err))
-	}
-	exporters = append(exporters, serverConfigExporter)
-
-	// CORS origins come from the server-config cors section.
-	cors.InitializeDynamicMatcher(serverConfigService)
-
 	ouAuthzService, err := sysauthz.Initialize()
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize system authorization service", log.Error(err))
@@ -262,9 +250,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	}
 	exporters = append(exporters, idpExporter)
 
-	// Register the /connections API as a thin layer over the identity-provider service.
-	connection.Initialize(mux, idpService)
-
 	templateService, err := template.Initialize()
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize template service", log.Error(err))
@@ -277,6 +262,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	}
 	exporters = append(exporters, notificationExporter)
 
+	// Register the /connections API as a thin layer over the identity-provider and
+	// notification-sender services.
+	connection.Initialize(mux, idpService, notifSenderMgtSvc)
+
 	// Initialize passkey service
 	passkeyService := passkey.Initialize(entityService)
 
@@ -288,7 +277,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Initialize federated authentication services.
 	oauthAuthnService := authnOAuth.Initialize(idpService, entityProvider)
-	oidcAuthnService := authnOIDC.Initialize(oauthAuthnService, jwtService, idpService)
+	oidcAuthnService := authnOIDC.Initialize(oauthAuthnService, jwtService)
 	googleAuthnService := google.Initialize(oidcAuthnService, jwtService)
 	githubAuthnService := github.Initialize(oauthAuthnService)
 
@@ -320,10 +309,34 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		otpCoreService, notifSenderSvc, templateService, magicLinkService, oauthAuthnService, oidcAuthnService,
 		googleAuthnService, githubAuthnService)
 
-	attributeCacheService := attributecache.Initialize()
+	runtimeStoreProvider, transactioner, err := runtimestore.Initialize(runtime.Config.Database.Runtime.Type,
+		runtime.Config.Server.Identifier)
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize runtime store", log.Error(err))
+	}
+
+	attributeCacheService := attributecache.Initialize(runtimeStoreProvider)
 
 	emailClient := initEmailClient(ctx, logger)
+
+	// Initialize server-wide configuration after its handler dependencies.
+	serverConfigHandlers := map[serverconfig.ConfigName]serverconfig.ServerConfigHandlerInterface{
+		serverconfig.ConfigNameCORS:                  cors.OriginHandler{},
+		serverconfig.ConfigNameDefaultResourceServer: resource.NewDefaultResourceServerConfigHandler(resourceService),
+		serverconfig.ConfigNameSession:               flowsession.ConfigHandler{},
+	}
+	serverConfigService, serverConfigExporter, err := serverconfig.Initialize(mux, cacheManager, serverConfigHandlers)
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize server config service", log.Error(err))
+	}
+	exporters = append(exporters, serverConfigExporter)
+
+	// CORS origins come from the server-config cors section.
+	cors.InitializeDynamicMatcher(serverConfigService)
+
 	flowConfig := flowconfig.FromServerRuntime()
+	sessionService, sessionCfg := initSessionService(ctx, serverConfigService, runtime.Config.Server.Identifier, logger)
+	flowConfig.Session = sessionCfg
 	flowFactory, execRegistry, interceptorRegistry, graphBuilder := initializeFlowCoreAndExecutor(ctx, logger,
 		cacheManager, executor.ExecutorDependencies{
 			OUService:             ouService,
@@ -350,6 +363,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			GithubSvc:             githubAuthnService,
 			GoogleSvc:             googleAuthnService,
 			OpenID4VPVerifierSvc:  openid4vpSvc,
+			SessionService:        sessionService,
 		},
 		interceptor.InterceptorDependencies{},
 		flowConfig,
@@ -395,7 +409,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	}
 	exporters = append(exporters, applicationExporter)
 
-	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService)
+	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService,
+		roleService)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize AgentService", log.Error(err))
 	}
@@ -406,6 +421,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// identity provider or notification sender.
 	registerDependencyRegistry(dependencyConsumers{
 		theme:       themeMgtService,
+		layout:      layoutMgtService,
 		flow:        flowMgtService,
 		user:        userService,
 		idp:         idpService,
@@ -413,7 +429,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		application: applicationService,
 		agent:       agentService,
 		group:       groupService,
-	}, applicationService, agentService, flowMgtService, roleAssignmentService, groupService)
+		ou:          ouService,
+		resource:    resourceService,
+	}, applicationService, agentService, flowMgtService, roleAssignmentService, groupService,
+		ouService, ouUserResolver, ouGroupResolver, resourceService)
 
 	// Initialize design resolve service for theme and layout resolution
 	designResolveService := resolve.Initialize(mux, themeMgtService, layoutMgtService, applicationService)
@@ -448,15 +467,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		serverConfigService,
 	)
 
-	runtimeStoreProvider, transactioner, err := runtimestore.Initialize(runtime.Config.Database.Runtime.Type,
-		runtime.Config.Server.Identifier)
-	if err != nil {
-		logger.Fatal(ctx, "Failed to initialize runtime store", log.Error(err))
-	}
-	flowCfg := flowconfig.FromServerRuntime()
 	flowExecService, err := flowexec.Initialize(mux, flowMgtService, actorProvider,
 		execRegistry, interceptorRegistry, observabilitySvc, runtimeCryptoSvc, graphBuilder,
-		runtimeStoreProvider, transactioner, flowCfg)
+		runtimeStoreProvider, transactioner, flowConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))
 	}
@@ -486,6 +499,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 // own resources.
 type dependencyConsumers struct {
 	theme       thememgt.ThemeMgtServiceInterface
+	layout      layoutmgt.LayoutMgtServiceInterface
 	flow        flowmgt.FlowMgtServiceInterface
 	user        user.UserServiceInterface
 	idp         idp.IDPServiceInterface
@@ -493,6 +507,8 @@ type dependencyConsumers struct {
 	application application.ApplicationServiceInterface
 	agent       agent.AgentServiceInterface
 	group       group.GroupServiceInterface
+	ou          ou.ConfigurableOUService
+	resource    resource.ResourceServiceInterface
 }
 
 // registerDependencyRegistry builds the dependency registry from the given providers and wires it
@@ -500,6 +516,7 @@ type dependencyConsumers struct {
 func registerDependencyRegistry(consumers dependencyConsumers, providers ...resourcedependency.Provider) {
 	registry := resourcedependency.Initialize(providers...)
 	consumers.theme.SetDependencyRegistry(registry)
+	consumers.layout.SetDependencyRegistry(registry)
 	consumers.flow.SetDependencyRegistry(registry)
 	consumers.user.SetDependencyRegistry(registry)
 	consumers.idp.SetDependencyRegistry(registry)
@@ -507,11 +524,41 @@ func registerDependencyRegistry(consumers dependencyConsumers, providers ...reso
 	consumers.application.SetDependencyRegistry(registry)
 	consumers.agent.SetDependencyRegistry(registry)
 	consumers.group.SetDependencyRegistry(registry)
+	consumers.ou.SetDependencyRegistry(registry)
+	consumers.resource.SetDependencyRegistry(registry)
 }
 
 // unregisterServices unregisters all services that require cleanup during shutdown.
 func unregisterServices() {
 	observabilitySvc.Shutdown()
+}
+
+// initSessionService reads the effective SSO session configuration from the server-config section and
+// builds the session service, returning both so the caller can thread the config into flowexec too.
+func initSessionService(ctx context.Context, svc serverconfig.ServerConfigService, deploymentID string,
+	logger *log.Logger) (flowsession.Service, flowsession.Config) {
+	cfg := readSessionConfig(ctx, svc, logger)
+	sessionService, err := flowsession.Initialize(dbprovider.GetDBProvider(), deploymentID,
+		flowsession.NewTimeouts(cfg.IdleTimeoutSeconds, cfg.AbsoluteTimeoutSeconds))
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize SSO session service", log.Error(err))
+	}
+	return sessionService, cfg
+}
+
+// readSessionConfig reads the effective SSO session lifetime configuration from the server-config
+// "session" section. An unset section resolves to the zero Config, which NewTimeouts turns into the
+// built-in defaults; a read error is non-fatal for the same reason, so it logs and falls back.
+func readSessionConfig(ctx context.Context, svc serverconfig.ServerConfigService,
+	logger *log.Logger) flowsession.Config {
+	merged, svcErr := svc.GetMergedConfig(ctx, string(serverconfig.ConfigNameSession))
+	if svcErr != nil {
+		logger.Warn(ctx, "Failed to read session server config; using default timeouts",
+			log.String("code", svcErr.Code))
+		return flowsession.Config{}
+	}
+	cfg, _ := merged.(flowsession.Config)
+	return cfg
 }
 
 // initEmailClient initializes the email client, returning nil if not configured.

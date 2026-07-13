@@ -28,7 +28,6 @@ import type {Element as FlowElement} from '@/features/flows/models/elements';
  * OTP Input element type with properties at top level.
  */
 export type OTPInputElement = FlowElement & {
-  className?: string;
   label?: string;
   required?: boolean;
   inputType?: string;
@@ -67,7 +66,7 @@ function OTPInputAdapter({resource}: OTPInputAdapterPropsInterface): ReactElemen
   );
 
   return (
-    <div className={otpElement?.className}>
+    <div id={otpElement?.id} className={otpElement?.classes}>
       <InputLabel htmlFor="otp-input-adapter" required={otpElement?.required} disableAnimation>
         {labelNode}
       </InputLabel>

@@ -231,20 +231,6 @@ func (suite *LayoutStoreTestSuite) TestDeleteLayout_Success() {
 	assert.NoError(suite.T(), err)
 }
 
-// Test GetApplicationsCountByLayoutID - Success
-func (suite *LayoutStoreTestSuite) TestGetApplicationsCountByLayoutID_Success() {
-	results := []map[string]interface{}{
-		{"total": int64(3)},
-	}
-	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-	suite.mockDBClient.On("Query", mock.Anything, "layout-123", "test-deployment").Return(results, nil)
-
-	count, err := suite.store.GetApplicationsCountByLayoutID("layout-123")
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), 3, count)
-}
-
 // Test parseCountResult helper
 func (suite *LayoutStoreTestSuite) TestParseCountResult_Int64() {
 	results := []map[string]interface{}{{"total": int64(42)}}

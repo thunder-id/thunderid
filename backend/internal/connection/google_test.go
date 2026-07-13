@@ -46,7 +46,7 @@ func TestGoogleSuite(t *testing.T) {
 }
 
 func (s *GoogleTestSuite) SetupTest() {
-	s.handler, s.mockIDP = newConnectionTestHandler(s.T())
+	s.handler, s.mockIDP, _ = newConnectionTestHandler(s.T())
 }
 
 func (s *GoogleTestSuite) TestToIDPDTOMapsFields() {

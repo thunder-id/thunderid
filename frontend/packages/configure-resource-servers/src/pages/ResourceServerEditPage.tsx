@@ -343,23 +343,33 @@ export default function ResourceServerEditPage(): JSX.Element {
         {!resourceServer.isReadOnly && (
           <SettingsCard
             title={t('resourceServers:edit.dangerZone.title', 'Danger Zone')}
-            description={t(
-              'resourceServers:edit.dangerZone.description',
-              'Actions in this section are irreversible. Proceed with caution.',
-            )}
+            description={
+              resourceServer.type === 'MCP'
+                ? t('resourceServers:edit.dangerZone.descriptionMcp', 'Irreversible actions for this MCP server.')
+                : t('resourceServers:edit.dangerZone.description', 'Irreversible actions for this resource server.')
+            }
             slotProps={{root: {sx: {mt: 3}}}}
           >
             <Typography variant="h6" gutterBottom color="error">
-              {t('resourceServers:edit.dangerZone.deleteServer.title', 'Delete resource server')}
+              {resourceServer.type === 'MCP'
+                ? t('resourceServers:edit.dangerZone.deleteServer.titleMcp', 'Delete MCP server')
+                : t('resourceServers:edit.dangerZone.deleteServer.title', 'Delete resource server')}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
-              {t(
-                'resourceServers:edit.dangerZone.deleteServer.description',
-                'Permanently delete this resource server and all associated data. This action cannot be undone.',
-              )}
+              {resourceServer.type === 'MCP'
+                ? t(
+                    'resourceServers:edit.dangerZone.deleteServer.descriptionMcp',
+                    'Permanently delete this MCP server and all associated data. This action cannot be undone.',
+                  )
+                : t(
+                    'resourceServers:edit.dangerZone.deleteServer.description',
+                    'Permanently delete this resource server and all associated data. This action cannot be undone.',
+                  )}
             </Typography>
             <Button variant="contained" color="error" onClick={() => setDeleteDialogOpen(true)}>
-              {t('resourceServers:edit.dangerZone.deleteServer', 'Delete resource server')}
+              {resourceServer.type === 'MCP'
+                ? t('resourceServers:edit.dangerZone.deleteServerMcp', 'Delete MCP server')
+                : t('resourceServers:edit.dangerZone.deleteServer', 'Delete resource server')}
             </Button>
           </SettingsCard>
         )}

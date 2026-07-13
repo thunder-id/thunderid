@@ -44,11 +44,7 @@ export type AddNodeMode =
   | 'server-action'
   | 'resource-action'
   | 'mcp-server-tool'
-  | 'mcp-server-resource'
-  | 'mcp-namespace'
-  | 'mcp-namespace-tool'
-  | 'mcp-namespace-resource'
-  | 'mcp-sub-namespace';
+  | 'mcp-server-resource';
 
 export interface AddNodeDialogProps {
   /** Whether the dialog is open. */
@@ -70,27 +66,21 @@ export interface AddNodeDialogProps {
 }
 
 interface ModeConfig {
-  /** The action kind to send when creating an action, or undefined for resource/namespace modes. */
+  /** The action kind to send when creating an action, or undefined for resource modes. */
   kind: ActionKind | undefined;
-  /** Whether this mode creates an action (vs. a resource/namespace). */
+  /** Whether this mode creates an action (vs. a resource). */
   isAction: boolean;
   /** Whether this mode nests the new node under `parentResourceId`. */
   usesParentResourceId: boolean;
-  /** Whether this mode creates a sub-namespace under `parentResourceId`. */
-  isSubNamespace: boolean;
 }
 
 const MODE_CONFIG: Record<AddNodeMode, ModeConfig> = {
-  resource: {kind: undefined, isAction: false, usesParentResourceId: false, isSubNamespace: false},
-  'sub-resource': {kind: undefined, isAction: false, usesParentResourceId: false, isSubNamespace: false},
-  'server-action': {kind: undefined, isAction: true, usesParentResourceId: false, isSubNamespace: false},
-  'resource-action': {kind: undefined, isAction: true, usesParentResourceId: true, isSubNamespace: false},
-  'mcp-server-tool': {kind: 'tool', isAction: true, usesParentResourceId: false, isSubNamespace: false},
-  'mcp-server-resource': {kind: 'resource', isAction: true, usesParentResourceId: false, isSubNamespace: false},
-  'mcp-namespace': {kind: undefined, isAction: false, usesParentResourceId: false, isSubNamespace: false},
-  'mcp-namespace-tool': {kind: 'tool', isAction: true, usesParentResourceId: true, isSubNamespace: false},
-  'mcp-namespace-resource': {kind: 'resource', isAction: true, usesParentResourceId: true, isSubNamespace: false},
-  'mcp-sub-namespace': {kind: undefined, isAction: false, usesParentResourceId: false, isSubNamespace: true},
+  resource: {kind: undefined, isAction: false, usesParentResourceId: false},
+  'sub-resource': {kind: undefined, isAction: false, usesParentResourceId: false},
+  'server-action': {kind: undefined, isAction: true, usesParentResourceId: false},
+  'resource-action': {kind: undefined, isAction: true, usesParentResourceId: true},
+  'mcp-server-tool': {kind: 'tool', isAction: true, usesParentResourceId: false},
+  'mcp-server-resource': {kind: 'resource', isAction: true, usesParentResourceId: false},
 };
 
 export default function AddNodeDialog({
@@ -116,8 +106,6 @@ export default function AddNodeDialog({
   const resourceId = MODE_CONFIG[mode].usesParentResourceId ? parentResourceId : undefined;
   const kind = MODE_CONFIG[mode].kind;
 
-  const subNamespaceParent = MODE_CONFIG[mode].isSubNamespace ? parentResourceId : undefined;
-
   const createResource = useCreateResource(resourceServerId);
   const createAction = useCreateAction(resourceServerId, resourceId);
 
@@ -134,14 +122,11 @@ export default function AddNodeDialog({
   };
 
   const resolveSuccessToast = (): string => {
-    if (mode === 'mcp-server-tool' || mode === 'mcp-namespace-tool') {
+    if (mode === 'mcp-server-tool') {
       return t('resourceServers:mcp.addTool.success', 'Tool added.');
     }
-    if (mode === 'mcp-server-resource' || mode === 'mcp-namespace-resource') {
+    if (mode === 'mcp-server-resource') {
       return t('resourceServers:mcp.addResource.success', 'Resource added.');
-    }
-    if (mode === 'mcp-namespace' || mode === 'mcp-sub-namespace') {
-      return t('resourceServers:mcp.addNamespace.success', 'Namespace added.');
     }
     if (isAction) {
       return t('resourceServers:tree.addAction.success', 'Action added.');
@@ -150,14 +135,11 @@ export default function AddNodeDialog({
   };
 
   const resolveErrorToast = (): string => {
-    if (mode === 'mcp-server-tool' || mode === 'mcp-namespace-tool') {
+    if (mode === 'mcp-server-tool') {
       return t('resourceServers:mcp.addTool.error', 'Failed to add tool.');
     }
-    if (mode === 'mcp-server-resource' || mode === 'mcp-namespace-resource') {
+    if (mode === 'mcp-server-resource') {
       return t('resourceServers:mcp.addResource.error', 'Failed to add resource.');
-    }
-    if (mode === 'mcp-namespace' || mode === 'mcp-sub-namespace') {
-      return t('resourceServers:mcp.addNamespace.error', 'Failed to add namespace.');
     }
     if (isAction) {
       return t('resourceServers:tree.addAction.error', 'Failed to add action.');
@@ -168,9 +150,6 @@ export default function AddNodeDialog({
   const resolveNamePlaceholder = (): string => {
     if (kind === 'tool') return t('resourceServers:tree.fields.namePlaceholder.tool', 'e.g. Send message');
     if (kind === 'resource') return t('resourceServers:tree.fields.namePlaceholder.resource', 'e.g. User profile');
-    if (mode === 'mcp-namespace' || mode === 'mcp-sub-namespace') {
-      return t('resourceServers:tree.fields.namePlaceholder.namespace', 'e.g. Messaging');
-    }
     if (isAction) return t('resourceServers:tree.fields.namePlaceholder.action', 'e.g. Read');
     return t('resourceServers:tree.fields.namePlaceholder.resourceGeneric', 'e.g. Orders');
   };
@@ -178,11 +157,27 @@ export default function AddNodeDialog({
   const resolveHandlePlaceholder = (): string => {
     if (kind === 'tool') return t('resourceServers:tree.fields.handlePlaceholder.tool', 'e.g. send-message');
     if (kind === 'resource') return t('resourceServers:tree.fields.handlePlaceholder.resource', 'e.g. user-profile');
-    if (mode === 'mcp-namespace' || mode === 'mcp-sub-namespace') {
-      return t('resourceServers:tree.fields.handlePlaceholder.namespace', 'e.g. messaging');
-    }
     if (isAction) return t('resourceServers:tree.fields.handlePlaceholder.action', 'e.g. read');
     return t('resourceServers:tree.fields.handlePlaceholder.resourceGeneric', 'e.g. orders');
+  };
+
+  const resolveDescriptionPlaceholder = (): string => {
+    if (kind === 'tool') {
+      return t(
+        'resourceServers:tree.fields.descriptionPlaceholder.tool',
+        'e.g. Sends a message to the specified channel',
+      );
+    }
+    if (kind === 'resource') {
+      return t('resourceServers:tree.fields.descriptionPlaceholder.resource', 'e.g. User profile data and preferences');
+    }
+    if (isAction) {
+      return t('resourceServers:tree.fields.descriptionPlaceholder.action', 'e.g. Grants read access to the resource');
+    }
+    return t(
+      'resourceServers:tree.fields.descriptionPlaceholder.resourceGeneric',
+      'e.g. Manages order data and lifecycle',
+    );
   };
 
   const handleSubmit = (): void => {
@@ -208,7 +203,7 @@ export default function AddNodeDialog({
         },
       );
     } else {
-      const parent = mode === 'sub-resource' ? parentResourceId : subNamespaceParent;
+      const parent = mode === 'sub-resource' ? parentResourceId : undefined;
       createResource.mutate(
         {...baseData, parent},
         {
@@ -231,12 +226,8 @@ export default function AddNodeDialog({
     'sub-resource': t('resourceServers:tree.addSubResource.title', 'Add Sub-resource'),
     'server-action': t('resourceServers:tree.addAction.title', 'Add Action'),
     'resource-action': t('resourceServers:tree.addAction.title', 'Add Action'),
-    'mcp-server-tool': t('resourceServers:mcp.addTool.title', 'Add Tool'),
-    'mcp-namespace-tool': t('resourceServers:mcp.addTool.title', 'Add Tool'),
-    'mcp-server-resource': t('resourceServers:mcp.addResource.title', 'Add Resource'),
-    'mcp-namespace-resource': t('resourceServers:mcp.addResource.title', 'Add Resource'),
-    'mcp-namespace': t('resourceServers:mcp.addNamespace.title', 'Add Namespace'),
-    'mcp-sub-namespace': t('resourceServers:mcp.addNamespace.title', 'Add Namespace'),
+    'mcp-server-tool': t('resourceServers:mcp.addTool.title', 'Add tool permission'),
+    'mcp-server-resource': t('resourceServers:mcp.addResource.title', 'Add resource permission'),
   };
 
   const isPending = createResource.isPending || createAction.isPending;
@@ -286,7 +277,7 @@ export default function AddNodeDialog({
                     )
                   : t(
                       'resourceServers:tree.fields.handleHint',
-                      'Lowercase, alphanumeric and . _ - : / — cannot be changed after creation.',
+                      'Lowercase, alphanumeric, and . _ - : / characters. Cannot be changed after creation.',
                     )
               }
             />
@@ -300,10 +291,7 @@ export default function AddNodeDialog({
               size="small"
               multiline
               rows={2}
-              placeholder={t(
-                'resourceServers:tree.fields.descriptionPlaceholder',
-                'e.g. Optional. Describe what this is for.',
-              )}
+              placeholder={resolveDescriptionPlaceholder()}
             />
           </FormControl>
 

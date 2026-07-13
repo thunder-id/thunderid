@@ -95,7 +95,7 @@ func (s *inMemoryStore) Update(_ context.Context, namespace providers.RuntimeSto
 
 	e, ok := s.data[fk]
 	if !ok || e.isExpired() {
-		return fmt.Errorf("value not found for key: %s", fk)
+		return providers.ErrRuntimeStoreKeyNotFound
 	}
 	s.data[fk] = &entry{value: value, expiresAt: e.expiresAt}
 	return nil
@@ -130,6 +130,22 @@ func (s *inMemoryStore) Take(ctx context.Context, namespace providers.RuntimeSto
 
 	s.logger.Debug(ctx, "Taken from memory", log.String("key", key))
 	return e.value, nil
+}
+
+// ExtendTTL extends the TTL of an existing entry in the in-memory store.
+func (s *inMemoryStore) ExtendTTL(_ context.Context, namespace providers.RuntimeStoreNamespace,
+	key string, ttlSeconds int64) error {
+	fk := s.getFormattedKey(namespace, key)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	e, ok := s.data[fk]
+	if !ok || e.isExpired() {
+		return providers.ErrRuntimeStoreKeyNotFound
+	}
+	e.expiresAt = time.Now().Add(time.Duration(ttlSeconds) * time.Second)
+	return nil
 }
 
 // getFormattedKey builds the in-memory key.

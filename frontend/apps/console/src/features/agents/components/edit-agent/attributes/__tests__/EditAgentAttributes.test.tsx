@@ -16,18 +16,17 @@
  * under the License.
  */
 
-/* eslint-disable @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import userEvent from '@testing-library/user-event';
 import {render, screen, waitFor} from '@thunderid/test-utils';
+import {Controller, type Control} from 'react-hook-form';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Agent} from '../../../../models/agent';
 import EditAgentAttributes from '../EditAgentAttributes';
 
-const {mockUseGetAgentTypes, mockUseGetAgentType, mockUseUpdateAgent, mockMutateAsync} = vi.hoisted(() => ({
+const {mockUseGetAgentTypes, mockUseGetAgentType} = vi.hoisted(() => ({
   mockUseGetAgentTypes: vi.fn(),
   mockUseGetAgentType: vi.fn(),
-  mockUseUpdateAgent: vi.fn(),
-  mockMutateAsync: vi.fn(),
 }));
 
 vi.mock('@thunderid/configure-agent-types', () => ({
@@ -35,16 +34,22 @@ vi.mock('@thunderid/configure-agent-types', () => ({
   useGetAgentType: (id?: string) => mockUseGetAgentType(id),
 }));
 
-vi.mock('../../../../api/useUpdateAgent', () => ({
-  default: () => mockUseUpdateAgent(),
-}));
-
 vi.mock('@thunderid/configure-users', () => ({
-  renderSchemaField: vi.fn((fieldName: string) => (
+  renderSchemaField: (fieldName: string, _fieldDef: unknown, control: Control<Record<string, unknown>>) => (
     <div key={fieldName} data-testid={`field-${fieldName}`}>
-      {fieldName}
+      <Controller
+        name={fieldName}
+        control={control}
+        render={({field}) => (
+          <input
+            aria-label={`${fieldName}-input`}
+            value={typeof field.value === 'string' ? field.value : ''}
+            onChange={(e) => field.onChange(e.target.value)}
+          />
+        )}
+      />
     </div>
-  )),
+  ),
 }));
 
 vi.mock('@thunderid/hooks', () => ({
@@ -52,12 +57,13 @@ vi.mock('@thunderid/hooks', () => ({
 }));
 
 describe('EditAgentAttributes', () => {
+  const mockOnFieldChange = vi.fn();
   const baseAgent: Agent = {
     id: 'agent-1',
     ouId: 'ou-1',
     type: 'default',
     name: 'Test',
-    attributes: {email: 'a@b.com', count: 5, isAdmin: true, tags: ['a', 'b']},
+    attributes: {email: 'a@b.com', count: 5},
   };
 
   beforeEach(() => {
@@ -73,153 +79,119 @@ describe('EditAgentAttributes', () => {
         schema: {
           email: {type: 'string', required: true},
           count: {type: 'number'},
-          // Credentials should be filtered out from edit mode
+          // Credentials should be filtered out of the editable schema fields.
           password: {type: 'string', credential: true},
         },
       },
       isLoading: false,
     });
-    mockUseUpdateAgent.mockReturnValue({
-      mutateAsync: mockMutateAsync,
-      isPending: false,
-      error: null,
-      reset: vi.fn(),
-    });
   });
 
   it('shows a loading spinner while the schema is loading', () => {
     mockUseGetAgentType.mockReturnValue({data: undefined, isLoading: true});
-    render(<EditAgentAttributes agent={baseAgent} />);
+    render(<EditAgentAttributes agent={baseAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
 
     expect(screen.getByRole('progressbar')).toBeInTheDocument();
   });
 
-  it('renders attribute values in view mode', () => {
-    render(<EditAgentAttributes agent={baseAgent} />);
+  it('shows the edit form directly, with a field per editable schema entry', () => {
+    render(<EditAgentAttributes agent={baseAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
 
-    expect(screen.getByText('a@b.com')).toBeInTheDocument();
-    expect(screen.getByText('5')).toBeInTheDocument();
-    expect(screen.getByText('Yes')).toBeInTheDocument();
-    expect(screen.getByText('a, b')).toBeInTheDocument();
-  });
-
-  it('shows an empty placeholder when there are no attributes', () => {
-    render(<EditAgentAttributes agent={{...baseAgent, attributes: {}}} />);
-
-    expect(screen.getByText('No attributes available.')).toBeInTheDocument();
-  });
-
-  it('shows the Edit button when there are editable schema fields', () => {
-    render(<EditAgentAttributes agent={baseAgent} />);
-
-    expect(screen.getByRole('button', {name: /^Edit$/i})).toBeInTheDocument();
-  });
-
-  it('hides the Edit button when only credential schema fields exist', () => {
-    mockUseGetAgentType.mockReturnValue({
-      data: {
-        id: 'schema-1',
-        name: 'default',
-        ouId: 'ou-1',
-        schema: {password: {type: 'string', credential: true}},
-      },
-      isLoading: false,
-    });
-
-    render(<EditAgentAttributes agent={baseAgent} />);
-
-    expect(screen.queryByRole('button', {name: /^Edit$/i})).not.toBeInTheDocument();
-  });
-
-  it('switches to edit mode when Edit is clicked', async () => {
-    const user = userEvent.setup();
-    render(<EditAgentAttributes agent={baseAgent} />);
-
-    await user.click(screen.getByRole('button', {name: /^Edit$/i}));
-
-    // Editable fields show, credential fields are filtered
     expect(screen.getByTestId('field-email')).toBeInTheDocument();
     expect(screen.getByTestId('field-count')).toBeInTheDocument();
     expect(screen.queryByTestId('field-password')).not.toBeInTheDocument();
   });
 
-  it('cancels edit mode and resets form when Cancel is clicked', async () => {
-    const user = userEvent.setup();
-    render(<EditAgentAttributes agent={baseAgent} />);
+  it('has no local Save/Cancel controls — the page-level Save bar is the only save path', () => {
+    render(<EditAgentAttributes agent={baseAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
 
-    await user.click(screen.getByRole('button', {name: /^Edit$/i}));
-    await user.click(screen.getByRole('button', {name: /Cancel/i}));
-
-    // Back to view mode
-    expect(screen.getByRole('button', {name: /^Edit$/i})).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /save/i})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /cancel/i})).not.toBeInTheDocument();
   });
 
-  it('calls updateAgent.mutateAsync on submit', async () => {
-    const user = userEvent.setup();
-    mockMutateAsync.mockResolvedValue(undefined);
-    const onSaved = vi.fn();
-    render(<EditAgentAttributes agent={baseAgent} onSaved={onSaved} />);
+  it('shows a message when the schema has no editable fields', () => {
+    mockUseGetAgentType.mockReturnValue({
+      data: {id: 'schema-1', name: 'default', ouId: 'ou-1', schema: {password: {type: 'string', credential: true}}},
+      isLoading: false,
+    });
+    render(<EditAgentAttributes agent={baseAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
 
-    await user.click(screen.getByRole('button', {name: /^Edit$/i}));
-    await user.click(screen.getByRole('button', {name: /Save/i}));
+    expect(screen.getByText('No schema available for editing')).toBeInTheDocument();
+  });
+
+  it('does not call onFieldChange on initial mount', () => {
+    render(<EditAgentAttributes agent={baseAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+
+    expect(mockOnFieldChange).not.toHaveBeenCalled();
+  });
+
+  it('does not call onFieldChange once the schema finishes loading after mount', async () => {
+    // Regression test: the schema (and therefore the editable fields/Controllers) can arrive
+    // asynchronously after this component's own effects have already run once with no fields
+    // registered yet. That later field-registration wave used to slip past a one-shot
+    // "first render" guard and get mistaken for a real user edit.
+    mockUseGetAgentType.mockReturnValue({data: undefined, isLoading: true});
+    const {rerender} = render(
+      <EditAgentAttributes agent={baseAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />,
+    );
+
+    mockUseGetAgentType.mockReturnValue({
+      data: {
+        id: 'schema-1',
+        name: 'default',
+        ouId: 'ou-1',
+        schema: {email: {type: 'string', required: true}, count: {type: 'number'}},
+      },
+      isLoading: false,
+    });
+    rerender(<EditAgentAttributes agent={baseAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+
+    await screen.findByTestId('field-email');
+
+    expect(mockOnFieldChange).not.toHaveBeenCalled();
+  });
+
+  it('stages the merged attributes into the shared editedAgent state as the user types', async () => {
+    const user = userEvent.setup();
+    render(<EditAgentAttributes agent={baseAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+
+    const input = screen.getByLabelText('email-input');
+    await user.clear(input);
+    await user.type(input, 'new@b.com');
 
     await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({
-          agentId: 'agent-1',
-          data: expect.objectContaining({
-            attributes: expect.any(Object) as Record<string, unknown>,
-          }),
-        }),
+      expect(mockOnFieldChange).toHaveBeenLastCalledWith(
+        'attributes',
+        expect.objectContaining({email: 'new@b.com', count: 5}),
       );
     });
-
-    await waitFor(() => {
-      expect(onSaved).toHaveBeenCalled();
-    });
   });
 
-  it('shows the update error when the mutation has an error', async () => {
-    mockUseUpdateAgent.mockReturnValue({
-      mutateAsync: mockMutateAsync,
-      isPending: false,
-      error: new Error('Update failed'),
-      reset: vi.fn(),
-    });
-    const user = userEvent.setup();
-    render(<EditAgentAttributes agent={baseAgent} />);
-
-    await user.click(screen.getByRole('button', {name: /^Edit$/i}));
-
-    expect(screen.getByText('Update failed')).toBeInTheDocument();
-  });
-
-  it('disables save while pending', async () => {
-    mockUseUpdateAgent.mockReturnValue({
-      mutateAsync: mockMutateAsync,
-      isPending: true,
-      error: null,
-      reset: vi.fn(),
-    });
-    const user = userEvent.setup();
-    render(<EditAgentAttributes agent={baseAgent} />);
-
-    await user.click(screen.getByRole('button', {name: /^Edit$/i}));
-
-    expect(screen.getByRole('button', {name: /Saving\.\.\./i})).toBeDisabled();
-  });
-
-  it('formats null/undefined attribute values as "-"', () => {
+  it('uses editedAgent.attributes over agent.attributes as the starting values', () => {
     render(
       <EditAgentAttributes
-        agent={{
-          ...baseAgent,
-          attributes: {nothing: null, missing: undefined, complex: {nested: true}},
-        }}
+        agent={baseAgent}
+        editedAgent={{attributes: {email: 'pending@b.com', count: 5}}}
+        onFieldChange={mockOnFieldChange}
       />,
     );
 
-    expect(screen.getAllByText('-').length).toBeGreaterThan(0);
-    expect(screen.getByText('{"nested":true}')).toBeInTheDocument();
+    expect(screen.getByLabelText('email-input')).toHaveValue('pending@b.com');
+  });
+
+  describe('read-only agents', () => {
+    it('shows the read-only attribute summary instead of the edit form', () => {
+      render(
+        <EditAgentAttributes
+          agent={{...baseAgent, isReadOnly: true}}
+          editedAgent={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByText('email')).toBeInTheDocument();
+      expect(screen.getByText('a@b.com')).toBeInTheDocument();
+      expect(screen.queryByTestId('field-email')).not.toBeInTheDocument();
+    });
   });
 });

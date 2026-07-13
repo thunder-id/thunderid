@@ -67,20 +67,6 @@ var (
 		},
 	}
 
-	// ErrorThemeInUse is returned when trying to delete a theme that is being used by applications.
-	ErrorThemeInUse = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "THM-1004",
-		Error: tidcommon.I18nMessage{
-			Key:          "theme.error.in_use",
-			DefaultValue: "Theme in use",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "theme.error.in_use_description",
-			DefaultValue: "Cannot delete theme that is currently associated with one or more applications",
-		},
-	}
-
 	// ErrorMissingDisplayName is returned when display name is not provided.
 	ErrorMissingDisplayName = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

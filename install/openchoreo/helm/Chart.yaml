@@ -34,14 +34,14 @@ description: |
   Install only the Component (assumes ComponentType already exists):
     helm install thunderid-app charts/thunderid-component -f my-values.yaml
 type: application
-version: 0.47.0
-appVersion: "0.47.0"
+version: 0.48.0
+appVersion: "0.48.0"
 dependencies:
   - name: thunderid-oc-componenttype
-    version: "0.47.0"
+    version: "0.48.0"
     repository: "file://charts/thunderid-oc-componenttype"
     condition: thunderid-oc-componenttype.enabled
   - name: thunderid-component
-    version: "0.47.0"
+    version: "0.48.0"
     repository: "file://charts/thunderid-component"
     condition: thunderid-component.enabled

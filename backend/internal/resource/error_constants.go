@@ -369,6 +369,17 @@ var (
 
 	// errResultLimitExceededInCompositeMode is the internal sentinel error for composite mode limit exceeded.
 	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
+
+	// errUnknownDefaultResourceServer is returned when the configured resource server does not exist.
+	errUnknownDefaultResourceServer = errors.New(
+		"default resource server does not resolve to an existing resource server")
+
+	// errDeclarativeDefaultLocked is returned when attempting to override a declarative default.
+	errDeclarativeDefaultLocked = errors.New(
+		"default resource server is set declaratively and cannot be overridden")
+
+	// errDefaultResourceServerLookupFailed is returned when resource server lookup fails.
+	errDefaultResourceServerLookupFailed = errors.New("failed to resolve default resource server")
 )
 
 // consentSyncError wraps an underlying ServiceError from the consent service, allowing callers

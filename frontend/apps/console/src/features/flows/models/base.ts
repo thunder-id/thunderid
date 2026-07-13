@@ -106,6 +106,15 @@ export interface BaseDisplay {
    * Should the component be shown on the resource panel.
    */
   showOnResourcePanel: boolean;
+  /**
+   * Optional custom labels for an execution node's outcome handles (success / failure /
+   * incomplete). When omitted, generic outcome labels are used.
+   */
+  outcomes?: {
+    success?: string;
+    failure?: string;
+    incomplete?: string;
+  };
 }
 
 /**

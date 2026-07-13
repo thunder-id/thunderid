@@ -290,6 +290,14 @@ func sanitizeAttributeConfiguration(profile *providers.AttributeConfiguration) *
 			sanitized.UserTypeAttributeMappings = append(sanitized.UserTypeAttributeMappings, sanitizedEntry)
 		}
 	}
+	if profile.AccountLinking != nil {
+		sanitized.AccountLinking = &providers.AccountLinking{}
+		for _, attr := range profile.AccountLinking.Attributes {
+			if trimmed := sysutils.SanitizeString(attr); trimmed != "" {
+				sanitized.AccountLinking.Attributes = append(sanitized.AccountLinking.Attributes, trimmed)
+			}
+		}
+	}
 	return sanitized
 }
 

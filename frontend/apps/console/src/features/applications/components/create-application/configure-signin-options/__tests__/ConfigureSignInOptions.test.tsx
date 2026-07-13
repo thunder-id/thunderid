@@ -18,10 +18,9 @@
 
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {AuthenticatorTypes, IdentityProviderTypes, type IdentityProvider} from '@thunderid/configure-connections';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import ConfigureSignInOptions, {type ConfigureSignInOptionsProps} from '../ConfigureSignInOptions';
-import {AuthenticatorTypes} from '@/features/connections/models/authenticators';
-import {IdentityProviderTypes, type IdentityProvider} from '@/features/connections/models/identity-provider';
 import type {BasicFlowDefinition} from '@/features/flows/models/responses';
 import findMatchingFlowForIntegrations from '@/features/flows/utils/findMatchingFlowForIntegrations';
 
@@ -53,8 +52,9 @@ interface MockIdentityProviderResponse {
   error: Error | null;
 }
 const mockUseIdentityProviders = vi.fn<() => MockIdentityProviderResponse>();
-vi.mock('@/features/connections/api/useIdentityProviders', () => ({
-  default: () => mockUseIdentityProviders(),
+vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
+  useIdentityProviders: () => mockUseIdentityProviders(),
 }));
 
 // Mock useGetFlows

@@ -24,6 +24,10 @@ import { z } from "zod";
 
 import { resolveUser, validateIdToken } from "./auth.js";
 import {
+    createAuthzenAuthorizer,
+    getAuthorizationMode,
+} from "./authzen.js";
+import {
   createBookingRecord,
   createUpgradeRequest,
   deleteBookingsForUser,
@@ -43,25 +47,35 @@ import {
   updateUpgradeStatus
 } from "./db.js";
 
-// Per-tool scope requirements. Mirrors the REST API's requireScope() guards so
-// each MCP tool enforces the same scope as the endpoint it wraps. Tools mapped
-// to null require only a valid token.
-const TOOL_SCOPES = {
+// Per-tool permission requirements. Scope mode checks these values in the
+// caller token; AuthZEN mode sends them to the PDP as action names. Tools
+// mapped to null require only a valid token.
+const TOOL_PERMISSIONS = {
   search_flights: null,
-  recommend_bookings: "booking:recommend",
+  recommend_bookings: "wayfinder:booking:recommend",
   search_hotels: null,
   get_trips: null,
   get_locations: null,
   get_profile: null,
-  get_flight_bookings: "booking:read",
-  create_booking: "booking:create",
-  delete_all_bookings: "booking:cancel",
-  find_upgrade_options: "upgrade:search",
-  upgrade_booking: "booking:upgrade",   // direct immediate upgrade (seats available)
-  request_upgrade: "booking:upgrade",   // async CIBA upgrade (seats not yet available)
-  get_pending_upgrade: "upgrade:read",
-  process_upgrade: "upgrade:process"
+  get_flight_bookings: "wayfinder:booking:read",
+  create_booking: "wayfinder:booking:create",
+  delete_all_bookings: "wayfinder:booking:cancel",
+  find_upgrade_options: "wayfinder:upgrade:search",
+  upgrade_booking: "wayfinder:booking:upgrade",   // direct immediate upgrade (seats available)
+  request_upgrade: "wayfinder:booking:upgrade",   // async CIBA upgrade (seats not yet available)
+  get_pending_upgrade: "wayfinder:upgrade:read",
+  process_upgrade: "wayfinder:upgrade:process"
 };
+
+let evaluateAuthzenAccess;
+
+function getAuthzenAuthorizer() {
+    if (!evaluateAuthzenAccess) {
+        evaluateAuthzenAccess = createAuthzenAuthorizer();
+    }
+
+    return evaluateAuthzenAccess;
+}
 
 function generateBookingReference() {
     return `WF-${randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
@@ -81,21 +95,41 @@ function toToolContent(data) {
     };
 }
 
-function requireToolScope(user, toolName) {
-    const required = TOOL_SCOPES[toolName];
+async function requireToolAuthorization(user, toolName) {
+    if (!Object.hasOwn(TOOL_PERMISSIONS, toolName)) {
+        throw new Error(`Missing permission mapping for tool ${toolName}`);
+    }
 
-    if (!required) {
+    const requiredPermission = TOOL_PERMISSIONS[toolName];
+
+    if (requiredPermission === null) {
+        return;
+    }
+
+    if (getAuthorizationMode() === "authzen") {
+        await getAuthzenAuthorizer()({
+            subject: {
+                id: user.id,
+            },
+            resource: {
+                type: "wayfinder",
+            },
+            action: {
+                name: requiredPermission,
+            },
+        });
+
         return;
     }
 
     const scopes = user?.scopes || [];
 
-    if (!scopes.includes(required)) {
+    if (!scopes.includes(requiredPermission)) {
         const error = new Error(
-            `Insufficient scope for tool ${toolName}. Required: ${required}`,
+            `Insufficient scope for tool ${toolName}. Required: ${requiredPermission}`,
         );
         error.code = "insufficient_scope";
-        error.requiredScope = required;
+        error.requiredScope = requiredPermission;
         throw error;
     }
 }
@@ -139,11 +173,11 @@ function createTravelMcpServer(user, idToken) {
         version: "1.0.0",
     });
 
-    // Wrap server.tool with a per-tool scope check so authorization is enforced
-    // at the MCP layer rather than relying on the REST API downstream.
+    // Enforce the configured authorization mode at the MCP layer rather than
+    // relying on the REST API downstream.
     function tool(name, description, schema, handler) {
         server.tool(name, description, schema, async (args) => {
-            requireToolScope(user, name);
+            await requireToolAuthorization(user, name);
 
             return handler(args);
         });
@@ -438,14 +472,14 @@ function createTravelMcpServer(user, idToken) {
 
     tool(
         "get_pending_upgrade",
-        "For the upgrade scheduler agent only. Returns the count of pending upgrade requests and one request to process next. Requires upgrade:read scope (M2M token).",
+        "For the upgrade scheduler agent only. Returns the count of pending upgrade requests and one request to process next. Requires wayfinder:upgrade:read scope (M2M token).",
         {},
         async () => toToolContent(getOnePendingUpgrade()),
     );
 
   tool(
     "process_upgrade",
-    "Process a specific upgrade request. Validates that the authenticated user owns the request, resolves the matching Business class flight, updates the booking, and marks the request as success or failed. Requires upgrade:process scope (CIBA user token).",
+    "Process a specific upgrade request. Validates that the authenticated user owns the request, resolves the matching Business class flight, updates the booking, and marks the request as success or failed. Requires wayfinder:upgrade:process scope (CIBA user token).",
     {
       upgradeRequestId: z.string().describe("The ID of the upgrade request to process.")
     },
@@ -610,14 +644,14 @@ export function getProtectedResourceMetadata(request) {
         resource: `${protocol}://${host}/mcp`,
         authorization_servers: issuer ? [issuer] : [],
         scopes_supported: [
-            "booking:read",
-            "booking:create",
-            "booking:cancel",
-            "booking:recommend",
-            "booking:upgrade",
-            "upgrade:read",
-            "upgrade:search",
-            "upgrade:process",
+            "wayfinder:booking:read",
+            "wayfinder:booking:create",
+            "wayfinder:booking:cancel",
+            "wayfinder:booking:recommend",
+            "wayfinder:booking:upgrade",
+            "wayfinder:upgrade:read",
+            "wayfinder:upgrade:search",
+            "wayfinder:upgrade:process",
         ],
         bearer_methods_supported: ["header"],
     };

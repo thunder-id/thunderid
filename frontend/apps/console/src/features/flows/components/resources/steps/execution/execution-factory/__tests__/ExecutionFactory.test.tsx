@@ -197,6 +197,30 @@ describe('ExecutionFactory', () => {
       expect(screen.getByText('Custom Executor')).toBeInTheDocument();
     });
 
+    it('should render the description inside the node body when provided', () => {
+      const resource = createMockResource({
+        display: {
+          label: 'Check SSO Session',
+          description: 'Can the following authentication be skipped by reusing the existing session?',
+          image: 'assets/images/icons/magnifying-glass.svg',
+          showOnResourcePanel: true,
+        },
+        data: {
+          action: {
+            executor: {
+              name: 'SSOCheckExecutor',
+            },
+          },
+        },
+      });
+      render(<ExecutionFactory resource={resource} />);
+
+      expect(screen.getByText('Check SSO Session')).toBeInTheDocument();
+      expect(
+        screen.getByText('Can the following authentication be skipped by reusing the existing session?'),
+      ).toBeInTheDocument();
+    });
+
     it('should use default alt text when displayLabel is undefined', () => {
       const resource = createMockResource({
         display: {

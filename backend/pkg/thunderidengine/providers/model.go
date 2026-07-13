@@ -582,10 +582,27 @@ type OAuthTokenConfig struct {
 	RefreshToken *RefreshTokenConfig `json:"refreshToken,omitempty" yaml:"refreshToken,omitempty" jsonschema:"Refresh token configuration."`
 }
 
-// AccessTokenConfig is the access token configuration.
+// AccessTokenConfig is the access token configuration, split by token subject: an end user
+// (UserConfig) or the OAuth client itself, issued only via the client_credentials grant
+// (ClientConfig).
 type AccessTokenConfig struct {
+	UserConfig   *AccessTokenSubConfig `json:"userConfig,omitempty"   yaml:"userConfig,omitempty"   jsonschema:"Access token configuration applied when the token subject is an end user."`
+	ClientConfig *AccessTokenSubConfig `json:"clientConfig,omitempty" yaml:"clientConfig,omitempty" jsonschema:"Access token configuration applied when the token subject is the OAuth client itself, issued only via the client_credentials grant."`
+}
+
+// AccessTokenSubConfig holds the validity period and attribute selection for one access
+// token subject type (user or client).
+type AccessTokenSubConfig struct {
 	ValidityPeriod int64    `json:"validityPeriod,omitempty" yaml:"validityPeriod,omitempty" jsonschema:"Access token validity period in seconds."`
-	UserAttributes []string `json:"userAttributes,omitempty" yaml:"userAttributes,omitempty" jsonschema:"User attributes to embed in the access token."`
+	Attributes     []string `json:"attributes,omitempty"     yaml:"attributes,omitempty"     jsonschema:"Attributes to embed in the access token."`
+}
+
+// ValidityPeriodOrZero returns the configured validity period, or 0 when the sub-config is unset.
+func (c *AccessTokenSubConfig) ValidityPeriodOrZero() int64 {
+	if c == nil {
+		return 0
+	}
+	return c.ValidityPeriod
 }
 
 // IDTokenConfig is the ID token configuration.
@@ -715,11 +732,20 @@ type UserTypeAttributeMapping struct {
 	Attributes []AttributeMapping `json:"attributes,omitempty" yaml:"attributes,omitempty"`
 }
 
+// AccountLinking configures which attributes resolve the local user for an incoming federated
+// identity when the subject identifier does not. Attributes is a list of external claim names (each
+// resolved to its local counterpart via the IdP's attribute mappings); those with a value are matched
+// together to resolve a unique local user.
+type AccountLinking struct {
+	Attributes []string `json:"attributes,omitempty" yaml:"attributes,omitempty"`
+}
+
 // AttributeConfiguration holds the user-type resolution and per-user-type attribute mappings for an
 // identity provider.
 type AttributeConfiguration struct {
 	UserTypeResolution        *UserTypeResolution        `json:"userTypeResolution,omitempty"        yaml:"user_type_resolution,omitempty"`         //nolint:lll
 	UserTypeAttributeMappings []UserTypeAttributeMapping `json:"userTypeAttributeMappings,omitempty" yaml:"user_type_attribute_mappings,omitempty"` //nolint:lll
+	AccountLinking            *AccountLinking            `json:"accountLinking,omitempty"            yaml:"accountLinking,omitempty"`               //nolint:lll
 }
 
 // ConsentElementApproval represents a user's approval decision for a specific element.
@@ -846,6 +872,10 @@ type ExecutorResponse struct {
 	Assertion      string                 `json:"assertion,omitempty"`
 	Error          *common.ServiceError   `json:"error,omitempty"`
 	AuthUser       AuthUser               `json:"-"`
+	// EngineData carries executor output the flow engine consumes internally (for example, a
+	// transport signal such as a minted session handle). Unlike AdditionalData, it is never
+	// serialized to the client.
+	EngineData map[string]string `json:"-"`
 }
 
 // ExecutionPolicy defines behavioral policies for node execution.
@@ -1177,4 +1207,10 @@ func (e *Event) Validate() error {
 	}
 
 	return nil
+}
+
+// CaptchaVerificationResult holds the outcome of a captcha token verification.
+type CaptchaVerificationResult struct {
+	// Success reports whether the provider accepted the token as valid.
+	Success bool
 }

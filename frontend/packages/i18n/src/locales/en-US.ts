@@ -741,6 +741,18 @@ const translations = {
     'delete.usages.title': 'The following agents list this user as their owner:',
     'delete.usages.more': '+{{count}} more',
     'delete.blocking.title': 'This user cannot be deleted until the following agents are reassigned or removed:',
+
+    // Credentials section on edit page
+    'manageUser.sections.credentials.title': 'Credentials',
+    'manageUser.sections.credentials.description': 'Update credential values such as passwords for this user.',
+    'manageUser.sections.credentials.info':
+      'Credential values are write-only and cannot be viewed. You can set new values below.',
+
+    // Update credentials
+    'updateCredentials.button': 'Update Credentials',
+    'updateCredentials.hint': 'Fill in only the credentials you want to update. Empty fields will be skipped.',
+    'updateCredentials.success': 'Credentials updated successfully.',
+    'updateCredentials.error': 'Failed to update credentials. Please try again.',
   },
 
   // ============================================================================
@@ -768,6 +780,11 @@ const translations = {
     propertyNamePlaceholder: 'e.g., email, age, address',
     propertyType: 'Type',
     addProperty: 'Add Property',
+    'attributes.libraryTitle': 'Available Properties',
+    'attributes.searchPlaceholder': 'Search properties',
+    'attributes.allAdded': 'All available properties have been added.',
+    'attributes.noResults': 'No properties match your search.',
+    newAttribute: 'New property',
     credential: 'Credential',
     unique: 'Unique',
     removeProperty: 'Remove property',
@@ -855,6 +872,8 @@ const translations = {
     'removeCredentialDialog.title': 'Remove Credential Flag',
     'removeCredentialDialog.description':
       'Removing the credential flag will cause this field to no longer be hashed or protected. Existing hashed values may become inaccessible. Are you sure you want to proceed?',
+    'removeCredentialDialog.descriptionNew':
+      'Removing the credential flag will cause this field to no longer be hashed or protected. Are you sure you want to proceed?',
     'removeCredentialDialog.confirm': 'Remove Credential',
   },
 
@@ -991,6 +1010,7 @@ const translations = {
     'createWizard.steps.organizationUnit': 'Organization unit',
     'createWizard.steps.profile': 'Profile',
     'createWizard.steps.owner': 'Owner',
+    'createWizard.name.title': "What's this agent called?",
     'createWizard.name.fieldLabel': 'Agent name',
     'createWizard.name.placeholder': 'e.g. Billing Service',
     'createWizard.name.suggestions.label': 'Need inspiration? Pick one:',
@@ -1005,7 +1025,7 @@ const translations = {
 
     // Client secret (creation)
     'clientSecret.saveTitle': 'Save your client secret',
-    'clientSecret.saveSubtitle': "Copy your client secret and store it somewhere safe. It won't be shown again.",
+    'clientSecret.saveSubtitle': "This secret won't be shown again. Copy it and store it somewhere safe.",
     'clientSecret.agentNameLabel': 'Agent name',
     'clientSecret.clientIdLabel': 'Client ID',
     'clientSecret.clientSecretLabel': 'Client Secret',
@@ -1046,50 +1066,158 @@ const translations = {
     'edit.page.back': 'Back to agents',
     'edit.page.description.empty': 'No description',
     'edit.page.description.placeholder': 'Add a description',
+    'edit.page.tabs.general': 'General',
     'edit.page.tabs.attributes': 'Attributes',
+    'edit.page.tabs.credentials': 'Credentials',
+    'edit.page.tabs.access': 'Access',
+    'edit.page.tabs.flows': 'Flows',
+    'edit.page.tabs.tokens': 'Tokens',
+    'edit.page.tabs.advanced': 'Advanced',
     'edit.page.unsavedChanges': 'You have unsaved changes',
-    'edit.page.reset': 'Discard',
+    'edit.page.unsavedChangesInvalid': 'Before saving, {{issues}}.',
+    'edit.page.validation.missingRedirectUri': 'add a redirect URI',
+    'edit.page.validation.missingAllowedUserType': 'select at least one allowed user type',
+    'edit.page.validation.missingCertificate': 'add a certificate',
+    'edit.page.validation.tokenSettings': 'fix the token settings',
+    'edit.page.reset': 'Reset',
     'edit.page.save': 'Save',
     'edit.page.saving': 'Saving…',
     'update.success': 'Agent updated successfully.',
     'update.error': 'Failed to update agent. Please try again.',
 
-    // Edit page — Attributes tab
+    // Edit page - Attributes tab
     'edit.attributes.title': 'Attributes',
     'edit.attributes.description': 'View and manage agent attribute values.',
     'edit.attributes.empty': 'No attributes available.',
     'edit.attributes.noEditable': 'No editable attributes available.',
+    'edit.attributes.noSchema': 'No schema available for editing',
 
-    // Edit page — General tab
-    'edit.general.sections.quickCopy.title': 'Quick Copy',
-    'edit.general.sections.quickCopy.description': 'Copy agent identifiers for use in your code.',
+    // Edit page - General tab
+    'edit.general.sections.quickCopy.title': 'Identifier',
+    'edit.general.sections.quickCopy.description': 'The unique identifier for this agent.',
     'edit.general.labels.agentId': 'Agent ID',
     'edit.general.labels.ownerId': 'Owner ID',
     'edit.general.agentId.hint': 'Unique identifier for this agent',
     'edit.general.clientId.hint': 'OAuth2 client identifier used by this agent to obtain tokens',
     'edit.general.owner.hint': 'Identifier of the user that owns this agent',
+    'edit.general.owner.empty': 'No owner assigned',
+    'edit.general.sections.owner.title': 'Owner',
+    'edit.general.sections.owner.description': 'The user accountable for this agent.',
+    'edit.general.sections.owner.label': 'Owner',
+    'edit.general.sections.owner.summaryDescription':
+      'The user who is accountable for this agent, shown in audit records and used as the contact point for questions about what this agent does. Assigning an owner does not give that user any special access to the agent. Manage this from the Advanced tab.',
+    'edit.general.sections.attributes.title': 'Attributes',
+    'edit.general.sections.attributes.description':
+      "A preview of this agent's attribute values. Manage them from the Attributes tab.",
+    'edit.general.sections.organizationUnit.title': 'Organization Unit',
+    'edit.general.sections.organizationUnit.description': 'The organization unit this agent belongs to.',
+    'edit.general.sections.dangerZone.title': 'Danger Zone',
+    'edit.general.sections.dangerZone.description': 'Actions here are permanent. Make sure before you proceed.',
     'edit.general.dangerZone.deleteAgent.title': 'Delete Agent',
     'edit.general.dangerZone.deleteAgent.description':
-      'Permanently delete this agent and all associated data. This action cannot be undone.',
+      'Permanently deletes this agent and immediately invalidates any tokens it has issued. This action cannot be undone.',
     'edit.general.dangerZone.deleteAgent.button': 'Delete Agent',
 
-    // Edit page — Flows tab
+    // Edit page - Credentials tab
+    'edit.credentials.clientId.title': 'Client ID',
+    'edit.credentials.clientId.description': 'The public identifier this agent uses to authenticate as a client.',
+    'edit.credentials.clientSecret.title': 'Client Secret',
+    'edit.credentials.clientSecret.description': 'The secret this agent uses to authenticate as a client.',
+    'edit.credentials.clientSecret.clientIdLabel': 'Client ID',
+    'edit.credentials.clientSecret.regenerateHint':
+      'Client secret was shown once at creation. Regenerate to issue a new one.',
+    'edit.credentials.clientSecret.regenerateButton': 'Regenerate secret',
+    'edit.credentials.tokenEndpointAuthMethod.title': 'Token Endpoint Auth Method',
+    'edit.credentials.tokenEndpointAuthMethod.description':
+      'Defines how this agent authenticates when requesting tokens.',
+    'edit.credentials.tokenEndpointAuthMethod.placeholder': 'Select an auth method',
+    'edit.credentials.tokenEndpointAuthMethod.hint':
+      'How this agent proves its identity when it calls the token endpoint.',
+    'edit.credentials.tokenEndpointAuthMethod.lockedHint': 'Set to "none" because this agent is a public client.',
+    'edit.credentials.certificate.title': 'Certificate',
+    'edit.credentials.certificate.description':
+      'Used to verify signed requests from this agent when it authenticates with private_key_jwt.',
+    'edit.credentials.certificate.sourceLabel': 'Public key source',
+    'edit.credentials.certificate.type.none': 'None',
+    'edit.credentials.certificate.type.jwks': 'JWKS (JSON)',
+    'edit.credentials.certificate.type.jwksUri': 'JWKS URI',
+    'edit.credentials.certificate.placeholder.jwks': '{ "keys": [ ... ] }',
+    'edit.credentials.certificate.placeholder.jwksUri': 'https://example.com/.well-known/jwks.json',
+    'edit.credentials.certificate.hint.jwks': 'The JSON Web Key Set to verify signed requests from this agent against.',
+    'edit.credentials.certificate.hint.jwksUri': 'The URL to verify signed requests from this agent against.',
+    'edit.credentials.certificate.error.required':
+      'This agent needs a certificate before it can use private_key_jwt authentication.',
+    'edit.credentials.certificate.error.valueRequired': 'This field cannot be empty.',
+
+    // Edit page - Access tab
+    'edit.access.groups.title': 'Groups',
+    'edit.access.groups.description':
+      'Groups this agent belongs to. Manage membership from the <manageLink>Groups page</manageLink>.',
+    'edit.access.groups.label': 'Groups',
+    'edit.access.groups.empty': 'This agent does not belong to any groups.',
+    'edit.access.groups.error': 'Failed to load groups for this agent.',
+    'edit.access.roles.title': 'Roles',
+    'edit.access.roles.description':
+      'Roles assigned to this agent, directly or through its groups. Manage assignments from the <manageLink>Roles page</manageLink>.',
+    'edit.access.roles.label': 'Roles',
+    'edit.access.roles.empty': 'This agent does not have any roles assigned.',
+    'edit.access.roles.error': 'Failed to load roles for this agent.',
+
+    // Edit page - Flows tab
     'edit.flows.allowedUserTypes.title': 'Allowed User Types',
     'edit.flows.allowedUserTypes.description':
       'Restrict which user types can authenticate or register through this agent.',
     'edit.flows.allowedUserTypes.label': 'User Types',
     'edit.flows.allowedUserTypes.placeholder': 'Select or add user types',
-    'edit.flows.allowedUserTypes.hint': 'Leave empty to allow any user type.',
+    'edit.flows.allowedUserTypes.hint': 'Only these user types can authenticate or register through this agent.',
+    'edit.flows.allowedUserTypes.required': 'Select at least one user type that can sign in through this agent.',
+    'edit.flows.delegationToggle.label': 'Delegated mode',
+    'edit.flows.delegationLock.message':
+      'These settings are frozen for this agent. Turn on Delegated mode above to unlock and start using them.',
 
-    // Edit page — Advanced tab
-    'edit.advanced.redirectUris.title': 'Redirect URIs',
-    'edit.advanced.redirectUris.description': 'Allowed redirect destinations for the authorization code grant.',
+    // Edit page - Advanced tab
+    'edit.advanced.redirectUris.title': 'Authorized redirect URIs',
+    'edit.advanced.redirectUris.description': 'For use with requests from a web server',
     'edit.advanced.redirectUris.empty': 'No redirect URIs configured.',
-    'edit.advanced.redirectUris.addUri': 'Add Redirect URI',
+    'edit.advanced.redirectUris.addUri': 'Add URI',
     'edit.advanced.redirectUris.error.empty': 'URI cannot be empty',
     'edit.advanced.redirectUris.error.invalid': 'Enter a valid URL',
-    'edit.advanced.redirectUris.required':
-      'At least one valid redirect URI is required for the authorization code grant.',
+    'edit.advanced.redirectUris.required': 'The Authorization Code grant requires at least one valid redirect URI.',
+    'edit.advanced.oauthAccess.title': 'OAuth Configuration',
+    'edit.advanced.oauthAccess.description': 'The grants and redirect URIs this agent is authorized to use.',
+    'edit.advanced.oauthAccess.grantTypes.label': 'Grant Types',
+    'edit.advanced.oauthAccess.grantTypes.hint':
+      'The greyed-out grants unlock once you turn on Delegated mode in the Flows tab.',
+    'edit.advanced.security.title': 'Security',
+    'edit.advanced.security.description':
+      'Controls how this agent protects the authorization code exchange when a user signs in.',
+    'edit.advanced.security.pkce.label': 'Require PKCE',
+    'edit.advanced.security.pkce.forced':
+      'This agent is set up as a public client, so PKCE is required and cannot be turned off.',
+    'edit.advanced.security.pkce.on': 'authorization_code is on for this agent, so PKCE is required automatically.',
+    'edit.advanced.security.pkce.notApplicable':
+      'PKCE only applies to the <code>authorization_code</code> grant. Turn that on to enable this setting.',
+    'edit.advanced.security.par.label': 'Require Pushed Authorization Requests',
+    'edit.advanced.security.par.hint':
+      'Require this agent to push its authorization request to the PAR endpoint before redirecting a user to sign in.',
+
+    // Edit page - Tokens tab
+    'edit.tokens.tabs.user': 'User',
+    'edit.tokens.tabs.agent': 'Agent',
+    'edit.tokens.delegationLock.message':
+      'These settings are frozen for this agent. Turn on Delegated mode in the Flows tab to unlock and start using them.',
+    'edit.tokens.agent.attributes.title': 'Access Token Attributes',
+    'edit.tokens.agent.attributes.description':
+      'Attributes included in the access token this agent receives for its own requests (client_credentials grant).',
+    'edit.tokens.agent.attributes.label': 'Add or Remove Attributes',
+    'edit.tokens.agent.attributes.hint': "Click on this agent's attributes to add them to its access token.",
+    'edit.tokens.agent.attributes.empty':
+      'No attributes available. Configure attributes for this agent in the Attributes tab.',
+    'edit.tokens.agent.validity.title': 'Token Validity',
+    'edit.tokens.agent.validity.label': 'Token Validity',
+    'edit.tokens.agent.validity.description': 'How long this access token remains valid before expiration.',
+    'edit.tokens.agent.validity.hint': 'Token validity period in seconds (e.g., 3600 for 1 hour).',
+    'edit.tokens.agent.validity.error': 'Enter a validity period of at least 1 second.',
 
     // Backend error code translations (per agent service error envelope).
     'errors.AGT-1001': 'The request body is malformed or contains invalid data.',
@@ -1515,6 +1643,7 @@ const translations = {
     'vendor.google.description': 'Let users sign in with their Google account.',
     'vendor.github.description': 'Let users sign in with their GitHub account.',
     'vendor.oidc.description': 'Connect any OpenID Connect identity provider.',
+    'vendor.oauth.description': 'Connect any OAuth 2.0 identity provider.',
     'vendor.twilio.description': 'Send SMS one-time passcodes via Twilio.',
     'vendor.vonage.description': 'Deliver SMS and email passcodes through Vonage.',
     'vendor.custom-sms.description': 'Route SMS through your own HTTP gateway.',
@@ -1523,14 +1652,16 @@ const translations = {
     'wizard.title': 'Add custom connection',
     'wizard.steps.type': 'Connection type',
     'wizard.steps.configure': 'Configure',
-    'wizard.steps.attributeMapping': 'Attribute mapping',
     'wizard.type.heading': 'What kind of connection do you want to add?',
     'wizard.type.subheading':
       'Custom connections aren’t in the vendor catalog — pick the type of integration you want to wire up.',
-    'wizard.type.oidc.label': 'Custom OIDC',
+    'wizard.type.oidc.label': 'OpenID Connect Provider',
     'wizard.type.oidc.description': 'Connect any OpenID Connect identity provider.',
     'wizard.type.oidc.tag': 'Login provider · Enterprise',
-    'wizard.type.sms.label': 'Custom SMS gateway',
+    'wizard.type.oauth.label': 'OAuth 2.0 Provider',
+    'wizard.type.oauth.description': 'Connect any OAuth 2.0 identity provider.',
+    'wizard.type.oauth.tag': 'Login provider · Enterprise',
+    'wizard.type.sms.label': 'SMS gateway',
     'wizard.type.sms.description': 'Route SMS through your own HTTP gateway.',
     'wizard.type.sms.tag': 'Message sender · SMS',
     'wizard.configure.heading': 'Configure your connection',
@@ -1595,6 +1726,18 @@ const translations = {
     'form.fields.issuer.label': 'Issuer',
     'form.fields.issuer.hint': 'Issuer identifier expected in tokens from this provider.',
     'form.fields.tokenExchangeEnabled.label': 'Enable token exchange',
+    'form.fields.trustedTokenAudience.label': 'Trusted token audience',
+    'form.fields.trustedTokenAudience.hint': 'Accepted audience value for external tokens during token exchange.',
+    'form.fields.accountSid.label': 'Account SID',
+    'form.fields.accountSid.hint': 'Twilio Account SID, starting with <code>AC</code> followed by 32 hex characters.',
+    'form.fields.authToken.label': 'Auth token',
+    'form.fields.authToken.hint': 'Twilio auth token used to authenticate API requests.',
+    'form.fields.apiKey.label': 'API key',
+    'form.fields.apiKey.hint': 'Vonage API key from your Vonage dashboard.',
+    'form.fields.apiSecret.label': 'API secret',
+    'form.fields.apiSecret.hint': 'Vonage API secret used to authenticate API requests.',
+    'form.fields.senderId.label': 'Sender ID',
+    'form.fields.senderId.hint': 'Phone number or alphanumeric sender ID messages are sent from.',
     'form.optional': 'Optional',
     'form.secret.update': 'Update',
     'form.secret.keepHelp': 'Leave unchanged to keep the stored secret.',
@@ -1605,18 +1748,11 @@ const translations = {
     'form.actions.delete': 'Delete connection',
 
     // Attribute mapping (authentication providers)
-    'attributeMapping.title': 'Attribute mapping',
-    'attributeMapping.cardDescription': 'Map the attributes this provider returns onto your local user schema.',
-    'attributeMapping.cardOptionalNote': 'Optional — defaults work for most providers.',
-    'attributeMapping.stepTitle': 'Map provider attributes to your users',
-    'attributeMapping.stepSubtitle':
-      'Choose the default user type and map the attributes {{vendor}} returns onto your local user schema. This step is optional.',
     'attributeMapping.userType.label': 'Default user type',
     'attributeMapping.userType.placeholder': 'Select a user type',
     'attributeMapping.userType.helper': 'New users signing in through this connection are provisioned as this type.',
     'attributeMapping.userTypeRequired': 'Select a user type for the attribute mappings.',
     'attributeMapping.add': 'Add mapping',
-    'attributeMapping.skipAndCreate': 'Skip and Create connection',
     'attributeMapping.empty.title': 'No custom mappings',
     'attributeMapping.empty.description':
       "The provider's standard attributes are applied automatically. Add a mapping only to override how a specific attribute lands on your user schema.",
@@ -1645,6 +1781,7 @@ const translations = {
     'error.loadFailed': 'Failed to load connection.',
     'validation.required': 'This field is required.',
     'validation.url': 'Enter a valid URL.',
+    'validation.accountSid': 'Enter a valid Account SID: “AC” followed by 32 hexadecimal characters.',
   },
 
   // ============================================================================
@@ -1807,6 +1944,7 @@ const translations = {
     'onboarding.steps.stack': 'Technology Stack',
     'onboarding.steps.configure': 'Configuration',
     'onboarding.steps.walletConfigure': 'Connect Your Wallet',
+    'onboarding.steps.clientType': 'Client type',
     'onboarding.steps.quickTest': 'Quick Test',
     'onboarding.steps.export': 'Integration Setup',
     'onboarding.steps.complete': 'Setup Complete',
@@ -1818,6 +1956,56 @@ const translations = {
     'onboarding.configure.name.fieldLabel': 'Application Name',
     'onboarding.configure.name.placeholder': 'Enter your application name',
     'onboarding.configure.name.suggestions.label': 'In a hurry? Pick a random name:',
+    'onboarding.mcp.clientType.title': 'Client type',
+    'onboarding.mcp.clientType.subtitle': 'How will this client obtain tokens?',
+    'onboarding.mcp.clientType.userDelegated.title': 'On behalf of a user',
+    'onboarding.mcp.clientType.userDelegated.description':
+      'A client in a host app (IDE, desktop app, or chat client) that acts on behalf of a signed-in user. Uses Authorization Code with PKCE.',
+    'onboarding.mcp.clientType.m2m.title': 'On its own behalf',
+    'onboarding.mcp.clientType.m2m.description':
+      'A client that authenticates with its own credentials without user interaction. Uses Client Credentials.',
+    'onboarding.mcp.clientType.preview.label': 'What you get',
+    'onboarding.mcp.clientType.preview.nextUserDelegated': 'Add your redirect URIs below.',
+    'onboarding.mcp.clientType.preview.nextM2m': 'Next: your client ID and secret are generated.',
+    'onboarding.mcp.connection.title': 'Add a redirect URI',
+    'onboarding.mcp.connection.subtitle': 'Where should users be sent after they authorize this client?',
+    'onboarding.mcp.connection.redirectUris.label': 'Redirect URIs',
+    'onboarding.mcp.connection.redirectUris.hint':
+      'Each URI must be a loopback address (http://localhost or http://127.0.0.1) or use HTTPS. At least one is required.',
+    'onboarding.mcp.connection.redirectUris.addUri': 'Add redirect URI',
+    'onboarding.mcp.connection.redirectUris.remove': 'Remove redirect URI',
+    'onboarding.mcp.connection.redirectUris.error.empty': 'Enter a redirect URI.',
+    'onboarding.mcp.connection.redirectUris.error.invalid': 'Enter a valid loopback (http://127.0.0.1) or HTTPS URI.',
+    'onboarding.mcp.connection.inspectorHint': 'Testing with MCP Inspector? Use {{uri}}',
+    'onboarding.mcp.connection.inspectorHint.copyAriaLabel': 'Copy MCP Inspector callback URI',
+    'onboarding.mcp.oauthProfile.label': 'OAuth profile',
+    'onboarding.mcp.oauthProfile.authCodePkce': 'Authorization Code + PKCE (required)',
+    'onboarding.mcp.oauthProfile.publicClient': 'Public client',
+    'onboarding.mcp.oauthProfile.refreshTokens': 'Refresh tokens',
+    'onboarding.mcp.oauthProfile.clientCredentials': 'Client Credentials',
+    'onboarding.mcp.oauthProfile.confidentialClient': 'Confidential client',
+    'onboarding.mcp.oauthProfile.clientSecretIssued': 'Client secret issued',
+    'onboarding.mcp.complete.title': 'Your MCP client is ready',
+    'onboarding.mcp.complete.subtitle.userDelegated':
+      'Use these pre-registered credentials and endpoints to connect your client.',
+    'onboarding.mcp.complete.subtitle.m2m': "Save your client secret now — it's shown only once.",
+    'onboarding.mcp.complete.credentials.title': 'Pre-registered client credentials',
+    'onboarding.mcp.complete.endpoints.title': 'Endpoints',
+    'onboarding.mcp.complete.endpoints.issuer': 'Issuer',
+    'onboarding.mcp.complete.endpoints.asMetadata': 'Authorization server metadata',
+    'onboarding.mcp.complete.endpoints.oidcDiscovery': 'OpenID Connect discovery',
+    'onboarding.mcp.complete.endpoints.authorize': 'Authorization endpoint',
+    'onboarding.mcp.complete.endpoints.token': 'Token endpoint',
+    'onboarding.mcp.complete.redirectUris.title': 'Registered redirect URIs',
+    'onboarding.mcp.complete.m2m.secretPurpose': 'Used to authenticate at the token endpoint.',
+    'onboarding.mcp.complete.m2m.warning.title': 'Save your client secret now',
+    'onboarding.mcp.complete.m2m.warning.body':
+      "This secret is shown only once. Store it securely — you'll need to regenerate it if it's lost.",
+    'onboarding.mcp.complete.m2m.tokenHint':
+      "Request tokens with grant_type=client_credentials and include the target MCP server's resource parameter so the token is audience-scoped.",
+    'onboarding.mcp.complete.goToApp': 'Go to application',
+    'onboarding.mcp.complete.copySecret': 'Copy secret',
+    'onboarding.mcp.complete.copied': 'Copied',
     'onboarding.configure.design.title': 'Design Your Application',
     'onboarding.configure.design.subtitle': 'Customize the appearance of your application',
     'onboarding.configure.design.logo.title': 'Application Logo',
@@ -1868,6 +2056,7 @@ const translations = {
     'onboarding.configure.stack.category.web': 'Web',
     'onboarding.configure.stack.category.backend': 'Backend',
     'onboarding.configure.stack.category.mobile': 'Mobile',
+    'onboarding.configure.stack.category.ai': 'AI',
     'onboarding.configure.stack.technology.title': 'Technology',
     'onboarding.configure.stack.technology.subtitle': 'What technology are you using to build your application?',
     'onboarding.configure.stack.technology.express.title': 'Express',
@@ -1892,6 +2081,9 @@ const translations = {
     'onboarding.configure.stack.technology.nuxt.description': 'Full-stack Vue framework with server-side rendering',
     'onboarding.configure.stack.technology.vanillaJs.title': 'JavaScript',
     'onboarding.configure.stack.technology.vanillaJs.description': 'Browser application built with vanilla JavaScript',
+    'onboarding.configure.stack.technology.mcpClient.title': 'MCP Client',
+    'onboarding.configure.stack.technology.mcpClient.description':
+      'Register an MCP client to connect to MCP servers with OAuth 2.1 authorization.',
     'onboarding.configure.stack.platform.title': 'Application Type',
     'onboarding.configure.stack.platform.subtitle': 'This helps us configure the right settings for your app',
     'onboarding.configure.stack.dividerLabel': 'OR',
@@ -2191,6 +2383,17 @@ const translations = {
     'edit.page.reset': 'Reset',
     'edit.page.save': 'Save',
     'edit.page.saving': 'Saving...',
+
+    'edit.mcp.connect.sections.identity': 'Connection',
+    'edit.mcp.connect.sections.identity.description': 'Client identity and credentials for connecting to MCP servers.',
+    'edit.mcp.connect.profileBadge.userDelegated': 'On behalf of a user (Authorization Code + PKCE)',
+    'edit.mcp.connect.profileBadge.m2m': 'On its own behalf (Client Credentials)',
+    'edit.mcp.connect.sections.endpoints': 'Endpoints',
+    'edit.mcp.connect.sections.endpoints.description': 'ThunderID OAuth 2.1 endpoints for this client.',
+    'edit.mcp.connect.generateSecret': 'Generate',
+    'edit.mcp.connect.clientUri.label': 'Client URI',
+    'edit.mcp.connect.clientUri.hint': 'Public homepage of this client (optional).',
+    'edit.mcp.connect.clientUri.error.invalid': 'Please enter a valid URL',
 
     // Overview section
     'edit.overview.noGuides': 'No integration guides available for this application type.',
@@ -3076,6 +3279,11 @@ const translations = {
     'core.elements.text.align.options.justify': 'Justify',
     'core.elements.text.align.options.inherit': 'Inherit',
 
+    // Elements - classes property field
+    'core.elements.classesPropertyField.label': 'CSS Classes',
+    'core.elements.classesPropertyField.placeholder': 'e.g. btn-primary',
+    'core.elements.classesPropertyField.addClass': 'Add class',
+
     // Elements - text property field
     'core.elements.textPropertyField.placeholder': 'Enter {{propertyName}}',
     'core.elements.textPropertyField.tooltip.configureTranslation': 'Configure translation',
@@ -3699,7 +3907,7 @@ const translations = {
     'create.type.mcp.title': 'MCP',
     'create.type.mcp.description': 'Model Context Protocol servers.',
     'create.type.custom.title': 'Custom',
-    'create.type.custom.description': 'Any other protected resource — database, file store, or service.',
+    'create.type.custom.description': 'Any other protected resource - database, file store, or service.',
     'create.form.name.label': 'Name',
     'create.form.name.placeholder': 'Enter resource server name',
     'create.form.name.required': 'Name is required.',
@@ -3753,13 +3961,17 @@ const translations = {
     'common.back': 'Back',
     'common.next': 'Next',
     'create.name.title': 'Name your resource server',
+    'create.name.titleMcp': 'Name your MCP server',
     'create.name.nameLabel': 'Resource Server Name',
+    'create.name.nameLabelMcp': 'MCP Server Name',
     'create.name.namePlaceholder': 'e.g. Payments API',
     'create.name.suggestions': 'Need inspiration? Pick one:',
     'create.name.handleLabel': 'Handle (Optional)',
     'create.name.handlePlaceholder': 'e.g. payments-api',
     'create.name.handleHint':
       'The handle prefixes every permission in this resource server. It cannot be changed after creation.',
+    'create.name.handleHintMcp':
+      'The handle prefixes every permission in this MCP server. It cannot be changed after creation.',
     'create.separator.title': 'Choose your permission delimiter',
     'create.separator.subtitle':
       'The delimiter character joins parts of a permission string. This cannot be changed after creation.',
@@ -3773,8 +3985,10 @@ const translations = {
     'create.separator.hyphen': 'Hyphen ( - )',
     'create.separator.underscore': 'Underscore ( _ )',
     'create.success': 'Resource server created successfully.',
+    'create.successMcp': 'MCP server created successfully.',
     'create.creating': 'Creating…',
     'create.submit': 'Create resource server',
+    'create.submitMcp': 'Create MCP server',
     'edit.tab.resources': 'Resources',
     'edit.tab.advanced': 'Advanced Settings',
     'edit.back': 'Back to resource servers',
@@ -3787,14 +4001,21 @@ const translations = {
     'edit.unsavedChanges': 'You have unsaved changes.',
     'edit.advanced.identifier.title': 'Configurations',
     'edit.advanced.identifier.description': 'Configuration settings for this resource server.',
+    'edit.advanced.identifier.descriptionMcp': 'Configuration settings for this MCP server.',
     'edit.advanced.identifier.label': 'Identifier (Audience)',
     'edit.advanced.identifier.hint':
-      'A unique value that identifies this resource server. When set as an URI,enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
+      'A unique value that identifies this resource server. When set as an URI, enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
+    'edit.advanced.identifier.hintMcp':
+      'A unique value that identifies this MCP server. When set as an URI, enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
+    'edit.advanced.identifier.placeholder': 'https://api.example.com',
+    'edit.advanced.identifier.placeholderMcp': 'https://mcp.example.com',
     'edit.advanced.identifier.saved': 'Identifier saved.',
     'edit.advanced.identifier.saveError': 'Failed to save identifier.',
     'edit.dangerZone.title': 'Danger Zone',
     'edit.dangerZone.description': 'Irreversible actions for this resource server.',
+    'edit.dangerZone.descriptionMcp': 'Irreversible actions for this MCP server.',
     'edit.dangerZone.deleteServer': 'Delete resource server',
+    'edit.dangerZone.deleteServerMcp': 'Delete MCP server',
     'tree.title': 'Resource Hierarchy',
     'tree.add': 'Add',
     'tree.addResource': 'Add resource',

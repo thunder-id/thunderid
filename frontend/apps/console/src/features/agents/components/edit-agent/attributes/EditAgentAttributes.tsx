@@ -20,22 +20,45 @@ import {SettingsCard} from '@thunderid/components';
 import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-types';
 import {renderSchemaField} from '@thunderid/configure-users';
 import {useResolveDisplayName} from '@thunderid/hooks';
-import {Alert, Box, Button, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
-import {Save, X} from '@wso2/oxygen-ui-icons-react';
-import {useState, type JSX} from 'react';
-import {useForm} from 'react-hook-form';
+import {Box, CircularProgress, Typography} from '@wso2/oxygen-ui';
+import {useEffect, useRef, type JSX} from 'react';
+import {useForm, useWatch} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
-import useUpdateAgent from '../../../api/useUpdateAgent';
+import AttributesSummarySection from './AttributesSummarySection';
 import type {Agent} from '../../../models/agent';
 
 interface EditAgentAttributesProps {
   agent: Agent;
-  onSaved?: () => void;
+  editedAgent: Partial<Agent>;
+  onFieldChange: (field: keyof Agent, value: unknown) => void;
 }
 
 type AttributeFormData = Record<string, unknown>;
 
-export default function EditAgentAttributes({agent, onSaved = undefined}: EditAgentAttributesProps): JSX.Element {
+const filterAttributes = (data: AttributeFormData): AttributeFormData =>
+  Object.fromEntries(Object.entries(data).filter(([, v]) => v !== '' && v !== undefined && v !== null));
+
+// Order-independent equality check — the watched form values and the original attributes can
+// have their keys in different orders, which would make a plain JSON.stringify comparison
+// report a false difference even when nothing actually changed.
+const areAttributesEqual = (a: AttributeFormData, b: AttributeFormData): boolean => {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((key) => JSON.stringify(a[key]) === JSON.stringify(b[key]));
+};
+
+/**
+ * Every field edit stages directly into the page's shared editedAgent state via onFieldChange —
+ * the page-level Save/Reset bar is the only thing that ever persists it, same as every other
+ * tab. The parent remounts this component (via a `key` bumped on Save/Reset) so its local
+ * react-hook-form state always starts fresh from the current attributes.
+ */
+export default function EditAgentAttributes({
+  agent,
+  editedAgent,
+  onFieldChange,
+}: EditAgentAttributesProps): JSX.Element {
   const {t} = useTranslation();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
 
@@ -43,19 +66,29 @@ export default function EditAgentAttributes({agent, onSaved = undefined}: EditAg
   const matchedSchema = agentTypesData?.types?.find((s) => s.name === agent.type);
   const {data: schemaDetails, isLoading} = useGetAgentType(matchedSchema?.id);
 
-  const updateAgent = useUpdateAgent();
-
-  const [isEditMode, setIsEditMode] = useState(false);
+  const attributes = (editedAgent.attributes ?? agent.attributes ?? {}) as AttributeFormData;
 
   const {
     control,
-    handleSubmit,
-    reset,
-    formState: {errors, isSubmitting},
+    formState: {errors},
   } = useForm<AttributeFormData>({
-    defaultValues: (agent.attributes as AttributeFormData) ?? {},
+    defaultValues: attributes,
     mode: 'onChange',
   });
+
+  const watchedValues = useWatch({control});
+  // Frozen at mount (the parent remounts this component via a `key` on Save/Reset) — the
+  // baseline every subsequent watched value is compared against to detect a real edit.
+  const baselineRef = useRef(filterAttributes(attributes));
+
+  useEffect(() => {
+    const filtered = filterAttributes(watchedValues);
+    // react-hook-form's useWatch fires again shortly after mount as each dynamically-rendered
+    // field registers, even without any user interaction — only propagate once the values
+    // actually diverge from the baseline, or the Save/Reset bar would show up unprompted.
+    if (areAttributesEqual(filtered, baselineRef.current)) return;
+    onFieldChange('attributes', filtered);
+  }, [watchedValues, onFieldChange]);
 
   if (isLoading) {
     return (
@@ -65,136 +98,34 @@ export default function EditAgentAttributes({agent, onSaved = undefined}: EditAg
     );
   }
 
-  // Credential fields are only collected on create; hide them from the edit page
-  // (matches UserEditPage behaviour — credentials need a dedicated change flow).
+  // A read-only agent can't be edited at all, so there's nothing for a form to do here — fall
+  // back to the same summary shown on the General tab.
+  if (agent.isReadOnly) {
+    return <AttributesSummarySection agent={agent} />;
+  }
+
   const schemaFields = schemaDetails?.schema
     ? Object.entries(schemaDetails.schema).filter(
         ([, fieldDef]) => !((fieldDef.type === 'string' || fieldDef.type === 'number') && fieldDef.credential),
       )
     : [];
 
-  const hasEditableFields = schemaFields.length > 0;
-
-  const attributes = agent.attributes ?? {};
-
-  const formatValue = (value: unknown): string => {
-    if (value === null || value === undefined) return '-';
-    if (typeof value === 'boolean') return value ? t('common:actions.yes', 'Yes') : t('common:actions.no', 'No');
-    if (Array.isArray(value)) return value.join(', ');
-    if (typeof value === 'object') return JSON.stringify(value);
-    if (typeof value === 'string' || typeof value === 'number') return String(value);
-    return '-';
-  };
-
-  const labelFor = (key: string): string => {
-    const fieldDef = schemaDetails?.schema?.[key];
-    if (fieldDef?.displayName) {
-      const resolved = resolveDisplayName(fieldDef.displayName);
-      if (resolved) return resolved;
-    }
-    return key;
-  };
-
-  const onSubmit = async (data: AttributeFormData): Promise<void> => {
-    const filtered = Object.fromEntries(
-      Object.entries(data).filter(([, v]) => v !== '' && v !== undefined && v !== null),
-    );
-    try {
-      await updateAgent.mutateAsync({
-        agentId: agent.id,
-        data: {...agent, attributes: filtered},
-      });
-      setIsEditMode(false);
-      onSaved?.();
-    } catch {
-      // surfaced via mutation error below
-    }
-  };
-
-  const handleCancel = (): void => {
-    reset((agent.attributes as AttributeFormData) ?? {});
-    setIsEditMode(false);
-    updateAgent.reset();
-  };
-
   return (
     <SettingsCard
       title={t('agents:edit.attributes.title', 'Attributes')}
       description={t('agents:edit.attributes.description', 'View and manage agent attribute values.')}
-      headerAction={
-        !isEditMode && hasEditableFields && !agent.isReadOnly ? (
-          <Button variant="outlined" size="small" onClick={() => setIsEditMode(true)}>
-            {t('common:actions.edit', 'Edit')}
-          </Button>
-        ) : undefined
-      }
     >
-      {!isEditMode ? (
-        <Stack spacing={2}>
-          {Object.keys(attributes).length > 0 ? (
-            Object.entries(attributes).map(([key, value]) => (
-              <Box key={key}>
-                <Typography variant="caption" color="text.secondary">
-                  {labelFor(key)}
-                </Typography>
-                <Typography variant="body1">{formatValue(value)}</Typography>
-              </Box>
-            ))
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              {t('agents:edit.attributes.empty', 'No attributes available.')}
-            </Typography>
-          )}
-        </Stack>
-      ) : (
-        <Box
-          component="form"
-          onSubmit={(event) => {
-            handleSubmit(onSubmit)(event).catch(() => null);
-          }}
-          noValidate
-          sx={{display: 'flex', flexDirection: 'column', gap: 2}}
-        >
-          {hasEditableFields ? (
-            schemaFields.map(([fieldName, fieldDef]) =>
-              renderSchemaField(fieldName, fieldDef, control, errors, resolveDisplayName),
-            )
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              {t('agents:edit.attributes.noEditable', 'No editable attributes available.')}
-            </Typography>
-          )}
-
-          {updateAgent.error && (
-            <Alert severity="error" sx={{mt: 2}}>
-              <Typography variant="body2" sx={{fontWeight: 'bold', mb: 0.5}}>
-                {updateAgent.error.message}
-              </Typography>
-            </Alert>
-          )}
-
-          <Stack direction="row" spacing={2} justifyContent="flex-end" sx={{mt: 2}}>
-            <Button
-              variant="outlined"
-              onClick={handleCancel}
-              disabled={isSubmitting || updateAgent.isPending}
-              startIcon={<X size={16} />}
-            >
-              {t('common:actions.cancel', 'Cancel')}
-            </Button>
-            <Button
-              type="submit"
-              variant="contained"
-              startIcon={isSubmitting || updateAgent.isPending ? null : <Save size={16} />}
-              disabled={isSubmitting || updateAgent.isPending}
-            >
-              {isSubmitting || updateAgent.isPending
-                ? t('common:status.saving', 'Saving...')
-                : t('common:actions.save', 'Save Changes')}
-            </Button>
-          </Stack>
-        </Box>
-      )}
+      <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
+        {schemaFields.length > 0 ? (
+          schemaFields.map(([fieldName, fieldDef]) =>
+            renderSchemaField(fieldName, fieldDef, control, errors, resolveDisplayName),
+          )
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            {t('agents:edit.attributes.noSchema', 'No schema available for editing')}
+          </Typography>
+        )}
+      </Box>
     </SettingsCard>
   );
 }

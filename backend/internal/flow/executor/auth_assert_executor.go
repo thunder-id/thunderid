@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -38,7 +39,6 @@ import (
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -104,6 +104,15 @@ func (a *authAssertExecutor) Execute(ctx *providers.NodeContext) (*providers.Exe
 	}
 
 	if execResp.AuthUser.IsAuthenticated() {
+		// Verify the assurance accumulated in this execution (whether from executed nodes or a
+		// loaded session snapshot) satisfies the request's acr_values and max_age before issuing
+		// an assertion.
+		if svcErr := a.checkAssurance(ctx, logger); svcErr != nil {
+			execResp.Status = providers.ExecFailure
+			execResp.Error = svcErr
+			return execResp, nil
+		}
+
 		token, err := a.generateAuthAssertion(ctx, execResp, logger)
 		if err != nil {
 			return nil, err
@@ -127,6 +136,51 @@ func (a *authAssertExecutor) Execute(ctx *providers.NodeContext) (*providers.Exe
 	return execResp, nil
 }
 
+// checkAssurance verifies that the assurance accumulated in this execution satisfies the
+// request's acr_values and max_age. It returns ErrInteractionRequired when interaction
+// (step-up or re-authentication) is required, or nil when the requirements are met.
+func (a *authAssertExecutor) checkAssurance(ctx *providers.NodeContext,
+	logger *log.Logger) *tidcommon.ServiceError {
+	// acr_values: the completed authentication class must be one of the requested classes.
+	requested := strings.Fields(ctx.RuntimeData[common.RuntimeKeyRequestedAuthClasses])
+	if len(requested) > 0 {
+		completed := ctx.RuntimeData[common.RuntimeKeySelectedAuthClass]
+		if completed == "" || !slices.Contains(requested, completed) {
+			logger.Debug(ctx.Context, "Accumulated assurance does not satisfy requested acr_values",
+				log.String("completed", completed))
+			return &ErrInteractionRequired
+		}
+	}
+
+	// max_age: the subject must have authenticated within max_age seconds.
+	if rawMaxAge, ok := ctx.RuntimeData[common.RuntimeKeyMaxAge]; ok && rawMaxAge != "" {
+		maxAge, err := strconv.ParseInt(rawMaxAge, 10, 64)
+		if err != nil || maxAge < 0 {
+			// A malformed max_age is treated as no constraint.
+			logger.Debug(ctx.Context, "Ignoring malformed max_age", log.String("maxAge", rawMaxAge))
+			return nil
+		}
+		if time.Now().UTC().Unix()-a.resolveAuthTime(ctx) > maxAge {
+			logger.Debug(ctx.Context, "Authentication is older than max_age; re-authentication required")
+			return &ErrInteractionRequired
+		}
+	}
+
+	return nil
+}
+
+// resolveAuthTime returns the Unix time at which the subject authenticated. On the SSO path
+// this comes from the loaded session snapshot; otherwise the subject authenticated during this
+// execution, so the current time is used.
+func (a *authAssertExecutor) resolveAuthTime(ctx *providers.NodeContext) int64 {
+	if raw, ok := ctx.RuntimeData[common.RuntimeKeyAuthTime]; ok && raw != "" {
+		if ts, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			return ts
+		}
+	}
+	return time.Now().UTC().Unix()
+}
+
 // generateAuthAssertion generates the authentication assertion token.
 func (a *authAssertExecutor) generateAuthAssertion(
 	ctx *providers.NodeContext, execResp *providers.ExecutorResponse, logger *log.Logger,
@@ -134,15 +188,10 @@ func (a *authAssertExecutor) generateAuthAssertion(
 	tokenSub := ""
 
 	jwtClaims := make(map[string]interface{})
-	jwtConfig := config.GetServerRuntime().Config.JWT
-	iss := jwtConfig.Issuer
 	validityPeriod := int64(0)
 
 	if ctx.Application.Assertion != nil {
 		validityPeriod = ctx.Application.Assertion.ValidityPeriod
-	}
-	if validityPeriod == 0 {
-		validityPeriod = jwtConfig.ValidityPeriod
 	}
 
 	authenticatorRefs := a.extractAuthenticatorReferences(ctx.ExecutionHistory)
@@ -229,7 +278,7 @@ func (a *authAssertExecutor) generateAuthAssertion(
 	if ttlSecondsStr, exists := ctx.RuntimeData[common.RuntimeKeyUserAttributesCacheTTLSeconds]; exists {
 		// We are not in an App Native flow, so we need to cache the user attributes
 		if len(resolvedAttributes) > 0 {
-			ttlSeconds, err := strconv.Atoi(ttlSecondsStr)
+			ttlSeconds, err := strconv.ParseInt(ttlSecondsStr, 10, 64)
 			if err != nil {
 				logger.Error(ctx.Context, "Failed to parse TTL seconds from runtime data",
 					log.String("key", common.RuntimeKeyUserAttributesCacheTTLSeconds),
@@ -257,8 +306,9 @@ func (a *authAssertExecutor) generateAuthAssertion(
 	}
 
 	jwtClaims["aud"] = ctx.EntityID
+	// iss is set to the default issuer configured in the JWT service, which is typically the server's base URL.
 	token, _, err := a.jwtService.GenerateJWT(
-		ctx.Context, tokenSub, iss, validityPeriod, jwtClaims, jwt.TokenTypeJWT, "")
+		ctx.Context, tokenSub, "", validityPeriod, jwtClaims, jwt.TokenTypeJWT, "")
 	if err != nil {
 		logger.Error(ctx.Context, "Failed to generate JWT token",
 			log.String("error", err.Error.DefaultValue))

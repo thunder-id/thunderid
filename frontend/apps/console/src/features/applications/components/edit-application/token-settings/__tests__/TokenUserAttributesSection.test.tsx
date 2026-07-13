@@ -107,6 +107,24 @@ describe('TokenUserAttributesSection', () => {
 
       expect(screen.getByTestId('card-title')).toHaveTextContent('Token Attributes & Response');
     });
+
+    it('drops the "user info responses" mention from the description when showUserInfoTab is false', () => {
+      render(
+        <TokenUserAttributesSection
+          {...baseProps}
+          accessTokenAttributes={[]}
+          idTokenAttributes={[]}
+          activeTab="access"
+          onTabChange={vi.fn()}
+          showUserInfoTab={false}
+          entityLabel="agent"
+        />,
+      );
+
+      expect(screen.getByTestId('card-description')).toHaveTextContent(
+        'Configure the response types and user attributes included in the tokens issued to this agent.',
+      );
+    });
   });
 
   describe('Native mode (sharedAttributes)', () => {
@@ -358,6 +376,70 @@ describe('TokenUserAttributesSection', () => {
       // email is a pending addition and activeTab=id, so it should appear in id preview too
       // because isPendingTab = (activeTab === tokenType) = ('id' === 'id') = true
       expect(payload).toContain('email');
+    });
+
+    it('renders only two tabs when showUserInfoTab is false (agents)', () => {
+      render(<TokenUserAttributesSection {...oauthProps} showUserInfoTab={false} />);
+
+      expect(screen.getByRole('tab', {name: /access token/i})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: /id token/i})).toBeInTheDocument();
+      expect(screen.queryByRole('tab', {name: /user info endpoint/i})).not.toBeInTheDocument();
+      expect(screen.getAllByRole('tab')).toHaveLength(2);
+    });
+
+    it('does not render the User Info panel when showUserInfoTab is false, even if activeTab is "userinfo"', () => {
+      render(<TokenUserAttributesSection {...oauthProps} showUserInfoTab={false} activeTab="userinfo" />);
+
+      expect(screen.queryByText('Use same attributes as ID Token')).not.toBeInTheDocument();
+    });
+
+    it('maps tab clicks to only the two visible tabs when showUserInfoTab is false', async () => {
+      const user = userEvent.setup();
+      const onTabChange = vi.fn();
+
+      render(<TokenUserAttributesSection {...oauthProps} showUserInfoTab={false} onTabChange={onTabChange} />);
+
+      await user.click(screen.getByRole('tab', {name: /id token/i}));
+
+      expect(onTabChange).toHaveBeenCalledWith('id');
+    });
+
+    it('does not include the act claim in the access token preview by default', () => {
+      render(<TokenUserAttributesSection {...oauthProps} activeTab="access" />);
+
+      const payload = screen.getByTestId('jwt-preview-payload').textContent ?? '';
+      expect(payload).not.toContain('"act"');
+    });
+
+    it('includes the act claim in the access token preview when showActorClaim is true (agents)', () => {
+      render(<TokenUserAttributesSection {...oauthProps} activeTab="access" showActorClaim />);
+
+      const payload = screen.getByTestId('jwt-preview-payload').textContent ?? '';
+      expect(payload).toContain('"act"');
+      expect(payload).toContain('agent-id');
+    });
+
+    it('does not include the act claim in the ID token preview even when showActorClaim is true', () => {
+      render(<TokenUserAttributesSection {...oauthProps} activeTab="id" showActorClaim />);
+
+      const payload = screen.getByTestId('jwt-preview-payload').textContent ?? '';
+      expect(payload).not.toContain('"act"');
+    });
+
+    it('shows an explanation of the act claim on the access token tab when showActorClaim is true', () => {
+      render(<TokenUserAttributesSection {...oauthProps} activeTab="access" showActorClaim entityLabel="agent" />);
+
+      expect(
+        screen.getByText(/identifies this agent as the party acting on behalf of the subject/i),
+      ).toBeInTheDocument();
+    });
+
+    it('does not show the act claim explanation when showActorClaim is false', () => {
+      render(<TokenUserAttributesSection {...oauthProps} activeTab="access" />);
+
+      expect(
+        screen.queryByText(/identifies this agent as the party acting on behalf of the subject/i),
+      ).not.toBeInTheDocument();
     });
   });
 

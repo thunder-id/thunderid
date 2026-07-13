@@ -75,7 +75,11 @@ export default function RegistrationFlowSection({
   return (
     <SettingsCard
       title={t('applications:edit.flows.labels.registrationFlow')}
-      description={t('applications:edit.flows.labels.registrationFlow.description')}
+      description={t(
+        'applications:edit.flows.labels.registrationFlow.description',
+        'Let people sign themselves up through this {{entity}}.',
+        {entity: entityLabel},
+      )}
       enabled={editedApp.isRegistrationFlowEnabled ?? application.isRegistrationFlowEnabled ?? false}
       onToggle={application.isReadOnly ? undefined : (enabled) => onFieldChange('isRegistrationFlowEnabled', enabled)}
     >

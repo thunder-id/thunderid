@@ -108,10 +108,18 @@ const ImportConfigurationUploadPage = lazy(
 const ImportConfigurationValidatePage = lazy(
   () => import('./features/import-export/pages/ImportConfigurationValidatePage'),
 );
-const ConnectionsListPage = lazy(() => import('./features/connections/pages/ConnectionsListPage'));
-const ConnectionDetailPage = lazy(() => import('./features/connections/pages/ConnectionDetailPage'));
-const ConnectionConfigureWizardPage = lazy(() => import('./features/connections/pages/ConnectionConfigureWizardPage'));
-const ConnectionCreateWizardPage = lazy(() => import('./features/connections/pages/ConnectionCreateWizardPage'));
+const ConnectionsListPage = lazy(() =>
+  import('@thunderid/configure-connections').then((m) => ({default: m.ConnectionsListPage})),
+);
+const ConnectionDetailPage = lazy(() =>
+  import('@thunderid/configure-connections').then((m) => ({default: m.ConnectionDetailPage})),
+);
+const ConnectionConfigureWizardPage = lazy(() =>
+  import('@thunderid/configure-connections').then((m) => ({default: m.ConnectionConfigureWizardPage})),
+);
+const ConnectionCreateWizardPage = lazy(() =>
+  import('@thunderid/configure-connections').then((m) => ({default: m.ConnectionCreateWizardPage})),
+);
 const LoginFlowBuilderPage = lazy(() => import('./features/login-flow/pages/LoginFlowPage'));
 const CreateRolePage = lazy(() => import('./features/roles/pages/CreateRolePage'));
 const RoleEditPage = lazy(() => import('./features/roles/pages/RoleEditPage'));

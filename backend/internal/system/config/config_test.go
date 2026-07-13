@@ -180,6 +180,185 @@ notification:
 	assert.Equal(suite.T(), "mysql", config.Database.Config.SQLite.Path)
 }
 
+func (suite *ConfigTestSuite) TestLoadConfigGateClientDefaultsToServer() {
+	tempDir := suite.T().TempDir()
+
+	// gate_client omitted entirely: hostname/port/scheme derive from the server config.
+	userContent := `
+server:
+  hostname: "user-host"
+  port: 8095
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	userFile := suite.createTempFile(tempDir, "user*.yaml", userContent)
+
+	config, err := LoadConfig(userFile, "", tempDir)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), config)
+
+	assert.Equal(suite.T(), "user-host", config.GateClient.Hostname)
+	assert.Equal(suite.T(), 8095, config.GateClient.Port)
+	assert.Equal(suite.T(), "https", config.GateClient.Scheme)
+}
+
+func (suite *ConfigTestSuite) TestLoadConfigGateClientDefaultsToServerPublicURL() {
+	tempDir := suite.T().TempDir()
+
+	// gate_client omitted and server exposes a public_url: gate_client derives from the public_url.
+	userContent := `
+server:
+  hostname: "0.0.0.0"
+  port: 8090
+  public_url: "https://thunderid.local:9443"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	userFile := suite.createTempFile(tempDir, "user*.yaml", userContent)
+
+	config, err := LoadConfig(userFile, "", tempDir)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), config)
+
+	assert.Equal(suite.T(), "thunderid.local", config.GateClient.Hostname)
+	assert.Equal(suite.T(), 9443, config.GateClient.Port)
+	assert.Equal(suite.T(), "https", config.GateClient.Scheme)
+}
+
+func (suite *ConfigTestSuite) TestLoadConfigGateClientDefaultsToServerPublicURLWithoutPort() {
+	tempDir := suite.T().TempDir()
+
+	// public_url without an explicit port: gate_client falls back to the scheme's default port.
+	userContent := `
+server:
+  hostname: "0.0.0.0"
+  port: 8090
+  public_url: "https://thunderid.local"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	userFile := suite.createTempFile(tempDir, "user*.yaml", userContent)
+
+	config, err := LoadConfig(userFile, "", tempDir)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), config)
+
+	assert.Equal(suite.T(), "thunderid.local", config.GateClient.Hostname)
+	assert.Equal(suite.T(), 443, config.GateClient.Port)
+	assert.Equal(suite.T(), "https", config.GateClient.Scheme)
+}
+
+func (suite *ConfigTestSuite) TestLoadConfigGateClientPartialOverride() {
+	tempDir := suite.T().TempDir()
+
+	// Only gate_client.path is set: host/port/scheme still inherit from the server config.
+	userContent := `
+server:
+  hostname: "user-host"
+  port: 8095
+  http_only: true
+gate_client:
+  path: "/login"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	userFile := suite.createTempFile(tempDir, "user*.yaml", userContent)
+
+	config, err := LoadConfig(userFile, "", tempDir)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), config)
+
+	assert.Equal(suite.T(), "user-host", config.GateClient.Hostname)
+	assert.Equal(suite.T(), 8095, config.GateClient.Port)
+	assert.Equal(suite.T(), "http", config.GateClient.Scheme)
+	assert.Equal(suite.T(), "/login", config.GateClient.Path)
+}
+
+func (suite *ConfigTestSuite) TestLoadConfigGateClientDefaultsToServerHTTPPublicURLWithoutPort() {
+	tempDir := suite.T().TempDir()
+
+	// http public_url without an explicit port: gate_client falls back to port 80.
+	userContent := `
+server:
+  hostname: "0.0.0.0"
+  port: 8090
+  public_url: "http://thunderid.local"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	userFile := suite.createTempFile(tempDir, "user*.yaml", userContent)
+
+	config, err := LoadConfig(userFile, "", tempDir)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), config)
+
+	assert.Equal(suite.T(), "thunderid.local", config.GateClient.Hostname)
+	assert.Equal(suite.T(), 80, config.GateClient.Port)
+	assert.Equal(suite.T(), "http", config.GateClient.Scheme)
+}
+
+func (suite *ConfigTestSuite) TestLoadConfigGateClientUnspecifiedHostFails() {
+	tempDir := suite.T().TempDir()
+
+	// server binds to 0.0.0.0 with no public_url and no explicit gate_client host: the gate
+	// client would resolve to the unreachable bind address, so loading must fail.
+	userContent := `
+server:
+  hostname: "0.0.0.0"
+  port: 8090
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	userFile := suite.createTempFile(tempDir, "user*.yaml", userContent)
+
+	config, err := LoadConfig(userFile, "", tempDir)
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), config)
+	assert.Contains(suite.T(), err.Error(), "unreachable")
+}
+
+func (suite *ConfigTestSuite) TestLoadConfigGateClientMalformedPublicURLFails() {
+	tempDir := suite.T().TempDir()
+
+	// gate_client derives from a malformed public_url (non-numeric port): parsing must fail loudly
+	// rather than silently leaving gate_client empty.
+	userContent := `
+server:
+  hostname: "0.0.0.0"
+  port: 8090
+  public_url: "https://thunderid.local:notaport"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	userFile := suite.createTempFile(tempDir, "user*.yaml", userContent)
+
+	config, err := LoadConfig(userFile, "", tempDir)
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), config)
+	assert.Contains(suite.T(), err.Error(), "failed to parse server URL")
+}
+
 func (suite *ConfigTestSuite) TestLoadConfigLogLevel() {
 	tempDir := suite.T().TempDir()
 

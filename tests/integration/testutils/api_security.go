@@ -43,11 +43,33 @@ type authTransport struct {
 	getToken func() (string, error)
 }
 
+// DirectAuthHeaderName is the header carrying the Direct Auth Secret on Direct API requests.
+const DirectAuthHeaderName = "Direct-Auth-Secret"
+
+// DirectAuthHeaderValue is the Direct Auth Secret the integration server is configured with. The
+// harness passes it to setup.sh via the DIRECT_AUTH_SECRET env (see RunSetupScript) so every setup
+// run writes this exact value deterministically; test clients inject it on Direct API requests.
+const DirectAuthHeaderValue = "integration-direct-auth-secret"
+
+// isDirectAuthPath reports whether the path is one of the Direct API endpoints gated by the Direct API
+// Secret.
+func isDirectAuthPath(path string) bool {
+	return strings.HasPrefix(path, "/auth/") || strings.HasPrefix(path, "/register/passkey/")
+}
+
 // RoundTrip implements http.RoundTripper interface
 func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	reqClone := req.Clone(req.Context())
+
+	// Inject the Direct Auth Secret on Direct API requests (unless the caller already set one), since
+	// the integration server runs with the gate enabled (secure by default).
+	if isDirectAuthPath(reqClone.URL.Path) && reqClone.Header.Get(DirectAuthHeaderName) == "" {
+		reqClone.Header.Set(DirectAuthHeaderName, DirectAuthHeaderValue)
+	}
+
 	// Skip auth for public endpoints
-	if isPublicEndpoint(req.URL.Path) {
-		return t.base.RoundTrip(req)
+	if isPublicEndpoint(reqClone.URL.Path) {
+		return t.base.RoundTrip(reqClone)
 	}
 
 	// Get token (auto-refreshes if needed)
@@ -56,11 +78,19 @@ func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to get access token: %w", err)
 	}
 
-	// Clone request and add auth header
-	reqClone := req.Clone(req.Context())
 	reqClone.Header.Set("Authorization", "Bearer "+token)
 
 	return t.base.RoundTrip(reqClone)
+}
+
+// GetRawHTTPClient returns an HTTP client with no automatic auth or Direct Auth Secret injection, for
+// tests that need full control over request headers. TLS verification is skipped for local servers.
+func GetRawHTTPClient() *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
 }
 
 // isPublicEndpoint determines if an endpoint requires authentication

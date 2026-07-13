@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -20,20 +20,23 @@ package security
 
 import "strings"
 
-const (
-	// maxPublicPathLength defines the maximum allowed length for a public path.
-	// This prevents potential DoS attacks via excessively long paths (even with safe regex).
-	maxPublicPathLength = 4096
-)
+// directAuthPaths defines the Direct API authentication path patterns (a subset of publicPaths)
+// that are gated by the Direct Auth Secret when one is configured. Uses the same glob syntax as
+// publicPaths.
+var directAuthPaths = []string{
+	"/auth/**",
+	"/register/passkey/**",
+}
 
 // publicPaths defines the list of public paths using glob patterns.
 // - "*": Matches a single path segment (e.g., /a/*/b).
 // - "**": Matches zero or more path segments (subpaths) at the end of the path (e.g., /a/**).
 // Not allowed in the middle of the path (e.g., /a/**/b is invalid).
-var publicPaths = []string{
+//
+// The Direct API paths are appended from directAuthPaths so the two lists cannot drift: those
+// endpoints are public, but are additionally gated by the Direct Auth Secret.
+var publicPaths = append([]string{
 	"/health/**",
-	"/auth/**",
-	"/register/passkey/**",
 	"/flow/execute/**",
 	"/flow/meta",
 	"/oauth2/**",
@@ -62,7 +65,7 @@ var publicPaths = []string{
 	"/i18n/languages/*/translations/resolve",
 	"/i18n/languages/*/translations/ns/*/keys/*/resolve",
 	"/mcp/**", // MCP authorization is handled at MCP server handler.
-}
+}, directAuthPaths...)
 
 // ---- Resource types ----
 

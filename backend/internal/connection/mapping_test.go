@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -129,6 +130,10 @@ func (s *MappingTestSuite) TestWriteServiceErrorStatusMapping() {
 		{&idp.ErrorIDPAlreadyExists, http.StatusConflict},
 		{&idp.ErrorIDPHasBlockingDependencies, http.StatusConflict},
 		{&idp.ErrorInvalidIDPID, http.StatusBadRequest},
+		{&notification.ErrorSenderNotFound, http.StatusNotFound},
+		{&notification.ErrorDuplicateSenderName, http.StatusConflict},
+		{&notification.ErrorSenderHasBlockingDependencies, http.StatusConflict},
+		{&notification.ErrorInvalidProvider, http.StatusBadRequest},
 		{&tidcommon.InternalServerError, http.StatusInternalServerError},
 	}
 	for _, tc := range cases {

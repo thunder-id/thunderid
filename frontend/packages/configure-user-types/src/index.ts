@@ -39,6 +39,10 @@ export type {EditGeneralSettingsProps} from './components/edit-user-type/general
 export {default as QuickCopySection} from './components/edit-user-type/general-settings/QuickCopySection';
 export {default as EditSchemaSettings} from './components/edit-user-type/schema-settings/EditSchemaSettings';
 export type {EditSchemaSettingsProps} from './components/edit-user-type/schema-settings/EditSchemaSettings';
+export {default as AttributeLibraryPanel} from './components/shared/AttributeLibraryPanel';
+export type {AttributeLibraryPanelProps} from './components/shared/AttributeLibraryPanel';
+export {default as SchemaPropertyEditor} from './components/shared/SchemaPropertyEditor';
+export type {SchemaPropertyEditorProps} from './components/shared/SchemaPropertyEditor';
 
 // Constants
 export {default as UserTypeQueryKeys} from './constants/userTypeQueryKeys';
@@ -58,6 +62,7 @@ export type {
   ArrayPropertyDefinition,
   BooleanPropertyDefinition,
   CreateUserTypeRequest,
+  LibraryAttribute,
   NumberPropertyDefinition,
   ObjectPropertyDefinition,
   PropertyDefinition,

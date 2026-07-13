@@ -106,7 +106,7 @@ func (d *dbStore) Update(ctx context.Context, namespace providers.RuntimeStoreNa
 		return fmt.Errorf("failed to update in database: %w", err)
 	}
 	if rowsAffected == 0 {
-		return fmt.Errorf("value not found for key: %s", key)
+		return providers.ErrRuntimeStoreKeyNotFound
 	}
 	return nil
 }
@@ -149,6 +149,32 @@ func (d *dbStore) Take(ctx context.Context, namespace providers.RuntimeStoreName
 
 	d.logger.Debug(ctx, "Taken from database", log.String("key", key))
 	return parseStoreValue(results[0])
+}
+
+// ExtendTTL extends the TTL of an existing, non-expired entry in the database runtime store.
+func (d *dbStore) ExtendTTL(ctx context.Context, namespace providers.RuntimeStoreNamespace,
+	key string, ttlSeconds int64) error {
+	if ttlSeconds <= 0 {
+		return fmt.Errorf("ttl seconds cannot be negative or zero: %d", ttlSeconds)
+	}
+
+	dbClient, err := d.dbProvider.GetRuntimeDBClient()
+	if err != nil {
+		return fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	expiryTime := time.Now().UTC().Add(time.Duration(ttlSeconds) * time.Second)
+
+	rowsAffected, err := dbClient.ExecuteContext(
+		ctx, queryExtendTTLRuntimeStore, d.deploymentID, string(namespace), key, expiryTime, time.Now().UTC(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to extend TTL in database: %w", err)
+	}
+	if rowsAffected == 0 {
+		return providers.ErrRuntimeStoreKeyNotFound
+	}
+	return nil
 }
 
 // parseStoreValue extracts the VALUE column from a result row, handling both string and []byte.

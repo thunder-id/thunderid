@@ -23,6 +23,7 @@ import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -42,6 +43,7 @@ func Initialize(
 	actorProvider providers.ActorProvider,
 	resourceService providers.ResourceServerProvider,
 	cibaService ciba.CIBAServiceInterface,
+	refreshTokenRevoker revocation.RefreshTokenRevokerInterface,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {
 	return newGrantHandlerProvider(
@@ -55,6 +57,7 @@ func Initialize(
 		actorProvider,
 		resourceService,
 		cibaService,
+		refreshTokenRevoker,
 		cfg,
 	)
 }

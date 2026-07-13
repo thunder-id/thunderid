@@ -60,9 +60,33 @@ func BlockingUsages(resp *DependenciesResponse) []ResourceDependency {
 	return blocking
 }
 
+// PaginateUsages narrows resp.Usages to the [offset, offset+limit) window in place and updates
+// Count to reflect the returned page. TotalResults and Summary continue to describe the full result
+// set. A nil response, or one whose TotalResults is nil (usage unavailable), is returned unchanged.
+func PaginateUsages(resp *DependenciesResponse, limit, offset int) *DependenciesResponse {
+	if resp == nil || resp.TotalResults == nil {
+		return resp
+	}
+
+	total := len(resp.Usages)
+	start := offset
+	if start > total {
+		start = total
+	}
+	end := start + limit
+	if end > total {
+		end = total
+	}
+
+	resp.Usages = resp.Usages[start:end]
+	resp.Count = len(resp.Usages)
+	return resp
+}
+
 // Resource type identifiers shared across dependency providers and consumers.
 const (
 	ResourceTypeTheme              = "theme"
+	ResourceTypeLayout             = "layout"
 	ResourceTypeFlow               = "flow"
 	ResourceTypeUser               = "user"
 	ResourceTypeApplication        = "application"
@@ -70,6 +94,9 @@ const (
 	ResourceTypeGroup              = "group"
 	ResourceTypeIDP                = "idp"
 	ResourceTypeNotificationSender = "notificationSender"
+	ResourceTypeOU                 = "organizationUnit"
+	ResourceTypeResourceServer     = "resourceServer"
+	ResourceTypeResource           = "resource"
 )
 
 // SummarizeBlockingUsages renders a deterministic, human-readable summary of blocking dependencies

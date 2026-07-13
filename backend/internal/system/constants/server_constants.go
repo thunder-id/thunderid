@@ -35,6 +35,10 @@ const ContentTypeHeaderName = "Content-Type"
 // the request's trace ID across service boundaries.
 const CorrelationIDHeaderName = "X-Correlation-ID"
 
+// FlowSecretHeaderName is the name of the header used to present a Flow Secret when initiating
+// a flow directly over HTTP.
+const FlowSecretHeaderName = "Flow-Secret"
+
 // TokenTypeBearer is the token type used in bearer authentication.
 const TokenTypeBearer = "Bearer"
 

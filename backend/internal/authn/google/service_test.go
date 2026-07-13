@@ -862,6 +862,11 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateSuccess() {
 		Return(nil)
 	suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).Return(oAuthConfig, nil)
 	suite.mockOIDCService.On("GetIDTokenClaims", mock.Anything, idToken).Return(validClaims, nil)
+	suite.mockOIDCService.On("BuildFederatedAuthResult", mock.Anything, testGoogleIDPID, "user123", mock.Anything).
+		Return(&common.AuthnResult{
+			Token:               map[string]interface{}{"sub": "user123"},
+			AuthenticatedClaims: validClaims,
+		}, nil)
 
 	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID, testAuthCode)
 	suite.Nil(err)
@@ -1250,4 +1255,18 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestValidateIDToken_Leeway_IatJust
 	suite.NotNil(err)
 	suite.Equal(oidc.ErrorInvalidIDToken.Code, err.Code)
 	suite.Contains(err.ErrorDescription.DefaultValue, "future")
+}
+
+func (suite *GoogleOIDCAuthnServiceTestSuite) TestBuildFederatedAuthResultDelegates() {
+	expected := &common.AuthnResult{
+		Token:               map[string]interface{}{"email": "user@example.com"},
+		AuthenticatedClaims: map[string]interface{}{"email": "user@example.com"},
+	}
+	suite.mockOIDCService.On("BuildFederatedAuthResult", mock.Anything, testGoogleIDPID, "sub-1", mock.Anything).
+		Return(expected, nil)
+
+	result, err := suite.service.BuildFederatedAuthResult(
+		context.Background(), testGoogleIDPID, "sub-1", map[string]interface{}{"email": "user@example.com"})
+	suite.Nil(err)
+	suite.Equal(expected, result)
 }

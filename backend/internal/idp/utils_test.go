@@ -624,6 +624,21 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_TokenExchangeOnly_OIDC_Suc
 	s.NotNil(result)
 }
 
+func (s *IDPUtilsTestSuite) TestValidateIDPProperties_TokenExchangeAudience_OIDC_Succeeds() {
+	propIssuer, _ := cmodels.NewProperty(PropIssuer, "https://accounts.google.com", false)
+	propJWKS, _ := cmodels.NewProperty(PropJwksEndpoint, "https://www.googleapis.com/oauth2/v3/certs", false)
+	propTokenExchange, _ := cmodels.NewProperty(PropTokenExchangeEnabled, "true", false)
+	propAudience, _ := cmodels.NewProperty(
+		PropTrustedTokenAudience, "407408718192.apps.googleusercontent.com", false)
+
+	properties := []cmodels.Property{*propIssuer, *propJWKS, *propTokenExchange, *propAudience}
+
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOIDC, properties, s.logger)
+
+	s.Nil(err)
+	s.NotNil(result)
+}
+
 func (s *IDPUtilsTestSuite) TestValidateIDPProperties_TokenExchangeEnabled_MissingIssuer_Fails() {
 	// OIDC IDP with token_exchange_enabled=true but missing issuer should fail.
 	prop1, _ := cmodels.NewProperty(PropClientID, "your_client_id", false)

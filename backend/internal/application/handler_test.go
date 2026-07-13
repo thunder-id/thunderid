@@ -1405,8 +1405,10 @@ func (suite *HandlerTestSuite) TestProcessInboundAuthConfigFromRequest_WithToken
 				ClientSecret: "test-secret",
 				Token: &providers.OAuthTokenConfig{
 					AccessToken: &providers.AccessTokenConfig{
-						ValidityPeriod: 3600,
-						UserAttributes: []string{"email", "name"},
+						UserConfig: &providers.AccessTokenSubConfig{
+							ValidityPeriod: 3600,
+							Attributes:     []string{"email", "name"},
+						},
 					},
 					IDToken: &providers.IDTokenConfig{
 						ValidityPeriod: 3600,

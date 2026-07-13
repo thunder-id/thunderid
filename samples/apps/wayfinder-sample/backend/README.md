@@ -1,8 +1,23 @@
 # Wayfinder Travel Backend
 
-Node backend for the Wayfinder Travel app. Hosts the REST API on `/api/*` and the MCP server on `/mcp` in a single process. Verifies Thunder-issued JWTs, enforces scopes per route and per MCP tool, and serves the OAuth protected-resource metadata document for MCP authorization discovery.
+Node backend for the Wayfinder Travel app. Hosts the REST API on `/api/*` and the MCP server on `/mcp` in a single process. Verifies ThunderID-issued JWTs, enforces scopes per route and per MCP tool, and serves the OAuth protected-resource metadata document for MCP authorization discovery.
 
 Configure with `.env.example` in this folder.
+
+## MCP Authorization Modes
+
+`AUTHORIZATION_MODE=scope` is the default and preserves the existing per-tool
+scope checks.
+
+Set `AUTHORIZATION_MODE=authzen` to have the MCP server request each protected
+tool decision from the ThunderID AuthZEN PDP. In this mode, configure
+`THUNDERID_AUTHZEN_CLIENT_ID` and `THUNDERID_AUTHZEN_CLIENT_SECRET` with the
+Wayfinder AuthZEN Client application credentials from the redirect configuration
+bundle. The backend obtains a `system`-scoped token for the PDP call, while the
+user or agent from the incoming MCP token remains the evaluation subject.
+
+This setting applies only to MCP tool authorization. REST endpoint scope checks
+are unchanged.
 
 ## Run
 
@@ -22,13 +37,13 @@ The backend runs on `http://localhost:8787`.
 | ------ | --------------------------- | ------------------ | -------------------------------------- |
 | GET    | `/health`                   | —                  |                                        |
 | GET    | `/api/flights`              | —                  | `?from=Colombo&to=Singapore`           |
-| GET    | `/api/bookings/recommended` | `booking:recommend` | `?limit=3` (1-10, default 3). Random picks. |
+| GET    | `/api/bookings/recommended` | `wayfinder:booking:recommend` | `?limit=3` (1-10, default 3). Random picks. |
 | GET    | `/api/hotels`               | —                  | `?location=Singapore`                  |
 | GET    | `/api/trips`                | —                  |                                        |
 | GET    | `/api/locations`            | —                  | `?category=flights`                    |
-| POST   | `/api/bookings`             | `booking:create`   |                                        |
-| GET    | `/api/bookings/flights`     | `booking:read`     |                                        |
-| DELETE | `/api/bookings/flights`     | `booking:cancel`   |                                        |
+| POST   | `/api/bookings`             | `wayfinder:booking:create`   |                                        |
+| GET    | `/api/bookings/flights`     | `wayfinder:booking:read`     |                                        |
+| DELETE | `/api/bookings/flights`     | `wayfinder:booking:cancel`   |                                        |
 | GET    | `/api/me`                   | —                  | Requires a valid JWT but no scope.     |
 
 ### MCP
@@ -43,13 +58,13 @@ The backend runs on `http://localhost:8787`.
 | Tool                  | Required scope        | Backing endpoint              |
 | --------------------- | --------------------- | ----------------------------- |
 | `search_flights`      | —                     | `GET /api/flights`            |
-| `recommend_bookings`  | `booking:recommend`   | `GET /api/bookings/recommended` |
+| `recommend_bookings`  | `wayfinder:booking:recommend`   | `GET /api/bookings/recommended` |
 | `search_hotels`       | —                     | `GET /api/hotels`             |
 | `get_trips`           | —                     | `GET /api/trips`              |
 | `get_locations`       | —                     | `GET /api/locations`          |
 | `get_profile`         | —                     | `GET /api/me`                 |
-| `get_flight_bookings` | `booking:read`        | `GET /api/bookings/flights`   |
-| `create_booking`      | `booking:create`      | `POST /api/bookings`          |
-| `delete_all_bookings` | `booking:cancel`      | `DELETE /api/bookings/flights` |
+| `get_flight_bookings` | `wayfinder:booking:read`        | `GET /api/bookings/flights`   |
+| `create_booking`      | `wayfinder:booking:create`      | `POST /api/bookings`          |
+| `delete_all_bookings` | `wayfinder:booking:cancel`      | `DELETE /api/bookings/flights` |
 
 OpenAPI documentation is available in `openapi.yaml`.

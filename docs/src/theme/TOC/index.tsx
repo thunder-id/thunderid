@@ -33,7 +33,7 @@ class DocContextGuard extends Component<{children: React.ReactNode}, {failed: bo
 
 function StepperPageDetector({onDetect}: {onDetect: (v: boolean) => void}) {
   const doc = useDoc();
-  const isStepper = (doc?.frontMatter as Record<string, unknown>)?.toc_progress === 'stepper';
+  const isStepper = (doc?.frontMatter as Record<string, unknown>)?.toc_progress === 'quickstart';
   useEffect(() => { onDetect(isStepper); }, [isStepper, onDetect]);
   return null;
 }
@@ -191,10 +191,33 @@ export default function TOC(props: OriginalTOCProps): React.ReactElement {
       const ai = links.findIndex(l => l.classList.contains('table-of-contents__link--active'));
       if (ai === -1) {
         // Check if a *hidden* link (e.g. inactive tab heading) has the active class.
-        // If so, hold the current fill — we're in a hidden section, not at the top.
         const hiddenActive = toc.querySelector('a.table-of-contents__link--active');
         if (hiddenActive) return;
-        // Nothing active anywhere — debounce reset so we clear on genuine top-of-page scroll
+
+        // Fallback for headings Docusaurus doesn't track (e.g. H4 from Stepper).
+        // Compute active index from scroll position using the heading elements directly.
+        const anchors = links
+          .map(link => {
+            const id = link.getAttribute('href')?.slice(1);
+            return id ? document.getElementById(id) : null;
+          })
+          .filter((el): el is HTMLElement => el !== null);
+        if (anchors.length) {
+          let activeI = 0;
+          for (let i = 0; i < anchors.length; i++) {
+            if (anchors[i].getBoundingClientRect().top - 100 <= 0) activeI = i;
+          }
+          if (anchors[activeI].getBoundingClientRect().top - 100 <= 0) {
+            if (resetTimerRef.current !== null) {
+              clearTimeout(resetTimerRef.current);
+              resetTimerRef.current = null;
+            }
+            setFillPct((activeI + 0.5) / links.length);
+            return;
+          }
+        }
+
+        // Genuinely at top — debounce reset
         resetTimerRef.current ??= setTimeout(() => {
           setFillPct(0);
           resetTimerRef.current = null;
@@ -215,10 +238,16 @@ export default function TOC(props: OriginalTOCProps): React.ReactElement {
       const allLinks = getVisibleLinks();
       if (!allLinks.length) return;
 
-      const items: LinkItem[] = allLinks.map(link => ({
-        y: link.getBoundingClientRect().top + link.getBoundingClientRect().height / 2 - tocRect.top,
-        isNested: link.closest('ul') !== ul,
-      }));
+      // Use content-relative y (add scrollTop) so the SVG covers the full
+      // scrollable height, not just the visible viewport slice.
+      const tocScrollTop = toc.scrollTop;
+      const items: LinkItem[] = allLinks.map(link => {
+        const r = link.getBoundingClientRect();
+        return {
+          y: r.top + r.height / 2 - tocRect.top + tocScrollTop,
+          isNested: link.closest('ul') !== ul,
+        };
+      });
 
       setLinkCount(items.length);
       // Stepper headings have MuiTypography-root; plain markdown headings don't
@@ -229,8 +258,9 @@ export default function TOC(props: OriginalTOCProps): React.ReactElement {
       }));
       const minOffset = parseFloat(window.getComputedStyle(ul).paddingTop) || 0;
       const svgT = Math.max(minOffset, items[0].y);
-      const lastBottom = allLinks[allLinks.length - 1].getBoundingClientRect().bottom - tocRect.top;
-      const svgB = Math.min(Math.max(items[items.length - 1].y, lastBottom), tocRect.height);
+      // No height cap — SVG covers the full scrollable content so it isn't clipped
+      const lastBottom = allLinks[allLinks.length - 1].getBoundingClientRect().bottom - tocRect.top + tocScrollTop;
+      const svgB = Math.max(items[items.length - 1].y, lastBottom);
 
       setSvgTop(svgT);
       setSvgHeight(Math.max(0, svgB - svgT));
@@ -285,7 +315,7 @@ export default function TOC(props: OriginalTOCProps): React.ReactElement {
   );
 
   const primary = 'var(--ifm-color-primary)';
-  const muted   = 'var(--ifm-color-emphasis-300)';
+  const muted   = 'var(--oxygen-palette-divider)';
 
   // Clip stops at: top of active circle (circles light up via per-element transition),
   // or at the dot center (dot lights up via per-element transition-delay after line arrives).
@@ -337,7 +367,7 @@ export default function TOC(props: OriginalTOCProps): React.ReactElement {
           <svg
             aria-hidden="true"
             style={{
-              height: svgHeight, left: '16px', overflow: 'visible',
+              height: svgHeight, left: '24px', overflow: 'visible',
               pointerEvents: 'none', position: 'absolute', top: svgTop,
               width: `${X_INNER + 2}px`,
             }}
@@ -353,8 +383,8 @@ export default function TOC(props: OriginalTOCProps): React.ReactElement {
                 />
               </clipPath>
             </defs>
-            <path d={pathD} fill="none" stroke={muted} strokeLinecap="round" strokeWidth="2" />
-            <path d={pathD} fill="none" stroke={primary} strokeLinecap="round" strokeWidth="3"
+            <path d={pathD} fill="none" stroke={muted} strokeLinecap="round" strokeWidth="1.5" />
+            <path d={pathD} fill="none" stroke={primary} strokeLinecap="round" strokeWidth="2"
               clipPath="url(#toc-fill-clip)" />
           </svg>
         ),

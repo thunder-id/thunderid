@@ -514,6 +514,104 @@ paths:
         "500":
           description: Internal server error
 
+  /users/{id}/update-credentials:
+    post:
+      tags:
+        - Users
+      summary: Update user credentials by id
+      description: |
+        Sets new credential values (such as passwords) for a user. Only credential
+        fields defined in the user type schema can be updated. System-managed
+        credentials (e.g. passkeys) are rejected.
+
+        You do not need to provide all credential fields; only the fields present
+        in the request body are updated.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserCredentialsRequest'
+            example:
+              credentials:
+                password: "n3wP@ssword!"
+      responses:
+        "204":
+          description: Credentials updated
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missing-credentials:
+                  summary: Missing credentials
+                  value:
+                    code: "USR-1017"
+                    message:
+                      key: "error.userservice.missing_credentials"
+                      defaultValue: "Missing credentials"
+                    description:
+                      key: "error.userservice.missing_credentials_description"
+                      defaultValue: "At least one credential field must be provided"
+                invalid-credential:
+                  summary: Invalid credential fields
+                  value:
+                    code: "USR-1024"
+                    message:
+                      key: "error.userservice.invalid_credential"
+                      defaultValue: "Invalid request format"
+                    description:
+                      key: "error.userservice.invalid_credential_description"
+                      defaultValue: "Invalid credential fields in request"
+                cannot-modify-declarative-resource:
+                  summary: Cannot modify declarative resource
+                  value:
+                    code: "USR-1025"
+                    message:
+                      key: "error.userservice.cannot_modify_declarative_resource"
+                      defaultValue: "Cannot modify declarative resource"
+                    description:
+                      key: "error.userservice.cannot_modify_declarative_resource_description"
+                      defaultValue: "The user is declarative and cannot be modified or deleted"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "USR-1003"
+                message:
+                  key: "error.userservice.user_not_found"
+                  defaultValue: "User not found"
+                description:
+                  key: "error.userservice.user_not_found_description"
+                  defaultValue: "The user with the specified id does not exist"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "USR-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
   /users/{id}/groups:
     get:
       tags:
@@ -2037,6 +2135,16 @@ components:
           type: object
           description: "User attributes"
           additionalProperties: true
+
+    UpdateUserCredentialsRequest:
+      type: object
+      required: [credentials]
+      properties:
+        credentials:
+          type: object
+          description: "Credential key-value pairs to update. Keys must match credential fields defined in the user type schema."
+          additionalProperties:
+            type: string
 
     UserType:
       type: object

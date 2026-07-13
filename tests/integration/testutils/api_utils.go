@@ -48,6 +48,9 @@ func GetFlowSecret(appID string) string {
 
 const (
 	TestServerURL = "https://localhost:8095"
+
+	// FlowSecretHeaderName is the header used to present a Flow Secret to /flow/execute.
+	FlowSecretHeaderName = "Flow-Secret"
 )
 
 // GetHTTPClient returns a configured HTTP client for test requests with automatic auth injection

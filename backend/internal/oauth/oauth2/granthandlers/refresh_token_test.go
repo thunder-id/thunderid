@@ -44,6 +44,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 	"github.com/thunder-id/thunderid/tests/testhelpers"
@@ -65,6 +66,7 @@ type RefreshTokenGrantHandlerTestSuite struct {
 	mockTokenValidator   *tokenservicemock.TokenValidatorInterfaceMock
 	mockAttrCacheService *attributecachemock.AttributeCacheServiceInterfaceMock
 	mockResourceService  *resourcemock.ResourceServiceInterfaceMock
+	mockRefreshRevoker   *revocationmock.RefreshTokenRevokerInterfaceMock
 	oauthApp             *providers.OAuthClient
 	validRefreshToken    string
 	validClaims          map[string]interface{}
@@ -99,6 +101,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) SetupTest() {
 	suite.mockTokenValidator = tokenservicemock.NewTokenValidatorInterfaceMock(suite.T())
 	suite.mockAttrCacheService = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	suite.mockRefreshRevoker = revocationmock.NewRefreshTokenRevokerInterfaceMock(suite.T())
 
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
 		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
@@ -117,7 +120,9 @@ func (suite *RefreshTokenGrantHandlerTestSuite) SetupTest() {
 		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"email", "username"},
+				UserConfig: &providers.AccessTokenSubConfig{
+					Attributes: []string{"email", "username"},
+				},
 			},
 		},
 	}
@@ -149,6 +154,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) rebuildHandlerWithConfig() {
 		suite.mockTokenValidator,
 		suite.mockAttrCacheService,
 		suite.mockResourceService,
+		suite.mockRefreshRevoker,
 		suite.testCfg,
 	).(*refreshTokenGrantHandler)
 }
@@ -162,7 +168,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestNewRefreshTokenGrantHandler(
 		suite.mockTokenBuilder,
 		suite.mockTokenValidator,
 		suite.mockAttrCacheService,
-		suite.mockResourceService, testhelpers.OAuthConfig())
+		suite.mockResourceService, suite.mockRefreshRevoker, testhelpers.OAuthConfig())
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*RefreshTokenGrantHandlerInterface)(nil), handler)
 }
@@ -514,6 +520,78 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_Success_WithRene
 	assert.Equal(suite.T(), "new.access.token", response.AccessToken.Token)
 	assert.Equal(suite.T(), suite.validRefreshToken, response.RefreshToken.Token)
 	assert.Equal(suite.T(), []string{"read", "write"}, response.RefreshToken.Scopes)
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RenewRevokesConsumedRefreshToken() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = true
+	suite.rebuildHandlerWithConfig()
+
+	consumedJTI := "consumed-rt-jti"
+	exp := int64(suite.validClaims["exp"].(float64))
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken, testRefreshTokenClientID).
+		Return(&tokenservice.RefreshTokenClaims{
+			Sub:       testRefreshTokenUserID,
+			Audiences: []string{testRefreshTokenAudience},
+			Scopes:    []string{"read", "write"},
+			GrantType: "authorization_code",
+			Iat:       int64(suite.validClaims["iat"].(float64)),
+			JTI:       consumedJTI,
+			Exp:       exp,
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600, Scopes: []string{"read"},
+	}, nil)
+	suite.mockTokenBuilder.On("BuildRefreshToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.refresh.token", IssuedAt: time.Now().Unix(), ExpiresIn: 86400, Scopes: []string{"read", "write"},
+	}, nil)
+	// Single-use: the consumed refresh token is revoked by its own jti and original expiry.
+	suite.mockRefreshRevoker.
+		On("RevokeRefreshToken", mock.Anything, consumedJTI, time.Unix(exp, 0).UTC()).
+		Return(nil)
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), response)
+	assert.Equal(suite.T(), "new.refresh.token", response.RefreshToken.Token)
+	suite.mockRefreshRevoker.AssertCalled(suite.T(), "RevokeRefreshToken",
+		mock.Anything, consumedJTI, time.Unix(exp, 0).UTC())
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RenewRevokeFailureFailsClosed() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = true
+	suite.rebuildHandlerWithConfig()
+
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken, testRefreshTokenClientID).
+		Return(&tokenservice.RefreshTokenClaims{
+			Sub:       testRefreshTokenUserID,
+			Audiences: []string{testRefreshTokenAudience},
+			Scopes:    []string{"read", "write"},
+			GrantType: "authorization_code",
+			Iat:       int64(suite.validClaims["iat"].(float64)),
+			JTI:       "consumed-rt-jti",
+			Exp:       int64(suite.validClaims["exp"].(float64)),
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600, Scopes: []string{"read"},
+	}, nil)
+	suite.mockTokenBuilder.On("BuildRefreshToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.refresh.token", IssuedAt: time.Now().Unix(), ExpiresIn: 86400, Scopes: []string{"read", "write"},
+	}, nil)
+	// The deny-list write fails; the rotation must fail closed rather than leave the old token usable.
+	suite.mockRefreshRevoker.
+		On("RevokeRefreshToken", mock.Anything, mock.Anything, mock.Anything).
+		Return(errors.New("operation database unavailable"))
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), response)
+	assert.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), constants.ErrorServerError, err.Error)
 }
 
 func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_Success_WithRenewOnGrantEnabled() {
@@ -1083,10 +1161,9 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RenewOnGrant_Ext
 	assert.Equal(suite.T(), "Failed to extend attribute cache TTL", err.ErrorDescription)
 }
 
-func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_SkipsCacheExtend_WhenCurrentTTLAlreadySufficient() {
-	// cacheEntry.TTLSeconds (100000) already exceeds the computed desiredTTL
-	// (max of refresh remaining ≈ 82800 and access ExpiresIn 3600, plus buffer 60 = ≈ 82860), so
-	// ExtendAttributeCacheTTL must not be called.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_ExtendsCache_EvenWhenCurrentTTLAlreadySufficient() {
+	// extendCacheTTL does not currently inspect cacheEntry.TTLSeconds, so ExtendAttributeCacheTTL
+	// is called unconditionally regardless of the current TTL (100000).
 
 	suite.mockTokenValidator.
 		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken, testRefreshTokenClientID).
@@ -1106,6 +1183,9 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_SkipsCacheExtend
 			TTLSeconds: 100000,
 		}, (*tidcommon.ServiceError)(nil)).Once()
 
+	suite.mockAttrCacheService.On("ExtendAttributeCacheTTL", mock.Anything, testCacheID, mock.Anything).
+		Return((*tidcommon.ServiceError)(nil)).Once()
+
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
 		Token:     "new.access.token",
 		IssuedAt:  time.Now().Unix(),
@@ -1117,7 +1197,8 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_SkipsCacheExtend
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), response)
-	suite.mockAttrCacheService.AssertNotCalled(suite.T(), "ExtendAttributeCacheTTL")
+	suite.mockAttrCacheService.AssertCalled(suite.T(), "ExtendAttributeCacheTTL",
+		mock.Anything, testCacheID, mock.Anything)
 }
 
 func (suite *RefreshTokenGrantHandlerTestSuite) TestExtendCacheTTL_NilCacheEntry_NoOp() {
@@ -1130,9 +1211,13 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestExtendCacheTTL_NilCacheEntry
 	suite.mockAttrCacheService.AssertNotCalled(suite.T(), "ExtendAttributeCacheTTL")
 }
 
-func (suite *RefreshTokenGrantHandlerTestSuite) TestExtendCacheTTL_CurrentTTLSufficient_NoExtension() {
-	// TTLSeconds (200000) > computed desiredTTL (≈82860) → no extend call.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestExtendCacheTTL_ExtendsRegardlessOfCurrentTTL() {
+	// extendCacheTTL does not currently inspect cacheEntry.TTLSeconds (200000), so the extend
+	// call is always made.
 	cacheEntry := &attributecache.AttributeCache{ID: testCacheID, TTLSeconds: 200000}
+
+	suite.mockAttrCacheService.On("ExtendAttributeCacheTTL", mock.Anything, testCacheID, mock.Anything).
+		Return((*tidcommon.ServiceError)(nil)).Once()
 
 	result := suite.handler.extendCacheTTL(
 		context.Background(), cacheEntry, suite.oauthApp,
@@ -1140,7 +1225,8 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestExtendCacheTTL_CurrentTTLSuf
 	)
 
 	assert.Nil(suite.T(), result)
-	suite.mockAttrCacheService.AssertNotCalled(suite.T(), "ExtendAttributeCacheTTL")
+	suite.mockAttrCacheService.AssertCalled(suite.T(), "ExtendAttributeCacheTTL",
+		mock.Anything, testCacheID, mock.Anything)
 }
 
 func (suite *RefreshTokenGrantHandlerTestSuite) TestExtendCacheTTL_RefreshOutlivesAccess_ExtendsToRefreshExpiry() {

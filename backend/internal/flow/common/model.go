@@ -67,21 +67,23 @@ type Prompt struct {
 
 // NodeResponse represents the response from a node execution
 type NodeResponse struct {
-	Status           NodeStatus              `json:"status"`
-	Type             NodeResponseType        `json:"type"`
-	Error            *tidcommon.ServiceError `json:"error,omitempty"`
-	Inputs           []providers.Input       `json:"inputs,omitempty"`
-	AdditionalData   map[string]string       `json:"additionalData,omitempty"`
-	RedirectURL      string                  `json:"redirectUrl,omitempty"`
-	Actions          []Action                `json:"actions,omitempty"`
-	Meta             interface{}             `json:"meta,omitempty"`
-	NextNodeID       string                  `json:"nextNodeId,omitempty"`
-	RuntimeData      map[string]string       `json:"runtimeData,omitempty"`
-	ForwardedData    map[string]interface{}  `json:"forwardedData,omitempty"`
-	Assertion        string                  `json:"assertion,omitempty"`
-	FieldErrors      []FieldError            `json:"fieldErrors,omitempty"`
-	AuthUser         providers.AuthUser      `json:"-"`
-	CallTargetFlowID string                  `json:"callTargetFlowId,omitempty"`
+	Status         NodeStatus              `json:"status"`
+	Type           NodeResponseType        `json:"type"`
+	Error          *tidcommon.ServiceError `json:"error,omitempty"`
+	Inputs         []providers.Input       `json:"inputs,omitempty"`
+	AdditionalData map[string]string       `json:"additionalData,omitempty"`
+	RedirectURL    string                  `json:"redirectUrl,omitempty"`
+	Actions        []Action                `json:"actions,omitempty"`
+	Meta           interface{}             `json:"meta,omitempty"`
+	NextNodeID     string                  `json:"nextNodeId,omitempty"`
+	RuntimeData    map[string]string       `json:"runtimeData,omitempty"`
+	ForwardedData  map[string]interface{}  `json:"forwardedData,omitempty"`
+	Assertion      string                  `json:"assertion,omitempty"`
+	FieldErrors    []FieldError            `json:"fieldErrors,omitempty"`
+	AuthUser       providers.AuthUser      `json:"-"`
+	// EngineData carries executor output the engine consumes internally; never serialized to the client.
+	EngineData       map[string]string `json:"-"`
+	CallTargetFlowID string            `json:"callTargetFlowId,omitempty"`
 }
 
 // InterceptorResponse represents the response from an interceptor execution

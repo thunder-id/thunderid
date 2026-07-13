@@ -46,6 +46,8 @@ const (
 	ExecutorNameAttributeUniquenessValidator = "AttributeUniquenessValidator"
 	ExecutorNameSMSExecutor                  = "SMSExecutor"
 	ExecutorNameFederatedAuthResolver        = "FederatedAuthResolverExecutor"
+	ExecutorNameSSOCheck                     = "SSOCheckExecutor"
+	ExecutorNameSession                      = "SessionExecutor"
 	ExecutorNameOTPExecutor                  = "OTPExecutor"
 )
 

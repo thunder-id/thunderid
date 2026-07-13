@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -294,6 +294,154 @@ func TestHandleSelfUserCredentialUpdateRequest_MultipleCredentialTypes(t *testin
 	require.Equal(t, http.StatusNoContent, rr.Code)
 	require.Equal(t, 0, rr.Body.Len())
 	// Verify that UpdateUserCredentials was called exactly once with all credentials
+	mockSvc.AssertNumberOfCalls(t, "UpdateUserCredentials", 1)
+}
+
+func TestHandleUserCredentialUpdateRequest_Success(t *testing.T) {
+	userID := testUserID789
+
+	mockSvc := NewUserServiceInterfaceMock(t)
+	credentialsJSON := json.RawMessage(`{"password":"new-password"}`)
+	mockSvc.On("UpdateUserCredentials", mock.Anything, userID, credentialsJSON).Return(nil)
+
+	handler := newUserHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodPost, "/users/"+userID+"/update-credentials",
+		bytes.NewBufferString(`{"credentials":{"password":"new-password"}}`))
+	req.SetPathValue("id", userID)
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserCredentialUpdateRequest(rr, req)
+
+	require.Equal(t, http.StatusNoContent, rr.Code)
+	require.Equal(t, 0, rr.Body.Len())
+}
+
+func TestHandleUserCredentialUpdateRequest_MissingUserID(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	handler := newUserHandler(mockSvc)
+
+	req := httptest.NewRequest(http.MethodPost, "/users/update-credentials",
+		bytes.NewBufferString(`{"credentials":{"password":"new-password"}}`))
+	req.SetPathValue("id", "")
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserCredentialUpdateRequest(rr, req)
+
+	require.Equal(t, http.StatusNotFound, rr.Code)
+
+	var errResp apierror.ErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+	require.Equal(t, ErrorMissingUserID.Code, errResp.Code)
+}
+
+func TestHandleUserCredentialUpdateRequest_MissingCredentials(t *testing.T) {
+	userID := testUserID789
+
+	mockSvc := NewUserServiceInterfaceMock(t)
+	handler := newUserHandler(mockSvc)
+
+	req := httptest.NewRequest(http.MethodPost, "/users/"+userID+"/update-credentials",
+		bytes.NewBufferString(`{"credentials":{}}`))
+	req.SetPathValue("id", userID)
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserCredentialUpdateRequest(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+
+	var errResp apierror.ErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+	require.Equal(t, ErrorMissingCredentials.Code, errResp.Code)
+}
+
+func TestHandleUserCredentialUpdateRequest_InvalidBody(t *testing.T) {
+	userID := testUserID789
+
+	mockSvc := NewUserServiceInterfaceMock(t)
+	handler := newUserHandler(mockSvc)
+
+	req := httptest.NewRequest(http.MethodPost, "/users/"+userID+"/update-credentials",
+		bytes.NewBufferString(`{"credentials":`))
+	req.SetPathValue("id", userID)
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserCredentialUpdateRequest(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+
+	var errResp apierror.ErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+	require.Equal(t, ErrorInvalidRequestFormat.Code, errResp.Code)
+}
+
+func TestHandleUserCredentialUpdateRequest_ErrorCases(t *testing.T) {
+	userID := testUserID789
+
+	testCases := []struct {
+		name             string
+		requestBody      string
+		mockJSON         json.RawMessage
+		mockError        *tidcommon.ServiceError
+		expectedHTTPCode int
+		expectedErrCode  string
+	}{
+		{
+			name:             "User not found",
+			requestBody:      `{"credentials":{"password":"test_password"}}`,
+			mockJSON:         json.RawMessage(`{"password":"test_password"}`),
+			mockError:        &ErrorUserNotFound,
+			expectedHTTPCode: http.StatusNotFound,
+			expectedErrCode:  ErrorUserNotFound.Code,
+		},
+		{
+			name:             "Invalid credential type",
+			requestBody:      `{"credentials":{"unsupported_type":"some_value"}}`,
+			mockJSON:         json.RawMessage(`{"unsupported_type":"some_value"}`),
+			mockError:        &ErrorInvalidCredential,
+			expectedHTTPCode: http.StatusBadRequest,
+			expectedErrCode:  ErrorInvalidCredential.Code,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockSvc := NewUserServiceInterfaceMock(t)
+			mockSvc.On("UpdateUserCredentials", mock.Anything, userID, tc.mockJSON).Return(tc.mockError)
+
+			handler := newUserHandler(mockSvc)
+			req := httptest.NewRequest(http.MethodPost, "/users/"+userID+"/update-credentials",
+				bytes.NewBufferString(tc.requestBody))
+			req.SetPathValue("id", userID)
+			rr := httptest.NewRecorder()
+
+			handler.HandleUserCredentialUpdateRequest(rr, req)
+
+			require.Equal(t, tc.expectedHTTPCode, rr.Code)
+
+			var errResp apierror.ErrorResponse
+			require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+			require.Equal(t, tc.expectedErrCode, errResp.Code)
+		})
+	}
+}
+
+func TestHandleUserCredentialUpdateRequest_MultipleCredentialTypes(t *testing.T) {
+	userID := testUserID789
+
+	mockSvc := NewUserServiceInterfaceMock(t)
+	credentialsJSON := json.RawMessage(`{"password":"new-password","pin":"1234"}`)
+	mockSvc.On("UpdateUserCredentials", mock.Anything, userID, credentialsJSON).Return(nil)
+
+	handler := newUserHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodPost, "/users/"+userID+"/update-credentials",
+		bytes.NewBufferString(`{"credentials":{"password":"new-password","pin":"1234"}}`))
+	req.SetPathValue("id", userID)
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserCredentialUpdateRequest(rr, req)
+
+	require.Equal(t, http.StatusNoContent, rr.Code)
+	require.Equal(t, 0, rr.Body.Len())
 	mockSvc.AssertNumberOfCalls(t, "UpdateUserCredentials", 1)
 }
 

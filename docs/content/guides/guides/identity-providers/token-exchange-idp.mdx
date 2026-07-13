@@ -28,13 +28,14 @@ This is different from the [trusted issuer](../../trusted-issuer) feature. Trust
 
 ## Step 1: Register the External Identity Provider
 
-Register the external IdP in <ProductName /> and enable it for token exchange. Only three properties are required for a token-exchange-only IdP:
+Register the external IdP in <ProductName /> and enable it for token exchange. Three properties are required for a token-exchange-only IdP:
 
 | Property | Required | Description |
 |----------|----------|-------------|
 | `issuer` | Yes | The exact `iss` claim value in tokens from this IdP. <ProductName /> matches incoming tokens against this value to identify which IdP issued them. |
 | `jwks_endpoint` | Yes | The IdP's JWKS URL. <ProductName /> fetches public signing keys from this URL to verify token signatures. |
 | `token_exchange_enabled` | Yes | Set to `"true"` to allow this IdP's tokens to be exchanged. |
+| `trusted_token_audience` | No | An additional accepted `aud` claim value for tokens from this IdP. Use this when the external token audience is the external client ID or API audience instead of the <ProductName /> issuer. |
 
 The redirect-flow OIDC properties (`client_secret`, `redirect_uri`, `authorization_endpoint`, `token_endpoint`) are not required unless the same IdP is also used for redirect-based sign-in.
 
@@ -48,7 +49,8 @@ curl -X POST https://thunder.example.com/identity-providers \
     "properties": [
       {"name": "issuer", "value": "https://api.asgardeo.io/t/myorg/oauth2/token"},
       {"name": "jwks_endpoint", "value": "https://api.asgardeo.io/t/myorg/oauth2/jwks"},
-      {"name": "token_exchange_enabled", "value": "true"}
+      {"name": "token_exchange_enabled", "value": "true"},
+      {"name": "trusted_token_audience", "value": "my-external-client-id"}
     ]
   }'
 ```
@@ -107,7 +109,7 @@ When processing an external token for exchange, <ProductName />:
 
 1. Extracts the `iss` claim and matches it against registered IdPs with `token_exchange_enabled=true`.
 2. Fetches the matching IdP's JWKS and verifies the token signature.
-3. Checks that the token's `aud` claim contains this <ProductName /> instance's own issuer.
+3. Checks the token's `aud` claim. <ProductName /> accepts the token when `aud` contains this <ProductName /> instance's own issuer, or when it contains the IdP's configured `trusted_token_audience`.
 4. Validates `exp` (and `nbf` if present) with the configured clock-skew leeway.
 5. Extracts the `sub` claim and non-standard claims as user attributes.
 

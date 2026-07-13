@@ -73,7 +73,11 @@ export default function RecoveryFlowSection({
   return (
     <SettingsCard
       title={t('applications:edit.flows.labels.recoveryFlow')}
-      description={t('applications:edit.flows.labels.recoveryFlow.description')}
+      description={t(
+        'applications:edit.flows.labels.recoveryFlow.description',
+        'Let people recover their account when signing in through this {{entity}}.',
+        {entity: entityLabel},
+      )}
       enabled={editedApp.isRecoveryFlowEnabled ?? application.isRecoveryFlowEnabled ?? false}
       onToggle={application.isReadOnly ? undefined : (enabled) => onFieldChange('isRecoveryFlowEnabled', enabled)}
     >

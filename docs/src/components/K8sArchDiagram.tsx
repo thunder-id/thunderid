@@ -58,7 +58,7 @@ export function K8sArchDiagram() {
       {/* K8s Cluster boundary */}
       <div className="k8s-arch__cluster">
         <div className="k8s-arch__cluster-badge">
-          <img src="/img/kubernetes-logo.svg" width="16" height="16" alt="" aria-hidden="true" />
+          <img src="/assets/images/kubernetes-logo.svg" width="16" height="16" alt="" aria-hidden="true" />
           <span>K8s Cluster</span>
         </div>
 

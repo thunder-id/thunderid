@@ -23,7 +23,7 @@ import type {Agent, AgentInboundAuthConfig, OAuthAgentConfig} from '../../../../
 import EditAdvancedSettings from '../EditAdvancedSettings';
 
 // Mock the child sections to capture wiring without exercising MUI internals.
-vi.mock('../OAuth2ConfigSection', () => ({
+vi.mock('../OperationModesSection', () => ({
   default: ({
     oauth2Config,
     onOAuth2ConfigChange,
@@ -31,7 +31,7 @@ vi.mock('../OAuth2ConfigSection', () => ({
     oauth2Config?: OAuthAgentConfig;
     onOAuth2ConfigChange?: (updates: Partial<OAuthAgentConfig>) => void;
   }) => (
-    <div data-testid="oauth2-section">
+    <div data-testid="operation-modes-section">
       <span data-testid="oauth2-grants">{(oauth2Config?.grantTypes ?? []).join(',')}</span>
       <button type="button" onClick={() => onOAuth2ConfigChange?.({grantTypes: ['client_credentials']})}>
         Trigger OAuth Change
@@ -40,18 +40,20 @@ vi.mock('../OAuth2ConfigSection', () => ({
   ),
 }));
 
-vi.mock('../RedirectURIsSection', () => ({
-  default: ({onValidationChange}: {onValidationChange?: (hasErrors: boolean) => void}) => (
-    <div data-testid="redirect-uris-section">
-      <button type="button" onClick={() => onValidationChange?.(true)}>
-        Trigger Validation
-      </button>
-    </div>
-  ),
+vi.mock('../SecuritySection', () => ({
+  default: () => <div data-testid="security-section">Security</div>,
 }));
 
-vi.mock('../CertificateSection', () => ({
-  default: () => <div data-testid="certificate-section">Cert</div>,
+vi.mock('../OwnerSection', () => ({
+  default: () => <div data-testid="owner-section">Owner</div>,
+}));
+
+vi.mock('../AllowedUserTypesSection', () => ({
+  default: () => <div data-testid="allowed-user-types-section">Allowed User Types</div>,
+}));
+
+vi.mock('../TokenEndpointAuthMethodSection', () => ({
+  default: () => <div data-testid="token-endpoint-auth-method-section">Token Endpoint Auth Method</div>,
 }));
 
 describe('EditAdvancedSettings', () => {
@@ -69,13 +71,12 @@ describe('EditAdvancedSettings', () => {
   };
 
   const mockOnFieldChange = vi.fn();
-  const mockOnValidationChange = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renders all three sections', () => {
+  it('renders all sections', () => {
     render(
       <EditAdvancedSettings
         agent={mockAgent}
@@ -85,12 +86,14 @@ describe('EditAdvancedSettings', () => {
       />,
     );
 
-    expect(screen.getByTestId('oauth2-section')).toBeInTheDocument();
-    expect(screen.getByTestId('redirect-uris-section')).toBeInTheDocument();
-    expect(screen.getByTestId('certificate-section')).toBeInTheDocument();
+    expect(screen.getByTestId('operation-modes-section')).toBeInTheDocument();
+    expect(screen.getByTestId('security-section')).toBeInTheDocument();
+    expect(screen.getByTestId('owner-section')).toBeInTheDocument();
+    expect(screen.getByTestId('allowed-user-types-section')).toBeInTheDocument();
+    expect(screen.getByTestId('token-endpoint-auth-method-section')).toBeInTheDocument();
   });
 
-  it('passes the oauth2Config down to OAuth2ConfigSection', () => {
+  it('passes the oauth2Config down to OperationModesSection', () => {
     render(
       <EditAdvancedSettings
         agent={mockAgent}
@@ -152,23 +155,6 @@ describe('EditAdvancedSettings', () => {
         }),
       ]) as AgentInboundAuthConfig[],
     );
-  });
-
-  it('forwards onValidationChange from RedirectURIsSection', async () => {
-    const user = userEvent.setup();
-    render(
-      <EditAdvancedSettings
-        agent={mockAgent}
-        editedAgent={{}}
-        oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
-        onFieldChange={mockOnFieldChange}
-        onValidationChange={mockOnValidationChange}
-      />,
-    );
-
-    await user.click(screen.getByText('Trigger Validation'));
-
-    expect(mockOnValidationChange).toHaveBeenCalledWith(true);
   });
 
   it('handles a missing inboundAuthConfig gracefully', async () => {

@@ -22,6 +22,8 @@ import (
 	"context"
 
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 )
 
 // ouGroupResolverAdapter implements oupkg.OUGroupResolver using the group store.
@@ -56,4 +58,31 @@ func (a *ouGroupResolverAdapter) GetGroupListByOUID(
 	}
 
 	return result, nil
+}
+
+// GetResourceDependencies implements resourcedependency.Provider. It reports the groups that belong
+// to the given organization unit, which block the organization unit's deletion (a group cannot exist
+// without its organization unit). Only organization unit targets are handled; other resource types
+// have no group dependencies. The number of groups scanned is bounded by MaxCompositeStoreRecords.
+func (a *ouGroupResolverAdapter) GetResourceDependencies(
+	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
+	if resourceType != resourcedependency.ResourceTypeOU {
+		return []resourcedependency.ResourceDependency{}, nil
+	}
+
+	groups, err := a.GetGroupListByOUID(ctx, id, serverconst.MaxCompositeStoreRecords, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	deps := make([]resourcedependency.ResourceDependency, 0, len(groups))
+	for _, g := range groups {
+		deps = append(deps, resourcedependency.ResourceDependency{
+			ResourceType:     resourcedependency.ResourceTypeGroup,
+			ID:               g.ID,
+			DisplayName:      g.Name,
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		})
+	}
+	return deps, nil
 }

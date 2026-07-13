@@ -19,6 +19,7 @@
 import {CollisionPriority} from '@dnd-kit/abstract';
 import {move} from '@dnd-kit/helpers';
 import {DragDropProvider, DragOverlay, type DragDropEventHandlers} from '@dnd-kit/react';
+import {useIdentityProviders} from '@thunderid/configure-connections';
 import {Box, Button, Card, CardContent, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {ArrowLeft, Save} from '@wso2/oxygen-ui-icons-react';
 import {
@@ -79,7 +80,6 @@ import Droppable from '../dnd/Droppable';
 import ResourcePanel from '../resource-panel/ResourcePanel';
 import ResourcePropertyPanel from '../resource-property-panel/ResourcePropertyPanel';
 import ValidationPanel from '../validation-panel/ValidationPanel';
-import useIdentityProviders from '@/features/connections/api/useIdentityProviders';
 import useNotificationSenders from '@/features/notification-senders/api/useNotificationSenders';
 
 /**

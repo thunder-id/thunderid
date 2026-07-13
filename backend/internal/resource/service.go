@@ -33,6 +33,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -126,16 +127,90 @@ type ResourceServiceInterface interface {
 	ResolveResourceServerOUHandle(
 		ctx context.Context, rs *providers.ResourceServer,
 	) *tidcommon.ServiceError
+
+	SetDependencyRegistry(r resourcedependency.Registry)
+	GetResourceDependencies(
+		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 }
 
 // resourceService is the default implementation of ResourceServiceInterface.
 type resourceService struct {
-	logger           log.Logger
-	resourceStore    resourceStoreInterface
-	ouService        oupkg.OrganizationUnitServiceInterface
-	consentService   consent.ConsentServiceInterface
-	defaultDelimiter string
-	transactioner    transaction.Transactioner
+	logger             log.Logger
+	resourceStore      resourceStoreInterface
+	ouService          oupkg.OrganizationUnitServiceInterface
+	consentService     consent.ConsentServiceInterface
+	defaultDelimiter   string
+	transactioner      transaction.Transactioner
+	dependencyRegistry resourcedependency.Registry
+}
+
+// SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
+// provider services are initialized to avoid a cyclic import.
+func (rs *resourceService) SetDependencyRegistry(r resourcedependency.Registry) {
+	rs.dependencyRegistry = r
+}
+
+// ensureNoBlockingDependencies refuses deletion when other resources depend on the target
+// (behaviorOnDelete == restrict). Because deletion is destructive, it fails closed: if dependency
+// data cannot be determined, the deletion is refused rather than allowed.
+func (rs *resourceService) ensureNoBlockingDependencies(
+	ctx context.Context, resourceType, id string,
+) *tidcommon.ServiceError {
+	if rs.dependencyRegistry == nil {
+		rs.logger.Error(ctx, "Dependency registry not set; refusing to delete",
+			log.String("resourceType", resourceType), log.String("id", id))
+		return &tidcommon.InternalServerError
+	}
+
+	deps, err := rs.dependencyRegistry.GetDependencies(ctx, resourceType, id)
+	if err != nil {
+		rs.logger.Error(ctx, "Failed to evaluate dependencies",
+			log.String("resourceType", resourceType), log.String("id", id), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	// Fail closed: nil TotalResults means a provider failed to report, so usage is unknown.
+	if deps == nil || deps.TotalResults == nil {
+		rs.logger.Error(ctx, "Dependency data unavailable; refusing to delete",
+			log.String("resourceType", resourceType), log.String("id", id))
+		return &tidcommon.InternalServerError
+	}
+
+	if len(resourcedependency.BlockingUsages(deps)) == 0 {
+		return nil
+	}
+
+	return &ErrorCannotDelete
+}
+
+// GetResourceDependencies implements resourcedependency.Provider. A resource server is blocked from
+// deletion while it still has resources or resource-server-level actions; a resource is blocked while
+// it still has sub-resources or actions. These dependents live in the same store, so their existence
+// is resolved directly and reported as a single restrict usage. Other resource types have no
+// dependencies here.
+func (rs *resourceService) GetResourceDependencies(
+	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
+	var hasDeps bool
+	var err error
+	switch resourceType {
+	case resourcedependency.ResourceTypeResourceServer:
+		hasDeps, err = rs.resourceStore.CheckResourceServerHasDependencies(ctx, id)
+	case resourcedependency.ResourceTypeResource:
+		hasDeps, err = rs.resourceStore.CheckResourceHasDependencies(ctx, id)
+	default:
+		return []resourcedependency.ResourceDependency{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !hasDeps {
+		return []resourcedependency.ResourceDependency{}, nil
+	}
+
+	return []resourcedependency.ResourceDependency{{
+		ResourceType:     resourcedependency.ResourceTypeResource,
+		ID:               id,
+		BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+	}}, nil
 }
 
 // newResourceService creates a new instance of ResourceService.
@@ -518,14 +593,11 @@ func (rs *resourceService) DeleteResourceServer(ctx context.Context, id string) 
 		return &tidcommon.InternalServerError
 	}
 
-	// Check for dependencies
-	hasDeps, err := rs.resourceStore.CheckResourceServerHasDependencies(ctx, id)
-	if err != nil {
-		rs.logger.Error(ctx, "Failed to check dependencies", log.Error(err))
-		return &tidcommon.InternalServerError
-	}
-	if hasDeps {
-		return &ErrorCannotDelete
+	// Refuse deletion when resources or actions still depend on this resource server. Dependencies
+	// are aggregated through the dependency registry.
+	if svcErr := rs.ensureNoBlockingDependencies(
+		ctx, resourcedependency.ResourceTypeResourceServer, id); svcErr != nil {
+		return svcErr
 	}
 
 	// Use transaction for write operation
@@ -865,14 +937,10 @@ func (rs *resourceService) DeleteResource(
 		return &tidcommon.InternalServerError
 	}
 
-	// Check for dependencies
-	hasDeps, err := rs.resourceStore.CheckResourceHasDependencies(ctx, id)
-	if err != nil {
-		rs.logger.Error(ctx, "Failed to check dependencies", log.Error(err))
-		return &tidcommon.InternalServerError
-	}
-	if hasDeps {
-		return &ErrorCannotDelete
+	// Refuse deletion when sub-resources or actions still depend on this resource. Dependencies are
+	// aggregated through the dependency registry.
+	if svcErr := rs.ensureNoBlockingDependencies(ctx, resourcedependency.ResourceTypeResource, id); svcErr != nil {
+		return svcErr
 	}
 
 	// Use transaction for write operation

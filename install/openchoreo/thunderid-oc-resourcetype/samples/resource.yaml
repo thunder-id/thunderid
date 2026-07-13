@@ -1,0 +1,1909 @@
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# Sample ThunderID Resource and its development ResourceReleaseBinding.
+#
+# The declarativeResources content below is a full export of a default
+# ThunderID installation (organization unit, user types, applications,
+# flows, themes, translation, roles, admin user). Replace the
+# <SERVER_PUBLIC_URL> placeholders, or swap the whole block for an export of
+# your own installation (/export API). Exports strip credentials — keep a
+# `credentials:` block on each user that must log in. Template placeholders
+# like {{.ADMIN_PASSWORD}} resolve from environment variables at load time;
+# ADMIN_PASSWORD is a property of the secret store entry referenced by
+# secretStore below, so the actual password never appears in this manifest.
+#
+# Prerequisites (in order):
+#   1. The thunderid (Cluster)ResourceType is installed:
+#        helm install thunderid-type install/openchoreo/thunderid-oc-resourcetype
+#   2. The environment values are pushed to the platform secret store as
+#      properties of one secret, e.g.:
+#        bao kv put secret/thunderid/dev \
+#          CRYPTO_ENCRYPTION_KEY=<64_HEX_CHAR_KEY> ADMIN_PASSWORD=<PASSWORD> \
+#          DB_CONFIG_HOSTNAME=<DB_HOST> DB_CONFIG_PORT=5432 ... (see README)
+#      The databases must be a fresh schema (no rows for the resource IDs
+#      in this file).
+#
+# Applying the Resource cuts a ResourceRelease automatically. The binding
+# below deploys nothing until spec.resourceRelease is pinned to that release:
+#   kubectl get resourcerelease -n default
+#   kubectl patch resourcereleasebinding thunderid-development -n default \
+#     --type=merge -p '{"spec":{"resourceRelease":"<RELEASE_NAME>"}}'
+apiVersion: openchoreo.dev/v1alpha1
+kind: Resource
+metadata:
+  name: thunderid
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  type:
+    kind: ClusterResourceType
+    name: thunderid
+  parameters:
+    # Platform secret store location of the environment values (database
+    # connection details, crypto encryption key, admin password). Every
+    # property stored at the remote key is materialized into the container
+    # environment — see the README's Secret Store Contract for the
+    # required properties.
+    secretStore:
+      name: default          # ClusterSecretStore (or SecretStore) name
+      # kind: ClusterSecretStore   # or SecretStore (namespaced); default ClusterSecretStore
+      key: thunderid/dev     # remote path on the store's KV mount
+
+    # Environment variables resolving template placeholders inside
+    # declarativeResources. Array-valued placeholders (e.g.
+    # {{- range .CONSOLE_REDIRECT_URIS}}) are built from indexed variables:
+    # NAME_0, NAME_1, ...
+    env:
+      - name: CONSOLE_CLIENT_ID
+        value: CONSOLE
+      - name: CONSOLE_REDIRECT_URIS_0
+        value: "<SERVER_PUBLIC_URL>/console"
+
+    # ─── Optional parameters (defaults shown) ─────────────────────────────
+
+    # Pin a specific image tag in production.
+    # image: "ghcr.io/thunder-id/thunderid:latest"
+
+    # Full-content overrides for the three rendered configuration files.
+    # Each replaces the built-in default entirely when set and is used
+    # verbatim — no CEL interpolation, so environment configurations such
+    # as serverPublicUrl are not substituted into overrides. In
+    # deploymentYaml, {{.VAR}} placeholders still resolve at startup from
+    # the secret store values and parameters.env. When overriding
+    # deploymentYaml, keep runtime.port in sync with server.port.
+    # configOverrides:
+    #   deploymentYaml: |
+    #     server:
+    #       hostname: "0.0.0.0"
+    #       port: 8090
+    #       # ... full ThunderID server configuration
+    #   gateConfigJs: |
+    #     window.__THUNDERID_RUNTIME_CONFIG__ = {
+    #       # ... full Gate frontend configuration
+    #     };
+    #   consoleConfigJs: |
+    #     window.__THUNDERID_RUNTIME_CONFIG__ = {
+    #       # ... full Console frontend configuration
+    #     };
+
+    # runtime:
+    #   imagePullPolicy: Always            # Always | IfNotPresent | Never
+    #   # Database engine. sqlite (default): bundled files, ephemeral,
+    #   # replicas must stay 1, development only. postgres: external DB via
+    #   # the DB_* properties at secretStore.key, for production.
+    #   dbType: sqlite                     # sqlite | postgres
+    #   port: 8090                         # server port (container, Service, route, probe)
+    #   defaultAuthFlowHandle: ""          # flow used when an application pins no authFlowId
+    #   declarativeResourcesEnabled: true  # false — services default to database-backed stores
+    #   gate:
+    #     clientBase: "/gate"
+    #   console:
+    #     clientBase: "/console"
+    #     clientId: "CONSOLE"
+    #     scopes: '["openid", "profile", "email", "ou", "system", "system:user", "system:group", "system:ou:view", "system:usertype:view"]'
+    #   jwt:
+    #     validityPeriod: 3600             # seconds
+    #   oauth:
+    #     refreshTokenValidityPeriod: 86400  # seconds
+    #   cache:
+    #     size: 10000                      # maximum in-memory cache entries
+    #     ttl: 3600                        # seconds
+    #   consent:
+    #     enabled: false
+    #     baseUrl: "http://localhost:9090/api/v1"
+    #
+    #   # Store mode per service: "" inherits the global mode (declarative
+    #   # when declarativeResourcesEnabled, mutable otherwise); or set
+    #   # mutable | declarative | composite per service — e.g. composite
+    #   # for users and groups keeps the file-defined admin while sign-up
+    #   # and Console user management write to the database.
+    #   stores:
+    #     user: ""
+    #     userType: ""
+    #     organizationUnit: ""
+    #     identityProvider: ""
+    #     application: ""
+    #     group: ""
+    #     role: ""
+    #     theme: ""
+    #     layout: ""
+    #     translation: ""
+    #     flow: ""
+    #     resourceServer: ""
+    #     serverConfig: ""
+    #
+    #   # HTTPS serving with certificate overrides — a stock OpenChoreo
+    #   # installation does not support this out of the box: the data-plane
+    #   # cluster-agent must be allowed to manage
+    #   # gateway.kgateway.dev/backendconfigpolicies (the policy that makes
+    #   # the gateway originate TLS to the backend). certs projects
+    #   # properties stored at storeKey over /opt/thunderid/config/certs/,
+    #   # replacing the image's bundled self-signed files. Publish a ca.crt
+    #   # property and set tls.verifyBackend: true to have the gateway
+    #   # verify the backend certificate.
+    #   tls:
+    #     enabled: true
+    #     minVersion: "1.3"                # 1.2 | 1.3
+    #     verifyBackend: false
+    #   certs:
+    #     storeKey: thunderid/dev-certs
+    #     files: [server.cert, server.key, signing.cert, signing.key]
+
+    # Declarative resources (required) — the sole provisioning mechanism.
+    declarativeResources: |
+      # File: Console.yaml
+      # resource_type: application
+      id: 01900000-0000-7000-8000-000000000060
+      ouId: 01900000-0000-7000-8000-000000000001
+      name: Console
+      description: Management application for ThunderID
+      url: https://localhost:8090/console
+      logoUrl: emoji:👨‍💻
+      authFlowId: 01900000-0000-7000-8000-000000000068
+      registrationFlowId: 01900000-0000-7000-8000-000000000069
+      isRegistrationFlowEnabled: false
+      isRecoveryFlowEnabled: false
+      assertion:
+        validityPeriod: 3600
+      loginConsent:
+        validityPeriod: 0
+      allowedUserTypes:
+        - Person
+      inboundAuthConfig:
+        - type: oauth2
+          config:
+            clientId: {{.CONSOLE_CLIENT_ID}}
+            redirectUris:
+              {{- range .CONSOLE_REDIRECT_URIS}}
+              - {{.}}
+              {{- end}}
+            grantTypes:
+              - authorization_code
+              - refresh_token
+            responseTypes:
+              - code
+            tokenEndpointAuthMethod: none
+            pkceRequired: true
+            publicClient: true
+            requirePushedAuthorizationRequests: false
+            dpopBoundAccessTokens: false
+            includeActClaim: false
+            token:
+              accessToken:
+                validityPeriod: 3600
+                userAttributes:
+                  - given_name
+                  - family_name
+                  - email
+                  - groups
+                  - name
+                  - ouId
+              idToken:
+                validityPeriod: 3600
+                userAttributes:
+                  - given_name
+                  - family_name
+                  - email
+                  - groups
+                  - name
+                  - ouId
+                responseType: JWT
+              refreshToken:
+                validityPeriod: 86400
+            userInfo:
+              responseType: JSON
+              userAttributes:
+                - given_name
+                - family_name
+                - email
+                - groups
+                - name
+                - ouId
+            scopeClaims:
+              email:
+                - email
+                - email_verified
+              group:
+                - groups
+              ou:
+                - ouId
+              phone:
+                - phone_number
+                - phone_number_verified
+              profile:
+                - name
+                - given_name
+                - family_name
+                - picture
+
+      ---
+      # File: Default_Basic_Authentication_Flow.yaml
+      # resource_type: flow
+      id: 01900000-0000-7000-8000-000000000061
+      handle: default-basic-flow
+      name: Default Basic Authentication Flow
+      flowType: AUTHENTICATION
+      activeVersion: 1
+      nodes:
+        - id: start
+          type: START
+          onSuccess: prompt_credentials
+        - id: prompt_credentials
+          type: PROMPT
+          meta: '{"components":[{"alt":"{{ t(signin:images.app_logo.alt) }}","category":"DISPLAY","height":"60","id":"image","resourceType":"ELEMENT","src":"{{ meta(application.logoUrl) }}","type":"IMAGE","width":""},{"align":"center","id":"text_001","label":"{{ t(signin:forms.credentials.title) }}","type":"TEXT","variant":"HEADING_1"},{"components":[{"id":"input_001","label":"{{ t(signin:forms.credentials.fields.username.label) }}","placeholder":"{{ t(signin:forms.credentials.fields.username.placeholder) }}","ref":"username","required":true,"type":"TEXT_INPUT"},{"id":"input_002","label":"{{ t(signin:forms.credentials.fields.password.label) }}","placeholder":"{{ t(signin:forms.credentials.fields.password.placeholder) }}","ref":"password","required":true,"type":"PASSWORD_INPUT"},{"category":"DISPLAY","id":"rich_text_forgot_password","label":"\u003cp class=\"rich-text-paragraph\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(signin:forms.credentials.links.forgot_password.prefix) }} \u003c/span\u003e\u003ca href=\"{{meta(application.forgot_password_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(signin:forms.credentials.links.forgot_password.label) }}\u003c/span\u003e\u003c/a\u003e\u003c/p\u003e","resourceType":"ELEMENT","type":"RICH_TEXT"},{"eventType":"SUBMIT","id":"action_001","label":"{{ t(signin:forms.credentials.actions.submit.label) }}","type":"ACTION","variant":"PRIMARY"},{"category":"DISPLAY","id":"rich_text_signup","label":"\u003cp class=\"rich-text-paragraph\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(signin:forms.credentials.links.sign_up.prefix) }} \u003c/span\u003e\u003ca href=\"{{meta(application.sign_up_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(signin:forms.credentials.links.sign_up.label) }}\u003c/span\u003e\u003c/a\u003e\u003c/p\u003e","resourceType":"ELEMENT","type":"RICH_TEXT"}],"id":"block_001","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: input_001
+                  type: TEXT_INPUT
+                  identifier: username
+                  required: true
+                - ref: input_002
+                  type: PASSWORD_INPUT
+                  identifier: password
+                  required: true
+              action:
+                ref: action_001
+                nextNode: credentials_auth
+        - id: credentials_auth
+          type: TASK_EXECUTION
+          executor:
+            name: CredentialsAuthExecutor
+          onSuccess: authorization_check
+          onIncomplete: prompt_credentials
+        - id: authorization_check
+          type: TASK_EXECUTION
+          executor:
+            name: AuthorizationExecutor
+          onSuccess: auth_assert
+        - id: auth_assert
+          type: TASK_EXECUTION
+          executor:
+            name: AuthAssertExecutor
+          onSuccess: end
+        - id: end
+          type: END
+      createdAt: 2026-07-08 15:23:27
+      updatedAt: 2026-07-08 15:23:27
+      isReadOnly: false
+
+      ---
+      # File: Default_CIBA_Email_Notification_Flow.yaml
+      # resource_type: flow
+      id: 01900000-0000-7000-8000-000000000062
+      handle: default-ciba-email-flow
+      name: Default CIBA Email Notification Flow
+      flowType: AUTHENTICATION
+      activeVersion: 1
+      nodes:
+        - id: start
+          type: START
+          onSuccess: identify_user
+        - id: identify_user
+          type: TASK_EXECUTION
+          properties:
+            loginHintAttribute: "username"
+          executor:
+            name: IdentifyingExecutor
+            inputs:
+              - type: TEXT_INPUT
+                identifier: login_hint
+                required: true
+          onSuccess: generate_invite
+        - id: generate_invite
+          type: TASK_EXECUTION
+          executor:
+            name: InviteExecutor
+            mode: generate
+          onSuccess: send_notification_email
+        - id: send_notification_email
+          type: TASK_EXECUTION
+          properties:
+            emailTemplate: "CIBA_NOTIFICATION"
+          executor:
+            name: EmailExecutor
+            mode: send
+            inputs:
+              - type: EMAIL_INPUT
+                identifier: email
+                required: true
+          onSuccess: notification_sent_status
+          onFailure: notification_error_status
+        - id: notification_sent_status
+          type: PROMPT
+          meta: '{"components":[{"align":"center","id":"notification_icon","label":"✉️","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"notification_heading","label":"{{ t(signin:forms.ciba.notification_sent.heading) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"notification_message","label":"{{ t(signin:forms.ciba.notification_sent.message) }}","type":"TEXT","variant":"HEADING_6"}]}'
+          next: verify_invite
+          message: Authentication notification sent
+        - id: notification_error_status
+          type: PROMPT
+          meta: '{"components":[{"align":"center","id":"error_icon","label":"❌","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"error_heading","label":"{{ t(signin:forms.ciba.notification_error.heading) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"error_message","label":"{{ t(signin:forms.ciba.notification_error.message) }}","type":"TEXT","variant":"HEADING_6"}]}'
+          next: end
+          message: Authentication notification failed
+        - id: verify_invite
+          type: TASK_EXECUTION
+          executor:
+            name: InviteExecutor
+            mode: verify
+            inputs:
+              - type: HIDDEN
+                identifier: inviteToken
+                required: true
+          onSuccess: prompt_credentials
+        - id: prompt_credentials
+          type: PROMPT
+          meta: '{"components":[{"align":"center","id":"credentials_heading","label":"{{ t(signin:forms.ciba.credentials.heading) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"credentials_message","label":"{{ t(signin:forms.ciba.credentials.message) }}","type":"TEXT","variant":"HEADING_6"},{"components":[{"id":"input_password","label":"{{ t(signin:forms.credentials.fields.password.label) }}","placeholder":"{{ t(signin:forms.credentials.fields.password.placeholder) }}","ref":"password","required":true,"type":"PASSWORD_INPUT"},{"eventType":"SUBMIT","id":"action_approve","label":"{{ t(signin:forms.ciba.credentials.actions.approve.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_credentials","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: input_password
+                  type: PASSWORD_INPUT
+                  identifier: password
+                  required: true
+              action:
+                ref: action_approve
+                nextNode: credentials_auth
+        - id: credentials_auth
+          type: TASK_EXECUTION
+          executor:
+            name: CredentialsAuthExecutor
+          onSuccess: authorization_check
+          onIncomplete: prompt_credentials
+        - id: authorization_check
+          type: TASK_EXECUTION
+          executor:
+            name: AuthorizationExecutor
+          onSuccess: auth_assert
+        - id: auth_assert
+          type: TASK_EXECUTION
+          properties:
+            callbackType: "urn:openid:params:grant-type:ciba"
+          executor:
+            name: AuthAssertExecutor
+          onSuccess: auth_success
+        - id: auth_success
+          type: PROMPT
+          meta: '{"components":[{"align":"center","id":"success_icon","label":"✅","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"success_heading","label":"{{ t(signin:forms.ciba.success.heading) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"success_message","label":"{{ t(signin:forms.ciba.success.message) }}","type":"TEXT","variant":"HEADING_6"}]}'
+          next: end
+          message: Authentication successful
+        - id: end
+          type: END
+      createdAt: 2026-07-08 15:23:27
+      updatedAt: 2026-07-08 15:23:27
+      isReadOnly: false
+
+      ---
+      # File: Console_App_Authentication_Flow.yaml
+      # resource_type: flow
+      id: 01900000-0000-7000-8000-000000000068
+      handle: console-app-flow
+      name: Console App Authentication Flow
+      flowType: AUTHENTICATION
+      activeVersion: 1
+      nodes:
+        - id: start
+          type: START
+          onSuccess: prompt_credentials
+        - id: prompt_credentials
+          type: PROMPT
+          meta: '{"components":[{"id":"text_001","label":"{{ t(signin:forms.credentials.title) }}","type":"TEXT","variant":"HEADING_1"},{"components":[{"id":"input_001","label":"{{ t(signin:forms.credentials.fields.username.label) }}","placeholder":"{{ t(signin:forms.credentials.fields.username.placeholder) }}","ref":"username","required":true,"type":"TEXT_INPUT"},{"id":"input_002","label":"{{ t(signin:forms.credentials.fields.password.label) }}","placeholder":"{{ t(signin:forms.credentials.fields.password.placeholder) }}","ref":"password","required":true,"type":"PASSWORD_INPUT"},{"category":"DISPLAY","id":"rich_text_forgot_password","label":"\u003cp class=\"rich-text-paragraph\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(signin:forms.credentials.links.forgot_password.prefix) }} \u003c/span\u003e\u003ca href=\"{{meta(application.forgot_password_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(signin:forms.credentials.links.forgot_password.label) }}\u003c/span\u003e\u003c/a\u003e\u003c/p\u003e","resourceType":"ELEMENT","type":"RICH_TEXT"},{"eventType":"SUBMIT","id":"action_001","label":"{{ t(signin:forms.credentials.actions.submit.label) }}","type":"ACTION","variant":"PRIMARY"},{"category":"DISPLAY","id":"rich_text_signup","label":"\u003cp class=\"rich-text-paragraph\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(signin:forms.credentials.links.sign_up.prefix) }} \u003c/span\u003e\u003ca href=\"{{meta(application.sign_up_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(signin:forms.credentials.links.sign_up.label) }}\u003c/span\u003e\u003c/a\u003e\u003c/p\u003e","resourceType":"ELEMENT","type":"RICH_TEXT"}],"id":"block_001","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: input_001
+                  type: TEXT_INPUT
+                  identifier: username
+                  required: true
+                - ref: input_002
+                  type: PASSWORD_INPUT
+                  identifier: password
+                  required: true
+              action:
+                ref: action_001
+                nextNode: credentials_auth
+        - id: credentials_auth
+          type: TASK_EXECUTION
+          executor:
+            name: CredentialsAuthExecutor
+          onSuccess: authorization_check
+          onIncomplete: prompt_credentials
+        - id: authorization_check
+          type: TASK_EXECUTION
+          executor:
+            name: AuthorizationExecutor
+          onSuccess: auth_assert
+        - id: auth_assert
+          type: TASK_EXECUTION
+          executor:
+            name: AuthAssertExecutor
+          onSuccess: end
+        - id: end
+          type: END
+      createdAt: 2026-07-08 15:23:27
+      updatedAt: 2026-07-08 15:23:27
+      isReadOnly: false
+
+      ---
+      # File: Disambiguation_Login_Flow.yaml
+      # resource_type: flow
+      id: 01900000-0000-7000-8000-000000000063
+      handle: default-disambiguation-login-flow
+      name: Disambiguation Login Flow
+      flowType: AUTHENTICATION
+      activeVersion: 1
+      nodes:
+        - id: start
+          type: START
+          onSuccess: prompt_identifier
+        - id: prompt_identifier
+          type: PROMPT
+          meta: '{"components":[{"alt":"{{ t(signin:images.app_logo.alt) }}","category":"DISPLAY","height":"60","id":"image","resourceType":"ELEMENT","src":"{{ meta(application.logoUrl) }}","type":"IMAGE","width":""},{"align":"center","id":"text_title","label":"{{ t(signin:forms.credentials.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"text_subtitle","label":"Enter your username to get started","type":"TEXT","variant":"BODY_2"},{"components":[{"id":"input_username","label":"{{ t(signin:forms.credentials.fields.username.label) }}","placeholder":"{{ t(signin:forms.credentials.fields.username.placeholder) }}","ref":"username","required":true,"type":"TEXT_INPUT"},{"eventType":"SUBMIT","id":"action_search","label":"Continue","type":"ACTION","variant":"PRIMARY"}],"id":"block_identifier","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: input_username
+                  type: TEXT_INPUT
+                  identifier: username
+                  required: true
+              action:
+                ref: action_search
+                nextNode: resolve_user
+        - id: resolve_user
+          type: TASK_EXECUTION
+          executor:
+            name: IdentifyingExecutor
+            mode: resolve
+            inputs:
+              - type: TEXT_INPUT
+                identifier: username
+                required: true
+          onSuccess: prompt_password
+          onFailure: prompt_identifier
+          onIncomplete: prompt_disambiguate
+        - id: prompt_disambiguate
+          type: PROMPT
+          meta: '{"components":[{"alt":"{{ t(signin:images.app_logo.alt) }}","category":"DISPLAY","height":"60","id":"image_disambig","resourceType":"ELEMENT","src":"{{ meta(application.logoUrl) }}","type":"IMAGE","width":""},{"align":"center","id":"text_disambig_title","label":"Select your department","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"text_disambig_subtitle","label":"Please select your department to continue.","type":"TEXT","variant":"BODY_2"},{"components":[{"id":"select_ou","label":"Department","options":[],"placeholder":"Select your department","ref":"ouHandle","required":true,"type":"SELECT"},{"eventType":"SUBMIT","id":"action_select","label":"Continue","type":"ACTION","variant":"PRIMARY"}],"id":"block_disambig","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: select_ou
+                  type: SELECT
+                  identifier: ouHandle
+                  required: true
+              action:
+                ref: action_select
+                nextNode: resolve_with_ou
+        - id: resolve_with_ou
+          type: TASK_EXECUTION
+          executor:
+            name: IdentifyingExecutor
+            mode: resolve
+            inputs:
+              - type: TEXT_INPUT
+                identifier: username
+                required: true
+              - type: TEXT_INPUT
+                identifier: ouHandle
+                required: true
+          onSuccess: prompt_password
+          onFailure: prompt_identifier
+          onIncomplete: prompt_disambiguate
+        - id: prompt_password
+          type: PROMPT
+          meta: '{"components":[{"alt":"{{ t(signin:images.app_logo.alt) }}","category":"DISPLAY","height":"60","id":"image_pw","resourceType":"ELEMENT","src":"{{ meta(application.logoUrl) }}","type":"IMAGE","width":""},{"align":"center","id":"text_pw_title","label":"{{ t(signin:forms.credentials.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"text_pw_subtitle","label":"Please enter your password to sign in.","type":"TEXT","variant":"BODY_2"},{"components":[{"id":"input_password","label":"{{ t(signin:forms.credentials.fields.password.label) }}","placeholder":"{{ t(signin:forms.credentials.fields.password.placeholder) }}","ref":"password","required":true,"type":"PASSWORD_INPUT"},{"eventType":"SUBMIT","id":"action_login","label":"{{ t(signin:forms.credentials.actions.submit.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_password","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: input_password
+                  type: PASSWORD_INPUT
+                  identifier: password
+                  required: true
+              action:
+                ref: action_login
+                nextNode: credentials_auth
+        - id: credentials_auth
+          type: TASK_EXECUTION
+          executor:
+            name: CredentialsAuthExecutor
+          onSuccess: authorization_check
+          onIncomplete: prompt_password
+        - id: authorization_check
+          type: TASK_EXECUTION
+          executor:
+            name: AuthorizationExecutor
+          onSuccess: auth_assert
+        - id: auth_assert
+          type: TASK_EXECUTION
+          executor:
+            name: AuthAssertExecutor
+          onSuccess: end
+        - id: end
+          type: END
+      createdAt: 2026-07-08 15:23:27
+      updatedAt: 2026-07-08 15:23:27
+      isReadOnly: false
+
+      ---
+      # File: Email_Link_Password_Recovery_Flow.yaml
+      # resource_type: flow
+      id: 01900000-0000-7000-8000-000000000067
+      handle: email-link-based-password-recovery
+      name: Email Link Password Recovery Flow
+      flowType: RECOVERY
+      activeVersion: 1
+      nodes:
+        - id: start
+          type: START
+          layout:
+            size:
+              width: 101
+              height: 34
+            position:
+              x: 0
+              y: 400
+          onSuccess: prompt_username
+        - id: prompt_username
+          type: PROMPT
+          layout:
+            size:
+              width: 350
+              height: 431
+            position:
+              x: 200
+              y: 250
+          meta: '{"components":[{"align":"center","id":"text_header_username","label":"{{ t(recovery:forms.username.title) }}","type":"TEXT","variant":"HEADING_1"},{"id":"text_subtitle_username","label":"{{ t(recovery:forms.username.subtitle) }}","type":"TEXT","variant":"HEADING_6"},{"components":[{"id":"input_username","label":"{{ t(recovery:forms.username.fields.username.label) }}","placeholder":"{{ t(recovery:forms.username.fields.username.placeholder) }}","ref":"username","required":true,"type":"TEXT_INPUT"},{"eventType":"SUBMIT","id":"action_submit_username","label":"{{ t(recovery:forms.username.actions.submit.label) }}","type":"ACTION","variant":"PRIMARY"},{"category":"DISPLAY","id":"rich_text_signup","label":"\u003cp class=\"rich-text-paragraph\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(recovery:forms.username.links.sign_in.prefix) }} \u003c/span\u003e\u003ca href=\"{{meta(application.sign_in_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(recovery:forms.username.links.sign_in.label) }}\u003c/span\u003e\u003c/a\u003e\u003c/p\u003e","resourceType":"ELEMENT","type":"RICH_TEXT"}],"id":"block_username","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: input_username
+                  type: TEXT_INPUT
+                  identifier: username
+                  required: true
+              action:
+                ref: action_submit_username
+                nextNode: identify_user
+        - id: identify_user
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 206
+              height: 113
+            position:
+              x: 650
+              y: 340
+          executor:
+            name: IdentifyingExecutor
+            mode: identify
+            inputs:
+              - ref: input_username
+                type: TEXT_INPUT
+                identifier: username
+                required: true
+          onSuccess: generate_recovery_token
+          onFailure: email_sent_status
+        - id: generate_recovery_token
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 206
+              height: 113
+            position:
+              x: 960
+              y: 340
+          executor:
+            name: InviteExecutor
+            mode: generate
+          onSuccess: send_recovery_email
+        - id: send_recovery_email
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 200
+              height: 113
+            position:
+              x: 1270
+              y: 340
+          properties:
+            emailTemplate: "PASSWORD_RECOVERY"
+          executor:
+            name: EmailExecutor
+            mode: send
+            inputs:
+              - type: EMAIL_INPUT
+                identifier: email
+                required: true
+          onSuccess: email_sent_status
+          onFailure: email_sent_status
+        - id: email_sent_status
+          type: PROMPT
+          layout:
+            size:
+              width: 350
+              height: 340
+            position:
+              x: 1580
+              y: 250
+          meta: '{"components":[{"align":"center","id":"email_sent_icon","label":"✉️","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"email_sent_heading","label":"{{ t(recovery:forms.email_sent.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"email_sent_message","label":"{{ t(recovery:forms.email_sent.message) }}","type":"TEXT","variant":"HEADING_6"}]}'
+          next: verify_recovery_token
+          message: Check Your Email
+        - id: verify_recovery_token
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 206
+              height: 113
+            position:
+              x: 2040
+              y: 340
+          executor:
+            name: InviteExecutor
+            mode: verify
+            inputs:
+              - ref: input_recovery_token
+                type: HIDDEN
+                identifier: inviteToken
+                required: true
+          onSuccess: prompt_new_password
+        - id: prompt_new_password
+          type: PROMPT
+          layout:
+            size:
+              width: 350
+              height: 431
+            position:
+              x: 2360
+              y: 250
+          meta: '{"components":[{"align":"center","id":"text_header_password","label":"{{ t(recovery:forms.new_password.title) }}","type":"TEXT","variant":"HEADING_1"},{"id":"text_subtitle_password","label":"{{ t(recovery:forms.new_password.subtitle) }}","type":"TEXT","variant":"HEADING_6"},{"components":[{"id":"input_new_password","label":"{{ t(recovery:forms.new_password.fields.password.label) }}","placeholder":"{{ t(recovery:forms.new_password.fields.password.placeholder) }}","ref":"password","required":true,"type":"PASSWORD_INPUT"},{"eventType":"SUBMIT","id":"action_submit_password","label":"{{ t(recovery:forms.new_password.actions.submit.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_password","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: input_new_password
+                  type: PASSWORD_INPUT
+                  identifier: password
+                  required: true
+              action:
+                ref: action_submit_password
+                nextNode: set_credential
+        - id: set_credential
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 206
+              height: 113
+            position:
+              x: 2820
+              y: 340
+          executor:
+            name: CredentialSetter
+          onSuccess: recovery_complete
+        - id: recovery_complete
+          type: PROMPT
+          layout:
+            size:
+              width: 350
+              height: 340
+            position:
+              x: 3140
+              y: 250
+          meta: '{"components":[{"align":"center","id":"recovery_complete_icon","label":"✅","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"recovery_complete_heading","label":"{{ t(recovery:forms.complete.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"recovery_complete_message","label":"{{ t(recovery:forms.complete.message) }}","type":"TEXT","variant":"HEADING_6"}]}'
+          next: end
+          message: Password Reset Successful
+        - id: end
+          type: END
+          layout:
+            size:
+              width: 85
+              height: 34
+            position:
+              x: 3600
+              y: 375
+      createdAt: 2026-07-08 15:23:27
+      updatedAt: 2026-07-08 15:23:27
+      isReadOnly: false
+
+      ---
+      # File: Default_Basic_Registration_Flow.yaml
+      # resource_type: flow
+      id: 01900000-0000-7000-8000-000000000064
+      handle: default-basic-flow
+      name: Default Basic Registration Flow
+      flowType: REGISTRATION
+      activeVersion: 1
+      nodes:
+        - id: start
+          type: START
+          onSuccess: user_type_resolver
+        - id: user_type_resolver
+          type: TASK_EXECUTION
+          executor:
+            name: UserTypeResolver
+          onSuccess: prompt_credentials
+          onIncomplete: prompt_usertype
+        - id: prompt_usertype
+          type: PROMPT
+          meta: '{"components":[{"alt":"{{ t(signup:images.app_logo.alt) }}","category":"DISPLAY","height":"60","id":"image","resourceType":"ELEMENT","src":"{{ meta(application.logoUrl) }}","type":"IMAGE","width":""},{"align":"center","id":"heading_usertype","label":"{{ t(signup:forms.user_type.title) }}","type":"TEXT","variant":"HEADING_1"},{"components":[{"id":"usertype_input","label":"{{ t(signup:forms.user_type.fields.user_type.label) }}","options":[],"placeholder":"{{ t(signup:forms.user_type.fields.user_type.placeholder) }}","ref":"userType","required":true,"type":"SELECT"},{"eventType":"SUBMIT","id":"action_usertype","label":"{{ t(signup:forms.user_type.actions.continue.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_usertype","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: usertype_input
+                  type: SELECT
+                  identifier: userType
+                  required: true
+              action:
+                ref: action_usertype
+                nextNode: user_type_resolver
+        - id: prompt_credentials
+          type: PROMPT
+          meta: '{"components":[{"alt":"{{ t(signup:images.app_logo.alt) }}","category":"DISPLAY","height":"60","id":"image","resourceType":"ELEMENT","src":"{{ meta(application.logoUrl) }}","type":"IMAGE","width":""},{"align":"center","id":"heading_credentials","label":"{{ t(signup:forms.credentials.title) }}","type":"TEXT","variant":"HEADING_1"},{"components":[{"id":"input_username","label":"{{ t(signup:forms.credentials.fields.username.label) }}","placeholder":"{{ t(signup:forms.credentials.fields.username.placeholder) }}","ref":"username","required":true,"type":"TEXT_INPUT"},{"id":"input_password","label":"{{ t(signup:forms.credentials.fields.password.label) }}","placeholder":"{{ t(signup:forms.credentials.fields.password.placeholder) }}","ref":"password","required":true,"type":"PASSWORD_INPUT"},{"eventType":"SUBMIT","id":"action_credentials","label":"{{ t(signup:forms.credentials.actions.continue.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_credentials","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: input_username
+                  type: TEXT_INPUT
+                  identifier: username
+                  required: true
+                - ref: input_password
+                  type: PASSWORD_INPUT
+                  identifier: password
+                  required: true
+              action:
+                ref: action_credentials
+                nextNode: credentials_auth
+        - id: credentials_auth
+          type: TASK_EXECUTION
+          executor:
+            name: CredentialsAuthExecutor
+          onSuccess: provisioning
+        - id: provisioning
+          type: TASK_EXECUTION
+          executor:
+            name: ProvisioningExecutor
+            inputs:
+              - ref: input_001
+                type: TEXT_INPUT
+                identifier: username
+                required: true
+              - ref: input_002
+                type: PASSWORD_INPUT
+                identifier: password
+                required: true
+          onSuccess: auth_assert
+          onIncomplete: prompt_schema_attrs
+        - id: prompt_schema_attrs
+          type: PROMPT
+          meta: '{"components":[{"alt":"{{ t(signup:images.app_logo.alt) }}","category":"DISPLAY","height":"60","id":"image","resourceType":"ELEMENT","src":"{{ meta(application.logoUrl) }}","type":"IMAGE","width":""},{"align":"center","id":"heading_schema_attrs","label":"{{ t(signup:forms.user_info.title) }}","type":"TEXT","variant":"HEADING_1"},{"components":[{"id":"dynamic_inputs","type":"DYNAMIC_INPUT_PLACEHOLDER"},{"eventType":"SUBMIT","id":"action_schema_attrs","label":"{{ t(signup:forms.user_info.actions.continue.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_dynamic_user_inputs","type":"BLOCK"}]}'
+          prompts:
+            - action:
+                ref: action_schema_attrs
+                nextNode: provisioning
+        - id: auth_assert
+          type: TASK_EXECUTION
+          executor:
+            name: AuthAssertExecutor
+          onSuccess: end
+        - id: end
+          type: END
+      createdAt: 2026-07-08 15:23:27
+      updatedAt: 2026-07-08 15:23:27
+      isReadOnly: false
+
+      ---
+      # File: Default_SMS_Self-Invite_Registration_Flow.yaml
+      # resource_type: flow
+      id: 01900000-0000-7000-8000-000000000065
+      handle: default-self-invite-sms-flow
+      name: Default SMS Self-Invite Registration Flow
+      flowType: REGISTRATION
+      activeVersion: 1
+      nodes:
+        - id: start
+          type: START
+          onSuccess: user_type_resolver
+        - id: user_type_resolver
+          type: TASK_EXECUTION
+          executor:
+            name: UserTypeResolver
+          onSuccess: prompt_phone
+          onIncomplete: prompt_usertype
+        - id: prompt_usertype
+          type: PROMPT
+          meta: '{"components":[{"alt":"{{ t(signup:images.app_logo.alt) }}","category":"DISPLAY","height":"60","id":"image","resourceType":"ELEMENT","src":"{{ meta(application.logoUrl) }}","type":"IMAGE","width":""},{"align":"center","id":"heading_usertype","label":"{{ t(signup:forms.user_type.title) }}","type":"TEXT","variant":"HEADING_1"},{"components":[{"id":"usertype_input","label":"{{ t(signup:forms.user_type.fields.user_type.label) }}","options":[],"placeholder":"{{ t(signup:forms.user_type.fields.user_type.placeholder) }}","ref":"userType","required":true,"type":"SELECT"},{"eventType":"SUBMIT","id":"action_usertype","label":"{{ t(signup:forms.user_type.actions.continue.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_usertype","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: usertype_input
+                  type: SELECT
+                  identifier: userType
+                  required: true
+              action:
+                ref: action_usertype
+                nextNode: user_type_resolver
+        - id: prompt_phone
+          type: PROMPT
+          meta: '{"components":[{"alt":"{{ t(signup:images.app_logo.alt) }}","category":"DISPLAY","height":"60","id":"image","resourceType":"ELEMENT","src":"{{ meta(application.logoUrl) }}","type":"IMAGE","width":""},{"align":"center","id":"text_header_phone","label":"{{ t(signup:forms.phone.title) }}","type":"TEXT","variant":"HEADING_1"},{"components":[{"id":"input_prompt_phone","label":"{{ t(signup:forms.phone.fields.phone.label) }}","placeholder":"{{ t(signup:forms.phone.fields.phone.placeholder) }}","ref":"mobile_number","required":true,"type":"PHONE_INPUT"},{"eventType":"SUBMIT","id":"action_submit_phone","label":"{{ t(signup:forms.phone.actions.next.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_phone","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: input_prompt_phone
+                  type: PHONE_INPUT
+                  identifier: mobile_number
+                  required: true
+              action:
+                ref: action_submit_phone
+                nextNode: check_phone_uniqueness
+        - id: check_phone_uniqueness
+          type: TASK_EXECUTION
+          executor:
+            name: AttributeUniquenessValidator
+          onSuccess: invite_generate
+          onIncomplete: prompt_phone
+        - id: invite_generate
+          type: TASK_EXECUTION
+          executor:
+            name: InviteExecutor
+            mode: generate
+          onSuccess: send_registration_sms
+        - id: send_registration_sms
+          type: TASK_EXECUTION
+          properties:
+            senderId: "\u003cyour-sender-id\u003e"
+            smsTemplate: "SELF_REGISTRATION"
+          executor:
+            name: SMSExecutor
+            mode: send
+          onSuccess: registration_sms_sent
+        - id: registration_sms_sent
+          type: PROMPT
+          meta: '{"components":[{"alt":"{{ t(signup:images.app_logo.alt) }}","category":"DISPLAY","height":"60","id":"image","src":"{{ meta(application.logoUrl) }}","type":"IMAGE","width":""},{"align":"center","id":"sms_sent_heading","label":"{{ t(signup:forms.sms_sent.title) }}","type":"TEXT","variant":"HEADING_1"},{"id":"sms_sent_message","label":"{{ t(signup:forms.sms_sent.message) }}","type":"TEXT","variant":"BODY"}]}'
+          next: invite_verify
+          message: Check your phone for a verification link
+        - id: invite_verify
+          type: TASK_EXECUTION
+          executor:
+            name: InviteExecutor
+            mode: verify
+          onSuccess: prompt_user_details
+        - id: prompt_user_details
+          type: PROMPT
+          meta: '{"components":[{"alt":"{{ t(signup:images.app_logo.alt) }}","category":"DISPLAY","height":"60","id":"image","resourceType":"ELEMENT","src":"{{ meta(application.logoUrl) }}","type":"IMAGE","width":""},{"align":"center","id":"text_header_details","label":"{{ t(signup:forms.user_details.title) }}","type":"TEXT","variant":"HEADING_1"},{"components":[{"id":"input_prompt_username","label":"{{ t(signup:forms.user_details.fields.username.label) }}","placeholder":"{{ t(signup:forms.user_details.fields.username.placeholder) }}","ref":"username","required":true,"type":"TEXT_INPUT"},{"id":"input_prompt_given_name","label":"{{ t(signup:forms.user_details.fields.first_name.label) }}","placeholder":"{{ t(signup:forms.user_details.fields.first_name.placeholder) }}","ref":"given_name","required":false,"type":"TEXT_INPUT"},{"id":"input_prompt_family_name","label":"{{ t(signup:forms.user_details.fields.last_name.label) }}","placeholder":"{{ t(signup:forms.user_details.fields.last_name.placeholder) }}","ref":"family_name","required":false,"type":"TEXT_INPUT"},{"id":"input_prompt_password","label":"{{ t(signup:forms.credential.fields.password.label) }}","placeholder":"{{ t(signup:forms.credential.fields.password.placeholder) }}","ref":"password","required":true,"type":"PASSWORD_INPUT"},{"eventType":"SUBMIT","id":"action_submit_details","label":"{{ t(signup:forms.credential.actions.submit.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_user_details","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: input_prompt_username
+                  type: TEXT_INPUT
+                  identifier: username
+                  required: true
+                - ref: input_prompt_given_name
+                  type: TEXT_INPUT
+                  identifier: given_name
+                  required: false
+                - ref: input_prompt_family_name
+                  type: TEXT_INPUT
+                  identifier: family_name
+                  required: false
+                - ref: input_prompt_password
+                  type: PASSWORD_INPUT
+                  identifier: password
+                  required: true
+              action:
+                ref: action_submit_details
+                nextNode: check_user_details_uniqueness
+        - id: check_user_details_uniqueness
+          type: TASK_EXECUTION
+          executor:
+            name: AttributeUniquenessValidator
+          onSuccess: provisioning
+          onIncomplete: prompt_user_details
+        - id: provisioning
+          type: TASK_EXECUTION
+          executor:
+            name: ProvisioningExecutor
+          onSuccess: registration_complete
+        - id: registration_complete
+          type: PROMPT
+          meta: '{"components":[{"align":"center","id":"registration_complete_icon","label":"✅","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"registration_complete_heading","label":"{{ t(invite:complete.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"registration_complete_message","label":"{{ t(invite:complete.description) }}","type":"TEXT"}]}'
+          next: end
+          message: Registration complete
+        - id: end
+          type: END
+      createdAt: 2026-07-08 15:23:27
+      updatedAt: 2026-07-08 15:23:27
+      isReadOnly: false
+
+      ---
+      # File: Console_App_Registration_Flow.yaml
+      # resource_type: flow
+      id: 01900000-0000-7000-8000-000000000069
+      handle: console-app-flow
+      name: Console App Registration Flow
+      flowType: REGISTRATION
+      activeVersion: 1
+      nodes:
+        - id: start
+          type: START
+          onSuccess: user_type_resolver
+        - id: user_type_resolver
+          type: TASK_EXECUTION
+          executor:
+            name: UserTypeResolver
+          onSuccess: prompt_registration
+          onIncomplete: prompt_usertype
+        - id: prompt_usertype
+          type: PROMPT
+          meta: '{"components":[{"id":"heading_usertype","label":"{{ t(signup:forms.user_type.title) }}","type":"TEXT","variant":"HEADING_2"},{"components":[{"id":"usertype_input","label":"{{ t(signup:forms.user_type.fields.user_type.label) }}","options":[],"placeholder":"{{ t(signup:forms.user_type.fields.user_type.placeholder) }}","ref":"userType","required":true,"type":"SELECT"},{"eventType":"SUBMIT","id":"action_usertype","label":"{{ t(signup:forms.user_type.actions.continue.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_usertype","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: usertype_input
+                  type: SELECT
+                  identifier: userType
+                  required: true
+              action:
+                ref: action_usertype
+                nextNode: user_type_resolver
+        - id: prompt_registration
+          type: PROMPT
+          meta: '{"components":[{"id":"text_001","label":"{{ t(signup:forms.registration.title) }}","type":"TEXT","variant":"HEADING_1"},{"components":[{"id":"input_001","label":"{{ t(signup:forms.registration.fields.username.label) }}","placeholder":"{{ t(signup:forms.registration.fields.username.placeholder) }}","ref":"username","required":true,"type":"TEXT_INPUT"},{"id":"input_002","label":"{{ t(signup:forms.registration.fields.password.label) }}","placeholder":"{{ t(signup:forms.registration.fields.password.placeholder) }}","ref":"password","required":true,"type":"PASSWORD_INPUT"},{"id":"input_003","label":"{{ t(signup:forms.registration.fields.first_name.label) }}","placeholder":"{{ t(signup:forms.registration.fields.first_name.placeholder) }}","ref":"given_name","required":true,"type":"TEXT_INPUT"},{"id":"input_004","label":"{{ t(signup:forms.registration.fields.last_name.label) }}","placeholder":"{{ t(signup:forms.registration.fields.last_name.placeholder) }}","ref":"family_name","required":true,"type":"TEXT_INPUT"},{"id":"input_005","label":"{{ t(signup:forms.registration.fields.email_address.label) }}","placeholder":"{{ t(signup:forms.registration.fields.email_address.placeholder) }}","ref":"email","required":true,"type":"EMAIL_INPUT"},{"eventType":"SUBMIT","id":"action_001","label":"{{ t(signup:forms.registration.actions.submit.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_001","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: input_001
+                  type: TEXT_INPUT
+                  identifier: username
+                  required: true
+                - ref: input_002
+                  type: PASSWORD_INPUT
+                  identifier: password
+                  required: true
+                - ref: input_003
+                  type: TEXT_INPUT
+                  identifier: given_name
+                  required: true
+                - ref: input_004
+                  type: TEXT_INPUT
+                  identifier: family_name
+                  required: true
+                - ref: input_005
+                  type: EMAIL_INPUT
+                  identifier: email
+                  required: true
+              action:
+                ref: action_001
+                nextNode: credentials_auth
+        - id: credentials_auth
+          type: TASK_EXECUTION
+          executor:
+            name: CredentialsAuthExecutor
+          onSuccess: provisioning
+        - id: provisioning
+          type: TASK_EXECUTION
+          executor:
+            name: ProvisioningExecutor
+            inputs:
+              - ref: input_001
+                type: TEXT_INPUT
+                identifier: username
+                required: true
+              - ref: input_002
+                type: PASSWORD_INPUT
+                identifier: password
+                required: true
+              - ref: input_003
+                type: TEXT_INPUT
+                identifier: given_name
+                required: true
+              - ref: input_004
+                type: TEXT_INPUT
+                identifier: family_name
+                required: true
+              - ref: input_005
+                type: EMAIL_INPUT
+                identifier: email
+                required: true
+          onSuccess: auth_assert
+          onIncomplete: prompt_registration
+        - id: auth_assert
+          type: TASK_EXECUTION
+          executor:
+            name: AuthAssertExecutor
+          onSuccess: end
+        - id: end
+          type: END
+      createdAt: 2026-07-08 15:23:27
+      updatedAt: 2026-07-08 15:23:27
+      isReadOnly: false
+
+      ---
+      # File: User_Onboarding_Flow.yaml
+      # resource_type: flow
+      id: 01900000-0000-7000-8000-000000000066
+      handle: default-user-onboarding
+      name: User Onboarding Flow
+      flowType: USER_ONBOARDING
+      activeVersion: 1
+      nodes:
+        - id: start
+          type: START
+          layout:
+            size:
+              width: 101
+              height: 34
+            position:
+              x: 65
+              y: 556
+          onSuccess: permission_validator
+        - id: permission_validator
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 206
+              height: 113
+            position:
+              x: 305
+              y: 515
+          properties:
+            requiredScopes: ["system"]
+          executor:
+            name: PermissionValidator
+          onSuccess: user_type_resolver
+        - id: user_type_resolver
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 205
+              height: 113
+            position:
+              x: 702
+              y: 515
+          executor:
+            name: UserTypeResolver
+          onSuccess: ou_selection
+          onIncomplete: prompt_usertype
+        - id: prompt_usertype
+          type: PROMPT
+          layout:
+            size:
+              width: 350
+              height: 529
+            position:
+              x: 829
+              y: -141
+          meta: '{"components":[{"align":"center","id":"heading_usertype","label":"{{ t(onboarding:forms.user_type.title) }}","type":"TEXT","variant":"HEADING_1"},{"id":"subtitle_usertype","label":"{{ t(onboarding:forms.user_type.subtitle) }}","type":"TEXT","variant":"HEADING_6"},{"components":[{"id":"usertype_input","label":"{{ t(onboarding:forms.user_type.fields.user_type.label) }}","options":[],"placeholder":"{{ t(onboarding:forms.user_type.fields.user_type.placeholder) }}","ref":"userType","required":true,"type":"SELECT"},{"eventType":"SUBMIT","id":"action_usertype","label":"{{ t(onboarding:forms.user_type.actions.continue.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_usertype","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: usertype_input
+                  type: SELECT
+                  identifier: userType
+                  required: true
+              action:
+                ref: action_usertype
+                nextNode: user_type_resolver
+        - id: ou_selection
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 200
+              height: 113
+            position:
+              x: 1338
+              y: 514
+          properties:
+            resolveFrom: "prompt"
+          executor:
+            name: OUResolverExecutor
+          onSuccess: prompt_onboarding_mode
+          onIncomplete: prompt_ou_selection
+        - id: prompt_ou_selection
+          type: PROMPT
+          layout:
+            size:
+              width: 350
+              height: 525
+            position:
+              x: 1464
+              y: -140
+          meta: '{"components":[{"align":"center","id":"heading_ou_selection","label":"{{ t(onboarding:forms.ou_selection.title) }}","type":"TEXT","variant":"HEADING_1"},{"id":"subtitle_ou_selection","label":"{{ t(onboarding:forms.ou_selection.subtitle) }}","type":"TEXT","variant":"HEADING_6"},{"components":[{"id":"ou_selection_input","label":"{{ t(onboarding:forms.ou_selection.fields.ou.label) }}","ref":"ouId","required":true,"type":"OU_SELECT"},{"eventType":"SUBMIT","id":"action_ou_selection","label":"{{ t(onboarding:forms.ou_selection.actions.continue.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_ou_selection","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: ou_selection_input
+                  type: OU_SELECT
+                  identifier: ouId
+                  required: true
+              action:
+                ref: action_ou_selection
+                nextNode: ou_selection
+        - id: prompt_onboarding_mode
+          type: PROMPT
+          layout:
+            size:
+              width: 350
+              height: 566
+            position:
+              x: 1931
+              y: 290
+          meta: '{"components":[{"align":"center","id":"text_header_onboarding_mode","label":"{{ t(onboarding:forms.onboarding_mode.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"text_subtitle_onboarding_mode","label":"{{ t(onboarding:forms.onboarding_mode.subtitle) }}","type":"TEXT","variant":"HEADING_6"},{"components":[{"components":[{"eventType":"SUBMIT","id":"action_create_user_now","label":"{{ t(onboarding:forms.onboarding_mode.actions.create.label) }}","type":"ACTION","variant":"PRIMARY"},{"eventType":"SUBMIT","id":"action_invite_user","label":"{{ t(onboarding:forms.onboarding_mode.actions.invite.label) }}","type":"ACTION","variant":"OUTLINED"}],"direction":"row","id":"stack_onboarding_mode_actions","justify":"center","type":"STACK"}],"id":"block_onboarding_mode_actions","type":"BLOCK"}]}'
+          prompts:
+            - action:
+                ref: action_create_user_now
+                nextNode: direct_create_provisioning
+            - action:
+                ref: action_invite_user
+                nextNode: prompt_email
+        - id: direct_create_provisioning
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 200
+              height: 113
+            position:
+              x: 2706
+              y: 45
+          properties:
+            includeOptionalCredentials: true
+            includeOptional: true
+          executor:
+            name: ProvisioningExecutor
+          onSuccess: admin_registration_complete
+          onIncomplete: prompt_create_user_details
+        - id: prompt_create_user_details
+          type: PROMPT
+          layout:
+            size:
+              width: 350
+              height: 724
+            position:
+              x: 2831
+              y: -531
+          meta: '{"components":[{"align":"center","id":"text_header_create_user_details","label":"{{ t(onboarding:forms.add_user.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"text_subtitle_create_user_details","label":"{{ t(onboarding:forms.add_user.subtitle) }}","type":"TEXT","variant":"HEADING_6"},{"components":[{"id":"dynamic_inputs_create_user_details","type":"DYNAMIC_INPUT_PLACEHOLDER"},{"eventType":"SUBMIT","id":"action_create_user_details","label":"{{ t(onboarding:forms.add_user.actions.submit.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_create_user_details","type":"BLOCK"}]}'
+          prompts:
+            - action:
+                ref: action_create_user_details
+                nextNode: direct_create_provisioning
+        - id: admin_registration_complete
+          type: PROMPT
+          layout:
+            size:
+              width: 350
+              height: 358
+            position:
+              x: 4042
+              y: -64
+          meta: '{"components":[{"align":"center","id":"admin_registration_complete_icon","label":"✅","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"admin_registration_complete_heading","label":"{{ t(onboarding:forms.add_user_complete.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"admin_registration_complete_message","label":"{{ t(onboarding:forms.add_user_complete.description) }}","type":"TEXT","variant":"HEADING_6"}]}'
+          next: end
+          message: User added successfully
+        - id: prompt_email
+          type: PROMPT
+          layout:
+            size:
+              width: 350
+              height: 431
+            position:
+              x: 2481
+              y: 896
+          meta: '{"components":[{"align":"center","id":"text_header_email","label":"{{ t(onboarding:forms.email.title) }}","type":"TEXT","variant":"HEADING_1"},{"components":[{"id":"input_prompt_email","label":"{{ t(onboarding:forms.email.fields.email.label) }}","placeholder":"{{ t(onboarding:forms.email.fields.email.placeholder) }}","ref":"email","required":true,"type":"EMAIL_INPUT"},{"eventType":"SUBMIT","id":"action_submit_email","label":"{{ t(onboarding:forms.email.actions.next.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_email","type":"BLOCK"}]}'
+          prompts:
+            - inputs:
+                - ref: input_prompt_email
+                  type: EMAIL_INPUT
+                  identifier: email
+                  required: true
+              action:
+                ref: action_submit_email
+                nextNode: check_email_uniqueness
+        - id: check_email_uniqueness
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 272
+              height: 113
+            position:
+              x: 2931
+              y: 1116
+          executor:
+            name: AttributeUniquenessValidator
+          onSuccess: prompt_invite_method
+          onIncomplete: prompt_email
+        - id: prompt_invite_method
+          type: PROMPT
+          layout:
+            size:
+              width: 350
+              height: 566
+            position:
+              x: 3353
+              y: 893
+          meta: '{"components":[{"align":"center","id":"text_header_invite_method","label":"{{ t(onboarding:forms.invite_mode.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"text_subtitle_invite_method","label":"{{ t(onboarding:forms.invite_mode.subtitle) }}","type":"TEXT","variant":"HEADING_6"},{"components":[{"components":[{"eventType":"SUBMIT","id":"action_send_email_invite","label":"{{ t(onboarding:forms.invite_mode.actions.email.label) }}","type":"ACTION","variant":"PRIMARY"},{"eventType":"SUBMIT","id":"action_share_manually","label":"{{ t(onboarding:forms.invite_mode.actions.link.label) }}","type":"ACTION","variant":"OUTLINED"}],"direction":"row","id":"stack_invite_actions","justify":"center","type":"STACK"}],"id":"block_invite_method_actions","type":"BLOCK"}]}'
+          prompts:
+            - action:
+                ref: action_send_email_invite
+                nextNode: invite_generate_email
+            - action:
+                ref: action_share_manually
+                nextNode: invite_generate_manual
+        - id: invite_generate_email
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 200
+              height: 113
+            position:
+              x: 3886
+              y: 1398
+          executor:
+            name: InviteExecutor
+            mode: generate
+          onSuccess: send_invite_email
+        - id: send_invite_email
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 200
+              height: 113
+            position:
+              x: 4213
+              y: 1398
+          properties:
+            emailTemplate: "USER_INVITE"
+          executor:
+            name: EmailExecutor
+            mode: send
+            inputs:
+              - type: EMAIL_INPUT
+                identifier: email
+                required: true
+          onSuccess: email_invite_status
+          onFailure: invite_email_service_unavailable
+        - id: email_invite_status
+          type: PROMPT
+          layout:
+            size:
+              width: 350
+              height: 381
+            position:
+              x: 4876
+              y: 1288
+          meta: '{"components":[{"align":"center","id":"email_status_icon","label":"✅","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"email_status_heading","label":"{{ t(onboarding:forms.invite_email_sent.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"email_status_message","label":"{{ t(onboarding:forms.invite_email_sent.message) }}","type":"TEXT","variant":"HEADING_6"}]}'
+          next: invite_verify
+          message: Invitation sent
+        - id: invite_email_service_unavailable
+          type: PROMPT
+          layout:
+            size:
+              width: 350
+              height: 433
+            position:
+              x: 4338
+              y: 1618
+          meta: '{"components":[{"align":"center","id":"email_unavailable_icon","label":"⚠️","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"email_unavailable_heading","label":"{{ t(onboarding:forms.invite_email_unavailable.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"email_unavailable_message","label":"{{ t(onboarding:forms.invite_email_unavailable.message) }}","type":"TEXT","variant":"HEADING_6"},{"id":"email_unavailable_link_copyable","label":"{{ t(onboarding:forms.invite_link_status.link_label) }}","source":"inviteLink","type":"COPYABLE_TEXT"}]}'
+          next: invite_link_status
+          message: Email delivery failed
+        - id: invite_generate_manual
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 200
+              height: 113
+            position:
+              x: 3893
+              y: 865
+          executor:
+            name: InviteExecutor
+            mode: generate
+          onSuccess: invite_link_status
+        - id: invite_link_status
+          type: PROMPT
+          layout:
+            size:
+              width: 350
+              height: 410
+            position:
+              x: 4798
+              y: 726
+          meta: '{"components":[{"align":"center","id":"link_status_icon","label":"✅","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"link_status_heading","label":"{{ t(onboarding:forms.invite_link_status.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"link_status_message","label":"{{ t(onboarding:forms.invite_link_status.message) }}","type":"TEXT","variant":"HEADING_6"},{"id":"invite_link_copyable","label":"{{ t(onboarding:forms.invite_link_status.link_label) }}","source":"inviteLink","type":"COPYABLE_TEXT"}]}'
+          next: invite_verify
+          message: The invite link is ready to share
+        - id: invite_verify
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 200
+              height: 113
+            position:
+              x: 5512
+              y: 1114
+          executor:
+            name: InviteExecutor
+            mode: verify
+          onSuccess: provisioning
+        - id: provisioning
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 200
+              height: 113
+            position:
+              x: 5921
+              y: 1116
+          properties:
+            includeOptional: true
+            includeOptionalCredentials: true
+          executor:
+            name: ProvisioningExecutor
+          onSuccess: registration_complete
+          onIncomplete: prompt_user_details
+        - id: prompt_user_details
+          type: PROMPT
+          layout:
+            size:
+              width: 350
+              height: 590
+            position:
+              x: 6046
+              y: 528
+          meta: '{"components":[{"align":"center","id":"text_header_user_details","label":"{{ t(onboarding:forms.complete_registration.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"text_subtitle_user_details","label":"{{ t(onboarding:forms.complete_registration.subtitle) }}","type":"TEXT","variant":"HEADING_6"},{"components":[{"id":"dynamic_inputs_user_details","type":"DYNAMIC_INPUT_PLACEHOLDER"},{"eventType":"SUBMIT","id":"action_user_details","label":"{{ t(onboarding:forms.complete_registration.actions.submit.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_user_details","type":"BLOCK"}]}'
+          prompts:
+            - action:
+                ref: action_user_details
+                nextNode: provisioning
+        - id: registration_complete
+          type: PROMPT
+          layout:
+            size:
+              width: 350
+              height: 358
+            position:
+              x: 6574
+              y: 1006
+          meta: '{"components":[{"align":"center","id":"registration_complete_icon","label":"✅","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"registration_complete_heading","label":"{{ t(invite:complete.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"registration_complete_message","label":"{{ t(invite:complete.description) }}","type":"TEXT","variant":"HEADING_6"}]}'
+          next: end
+          message: Registration complete
+        - id: end
+          type: END
+          layout:
+            size:
+              width: 85
+              height: 34
+            position:
+              x: 7103
+              y: 637
+      createdAt: 2026-07-08 15:23:27
+      updatedAt: 2026-07-08 15:23:27
+      isReadOnly: false
+
+      ---
+      # File: Administrators.yaml
+      # resource_type: group
+      id: 01900000-0000-7000-8000-000000000040
+      name: Administrators
+      description: System administrators group
+      ouId: 01900000-0000-7000-8000-000000000001
+      members:
+        - id: 01900000-0000-7000-8000-000000000030
+          type: user
+
+      ---
+      # File: Default.yaml
+      # resource_type: organization_unit
+      id: 01900000-0000-7000-8000-000000000001
+      handle: default
+      name: Default
+      description: Default organization unit
+      parent: null
+      logoUrl: emoji:🏛️
+      createdAt:
+      updatedAt:
+
+      ---
+      # File: System.yaml
+      # resource_type: resource_server
+      id: 01900000-0000-7000-8000-000000000020
+      name: System
+      description: System resource server
+      handle: ""
+      identifier: https://localhost:8090/mcp
+      type: CUSTOM
+      ouId: 01900000-0000-7000-8000-000000000001
+      delimiter: ":"
+      resources:
+        - name: System
+          handle: system
+          description: System resource
+        - name: Organization Unit
+          handle: ou
+          description: Organization unit resource
+          parent: system
+          actions:
+            - name: View
+              handle: view
+              description: Read-only access to organization units
+        - name: User
+          handle: user
+          description: User resource
+          parent: system
+          actions:
+            - name: View
+              handle: view
+              description: Read-only access to users
+        - name: Group
+          handle: group
+          description: Group resource
+          parent: system
+          actions:
+            - name: View
+              handle: view
+              description: Read-only access to groups
+        - name: User Type
+          handle: usertype
+          description: User type resource
+          parent: system
+          actions:
+            - name: View
+              handle: view
+              description: Read-only access to user types
+
+      ---
+      # File: Administrator.yaml
+      # resource_type: role
+      id: 01900000-0000-7000-8000-000000000050
+      name: Administrator
+      description: System administrator role with full permissions
+      ouId: 01900000-0000-7000-8000-000000000001
+      permissions:
+        - resourceServerId: 01900000-0000-7000-8000-000000000020
+          permissions:
+            - system
+      assignments:
+        - id: 01900000-0000-7000-8000-000000000040
+          type: group
+
+      ---
+      # File: cors.yaml
+      # resource_type: server_config
+      name: cors
+      # Origins allowed to call the APIs from the browser. Must list every
+      # origin the Console/Gate are served from when it differs from the API
+      # origin (e.g. the consoleHostname split) — token requests fail with
+      # CORS errors otherwise.
+      value: {"allowedOrigins":["<SERVER_PUBLIC_URL>"]}
+
+      ---
+      # File: Acrylic_Orange.yaml
+      # resource_type: theme
+      id: 01900000-0000-7000-8000-000000000071
+      handle: acrylic-orange
+      displayName: Acrylic Orange
+      description: A vibrant theme with warm orange accents and translucent acrylic surfaces.
+      theme: {"border":{"style":"solid","width":"1px"},"colorSchemes":{"dark":{"opacity":{"inputPlaceholder":0.5,"inputUnderline":0.7,"switchTrack":0.3,"switchTrackDisabled":0.2},"overlays":["none","linear-gradient(rgba(255 255 255 / 0.051), rgba(255 255 255 / 0.051))","linear-gradient(rgba(255 255 255 / 0.069), rgba(255 255 255 / 0.069))","linear-gradient(rgba(255 255 255 / 0.082), rgba(255 255 255 / 0.082))","linear-gradient(rgba(255 255 255 / 0.092), rgba(255 255 255 / 0.092))","linear-gradient(rgba(255 255 255 / 0.101), rgba(255 255 255 / 0.101))","linear-gradient(rgba(255 255 255 / 0.108), rgba(255 255 255 / 0.108))","linear-gradient(rgba(255 255 255 / 0.114), rgba(255 255 255 / 0.114))","linear-gradient(rgba(255 255 255 / 0.119), rgba(255 255 255 / 0.119))","linear-gradient(rgba(255 255 255 / 0.124), rgba(255 255 255 / 0.124))","linear-gradient(rgba(255 255 255 / 0.128), rgba(255 255 255 / 0.128))","linear-gradient(rgba(255 255 255 / 0.132), rgba(255 255 255 / 0.132))","linear-gradient(rgba(255 255 255 / 0.135), rgba(255 255 255 / 0.135))","linear-gradient(rgba(255 255 255 / 0.139), rgba(255 255 255 / 0.139))","linear-gradient(rgba(255 255 255 / 0.142), rgba(255 255 255 / 0.142))","linear-gradient(rgba(255 255 255 / 0.145), rgba(255 255 255 / 0.145))","linear-gradient(rgba(255 255 255 / 0.147), rgba(255 255 255 / 0.147))","linear-gradient(rgba(255 255 255 / 0.15), rgba(255 255 255 / 0.15))","linear-gradient(rgba(255 255 255 / 0.152), rgba(255 255 255 / 0.152))","linear-gradient(rgba(255 255 255 / 0.155), rgba(255 255 255 / 0.155))","linear-gradient(rgba(255 255 255 / 0.157), rgba(255 255 255 / 0.157))","linear-gradient(rgba(255 255 255 / 0.159), rgba(255 255 255 / 0.159))","linear-gradient(rgba(255 255 255 / 0.161), rgba(255 255 255 / 0.161))","linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))","linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))"],"palette":{"Alert":{"errorColor":"rgb(244, 199, 199)","errorFilledBg":"var(--oxygen-palette-error-dark, #d32f2f)","errorFilledColor":"#fff","errorIconColor":"var(--oxygen-palette-error-main, #f44336)","errorStandardBg":"rgb(22, 11, 11)","infoColor":"rgb(184, 231, 251)","infoFilledBg":"var(--oxygen-palette-info-dark, #0288d1)","infoFilledColor":"#fff","infoIconColor":"var(--oxygen-palette-info-main, #29b6f6)","infoStandardBg":"rgb(7, 19, 24)","successColor":"rgb(204, 232, 205)","successFilledBg":"var(--oxygen-palette-success-dark, #388e3c)","successFilledColor":"#fff","successIconColor":"var(--oxygen-palette-success-main, #66bb6a)","successStandardBg":"rgb(12, 19, 13)","warningColor":"rgb(255, 226, 183)","warningFilledBg":"var(--oxygen-palette-warning-dark, #f57c00)","warningFilledColor":"rgba(0, 0, 0, 0.87)","warningIconColor":"var(--oxygen-palette-warning-main, #ffa726)","warningStandardBg":"rgb(25, 18, 7)"},"AppBar":{"darkBg":"var(--oxygen-palette-background-paper, #121212)","darkColor":"var(--oxygen-palette-text-primary, #fff)","defaultBg":"var(--oxygen-palette-grey-900, #212121)"},"Avatar":{"defaultBg":"var(--oxygen-palette-grey-600, #757575)"},"Button":{"inheritContainedBg":"var(--oxygen-palette-grey-800, #424242)","inheritContainedHoverBg":"var(--oxygen-palette-grey-700, #616161)"},"Chip":{"defaultAvatarColor":"var(--oxygen-palette-grey-300, #e0e0e0)","defaultBorder":"var(--oxygen-palette-grey-700, #616161)","defaultIconColor":"var(--oxygen-palette-grey-300, #e0e0e0)"},"FilledInput":{"bg":"rgba(255, 255, 255, 0.09)","disabledBg":"rgba(255, 255, 255, 0.12)","hoverBg":"rgba(255, 255, 255, 0.13)"},"LinearProgress":{"errorBg":"rgb(122, 33, 27)","infoBg":"rgb(20, 91, 123)","primaryBg":"rgb(127, 57, 0)","secondaryBg":"rgb(58, 58, 58)","successBg":"rgb(51, 93, 53)","warningBg":"rgb(127, 83, 19)"},"Skeleton":{"bg":"rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.13)"},"Slider":{"errorTrack":"rgb(122, 33, 27)","infoTrack":"rgb(20, 91, 123)","primaryTrack":"rgb(127, 57, 0)","secondaryTrack":"rgb(58, 58, 58)","successTrack":"rgb(51, 93, 53)","warningTrack":"rgb(127, 83, 19)"},"SnackbarContent":{"bg":"rgb(250, 250, 250)","color":"rgba(0, 0, 0, 0.87)"},"SpeedDialAction":{"fabHoverBg":"rgb(53, 53, 53)"},"StepConnector":{"border":"var(--oxygen-palette-grey-600, #757575)"},"StepContent":{"border":"var(--oxygen-palette-grey-600, #757575)"},"Switch":{"defaultColor":"var(--oxygen-palette-grey-300, #e0e0e0)","defaultDisabledColor":"var(--oxygen-palette-grey-600, #757575)","errorDisabledColor":"rgb(109, 30, 24)","infoDisabledColor":"rgb(18, 81, 110)","primaryDisabledColor":"rgb(114, 51, 0)","secondaryDisabledColor":"rgb(52, 52, 52)","successDisabledColor":"rgb(45, 84, 47)","warningDisabledColor":"rgb(114, 75, 17)"},"TableCell":{"border":"rgba(81, 81, 81, 1)"},"Tooltip":{"bg":"rgba(97, 97, 97, 0.92)"},"action":{"activatedOpacity":0.24,"active":"#fff","activeChannel":"255 255 255","disabled":"rgba(255, 255, 255, 0.3)","disabledBackground":"rgba(255, 255, 255, 0.12)","disabledOpacity":0.38,"focus":"rgba(255, 255, 255, 0.12)","focusOpacity":0.12,"hover":"rgba(255, 255, 255, 0.08)","hoverOpacity":0.08,"selected":"rgba(255, 255, 255, 0.16)","selectedChannel":"255 255 255","selectedOpacity":0.16},"background":{"acrylic":"#00000045","default":"#000000","defaultChannel":"18 18 18","paper":"#000000b8","paperChannel":"18 18 18"},"common":{"background":"#000","backgroundChannel":"0 0 0","black":"#000","onBackground":"#fff","onBackgroundChannel":"255 255 255","white":"#fff"},"contrastThreshold":3,"divider":"#ffffff16","dividerChannel":"255 255 255","error":{"contrastText":"#fff","contrastTextChannel":"255 255 255","dark":"#d32f2f","darkChannel":"211 47 47","light":"#e57373","lightChannel":"229 115 115","main":"#f44336","mainChannel":"244 67 54"},"grey":{"100":"#f5f5f5","200":"#eeeeee","300":"#e0e0e0","400":"#bdbdbd","50":"#fafafa","500":"#9e9e9e","600":"#757575","700":"#616161","800":"#424242","900":"#212121","A100":"#f5f5f5","A200":"#eeeeee","A400":"#bdbdbd","A700":"#616161"},"info":{"contrastText":"rgba(0, 0, 0, 0.87)","contrastTextChannel":"0 0 0","dark":"#0288d1","darkChannel":"2 136 209","light":"#4fc3f7","lightChannel":"79 195 247","main":"#29b6f6","mainChannel":"41 182 246"},"mode":"dark","primary":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"rgb(178, 80, 0)","darkChannel":"178 80 0","light":"rgb(255, 143, 51)","lightChannel":"255 143 51","main":"#F87643","mainChannel":"255 115 0"},"secondary":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"rgb(81, 81, 81)","darkChannel":"81 81 81","light":"rgb(144, 144, 144)","lightChannel":"144 144 144","main":"#3c3c3c","mainChannel":"117 117 117"},"success":{"contrastText":"rgba(0, 0, 0, 0.87)","contrastTextChannel":"0 0 0","dark":"#388e3c","darkChannel":"56 142 60","light":"#81c784","lightChannel":"129 199 132","main":"#66bb6a","mainChannel":"102 187 106"},"text":{"disabled":"rgba(255, 255, 255, 0.5)","icon":"rgba(255, 255, 255, 0.5)","primary":"#efefef","primaryChannel":"255 255 255","secondary":"#D0D3E2","secondaryChannel":"255 255 255"},"tonalOffset":0.2,"warning":{"contrastText":"rgba(0, 0, 0, 0.87)","contrastTextChannel":"0 0 0","dark":"#f57c00","darkChannel":"245 124 0","light":"#ffb74d","lightChannel":"255 183 77","main":"#ffa726","mainChannel":"255 167 38"}}},"light":{"opacity":{"inputPlaceholder":0.42,"inputUnderline":0.42,"switchTrack":0.38,"switchTrackDisabled":0.12},"overlays":[],"palette":{"Alert":{"errorColor":"rgb(95, 33, 32)","errorFilledBg":"var(--oxygen-palette-error-main, #d32f2f)","errorFilledColor":"#fff","errorIconColor":"var(--oxygen-palette-error-main, #d32f2f)","errorStandardBg":"rgb(253, 237, 237)","infoColor":"rgb(1, 67, 97)","infoFilledBg":"var(--oxygen-palette-info-main, #0288d1)","infoFilledColor":"#fff","infoIconColor":"var(--oxygen-palette-info-main, #0288d1)","infoStandardBg":"rgb(229, 246, 253)","successColor":"rgb(30, 70, 32)","successFilledBg":"var(--oxygen-palette-success-main, #2e7d32)","successFilledColor":"#fff","successIconColor":"var(--oxygen-palette-success-main, #2e7d32)","successStandardBg":"rgb(237, 247, 237)","warningColor":"rgb(102, 60, 0)","warningFilledBg":"var(--oxygen-palette-warning-main, #ed6c02)","warningFilledColor":"#fff","warningIconColor":"var(--oxygen-palette-warning-main, #ed6c02)","warningStandardBg":"rgb(255, 244, 229)"},"AppBar":{"defaultBg":"var(--oxygen-palette-grey-100, #f5f5f5)"},"Avatar":{"defaultBg":"var(--oxygen-palette-grey-400, #bdbdbd)"},"Button":{"inheritContainedBg":"var(--oxygen-palette-grey-300, #e0e0e0)","inheritContainedHoverBg":"var(--oxygen-palette-grey-A100, #f5f5f5)"},"Chip":{"defaultAvatarColor":"var(--oxygen-palette-grey-700, #616161)","defaultBorder":"var(--oxygen-palette-grey-400, #bdbdbd)","defaultIconColor":"var(--oxygen-palette-grey-700, #616161)"},"FilledInput":{"bg":"rgba(0, 0, 0, 0.06)","disabledBg":"rgba(0, 0, 0, 0.12)","hoverBg":"rgba(0, 0, 0, 0.09)"},"LinearProgress":{"errorBg":"rgb(238, 175, 175)","infoBg":"rgb(158, 209, 237)","primaryBg":"rgb(255, 201, 158)","secondaryBg":"rgb(202, 202, 202)","successBg":"rgb(175, 205, 177)","warningBg":"rgb(248, 199, 158)"},"Skeleton":{"bg":"rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.11)"},"Slider":{"errorTrack":"rgb(238, 175, 175)","infoTrack":"rgb(158, 209, 237)","primaryTrack":"rgb(255, 201, 158)","secondaryTrack":"rgb(202, 202, 202)","successTrack":"rgb(175, 205, 177)","warningTrack":"rgb(248, 199, 158)"},"SnackbarContent":{"bg":"rgb(49, 49, 49)","color":"#fff"},"SpeedDialAction":{"fabHoverBg":"rgb(216, 216, 216)"},"StepConnector":{"border":"var(--oxygen-palette-grey-400, #bdbdbd)"},"StepContent":{"border":"var(--oxygen-palette-grey-400, #bdbdbd)"},"Switch":{"defaultColor":"var(--oxygen-palette-common-white, #fff)","defaultDisabledColor":"var(--oxygen-palette-grey-100, #f5f5f5)","errorDisabledColor":"rgb(238, 175, 175)","infoDisabledColor":"rgb(158, 209, 237)","primaryDisabledColor":"rgb(255, 201, 158)","secondaryDisabledColor":"rgb(202, 202, 202)","successDisabledColor":"rgb(175, 205, 177)","warningDisabledColor":"rgb(248, 199, 158)"},"TableCell":{"border":"rgba(224, 224, 224, 1)"},"Tooltip":{"bg":"rgba(97, 97, 97, 0.92)"},"action":{"activatedOpacity":0.12,"active":"rgba(0, 0, 0, 0.54)","activeChannel":"0 0 0","disabled":"rgba(0, 0, 0, 0.26)","disabledBackground":"rgba(0, 0, 0, 0.12)","disabledOpacity":0.38,"focus":"rgba(0, 0, 0, 0.12)","focusOpacity":0.12,"hover":"rgba(0, 0, 0, 0.04)","hoverOpacity":0.04,"selected":"rgba(0, 0, 0, 0.08)","selectedChannel":"0 0 0","selectedOpacity":0.08},"background":{"acrylic":"#ffffff4a","default":"#f5f5f5","defaultChannel":"250 250 250","paper":"#ffffffe1","paperChannel":"255 255 255"},"common":{"background":"#fff","backgroundChannel":"255 255 255","black":"#000","onBackground":"#000","onBackgroundChannel":"0 0 0","white":"#fff"},"contrastThreshold":3,"divider":"#00000012","dividerChannel":"0 0 0","error":{"contrastText":"#fff","contrastTextChannel":"255 255 255","dark":"#c62828","darkChannel":"198 40 40","light":"#ef5350","lightChannel":"239 83 80","main":"#d32f2f","mainChannel":"211 47 47"},"grey":{"100":"#f5f5f5","200":"#eeeeee","300":"#e0e0e0","400":"#bdbdbd","50":"#fafafa","500":"#9e9e9e","600":"#757575","700":"#616161","800":"#424242","900":"#212121","A100":"#f5f5f5","A200":"#eeeeee","A400":"#bdbdbd","A700":"#616161"},"info":{"contrastText":"#fff","contrastTextChannel":"255 255 255","dark":"#01579b","darkChannel":"1 87 155","light":"#03a9f4","lightChannel":"3 169 244","main":"#0288d1","mainChannel":"2 136 209"},"mode":"light","primary":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"rgb(178, 80, 0)","darkChannel":"178 80 0","light":"rgb(255, 143, 51)","lightChannel":"255 143 51","main":"#fa7b3f","mainChannel":"255 115 0"},"secondary":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"rgb(81, 81, 81)","darkChannel":"81 81 81","light":"rgb(144, 144, 144)","lightChannel":"144 144 144","main":"#e8e8e8","mainChannel":"117 117 117"},"success":{"contrastText":"#fff","contrastTextChannel":"255 255 255","dark":"#1b5e20","darkChannel":"27 94 32","light":"#4caf50","lightChannel":"76 175 80","main":"#2e7d32","mainChannel":"46 125 50"},"text":{"disabled":"rgba(0, 0, 0, 0.38)","primary":"#40404B","primaryChannel":"0 0 0","secondary":"#40404B","secondaryChannel":"0 0 0"},"tonalOffset":0.2,"warning":{"contrastText":"#fff","contrastTextChannel":"255 255 255","dark":"#e65100","darkChannel":"230 81 0","light":"#ff9800","lightChannel":"255 152 0","main":"#ed6c02","mainChannel":"237 108 2"}}}},"defaultColorScheme":"dark","direction":"ltr","shape":{"borderRadius":12},"typography":{"body1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":400,"lineHeight":1.5},"body2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.8125rem","fontWeight":400,"lineHeight":1.43},"button":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":500,"lineHeight":1.75,"textTransform":"uppercase"},"caption":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.6875rem","fontWeight":400,"lineHeight":1.66},"fontFamily":"'Inter Variable', sans-serif","fontSize":14,"fontWeightBold":700,"fontWeightLight":300,"fontWeightMedium":500,"fontWeightRegular":400,"h1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.75rem","fontWeight":400,"lineHeight":1.167},"h2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.5rem","fontWeight":400,"lineHeight":1.2},"h3":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.375rem","fontWeight":400,"lineHeight":1.167},"h4":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.25rem","fontWeight":400,"lineHeight":1.235},"h5":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1rem","fontWeight":400,"lineHeight":1.334},"h6":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":500,"lineHeight":1.6},"htmlFontSize":16,"inherit":{"fontFamily":"inherit","fontSize":"inherit","fontWeight":"inherit","letterSpacing":"inherit","lineHeight":"inherit"},"overline":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.75rem","fontWeight":400,"lineHeight":2.66,"textTransform":"uppercase"},"subtitle1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.125rem","fontWeight":400,"lineHeight":1.75},"subtitle2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":400,"lineHeight":1.57}}}
+      createdAt: 2026-07-08 15:23:27
+      updatedAt: 2026-07-08 15:23:27
+      isReadOnly: false
+
+      ---
+      # File: Acrylic_Purple.yaml
+      # resource_type: theme
+      id: 01900000-0000-7000-8000-000000000072
+      handle: acrylic-purple
+      displayName: Acrylic Purple
+      description: A modern theme with bold purple accents and translucent acrylic surfaces.
+      theme: {"border":{"style":"solid","width":"1px"},"colorSchemes":{"dark":{"opacity":{"inputPlaceholder":0.5,"inputUnderline":0.7,"switchTrack":0.3,"switchTrackDisabled":0.2},"overlays":["none","linear-gradient(rgba(255 255 255 / 0.051), rgba(255 255 255 / 0.051))","linear-gradient(rgba(255 255 255 / 0.069), rgba(255 255 255 / 0.069))","linear-gradient(rgba(255 255 255 / 0.082), rgba(255 255 255 / 0.082))","linear-gradient(rgba(255 255 255 / 0.092), rgba(255 255 255 / 0.092))","linear-gradient(rgba(255 255 255 / 0.101), rgba(255 255 255 / 0.101))","linear-gradient(rgba(255 255 255 / 0.108), rgba(255 255 255 / 0.108))","linear-gradient(rgba(255 255 255 / 0.114), rgba(255 255 255 / 0.114))","linear-gradient(rgba(255 255 255 / 0.119), rgba(255 255 255 / 0.119))","linear-gradient(rgba(255 255 255 / 0.124), rgba(255 255 255 / 0.124))","linear-gradient(rgba(255 255 255 / 0.128), rgba(255 255 255 / 0.128))","linear-gradient(rgba(255 255 255 / 0.132), rgba(255 255 255 / 0.132))","linear-gradient(rgba(255 255 255 / 0.135), rgba(255 255 255 / 0.135))","linear-gradient(rgba(255 255 255 / 0.139), rgba(255 255 255 / 0.139))","linear-gradient(rgba(255 255 255 / 0.142), rgba(255 255 255 / 0.142))","linear-gradient(rgba(255 255 255 / 0.145), rgba(255 255 255 / 0.145))","linear-gradient(rgba(255 255 255 / 0.147), rgba(255 255 255 / 0.147))","linear-gradient(rgba(255 255 255 / 0.15), rgba(255 255 255 / 0.15))","linear-gradient(rgba(255 255 255 / 0.152), rgba(255 255 255 / 0.152))","linear-gradient(rgba(255 255 255 / 0.155), rgba(255 255 255 / 0.155))","linear-gradient(rgba(255 255 255 / 0.157), rgba(255 255 255 / 0.157))","linear-gradient(rgba(255 255 255 / 0.159), rgba(255 255 255 / 0.159))","linear-gradient(rgba(255 255 255 / 0.161), rgba(255 255 255 / 0.161))","linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))","linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))"],"palette":{"Alert":{"errorColor":"rgb(244, 199, 199)","errorFilledBg":"var(--oxygen-palette-error-dark, #d32f2f)","errorFilledColor":"#fff","errorIconColor":"var(--oxygen-palette-error-main, #f44336)","errorStandardBg":"rgb(22, 11, 11)","infoColor":"rgb(184, 231, 251)","infoFilledBg":"var(--oxygen-palette-info-dark, #0288d1)","infoFilledColor":"#fff","infoIconColor":"var(--oxygen-palette-info-main, #29b6f6)","infoStandardBg":"rgb(7, 19, 24)","successColor":"rgb(204, 232, 205)","successFilledBg":"var(--oxygen-palette-success-dark, #388e3c)","successFilledColor":"#fff","successIconColor":"var(--oxygen-palette-success-main, #66bb6a)","successStandardBg":"rgb(12, 19, 13)","warningColor":"rgb(255, 226, 183)","warningFilledBg":"var(--oxygen-palette-warning-dark, #f57c00)","warningFilledColor":"rgba(0, 0, 0, 0.87)","warningIconColor":"var(--oxygen-palette-warning-main, #ffa726)","warningStandardBg":"rgb(25, 18, 7)"},"AppBar":{"darkBg":"var(--oxygen-palette-background-paper, #121212)","darkColor":"var(--oxygen-palette-text-primary, #fff)","defaultBg":"var(--oxygen-palette-grey-900, #212121)"},"Avatar":{"defaultBg":"var(--oxygen-palette-grey-600, #757575)"},"Button":{"inheritContainedBg":"var(--oxygen-palette-grey-800, #424242)","inheritContainedHoverBg":"var(--oxygen-palette-grey-700, #616161)"},"Chip":{"defaultAvatarColor":"var(--oxygen-palette-grey-300, #e0e0e0)","defaultBorder":"var(--oxygen-palette-grey-700, #616161)","defaultIconColor":"var(--oxygen-palette-grey-300, #e0e0e0)"},"FilledInput":{"bg":"rgba(255, 255, 255, 0.09)","disabledBg":"rgba(255, 255, 255, 0.12)","hoverBg":"rgba(255, 255, 255, 0.13)"},"LinearProgress":{"errorBg":"rgb(122, 33, 27)","infoBg":"rgb(20, 91, 123)","primaryBg":"rgb(127, 57, 0)","secondaryBg":"rgb(58, 58, 58)","successBg":"rgb(51, 93, 53)","warningBg":"rgb(127, 83, 19)"},"Skeleton":{"bg":"rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.13)"},"Slider":{"errorTrack":"rgb(122, 33, 27)","infoTrack":"rgb(20, 91, 123)","primaryTrack":"rgb(127, 57, 0)","secondaryTrack":"rgb(58, 58, 58)","successTrack":"rgb(51, 93, 53)","warningTrack":"rgb(127, 83, 19)"},"SnackbarContent":{"bg":"rgb(250, 250, 250)","color":"rgba(0, 0, 0, 0.87)"},"SpeedDialAction":{"fabHoverBg":"rgb(53, 53, 53)"},"StepConnector":{"border":"var(--oxygen-palette-grey-600, #757575)"},"StepContent":{"border":"var(--oxygen-palette-grey-600, #757575)"},"Switch":{"defaultColor":"var(--oxygen-palette-grey-300, #e0e0e0)","defaultDisabledColor":"var(--oxygen-palette-grey-600, #757575)","errorDisabledColor":"rgb(109, 30, 24)","infoDisabledColor":"rgb(18, 81, 110)","primaryDisabledColor":"rgb(114, 51, 0)","secondaryDisabledColor":"rgb(52, 52, 52)","successDisabledColor":"rgb(45, 84, 47)","warningDisabledColor":"rgb(114, 75, 17)"},"TableCell":{"border":"rgba(81, 81, 81, 1)"},"Tooltip":{"bg":"rgba(97, 97, 97, 0.92)"},"action":{"activatedOpacity":0.24,"active":"#fff","activeChannel":"255 255 255","disabled":"rgba(255, 255, 255, 0.3)","disabledBackground":"rgba(255, 255, 255, 0.12)","disabledOpacity":0.38,"focus":"rgba(255, 255, 255, 0.12)","focusOpacity":0.12,"hover":"rgba(255, 255, 255, 0.08)","hoverOpacity":0.08,"selected":"rgba(100, 108, 255, 0.24)","selectedChannel":"255 255 255","selectedOpacity":0.24},"background":{"acrylic":"#00000045","default":"#000000","defaultChannel":"18 18 18","paper":"#000000b8","paperChannel":"18 18 18"},"common":{"background":"#000","backgroundChannel":"0 0 0","black":"#000","onBackground":"#fff","onBackgroundChannel":"255 255 255","white":"#fff"},"contrastThreshold":3,"divider":"#ffffff16","dividerChannel":"255 255 255","error":{"contrastText":"#fff","contrastTextChannel":"255 255 255","dark":"#d32f2f","darkChannel":"211 47 47","light":"#e57373","lightChannel":"229 115 115","main":"#f44336","mainChannel":"244 67 54"},"grey":{"100":"#f5f5f5","200":"#eeeeee","300":"#e0e0e0","400":"#bdbdbd","50":"#fafafa","500":"#9e9e9e","600":"#757575","700":"#616161","800":"#424242","900":"#212121","A100":"#f5f5f5","A200":"#eeeeee","A400":"#bdbdbd","A700":"#616161"},"info":{"contrastText":"rgba(0, 0, 0, 0.87)","contrastTextChannel":"0 0 0","dark":"#0288d1","darkChannel":"2 136 209","light":"#4fc3f7","lightChannel":"79 195 247","main":"#29b6f6","mainChannel":"41 182 246"},"mode":"dark","primary":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"#4651cc","darkChannel":"178 80 0","light":"#8187ff","lightChannel":"255 143 51","main":"#646cff","mainChannel":"100 108 255"},"secondary":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"rgb(81, 81, 81)","darkChannel":"81 81 81","light":"rgb(144, 144, 144)","lightChannel":"144 144 144","main":"#3c3c3c","mainChannel":"117 117 117"},"success":{"contrastText":"rgba(0, 0, 0, 0.87)","contrastTextChannel":"0 0 0","dark":"#388e3c","darkChannel":"56 142 60","light":"#81c784","lightChannel":"129 199 132","main":"#66bb6a","mainChannel":"102 187 106"},"text":{"disabled":"rgba(255, 255, 255, 0.5)","icon":"rgba(255, 255, 255, 0.5)","primary":"#efefef","primaryChannel":"255 255 255","secondary":"#D0D3E2","secondaryChannel":"255 255 255"},"tonalOffset":0.2,"warning":{"contrastText":"rgba(0, 0, 0, 0.87)","contrastTextChannel":"0 0 0","dark":"#f57c00","darkChannel":"245 124 0","light":"#ffb74d","lightChannel":"255 183 77","main":"#ffa726","mainChannel":"255 167 38"}}},"light":{"opacity":{"inputPlaceholder":0.42,"inputUnderline":0.42,"switchTrack":0.38,"switchTrackDisabled":0.12},"overlays":[],"palette":{"Alert":{"errorColor":"rgb(95, 33, 32)","errorFilledBg":"var(--oxygen-palette-error-main, #d32f2f)","errorFilledColor":"#fff","errorIconColor":"var(--oxygen-palette-error-main, #d32f2f)","errorStandardBg":"rgb(253, 237, 237)","infoColor":"rgb(1, 67, 97)","infoFilledBg":"var(--oxygen-palette-info-main, #0288d1)","infoFilledColor":"#fff","infoIconColor":"var(--oxygen-palette-info-main, #0288d1)","infoStandardBg":"rgb(229, 246, 253)","successColor":"rgb(30, 70, 32)","successFilledBg":"var(--oxygen-palette-success-main, #2e7d32)","successFilledColor":"#fff","successIconColor":"var(--oxygen-palette-success-main, #2e7d32)","successStandardBg":"rgb(237, 247, 237)","warningColor":"rgb(102, 60, 0)","warningFilledBg":"var(--oxygen-palette-warning-main, #ed6c02)","warningFilledColor":"#fff","warningIconColor":"var(--oxygen-palette-warning-main, #ed6c02)","warningStandardBg":"rgb(255, 244, 229)"},"AppBar":{"defaultBg":"var(--oxygen-palette-grey-100, #f5f5f5)"},"Avatar":{"defaultBg":"var(--oxygen-palette-grey-400, #bdbdbd)"},"Button":{"inheritContainedBg":"var(--oxygen-palette-grey-300, #e0e0e0)","inheritContainedHoverBg":"var(--oxygen-palette-grey-A100, #f5f5f5)"},"Chip":{"defaultAvatarColor":"var(--oxygen-palette-grey-700, #616161)","defaultBorder":"var(--oxygen-palette-grey-400, #bdbdbd)","defaultIconColor":"var(--oxygen-palette-grey-700, #616161)"},"FilledInput":{"bg":"rgba(0, 0, 0, 0.06)","disabledBg":"rgba(0, 0, 0, 0.12)","hoverBg":"rgba(0, 0, 0, 0.09)"},"LinearProgress":{"errorBg":"rgb(238, 175, 175)","infoBg":"rgb(158, 209, 237)","primaryBg":"rgb(255, 201, 158)","secondaryBg":"rgb(202, 202, 202)","successBg":"rgb(175, 205, 177)","warningBg":"rgb(248, 199, 158)"},"Skeleton":{"bg":"rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.11)"},"Slider":{"errorTrack":"rgb(238, 175, 175)","infoTrack":"rgb(158, 209, 237)","primaryTrack":"rgb(255, 201, 158)","secondaryTrack":"rgb(202, 202, 202)","successTrack":"rgb(175, 205, 177)","warningTrack":"rgb(248, 199, 158)"},"SnackbarContent":{"bg":"rgb(49, 49, 49)","color":"#fff"},"SpeedDialAction":{"fabHoverBg":"rgb(216, 216, 216)"},"StepConnector":{"border":"var(--oxygen-palette-grey-400, #bdbdbd)"},"StepContent":{"border":"var(--oxygen-palette-grey-400, #bdbdbd)"},"Switch":{"defaultColor":"var(--oxygen-palette-common-white, #fff)","defaultDisabledColor":"var(--oxygen-palette-grey-100, #f5f5f5)","errorDisabledColor":"rgb(238, 175, 175)","infoDisabledColor":"rgb(158, 209, 237)","primaryDisabledColor":"rgb(255, 201, 158)","secondaryDisabledColor":"rgb(202, 202, 202)","successDisabledColor":"rgb(175, 205, 177)","warningDisabledColor":"rgb(248, 199, 158)"},"TableCell":{"border":"rgba(224, 224, 224, 1)"},"Tooltip":{"bg":"rgba(97, 97, 97, 0.92)"},"action":{"activatedOpacity":0.12,"active":"rgba(0, 0, 0, 0.54)","activeChannel":"0 0 0","disabled":"rgba(0, 0, 0, 0.26)","disabledBackground":"rgba(0, 0, 0, 0.12)","disabledOpacity":0.38,"focus":"rgba(0, 0, 0, 0.12)","focusOpacity":0.12,"hover":"rgba(0, 0, 0, 0.04)","hoverOpacity":0.04,"selected":"rgba(100, 108, 255, 0.16)","selectedChannel":"0 0 0","selectedOpacity":0.16},"background":{"acrylic":"#ffffff4a","default":"#f5f5f5","defaultChannel":"250 250 250","paper":"#ffffffe1","paperChannel":"255 255 255"},"common":{"background":"#fff","backgroundChannel":"255 255 255","black":"#000","onBackground":"#000","onBackgroundChannel":"0 0 0","white":"#fff"},"contrastThreshold":3,"divider":"#00000012","dividerChannel":"0 0 0","error":{"contrastText":"#fff","contrastTextChannel":"255 255 255","dark":"#c62828","darkChannel":"198 40 40","light":"#ef5350","lightChannel":"239 83 80","main":"#d32f2f","mainChannel":"211 47 47"},"grey":{"100":"#f5f5f5","200":"#eeeeee","300":"#e0e0e0","400":"#bdbdbd","50":"#fafafa","500":"#9e9e9e","600":"#757575","700":"#616161","800":"#424242","900":"#212121","A100":"#f5f5f5","A200":"#eeeeee","A400":"#bdbdbd","A700":"#616161"},"info":{"contrastText":"#fff","contrastTextChannel":"255 255 255","dark":"#01579b","darkChannel":"1 87 155","light":"#03a9f4","lightChannel":"3 169 244","main":"#0288d1","mainChannel":"2 136 209"},"mode":"light","primary":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"#4651cc","darkChannel":"178 80 0","light":"#8187ff","lightChannel":"255 143 51","main":"#646cff","mainChannel":"100 108 255"},"secondary":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"rgb(81, 81, 81)","darkChannel":"81 81 81","light":"rgb(144, 144, 144)","lightChannel":"144 144 144","main":"#e8e8e8","mainChannel":"117 117 117"},"success":{"contrastText":"#fff","contrastTextChannel":"255 255 255","dark":"#1b5e20","darkChannel":"27 94 32","light":"#4caf50","lightChannel":"76 175 80","main":"#2e7d32","mainChannel":"46 125 50"},"text":{"disabled":"rgba(0, 0, 0, 0.38)","primary":"#40404B","primaryChannel":"0 0 0","secondary":"#40404B","secondaryChannel":"0 0 0"},"tonalOffset":0.2,"warning":{"contrastText":"#fff","contrastTextChannel":"255 255 255","dark":"#e65100","darkChannel":"230 81 0","light":"#ff9800","lightChannel":"255 152 0","main":"#ed6c02","mainChannel":"237 108 2"}}}},"defaultColorScheme":"dark","direction":"ltr","shape":{"borderRadius":12},"typography":{"body1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":400,"lineHeight":1.5},"body2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.8125rem","fontWeight":400,"lineHeight":1.43},"button":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":500,"lineHeight":1.75,"textTransform":"uppercase"},"caption":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.6875rem","fontWeight":400,"lineHeight":1.66},"fontFamily":"'Inter Variable', sans-serif","fontSize":14,"fontWeightBold":700,"fontWeightLight":300,"fontWeightMedium":500,"fontWeightRegular":400,"h1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.75rem","fontWeight":400,"lineHeight":1.167},"h2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.5rem","fontWeight":400,"lineHeight":1.2},"h3":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.375rem","fontWeight":400,"lineHeight":1.167},"h4":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.25rem","fontWeight":400,"lineHeight":1.235},"h5":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1rem","fontWeight":400,"lineHeight":1.334},"h6":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":500,"lineHeight":1.6},"htmlFontSize":16,"inherit":{"fontFamily":"inherit","fontSize":"inherit","fontWeight":"inherit","letterSpacing":"inherit","lineHeight":"inherit"},"overline":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.75rem","fontWeight":400,"lineHeight":2.66,"textTransform":"uppercase"},"subtitle1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.125rem","fontWeight":400,"lineHeight":1.75},"subtitle2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":400,"lineHeight":1.57}}}
+      createdAt: 2026-07-08 15:23:27
+      updatedAt: 2026-07-08 15:23:27
+      isReadOnly: false
+
+      ---
+      # File: Classic.yaml
+      # resource_type: theme
+      id: 01900000-0000-7000-8000-000000000073
+      handle: classic
+      displayName: Classic
+      description: A timeless theme with warm accents and readable contrast for programming.
+      theme: {"border":{"style":"solid","width":"1px"},"colorSchemes":{"dark":{"opacity":{"inputPlaceholder":0.5,"inputUnderline":0.7,"switchTrack":0.3,"switchTrackDisabled":0.2},"overlays":["none","linear-gradient(rgba(255 255 255 / 0.051), rgba(255 255 255 / 0.051))","linear-gradient(rgba(255 255 255 / 0.069), rgba(255 255 255 / 0.069))","linear-gradient(rgba(255 255 255 / 0.082), rgba(255 255 255 / 0.082))","linear-gradient(rgba(255 255 255 / 0.092), rgba(255 255 255 / 0.092))","linear-gradient(rgba(255 255 255 / 0.101), rgba(255 255 255 / 0.101))","linear-gradient(rgba(255 255 255 / 0.108), rgba(255 255 255 / 0.108))","linear-gradient(rgba(255 255 255 / 0.114), rgba(255 255 255 / 0.114))","linear-gradient(rgba(255 255 255 / 0.119), rgba(255 255 255 / 0.119))","linear-gradient(rgba(255 255 255 / 0.124), rgba(255 255 255 / 0.124))","linear-gradient(rgba(255 255 255 / 0.128), rgba(255 255 255 / 0.128))","linear-gradient(rgba(255 255 255 / 0.132), rgba(255 255 255 / 0.132))","linear-gradient(rgba(255 255 255 / 0.135), rgba(255 255 255 / 0.135))","linear-gradient(rgba(255 255 255 / 0.139), rgba(255 255 255 / 0.139))","linear-gradient(rgba(255 255 255 / 0.142), rgba(255 255 255 / 0.142))","linear-gradient(rgba(255 255 255 / 0.145), rgba(255 255 255 / 0.145))","linear-gradient(rgba(255 255 255 / 0.147), rgba(255 255 255 / 0.147))","linear-gradient(rgba(255 255 255 / 0.15), rgba(255 255 255 / 0.15))","linear-gradient(rgba(255 255 255 / 0.152), rgba(255 255 255 / 0.152))","linear-gradient(rgba(255 255 255 / 0.155), rgba(255 255 255 / 0.155))","linear-gradient(rgba(255 255 255 / 0.157), rgba(255 255 255 / 0.157))","linear-gradient(rgba(255 255 255 / 0.159), rgba(255 255 255 / 0.159))","linear-gradient(rgba(255 255 255 / 0.161), rgba(255 255 255 / 0.161))","linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))","linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))"],"palette":{"Alert":{"errorColor":"rgb(244, 199, 199)","errorFilledBg":"var(--oxygen-palette-error-dark, #d32f2f)","errorFilledColor":"#fff","errorIconColor":"var(--oxygen-palette-error-main, #f44336)","errorStandardBg":"rgb(22, 11, 11)","infoColor":"rgb(184, 231, 251)","infoFilledBg":"var(--oxygen-palette-info-dark, #0288d1)","infoFilledColor":"#fff","infoIconColor":"var(--oxygen-palette-info-main, #29b6f6)","infoStandardBg":"rgb(7, 19, 24)","successColor":"rgb(204, 232, 205)","successFilledBg":"var(--oxygen-palette-success-dark, #388e3c)","successFilledColor":"#fff","successIconColor":"var(--oxygen-palette-success-main, #66bb6a)","successStandardBg":"rgb(12, 19, 13)","warningColor":"rgb(255, 226, 183)","warningFilledBg":"var(--oxygen-palette-warning-dark, #f57c00)","warningFilledColor":"rgba(0, 0, 0, 0.87)","warningIconColor":"var(--oxygen-palette-warning-main, #ffa726)","warningStandardBg":"rgb(25, 18, 7)"},"AppBar":{"darkBg":"var(--oxygen-palette-background-paper, #121212)","darkColor":"var(--oxygen-palette-text-primary, #fff)","defaultBg":"var(--oxygen-palette-grey-900, #212121)"},"Avatar":{"defaultBg":"var(--oxygen-palette-grey-600, #757575)"},"Button":{"inheritContainedBg":"var(--oxygen-palette-grey-800, #424242)","inheritContainedHoverBg":"var(--oxygen-palette-grey-700, #616161)"},"Chip":{"defaultAvatarColor":"var(--oxygen-palette-grey-300, #e0e0e0)","defaultBorder":"var(--oxygen-palette-grey-700, #616161)","defaultIconColor":"var(--oxygen-palette-grey-300, #e0e0e0)"},"FilledInput":{"bg":"rgba(255, 255, 255, 0.09)","disabledBg":"rgba(255, 255, 255, 0.12)","hoverBg":"rgba(255, 255, 255, 0.13)"},"LinearProgress":{"errorBg":"rgb(122, 33, 27)","infoBg":"rgb(20, 91, 123)","primaryBg":"rgb(127, 57, 0)","secondaryBg":"rgb(58, 58, 58)","successBg":"rgb(51, 93, 53)","warningBg":"rgb(127, 83, 19)"},"Skeleton":{"bg":"rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.13)"},"Slider":{"errorTrack":"rgb(122, 33, 27)","infoTrack":"rgb(20, 91, 123)","primaryTrack":"rgb(127, 57, 0)","secondaryTrack":"rgb(58, 58, 58)","successTrack":"rgb(51, 93, 53)","warningTrack":"rgb(127, 83, 19)"},"SnackbarContent":{"bg":"rgb(250, 250, 250)","color":"rgba(0, 0, 0, 0.87)"},"SpeedDialAction":{"fabHoverBg":"rgb(53, 53, 53)"},"StepConnector":{"border":"var(--oxygen-palette-grey-600, #757575)"},"StepContent":{"border":"var(--oxygen-palette-grey-600, #757575)"},"Switch":{"defaultColor":"var(--oxygen-palette-grey-300, #e0e0e0)","defaultDisabledColor":"var(--oxygen-palette-grey-600, #757575)","errorDisabledColor":"rgb(109, 30, 24)","infoDisabledColor":"rgb(18, 81, 110)","primaryDisabledColor":"rgb(114, 51, 0)","secondaryDisabledColor":"rgb(52, 52, 52)","successDisabledColor":"rgb(45, 84, 47)","warningDisabledColor":"rgb(114, 75, 17)"},"TableCell":{"border":"rgba(81, 81, 81, 1)"},"Tooltip":{"bg":"rgba(97, 97, 97, 0.92)"},"action":{"activatedOpacity":0.24,"active":"#fff","activeChannel":"255 255 255","disabled":"rgba(255, 255, 255, 0.3)","disabledBackground":"rgba(255, 255, 255, 0.12)","disabledOpacity":0.38,"focus":"rgba(255, 255, 255, 0.12)","focusOpacity":0.12,"hover":"rgba(255, 255, 255, 0.08)","hoverOpacity":0.08,"selected":"rgba(255, 255, 255, 0.16)","selectedChannel":"255 255 255","selectedOpacity":0.16},"background":{"default":"#121212","defaultChannel":"18 18 18","paper":"#121212","paperChannel":"18 18 18"},"common":{"background":"#000","backgroundChannel":"0 0 0","black":"#000","onBackground":"#fff","onBackgroundChannel":"255 255 255","white":"#fff"},"contrastThreshold":3,"divider":"rgba(255, 255, 255, 0.12)","dividerChannel":"255 255 255","error":{"contrastText":"#fff","contrastTextChannel":"255 255 255","dark":"#d32f2f","darkChannel":"211 47 47","light":"#e57373","lightChannel":"229 115 115","main":"#f44336","mainChannel":"244 67 54"},"grey":{"100":"#f5f5f5","200":"#eeeeee","300":"#e0e0e0","400":"#bdbdbd","50":"#fafafa","500":"#9e9e9e","600":"#757575","700":"#616161","800":"#424242","900":"#212121","A100":"#f5f5f5","A200":"#eeeeee","A400":"#bdbdbd","A700":"#616161"},"info":{"contrastText":"rgba(0, 0, 0, 0.87)","contrastTextChannel":"0 0 0","dark":"#0288d1","darkChannel":"2 136 209","light":"#4fc3f7","lightChannel":"79 195 247","main":"#29b6f6","mainChannel":"41 182 246"},"mode":"dark","primary":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"rgb(178, 80, 0)","darkChannel":"178 80 0","light":"rgb(255, 143, 51)","lightChannel":"255 143 51","main":"#ff7300","mainChannel":"255 115 0"},"secondary":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"rgb(81, 81, 81)","darkChannel":"81 81 81","light":"rgb(144, 144, 144)","lightChannel":"144 144 144","main":"#757575","mainChannel":"117 117 117"},"success":{"contrastText":"rgba(0, 0, 0, 0.87)","contrastTextChannel":"0 0 0","dark":"#388e3c","darkChannel":"56 142 60","light":"#81c784","lightChannel":"129 199 132","main":"#66bb6a","mainChannel":"102 187 106"},"text":{"disabled":"rgba(255, 255, 255, 0.5)","icon":"rgba(255, 255, 255, 0.5)","primary":"#fff","primaryChannel":"255 255 255","secondary":"rgba(255, 255, 255, 0.7)","secondaryChannel":"255 255 255"},"tonalOffset":0.2,"warning":{"contrastText":"rgba(0, 0, 0, 0.87)","contrastTextChannel":"0 0 0","dark":"#f57c00","darkChannel":"245 124 0","light":"#ffb74d","lightChannel":"255 183 77","main":"#ffa726","mainChannel":"255 167 38"}}},"light":{"opacity":{"inputPlaceholder":0.42,"inputUnderline":0.42,"switchTrack":0.38,"switchTrackDisabled":0.12},"overlays":[],"palette":{"Alert":{"errorColor":"rgb(95, 33, 32)","errorFilledBg":"var(--oxygen-palette-error-main, #d32f2f)","errorFilledColor":"#fff","errorIconColor":"var(--oxygen-palette-error-main, #d32f2f)","errorStandardBg":"rgb(253, 237, 237)","infoColor":"rgb(1, 67, 97)","infoFilledBg":"var(--oxygen-palette-info-main, #0288d1)","infoFilledColor":"#fff","infoIconColor":"var(--oxygen-palette-info-main, #0288d1)","infoStandardBg":"rgb(229, 246, 253)","successColor":"rgb(30, 70, 32)","successFilledBg":"var(--oxygen-palette-success-main, #2e7d32)","successFilledColor":"#fff","successIconColor":"var(--oxygen-palette-success-main, #2e7d32)","successStandardBg":"rgb(237, 247, 237)","warningColor":"rgb(102, 60, 0)","warningFilledBg":"var(--oxygen-palette-warning-main, #ed6c02)","warningFilledColor":"#fff","warningIconColor":"var(--oxygen-palette-warning-main, #ed6c02)","warningStandardBg":"rgb(255, 244, 229)"},"AppBar":{"defaultBg":"var(--oxygen-palette-grey-100, #f5f5f5)"},"Avatar":{"defaultBg":"var(--oxygen-palette-grey-400, #bdbdbd)"},"Button":{"inheritContainedBg":"var(--oxygen-palette-grey-300, #e0e0e0)","inheritContainedHoverBg":"var(--oxygen-palette-grey-A100, #f5f5f5)"},"Chip":{"defaultAvatarColor":"var(--oxygen-palette-grey-700, #616161)","defaultBorder":"var(--oxygen-palette-grey-400, #bdbdbd)","defaultIconColor":"var(--oxygen-palette-grey-700, #616161)"},"FilledInput":{"bg":"rgba(0, 0, 0, 0.06)","disabledBg":"rgba(0, 0, 0, 0.12)","hoverBg":"rgba(0, 0, 0, 0.09)"},"LinearProgress":{"errorBg":"rgb(238, 175, 175)","infoBg":"rgb(158, 209, 237)","primaryBg":"rgb(255, 201, 158)","secondaryBg":"rgb(202, 202, 202)","successBg":"rgb(175, 205, 177)","warningBg":"rgb(248, 199, 158)"},"Skeleton":{"bg":"rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.11)"},"Slider":{"errorTrack":"rgb(238, 175, 175)","infoTrack":"rgb(158, 209, 237)","primaryTrack":"rgb(255, 201, 158)","secondaryTrack":"rgb(202, 202, 202)","successTrack":"rgb(175, 205, 177)","warningTrack":"rgb(248, 199, 158)"},"SnackbarContent":{"bg":"rgb(49, 49, 49)","color":"#fff"},"SpeedDialAction":{"fabHoverBg":"rgb(216, 216, 216)"},"StepConnector":{"border":"var(--oxygen-palette-grey-400, #bdbdbd)"},"StepContent":{"border":"var(--oxygen-palette-grey-400, #bdbdbd)"},"Switch":{"defaultColor":"var(--oxygen-palette-common-white, #fff)","defaultDisabledColor":"var(--oxygen-palette-grey-100, #f5f5f5)","errorDisabledColor":"rgb(238, 175, 175)","infoDisabledColor":"rgb(158, 209, 237)","primaryDisabledColor":"rgb(255, 201, 158)","secondaryDisabledColor":"rgb(202, 202, 202)","successDisabledColor":"rgb(175, 205, 177)","warningDisabledColor":"rgb(248, 199, 158)"},"TableCell":{"border":"rgba(224, 224, 224, 1)"},"Tooltip":{"bg":"rgba(97, 97, 97, 0.92)"},"action":{"activatedOpacity":0.12,"active":"rgba(0, 0, 0, 0.54)","activeChannel":"0 0 0","disabled":"rgba(0, 0, 0, 0.26)","disabledBackground":"rgba(0, 0, 0, 0.12)","disabledOpacity":0.38,"focus":"rgba(0, 0, 0, 0.12)","focusOpacity":0.12,"hover":"rgba(0, 0, 0, 0.04)","hoverOpacity":0.04,"selected":"rgba(0, 0, 0, 0.08)","selectedChannel":"0 0 0","selectedOpacity":0.08},"background":{"default":"#fafafa","defaultChannel":"250 250 250","paper":"#ffffff","paperChannel":"255 255 255"},"common":{"background":"#fff","backgroundChannel":"255 255 255","black":"#000","onBackground":"#000","onBackgroundChannel":"0 0 0","white":"#fff"},"contrastThreshold":3,"divider":"rgba(0, 0, 0, 0.12)","dividerChannel":"0 0 0","error":{"contrastText":"#fff","contrastTextChannel":"255 255 255","dark":"#c62828","darkChannel":"198 40 40","light":"#ef5350","lightChannel":"239 83 80","main":"#d32f2f","mainChannel":"211 47 47"},"grey":{"100":"#f5f5f5","200":"#eeeeee","300":"#e0e0e0","400":"#bdbdbd","50":"#fafafa","500":"#9e9e9e","600":"#757575","700":"#616161","800":"#424242","900":"#212121","A100":"#f5f5f5","A200":"#eeeeee","A400":"#bdbdbd","A700":"#616161"},"info":{"contrastText":"#fff","contrastTextChannel":"255 255 255","dark":"#01579b","darkChannel":"1 87 155","light":"#03a9f4","lightChannel":"3 169 244","main":"#0288d1","mainChannel":"2 136 209"},"mode":"light","primary":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"rgb(178, 80, 0)","darkChannel":"178 80 0","light":"rgb(255, 143, 51)","lightChannel":"255 143 51","main":"#ff7300","mainChannel":"255 115 0"},"secondary":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"rgb(81, 81, 81)","darkChannel":"81 81 81","light":"rgb(144, 144, 144)","lightChannel":"144 144 144","main":"#757575","mainChannel":"117 117 117"},"success":{"contrastText":"#fff","contrastTextChannel":"255 255 255","dark":"#1b5e20","darkChannel":"27 94 32","light":"#4caf50","lightChannel":"76 175 80","main":"#2e7d32","mainChannel":"46 125 50"},"text":{"disabled":"rgba(0, 0, 0, 0.38)","primary":"rgba(0, 0, 0, 0.87)","primaryChannel":"0 0 0","secondary":"rgba(0, 0, 0, 0.6)","secondaryChannel":"0 0 0"},"tonalOffset":0.2,"warning":{"contrastText":"#fff","contrastTextChannel":"255 255 255","dark":"#e65100","darkChannel":"230 81 0","light":"#ff9800","lightChannel":"255 152 0","main":"#ed6c02","mainChannel":"237 108 2"}}}},"defaultColorScheme":"light","direction":"ltr","shape":{"borderRadius":4},"typography":{"body1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":400,"lineHeight":1.5},"body2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.8125rem","fontWeight":400,"lineHeight":1.43},"button":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":500,"lineHeight":1.75,"textTransform":"uppercase"},"caption":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.6875rem","fontWeight":400,"lineHeight":1.66},"fontFamily":"'Inter Variable', sans-serif","fontSize":14,"fontWeightBold":700,"fontWeightLight":300,"fontWeightMedium":500,"fontWeightRegular":400,"h1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.75rem","fontWeight":400,"lineHeight":1.167},"h2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.5rem","fontWeight":400,"lineHeight":1.2},"h3":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.375rem","fontWeight":400,"lineHeight":1.167},"h4":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.25rem","fontWeight":400,"lineHeight":1.235},"h5":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1rem","fontWeight":400,"lineHeight":1.334},"h6":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":500,"lineHeight":1.6},"htmlFontSize":16,"inherit":{"fontFamily":"inherit","fontSize":"inherit","fontWeight":"inherit","letterSpacing":"inherit","lineHeight":"inherit"},"overline":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.75rem","fontWeight":400,"lineHeight":2.66,"textTransform":"uppercase"},"subtitle1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.125rem","fontWeight":400,"lineHeight":1.75},"subtitle2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":400,"lineHeight":1.57}}}
+      createdAt: 2026-07-08 15:23:27
+      updatedAt: 2026-07-08 15:23:27
+      isReadOnly: false
+
+      ---
+      # File: High_Contrast.yaml
+      # resource_type: theme
+      id: 01900000-0000-7000-8000-000000000074
+      handle: high-contrast
+      displayName: High Contrast
+      description: A high contrast theme optimized for accessibility with bold colors and maximum readability.
+      theme: {"border":{"style":"solid","width":"1px"},"colorSchemes":{"dark":{"opacity":{"inputPlaceholder":0.5,"inputUnderline":0.7,"switchTrack":0.3,"switchTrackDisabled":0.2},"overlays":["none","linear-gradient(rgba(255 255 255 / 0.051), rgba(255 255 255 / 0.051))","linear-gradient(rgba(255 255 255 / 0.069), rgba(255 255 255 / 0.069))","linear-gradient(rgba(255 255 255 / 0.082), rgba(255 255 255 / 0.082))","linear-gradient(rgba(255 255 255 / 0.092), rgba(255 255 255 / 0.092))","linear-gradient(rgba(255 255 255 / 0.101), rgba(255 255 255 / 0.101))","linear-gradient(rgba(255 255 255 / 0.108), rgba(255 255 255 / 0.108))","linear-gradient(rgba(255 255 255 / 0.114), rgba(255 255 255 / 0.114))","linear-gradient(rgba(255 255 255 / 0.119), rgba(255 255 255 / 0.119))","linear-gradient(rgba(255 255 255 / 0.124), rgba(255 255 255 / 0.124))","linear-gradient(rgba(255 255 255 / 0.128), rgba(255 255 255 / 0.128))","linear-gradient(rgba(255 255 255 / 0.132), rgba(255 255 255 / 0.132))","linear-gradient(rgba(255 255 255 / 0.135), rgba(255 255 255 / 0.135))","linear-gradient(rgba(255 255 255 / 0.139), rgba(255 255 255 / 0.139))","linear-gradient(rgba(255 255 255 / 0.142), rgba(255 255 255 / 0.142))","linear-gradient(rgba(255 255 255 / 0.145), rgba(255 255 255 / 0.145))","linear-gradient(rgba(255 255 255 / 0.147), rgba(255 255 255 / 0.147))","linear-gradient(rgba(255 255 255 / 0.15), rgba(255 255 255 / 0.15))","linear-gradient(rgba(255 255 255 / 0.152), rgba(255 255 255 / 0.152))","linear-gradient(rgba(255 255 255 / 0.155), rgba(255 255 255 / 0.155))","linear-gradient(rgba(255 255 255 / 0.157), rgba(255 255 255 / 0.157))","linear-gradient(rgba(255 255 255 / 0.159), rgba(255 255 255 / 0.159))","linear-gradient(rgba(255 255 255 / 0.161), rgba(255 255 255 / 0.161))","linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))","linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))"],"palette":{"Alert":{"errorColor":"rgb(244, 199, 199)","errorFilledBg":"var(--oxygen-palette-error-dark, #d32f2f)","errorFilledColor":"#fff","errorIconColor":"var(--oxygen-palette-error-main, #f44336)","errorStandardBg":"rgb(22, 11, 11)","infoColor":"rgb(184, 231, 251)","infoFilledBg":"var(--oxygen-palette-info-dark, #0288d1)","infoFilledColor":"#fff","infoIconColor":"var(--oxygen-palette-info-main, #29b6f6)","infoStandardBg":"rgb(7, 19, 24)","successColor":"rgb(204, 232, 205)","successFilledBg":"var(--oxygen-palette-success-dark, #388e3c)","successFilledColor":"#fff","successIconColor":"var(--oxygen-palette-success-main, #66bb6a)","successStandardBg":"rgb(12, 19, 13)","warningColor":"rgb(255, 226, 183)","warningFilledBg":"var(--oxygen-palette-warning-dark, #f57c00)","warningFilledColor":"rgba(0, 0, 0, 0.87)","warningIconColor":"var(--oxygen-palette-warning-main, #ffa726)","warningStandardBg":"rgb(25, 18, 7)"},"AppBar":{"darkBg":"var(--oxygen-palette-background-paper, #121212)","darkColor":"var(--oxygen-palette-text-primary, #fff)","defaultBg":"var(--oxygen-palette-grey-900, #212121)"},"Avatar":{"defaultBg":"var(--oxygen-palette-grey-600, #757575)"},"Button":{"inheritContainedBg":"var(--oxygen-palette-grey-800, #424242)","inheritContainedHoverBg":"var(--oxygen-palette-grey-700, #616161)"},"Chip":{"defaultAvatarColor":"var(--oxygen-palette-grey-300, #e0e0e0)","defaultBorder":"var(--oxygen-palette-grey-700, #616161)","defaultIconColor":"var(--oxygen-palette-grey-300, #e0e0e0)"},"FilledInput":{"bg":"rgba(255, 255, 255, 0.09)","disabledBg":"rgba(255, 255, 255, 0.12)","hoverBg":"rgba(255, 255, 255, 0.13)"},"LinearProgress":{"errorBg":"rgb(122, 33, 27)","infoBg":"rgb(20, 91, 123)","primaryBg":"rgb(127, 57, 0)","secondaryBg":"rgb(58, 58, 58)","successBg":"rgb(51, 93, 53)","warningBg":"rgb(127, 83, 19)"},"Skeleton":{"bg":"rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.13)"},"Slider":{"errorTrack":"rgb(122, 33, 27)","infoTrack":"rgb(20, 91, 123)","primaryTrack":"rgb(127, 57, 0)","secondaryTrack":"rgb(58, 58, 58)","successTrack":"rgb(51, 93, 53)","warningTrack":"rgb(127, 83, 19)"},"SnackbarContent":{"bg":"rgb(250, 250, 250)","color":"rgba(0, 0, 0, 0.87)"},"SpeedDialAction":{"fabHoverBg":"rgb(53, 53, 53)"},"StepConnector":{"border":"var(--oxygen-palette-grey-600, #757575)"},"StepContent":{"border":"var(--oxygen-palette-grey-600, #757575)"},"Switch":{"defaultColor":"var(--oxygen-palette-grey-300, #e0e0e0)","defaultDisabledColor":"var(--oxygen-palette-grey-600, #757575)","errorDisabledColor":"rgb(109, 30, 24)","infoDisabledColor":"rgb(18, 81, 110)","primaryDisabledColor":"rgb(114, 51, 0)","secondaryDisabledColor":"rgb(52, 52, 52)","successDisabledColor":"rgb(45, 84, 47)","warningDisabledColor":"rgb(114, 75, 17)"},"TableCell":{"border":"rgba(81, 81, 81, 1)"},"Tooltip":{"bg":"rgba(97, 97, 97, 0.92)"},"action":{"activatedOpacity":0.24,"active":"#fff","activeChannel":"255 255 255","disabled":"rgba(255, 255, 255, 0.3)","disabledBackground":"rgba(255, 255, 255, 0.12)","disabledOpacity":0.38,"focus":"rgba(255, 255, 255, 0.12)","focusOpacity":0.12,"hover":"rgba(255, 255, 255, 0.08)","hoverOpacity":0.08,"selected":"rgba(255, 255, 255, 0.16)","selectedChannel":"255 255 255","selectedOpacity":0.16},"background":{"default":"#000000","defaultChannel":"18 18 18","paper":"#000000","paperChannel":"18 18 18"},"common":{"background":"#000","backgroundChannel":"0 0 0","black":"#000","onBackground":"#fff","onBackgroundChannel":"255 255 255","white":"#fff"},"contrastThreshold":3,"divider":"#FFFFFF","dividerChannel":"255 255 255","error":{"contrastText":"#FFFFFF","contrastTextChannel":"255 255 255","dark":"#d32f2f","darkChannel":"211 47 47","light":"#e57373","lightChannel":"229 115 115","main":"#FF0000","mainChannel":"244 67 54"},"grey":{"100":"#f5f5f5","200":"#eeeeee","300":"#e0e0e0","400":"#bdbdbd","50":"#fafafa","500":"#9e9e9e","600":"#757575","700":"#616161","800":"#424242","900":"#212121","A100":"#f5f5f5","A200":"#eeeeee","A400":"#bdbdbd","A700":"#616161"},"info":{"contrastText":"#000000","contrastTextChannel":"0 0 0","dark":"#0288d1","darkChannel":"2 136 209","light":"#4fc3f7","lightChannel":"79 195 247","main":"#00BFFF","mainChannel":"41 182 246"},"mode":"dark","primary":{"contrastText":"#000000","contrastTextChannel":"255 255 255","dark":"#00CCCC","darkChannel":"178 80 0","light":"#66FFFF","lightChannel":"255 143 51","main":"#00FFFF","mainChannel":"255 115 0"},"secondary":{"contrastText":"#000000","contrastTextChannel":"255 255 255","dark":"#CCCC00","darkChannel":"81 81 81","light":"#FFFF66","lightChannel":"144 144 144","main":"#FFFF00","mainChannel":"117 117 117"},"success":{"contrastText":"#000000","contrastTextChannel":"0 0 0","dark":"#388e3c","darkChannel":"56 142 60","light":"#81c784","lightChannel":"129 199 132","main":"#00FF00","mainChannel":"102 187 106"},"text":{"disabled":"rgba(255, 255, 255, 0.5)","icon":"rgba(255, 255, 255, 0.5)","primary":"#FFFFFF","primaryChannel":"255 255 255","secondary":"#FFFFFF","secondaryChannel":"255 255 255"},"tonalOffset":0.2,"warning":{"contrastText":"#000000","contrastTextChannel":"0 0 0","dark":"#f57c00","darkChannel":"245 124 0","light":"#ffb74d","lightChannel":"255 183 77","main":"#FF9900","mainChannel":"255 167 38"}}},"light":{"opacity":{"inputPlaceholder":0.42,"inputUnderline":0.42,"switchTrack":0.38,"switchTrackDisabled":0.12},"overlays":[],"palette":{"Alert":{"errorColor":"rgb(95, 33, 32)","errorFilledBg":"var(--oxygen-palette-error-main, #d32f2f)","errorFilledColor":"#fff","errorIconColor":"var(--oxygen-palette-error-main, #d32f2f)","errorStandardBg":"rgb(253, 237, 237)","infoColor":"rgb(1, 67, 97)","infoFilledBg":"var(--oxygen-palette-info-main, #0288d1)","infoFilledColor":"#fff","infoIconColor":"var(--oxygen-palette-info-main, #0288d1)","infoStandardBg":"rgb(229, 246, 253)","successColor":"rgb(30, 70, 32)","successFilledBg":"var(--oxygen-palette-success-main, #2e7d32)","successFilledColor":"#fff","successIconColor":"var(--oxygen-palette-success-main, #2e7d32)","successStandardBg":"rgb(237, 247, 237)","warningColor":"rgb(102, 60, 0)","warningFilledBg":"var(--oxygen-palette-warning-main, #ed6c02)","warningFilledColor":"#fff","warningIconColor":"var(--oxygen-palette-warning-main, #ed6c02)","warningStandardBg":"rgb(255, 244, 229)"},"AppBar":{"defaultBg":"var(--oxygen-palette-grey-100, #f5f5f5)"},"Avatar":{"defaultBg":"var(--oxygen-palette-grey-400, #bdbdbd)"},"Button":{"inheritContainedBg":"var(--oxygen-palette-grey-300, #e0e0e0)","inheritContainedHoverBg":"var(--oxygen-palette-grey-A100, #f5f5f5)"},"Chip":{"defaultAvatarColor":"var(--oxygen-palette-grey-700, #616161)","defaultBorder":"var(--oxygen-palette-grey-400, #bdbdbd)","defaultIconColor":"var(--oxygen-palette-grey-700, #616161)"},"FilledInput":{"bg":"rgba(0, 0, 0, 0.06)","disabledBg":"rgba(0, 0, 0, 0.12)","hoverBg":"rgba(0, 0, 0, 0.09)"},"LinearProgress":{"errorBg":"rgb(238, 175, 175)","infoBg":"rgb(158, 209, 237)","primaryBg":"rgb(255, 201, 158)","secondaryBg":"rgb(202, 202, 202)","successBg":"rgb(175, 205, 177)","warningBg":"rgb(248, 199, 158)"},"Skeleton":{"bg":"rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.11)"},"Slider":{"errorTrack":"rgb(238, 175, 175)","infoTrack":"rgb(158, 209, 237)","primaryTrack":"rgb(255, 201, 158)","secondaryTrack":"rgb(202, 202, 202)","successTrack":"rgb(175, 205, 177)","warningTrack":"rgb(248, 199, 158)"},"SnackbarContent":{"bg":"rgb(49, 49, 49)","color":"#fff"},"SpeedDialAction":{"fabHoverBg":"rgb(216, 216, 216)"},"StepConnector":{"border":"var(--oxygen-palette-grey-400, #bdbdbd)"},"StepContent":{"border":"var(--oxygen-palette-grey-400, #bdbdbd)"},"Switch":{"defaultColor":"var(--oxygen-palette-common-white, #fff)","defaultDisabledColor":"var(--oxygen-palette-grey-100, #f5f5f5)","errorDisabledColor":"rgb(238, 175, 175)","infoDisabledColor":"rgb(158, 209, 237)","primaryDisabledColor":"rgb(255, 201, 158)","secondaryDisabledColor":"rgb(202, 202, 202)","successDisabledColor":"rgb(175, 205, 177)","warningDisabledColor":"rgb(248, 199, 158)"},"TableCell":{"border":"rgba(224, 224, 224, 1)"},"Tooltip":{"bg":"rgba(97, 97, 97, 0.92)"},"action":{"activatedOpacity":0.12,"active":"rgba(0, 0, 0, 0.54)","activeChannel":"0 0 0","disabled":"rgba(0, 0, 0, 0.26)","disabledBackground":"rgba(0, 0, 0, 0.12)","disabledOpacity":0.38,"focus":"rgba(0, 0, 0, 0.12)","focusOpacity":0.12,"hover":"rgba(0, 0, 0, 0.04)","hoverOpacity":0.04,"selected":"rgba(0, 0, 0, 0.08)","selectedChannel":"0 0 0","selectedOpacity":0.08},"background":{"default":"#FFFFFF","defaultChannel":"250 250 250","paper":"#FFFFFF","paperChannel":"255 255 255"},"common":{"background":"#fff","backgroundChannel":"255 255 255","black":"#000","onBackground":"#000","onBackgroundChannel":"0 0 0","white":"#fff"},"contrastThreshold":3,"divider":"#000000","dividerChannel":"0 0 0","error":{"contrastText":"#FFFFFF","contrastTextChannel":"255 255 255","dark":"#c62828","darkChannel":"198 40 40","light":"#ef5350","lightChannel":"239 83 80","main":"#CC0000","mainChannel":"211 47 47"},"grey":{"100":"#f5f5f5","200":"#eeeeee","300":"#e0e0e0","400":"#bdbdbd","50":"#fafafa","500":"#9e9e9e","600":"#757575","700":"#616161","800":"#424242","900":"#212121","A100":"#f5f5f5","A200":"#eeeeee","A400":"#bdbdbd","A700":"#616161"},"info":{"contrastText":"#FFFFFF","contrastTextChannel":"255 255 255","dark":"#01579b","darkChannel":"1 87 155","light":"#03a9f4","lightChannel":"3 169 244","main":"#0066CC","mainChannel":"2 136 209"},"mode":"light","primary":{"contrastText":"#FFFFFF","contrastTextChannel":"255 255 255","dark":"#0000CC","darkChannel":"178 80 0","light":"#4040FF","lightChannel":"255 143 51","main":"#0000FF","mainChannel":"255 115 0"},"secondary":{"contrastText":"#000000","contrastTextChannel":"255 255 255","dark":"#CCB000","darkChannel":"81 81 81","light":"#FFED4E","lightChannel":"144 144 144","main":"#FFD700","mainChannel":"117 117 117"},"success":{"contrastText":"#FFFFFF","contrastTextChannel":"255 255 255","dark":"#1b5e20","darkChannel":"27 94 32","light":"#4caf50","lightChannel":"76 175 80","main":"#008000","mainChannel":"46 125 50"},"text":{"disabled":"rgba(0, 0, 0, 0.38)","primary":"#000000","primaryChannel":"0 0 0","secondary":"#000000","secondaryChannel":"0 0 0"},"tonalOffset":0.2,"warning":{"contrastText":"#000000","contrastTextChannel":"255 255 255","dark":"#e65100","darkChannel":"230 81 0","light":"#ff9800","lightChannel":"255 152 0","main":"#FF6600","mainChannel":"237 108 2"}}}},"defaultColorScheme":"dark","direction":"ltr","shape":{"borderRadius":4},"typography":{"body1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":400,"lineHeight":1.5},"body2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.8125rem","fontWeight":400,"lineHeight":1.43},"button":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":500,"lineHeight":1.75,"textTransform":"uppercase"},"caption":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.6875rem","fontWeight":400,"lineHeight":1.66},"fontFamily":"'Inter Variable', sans-serif","fontSize":14,"fontWeightBold":700,"fontWeightLight":300,"fontWeightMedium":500,"fontWeightRegular":400,"h1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.75rem","fontWeight":400,"lineHeight":1.167},"h2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.5rem","fontWeight":400,"lineHeight":1.2},"h3":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.375rem","fontWeight":400,"lineHeight":1.167},"h4":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.25rem","fontWeight":400,"lineHeight":1.235},"h5":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1rem","fontWeight":400,"lineHeight":1.334},"h6":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":500,"lineHeight":1.6},"htmlFontSize":16,"inherit":{"fontFamily":"inherit","fontSize":"inherit","fontWeight":"inherit","letterSpacing":"inherit","lineHeight":"inherit"},"overline":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.75rem","fontWeight":400,"lineHeight":2.66,"textTransform":"uppercase"},"subtitle1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.125rem","fontWeight":400,"lineHeight":1.75},"subtitle2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":400,"lineHeight":1.57}}}
+      createdAt: 2026-07-08 15:23:27
+      updatedAt: 2026-07-08 15:23:27
+      isReadOnly: false
+
+      ---
+      # File: Pale_Gray.yaml
+      # resource_type: theme
+      id: 01900000-0000-7000-8000-000000000075
+      handle: pale-gray
+      displayName: Pale Gray
+      description: A minimalist theme with neutral charcoal and gray tones for a distraction-free interface.
+      theme: {"border":{"style":"solid","width":"1px"},"colorSchemes":{"dark":{"opacity":{"inputPlaceholder":0.5,"inputUnderline":0.7,"switchTrack":0.3,"switchTrackDisabled":0.2},"overlays":["none","linear-gradient(rgba(255 255 255 / 0.051), rgba(255 255 255 / 0.051))","linear-gradient(rgba(255 255 255 / 0.069), rgba(255 255 255 / 0.069))","linear-gradient(rgba(255 255 255 / 0.082), rgba(255 255 255 / 0.082))","linear-gradient(rgba(255 255 255 / 0.092), rgba(255 255 255 / 0.092))","linear-gradient(rgba(255 255 255 / 0.101), rgba(255 255 255 / 0.101))","linear-gradient(rgba(255 255 255 / 0.108), rgba(255 255 255 / 0.108))","linear-gradient(rgba(255 255 255 / 0.114), rgba(255 255 255 / 0.114))","linear-gradient(rgba(255 255 255 / 0.119), rgba(255 255 255 / 0.119))","linear-gradient(rgba(255 255 255 / 0.124), rgba(255 255 255 / 0.124))","linear-gradient(rgba(255 255 255 / 0.128), rgba(255 255 255 / 0.128))","linear-gradient(rgba(255 255 255 / 0.132), rgba(255 255 255 / 0.132))","linear-gradient(rgba(255 255 255 / 0.135), rgba(255 255 255 / 0.135))","linear-gradient(rgba(255 255 255 / 0.139), rgba(255 255 255 / 0.139))","linear-gradient(rgba(255 255 255 / 0.142), rgba(255 255 255 / 0.142))","linear-gradient(rgba(255 255 255 / 0.145), rgba(255 255 255 / 0.145))","linear-gradient(rgba(255 255 255 / 0.147), rgba(255 255 255 / 0.147))","linear-gradient(rgba(255 255 255 / 0.15), rgba(255 255 255 / 0.15))","linear-gradient(rgba(255 255 255 / 0.152), rgba(255 255 255 / 0.152))","linear-gradient(rgba(255 255 255 / 0.155), rgba(255 255 255 / 0.155))","linear-gradient(rgba(255 255 255 / 0.157), rgba(255 255 255 / 0.157))","linear-gradient(rgba(255 255 255 / 0.159), rgba(255 255 255 / 0.159))","linear-gradient(rgba(255 255 255 / 0.161), rgba(255 255 255 / 0.161))","linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))","linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))"],"palette":{"Alert":{"errorColor":"rgb(244, 199, 199)","errorFilledBg":"var(--oxygen-palette-error-dark, #d32f2f)","errorFilledColor":"#fff","errorIconColor":"var(--oxygen-palette-error-main, #f44336)","errorStandardBg":"rgb(22, 11, 11)","infoColor":"rgb(184, 231, 251)","infoFilledBg":"var(--oxygen-palette-info-dark, #0288d1)","infoFilledColor":"#fff","infoIconColor":"var(--oxygen-palette-info-main, #29b6f6)","infoStandardBg":"rgb(7, 19, 24)","successColor":"rgb(204, 232, 205)","successFilledBg":"var(--oxygen-palette-success-dark, #388e3c)","successFilledColor":"#fff","successIconColor":"var(--oxygen-palette-success-main, #66bb6a)","successStandardBg":"rgb(12, 19, 13)","warningColor":"rgb(255, 226, 183)","warningFilledBg":"var(--oxygen-palette-warning-dark, #f57c00)","warningFilledColor":"rgba(0, 0, 0, 0.87)","warningIconColor":"var(--oxygen-palette-warning-main, #ffa726)","warningStandardBg":"rgb(25, 18, 7)"},"AppBar":{"darkBg":"var(--oxygen-palette-background-paper, #121212)","darkColor":"var(--oxygen-palette-text-primary, #fff)","defaultBg":"var(--oxygen-palette-grey-900, #212121)"},"Avatar":{"defaultBg":"var(--oxygen-palette-grey-600, #757575)"},"Button":{"inheritContainedBg":"var(--oxygen-palette-grey-800, #424242)","inheritContainedHoverBg":"var(--oxygen-palette-grey-700, #616161)"},"Chip":{"defaultAvatarColor":"var(--oxygen-palette-grey-300, #e0e0e0)","defaultBorder":"var(--oxygen-palette-grey-700, #616161)","defaultIconColor":"var(--oxygen-palette-grey-300, #e0e0e0)"},"FilledInput":{"bg":"rgba(255, 255, 255, 0.09)","disabledBg":"rgba(255, 255, 255, 0.12)","hoverBg":"rgba(255, 255, 255, 0.13)"},"LinearProgress":{"errorBg":"rgb(122, 33, 27)","infoBg":"rgb(20, 91, 123)","primaryBg":"rgb(127, 57, 0)","secondaryBg":"rgb(58, 58, 58)","successBg":"rgb(51, 93, 53)","warningBg":"rgb(127, 83, 19)"},"Skeleton":{"bg":"rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.13)"},"Slider":{"errorTrack":"rgb(122, 33, 27)","infoTrack":"rgb(20, 91, 123)","primaryTrack":"rgb(127, 57, 0)","secondaryTrack":"rgb(58, 58, 58)","successTrack":"rgb(51, 93, 53)","warningTrack":"rgb(127, 83, 19)"},"SnackbarContent":{"bg":"rgb(250, 250, 250)","color":"rgba(0, 0, 0, 0.87)"},"SpeedDialAction":{"fabHoverBg":"rgb(53, 53, 53)"},"StepConnector":{"border":"var(--oxygen-palette-grey-600, #757575)"},"StepContent":{"border":"var(--oxygen-palette-grey-600, #757575)"},"Switch":{"defaultColor":"var(--oxygen-palette-grey-300, #e0e0e0)","defaultDisabledColor":"var(--oxygen-palette-grey-600, #757575)","errorDisabledColor":"rgb(109, 30, 24)","infoDisabledColor":"rgb(18, 81, 110)","primaryDisabledColor":"rgb(114, 51, 0)","secondaryDisabledColor":"rgb(52, 52, 52)","successDisabledColor":"rgb(45, 84, 47)","warningDisabledColor":"rgb(114, 75, 17)"},"TableCell":{"border":"rgba(81, 81, 81, 1)"},"Tooltip":{"bg":"rgba(97, 97, 97, 0.92)"},"action":{"activatedOpacity":0.24,"active":"#fff","activeChannel":"255 255 255","disabled":"rgba(255, 255, 255, 0.3)","disabledBackground":"rgba(255, 255, 255, 0.12)","disabledOpacity":0.38,"focus":"rgba(255, 255, 255, 0.12)","focusOpacity":0.12,"hover":"rgba(224, 224, 224, 0.12)","hoverOpacity":0.12,"selected":"rgba(224, 224, 224, 0.16)","selectedChannel":"255 255 255","selectedOpacity":0.16},"background":{"acrylic":"#1E1E1E","default":"#121212","defaultChannel":"18 18 18","paper":"#1E1E1E","paperChannel":"18 18 18"},"common":{"background":"#000","backgroundChannel":"0 0 0","black":"#000","onBackground":"#fff","onBackgroundChannel":"255 255 255","white":"#fff"},"contrastThreshold":3,"divider":"#424242","dividerChannel":"255 255 255","error":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"#E53935","darkChannel":"211 47 47","light":"#E57373","lightChannel":"229 115 115","main":"#EF5350","mainChannel":"244 67 54"},"grey":{"100":"#f5f5f5","200":"#eeeeee","300":"#e0e0e0","400":"#bdbdbd","50":"#fafafa","500":"#9e9e9e","600":"#757575","700":"#616161","800":"#424242","900":"#212121","A100":"#f5f5f5","A200":"#eeeeee","A400":"#bdbdbd","A700":"#616161"},"info":{"contrastText":"#000000","contrastTextChannel":"0 0 0","dark":"#757575","darkChannel":"2 136 209","light":"#BDBDBD","lightChannel":"79 195 247","main":"#9E9E9E","mainChannel":"41 182 246"},"mode":"dark","primary":{"contrastText":"#000000","contrastTextChannel":"255 255 255","dark":"#BDBDBD","darkChannel":"178 80 0","light":"#F5F5F5","lightChannel":"255 143 51","main":"#E0E0E0","mainChannel":"224 224 224"},"secondary":{"contrastText":"#000000","contrastTextChannel":"255 255 255","dark":"#757575","darkChannel":"81 81 81","light":"#BDBDBD","lightChannel":"144 144 144","main":"#9E9E9E","mainChannel":"158 158 158"},"success":{"contrastText":"#000000","contrastTextChannel":"0 0 0","dark":"#43A047","darkChannel":"56 142 60","light":"#81C784","lightChannel":"129 199 132","main":"#66BB6A","mainChannel":"102 187 106"},"text":{"disabled":"rgba(255, 255, 255, 0.5)","icon":"rgba(255, 255, 255, 0.5)","primary":"#FFFFFF","primaryChannel":"255 255 255","secondary":"#B0B0B0","secondaryChannel":"255 255 255"},"tonalOffset":0.2,"warning":{"contrastText":"#000000","contrastTextChannel":"0 0 0","dark":"#FB8C00","darkChannel":"245 124 0","light":"#FFB74D","lightChannel":"255 183 77","main":"#FFA726","mainChannel":"255 167 38"}}},"light":{"opacity":{"inputPlaceholder":0.42,"inputUnderline":0.42,"switchTrack":0.38,"switchTrackDisabled":0.12},"overlays":[],"palette":{"Alert":{"errorColor":"rgb(95, 33, 32)","errorFilledBg":"var(--oxygen-palette-error-main, #d32f2f)","errorFilledColor":"#fff","errorIconColor":"var(--oxygen-palette-error-main, #d32f2f)","errorStandardBg":"rgb(253, 237, 237)","infoColor":"rgb(1, 67, 97)","infoFilledBg":"var(--oxygen-palette-info-main, #0288d1)","infoFilledColor":"#fff","infoIconColor":"var(--oxygen-palette-info-main, #0288d1)","infoStandardBg":"rgb(229, 246, 253)","successColor":"rgb(30, 70, 32)","successFilledBg":"var(--oxygen-palette-success-main, #2e7d32)","successFilledColor":"#fff","successIconColor":"var(--oxygen-palette-success-main, #2e7d32)","successStandardBg":"rgb(237, 247, 237)","warningColor":"rgb(102, 60, 0)","warningFilledBg":"var(--oxygen-palette-warning-main, #ed6c02)","warningFilledColor":"#fff","warningIconColor":"var(--oxygen-palette-warning-main, #ed6c02)","warningStandardBg":"rgb(255, 244, 229)"},"AppBar":{"defaultBg":"var(--oxygen-palette-grey-100, #f5f5f5)"},"Avatar":{"defaultBg":"var(--oxygen-palette-grey-400, #bdbdbd)"},"Button":{"inheritContainedBg":"var(--oxygen-palette-grey-300, #e0e0e0)","inheritContainedHoverBg":"var(--oxygen-palette-grey-A100, #f5f5f5)"},"Chip":{"defaultAvatarColor":"var(--oxygen-palette-grey-700, #616161)","defaultBorder":"var(--oxygen-palette-grey-400, #bdbdbd)","defaultIconColor":"var(--oxygen-palette-grey-700, #616161)"},"FilledInput":{"bg":"rgba(0, 0, 0, 0.06)","disabledBg":"rgba(0, 0, 0, 0.12)","hoverBg":"rgba(0, 0, 0, 0.09)"},"LinearProgress":{"errorBg":"rgb(238, 175, 175)","infoBg":"rgb(158, 209, 237)","primaryBg":"rgb(255, 201, 158)","secondaryBg":"rgb(202, 202, 202)","successBg":"rgb(175, 205, 177)","warningBg":"rgb(248, 199, 158)"},"Skeleton":{"bg":"rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.11)"},"Slider":{"errorTrack":"rgb(238, 175, 175)","infoTrack":"rgb(158, 209, 237)","primaryTrack":"rgb(255, 201, 158)","secondaryTrack":"rgb(202, 202, 202)","successTrack":"rgb(175, 205, 177)","warningTrack":"rgb(248, 199, 158)"},"SnackbarContent":{"bg":"rgb(49, 49, 49)","color":"#fff"},"SpeedDialAction":{"fabHoverBg":"rgb(216, 216, 216)"},"StepConnector":{"border":"var(--oxygen-palette-grey-400, #bdbdbd)"},"StepContent":{"border":"var(--oxygen-palette-grey-400, #bdbdbd)"},"Switch":{"defaultColor":"var(--oxygen-palette-common-white, #fff)","defaultDisabledColor":"var(--oxygen-palette-grey-100, #f5f5f5)","errorDisabledColor":"rgb(238, 175, 175)","infoDisabledColor":"rgb(158, 209, 237)","primaryDisabledColor":"rgb(255, 201, 158)","secondaryDisabledColor":"rgb(202, 202, 202)","successDisabledColor":"rgb(175, 205, 177)","warningDisabledColor":"rgb(248, 199, 158)"},"TableCell":{"border":"rgba(224, 224, 224, 1)"},"Tooltip":{"bg":"rgba(97, 97, 97, 0.92)"},"action":{"activatedOpacity":0.12,"active":"rgba(0, 0, 0, 0.54)","activeChannel":"0 0 0","disabled":"rgba(0, 0, 0, 0.26)","disabledBackground":"rgba(0, 0, 0, 0.12)","disabledOpacity":0.38,"focus":"rgba(0, 0, 0, 0.12)","focusOpacity":0.12,"hover":"rgba(33, 33, 33, 0.08)","hoverOpacity":0.08,"selected":"rgba(33, 33, 33, 0.12)","selectedChannel":"0 0 0","selectedOpacity":0.12},"background":{"acrylic":"#FFFFFF","default":"#F5F5F5","defaultChannel":"250 250 250","paper":"#FFFFFF","paperChannel":"255 255 255"},"common":{"background":"#fff","backgroundChannel":"255 255 255","black":"#000","onBackground":"#000","onBackgroundChannel":"0 0 0","white":"#fff"},"contrastThreshold":3,"divider":"#E0E0E0","dividerChannel":"0 0 0","error":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"#C62828","darkChannel":"198 40 40","light":"#EF5350","lightChannel":"239 83 80","main":"#D32F2F","mainChannel":"211 47 47"},"grey":{"100":"#f5f5f5","200":"#eeeeee","300":"#e0e0e0","400":"#bdbdbd","50":"#fafafa","500":"#9e9e9e","600":"#757575","700":"#616161","800":"#424242","900":"#212121","A100":"#f5f5f5","A200":"#eeeeee","A400":"#bdbdbd","A700":"#616161"},"info":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"#424242","darkChannel":"1 87 155","light":"#757575","lightChannel":"3 169 244","main":"#616161","mainChannel":"2 136 209"},"mode":"light","primary":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"#000000","darkChannel":"178 80 0","light":"#424242","lightChannel":"255 143 51","main":"#212121","mainChannel":"33 33 33"},"secondary":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"#616161","darkChannel":"81 81 81","light":"#9E9E9E","lightChannel":"144 144 144","main":"#757575","mainChannel":"117 117 117"},"success":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"#1B5E20","darkChannel":"27 94 32","light":"#4CAF50","lightChannel":"76 175 80","main":"#2E7D32","mainChannel":"46 125 50"},"text":{"disabled":"rgba(0, 0, 0, 0.38)","primary":"#212121","primaryChannel":"0 0 0","secondary":"#757575","secondaryChannel":"0 0 0"},"tonalOffset":0.2,"warning":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"#E65100","darkChannel":"230 81 0","light":"#FF9800","lightChannel":"255 152 0","main":"#ED6C02","mainChannel":"237 108 2"}}}},"defaultColorScheme":"light","direction":"ltr","shape":{"borderRadius":8},"typography":{"body1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":400,"lineHeight":1.5},"body2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.8125rem","fontWeight":400,"lineHeight":1.43},"button":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":500,"lineHeight":1.75,"textTransform":"uppercase"},"caption":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.6875rem","fontWeight":400,"lineHeight":1.66},"fontFamily":"'Inter Variable', sans-serif","fontSize":14,"fontWeightBold":700,"fontWeightLight":300,"fontWeightMedium":500,"fontWeightRegular":400,"h1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.75rem","fontWeight":400,"lineHeight":1.167},"h2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.5rem","fontWeight":400,"lineHeight":1.2},"h3":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.375rem","fontWeight":400,"lineHeight":1.167},"h4":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.25rem","fontWeight":400,"lineHeight":1.235},"h5":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1rem","fontWeight":400,"lineHeight":1.334},"h6":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":500,"lineHeight":1.6},"htmlFontSize":16,"inherit":{"fontFamily":"inherit","fontSize":"inherit","fontWeight":"inherit","letterSpacing":"inherit","lineHeight":"inherit"},"overline":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.75rem","fontWeight":400,"lineHeight":2.66,"textTransform":"uppercase"},"subtitle1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.125rem","fontWeight":400,"lineHeight":1.75},"subtitle2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":400,"lineHeight":1.57}}}
+      createdAt: 2026-07-08 15:23:27
+      updatedAt: 2026-07-08 15:23:27
+      isReadOnly: false
+
+      ---
+      # File: Pale_Indigo.yaml
+      # resource_type: theme
+      id: 01900000-0000-7000-8000-000000000076
+      handle: pale-indigo
+      displayName: Pale Indigo
+      description: A soft theme with gentle indigo accents and clean neutral backgrounds.
+      theme: {"border":{"style":"solid","width":"1px"},"colorSchemes":{"dark":{"opacity":{"inputPlaceholder":0.5,"inputUnderline":0.7,"switchTrack":0.3,"switchTrackDisabled":0.2},"overlays":["none","linear-gradient(rgba(255 255 255 / 0.051), rgba(255 255 255 / 0.051))","linear-gradient(rgba(255 255 255 / 0.069), rgba(255 255 255 / 0.069))","linear-gradient(rgba(255 255 255 / 0.082), rgba(255 255 255 / 0.082))","linear-gradient(rgba(255 255 255 / 0.092), rgba(255 255 255 / 0.092))","linear-gradient(rgba(255 255 255 / 0.101), rgba(255 255 255 / 0.101))","linear-gradient(rgba(255 255 255 / 0.108), rgba(255 255 255 / 0.108))","linear-gradient(rgba(255 255 255 / 0.114), rgba(255 255 255 / 0.114))","linear-gradient(rgba(255 255 255 / 0.119), rgba(255 255 255 / 0.119))","linear-gradient(rgba(255 255 255 / 0.124), rgba(255 255 255 / 0.124))","linear-gradient(rgba(255 255 255 / 0.128), rgba(255 255 255 / 0.128))","linear-gradient(rgba(255 255 255 / 0.132), rgba(255 255 255 / 0.132))","linear-gradient(rgba(255 255 255 / 0.135), rgba(255 255 255 / 0.135))","linear-gradient(rgba(255 255 255 / 0.139), rgba(255 255 255 / 0.139))","linear-gradient(rgba(255 255 255 / 0.142), rgba(255 255 255 / 0.142))","linear-gradient(rgba(255 255 255 / 0.145), rgba(255 255 255 / 0.145))","linear-gradient(rgba(255 255 255 / 0.147), rgba(255 255 255 / 0.147))","linear-gradient(rgba(255 255 255 / 0.15), rgba(255 255 255 / 0.15))","linear-gradient(rgba(255 255 255 / 0.152), rgba(255 255 255 / 0.152))","linear-gradient(rgba(255 255 255 / 0.155), rgba(255 255 255 / 0.155))","linear-gradient(rgba(255 255 255 / 0.157), rgba(255 255 255 / 0.157))","linear-gradient(rgba(255 255 255 / 0.159), rgba(255 255 255 / 0.159))","linear-gradient(rgba(255 255 255 / 0.161), rgba(255 255 255 / 0.161))","linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))","linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))"],"palette":{"Alert":{"errorColor":"rgb(244, 199, 199)","errorFilledBg":"var(--oxygen-palette-error-dark, #d32f2f)","errorFilledColor":"#fff","errorIconColor":"var(--oxygen-palette-error-main, #f44336)","errorStandardBg":"rgb(22, 11, 11)","infoColor":"rgb(184, 231, 251)","infoFilledBg":"var(--oxygen-palette-info-dark, #0288d1)","infoFilledColor":"#fff","infoIconColor":"var(--oxygen-palette-info-main, #29b6f6)","infoStandardBg":"rgb(7, 19, 24)","successColor":"rgb(204, 232, 205)","successFilledBg":"var(--oxygen-palette-success-dark, #388e3c)","successFilledColor":"#fff","successIconColor":"var(--oxygen-palette-success-main, #66bb6a)","successStandardBg":"rgb(12, 19, 13)","warningColor":"rgb(255, 226, 183)","warningFilledBg":"var(--oxygen-palette-warning-dark, #f57c00)","warningFilledColor":"rgba(0, 0, 0, 0.87)","warningIconColor":"var(--oxygen-palette-warning-main, #ffa726)","warningStandardBg":"rgb(25, 18, 7)"},"AppBar":{"darkBg":"var(--oxygen-palette-background-paper, #121212)","darkColor":"var(--oxygen-palette-text-primary, #fff)","defaultBg":"var(--oxygen-palette-grey-900, #212121)"},"Avatar":{"defaultBg":"var(--oxygen-palette-grey-600, #757575)"},"Button":{"inheritContainedBg":"var(--oxygen-palette-grey-800, #424242)","inheritContainedHoverBg":"var(--oxygen-palette-grey-700, #616161)"},"Chip":{"defaultAvatarColor":"var(--oxygen-palette-grey-300, #e0e0e0)","defaultBorder":"var(--oxygen-palette-grey-700, #616161)","defaultIconColor":"var(--oxygen-palette-grey-300, #e0e0e0)"},"FilledInput":{"bg":"rgba(255, 255, 255, 0.09)","disabledBg":"rgba(255, 255, 255, 0.12)","hoverBg":"rgba(255, 255, 255, 0.13)"},"LinearProgress":{"errorBg":"rgb(122, 33, 27)","infoBg":"rgb(20, 91, 123)","primaryBg":"rgb(127, 57, 0)","secondaryBg":"rgb(58, 58, 58)","successBg":"rgb(51, 93, 53)","warningBg":"rgb(127, 83, 19)"},"Skeleton":{"bg":"rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.13)"},"Slider":{"errorTrack":"rgb(122, 33, 27)","infoTrack":"rgb(20, 91, 123)","primaryTrack":"rgb(127, 57, 0)","secondaryTrack":"rgb(58, 58, 58)","successTrack":"rgb(51, 93, 53)","warningTrack":"rgb(127, 83, 19)"},"SnackbarContent":{"bg":"rgb(250, 250, 250)","color":"rgba(0, 0, 0, 0.87)"},"SpeedDialAction":{"fabHoverBg":"rgb(53, 53, 53)"},"StepConnector":{"border":"var(--oxygen-palette-grey-600, #757575)"},"StepContent":{"border":"var(--oxygen-palette-grey-600, #757575)"},"Switch":{"defaultColor":"var(--oxygen-palette-grey-300, #e0e0e0)","defaultDisabledColor":"var(--oxygen-palette-grey-600, #757575)","errorDisabledColor":"rgb(109, 30, 24)","infoDisabledColor":"rgb(18, 81, 110)","primaryDisabledColor":"rgb(114, 51, 0)","secondaryDisabledColor":"rgb(52, 52, 52)","successDisabledColor":"rgb(45, 84, 47)","warningDisabledColor":"rgb(114, 75, 17)"},"TableCell":{"border":"rgba(81, 81, 81, 1)"},"Tooltip":{"bg":"rgba(97, 97, 97, 0.92)"},"action":{"activatedOpacity":0.24,"active":"#fff","activeChannel":"255 255 255","disabled":"rgba(255, 255, 255, 0.3)","disabledBackground":"rgba(255, 255, 255, 0.12)","disabledOpacity":0.38,"focus":"rgba(255, 255, 255, 0.12)","focusOpacity":0.12,"hover":"rgba(119, 133, 221, 0.12)","hoverOpacity":0.12,"selected":"rgba(119, 133, 221, 0.16)","selectedChannel":"255 255 255","selectedOpacity":0.16},"background":{"acrylic":"#1E1E1E","default":"#121212","defaultChannel":"18 18 18","paper":"#1E1E1E","paperChannel":"18 18 18"},"common":{"background":"#000","backgroundChannel":"0 0 0","black":"#000","onBackground":"#fff","onBackgroundChannel":"255 255 255","white":"#fff"},"contrastThreshold":3,"divider":"#424242","dividerChannel":"255 255 255","error":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"#E53935","darkChannel":"211 47 47","light":"#E57373","lightChannel":"229 115 115","main":"#EF5350","mainChannel":"244 67 54"},"grey":{"100":"#f5f5f5","200":"#eeeeee","300":"#e0e0e0","400":"#bdbdbd","50":"#fafafa","500":"#9e9e9e","600":"#757575","700":"#616161","800":"#424242","900":"#212121","A100":"#f5f5f5","A200":"#eeeeee","A400":"#bdbdbd","A700":"#616161"},"info":{"contrastText":"#000000","contrastTextChannel":"0 0 0","dark":"#5567d5","darkChannel":"2 136 209","light":"#99a5e5","lightChannel":"79 195 247","main":"#7785dd","mainChannel":"41 182 246"},"mode":"dark","primary":{"contrastText":"#000000","contrastTextChannel":"255 255 255","dark":"#5567d5","darkChannel":"178 80 0","light":"#99a5e5","lightChannel":"255 143 51","main":"#7785dd","mainChannel":"119 133 221"},"secondary":{"contrastText":"#000000","contrastTextChannel":"255 255 255","dark":"#757575","darkChannel":"81 81 81","light":"#BDBDBD","lightChannel":"144 144 144","main":"#9E9E9E","mainChannel":"158 158 158"},"success":{"contrastText":"#000000","contrastTextChannel":"0 0 0","dark":"#43A047","darkChannel":"56 142 60","light":"#81C784","lightChannel":"129 199 132","main":"#66BB6A","mainChannel":"102 187 106"},"text":{"disabled":"rgba(255, 255, 255, 0.5)","icon":"rgba(255, 255, 255, 0.5)","primary":"#FFFFFF","primaryChannel":"255 255 255","secondary":"#B0B0B0","secondaryChannel":"255 255 255"},"tonalOffset":0.2,"warning":{"contrastText":"#000000","contrastTextChannel":"0 0 0","dark":"#FB8C00","darkChannel":"245 124 0","light":"#FFB74D","lightChannel":"255 183 77","main":"#FFA726","mainChannel":"255 167 38"}}},"light":{"opacity":{"inputPlaceholder":0.42,"inputUnderline":0.42,"switchTrack":0.38,"switchTrackDisabled":0.12},"overlays":[],"palette":{"Alert":{"errorColor":"rgb(95, 33, 32)","errorFilledBg":"var(--oxygen-palette-error-main, #d32f2f)","errorFilledColor":"#fff","errorIconColor":"var(--oxygen-palette-error-main, #d32f2f)","errorStandardBg":"rgb(253, 237, 237)","infoColor":"rgb(1, 67, 97)","infoFilledBg":"var(--oxygen-palette-info-main, #0288d1)","infoFilledColor":"#fff","infoIconColor":"var(--oxygen-palette-info-main, #0288d1)","infoStandardBg":"rgb(229, 246, 253)","successColor":"rgb(30, 70, 32)","successFilledBg":"var(--oxygen-palette-success-main, #2e7d32)","successFilledColor":"#fff","successIconColor":"var(--oxygen-palette-success-main, #2e7d32)","successStandardBg":"rgb(237, 247, 237)","warningColor":"rgb(102, 60, 0)","warningFilledBg":"var(--oxygen-palette-warning-main, #ed6c02)","warningFilledColor":"#fff","warningIconColor":"var(--oxygen-palette-warning-main, #ed6c02)","warningStandardBg":"rgb(255, 244, 229)"},"AppBar":{"defaultBg":"var(--oxygen-palette-grey-100, #f5f5f5)"},"Avatar":{"defaultBg":"var(--oxygen-palette-grey-400, #bdbdbd)"},"Button":{"inheritContainedBg":"var(--oxygen-palette-grey-300, #e0e0e0)","inheritContainedHoverBg":"var(--oxygen-palette-grey-A100, #f5f5f5)"},"Chip":{"defaultAvatarColor":"var(--oxygen-palette-grey-700, #616161)","defaultBorder":"var(--oxygen-palette-grey-400, #bdbdbd)","defaultIconColor":"var(--oxygen-palette-grey-700, #616161)"},"FilledInput":{"bg":"rgba(0, 0, 0, 0.06)","disabledBg":"rgba(0, 0, 0, 0.12)","hoverBg":"rgba(0, 0, 0, 0.09)"},"LinearProgress":{"errorBg":"rgb(238, 175, 175)","infoBg":"rgb(158, 209, 237)","primaryBg":"rgb(255, 201, 158)","secondaryBg":"rgb(202, 202, 202)","successBg":"rgb(175, 205, 177)","warningBg":"rgb(248, 199, 158)"},"Skeleton":{"bg":"rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.11)"},"Slider":{"errorTrack":"rgb(238, 175, 175)","infoTrack":"rgb(158, 209, 237)","primaryTrack":"rgb(255, 201, 158)","secondaryTrack":"rgb(202, 202, 202)","successTrack":"rgb(175, 205, 177)","warningTrack":"rgb(248, 199, 158)"},"SnackbarContent":{"bg":"rgb(49, 49, 49)","color":"#fff"},"SpeedDialAction":{"fabHoverBg":"rgb(216, 216, 216)"},"StepConnector":{"border":"var(--oxygen-palette-grey-400, #bdbdbd)"},"StepContent":{"border":"var(--oxygen-palette-grey-400, #bdbdbd)"},"Switch":{"defaultColor":"var(--oxygen-palette-common-white, #fff)","defaultDisabledColor":"var(--oxygen-palette-grey-100, #f5f5f5)","errorDisabledColor":"rgb(238, 175, 175)","infoDisabledColor":"rgb(158, 209, 237)","primaryDisabledColor":"rgb(255, 201, 158)","secondaryDisabledColor":"rgb(202, 202, 202)","successDisabledColor":"rgb(175, 205, 177)","warningDisabledColor":"rgb(248, 199, 158)"},"TableCell":{"border":"rgba(224, 224, 224, 1)"},"Tooltip":{"bg":"rgba(97, 97, 97, 0.92)"},"action":{"activatedOpacity":0.12,"active":"rgba(0, 0, 0, 0.54)","activeChannel":"0 0 0","disabled":"rgba(0, 0, 0, 0.26)","disabledBackground":"rgba(0, 0, 0, 0.12)","disabledOpacity":0.38,"focus":"rgba(0, 0, 0, 0.12)","focusOpacity":0.12,"hover":"rgba(85, 103, 213, 0.08)","hoverOpacity":0.08,"selected":"rgba(85, 103, 213, 0.12)","selectedChannel":"0 0 0","selectedOpacity":0.12},"background":{"acrylic":"#FFFFFF","default":"#F5F5F5","defaultChannel":"250 250 250","paper":"#FFFFFF","paperChannel":"255 255 255"},"common":{"background":"#fff","backgroundChannel":"255 255 255","black":"#000","onBackground":"#000","onBackgroundChannel":"0 0 0","white":"#fff"},"contrastThreshold":3,"divider":"#E0E0E0","dividerChannel":"0 0 0","error":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"#C62828","darkChannel":"198 40 40","light":"#EF5350","lightChannel":"239 83 80","main":"#D32F2F","mainChannel":"211 47 47"},"grey":{"100":"#f5f5f5","200":"#eeeeee","300":"#e0e0e0","400":"#bdbdbd","50":"#fafafa","500":"#9e9e9e","600":"#757575","700":"#616161","800":"#424242","900":"#212121","A100":"#f5f5f5","A200":"#eeeeee","A400":"#bdbdbd","A700":"#616161"},"info":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"#3f4db5","darkChannel":"1 87 155","light":"#7785dd","lightChannel":"3 169 244","main":"#5567d5","mainChannel":"2 136 209"},"mode":"light","primary":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"#3f4db5","darkChannel":"178 80 0","light":"#7785dd","lightChannel":"255 143 51","main":"#5567d5","mainChannel":"85 103 213"},"secondary":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"#616161","darkChannel":"81 81 81","light":"#9E9E9E","lightChannel":"144 144 144","main":"#757575","mainChannel":"117 117 117"},"success":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"#1B5E20","darkChannel":"27 94 32","light":"#4CAF50","lightChannel":"76 175 80","main":"#2E7D32","mainChannel":"46 125 50"},"text":{"disabled":"rgba(0, 0, 0, 0.38)","primary":"#212121","primaryChannel":"0 0 0","secondary":"#757575","secondaryChannel":"0 0 0"},"tonalOffset":0.2,"warning":{"contrastText":"#ffffff","contrastTextChannel":"255 255 255","dark":"#E65100","darkChannel":"230 81 0","light":"#FF9800","lightChannel":"255 152 0","main":"#ED6C02","mainChannel":"237 108 2"}}}},"defaultColorScheme":"light","direction":"ltr","shape":{"borderRadius":8},"typography":{"body1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":400,"lineHeight":1.5},"body2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.8125rem","fontWeight":400,"lineHeight":1.43},"button":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":500,"lineHeight":1.75,"textTransform":"uppercase"},"caption":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.6875rem","fontWeight":400,"lineHeight":1.66},"fontFamily":"'Inter Variable', sans-serif","fontSize":14,"fontWeightBold":700,"fontWeightLight":300,"fontWeightMedium":500,"fontWeightRegular":400,"h1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.75rem","fontWeight":400,"lineHeight":1.167},"h2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.5rem","fontWeight":400,"lineHeight":1.2},"h3":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.375rem","fontWeight":400,"lineHeight":1.167},"h4":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.25rem","fontWeight":400,"lineHeight":1.235},"h5":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1rem","fontWeight":400,"lineHeight":1.334},"h6":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":500,"lineHeight":1.6},"htmlFontSize":16,"inherit":{"fontFamily":"inherit","fontSize":"inherit","fontWeight":"inherit","letterSpacing":"inherit","lineHeight":"inherit"},"overline":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.75rem","fontWeight":400,"lineHeight":2.66,"textTransform":"uppercase"},"subtitle1":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"1.125rem","fontWeight":400,"lineHeight":1.75},"subtitle2":{"fontFamily":"'Inter Variable', sans-serif","fontSize":"0.875rem","fontWeight":400,"lineHeight":1.57}}}
+      createdAt: 2026-07-08 15:23:27
+      updatedAt: 2026-07-08 15:23:27
+      isReadOnly: false
+
+      ---
+      # File: en-US.yaml
+      # resource_type: translation
+      language: en-US
+      translations:
+        recovery:
+          forms.complete.message: Your password has been successfully reset. You can now sign in with your new password.
+          forms.email_sent.message: We sent you a password reset link. Please check your inbox and click the link to reset your password.
+          forms.new_password.actions.submit.label: Reset Password
+          forms.otp_sent.fields.otp.placeholder: Enter code
+          forms.new_password.fields.password.placeholder: Enter your new password
+          forms.username.links.sign_in.prefix: Remember your password?
+          forms.complete.title: Password Reset Successful
+          forms.username.title: Password Recovery
+          forms.email.fields.email.label: Email
+          forms.username.fields.username.placeholder: Enter your username
+          forms.otp_sent.title: OTP Sent to your mobile
+          forms.new_password.subtitle: Enter a new password for your account
+          forms.new_password.title: Reset Password
+          forms.username.subtitle: Enter your username to start the password recovery
+          forms.new_password.fields.password.label: New Password
+          forms.otp_sent.actions.verify.label: Verify
+          forms.username.fields.username.label: Username
+          forms.email.actions.next.label: Next
+          forms.username.links.sign_in.label: Sign in
+          forms.otp_sent.fields.otp.label: Verification Code
+          forms.email_sent.title: Check Your Email
+          forms.email.fields.email.placeholder: Enter your email
+          forms.username.actions.submit.label: Submit
+          forms.otp_sent.message: We sent you a verification code via SMS. Please check your messages and enter the code to continue.
+        signin:
+          forms.magic_link.actions.submit.label: Send Magic Link
+          forms.passkey.actions.submit.label: Sign in with Passkey
+          forms.passkey.register.actions.submit.label: Register Passkey
+          forms.credentials.fields.username.placeholder: Enter your username
+          forms.ciba.credentials.heading: Confirm Your Identity
+          forms.credentials.links.sign_up.prefix: Don't have an account?
+          forms.phone.actions.submit.label: Send Code
+          forms.magic_link.email_sent.description: We sent you a verification link. Please check your inbox and click the link to continue.
+          forms.passkey.title: Sign in with Passkey
+          forms.choose_auth_method.fields.password.label: Password
+          forms.ciba.consent.actions.approve.label: Approve
+          forms.otp.description: Enter the verification code sent to your phone
+          forms.password_for_registration.description: No passkey found for your account. Enter your password to register a new passkey.
+          forms.credentials.title: Sign In
+          forms.choose_auth_method.fields.username.placeholder: Enter your username
+          forms.password_for_registration.title: Register Passkey
+          forms.credentials.links.forgot_password.label: Reset
+          forms.passkey.register.description: No passkey found for your account. Enter your password to register a new passkey.
+          forms.passkey_identifier.title: Sign in with Passkey
+          forms.phone.title: Sign In with SMS
+          forms.credentials.actions.submit.label: Sign In
+          forms.choose_auth_method.title: Sign In
+          forms.phone.fields.phone.placeholder: Enter your mobile number
+          forms.password_for_registration.fields.password.placeholder: Enter your password
+          forms.choose_auth_method.fields.password.placeholder: Enter your password
+          forms.ciba.notification_error.message: The authentication notification could not be delivered. Please try again or contact support.
+          forms.otp.fields.otp.placeholder: Enter code
+          forms.phone.description: Enter your mobile number to receive a verification code
+          forms.magic_link.title: Sign In with Magic Link
+          forms.password_for_registration.actions.submit.label: Register Passkey
+          forms.ciba.consent.heading: Authorize Request
+          forms.magic_link.fields.email.placeholder: Enter your email address
+          forms.phone.fields.phone.label: Mobile Number
+          forms.passkey.register.title: Register Passkey
+          forms.otp.title: Verify Your Identity
+          forms.passkey_identifier.fields.username.placeholder: Enter your username
+          forms.password_for_registration.fields.password.label: Password
+          forms.ciba.notification_sent.message: A notification has been sent. Follow the link in the notification to continue.
+          forms.credentials.fields.password.label: Password
+          forms.credentials.links.sign_up.label: Sign up
+          forms.passkey.actions.continue.label: Continue
+          forms.credentials.links.forgot_password.prefix: Forgot password?
+          forms.ciba.consent.message: By clicking Approve, you confirm that you initiated this request and consent to the action being performed.
+          forms.choose_auth_method.actions.passkey.label: Sign in with Passkey
+          forms.passkey_identifier.actions.continue.label: Continue
+          forms.passkey.description: Use your passkey to securely sign in to your account without a password.
+          images.app_logo.alt: Application logo
+          forms.magic_link.email_sent.title: Check Your Email
+          forms.credentials.fields.password.placeholder: Enter your password
+          forms.ciba.notification_error.heading: Notification Failed
+          forms.passkey_identifier.fields.username.label: Username
+          forms.otp.fields.otp.label: Verification Code
+          forms.ciba.credentials.message: Enter your credentials to approve the authentication request.
+          forms.ciba.success.message: You have successfully authenticated. You may close this window.
+          forms.ciba.notification_sent.heading: Authentication Request Sent
+          forms.credentials.fields.username.label: Username
+          forms.magic_link.fields.email.label: Email Address
+          forms.ciba.credentials.actions.approve.label: Approve
+          forms.choose_auth_method.actions.submit.label: Sign In
+          forms.otp.actions.submit.label: Verify
+          forms.choose_auth_method.fields.username.label: Username
+          forms.ciba.success.heading: Authentication Successful
+        invite:
+          errors.invalid.description: This invite link is invalid or has expired.
+          errors.failed.title: Error
+          complete.description: Your account has been successfully set up. You can now sign in.
+          complete.backToApp.withApp: Back to {{appName}}
+          signIn: Sign In
+          complete.title: Welcome Aboard!
+          goToSignIn: Go to Sign In
+          errors.invalid.title: Unable to verify invite
+          validating: Validating your invite link...
+          errors.failed.description: An error occurred. Please try again.
+          complete.description.withApp: Your account has been successfully set up for {{appName}}. You can now sign in.
+          complete.backToApp: Back to Application
+        elements:
+          fields.usertype.label: User Type
+          fields.usertype.placeholder: Select User Type
+        onboarding:
+          forms.user_details.fields.last_name.label: Last Name
+          forms.user_details.fields.last_name.placeholder: Enter last name
+          forms.user_details.fields.phone_number.label: Phone Number
+          forms.ou_selection.actions.continue.label: Continue
+          forms.add_user.subtitle: Provide the new user details to create the account immediately.
+          forms.phone.fields.phone.label: Phone Number
+          forms.email.actions.next.label: Next
+          forms.phone.title: Phone Number
+          forms.user_details.title: User Details
+          forms.phone.fields.phone.placeholder: Enter phone number
+          forms.user_type.title: Select a user type
+          forms.email.fields.email.label: Email
+          forms.invite_status.title: Invitation Sent
+          forms.add_user.actions.submit.label: Create User
+          forms.invite_link_status.link_label: Invite Link
+          forms.invite_email_unavailable.title: Email Delivery Failed
+          forms.invite_mode.actions.email.label: Send Invite Email
+          forms.user_type.actions.continue.label: Continue
+          forms.invite_link_status.message: Share the invite link below with the user to complete their registration.
+          forms.user_details.fields.username.placeholder: Enter username
+          forms.onboarding_mode.subtitle: Choose whether to create the account now or send an invite for the user to finish onboarding later.
+          forms.user_details.actions.next.label: Next
+          forms.credential.fields.password.placeholder: Enter password
+          forms.credential.title: Set Password
+          forms.user_type.subtitle: Choose a user type (schema) for the new user.
+          forms.invite_email_unavailable.message: The invitation email could not be delivered. Please use the link below to share the invite manually.
+          forms.user_details.fields.phone_number.placeholder: Enter phone number
+          forms.user_details.fields.first_name.placeholder: Enter first name
+          forms.invite_mode.actions.link.label: Get Invite Link
+          forms.user_type.fields.user_type.placeholder: Select a user type
+          forms.onboarding_mode.title: Add User
+          forms.credential.actions.submit.label: Set Password
+          forms.complete_registration.title: Complete Your Account
+          forms.email.fields.email.placeholder: Enter email
+          forms.email.title: User Email
+          forms.onboarding_mode.actions.invite.label: Invite User
+          forms.user_type.fields.user_type.label: User Type
+          forms.complete_registration.actions.submit.label: Complete Setup
+          forms.invite_status.message: An invitation has been sent to the user. The user can complete their registration using the link.
+          forms.invite_sms_sent.message: An invitation SMS has been sent to the user. They can complete their registration using the link in the message.
+          forms.invite_mode.actions.sms.label: Send Invite SMS
+          forms.invite_email_sent.title: Invitation Sent
+          forms.credential.fields.password.label: Password
+          forms.invite_link_status.title: Invite Link Ready
+          forms.ou_selection.title: Select an organization unit
+          forms.invite_sms_sent.title: Invitation Sent
+          forms.user_details.fields.username.label: Username
+          forms.invite_mode.title: Invite User
+          forms.onboarding_mode.actions.create.label: Create User
+          forms.invite_mode.subtitle: Choose how you'd like to invite this user.
+          forms.add_user.title: Add User Details
+          forms.ou_selection.subtitle: Choose which organization unit this user should belong to.
+          forms.phone.actions.next.label: Next
+          forms.ou_selection.fields.ou.label: Organization Unit
+          forms.user_details.fields.first_name.label: First Name
+          forms.complete_registration.subtitle: Provide remaining details to finish setting up your account.
+          forms.invite_email_sent.message: An invitation email has been sent to the user. They can complete their registration using the link in the email.
+          forms.add_user_complete.title: User Added Successfully
+          forms.add_user_complete.description: The new account has been created successfully.
+        signup:
+          forms.credentials.description: Choose your preferred registration method
+          forms.passkey.title: Sign Up
+          forms.credentials.fields.first_name.label: First Name
+          forms.user_details.actions.next.label: Next
+          forms.user_details.fields.username.label: Username
+          forms.choose_registration_method.actions.passkey.label: Sign up with Passkey
+          forms.phone.fields.phone.placeholder: Enter your mobile number
+          forms.user_type.title: Sign Up
+          forms.user_details.fields.first_name.label: First Name
+          forms.registration.fields.first_name.placeholder: Enter your first name
+          forms.collect_user_info.fields.password.placeholder: Enter your password
+          forms.passkey.add.title: Add a Passkey
+          forms.registration.actions.submit.label: Sign Up
+          forms.collect_passkey_user_info.fields.username.placeholder: Enter your username
+          forms.basic_user_info.fields.email.label: Email
+          forms.collect_passkey_user_info.fields.email.label: Email
+          forms.registration.fields.last_name.placeholder: Enter your last name
+          forms.user_details.fields.last_name.placeholder: Enter your last name
+          forms.basic_user_info.actions.continue.label: Continue
+          forms.user_details.fields.first_name.placeholder: Enter your first name
+          forms.choose_registration_method.actions.continue.label: Continue
+          forms.collect_user_info.title: Sign Up
+          forms.registration.fields.last_name.label: Last Name
+          forms.basic_user_info.fields.first_name.label: First Name
+          forms.credentials.fields.user_type.label: User Type
+          forms.credentials.fields.email_address.label: Email Address
+          forms.credentials.fields.password.placeholder: Enter your password
+          forms.credentials.divider.or: OR
+          forms.credentials.fields.last_name.placeholder: Enter your last name
+          forms.otp.actions.submit.label: Verify
+          forms.user_details.title: Sign Up
+          forms.registration.fields.email_address.label: Email Address
+          forms.credential.title: Create Password
+          forms.collect_passkey_user_info.fields.email.placeholder: Enter your email
+          forms.passkey.description: Sign up with a passkey for secure access without a password
+          forms.email.fields.email.label: Email
+          forms.credentials.fields.password.label: Password
+          forms.collect_passkey_user_info.fields.username.label: Username
+          forms.registration.fields.email_address.placeholder: Enter your email address
+          forms.phone.actions.next.label: Next
+          forms.user_details.fields.username.placeholder: Enter your username
+          forms.collect_user_info.fields.password.label: Password
+          forms.choose_registration_method.fields.password.label: Password
+          forms.basic_user_info.fields.last_name.label: Last Name
+          images.app_logo.alt: Application logo
+          forms.collect_passkey_user_info.actions.continue.label: Continue
+          forms.collect_user_info.fields.email.placeholder: Enter your email
+          forms.passkey.add.actions.add.label: Add Passkey
+          forms.basic_user_info.fields.email.placeholder: Enter your email
+          forms.user_type.fields.user_type.placeholder: Select your user type
+          forms.basic_user_info.fields.first_name.placeholder: Enter your first name
+          forms.otp.fields.otp.placeholder: Enter code
+          forms.credentials.complete_profile: Complete your profile
+          forms.collect_user_info.fields.email.label: Email
+          forms.user_info.actions.submit.label: Sign Up
+          forms.passkey.actions.continue.label: Continue
+          forms.otp.description: Enter the verification code sent to your phone
+          forms.phone.title: Sign Up
+          forms.email_sent.message: We sent you a verification link. Please check your inbox and click the link to continue.
+          forms.credentials.actions.continue.label: Continue
+          forms.otp.title: Verify Your Phone
+          forms.choose_registration_method.fields.username.label: Username
+          forms.registration.fields.password.placeholder: Enter your password
+          forms.registration.title: Sign Up
+          forms.user_type.actions.continue.label: Continue
+          forms.basic_user_info.title: Sign Up
+          forms.phone.fields.phone.label: Mobile Number
+          forms.user_info.fields.email_address.label: Email Address
+          forms.magic_link.email_sent.title: Check Your Email
+          forms.credential.actions.submit.label: Sign Up
+          forms.user_info.fields.last_name.placeholder: Enter your last name
+          forms.basic_user_info.fields.last_name.placeholder: Enter your last name
+          forms.credentials.fields.first_name.placeholder: Enter your first name
+          forms.credentials.fields.email_address.placeholder: Enter your email address
+          forms.sms_sent.title: Check Your Phone
+          forms.collect_passkey_user_info.description: Sign up with a passkey for secure access without a password
+          forms.credentials.fields.user_type.placeholder: Select your user type
+          forms.user_info.fields.first_name.placeholder: Enter your first name
+          forms.passkey.add.actions.skip.label: Skip for now
+          forms.collect_passkey_user_info.title: Sign Up
+          forms.passkey.add.description: Would you like to add a passkey to your account for faster and more secure sign-ins?
+          forms.registration.fields.username.placeholder: Enter your username
+          forms.passkey.actions.submit.label: Sign up with Passkey
+          forms.credential.fields.password.placeholder: Enter your password
+          forms.credentials.fields.email.label: Email
+          forms.otp.fields.otp.label: Verification Code
+          forms.magic_link.email_sent.description: We sent you a verification link. Please check your inbox and click the link to continue.
+          forms.user_info.fields.last_name.label: Last Name
+          forms.collect_user_info.actions.submit.label: Sign Up
+          forms.user_details.fields.last_name.label: Last Name
+          forms.user_info.fields.email_address.placeholder: Enter your email address
+          forms.choose_registration_method.fields.username.placeholder: Enter your username
+          forms.user_type.fields.user_type.label: User Type
+          forms.user_info.actions.continue.label: Continue
+          forms.credential.fields.password.label: Password
+          forms.choose_registration_method.title: Sign Up
+          forms.registration.fields.first_name.label: First Name
+          forms.user_info.fields.first_name.label: First Name
+          forms.user_info.title: Sign Up
+          forms.email.actions.next.label: Next
+          forms.collect_user_info.fields.username.label: Username
+          forms.credentials.fields.last_name.label: Last Name
+          forms.credentials.fields.username.placeholder: Enter your username
+          forms.credentials.title: Sign Up
+          forms.email_sent.title: Check Your Email
+          forms.credentials.fields.email.placeholder: Enter your email
+          forms.registration.fields.username.label: Username
+          forms.choose_registration_method.description: Choose your preferred registration method
+          forms.credentials.fields.username.label: Username
+          forms.basic_user_info.complete_profile: Complete your profile
+          forms.sms_sent.message: We sent you a verification link via SMS. Please check your messages and click the link to continue.
+          forms.choose_registration_method.divider.or: OR
+          forms.email.title: Sign Up
+          forms.choose_registration_method.fields.password.placeholder: Enter your password
+          forms.credentials.actions.submit.label: Sign Up
+          forms.registration.fields.password.label: Password
+          forms.email.fields.email.placeholder: Enter your email
+          forms.collect_user_info.fields.username.placeholder: Enter your username
+
+      ---
+      # File: admin.yaml
+      # resource_type: user
+      id: 01900000-0000-7000-8000-000000000030
+      type: Person
+      ouId: 01900000-0000-7000-8000-000000000001
+      attributes:
+        family_name: "User"
+        given_name: "Admin"
+        name: "Administrator"
+        phone_number: "+12345678920"
+        picture: "https://example.com/avatar.jpg"
+        sub: "admin"
+        username: "admin"
+        email: "admin@example.com"
+      credentials:
+        password: "{{.ADMIN_PASSWORD}}"
+
+      ---
+      # File: Person.yaml
+      # resource_type: user_type
+      id: 01900000-0000-7000-8000-000000000010
+      category: user
+      name: Person
+      ouId: 01900000-0000-7000-8000-000000000001
+      systemAttributes:
+        display: username
+      schema: {"email":{"displayName":"Email","regex":"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$","required":true,"type":"string","unique":true},"family_name":{"displayName":"Last Name","required":false,"type":"string"},"given_name":{"displayName":"First Name","required":false,"type":"string"},"mobile_number":{"displayName":"Mobile Number","required":false,"type":"string"},"name":{"displayName":"Full Name","required":false,"type":"string"},"password":{"credential":true,"displayName":"Password","required":false,"type":"string"},"phone_number":{"displayName":"Phone Number","required":false,"type":"string"},"picture":{"displayName":"Picture","required":false,"type":"string"},"sub":{"displayName":"Subject","required":false,"type":"string"},"username":{"displayName":"Username","required":true,"type":"string","unique":true}}
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ResourceReleaseBinding
+metadata:
+  name: thunderid-development
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    resourceName: thunderid
+  environment: development
+  retainPolicy: Delete
+  # Pin to the ResourceRelease cut from the Resource above; unset means the
+  # binding stays pending. Advance the pin to promote a new release.
+  # resourceRelease: <RELEASE_NAME>
+  resourceTypeEnvironmentConfigs:
+    # Externally reachable URL — derived from the gateway host pattern:
+    #   <environment>-<resourceName>-<controlPlaneNamespace>.<gateway-domain>
+    serverPublicUrl: "<SERVER_PUBLIC_URL>"
+    gateClientHostname: "<GATEWAY_HOSTNAME>"
+    gateClientPort: 19080
+    gateClientScheme: http
+    replicas: 1
+    endpointVisibility: external
+    # Optional: serve the Console on its own hostname (admin UI split).
+    # consoleHostname: "admin.example.com"
+    # consolePublicUrl: "https://admin.example.com"
+    # Optional: container resources (defaults shown).
+    # resourceRequestsCpu: "100m"
+    # resourceRequestsMemory: "128Mi"
+    # resourceLimitsCpu: "500m"
+    # resourceLimitsMemory: "512Mi"
+

@@ -57,9 +57,6 @@ func initiateFlow(appID, flowType string, verbose bool, inputs map[string]string
 		"applicationId": appID,
 		"flowType":      flowType,
 	}
-	if flowSecret := testutils.GetFlowSecret(appID); flowSecret != "" {
-		flowReqBody["flowSecret"] = flowSecret
-	}
 	if verbose {
 		flowReqBody["verbose"] = true
 	}
@@ -82,6 +79,9 @@ func initiateFlow(appID, flowType string, verbose bool, inputs map[string]string
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	if flowSecret := testutils.GetFlowSecret(appID); flowSecret != "" {
+		req.Header.Set(testutils.FlowSecretHeaderName, flowSecret)
+	}
 
 	client := testutils.GetHTTPClient()
 
@@ -110,9 +110,6 @@ func InitiateAuthFlowWithError(appID string, inputs map[string]string) (*ErrorRe
 		"applicationId": appID,
 		"flowType":      "AUTHENTICATION",
 	}
-	if flowSecret := testutils.GetFlowSecret(appID); flowSecret != "" {
-		flowReqBody["flowSecret"] = flowSecret
-	}
 	if len(inputs) > 0 {
 		flowReqBody["inputs"] = inputs
 	}
@@ -129,6 +126,9 @@ func InitiateAuthFlowWithError(appID string, inputs map[string]string) (*ErrorRe
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	if flowSecret := testutils.GetFlowSecret(appID); flowSecret != "" {
+		req.Header.Set(testutils.FlowSecretHeaderName, flowSecret)
+	}
 
 	client := testutils.GetHTTPClient()
 

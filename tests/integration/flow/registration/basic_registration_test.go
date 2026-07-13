@@ -1015,7 +1015,7 @@ func (ts *BasicRegistrationFlowTestSuite) TestSchemaDriverInputs_DisplayNameUsed
 		}
 	}()
 
-	regFlowID, err := testutils.GetFlowIDByHandle("default-basic-flow", "REGISTRATION")
+	regFlowID, err := testutils.GetFlowIDByHandle("default-flow", "REGISTRATION")
 	ts.Require().NoError(err, "Failed to get default registration flow ID")
 
 	appID, err := testutils.CreateApplication(testutils.Application{

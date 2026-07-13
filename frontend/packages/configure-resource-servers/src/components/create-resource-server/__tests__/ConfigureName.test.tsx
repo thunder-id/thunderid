@@ -137,4 +137,26 @@ describe('ConfigureName', () => {
 
     expect(onHandleChange).toHaveBeenCalledWith('myhandle');
   });
+
+  it('renders the resource server title and label when selectedType is not MCP', () => {
+    render(<ConfigureName name="" handle="" selectedType="API" onNameChange={vi.fn()} onHandleChange={vi.fn()} />);
+
+    expect(screen.getByText('Name your resource server')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', {name: /resource server name/i})).toBeInTheDocument();
+  });
+
+  it('renders the MCP server title and label when selectedType is MCP', () => {
+    render(<ConfigureName name="" handle="" selectedType="MCP" onNameChange={vi.fn()} onHandleChange={vi.fn()} />);
+
+    expect(screen.getByText('Name your MCP server')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', {name: /mcp server name/i})).toBeInTheDocument();
+  });
+
+  it('renders the MCP handle helper text when selectedType is MCP', () => {
+    render(<ConfigureName name="" handle="" selectedType="MCP" onNameChange={vi.fn()} onHandleChange={vi.fn()} />);
+
+    expect(
+      screen.getByText('The handle prefixes every permission in this MCP server. It cannot be changed after creation.'),
+    ).toBeInTheDocument();
+  });
 });

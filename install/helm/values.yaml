@@ -150,6 +150,8 @@ configuration:
   server:
     port: 8090
     httpOnly: false
+    # The URL where users reach ThunderID in their browser.
+    # ThunderID uses it to build the login and error redirect links.
     publicUrl: "https://thunderid.local"
     # Security configuration.
     # jwksCacheTtl controls how long fetched JWKS responses are cached in-process for
@@ -160,8 +162,13 @@ configuration:
     # activates the feature; jwksUrl and audience are then required. The server accepts
     # tokens from the external authentication server and validates them via its JWKS
     # endpoint. Add the CP origin to cors.allowedOrigins when using this feature.
+    #
+    # directAuthSecret gates the Direct API endpoints (/auth/**, /register/passkey/**). These are
+    # secure by default: while it is unset they are blocked; set a strong value to enable them.
+    # Callers must then send it in the Direct-Auth-Secret header.
     # security:
     #   jwksCacheTtl: 300
+    #   directAuthSecret: "<strong-random-secret>"
     #   trustedIssuer:
     #     issuer: "https://cp.example.com"
     #     jwksUrl: "https://cp.example.com/oauth2/jwks"
@@ -170,12 +177,13 @@ configuration:
     #       - claim: "ouId"
     #         value: "<tenant-ou-id>"
 
-  # Gate client configuration
+  # Gate client configuration.
+  # hostname/port/scheme default to server.publicUrl. Required only when Gate is hosted separately.
   gateClient:
-    hostname: "thunderid.local"
-    port: 443
-    scheme: "https"
     path: "/gate"
+    # hostname: "thunderid.local"
+    # port: 443
+    # scheme: "https"
 
   # Branding configuration for the Console and Gate frontends.
   # productName: Display name shown in the browser tab and UI.
@@ -363,6 +371,7 @@ configuration:
   oauth:
     refreshToken:
       renewOnGrant: false
+      revokePreviousOnRenew: true
       validityPeriod: 86400
     authorizationCode:
       validityPeriod: 600
@@ -371,7 +380,7 @@ configuration:
 
   # Flow configuration
   flow:
-    defaultAuthFlowHandle: "default-basic-flow"
+    defaultAuthFlowHandle: "default-flow"
     maxVersionHistory: 3
     autoInferRegistration: true
     # Optional whitelist of built-in executor names to register at startup.

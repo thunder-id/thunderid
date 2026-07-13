@@ -245,10 +245,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           label: 'APIs',
         },
         {
-          type: 'doc',
-          docId: 'sdks/overview',
+          to: '/sdks',
           position: 'right',
-          label: 'SDKs',
+          label: 'SDKs & Tools',
         },
         {
           to: '/blog',

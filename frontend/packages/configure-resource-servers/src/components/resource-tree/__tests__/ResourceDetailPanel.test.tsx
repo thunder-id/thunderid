@@ -380,7 +380,7 @@ describe('ResourceDetailPanel (MCP non-server node)', () => {
     expect(
       screen.getByText('Separates segments in the permission scope. Defined by the resource server.'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Optional. Describe what this tool is for.')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Describe what this tool is for.')).toBeInTheDocument();
   });
 
   it('renders kind-aware helper text for Name and Description for a namespace node', () => {
@@ -389,7 +389,7 @@ describe('ResourceDetailPanel (MCP non-server node)', () => {
     );
 
     expect(screen.getByText('A human-readable name for this namespace.')).toBeInTheDocument();
-    expect(screen.getByText('Optional. Describe what this namespace is for.')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Describe what this namespace is for.')).toBeInTheDocument();
   });
 });
 
@@ -410,7 +410,7 @@ describe('ResourceDetailPanel (non-MCP nodes do not show MCP hints)', () => {
     );
 
     expect(screen.queryByText(/A human-readable name for this/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Optional\. Describe what this/i)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/Describe what this/i)).not.toBeInTheDocument();
   });
 
   it('does not render MCP-specific helper text for a server node', () => {
@@ -425,7 +425,7 @@ describe('ResourceDetailPanel (non-MCP nodes do not show MCP hints)', () => {
     );
 
     expect(screen.queryByText(/A human-readable name for this/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Optional\. Describe what this/i)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/Describe what this/i)).not.toBeInTheDocument();
   });
 
   it('does not render MCP-specific helper text for an MCP server node', () => {
@@ -440,6 +440,6 @@ describe('ResourceDetailPanel (non-MCP nodes do not show MCP hints)', () => {
     );
 
     expect(screen.queryByText(/A human-readable name for this/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Optional\. Describe what this/i)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/Describe what this/i)).not.toBeInTheDocument();
   });
 });

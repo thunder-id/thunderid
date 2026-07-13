@@ -62,6 +62,13 @@ function ExecutionMinimal({resource}: ExecutionMinimalPropsInterface): ReactElem
   const hasBranchingSupport = stepData?.action && 'onFailure' in stepData.action;
   const hasIncompleteSupport = stepData?.action && 'onIncomplete' in stepData.action;
 
+  // Outcome handles can carry executor-specific labels (e.g. SSO-Check's Available/Unavailable);
+  // fall back to the generic outcome labels otherwise.
+  const outcomeLabels = resource.display?.outcomes;
+  const successLabel = outcomeLabels?.success ?? t('flows:core.executions.handles.success');
+  const failureLabel = outcomeLabels?.failure ?? t('flows:core.executions.handles.failure');
+  const incompleteLabel = outcomeLabels?.incomplete ?? t('flows:core.executions.handles.incomplete');
+
   const handleConfigClick = (): void => {
     if (stepId !== null) {
       setLastInteractedStepId(stepId);
@@ -166,7 +173,7 @@ function ExecutionMinimal({resource}: ExecutionMinimalPropsInterface): ReactElem
       </Card>
       {/* Success handle - always shown on the right */}
       {hasBranchingSupport ? (
-        <Tooltip title={t('flows:core.executions.handles.success')} placement="right">
+        <Tooltip title={successLabel} placement="right">
           <Box className="handle-wrapper success-wrapper">
             <Handle
               type="source"
@@ -185,7 +192,7 @@ function ExecutionMinimal({resource}: ExecutionMinimalPropsInterface): ReactElem
       )}
       {/* Failure handle - shown at the bottom when the action supports branching (has onFailure property) */}
       {hasBranchingSupport && (
-        <Tooltip title={t('flows:core.executions.handles.failure')} placement="bottom">
+        <Tooltip title={failureLabel} placement="bottom">
           <Box className="handle-wrapper failure-wrapper">
             <Handle type="source" position={Position.Bottom} id="failure" className="execution-handle-failure" />
           </Box>
@@ -193,7 +200,7 @@ function ExecutionMinimal({resource}: ExecutionMinimalPropsInterface): ReactElem
       )}
       {/* Incomplete handle - shown at the top when the action supports incomplete (has onIncomplete property) */}
       {hasIncompleteSupport && (
-        <Tooltip title={t('flows:core.executions.handles.incomplete')} placement="top">
+        <Tooltip title={incompleteLabel} placement="top">
           <Box className="handle-wrapper incomplete-wrapper">
             <Handle
               type="source"

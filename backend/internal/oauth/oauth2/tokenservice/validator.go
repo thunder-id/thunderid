@@ -157,6 +157,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 	audiences := extractStringSliceClaim(claims, "access_token_aud")
 	grantType, _ := extractStringClaim(claims, "grant_type")
 	iat, _ := extractInt64Claim(claims, "iat")
+	exp, _ := extractInt64Claim(claims, "exp")
 	scopes := extractScopesFromClaims(claims, false)
 	attributeCacheID, _ := extractStringClaim(claims, "aci")
 	actorSub, _ := extractStringClaim(claims, "act_sub")
@@ -202,6 +203,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 		DPoPJkt:          dpopJkt,
 		ActorSub:         actorSub,
 		JTI:              jti,
+		Exp:              exp,
 	}, nil
 }
 
@@ -247,15 +249,12 @@ func (tv *tokenValidator) ValidateSubjectToken(
 		return nil, fmt.Errorf("invalid subject token signature: %v", svcErr.Error)
 	}
 
-	// Validate that the external token's audience contains this server's issuer.
-	serverIssuer := tv.cfg.JWT.Issuer
 	auds, audErr := extractAudiences(claims)
 	if audErr != nil {
 		return nil, fmt.Errorf("failed to extract audience from external token: %w", audErr)
 	}
-	if !slices.Contains(auds, serverIssuer) {
-		return nil, fmt.Errorf(
-			"external token audience does not contain expected server issuer %q", serverIssuer)
+	if err := tv.validateExternalTokenAudience(auds, issuerInfo); err != nil {
+		return nil, err
 	}
 
 	return tv.extractSubjectTokenClaims(token, iss, claims, oauthApp, issuerInfo.AttributeMappings)
@@ -284,9 +283,10 @@ func (tv *tokenValidator) ValidateToken(ctx context.Context, token string) (map[
 
 // tokenExchangeIssuerInfo holds the resolved properties needed to validate an external token.
 type tokenExchangeIssuerInfo struct {
-	Issuer            string
-	JWKSURL           string
-	AttributeMappings []providers.AttributeMapping
+	Issuer               string
+	JWKSURL              string
+	TrustedTokenAudience string
+	AttributeMappings    []providers.AttributeMapping
 }
 
 // resolveExternalIssuer looks up an external IDP whose issuer property matches the given issuer.
@@ -312,10 +312,29 @@ func (tv *tokenValidator) resolveExternalIssuer(ctx context.Context, issuer stri
 	}
 
 	return &tokenExchangeIssuerInfo{
-		Issuer:            issuer,
-		JWKSURL:           jwksURL,
-		AttributeMappings: idp.GetAttributeMappings(&idpDTO),
+		Issuer:               issuer,
+		JWKSURL:              jwksURL,
+		TrustedTokenAudience: idp.GetPropertyValue(idpDTO.Properties, idp.PropTrustedTokenAudience),
+		AttributeMappings:    idp.GetAttributeMappings(&idpDTO),
 	}, nil
+}
+
+func (tv *tokenValidator) validateExternalTokenAudience(auds []string, issuerInfo *tokenExchangeIssuerInfo) error {
+	serverIssuer := tv.cfg.JWT.Issuer
+	if slices.Contains(auds, serverIssuer) {
+		return nil
+	}
+
+	if issuerInfo.TrustedTokenAudience != "" && slices.Contains(auds, issuerInfo.TrustedTokenAudience) {
+		return nil
+	}
+
+	if issuerInfo.TrustedTokenAudience != "" {
+		return fmt.Errorf("external token audience does not contain expected server issuer %q or configured "+
+			"trusted token audience", serverIssuer)
+	}
+
+	return fmt.Errorf("external token audience does not contain expected server issuer %q", serverIssuer)
 }
 
 // extractSubjectTokenClaims extracts and validates claims from a decoded subject token.

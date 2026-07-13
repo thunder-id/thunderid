@@ -27,7 +27,6 @@ import (
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
-	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -54,17 +53,15 @@ type OIDCAuthnServiceInterface interface {
 type oidcAuthnService struct {
 	internal   authnoauth.OAuthAuthnServiceInterface
 	jwtService jwt.JWTServiceInterface
-	idpService idp.IDPServiceInterface
 	logger     *log.Logger
 }
 
 // newOIDCAuthnService creates a new instance of OIDC authenticator service.
 func newOIDCAuthnService(internal authnoauth.OAuthAuthnServiceInterface,
-	jwtSvc jwt.JWTServiceInterface, idpSvc idp.IDPServiceInterface) OIDCAuthnServiceInterface {
+	jwtSvc jwt.JWTServiceInterface) OIDCAuthnServiceInterface {
 	return &oidcAuthnService{
 		internal:   internal,
 		jwtService: jwtSvc,
-		idpService: idpSvc,
 		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
 }
@@ -241,34 +238,12 @@ func (s *oidcAuthnService) Authenticate(ctx context.Context, idpID, code string)
 		}
 	}
 
-	mappedClaims, svcErr := s.resolveAttributeMappings(ctx, idpID, claims)
-	if svcErr != nil {
-		return nil, svcErr
-	}
-
-	return &authncm.AuthnResult{
-		Token: map[string]interface{}{
-			"sub": sub,
-		},
-		AuthenticatedClaims: mappedClaims,
-	}, nil
+	return s.internal.BuildFederatedAuthResult(ctx, idpID, sub, claims)
 }
 
-// resolveAttributeMappings loads the identity provider and applies its configured attribute mappings to
-// claims. IDP-retrieval errors are wrapped in the authn domain so the IDP error code is not leaked.
-func (s *oidcAuthnService) resolveAttributeMappings(ctx context.Context, idpID string,
-	claims map[string]interface{}) (map[string]interface{}, *tidcommon.ServiceError) {
-	idpDTO, svcErr := s.idpService.GetIdentityProvider(ctx, idpID)
-	if svcErr != nil {
-		if svcErr.Type == tidcommon.ClientErrorType {
-			return nil, &authncm.ErrorClientErrorWhileRetrievingIDP
-		}
-		s.logger.Error(ctx, "Error while retrieving identity provider", log.String("errorCode", svcErr.Code),
-			log.String("description", svcErr.ErrorDescription.DefaultValue))
-		return nil, &tidcommon.InternalServerError
-	}
-	if idpDTO == nil {
-		return nil, &tidcommon.InternalServerError
-	}
-	return idp.ApplyAttributeMappings(claims, idp.GetAttributeMappings(idpDTO)), nil
+// BuildFederatedAuthResult delegates to the underlying OAuth service, which applies attribute mapping
+// and account-linking resolution uniformly for all federated authenticators.
+func (s *oidcAuthnService) BuildFederatedAuthResult(ctx context.Context, idpID, sub string,
+	claims map[string]interface{}) (*authncm.AuthnResult, *tidcommon.ServiceError) {
+	return s.internal.BuildFederatedAuthResult(ctx, idpID, sub, claims)
 }

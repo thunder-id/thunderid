@@ -31,6 +31,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 )
@@ -187,5 +189,51 @@ func TestOUUserResolver_GetUserListByOUID(t *testing.T) {
 		require.Equal(t, "employee", users[0].Type)
 		// Falls back to user ID when attribute path doesn't match
 		require.Equal(t, "user-1", users[0].Display)
+	})
+}
+
+func TestOUUserResolver_GetResourceDependencies(t *testing.T) {
+	t.Run("reports users in the organization unit as restrict", func(t *testing.T) {
+		svc := entitymock.NewEntityServiceInterfaceMock(t)
+		svc.On("GetEntityListByOUIDs", context.Background(),
+			providers.EntityCategoryUser, []string{"ou-1"},
+			serverconst.MaxCompositeStoreRecords, 0, (map[string]interface{})(nil)).
+			Return([]providers.Entity{{ID: "user-1"}}, nil).Once()
+
+		resolver := newOUUserResolver(svc, nil)
+		deps, err := resolver.GetResourceDependencies(
+			context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+		require.NoError(t, err)
+		require.Len(t, deps, 1)
+		require.Equal(t, resourcedependency.ResourceTypeUser, deps[0].ResourceType)
+		require.Equal(t, "user-1", deps[0].ID)
+		require.Equal(t, resourcedependency.BehaviorRestrict, deps[0].BehaviorOnDelete)
+	})
+
+	t.Run("ignores non-organization-unit targets", func(t *testing.T) {
+		svc := entitymock.NewEntityServiceInterfaceMock(t)
+
+		resolver := newOUUserResolver(svc, nil)
+		deps, err := resolver.GetResourceDependencies(
+			context.Background(), resourcedependency.ResourceTypeGroup, "group-1")
+
+		require.NoError(t, err)
+		require.Empty(t, deps)
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		svc := entitymock.NewEntityServiceInterfaceMock(t)
+		svc.On("GetEntityListByOUIDs", context.Background(),
+			providers.EntityCategoryUser, []string{"ou-1"},
+			serverconst.MaxCompositeStoreRecords, 0, (map[string]interface{})(nil)).
+			Return([]providers.Entity(nil), errors.New("db error")).Once()
+
+		resolver := newOUUserResolver(svc, nil)
+		deps, err := resolver.GetResourceDependencies(
+			context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+		require.Error(t, err)
+		require.Nil(t, deps)
 	})
 }

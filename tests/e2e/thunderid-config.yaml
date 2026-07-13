@@ -10,7 +10,7 @@ description: Native application for E2E test infrastructure admin authentication
 # Flow Secret presented by the E2E helpers when initiating the admin authentication flow
 # directly via the Flow Execution API. Test-only credential.
 flowSecret: e2e-admin-native-app-secret
-authFlowHandle: default-basic-flow
+authFlowHandle: default-flow
 allowedUserTypes:
   - Customer
 

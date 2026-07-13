@@ -24,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -55,6 +56,7 @@ func newGrantHandlerProvider(
 	actorProvider providers.ActorProvider,
 	resourceService providers.ResourceServerProvider,
 	cibaService ciba.CIBAServiceInterface,
+	refreshTokenRevoker revocation.RefreshTokenRevokerInterface,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {
 	return &GrantHandlerProvider{
@@ -63,7 +65,8 @@ func newGrantHandlerProvider(
 		authorizationCodeGrantHandler: newAuthorizationCodeGrantHandler(
 			authzService, tokenBuilder, attrCacheService, resourceService),
 		refreshTokenGrantHandler: newRefreshTokenGrantHandler(
-			jwtService, tokenBuilder, tokenValidator, attrCacheService, resourceService, cfg),
+			jwtService, tokenBuilder, tokenValidator, attrCacheService, resourceService,
+			refreshTokenRevoker, cfg),
 		tokenExchangeGrantHandler: newTokenExchangeGrantHandler(
 			tokenBuilder, tokenValidator, resourceService),
 		cibaGrantHandler: newCIBAGrantHandler(cibaService, tokenBuilder, attrCacheService),

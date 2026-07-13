@@ -27,13 +27,15 @@ Edit `public/config.json` with your server settings:
 
 ```json
 {
-  "baseUrl": "https://localhost:8090"
+  "baseUrl": "https://localhost:8090",
+  "directAuthSecret": "YOUR_DIRECT_AUTH_SECRET_HERE"
 }
 ```
 
 | Property | Description |
 |----------|-------------|
 | `baseUrl` | The base URL of your server |
+| `directAuthSecret` | The Direct Auth Secret gating the Direct API endpoints (`/auth/**`). Sent in the `Direct-Auth-Secret` header. Get it from the server's `deployment.yaml` (`server.security.direct_auth_secret`) or the value shown by `setup.sh`. |
 
 ### 2. Set Up SSL Certificates
 

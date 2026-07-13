@@ -51,6 +51,11 @@ interface EditAdvancedSettingsProps {
    * @param value - The new value for the field
    */
   onFieldChange: (field: keyof Application, value: unknown) => void;
+  /**
+   * When set, restricts the offered grant types to the intersection of this list and
+   * discovery's `grant_types_supported`. Omit to offer every discovery-advertised grant type.
+   */
+  allowedGrantTypes?: string[];
 }
 
 type OAuthCertificate = {type: string; value?: string} | null;
@@ -72,6 +77,7 @@ export default function EditAdvancedSettings({
   oauth2Config = undefined,
   oauth2Constraints = undefined,
   onFieldChange,
+  allowedGrantTypes = undefined,
 }: EditAdvancedSettingsProps) {
   const handleOAuth2ConfigChange = (updates: Partial<OAuth2Config>) => {
     const currentInboundAuth: InboundAuthConfig[] = editedApp.inboundAuthConfig ?? application.inboundAuthConfig ?? [];
@@ -92,6 +98,7 @@ export default function EditAdvancedSettings({
         oauth2Constraints={oauth2Constraints}
         onOAuth2ConfigChange={handleOAuth2ConfigChange}
         disabled={application.isReadOnly}
+        allowedGrantTypes={allowedGrantTypes}
       />
       <CertificateSection
         certificate={oauth2Config?.certificate}

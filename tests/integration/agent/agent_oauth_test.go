@@ -28,8 +28,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 // ============================================================================
@@ -113,7 +113,7 @@ func (ts *AgentOAuthFlowsTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create test user")
 	ts.userID = userID
 
-	flowID, err := testutils.GetFlowIDByHandle("default-basic-flow", "AUTHENTICATION")
+	flowID, err := testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
 	ts.Require().NoError(err, "Failed to get default auth flow ID")
 	ts.authFlowID = flowID
 }

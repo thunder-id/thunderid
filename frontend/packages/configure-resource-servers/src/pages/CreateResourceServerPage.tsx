@@ -162,7 +162,12 @@ export default function CreateResourceServerPage(): JSX.Element {
 
     createResourceServer.mutate(payload, {
       onSuccess: (created) => {
-        showToast(t('resourceServers:create.success', 'Resource server created successfully.'), 'success');
+        showToast(
+          selectedType === 'MCP'
+            ? t('resourceServers:create.successMcp', 'MCP server created successfully.')
+            : t('resourceServers:create.success', 'Resource server created successfully.'),
+          'success',
+        );
         (async (): Promise<void> => {
           await navigate(`/resource-servers/${created.id}?tab=resources`);
         })().catch((err: unknown) => {
@@ -215,6 +220,7 @@ export default function CreateResourceServerPage(): JSX.Element {
             name={name}
             handle={handle}
             delimiter={delimiter}
+            selectedType={selectedType}
             onNameChange={setName}
             onHandleChange={setHandle}
             onReadyChange={handleNameReadyChange}
@@ -230,7 +236,14 @@ export default function CreateResourceServerPage(): JSX.Element {
           />
         );
       case ResourceServerCreateStep.ORGANIZATION_UNIT:
-        return <ConfigureOrgUnit selectedOuId={ouId} onOuIdChange={setOuId} onReadyChange={handleOuReadyChange} />;
+        return (
+          <ConfigureOrgUnit
+            selectedOuId={ouId}
+            selectedType={selectedType}
+            onOuIdChange={setOuId}
+            onReadyChange={handleOuReadyChange}
+          />
+        );
       default:
         return null;
     }
@@ -315,7 +328,9 @@ export default function CreateResourceServerPage(): JSX.Element {
                       {isLastStep
                         ? createResourceServer.isPending
                           ? t('resourceServers:create.creating', 'Creating…')
-                          : t('resourceServers:create.submit', 'Create resource server')
+                          : selectedType === 'MCP'
+                            ? t('resourceServers:create.submitMcp', 'Create MCP server')
+                            : t('resourceServers:create.submit', 'Create resource server')
                         : t('common:actions.continue', 'Continue')}
                     </Button>
                   </Box>

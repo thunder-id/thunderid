@@ -287,8 +287,10 @@ func (ts *FlowSecretFlowTestSuite) TearDownSuite() {
 }
 
 // executeNewFlow posts a new-flow INIT request and returns the HTTP status code and parsed error
-// body. It does not inject a registered Flow Secret, so the body controls exactly what is sent.
-func (ts *FlowSecretFlowTestSuite) executeNewFlow(body map[string]interface{}) (int, *common.ErrorResponse) {
+// body. It does not inject a registered Flow Secret, so flowSecret controls exactly what is sent
+// in the Flow-Secret header (omitted entirely when empty).
+func (ts *FlowSecretFlowTestSuite) executeNewFlow(body map[string]interface{}, flowSecret string) (
+	int, *common.ErrorResponse) {
 	reqBody, err := json.Marshal(body)
 	ts.Require().NoError(err, "failed to marshal flow request")
 
@@ -296,6 +298,9 @@ func (ts *FlowSecretFlowTestSuite) executeNewFlow(body map[string]interface{}) (
 	ts.Require().NoError(err, "failed to create flow request")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	if flowSecret != "" {
+		req.Header.Set(testutils.FlowSecretHeaderName, flowSecret)
+	}
 
 	resp, err := testutils.GetHTTPClient().Do(req)
 	ts.Require().NoError(err, "failed to send flow request")
@@ -320,7 +325,7 @@ func (ts *FlowSecretFlowTestSuite) TestBackendApp_MissingFlowSecret_Rejected() {
 	status, errResp := ts.executeNewFlow(map[string]interface{}{
 		"applicationId": flowSecretBackendAppID,
 		"flowType":      "AUTHENTICATION",
-	})
+	}, "")
 
 	ts.Require().Equal(http.StatusUnauthorized, status)
 	ts.Require().Equal("FES-1011", errResp.Code)
@@ -330,9 +335,8 @@ func (ts *FlowSecretFlowTestSuite) TestBackendApp_MissingFlowSecret_Rejected() {
 func (ts *FlowSecretFlowTestSuite) TestBackendApp_InvalidFlowSecret_Rejected() {
 	status, errResp := ts.executeNewFlow(map[string]interface{}{
 		"applicationId": flowSecretBackendAppID,
-		"flowSecret":    "wrong-secret",
 		"flowType":      "AUTHENTICATION",
-	})
+	}, "wrong-secret")
 
 	ts.Require().Equal(http.StatusUnauthorized, status)
 	ts.Require().Equal("FES-1012", errResp.Code)
@@ -344,7 +348,7 @@ func (ts *FlowSecretFlowTestSuite) TestM2MApp_DirectInitiation_Forbidden() {
 	status, errResp := ts.executeNewFlow(map[string]interface{}{
 		"applicationId": flowSecretM2MAppID,
 		"flowType":      "AUTHENTICATION",
-	})
+	}, "")
 
 	ts.Require().Equal(http.StatusForbidden, status)
 	ts.Require().Equal("FES-1010", errResp.Code)
@@ -356,7 +360,7 @@ func (ts *FlowSecretFlowTestSuite) TestRedirectApp_DirectInitiation_Forbidden() 
 	status, errResp := ts.executeNewFlow(map[string]interface{}{
 		"applicationId": flowSecretRedirectAppID,
 		"flowType":      "AUTHENTICATION",
-	})
+	}, "")
 
 	ts.Require().Equal(http.StatusForbidden, status)
 	ts.Require().Equal("FES-1010", errResp.Code)

@@ -213,3 +213,10 @@ export interface SchemaPropertyInput {
   /** Preserved nested object properties for round-trip fidelity. */
   properties?: Record<string, PropertyDefinition>;
 }
+
+/**
+ * A predefined attribute from the front-end attribute library. It is a schema
+ * property definition without the transient row `id`, which is assigned when
+ * the attribute is added to a schema.
+ */
+export type LibraryAttribute = Omit<SchemaPropertyInput, 'id'>;

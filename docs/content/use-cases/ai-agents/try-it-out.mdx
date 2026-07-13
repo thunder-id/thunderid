@@ -52,19 +52,19 @@ See [User Types](/docs/next/guides/guides/users/user-types).
 
 The **AI Agent API** and the **Wayfinder Server** both need protection in the sample. The AI Agent API decides who is allowed to chat with the agent at all, and the Wayfinder Server decides who can book travel. Each is registered as a resource server, with its actions generating one permission per action.
 
-A **resource server** groups the APIs of one backend. Each resource server defines one or more **resources**, each resource defines **actions**, and <ProductName /> automatically generates a **permission** of the form `<resource>:<action>` for every action.
+A **resource server** groups the APIs of one backend. Each resource server defines one or more **resources**, each resource defines **actions**, and <ProductName /> automatically generates a **permission** of the form `<resource_server>:<resource>:<action>` for every action.
 
 ```
 wayfinder-agent                         (Resource Server)
 └── agent                               (Resource)
     └── access     →  agent:access      (Permission)
 
-booking-api                             (Resource Server)
+wayfinder                               (Resource Server)
 └── booking                             (Resource)
-    ├── read       →  booking:read      (Permission)
-    ├── create     →  booking:create
-    ├── cancel     →  booking:cancel
-    └── recommend  →  booking:recommend
+    ├── read       →  wayfinder:booking:read      (Permission)
+    ├── create     →  wayfinder:booking:create
+    ├── cancel     →  wayfinder:booking:cancel
+    └── recommend  →  wayfinder:booking:recommend
 ```
 
 Permissions are issued to the access tokens. See [Resource Servers](/docs/next/guides/guides/resource-servers).
@@ -74,8 +74,8 @@ Permissions are issued to the access tokens. See [Resource Servers](/docs/next/g
 A role bundles permissions for a class of principal. A user's or agent's effective permissions are the union of permissions across their roles. Wayfinder defines three roles:
 
 - `Chat User`: grants `agent:access`, the permission required to talk to the Wayfinder Concierge.
-- `Booking User`: grants `booking:read`, `booking:create`, and `booking:cancel` for booking travel through the UI.
-- `Recommender`: grants `booking:recommend`, the permission the Wayfinder Concierge needs to surface flight recommendations on its own.
+- `Booking User`: grants `wayfinder:booking:read`, `wayfinder:booking:create`, and `wayfinder:booking:cancel` for booking travel through the UI.
+- `Recommender`: grants `wayfinder:booking:recommend`, the permission the Wayfinder Concierge needs to surface flight recommendations on its own.
 
 John Doe carries both user roles; Jane Smith carries only `Booking User`. The `Recommender` role is assigned to the `WAYFINDER-CONCIERGE` agent, not to a user.
 
@@ -98,7 +98,7 @@ See [Manage Agents](/docs/next/guides/guides/agents/manage-agents) and [Agent Au
 
 ### Flows
 
-A flow is the sequence of steps a user moves through when signing in or granting consent. Wayfinder Web uses the bundled `default-basic-flow` for sign-in. The agent uses a separate **Wayfinder Agent Authentication Flow** that drives the OBO consent screen.
+A flow is the sequence of steps a user moves through when signing in or granting consent. Wayfinder Web uses the bundled `default-flow` for sign-in. The agent uses a separate **Wayfinder Agent Authentication Flow** that drives the OBO consent screen.
 
 See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow).
 
@@ -143,7 +143,7 @@ Import the Wayfinder configuration bundle.
 
    The import creates:
 
-   - **Resource servers:** `wayfinder-agent` (with `agent:access`) and `booking-api` (with `booking:read`, `booking:create`, `booking:cancel`, `booking:recommend`).
+   - **Resource servers:** `wayfinder-agent` (with `agent:access`) and `wayfinder` (with `wayfinder:booking:read`, `wayfinder:booking:create`, `wayfinder:booking:cancel`, `wayfinder:booking:recommend`).
    - **Roles:** `Chat User`, `Booking User`, and `Recommender`, with users and the agent pre-assigned:
      - `Chat User` → `john.doe`.
      - `Booking User` → `john.doe` and `jane.smith`.
@@ -201,18 +201,19 @@ Create every resource manually in the <ProductName /> console.
 
    See [Resource Servers](/docs/next/guides/guides/resource-servers).
 
-2. **Create the `booking-api` resource server.**
+2. **Create the `wayfinder` resource server.**
 
-   Invoke the **Resource Management API** again. Set the identifier to `booking-api`:
+   Invoke the **Resource Management API** again. Set the identifier to `http://localhost:8787/mcp` and the handle to `wayfinder`:
 
    ```bash
    curl -kL -X POST https://localhost:8090/resource-servers \
      -H 'Content-Type: application/json' \
      -H 'Authorization: Bearer <access-token>' \
      -d '{
-       "name": "Booking API",
+       "name": "Wayfinder Booking",
        "description": "Controls booking operations in the Wayfinder Travel API",
-       "identifier": "booking-api",
+       "identifier": "http://localhost:8787/mcp",
+       "handle": "wayfinder",
        "ouId": "<organization-unit-id>",
        "delimiter": ":"
      }'
@@ -221,7 +222,7 @@ Create every resource manually in the <ProductName /> console.
    Add a resource with handle `booking`:
 
    ```bash
-   curl -kL -X POST https://localhost:8090/resource-servers/<booking-api-rs-id>/resources \
+   curl -kL -X POST https://localhost:8090/resource-servers/<wayfinder-rs-id>/resources \
      -H 'Content-Type: application/json' \
      -H 'Authorization: Bearer <access-token>' \
      -d '{ "name": "Booking", "handle": "booking" }'
@@ -230,7 +231,7 @@ Create every resource manually in the <ProductName /> console.
    Then add four actions under the resource — repeat the call below for each handle (`read`, `create`, `cancel`, `recommend`):
 
    ```bash
-   curl -kL -X POST https://localhost:8090/resource-servers/<booking-api-rs-id>/resources/<booking-resource-id>/actions \
+   curl -kL -X POST https://localhost:8090/resource-servers/<wayfinder-rs-id>/resources/<booking-resource-id>/actions \
      -H 'Content-Type: application/json' \
      -H 'Authorization: Bearer <access-token>' \
      -d '{ "name": "Read", "handle": "read" }'
@@ -238,10 +239,10 @@ Create every resource manually in the <ProductName /> console.
 
    | Action      | Generated permission |
    | ----------- | -------------------- |
-   | `read`      | `booking:read`       |
-   | `create`    | `booking:create`     |
-   | `cancel`    | `booking:cancel`     |
-   | `recommend` | `booking:recommend`  |
+   | `read`      | `wayfinder:booking:read`       |
+   | `create`    | `wayfinder:booking:create`     |
+   | `cancel`    | `wayfinder:booking:cancel`     |
+   | `recommend` | `wayfinder:booking:recommend`  |
 
 3. **Create the `Chat User` role.**
 
@@ -266,7 +267,7 @@ Create every resource manually in the <ProductName /> console.
 
 4. **Create the `Booking User` role.**
 
-   Grant it `booking:read`, `booking:create`, and `booking:cancel` on `booking-api`:
+   Grant it `wayfinder:booking:read`, `wayfinder:booking:create`, and `wayfinder:booking:cancel` on `wayfinder`:
 
    ```bash
    curl -kL -X POST https://localhost:8090/roles \
@@ -278,8 +279,8 @@ Create every resource manually in the <ProductName /> console.
        "ouId": "<organization-unit-id>",
        "permissions": [
          {
-           "resourceServerId": "<booking-api-rs-id>",
-           "permissions": ["booking:read", "booking:create", "booking:cancel"]
+           "resourceServerId": "<wayfinder-rs-id>",
+           "permissions": ["wayfinder:booking:read", "wayfinder:booking:create", "wayfinder:booking:cancel"]
          }
        ]
      }'
@@ -287,7 +288,7 @@ Create every resource manually in the <ProductName /> console.
 
 5. **Create the `Recommender` role.**
 
-   Grant it `booking:recommend` on `booking-api`. This role will be assigned to the Wayfinder Concierge, not to a user:
+   Grant it `wayfinder:booking:recommend` on `wayfinder`. This role will be assigned to the Wayfinder Concierge, not to a user:
 
    ```bash
    curl -kL -X POST https://localhost:8090/roles \
@@ -295,12 +296,12 @@ Create every resource manually in the <ProductName /> console.
      -H 'Authorization: Bearer <access-token>' \
      -d '{
        "name": "Recommender",
-       "description": "Grants the booking:recommend permission to the Wayfinder Concierge",
+       "description": "Grants the wayfinder:booking:recommend permission to the Wayfinder Concierge",
        "ouId": "<organization-unit-id>",
        "permissions": [
          {
-           "resourceServerId": "<booking-api-rs-id>",
-           "permissions": ["booking:recommend"]
+           "resourceServerId": "<wayfinder-rs-id>",
+           "permissions": ["wayfinder:booking:recommend"]
          }
        ]
      }'
@@ -371,7 +372,7 @@ Create every resource manually in the <ProductName /> console.
 
 12. **Create the `Wayfinder Agent Authentication Flow`.**
 
-    Navigate to **Flows** and create a flow that authenticates the user with username and password, then shows a consent screen listing the `booking:*` permissions the agent is requesting. Attach the flow to the `WAYFINDER-CONCIERGE` agent.
+    Navigate to **Flows** and create a flow that authenticates the user with username and password, then shows a consent screen listing the `wayfinder:booking:*` permissions the agent is requesting. Attach the flow to the `WAYFINDER-CONCIERGE` agent.
 
     See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow).
 

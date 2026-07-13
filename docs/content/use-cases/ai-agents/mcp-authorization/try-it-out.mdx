@@ -12,7 +12,7 @@ import { WayfinderMcpOrganization, WayfinderMcpArchitecture } from '../../../../
 
 # Try It Out
 
-Each walkthrough below runs the [Securing MCP](../overview) pattern against the Wayfinder sample. The Wayfinder Server hosts an MCP server on `/mcp` alongside its REST API; an external MCP client signs in through <ProductName /> and calls Wayfinder's tools, with <ProductName /> enforcing who can invoke which tool.
+Each walkthrough below runs the [Securing MCP](../overview) pattern against the Wayfinder sample. The Wayfinder Server hosts an MCP server on `/mcp` alongside its REST API; an external MCP client signs in through <ProductName /> and calls Wayfinder's tools. The server enforces the scopes in the access token before invoking protected tool handlers.
 
 ## Meet Wayfinder
 
@@ -22,7 +22,7 @@ Wayfinder is the same travel-booking application from the [Securing AI Agents tr
 
 ### Meet the Cast
 
-- **John Doe** signs in to the external MCP client and picks which `booking:*` permissions to grant at consent. He carries the `Booking User` role with read, create, and cancel permissions.
+- **John Doe** signs in to the external MCP client and picks which `wayfinder:booking:*` permissions to grant at consent. He carries the `Booking User` role with read, create, and cancel permissions.
 - **MCP Inspector** is the [reference debug UI](https://github.com/modelcontextprotocol/inspector) for MCP servers — browser-based, speaks the protocol, supports OAuth-protected servers out of the box.
 
 ## Sample Architecture
@@ -31,7 +31,7 @@ This tryout extends the AI Agents architecture with one new piece:
 
 - **External MCP Client**: an OAuth client (MCP Inspector) that signs in through <ProductName /> and calls the Wayfinder MCP server's tools.
 
-The Wayfinder Server validates the issued access token on every MCP call and enforces the per-tool scope before invoking the tool handler.
+The Wayfinder Server validates the issued access token on every MCP call. The server enforces the per-tool scope before invoking protected tool handlers.
 
 <WayfinderMcpArchitecture />
 
@@ -39,7 +39,7 @@ The Wayfinder Server validates the issued access token on every MCP call and enf
 
 Complete the [AI Agents Set Up Your Environment](../../try-it-out#set-up-your-environment) first. The same bundle also seeds the `EXTERNAL-MCP-CLIENT` application used here.
 
-<Stepper stepNode="h3" as="h4">
+<Stepper stepNode="h3" as="h3">
 
 ### Verify the New Application
 

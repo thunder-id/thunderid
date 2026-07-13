@@ -87,6 +87,13 @@ type EngineContext struct {
 	frameStack []*frame
 	// sharedRuntimeData is a cross-frame key-value store available to executors that opt in.
 	sharedRuntimeData map[string]string
+	// SSOHandleIn carries the inbound SSO handle for this request. It is transient: read from
+	// the transport at the start of execution and never persisted with the flow context.
+	SSOHandleIn string
+	// SSOFlowVersion is the current active version of this flow's definition, captured from the
+	// flow fetched when the context is loaded. Transient; used by the SSO-Check node to reject
+	// sessions established at an incompatible flow version.
+	SSOFlowVersion int
 }
 
 // mergeRuntimeData merges the given data into RuntimeData.
@@ -215,6 +222,12 @@ type FlowStep struct {
 	Data           FlowData
 	Assertion      string
 	Error          *tidcommon.ServiceError
+
+	// SSOHandleOut / SSOFlowID carry an SSO session handle minted during this step back to the
+	// transport layer (the handler), which sets it as a per-flow cookie. They are not part of
+	// the JSON response body.
+	SSOHandleOut string
+	SSOFlowID    string
 }
 
 // FlowData holds the data returned by a flow execution step
@@ -242,7 +255,6 @@ type FlowResponse struct {
 // FlowRequest represents the flow execution API request body
 type FlowRequest struct {
 	ApplicationID  string            `json:"applicationId"`
-	FlowSecret     string            `json:"flowSecret,omitempty"`
 	FlowType       string            `json:"flowType"`
 	Verbose        bool              `json:"verbose,omitempty"`
 	ExecutionID    string            `json:"executionId"`

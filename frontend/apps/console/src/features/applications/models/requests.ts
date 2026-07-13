@@ -60,8 +60,10 @@ import type {Application} from './application';
  *       scopes: ['openid', 'profile', 'email'],
  *       token: {
  *         accessToken: {
- *           validityPeriod: 3600,
- *           userAttributes: ['email', 'username']
+ *           userConfig: {
+ *             validityPeriod: 3600,
+ *             attributes: ['email', 'username']
+ *           }
  *         },
  *         idToken: {
  *           validityPeriod: 3600,
@@ -93,7 +95,7 @@ import type {Application} from './application';
  *       publicClient: true,
  *       scopes: ['openid', 'profile'],
  *       token: {
- *         accessToken: { validityPeriod: 3600, userAttributes: [] },
+ *         accessToken: { userConfig: { validityPeriod: 3600, attributes: [] } },
  *         idToken: { validityPeriod: 3600, userAttributes: ['sub'], scopeClaims: {} }
  *       }
  *     }

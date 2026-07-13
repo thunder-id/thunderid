@@ -1103,20 +1103,22 @@ func (suite *InboundClientServiceTestSuite) TestResolveOAuthTokens_NilInputUsesA
 	assertion := &inboundmodel.AssertionConfig{ValidityPeriod: 900, UserAttributes: []string{"email"}}
 	at, idt, rt := resolveOAuthTokens(nil, assertion)
 
-	assert.Equal(suite.T(), int64(900), at.ValidityPeriod)
-	assert.Equal(suite.T(), []string{"email"}, at.UserAttributes)
+	assert.Equal(suite.T(), int64(900), at.UserConfig.ValidityPeriod)
+	assert.Equal(suite.T(), []string{"email"}, at.UserConfig.Attributes)
 	assert.Equal(suite.T(), int64(900), idt.ValidityPeriod)
 	assert.Equal(suite.T(), int64(86400), rt.ValidityPeriod)
 }
 
 func (suite *InboundClientServiceTestSuite) TestResolveOAuthTokens_InputOverrides() {
 	in := &providers.OAuthTokenConfig{
-		AccessToken:  &providers.AccessTokenConfig{ValidityPeriod: 60, UserAttributes: []string{"sub"}},
+		AccessToken: &providers.AccessTokenConfig{
+			UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 60, Attributes: []string{"sub"}},
+		},
 		IDToken:      &providers.IDTokenConfig{ValidityPeriod: 120, UserAttributes: []string{"email"}},
 		RefreshToken: &providers.RefreshTokenConfig{ValidityPeriod: 1800},
 	}
 	at, idt, rt := resolveOAuthTokens(in, &inboundmodel.AssertionConfig{ValidityPeriod: 900})
-	assert.Equal(suite.T(), int64(60), at.ValidityPeriod)
+	assert.Equal(suite.T(), int64(60), at.UserConfig.ValidityPeriod)
 	assert.Equal(suite.T(), int64(120), idt.ValidityPeriod)
 	assert.Equal(suite.T(), int64(1800), rt.ValidityPeriod)
 }
@@ -1132,12 +1134,14 @@ func (suite *InboundClientServiceTestSuite) TestResolveOAuthTokens_ZeroValidityF
 	sysconfig.GetServerRuntime().Config.OAuth.RefreshToken.ValidityPeriod = 86400
 
 	in := &providers.OAuthTokenConfig{
-		AccessToken:  &providers.AccessTokenConfig{ValidityPeriod: 0},
+		AccessToken: &providers.AccessTokenConfig{
+			UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 0},
+		},
 		IDToken:      &providers.IDTokenConfig{ValidityPeriod: 0},
 		RefreshToken: &providers.RefreshTokenConfig{ValidityPeriod: 0},
 	}
 	at, idt, rt := resolveOAuthTokens(in, &inboundmodel.AssertionConfig{ValidityPeriod: 1800})
-	assert.Equal(suite.T(), int64(1800), at.ValidityPeriod)
+	assert.Equal(suite.T(), int64(1800), at.UserConfig.ValidityPeriod)
 	assert.Equal(suite.T(), int64(1800), idt.ValidityPeriod)
 	assert.Equal(suite.T(), int64(86400), rt.ValidityPeriod)
 }
@@ -1764,8 +1768,10 @@ func TestExtractRequestedAttributesFromInbound_DedupsAcrossSources(t *testing.T)
 	}
 	p := &providers.OAuthProfile{
 		Token: &providers.OAuthTokenConfig{
-			AccessToken: &providers.AccessTokenConfig{UserAttributes: []string{"email", "given_name"}},
-			IDToken:     &providers.IDTokenConfig{UserAttributes: []string{"family_name"}},
+			AccessToken: &providers.AccessTokenConfig{
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"email", "given_name"}},
+			},
+			IDToken: &providers.IDTokenConfig{UserAttributes: []string{"family_name"}},
 		},
 		UserInfo: &providers.UserInfoConfig{UserAttributes: []string{"email", "picture"}},
 	}
@@ -1953,7 +1959,9 @@ func (suite *InboundClientServiceTestSuite) TestCollectConfiguredUserAttributes_
 func (suite *InboundClientServiceTestSuite) TestCollectConfiguredUserAttributes_AccessTokenOnly() {
 	p := &providers.OAuthProfile{
 		Token: &providers.OAuthTokenConfig{
-			AccessToken: &providers.AccessTokenConfig{UserAttributes: []string{"email"}},
+			AccessToken: &providers.AccessTokenConfig{
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"email"}},
+			},
 		},
 	}
 	out := collectConfiguredUserAttributes(nil, p)
@@ -1985,8 +1993,10 @@ func (suite *InboundClientServiceTestSuite) TestCollectConfiguredUserAttributes_
 	assertion := &inboundmodel.AssertionConfig{UserAttributes: []string{"email"}}
 	p := &providers.OAuthProfile{
 		Token: &providers.OAuthTokenConfig{
-			AccessToken: &providers.AccessTokenConfig{UserAttributes: []string{"email", "name"}},
-			IDToken:     &providers.IDTokenConfig{UserAttributes: []string{"name", "phone"}},
+			AccessToken: &providers.AccessTokenConfig{
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"email", "name"}},
+			},
+			IDToken: &providers.IDTokenConfig{UserAttributes: []string{"name", "phone"}},
 		},
 		UserInfo: &providers.UserInfoConfig{UserAttributes: []string{"email", "picture"}},
 	}
@@ -2060,7 +2070,9 @@ func (suite *InboundClientServiceTestSuite) TestValidateUserAttributes_ValidAcce
 
 	p := &providers.OAuthProfile{
 		Token: &providers.OAuthTokenConfig{
-			AccessToken: &providers.AccessTokenConfig{UserAttributes: []string{"email"}},
+			AccessToken: &providers.AccessTokenConfig{
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"email"}},
+			},
 		},
 	}
 	assert.NoError(suite.T(), svc.validateUserAttributesAgainstAllowedTypes(
@@ -2075,7 +2087,9 @@ func (suite *InboundClientServiceTestSuite) TestValidateUserAttributes_InvalidAc
 
 	p := &providers.OAuthProfile{
 		Token: &providers.OAuthTokenConfig{
-			AccessToken: &providers.AccessTokenConfig{UserAttributes: []string{"unknown_attr"}},
+			AccessToken: &providers.AccessTokenConfig{
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"unknown_attr"}},
+			},
 		},
 	}
 	assert.ErrorIs(suite.T(), svc.validateUserAttributesAgainstAllowedTypes(
@@ -2157,7 +2171,9 @@ func (suite *InboundClientServiceTestSuite) TestValidateUserAttributes_ComputedA
 	p := &providers.OAuthProfile{
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"email", "groups", "ouId", "ouName", "ouHandle", "roles", "userType"},
+				UserConfig: &providers.AccessTokenSubConfig{
+					Attributes: []string{"email", "groups", "ouId", "ouName", "ouHandle", "roles", "userType"},
+				},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"groups", "ouId"},
@@ -2241,7 +2257,9 @@ func (suite *InboundClientServiceTestSuite) TestValidate_RejectsInvalidUserAttri
 	c.AllowedUserTypes = []string{"employee"}
 	p := validOAuthProfileData()
 	p.Token = &providers.OAuthTokenConfig{
-		AccessToken: &providers.AccessTokenConfig{UserAttributes: []string{"bad_attr"}},
+		AccessToken: &providers.AccessTokenConfig{
+			UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"bad_attr"}},
+		},
 	}
 
 	err := svc.Validate(context.Background(), &c, p, true)

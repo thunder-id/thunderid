@@ -231,8 +231,10 @@ func (suite *ExportServiceTestSuite) TestExportResources_CompleteOAuthApplicatio
 		Scopes:                  []string{"openid", "profile"},
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				ValidityPeriod: 3600,
-				UserAttributes: []string{"email", "username"},
+				UserConfig: &providers.AccessTokenSubConfig{
+					ValidityPeriod: 3600,
+					Attributes:     []string{"email", "username"},
+				},
 			},
 			IDToken: &providers.IDTokenConfig{
 				ValidityPeriod: 1800,

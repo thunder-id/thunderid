@@ -103,6 +103,19 @@ var (
 		Query: `SELECT COUNT(*) as total FROM "INBOUND_CLIENT" WHERE THEME_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
+	// queryGetEntityIDsByLayoutID retrieves paginated entity IDs for inbound clients using a specific layout.
+	queryGetEntityIDsByLayoutID = dbmodel.DBQuery{
+		ID: "ASQ-INBC_MGT-17",
+		Query: `SELECT ENTITY_ID FROM "INBOUND_CLIENT" WHERE LAYOUT_ID = $1 AND DEPLOYMENT_ID = $2 ` +
+			`ORDER BY ENTITY_ID ASC LIMIT $3 OFFSET $4`,
+	}
+
+	// queryGetEntityIDsByLayoutIDCount retrieves the total count of inbound clients using a specific layout.
+	queryGetEntityIDsByLayoutIDCount = dbmodel.DBQuery{
+		ID:    "ASQ-INBC_MGT-18",
+		Query: `SELECT COUNT(*) as total FROM "INBOUND_CLIENT" WHERE LAYOUT_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+
 	// queryGetEntityIDsByFlowID retrieves paginated entity IDs for inbound clients referencing a specific
 	// flow through any of the authentication, registration, or recovery flow slots.
 	queryGetEntityIDsByFlowID = dbmodel.DBQuery{

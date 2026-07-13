@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -120,10 +121,12 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 	status := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
-		case idp.ErrorIDPNotFound.Code:
+		case idp.ErrorIDPNotFound.Code, notification.ErrorSenderNotFound.Code:
 			status = http.StatusNotFound
 		case idp.ErrorIDPAlreadyExists.Code,
-			idp.ErrorIDPHasBlockingDependencies.Code:
+			idp.ErrorIDPHasBlockingDependencies.Code,
+			notification.ErrorDuplicateSenderName.Code,
+			notification.ErrorSenderHasBlockingDependencies.Code:
 			status = http.StatusConflict
 		default:
 			status = http.StatusBadRequest

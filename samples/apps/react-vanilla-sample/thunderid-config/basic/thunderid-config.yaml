@@ -61,8 +61,8 @@ policyUri: https://localhost:3000/privacy
 contacts:
   - admin@example.com
   - support@example.com
-authFlowHandle: default-basic-flow
-registrationFlowHandle: default-basic-flow
+authFlowHandle: default-flow
+registrationFlowHandle: default-flow
 isRegistrationFlowEnabled: true
 isRecoveryFlowEnabled: false
 assertion:
@@ -89,12 +89,13 @@ inboundAuthConfig:
       requirePushedAuthorizationRequests: false
       token:
         accessToken:
-          validityPeriod: 3600
-          userAttributes:
-            - given_name
-            - family_name
-            - email
-            - groups
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - groups
         idToken:
           validityPeriod: 3600
           userAttributes:

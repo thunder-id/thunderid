@@ -32,6 +32,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/cibamock"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
@@ -79,6 +80,7 @@ func (suite *GrantHandlerProviderTestSuite) SetupTest() {
 		suite.mockEntityProvider,
 		suite.mockResourceService,
 		suite.mockCIBAService,
+		revocationmock.NewRefreshTokenRevokerInterfaceMock(suite.T()),
 		testhelpers.OAuthConfig(),
 	)
 }
@@ -95,6 +97,7 @@ func (suite *GrantHandlerProviderTestSuite) TestNewGrantHandlerProvider() {
 		suite.mockEntityProvider,
 		suite.mockResourceService,
 		suite.mockCIBAService,
+		revocationmock.NewRefreshTokenRevokerInterfaceMock(suite.T()),
 		testhelpers.OAuthConfig(),
 	)
 	assert.NotNil(suite.T(), provider)

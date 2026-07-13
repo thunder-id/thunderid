@@ -11,13 +11,16 @@
         "jwks_url": "",
         "audience": "",
         "required_claims": []
-      }
+      },
+      "token_revocation": {
+        "enabled": true,
+        "source": "db",
+        "sync_interval_seconds": 60
+      },
+      "direct_auth_secret": ""
     }
   },
   "gate_client": {
-    "hostname": "localhost",
-    "port": 8090,
-    "scheme": "https",
     "path": "/gate"
   },
   "tls": {
@@ -110,6 +113,7 @@
   "oauth": {
     "refresh_token": {
       "renew_on_grant": false,
+      "revoke_previous_on_renew": true,
       "validity_period": 86400
     },
     "authorization_code": {
@@ -132,8 +136,8 @@
     "allow_wildcard_redirect_uri": false
   },
   "flow": {
-    "default_auth_flow_handle": "default-basic-flow",
-    "user_onboarding_flow_handle": "default-user-onboarding",
+    "default_auth_flow_handle": "default-flow",
+    "user_onboarding_flow_handle": "default-flow",
     "max_version_history": 10,
     "auto_infer_registration": false,
     "store": "composite"
@@ -146,12 +150,7 @@
     }
   },
   "user": {
-    "indexed_attributes": [
-      "username",
-      "email",
-      "mobile_number",
-      "sub"
-    ],
+    "indexed_attributes": ["username", "email", "mobile_number", "sub"],
     "store": "composite"
   },
   "group": {
@@ -196,9 +195,7 @@
       "console": {
         "enabled": false,
         "format": "json",
-        "categories": [
-          "observability.all"
-        ]
+        "categories": ["observability.all"]
       }
     }
   },
@@ -292,7 +289,12 @@
     "client_id_scheme": "x509_san_dns",
     "signing_key_id": "ecdsa-key",
     "ephemeral_key_id": "vp-enc",
-    "response_enc_values": ["A128GCM", "A256GCM", "A128CBC-HS256", "A256CBC-HS512"],
+    "response_enc_values": [
+      "A128GCM",
+      "A256GCM",
+      "A128CBC-HS256",
+      "A256CBC-HS512"
+    ],
     "request_validity_seconds": 300,
     "state_ttl_seconds": 300,
     "leeway_seconds": 30,

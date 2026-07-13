@@ -38,6 +38,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
@@ -143,6 +144,7 @@ type ExecutorDependencies struct {
 	GithubSvc             github.GithubOAuthAuthnServiceInterface
 	GoogleSvc             google.GoogleOIDCAuthnServiceInterface
 	OpenID4VPVerifierSvc  openid4vp.OpenID4VPServiceInterface
+	SessionService        session.Service
 }
 
 type builtInExecutorRegistrar func(ExecutorRegistryInterface, ExecutorDependencies)
@@ -253,6 +255,13 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameOpenID4VPVerify: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOpenID4VPVerify, newOpenID4VPVerifier(
 				deps.FlowFactory, deps.OpenID4VPVerifierSvc, deps.AuthnProvider))
+		},
+		ExecutorNameSSOCheck: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameSSOCheck, newSSOCheckExecutor(deps.FlowFactory, deps.SessionService))
+		},
+		ExecutorNameSession: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameSession, newSessionExecutor(
+				deps.FlowFactory, deps.SessionService, deps.AuthnProvider))
 		},
 		ExecutorNameOTPExecutor: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOTPExecutor, newOTPExecutor(

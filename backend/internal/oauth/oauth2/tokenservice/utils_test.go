@@ -35,6 +35,7 @@ import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
@@ -538,7 +539,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_WithServerLevel
 		},
 	}
 
-	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeRefresh)
+	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeRefresh, 0)
 
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), int64(86400), result.ValidityPeriod)
@@ -556,7 +557,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_WithoutServerLe
 		},
 	}
 
-	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeRefresh)
+	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeRefresh, 0)
 
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), int64(3600), result.ValidityPeriod)
@@ -575,7 +576,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_WithNilOAuthApp
 		},
 	}
 
-	result := ResolveTokenConfig(cfg, nil, TokenTypeRefresh)
+	result := ResolveTokenConfig(cfg, nil, TokenTypeRefresh, 0)
 
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), int64(604800), result.ValidityPeriod)
@@ -600,7 +601,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_WithTokenConfig
 		Token:    &providers.OAuthTokenConfig{},
 	}
 
-	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeRefresh)
+	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeRefresh, 0)
 
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), int64(86400), result.ValidityPeriod)
@@ -615,7 +616,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_AccessToken_WithNilOAuthApp(
 		},
 	}
 
-	result := ResolveTokenConfig(cfg, nil, TokenTypeAccess)
+	result := ResolveTokenConfig(cfg, nil, TokenTypeAccess, 0)
 
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), int64(3600), result.ValidityPeriod)
@@ -635,7 +636,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_AccessToken_WithNilToken() {
 		Token:    nil,
 	}
 
-	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeAccess)
+	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeAccess, 0)
 
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), int64(3600), result.ValidityPeriod)
@@ -654,12 +655,15 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_AccessToken_WithAppLevelConf
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				ValidityPeriod: 7200,
+				UserConfig: &providers.AccessTokenSubConfig{
+					ValidityPeriod: 7200,
+				},
 			},
 		},
 	}
 
-	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeAccess)
+	result := ResolveTokenConfig(
+		cfg, oauthApp, TokenTypeAccess, oauthApp.UserAccessTokenConfig().ValidityPeriodOrZero())
 
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), int64(7200), result.ValidityPeriod)
@@ -673,7 +677,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_IDToken_WithNilOAuthApp() {
 		},
 	}
 
-	result := ResolveTokenConfig(cfg, nil, TokenTypeID)
+	result := ResolveTokenConfig(cfg, nil, TokenTypeID, 0)
 
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), int64(3600), result.ValidityPeriod)
@@ -693,7 +697,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_IDToken_WithNilToken() {
 		Token:    nil,
 	}
 
-	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeID)
+	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeID, 0)
 
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), int64(3600), result.ValidityPeriod)
@@ -717,7 +721,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_IDToken_WithAppLevelConfig()
 		},
 	}
 
-	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeID)
+	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeID, 0)
 
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), int64(1800), result.ValidityPeriod)
@@ -731,7 +735,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_WithCustomIssuer_NilOAuthApp
 		},
 	}
 
-	result := ResolveTokenConfig(cfg, nil, TokenTypeAccess)
+	result := ResolveTokenConfig(cfg, nil, TokenTypeAccess, 0)
 
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), "https://thunder.io", result.Issuer)
@@ -750,7 +754,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_WithTokenConfig_UsesServerIs
 		Token:    &providers.OAuthTokenConfig{},
 	}
 
-	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeAccess)
+	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeAccess, 0)
 
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), "https://thunder.io", result.Issuer)
@@ -772,7 +776,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_NoOUID_ReturnsNil() {
 	ous := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 
 	app := newOAuthAppForClientAttributes("")
-	claims, err := BuildClientAttributes(context.Background(), app, ous)
+	claims, err := BuildClientAttributes(context.Background(), app, ous, nil)
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), claims)
@@ -781,7 +785,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_NoOUID_ReturnsNil() {
 func (suite *UtilsTestSuite) TestBuildClientAttributes_NilOAuthApp_ReturnsNil() {
 	ous := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 
-	claims, err := BuildClientAttributes(context.Background(), nil, ous)
+	claims, err := BuildClientAttributes(context.Background(), nil, ous, nil)
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), claims)
@@ -797,7 +801,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_HappyPath() {
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForClientAttributes(testBCCOUID)
-	claims, err := BuildClientAttributes(context.Background(), app, ous)
+	claims, err := BuildClientAttributes(context.Background(), app, ous, nil)
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), claims)
@@ -818,7 +822,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_OULookupError_ReturnsErro
 	)
 
 	app := newOAuthAppForClientAttributes(testBCCOUID)
-	claims, err := BuildClientAttributes(context.Background(), app, ous)
+	claims, err := BuildClientAttributes(context.Background(), app, ous, nil)
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), claims)
@@ -826,8 +830,93 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_OULookupError_ReturnsErro
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_NilOUService_ReturnsNil() {
 	app := newOAuthAppForClientAttributes(testBCCOUID)
-	claims, err := BuildClientAttributes(context.Background(), app, nil)
+	claims, err := BuildClientAttributes(context.Background(), app, nil, nil)
 	assert.NoError(suite.T(), err)
+	assert.Nil(suite.T(), claims)
+}
+
+func newOAuthAppForOwnAttributes(clientAttributes []string) *providers.OAuthClient {
+	return &providers.OAuthClient{
+		ID:             testBCCAppID,
+		EntityCategory: providers.EntityCategoryAgent,
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
+				ClientConfig: &providers.AccessTokenSubConfig{Attributes: clientAttributes},
+			},
+		},
+	}
+}
+
+func (suite *UtilsTestSuite) TestBuildClientAttributes_ResolvesRegardlessOfEntityCategory() {
+	actors := actorprovidermock.NewActorProviderMock(suite.T())
+	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+		ID:         testBCCAppID,
+		Attributes: []byte(`{"modelProvider":"anthropic"}`),
+	}, (*tidcommon.ServiceError)(nil))
+
+	app := newOAuthAppForOwnAttributes([]string{"modelProvider"})
+	app.EntityCategory = providers.EntityCategoryUser
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
+}
+
+func (suite *UtilsTestSuite) TestBuildClientAttributes_NoClientAttributesConfigured_ReturnsNil() {
+	actors := actorprovidermock.NewActorProviderMock(suite.T())
+
+	app := newOAuthAppForOwnAttributes(nil)
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+
+	assert.NoError(suite.T(), err)
+	assert.Nil(suite.T(), claims)
+}
+
+func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_HappyPath() {
+	actors := actorprovidermock.NewActorProviderMock(suite.T())
+	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+		ID:         testBCCAppID,
+		Attributes: []byte(`{"modelProvider":"anthropic","model":"claude","unrequested":"x"}`),
+	}, (*tidcommon.ServiceError)(nil))
+
+	app := newOAuthAppForOwnAttributes([]string{"modelProvider", "model"})
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
+	assert.Equal(suite.T(), "claude", claims["model"])
+	assert.NotContains(suite.T(), claims, "unrequested")
+}
+
+func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_SkipsReservedClaimNames() {
+	actors := actorprovidermock.NewActorProviderMock(suite.T())
+	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+		ID:         testBCCAppID,
+		Attributes: []byte(`{"scope":"malicious-override","modelProvider":"anthropic"}`),
+	}, (*tidcommon.ServiceError)(nil))
+
+	app := newOAuthAppForOwnAttributes([]string{"scope", "modelProvider"})
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
+	assert.NotContains(suite.T(), claims, "scope")
+}
+
+func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentGetActorError_ReturnsError() {
+	actors := actorprovidermock.NewActorProviderMock(suite.T())
+	actors.On("GetActor", testBCCAppID).Return(
+		(*providers.Entity)(nil),
+		&tidcommon.ServiceError{
+			Code:  "AGT-0001",
+			Error: tidcommon.I18nMessage{Key: "error.test.not_found", DefaultValue: "not found"},
+		},
+	)
+
+	app := newOAuthAppForOwnAttributes([]string{"modelProvider"})
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+
+	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), claims)
 }
 
@@ -924,7 +1013,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_WithAppLevelCon
 		},
 	}
 
-	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeRefresh)
+	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeRefresh, 0)
 
 	suite.Equal(int64(7200), result.ValidityPeriod)
 }
@@ -944,7 +1033,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_FallsBackToServ
 		Token: &providers.OAuthTokenConfig{},
 	}
 
-	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeRefresh)
+	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeRefresh, 0)
 
 	suite.Equal(int64(86400), result.ValidityPeriod)
 }

@@ -24,7 +24,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -75,6 +77,32 @@ func (a *ouUserResolverAdapter) GetUserListByOUID(
 	}
 
 	return result, nil
+}
+
+// GetResourceDependencies implements resourcedependency.Provider. It reports the users that belong
+// to the given organization unit, which block the organization unit's deletion (a user cannot exist
+// without its organization unit). Only organization unit targets are handled; other resource types
+// have no user dependencies. The number of users scanned is bounded by MaxCompositeStoreRecords.
+func (a *ouUserResolverAdapter) GetResourceDependencies(
+	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
+	if resourceType != resourcedependency.ResourceTypeOU {
+		return []resourcedependency.ResourceDependency{}, nil
+	}
+
+	users, err := a.GetUserListByOUID(ctx, id, serverconst.MaxCompositeStoreRecords, 0, false)
+	if err != nil {
+		return nil, err
+	}
+
+	deps := make([]resourcedependency.ResourceDependency, 0, len(users))
+	for _, u := range users {
+		deps = append(deps, resourcedependency.ResourceDependency{
+			ResourceType:     resourcedependency.ResourceTypeUser,
+			ID:               u.ID,
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		})
+	}
+	return deps, nil
 }
 
 // resolveOUUserDisplayPaths collects user types and resolves their display attribute paths.

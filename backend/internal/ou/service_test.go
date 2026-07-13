@@ -33,10 +33,28 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
+
+// stubDependencyRegistry is a minimal resourcedependency.Registry for delete tests.
+type stubDependencyRegistry struct {
+	resp *resourcedependency.DependenciesResponse
+	err  error
+}
+
+func (s *stubDependencyRegistry) RegisterProvider(resourcedependency.Provider) {}
+
+func (s *stubDependencyRegistry) GetDependencies(
+	context.Context, string, string) (*resourcedependency.DependenciesResponse, error) {
+	return s.resp, s.err
+}
+
+func (s *stubDependencyRegistry) CascadeDelete(context.Context, string, string) (int, error) {
+	return 0, nil
+}
 
 type OrganizationUnitServiceTestSuite struct {
 	suite.Suite
@@ -1275,17 +1293,32 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationU
 	})
 }
 
-func (suite *OrganizationUnitServiceTestSuite) TestOUService_DeleteOrganizationUnit() {
-	type resolverSetup struct {
-		userResolver  *OUUserResolverMock
-		groupResolver *OUGroupResolverMock
+// blockingDeps builds a dependency response containing a single restrict usage.
+func blockingDeps() *resourcedependency.DependenciesResponse {
+	total := 1
+	return &resourcedependency.DependenciesResponse{
+		TotalResults: &total,
+		Count:        1,
+		Usages: []resourcedependency.ResourceDependency{{
+			ResourceType:     resourcedependency.ResourceTypeUser,
+			ID:               "user-1",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		}},
 	}
+}
 
+// emptyDeps builds a dependency response with no usages.
+func emptyDeps() *resourcedependency.DependenciesResponse {
+	total := 0
+	return &resourcedependency.DependenciesResponse{TotalResults: &total}
+}
+
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_DeleteOrganizationUnit() {
 	testCases := []struct {
-		name          string
-		setup         func(*organizationUnitStoreInterfaceMock)
-		resolverSetup func(*resolverSetup)
-		wantErr       *tidcommon.ServiceError
+		name     string
+		setup    func(*organizationUnitStoreInterfaceMock)
+		registry resourcedependency.Registry
+		wantErr  *tidcommon.ServiceError
 	}{
 		{
 			name: "existence check error",
@@ -1306,62 +1339,26 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_DeleteOrganizationU
 			wantErr: &ErrorOrganizationUnitNotFound,
 		},
 		{
-			name: "has child OUs",
+			name: "has blocking dependencies",
 			setup: func(store *organizationUnitStoreInterfaceMock) {
 				store.On("IsOrganizationUnitExists", mock.Anything, "ou-1").
 					Return(true, nil).Once()
 				store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").
 					Return(false).Once()
-				store.On("GetOrganizationUnitChildrenCount", mock.Anything, "ou-1", mock.Anything).
-					Return(1, nil).Once()
 			},
-			wantErr: &ErrorCannotDeleteOrganizationUnit,
+			registry: &stubDependencyRegistry{resp: blockingDeps()},
+			wantErr:  &ErrorCannotDeleteOrganizationUnit,
 		},
 		{
-			name: "child OU check failure",
+			name: "dependency data unavailable",
 			setup: func(store *organizationUnitStoreInterfaceMock) {
 				store.On("IsOrganizationUnitExists", mock.Anything, "ou-1").
 					Return(true, nil).Once()
 				store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").
 					Return(false).Once()
-				store.On("GetOrganizationUnitChildrenCount", mock.Anything, "ou-1", mock.Anything).
-					Return(0, errors.New("boom")).Once()
 			},
-			wantErr: &tidcommon.InternalServerError,
-		},
-		{
-			name: "has users",
-			setup: func(store *organizationUnitStoreInterfaceMock) {
-				store.On("IsOrganizationUnitExists", mock.Anything, "ou-1").
-					Return(true, nil).Once()
-				store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").
-					Return(false).Once()
-				store.On("GetOrganizationUnitChildrenCount", mock.Anything, "ou-1", mock.Anything).
-					Return(0, nil).Once()
-			},
-			resolverSetup: func(rs *resolverSetup) {
-				rs.userResolver.On("GetUserCountByOUID", mock.Anything, "ou-1").
-					Return(3, nil).Once()
-			},
-			wantErr: &ErrorCannotDeleteOrganizationUnit,
-		},
-		{
-			name: "has groups",
-			setup: func(store *organizationUnitStoreInterfaceMock) {
-				store.On("IsOrganizationUnitExists", mock.Anything, "ou-1").
-					Return(true, nil).Once()
-				store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").
-					Return(false).Once()
-				store.On("GetOrganizationUnitChildrenCount", mock.Anything, "ou-1", mock.Anything).
-					Return(0, nil).Once()
-			},
-			resolverSetup: func(rs *resolverSetup) {
-				rs.userResolver.On("GetUserCountByOUID", mock.Anything, "ou-1").
-					Return(0, nil).Once()
-				rs.groupResolver.On("GetGroupCountByOUID", mock.Anything, "ou-1").
-					Return(2, nil).Once()
-			},
-			wantErr: &ErrorCannotDeleteOrganizationUnit,
+			registry: &stubDependencyRegistry{resp: &resourcedependency.DependenciesResponse{}},
+			wantErr:  &tidcommon.InternalServerError,
 		},
 		{
 			name: "delete failure",
@@ -1370,18 +1367,11 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_DeleteOrganizationU
 					Return(true, nil).Once()
 				store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").
 					Return(false).Once()
-				store.On("GetOrganizationUnitChildrenCount", mock.Anything, "ou-1", mock.Anything).
-					Return(0, nil).Once()
 				store.On("DeleteOrganizationUnit", mock.Anything, "ou-1").
 					Return(errors.New("boom")).Once()
 			},
-			resolverSetup: func(rs *resolverSetup) {
-				rs.userResolver.On("GetUserCountByOUID", mock.Anything, "ou-1").
-					Return(0, nil).Once()
-				rs.groupResolver.On("GetGroupCountByOUID", mock.Anything, "ou-1").
-					Return(0, nil).Once()
-			},
-			wantErr: &tidcommon.InternalServerError,
+			registry: &stubDependencyRegistry{resp: emptyDeps()},
+			wantErr:  &tidcommon.InternalServerError,
 		},
 		{
 			name: "delete not found",
@@ -1390,18 +1380,11 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_DeleteOrganizationU
 					Return(true, nil).Once()
 				store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").
 					Return(false).Once()
-				store.On("GetOrganizationUnitChildrenCount", mock.Anything, "ou-1", mock.Anything).
-					Return(0, nil).Once()
 				store.On("DeleteOrganizationUnit", mock.Anything, "ou-1").
 					Return(ErrOrganizationUnitNotFound).Once()
 			},
-			resolverSetup: func(rs *resolverSetup) {
-				rs.userResolver.On("GetUserCountByOUID", mock.Anything, "ou-1").
-					Return(0, nil).Once()
-				rs.groupResolver.On("GetGroupCountByOUID", mock.Anything, "ou-1").
-					Return(0, nil).Once()
-			},
-			wantErr: &ErrorOrganizationUnitNotFound,
+			registry: &stubDependencyRegistry{resp: emptyDeps()},
+			wantErr:  &ErrorOrganizationUnitNotFound,
 		},
 		{
 			name: "success",
@@ -1410,17 +1393,10 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_DeleteOrganizationU
 					Return(true, nil).Once()
 				store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").
 					Return(false).Once()
-				store.On("GetOrganizationUnitChildrenCount", mock.Anything, "ou-1", mock.Anything).
-					Return(0, nil).Once()
 				store.On("DeleteOrganizationUnit", mock.Anything, "ou-1").
 					Return(nil).Once()
 			},
-			resolverSetup: func(rs *resolverSetup) {
-				rs.userResolver.On("GetUserCountByOUID", mock.Anything, "ou-1").
-					Return(0, nil).Once()
-				rs.groupResolver.On("GetGroupCountByOUID", mock.Anything, "ou-1").
-					Return(0, nil).Once()
-			},
+			registry: &stubDependencyRegistry{resp: emptyDeps()},
 		},
 	}
 
@@ -1430,17 +1406,10 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_DeleteOrganizationU
 			store := newOrganizationUnitStoreInterfaceMock(suite.T())
 			tc.setup(store)
 
-			rs := &resolverSetup{
-				userResolver:  new(OUUserResolverMock),
-				groupResolver: new(OUGroupResolverMock),
+			service := suite.newService(store, newAllowAllAuthz(suite.T()))
+			if tc.registry != nil {
+				service.SetDependencyRegistry(tc.registry)
 			}
-			if tc.resolverSetup != nil {
-				tc.resolverSetup(rs)
-			}
-
-			service := suite.newServiceWithResolvers(
-				store, newAllowAllAuthz(suite.T()), rs.userResolver, rs.groupResolver,
-			)
 			err := service.DeleteOrganizationUnit(context.Background(), "ou-1")
 
 			if tc.wantErr != nil {
@@ -1450,6 +1419,50 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_DeleteOrganizationU
 			}
 		})
 	}
+}
+
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetResourceDependencies() {
+	suite.Run("reports child organization units as restrict", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnitChildrenList",
+			mock.Anything, "ou-1", serverconst.MaxCompositeStoreRecords, 0, mock.Anything).
+			Return([]providers.OrganizationUnitBasic{{ID: "child-1", Name: "Child 1"}}, nil).Once()
+
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+		deps, err := service.GetResourceDependencies(
+			context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+		suite.Require().NoError(err)
+		suite.Require().Len(deps, 1)
+		suite.Require().Equal(resourcedependency.ResourceTypeOU, deps[0].ResourceType)
+		suite.Require().Equal("child-1", deps[0].ID)
+		suite.Require().Equal(resourcedependency.BehaviorRestrict, deps[0].BehaviorOnDelete)
+	})
+
+	suite.Run("ignores non-organization-unit targets", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+		deps, err := service.GetResourceDependencies(
+			context.Background(), resourcedependency.ResourceTypeUser, "user-1")
+
+		suite.Require().NoError(err)
+		suite.Require().Empty(deps)
+	})
+
+	suite.Run("store error", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnitChildrenList",
+			mock.Anything, "ou-1", serverconst.MaxCompositeStoreRecords, 0, mock.Anything).
+			Return([]providers.OrganizationUnitBasic(nil), errors.New("boom")).Once()
+
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+		deps, err := service.GetResourceDependencies(
+			context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+		suite.Require().Error(err)
+		suite.Require().Nil(deps)
+	})
 }
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_DeleteOrganizationUnitByPath() {
@@ -1487,20 +1500,15 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_DeleteOrganizationU
 		suite.Require().Equal(tidcommon.InternalServerError, *err)
 	})
 
-	suite.Run("cannot delete - has child OUs", func() {
+	suite.Run("cannot delete - has blocking dependencies", func() {
 		store := newOrganizationUnitStoreInterfaceMock(suite.T())
 		store.On("GetOrganizationUnitByPath", mock.Anything, []string{"root"}).
 			Return(providers.OrganizationUnit{ID: "ou-1"}, nil).Once()
 		store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").
 			Return(false).Twice()
-		store.On("GetOrganizationUnitChildrenCount", mock.Anything, "ou-1", mock.Anything).
-			Return(1, nil).Once()
 
-		userRes := new(OUUserResolverMock)
-		groupRes := new(OUGroupResolverMock)
-		service := suite.newServiceWithResolvers(
-			store, newAllowAllAuthz(suite.T()), userRes, groupRes,
-		)
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+		service.SetDependencyRegistry(&stubDependencyRegistry{resp: blockingDeps()})
 		err := service.DeleteOrganizationUnitByPath(context.Background(), "root")
 
 		suite.Require().Equal(ErrorCannotDeleteOrganizationUnit, *err)
@@ -1512,19 +1520,11 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_DeleteOrganizationU
 			Return(providers.OrganizationUnit{ID: "ou-1"}, nil).Once()
 		store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").
 			Return(false).Twice()
-		store.On("GetOrganizationUnitChildrenCount", mock.Anything, "ou-1", mock.Anything).
-			Return(0, nil).Once()
 		store.On("DeleteOrganizationUnit", mock.Anything, "ou-1").
 			Return(nil).Once()
 
-		userRes := new(OUUserResolverMock)
-		userRes.On("GetUserCountByOUID", mock.Anything, "ou-1").Return(0, nil).Once()
-		groupRes := new(OUGroupResolverMock)
-		groupRes.On("GetGroupCountByOUID", mock.Anything, "ou-1").Return(0, nil).Once()
-
-		service := suite.newServiceWithResolvers(
-			store, newAllowAllAuthz(suite.T()), userRes, groupRes,
-		)
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+		service.SetDependencyRegistry(&stubDependencyRegistry{resp: emptyDeps()})
 		err := service.DeleteOrganizationUnitByPath(context.Background(), "root")
 
 		suite.Require().Nil(err)

@@ -8,7 +8,7 @@ sidebar_position: 6
 
 Use this page to register the external MCP client manually instead of importing the declarative bundle from [Try It Out](../try-it-out). Pick this path when you want to see exactly what gets created, or adapt the setup to your own project.
 
-If you haven't created the `wayfinder-booking` resource server, the `Customer` user type, the booking roles, and the `john.doe` user yet, do that first by following [Configure It Yourself](../../configure-it-yourself) under Securing AI Agents. This page adds only the external client application on top — no new role, no changes to `john.doe`.
+If you haven't created the `wayfinder` resource server, the `Customer` user type, the booking roles, and the `john.doe` user yet, do that first by following [Configure It Yourself](../../configure-it-yourself) under Securing AI Agents. This page adds only the external client application on top — no new role, no changes to `john.doe`.
 
 ## Register the External MCP Client Application
 
@@ -23,11 +23,11 @@ Navigate to **Applications** → **Add Application** and choose **Browser App** 
 | Allowed grants       | `authorization_code`, `refresh_token`                                                                                              |
 | PKCE                 | Required                                                                                                                          |
 | Allowed user types   | `Customer`                                                                                                                        |
-| Authentication flow  | `wayfinder-agent-auth-flow` (the same flow the Wayfinder Concierge uses, so the consent screen surfaces each `booking:*` permission as a toggle)        |
+| Authentication flow  | `wayfinder-agent-auth-flow` (the same flow the Wayfinder Concierge uses, so the consent screen surfaces each `wayfinder:booking:*` permission as a toggle)        |
 
 See [Manage Applications](/docs/next/guides/guides/applications/manage-applications).
 
-The walkthrough relies on the consent screen at sign-in to narrow what the external client gets. `john.doe` keeps his existing `Booking User` role unchanged, and picks which `booking:*` permissions to release the first time he signs in through Inspector.
+The walkthrough relies on the consent screen at sign-in to narrow what the external client gets. `john.doe` keeps his existing `Booking User` role unchanged, and picks which `wayfinder:booking:*` permissions to release the first time he signs in through Inspector.
 
 :::info[Alternative: Dynamic Client Registration]
 If you don't want to register every MCP client up-front, <ProductName /> also supports [Dynamic Client Registration](/docs/next/guides/guides/protocols/oauth-oidc/dynamic-client-registration). An MCP client that supports DCR can discover <ProductName /> through the MCP server's protected-resource metadata and register itself, after which it uses its issued credentials for the same authorization-code flow. The tryout uses static registration for predictability — DCR is the right choice when you can't enumerate every client in advance.

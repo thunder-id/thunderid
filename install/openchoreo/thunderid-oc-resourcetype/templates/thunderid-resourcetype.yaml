@@ -1,0 +1,885 @@
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: {{ if .Values.resourceType.cluster }}ClusterResourceType{{ else }}ResourceType{{ end }}
+metadata:
+  name: thunderid
+  annotations:
+    openchoreo.dev/description: >-
+      ThunderID Identity Provider, provisioned fully declaratively: all
+      resources (organization units, user types, applications, flows, users)
+      come from the declarativeResources parameter. Runs on the bundled
+      SQLite databases by default (ephemeral, development only) or an
+      externally hosted PostgreSQL database (e.g. AWS RDS) for production.
+      Sensitive values are materialized from the platform secret store
+      (External Secrets Operator) — no Kubernetes Secrets are created by
+      hand.
+    openchoreo.dev/display-name: "ThunderID"
+spec:
+  # ─── Parameters (frozen for the life of the ResourceRelease) ─────────────────
+  parameters:
+    openAPIV3Schema:
+      type: object
+      required: [secretStore, declarativeResources]
+      properties:
+        image:
+          type: string
+          default: "ghcr.io/thunder-id/thunderid:latest"
+        # Platform secret store location of the environment values. An
+        # ExternalSecret is rendered that extracts every property stored at
+        # the remote key into a Secret on the data plane, injected into the
+        # container via envFrom. Required properties at the key:
+        #   CRYPTO_ENCRYPTION_KEY
+        # With runtime.dbType postgres, additionally:
+        #   DB_CONFIG_HOSTNAME,  DB_CONFIG_PORT,  DB_CONFIG_NAME,
+        #   DB_CONFIG_USERNAME,  DB_CONFIG_PASSWORD,  DB_CONFIG_SSLMODE
+        #   DB_RUNTIME_HOSTNAME, DB_RUNTIME_PORT, DB_RUNTIME_NAME,
+        #   DB_RUNTIME_USERNAME, DB_RUNTIME_PASSWORD, DB_RUNTIME_SSLMODE
+        #   DB_USER_HOSTNAME,    DB_USER_PORT,    DB_USER_NAME,
+        #   DB_USER_USERNAME,    DB_USER_PASSWORD,    DB_USER_SSLMODE
+        #   DB_OPERATION_HOSTNAME, DB_OPERATION_PORT, DB_OPERATION_NAME,
+        #   DB_OPERATION_USERNAME, DB_OPERATION_PASSWORD, DB_OPERATION_SSLMODE
+        # Additionally, one property per {{ "{{.VAR}}" }} placeholder used in
+        # declarativeResources and not covered by parameters.env — e.g.
+        # ADMIN_PASSWORD, which the samples reference for the admin user's
+        # credentials.
+        # ThunderID resolves the {{ "{{.VAR}}" }} placeholders in its
+        # deployment.yaml and declarative resources from these env vars at
+        # startup and fails fast if any is missing.
+        secretStore:
+          type: object
+          required: [key]
+          properties:
+            # External Secrets Operator store to resolve against.
+            name: { type: string, default: "default" }
+            # Store scope: ClusterSecretStore (cluster-scoped, default) or
+            # SecretStore (namespaced, must exist in the data-plane
+            # namespace where the pods run).
+            kind: { type: string, enum: [ClusterSecretStore, SecretStore], default: "ClusterSecretStore" }
+            # Remote path whose properties become the environment values,
+            # e.g. thunderid/dev on the store's KV mount.
+            key: { type: string, minLength: 1 }
+        # Declarative resource definitions as a single multi-doc YAML file —
+        # the same format `./start.sh resources.yaml` accepts (e.g. an
+        # export from the /export API): documents separated by ---, each
+        # with a "# resource_type: <type>" header and camelCase attributes.
+        # Mounted at /opt/thunderid/config/resources.yaml and passed to the
+        # server via --resources at startup. This is the sole provisioning
+        # mechanism — the file must carry everything the deployment needs
+        # (organization units, user types, applications, flows, and users
+        # including their credentials: blocks). File-backed resources are
+        # read-only at runtime.
+        declarativeResources:
+          type: string
+          minLength: 1
+        # Extra non-secret environment variables for the ThunderID containers.
+        # Used to resolve template placeholders in declarativeResources (e.g.
+        # CONSOLE_CLIENT_ID, CONSOLE_REDIRECT_URIS).
+        env:
+          type: array
+          default: []
+          items:
+            type: object
+            required: [name, value]
+            properties:
+              name: { type: string }
+              value: { type: string }
+        # Full-content overrides for the rendered configuration files. Each
+        # replaces the built-in default entirely when set; the value is used
+        # verbatim — no CEL rendering, so environmentConfigs like
+        # serverPublicUrl are not interpolated into overrides. deployment.yaml
+        # {{ "{{.VAR}}" }} env placeholders still resolve at startup from the
+        # secret store values and parameters.env. Leave empty to use the
+        # built-in defaults driven by runtime.* and environmentConfigs.
+        configOverrides:
+          type: object
+          default: {}
+          properties:
+            deploymentYaml: { type: string, default: "" }
+            gateConfigJs: { type: string, default: "" }
+            consoleConfigJs: { type: string, default: "" }
+        runtime:
+          type: object
+          default: {}
+          properties:
+            imagePullPolicy:
+              type: string
+              enum: [Always, IfNotPresent, Never]
+              default: "Always"
+            # Database engine for the rendered deployment.yaml.
+            #   sqlite   — default; zero prerequisites, uses the database
+            #              files bundled in the image. Storage is pod-local
+            #              and ephemeral: runtime data (sessions, tokens,
+            #              database-backed stores) is lost on pod restart,
+            #              and replicas must stay at 1. Development and
+            #              evaluation only.
+            #   postgres — externally hosted PostgreSQL (e.g. AWS RDS);
+            #              connection details come from the DB_* properties
+            #              at secretStore.key. Use for production.
+            dbType:
+              type: string
+              enum: [sqlite, postgres]
+              default: "sqlite"
+            # enabled: false — serve plain HTTP (default); true — serve HTTPS
+            # from the ThunderID container using config/certs/server.cert and
+            # server.key (the image's self-signed pair unless overridden via
+            # runtime.certs below). Enabling HTTPS also renders a
+            # BackendConfigPolicy so the gateway originates TLS to the
+            # backend (requires the data-plane cluster-agent to be allowed
+            # to manage gateway.kgateway.dev/backendconfigpolicies).
+            tls:
+              type: object
+              default: {}
+              properties:
+                enabled: { type: boolean, default: false }
+                minVersion: { type: string, enum: ["1.2", "1.3"], default: "1.3" }
+                # Verify the backend certificate at the gateway against the
+                # root CA published as the ca.crt property at
+                # runtime.certs.storeKey. When false the gateway encrypts
+                # but skips verification, which is the only workable mode
+                # with the image's bundled self-signed certificate.
+                verifyBackend: { type: boolean, default: false }
+            # Override individual certificate/key files under
+            # /opt/thunderid/config/certs/ from the platform secret store.
+            # storeKey is the remote path holding the files as properties;
+            # files lists which properties to project — each overlays the
+            # matching bundled file, the rest stay visible. Known files:
+            # server.cert, server.key (HTTPS serving pair), signing.cert,
+            # signing.key, ecdsa-signing.cert, ecdsa-signing.key (JWT
+            # signing), crypto.key, and ca.crt (for tls.verifyBackend).
+            certs:
+              type: object
+              default: {}
+              properties:
+                storeKey: { type: string, default: "" }
+                files:
+                  type: array
+                  default: []
+                  items:
+                    type: string
+                    pattern: "^[A-Za-z0-9._-]+$"
+            # Handle of the flow used when an application does not pin its
+            # own authFlowId. Empty inherits the server default.
+            defaultAuthFlowHandle:
+              type: string
+              default: ""
+            # Global declarative mode: services without an explicit
+            # stores.* override behave as "declarative" when true. Set to
+            # false to opt services back to database-backed stores by
+            # default and pick declarative/composite per service via
+            # stores.*.
+            declarativeResourcesEnabled:
+              type: boolean
+              default: true
+            port:
+              type: integer
+              default: 8090
+            gate:
+              type: object
+              default: {}
+              properties:
+                clientBase: { type: string, default: "/gate" }
+            console:
+              type: object
+              default: {}
+              properties:
+                clientBase: { type: string, default: "/console" }
+                clientId: { type: string, default: "CONSOLE" }
+                # Must cover the management scopes the Console requests —
+                # matches frontend/apps/console/public/config.js.
+                scopes: { type: string, default: "[\"openid\", \"profile\", \"email\", \"ou\", \"system\", \"system:user\", \"system:group\", \"system:ou:view\", \"system:usertype:view\"]" }
+            jwt:
+              type: object
+              default: {}
+              properties:
+                validityPeriod: { type: integer, default: 3600 }
+            oauth:
+              type: object
+              default: {}
+              properties:
+                refreshTokenValidityPeriod: { type: integer, default: 86400 }
+            cache:
+              type: object
+              default: {}
+              properties:
+                size: { type: integer, default: 10000 }
+                ttl: { type: integer, default: 3600 }
+            consent:
+              type: object
+              default: {}
+              properties:
+                enabled: { type: boolean, default: false }
+                baseUrl: { type: string, default: "http://localhost:9090/api/v1" }
+            # Storage mode per service:
+            #   ""          — inherit: declarative when declarativeResourcesEnabled,
+            #                 mutable otherwise (default)
+            #   mutable     — database-backed, editable via API/Console
+            #   declarative — file-backed only, read-only at runtime
+            #   composite   — file-backed entries merged with database-backed ones
+            # Set to declarative or composite for the resource types supplied
+            # via declarativeResources.
+            stores:
+              type: object
+              default: {}
+              properties:
+                user: { type: string, enum: ["", mutable, declarative, composite], default: "" }
+                userType: { type: string, enum: ["", mutable, declarative, composite], default: "" }
+                organizationUnit: { type: string, enum: ["", mutable, declarative, composite], default: "" }
+                identityProvider: { type: string, enum: ["", mutable, declarative, composite], default: "" }
+                application: { type: string, enum: ["", mutable, declarative, composite], default: "" }
+                group: { type: string, enum: ["", mutable, declarative, composite], default: "" }
+                role: { type: string, enum: ["", mutable, declarative, composite], default: "" }
+                theme: { type: string, enum: ["", mutable, declarative, composite], default: "" }
+                layout: { type: string, enum: ["", mutable, declarative, composite], default: "" }
+                translation: { type: string, enum: ["", mutable, declarative, composite], default: "" }
+                flow: { type: string, enum: ["", mutable, declarative, composite], default: "" }
+                resourceServer: { type: string, enum: ["", mutable, declarative, composite], default: "" }
+                serverConfig: { type: string, enum: ["", mutable, declarative, composite], default: "" }
+
+  # ─── EnvironmentConfigs (per-env, set via ResourceReleaseBinding) ────────────
+  environmentConfigs:
+    openAPIV3Schema:
+      type: object
+      properties:
+        replicas:
+          type: integer
+          default: 1
+        endpointVisibility:
+          type: string
+          enum: [external, internal]
+          default: "external"
+        serverPublicUrl:
+          type: string
+          default: ""
+        gateClientHostname:
+          type: string
+          default: ""
+        # Serve the Console on its own public hostname (e.g.
+        # admin.example.com) in addition to the default hostname. Renders a
+        # second HTTPRoute. Empty keeps the single-hostname topology.
+        consoleHostname:
+          type: string
+          default: ""
+        # Server URL the Console frontend calls — set together with
+        # consoleHostname (e.g. https://admin.example.com). Empty falls
+        # back to serverPublicUrl.
+        consolePublicUrl:
+          type: string
+          default: ""
+        gateClientPort:
+          type: integer
+          default: 19080
+        gateClientScheme:
+          type: string
+          enum: [http, https]
+          default: "http"
+        resourceRequestsCpu:
+          type: string
+          default: "100m"
+        resourceRequestsMemory:
+          type: string
+          default: "128Mi"
+        resourceLimitsCpu:
+          type: string
+          default: "500m"
+        resourceLimitsMemory:
+          type: string
+          default: "512Mi"
+
+  retainPolicy: Delete
+
+  outputs:
+    - name: host
+      value: "${metadata.name}.${metadata.namespace}.svc.cluster.local"
+    - name: port
+      value: "${string(parameters.runtime.port)}"
+
+  # ─── Resources (Kubernetes objects rendered by the OpenChoreo provisioner) ───
+  resources:
+    # Materializes the environment Secret from the platform secret store.
+    # Every property at the remote key becomes a Secret key. The secret
+    # values only transit between the store and the data plane, never the
+    # control plane.
+    - id: env-secret
+      template:
+        apiVersion: external-secrets.io/v1
+        kind: ExternalSecret
+        metadata:
+          name: "${metadata.name}-env"
+          namespace: "${metadata.namespace}"
+          labels: ${metadata.labels}
+        spec:
+          refreshInterval: 1h
+          secretStoreRef:
+            name: "${parameters.secretStore.name}"
+            kind: "${parameters.secretStore.kind}"
+          target:
+            name: "${metadata.name}-env"
+            creationPolicy: Owner
+          dataFrom:
+            - extract:
+                key: "${parameters.secretStore.key}"
+
+    # Materializes the certificate override files from the platform secret
+    # store — properties at storeKey become the file contents projected
+    # over /opt/thunderid/config/certs/.
+    - id: certs-secret
+      includeWhen: "${parameters.runtime.certs.storeKey != ''}"
+      template:
+        apiVersion: external-secrets.io/v1
+        kind: ExternalSecret
+        metadata:
+          name: "${metadata.name}-certs"
+          namespace: "${metadata.namespace}"
+          labels: ${metadata.labels}
+        spec:
+          refreshInterval: 1h
+          secretStoreRef:
+            name: "${parameters.secretStore.name}"
+            kind: "${parameters.secretStore.kind}"
+          target:
+            name: "${metadata.name}-certs"
+            creationPolicy: Owner
+          dataFrom:
+            - extract:
+                key: "${parameters.runtime.certs.storeKey}"
+
+    # User-supplied declarative resource definitions — a single multi-doc
+    # YAML file mounted on the server container and passed via --resources
+    # at startup. The sole provisioning mechanism for this ResourceType.
+    - id: declarative-resources
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${metadata.name}-resources"
+          namespace: "${metadata.namespace}"
+          labels: ${metadata.labels}
+        data:
+          resources.yaml: |
+            ${parameters.declarativeResources}
+
+    # ThunderID deployment.yaml — SQLite variant (default). Uses the
+    # database files bundled in the image; storage is pod-local and
+    # ephemeral. The crypto key stays a Go-template placeholder resolved at
+    # startup from the secret store values.
+    - id: thunderid-config
+      includeWhen: "${parameters.configOverrides.deploymentYaml == '' && parameters.runtime.dbType == 'sqlite'}"
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${metadata.name}-config"
+          namespace: "${metadata.namespace}"
+          labels: ${metadata.labels}
+        data:
+          deployment.yaml: |
+            server:
+              hostname: "0.0.0.0"
+              public_url: "${environmentConfigs.serverPublicUrl}"
+              port: ${parameters.runtime.port}
+              http_only: ${!parameters.runtime.tls.enabled}
+
+            tls:
+              min_version: "${parameters.runtime.tls.minVersion}"
+              cert_file: "config/certs/server.cert"
+              key_file: "config/certs/server.key"
+
+            gate_client:
+              hostname: "${environmentConfigs.gateClientHostname}"
+              port: ${environmentConfigs.gateClientPort}
+              scheme: "${environmentConfigs.gateClientScheme}"
+
+            crypto:
+              encryption:
+                key: "{{ "{{.CRYPTO_ENCRYPTION_KEY}}" }}"
+
+            database:
+              config:
+                type: "sqlite"
+                sqlite:
+                  path: "database/configdb.db"
+                  options: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
+                  max_open_conns: 500
+                  max_idle_conns: 100
+                  conn_max_lifetime: 3600
+              runtime:
+                type: "sqlite"
+                sqlite:
+                  path: "database/runtimedb.db"
+                  options: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
+                  max_open_conns: 500
+                  max_idle_conns: 100
+                  conn_max_lifetime: 3600
+              user:
+                type: "sqlite"
+                sqlite:
+                  path: "database/userdb.db"
+                  options: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
+                  max_open_conns: 500
+                  max_idle_conns: 100
+                  conn_max_lifetime: 3600
+              operation:
+                type: "sqlite"
+                sqlite:
+                  path: "database/operationdb.db"
+                  options: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
+                  max_open_conns: 500
+                  max_idle_conns: 100
+                  conn_max_lifetime: 3600
+
+            cache:
+              disabled: false
+              type: "inmemory"
+              size: ${parameters.runtime.cache.size}
+              ttl: ${parameters.runtime.cache.ttl}
+              eviction_policy: "LRU"
+              cleanup_interval: 600
+
+            jwt:
+              validity_period: ${parameters.runtime.jwt.validityPeriod}
+
+            oauth:
+              refresh_token:
+                renew_on_grant: true
+                validity_period: ${parameters.runtime.oauth.refreshTokenValidityPeriod}
+
+            flow:
+              default_auth_flow_handle: "${parameters.runtime.defaultAuthFlowHandle}"
+              max_version_history: 3
+              auto_infer_registration: true
+              store: "${parameters.runtime.stores.flow}"
+
+            consent:
+              enabled: ${parameters.runtime.consent.enabled}
+              base_url: "${parameters.runtime.consent.baseUrl}"
+
+            declarative_resources:
+              enabled: ${parameters.runtime.declarativeResourcesEnabled}
+
+            user:
+              store: "${parameters.runtime.stores.user}"
+            user_type:
+              store: "${parameters.runtime.stores.userType}"
+            organization_unit:
+              store: "${parameters.runtime.stores.organizationUnit}"
+            identity_provider:
+              store: "${parameters.runtime.stores.identityProvider}"
+            application:
+              store: "${parameters.runtime.stores.application}"
+            group:
+              store: "${parameters.runtime.stores.group}"
+            role:
+              store: "${parameters.runtime.stores.role}"
+            theme:
+              store: "${parameters.runtime.stores.theme}"
+            layout:
+              store: "${parameters.runtime.stores.layout}"
+            translation:
+              store: "${parameters.runtime.stores.translation}"
+            resource:
+              store: "${parameters.runtime.stores.resourceServer}"
+            server_config:
+              store: "${parameters.runtime.stores.serverConfig}"
+
+    # ThunderID deployment.yaml — PostgreSQL variant. The database
+    # connection fields and crypto key are left as Go-template placeholders
+    # that ThunderID substitutes at startup from the env vars materialized
+    # out of the platform secret store (parameters.secretStore).
+    - id: thunderid-config-pg
+      includeWhen: "${parameters.configOverrides.deploymentYaml == '' && parameters.runtime.dbType == 'postgres'}"
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${metadata.name}-config"
+          namespace: "${metadata.namespace}"
+          labels: ${metadata.labels}
+        data:
+          deployment.yaml: |
+            server:
+              hostname: "0.0.0.0"
+              public_url: "${environmentConfigs.serverPublicUrl}"
+              port: ${parameters.runtime.port}
+              http_only: ${!parameters.runtime.tls.enabled}
+
+            tls:
+              min_version: "${parameters.runtime.tls.minVersion}"
+              cert_file: "config/certs/server.cert"
+              key_file: "config/certs/server.key"
+
+            gate_client:
+              hostname: "${environmentConfigs.gateClientHostname}"
+              port: ${environmentConfigs.gateClientPort}
+              scheme: "${environmentConfigs.gateClientScheme}"
+
+            crypto:
+              encryption:
+                key: "{{ "{{.CRYPTO_ENCRYPTION_KEY}}" }}"
+
+            database:
+              config:
+                type: "postgres"
+                postgres:
+                  hostname: "{{ "{{.DB_CONFIG_HOSTNAME}}" }}"
+                  port: {{ "{{.DB_CONFIG_PORT}}" }}
+                  name: "{{ "{{.DB_CONFIG_NAME}}" }}"
+                  username: "{{ "{{.DB_CONFIG_USERNAME}}" }}"
+                  password: "{{ "{{.DB_CONFIG_PASSWORD}}" }}"
+                  sslmode: "{{ "{{.DB_CONFIG_SSLMODE}}" }}"
+              runtime:
+                type: "postgres"
+                postgres:
+                  hostname: "{{ "{{.DB_RUNTIME_HOSTNAME}}" }}"
+                  port: {{ "{{.DB_RUNTIME_PORT}}" }}
+                  name: "{{ "{{.DB_RUNTIME_NAME}}" }}"
+                  username: "{{ "{{.DB_RUNTIME_USERNAME}}" }}"
+                  password: "{{ "{{.DB_RUNTIME_PASSWORD}}" }}"
+                  sslmode: "{{ "{{.DB_RUNTIME_SSLMODE}}" }}"
+              user:
+                type: "postgres"
+                postgres:
+                  hostname: "{{ "{{.DB_USER_HOSTNAME}}" }}"
+                  port: {{ "{{.DB_USER_PORT}}" }}
+                  name: "{{ "{{.DB_USER_NAME}}" }}"
+                  username: "{{ "{{.DB_USER_USERNAME}}" }}"
+                  password: "{{ "{{.DB_USER_PASSWORD}}" }}"
+                  sslmode: "{{ "{{.DB_USER_SSLMODE}}" }}"
+              operation:
+                type: "postgres"
+                postgres:
+                  hostname: "{{ "{{.DB_OPERATION_HOSTNAME}}" }}"
+                  port: {{ "{{.DB_OPERATION_PORT}}" }}
+                  name: "{{ "{{.DB_OPERATION_NAME}}" }}"
+                  username: "{{ "{{.DB_OPERATION_USERNAME}}" }}"
+                  password: "{{ "{{.DB_OPERATION_PASSWORD}}" }}"
+                  sslmode: "{{ "{{.DB_OPERATION_SSLMODE}}" }}"
+
+            cache:
+              disabled: false
+              type: "inmemory"
+              size: ${parameters.runtime.cache.size}
+              ttl: ${parameters.runtime.cache.ttl}
+              eviction_policy: "LRU"
+              cleanup_interval: 600
+
+            jwt:
+              validity_period: ${parameters.runtime.jwt.validityPeriod}
+
+            oauth:
+              refresh_token:
+                renew_on_grant: true
+                validity_period: ${parameters.runtime.oauth.refreshTokenValidityPeriod}
+
+            flow:
+              default_auth_flow_handle: "${parameters.runtime.defaultAuthFlowHandle}"
+              max_version_history: 3
+              auto_infer_registration: true
+              store: "${parameters.runtime.stores.flow}"
+
+            consent:
+              enabled: ${parameters.runtime.consent.enabled}
+              base_url: "${parameters.runtime.consent.baseUrl}"
+
+            declarative_resources:
+              enabled: ${parameters.runtime.declarativeResourcesEnabled}
+
+            user:
+              store: "${parameters.runtime.stores.user}"
+            user_type:
+              store: "${parameters.runtime.stores.userType}"
+            organization_unit:
+              store: "${parameters.runtime.stores.organizationUnit}"
+            identity_provider:
+              store: "${parameters.runtime.stores.identityProvider}"
+            application:
+              store: "${parameters.runtime.stores.application}"
+            group:
+              store: "${parameters.runtime.stores.group}"
+            role:
+              store: "${parameters.runtime.stores.role}"
+            theme:
+              store: "${parameters.runtime.stores.theme}"
+            layout:
+              store: "${parameters.runtime.stores.layout}"
+            translation:
+              store: "${parameters.runtime.stores.translation}"
+            resource:
+              store: "${parameters.runtime.stores.resourceServer}"
+            server_config:
+              store: "${parameters.runtime.stores.serverConfig}"
+
+    # User-supplied deployment.yaml, replacing the built-in default above.
+    - id: thunderid-config-override
+      includeWhen: "${parameters.configOverrides.deploymentYaml != ''}"
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${metadata.name}-config"
+          namespace: "${metadata.namespace}"
+          labels: ${metadata.labels}
+        data:
+          deployment.yaml: |
+            ${parameters.configOverrides.deploymentYaml}
+
+    - id: gate-config
+      includeWhen: "${parameters.configOverrides.gateConfigJs == ''}"
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${metadata.name}-gate-config"
+          namespace: "${metadata.namespace}"
+          labels: ${metadata.labels}
+        data:
+          config.js: |
+            window.__THUNDERID_RUNTIME_CONFIG__ = {
+              brand: {
+                product_name: "ThunderID",
+                favicon: {
+                  light: "assets/images/favicon.ico",
+                  dark: "assets/images/favicon-inverted.ico",
+                },
+              },
+              client: {
+                base: "${parameters.runtime.gate.clientBase}",
+              },
+              server: {
+                public_url: "${environmentConfigs.serverPublicUrl}",
+              },
+            };
+
+    # User-supplied Gate config.js, replacing the built-in default above.
+    - id: gate-config-override
+      includeWhen: "${parameters.configOverrides.gateConfigJs != ''}"
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${metadata.name}-gate-config"
+          namespace: "${metadata.namespace}"
+          labels: ${metadata.labels}
+        data:
+          config.js: |
+            ${parameters.configOverrides.gateConfigJs}
+
+    - id: console-config
+      includeWhen: "${parameters.configOverrides.consoleConfigJs == ''}"
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${metadata.name}-console-config"
+          namespace: "${metadata.namespace}"
+          labels: ${metadata.labels}
+        data:
+          config.js: |
+            window.__THUNDERID_RUNTIME_CONFIG__ = {
+              brand: {
+                product_name: "ThunderID",
+                documentation: {
+                  baseUrl: "https://thunderid.dev/docs/next",
+                  releasesUrl: "https://thunderid.dev/data/releases.json",
+                },
+                favicon: {
+                  light: "assets/images/favicon.ico",
+                  dark: "assets/images/favicon-inverted.ico",
+                },
+              },
+              client: {
+                base: "${parameters.runtime.console.clientBase}",
+                client_id: "${parameters.runtime.console.clientId}",
+                scopes: ${parameters.runtime.console.scopes},
+              },
+              server: {
+                public_url: "${environmentConfigs.consolePublicUrl != '' ? environmentConfigs.consolePublicUrl : environmentConfigs.serverPublicUrl}",
+              },
+            };
+
+    # User-supplied Console config.js, replacing the built-in default above.
+    - id: console-config-override
+      includeWhen: "${parameters.configOverrides.consoleConfigJs != ''}"
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${metadata.name}-console-config"
+          namespace: "${metadata.namespace}"
+          labels: ${metadata.labels}
+        data:
+          config.js: |
+            ${parameters.configOverrides.consoleConfigJs}
+
+    - id: deployment
+      readyWhen: "${applied.deployment.status.readyReplicas == applied.deployment.status.replicas && applied.deployment.status.replicas > 0}"
+      template:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: "${metadata.name}"
+          namespace: "${metadata.namespace}"
+          labels: ${metadata.labels}
+        spec:
+          replicas: ${environmentConfigs.replicas}
+          selector:
+            matchLabels:
+              app: "${metadata.name}"
+          template:
+            metadata:
+              labels:
+                app: "${metadata.name}"
+            spec:
+              containers:
+                - name: thunderid
+                  image: "${parameters.image}"
+                  imagePullPolicy: "${parameters.runtime.imagePullPolicy}"
+                  command:
+                    - /opt/thunderid/thunderid
+                    - --resources
+                    - /opt/thunderid/config/resources.yaml
+                  ports:
+                    - containerPort: ${parameters.runtime.port}
+                  env: ${parameters.env}
+                  envFrom:
+                    - secretRef:
+                        name: "${metadata.name}-env"
+                  # Ready only after declarative resources are loaded and the
+                  # database connections are up — the server binds its
+                  # listener last, so the endpoint answering implies both.
+                  readinessProbe:
+                    httpGet:
+                      path: /health/readiness
+                      port: ${parameters.runtime.port}
+                      scheme: "${parameters.runtime.tls.enabled ? 'HTTPS' : 'HTTP'}"
+                    initialDelaySeconds: 5
+                    periodSeconds: 10
+                    failureThreshold: 3
+                  volumeMounts: |
+                    ${[
+                      {"name": "thunderid-config", "mountPath": "/opt/thunderid/deployment.yaml", "subPath": "deployment.yaml"},
+                      {"name": "gate-config", "mountPath": "/opt/thunderid/apps/gate/config.js", "subPath": "config.js"},
+                      {"name": "console-config", "mountPath": "/opt/thunderid/apps/console/config.js", "subPath": "config.js"},
+                      {"name": "declarative-resources", "mountPath": "/opt/thunderid/config/resources.yaml", "subPath": "resources.yaml"}
+                    ] + (parameters.runtime.certs.storeKey != ""
+                      ? parameters.runtime.certs.files.map(f, {"name": "certs-override", "mountPath": "/opt/thunderid/config/certs/" + f, "subPath": f, "readOnly": true}) : [])}
+                  resources:
+                    requests:
+                      cpu: "${environmentConfigs.resourceRequestsCpu}"
+                      memory: "${environmentConfigs.resourceRequestsMemory}"
+                    limits:
+                      cpu: "${environmentConfigs.resourceLimitsCpu}"
+                      memory: "${environmentConfigs.resourceLimitsMemory}"
+              volumes: |
+                ${[
+                  {"name": "thunderid-config", "configMap": {"name": metadata.name + "-config"}},
+                  {"name": "gate-config", "configMap": {"name": metadata.name + "-gate-config"}},
+                  {"name": "console-config", "configMap": {"name": metadata.name + "-console-config"}},
+                  {"name": "declarative-resources", "configMap": {"name": metadata.name + "-resources"}}
+                ] + (parameters.runtime.certs.storeKey != "" && size(parameters.runtime.certs.files) > 0
+                  ? [{"name": "certs-override", "secret": {"secretName": metadata.name + "-certs"}}] : [])}
+
+    - id: service
+      template:
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: "${metadata.name}"
+          namespace: "${metadata.namespace}"
+          labels: ${metadata.labels}
+        spec:
+          type: ClusterIP
+          selector:
+            app: "${metadata.name}"
+          ports:
+            - port: ${parameters.runtime.port}
+              targetPort: ${parameters.runtime.port}
+              protocol: TCP
+              name: http
+
+    # Gateway-to-backend TLS origination (kgateway). When
+    # runtime.tls.verifyBackend is true AND runtime.certs.storeKey provides
+    # a ca.crt property (materialized into the -certs Secret), the gateway
+    # verifies the backend certificate against that root CA; otherwise
+    # verification is skipped (still encrypted in transit) — the only
+    # workable mode for the image's bundled self-signed certificate.
+    - id: backend-tls-policy
+      includeWhen: "${parameters.runtime.tls.enabled}"
+      template:
+        apiVersion: gateway.kgateway.dev/v1alpha1
+        kind: BackendConfigPolicy
+        metadata:
+          name: "${metadata.name}-tls"
+          namespace: "${metadata.namespace}"
+          labels: ${metadata.labels}
+        spec:
+          targetRefs:
+            - group: ""
+              kind: Service
+              name: "${metadata.name}"
+          tls: |
+            ${parameters.runtime.tls.verifyBackend && parameters.runtime.certs.storeKey != ""
+              ? {"secretRef": {"name": metadata.name + "-certs"},
+                 "simpleTLS": true,
+                 "parameters": {"minVersion": parameters.runtime.tls.minVersion, "maxVersion": "1.3"}}
+              : {"insecureSkipVerify": true,
+                 "parameters": {"minVersion": parameters.runtime.tls.minVersion, "maxVersion": "1.3"}}}
+
+    - id: httproute-external
+      includeWhen: "${environmentConfigs.endpointVisibility == 'external'}"
+      template:
+        apiVersion: gateway.networking.k8s.io/v1
+        kind: HTTPRoute
+        metadata:
+          name: "${metadata.name}"
+          namespace: "${metadata.namespace}"
+          labels: ${metadata.labels}
+        spec:
+          parentRefs:
+            - name: ${gateway.ingress.external.name}
+              namespace: ${gateway.ingress.external.namespace}
+          hostnames: |
+            ${[gateway.ingress.external.?http, gateway.ingress.external.?https]
+              .filter(g, g.hasValue()).map(g, g.value().host).distinct()
+              .map(h, metadata.environmentName + "-" + metadata.resourceName + "-" + metadata.resourceNamespace + "." + h)}
+          rules:
+            - backendRefs:
+                - name: "${metadata.name}"
+                  port: ${parameters.runtime.port}
+
+    # Optional second public hostname for the Console (admin UI split),
+    # e.g. login on auth.example.com and Console on admin.example.com.
+    - id: httproute-console
+      includeWhen: "${environmentConfigs.endpointVisibility == 'external' && environmentConfigs.consoleHostname != ''}"
+      template:
+        apiVersion: gateway.networking.k8s.io/v1
+        kind: HTTPRoute
+        metadata:
+          name: "${metadata.name}-console"
+          namespace: "${metadata.namespace}"
+          labels: ${metadata.labels}
+        spec:
+          parentRefs:
+            - name: ${gateway.ingress.external.name}
+              namespace: ${gateway.ingress.external.namespace}
+          hostnames:
+            - "${environmentConfigs.consoleHostname}"
+          rules:
+            - backendRefs:
+                - name: "${metadata.name}"
+                  port: ${parameters.runtime.port}

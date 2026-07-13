@@ -136,7 +136,9 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) SetupTest() {
 		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"email", "username"},
+				UserConfig: &providers.AccessTokenSubConfig{
+					Attributes: []string{"email", "username"},
+				},
 			},
 		},
 	}
@@ -664,7 +666,9 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_WithGroups(
 				TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
 				Token: &providers.OAuthTokenConfig{
 					AccessToken: &providers.AccessTokenConfig{
-						UserAttributes: accessTokenAttrs,
+						UserConfig: &providers.AccessTokenSubConfig{
+							Attributes: accessTokenAttrs,
+						},
 					},
 					IDToken: idTokenConfig,
 				},
@@ -706,7 +710,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_WithGroups(
 				mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
 					// Capture user attributes and groups (simulate filtering that happens in BuildAccessToken)
 					capturedAccessTokenClaims = make(map[string]interface{})
-					for k, v := range ctx.UserAttributes {
+					for k, v := range ctx.SubjectAttributes {
 						capturedAccessTokenClaims[k] = v
 					}
 					// Verify GrantType is authorization_code
@@ -714,7 +718,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_WithGroups(
 				})).Return(func(_ context.Context, ctx *tokenservice.AccessTokenBuildContext) (*model.TokenDTO, error) {
 				// Simulate filtering that happens in BuildAccessToken
 				userAttrs := make(map[string]interface{})
-				for k, v := range ctx.UserAttributes {
+				for k, v := range ctx.SubjectAttributes {
 					userAttrs[k] = v
 				}
 				return &model.TokenDTO{
@@ -862,7 +866,9 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_WithEmptyGr
 				TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
 				Token: &providers.OAuthTokenConfig{
 					AccessToken: &providers.AccessTokenConfig{
-						UserAttributes: accessTokenAttrs,
+						UserConfig: &providers.AccessTokenSubConfig{
+							Attributes: accessTokenAttrs,
+						},
 					},
 					IDToken: idTokenConfig,
 				},
@@ -902,7 +908,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_WithEmptyGr
 				mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
 					// Capture user attributes which contain groups
 					capturedAccessTokenClaims = make(map[string]interface{})
-					for k, v := range ctx.UserAttributes {
+					for k, v := range ctx.SubjectAttributes {
 						capturedAccessTokenClaims[k] = v
 					}
 					// Verify GrantType is authorization_code
@@ -910,7 +916,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_WithEmptyGr
 				})).Return(func(_ context.Context, ctx *tokenservice.AccessTokenBuildContext) (*model.TokenDTO, error) {
 				// Return user attributes from the actual call context
 				userAttrs := make(map[string]interface{})
-				for k, v := range ctx.UserAttributes {
+				for k, v := range ctx.SubjectAttributes {
 					userAttrs[k] = v
 				}
 				return &model.TokenDTO{
@@ -1130,7 +1136,9 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_FetchUserGr
 		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"email", "username", constants.UserAttributeGroups},
+				UserConfig: &providers.AccessTokenSubConfig{
+					Attributes: []string{"email", "username", constants.UserAttributeGroups},
+				},
 			},
 		},
 	}
@@ -1156,7 +1164,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_FetchUserGr
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
 		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
 			// Verify groups are in UserAttributes (will be extracted by token builder)
-			groupsValue, ok := ctx.UserAttributes[constants.UserAttributeGroups]
+			groupsValue, ok := ctx.SubjectAttributes[constants.UserAttributeGroups]
 			if !ok {
 				return false
 			}

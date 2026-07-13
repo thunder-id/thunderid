@@ -81,13 +81,21 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize key manager provider", log.Error(err))
 	}
+
+	// Initialize JOSE services for JWT and JWE handling.
 	engineCtx.jwtService, engineCtx.jweService, err = jose.Initialize(
 		engineCtx.runtimeCryptoSvc, engineCtx.joseConfig())
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize JOSE services", log.Error(err))
 	}
 
-	attributeCacheService := attributecache.Initialize()
+	runtimeStoreProvider, transactioner, err := runtimestore.Initialize(engineCtx.runtimeDBType,
+		engineCtx.serverConfig.Identifier)
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize runtime store", log.Error(err))
+	}
+
+	attributeCacheService := attributecache.Initialize(runtimeStoreProvider)
 	engineCtx.authAssertGen = assert.Initialize()
 
 	// Initialize flow metadata service
@@ -130,11 +138,6 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	engineCtx.graphBuilder = graphbuilder.Initialize(engineCtx.flowFactory, engineCtx.execRegistry,
 		engineCtx.interceptorRegistry, graphCache)
 
-	runtimeStoreProvider, transactioner, err := runtimestore.Initialize(engineCtx.runtimeDBType,
-		engineCtx.serverConfig.Identifier)
-	if err != nil {
-		logger.Fatal(ctx, "Failed to initialize runtime store", log.Error(err))
-	}
 	flowExecService, err := flowexec.Initialize(mux, engineCtx.flowProvider, engineCtx.actorProvider,
 		engineCtx.execRegistry, engineCtx.interceptorRegistry, engineCtx.observabilitySvc,
 		engineCtx.runtimeCryptoSvc, engineCtx.graphBuilder, runtimeStoreProvider, transactioner, flowConfig)

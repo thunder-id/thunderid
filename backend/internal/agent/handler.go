@@ -193,6 +193,28 @@ func (h *agentHandler) HandleAgentGroupsRequest(w http.ResponseWriter, r *http.R
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
 }
 
+// HandleAgentRolesRequest handles GET /agents/{id}/roles.
+func (h *agentHandler) HandleAgentRolesRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if id == "" {
+		writeServiceError(ctx, w, &ErrorMissingAgentID)
+		return
+	}
+	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+
+	resp, svcErr := h.service.GetAgentRoles(ctx, id, limit, offset)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
+}
+
 // parsePaginationParams parses limit and offset query parameters.
 func parsePaginationParams(query url.Values) (int, int, *tidcommon.ServiceError) {
 	limit := 0

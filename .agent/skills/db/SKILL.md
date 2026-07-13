@@ -5,8 +5,6 @@ description: Database schema and query conventions for ThunderID. Use when chang
 
 # Database Schema Design Principles and Conventions
 
-This document explains the database schema design principles and conventions used in ThunderID. AI agents and contributors should follow these conventions when generating or modifying database schemas and queries.
-
 ## Logical Database Separation
 
 ThunderID uses three logically separated databases. Each database owns a specific category of data.
@@ -64,26 +62,11 @@ CREATE TABLE "ROLE_ASSIGNMENT" (
 );
 ```
 
-This approach:
-
-- Reduces index size compared to adding a separate surrogate key.
-- Aligns with the natural query patterns for many-to-many relationships.
-- Prevents duplicate association rows at the database level.
+This reduces index size, matches natural many-to-many query patterns, and prevents duplicate association rows at the database level.
 
 ## Foreign Key Strategy
 
-Foreign keys reference UUID primary keys directly. Integer-based foreign keys are not used anywhere in the schema.
-
-The system does not introduce:
-
-- `INT`-based surrogate identifiers.
-- UUID-to-integer resolution layers.
-
-This avoids unnecessary lookup overhead and architectural complexity when joining across tables or deployments.
-
-## No Auto-Increment IDs
-
-The schema does not use auto-increment integer identifiers. UUID v7 identifiers serve as the only primary key mechanism across all tables.
+Foreign keys reference UUID primary keys directly. Do not introduce `INT`-based surrogate identifiers, UUID-to-integer resolution layers, or auto-increment IDs anywhere in the schema — UUID v7 is the only primary key mechanism.
 
 ## Multi-Deployment Isolation
 
@@ -173,20 +156,7 @@ WHERE f.ID = $1 AND f.DEPLOYMENT_ID = $2
 
 ## Indexing Philosophy
 
-Indexes in ThunderID are designed to match real query patterns. The process for defining or revising indexes is:
-
-1. Review the queries associated with each table.
-2. Identify missing or inefficient indexes.
-3. Optimize existing indexes, including composite primary keys.
-4. Introduce composite indexes where they improve common query patterns.
-5. Update both the PostgreSQL and SQLite schema scripts accordingly.
-
-### Indexing Goals
-
-- Improve lookup speed for primary access patterns.
-- Optimize join performance between related tables.
-- Improve filtering performance for deployment-scoped queries.
-- Reduce full table scans.
+Indexes match real query patterns. When defining or revising indexes: review each table's queries, identify missing or inefficient indexes, optimize existing ones (including composite primary keys), add composite indexes for common patterns, and update both the PostgreSQL and SQLite schema scripts.
 
 ### Composite Indexes
 

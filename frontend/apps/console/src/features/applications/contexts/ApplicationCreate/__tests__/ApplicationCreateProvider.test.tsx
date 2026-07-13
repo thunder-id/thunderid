@@ -17,13 +17,13 @@
  */
 
 import userEvent from '@testing-library/user-event';
+import {AuthenticatorTypes} from '@thunderid/configure-connections';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 import {ApplicationCreateFlowSignInApproach, ApplicationCreateFlowStep} from '../../../models/application-create-flow';
 import {TechnologyApplicationTemplate, PlatformApplicationTemplate} from '../../../models/application-templates';
 import ApplicationCreateProvider from '../ApplicationCreateProvider';
 import useApplicationCreate from '../useApplicationCreate';
-import {AuthenticatorTypes} from '@/features/connections/models/authenticators';
 
 // Mock useGetApplications
 const mockUseGetApplications = vi.fn();
@@ -66,6 +66,8 @@ function TestConsumer() {
       <div data-testid="sign-in-approach">{context.signInApproach}</div>
       <div data-testid="selected-technology">{context.selectedTechnology ?? 'null'}</div>
       <div data-testid="selected-platform">{context.selectedPlatform ?? 'null'}</div>
+      <div data-testid="mcp-client-type">{context.mcpClientType}</div>
+      <div data-testid="mcp-redirect-uris">{JSON.stringify(context.mcpRedirectUris)}</div>
       <div data-testid="hosting-url">{context.hostingUrl}</div>
       <div data-testid="callback-url">{context.callbackUrlFromConfig}</div>
       <div data-testid="error">{context.error ?? 'null'}</div>
@@ -93,6 +95,12 @@ function TestConsumer() {
       </button>
       <button type="button" onClick={() => context.setSelectedPlatform(PlatformApplicationTemplate.BROWSER)}>
         Set Browser Platform
+      </button>
+      <button type="button" onClick={() => context.setMcpClientType('m2m')}>
+        Set M2M Client Type
+      </button>
+      <button type="button" onClick={() => context.setMcpRedirectUris(['http://127.0.0.1:*/callback'])}>
+        Set MCP Redirect URIs
       </button>
       <button type="button" onClick={() => context.setHostingUrl('https://example.com')}>
         Set Hosting URL
@@ -140,6 +148,7 @@ describe('ApplicationCreateProvider', () => {
     expect(screen.getByTestId('sign-in-approach')).toHaveTextContent(ApplicationCreateFlowSignInApproach.INBUILT);
     expect(screen.getByTestId('selected-technology')).toHaveTextContent('null');
     expect(screen.getByTestId('selected-platform')).toHaveTextContent('null');
+    expect(screen.getByTestId('mcp-client-type')).toHaveTextContent('userDelegated');
     expect(screen.getByTestId('hosting-url')).toHaveTextContent('');
     expect(screen.getByTestId('callback-url')).toHaveTextContent('');
     expect(screen.getByTestId('error')).toHaveTextContent('null');
@@ -269,6 +278,54 @@ describe('ApplicationCreateProvider', () => {
     expect(screen.getByTestId('selected-platform')).toHaveTextContent(PlatformApplicationTemplate.BROWSER);
   });
 
+  it('defaults the MCP client type to userDelegated', () => {
+    renderWithQueryClient(
+      <ApplicationCreateProvider>
+        <TestConsumer />
+      </ApplicationCreateProvider>,
+    );
+
+    expect(screen.getByTestId('mcp-client-type')).toHaveTextContent('userDelegated');
+  });
+
+  it('updates the MCP client type when setMcpClientType is called', async () => {
+    const user = userEvent.setup();
+
+    renderWithQueryClient(
+      <ApplicationCreateProvider>
+        <TestConsumer />
+      </ApplicationCreateProvider>,
+    );
+
+    await user.click(screen.getByText('Set M2M Client Type'));
+
+    expect(screen.getByTestId('mcp-client-type')).toHaveTextContent('m2m');
+  });
+
+  it('defaults the MCP redirect URIs to an empty array', () => {
+    renderWithQueryClient(
+      <ApplicationCreateProvider>
+        <TestConsumer />
+      </ApplicationCreateProvider>,
+    );
+
+    expect(screen.getByTestId('mcp-redirect-uris')).toHaveTextContent('[]');
+  });
+
+  it('updates the MCP redirect URIs when setMcpRedirectUris is called', async () => {
+    const user = userEvent.setup();
+
+    renderWithQueryClient(
+      <ApplicationCreateProvider>
+        <TestConsumer />
+      </ApplicationCreateProvider>,
+    );
+
+    await user.click(screen.getByText('Set MCP Redirect URIs'));
+
+    expect(screen.getByTestId('mcp-redirect-uris')).toHaveTextContent(JSON.stringify(['http://127.0.0.1:*/callback']));
+  });
+
   it('updates hosting URL when setHostingUrl is called', async () => {
     const user = userEvent.setup();
 
@@ -324,11 +381,15 @@ describe('ApplicationCreateProvider', () => {
     await user.click(screen.getByText('Set App Name'));
     await user.click(screen.getByText('Set Theme to null'));
     await user.click(screen.getByText('Set Error'));
+    await user.click(screen.getByText('Set M2M Client Type'));
+    await user.click(screen.getByText('Set MCP Redirect URIs'));
 
     // Verify values are set
     expect(screen.getByTestId('app-name')).toHaveTextContent('Test App');
     expect(screen.getByTestId('selected-theme')).toHaveTextContent('null');
     expect(screen.getByTestId('error')).toHaveTextContent('Test error');
+    expect(screen.getByTestId('mcp-client-type')).toHaveTextContent('m2m');
+    expect(screen.getByTestId('mcp-redirect-uris')).toHaveTextContent(JSON.stringify(['http://127.0.0.1:*/callback']));
 
     // Reset
     await user.click(screen.getByText('Reset'));
@@ -338,6 +399,8 @@ describe('ApplicationCreateProvider', () => {
     expect(screen.getByTestId('app-name')).toHaveTextContent('');
     expect(screen.getByTestId('error')).toHaveTextContent('null');
     expect(screen.getByTestId('selected-theme')).toHaveTextContent('null');
+    expect(screen.getByTestId('mcp-client-type')).toHaveTextContent('userDelegated');
+    expect(screen.getByTestId('mcp-redirect-uris')).toHaveTextContent('[]');
   });
 
   it('memoizes context value to prevent unnecessary re-renders', () => {

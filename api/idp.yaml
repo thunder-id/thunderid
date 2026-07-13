@@ -592,8 +592,6 @@ components:
     AttributeConfiguration:
       type: object
       description: External-to-local attribute mapping configuration for the identity provider.
-      required:
-        - userTypeResolution
       properties:
         userTypeResolution:
           $ref: '#/components/schemas/UserTypeResolution'
@@ -602,6 +600,23 @@ components:
           description: Per-user-type attribute mapping profiles.
           items:
             $ref: '#/components/schemas/UserTypeAttributeMapping'
+        accountLinking:
+          $ref: '#/components/schemas/AccountLinking'
+
+    AccountLinking:
+      type: object
+      description: >
+        Configures how an incoming federated identity is resolved to an existing local user when the
+        subject identifier does not resolve one. All configured attributes that have a value are
+        combined into a single lookup filter.
+      properties:
+        attributes:
+          type: array
+          description: External attribute names used together to resolve the local user.
+          items:
+            type: string
+          example:
+            - "email"
 
     UserTypeResolution:
       type: object

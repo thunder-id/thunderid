@@ -62,7 +62,7 @@ func (suite *AccessLogTestSuite) TestAccessLogHandler() {
 
 	handler := AccessLogHandler(log, testHandler)
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest("GET", "/test?include=display&token=secret", nil)
 	req.RemoteAddr = "192.168.1.1:12345"
 
 	rr := httptest.NewRecorder()
@@ -78,6 +78,9 @@ func (suite *AccessLogTestSuite) TestAccessLogHandler() {
 	assert.Contains(suite.T(), output, "192.168.1.1")
 	assert.Contains(suite.T(), output, "GET /test")
 	assert.Contains(suite.T(), output, "200")
+	// Verify that query parameters are not written to the access log
+	assert.NotContains(suite.T(), output, "include=display")
+	assert.NotContains(suite.T(), output, "token=secret")
 	// Verify that escape characters are not present in the log output
 	assert.NotContains(suite.T(), output, `\"`)
 }

@@ -111,7 +111,10 @@ func (suite *TokenExchangeGrantHandlerTestSuite) SetupTest() {
 		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				ValidityPeriod: 7200,
+				UserConfig: &providers.AccessTokenSubConfig{
+					ValidityPeriod: 7200,
+					Attributes:     []string{"email", "name", "given_name", "family_name", "organization"},
+				},
 			},
 		},
 	}
@@ -442,7 +445,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_Basic()
 				(len(ctx.Audiences) > 0 && ctx.Audiences[0] == testClientID) &&
 				// Default audience is clientID when no resource/audience parameter
 				ctx.ClientID == testClientID &&
-				ctx.UserAttributes["email"] == testUserEmail &&
+				ctx.SubjectAttributes["email"] == testUserEmail &&
 				tokenservice.JoinScopes(ctx.Scopes) == testScopeReadWrite
 		})).Return(&model.TokenDTO{
 		Token:     testTokenExchangeJWT,
@@ -823,8 +826,8 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_Preserv
 		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
 			return ctx.Subject == testUserID &&
 				(len(ctx.Audiences) > 0 && ctx.Audiences[0] == testClientID) &&
-				ctx.UserAttributes["email"] == "user@example.com" &&
-				ctx.UserAttributes["name"] == "Test User"
+				ctx.SubjectAttributes["email"] == "user@example.com" &&
+				ctx.SubjectAttributes["name"] == "Test User"
 		})).Return(&model.TokenDTO{
 		Token:     testTokenExchangeJWT,
 		TokenType: constants.TokenTypeBearer,
@@ -1296,8 +1299,8 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_CompleteTokenExchan
 				ctx.Audiences[0] == "https://target-service.com" &&
 				ctx.ClientID == testClientID &&
 				tokenservice.JoinScopes(ctx.Scopes) == testScopeRead &&
-				ctx.UserAttributes["email"] == "user@example.com" &&
-				ctx.UserAttributes["name"] == "John Doe"
+				ctx.SubjectAttributes["email"] == "user@example.com" &&
+				ctx.SubjectAttributes["name"] == "John Doe"
 		})).Return(&model.TokenDTO{
 		Token:     testTokenExchangeJWT,
 		TokenType: constants.TokenTypeBearer,
@@ -1699,10 +1702,10 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_ClaimPreservation()
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
 		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
 			// Verify all custom claims are preserved in user attributes
-			return ctx.UserAttributes["email"] == testUserEmail &&
-				ctx.UserAttributes["given_name"] == "John" &&
-				ctx.UserAttributes["family_name"] == "Doe" &&
-				ctx.UserAttributes["organization"] == "ACME Corp"
+			return ctx.SubjectAttributes["email"] == testUserEmail &&
+				ctx.SubjectAttributes["given_name"] == "John" &&
+				ctx.SubjectAttributes["family_name"] == "Doe" &&
+				ctx.SubjectAttributes["organization"] == "ACME Corp"
 		})).Return(&model.TokenDTO{
 		Token:     testTokenExchangeJWT,
 		TokenType: constants.TokenTypeBearer,

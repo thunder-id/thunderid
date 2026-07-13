@@ -34,6 +34,7 @@ const mockGetScopes = vi.fn();
 const mockGetTrustedIssuerUrl = vi.fn();
 const mockGetTrustedIssuerClientId = vi.fn();
 const mockGetTrustedIssuerScopes = vi.fn();
+const mockGetResourceIdentifier = vi.fn();
 const mockIsTrustedIssuerGenericOidc = vi.fn();
 const mockConfig: Record<string, unknown> = {};
 
@@ -46,6 +47,7 @@ vi.mock('@thunderid/contexts', () => ({
     getTrustedIssuerUrl: mockGetTrustedIssuerUrl,
     getTrustedIssuerClientId: mockGetTrustedIssuerClientId,
     getTrustedIssuerScopes: mockGetTrustedIssuerScopes,
+    getResourceIdentifier: mockGetResourceIdentifier,
     isTrustedIssuerGenericOidc: mockIsTrustedIssuerGenericOidc,
     config: mockConfig,
   }),
@@ -111,6 +113,7 @@ describe('withConfig (console)', () => {
     mockGetTrustedIssuerUrl.mockReturnValue('https://server.example.com');
     mockGetTrustedIssuerClientId.mockReturnValue('client-id');
     mockGetTrustedIssuerScopes.mockReturnValue([]);
+    mockGetResourceIdentifier.mockReturnValue(undefined);
     mockIsTrustedIssuerGenericOidc.mockReturnValue(false);
   });
 
@@ -341,6 +344,30 @@ describe('withConfig (console)', () => {
 
       render(<WithConfigComponent />);
       expect(capturedProviderProps.sendCookiesInRequests).toBe(false);
+    });
+  });
+
+  // --- resource indicator ---
+
+  describe('resource indicator', () => {
+    it('sets signInOptions.resource from the resource identifier without trusted_issuer', () => {
+      mockGetResourceIdentifier.mockReturnValue('https://localhost:8090/mcp');
+      mockGetClientUrl.mockReturnValue('https://client.example.com');
+
+      render(<WithConfigComponent />);
+      expect(capturedProviderProps.signInOptions).toEqual({resource: 'https://localhost:8090/mcp'});
+    });
+
+    it('uses the server URL over the resource identifier in the trusted_issuer model', () => {
+      mockConfig.trusted_issuer = {hostname: 'localhost', port: 8090, http_only: true};
+      mockGetResourceIdentifier.mockReturnValue('https://localhost:8090/mcp');
+      mockGetServerUrl.mockReturnValue('http://localhost:9443');
+      mockGetTrustedIssuerUrl.mockReturnValue('http://localhost:8090');
+      mockGetTrustedIssuerClientId.mockReturnValue('FEDERATED_CONSOLE');
+      mockGetClientUrl.mockReturnValue('http://localhost:9443/console');
+
+      render(<WithConfigComponent />);
+      expect(capturedProviderProps.signInOptions).toEqual({resource: 'http://localhost:9443'});
     });
   });
 

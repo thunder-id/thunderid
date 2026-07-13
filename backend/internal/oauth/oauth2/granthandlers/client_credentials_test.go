@@ -599,6 +599,51 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_EmptyScope_
 	suite.mockAuthzService.AssertNotCalled(suite.T(), "EvaluateAccessBatch", mock.Anything, mock.Anything)
 }
 
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AgentOwnAttributes_EmbeddedInClientAttributes() {
+	tokenRequest := &model.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     testClientID,
+		ClientSecret: "secret123",
+		Scope:        "",
+	}
+
+	agentApp := &providers.OAuthClient{
+		ID:                      testEntityID,
+		ClientID:                testClientID,
+		EntityCategory:          providers.EntityCategoryAgent,
+		GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
+				ClientConfig: &providers.AccessTokenSubConfig{Attributes: []string{"modelProvider"}},
+			},
+		},
+	}
+
+	suite.mockEntityProvider.On("GetActor", agentApp.ID).Return(&providers.Entity{
+		ID:         agentApp.ID,
+		Attributes: []byte(`{"modelProvider":"anthropic"}`),
+	}, (*tidcommon.ServiceError)(nil))
+
+	suite.mockTokenBuilder.On("BuildAccessToken",
+		mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.SubjectAttributes["modelProvider"] == "anthropic"
+		})).Return(&model.TokenDTO{
+		Token:     testJWTToken,
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  int64(1234567890),
+		ExpiresIn: 3600,
+		Scopes:    []string{},
+		ClientID:  testClientID,
+	}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, agentApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+}
+
 // QA §4 — Implicit RS discovery: no resource param + scope maps to a registered RS.
 //
 // These tests use fresh mocks (not the suite defaults) so that FindResourceServersByPermissions

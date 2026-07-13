@@ -29,7 +29,7 @@ import {
   Typography,
 } from "@wso2/oxygen-ui";
 import { Link, useNavigate } from "react-router";
-import { getConfig } from "../config";
+import { getDirectAuthHeaders, getConfig } from "../config";
 
 interface AuthResponse {
   id: string;
@@ -71,6 +71,7 @@ function SignInPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...getDirectAuthHeaders(),
         },
         body: JSON.stringify({
           identifiers: {

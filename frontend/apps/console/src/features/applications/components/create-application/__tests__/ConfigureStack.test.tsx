@@ -63,6 +63,10 @@ const renderWithContext = (
     setSelectedPlatform: vi.fn(),
     selectedTemplateConfig: null,
     setSelectedTemplateConfig: vi.fn(),
+    mcpClientType: 'userDelegated',
+    setMcpClientType: vi.fn(),
+    mcpRedirectUris: [],
+    setMcpRedirectUris: vi.fn(),
     hostingUrl: '',
     setHostingUrl: vi.fn(),
     callbackUrlFromConfig: '',
@@ -104,6 +108,9 @@ describe('ConfigureStack', () => {
       expect(screen.getByText('applications:onboarding.configure.stack.technology.express.title')).toBeInTheDocument();
       expect(screen.getByText('applications:onboarding.configure.stack.technology.react.title')).toBeInTheDocument();
       expect(screen.getByText('applications:onboarding.configure.stack.technology.nextjs.title')).toBeInTheDocument();
+      expect(
+        screen.getByText('applications:onboarding.configure.stack.technology.mcpClient.title'),
+      ).toBeInTheDocument();
     });
 
     it('renders all platform templates', () => {
@@ -123,6 +130,7 @@ describe('ConfigureStack', () => {
       expect(screen.getByText('applications:onboarding.configure.stack.category.web')).toBeInTheDocument();
       expect(screen.getByText('applications:onboarding.configure.stack.category.backend')).toBeInTheDocument();
       expect(screen.getByText('applications:onboarding.configure.stack.category.mobile')).toBeInTheDocument();
+      expect(screen.getByText('applications:onboarding.configure.stack.category.ai')).toBeInTheDocument();
     });
 
     it('does not show "Coming Soon" badge when no templates are disabled', () => {
@@ -156,6 +164,20 @@ describe('ConfigureStack', () => {
       await user.click(screen.getByText('applications:onboarding.configure.stack.category.backend'));
 
       expect(screen.getByText('applications:onboarding.configure.stack.technology.express.title')).toBeInTheDocument();
+      expect(
+        screen.queryByText('applications:onboarding.configure.stack.technology.react.title'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('shows only MCP Client after clicking AI filter', async () => {
+      const user = userEvent.setup();
+      renderWithContext({oauthConfig: null, onOAuthConfigChange: vi.fn(), onReadyChange: vi.fn()});
+
+      await user.click(screen.getByText('applications:onboarding.configure.stack.category.ai'));
+
+      expect(
+        screen.getByText('applications:onboarding.configure.stack.technology.mcpClient.title'),
+      ).toBeInTheDocument();
       expect(
         screen.queryByText('applications:onboarding.configure.stack.technology.react.title'),
       ).not.toBeInTheDocument();
@@ -259,6 +281,22 @@ describe('ConfigureStack', () => {
       expect(setSelectedTechnology).toHaveBeenCalledWith(null);
       expect(setSelectedPlatform).toHaveBeenCalledWith(PlatformApplicationTemplate.CUSTOM);
     });
+
+    it('selects the MCP Client template', async () => {
+      const user = userEvent.setup();
+      const setSelectedTechnology = vi.fn();
+      const setSelectedPlatform = vi.fn();
+
+      renderWithContext(
+        {oauthConfig: null, onOAuthConfigChange: vi.fn(), onReadyChange: vi.fn()},
+        {setSelectedTechnology, setSelectedPlatform},
+      );
+
+      await user.click(screen.getByText('applications:onboarding.configure.stack.technology.mcpClient.title'));
+
+      expect(setSelectedTechnology).toHaveBeenCalledWith(TechnologyApplicationTemplate.MCP_CLIENT);
+      expect(setSelectedPlatform).toHaveBeenCalledWith(null);
+    });
   });
 
   describe('OAuth config syncing', () => {
@@ -293,6 +331,26 @@ describe('ConfigureStack', () => {
           responseTypes: expect.any(Array) as string[],
           redirectUris: expect.any(Array) as string[],
           scopes: ['openid', 'profile', 'email'],
+        }),
+      );
+    });
+
+    it('seeds a public-client OAuth config when MCP Client is selected', () => {
+      const mockOnOAuthConfigChange = vi.fn();
+
+      renderWithContext(
+        {oauthConfig: null, onOAuthConfigChange: mockOnOAuthConfigChange, onReadyChange: vi.fn()},
+        {selectedTechnology: TechnologyApplicationTemplate.MCP_CLIENT},
+      );
+
+      expect(mockOnOAuthConfigChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          publicClient: true,
+          pkceRequired: true,
+          grantTypes: ['authorization_code', 'refresh_token'],
+          responseTypes: ['code'],
+          redirectUris: [],
+          tokenEndpointAuthMethod: 'none',
         }),
       );
     });
