@@ -19,7 +19,10 @@
 // Package scimconfig provides the SCIM service configuration.
 package scimconfig
 
-import "github.com/thunder-id/thunderid/internal/system/config"
+import (
+	"github.com/thunder-id/thunderid/internal/system/config"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+)
 
 // Static SCIM protocol capability declarations.
 // These values reflect what this server implementation supports and are
@@ -79,6 +82,6 @@ type SCIMConfig struct {
 func FromServerRuntime() SCIMConfig {
 	srv := config.GetServerRuntime().Config
 	return SCIMConfig{
-		PublicURL: srv.Server.PublicURL,
+		PublicURL: engineconfig.GetServerURL(&srv.Server),
 	}
 }

@@ -41,14 +41,24 @@ func Initialize(
 ) {
 	svc := newSCIMService(userService, entityTypeService, cfg)
 	h := newSCIMHandler(svc, cfg.PublicURL)
-	registerRoutes(mux, h)
+
+	uSvc := newSCIMUsersService(userService, entityTypeService)
+	uh := newSCIMUsersHandler(uSvc, cfg.PublicURL)
+
+	registerRoutes(mux, h, uh)
 }
 
-// registerSCIMRoutes registers all /scim/v2 routes using the same
+// registerRoutes registers all /scim/v2 routes using the same
 // middleware.WithCORS pattern as all other ThunderID modules.
-func registerRoutes(mux *http.ServeMux, h *scimHandler) {
+func registerRoutes(mux *http.ServeMux, h *scimHandler, uh *scimUsersHandler) {
 	optsGet := middleware.CORSOptions{
 		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	optsCRUD := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
 		AllowCredentials: true,
 		MaxAge:           600,
@@ -110,15 +120,45 @@ func registerRoutes(mux *http.ServeMux, h *scimHandler) {
 		optsGet,
 	))
 
-	// Unimplemented endpoints — return 501 per SCIM spec.
+	// Users - CRUD endpoints
+	mux.HandleFunc(middleware.WithCORS(
+		"GET "+SCIMBasePath+"/Users",
+		uh.HandleUsersListRequest,
+		optsCRUD,
+	))
+	mux.HandleFunc(middleware.WithCORS(
+		"POST "+SCIMBasePath+"/Users",
+		uh.HandleUsersCreateRequest,
+		optsCRUD,
+	))
+	mux.HandleFunc(middleware.WithCORS(
+		"GET "+SCIMBasePath+"/Users/{id}",
+		uh.HandleUsersGetRequest,
+		optsCRUD,
+	))
+	mux.HandleFunc(middleware.WithCORS(
+		"PUT "+SCIMBasePath+"/Users/{id}",
+		uh.HandleUsersReplaceRequest,
+		optsCRUD,
+	))
+	mux.HandleFunc(middleware.WithCORS(
+		"DELETE "+SCIMBasePath+"/Users/{id}",
+		uh.HandleUsersDeleteRequest,
+		optsCRUD,
+	))
+	mux.HandleFunc(middleware.WithCORS(
+		"OPTIONS "+SCIMBasePath+"/Users",
+		func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
+		optsCRUD,
+	))
+	mux.HandleFunc(middleware.WithCORS(
+		"OPTIONS "+SCIMBasePath+"/Users/{id}",
+		func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
+		optsCRUD,
+	))
+
+	// Unimplemented endpoints
 	for _, pattern := range []string{
-		"GET " + SCIMBasePath + "/Users",
-		"POST " + SCIMBasePath + "/Users",
-		"PUT " + SCIMBasePath + "/Users",
-		"DELETE " + SCIMBasePath + "/Users",
-		"GET " + SCIMBasePath + "/Users/{id}",
-		"PUT " + SCIMBasePath + "/Users/{id}",
-		"DELETE " + SCIMBasePath + "/Users/{id}",
 		"GET " + SCIMBasePath + "/Groups",
 		"GET " + SCIMBasePath + "/Groups/{id}",
 		"POST " + SCIMBasePath + "/Groups",

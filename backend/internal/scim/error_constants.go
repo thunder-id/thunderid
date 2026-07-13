@@ -223,4 +223,89 @@ var (
 			DefaultValue: "An unexpected server-side error occurred",
 		},
 	}
+
+	// ErrorUniquenessConflict is returned when a user with the same unique attribute value already exists.
+	ErrorUniquenessConflict = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1015",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.uniqueness_conflict",
+			DefaultValue: "Uniqueness conflict",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.uniqueness_conflict_description",
+			DefaultValue: "A user with the same unique attribute value already exists",
+		},
+	}
+
+	// ErrorMutabilityViolation is returned when attempting to modify an immutable resource.
+	ErrorMutabilityViolation = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1016",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.mutability_violation",
+			DefaultValue: "Mutability violation",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.mutability_violation_description",
+			DefaultValue: "The resource is declarative and cannot be modified or deleted",
+		},
+	}
+
+	// ErrorFilterNotSupported is returned when a query filter is used but not supported.
+	ErrorFilterNotSupported = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1017",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.filter_not_supported",
+			DefaultValue: "Filter not supported",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.filter_not_supported_description",
+			DefaultValue: "The ?filter query parameter is not supported in this implementation",
+		},
+	}
+
+	// ErrorSchemaValidationFailed is returned when user attributes fail schema validation.
+	ErrorSchemaValidationFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1018",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.schema_validation_failed",
+			DefaultValue: "Schema validation failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.schema_validation_failed_description",
+			DefaultValue: "User attributes do not conform to the required schema",
+		},
+	}
+
+	// ErrorInvalidContentType is returned when the request Content-Type is invalid.
+	ErrorInvalidContentType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1019",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_content_type",
+			DefaultValue: "Invalid Content-Type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_content_type_description",
+			DefaultValue: "Request Content-Type must be application/scim+json",
+		},
+	}
+
+	// ErrorImmutableUserType is returned when a PUT (replace) request specifies a
+	// user type (schema extension) different from the target resource's existing type.
+	ErrorImmutableUserType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1020",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.immutable_user_type",
+			DefaultValue: "User type is immutable",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.immutable_user_type_description",
+			DefaultValue: "The user type cannot be changed via PUT; it must match the existing resource's type",
+		},
+	}
 )
