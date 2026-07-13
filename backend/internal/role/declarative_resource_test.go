@@ -27,9 +27,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
+	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
 
 // RoleExporterTestSuite contains tests for the roleExporter.
@@ -345,9 +351,171 @@ func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_ValidRole() {
 	}
 
 	// Pass nil for fileStore to skip duplicate check (for unit test purposes)
-	err := validateRoleWrapper(role, nil, nil, nil)
+	err := validateRoleWrapper(role, nil, nil, nil, nil, nil, nil, nil)
 
 	assert.NoError(suite.T(), err)
+}
+
+func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_OUNotFound() {
+	role := &RoleWithPermissionsAndAssignments{ID: "role1", Name: "Admin", OUID: "missing-ou"}
+
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "missing-ou").
+		Return(false, nil)
+
+	err := validateRoleWrapper(role, nil, nil, nil, nil, ouSvcMock, nil, nil)
+
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "organization unit with ID \"missing-ou\" not found")
+}
+
+func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_OUCheckServiceError() {
+	role := &RoleWithPermissionsAndAssignments{ID: "role1", Name: "Admin", OUID: "ou1"}
+
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "ou1").
+		Return(false, &tidcommon.InternalServerError)
+
+	err := validateRoleWrapper(role, nil, nil, nil, nil, ouSvcMock, nil, nil)
+
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "failed to check organization unit existence")
+}
+
+func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_InvalidAssignmentIDs() {
+	role := &RoleWithPermissionsAndAssignments{
+		ID:   "role1",
+		Name: "Admin",
+		OUID: "ou1",
+		Assignments: []RoleAssignment{
+			{ID: "user1", Type: assigneeTypeEntity},
+		},
+	}
+
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "ou1").Return(true, nil)
+
+	entityMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	entityMock.On("GetEntitiesByIDs", context.Background(), []string{"user1"}).
+		Return([]providers.Entity{}, nil)
+
+	err := validateRoleWrapper(role, nil, nil, nil, entityMock, ouSvcMock, nil, nil)
+
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "nonexistent entity assignment")
+}
+
+func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_ValidAssignmentIDs() {
+	role := &RoleWithPermissionsAndAssignments{
+		ID:   "role1",
+		Name: "Admin",
+		OUID: "ou1",
+		Assignments: []RoleAssignment{
+			{ID: "user1", Type: assigneeTypeEntity},
+		},
+	}
+
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "ou1").Return(true, nil)
+
+	entityMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	entityMock.On("GetEntitiesByIDs", context.Background(), []string{"user1"}).
+		Return([]providers.Entity{{ID: "user1", Category: providers.EntityCategoryUser}}, nil)
+
+	err := validateRoleWrapper(role, nil, nil, nil, entityMock, ouSvcMock, nil, nil)
+
+	assert.NoError(suite.T(), err)
+}
+
+func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_InvalidGroupAssignment() {
+	role := &RoleWithPermissionsAndAssignments{
+		ID:   "role1",
+		Name: "Admin",
+		OUID: "ou1",
+		Assignments: []RoleAssignment{
+			{ID: "group1", Type: AssigneeTypeGroup},
+		},
+	}
+
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "ou1").Return(true, nil)
+
+	groupMock := groupmock.NewGroupServiceInterfaceMock(suite.T())
+	groupMock.On("ValidateGroupIDs", context.Background(), []string{"group1"}).
+		Return(&tidcommon.InternalServerError)
+
+	err := validateRoleWrapper(role, nil, nil, nil, nil, ouSvcMock, groupMock, nil)
+
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "failed to verify assignment groups")
+}
+
+func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_ValidGroupAssignment() {
+	role := &RoleWithPermissionsAndAssignments{
+		ID:   "role1",
+		Name: "Admin",
+		OUID: "ou1",
+		Assignments: []RoleAssignment{
+			{ID: "group1", Type: AssigneeTypeGroup},
+		},
+	}
+
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "ou1").Return(true, nil)
+
+	groupMock := groupmock.NewGroupServiceInterfaceMock(suite.T())
+	groupMock.On("ValidateGroupIDs", context.Background(), []string{"group1"}).
+		Return(nil)
+
+	err := validateRoleWrapper(role, nil, nil, nil, nil, ouSvcMock, groupMock, nil)
+
+	assert.NoError(suite.T(), err)
+}
+
+func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_InvalidPermissions() {
+	role := &RoleWithPermissionsAndAssignments{
+		ID:   "role1",
+		Name: "Admin",
+		OUID: "ou1",
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: "rs1", Permissions: []string{"unknown-perm"}},
+		},
+	}
+
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "ou1").Return(true, nil)
+
+	resourceMock := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	resourceMock.On("ValidatePermissions", context.Background(), "rs1", []string{"unknown-perm"}).
+		Return([]string{"unknown-perm"}, nil)
+
+	err := validateRoleWrapper(role, nil, nil, nil, nil, ouSvcMock, nil, resourceMock)
+
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "references unknown permissions")
+}
+
+func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_PermissionsServiceError() {
+	role := &RoleWithPermissionsAndAssignments{
+		ID:   "role1",
+		Name: "Admin",
+		OUID: "ou1",
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: "rs1", Permissions: []string{"read"}},
+		},
+	}
+
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "ou1").Return(true, nil)
+
+	resourceMock := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	resourceMock.On("ValidatePermissions", context.Background(), "rs1", []string{"read"}).
+		Return(nil, &tidcommon.InternalServerError)
+
+	err := validateRoleWrapper(role, nil, nil, nil, nil, ouSvcMock, nil, resourceMock)
+
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "failed to validate permissions")
 }
 
 // Test validateRoleWrapper - missing ID
@@ -357,7 +525,7 @@ func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_MissingID() {
 		OUID: "ou1",
 	}
 
-	err := validateRoleWrapper(role, nil, nil, nil)
+	err := validateRoleWrapper(role, nil, nil, nil, nil, nil, nil, nil)
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "role ID is required")
@@ -370,7 +538,7 @@ func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_MissingName() {
 		OUID: "ou1",
 	}
 
-	err := validateRoleWrapper(role, nil, nil, nil)
+	err := validateRoleWrapper(role, nil, nil, nil, nil, nil, nil, nil)
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "role name is required")
@@ -383,7 +551,7 @@ func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_MissingOUID() {
 		Name: "Admin",
 	}
 
-	err := validateRoleWrapper(role, nil, nil, nil)
+	err := validateRoleWrapper(role, nil, nil, nil, nil, nil, nil, nil)
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "ouId or ouHandle is required for role 'Admin'")
@@ -400,7 +568,7 @@ func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_InvalidAssignmentTyp
 		},
 	}
 
-	err := validateRoleWrapper(role, nil, nil, nil)
+	err := validateRoleWrapper(role, nil, nil, nil, nil, nil, nil, nil)
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "invalid assignment type")
@@ -417,7 +585,7 @@ func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_MissingAssignmentID(
 		},
 	}
 
-	err := validateRoleWrapper(role, nil, nil, nil)
+	err := validateRoleWrapper(role, nil, nil, nil, nil, nil, nil, nil)
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "assignment ID is required")
@@ -434,7 +602,7 @@ func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_MissingResourceServe
 		},
 	}
 
-	err := validateRoleWrapper(role, nil, nil, nil)
+	err := validateRoleWrapper(role, nil, nil, nil, nil, nil, nil, nil)
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "resource server ID is required")
