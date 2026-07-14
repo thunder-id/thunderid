@@ -27,12 +27,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/serverconfig"
+	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 type fakeServerConfigService struct {
-	set       map[string]json.RawMessage
-	returnErr *common.ServiceError
+	set         map[string]json.RawMessage
+	returnErr   *common.ServiceError
+	writable    any
+	writableErr *common.ServiceError
 }
 
 func (f *fakeServerConfigService) SetConfig(
@@ -46,6 +49,12 @@ func (f *fakeServerConfigService) SetConfig(
 	}
 	f.set[string(name)] = value
 	return nil
+}
+
+func (f *fakeServerConfigService) GetWritableConfig(
+	_ context.Context, _ string,
+) (any, *common.ServiceError) {
+	return f.writable, f.writableErr
 }
 
 func newServerConfigImportService(sc serverConfigAdapter) ImportServiceInterface {
@@ -110,4 +119,42 @@ func TestImportResources_ServerConfig_AdapterNotConfigured(t *testing.T) {
 	require.Nil(t, err)
 	require.Len(t, resp.Results, 1)
 	assert.Equal(t, statusFailed, resp.Results[0].Status)
+}
+
+const corsImportDoc = `resource_type: server_config
+name: cors
+value:
+  allowedOrigins:
+    - "http://localhost:5173"
+`
+
+func TestImportResources_ServerConfig_CORSMergesWithExistingWritable(t *testing.T) {
+	existing, err := cors.OriginHandler{}.Decode(json.RawMessage(`{"allowedOrigins":["https://localhost:5191"]}`))
+	require.NoError(t, err)
+	scSvc := &fakeServerConfigService{writable: existing}
+	svc := newServerConfigImportService(scSvc)
+
+	resp, importErr := svc.ImportResources(context.Background(), &ImportRequest{Content: corsImportDoc})
+
+	require.Nil(t, importErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.JSONEq(t, `{"allowedOrigins":["https://localhost:5191","http://localhost:5173"]}`,
+		string(scSvc.set["cors"]))
+}
+
+func TestImportResources_ServerConfig_CORSFallsBackWhenExistingUnreadable(t *testing.T) {
+	scSvc := &fakeServerConfigService{writableErr: &common.ServiceError{
+		Type:  common.ServerErrorType,
+		Code:  "SCF-5000",
+		Error: common.I18nMessage{DefaultValue: "Failed to read server configuration"},
+	}}
+	svc := newServerConfigImportService(scSvc)
+
+	resp, importErr := svc.ImportResources(context.Background(), &ImportRequest{Content: corsImportDoc})
+
+	require.Nil(t, importErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.JSONEq(t, `{"allowedOrigins":["http://localhost:5173"]}`, string(scSvc.set["cors"]))
 }

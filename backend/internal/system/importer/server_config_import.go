@@ -26,6 +26,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/serverconfig"
+	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -33,6 +34,7 @@ import (
 // the writable (db) layer.
 type serverConfigAdapter interface {
 	SetConfig(ctx context.Context, name serverconfig.ConfigName, value json.RawMessage) *common.ServiceError
+	GetWritableConfig(ctx context.Context, name string) (any, *common.ServiceError)
 }
 
 // serverConfigDeclarativeYAML is a server-config section document as produced by export: a section name
@@ -81,10 +83,30 @@ func (s *importService) importServerConfig(ctx context.Context, doc parsedDocume
 		return successOutcome(resourceTypeServerConfig, req.Name, req.Name, operationUpdate)
 	}
 
+	if req.Name == string(serverconfig.ConfigNameCORS) {
+		value = s.mergeCORSOrigins(ctx, value)
+	}
+
 	if svcErr := s.serverConfigService.SetConfig(ctx, serverconfig.ConfigName(req.Name), value); svcErr != nil {
 		return serviceErrorOutcome(resourceTypeServerConfig, req.Name, req.Name, operationUpdate, svcErr)
 	}
 	return successOutcome(resourceTypeServerConfig, req.Name, req.Name, operationUpdate)
+}
+
+// Makes sure that the CORS origins are merged with the existing ones instead of overwriting them.
+// This is to avoid breaking existing clients that rely on the existing CORS origins.
+func (s *importService) mergeCORSOrigins(ctx context.Context, incoming json.RawMessage) json.RawMessage {
+	existing, svcErr := s.serverConfigService.GetWritableConfig(ctx, string(serverconfig.ConfigNameCORS))
+	if svcErr != nil {
+		return incoming
+	}
+	decodedIncoming, err := cors.OriginHandler{}.Decode(incoming)
+	if err != nil {
+		return incoming
+	}
+	// Merge always returns an OriginConfig
+	merged, _ := json.Marshal(cors.OriginHandler{}.Merge(existing, decodedIncoming))
+	return merged
 }
 
 // serverConfigValueToJSON converts a YAML value node into the JSON the server-config API consumes.
