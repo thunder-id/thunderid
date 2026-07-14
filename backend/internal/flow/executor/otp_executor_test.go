@@ -139,7 +139,9 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Success_UserIdentifiedAnd
 		return hasMobile
 	})).Return(&userID, nil)
 
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, userID, authnprovidercm.UserAttributeUserID).
+	suite.mockOTPService.On("GenerateOTP",
+		mock.Anything, userID, authnprovidercm.UserAttributeUserID,
+		mock.Anything).
 		Return("session-tok-1", "654321", int64(300), (*tidcommon.ServiceError)(nil))
 
 	ctx := &providers.NodeContext{
@@ -176,7 +178,9 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_MultipleInputs_Identifies
 		return hasMobile && hasEmail
 	})).Return(&userID, nil)
 
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, userID, authnprovidercm.UserAttributeUserID).
+	suite.mockOTPService.On("GenerateOTP",
+		mock.Anything, userID, authnprovidercm.UserAttributeUserID,
+		mock.Anything).
 		Return("session-tok-2", "111222", int64(300), (*tidcommon.ServiceError)(nil))
 
 	ctx := &providers.NodeContext{
@@ -235,7 +239,9 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Registration_UserNotFound
 		return hasMobile
 	})).Return((*string)(nil), &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeEntityNotFound})
 
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, "+1234567890", common.AttributeMobileNumber).
+	suite.mockOTPService.On("GenerateOTP",
+		mock.Anything, "+1234567890",
+		common.AttributeMobileNumber, mock.Anything).
 		Return("session-reg-1", "777888", int64(300), (*tidcommon.ServiceError)(nil))
 
 	ctx := &providers.NodeContext{
@@ -605,7 +611,9 @@ func (suite *OTPExecutorTestSuite) TestResolveUserID_AuthenticatedUser_ReturnsEn
 		RuntimeData: map[string]string{},
 	}
 
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, entityID, authnprovidercm.UserAttributeUserID).
+	suite.mockOTPService.On("GenerateOTP",
+		mock.Anything, entityID, authnprovidercm.UserAttributeUserID,
+		mock.Anything).
 		Return("session-auth-tok", "112233", int64(300), (*tidcommon.ServiceError)(nil))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -704,7 +712,9 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_GenerateOTPError_ReturnsE
 		Code:             "OTP-ERR",
 		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "otp generation failed"},
 	}
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, userID, authnprovidercm.UserAttributeUserID).
+	suite.mockOTPService.On("GenerateOTP",
+		mock.Anything, userID, authnprovidercm.UserAttributeUserID,
+		mock.Anything).
 		Return("", "", int64(0), &svcErr)
 
 	ctx := &providers.NodeContext{
@@ -787,7 +797,9 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_MaxAttemptsFromNodeProper
 func (suite *OTPExecutorTestSuite) TestExecuteGenerate_MaxAttemptsFromNodeProperties_InvalidStringFallsBack() {
 	userID := testOTPUserID
 	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(&userID, nil)
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, userID, authnprovidercm.UserAttributeUserID).
+	suite.mockOTPService.On("GenerateOTP",
+		mock.Anything, userID, authnprovidercm.UserAttributeUserID,
+		mock.Anything).
 		Return("session-tok-fb", "999111", int64(300), (*tidcommon.ServiceError)(nil))
 
 	ctx := &providers.NodeContext{
@@ -817,7 +829,9 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Registration_DestinationF
 	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).
 		Return((*string)(nil), &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeEntityNotFound})
 
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, "+9876543210", common.AttributeMobileNumber).
+	suite.mockOTPService.On("GenerateOTP",
+		mock.Anything, "+9876543210",
+		common.AttributeMobileNumber, mock.Anything).
 		Return("session-rt", "445566", int64(300), (*tidcommon.ServiceError)(nil))
 
 	ctx := &providers.NodeContext{
@@ -845,7 +859,9 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Registration_DestinationF
 	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).
 		Return((*string)(nil), &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeEntityNotFound})
 
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, "+1112223333", common.AttributeMobileNumber).
+	suite.mockOTPService.On("GenerateOTP",
+		mock.Anything, "+1112223333",
+		common.AttributeMobileNumber, mock.Anything).
 		Return("session-fwd", "334455", int64(300), (*tidcommon.ServiceError)(nil))
 
 	ctx := &providers.NodeContext{
@@ -873,7 +889,9 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Registration_DestinationF
 // resolveUserID: userID already in RuntimeData (early return path)
 
 func (suite *OTPExecutorTestSuite) TestExecuteGenerate_UserIDAlreadyInRuntimeData() {
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, testOTPUserID, authnprovidercm.UserAttributeUserID).
+	suite.mockOTPService.On("GenerateOTP",
+		mock.Anything, testOTPUserID,
+		authnprovidercm.UserAttributeUserID, mock.Anything).
 		Return("session-cached", "221100", int64(300), (*tidcommon.ServiceError)(nil))
 
 	ctx := &providers.NodeContext{
@@ -950,4 +968,197 @@ func (suite *OTPExecutorTestSuite) TestExecuteVerify_AuthenticateUserUnexpectedE
 	_, err := suite.executor.Execute(ctx)
 
 	assert.Error(suite.T(), err)
+}
+
+// --- resolveOTPProperties tests ---
+
+func (suite *OTPExecutorTestSuite) TestResolveOTPProperties_AllValid() {
+	ctx := &providers.NodeContext{
+		NodeProperties: map[string]interface{}{
+			propertyKeyOTPLength:               8,
+			propertyKeyOTPUseNumericOnly:       true,
+			propertyKeyOTPValidityPeriodSeconds: 120,
+		},
+	}
+
+	cfg := suite.executor.resolveOTPProperties(ctx)
+
+	suite.NotNil(cfg)
+	suite.NotNil(cfg.Length)
+	suite.Equal(8, *cfg.Length)
+	suite.NotNil(cfg.UseNumericOnly)
+	suite.True(*cfg.UseNumericOnly)
+	suite.NotNil(cfg.ValidityPeriodSeconds)
+	suite.Equal(120, *cfg.ValidityPeriodSeconds)
+}
+
+func (suite *OTPExecutorTestSuite) TestResolveOTPProperties_NoProperties() {
+	ctx := &providers.NodeContext{
+		NodeProperties: map[string]interface{}{},
+	}
+
+	cfg := suite.executor.resolveOTPProperties(ctx)
+
+	suite.Nil(cfg)
+}
+
+func (suite *OTPExecutorTestSuite) TestResolveOTPProperties_OnlyLength() {
+	ctx := &providers.NodeContext{
+		NodeProperties: map[string]interface{}{
+			propertyKeyOTPLength: 6,
+		},
+	}
+
+	cfg := suite.executor.resolveOTPProperties(ctx)
+
+	suite.NotNil(cfg)
+	suite.NotNil(cfg.Length)
+	suite.Equal(6, *cfg.Length)
+	suite.Nil(cfg.UseNumericOnly)
+	suite.Nil(cfg.ValidityPeriodSeconds)
+}
+
+func (suite *OTPExecutorTestSuite) TestResolveOTPProperties_OnlyNumericOnly() {
+	ctx := &providers.NodeContext{
+		NodeProperties: map[string]interface{}{
+			propertyKeyOTPUseNumericOnly: false,
+		},
+	}
+
+	cfg := suite.executor.resolveOTPProperties(ctx)
+
+	suite.NotNil(cfg)
+	suite.Nil(cfg.Length)
+	suite.NotNil(cfg.UseNumericOnly)
+	suite.False(*cfg.UseNumericOnly)
+	suite.Nil(cfg.ValidityPeriodSeconds)
+}
+
+func (suite *OTPExecutorTestSuite) TestResolveOTPProperties_OnlyValidity() {
+	ctx := &providers.NodeContext{
+		NodeProperties: map[string]interface{}{
+			propertyKeyOTPValidityPeriodSeconds: 60,
+		},
+	}
+
+	cfg := suite.executor.resolveOTPProperties(ctx)
+
+	suite.NotNil(cfg)
+	suite.Nil(cfg.Length)
+	suite.Nil(cfg.UseNumericOnly)
+	suite.NotNil(cfg.ValidityPeriodSeconds)
+	suite.Equal(60, *cfg.ValidityPeriodSeconds)
+}
+
+func (suite *OTPExecutorTestSuite) TestResolveOTPProperties_LengthBelowMin() {
+	ctx := &providers.NodeContext{
+		NodeProperties: map[string]interface{}{
+			propertyKeyOTPLength: 3,
+		},
+	}
+
+	cfg := suite.executor.resolveOTPProperties(ctx)
+
+	suite.Nil(cfg)
+}
+
+func (suite *OTPExecutorTestSuite) TestResolveOTPProperties_LengthAboveMax() {
+	ctx := &providers.NodeContext{
+		NodeProperties: map[string]interface{}{
+			propertyKeyOTPLength: 11,
+		},
+	}
+
+	cfg := suite.executor.resolveOTPProperties(ctx)
+
+	suite.Nil(cfg)
+}
+
+func (suite *OTPExecutorTestSuite) TestResolveOTPProperties_ValidityBelowMin() {
+	ctx := &providers.NodeContext{
+		NodeProperties: map[string]interface{}{
+			propertyKeyOTPValidityPeriodSeconds: 29,
+		},
+	}
+
+	cfg := suite.executor.resolveOTPProperties(ctx)
+
+	suite.Nil(cfg)
+}
+
+func (suite *OTPExecutorTestSuite) TestResolveOTPProperties_ValidityAboveMax() {
+	ctx := &providers.NodeContext{
+		NodeProperties: map[string]interface{}{
+			propertyKeyOTPValidityPeriodSeconds: 601,
+		},
+	}
+
+	cfg := suite.executor.resolveOTPProperties(ctx)
+
+	suite.Nil(cfg)
+}
+
+func (suite *OTPExecutorTestSuite) TestResolveOTPProperties_InvalidBool() {
+	ctx := &providers.NodeContext{
+		NodeProperties: map[string]interface{}{
+			propertyKeyOTPUseNumericOnly: "not-a-bool",
+		},
+	}
+
+	cfg := suite.executor.resolveOTPProperties(ctx)
+
+	suite.Nil(cfg)
+}
+
+func (suite *OTPExecutorTestSuite) TestResolveOTPProperties_InvalidLengthType() {
+	ctx := &providers.NodeContext{
+		NodeProperties: map[string]interface{}{
+			propertyKeyOTPLength: "abc",
+		},
+	}
+
+	cfg := suite.executor.resolveOTPProperties(ctx)
+
+	suite.Nil(cfg)
+}
+
+func (suite *OTPExecutorTestSuite) TestResolveOTPProperties_MixedValidAndInvalid() {
+	ctx := &providers.NodeContext{
+		NodeProperties: map[string]interface{}{
+			propertyKeyOTPLength:               8,
+			propertyKeyOTPValidityPeriodSeconds: 29,
+		},
+	}
+
+	cfg := suite.executor.resolveOTPProperties(ctx)
+
+	suite.NotNil(cfg)
+	suite.NotNil(cfg.Length)
+	suite.Equal(8, *cfg.Length)
+	suite.Nil(cfg.UseNumericOnly)
+	suite.Nil(cfg.ValidityPeriodSeconds)
+}
+
+func (suite *OTPExecutorTestSuite) TestResolveOTPProperties_FractionalLength() {
+	ctx := &providers.NodeContext{
+		NodeProperties: map[string]interface{}{
+			propertyKeyOTPLength: 4.9,
+		},
+	}
+
+	cfg := suite.executor.resolveOTPProperties(ctx)
+
+	suite.Nil(cfg)
+}
+
+func (suite *OTPExecutorTestSuite) TestResolveOTPProperties_FractionalValidity() {
+	ctx := &providers.NodeContext{
+		NodeProperties: map[string]interface{}{
+			propertyKeyOTPValidityPeriodSeconds: 30.9,
+		},
+	}
+
+	cfg := suite.executor.resolveOTPProperties(ctx)
+
+	suite.Nil(cfg)
 }

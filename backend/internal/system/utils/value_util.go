@@ -147,6 +147,24 @@ func ToInt64(v any) (int64, bool) {
 	}
 }
 
+// ToBool attempts to convert a value to bool.
+// Supports bool and string types ("true"/"false"/"1"/"0" etc. via strconv.ParseBool).
+// Returns the bool value and true if successful, or false and false if not convertible.
+func ToBool(v any) (bool, bool) {
+	switch n := v.(type) {
+	case bool:
+		return n, true
+	case string:
+		b, err := strconv.ParseBool(n)
+		if err != nil {
+			return false, false
+		}
+		return b, true
+	default:
+		return false, false
+	}
+}
+
 // SecondsToMinutes converts seconds to minutes and returns as a string.
 func SecondsToMinutes(seconds int64) string {
 	minutes := seconds / 60

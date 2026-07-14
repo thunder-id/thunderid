@@ -3167,6 +3167,14 @@ const translations = {
 
     // OTP executor
     'core.executions.otp.description': 'Configure the OTP executor settings.',
+    'core.executions.otp.otpLength.label': 'OTP Length',
+    'core.executions.otp.otpLength.placeholder': 'e.g., 6',
+    'core.executions.otp.otpLength.hint': 'Number of characters in the generated OTP (4-10).',
+    'core.executions.otp.otpUseNumericOnly.label': 'Numeric Only',
+    'core.executions.otp.otpUseNumericOnly.hint': 'When enabled, OTP will contain only numeric characters.',
+    'core.executions.otp.otpValidityPeriodSeconds.label': 'Validity Period (seconds)',
+    'core.executions.otp.otpValidityPeriodSeconds.placeholder': 'e.g., 120',
+    'core.executions.otp.otpValidityPeriodSeconds.hint': 'Time in seconds before the OTP expires (30-600).',
     'core.executions.otp.maxAttempts.label': 'Maximum Attempts',
     'core.executions.otp.maxAttempts.placeholder': 'e.g., 3',
     'core.executions.otp.maxAttempts.hint': 'The maximum number of OTP verification attempts before the flow fails.',

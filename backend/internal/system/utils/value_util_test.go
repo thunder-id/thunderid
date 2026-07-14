@@ -125,6 +125,50 @@ func (suite *ValueUtilTestSuite) TestToFloat64_Failure() {
 	}
 }
 
+func (suite *ValueUtilTestSuite) TestToBool_Success() {
+	testCases := []struct {
+		name     string
+		input    interface{}
+		expected bool
+	}{
+		{"bool true", true, true},
+		{"bool false", false, false},
+		{"string true", "true", true},
+		{"string false", "false", false},
+		{"string 1", "1", true},
+		{"string 0", "0", false},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			result, ok := ToBool(tc.input)
+			assert.True(suite.T(), ok)
+			assert.Equal(suite.T(), tc.expected, result)
+		})
+	}
+}
+
+func (suite *ValueUtilTestSuite) TestToBool_Failure() {
+	testCases := []struct {
+		name  string
+		input interface{}
+	}{
+		{"invalid string", "not-a-bool"},
+		{"int", 123},
+		{"float64", float64(1.0)},
+		{"nil", nil},
+		{"slice", []int{1, 2, 3}},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			result, ok := ToBool(tc.input)
+			assert.False(suite.T(), ok)
+			assert.False(suite.T(), result)
+		})
+	}
+}
+
 func (suite *ValueUtilTestSuite) TestSecondsToMinutes() {
 	testCases := []struct {
 		name     string

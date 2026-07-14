@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {FormHelperText, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
+import {Checkbox, FormControlLabel, FormHelperText, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {CommonResourcePropertiesPropsInterface} from './types';
@@ -30,11 +30,59 @@ function OtpProperties({resource, onChange}: CommonResourcePropertiesPropsInterf
     return stepData?.properties ?? {};
   }, [resource]);
 
+  const handleBooleanPropertyChange = (propertyName: string, value: boolean): void => {
+    onChange(`data.properties.${propertyName}`, value, resource);
+  };
+
   return (
     <Stack gap={2}>
       <Typography variant="body2" color="text.secondary">
         {t('flows:core.executions.otp.description')}
       </Typography>
+
+      <div>
+        <FormLabel htmlFor="otp-length">{t('flows:core.executions.otp.otpLength.label')}</FormLabel>
+        <TextField
+          id="otp-length"
+          type="number"
+          value={(properties.otpLength as string) ?? ''}
+          onChange={(e) => onChange('data.properties.otpLength', e.target.value, resource, true)}
+          placeholder={t('flows:core.executions.otp.otpLength.placeholder')}
+          fullWidth
+          size="small"
+          inputProps={{min: 4, max: 10}}
+        />
+        <FormHelperText>{t('flows:core.executions.otp.otpLength.hint')}</FormHelperText>
+      </div>
+
+      <div>
+        <FormLabel htmlFor="otp-validity">{t('flows:core.executions.otp.otpValidityPeriodSeconds.label')}</FormLabel>
+        <TextField
+          id="otp-validity"
+          type="number"
+          value={(properties.otpValidityPeriodSeconds as string) ?? ''}
+          onChange={(e) => onChange('data.properties.otpValidityPeriodSeconds', e.target.value, resource, true)}
+          placeholder={t('flows:core.executions.otp.otpValidityPeriodSeconds.placeholder')}
+          fullWidth
+          size="small"
+          inputProps={{min: 30, max: 600}}
+        />
+        <FormHelperText>{t('flows:core.executions.otp.otpValidityPeriodSeconds.hint')}</FormHelperText>
+      </div>
+
+      <div>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={!!properties.otpUseNumericOnly}
+              onChange={(e) => handleBooleanPropertyChange('otpUseNumericOnly', e.target.checked)}
+              size="small"
+            />
+          }
+          label={t('flows:core.executions.otp.otpUseNumericOnly.label')}
+        />
+        <FormHelperText>{t('flows:core.executions.otp.otpUseNumericOnly.hint')}</FormHelperText>
+      </div>
 
       <div>
         <FormLabel htmlFor="otp-max-attempts">{t('flows:core.executions.otp.maxAttempts.label')}</FormLabel>

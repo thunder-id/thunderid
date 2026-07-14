@@ -48,6 +48,11 @@
             }
           ]
         },
+        "properties": {
+          "otpLength": 6,
+          "otpUseNumericOnly": true,
+          "otpValidityPeriodSeconds": 120
+        },
         "onSuccess": "",
         "onFailure": "",
         "onIncomplete": ""
@@ -71,6 +76,11 @@
         "executor": {
           "name": "OTPExecutor",
           "mode": "verify"
+        },
+        "properties": {
+          "otpLength": 6,
+          "otpUseNumericOnly": true,
+          "otpValidityPeriodSeconds": 120
         },
         "onSuccess": "",
         "onFailure": "",
