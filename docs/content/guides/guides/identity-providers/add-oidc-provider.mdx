@@ -131,7 +131,7 @@ Behavior:
 - The `localAttribute` (target) must be an attribute defined in the profile's `userType` schema; this is validated when the IdP is created or updated.
 - An attribute whose name is mapped is renamed to its local attribute; attributes without a mapping pass through unchanged.
 
-The mapping applies both when a user signs in through this IdP in an authentication flow and when a token from this IdP is exchanged (see [Trusted Issuer](../../trusted-issuer#attribute-configuration)). The resulting local attributes flow into the issued access and ID tokens, subject to the application's `userAttributes` configuration.
+The mapping applies both when a user signs in through this IdP in an authentication flow and when a token from this IdP is exchanged (see [Trusted Issuer](../../trusted-issuer#claim-details)). The resulting local attributes flow into the issued access and ID tokens, subject to the application's `userAttributes` configuration.
 
 Example with token exchange enabled:
 
