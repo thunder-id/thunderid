@@ -8,7 +8,6 @@ html[data-theme='dark'] [class*='docMainContainer'] {
   background-color: transparent;
   box-shadow: none;
 }
-
 /**
  * Any CSS included here will be global. The classic template
  * bundles Infima by default. Infima is a CSS framework designed to
@@ -83,7 +82,7 @@ html[data-theme='dark'] [class*='docMainContainer'] {
   --ifm-font-weight-normal: 400;
   --ifm-font-weight-semibold: 600;
   --ifm-font-weight-bold: 700;
-
+  
   /* Colors */
   --ifm-color-primary: var(--oxygen-palette-primary-main);
   --ifm-color-primary-dark: var(--oxygen-palette-primary-dark);
@@ -92,7 +91,7 @@ html[data-theme='dark'] [class*='docMainContainer'] {
   --ifm-color-primary-light: var(--oxygen-palette-primary-light);
   --ifm-color-primary-lighter: rgb(var(--oxygen-palette-primary-lightChannel));
   --ifm-color-primary-lightest: rgb(var(--oxygen-palette-primary-lightChannel));
-
+  
   /* Navbar */
   --ifm-navbar-background-color: var(--oxygen-palette-background-paper);
 
@@ -113,9 +112,9 @@ html[data-theme='dark'] [class*='docMainContainer'] {
   /* Body Background */
   --site-background-attachment: fixed;
   --site-background-blend-mode: normal;
-  --site-background: radial-gradient(circle at 65% 30%, rgb(0 127 242 / 8%) 10%, rgba(0, 0, 0, 0) 60% 40%),
-    radial-gradient(circle at 15% 50%, rgb(0 213 255 / 12%) 1%, rgb(0 0 0 / 0%) 40% 70%),
-    radial-gradient(circle at center, rgba(255, 255, 255, 0.6) 0%, var(--oxygen-palette-background-default) 100%);
+      --site-background: radial-gradient(circle at 65% 30%, rgb(0 127 242 / 8%) 10%, rgba(0, 0, 0, 0) 60% 40%),
+        radial-gradient(circle at 15% 50%, rgb(0 213 255 / 12%) 1%, rgb(0 0 0 / 0%) 40% 70%),
+        radial-gradient(circle at center, rgba(255, 255, 255, 0.6) 0%, var(--oxygen-palette-background-default) 100%);
 }
 
 /* For readability concerns, you should choose a lighter palette in dark mode. */
@@ -123,9 +122,9 @@ html[data-theme='dark'] [class*='docMainContainer'] {
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 
   /* Body Background */
-  --site-background: radial-gradient(circle at 15% 50%, rgb(0 136 255 / 13%) 0%, rgb(6 13 26 / 0%) 40% 70%),
-    radial-gradient(circle at 65% 30%, rgb(0 127 242 / 22%) 10%, rgba(6, 13, 26, 0%) 60% 40%),
-    radial-gradient(circle at center, rgba(0, 0, 0, 0.6) 0%, var(--oxygen-palette-background-default) 100%);
+    --site-background: radial-gradient(circle at 15% 50%, rgb(0 136 255 / 13%) 0%, rgb(6 13 26 / 0%) 40% 70%),
+      radial-gradient(circle at 65% 30%, rgb(0 127 242 / 22%) 10%, rgba(6, 13, 26, 0%) 60% 40%),
+      radial-gradient(circle at center, rgba(0, 0, 0, 0.6) 0%, var(--oxygen-palette-background-default) 100%);
 }
 
 /* ------------------------------ Custom CSS -------------------------- */
@@ -139,12 +138,12 @@ html {
 
 /* Manually inject the radial background since `@wso2/oxygen-ui` adds it to the body. */
 html #__docusaurus {
-  background-color: var(--oxygen-palette-background-default);
-  background-attachment: var(--site-background-attachment);
-  background-image: var(--site-background);
-  background-repeat: no-repeat;
-  background-size: cover;
-  background-blend-mode: var(--site-background-blend-mode);
+    background-color: var(--oxygen-palette-background-default);
+    background-attachment: var(--site-background-attachment);
+    background-image: var(--site-background);
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-blend-mode: var(--site-background-blend-mode);
 }
 
 /* Keep root canvas in sync on home where effects can expose html background. */
@@ -164,7 +163,7 @@ html[data-page^='docs-'] {
    generated stylesheet, which blocks the gradient and creates the hard seam.
    Make it transparent so the fixed gradient on #__docusaurus shows through.
    Scoped to non-docs pages so docs pages keep a solid background. */
-html:not([data-page^='docs-']) #__docusaurus>.MuiBox-root:last-child {
+html:not([data-page^='docs-']) #__docusaurus > .MuiBox-root:last-child {
   background: transparent;
 }
 
@@ -226,10 +225,6 @@ h5 {
   overflow: visible;
 }
 
-.docs-doc-id-use-cases\/overview .theme-doc-markdown.markdown {
-  max-width: 1200px;
-}
-
 /* Copy page button wrapper — positioned at top-right of content area */
 .theme-doc-markdown.markdown .copy-page-btn-wrapper {
   position: absolute;
@@ -252,9 +247,12 @@ h5 {
     z-index: 4;
   }
 }
-
 .docs-doc-id-index .theme-doc-markdown.markdown {
   max-width: none;
+}
+
+.docs-doc-id-use-cases\/overview .theme-doc-markdown.markdown {
+  max-width: 1200px;
 }
 
 /* Constrain paragraph/list text for long-prose pages, let rich content break out */
@@ -262,7 +260,6 @@ h5 {
 .theme-doc-markdown.markdown li {
   max-width: 720px;
 }
-
 .theme-doc-markdown.markdown table,
 .theme-doc-markdown.markdown pre,
 .theme-doc-markdown.markdown [class*='codeBlockContainer'],
@@ -348,7 +345,7 @@ h5 {
 }
 
 /* Universal gap between tab bar and tab content */
-.tabs-container>.margin-top--md {
+.tabs-container > .margin-top--md {
   margin-top: 1.5rem;
 }
 
@@ -436,7 +433,6 @@ html[data-page='home'] .navbar.navbar--fixed-top {
 }
 
 @media (min-width: 997px) {
-
   html[data-page='home'] .navbar,
   html[data-page='home'] .navbar.navbar--fixed-top {
     backdrop-filter: saturate(180%) blur(16px);
@@ -493,17 +489,17 @@ html[data-page='home'][data-theme='dark'] .navbar .navbar__github--link::before 
     margin-left: 0;
   }
 
-  html [class*='docsWrapper'] main[class*='docMainContainer']>.container {
+  html [class*='docsWrapper'] main[class*='docMainContainer'] > .container {
     padding-left: 1rem;
     padding-right: 1rem;
   }
 
-  html [class*='docsWrapper'] main[class*='docMainContainer']>.container>.row {
+  html [class*='docsWrapper'] main[class*='docMainContainer'] > .container > .row {
     margin-left: 0;
     margin-right: 0;
   }
 
-  [class*='docsWrapper'] main[class*='docMainContainer']>.container>.row>.col,
+  [class*='docsWrapper'] main[class*='docMainContainer'] > .container > .row > .col,
   [class*='docsWrapper'] [class*='docItemCol'] {
     padding-left: 0;
     padding-right: 0;
@@ -561,8 +557,8 @@ html[data-page='home'][data-theme='dark'] .navbar .navbar__github--link::before 
   line-height: 0;
 }
 
-.navbar__github-star>span,
-.navbar__github-star>span>span {
+.navbar__github-star > span,
+.navbar__github-star > span > span {
   display: inline-flex;
   align-items: center;
 }
@@ -764,7 +760,7 @@ html[data-page='home'][data-theme='dark'] .dropdown>.navbar__link:after {
   color: #ffffff;
 }
 
-.theme-doc-sidebar-container .menu__list-item:not(.menu__list-item--collapsed)>.menu__list-item-collapsible>.menu__link--sublist-caret::after {
+.theme-doc-sidebar-container .menu__list-item:not(.menu__list-item--collapsed) > .menu__list-item-collapsible > .menu__link--sublist-caret::after {
   content: '›';
   transform: rotate(90deg);
 }
@@ -779,7 +775,7 @@ html[data-page='home'][data-theme='dark'] .dropdown>.navbar__link:after {
   padding: 0.5rem 5rem 1rem 0rem;
 }
 
-.theme-doc-sidebar-container .menu>.menu__list {
+.theme-doc-sidebar-container .menu > .menu__list {
   padding-left: 0;
 }
 
@@ -790,7 +786,7 @@ html[data-page='home'][data-theme='dark'] .dropdown>.navbar__link:after {
 }
 
 @media (min-width: 997px) {
-  [class*='docsWrapper'] main[class*='docMainContainer']>.container {
+  [class*='docsWrapper'] main[class*='docMainContainer'] > .container {
     padding-top: 3.5rem;
   }
 }
@@ -883,12 +879,12 @@ aside.theme-doc-sidebar-container {
 }
 
 /* Tighter gap between Home and Getting Started */
-.sidebar-doc-home+.sidebar-html-section-header {
+.sidebar-doc-home + .sidebar-html-section-header {
   margin-top: 0.5rem;
 }
 
 /* Back to main site — subtle footer link at bottom of sidebar */
-.sidebar-back-to-home>.menu__link {
+.sidebar-back-to-home > .menu__link {
   border-top: 1px solid var(--ifm-color-emphasis-200);
   color: var(--ifm-color-content-secondary) !important;
   font-size: 0.78rem;
@@ -896,7 +892,7 @@ aside.theme-doc-sidebar-container {
   padding: 0.75rem var(--ifm-menu-link-padding-horizontal);
 }
 
-.sidebar-back-to-home>.menu__link:hover {
+.sidebar-back-to-home > .menu__link:hover {
   color: var(--ifm-color-primary) !important;
   text-decoration: none;
 }
@@ -908,7 +904,7 @@ aside.theme-doc-sidebar-container {
 
 /* Divider line between sections */
 /* No dividers between sections */
-.sidebar-section+.sidebar-html-section-header {
+.sidebar-section + .sidebar-html-section-header {
   border-top: none;
   margin-top: 1rem;
   padding-top: 0.5rem;
@@ -978,15 +974,24 @@ aside.theme-doc-sidebar-container {
   --sidebar-section-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14'/%3E%3C/svg%3E");
 }
 
-.theme-doc-sidebar-container .menu>.menu__list>.theme-doc-sidebar-item-category:not(.sidebar-section) {
+.theme-doc-sidebar-container .menu > .menu__list > .theme-doc-sidebar-item-category:not(.sidebar-section) {
   margin-top: 1.25rem;
 }
 
-.theme-doc-sidebar-container .menu>.menu__list>.theme-doc-sidebar-item-category:not(.sidebar-section)>.menu__list-item-collapsible {
+.theme-doc-sidebar-container
+  .menu
+  > .menu__list
+  > .theme-doc-sidebar-item-category:not(.sidebar-section)
+  > .menu__list-item-collapsible {
   background: none;
 }
 
-.theme-doc-sidebar-container .menu>.menu__list>.theme-doc-sidebar-item-category:not(.sidebar-section)>.menu__list-item-collapsible>.menu__link {
+.theme-doc-sidebar-container
+  .menu
+  > .menu__list
+  > .theme-doc-sidebar-item-category:not(.sidebar-section)
+  > .menu__list-item-collapsible
+  > .menu__link {
   align-items: center;
   background: none;
   color: var(--ifm-font-color-base);
@@ -999,17 +1004,38 @@ aside.theme-doc-sidebar-container {
   text-transform: uppercase;
 }
 
-[data-theme='dark'] .theme-doc-sidebar-container .menu>.menu__list>.theme-doc-sidebar-item-category:not(.sidebar-section)>.menu__list-item-collapsible>.menu__link {
+[data-theme='dark']
+  .theme-doc-sidebar-container
+  .menu
+  > .menu__list
+  > .theme-doc-sidebar-item-category:not(.sidebar-section)
+  > .menu__list-item-collapsible
+  > .menu__link {
   color: #ffffff;
 }
 
-.theme-doc-sidebar-container .menu>.menu__list>.theme-doc-sidebar-item-category:not(.sidebar-section)>.menu__list-item-collapsible:hover>.menu__link,
-.theme-doc-sidebar-container .menu>.menu__list>.theme-doc-sidebar-item-category:not(.sidebar-section)>.menu__list-item-collapsible>.menu__link:hover {
+.theme-doc-sidebar-container
+  .menu
+  > .menu__list
+  > .theme-doc-sidebar-item-category:not(.sidebar-section)
+  > .menu__list-item-collapsible:hover
+  > .menu__link,
+.theme-doc-sidebar-container
+  .menu
+  > .menu__list
+  > .theme-doc-sidebar-item-category:not(.sidebar-section)
+  > .menu__list-item-collapsible
+  > .menu__link:hover {
   background: none;
   color: var(--ifm-color-primary);
 }
 
-.theme-doc-sidebar-container .menu>.menu__list>.theme-doc-sidebar-item-category:not(.sidebar-section)>.menu__list-item-collapsible>.menu__link::before {
+.theme-doc-sidebar-container
+  .menu
+  > .menu__list
+  > .theme-doc-sidebar-item-category:not(.sidebar-section)
+  > .menu__list-item-collapsible
+  > .menu__link::before {
   background-color: var(--ifm-color-emphasis-700);
   content: '';
   display: block;
@@ -1066,7 +1092,7 @@ aside.theme-doc-sidebar-container {
   background: color-mix(in srgb, var(--ifm-color-emphasis-200) 40%, transparent);
 }
 
-.theme-doc-sidebar-container .menu__list-item-collapsible>.menu__link {
+.theme-doc-sidebar-container .menu__list-item-collapsible > .menu__link {
   flex: 1;
   border-radius: 0;
   background: transparent;
@@ -1077,41 +1103,41 @@ aside.theme-doc-sidebar-container {
   color: inherit;
 }
 
-.theme-doc-sidebar-container .menu__list-item-collapsible>.menu__link:hover {
+.theme-doc-sidebar-container .menu__list-item-collapsible > .menu__link:hover {
   background: transparent;
 }
 
-.theme-doc-sidebar-container .menu__list-item-collapsible>.menu__link--active {
+.theme-doc-sidebar-container .menu__list-item-collapsible > .menu__link--active {
   color: var(--ifm-color-primary);
   background: transparent;
 }
 
-.theme-doc-sidebar-container .menu__list-item-collapsible>.menu__caret {
+.theme-doc-sidebar-container .menu__list-item-collapsible > .menu__caret {
   opacity: 1;
   flex-shrink: 0;
   padding: 0.25rem 0.4rem;
   transition: transform 0.2s ease;
 }
 
-.theme-doc-sidebar-container .theme-doc-sidebar-item-category>.menu__list {
+.theme-doc-sidebar-container .theme-doc-sidebar-item-category > .menu__list {
   padding-left: 0;
 }
 
-.theme-doc-sidebar-container .theme-doc-sidebar-item-category>.menu__list .menu__list {
+.theme-doc-sidebar-container .theme-doc-sidebar-item-category > .menu__list .menu__list {
   padding-left: 0.75rem;
 }
 
 /* sidebar-section: hide the duplicate category header label rendered by Docusaurus */
-.theme-doc-sidebar-container .menu__list-item.sidebar-section>.menu__list-item-collapsible,
-.theme-doc-sidebar-container .theme-doc-sidebar-item-category.sidebar-section>.menu__list-item-collapsible,
-.theme-doc-sidebar-container .menu__list-item.sidebar-section>.menu__link,
-.theme-doc-sidebar-container .theme-doc-sidebar-item-category.sidebar-section>.menu__link,
-.sidebar-section>.menu__list-item-collapsible {
+.theme-doc-sidebar-container .menu__list-item.sidebar-section > .menu__list-item-collapsible,
+.theme-doc-sidebar-container .theme-doc-sidebar-item-category.sidebar-section > .menu__list-item-collapsible,
+.theme-doc-sidebar-container .menu__list-item.sidebar-section > .menu__link,
+.theme-doc-sidebar-container .theme-doc-sidebar-item-category.sidebar-section > .menu__link,
+.sidebar-section > .menu__list-item-collapsible {
   display: none !important;
 }
 
 /* Collapsed items inside sidebar-sections: opacity only — rotation is handled via ::before */
-.sidebar-section>.menu__list .menu__list-item--collapsed>.menu__list-item-collapsible>.menu__caret {
+.sidebar-section > .menu__list .menu__list-item--collapsed > .menu__list-item-collapsible > .menu__caret {
   opacity: 0.6;
 }
 
@@ -1131,30 +1157,17 @@ aside.theme-doc-sidebar-container {
 }
 
 @keyframes ai-sparkle {
-
-  0%,
-  100% {
-    transform: scale(1) rotate(0deg);
-    opacity: 1;
-  }
-
-  30% {
-    transform: scale(1.25) rotate(20deg);
-    opacity: 0.75;
-  }
-
-  60% {
-    transform: scale(1.1) rotate(-12deg);
-    opacity: 0.9;
-  }
+  0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
+  30%       { transform: scale(1.25) rotate(20deg); opacity: 0.75; }
+  60%       { transform: scale(1.1) rotate(-12deg); opacity: 0.9; }
 }
 
 /* ------------------------------ API Doc Adjustments ---------------------- */
 
 [data-theme="dark"] .dark-mode {
-  --scalar-background-1: var(--oxygen-palette-background-paper);
-  --scalar-background-2: var(--oxygen-palette-background-paper);
-  --scalar-background-3: var(--oxygen-palette-background-paper);
+    --scalar-background-1: var(--oxygen-palette-background-paper);
+    --scalar-background-2: var(--oxygen-palette-background-paper);
+    --scalar-background-3: var(--oxygen-palette-background-paper);
 }
 
 [data-theme="light"] .dark-mode {
@@ -1175,8 +1188,7 @@ aside.theme-doc-sidebar-container {
   overflow-y: auto !important;
 }
 
-.apis-page .scalar-api-reference main,
-.apis-page .scalar-api-reference .narrow-references-container {
+.apis-page .scalar-api-reference main, .apis-page .scalar-api-reference .narrow-references-container {
   background-attachment: var(--site-background-attachment);
   background-image: var(--site-background);
   background-blend-mode: var(--site-background-blend-mode);
@@ -1191,7 +1203,7 @@ aside.theme-doc-sidebar-container {
 }
 
 /* Indent tag items under their tag-group category headers with a connecting line */
-.apis-page [data-sidebar-id*="/tag-group/"]>ul {
+.apis-page [data-sidebar-id*="/tag-group/"] > ul {
   margin-left: 0.1rem;
   padding-left: 0.25rem;
   margin-top: 0.5rem;
@@ -1199,7 +1211,7 @@ aside.theme-doc-sidebar-container {
   gap: 0.25rem;
 }
 
-.apis-page [data-sidebar-id*="/tag-group/"]>ul>li>div>button {
+.apis-page [data-sidebar-id*="/tag-group/"] > ul > li > div > button {
   padding: 0.45rem 0.75rem !important;
   font-size: 0.875rem !important;
   font-weight: 400 !important;
@@ -1209,8 +1221,8 @@ aside.theme-doc-sidebar-container {
 }
 
 /* Category section header style */
-.apis-page [data-sidebar-id*="/tag-group/"]>div[aria-selected],
-.apis-page [data-sidebar-id$="/models"]>div>button {
+.apis-page [data-sidebar-id*="/tag-group/"] > div[aria-selected],
+.apis-page [data-sidebar-id$="/models"] > div > button {
   display: flex !important;
   align-items: center !important;
   gap: 0.3rem !important;
@@ -1231,17 +1243,16 @@ aside.theme-doc-sidebar-container {
 }
 
 /* Category section icons — primary color, full opacity */
-.apis-page [data-sidebar-id*="/tag-group/"]>div[aria-selected] .apis-category-icon,
+.apis-page [data-sidebar-id*="/tag-group/"] > div[aria-selected] .apis-category-icon,
 .apis-page [data-sidebar-id$="/models"] .apis-category-icon {
   opacity: 1;
 }
 
 /* Asymmetric section spacing: more above each header, tighter below */
-.apis-page [data-sidebar-id*="/tag-group/"]>div[class*="spacer-before"] {
+.apis-page [data-sidebar-id*="/tag-group/"] > div[class*="spacer-before"] {
   height: 1.5rem !important;
 }
-
-.apis-page [data-sidebar-id*="/tag-group/"]>div[class*="spacer-after"] {
+.apis-page [data-sidebar-id*="/tag-group/"] > div[class*="spacer-after"] {
   height: 0.25rem !important;
 }
 
@@ -1272,7 +1283,7 @@ aside.theme-doc-sidebar-container {
 }
 
 /* Slightly more vertical breathing room between response rows */
-.apis-page .response-card+.response-card {
+.apis-page .response-card + .response-card {
   margin-top: 2px;
 }
 
@@ -1367,7 +1378,6 @@ aside.theme-doc-sidebar-container {
 
 /* ========================= MOBILE API PAGE ================================ */
 @media (max-width: 996px) {
-
   /* Mobile API docs uses MobileApiReference — a purpose-built component that
      replaces Scalar entirely on narrow viewports. No Scalar CSS overrides are
      needed here; the mobile component manages its own layout via inline styles.
@@ -1396,32 +1406,27 @@ aside.theme-doc-sidebar-container {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
   transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease, border-color 0.15s ease !important;
 }
-
 [class*='copyPageButton']:hover {
   background: rgba(255, 255, 255, 0.14) !important;
   border-color: rgba(255, 255, 255, 0.28) !important;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
   transform: translateY(-1px) !important;
 }
-
 [class*='copyPageButton']:active {
   transform: translateY(0) !important;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15) !important;
 }
-
 [class*='copyPageButton'] svg {
   width: 15px !important;
   height: 15px !important;
   opacity: 0.85 !important;
 }
-
 [data-theme='light'] [class*='copyPageButton'] {
   background: color-mix(in srgb, var(--ifm-color-primary) 10%, transparent) !important;
   border-color: color-mix(in srgb, var(--ifm-color-primary) 30%, transparent) !important;
   color: var(--ifm-color-primary-dark) !important;
   box-shadow: 0 2px 8px color-mix(in srgb, var(--ifm-color-primary) 12%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
 }
-
 [data-theme='light'] [class*='copyPageButton']:hover {
   background: color-mix(in srgb, var(--ifm-color-primary) 18%, transparent) !important;
   border-color: color-mix(in srgb, var(--ifm-color-primary) 50%, transparent) !important;
@@ -1436,12 +1441,10 @@ aside.theme-doc-sidebar-container {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2) !important;
   overflow: hidden !important;
 }
-
 [data-theme='dark'] [class*='copyPageDropdown'] {
   background: #0e1929 !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
 }
-
 [data-theme='light'] [class*='copyPageDropdown'] {
   background: #ffffff !important;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1) !important;
@@ -1454,14 +1457,12 @@ aside.theme-doc-sidebar-container {
   border-bottom: none !important;
   align-items: flex-start !important;
 }
-
 /* Divider between "View as Markdown" and "Open in ChatGPT" */
 [class*='dropdownItem']:nth-child(3) {
   margin-top: 4px !important;
   padding-top: 14px !important;
   position: relative !important;
 }
-
 [class*='dropdownItem']:nth-child(3)::before {
   content: '' !important;
   position: absolute !important;
@@ -1471,15 +1472,12 @@ aside.theme-doc-sidebar-container {
   height: 1px !important;
   background: var(--ifm-color-emphasis-300) !important;
 }
-
 [data-theme='dark'] [class*='dropdownItem']:nth-child(3)::before {
   background: rgba(255, 255, 255, 0.12) !important;
 }
-
 [class*='dropdownItem']:hover {
   background: color-mix(in srgb, var(--ifm-color-primary) 8%, transparent) !important;
 }
-
 [class*='dropdownItem'] svg {
   width: 16px !important;
   height: 16px !important;
@@ -1487,14 +1485,12 @@ aside.theme-doc-sidebar-container {
   margin-top: 2px !important;
   flex-shrink: 0 !important;
 }
-
 [class*='itemTitle'] {
   font-size: 0.82rem !important;
   font-weight: 600 !important;
   margin-bottom: 2px !important;
   line-height: 1.3 !important;
 }
-
 [class*='itemDescription'] {
   font-size: 0.73rem !important;
   opacity: 0.65 !important;
@@ -1518,7 +1514,6 @@ aside.theme-doc-sidebar-container {
     opacity: 0;
     transform: translateY(-6px) scale(0.98);
   }
-
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -1544,7 +1539,7 @@ html[data-connect-type='mcp'] .connect-section--agent {
 }
 
 /* Hide the auto-generated category label — keep only the items list */
-.connect-section>*:not(.menu__list) {
+.connect-section > *:not(.menu__list) {
   display: none !important;
 }
 
@@ -1554,25 +1549,24 @@ html[data-connect-type='mcp'] .connect-section--agent {
     opacity: 0;
     transform: translateX(-8px);
   }
-
   to {
     opacity: 1;
     transform: translateX(0);
   }
 }
 
-.connect-section>.menu__list>li {
+.connect-section > .menu__list > li {
   animation: connect-item-enter 0.22s ease both 0.05s;
 }
 
 /* Vertical accent line next to the tech list */
-.connect-section>.menu__list {
+.connect-section > .menu__list {
   border-left: 2px solid color-mix(in srgb, var(--ifm-color-primary) 25%, transparent);
   margin-left: 1.5rem;
   padding-left: 0;
 }
 
-.connect-section>.menu__list .menu__link {
+.connect-section > .menu__list .menu__link {
   padding-bottom: 0.3rem;
   padding-left: 0.75rem;
   padding-top: 0.3rem;
@@ -1615,9 +1609,23 @@ html[data-connect-type='mcp'] .connect-section--agent {
   padding: 15px;
 }
 
-@media (max-width: 996px) {
+/* Prevent breadcrumb text from running under the button */
+nav.theme-doc-breadcrumbs {
+  padding-right: 175px;
+}
 
+/* Ensure copy dropdown positions against its trigger container */
+.theme-doc-markdown.markdown [class*='copyPageContainer'] {
+  position: relative;
+  display: inline-block;
+}
+
+@media (max-width: 996px) {
   /* Let breadcrumbs use full width and wrap on smaller screens */
+  nav.theme-doc-breadcrumbs {
+    padding-right: 0;
+  }
+
   nav.theme-doc-breadcrumbs .breadcrumbs {
     display: flex;
     flex-wrap: wrap;
@@ -1643,6 +1651,27 @@ html[data-connect-type='mcp'] .connect-section--agent {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Reflow copy page action below breadcrumb row to avoid overlap */
+  .theme-doc-markdown.markdown .copy-page-btn-wrapper {
+    position: static;
+    top: auto;
+    right: auto;
+    margin: 0.4rem 0 0.8rem;
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+    z-index: 4;
+  }
+
+  /* Keep dropdown within viewport on mobile */
+  [class*='copyPageDropdown'] {
+    min-width: min(320px, calc(100vw - 1.5rem)) !important;
+    max-width: calc(100vw - 1.5rem) !important;
+    max-height: min(60vh, 420px) !important;
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch !important;
   }
 }
 
@@ -1670,7 +1699,6 @@ li:has(> .table-of-contents__link[href="#prerequisites"]) {
   padding-top: 0.08em;
   padding-bottom: 0.08em;
 }
-
 /* ------------------------------ Releases Page ---------------------- */
 
 .releases-page main {
@@ -1923,7 +1951,7 @@ li:has(> .table-of-contents__link[href="#prerequisites"]) {
   margin-top: 1rem;
 }
 
-.download-card__other>summary {
+.download-card__other > summary {
   cursor: pointer;
   font-size: 0.9rem;
   font-weight: 600;
@@ -1931,7 +1959,7 @@ li:has(> .table-of-contents__link[href="#prerequisites"]) {
   padding: 0.4rem 0;
 }
 
-.download-card__other[open]>summary {
+.download-card__other[open] > summary {
   margin-bottom: 0.75rem;
 }
 
@@ -2040,7 +2068,7 @@ li:has(> .table-of-contents__link[href="#prerequisites"]) {
   padding-left: 1.35rem;
 }
 
-.releases-change-group li+li {
+.releases-change-group li + li {
   margin-top: 0.55rem;
 }
 
@@ -2150,20 +2178,24 @@ li:has(> .table-of-contents__link[href="#prerequisites"]) {
   padding: 0.9rem 1.25rem;
   border: 1px solid color-mix(in srgb, var(--ifm-color-primary) 22%, var(--ifm-color-emphasis-300));
   border-radius: 10px;
-  background: linear-gradient(120deg,
-      color-mix(in srgb, var(--ifm-color-primary) 16%, transparent) 0%,
-      color-mix(in srgb, var(--ifm-color-primary) 8%, transparent) 55%,
-      transparent 100%);
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--ifm-color-primary) 16%, transparent) 0%,
+    color-mix(in srgb, var(--ifm-color-primary) 8%, transparent) 55%,
+    transparent 100%
+  );
   flex-wrap: nowrap;
   overflow: hidden;
 }
 
 [data-theme='dark'] .gsj {
   border-color: color-mix(in srgb, var(--ifm-color-primary) 30%, var(--ifm-color-emphasis-300));
-  background: linear-gradient(120deg,
-      color-mix(in srgb, var(--ifm-color-primary) 22%, transparent) 0%,
-      color-mix(in srgb, var(--ifm-color-primary) 12%, transparent) 55%,
-      transparent 100%);
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--ifm-color-primary) 22%, transparent) 0%,
+    color-mix(in srgb, var(--ifm-color-primary) 12%, transparent) 55%,
+    transparent 100%
+  );
 }
 
 .gsj__step-link {
@@ -2492,7 +2524,7 @@ a.connect-card {
   width: 100%;
 }
 
-.next-steps-group__cards>a {
+.next-steps-group__cards > a {
   display: block;
   width: 100%;
   text-decoration: none;
@@ -2561,28 +2593,28 @@ a.connect-card {
   height: 22px;
   border-radius: 50%;
   background: var(--ifm-color-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10);
   margin-right: 1.2rem;
   margin-top: 0.2rem;
   border: 3px solid var(--ifm-background-surface);
-  animation: uc-j-dot-pop 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: uc-j-dot-pop 0.5s cubic-bezier(0.16,1,0.3,1);
   transition: background 0.2s, box-shadow 0.2s;
 }
 
 .uc-journey-step:hover .uc-journey-dot {
   background: var(--ifm-color-primary-light);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.16);
 }
 
 .uc-journey-content {
   background: var(--ifm-background-surface);
   border-radius: 12px;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 6px rgba(0,0,0,0.06);
   padding: 1.1rem 1.3rem 1.1rem 1.1rem;
   min-width: 0;
   flex: 1;
   margin-bottom: 0.2rem;
-  animation: uc-j-fade-in 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: uc-j-fade-in 0.7s cubic-bezier(0.16,1,0.3,1);
 }
 
 .uc-journey-step h4 {
@@ -2611,48 +2643,23 @@ a.connect-card {
   opacity: 0.18;
   position: relative;
   z-index: 0;
-  animation: uc-j-connector-grow 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: uc-j-connector-grow 0.7s cubic-bezier(0.16,1,0.3,1);
 }
 
 @keyframes uc-j-dot-pop {
-  0% {
-    transform: scale(0.5);
-    opacity: 0;
-  }
-
-  60% {
-    transform: scale(1.15);
-    opacity: 1;
-  }
-
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
+  0% { transform: scale(0.5); opacity: 0; }
+  60% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 @keyframes uc-j-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes uc-j-connector-grow {
-  from {
-    height: 0;
-    opacity: 0;
-  }
-
-  to {
-    height: 38px;
-    opacity: 0.18;
-  }
+  from { height: 0; opacity: 0; }
+  to   { height: 38px; opacity: 0.18; }
 }
 
 @media (max-width: 700px) {
@@ -2660,7 +2667,6 @@ a.connect-card {
     max-width: 100%;
     margin-left: 0;
   }
-
   .uc-journey-content {
     padding: 1rem 0.7rem 1rem 0.9rem;
   }
@@ -2670,7 +2676,6 @@ a.connect-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 100%;
   margin: 2rem 0 3rem;
 }
 
@@ -2706,12 +2711,6 @@ a.connect-card {
   overflow: visible;
 }
 
-.uc-overview-branch-row {
-  display: flex;
-  justify-content: flex-end;
-  width: 100%;
-}
-
 .uc-root {
   animation: uc-enter-up 700ms cubic-bezier(0.16, 1, 0.3, 1) 50ms both;
 }
@@ -2726,9 +2725,11 @@ a.connect-card {
   padding: 1rem 1.1rem;
   border-radius: 14px;
   border: 1px solid var(--ifm-color-emphasis-200);
-  background: linear-gradient(180deg,
-      color-mix(in srgb, var(--ifm-color-primary) 6%, transparent),
-      var(--ifm-background-surface));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--ifm-color-primary) 6%, transparent),
+    var(--ifm-background-surface)
+  );
 }
 
 .uc-b2b-intro-kicker {
@@ -2756,17 +2757,14 @@ a.connect-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 30px;
-  /* Add more spacing below the text */
+  margin-bottom: 30px; /* Add more spacing below the text */
 }
 
 .uc-b2b-model__stem {
   position: relative;
-  top: 20px;
-  /* Further move the stem down */
+  top: 20px; /* Further move the stem down */
   width: 4px;
-  height: 80px;
-  /* Increase the height for better visibility */
+  height: 80px; /* Increase the height for better visibility */
   background-color: #000;
   margin: 0 auto;
 }
@@ -3033,29 +3031,12 @@ a.connect-card {
   animation: uc-b2b-panel-rise 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.uc-b2b-panel:nth-of-type(1) {
-  animation-delay: 60ms;
-}
-
-.uc-b2b-panel:nth-of-type(2) {
-  animation-delay: 120ms;
-}
-
-.uc-b2b-panel:nth-of-type(3) {
-  animation-delay: 180ms;
-}
-
-.uc-b2b-panel:nth-of-type(4) {
-  animation-delay: 240ms;
-}
-
-.uc-b2b-panel:nth-of-type(5) {
-  animation-delay: 300ms;
-}
-
-.uc-b2b-panel:nth-of-type(6) {
-  animation-delay: 360ms;
-}
+.uc-b2b-panel:nth-of-type(1) { animation-delay: 60ms; }
+.uc-b2b-panel:nth-of-type(2) { animation-delay: 120ms; }
+.uc-b2b-panel:nth-of-type(3) { animation-delay: 180ms; }
+.uc-b2b-panel:nth-of-type(4) { animation-delay: 240ms; }
+.uc-b2b-panel:nth-of-type(5) { animation-delay: 300ms; }
+.uc-b2b-panel:nth-of-type(6) { animation-delay: 360ms; }
 
 .uc-b2b-panel__header {
   display: flex;
@@ -3155,27 +3136,13 @@ a.connect-card {
 }
 
 @keyframes uc-b2b-panel-rise {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes uc-b2b-note-rise {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @media (max-width: 900px) {
@@ -3201,7 +3168,6 @@ a.connect-card {
 }
 
 @media (prefers-reduced-motion: reduce) {
-
   .uc-b2b-panel,
   .uc-b2b-note-card,
   .uc-b2b-read-order__item {
@@ -3232,9 +3198,11 @@ a.connect-card {
 .uc-fact-card {
   border: 1px solid var(--ifm-color-emphasis-200);
   border-radius: 12px;
-  background: linear-gradient(150deg,
-      color-mix(in srgb, var(--ifm-color-emphasis-100) 30%, transparent),
-      transparent);
+  background: linear-gradient(
+    150deg,
+    color-mix(in srgb, var(--ifm-color-emphasis-100) 30%, transparent),
+    transparent
+  );
   padding: 0.9rem;
   box-shadow: 0 8px 20px color-mix(in srgb, #000 8%, transparent);
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
@@ -3871,13 +3839,8 @@ a.connect-card {
 
 /* ── Responsive additions ── */
 @media (max-width: 900px) {
-  .dp-choose-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .dp-next-grid {
-    grid-template-columns: 1fr;
-  }
+  .dp-choose-grid { grid-template-columns: 1fr; }
+  .dp-next-grid   { grid-template-columns: 1fr; }
 }
 
 /* ── Sequence Diagrams ── */
@@ -3966,432 +3929,4 @@ a.connect-card {
 .DocSearch-Sidepanel-Container.inline.is-open {
   opacity: 1;
   transform: none !important;
-}
-
-/* ------------------------------ OneTrust Cookie Consent ---------------------- */
-/* OneTrust (CookiePro) injects its banner and preference-center modal outside the
-   React tree with inline styles, so we override it here rather than via sx/styled(). */
-
-/* Note: --oxygen-palette-background-paper is intentionally translucent
-   (used for frosted-glass panels with backdrop-filter elsewhere on the site).
-   OneTrust's own markup has no backdrop-filter, so using it here makes the
-   card see-through — use the opaque background-default instead. */
-#onetrust-consent-sdk #onetrust-banner-sdk,
-#onetrust-consent-sdk #onetrust-pc-sdk,
-#onetrust-consent-sdk #ot-sdk-cookie-policy {
-  background-color: var(--oxygen-palette-background-default) !important;
-  color: var(--oxygen-palette-text-primary) !important;
-  border-color: var(--oxygen-palette-divider) !important;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.16) !important;
-  opacity: 1 !important;
-}
-
-/* Match the rounded-card language used elsewhere on the site (admonitions,
-   code blocks, cards) instead of OneTrust's sharp default corners. */
-#onetrust-consent-sdk #onetrust-pc-sdk {
-  border-radius: 16px !important;
-  overflow: hidden;
-}
-
-#onetrust-consent-sdk .ot-pc-header {
-  border-radius: 16px 16px 0 0 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-}
-
-#onetrust-consent-sdk .ot-pc-footer {
-  border-radius: 0 0 16px 16px !important;
-}
-
-/* Headings inject real h2/h3 tags, but OneTrust's own ID-scoped font-family
-   rule outranks the site's global h1-h5 selector — restate it here. Category
-   row labels (.ot-cat-header, an h4) are body copy, not a heading, and keep
-   the base font — see the dedicated rule further down. */
-#onetrust-consent-sdk #ot-pc-title,
-#onetrust-consent-sdk #ot-category-title {
-  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif !important;
-  font-weight: 700 !important;
-}
-
-#onetrust-consent-sdk .ot-pc-footer,
-#onetrust-consent-sdk .ot-pc-footer-logo {
-  background-color: var(--oxygen-palette-background-default) !important;
-}
-
-/* "Powered by OneTrust" is a fixed-color CDN image, not text — mute it in
-   line with the design's low-emphasis footer branding, and invert it in dark
-   mode so it stays legible instead of showing dark-on-dark. */
-#onetrust-consent-sdk .ot-pc-footer-logo img {
-  opacity: 0.5;
-}
-
-[data-theme='dark'] #onetrust-consent-sdk .ot-pc-footer-logo img {
-  filter: invert(1);
-}
-
-/* ---- Bottom cookie banner: a frosted glass bar with a glowing accent line,
-   rather than the flat opaque strip used for the modal. ---- */
-#onetrust-consent-sdk #onetrust-banner-sdk {
-  padding: 1.5rem 2rem !important;
-  background-color: color-mix(in srgb, var(--oxygen-palette-background-default) 94%, transparent) !important;
-  -webkit-backdrop-filter: blur(24px);
-  backdrop-filter: blur(24px);
-  border-top: none !important;
-  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.12) !important;
-}
-
-[data-theme='dark'] #onetrust-consent-sdk #onetrust-banner-sdk {
-  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.4) !important;
-}
-
-#onetrust-consent-sdk #onetrust-banner-sdk::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg,
-      transparent,
-      color-mix(in srgb, var(--oxygen-palette-primary-main) 50%, transparent) 30%,
-      color-mix(in srgb, var(--oxygen-palette-primary-main) 50%, transparent) 70%,
-      transparent);
-}
-
-#onetrust-consent-sdk #onetrust-policy-text {
-  line-height: 1.6;
-}
-
-#onetrust-consent-sdk #onetrust-button-group-parent {
-  display: flex;
-  align-items: center;
-}
-
-#onetrust-consent-sdk #onetrust-button-group {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-}
-
-/* OneTrust's banner uses a 12-column float grid (.ot-sdk-eight / .ot-sdk-three)
-   that doesn't reflow at narrow widths, leaving text and buttons squeezed
-   side-by-side. Below tablet, drop the button group to its own row; below
-   mobile, stack each button full-width. */
-@media (max-width: 1024px) {
-  #onetrust-consent-sdk #onetrust-banner-sdk {
-    padding: 1.25rem 1.25rem !important;
-  }
-
-  #onetrust-consent-sdk #onetrust-banner-sdk .ot-sdk-row {
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: stretch !important;
-  }
-
-  #onetrust-consent-sdk #onetrust-group-container,
-  #onetrust-consent-sdk #onetrust-button-group-parent {
-    width: 100% !important;
-    max-width: 100% !important;
-    float: none !important;
-  }
-
-  #onetrust-consent-sdk #onetrust-policy {
-    margin-bottom: 1rem;
-  }
-
-  #onetrust-consent-sdk #onetrust-button-group-parent {
-    justify-content: center !important;
-  }
-
-  #onetrust-consent-sdk #onetrust-button-group {
-    width: 100%;
-    justify-content: center;
-  }
-}
-
-@media (max-width: 600px) {
-  #onetrust-consent-sdk #onetrust-button-group {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  #onetrust-consent-sdk .cookie-setting-link,
-  #onetrust-consent-sdk #onetrust-reject-all-handler,
-  #onetrust-consent-sdk #onetrust-accept-btn-handler {
-    width: 100%;
-    text-align: center;
-  }
-}
-
-/* Pill-shaped, matching the site's actual CTA buttons (e.g. hero "Get Started").
-   Scoped to the named action buttons only — the accordion header buttons are
-   invisible full-row hit targets and must not get padding/radius applied. */
-#onetrust-consent-sdk #onetrust-banner-sdk button,
-#onetrust-consent-sdk #onetrust-accept-btn-handler,
-#onetrust-consent-sdk #accept-recommended-btn-handler,
-#onetrust-consent-sdk #onetrust-reject-all-handler,
-#onetrust-consent-sdk .ot-pc-refuse-all-handler,
-#onetrust-consent-sdk .save-preference-btn-handler,
-#onetrust-consent-sdk .cookie-setting-link {
-  border-radius: 999px !important;
-  padding: 0.6rem 1.5rem !important;
-  font-weight: 600 !important;
-  font-size: 0.85rem !important;
-  text-transform: none !important;
-  text-decoration: none !important;
-  transition: background-color 0.15s ease, border-color 0.15s ease, filter 0.15s ease, opacity 0.15s ease, color 0.15s ease;
-}
-
-/* In the banner, "Cookie settings" and "Necessary cookies only" are both
-   plain text links (matching the hero's "Learn More →" treatment) — only
-   "Accept all cookies" is a filled pill. The modal's footer buttons keep
-   their bordered-pill/solid treatment (handled separately below). */
-#onetrust-consent-sdk .cookie-setting-link,
-#onetrust-consent-sdk #onetrust-reject-all-handler {
-  border-radius: 999px !important;
-  background-color: transparent !important;
-  border: none !important;
-  font-weight: 500 !important;
-  color: var(--oxygen-palette-text-secondary) !important;
-}
-
-/* Hover just darkens the text, matching the hero "Learn More" link — no
-   background. The filled pill only appears on keyboard focus (selected). */
-#onetrust-consent-sdk .cookie-setting-link:hover,
-#onetrust-consent-sdk #onetrust-reject-all-handler:hover {
-  background-color: transparent !important;
-  color: var(--oxygen-palette-text-primary) !important;
-}
-
-#onetrust-consent-sdk .cookie-setting-link:focus-visible,
-#onetrust-consent-sdk #onetrust-reject-all-handler:focus-visible {
-  outline: none !important;
-  background-color: color-mix(in srgb, var(--oxygen-palette-text-primary) 8%, transparent) !important;
-  color: var(--oxygen-palette-text-primary) !important;
-}
-
-/* The banner's primary CTA gets the design's gradient + glow treatment; the
-   modal's flat "Allow All" / "Confirm My Choices" buttons stay solid. */
-#onetrust-consent-sdk #onetrust-accept-btn-handler {
-  background: linear-gradient(135deg, var(--oxygen-palette-primary-main), var(--oxygen-palette-primary-dark)) !important;
-  border-color: transparent !important;
-  box-shadow: 0 2px 12px color-mix(in srgb, var(--oxygen-palette-primary-main) 35%, transparent) !important;
-}
-
-#onetrust-consent-sdk #onetrust-accept-btn-handler:hover,
-#onetrust-consent-sdk #accept-recommended-btn-handler:hover,
-#onetrust-consent-sdk .save-preference-btn-handler:hover {
-  filter: brightness(0.92);
-}
-
-/* Replace the default browser focus rectangle with a themed ring. */
-#onetrust-consent-sdk #onetrust-banner-sdk button:focus-visible,
-#onetrust-consent-sdk .cookie-setting-link:focus-visible {
-  outline: none !important;
-  box-shadow: 0 0 0 2px var(--oxygen-palette-primary-main) !important;
-}
-
-/* The CDN-hosted logo image isn't legible on a dark background. Swap it for
-   the site's own logo assets, which already have a dark-theme variant. */
-#onetrust-consent-sdk .ot-pc-logo img {
-  display: none !important;
-}
-
-#onetrust-consent-sdk .ot-pc-logo {
-  background-image: url('/assets/images/logo.svg');
-  background-repeat: no-repeat;
-  background-position: left center;
-  background-size: contain;
-  min-height: 32px;
-}
-
-[data-theme='dark'] #onetrust-consent-sdk .ot-pc-logo {
-  background-image: url('/assets/images/logo-inverted.svg');
-}
-
-#onetrust-consent-sdk #ot-pc-desc,
-#onetrust-consent-sdk .ot-cat-item h3,
-#onetrust-consent-sdk #ot-pc-title,
-#onetrust-consent-sdk #ot-lst-title h3,
-#onetrust-consent-sdk #ot-category-title {
-  color: var(--oxygen-palette-text-primary) !important;
-}
-
-/* Category row labels use the base body font, weighted by whether the
-   category is user-toggleable ("Strictly Necessary" is emphasized full-
-   color/weight; the others sit a tier down until interacted with). */
-#onetrust-consent-sdk .ot-cat-header {
-  color: var(--oxygen-palette-text-secondary) !important;
-  font-weight: 500 !important;
-}
-
-#onetrust-consent-sdk .ot-always-active-group .ot-cat-header {
-  color: var(--oxygen-palette-text-primary) !important;
-  font-weight: 600 !important;
-}
-
-#onetrust-consent-sdk .ot-always-active {
-  color: var(--oxygen-palette-primary-main) !important;
-}
-
-/* Category descriptions sit a tier below the main policy copy. */
-#onetrust-consent-sdk .ot-acc-grpdesc {
-  color: var(--oxygen-palette-text-disabled) !important;
-}
-
-/* Match the site's secondary-body-copy style (MuiTypography secondary
-   variant: text-secondary color, 0.875rem, 1.7 line-height). */
-#onetrust-consent-sdk #onetrust-policy-text,
-#onetrust-consent-sdk #onetrust-policy-text * {
-  color: var(--oxygen-palette-text-secondary) !important;
-  font: var(--oxygen-font-body1) !important;
-}
-
-#onetrust-consent-sdk .ot-cookie-policy-link,
-#onetrust-consent-sdk .privacy-notice-link {
-  color: var(--oxygen-palette-primary-main) !important;
-}
-
-#onetrust-consent-sdk #onetrust-accept-btn-handler,
-#onetrust-consent-sdk #accept-recommended-btn-handler {
-  background-color: var(--oxygen-palette-primary-main) !important;
-  border-color: var(--oxygen-palette-primary-main) !important;
-  color: var(--oxygen-palette-primary-contrastText, #fff) !important;
-}
-
-/* Note: #onetrust-pc-btn-handler ("Cookie settings") and the banner's
-   #onetrust-reject-all-handler are deliberately excluded here — both are
-   styled as plain text links further up. This rule is for the MODAL's
-   footer "Necessary Cookies Only" button only, which keeps a bordered pill. */
-#onetrust-consent-sdk .ot-pc-refuse-all-handler {
-  background-color: transparent !important;
-  border: 1px solid var(--oxygen-palette-divider) !important;
-  color: var(--oxygen-palette-text-primary) !important;
-}
-
-/* #ot-pc-content carries tabindex="-1" purely for programmatic scroll focus
-   management, not as a real interactive target — suppress the resulting
-   visible focus ring. */
-#onetrust-consent-sdk #ot-pc-content:focus,
-#onetrust-consent-sdk #ot-pc-content:focus-visible {
-  outline: none !important;
-}
-
-#onetrust-consent-sdk .save-preference-btn-handler {
-  background-color: var(--oxygen-palette-primary-main) !important;
-  border-color: var(--oxygen-palette-primary-main) !important;
-  color: var(--oxygen-palette-primary-contrastText, #fff) !important;
-}
-
-#onetrust-consent-sdk .ot-acc-hdr,
-#onetrust-consent-sdk #ot-pc-content,
-#onetrust-consent-sdk .ot-pc-footer,
-#onetrust-consent-sdk .ot-pc-header {
-  border-color: var(--oxygen-palette-divider) !important;
-}
-
-/* Each cookie category is its own rounded, bordered card (header + expanded
-   description together), per the design — rather than flat rows separated
-   only by a divider line. */
-#onetrust-consent-sdk .ot-accordion-layout {
-  border: 1px solid var(--oxygen-palette-divider) !important;
-  border-radius: 10px !important;
-  overflow: hidden;
-  margin-bottom: 0.75rem !important;
-  background-color: color-mix(in srgb, var(--oxygen-palette-divider) 6%, transparent) !important;
-}
-
-#onetrust-consent-sdk .ot-accordion-layout:last-child {
-  margin-bottom: 0 !important;
-}
-
-/* The accordion detail panel (cookie category description) keeps its own
-   opaque white background by default, which OneTrust never themes. Make it
-   transparent so it shares the parent .ot-accordion-layout card's tinted
-   background instead of showing a separate block underneath. */
-#onetrust-consent-sdk .ot-acc-grpcntr,
-#onetrust-consent-sdk .ot-acc-txt {
-  background-color: transparent !important;
-}
-
-
-/* The visible pill fill is .ot-switch-nob (it covers the whole track); its
-   :before pseudo is the small white knob. .ot-switch itself sits underneath
-   and isn't visible, so it must be themed here instead. OneTrust's own
-   checked-state rule on .ot-switch-nob also carries !important at equal
-   specificity and loads after ours, so the redundant class/attribute
-   selectors below are there purely to outrank it. */
-#onetrust-consent-sdk .ot-tgl .ot-switch .ot-switch-nob {
-  background-color: var(--oxygen-palette-divider) !important;
-}
-
-#onetrust-consent-sdk .ot-tgl input.category-switch-handler[type='checkbox']:checked~.ot-switch .ot-switch-nob {
-  background-color: var(--oxygen-palette-primary-main) !important;
-}
-
-/* The checkbox driving the switch is visually hidden but still sized to match
-   it, so the browser's default focus outline renders as a rectangle around
-   the switch. Suppress it there and show a themed ring on the switch instead. */
-#onetrust-consent-sdk .ot-tgl input {
-  outline: none !important;
-}
-
-#onetrust-consent-sdk .ot-tgl input:focus-visible~.ot-switch {
-  box-shadow: 0 0 0 2px var(--oxygen-palette-primary-main) !important;
-}
-
-#onetrust-consent-sdk #ot-search-cntr input,
-#onetrust-consent-sdk #vendor-search-handler {
-  background-color: var(--oxygen-palette-background-default) !important;
-  color: var(--oxygen-palette-text-primary) !important;
-  border-color: var(--oxygen-palette-divider) !important;
-}
-
-/* Replace the CDN close icon (a fixed-color image needing a dark-mode invert
-   hack) with a self-contained masked icon button matching the design. */
-#onetrust-consent-sdk #close-pc-btn-handler {
-  background-image: none !important;
-  width: 28px !important;
-  height: 28px !important;
-  margin-top: 0.5rem;
-  margin-right: 0.75rem;
-  border-radius: 8px !important;
-  border: none !important;
-  background-color: color-mix(in srgb, var(--oxygen-palette-divider) 20%, transparent) !important;
-  position: relative;
-  outline: none !important;
-  transition: background-color 0.15s ease;
-}
-
-#onetrust-consent-sdk #close-pc-btn-handler:focus-visible {
-  outline: none !important;
-  box-shadow: 0 0 0 2px var(--oxygen-palette-primary-main) !important;
-}
-
-#onetrust-consent-sdk #close-pc-btn-handler::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  width: 14px;
-  height: 14px;
-  background-color: var(--oxygen-palette-text-secondary);
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M18 6L6 18M6 6l12 12'/%3E%3C/svg%3E");
-  mask-repeat: no-repeat;
-  mask-position: center;
-  mask-size: contain;
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M18 6L6 18M6 6l12 12'/%3E%3C/svg%3E");
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  -webkit-mask-size: contain;
-}
-
-#onetrust-consent-sdk #close-pc-btn-handler:hover {
-  background-color: color-mix(in srgb, var(--oxygen-palette-divider) 40%, transparent) !important;
-}
-
-#onetrust-consent-sdk #close-pc-btn-handler:hover::before {
-  background-color: var(--oxygen-palette-text-primary);
 }
