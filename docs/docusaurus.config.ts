@@ -82,6 +82,9 @@ const config: Config = {
   onBrokenLinks: 'throw',
 
   markdown: {
+    // Enable Mermaid diagrams in Markdown/MDX via ```mermaid code fences.
+    // See: https://docusaurus.io/docs/markdown-features/diagrams
+    mermaid: true,
     hooks: {
       onBrokenMarkdownLinks: 'throw',
     },
@@ -159,6 +162,8 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       innerHTML: 'function OptanonWrapper() { }',
     },
   ],
+
+  themes: ['@docusaurus/theme-mermaid'],
 
   plugins: [
     '@docsearch/docusaurus-adapter',
