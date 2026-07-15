@@ -16,73 +16,32 @@
  * under the License.
  */
 
-// Package revocationcache maintains the Resource Server's in-memory snapshot of revoked tokens and
-// answers revocation checks for the RS enforcement point. It is read-only: it syncs the deny list
-// from a pluggable source on a configurable interval and never writes to it. The single-token
-// revocation write path lives in internal/oauth/oauth2/revocation and must not be imported here.
+// Package revocationcache answers the Resource Server's token-revocation checks from Token Status
+// Lists (draft-ietf-oauth-status-list). It is read-only: it lazily caches lists by URI from a
+// pluggable source and reads a token's status bit; it never writes revocations. The Status List write
+// path lives in internal/oauth/oauth2/revocation and the list store in internal/tokenstatus, neither of
+// which is imported here — the source is wired at the composition root.
 package revocationcache
 
-import (
-	"context"
-	"fmt"
-	"time"
+import "time"
 
-	"github.com/thunder-id/thunderid/internal/system/log"
-)
+// defaultRefreshInterval bounds cache staleness when cfg.RefreshInterval is not a positive duration.
+const defaultRefreshInterval = time.Minute
 
-// sourceDB is the cfg.Source value selecting the operation-database sync source (the only one today).
-const sourceDB = "db"
-
-// defaultSyncInterval is used when cfg.SyncInterval is not a positive duration.
-const defaultSyncInterval = time.Minute
-
-// Initialize builds the RS revocation enforcer and its background syncer from cfg. When disabled it
-// returns no-op implementations. Otherwise it selects the sync source from cfg.Source, performs a
-// synchronous initial load of the deny-list snapshot, and returns the enforcer (consulted on the
-// request hot path) together with the syncer (whose lifecycle the caller owns). An unsupported source
-// returns a non-nil error; a failed initial load does not, so a transient source outage never stops
-// startup: enforcement begins with an empty deny list that the syncer repopulates on its next tick.
-func Initialize(cfg Config) (EnforcerInterface, Syncer, error) {
-	if !cfg.Enabled {
-		return noopEnforcer{}, noopSyncer{}, nil
+// Initialize builds the RS revocation enforcer from cfg and the given status list source. It returns a
+// no-op enforcer when enforcement is disabled OR when no source is wired: revocation status is carried
+// only by the Token Status List, so with the list feature off there is nothing to enforce and the
+// enforcer must not reject tokens. When enabled with a source it returns an enforcer backed by a
+// lazily-populated, TTL-refreshed cache — there is no background sync.
+func Initialize(cfg Config, source StatusListSource) EnforcerInterface {
+	if !cfg.Enabled || source == nil {
+		return noopEnforcer{}
 	}
 
-	source, err := selectSource(cfg.Source)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	enforcer, syncer := initializeWithSource(cfg, source)
-	return enforcer, syncer, nil
-}
-
-// selectSource resolves cfg.Source to a syncSource. An empty value defaults to the database source.
-func selectSource(source string) (syncSource, error) {
-	switch source {
-	case "", sourceDB:
-		return newDBSource(), nil
-	default:
-		return nil, fmt.Errorf("%w: %q", errUnsupportedSource, source)
-	}
-}
-
-// initializeWithSource wires the cache, enforcer, and syncer against the given source and performs a
-// best-effort synchronous initial load. It is the seam the tests drive with a fake source. A failed
-// initial load is logged and does not stop startup: the deny list starts empty and the syncer
-// repopulates it on its next tick.
-func initializeWithSource(cfg Config, source syncSource) (EnforcerInterface, Syncer) {
-	interval := cfg.SyncInterval
+	interval := cfg.RefreshInterval
 	if interval <= 0 {
-		interval = defaultSyncInterval
+		interval = defaultRefreshInterval
 	}
 
-	cache := newRevokedCache()
-	s := newSyncer(source, cache, interval)
-	if err := s.refresh(context.Background()); err != nil {
-		s.logger.Error(context.Background(),
-			"Failed to load initial revoked token snapshot; starting with an empty deny list and "+
-				"retrying on the next sync", log.Error(err))
-	}
-
-	return newEnforcer(cache), s
+	return newEnforcer(newStatusCache(source, interval))
 }

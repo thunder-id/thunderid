@@ -131,6 +131,10 @@ type RefreshTokenClaims struct {
 	// Exp is the refresh token's expiry (exp claim); used to bound the deny-list entry when the token
 	// is revoked on rotation.
 	Exp int64
+	// StatusURI and StatusIdx are the Token Status List reference (status.status_list) when present.
+	// They let rotation flip the consumed token's status bit instead of writing the deny list.
+	StatusURI string
+	StatusIdx int64
 }
 
 // SubjectTokenClaims represents the validated claims from a subject token (for token exchange).

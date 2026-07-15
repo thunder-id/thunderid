@@ -1788,3 +1788,54 @@ func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_MissingOptional
 	suite.Empty(claims.AttributeCacheID)
 	suite.Empty(claims.CompletedACR)
 }
+
+// statusClaims builds a claims map carrying a status.status_list reference with the given idx and uri.
+func statusClaims(idx interface{}, uri interface{}) map[string]interface{} {
+	return map[string]interface{}{
+		"status": map[string]interface{}{
+			"status_list": map[string]interface{}{"idx": idx, "uri": uri},
+		},
+	}
+}
+
+func (suite *OAuth2UtilsTestSuite) TestExtractStatusListReference() {
+	tests := []struct {
+		name    string
+		claims  map[string]interface{}
+		wantURI string
+		wantIdx int64
+		wantOK  bool
+		wantErr bool
+	}{
+		{
+			"float64 index (decoded JWT)",
+			statusClaims(float64(42), "https://i/statuslists/a"), "https://i/statuslists/a", 42, true, false,
+		},
+		{"int64 index", statusClaims(int64(7), "https://i/statuslists/a"), "https://i/statuslists/a", 7, true, false},
+		{"no status claim", map[string]interface{}{}, "", 0, false, false},
+		{"status not an object", map[string]interface{}{"status": "revoked"}, "", 0, false, false},
+		{"status_list absent", map[string]interface{}{"status": map[string]interface{}{}}, "", 0, false, false},
+		{"empty uri", statusClaims(float64(1), ""), "", 0, false, true},
+		{
+			"missing uri",
+			map[string]interface{}{
+				"status": map[string]interface{}{"status_list": map[string]interface{}{"idx": float64(1)}},
+			},
+			"", 0, false, true,
+		},
+		{"non-numeric idx", statusClaims("nope", "https://i/statuslists/a"), "", 0, false, true},
+		{"negative float idx", statusClaims(float64(-1), "https://i/statuslists/a"), "", 0, false, true},
+		{"fractional idx", statusClaims(float64(3.5), "https://i/statuslists/a"), "", 0, false, true},
+		{"negative int idx", statusClaims(int64(-5), "https://i/statuslists/a"), "", 0, false, true},
+		{"zero idx", statusClaims(float64(0), "https://i/statuslists/a"), "https://i/statuslists/a", 0, true, false},
+	}
+	for _, tt := range tests {
+		suite.T().Run(tt.name, func(t *testing.T) {
+			uri, idx, ok, err := ExtractStatusListReference(tt.claims)
+			if ok != tt.wantOK || uri != tt.wantURI || idx != tt.wantIdx || (err != nil) != tt.wantErr {
+				t.Fatalf("ExtractStatusListReference = (%q, %d, %v, err=%v), want (%q, %d, %v, wantErr=%v)",
+					uri, idx, ok, err, tt.wantURI, tt.wantIdx, tt.wantOK, tt.wantErr)
+			}
+		})
+	}
+}

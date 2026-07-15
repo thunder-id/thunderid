@@ -510,7 +510,24 @@ func copyDirectory(src, dest string) error {
 
 func RunInitScript(zipFilePattern string) error {
 	log.Println("Running init script...")
+	return initSQLiteDatabases("configdb", "runtimedb", "userdb", "operationdb")
+}
 
+// ReinitResourceDatabases re-initializes only the resource-scoped databases (config, runtime, user),
+// deliberately preserving operationdb. operationdb holds authoritative authorization state — Token
+// Status Lists and SSO sessions — classified to survive a runtime database flush; wiping it would
+// dangle the status-list reference in every already-issued token (including the shared admin token),
+// so enforcement fails closed and every subsequent suite gets 401. The fresh-pack reset resets
+// deployment/resource data only, so operationdb must be left intact.
+func ReinitResourceDatabases() error {
+	log.Println("Re-initializing resource databases (preserving operationdb)...")
+	return initSQLiteDatabases("configdb", "runtimedb", "userdb")
+}
+
+// initSQLiteDatabases creates the named SQLite databases from their schema files. names must be a
+// subset of the known deployment databases; unknown names are an error. It is a no-op for PostgreSQL,
+// whose databases are initialized by the workflow.
+func initSQLiteDatabases(names ...string) error {
 	// Skip database initialization for PostgreSQL
 	if dbType == "postgres" {
 		log.Println("Skipping database initialization for PostgreSQL (already initialized in workflow)")
@@ -528,23 +545,22 @@ func RunInitScript(zipFilePattern string) error {
 		return fmt.Errorf("sqlite3 CLI not found in PATH: please install sqlite3 to run SQLite integration tests")
 	}
 
-	// Initialize each SQLite database
-	databases := []struct {
-		name       string
-		schemaDir  string
-		dbFileName string
-	}{
-		{"configdb", "dbscripts/configdb", "configdb.db"},
-		{"runtimedb", "dbscripts/runtimedb", "runtimedb.db"},
-		{"userdb", "dbscripts/userdb", "userdb.db"},
-		{"operationdb", "dbscripts/operationdb", "operationdb.db"},
+	schemaDirs := map[string]string{
+		"configdb":    "dbscripts/configdb",
+		"runtimedb":   "dbscripts/runtimedb",
+		"userdb":      "dbscripts/userdb",
+		"operationdb": "dbscripts/operationdb",
 	}
 
-	for _, db := range databases {
-		schemaPath := filepath.Join(extractedProductHome, db.schemaDir, "sqlite.sql")
-		dbPath := filepath.Join(extractedProductHome, DatabaseFileBasePath, db.dbFileName)
+	for _, name := range names {
+		schemaDir, ok := schemaDirs[name]
+		if !ok {
+			return fmt.Errorf("unknown database %q", name)
+		}
+		schemaPath := filepath.Join(extractedProductHome, schemaDir, "sqlite.sql")
+		dbPath := filepath.Join(extractedProductHome, DatabaseFileBasePath, name+".db")
 
-		if err := initSQLiteDB(db.name, schemaPath, dbPath); err != nil {
+		if err := initSQLiteDB(name, schemaPath, dbPath); err != nil {
 			return err
 		}
 	}

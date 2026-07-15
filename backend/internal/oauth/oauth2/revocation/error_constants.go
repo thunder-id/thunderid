@@ -20,9 +20,9 @@ package revocation
 
 import "errors"
 
-// ErrTokenRevoked indicates the presented token's JTI is on the deny list.
+// ErrTokenRevoked indicates the presented token's status-list entry marks it revoked (non-VALID).
 var ErrTokenRevoked = errors.New("token has been revoked")
 
-// ErrEnforcementUnavailable indicates the deny list could not be consulted (operation DB
-// unavailable or the circuit is open). Under the fail-closed policy callers MUST reject the token.
+// ErrEnforcementUnavailable indicates a token's revocation status could not be determined (the status
+// list could not be read). Under the fail-closed policy on the AS hot path, callers MUST reject the token.
 var ErrEnforcementUnavailable = errors.New("token revocation enforcement is unavailable")

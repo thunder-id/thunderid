@@ -21,7 +21,6 @@ package tokenservice
 import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jwksresolver"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -35,9 +34,10 @@ func Initialize(
 	jweService jwe.JWEServiceInterface,
 	resolver *jwksresolver.Resolver,
 	idpService providers.IDPProvider,
-	enforcementService revocation.EnforcementServiceInterface,
+	statusIssuer StatusReferenceIssuer,
+	statusReader TokenStatusReader,
 ) (TokenBuilderInterface, TokenValidatorInterface) {
-	tokenBuilder := newTokenBuilder(cfg, jwtService, jweService, resolver)
-	tokenValidator := newTokenValidator(cfg, jwtService, idpService, enforcementService)
+	tokenBuilder := newTokenBuilder(cfg, jwtService, jweService, resolver, statusIssuer)
+	tokenValidator := newTokenValidator(cfg, jwtService, idpService, statusReader)
 	return tokenBuilder, tokenValidator
 }

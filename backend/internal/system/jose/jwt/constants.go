@@ -28,4 +28,8 @@ const (
 	// TokenTypeIDJAG is the JWT type header value for an Identity Assertion Authorization Grant
 	// (draft-ietf-oauth-identity-assertion-authz-grant).
 	TokenTypeIDJAG = "oauth-id-jag+jwt" //nolint:gosec // JWT typ header value, not a credential
+
+	// TokenTypeStatusList is the JWT type header value for a Status List Token, per
+	// draft-ietf-oauth-status-list (media type application/statuslist+jwt).
+	TokenTypeStatusList = "statuslist+jwt" //nolint:gosec // media type, not a credential
 )

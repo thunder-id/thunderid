@@ -20,10 +20,15 @@ package revocationcache
 
 import "context"
 
-// syncSource supplies the current deny-list snapshot to the cache. It is the pluggable seam that lets
-// the Resource Server sync from the operation DB today and from another DB, endpoint, or event stream
-// in future without changing the cache, enforcer, or syncer.
-type syncSource interface {
-	// Snapshot returns all currently-revoked, non-expired entries for this deployment.
-	Snapshot(ctx context.Context) ([]revokedEntry, error)
+// StatusListSource resolves a Token Status List's revocation entries by the list's public URI. It is
+// the pluggable seam that lets the Resource Server read lists in-process from the local Status List
+// subsystem today and fetch signed Status List Tokens from a remote Status Provider in future without
+// changing the cache or enforcer. It is wired at the composition root, so this package never imports
+// the Status List subsystem.
+type StatusListSource interface {
+	// Fetch returns the recorded (non-VALID) entries of the list identified by uri, keyed by index,
+	// together with the list's capacity. An in-bounds index absent from the map has status VALID.
+	// found is false when no such list exists, so the cache can fail closed on an unresolvable
+	// reference rather than treating an empty result as an all-VALID list.
+	Fetch(ctx context.Context, uri string) (statuses map[int64]int, capacity int64, found bool, err error)
 }

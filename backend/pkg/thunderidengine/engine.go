@@ -153,10 +153,12 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		OAuth:         engineCtx.oauthConfig,
 		GateClient:    engineCtx.gateClientConfig,
 	}
+	// The embedding engine does not run the Token Status List subsystem; the Authorization Server is
+	// initialized without it (nil) and tokens carry no status claim.
 	err = oauth.Initialize(mux, engineCtx.actorProvider, engineCtx.authnProvider, engineCtx.jwtService,
 		engineCtx.jweService, flowExecService, engineCtx.observabilitySvc, engineCtx.runtimeCryptoSvc,
 		engineCtx.ouProvider, attributeCacheService, engineCtx.authzProvider, engineCtx.resourceProvider,
-		engineCtx.i18nProvider, engineCtx.idpProvider, nil, oauthConfig)
+		engineCtx.i18nProvider, engineCtx.idpProvider, nil, nil, oauthConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}

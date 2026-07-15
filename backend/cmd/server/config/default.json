@@ -14,8 +14,13 @@
       },
       "token_revocation": {
         "enabled": true,
-        "source": "db",
-        "sync_interval_seconds": 60
+        "refresh_interval_seconds": 60
+      },
+      "status_list": {
+        "enabled": true,
+        "list_size": 100000,
+        "bits": 1,
+        "ttl_seconds": 3600
       },
       "direct_auth_secret": ""
     }

@@ -24,12 +24,10 @@ import "time"
 // deployment server security config. It is intentionally decoupled from system/config so this
 // package does not depend on the global configuration type.
 type Config struct {
-	// Enabled turns RS revocation enforcement on. When false, Initialize returns a no-op enforcer
-	// and a no-op syncer.
+	// Enabled turns RS revocation enforcement on. When false, Initialize returns a no-op enforcer.
 	Enabled bool
-	// Source selects the sync source. Currently only "db" is supported; future values may include
-	// "endpoint" or "events".
-	Source string
-	// SyncInterval is how often the cache is refreshed from the source.
-	SyncInterval time.Duration
+	// RefreshInterval bounds how stale a cached status list may be: once a cached list is older than
+	// this, the next lookup that needs it re-fetches from the source. A non-positive value falls back
+	// to the built-in default.
+	RefreshInterval time.Duration
 }

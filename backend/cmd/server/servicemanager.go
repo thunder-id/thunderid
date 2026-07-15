@@ -101,6 +101,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/services"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/template"
+	"github.com/thunder-id/thunderid/internal/tokenstatus"
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
@@ -114,7 +115,8 @@ var observabilitySvc observability.ObservabilityServiceInterface
 // It also returns the import service so the bootstrap subcommand can create default
 // resources in-process through the same service instances.
 func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterface) (
-	jwt.JWTServiceInterface, kmprovider.RuntimeCryptoProvider, importer.ImportServiceInterface) {
+	jwt.JWTServiceInterface, kmprovider.RuntimeCryptoProvider, importer.ImportServiceInterface,
+	tokenstatus.ServiceInterface) {
 	logger := log.GetLogger()
 
 	// Service registration runs during application startup, outside any request.
@@ -474,10 +476,15 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))
 	}
 
+	// Build the Token Status List subsystem once (when enabled) so the same instance backs both the
+	// Authorization Server (issuance, revocation writes, AS-internal reads) and the Resource Server's
+	// revocation cache.
+	statusListSvc := initStatusListService(ctx, logger, oauthCfg, jwtService)
+
 	// Initialize OAuth services.
 	err = oauth.Initialize(mux, actorProvider, authnProvider, jwtService, jweService,
 		flowExecService, observabilitySvc, runtimeCryptoSvc, ouService, attributeCacheService, authZService,
-		resourceService, i18nService, idpService, dpopVerifier, oauthCfg)
+		resourceService, i18nService, idpService, dpopVerifier, statusListSvc, oauthCfg)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}
@@ -492,7 +499,40 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	healthSvc := healthcheckservice.Initialize(dbprovider.GetDBProvider(), dbprovider.GetRedisProvider())
 	services.NewHealthCheckService(mux, healthSvc)
 
-	return jwtService, runtimeCryptoSvc, importService
+	return jwtService, runtimeCryptoSvc, importService, statusListSvc
+}
+
+// initStatusListService builds the Token Status List subsystem from the OAuth configuration, or
+// returns nil when the feature is disabled. The single instance is shared across the Authorization
+// Server and the Resource Server revocation cache at the composition root. A build failure is fatal.
+func initStatusListService(ctx context.Context, logger *log.Logger, cfg oauthconfig.Config,
+	jwtService jwt.JWTServiceInterface) tokenstatus.ServiceInterface {
+	if !cfg.StatusList.Enabled {
+		return nil
+	}
+	svc, err := tokenstatus.Initialize(tokenstatus.Config{
+		Enabled:     true,
+		BaseURL:     cfg.BaseURL,
+		ListSize:    cfg.StatusList.ListSize,
+		Bits:        cfg.StatusList.Bits,
+		TTL:         time.Duration(cfg.StatusList.TTLSeconds) * time.Second,
+		MaxTokenTTL: maxTokenValidity(cfg),
+	}, jwtService)
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize Token Status List service", log.Error(err))
+	}
+	return svc
+}
+
+// maxTokenValidity returns the longest lifetime of any token this server issues: the max of the access-
+// and refresh-token validities. The Status List subsystem derives its sealed-list retention window from
+// it, so a list is never reaped while a token it references may still be live.
+func maxTokenValidity(cfg oauthconfig.Config) time.Duration {
+	maxValiditySeconds := cfg.JWT.ValidityPeriod
+	if rt := cfg.OAuth.RefreshToken.ValidityPeriod; rt > maxValiditySeconds {
+		maxValiditySeconds = rt
+	}
+	return time.Duration(maxValiditySeconds) * time.Second
 }
 
 // dependencyConsumers groups the services that check the dependency registry before deleting their

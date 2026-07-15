@@ -20,10 +20,11 @@ package revocationcache
 
 import "errors"
 
-// errTokenRevoked is returned by EnforcerInterface.EnsureNotRevoked when the token identifier is
-// present in the cached deny list.
+// errTokenRevoked is returned by EnforcerInterface.EnsureNotRevoked when the referenced token has a
+// non-VALID status in its Token Status List.
 var errTokenRevoked = errors.New("token has been revoked")
 
-// errUnsupportedSource is returned by Initialize when cfg.Source names a sync source that is not
-// supported.
-var errUnsupportedSource = errors.New("unsupported revocation sync source")
+// errStatusUnavailable is returned when a token's revocation status cannot be resolved (its status
+// list has never been cached and cannot be fetched). The enforcer fails closed on it: an unknown
+// status must not let a possibly-revoked token through.
+var errStatusUnavailable = errors.New("token revocation status is unavailable")

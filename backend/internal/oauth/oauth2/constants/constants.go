@@ -271,6 +271,15 @@ const (
 	ClaimIDP string = "idp"
 )
 
+// Token Status List claim names (draft-ietf-oauth-status-list). A referenced token carries a "status"
+// claim holding a single "status_list" object with the list index ("idx") and the list URI ("uri").
+const (
+	ClaimStatus        string = "status"
+	ClaimStatusList    string = "status_list"
+	ClaimStatusListIdx string = "idx"
+	ClaimStatusListURI string = "uri"
+)
+
 // OIDC subject types.
 const (
 	SubjectTypePublic string = "public"

@@ -20,27 +20,51 @@ package revocationcache
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
 )
 
-func TestEnforcer_EnsureNotRevoked(t *testing.T) {
-	cache := newRevokedCache()
-	cache.replace([]revokedEntry{{JTI: "revoked-jti", ExpiryTime: time.Now().Add(time.Hour)}})
-	e := newEnforcer(cache)
+func TestEnforcerEmptyURIIsNoop(t *testing.T) {
+	src := &fakeSource{statuses: map[int64]int{7: 1}}
+	e := newEnforcer(newStatusCache(src, time.Hour))
 
-	assert.NoError(t, e.EnsureNotRevoked(context.Background(), ""),
-		"empty id is a no-op")
-	assert.NoError(t, e.EnsureNotRevoked(context.Background(), "active-jti"),
-		"a jti not on the deny list may proceed")
-	assert.ErrorIs(t, e.EnsureNotRevoked(context.Background(), "revoked-jti"), errTokenRevoked,
-		"a jti on the deny list is rejected")
+	if err := e.EnsureNotRevoked(context.Background(), "", 7); err != nil {
+		t.Fatalf("EnsureNotRevoked(empty uri) = %v, want nil", err)
+	}
+	if src.calls != 0 {
+		t.Fatalf("source Fetch called %d times for empty uri, want 0", src.calls)
+	}
 }
 
-func TestNoopEnforcer_AlwaysAllows(t *testing.T) {
-	var e EnforcerInterface = noopEnforcer{}
-	assert.NoError(t, e.EnsureNotRevoked(context.Background(), "anything"))
-	assert.NoError(t, e.EnsureNotRevoked(context.Background(), ""))
+func TestEnforcerAllowsValidToken(t *testing.T) {
+	e := newEnforcer(newStatusCache(
+		&fakeSource{statuses: map[int64]int{7: statusValid}, capacity: 100, found: true}, time.Hour))
+
+	if err := e.EnsureNotRevoked(context.Background(), "uri", 7); err != nil {
+		t.Fatalf("EnsureNotRevoked(valid) = %v, want nil", err)
+	}
+}
+
+func TestEnforcerRejectsRevokedToken(t *testing.T) {
+	e := newEnforcer(newStatusCache(
+		&fakeSource{statuses: map[int64]int{7: 1}, capacity: 100, found: true}, time.Hour))
+
+	if err := e.EnsureNotRevoked(context.Background(), "uri", 7); !errors.Is(err, errTokenRevoked) {
+		t.Fatalf("EnsureNotRevoked(revoked) = %v, want errTokenRevoked", err)
+	}
+}
+
+func TestEnforcerFailsClosedWhenStatusUnavailable(t *testing.T) {
+	e := newEnforcer(newStatusCache(&fakeSource{err: errors.New("db down")}, time.Hour))
+
+	if err := e.EnsureNotRevoked(context.Background(), "uri", 7); !errors.Is(err, errStatusUnavailable) {
+		t.Fatalf("EnsureNotRevoked(unavailable) = %v, want errStatusUnavailable (fail closed)", err)
+	}
+}
+
+func TestNoopEnforcerNeverRejects(t *testing.T) {
+	if err := (noopEnforcer{}).EnsureNotRevoked(context.Background(), "uri", 7); err != nil {
+		t.Fatalf("noopEnforcer = %v, want nil", err)
+	}
 }

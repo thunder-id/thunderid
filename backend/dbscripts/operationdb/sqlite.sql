@@ -15,23 +15,44 @@
 -- under the License.
 -- ----------------------------------------------------------------------------
 
--- Table to store revoked token JTIs (single-token revocation deny list).
--- Part of the database.operation classification: authoritative authorization
--- enforcement state that must survive a runtime database flush.
-CREATE TABLE "REVOKED_TOKEN" (
+-- Token Status List (draft-ietf-oauth-status-list): one row per status list, holding the monotonic
+-- index allocator counter and lifecycle state. Part of the database.operation classification:
+-- authoritative revocation state that must survive a runtime database flush. ID is an opaque UUID used
+-- as the suffix of the list's public URI (no identity encoded, for herd privacy).
+CREATE TABLE "STATUS_LIST" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
-    ID VARCHAR(36) NOT NULL PRIMARY KEY,
-    JTI VARCHAR(255) NOT NULL,
-    REVOCATION_REASON VARCHAR(30) NOT NULL CHECK (REVOCATION_REASON IN ('explicit', 'refresh_rotation')),
-    REVOKED_AT DATETIME NOT NULL,
-    EXPIRY_TIME DATETIME NOT NULL
+    ID VARCHAR(36) NOT NULL,
+    BITS SMALLINT NOT NULL DEFAULT 1,
+    STATE SMALLINT NOT NULL DEFAULT 0,
+    NEXT_IDX BIGINT NOT NULL DEFAULT 0,
+    CAPACITY BIGINT NOT NULL,
+    CREATED_AT DATETIME NOT NULL,
+    SEALED_AT DATETIME,
+    PRIMARY KEY (ID)
 );
 
--- Unique index backs the hot deny-list lookup by (deployment, jti) and enforces idempotent revocation writes.
-CREATE UNIQUE INDEX idx_revoked_token_jti_deployment ON "REVOKED_TOKEN" (DEPLOYMENT_ID, JTI);
+-- Index to locate the active (unsealed) list for a deployment during index allocation.
+CREATE INDEX idx_status_list_deployment_state ON "STATUS_LIST" (DEPLOYMENT_ID, STATE);
 
--- Index for expiry time on REVOKED_TOKEN (supports cleanup and expiry checks).
-CREATE INDEX idx_revoked_token_expiry_time ON "REVOKED_TOKEN" (EXPIRY_TIME);
+-- Index on seal time to find sealed lists whose retention has elapsed (bulk drop).
+CREATE INDEX idx_status_list_sealed_at ON "STATUS_LIST" (SEALED_AT);
+
+-- Sparse status entries: one row ONLY per non-VALID (revoked) referenced token. VALID tokens write
+-- nothing, so the table size tracks revocations, not issuance. IDX is the token's allocated slot; the
+-- primary key doubles as the enforcement point-lookup and the publish scan (by DEPLOYMENT_ID, LIST_ID).
+CREATE TABLE "STATUS_LIST_ENTRY" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    LIST_ID VARCHAR(36) NOT NULL,
+    IDX BIGINT NOT NULL,
+    STATUS SMALLINT NOT NULL DEFAULT 1,
+    EXPIRY_TIME DATETIME NOT NULL,
+    UPDATED_AT DATETIME NOT NULL,
+    PRIMARY KEY (DEPLOYMENT_ID, LIST_ID, IDX),
+    FOREIGN KEY (LIST_ID) REFERENCES "STATUS_LIST" (ID) ON DELETE CASCADE
+);
+
+-- Index on expiry time supports secondary reaping of entries whose tokens have already expired.
+CREATE INDEX idx_status_list_entry_expiry_time ON "STATUS_LIST_ENTRY" (EXPIRY_TIME);
 
 -- Table to store SSO sessions, grouped by flow (FLOW_ID) and resolved by an opaque handle.
 -- Part of the database.operation classification: persistent session state that must survive a

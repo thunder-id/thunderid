@@ -279,7 +279,8 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 		if h.cfg.OAuth.RefreshToken.RevokePreviousOnRenew {
 			expiryTime := time.Unix(refreshTokenClaims.Exp, 0).UTC()
 			if err := h.refreshRevoker.RevokeRefreshToken(
-				ctx, refreshTokenClaims.JTI, expiryTime); err != nil {
+				ctx, refreshTokenClaims.StatusURI, refreshTokenClaims.StatusIdx,
+				refreshTokenClaims.JTI, expiryTime); err != nil {
 				logger.Error(ctx, "Failed to revoke rotated refresh token", log.Error(err))
 				return nil, &model.ErrorResponse{
 					Error:            constants.ErrorServerError,

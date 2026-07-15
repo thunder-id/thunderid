@@ -26,7 +26,6 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/idp"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
@@ -36,9 +35,10 @@ import (
 )
 
 // TokenValidatorInterface defines the interface for validating tokens. Every method verifies the
-// token and then enforces the revocation deny list as a final step, so a caller cannot obtain claims
-// for a revoked token. A revoked token yields revocation.ErrTokenRevoked and an unavailable deny list
-// yields revocation.ErrEnforcementUnavailable (fail-closed); callers discriminate via errors.Is.
+// token and then enforces revocation via the Token Status List as a final step, so a caller cannot
+// obtain claims for a revoked token. A revoked token yields revocation.ErrTokenRevoked and an
+// unreadable status list yields revocation.ErrEnforcementUnavailable (fail-closed); callers
+// discriminate via errors.Is.
 type TokenValidatorInterface interface {
 	ValidateAccessToken(ctx context.Context, token string) (*AccessTokenClaims, error)
 	ValidateRefreshToken(ctx context.Context, token string, clientID string) (*RefreshTokenClaims, error)
@@ -60,27 +60,68 @@ type TokenValidatorInterface interface {
 	ValidateIDJAGAssertion(ctx context.Context, assertion, clientID string) (*IDJAGAssertionClaims, error)
 }
 
-// TokenValidator implements TokenValidatorInterface.
-type tokenValidator struct {
-	cfg                oauthconfig.Config
-	jwtService         jwt.JWTServiceInterface
-	idpService         providers.IDPProvider
-	enforcementService revocation.EnforcementServiceInterface
+// tokenStatusValid is the Token Status List status value for a live token (spec 0x00, VALID).
+const tokenStatusValid = 0
+
+// TokenStatusReader reads a token's status from the Token Status List for AS-internal enforcement. It is
+// satisfied by the statuslist subsystem and injected at the composition root; a nil reader means the
+// list feature is disabled, in which case there is no revocation mechanism and enforcement is a no-op.
+// The signature matches the subsystem's service so it is satisfied structurally without the tokenservice
+// package importing it.
+type TokenStatusReader interface {
+	GetStatus(ctx context.Context, uri string, idx int64) (int, error)
 }
 
-// NewTokenValidator creates a new TokenValidator instance.
+// TokenValidator implements TokenValidatorInterface.
+type tokenValidator struct {
+	cfg          oauthconfig.Config
+	jwtService   jwt.JWTServiceInterface
+	idpService   providers.IDPProvider
+	statusReader TokenStatusReader
+}
+
+// NewTokenValidator creates a new TokenValidator instance. statusReader may be nil, in which case the
+// Token Status List feature is off and revocation is not enforced (there is no other mechanism).
 func newTokenValidator(
 	cfg oauthconfig.Config,
 	jwtService jwt.JWTServiceInterface,
 	idpService providers.IDPProvider,
-	enforcementService revocation.EnforcementServiceInterface,
+	statusReader TokenStatusReader,
 ) TokenValidatorInterface {
 	return &tokenValidator{
-		cfg:                cfg,
-		jwtService:         jwtService,
-		idpService:         idpService,
-		enforcementService: enforcementService,
+		cfg:          cfg,
+		jwtService:   jwtService,
+		idpService:   idpService,
+		statusReader: statusReader,
 	}
+}
+
+// ensureNotRevoked enforces revocation for a validated token via the Token Status List. When the list
+// feature is enabled and the token carries a status reference, its status bit is checked: a non-VALID
+// status is rejected as revocation.ErrTokenRevoked, and an unreadable list fails closed as
+// revocation.ErrEnforcementUnavailable. A token with no status reference (the feature is off, or the
+// token predates it) has no revocation channel and is allowed.
+func (tv *tokenValidator) ensureNotRevoked(ctx context.Context, claims map[string]interface{}) error {
+	if tv.statusReader == nil {
+		return nil
+	}
+	uri, idx, ok, err := utils.ExtractStatusListReference(claims)
+	if err != nil {
+		// A present but malformed status reference cannot be resolved to a bit; treat it as an
+		// unreadable list and fail closed rather than as a token with no revocation channel.
+		return revocation.ErrEnforcementUnavailable
+	}
+	if !ok {
+		return nil
+	}
+	status, err := tv.statusReader.GetStatus(ctx, uri, idx)
+	if err != nil {
+		return revocation.ErrEnforcementUnavailable
+	}
+	if status != tokenStatusValid {
+		return revocation.ErrTokenRevoked
+	}
+	return nil
 }
 
 // ValidateAccessToken validates an access token and extracts the claims.
@@ -130,8 +171,7 @@ func (tv *tokenValidator) ValidateAccessToken(ctx context.Context, token string)
 	grantType, _ := extractStringClaim(claims, "grant_type")
 	scopes := extractScopesFromClaims(claims, false)
 
-	jti, _ := extractStringClaim(claims, constants.ClaimJTI)
-	if err := tv.enforcementService.EnsureNotRevoked(ctx, jti); err != nil {
+	if err := tv.ensureNotRevoked(ctx, claims); err != nil {
 		return nil, err
 	}
 
@@ -197,9 +237,12 @@ func (tv *tokenValidator) ValidateRefreshToken(
 		dpopJkt = s
 	}
 
-	if err := tv.enforcementService.EnsureNotRevoked(ctx, jti); err != nil {
+	if err := tv.ensureNotRevoked(ctx, claims); err != nil {
 		return nil, err
 	}
+
+	// ensureNotRevoked above already rejected a malformed reference, so any error here is moot.
+	statusURI, statusIdx, _, _ := utils.ExtractStatusListReference(claims)
 
 	// Extract user type and organizational unit details if present
 	return &RefreshTokenClaims{
@@ -215,6 +258,8 @@ func (tv *tokenValidator) ValidateRefreshToken(
 		ActorSub:         actorSub,
 		JTI:              jti,
 		Exp:              exp,
+		StatusURI:        statusURI,
+		StatusIdx:        statusIdx,
 	}, nil
 }
 
@@ -253,7 +298,7 @@ func (tv *tokenValidator) ValidateSubjectToken(
 		if err != nil {
 			return nil, err
 		}
-		if err := tv.enforcementService.EnsureNotRevoked(ctx, selfClaims.JTI); err != nil {
+		if err := tv.ensureNotRevoked(ctx, claims); err != nil {
 			return nil, err
 		}
 		return selfClaims, nil
@@ -283,7 +328,7 @@ func (tv *tokenValidator) ValidateSubjectToken(
 
 // ValidateIDJAGSubjectToken validates a subject token for the ID-JAG issuance leg of token exchange
 // (draft-ietf-oauth-identity-assertion-authz-grant). Beyond the standard subject-token validation
-// performed by ValidateSubjectToken (signature, revocation deny list, time claims, and claim
+// performed by ValidateSubjectToken (signature, Token Status List revocation, time claims, and claim
 // extraction), it enforces that the token is a genuine ID token. The typ header must be "JWT", which
 // rejects access tokens (typ "at+jwt") and blocks laundering a re-audienced token-exchange access
 // token into an ID-JAG. A top-level access_token_sub claim marks a refresh token (which shares
@@ -323,9 +368,9 @@ func (tv *tokenValidator) ValidateIDJAGSubjectToken(
 	return subjectClaims, nil
 }
 
-// ValidateToken verifies a self-issued token's signature (type-agnostic) and enforces the revocation
-// deny list, returning the raw claims. Token introspection uses this because it accepts both access
-// and refresh tokens and must not pin a token type.
+// ValidateToken verifies a self-issued token's signature (type-agnostic) and enforces revocation via
+// the Token Status List, returning the raw claims. Token introspection uses this because it accepts
+// both access and refresh tokens and must not pin a token type.
 func (tv *tokenValidator) ValidateToken(ctx context.Context, token string) (map[string]interface{}, error) {
 	if err := tv.jwtService.VerifyJWT(ctx, token, "", ""); err != nil {
 		return nil, fmt.Errorf("token verification failed: %v", err.Error)
@@ -336,8 +381,7 @@ func (tv *tokenValidator) ValidateToken(ctx context.Context, token string) (map[
 		return nil, fmt.Errorf("failed to decode token payload: %w", err)
 	}
 
-	jti, _ := extractStringClaim(claims, constants.ClaimJTI)
-	if err := tv.enforcementService.EnsureNotRevoked(ctx, jti); err != nil {
+	if err := tv.ensureNotRevoked(ctx, claims); err != nil {
 		return nil, err
 	}
 
@@ -586,8 +630,8 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 		return nil, err
 	}
 
-	// Only self-issued tokens participate in deny-list (revocation) enforcement; an external
-	// issuer's jti has no meaning in this server's deny list.
+	// Only self-issued tokens carry a status-list reference for revocation; an external issuer's jti
+	// has no meaning in this server's revocation state.
 	var jti string
 	if tv.isSelfIssuer(iss) {
 		jti, _ = extractStringClaim(claims, "jti")

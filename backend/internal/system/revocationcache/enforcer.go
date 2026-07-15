@@ -20,33 +20,42 @@ package revocationcache
 
 import "context"
 
-// EnforcerInterface answers revocation checks for the Resource Server enforcement point. It is
-// token-format agnostic: id is the token's revocation identifier (the jti for JWTs today, an opaque
-// token handle in future). Reads are served entirely from the in-memory cache, so the request hot
-// path never touches the source.
+// EnforcerInterface answers revocation checks for the Resource Server enforcement point using the
+// Token Status List reference carried by the token. Reads are served from the in-memory cache, so the
+// request hot path only touches the source when a referenced list is missing or stale.
 type EnforcerInterface interface {
-	// EnsureNotRevoked returns nil when the token identified by id may proceed and errTokenRevoked
-	// when id is present in the cached deny list. An empty id is a no-op (nothing to enforce).
-	EnsureNotRevoked(ctx context.Context, id string) error
+	// EnsureNotRevoked returns errTokenRevoked when the token whose status-list reference is
+	// (statusURI, statusIdx) has a non-VALID status, and nil when it is VALID or carries no reference
+	// (empty statusURI). It fails closed with errStatusUnavailable whenever the status is not resolvable
+	// — the referenced list does not exist, the index is out of the list's bounds, or the list has
+	// never been cached and cannot be fetched — so an unknown status never admits a possibly-revoked
+	// token (draft-ietf-oauth-status-list §8.3). A transient outage on an already-cached list is masked
+	// by the last-known-good snapshot.
+	EnsureNotRevoked(ctx context.Context, statusURI string, statusIdx int64) error
 }
 
-// enforcer serves revocation checks from the in-memory cache. It holds no write capability.
+// enforcer serves revocation checks from the status cache. It holds no write capability.
 type enforcer struct {
-	cache *revokedCache
+	cache *statusCache
 }
 
 // newEnforcer creates an enforcer backed by the given cache.
-func newEnforcer(cache *revokedCache) *enforcer {
+func newEnforcer(cache *statusCache) *enforcer {
 	return &enforcer{cache: cache}
 }
 
-// EnsureNotRevoked returns errTokenRevoked when id is present in the cached deny list, nil otherwise.
-// An empty id is treated as nothing to enforce.
-func (e *enforcer) EnsureNotRevoked(_ context.Context, id string) error {
-	if id == "" {
+// EnsureNotRevoked returns errTokenRevoked when the referenced token has a non-VALID status,
+// errStatusUnavailable when the status cannot be resolved (fail closed), and nil when the token is
+// valid or carries no reference.
+func (e *enforcer) EnsureNotRevoked(ctx context.Context, statusURI string, statusIdx int64) error {
+	if statusURI == "" {
 		return nil
 	}
-	if e.cache.isRevoked(id) {
+	status, available := e.cache.statusAt(ctx, statusURI, statusIdx)
+	if !available {
+		return errStatusUnavailable
+	}
+	if status != statusValid {
 		return errTokenRevoked
 	}
 	return nil
@@ -56,4 +65,4 @@ func (e *enforcer) EnsureNotRevoked(_ context.Context, id string) error {
 type noopEnforcer struct{}
 
 // EnsureNotRevoked always returns nil.
-func (noopEnforcer) EnsureNotRevoked(_ context.Context, _ string) error { return nil }
+func (noopEnforcer) EnsureNotRevoked(context.Context, string, int64) error { return nil }

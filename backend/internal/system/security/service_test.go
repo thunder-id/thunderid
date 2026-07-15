@@ -62,7 +62,7 @@ func (suite *SecurityServiceTestSuite) SetupTest() {
 	suite.mockRevocation = &RevocationEnforcerInterfaceMock{}
 	// Default to "not revoked" so existing authentication paths pass; Maybe() keeps it optional for
 	// tests where authentication never yields a security context.
-	suite.mockRevocation.On("EnsureNotRevoked", mock.Anything, mock.Anything).Return(nil).Maybe()
+	suite.mockRevocation.On("EnsureNotRevoked", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	var err error
 	suite.service, err = newSecurityService(
@@ -343,13 +343,15 @@ func (suite *SecurityServiceTestSuite) TestProcess_AuthenticationFailure() {
 func (suite *SecurityServiceTestSuite) TestProcess_RevokedToken() {
 	req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
 
-	suite.testCtx.revocationID = "jti-123"
+	suite.testCtx.statusURI = "https://issuer.example/statuslists/abc"
+	suite.testCtx.statusIdx = 42
 	suite.mockAuth1.On("CanHandle", req).Return(true)
 	suite.mockAuth1.On("Authenticate", req).Return(suite.testCtx, nil)
 
 	mockRevocation := &RevocationEnforcerInterfaceMock{}
 	revokedErr := errors.New("token has been revoked")
-	mockRevocation.On("EnsureNotRevoked", mock.Anything, "jti-123").Return(revokedErr)
+	mockRevocation.On("EnsureNotRevoked", mock.Anything, "https://issuer.example/statuslists/abc", int64(42)).
+		Return(revokedErr)
 
 	service, err := newSecurityService(
 		[]AuthenticatorInterface{suite.mockAuth1}, mockRevocation, testPublicPaths, apiPermissionEntries, "")
@@ -363,17 +365,43 @@ func (suite *SecurityServiceTestSuite) TestProcess_RevokedToken() {
 	mockRevocation.AssertExpectations(suite.T())
 }
 
-// Test Process consults the enforcer with the token's revocation identifier and proceeds when the
+// Test Process rejects a token whose status-list reference is present but malformed, failing closed
+// without consulting the enforcer (the reference cannot be resolved to a status).
+func (suite *SecurityServiceTestSuite) TestProcess_MalformedStatusReference() {
+	req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
+
+	suite.testCtx.statusMalformed = true
+	suite.mockAuth1.On("CanHandle", req).Return(true)
+	suite.mockAuth1.On("Authenticate", req).Return(suite.testCtx, nil)
+
+	// The enforcer must not be consulted for an unresolvable reference; leaving it without expectations
+	// asserts EnsureNotRevoked is never called.
+	mockRevocation := &RevocationEnforcerInterfaceMock{}
+
+	service, err := newSecurityService(
+		[]AuthenticatorInterface{suite.mockAuth1}, mockRevocation, testPublicPaths, apiPermissionEntries, "")
+	suite.Require().NoError(err)
+
+	ctx, err := service.Process(req)
+
+	assert.Nil(suite.T(), ctx)
+	assert.Equal(suite.T(), errInvalidToken, err)
+	mockRevocation.AssertNotCalled(suite.T(), "EnsureNotRevoked", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// Test Process consults the enforcer with the token's status-list reference and proceeds when the
 // token is not revoked.
 func (suite *SecurityServiceTestSuite) TestProcess_NotRevokedToken() {
 	req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
 
-	suite.testCtx.revocationID = "jti-456"
+	suite.testCtx.statusURI = "https://issuer.example/statuslists/abc"
+	suite.testCtx.statusIdx = 7
 	suite.mockAuth1.On("CanHandle", req).Return(true)
 	suite.mockAuth1.On("Authenticate", req).Return(suite.testCtx, nil)
 
 	mockRevocation := &RevocationEnforcerInterfaceMock{}
-	mockRevocation.On("EnsureNotRevoked", mock.Anything, "jti-456").Return(nil)
+	mockRevocation.On("EnsureNotRevoked", mock.Anything, "https://issuer.example/statuslists/abc", int64(7)).
+		Return(nil)
 
 	service, err := newSecurityService(
 		[]AuthenticatorInterface{suite.mockAuth1}, mockRevocation, testPublicPaths, apiPermissionEntries, "")

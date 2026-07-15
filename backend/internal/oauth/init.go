@@ -44,6 +44,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
+	"github.com/thunder-id/thunderid/internal/tokenstatus"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -64,6 +65,7 @@ func Initialize(
 	i18nService providers.I18nProvider,
 	idpService providers.IDPProvider,
 	dpopVerifier dpop.VerifierInterface,
+	statusListSvc tokenstatus.ServiceInterface,
 	cfg oauthconfig.Config,
 ) error {
 	jwks.Initialize(mux, runtimeCrypto)
@@ -73,12 +75,30 @@ func Initialize(
 	resolver := jwksresolver.Initialize(httpClient)
 	scopeValidator := scope.Initialize()
 	discoveryService := discovery.Initialize(mux, runtimeCrypto, cfg)
-	// The enforcement service (revocation read path) is built before the token service so it can be
-	// injected into the validator, which enforces the deny list as the final step of every validation.
-	enforcementService, refreshTokenRevoker := revocation.Initialize(
-		mux, jwtService, actorProvider, authnProvider, discoveryService, observabilitySvc)
+	// The Token Status List subsystem is built once at the composition root and shared: it is injected
+	// here as the revocation write path (SetStatus), the issuance status-reference source
+	// (IssueReference), and the AS-internal enforcement reader (GetStatus), and the same instance backs
+	// the Resource Server's revocation cache. When the feature is disabled the caller passes nil and
+	// tokens carry no status claim. The subsystem imports none of these packages, so it could equally be
+	// a client to a remote Status Provider without changing any of them.
+	var (
+		statusRefIssuer tokenservice.StatusReferenceIssuer
+		statusReader    tokenservice.TokenStatusReader
+		statusWriter    revocation.TokenStatusWriter
+	)
+	if statusListSvc != nil {
+		statusRefIssuer, statusReader, statusWriter = statusListSvc, statusListSvc, statusListSvc
+	}
+
+	refreshTokenRevoker := revocation.Initialize(
+		mux, jwtService, actorProvider, authnProvider, discoveryService, observabilitySvc, statusWriter)
 	tokenBuilder, tokenValidator := tokenservice.Initialize(
-		cfg, jwtService, jweService, resolver, idpService, enforcementService)
+		cfg, jwtService, jweService, resolver, idpService, statusRefIssuer, statusReader)
+
+	// The AS is also the Status Provider: publish the signed list tokens.
+	if statusListSvc != nil {
+		tokenstatus.RegisterRoutes(mux, statusListSvc)
+	}
 	parService := par.Initialize(mux, actorProvider, authnProvider, jwtService, discoveryService,
 		resourceService, dpopVerifier, cfg)
 	cibaService := ciba.Initialize(mux, jwtService, actorProvider, authnProvider, flowExecService,
