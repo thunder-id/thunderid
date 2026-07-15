@@ -125,8 +125,16 @@ type IDTokenConfig struct {
 // ApplicationList represents the response structure for listing applications.
 type ApplicationList struct {
 	TotalResults int           `json:"totalResults"`
+	StartIndex   int           `json:"startIndex"`
 	Count        int           `json:"count"`
 	Applications []Application `json:"applications"`
+	Links        []Link        `json:"links"`
+}
+
+// Link represents a pagination link in the application listing response.
+type Link struct {
+	Href string `json:"href"`
+	Rel  string `json:"rel"`
 }
 
 func compareStringSlices(a, b []string) bool {

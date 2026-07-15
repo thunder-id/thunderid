@@ -397,7 +397,8 @@ func (suite *ExportServiceTestSuite) TestExportResources_WildcardApplications() 
 		Description: "Third App",
 	}
 
-	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything).Return(mockAppList, nil)
+	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(mockAppList, nil)
 	suite.appServiceMock.EXPECT().GetApplication(mock.Anything, testApp1ID).Return(mockApp1, nil)
 	suite.appServiceMock.EXPECT().GetApplication(mock.Anything, testApp2ID).Return(mockApp2, nil)
 	suite.appServiceMock.EXPECT().GetApplication(mock.Anything, testApp3ID).Return(mockApp3, nil)
@@ -426,7 +427,8 @@ func (suite *ExportServiceTestSuite) TestExportResources_WildcardApplications_Li
 		Error: tidcommon.I18nMessage{DefaultValue: "Failed to list applications"},
 	}
 
-	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything).Return(nil, listError)
+	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, listError)
 
 	result, err := suite.exportService.ExportResources(context.Background(), request)
 
@@ -451,7 +453,8 @@ func (suite *ExportServiceTestSuite) TestExportResources_WildcardApplications_Em
 		Applications: []appmodel.BasicApplicationResponse{},
 	}
 
-	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything).Return(mockAppList, nil)
+	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(mockAppList, nil)
 
 	result, err := suite.exportService.ExportResources(context.Background(), request)
 
@@ -497,7 +500,8 @@ func (suite *ExportServiceTestSuite) TestExportResources_WildcardApplications_Pa
 		Error: tidcommon.I18nMessage{DefaultValue: "Application not found"},
 	}
 
-	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything).Return(mockAppList, nil)
+	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(mockAppList, nil)
 	suite.appServiceMock.EXPECT().GetApplication(mock.Anything, testApp1ID).Return(mockApp1, nil)
 	suite.appServiceMock.EXPECT().GetApplication(mock.Anything, testApp2ID).Return(nil, appError)
 	suite.appServiceMock.EXPECT().GetApplication(mock.Anything, testApp3ID).Return(mockApp3, nil)
@@ -1967,7 +1971,8 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardSuc
 		Description: "Second App",
 	}
 
-	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything).Return(mockAppList, nil)
+	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(mockAppList, nil)
 	suite.appServiceMock.EXPECT().GetApplication(mock.Anything, testApp1ID).Return(mockApp1, nil)
 	suite.appServiceMock.EXPECT().GetApplication(mock.Anything, testApp2ID).Return(mockApp2, nil)
 
@@ -1991,7 +1996,8 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardFai
 		Error: tidcommon.I18nMessage{DefaultValue: "Failed to list applications"},
 	}
 
-	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything).Return(nil, listError)
+	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, listError)
 
 	exporter, _ := suite.exportService.(*exportService).registry.Get(resourceTypeApplication)
 	options := &ExportOptions{Format: formatYAML}
@@ -2012,7 +2018,8 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardEmp
 		Applications: []appmodel.BasicApplicationResponse{},
 	}
 
-	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything).Return(mockAppList, nil)
+	suite.appServiceMock.EXPECT().GetApplicationList(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(mockAppList, nil)
 
 	exporter, _ := suite.exportService.(*exportService).registry.Get(resourceTypeApplication)
 	options := &ExportOptions{Format: formatYAML}

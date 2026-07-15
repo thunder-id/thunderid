@@ -25,6 +25,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1731,6 +1732,151 @@ func (ts *ApplicationAPITestSuite) TestApplicationListRetrievesMultiple() {
 	var listResponse ApplicationList
 	json.NewDecoder(resp.Body).Decode(&listResponse)
 	ts.Assert().GreaterOrEqual(listResponse.TotalResults, 3)
+}
+
+// TestApplicationListPagination tests limit/offset pagination on the listing endpoint, including
+// the startIndex and pagination links in the response.
+func (ts *ApplicationAPITestSuite) TestApplicationListPagination() {
+	appIDs := make([]string, 0, 3)
+	for i := 0; i < 3; i++ {
+		appID, err := createApplication(Application{
+			OUID:        testOUID,
+			Name:        fmt.Sprintf("Pagination Test App %d", i),
+			Description: "pagination test",
+			URL:         fmt.Sprintf("https://pagetest%d.example.com", i),
+			InboundAuthConfig: []InboundAuthConfig{
+				{
+					Type: "oauth2",
+					OAuthAppConfig: &OAuthAppConfig{
+						RedirectURIs:            []string{fmt.Sprintf("https://pagetest%d.example.com/cb", i)},
+						GrantTypes:              []string{"authorization_code"},
+						ResponseTypes:           []string{"code"},
+						TokenEndpointAuthMethod: "client_secret_basic",
+						Scopes:                  []string{"openid"},
+					},
+				},
+			},
+		})
+		ts.Require().NoError(err)
+		appIDs = append(appIDs, appID)
+	}
+	defer func() {
+		for _, appID := range appIDs {
+			deleteApplication(appID)
+		}
+	}()
+
+	// First page: limit=2, offset=0.
+	req, _ := http.NewRequest("GET", testServerURL+"/applications?limit=2&offset=0", nil)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Assert().Equal(http.StatusOK, resp.StatusCode)
+
+	var page ApplicationList
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&page))
+
+	ts.Assert().GreaterOrEqual(page.TotalResults, 3)
+	ts.Assert().Equal(1, page.StartIndex)
+	ts.Assert().Len(page.Applications, 2) // bounded by limit
+	ts.Assert().Equal(2, page.Count)      // items returned on this page
+	ts.Assert().NotEmpty(page.Links)      // at least a "next" link when more pages exist
+}
+
+// TestApplicationListInvalidPagination tests that invalid limit/offset values are rejected with 400.
+func (ts *ApplicationAPITestSuite) TestApplicationListInvalidPagination() {
+	for _, query := range []string{"limit=0", "limit=-1", "limit=abc", "offset=-1", "offset=xyz"} {
+		req, _ := http.NewRequest("GET", testServerURL+"/applications?"+query, nil)
+		resp, err := testutils.GetHTTPClient().Do(req)
+		ts.Require().NoError(err)
+		ts.Assert().Equal(http.StatusBadRequest, resp.StatusCode, "query=%s", query)
+		resp.Body.Close()
+	}
+}
+
+// TestApplicationListWithSearchFilter tests the SCIM-style ?filter= search on the listing endpoint,
+// matching the application name with the case-insensitive "co" (contains) operator.
+func (ts *ApplicationAPITestSuite) TestApplicationListWithSearchFilter() {
+	unique := "Zphyr"
+	apps := []struct {
+		name  string
+		match bool
+	}{
+		{name: unique + " Portal", match: true},
+		{name: "lower " + strings.ToLower(unique), match: true},
+		{name: "Unrelated Service", match: false},
+	}
+
+	appIDs := make([]string, 0, len(apps))
+	for i, a := range apps {
+		appID, err := createApplication(Application{
+			OUID:        testOUID,
+			Name:        a.name,
+			Description: "search filter test",
+			URL:         fmt.Sprintf("https://searchfilter%d.example.com", i),
+			InboundAuthConfig: []InboundAuthConfig{
+				{
+					Type: "oauth2",
+					OAuthAppConfig: &OAuthAppConfig{
+						RedirectURIs:            []string{fmt.Sprintf("https://searchfilter%d.example.com/cb", i)},
+						GrantTypes:              []string{"authorization_code"},
+						ResponseTypes:           []string{"code"},
+						TokenEndpointAuthMethod: "client_secret_basic",
+						Scopes:                  []string{"openid"},
+					},
+				},
+			},
+		})
+		ts.Require().NoError(err)
+		appIDs = append(appIDs, appID)
+	}
+	defer func() {
+		for _, appID := range appIDs {
+			deleteApplication(appID)
+		}
+	}()
+
+	// Case-insensitive contains match on name.
+	req, _ := http.NewRequest("GET", testServerURL+"/applications", nil)
+	q := req.URL.Query()
+	q.Set("filter", fmt.Sprintf(`name co "%s"`, unique))
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Assert().Equal(http.StatusOK, resp.StatusCode)
+
+	var listResponse ApplicationList
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResponse))
+
+	ts.Assert().Equal(2, listResponse.TotalResults)
+	ts.Assert().Len(listResponse.Applications, 2)
+	for _, app := range listResponse.Applications {
+		ts.Assert().Contains(strings.ToLower(app.Name), strings.ToLower(unique))
+	}
+}
+
+// TestApplicationListWithInvalidFilter tests that malformed or unsupported filter expressions are
+// rejected with 400 — including AND/OR connectors, which are not supported on applications.
+func (ts *ApplicationAPITestSuite) TestApplicationListWithInvalidFilter() {
+	for _, filter := range []string{
+		"name",                                  // missing operator and value
+		"status eq \"active\"",                  // unsupported attribute
+		"name gt \"a\"",                         // unsupported operator
+		"name co \"a\" and clientId co \"b\"",   // AND connector not supported
+		"name co \"a\" or description co \"b\"", // OR connector not supported
+	} {
+		req, _ := http.NewRequest("GET", testServerURL+"/applications", nil)
+		q := req.URL.Query()
+		q.Set("filter", filter)
+		req.URL.RawQuery = q.Encode()
+
+		resp, err := testutils.GetHTTPClient().Do(req)
+		ts.Require().NoError(err)
+		ts.Assert().Equal(http.StatusBadRequest, resp.StatusCode, "filter=%s", filter)
+		resp.Body.Close()
+	}
 }
 
 // TestApplicationUpdateCompleteOAuthConfig tests updating all OAuth fields.

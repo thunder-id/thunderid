@@ -36,6 +36,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/cert"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -362,7 +363,8 @@ func (suite *HandlerTestSuite) TestHandleApplicationListRequest_Success() {
 		},
 	}
 
-	mockService.On("GetApplicationList", mock.Anything).Return(expectedList, nil)
+	mockService.On("GetApplicationList", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(expectedList, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/applications", nil)
 	w := httptest.NewRecorder()
@@ -380,6 +382,94 @@ func (suite *HandlerTestSuite) TestHandleApplicationListRequest_Success() {
 	assert.Len(suite.T(), response.Applications, 2)
 
 	mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationListRequest_ForwardsFilter() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	expectedList := &model.ApplicationListResponse{TotalResults: 0, Count: 0}
+	matchFilter := mock.MatchedBy(func(g *tidcommon.FilterGroup) bool {
+		return g != nil && len(g.Clauses) == 1 &&
+			g.Clauses[0].Expr.Attribute == "name" &&
+			g.Clauses[0].Expr.Operator == tidcommon.OperatorContains &&
+			g.Clauses[0].Expr.Value == "foo"
+	})
+	mockService.On("GetApplicationList", mock.Anything, mock.Anything, mock.Anything, matchFilter).
+		Return(expectedList, nil)
+
+	req := httptest.NewRequest(http.MethodGet, `/applications?filter=name+co+%22foo%22`, nil)
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationListRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationListRequest_ForwardsPagination() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	mockService.On("GetApplicationList", mock.Anything, 10, 20, mock.Anything).
+		Return(&model.ApplicationListResponse{}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/applications?limit=10&offset=20", nil)
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationListRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationListRequest_DefaultsLimitWhenAbsent() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	mockService.On("GetApplicationList", mock.Anything, serverconst.DefaultPageSize, 0, mock.Anything).
+		Return(&model.ApplicationListResponse{}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/applications", nil)
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationListRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationListRequest_InvalidPaginationReturns400() {
+	for _, url := range []string{
+		"/applications?limit=abc",
+		"/applications?limit=0",
+		"/applications?limit=-5",
+		"/applications?offset=-1",
+		"/applications?offset=xyz",
+	} {
+		mockService := NewApplicationServiceInterfaceMock(suite.T())
+		handler := newApplicationHandler(mockService)
+
+		req := httptest.NewRequest(http.MethodGet, url, nil)
+		w := httptest.NewRecorder()
+
+		handler.HandleApplicationListRequest(w, req)
+
+		assert.Equal(suite.T(), http.StatusBadRequest, w.Code, "url=%s", url)
+	}
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationListRequest_InvalidFilterReturns400() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	// Malformed filter expression (missing operator) is rejected before reaching the service.
+	req := httptest.NewRequest(http.MethodGet, `/applications?filter=name`, nil)
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationListRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
 }
 
 func (suite *HandlerTestSuite) TestHandleApplicationListRequest_WithTemplate() {
@@ -405,7 +495,8 @@ func (suite *HandlerTestSuite) TestHandleApplicationListRequest_WithTemplate() {
 		},
 	}
 
-	mockService.On("GetApplicationList", mock.Anything).Return(expectedList, nil)
+	mockService.On("GetApplicationList", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(expectedList, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/applications", nil)
 	w := httptest.NewRecorder()
@@ -430,7 +521,8 @@ func (suite *HandlerTestSuite) TestHandleApplicationListRequest_ServiceError() {
 
 	svcErr := &tidcommon.InternalServerError
 
-	mockService.On("GetApplicationList", mock.Anything).Return(nil, svcErr)
+	mockService.On("GetApplicationList", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, svcErr)
 
 	req := httptest.NewRequest(http.MethodGet, "/applications", nil)
 	w := httptest.NewRecorder()
@@ -1689,7 +1781,8 @@ func (suite *HandlerTestSuite) TestHandleApplicationListRequest_EncodeResponseEr
 		Count:        1,
 	}
 
-	mockService.On("GetApplicationList", mock.Anything).Return(listResponse, nil)
+	mockService.On("GetApplicationList", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(listResponse, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/applications", nil)
 	w := &failingResponseWriter{failOnce: true}
