@@ -44,7 +44,7 @@ func TestInitTestSuite(t *testing.T) {
 }
 
 func (suite *InitTestSuite) SetupTest() {
-	// Initialize() builds the store, which reads the server runtime config.
+	// Initialize() constructs services that read the server runtime config during setup.
 	_ = config.InitializeServerRuntime("test", &config.Config{
 		Database: config.DatabaseConfig{
 			Operation: config.DataSource{
@@ -69,11 +69,9 @@ func (suite *InitTestSuite) TearDownTest() {
 func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
-	enforcementService, refreshTokenRevoker := Initialize(
-		mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService, nil)
+	refreshTokenRevoker := Initialize(
+		mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService, nil, nil)
 
-	assert.NotNil(suite.T(), enforcementService)
-	assert.Implements(suite.T(), (*EnforcementServiceInterface)(nil), enforcementService)
 	assert.NotNil(suite.T(), refreshTokenRevoker)
 	assert.Implements(suite.T(), (*RefreshTokenRevokerInterface)(nil), refreshTokenRevoker)
 }
@@ -81,7 +79,7 @@ func (suite *InitTestSuite) TestInitialize() {
 func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 	mux := http.NewServeMux()
 
-	Initialize(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService, nil)
+	Initialize(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService, nil, nil)
 
 	// The pattern includes the method because of CORS middleware wrapping.
 	_, pattern := mux.Handler(&http.Request{Method: "POST", URL: &url.URL{Path: "/oauth2/revoke"}})

@@ -46,6 +46,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/revocationcache"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/tokenstatus"
 )
 
 // shutdownTimeout defines the timeout duration for graceful shutdown.
@@ -96,7 +97,7 @@ func main() {
 	}
 
 	// Register the services.
-	jwtService, runtimeCryptoSvc, importService := registerServices(mux, cacheManager)
+	jwtService, runtimeCryptoSvc, importService, statusListSvc := registerServices(mux, cacheManager)
 
 	// When invoked as the bootstrap one-shot (`thunderid bootstrap`), create the
 	// default resources in-process and exit without starting the HTTP server.
@@ -109,11 +110,9 @@ func main() {
 		return
 	}
 
-	// Initialize the Resource Server token-revocation cache. The initial deny-list snapshot is loaded
-	// synchronously so enforcement is live before the first request; if that load fails the server
-	// still starts and the syncer repopulates the cache on its next tick.
-	revocationEnforcer, revocationSyncer := initRevocationCache(ctx, logger, cfg)
-	revocationSyncer.Start(ctx)
+	// Initialize the Resource Server token-revocation cache. It validates each presented token against
+	// its Token Status List entry, lazily fetching lists from the shared Status List service.
+	revocationEnforcer := initRevocationCache(ctx, logger, cfg, statusListSvc)
 
 	// Register static file handlers for frontend applications.
 	registerStaticFileHandlers(ctx, logger, mux, serverHome)
@@ -150,24 +149,29 @@ func main() {
 	// Wait for shutdown signal
 	<-sigChan
 	logger.Info(ctx, "Shutting down server...")
-	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer)
+	gracefulShutdown(ctx, logger, server, cacheManager)
 }
 
-// initRevocationCache builds the Resource Server token-revocation enforcer and its background syncer
-// from the server security configuration. An unsupported source configuration fails startup; a
-// failed initial deny-list load does not — the server starts and the syncer populates the cache later.
-func initRevocationCache(ctx context.Context, logger *log.Logger,
-	cfg *config.Config) (revocationcache.EnforcerInterface, revocationcache.Syncer) {
+// initRevocationCache builds the Resource Server token-revocation enforcer from the server security
+// configuration and the shared Status List service. Revocation status is carried only by the Token
+// Status List, so when that feature is disabled there is no way to record or observe revocation and
+// enforcement is deactivated regardless of the token-revocation setting.
+func initRevocationCache(ctx context.Context, logger *log.Logger, cfg *config.Config,
+	statusListSvc tokenstatus.ServiceInterface) revocationcache.EnforcerInterface {
 	rc := cfg.Server.SecurityConfig.TokenRevocation
-	enforcer, syncer, err := revocationcache.Initialize(revocationcache.Config{
-		Enabled:      rc.Enabled,
-		Source:       rc.Source,
-		SyncInterval: time.Duration(rc.SyncIntervalSeconds) * time.Second,
-	})
-	if err != nil {
-		logger.Fatal(ctx, "Failed to initialize token revocation cache", log.Error(err))
+
+	var source revocationcache.StatusListSource
+	if statusListSvc != nil {
+		source = newStatusListSource(statusListSvc)
+	} else if rc.Enabled {
+		logger.Warn(ctx, "Token revocation enforcement is enabled but the Token Status List is "+
+			"disabled; revocation enforcement is inactive")
 	}
-	return enforcer, syncer
+
+	return revocationcache.Initialize(revocationcache.Config{
+		Enabled:         rc.Enabled,
+		RefreshInterval: time.Duration(rc.RefreshIntervalSeconds) * time.Second,
+	}, source)
 }
 
 // getThunderHome retrieves and return the home directory.
@@ -286,7 +290,6 @@ func gracefulShutdown(
 	logger *log.Logger,
 	server *http.Server,
 	cacheManager cache.CacheManagerInterface,
-	revocationSyncer revocationcache.Syncer,
 ) {
 	ctx, cancel := context.WithTimeout(ctx, shutdownTimeout)
 	defer cancel()
@@ -297,9 +300,6 @@ func gracefulShutdown(
 	} else {
 		logger.Debug(ctx, "HTTP server shutdown completed")
 	}
-
-	// Stop the token-revocation cache syncer.
-	revocationSyncer.Stop()
 
 	// Shutdown services
 	unregisterServices()

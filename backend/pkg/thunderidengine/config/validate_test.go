@@ -148,9 +148,9 @@ func (suite *ValidateTestSuite) TestSecurityConfig_Validate() {
 
 	suite.T().Run("propagates TokenRevocation error", func(t *testing.T) {
 		c := &SecurityConfig{
-			TokenRevocation: TokenRevocationConfig{Enabled: true, SyncIntervalSeconds: -1},
+			TokenRevocation: TokenRevocationConfig{Enabled: true, RefreshIntervalSeconds: -1},
 		}
-		assert.ErrorContains(t, c.Validate(), "sync_interval_seconds")
+		assert.ErrorContains(t, c.Validate(), "refresh_interval_seconds")
 	})
 }
 
@@ -158,32 +158,48 @@ func (suite *ValidateTestSuite) TestSecurityConfig_Validate() {
 
 func (suite *ValidateTestSuite) TestTokenRevocationConfig_Validate() {
 	suite.T().Run("disabled skips validation", func(t *testing.T) {
-		assert.NoError(t, (&TokenRevocationConfig{Enabled: false, SyncIntervalSeconds: -1}).Validate())
+		assert.NoError(t, (&TokenRevocationConfig{Enabled: false, RefreshIntervalSeconds: -1}).Validate())
 	})
 
 	suite.T().Run("negative interval fails when enabled", func(t *testing.T) {
 		assert.ErrorContains(t,
-			(&TokenRevocationConfig{Enabled: true, SyncIntervalSeconds: -1}).Validate(),
-			"sync_interval_seconds")
+			(&TokenRevocationConfig{Enabled: true, RefreshIntervalSeconds: -1}).Validate(),
+			"refresh_interval_seconds")
 	})
 
 	suite.T().Run("zero interval passes when enabled", func(t *testing.T) {
-		assert.NoError(t, (&TokenRevocationConfig{Enabled: true, SyncIntervalSeconds: 0}).Validate())
+		assert.NoError(t, (&TokenRevocationConfig{Enabled: true, RefreshIntervalSeconds: 0}).Validate())
 	})
 
 	suite.T().Run("positive interval passes when enabled", func(t *testing.T) {
-		assert.NoError(t,
-			(&TokenRevocationConfig{Enabled: true, Source: "db", SyncIntervalSeconds: 30}).Validate())
+		assert.NoError(t, (&TokenRevocationConfig{Enabled: true, RefreshIntervalSeconds: 30}).Validate())
+	})
+}
+
+// ----- StatusListConfig -----
+
+func (suite *ValidateTestSuite) TestStatusListConfig_Validate() {
+	suite.T().Run("disabled skips validation", func(t *testing.T) {
+		assert.NoError(t, (&StatusListConfig{Enabled: false, TTLSeconds: 0}).Validate())
 	})
 
-	suite.T().Run("empty source passes when enabled", func(t *testing.T) {
-		assert.NoError(t, (&TokenRevocationConfig{Enabled: true, SyncIntervalSeconds: 30}).Validate())
-	})
-
-	suite.T().Run("unsupported source fails when enabled", func(t *testing.T) {
+	suite.T().Run("zero ttl fails when enabled", func(t *testing.T) {
 		assert.ErrorContains(t,
-			(&TokenRevocationConfig{Enabled: true, Source: "events", SyncIntervalSeconds: 30}).Validate(),
-			"source")
+			(&StatusListConfig{Enabled: true, Bits: 1, TTLSeconds: 0}).Validate(), "ttl_seconds")
+	})
+
+	suite.T().Run("negative ttl fails when enabled", func(t *testing.T) {
+		assert.ErrorContains(t,
+			(&StatusListConfig{Enabled: true, Bits: 1, TTLSeconds: -1}).Validate(), "ttl_seconds")
+	})
+
+	suite.T().Run("invalid bits fail when enabled", func(t *testing.T) {
+		assert.ErrorContains(t,
+			(&StatusListConfig{Enabled: true, Bits: 3, TTLSeconds: 3600}).Validate(), "bits")
+	})
+
+	suite.T().Run("positive ttl and valid bits pass when enabled", func(t *testing.T) {
+		assert.NoError(t, (&StatusListConfig{Enabled: true, Bits: 1, TTLSeconds: 3600}).Validate())
 	})
 }
 

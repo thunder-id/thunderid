@@ -16,13 +16,23 @@
  * under the License.
  */
 
-package revocationcache
+package tokenstatus
 
-import dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
+import "time"
 
-// querySnapshotRevokedTokens reads the full set of non-expired deny-list entries for this deployment.
-// It is read-only: this package holds no insert/update/delete query against the deny list.
-var querySnapshotRevokedTokens = dbmodel.DBQuery{
-	ID:    "RVC-SRC-01",
-	Query: `SELECT JTI, EXPIRY_TIME FROM "REVOKED_TOKEN" WHERE EXPIRY_TIME > $1 AND DEPLOYMENT_ID = $2`,
+// listRecord is a STATUS_LIST row: one status list's allocator counter and lifecycle state.
+type listRecord struct {
+	id        string
+	bits      int
+	state     int
+	nextIdx   int64
+	capacity  int64
+	createdAt time.Time
+	sealedAt  time.Time // zero value when the list is still active (SEALED_AT is NULL)
+}
+
+// entryRecord is a STATUS_LIST_ENTRY row: the status of one revoked referenced token by its index.
+type entryRecord struct {
+	idx    int64
+	status byte
 }

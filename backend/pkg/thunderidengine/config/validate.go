@@ -37,25 +37,43 @@ func (c *SecurityConfig) Validate() error {
 	if err := c.TokenRevocation.Validate(); err != nil {
 		return err
 	}
+	if err := c.StatusList.Validate(); err != nil {
+		return err
+	}
 	return c.TrustedIssuer.Validate()
 }
 
-// Validate checks the token-revocation configuration. It runs only when the feature is enabled: an
-// unsupported source is rejected, a negative sync interval is rejected, and a non-positive interval
-// otherwise falls back to the default.
+// Validate checks the Token Status List configuration. It runs only when the feature is enabled: a
+// negative list size is rejected, bits must be 1 or 2 (zero falls back to the default), and ttl must
+// be positive — a zero/negative ttl would publish a non-conforming Status List Token whose ttl claim
+// disagrees with its exp.
+func (c *StatusListConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if c.ListSize < 0 {
+		return fmt.Errorf("server.security.status_list.list_size must be non-negative (got %d)", c.ListSize)
+	}
+	if c.Bits != 0 && c.Bits != 1 && c.Bits != 2 {
+		return fmt.Errorf("server.security.status_list.bits must be 1 or 2 (got %d)", c.Bits)
+	}
+	if c.TTLSeconds <= 0 {
+		return fmt.Errorf("server.security.status_list.ttl_seconds must be positive (got %d)", c.TTLSeconds)
+	}
+	return nil
+}
+
+// Validate checks the token-revocation configuration. It runs only when the feature is enabled: a
+// negative refresh interval is rejected, and a non-positive interval otherwise falls back to the
+// default.
 func (c *TokenRevocationConfig) Validate() error {
 	if !c.Enabled {
 		return nil
 	}
-	if c.SyncIntervalSeconds < 0 {
+	if c.RefreshIntervalSeconds < 0 {
 		return fmt.Errorf(
-			"server.security.token_revocation.sync_interval_seconds must be non-negative (got %d)",
-			c.SyncIntervalSeconds)
-	}
-	if c.Source != "" && c.Source != tokenRevocationSourceDB {
-		return fmt.Errorf(
-			"server.security.token_revocation.source %q is not supported (supported: %q)",
-			c.Source, tokenRevocationSourceDB)
+			"server.security.token_revocation.refresh_interval_seconds must be non-negative (got %d)",
+			c.RefreshIntervalSeconds)
 	}
 	return nil
 }

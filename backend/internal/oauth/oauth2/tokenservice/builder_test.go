@@ -24,6 +24,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"math/big"
 	"net/http"
@@ -113,7 +114,7 @@ func (suite *TokenBuilderTestSuite) TestNewTokenBuilder() {
 	jwtService := jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	builder := newTokenBuilder(oauthconfig.Config{
 		JWT: engineconfig.JWTConfig{Issuer: "https://example.com", ValidityPeriod: 3600},
-	}, jwtService, nil, nil)
+	}, jwtService, nil, nil, nil)
 
 	assert.NotNil(suite.T(), builder)
 	assert.Implements(suite.T(), (*TokenBuilderInterface)(nil), builder)
@@ -2115,4 +2116,52 @@ func testRSAPublicKeyToJWKS(pub *rsa.PublicKey, use string) string {
 	}
 	b, _ := json.Marshal(map[string]interface{}{"keys": []interface{}{key}})
 	return string(b)
+}
+
+// fakeStatusIssuer is a StatusReferenceIssuer test double.
+type fakeStatusIssuer struct {
+	idx int64
+	uri string
+	err error
+}
+
+func (f fakeStatusIssuer) IssueReference(context.Context) (int64, string, error) {
+	return f.idx, f.uri, f.err
+}
+
+func (suite *TokenBuilderTestSuite) TestStampStatusClaimEnabled() {
+	tb := &tokenBuilder{statusIssuer: fakeStatusIssuer{idx: 42, uri: "https://issuer.example/statuslists/abc"}}
+	claims := map[string]interface{}{}
+
+	suite.Require().NoError(tb.stampStatusClaim(context.Background(), claims))
+
+	status, ok := claims[constants.ClaimStatus].(map[string]interface{})
+	suite.Require().True(ok, "status claim missing or wrong type")
+	sl, ok := status[constants.ClaimStatusList].(map[string]interface{})
+	suite.Require().True(ok, "status_list missing or wrong type")
+	suite.Equal(int64(42), sl[constants.ClaimStatusListIdx])
+	suite.Equal("https://issuer.example/statuslists/abc", sl[constants.ClaimStatusListURI])
+}
+
+func (suite *TokenBuilderTestSuite) TestStampStatusClaimDisabledIsNoOp() {
+	tb := &tokenBuilder{} // nil issuer => feature disabled
+	claims := map[string]interface{}{}
+
+	suite.Require().NoError(tb.stampStatusClaim(context.Background(), claims))
+	_, ok := claims[constants.ClaimStatus]
+	suite.False(ok, "status claim must be absent when the feature is disabled")
+}
+
+func (suite *TokenBuilderTestSuite) TestStampStatusClaimPropagatesError() {
+	tb := &tokenBuilder{statusIssuer: fakeStatusIssuer{err: errors.New("alloc failed")}}
+	claims := map[string]interface{}{}
+
+	suite.Error(tb.stampStatusClaim(context.Background(), claims))
+	_, ok := claims[constants.ClaimStatus]
+	suite.False(ok, "status claim must not be set when allocation fails")
+}
+
+func (suite *TokenBuilderTestSuite) TestReservedAccessTokenClaimNamesIncludesStatus() {
+	suite.True(ReservedAccessTokenClaimNames()[constants.ClaimStatus],
+		"status must be a reserved access token claim so attribute allow-lists cannot override it")
 }

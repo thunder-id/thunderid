@@ -434,6 +434,7 @@ func ReservedAccessTokenClaimNames() map[string]bool {
 	reserved[constants.ClaimOUHandle] = true
 	reserved[constants.ClaimClaimsRequest] = true
 	reserved[constants.ClaimClaimsLocales] = true
+	reserved[constants.ClaimStatus] = true
 	return reserved
 }
 

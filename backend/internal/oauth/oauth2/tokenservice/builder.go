@@ -41,27 +41,58 @@ type TokenBuilderInterface interface {
 	BuildIDJAG(ctx context.Context, tokenCtx *IDJAGBuildContext) (*oauth2model.TokenDTO, error)
 }
 
+// StatusReferenceIssuer allocates a Token Status List reference (index + list URI) to stamp into an
+// issued token. It is satisfied by the statuslist subsystem and injected at the composition root, so
+// the token builder never imports that subsystem: the Status Provider may run in-process or remotely.
+// A nil issuer means the Token Status List feature is disabled and no status claim is stamped.
+type StatusReferenceIssuer interface {
+	IssueReference(ctx context.Context) (idx int64, uri string, err error)
+}
+
 // TokenBuilder implements TokenBuilderInterface.
 type tokenBuilder struct {
 	cfg          oauthconfig.Config
 	jwtService   jwt.JWTServiceInterface
 	jweService   jwe.JWEServiceInterface
 	jwksResolver *jwksresolver.Resolver
+	statusIssuer StatusReferenceIssuer
 }
 
-// newTokenBuilder creates a new TokenBuilder instance.
+// newTokenBuilder creates a new TokenBuilder instance. statusIssuer may be nil, in which case tokens
+// are issued without a Token Status List reference.
 func newTokenBuilder(
 	cfg oauthconfig.Config,
 	jwtService jwt.JWTServiceInterface,
 	jweService jwe.JWEServiceInterface,
 	resolver *jwksresolver.Resolver,
+	statusIssuer StatusReferenceIssuer,
 ) TokenBuilderInterface {
 	return &tokenBuilder{
 		cfg:          cfg,
 		jwtService:   jwtService,
 		jweService:   jweService,
 		jwksResolver: resolver,
+		statusIssuer: statusIssuer,
 	}
+}
+
+// stampStatusClaim allocates a Token Status List reference and adds the "status" claim to claims. It is
+// a no-op when the feature is disabled (nil issuer), so issuance is unaffected unless configured.
+func (tb *tokenBuilder) stampStatusClaim(ctx context.Context, claims map[string]interface{}) error {
+	if tb.statusIssuer == nil {
+		return nil
+	}
+	idx, uri, err := tb.statusIssuer.IssueReference(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to allocate token status list reference: %w", err)
+	}
+	claims[constants.ClaimStatus] = map[string]interface{}{
+		constants.ClaimStatusList: map[string]interface{}{
+			constants.ClaimStatusListIdx: idx,
+			constants.ClaimStatusListURI: uri,
+		},
+	}
+	return nil
 }
 
 // BuildAccessToken builds an access token with all necessary claims.
@@ -78,6 +109,10 @@ func (tb *tokenBuilder) BuildAccessToken(
 	jwtClaims, claimsErr := tb.buildAccessTokenClaims(tokenCtx)
 	if claimsErr != nil {
 		return nil, fmt.Errorf("failed to build access token claims: %w", claimsErr)
+	}
+
+	if err := tb.stampStatusClaim(ctx, jwtClaims); err != nil {
+		return nil, err
 	}
 
 	tokenType := constants.TokenTypeBearer
@@ -287,6 +322,10 @@ func (tb *tokenBuilder) BuildRefreshToken(
 	}
 
 	claims["aud"] = tokenConfig.Issuer
+
+	if err := tb.stampStatusClaim(ctx, claims); err != nil {
+		return nil, err
+	}
 
 	token, iat, err := tb.jwtService.GenerateJWT(
 		ctx,

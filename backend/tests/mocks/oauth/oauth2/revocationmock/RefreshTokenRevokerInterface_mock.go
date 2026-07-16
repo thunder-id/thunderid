@@ -39,16 +39,16 @@ func (_m *RefreshTokenRevokerInterfaceMock) EXPECT() *RefreshTokenRevokerInterfa
 }
 
 // RevokeRefreshToken provides a mock function for the type RefreshTokenRevokerInterfaceMock
-func (_mock *RefreshTokenRevokerInterfaceMock) RevokeRefreshToken(ctx context.Context, jti string, expiryTime time.Time) error {
-	ret := _mock.Called(ctx, jti, expiryTime)
+func (_mock *RefreshTokenRevokerInterfaceMock) RevokeRefreshToken(ctx context.Context, statusURI string, statusIdx int64, jti string, expiryTime time.Time) error {
+	ret := _mock.Called(ctx, statusURI, statusIdx, jti, expiryTime)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RevokeRefreshToken")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) error); ok {
-		r0 = returnFunc(ctx, jti, expiryTime)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int64, string, time.Time) error); ok {
+		r0 = returnFunc(ctx, statusURI, statusIdx, jti, expiryTime)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -62,13 +62,15 @@ type RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call struct {
 
 // RevokeRefreshToken is a helper method to define mock.On call
 //   - ctx context.Context
+//   - statusURI string
+//   - statusIdx int64
 //   - jti string
 //   - expiryTime time.Time
-func (_e *RefreshTokenRevokerInterfaceMock_Expecter) RevokeRefreshToken(ctx interface{}, jti interface{}, expiryTime interface{}) *RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call {
-	return &RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call{Call: _e.mock.On("RevokeRefreshToken", ctx, jti, expiryTime)}
+func (_e *RefreshTokenRevokerInterfaceMock_Expecter) RevokeRefreshToken(ctx interface{}, statusURI interface{}, statusIdx interface{}, jti interface{}, expiryTime interface{}) *RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call {
+	return &RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call{Call: _e.mock.On("RevokeRefreshToken", ctx, statusURI, statusIdx, jti, expiryTime)}
 }
 
-func (_c *RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call) Run(run func(ctx context.Context, jti string, expiryTime time.Time)) *RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call {
+func (_c *RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call) Run(run func(ctx context.Context, statusURI string, statusIdx int64, jti string, expiryTime time.Time)) *RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -78,14 +80,24 @@ func (_c *RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call) Run(run func
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 time.Time
+		var arg2 int64
 		if args[2] != nil {
-			arg2 = args[2].(time.Time)
+			arg2 = args[2].(int64)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		var arg4 time.Time
+		if args[4] != nil {
+			arg4 = args[4].(time.Time)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -96,7 +108,7 @@ func (_c *RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call) Return(err e
 	return _c
 }
 
-func (_c *RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call) RunAndReturn(run func(ctx context.Context, jti string, expiryTime time.Time) error) *RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call {
+func (_c *RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call) RunAndReturn(run func(ctx context.Context, statusURI string, statusIdx int64, jti string, expiryTime time.Time) error) *RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call {
 	_c.Call.Return(run)
 	return _c
 }

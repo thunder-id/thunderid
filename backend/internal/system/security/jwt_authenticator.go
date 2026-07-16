@@ -29,9 +29,15 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
-// claimJTI is the JWT ID claim (RFC 7519 §4.1.7); its value is recorded as the token's revocation
-// identifier for the enforcement step.
-const claimJTI = "jti"
+// Token Status List reference claim names (draft-ietf-oauth-status-list §6.1). These are this
+// package's own copy of the wire keys: the enforcement seam reads them off the presented token so the
+// security layer does not depend on the OAuth token-issuance packages.
+const (
+	claimStatus        = "status"
+	claimStatusList    = "status_list"
+	claimStatusListURI = "uri"
+	claimStatusListIdx = "idx"
+)
 
 // jwtAuthenticator handles authentication and authorization using JWT Bearer tokens.
 type jwtAuthenticator struct {
@@ -90,11 +96,49 @@ func (h *jwtAuthenticator) Authenticate(r *http.Request) (*SecurityContext, erro
 	// Step 5: Extract scopes from JWT claims
 	scopes := extractScopes(attributes)
 
-	// Create immutable SecurityContext. The jti claim is recorded as the revocation identifier for
-	// the enforcement step; it may be empty.
+	// Create immutable SecurityContext. The Token Status List reference is recorded for the
+	// enforcement step; statusURI is empty when the token carries no status claim, and statusMalformed
+	// marks a present-but-invalid reference that the enforcement step must reject.
 	securityCtx := newSecurityContext(subject, ouID, token, scopes, attributes)
-	securityCtx.revocationID = extractAttribute(attributes, claimJTI)
+	securityCtx.statusURI, securityCtx.statusIdx, securityCtx.statusMalformed = extractStatusReference(attributes)
 	return securityCtx, nil
+}
+
+// extractStatusReference reads the Token Status List reference (list URI and index) from a token's
+// status.status_list claim. malformed is true when the token carries a status_list object whose uri or
+// idx is invalid: such a present-but-invalid reference must fail closed, so it is reported distinctly
+// from an absent reference (empty uri, malformed false), which a token issued before the feature was
+// enabled carries. The index is decoded from a JSON number (float64) as produced by JWT payload
+// decoding.
+func extractStatusReference(attributes map[string]interface{}) (uri string, idx int64, malformed bool) {
+	status, ok := attributes[claimStatus].(map[string]interface{})
+	if !ok {
+		return "", 0, false
+	}
+	statusList, ok := status[claimStatusList].(map[string]interface{})
+	if !ok {
+		return "", 0, false
+	}
+	uri, ok = statusList[claimStatusListURI].(string)
+	if !ok || uri == "" {
+		return "", 0, true
+	}
+	// idx must be a non-negative integer (draft-ietf-oauth-status-list §6.1). Reject fractional or
+	// negative values rather than silently truncating.
+	switch v := statusList[claimStatusListIdx].(type) {
+	case float64:
+		if v < 0 || v != float64(int64(v)) {
+			return "", 0, true
+		}
+		return uri, int64(v), false
+	case int64:
+		if v < 0 {
+			return "", 0, true
+		}
+		return uri, v, false
+	default:
+		return "", 0, true
+	}
 }
 
 // verifyToken verifies the bearer token by routing on its iss claim against

@@ -19,65 +19,118 @@
 package revocationcache
 
 import (
-	"sync"
+	"context"
+	"errors"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
 )
 
-func TestRevokedCache_ReplaceAndIsRevoked(t *testing.T) {
-	c := newRevokedCache()
-	future := time.Now().Add(time.Hour)
-
-	assert.False(t, c.isRevoked("jti-1"), "empty cache reports nothing revoked")
-
-	c.replace([]revokedEntry{
-		{JTI: "jti-1", ExpiryTime: future},
-		{JTI: "jti-2", ExpiryTime: future},
-	})
-
-	assert.True(t, c.isRevoked("jti-1"))
-	assert.True(t, c.isRevoked("jti-2"))
-	assert.False(t, c.isRevoked("jti-3"))
+// fakeSource is a hand-written StatusListSource for exercising the cache without the Status List
+// subsystem. It records the number of Fetch calls so tests can assert cache hits vs re-fetches.
+type fakeSource struct {
+	statuses map[int64]int
+	capacity int64
+	found    bool
+	err      error
+	calls    int
 }
 
-func TestRevokedCache_ReplaceSwapsSnapshot(t *testing.T) {
-	c := newRevokedCache()
-	future := time.Now().Add(time.Hour)
-
-	c.replace([]revokedEntry{{JTI: "old", ExpiryTime: future}})
-	assert.True(t, c.isRevoked("old"))
-
-	c.replace([]revokedEntry{{JTI: "new", ExpiryTime: future}})
-	assert.False(t, c.isRevoked("old"), "prior entries are dropped on replace")
-	assert.True(t, c.isRevoked("new"))
+func (f *fakeSource) Fetch(context.Context, string) (map[int64]int, int64, bool, error) {
+	f.calls++
+	return f.statuses, f.capacity, f.found, f.err
 }
 
-func TestRevokedCache_ExpiredEntryNotRevoked(t *testing.T) {
-	c := newRevokedCache()
-	c.replace([]revokedEntry{{JTI: "expired", ExpiryTime: time.Now().Add(-time.Second)}})
+func TestStatusCacheLoadsLazilyAndServesWithinTTL(t *testing.T) {
+	src := &fakeSource{statuses: map[int64]int{7: 1}, capacity: 100, found: true}
+	cache := newStatusCache(src, time.Hour)
 
-	assert.False(t, c.isRevoked("expired"), "an entry past its expiry is treated as not revoked")
-}
-
-func TestRevokedCache_ConcurrentAccess(t *testing.T) {
-	c := newRevokedCache()
-	future := time.Now().Add(time.Hour)
-
-	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			c.replace([]revokedEntry{{JTI: "jti", ExpiryTime: future}})
-		}()
-		go func() {
-			defer wg.Done()
-			_ = c.isRevoked("jti")
-		}()
+	status, available := cache.statusAt(context.Background(), "uri", 7)
+	if !available || status != 1 {
+		t.Fatalf("first lookup = (%d, %v), want (1, true)", status, available)
 	}
-	wg.Wait()
+	// A second lookup within the TTL is served from the cache without re-fetching.
+	if _, _ = cache.statusAt(context.Background(), "uri", 7); src.calls != 1 {
+		t.Fatalf("source Fetch called %d times, want 1", src.calls)
+	}
+}
 
-	assert.True(t, c.isRevoked("jti"))
+func TestStatusCacheMissingIndexIsValid(t *testing.T) {
+	// idx 99 is within capacity 100 but has no entry: the bit is genuinely VALID.
+	cache := newStatusCache(&fakeSource{statuses: map[int64]int{7: 1}, capacity: 100, found: true}, time.Hour)
+
+	status, available := cache.statusAt(context.Background(), "uri", 99)
+	if !available || status != statusValid {
+		t.Fatalf("missing index = (%d, %v), want (%d, true)", status, available, statusValid)
+	}
+}
+
+func TestStatusCacheOutOfBoundsIndexFailsClosed(t *testing.T) {
+	// idx 100 is at/beyond capacity 100: out of the list's bounds, so the status is unresolvable.
+	cache := newStatusCache(&fakeSource{statuses: map[int64]int{}, capacity: 100, found: true}, time.Hour)
+
+	if status, available := cache.statusAt(context.Background(), "uri", 100); available || status != 0 {
+		t.Fatalf("out-of-bounds index = (%d, %v), want (0, false)", status, available)
+	}
+}
+
+func TestStatusCacheNotFoundListFailsClosed(t *testing.T) {
+	// A referenced list that does not exist is unresolvable and must not be treated as all-VALID.
+	src := &fakeSource{found: false}
+	cache := newStatusCache(src, time.Hour)
+
+	if status, available := cache.statusAt(context.Background(), "uri", 7); available || status != 0 {
+		t.Fatalf("not-found list = (%d, %v), want (0, false)", status, available)
+	}
+	// A genuinely missing list is not cached, so a later lookup re-fetches.
+	if _, _ = cache.statusAt(context.Background(), "uri", 7); src.calls != 2 {
+		t.Fatalf("source Fetch called %d times, want 2 (not-found is not cached)", src.calls)
+	}
+}
+
+func TestStatusCacheKeepsLastKnownGoodWithinGraceOnRefreshError(t *testing.T) {
+	src := &fakeSource{statuses: map[int64]int{7: 1}, capacity: 100, found: true}
+	cache := newStatusCache(src, time.Minute) // ttl and maxStale are both one minute
+	base := time.Now()
+	cache.now = func() time.Time { return base }
+
+	if status, available := cache.statusAt(context.Background(), "uri", 7); !available || status != 1 {
+		t.Fatalf("initial load = (%d, %v), want (1, true)", status, available)
+	}
+
+	// Past the refresh deadline but within the grace window, a failed re-fetch keeps serving the
+	// last-known-good snapshot so a brief outage does not drop a revocation we already know.
+	cache.now = func() time.Time { return base.Add(90 * time.Second) }
+	src.err = errors.New("db down")
+	status, available := cache.statusAt(context.Background(), "uri", 7)
+	if !available || status != 1 {
+		t.Fatalf("within grace = (%d, %v), want (1, true)", status, available)
+	}
+}
+
+func TestStatusCacheStaleBeyondGraceFailsClosed(t *testing.T) {
+	src := &fakeSource{statuses: map[int64]int{7: 1}, capacity: 100, found: true}
+	cache := newStatusCache(src, time.Minute)
+	base := time.Now()
+	cache.now = func() time.Time { return base }
+
+	if status, available := cache.statusAt(context.Background(), "uri", 7); !available || status != 1 {
+		t.Fatalf("initial load = (%d, %v), want (1, true)", status, available)
+	}
+
+	// Beyond expiry plus the grace window the snapshot is too stale to trust: a token revoked since
+	// then must not slip through, so the status is unavailable and the caller fails closed.
+	cache.now = func() time.Time { return base.Add(3 * time.Minute) }
+	src.err = errors.New("db down")
+	status, available := cache.statusAt(context.Background(), "uri", 7)
+	if available || status != 0 {
+		t.Fatalf("beyond grace = (%d, %v), want (0, false)", status, available)
+	}
+}
+
+func TestStatusCacheUnavailableWhenFirstLoadFails(t *testing.T) {
+	cache := newStatusCache(&fakeSource{err: errors.New("db down")}, time.Hour)
+
+	if status, available := cache.statusAt(context.Background(), "uri", 7); available || status != 0 {
+		t.Fatalf("failed load = (%d, %v), want (0, false)", status, available)
+	}
 }

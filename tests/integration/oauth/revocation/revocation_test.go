@@ -282,8 +282,8 @@ func (ts *RevocationTestSuite) TestRevoke_MissingClientAuthReturnsInvalidRequest
 	ts.Assert().Equal("invalid_request", decodeError(resp))
 }
 
-// M2 deny-list enforcement: a token is active before revocation and inactive afterwards when
-// introspected on the AS hot path.
+// Revocation enforcement (Token Status List): a token is active before revocation and inactive
+// afterwards when introspected on the AS hot path.
 func (ts *RevocationTestSuite) TestIntrospect_ReflectsRevocation() {
 	token := ts.getAccessToken(clientIDOwner, secretOwner)
 
@@ -298,7 +298,7 @@ func (ts *RevocationTestSuite) TestIntrospect_ReflectsRevocation() {
 		"token should be inactive after revocation")
 }
 
-// M2 deny-list enforcement on token exchange: a self-issued subject token is accepted for exchange
+// Revocation enforcement on token exchange: a self-issued subject token is accepted for exchange
 // before revocation and rejected with invalid_request afterwards.
 func (ts *RevocationTestSuite) TestTokenExchange_RejectsRevokedSubjectToken() {
 	subject := ts.getAccessToken(clientIDOwner, secretOwner)

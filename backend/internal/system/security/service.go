@@ -35,13 +35,14 @@ type SecurityServiceInterface interface {
 	Process(r *http.Request) (context.Context, error)
 }
 
-// RevocationEnforcerInterface rejects tokens whose revocation identifier is on the deny list. It is
-// the read-only seam the security layer uses to consult the Resource Server's revocation cache
-// without depending on its implementation.
+// RevocationEnforcerInterface rejects tokens whose Token Status List entry is revoked. It is the
+// read-only seam the security layer uses to consult the Resource Server's status cache without
+// depending on its implementation.
 type RevocationEnforcerInterface interface {
-	// EnsureNotRevoked returns a non-nil error when the token identified by id has been revoked.
-	// An empty id is a no-op.
-	EnsureNotRevoked(ctx context.Context, id string) error
+	// EnsureNotRevoked returns a non-nil error when the token whose status-list reference is
+	// (statusURI, statusIdx) has been revoked. An empty statusURI is a no-op (the token carries no
+	// status reference).
+	EnsureNotRevoked(ctx context.Context, statusURI string, statusIdx int64) error
 }
 
 // securityService orchestrates authentication and authorization for HTTP requests.
@@ -145,10 +146,14 @@ func (s *securityService) Process(r *http.Request) (context.Context, error) {
 		ctx = withSecurityContext(ctx, securityCtx)
 
 		// Reject the request when the presented token has been revoked. This runs after successful
-		// authentication and is format-agnostic: it enforces on the token's revocation identifier. A
-		// revoked token is surfaced as an invalid token (RFC 6750 §3.1) so the response does not
-		// disclose that the token was specifically revoked.
-		if err := s.revocationEnforcer.EnsureNotRevoked(ctx, securityCtx.revocationID); err != nil {
+		// authentication and enforces on the token's Token Status List reference. A revoked token is
+		// surfaced as an invalid token (RFC 6750 §3.1) so the response does not disclose that the token
+		// was specifically revoked. A present-but-malformed reference cannot be resolved, so it fails
+		// closed here rather than being treated as a token with no revocation channel.
+		if securityCtx.statusMalformed {
+			return s.handleAuthError(ctx, isPublic, errInvalidToken)
+		}
+		if err := s.revocationEnforcer.EnsureNotRevoked(ctx, securityCtx.statusURI, securityCtx.statusIdx); err != nil {
 			return s.handleAuthError(ctx, isPublic, errInvalidToken)
 		}
 	}

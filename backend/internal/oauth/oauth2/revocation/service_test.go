@@ -22,7 +22,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"testing"
 	"time"
 
@@ -35,12 +34,30 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/observability/observabilitymock"
 )
 
-const testClientID = "test-client-id"
+const (
+	testClientID = "test-client-id"
+	testListURI  = "https://issuer.example/statuslists/abc"
+)
+
+// fakeStatusWriter is a hand-rolled TokenStatusWriter capturing the last call.
+type fakeStatusWriter struct {
+	called    bool
+	gotURI    string
+	gotIdx    int64
+	gotStatus int
+	gotExpiry time.Time
+	err       error
+}
+
+func (f *fakeStatusWriter) SetStatus(_ context.Context, uri string, idx int64, status int, expiry time.Time) error {
+	f.called, f.gotURI, f.gotIdx, f.gotStatus, f.gotExpiry = true, uri, idx, status, expiry
+	return f.err
+}
 
 type RevocationServiceTestSuite struct {
 	suite.Suite
 	jwtServiceMock *jwtmock.JWTServiceInterfaceMock
-	storeMock      *RevokedTokenStoreInterfaceMock
+	writer         *fakeStatusWriter
 	obsMock        *observabilitymock.ObservabilityServiceInterfaceMock
 	service        RevocationServiceInterface
 }
@@ -51,9 +68,9 @@ func TestRevocationServiceTestSuite(t *testing.T) {
 
 func (s *RevocationServiceTestSuite) SetupTest() {
 	s.jwtServiceMock = jwtmock.NewJWTServiceInterfaceMock(s.T())
-	s.storeMock = NewRevokedTokenStoreInterfaceMock(s.T())
+	s.writer = &fakeStatusWriter{}
 	s.obsMock = observabilitymock.NewObservabilityServiceInterfaceMock(s.T())
-	s.service = newRevocationService(s.jwtServiceMock, s.storeMock, s.obsMock)
+	s.service = newRevocationService(s.jwtServiceMock, s.writer, s.obsMock)
 }
 
 // buildToken constructs a JWT-shaped string with the given claims. DecodeJWT only base64-decodes the
@@ -65,119 +82,152 @@ func buildToken(claims map[string]interface{}) string {
 		base64.RawURLEncoding.EncodeToString(payload) + ".sig"
 }
 
-func (s *RevocationServiceTestSuite) TestRevokeToken_Success() {
-	token := buildToken(map[string]interface{}{
-		"jti":       "jti-123",
+// buildStatusToken builds a token carrying a status_list reference (uri, idx).
+func buildStatusToken(jti string, idx int64, extra map[string]interface{}) string {
+	claims := map[string]interface{}{
+		"jti":       jti,
 		"client_id": testClientID,
-		"exp":       float64(time.Now().Add(time.Hour).Unix()),
-	})
+		"status": map[string]interface{}{
+			"status_list": map[string]interface{}{"idx": float64(idx), "uri": testListURI},
+		},
+	}
+	for k, v := range extra {
+		claims[k] = v
+	}
+	return buildToken(claims)
+}
+
+func (s *RevocationServiceTestSuite) TestRevokeToken_FlipsStatusBit() {
+	exp := float64(time.Now().Add(time.Hour).Unix())
+	token := buildStatusToken("jti-123", 42, map[string]interface{}{"exp": exp})
 	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
-	s.storeMock.On("InsertRevokedToken", mock.Anything, mock.MatchedBy(func(rt RevokedToken) bool {
-		return rt.JTI == "jti-123" && rt.RevocationReason == RevocationReasonExplicit
-	})).Return(nil)
 	s.obsMock.On("IsEnabled").Return(false)
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	outcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
+	assert.Equal(s.T(), RevokeOutcomeRevoked, outcome)
+	assert.True(s.T(), s.writer.called)
+	assert.Equal(s.T(), testListURI, s.writer.gotURI)
+	assert.Equal(s.T(), int64(42), s.writer.gotIdx)
+	assert.Equal(s.T(), statusRevoked, s.writer.gotStatus)
 }
 
 func (s *RevocationServiceTestSuite) TestRevokeToken_PublishesAuditEvent() {
-	token := buildToken(map[string]interface{}{"jti": "jti-evt", "client_id": testClientID})
+	token := buildStatusToken("jti-evt", 1, nil)
 	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
-	s.storeMock.On("InsertRevokedToken", mock.Anything, mock.Anything).Return(nil)
 	s.obsMock.On("IsEnabled").Return(true)
 	s.obsMock.On("PublishEvent", mock.Anything, mock.Anything).Return()
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "refresh_token", testClientID)
+	outcome, err := s.service.RevokeToken(context.Background(), token, "refresh_token", testClientID)
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
+	assert.Equal(s.T(), RevokeOutcomeRevoked, outcome)
 }
 
 func (s *RevocationServiceTestSuite) TestRevokeToken_InvalidSignatureIsNoOp() {
-	token := buildToken(map[string]interface{}{"jti": "jti-123", "client_id": testClientID})
+	token := buildStatusToken("jti-123", 1, nil)
 	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(&serviceerror.ServiceError{
 		Type: serviceerror.ServerErrorType, Code: "INVALID_SIGNATURE",
 	})
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	outcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
-	s.storeMock.AssertNotCalled(s.T(), "InsertRevokedToken", mock.Anything, mock.Anything)
+	assert.Equal(s.T(), RevokeOutcomeRevoked, outcome)
+	assert.False(s.T(), s.writer.called)
 }
 
 func (s *RevocationServiceTestSuite) TestRevokeToken_ExpiredTokenStillRevocable() {
-	token := buildToken(map[string]interface{}{
-		"jti":       "jti-expired",
-		"client_id": testClientID,
-		"exp":       float64(time.Now().Add(-time.Hour).Unix()),
-	})
+	exp := float64(time.Now().Add(-time.Hour).Unix())
+	token := buildStatusToken("jti-expired", 5, map[string]interface{}{"exp": exp})
 	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
-	s.storeMock.On("InsertRevokedToken", mock.Anything, mock.Anything).Return(nil)
 	s.obsMock.On("IsEnabled").Return(false)
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	outcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
+	assert.Equal(s.T(), RevokeOutcomeRevoked, outcome)
+	assert.True(s.T(), s.writer.called)
 }
 
 func (s *RevocationServiceTestSuite) TestRevokeToken_NotOwnedByClient() {
 	token := buildToken(map[string]interface{}{"jti": "jti-123", "client_id": "another-client"})
 	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	outcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeNotOwned, revokeOutcome)
-	s.storeMock.AssertNotCalled(s.T(), "InsertRevokedToken", mock.Anything, mock.Anything)
+	assert.Equal(s.T(), RevokeOutcomeNotOwned, outcome)
+	assert.False(s.T(), s.writer.called)
 }
 
 func (s *RevocationServiceTestSuite) TestRevokeToken_NoJtiIsNoOp() {
 	token := buildToken(map[string]interface{}{"client_id": testClientID})
 	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	outcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
-	s.storeMock.AssertNotCalled(s.T(), "InsertRevokedToken", mock.Anything, mock.Anything)
+	assert.Equal(s.T(), RevokeOutcomeRevoked, outcome)
+	assert.False(s.T(), s.writer.called)
 }
 
-func (s *RevocationServiceTestSuite) TestRevokeToken_StoreErrorReturnsError() {
-	token := buildToken(map[string]interface{}{"jti": "jti-123", "client_id": testClientID})
+// A token without a status reference has no revocation channel and is a no-op success per RFC 7009.
+func (s *RevocationServiceTestSuite) TestRevokeToken_NoStatusRefIsNoOp() {
+	token := buildToken(map[string]interface{}{"jti": "jti-noref", "client_id": testClientID})
 	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
-	s.storeMock.On("InsertRevokedToken", mock.Anything, mock.Anything).Return(errors.New("db error"))
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	outcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), RevokeOutcomeRevoked, outcome)
+	assert.False(s.T(), s.writer.called)
+}
+
+// With the Token Status List feature disabled (nil writer), revocation is a no-op success.
+func (s *RevocationServiceTestSuite) TestRevokeToken_DisabledWriterIsNoOp() {
+	svc := newRevocationService(s.jwtServiceMock, nil, s.obsMock)
+	token := buildStatusToken("jti-disabled", 3, nil)
+	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+
+	outcome, err := svc.RevokeToken(context.Background(), token, "", testClientID)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), RevokeOutcomeRevoked, outcome)
+	assert.False(s.T(), s.writer.called)
+}
+
+func (s *RevocationServiceTestSuite) TestRevokeToken_StatusWriterErrorReturnsError() {
+	s.writer.err = assert.AnError
+	token := buildStatusToken("jti-123", 9, nil)
+	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+
+	outcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
 	assert.Error(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
+	assert.Equal(s.T(), RevokeOutcomeRevoked, outcome)
 	assert.Contains(s.T(), err.Error(), "failed to record token revocation")
 }
 
-func (s *RevocationServiceTestSuite) TestRevokeRefreshToken_RecordsWithRotationReason() {
+func (s *RevocationServiceTestSuite) TestRevokeRefreshToken_FlipsStatusBit() {
 	revoker := s.service.(RefreshTokenRevokerInterface)
 	expiry := time.Now().Add(time.Hour).UTC()
-	s.storeMock.On("InsertRevokedToken", mock.Anything, mock.MatchedBy(func(rt RevokedToken) bool {
-		return rt.JTI == "rotated-jti" &&
-			rt.RevocationReason == RevocationReasonRefreshRotation &&
-			rt.ExpiryTime.Equal(expiry)
-	})).Return(nil)
 
-	err := revoker.RevokeRefreshToken(context.Background(), "rotated-jti", expiry)
+	err := revoker.RevokeRefreshToken(context.Background(), testListURI, 7, "jti-x", expiry)
+
 	assert.NoError(s.T(), err)
+	assert.True(s.T(), s.writer.called)
+	assert.Equal(s.T(), int64(7), s.writer.gotIdx)
+	assert.Equal(s.T(), statusRevoked, s.writer.gotStatus)
+	assert.True(s.T(), s.writer.gotExpiry.Equal(expiry))
 }
 
-func (s *RevocationServiceTestSuite) TestRevokeRefreshToken_EmptyJTIIsNoOp() {
+// An empty status URI (pre-feature token, or the feature is off) leaves nothing to record.
+func (s *RevocationServiceTestSuite) TestRevokeRefreshToken_EmptyURIIsNoOp() {
 	revoker := s.service.(RefreshTokenRevokerInterface)
 
-	err := revoker.RevokeRefreshToken(context.Background(), "", time.Now().UTC())
+	err := revoker.RevokeRefreshToken(context.Background(), "", 0, "jti-x", time.Now().UTC())
 	assert.NoError(s.T(), err)
-	s.storeMock.AssertNotCalled(s.T(), "InsertRevokedToken", mock.Anything, mock.Anything)
+	assert.False(s.T(), s.writer.called)
 }
 
-func (s *RevocationServiceTestSuite) TestRevokeRefreshToken_StoreErrorPropagates() {
+func (s *RevocationServiceTestSuite) TestRevokeRefreshToken_WriterErrorPropagates() {
+	s.writer.err = assert.AnError
 	revoker := s.service.(RefreshTokenRevokerInterface)
-	s.storeMock.On("InsertRevokedToken", mock.Anything, mock.Anything).
-		Return(errors.New("operation database unavailable"))
 
-	err := revoker.RevokeRefreshToken(context.Background(), "jti-x", time.Now().UTC())
+	err := revoker.RevokeRefreshToken(context.Background(), testListURI, 1, "jti-x", time.Now().UTC())
 	assert.Error(s.T(), err)
 }

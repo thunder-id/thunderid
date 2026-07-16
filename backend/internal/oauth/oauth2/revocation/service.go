@@ -24,12 +24,25 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
+
+// statusRevoked is the Token Status List status value for a revoked token (spec 0x01, INVALID).
+const statusRevoked = 1
+
+// TokenStatusWriter records a token's status in the Token Status List, the sole revocation mechanism.
+// It is satisfied by the statuslist subsystem and injected at the composition root; a nil writer means
+// the list feature is disabled, in which case revocation has nothing to record and is a no-op. The
+// signature matches the subsystem's service so it is satisfied structurally without the revocation
+// package importing it.
+type TokenStatusWriter interface {
+	SetStatus(ctx context.Context, uri string, idx int64, status int, expiry time.Time) error
+}
 
 // RevocationServiceInterface defines the OAuth2 token revocation service (RFC 7009).
 type RevocationServiceInterface interface {
@@ -39,28 +52,28 @@ type RevocationServiceInterface interface {
 	//
 	// token_type_hint is accepted per RFC 7009 §2.1 but intentionally not acted on. The hint exists to help
 	// a server that stores opaque tokens in type-partitioned stores decide which store to search first. Our
-	// tokens are self-contained JWTs revoked by jti into a single deny-list, so the type is auto-detectable
-	// from the token and never guides a lookup — the case where RFC 7009 §2.1 explicitly permits ignoring it.
-	// It is retained in the signature as a forward-fit for a future opaque/reference-token model.
+	// tokens are self-contained JWTs revoked by flipping their status-list bit, so the type is
+	// auto-detectable from the token and never guides a lookup — the case where RFC 7009 §2.1 explicitly
+	// permits ignoring it. It is retained in the signature as a forward-fit for a future opaque-token model.
 	//
 	// It returns an error only on server errors; all token-state outcomes are conveyed via RevokeOutcome.
 	RevokeToken(ctx context.Context, token, tokenTypeHint, authenticatedClientID string) (RevokeOutcome, error)
 }
 
 // RefreshTokenRevokerInterface is the narrow write seam the refresh grant uses to enforce single-use
-// refresh tokens (RFC 9700 §4.14.2): the consumed refresh token is recorded on the deny list so it
+// refresh tokens (RFC 9700 §4.14.2): the consumed refresh token's status-list bit is flipped so it
 // cannot be replayed. It exposes no read or client-facing revocation.
 type RefreshTokenRevokerInterface interface {
-	// RevokeRefreshToken records the refresh token's jti on the deny list with the refresh_rotation
-	// reason. expiryTime is the token's original expiry, which bounds the deny-list entry's lifetime.
-	// An empty jti is a no-op.
-	RevokeRefreshToken(ctx context.Context, jti string, expiryTime time.Time) error
+	// RevokeRefreshToken records a consumed refresh token as revoked on rotation by flipping its
+	// status-list bit. expiryTime bounds the recorded entry's lifetime. An empty statusURI (the list
+	// feature is disabled, or a pre-feature token) is a no-op.
+	RevokeRefreshToken(ctx context.Context, statusURI string, statusIdx int64, jti string, expiryTime time.Time) error
 }
 
 // revocationService implements RevocationServiceInterface.
 type revocationService struct {
 	jwtService       jwt.JWTServiceInterface
-	store            RevokedTokenStoreInterface
+	statusWriter     TokenStatusWriter
 	observabilitySvc providers.ObservabilityProvider
 	logger           *log.Logger
 }
@@ -68,14 +81,15 @@ type revocationService struct {
 // newRevocationService creates a new revocationService (internal use). It returns
 // RevocationServiceInterface; the same instance is handed to the refresh grant narrowed to the
 // embedded RefreshTokenRevokerInterface subset, so the grant cannot invoke the full revocation API.
+// statusWriter may be nil, in which case revocation is a no-op (the Token Status List feature is off).
 func newRevocationService(
 	jwtService jwt.JWTServiceInterface,
-	store RevokedTokenStoreInterface,
+	statusWriter TokenStatusWriter,
 	observabilitySvc providers.ObservabilityProvider,
 ) RevocationServiceInterface {
 	return &revocationService{
 		jwtService:       jwtService,
-		store:            store,
+		statusWriter:     statusWriter,
 		observabilitySvc: observabilitySvc,
 		logger:           log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RevocationService")),
 	}
@@ -86,12 +100,14 @@ func newRevocationService(
 //
 // Per RFC 7009: signature is verified but expiry is intentionally not checked (expired tokens remain
 // revocable). An invalid, unparseable, or unknown token is a successful no-op. A token issued to a
-// different client is rejected with invalid_grant.
+// different client is rejected with invalid_grant. Revocation flips the token's status-list bit; a
+// token with no status reference (the list feature is off, or the token predates it) has no revocation
+// channel and is treated as a no-op success.
 func (s *revocationService) RevokeToken(
 	ctx context.Context, token, _, authenticatedClientID string,
 ) (RevokeOutcome, error) {
-	// Signature-only verification: a token we did not issue (or a tampered one) must not pollute the
-	// deny list. Expiry is deliberately ignored so expired tokens remain revocable.
+	// Signature-only verification: a token we did not issue (or a tampered one) must not touch the
+	// status list. Expiry is deliberately ignored so expired tokens remain revocable.
 	if err := s.jwtService.VerifyJWTSignature(ctx, token); err != nil {
 		s.logger.Debug(ctx, "Revocation request for a token that failed signature verification; "+
 			"treating as a no-op success per RFC 7009")
@@ -119,13 +135,19 @@ func (s *revocationService) RevokeToken(
 		return RevokeOutcomeNotOwned, nil
 	}
 
-	revoked := RevokedToken{
-		JTI:              jti,
-		RevocationReason: RevocationReasonExplicit,
-		RevokedAt:        time.Now().UTC(),
-		ExpiryTime:       extractExpiryTime(payload),
+	// Flip the token's status-list bit. A token without a status reference has no revocation channel
+	// (the list feature is off, or it predates the feature); nothing can be recorded, so per RFC 7009
+	// the request is a no-op success.
+	// A malformed reference (ok=false with a non-nil error) leaves nothing to flip; per RFC 7009 an
+	// unrevocable token is still a success, and the enforcement path fails such a token closed anyway.
+	uri, idx, ok, _ := oauth2utils.ExtractStatusListReference(payload)
+	if s.statusWriter == nil || !ok {
+		s.logger.Debug(ctx, "Revocation request for a token without a status list reference; "+
+			"nothing to revoke")
+		return RevokeOutcomeRevoked, nil
 	}
-	if err := s.store.InsertRevokedToken(ctx, revoked); err != nil {
+
+	if err := s.statusWriter.SetStatus(ctx, uri, idx, statusRevoked, extractExpiryTime(payload)); err != nil {
 		return RevokeOutcomeRevoked, fmt.Errorf("failed to record token revocation: %w", err)
 	}
 
@@ -133,23 +155,20 @@ func (s *revocationService) RevokeToken(
 	return RevokeOutcomeRevoked, nil
 }
 
-// RevokeRefreshToken records a refresh token on the deny list with the refresh_rotation reason,
-// enforcing single-use on rotation. The token was already validated by the refresh grant, so no
-// signature or ownership check is repeated here. An empty jti is a no-op.
-func (s *revocationService) RevokeRefreshToken(ctx context.Context, jti string, expiryTime time.Time) error {
-	if jti == "" {
+// RevokeRefreshToken records a consumed refresh token as revoked on rotation, enforcing single-use. The
+// token was already validated by the refresh grant, so no signature or ownership check is repeated here.
+// The rotated token's status-list bit is flipped. An empty statusURI (the list feature is off, or a
+// pre-feature token) leaves nothing to record and is a no-op. jti is retained for logging/forward-fit.
+func (s *revocationService) RevokeRefreshToken(
+	ctx context.Context, statusURI string, statusIdx int64, _ string, expiryTime time.Time,
+) error {
+	if s.statusWriter == nil || statusURI == "" {
 		return nil
 	}
-	revoked := RevokedToken{
-		JTI:              jti,
-		RevocationReason: RevocationReasonRefreshRotation,
-		RevokedAt:        time.Now().UTC(),
-		ExpiryTime:       expiryTime,
-	}
-	if err := s.store.InsertRevokedToken(ctx, revoked); err != nil {
+	if err := s.statusWriter.SetStatus(ctx, statusURI, statusIdx, statusRevoked, expiryTime); err != nil {
 		return fmt.Errorf("failed to record refresh token revocation: %w", err)
 	}
-	s.logger.Debug(ctx, "Revoked refresh token")
+	s.logger.Debug(ctx, "Revoked refresh token via status list")
 	return nil
 }
 

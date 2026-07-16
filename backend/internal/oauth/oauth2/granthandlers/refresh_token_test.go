@@ -548,7 +548,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RenewRevokesCons
 	}, nil)
 	// Single-use: the consumed refresh token is revoked by its own jti and original expiry.
 	suite.mockRefreshRevoker.
-		On("RevokeRefreshToken", mock.Anything, consumedJTI, time.Unix(exp, 0).UTC()).
+		On("RevokeRefreshToken", mock.Anything, "", int64(0), consumedJTI, time.Unix(exp, 0).UTC()).
 		Return(nil)
 
 	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
@@ -557,7 +557,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RenewRevokesCons
 	assert.NotNil(suite.T(), response)
 	assert.Equal(suite.T(), "new.refresh.token", response.RefreshToken.Token)
 	suite.mockRefreshRevoker.AssertCalled(suite.T(), "RevokeRefreshToken",
-		mock.Anything, consumedJTI, time.Unix(exp, 0).UTC())
+		mock.Anything, "", int64(0), consumedJTI, time.Unix(exp, 0).UTC())
 }
 
 func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RenewRevokeFailureFailsClosed() {
@@ -584,7 +584,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RenewRevokeFailu
 	}, nil)
 	// The deny-list write fails; the rotation must fail closed rather than leave the old token usable.
 	suite.mockRefreshRevoker.
-		On("RevokeRefreshToken", mock.Anything, mock.Anything, mock.Anything).
+		On("RevokeRefreshToken", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("operation database unavailable"))
 
 	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)

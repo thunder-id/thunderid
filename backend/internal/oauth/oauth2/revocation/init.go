@@ -16,10 +16,11 @@
  * under the License.
  */
 
-// Package revocation implements single-token revocation over the database.operation deny list (the
-// JTI deny list): the RFC 7009 POST /oauth2/revoke write path (RevocationService) and the read/
-// enforcement path (the enforcement service) that rejects revoked tokens on the AS hot path — introspection, the
-// refresh grant, and token exchange — under a fail-closed policy.
+// Package revocation implements single-token revocation over the Token Status List
+// (draft-ietf-oauth-status-list): the RFC 7009 POST /oauth2/revoke write path (RevocationService),
+// which flips a token's status bit, and the refresh-token revoker used for single-use rotation. AS-side
+// enforcement reads the same list through the token validator; this package owns the shared
+// ErrTokenRevoked / ErrEnforcementUnavailable errors that discriminate the fail-closed outcomes.
 package revocation
 
 import (
@@ -33,10 +34,10 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// Initialize wires the revocation feature: it constructs the shared enforcement service (read path)
-// and registers the RFC 7009 revocation endpoint (write path). It returns the enforcement service (to
-// inject into the hot paths — refresh grant, token exchange, introspection) and the refresh-token
-// revoker (to inject into the refresh grant for single-use rotation).
+// Initialize wires the revocation feature: it registers the RFC 7009 revocation endpoint (write path)
+// and returns the refresh-token revoker to inject into the refresh grant for single-use rotation.
+// statusWriter is the Token Status List write seam (nil when the list feature is disabled, making
+// revocation a no-op).
 func Initialize(
 	mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface,
@@ -44,12 +45,12 @@ func Initialize(
 	authnProvider providers.AuthnProviderManager,
 	discoveryService discovery.DiscoveryServiceInterface,
 	observabilitySvc providers.ObservabilityProvider,
-) (EnforcementServiceInterface, RefreshTokenRevokerInterface) {
-	enforcementService := newEnforcementService(observabilitySvc)
-	revocationService := newRevocationService(jwtService, newRevokedTokenStore(), observabilitySvc)
+	statusWriter TokenStatusWriter,
+) RefreshTokenRevokerInterface {
+	revocationService := newRevocationService(jwtService, statusWriter, observabilitySvc)
 	revocationHandler := newRevocationHandler(revocationService)
 	registerRoutes(mux, revocationHandler, actorProvider, authnProvider, jwtService, discoveryService)
-	return enforcementService, revocationService
+	return revocationService
 }
 
 // registerRoutes registers the routes for the token revocation endpoint.

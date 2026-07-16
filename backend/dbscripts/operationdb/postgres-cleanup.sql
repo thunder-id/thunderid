@@ -69,10 +69,13 @@ BEGIN
         p_batch_size := 1000;
     END IF;
 
+    -- Reap status entries whose referenced tokens have expired. Whole sealed lists are dropped by the
+    -- application lifecycle job (which knows the max-token-TTL retention horizon); this reaps entries
+    -- from still-active lists in the meantime.
     LOOP
-        DELETE FROM "REVOKED_TOKEN"
+        DELETE FROM "STATUS_LIST_ENTRY"
         WHERE ctid IN (
-            SELECT ctid FROM "REVOKED_TOKEN" WHERE EXPIRY_TIME < v_now LIMIT p_batch_size
+            SELECT ctid FROM "STATUS_LIST_ENTRY" WHERE EXPIRY_TIME < v_now LIMIT p_batch_size
         );
         GET DIAGNOSTICS v_deleted = ROW_COUNT;
         COMMIT;

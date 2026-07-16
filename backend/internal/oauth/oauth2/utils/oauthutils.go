@@ -23,6 +23,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 
@@ -30,6 +31,50 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
+
+// errMalformedStatusReference indicates a token that carries a status_list object but whose uri or idx
+// is invalid. It is distinct from an absent reference: a present-but-invalid reference cannot be
+// resolved, so the caller must fail closed rather than treat the token as having no revocation channel.
+var errMalformedStatusReference = errors.New("malformed status list reference")
+
+// ExtractStatusListReference reads the Token Status List reference from a token's claims: the list URI
+// and index carried under status.status_list (draft-ietf-oauth-status-list). ok is true only for a
+// present, well-formed reference. A token with no status_list object returns ok=false with a nil error
+// (the feature is off, or the token predates it). A token that carries a status_list object with an
+// invalid uri or idx returns a non-nil error so the caller fails closed instead of skipping revocation.
+// The index is decoded from a JSON number (float64) as produced by JWT decoding.
+func ExtractStatusListReference(claims map[string]interface{}) (uri string, idx int64, ok bool, err error) {
+	status, isMap := claims[constants.ClaimStatus].(map[string]interface{})
+	if !isMap {
+		return "", 0, false, nil
+	}
+	statusList, isMap := status[constants.ClaimStatusList].(map[string]interface{})
+	if !isMap {
+		return "", 0, false, nil
+	}
+	// A status_list object is present, so the token opts into Token Status List revocation. From here a
+	// malformed uri or idx is a present-but-invalid reference, not an absent one.
+	uri, isStr := statusList[constants.ClaimStatusListURI].(string)
+	if !isStr || uri == "" {
+		return "", 0, false, errMalformedStatusReference
+	}
+	// idx must be a non-negative integer (draft-ietf-oauth-status-list §6.1). Reject fractional or
+	// negative values rather than silently truncating.
+	switch v := statusList[constants.ClaimStatusListIdx].(type) {
+	case float64:
+		if v < 0 || v != float64(int64(v)) {
+			return "", 0, false, errMalformedStatusReference
+		}
+		return uri, int64(v), true, nil
+	case int64:
+		if v < 0 {
+			return "", 0, false, errMalformedStatusReference
+		}
+		return uri, v, true, nil
+	default:
+		return "", 0, false, errMalformedStatusReference
+	}
+}
 
 // GetURIWithQueryParams constructs a URI with the given query parameters.
 // It validates the error code and error description according to the spec.

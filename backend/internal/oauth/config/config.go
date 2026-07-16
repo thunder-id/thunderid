@@ -32,6 +32,7 @@ type Config struct {
 	JWT           engineconfig.JWTConfig
 	OAuth         engineconfig.OAuthConfig
 	GateClient    engineconfig.GateClientConfig
+	StatusList    engineconfig.StatusListConfig
 }
 
 // FromServerRuntime builds OAuth configuration from the global server runtime.
@@ -44,5 +45,6 @@ func FromServerRuntime() Config {
 		JWT:           runtime.Config.JWT,
 		OAuth:         runtime.Config.OAuth,
 		GateClient:    runtime.Config.GateClient,
+		StatusList:    runtime.Config.Server.SecurityConfig.StatusList,
 	}
 }

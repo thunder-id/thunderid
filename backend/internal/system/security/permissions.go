@@ -41,6 +41,9 @@ var publicPaths = append([]string{
 	"/flow/execute/**",
 	"/flow/meta",
 	"/oauth2/**",
+	// Token Status List tokens (draft-ietf-oauth-status-list) are signed, world-readable artifacts
+	// that relying parties fetch without credentials.
+	"/statuslists/**",
 	// OpenID4VP wallet- and RP-facing endpoints are public; management endpoints
 	// (e.g. /openid4vp/presentation-definitions) are deliberately excluded.
 	"/openid4vp/request",

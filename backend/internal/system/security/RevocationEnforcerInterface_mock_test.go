@@ -38,16 +38,16 @@ func (_m *RevocationEnforcerInterfaceMock) EXPECT() *RevocationEnforcerInterface
 }
 
 // EnsureNotRevoked provides a mock function for the type RevocationEnforcerInterfaceMock
-func (_mock *RevocationEnforcerInterfaceMock) EnsureNotRevoked(ctx context.Context, id string) error {
-	ret := _mock.Called(ctx, id)
+func (_mock *RevocationEnforcerInterfaceMock) EnsureNotRevoked(ctx context.Context, statusURI string, statusIdx int64) error {
+	ret := _mock.Called(ctx, statusURI, statusIdx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for EnsureNotRevoked")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = returnFunc(ctx, id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int64) error); ok {
+		r0 = returnFunc(ctx, statusURI, statusIdx)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -61,12 +61,13 @@ type RevocationEnforcerInterfaceMock_EnsureNotRevoked_Call struct {
 
 // EnsureNotRevoked is a helper method to define mock.On call
 //   - ctx context.Context
-//   - id string
-func (_e *RevocationEnforcerInterfaceMock_Expecter) EnsureNotRevoked(ctx interface{}, id interface{}) *RevocationEnforcerInterfaceMock_EnsureNotRevoked_Call {
-	return &RevocationEnforcerInterfaceMock_EnsureNotRevoked_Call{Call: _e.mock.On("EnsureNotRevoked", ctx, id)}
+//   - statusURI string
+//   - statusIdx int64
+func (_e *RevocationEnforcerInterfaceMock_Expecter) EnsureNotRevoked(ctx interface{}, statusURI interface{}, statusIdx interface{}) *RevocationEnforcerInterfaceMock_EnsureNotRevoked_Call {
+	return &RevocationEnforcerInterfaceMock_EnsureNotRevoked_Call{Call: _e.mock.On("EnsureNotRevoked", ctx, statusURI, statusIdx)}
 }
 
-func (_c *RevocationEnforcerInterfaceMock_EnsureNotRevoked_Call) Run(run func(ctx context.Context, id string)) *RevocationEnforcerInterfaceMock_EnsureNotRevoked_Call {
+func (_c *RevocationEnforcerInterfaceMock_EnsureNotRevoked_Call) Run(run func(ctx context.Context, statusURI string, statusIdx int64)) *RevocationEnforcerInterfaceMock_EnsureNotRevoked_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -76,9 +77,14 @@ func (_c *RevocationEnforcerInterfaceMock_EnsureNotRevoked_Call) Run(run func(ct
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
+		var arg2 int64
+		if args[2] != nil {
+			arg2 = args[2].(int64)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -89,7 +95,7 @@ func (_c *RevocationEnforcerInterfaceMock_EnsureNotRevoked_Call) Return(err erro
 	return _c
 }
 
-func (_c *RevocationEnforcerInterfaceMock_EnsureNotRevoked_Call) RunAndReturn(run func(ctx context.Context, id string) error) *RevocationEnforcerInterfaceMock_EnsureNotRevoked_Call {
+func (_c *RevocationEnforcerInterfaceMock_EnsureNotRevoked_Call) RunAndReturn(run func(ctx context.Context, statusURI string, statusIdx int64) error) *RevocationEnforcerInterfaceMock_EnsureNotRevoked_Call {
 	_c.Call.Return(run)
 	return _c
 }

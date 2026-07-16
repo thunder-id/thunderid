@@ -579,8 +579,11 @@ func (suite *ImportExportFreshPackSuite) assertNotFound(path string) {
 func (suite *ImportExportFreshPackSuite) resetToFreshPack() error {
 	testutils.StopServer()
 
-	if err := testutils.RunInitScript(testutils.GetZipFilePattern()); err != nil {
-		return fmt.Errorf("failed to run init script: %w", err)
+	// Reset resource data only, preserving operationdb. operationdb holds authoritative authorization
+	// state (Token Status Lists, SSO sessions) that other suites' already-issued tokens reference;
+	// wiping it would dangle every token's status-list reference and 401 every subsequent suite.
+	if err := testutils.ReinitResourceDatabases(); err != nil {
+		return fmt.Errorf("failed to reset resource databases: %w", err)
 	}
 
 	if err := testutils.RunSetupScript(); err != nil {

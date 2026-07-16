@@ -57,28 +57,40 @@ type SecurityConfig struct {
 	TrustedIssuer          TrustedIssuerConfig   `yaml:"trusted_issuer"           json:"trusted_issuer"`
 	SystemPermissionPrefix string                `yaml:"system_permission_prefix" json:"system_permission_prefix"`
 	TokenRevocation        TokenRevocationConfig `yaml:"token_revocation"         json:"token_revocation"`
+	StatusList             StatusListConfig      `yaml:"status_list"              json:"status_list"`
 	// DirectAuthSecret gates the Direct API endpoints (/auth/**, /register/passkey/**). When
 	// set, callers must present this value in the Direct-Auth-Secret header; when empty, those
 	// endpoints are blocked (secure by default).
 	DirectAuthSecret string `yaml:"direct_auth_secret" json:"direct_auth_secret"`
 }
 
-// TokenRevocationConfig configures the Resource Server's token-revocation enforcement: an in-memory
-// cache of revoked tokens synced from a source on a fixed interval. When disabled, protected
-// endpoints do not check revocation.
+// TokenRevocationConfig configures the Resource Server's token-revocation enforcement: it validates
+// each presented token against its Token Status List entry, served from an in-memory cache of lists
+// lazily fetched and refreshed on a fixed interval. When disabled, protected endpoints do not check
+// revocation. Enforcement is only meaningful when StatusList issuance is also enabled, since tokens
+// must carry a status reference to be checked.
 //
-// Source selects where the deny list is synced from. Only "db" (the operation database) is supported
-// today; future values may include an endpoint or event stream. SyncIntervalSeconds bounds how stale
-// the cache may be; a non-positive value falls back to the built-in default.
+// RefreshIntervalSeconds bounds how stale a cached status list may be before the next lookup that
+// needs it re-fetches; a non-positive value falls back to the built-in default.
 type TokenRevocationConfig struct {
-	Enabled             bool   `yaml:"enabled"               json:"enabled"`
-	Source              string `yaml:"source"                json:"source"`
-	SyncIntervalSeconds int    `yaml:"sync_interval_seconds" json:"sync_interval_seconds"`
+	Enabled                bool `yaml:"enabled"                  json:"enabled"`
+	RefreshIntervalSeconds int  `yaml:"refresh_interval_seconds" json:"refresh_interval_seconds"`
 }
 
-// tokenRevocationSourceDB is the operation-database sync source, the only supported
-// token_revocation.source value today.
-const tokenRevocationSourceDB = "db"
+// StatusListConfig configures the Authorization Server's Token Status List
+// (draft-ietf-oauth-status-list). When enabled, every issued access and refresh token carries a status
+// claim referencing an index in a signed, published Status List Token, replacing the deny list as the
+// revocation mechanism. When disabled, tokens carry no status claim.
+//
+// ListSize is the number of tokens a list holds before it is sealed and rolled; a non-positive value
+// falls back to the built-in default. Bits is the width of each status entry: 1 (VALID/INVALID) or 2
+// (adds SUSPENDED); zero falls back to 1. TTLSeconds bounds the freshness of a published token.
+type StatusListConfig struct {
+	Enabled    bool  `yaml:"enabled"     json:"enabled"`
+	ListSize   int64 `yaml:"list_size"   json:"list_size"`
+	Bits       int   `yaml:"bits"        json:"bits"`
+	TTLSeconds int   `yaml:"ttl_seconds" json:"ttl_seconds"`
+}
 
 // KeyConfig holds the key configuration details.
 type KeyConfig struct {
