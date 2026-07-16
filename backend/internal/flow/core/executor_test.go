@@ -657,6 +657,8 @@ func (s *ExecutorTestSuite) TestGetExecutionPolicy() {
 }
 
 func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithAllFields() {
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+
 	ctx := &providers.NodeContext{
 		Application: providers.Application{
 			Metadata: map[string]interface{}{
@@ -680,7 +682,7 @@ func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithAllFields() {
 		},
 	}
 
-	metadata := BuildAuthnMetadata(ctx)
+	metadata := exec.BuildAuthnMetadata(ctx)
 
 	s.NotNil(metadata)
 	s.NotNil(metadata.AppMetadata)
@@ -695,11 +697,13 @@ func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithAllFields() {
 }
 
 func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithNoMetadata() {
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+
 	ctx := &providers.NodeContext{
 		Application: providers.Application{},
 	}
 
-	metadata := BuildAuthnMetadata(ctx)
+	metadata := exec.BuildAuthnMetadata(ctx)
 
 	s.NotNil(metadata)
 	s.NotNil(metadata.AppMetadata)
@@ -710,6 +714,8 @@ func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithNoMetadata() {
 }
 
 func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithOnlyAppMetadata() {
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+
 	ctx := &providers.NodeContext{
 		Application: providers.Application{
 			Metadata: map[string]interface{}{
@@ -719,7 +725,7 @@ func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithOnlyAppMetadata() {
 		},
 	}
 
-	metadata := BuildAuthnMetadata(ctx)
+	metadata := exec.BuildAuthnMetadata(ctx)
 
 	s.NotNil(metadata)
 	s.Equal("production", metadata.AppMetadata["environment"])
@@ -729,6 +735,8 @@ func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithOnlyAppMetadata() {
 }
 
 func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithOnlyClientIDs() {
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+
 	ctx := &providers.NodeContext{
 		Application: providers.Application{
 			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
@@ -742,7 +750,7 @@ func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithOnlyClientIDs() {
 		},
 	}
 
-	metadata := BuildAuthnMetadata(ctx)
+	metadata := exec.BuildAuthnMetadata(ctx)
 
 	s.NotNil(metadata)
 	clientIDs, ok := metadata.AppMetadata["client_ids"].([]string)
@@ -752,6 +760,8 @@ func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithOnlyClientIDs() {
 }
 
 func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithNilOAuthConfig() {
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+
 	ctx := &providers.NodeContext{
 		Application: providers.Application{
 			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
@@ -763,7 +773,7 @@ func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithNilOAuthConfig() {
 		},
 	}
 
-	metadata := BuildAuthnMetadata(ctx)
+	metadata := exec.BuildAuthnMetadata(ctx)
 
 	s.NotNil(metadata)
 	_, hasClientIDs := metadata.AppMetadata["client_ids"]
@@ -771,6 +781,8 @@ func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithNilOAuthConfig() {
 }
 
 func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithEmptyClientID() {
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+
 	ctx := &providers.NodeContext{
 		Application: providers.Application{
 			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
@@ -784,7 +796,7 @@ func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithEmptyClientID() {
 		},
 	}
 
-	metadata := BuildAuthnMetadata(ctx)
+	metadata := exec.BuildAuthnMetadata(ctx)
 
 	s.NotNil(metadata)
 	_, hasClientIDs := metadata.AppMetadata["client_ids"]
@@ -792,6 +804,8 @@ func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithEmptyClientID() {
 }
 
 func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithMixedInboundConfigs() {
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+
 	ctx := &providers.NodeContext{
 		Application: providers.Application{
 			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
@@ -821,7 +835,7 @@ func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithMixedInboundConfigs() {
 		},
 	}
 
-	metadata := BuildAuthnMetadata(ctx)
+	metadata := exec.BuildAuthnMetadata(ctx)
 
 	s.NotNil(metadata)
 	clientIDs, ok := metadata.AppMetadata["client_ids"].([]string)
@@ -832,6 +846,8 @@ func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithMixedInboundConfigs() {
 }
 
 func (s *ExecutorTestSuite) TestBuildGetAttributesMetadata_WithLocale() {
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+
 	ctx := &providers.NodeContext{
 		Application: providers.Application{
 			Metadata: map[string]interface{}{
@@ -843,7 +859,7 @@ func (s *ExecutorTestSuite) TestBuildGetAttributesMetadata_WithLocale() {
 		},
 	}
 
-	metadata := BuildGetAttributesMetadata(ctx)
+	metadata := exec.BuildGetAttributesMetadata(ctx)
 
 	s.NotNil(metadata)
 	s.Equal("en-US", metadata.Locale)
@@ -851,12 +867,14 @@ func (s *ExecutorTestSuite) TestBuildGetAttributesMetadata_WithLocale() {
 }
 
 func (s *ExecutorTestSuite) TestBuildGetAttributesMetadata_WithoutLocale() {
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+
 	ctx := &providers.NodeContext{
 		Application: providers.Application{},
 		RuntimeData: map[string]string{},
 	}
 
-	metadata := BuildGetAttributesMetadata(ctx)
+	metadata := exec.BuildGetAttributesMetadata(ctx)
 
 	s.NotNil(metadata)
 	s.Empty(metadata.Locale)
@@ -868,6 +886,8 @@ func (s *ExecutorTestSuite) TestBuildGetAttributesMetadata_WithoutLocale() {
 }
 
 func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithRuntimeMetadata() {
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+
 	ctx := &providers.NodeContext{
 		Application: providers.Application{},
 		RuntimeData: map[string]string{
@@ -878,7 +898,7 @@ func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithRuntimeMetadata() {
 		},
 	}
 
-	metadata := BuildAuthnMetadata(ctx)
+	metadata := exec.BuildAuthnMetadata(ctx)
 
 	s.NotContains(metadata.AppMetadata, "current_client_id")
 	s.Equal("oauth-client-abc", metadata.RuntimeMetadata["current_client_id"])
@@ -888,6 +908,8 @@ func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithRuntimeMetadata() {
 }
 
 func (s *ExecutorTestSuite) TestBuildGetAttributesMetadata_WithRuntimeMetadata() {
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil)
+
 	ctx := &providers.NodeContext{
 		Application: providers.Application{
 			Metadata: map[string]interface{}{
@@ -903,7 +925,7 @@ func (s *ExecutorTestSuite) TestBuildGetAttributesMetadata_WithRuntimeMetadata()
 		},
 	}
 
-	metadata := BuildGetAttributesMetadata(ctx)
+	metadata := exec.BuildGetAttributesMetadata(ctx)
 
 	s.Equal("en-GB", metadata.Locale)
 	s.Equal("tenant-123", metadata.AppMetadata["tenant_id"])

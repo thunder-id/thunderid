@@ -84,6 +84,8 @@ func createMockAuthExecutor(t *testing.T, executorName string) providers.Executo
 			execResp.Inputs = []providers.Input{{Identifier: "code", Type: "string", Required: true}}
 			return false
 		}).Maybe()
+	mockExec.On("BuildAuthnMetadata", mock.Anything).Return(&providers.AuthnMetadata{}).Maybe()
+	mockExec.On("BuildGetAttributesMetadata", mock.Anything).Return(&providers.GetAttributesMetadata{}).Maybe()
 	return mockExec
 }
 

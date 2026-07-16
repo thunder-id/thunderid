@@ -101,6 +101,7 @@ func createMockExecutorSimple(t *testing.T, name string,
 	mockExec.On("GetType").Return(executorType).Maybe()
 	mockExec.On("GetDefaultInputs").Return([]providers.Input{}).Maybe()
 	mockExec.On("GetPrerequisites").Return([]providers.Input{}).Maybe()
+	mockExec.On("BuildGetAttributesMetadata", mock.Anything).Return(&providers.GetAttributesMetadata{}).Maybe()
 	return mockExec
 }
 

@@ -66,6 +66,7 @@ func createMockExecutor(t *testing.T, name string, executorType providers.Execut
 	mockExec.On("GetType").Return(executorType).Maybe()
 	mockExec.On("GetDefaultInputs").Return([]providers.Input{}).Maybe()
 	mockExec.On("GetPrerequisites").Return([]providers.Input{}).Maybe()
+	mockExec.On("BuildAuthnMetadata", mock.Anything).Return(&providers.AuthnMetadata{}).Maybe()
 	return mockExec
 }
 

@@ -107,6 +107,7 @@ func createMockExecutorForAttrCollector(t *testing.T, name string,
 			}
 			return ""
 		}).Maybe()
+	mockExec.On("BuildGetAttributesMetadata", mock.Anything).Return(&providers.GetAttributesMetadata{}).Maybe()
 	return mockExec
 }
 

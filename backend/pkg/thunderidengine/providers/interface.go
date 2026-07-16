@@ -155,6 +155,9 @@ type Executor interface {
 		authnProvider AuthnProviderManager) string
 	GetRequiredInputs(ctx *NodeContext) []Input
 	GetExecutionPolicy(mode string) *ExecutionPolicy
+	BuildRuntimeMetadata(ctx *NodeContext) map[string]string
+	BuildAuthnMetadata(ctx *NodeContext) *AuthnMetadata
+	BuildGetAttributesMetadata(ctx *NodeContext) *GetAttributesMetadata
 }
 
 // ObservabilityProvider defines the interface for the observability provider.

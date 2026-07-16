@@ -108,6 +108,7 @@ func createMockExecutorWithCustomInputs(t *testing.T, name string,
 			}
 			return true
 		}).Maybe()
+	mockExec.On("BuildAuthnMetadata", mock.Anything).Return(&providers.AuthnMetadata{}).Maybe()
 	return mockExec
 }
 
@@ -138,6 +139,7 @@ func createMockCredentialsAuthExecutor(t *testing.T) providers.Executor {
 			}
 			return true
 		}).Maybe()
+	mockExec.On("BuildAuthnMetadata", mock.Anything).Return(&providers.AuthnMetadata{}).Maybe()
 	return mockExec
 }
 
