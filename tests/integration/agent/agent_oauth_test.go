@@ -998,13 +998,14 @@ func (s *AgentTokenExchangeTestSuite) TestAgentTE_BasicSuccess() {
 	s.Equal(s.userID, claims.Sub, "Subject must match the authenticated user")
 }
 
-// TestAgentTE_WithAudience verifies that the audience parameter is reflected in the issued token.
+// TestAgentTE_WithAudience verifies that an audience matching the requesting client's own
+// client_id (self-audience) is reflected in the issued token.
 func (s *AgentTokenExchangeTestSuite) TestAgentTE_WithAudience() {
 	formData := url.Values{}
 	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
 	formData.Set("subject_token", s.assertionToken)
 	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt")
-	formData.Set("audience", "https://agent-api.example.com")
+	formData.Set("audience", agentTEClientID)
 
 	resp, statusCode, err := s.doTokenExchange(formData)
 	s.Require().NoError(err)
@@ -1018,11 +1019,11 @@ func (s *AgentTokenExchangeTestSuite) TestAgentTE_WithAudience() {
 	s.Require().True(ok, "JWT must contain an aud claim")
 	switch aud := rawAud.(type) {
 	case string:
-		s.Equal("https://agent-api.example.com", aud)
+		s.Equal(agentTEClientID, aud)
 	case []interface{}:
 		found := false
 		for _, v := range aud {
-			if str, ok := v.(string); ok && str == "https://agent-api.example.com" {
+			if str, ok := v.(string); ok && str == agentTEClientID {
 				found = true
 				break
 			}
@@ -1031,6 +1032,23 @@ func (s *AgentTokenExchangeTestSuite) TestAgentTE_WithAudience() {
 	default:
 		s.Failf("unexpected aud type", "%T", rawAud)
 	}
+}
+
+// TestAgentTE_UnregisteredAudienceRejected verifies that an audience value not corresponding to
+// a registered resource server or the client's own client_id is rejected with invalid_target,
+// rather than being minted into the token verbatim.
+func (s *AgentTokenExchangeTestSuite) TestAgentTE_UnregisteredAudienceRejected() {
+	formData := url.Values{}
+	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+	formData.Set("subject_token", s.assertionToken)
+	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt")
+	formData.Set("audience", "https://agent-api.example.com")
+
+	resp, statusCode, err := s.doTokenExchange(formData)
+	s.Require().NoError(err)
+	s.Equal(http.StatusBadRequest, statusCode)
+	s.Equal("invalid_target", resp.Error)
+	s.Empty(resp.AccessToken)
 }
 
 // TestAgentTE_InvalidSubjectToken verifies that a malformed subject_token is rejected.

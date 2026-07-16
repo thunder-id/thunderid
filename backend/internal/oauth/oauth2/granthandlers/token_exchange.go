@@ -207,9 +207,10 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 	}
 
 	// Determine final audiences per RFC 8693 §2.1: audience and resource parameters may be
-	// combined. audience values are opaque logical names passed verbatim; resource values are
-	// RFC 8707 URIs that resolve to registered Resource Servers and participate in scope
-	// downscoping.
+	// combined. resource values are RFC 8707 URIs that resolve to registered Resource Servers and
+	// participate in scope downscoping. audience values must themselves correspond to a resolved
+	// Resource Server (or the client's own clientID) — an audience that matches neither is
+	// rejected rather than minted verbatim (see resolveAudiences).
 	resolvedRSes, resErr := resourceindicators.ResolveResourceServers(ctx, h.resourceService, tokenRequest.Resources)
 	if resErr != nil {
 		return nil, resErr
@@ -228,7 +229,10 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 	if audErr != nil {
 		return nil, audErr
 	}
-	finalAudiences := mergeAudiences(tokenRequest.Audiences, rsAudiences, tokenRequest.ClientID)
+	finalAudiences, audFilterErr := resolveAudiences(tokenRequest.Audiences, rsAudiences, tokenRequest.ClientID)
+	if audFilterErr != nil {
+		return nil, audFilterErr
+	}
 
 	// Build access token using token builder
 	userSubConfig := oauthApp.UserAccessTokenConfig()
@@ -401,45 +405,47 @@ func (h *tokenExchangeGrantHandler) getScopes(
 	return validRequestedScopes, nil
 }
 
-// mergeAudiences combines opaque audience values with RS-resolved audiences per RFC 8693 §2.1.
-// Rules:
-//   - Start with explicitAudiences verbatim (preserving order, deduped within itself).
-//   - Append rsAudiences items not already present.
-//   - If rsAudiences is the clientID-only fallback (len==1 and value==clientID) and
-//     explicitAudiences is non-empty, the clientID fallback is dropped — the explicit audience
-//     request is sufficient.
-//   - If the merged set is empty, fall back to []string{clientID} (or empty if clientID is empty).
-func mergeAudiences(explicitAudiences []string, rsAudiences []string, clientID string) []string {
-	seen := make(map[string]struct{}, len(explicitAudiences)+len(rsAudiences))
-	merged := make([]string, 0, len(explicitAudiences)+len(rsAudiences))
-
-	for _, a := range explicitAudiences {
-		if _, ok := seen[a]; ok {
-			continue
-		}
-		seen[a] = struct{}{}
-		merged = append(merged, a)
+// resolveAudiences determines the final audiences per RFC 8693 §2.1 while preventing audience
+// injection: the audience request parameter is client-supplied input and must not be honored
+// verbatim. Rules:
+//   - If the client did not request explicit audiences, rsAudiences is returned as-is (RS-resolved
+//     audiences with the clientID fallback already applied by ComposeAudiences).
+//   - If the client requested explicit audiences, each one must correspond to a resolved resource
+//     server (rsAudiences) or be the client's own clientID (self-audience). Any requested audience
+//     matching neither is rejected with invalid_target, mirroring RFC 8707 §2.2's handling of an
+//     unresolvable resource parameter.
+//   - Otherwise the final audiences are the requested audiences themselves (deduped, order
+//     preserved) — downscoped to the requested subset rather than unioned with rsAudiences.
+func resolveAudiences(
+	explicitAudiences []string, rsAudiences []string, clientID string,
+) ([]string, *model.ErrorResponse) {
+	if len(explicitAudiences) == 0 {
+		return rsAudiences, nil
 	}
 
-	// Drop the clientID-only fallback from rsAudiences when explicit audiences were provided.
-	isFallback := len(rsAudiences) == 1 && rsAudiences[0] == clientID
-	if isFallback && len(explicitAudiences) > 0 {
-		rsAudiences = nil
-	}
-
+	validAudiences := make(map[string]struct{}, len(rsAudiences)+1)
 	for _, a := range rsAudiences {
+		validAudiences[a] = struct{}{}
+	}
+	if clientID != "" {
+		validAudiences[clientID] = struct{}{}
+	}
+
+	seen := make(map[string]struct{}, len(explicitAudiences))
+	filtered := make([]string, 0, len(explicitAudiences))
+	for _, a := range explicitAudiences {
+		if _, ok := validAudiences[a]; !ok {
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorInvalidTarget,
+				ErrorDescription: "The audience parameter does not match any valid value",
+			}
+		}
 		if _, ok := seen[a]; ok {
 			continue
 		}
 		seen[a] = struct{}{}
-		merged = append(merged, a)
+		filtered = append(filtered, a)
 	}
 
-	if len(merged) == 0 {
-		if clientID != "" {
-			return []string{clientID}
-		}
-		return []string{}
-	}
-	return merged
+	return filtered, nil
 }

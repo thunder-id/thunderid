@@ -546,13 +546,15 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_ExternalIDP_WithTrustedToken
 	)
 }
 
-// TestTokenExchange_WithAudience tests token exchange with audience parameter
+// TestTokenExchange_WithAudience tests token exchange with the audience parameter set to the
+// requesting client's own client_id — a client may always request itself as audience
+// (self-audience), even without a matching resource server.
 func (ts *TokenExchangeTestSuite) TestTokenExchange_WithAudience() {
 	formData := url.Values{}
 	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
 	formData.Set("subject_token", ts.assertionToken)
 	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt")
-	formData.Set("audience", "https://api.example.com")
+	formData.Set("audience", tokenExchangeClientID)
 
 	authHeader := "Basic " + basicAuth(tokenExchangeClientID, tokenExchangeClientSecret)
 
@@ -564,7 +566,26 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_WithAudience() {
 	// Verify audience in JWT contains the requested audience
 	claims, err := testutils.DecodeJWT(resp.AccessToken)
 	ts.Require().NoError(err)
-	ts.assertAudienceContains(claims, "https://api.example.com")
+	ts.assertAudienceContains(claims, tokenExchangeClientID)
+}
+
+// TestTokenExchange_UnregisteredAudienceRejected tests that an audience value not corresponding
+// to a registered resource server or the client's own client_id is rejected with invalid_target,
+// rather than being minted into the token verbatim.
+func (ts *TokenExchangeTestSuite) TestTokenExchange_UnregisteredAudienceRejected() {
+	formData := url.Values{}
+	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+	formData.Set("subject_token", ts.assertionToken)
+	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt")
+	formData.Set("audience", "https://api.example.com")
+
+	authHeader := "Basic " + basicAuth(tokenExchangeClientID, tokenExchangeClientSecret)
+
+	resp, statusCode, err := ts.exchangeToken(formData.Encode(), authHeader)
+	ts.Require().NoError(err)
+	ts.Equal(http.StatusBadRequest, statusCode)
+	ts.Equal("invalid_target", resp.Error)
+	ts.Empty(resp.AccessToken)
 }
 
 // TestTokenExchange_WithResource tests token exchange with resource parameter

@@ -2,21 +2,27 @@
 title: Token Exchange
 docType: reference
 sidebar_position: 4
-description: RFC 8693 Token Exchange in {{ProductName}}, swap one token for another to delegate, impersonate, or downscope across services.
+description:
+  RFC 8693 Token Exchange in {{ProductName}} - swap one token for another to delegate, impersonate, or downscope across
+  services.
 ---
+
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
-import { TokenExchangeDiagram } from '../../../../../src/components/OAuthFlowDiagrams';
+import {TokenExchangeDiagram} from '../../../../../src/components/OAuthFlowDiagrams';
 
 # Token Exchange
 
-**Token Exchange** ([RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693)) lets a client present an existing token to <ProductName /> and request a different token in return. The exchanged token can target a different audience, carry narrower scopes, or represent an "on-behalf-of" act in a service-to-service call chain.
+**Token Exchange** ([RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693)) lets a client present an existing token
+to <ProductName /> and request a different token in return. The exchanged token can target a different audience, carry
+narrower scopes, or represent an "on-behalf-of" act in a service-to-service call chain.
 
 Typical uses:
 
 - A frontend exchanges a user's access token for a downscoped token before passing it to a third-party API.
 - A gateway exchanges an inbound token for a service-mesh token whose `aud` matches a downstream microservice.
-- A backend acts on behalf of a user it received an `id_token` for, asking <ProductName /> to mint an access token for that user against a specific resource server.
+- A backend acts on behalf of a user it received an `id_token` for, asking <ProductName /> to mint an access token for
+  that user against a specific resource server.
 
 ## How It Works
 
@@ -32,8 +38,8 @@ Typical uses:
 | `subject_token_type` (input) | `urn:ietf:params:oauth:token-type:access_token` · `:refresh_token` · `:id_token` · `:jwt` |
 | `actor_token_type` (input) | Same set as `subject_token_type`; used for delegation chains |
 | `requested_token_type` (output) | `urn:ietf:params:oauth:token-type:access_token` · `:jwt` only. **`id_token` and `refresh_token` outputs are not supported.** |
-| `audience` parameter | Narrows the `aud` claim on the issued token |
-| `resource` parameter | RFC 8707 resource indicator, combined with `audience` when present |
+| `audience` parameter | Restricts the `aud` claim on the issued token. Each value must resolve to a registered resource server or equal the client's own `client_id` — a value that matches neither is rejected with `invalid_target` |
+| `resource` parameter | RFC 8707 resource indicator — see [Audience Validation](#audience-validation) for how it combines with `audience` |
 | `scope` parameter | Requested scopes; downscoping is allowed, widening is rejected with `invalid_scope` |
 | Client authentication | Required, same methods as the token endpoint |
 | Issued token shape | `issued_token_type` is echoed in the response so the caller knows what it received |
@@ -48,9 +54,39 @@ Typical uses:
 | `requested_token_type` | No | Defaults to `:access_token` |
 | `actor_token` | No | Token of the acting party in delegation |
 | `actor_token_type` | No | Required when `actor_token` is supplied |
-| `audience` | No | Logical name(s) of the target service |
+| `audience` | No | Target audience(s) for the issued token. Each value must be a registered resource server's `identifier` or the client's own `client_id` — see [Audience Validation](#audience-validation) |
 | `resource` | No | Absolute URI of the target resource server (see [Resource Indicators](../resource-indicators)) |
 | `scope` | No | Requested scopes must be a subset of the subject token's grant |
+
+### Audience Validation
+
+An explicit `audience` value is validated, not passed through verbatim:
+
+| `audience` value                                                                                                    | Accepted when                  |
+| ------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| Matches a resource server resolved via `resource` (or discovered from the granted scopes when `resource` is absent) | Accepted                       |
+| Equals the requesting client's own `client_id`                                                                      | Accepted                       |
+| Anything else                                                                                                       | Rejected with `invalid_target` |
+
+When `audience` and `resource` are both supplied, the issued `aud` claim contains only the explicitly requested
+`audience` values (deduplicated). It is **not** the union of `audience` and every resource server resolved via
+`resource`. To include a resource server's identifier in `aud`, name it in `audience` directly.
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/oauth2/token \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
+  -d "subject_token=$ACCESS_TOKEN" \
+  -d "subject_token_type=urn:ietf:params:oauth:token-type:access_token" \
+  -d "audience=https://unregistered.example.com"
+```
+
+```json
+{
+  "error": "invalid_target",
+  "error_description": "The audience parameter does not match any valid value"
+}
+```
 
 </details>
 
@@ -59,7 +95,8 @@ Typical uses:
 <Tabs groupId="client-registration">
 <TabItem value="console" label="Console" default>
 
-1. Open **Applications** or **Agents** in the <ProductName /> Console and select the client that will perform the exchange.
+1. Open **Applications** or **Agents** in the <ProductName /> Console and select the client that will perform the
+   exchange.
 2. Open the **Advanced Settings** tab.
 3. Under **Grant Types**, add `urn:ietf:params:oauth:grant-type:token-exchange`.
 4. Save.
@@ -108,6 +145,6 @@ Response:
 
 ## Related Guides
 
-- [Resource Indicators](../resource-indicators), target the new token at a specific resource server
-- [Client Credentials](../client-credentials), for service tokens that don't require a subject token
-- [Refresh Token](../refresh-token), for renewing access tokens without exchange semantics
+- [Resource Indicators](../resource-indicators) - target the new token at a specific resource server
+- [Client Credentials](../client-credentials) - for service tokens that don't require a subject token
+- [Refresh Token](../refresh-token) - for renewing access tokens without exchange semantics

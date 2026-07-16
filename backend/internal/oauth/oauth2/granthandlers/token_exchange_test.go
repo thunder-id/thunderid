@@ -730,6 +730,8 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithAct
 }
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithAudienceParameter() {
+	// The requested audience is honored only because it resolves to a registered resource
+	// server discovered via the subject token's granted scopes.
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub": "user123",
@@ -741,12 +743,60 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithAud
 	tokenRequest := suite.createBasicTokenRequest(subjectToken)
 	tokenRequest.Audiences = []string{"https://api.example.com"}
 
+	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	rsvc.On("FindResourceServersByPermissions", mock.Anything, []string{"read", "write"}).
+		Return([]providers.ResourceServer{{ID: "rs-api", Identifier: "https://api.example.com"}}, nil)
+	h := &tokenExchangeGrantHandler{
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		resourceService: rsvc,
+	}
+
 	suite.setupSuccessfulJWTMock(subjectToken, "https://api.example.com", now)
 
-	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+	result, errResp := h.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
 
 	assert.Nil(suite.T(), errResp)
 	assert.NotNil(suite.T(), result)
+}
+
+// A requested audience that does not correspond to any registered resource server (or the
+// client's own clientID) is rejected with invalid_target rather than minted verbatim. This is
+// the regression test for the audience-injection vulnerability the resolveAudiences fail-closed
+// check was introduced to close.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_UnregisteredAudience_Rejected() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": "user123",
+		"iss": testCustomIssuer,
+		"exp": float64(now + 3600),
+		"nbf": float64(now - 60),
+	})
+
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+	tokenRequest.Audiences = []string{"https://attacker-controlled.example.com"}
+
+	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	rsvc.On("FindResourceServersByPermissions", mock.Anything, mock.Anything).
+		Return([]providers.ResourceServer{}, nil).Maybe()
+	h := &tokenExchangeGrantHandler{
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		resourceService: rsvc,
+	}
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:            testUserID,
+			Iss:            testCustomIssuer,
+			UserAttributes: map[string]interface{}{},
+		}, nil)
+
+	result, errResp := h.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidTarget, errResp.Error)
 }
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithResourceParameter() {
@@ -1275,7 +1325,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_CompleteTokenExchan
 		SubjectToken:       subjectToken,
 		SubjectTokenType:   string(constants.TokenTypeIdentifierAccessToken),
 		RequestedTokenType: string(constants.TokenTypeIdentifierAccessToken),
-		Audiences:          []string{"https://target-service.com"},
+		Audiences:          []string{testClientID},
 		Scope:              "read",
 	}
 
@@ -1292,11 +1342,10 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_CompleteTokenExchan
 		}, nil)
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
 		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
-			// Verify claims structure per RFC 8693 - explicit audience is used verbatim; clientID
-			// fallback is dropped when explicit audience is non-empty.
+			// Verify claims structure per RFC 8693 - explicit self-audience (clientID) is honored.
 			return ctx.Subject == testUserID &&
 				len(ctx.Audiences) == 1 &&
-				ctx.Audiences[0] == "https://target-service.com" &&
+				ctx.Audiences[0] == testClientID &&
 				ctx.ClientID == testClientID &&
 				tokenservice.JoinScopes(ctx.Scopes) == testScopeRead &&
 				ctx.SubjectAttributes["email"] == "user@example.com" &&
@@ -1328,8 +1377,9 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_CompleteTokenExchan
 }
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_AudienceCombinedWithResource() {
-	// RFC 8693 §2.1: audience and resource parameters may be combined; audience is opaque,
-	// resource is RS-resolved. Both contribute to the final aud simultaneously.
+	// RFC 8693 §2.1: audience and resource parameters may be combined. The requested audience is
+	// only honored when it corresponds to the resolved resource server; the final aud is the
+	// requested audience itself (downscoped), not a union with every resolved resource.
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub": "user123",
@@ -1344,7 +1394,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_AudienceCombinedWit
 		ClientID:         testClientID,
 		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
-		Audiences:        []string{"request-audience"},
+		Audiences:        []string{"https://resource.example.com"},
 		Resources:        []string{"https://resource.example.com"},
 	}
 
@@ -1358,12 +1408,9 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_AudienceCombinedWit
 		}, nil)
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
 		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
-			// explicit audience first, then RS-resolved audience; clientID fallback absent since
-			// explicit audiences were supplied.
 			return ctx.Subject == testUserID &&
-				len(ctx.Audiences) == 2 &&
-				ctx.Audiences[0] == "request-audience" &&
-				ctx.Audiences[1] == "https://resource.example.com"
+				len(ctx.Audiences) == 1 &&
+				ctx.Audiences[0] == "https://resource.example.com"
 		})).Return(&model.TokenDTO{
 		Token:     testTokenExchangeJWT,
 		TokenType: constants.TokenTypeBearer,
@@ -1999,8 +2046,10 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ServerAuthAsser
 // §6 — audience + resource together in token_exchange (RFC 8693 §2.1)
 // ============================================================================
 
-func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_OnlyAudience_AudIsExplicitValue() { //nolint:dupl
-	// Only audience=logical://x → aud = ["logical://x"]; clientID fallback dropped.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_OnlyAudienceUnReg_Rejected() { //nolint:dupl
+	// Only audience=logical://x, no resource, no granted scopes → logical://x corresponds to no
+	// registered resource server and isn't the clientID, so the request is rejected rather than
+	// minting a token with an arbitrary aud.
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub": testUserID,
@@ -2018,15 +2067,12 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_OnlyAudience_Au
 			Scopes:         []string{},
 			UserAttributes: map[string]interface{}{},
 		}, nil)
-	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
-		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
-			return len(ctx.Audiences) == 1 && ctx.Audiences[0] == "logical://x"
-		})).Return(&model.TokenDTO{Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 7200}, nil)
 
 	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
 
-	assert.Nil(suite.T(), errResp)
-	assert.NotNil(suite.T(), result)
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidTarget, errResp.Error)
 }
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_OnlyResource_AudIsResolvedRS() { //nolint:dupl
@@ -2060,7 +2106,9 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_OnlyResource_Au
 }
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AudienceAndResource_BothContribute() {
-	// audience=logical://x, resource=https://rs01 → aud = ["logical://x", testRS01URI].
+	// audience=logical://x, resource=https://rs01 → logical://x matches neither the resolved
+	// resource server nor the clientID, so the request is rejected instead of minting an
+	// arbitrary aud alongside the resolved resource.
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub": testUserID,
@@ -2079,21 +2127,17 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AudienceAndReso
 			Scopes:         []string{},
 			UserAttributes: map[string]interface{}{},
 		}, nil)
-	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
-		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
-			return len(ctx.Audiences) == 2 &&
-				ctx.Audiences[0] == "logical://x" &&
-				ctx.Audiences[1] == testRS01URI
-		})).Return(&model.TokenDTO{Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 7200}, nil)
 
 	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
 
-	assert.Nil(suite.T(), errResp)
-	assert.NotNil(suite.T(), result)
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidTarget, errResp.Error)
 }
 
-func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_TwoAudiencesTwoResources_OrderPreserved() {
-	// audience=[a1,a2], resource=[rs01,rs02] → aud=[a1,a2,rs01,rs02] (audience order first).
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AudienceMatchingResource_Downscoped() { //nolint:dupl
+	// audience=testRS01URI, resource=testRS01URI → aud=[testRS01URI]; the explicit audience is
+	// honored because it matches the resolved resource server.
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub": testUserID,
@@ -2103,7 +2147,39 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_TwoAudiencesTwo
 	})
 
 	tokenRequest := suite.createBasicTokenRequest(subjectToken)
-	tokenRequest.Audiences = []string{"https://a1.example.com", "https://a2.example.com"}
+	tokenRequest.Audiences = []string{testRS01URI}
+	tokenRequest.Resources = []string{testRS01URI}
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:            testUserID,
+			Scopes:         []string{},
+			UserAttributes: map[string]interface{}{},
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return len(ctx.Audiences) == 1 && ctx.Audiences[0] == testRS01URI
+		})).Return(&model.TokenDTO{Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 7200}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_TwoAudiencesTwoResources_OrderPreserved() {
+	// audience=[rs02,rs01] (both resolved via resource), resource=[rs01,rs02] →
+	// aud=[rs02,rs01]: downscoped to exactly the requested audiences, in request order.
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID,
+		"iss": testCustomIssuer,
+		"exp": float64(now + 3600),
+		"nbf": float64(now - 60),
+	})
+
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+	tokenRequest.Audiences = []string{"https://rs02.example.com", testRS01URI}
 	tokenRequest.Resources = []string{testRS01URI, "https://rs02.example.com"}
 
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
@@ -2114,11 +2190,9 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_TwoAudiencesTwo
 		}, nil)
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
 		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
-			return len(ctx.Audiences) == 4 &&
-				ctx.Audiences[0] == "https://a1.example.com" &&
-				ctx.Audiences[1] == "https://a2.example.com" &&
-				ctx.Audiences[2] == testRS01URI &&
-				ctx.Audiences[3] == "https://rs02.example.com"
+			return len(ctx.Audiences) == 2 &&
+				ctx.Audiences[0] == "https://rs02.example.com" &&
+				ctx.Audiences[1] == testRS01URI
 		})).Return(&model.TokenDTO{Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 7200}, nil)
 
 	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
@@ -2127,8 +2201,9 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_TwoAudiencesTwo
 	assert.NotNil(suite.T(), result)
 }
 
-func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AudienceIsClientID_WithResource_BothKept() {
-	// audience=<clientID>, resource=rs01 → aud=[<clientID>, rs01] (no dedup; client asked for clientID).
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AudienceIsClientID_Downscoped() { //nolint:dupl
+	// audience=<clientID>, resource=rs01 → aud=[<clientID>] only: the client only asked for
+	// itself as audience, so the resolved resource server is not appended.
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub": testUserID,
@@ -2149,9 +2224,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AudienceIsClien
 		}, nil)
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
 		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
-			return len(ctx.Audiences) == 2 &&
-				ctx.Audiences[0] == testClientID &&
-				ctx.Audiences[1] == testRS01URI
+			return len(ctx.Audiences) == 1 && ctx.Audiences[0] == testClientID
 		})).Return(&model.TokenDTO{Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 7200}, nil)
 
 	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
@@ -2160,8 +2233,9 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AudienceIsClien
 	assert.NotNil(suite.T(), result)
 }
 
-func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AudienceOnly_ClientIDFallbackDropped() { //nolint:dupl
-	// audience=<something>, no resource, no granted scopes → aud=[<something>] (clientID fallback dropped).
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AudienceOnly_SelfAudienceHonored() { //nolint:dupl
+	// audience=<clientID>, no resource, no granted scopes → aud=[<clientID>]: a client may always
+	// request itself as the audience (self-audience), even with no resource server involved.
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub": testUserID,
@@ -2171,7 +2245,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AudienceOnly_Cl
 	})
 
 	tokenRequest := suite.createBasicTokenRequest(subjectToken)
-	tokenRequest.Audiences = []string{"https://other-service.example.com"}
+	tokenRequest.Audiences = []string{testClientID}
 
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
@@ -2181,7 +2255,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AudienceOnly_Cl
 		}, nil)
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
 		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
-			return len(ctx.Audiences) == 1 && ctx.Audiences[0] == "https://other-service.example.com"
+			return len(ctx.Audiences) == 1 && ctx.Audiences[0] == testClientID
 		})).Return(&model.TokenDTO{Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 7200}, nil)
 
 	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
