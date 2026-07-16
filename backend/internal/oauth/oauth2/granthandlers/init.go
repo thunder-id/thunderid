@@ -46,6 +46,8 @@ func Initialize(
 	serverConfigService serverconfig.ServerConfigService,
 	cibaService ciba.CIBAServiceInterface,
 	refreshTokenRevoker revocation.RefreshTokenRevokerInterface,
+	authnProvider providers.AuthnProviderManager,
+	idpService providers.IDPProvider,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {
 	return newGrantHandlerProvider(
@@ -61,6 +63,8 @@ func Initialize(
 		serverConfigService,
 		cibaService,
 		refreshTokenRevoker,
+		authnProvider,
+		idpService,
 		cfg,
 	)
 }

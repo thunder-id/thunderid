@@ -23,6 +23,8 @@ import (
 	"errors"
 	"slices"
 
+	"github.com/thunder-id/thunderid/internal/idp"
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
@@ -32,6 +34,8 @@ import (
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -43,6 +47,9 @@ type tokenExchangeGrantHandler struct {
 	actorProvider       providers.ActorProvider
 	resourceService     providers.ResourceServerProvider
 	serverConfigService serverconfig.ServerConfigService
+	authnProvider       providers.AuthnProviderManager
+	idpService          providers.IDPProvider
+	cfg                 oauthconfig.Config
 }
 
 // newTokenExchangeGrantHandler creates a new instance of tokenExchangeGrantHandler.
@@ -53,6 +60,9 @@ func newTokenExchangeGrantHandler(
 	actorProvider providers.ActorProvider,
 	resourceService providers.ResourceServerProvider,
 	serverConfigService serverconfig.ServerConfigService,
+	authnProvider providers.AuthnProviderManager,
+	idpService providers.IDPProvider,
+	cfg oauthconfig.Config,
 ) GrantHandlerInterface {
 	return &tokenExchangeGrantHandler{
 		tokenBuilder:        tokenBuilder,
@@ -61,6 +71,9 @@ func newTokenExchangeGrantHandler(
 		actorProvider:       actorProvider,
 		resourceService:     resourceService,
 		serverConfigService: serverConfigService,
+		authnProvider:       authnProvider,
+		idpService:          idpService,
+		cfg:                 cfg,
 	}
 }
 
@@ -254,14 +267,25 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		finalAudiences = []string{targetRS.Identifier}
 	}
 
+	subject := subjectClaims.Sub
+	subjectAttributes := subjectClaims.UserAttributes
+	localUserID, localAttributes, errResp := h.resolveLinkedLocalUser(ctx, subjectClaims)
+	if errResp != nil {
+		return nil, errResp
+	}
+	if localUserID != "" {
+		subject = localUserID
+		subjectAttributes = mergeSubjectAttributes(subjectClaims.UserAttributes, localAttributes)
+	}
+
 	// Build access token using token builder
 	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, &tokenservice.AccessTokenBuildContext{
-		Subject:           subjectClaims.Sub,
+		Subject:           subject,
 		Audiences:         finalAudiences,
 		ClientID:          tokenRequest.ClientID,
 		Scopes:            finalScopes,
-		SubjectAttributes: tokenservice.FilterAttributesByAllowList(subjectClaims.UserAttributes, userSubConfig),
+		SubjectAttributes: tokenservice.FilterAttributesByAllowList(subjectAttributes, userSubConfig),
 		GrantType:         string(providers.GrantTypeTokenExchange),
 		OAuthApp:          oauthApp,
 		ActorClaims:       actorClaims,
@@ -425,6 +449,125 @@ func (h *tokenExchangeGrantHandler) getScopes(
 	return validRequestedScopes, nil
 }
 
+// resolveLinkedLocalUser resolves the local user linked to a federated subject token via account
+// linking. Returns an empty ID when unresolved (caller keeps the federated subject) and an
+// ErrorResponse only on an infrastructure failure.
+func (h *tokenExchangeGrantHandler) resolveLinkedLocalUser(ctx context.Context,
+	subjectClaims *tokenservice.SubjectTokenClaims) (string, map[string]interface{}, *model.ErrorResponse) {
+	// Local-user resolution only applies to externally-issued subject tokens.
+	if h.idpService == nil || h.authnProvider == nil || subjectClaims.Iss == "" ||
+		subjectClaims.Iss == h.cfg.JWT.Issuer {
+		return "", nil, nil
+	}
+
+	filter := h.accountLinkingFilter(ctx, subjectClaims)
+	if len(filter) == 0 {
+		return "", nil, nil
+	}
+	return h.resolveByFilter(ctx, filter)
+}
+
+// accountLinkingFilter builds the local-user lookup filter from the issuing IDP's account-linking
+// attributes, translated from external to local names via the IDP's attribute mappings and read from
+// the subject token's already-mapped attributes.
+func (h *tokenExchangeGrantHandler) accountLinkingFilter(ctx context.Context,
+	subjectClaims *tokenservice.SubjectTokenClaims) map[string]interface{} {
+	idpDTOs, svcErr := h.idpService.GetIdentityProvidersByProperty(ctx, idp.PropIssuer, subjectClaims.Iss)
+	if svcErr != nil || len(idpDTOs) == 0 {
+		return nil
+	}
+	idpDTO := idpDTOs[0]
+	if idpDTO.AttributeConfiguration == nil || idpDTO.AttributeConfiguration.AccountLinking == nil {
+		return nil
+	}
+
+	externalToLocal := make(map[string]string)
+	for _, m := range idp.GetAttributeMappings(&idpDTO, subjectClaims.UserAttributes) {
+		externalToLocal[m.ExternalAttribute] = m.LocalAttribute
+	}
+
+	filter := make(map[string]interface{})
+	for _, attr := range idpDTO.AttributeConfiguration.AccountLinking.Attributes {
+		local := attr
+		if mapped, ok := externalToLocal[attr]; ok {
+			local = mapped
+		}
+		if value := sysutils.ConvertInterfaceValueToString(subjectClaims.UserAttributes[local]); value != "" {
+			filter[local] = value
+		}
+	}
+	if len(filter) == 0 {
+		return nil
+	}
+	return filter
+}
+
+// resolveByFilter resolves a local user by lookup filter and returns its ID and stored attributes.
+func (h *tokenExchangeGrantHandler) resolveByFilter(ctx context.Context,
+	filter map[string]interface{}) (string, map[string]interface{}, *model.ErrorResponse) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "TokenExchangeGrantHandler"))
+
+	var authUser providers.AuthUser
+	authUser.SetEntityReferenceToken(filter)
+	authUser.SetAttributeToken(filter)
+
+	authUser, entityRef, svcErr := h.authnProvider.GetEntityReference(ctx, authUser)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ClientErrorType {
+			return "", nil, nil
+		}
+		logger.Error(ctx, "Failed to resolve linked local user for token exchange",
+			log.String("errorCode", svcErr.Code))
+		return "", nil, &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to resolve subject",
+		}
+	}
+
+	// The local user is already resolved, so a failure to load its attributes is a server-side error,
+	// not a "not linked" signal; fail rather than fall back to the federated subject.
+	_, attrResp, svcErr := h.authnProvider.GetUserAttributes(ctx, nil, nil, authUser)
+	if svcErr != nil {
+		logger.Error(ctx, "Failed to fetch linked local user attributes for token exchange",
+			log.String("errorCode", svcErr.Code))
+		return "", nil, &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to resolve subject",
+		}
+	}
+
+	return entityRef.EntityID, extractLocalUserAttributes(attrResp), nil
+}
+
+// extractLocalUserAttributes flattens an attributes response into a claim map, stripping reserved
+// claim names.
+func extractLocalUserAttributes(resp *providers.AttributesResponse) map[string]interface{} {
+	if resp == nil {
+		return nil
+	}
+	attrs := make(map[string]interface{}, len(resp.Attributes))
+	for name, attr := range resp.Attributes {
+		if attr != nil {
+			attrs[name] = attr.Value
+		}
+	}
+	return tokenservice.ExtractUserAttributes(attrs)
+}
+
+// mergeSubjectAttributes merges federated and local attributes, with local values taking precedence.
+func mergeSubjectAttributes(federated, local map[string]interface{}) map[string]interface{} {
+	merged := make(map[string]interface{}, len(federated)+len(local))
+	for k, v := range federated {
+		merged[k] = v
+	}
+	for k, v := range local {
+		merged[k] = v
+	}
+	return merged
+}
+
+// filterScopesAuthorizedForApp filters the given scopes to those the app is authorized for on the
+// target resource server.
 func (h *tokenExchangeGrantHandler) filterScopesAuthorizedForApp(
 	ctx context.Context,
 	oauthApp *providers.OAuthClient,
