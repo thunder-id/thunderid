@@ -241,7 +241,7 @@ name: Valid Flow
     it('parses agent resources and renders agents section', () => {
       const agentYaml = `
 ---
-# resource_type: agent
+resource_type: agent
 id: agent-1
 name: Test Agent
 description: A test agent

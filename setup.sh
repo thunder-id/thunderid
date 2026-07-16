@@ -54,7 +54,10 @@ if [[ -n "${ADMIN_PASSWORD:-}" ]]; then
     ADMIN_PASSWORD_PROVIDED=true
 fi
 ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}"
+# Left empty when not supplied: configure_admin_password (below) generates a random
+# password in that case, rather than falling back to a fixed, predictable value.
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
+ADMIN_PASSWORD_GENERATED=false
 # Direct Auth Secret gates the Direct API endpoints (secure by default). When not supplied, one is
 # generated during setup and written to deployment.yaml.
 DIRECT_AUTH_SECRET="${DIRECT_AUTH_SECRET:-}"
@@ -117,8 +120,8 @@ print_help() {
     echo "  --without-consent        Disable the bundled consent server"
     echo "  --admin-username VALUE   Username for the default admin user (default: admin)"
     echo "                           Falls back to ADMIN_USERNAME env var if flag not set"
-    echo "  --admin-password VALUE   Password for the default admin user (default: admin)"
-    echo "                           Falls back to ADMIN_PASSWORD env var if flag not set"
+    echo "  --admin-password VALUE   Password for the default admin user"
+    echo "                           Falls back to ADMIN_PASSWORD env var; generated if unset"
     echo "  --direct-auth-secret VALUE Secret gating the Direct API endpoints"
     echo "                           Falls back to DIRECT_AUTH_SECRET env var; generated if unset"
     echo "  --help                   Show this help message"
@@ -194,6 +197,30 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# configure_admin_password ensures the default admin account is usable out of the box while staying
+# secure by default: it uses the provided value, or generates a random one. Unlike the Direct Auth
+# Secret, this intentionally regenerates every run where no value is supplied (no persisted value to
+# check), so re-running setup.sh with nothing explicit set is also how an operator resets the password.
+configure_admin_password() {
+    if [ -n "$ADMIN_PASSWORD" ]; then
+        return 0
+    fi
+
+    # Generate a 12-character password mixing letters, digits, and special characters.
+    # The special set is limited to shell- and YAML-safe punctuation, because the value
+    # flows through environment variables, script arguments, and the bundle's YAML
+    # template before it is stored. Regenerate until the result contains at least one
+    # digit and one special character so it reliably looks like a password.
+    charset='A-Za-z0-9@#%+=_.?-'
+    while true; do
+        ADMIN_PASSWORD="$(LC_ALL=C tr -dc "$charset" < /dev/urandom 2>/dev/null | head -c 12 || true)"
+        [ "${#ADMIN_PASSWORD}" -eq 12 ] || continue
+        case "$ADMIN_PASSWORD" in *[0-9]*) ;; *) continue ;; esac
+        case "$ADMIN_PASSWORD" in *[@#%+=_.?-]*) break ;; esac
+    done
+    ADMIN_PASSWORD_GENERATED=true
+}
+
 # ============================================================================
 # Prompt for Admin Credentials (interactive mode only)
 # ============================================================================
@@ -209,9 +236,15 @@ if [ -t 0 ] && [[ "$ADMIN_USERNAME_PROVIDED" == "false" || "$ADMIN_PASSWORD_PROV
         ADMIN_USERNAME="${_input_username:-admin}"
     fi
     if [[ "$ADMIN_PASSWORD_PROVIDED" == "false" ]]; then
-        read -r -s -p "  Admin password [admin]: " _input_password
+        # Generate the password up front so it can be shown as the prompt default (the
+        # value used if the operator presses Enter). A typed value overrides it.
+        configure_admin_password
+        read -r -s -p "  Admin password [$ADMIN_PASSWORD]: " _input_password
         echo ""
-        ADMIN_PASSWORD="${_input_password:-admin}"
+        if [ -n "$_input_password" ]; then
+            ADMIN_PASSWORD="$_input_password"
+            ADMIN_PASSWORD_GENERATED=false
+        fi
     fi
     echo ""
 fi
@@ -317,6 +350,19 @@ write_direct_auth_secret() {
     mv "$tmp" "$file"
 }
 
+# print_admin_credentials_notice shows the generated admin password once, so the operator can capture
+# it. Only shown when the password was generated during this run (not for operator-supplied values).
+print_admin_credentials_notice() {
+    if [ "$ADMIN_PASSWORD_GENERATED" != "true" ]; then
+        return 0
+    fi
+    echo "Admin credentials:"
+    echo "  Username: ${ADMIN_USERNAME}"
+    echo "  Password: ${ADMIN_PASSWORD}"
+    echo "  Sign in to the Console with these credentials."
+    echo ""
+}
+
 # configure_direct_auth_secret ensures the Direct API is usable out of the box while staying secure by
 # default: it respects an existing non-empty secret, otherwise uses the provided value or generates a
 # random one, and writes it into deployment.yaml.
@@ -364,7 +410,8 @@ print_direct_auth_secret_notice() {
 # Read configuration
 read_config
 
-# Configure the Direct Auth Secret before bootstrap so the Direct API is ready to use.
+# Configure the admin password and Direct Auth Secret before bootstrap so both are ready to use.
+configure_admin_password
 configure_direct_auth_secret
 
 # Construct base URL (internal API endpoint)
@@ -530,6 +577,7 @@ if [ "$SILENT_MODE" = "true" ]; then
     echo ""
     echo "Console URL: ${PUBLIC_URL}/console"
     echo ""
+    print_admin_credentials_notice
     print_direct_auth_secret_notice
     echo "Run ./start.sh to start ${PRODUCT_NAME}."
     echo ""
@@ -538,6 +586,7 @@ else
     echo -e "${GREEN}✅ Setup completed successfully!${NC}"
     echo "========================================="
     echo ""
+    print_admin_credentials_notice
     print_direct_auth_secret_notice
 fi
 

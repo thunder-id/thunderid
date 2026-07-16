@@ -1,5 +1,6 @@
 ---
 title: Onboard Internal Users
+docType: use-case
 description: Configure {{ProductName}} to invite and onboard internal staff members in your own application.
 sidebar_position: 6
 ---
@@ -9,11 +10,11 @@ sidebar_position: 6
 This walkthrough configures <ProductName /> so that an admin can invite staff members by email. When the invitee accepts, <ProductName /> provisions their account and attaches the right role automatically. The invitation and acceptance flow runs inside the <ProductName /> Console, so this walkthrough applies regardless of which solution pattern your consumer app uses.
 
 :::info Background
-[Onboard Internal Users](../../customer-identity#onboard-internal-users) covers the requirements story behind this use case.
+[B2C Identity Overview](../..) covers the requirements story behind this use case.
 :::
 
 :::note Prerequisites
-Configure SMTP so that <ProductName /> can send invitation emails. See [Email Configuration](/docs/next/guides/getting-started/configuration#email-configuration), then restart <ProductName /> for the changes to take effect.
+Configure SMTP so that <ProductName /> can send invitation emails. See [Email Configuration](../../../../guides/getting-started/configuration#email-configuration), then restart <ProductName /> for the changes to take effect.
 :::
 
 ## Configure <ProductName />
@@ -29,17 +30,17 @@ Navigate to **User Types** → **Create User Type**. Define the schema for your 
 | `password`    | string | Credential                    |
 | `displayName` | string | Captured on invitation accept |
 
-See [User Types](/docs/next/guides/guides/users/user-types).
+See [User Types](../../../../guides/guides/users/user-types).
 
 **2. Create staff roles**
 
 Navigate to **Roles** → **Add Role** and create the roles your internal users need. Assign the permissions that match each role's access level in your application.
 
-See [Authorization](/docs/next/guides/key-concepts/authorization).
+See [Authorization](../../../../guides/key-concepts/authorization).
 
 **3. Build a user onboarding flow**
 
-Build a `USER_ONBOARDING` flow that sends the invitation email and provisions the invitee with the correct role on acceptance. See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow).
+Build a `USER_ONBOARDING` flow that sends the invitation email and provisions the invitee with the correct role on acceptance. See [Build a Flow](../../../../guides/guides/flows/build-a-flow).
 
 Set `properties.assignRole` on the `ProvisioningExecutor` node to the ID of the role from step 2. If you have multiple staff roles, duplicate the invite/provision branch for each.
 
@@ -215,7 +216,7 @@ flow:
 
 Navigate to **Users** → **Add User**. Create a user with your internal user type and assign the role that grants admin permissions. This user will issue invitations from the <ProductName /> Console.
 
-See [Manage Users](/docs/next/guides/guides/users/manage-users).
+See [Manage Users](../../../../guides/guides/users/manage-users).
 
 ## Try It Out
 
@@ -229,4 +230,4 @@ See [Manage Users](/docs/next/guides/guides/users/manage-users).
 ## Going Deeper
 
 - Want to understand how the staff user type and roles fit together? See [User Types](../../identity-concepts#user-types) and [Roles](../../identity-concepts#roles) in Identity Concepts.
-- Want to see this use case running against the Wayfinder sample? See [Onboard Internal Users — Try It Out](../../try-it-out/onboard-internal-users).
+- Want to see this use case running against the Wayfinder sample? See [Onboard Internal Users: Try It Out](../../try-it-out/onboard-internal-users).

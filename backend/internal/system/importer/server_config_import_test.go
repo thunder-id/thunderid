@@ -52,7 +52,7 @@ func newServerConfigImportService(sc serverConfigAdapter) ImportServiceInterface
 	return newImportService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, sc)
 }
 
-const serverConfigImportDoc = `# resource_type: server_config
+const serverConfigImportDoc = `resource_type: server_config
 name: cors
 value:
   - "https://app.example.com"

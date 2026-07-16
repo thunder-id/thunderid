@@ -1,11 +1,12 @@
 ---
 title: useThunderID()
-description: Access the authentication context
+docType: reference
+description: Access authentication state and trigger sign-in, sign-out, and token refresh actions using the useThunderID() composable.
 ---
 
 # `useThunderID()`
 
-The `useThunderID` composable provides access to the <ProductName /> authentication context in Vue applications. It allows you to retrieve authentication state, user information, and other context values managed by the [`<ThunderIDProvider />`](/docs/next/sdks/vue/apis/providers/thunderid-provider).
+The `useThunderID` composable provides access to the <ProductName /> authentication context in Vue applications. It allows you to retrieve authentication state, user information, and other context values managed by the [`<ThunderIDProvider />`](../../providers/thunderid-provider).
 
 ## Usage
 
@@ -41,7 +42,7 @@ This composable must be used inside a component rendered within `<ThunderIDProvi
 
 ## Return Values
 
-The composable returns the full ThunderID context:
+The composable returns the full <ProductName /> context:
 
 | Property | Type | Description |
 | :--- | :--- | :--- |
@@ -54,7 +55,7 @@ The composable returns the full ThunderID context:
 | `signUp` | `(...args) => Promise<any>` | Initiates the sign-up flow |
 | `getAccessToken` | `() => Promise<string>` | Returns the current access token |
 | `getDecodedIdToken` | `() => Promise<IdToken>` | Returns the decoded ID token payload |
-| `http` | `{ request, requestAll }` | Authenticated HTTP client (see [Accessing Protected APIs](/docs/next/sdks/vue/guides/accessing-protected-apis)) |
+| `http` | `{ request, requestAll }` | Authenticated HTTP client (see [Accessing Protected APIs](../../../guides/accessing-protected-apis)) |
 
 ## Error Handling
 

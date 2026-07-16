@@ -90,7 +90,7 @@ func (suite *ResourceStoreTestSuite) TestCreateResourceServer() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryCreateResourceServer, "rs1", "ou1", "Test Server",
-					"Test Description", nil, "test-identifier", nil,
+					"Test Description", "test-identifier", nil,
 					[]byte(`{"delimiter":":"}`), "test-deployment").
 					Return(int64(1), nil)
 			},
@@ -111,7 +111,7 @@ func (suite *ResourceStoreTestSuite) TestCreateResourceServer() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryCreateResourceServer, "rs1", "ou1", "Test Server",
-					"Test Description", nil, "test-identifier", "MCP",
+					"Test Description", "test-identifier", "MCP",
 					[]byte(`{"delimiter":":"}`), "test-deployment").
 					Return(int64(1), nil)
 			},
@@ -131,7 +131,7 @@ func (suite *ResourceStoreTestSuite) TestCreateResourceServer() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryCreateResourceServer, "rs1", "ou1", "Test Server",
-					"Test Description", nil, "test-identifier", nil,
+					"Test Description", "test-identifier", nil,
 					[]byte(`{"delimiter":":"}`), "test-deployment").
 					Return(int64(0), errors.New("insert failed"))
 			},
@@ -292,114 +292,6 @@ func (suite *ResourceStoreTestSuite) TestGetResourceServer() {
 				suite.Equal(tc.expectedRS.OUID, rs.OUID)
 				suite.Equal(tc.expectedRS.Name, rs.Name)
 				suite.Equal(tc.expectedRS.Description, rs.Description)
-				suite.Equal(tc.expectedRS.Identifier, rs.Identifier)
-				suite.Equal(tc.expectedRS.Type, rs.Type)
-				suite.Equal(tc.expectedRS.Delimiter, rs.Delimiter)
-			}
-		})
-	}
-}
-
-func (suite *ResourceStoreTestSuite) TestGetResourceServerByHandle() {
-	testCases := []struct {
-		name          string
-		handle        string
-		setupMocks    func()
-		expectedRS    providers.ResourceServer
-		expectedError error
-		shouldErr     bool
-		checkError    func(error) bool
-	}{
-		{
-			name:   "Success",
-			handle: "test-handle",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("QueryContext", context.Background(),
-					queryGetResourceServerByHandle, "test-handle", "test-deployment").
-					Return([]map[string]interface{}{
-						{
-							"id":          "rs1",
-							"ou_id":       "ou1",
-							"name":        "Test Server",
-							"description": "Test Description",
-							"handle":      "test-handle",
-							"identifier":  "test-identifier",
-							"type":        "MCP",
-							"properties":  []byte(`{"delimiter":"/"}`),
-						},
-					}, nil)
-			},
-			expectedRS: providers.ResourceServer{
-				ID:          "rs1",
-				OUID:        "ou1",
-				Name:        "Test Server",
-				Description: "Test Description",
-				Handle:      "test-handle",
-				Identifier:  "test-identifier",
-				Type:        providers.ResourceServerTypeMCP,
-				Delimiter:   "/",
-			},
-			shouldErr: false,
-		},
-		{
-			name:   "NotFound",
-			handle: "unknown",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("QueryContext", context.Background(),
-					queryGetResourceServerByHandle, "unknown", "test-deployment").
-					Return([]map[string]interface{}{}, nil)
-			},
-			expectedError: errResourceServerNotFound,
-			shouldErr:     true,
-		},
-		{
-			name:   "QueryError",
-			handle: "test-handle",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("QueryContext", context.Background(),
-					queryGetResourceServerByHandle, "test-handle", "test-deployment").
-					Return(nil, errors.New("query error"))
-			},
-			shouldErr: true,
-			checkError: func(err error) bool {
-				suite.Contains(err.Error(), "failed to get resource server by handle")
-				return true
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		suite.Run(tc.name, func() {
-			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
-			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
-			suite.store = &resourceStore{
-				dbProvider:   suite.mockDBProvider,
-				deploymentID: "test-deployment",
-			}
-
-			tc.setupMocks()
-
-			rs, err := suite.store.GetResourceServerByHandle(context.Background(), tc.handle)
-
-			if tc.shouldErr {
-				suite.Error(err)
-				if tc.expectedError != nil {
-					suite.Equal(tc.expectedError, err)
-				}
-				if tc.checkError != nil {
-					tc.checkError(err)
-				}
-				suite.Empty(rs.ID)
-			} else {
-				suite.NoError(err)
-				suite.Equal(tc.expectedRS.ID, rs.ID)
-				suite.Equal(tc.expectedRS.OUID, rs.OUID)
-				suite.Equal(tc.expectedRS.Name, rs.Name)
-				suite.Equal(tc.expectedRS.Description, rs.Description)
-				suite.Equal(tc.expectedRS.Handle, rs.Handle)
 				suite.Equal(tc.expectedRS.Identifier, rs.Identifier)
 				suite.Equal(tc.expectedRS.Type, rs.Type)
 				suite.Equal(tc.expectedRS.Delimiter, rs.Delimiter)
@@ -602,7 +494,7 @@ func (suite *ResourceStoreTestSuite) TestUpdateResourceServer() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryUpdateResourceServer, "ou1", "Updated Server",
-					"Updated Description", nil, "updated-identifier", "API",
+					"Updated Description", "updated-identifier", "API",
 					[]byte(`{"delimiter":"-"}`), "rs1", "test-deployment").
 					Return(int64(1), nil)
 			},
@@ -623,7 +515,7 @@ func (suite *ResourceStoreTestSuite) TestUpdateResourceServer() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryUpdateResourceServer, "ou1", "Updated Server",
-					"Updated Description", nil, "updated-identifier", "API",
+					"Updated Description", "updated-identifier", "API",
 					[]byte(`{"delimiter":"-"}`), "rs1", "test-deployment").
 					Return(int64(0), errors.New("update failed"))
 			},

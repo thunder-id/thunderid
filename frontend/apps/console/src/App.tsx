@@ -24,7 +24,7 @@ import {UserCreateProvider} from '@thunderid/configure-users';
 import {ToastProvider} from '@thunderid/contexts';
 import {ProtectedRoute} from '@thunderid/react-router';
 import {lazy, Suspense, type JSX} from 'react';
-import {BrowserRouter, Route, Routes} from 'react-router';
+import {BrowserRouter, Outlet, Route, Routes} from 'react-router';
 import AgentCreateProvider from './features/agents/contexts/AgentCreate/AgentCreateProvider';
 import ApplicationCreateProvider from './features/applications/contexts/ApplicationCreate/ApplicationCreateProvider';
 import LayoutBuilderProvider from './features/design/contexts/LayoutBuilder/LayoutBuilderProvider';
@@ -84,6 +84,7 @@ const ApplicationEditPage = lazy(() =>
   import('./lib/monaco-setup').then(() => import('./features/applications/pages/ApplicationEditPage')),
 );
 const ApplicationsListPage = lazy(() => import('./features/applications/pages/ApplicationsListPage'));
+const ApplicationTemplateSelectPage = lazy(() => import('./features/applications/pages/ApplicationTemplateSelectPage'));
 const DesignPage = lazy(() => import('./features/design/pages/DesignPage'));
 const LayoutBuilderPage = lazy(() =>
   import('./lib/monaco-setup').then(() => import('./features/design/pages/LayoutBuilderPage')),
@@ -293,16 +294,20 @@ export default function App(): JSX.Element {
               <Route index element={<VerifiableCredentialCreatePage />} />
             </Route>
             <Route
-              path="/applications/create"
               element={
                 <ProtectedRoute>
                   <ApplicationCreateProvider>
-                    <FullScreenLayout />
+                    <Outlet />
                   </ApplicationCreateProvider>
                 </ProtectedRoute>
               }
             >
-              <Route index element={<ApplicationCreatePage />} />
+              <Route path="/applications/types" element={<DashboardLayout />}>
+                <Route index element={<ApplicationTemplateSelectPage />} />
+              </Route>
+              <Route path="/applications/create" element={<FullScreenLayout />}>
+                <Route index element={<ApplicationCreatePage />} />
+              </Route>
             </Route>
             <Route
               path="/agents/create"
@@ -453,13 +458,15 @@ export default function App(): JSX.Element {
               <Route path="import-configuration/summary" element={<ImportConfigurationSummaryPage />} />
               <Route path="get-started" element={<GetStartedPage />} />
               <Route
-                path="get-started/applications/create"
                 element={
                   <ApplicationCreateProvider>
-                    <ApplicationCreatePage />
+                    <Outlet />
                   </ApplicationCreateProvider>
                 }
-              />
+              >
+                <Route path="get-started/applications/types" element={<ApplicationTemplateSelectPage />} />
+                <Route path="get-started/applications/create" element={<ApplicationCreatePage />} />
+              </Route>
               <Route path="tryout/securing-application" element={<TryoutSecuringApplicationPage />} />
               <Route path="tryout/ai-agents" element={<TryoutSecuringAIAgentsPage />} />
               <Route path="tryout/mcp" element={<TryoutSecuringMCPPage />} />

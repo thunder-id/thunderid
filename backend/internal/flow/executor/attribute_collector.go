@@ -63,7 +63,7 @@ func newAttributeCollector(
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAttributeCollect))
 
 	base := flowFactory.CreateExecutor(ExecutorNameAttributeCollect, providers.ExecutorTypeUtility,
-		[]providers.Input{}, prerequisites)
+		[]providers.Input{}, prerequisites, &providers.ExecutorMeta{})
 
 	return &attributeCollector{
 		Executor:       base,

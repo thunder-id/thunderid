@@ -1,7 +1,8 @@
 ---
 title: User Schemas
+docType: reference
 displayed_sidebar: javascriptSdkSidebar
-description: Utility functions for working with user attribute schemas
+description: TypeScript types and validation schemas for user profile data in the JavaScript SDK.
 ---
 
 # User Schemas
@@ -30,7 +31,7 @@ import { generateUserProfile } from '@thunderid/javascript'
 const profile = generateUserProfile(flatProfile, schemas)
 ```
 
-**Returns:** `UserProfile` — `{ profile, flattenedProfile, schemas[] }`
+**Returns:** `UserProfile`, `{ profile, flattenedProfile, schemas[] }`
 
 ### `generateFlattenedUserProfile(profile, schemas)`
 

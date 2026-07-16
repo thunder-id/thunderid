@@ -34,6 +34,7 @@ import (
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/release"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/setup"
 	"github.com/thunder-id/thunderid/tools/cli/internal/ui/spinner"
+	"github.com/thunder-id/thunderid/tools/cli/internal/utils"
 )
 
 // Options carries use-case-specific configuration collected by the CLI before the sample starts.
@@ -180,6 +181,10 @@ func runWithResult(
 	meta, ok := knownSamples[sampleName]
 	if !ok {
 		return nil, "", "", fmt.Errorf("unknown sample %q — available: %s", sampleName, availableList())
+	}
+
+	if err := checkNodeVersion(); err != nil {
+		return nil, "", "", err
 	}
 
 	// Fetch latest version.
@@ -619,6 +624,22 @@ func readCachedSampleVersion(dir string) string {
 
 func writeCachedSampleVersion(dir, version string) error {
 	return os.WriteFile(filepath.Join(dir, ".version"), []byte(version+"\n"), 0o644)
+}
+
+// checkNodeVersion returns an error if Node.js is missing or older than
+// utils.MinNodeVersion. Sample apps are installed and run via npm, so an
+// unsupported Node.js version must stop the command before it downloads or
+// touches anything.
+func checkNodeVersion() error {
+	version, err := utils.DetectNodeVersion()
+	if err != nil {
+		return err
+	}
+	if !utils.MeetsMinNodeVersion(version) {
+		return fmt.Errorf("node.js v%s detected — v%s or later is required to run sample apps.\n%s",
+			version, utils.MinNodeVersion, utils.NodeUpgradeHint())
+	}
+	return nil
 }
 
 func availableList() string {

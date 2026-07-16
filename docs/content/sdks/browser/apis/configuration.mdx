@@ -1,7 +1,8 @@
 ---
 title: Configuration
+docType: reference
 displayed_sidebar: browserSdkSidebar
-description: Configuration options for the Browser SDK
+description: Configuration options for the Browser SDK, including client ID, base URL, scopes, and token persistence.
 ---
 
 # Configuration
@@ -38,10 +39,10 @@ await auth.initialize({
 | `afterSignOutUrl` | `string` | `window.location.origin` | URL to redirect to after sign-out |
 | `scopes` | `string[]` | `['openid', 'profile']` | OAuth 2.0 scopes to request |
 | `enablePKCE` | `boolean` | `true` | Enable PKCE for the authorization request |
-| `prompt` | `string` | — | Controls the authentication UI behavior (e.g., `"login"`, `"none"`, `"consent"`) |
+| `prompt` | `string` | - | Controls the authentication UI behavior (e.g., `"login"`, `"none"`, `"consent"`) |
 | `responseMode` | `string` | `'query'` | OAuth 2.0 response mode for the authorization request |
 | `sendCookiesInRequests` | `boolean` | `true` | Include cookies in token requests |
-| `sendIdTokenInLogoutRequest` | `boolean` | — | Include the ID token hint in the logout request |
+| `sendIdTokenInLogoutRequest` | `boolean` | - | Include the ID token hint in the logout request |
 
 ### Storage Parameters
 
@@ -63,9 +64,9 @@ await auth.initialize({
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `applicationId` | `string` | — | UUID of the <ProductName /> application. Used for Application Branding and sign-up flow access URLs |
-| `allowedExternalUrls` | `string[]` | — | URL prefixes that the SDK may attach access tokens to when making HTTP requests |
-| `authParams` | `Record<string, string>` | — | Additional query parameters to append to every authorize request |
+| `applicationId` | `string` | - | UUID of the <ProductName /> application. Used for Application Branding and sign-up flow access URLs |
+| `allowedExternalUrls` | `string[]` | - | URL prefixes that the SDK may attach access tokens to when making HTTP requests |
+| `authParams` | `Record<string, string>` | - | Additional query parameters to append to every authorize request |
 
 ## Storage Backends
 

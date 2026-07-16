@@ -17,7 +17,7 @@
  */
 
 import {fireEvent, render, screen} from '@thunderid/test-utils';
-import {type JSX, useEffect} from 'react';
+import {useEffect} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import ConnectionCreateWizardPage from '../ConnectionCreateWizardPage';
 
@@ -35,27 +35,18 @@ vi.mock('@thunderid/contexts', async (importOriginal) => ({
 vi.mock('../../api/useCreateConnection', () => ({default: () => ({mutate: mutateMock, isPending: false})}));
 
 vi.mock('../../components/ConnectionForm', () => ({
-  default: function StubConnectionForm(): JSX.Element {
-    return <div data-testid="stub-connection-form" />;
-  },
-}));
-
-vi.mock('../../components/create-connection/ConnectionAttributeMappingStep', () => ({
-  default: function StubAttributeMappingStep({
-    onChange,
-    onCreate,
-  }: {
-    onChange: (c: unknown, v: boolean) => void;
-    onCreate: () => void;
-  }) {
+  default: function StubConnectionForm({onFieldChange}: {onFieldChange: (name: string, value: string) => void}) {
     useEffect(() => {
-      onChange(undefined, true);
-    }, [onChange]);
-    return (
-      <button type="button" data-testid="wizard-create" onClick={onCreate}>
-        create
-      </button>
-    );
+      // Populate the fields required by every connection type used in these tests (oidc, oauth).
+      onFieldChange('name', 'Acme Connection');
+      onFieldChange('clientId', 'x');
+      onFieldChange('clientSecret', 's');
+      onFieldChange('authorizationEndpoint', 'https://idp.example.com/authorize');
+      onFieldChange('tokenEndpoint', 'https://idp.example.com/token');
+      onFieldChange('userInfoEndpoint', 'https://idp.example.com/userinfo');
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    return <div data-testid="stub-connection-form" />;
   },
 }));
 
@@ -81,5 +72,33 @@ describe('ConnectionCreateWizardPage', () => {
     expect(screen.getByText('Configure your connection')).toBeInTheDocument();
     // Assert on the raw step-label key: its real translation ("Configure") collides with the heading text.
     expect(screen.queryByText('wizard.steps.configure')).not.toBeInTheDocument();
+  });
+
+  it('supports selecting the Custom OAuth2 type and configuring it', () => {
+    render(<ConnectionCreateWizardPage />);
+
+    fireEvent.click(screen.getByTestId('connection-type-option-oauth'));
+    fireEvent.click(screen.getByTestId('wizard-continue'));
+
+    expect(screen.getByTestId('connection-fullpage-content')).toBeInTheDocument();
+    expect(screen.getByTestId('stub-connection-form')).toBeInTheDocument();
+    expect(screen.getByText('Configure your connection')).toBeInTheDocument();
+  });
+
+  it('creates the connection from the configure step and navigates to its detail page', () => {
+    render(<ConnectionCreateWizardPage />);
+
+    fireEvent.click(screen.getByTestId('connection-type-option-oidc'));
+    fireEvent.click(screen.getByTestId('wizard-continue'));
+    fireEvent.click(screen.getByTestId('wizard-create'));
+
+    expect(mutateMock).toHaveBeenCalledTimes(1);
+    const payload = mutateMock.mock.calls[0][0] as {attributeConfiguration?: unknown};
+    expect('attributeConfiguration' in payload).toBe(false);
+
+    const {onSuccess} = mutateMock.mock.calls[0][1] as {onSuccess: (data: {id: string}) => void};
+    onSuccess({id: 'conn-1'});
+
+    expect(navigateMock).toHaveBeenCalledWith('/connections/oidc/conn-1');
   });
 });

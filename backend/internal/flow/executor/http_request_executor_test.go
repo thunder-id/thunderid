@@ -62,7 +62,7 @@ func (suite *HTTPRequestExecutorTestSuite) SetupTest() {
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	mockFlowFactory := coremock.NewFlowFactoryInterfaceMock(suite.T())
 	mockFlowFactory.On("CreateExecutor", ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
-		[]providers.Input{}, []providers.Input{}).
+		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
 	suite.executor = newHTTPRequestExecutor(mockFlowFactory, nil, suite.mockAuthnProvider)
@@ -799,7 +799,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OUIDFromEntit
 
 	mockFlowFactory := coremock.NewFlowFactoryInterfaceMock(suite.T())
 	mockFlowFactory.On("CreateExecutor", ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
-		[]providers.Input{}, []providers.Input{}).
+		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
 	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider)
@@ -855,7 +855,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OUIDFromRunti
 
 	mockFlowFactory := coremock.NewFlowFactoryInterfaceMock(suite.T())
 	mockFlowFactory.On("CreateExecutor", ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
-		[]providers.Input{}, []providers.Input{}).
+		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
 	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider)
@@ -913,7 +913,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_RuntimeDataPr
 
 	mockFlowFactory := coremock.NewFlowFactoryInterfaceMock(suite.T())
 	mockFlowFactory.On("CreateExecutor", ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
-		[]providers.Input{}, []providers.Input{}).
+		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
 	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider)
@@ -969,7 +969,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OverwritesExi
 
 	mockFlowFactory := coremock.NewFlowFactoryInterfaceMock(suite.T())
 	mockFlowFactory.On("CreateExecutor", ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
-		[]providers.Input{}, []providers.Input{}).
+		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
 	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider)
@@ -1023,7 +1023,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OULookupFailu
 
 	mockFlowFactory := coremock.NewFlowFactoryInterfaceMock(suite.T())
 	mockFlowFactory.On("CreateExecutor", ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
-		[]providers.Input{}, []providers.Input{}).
+		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
 	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider)

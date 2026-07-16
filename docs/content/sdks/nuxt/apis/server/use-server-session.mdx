@@ -1,11 +1,12 @@
 ---
 title: useServerSession()
-description: Read the session payload from the current request
+docType: reference
+description: Read the typed session payload from the current H3 event in Nuxt server routes and middleware.
 ---
 
 # `useServerSession()`
 
-`useServerSession` reads the ThunderID session from the current H3 event and returns the decoded `ThunderIDSessionPayload`, or `null` if no valid session exists.
+`useServerSession` reads the <ProductName /> session from the current H3 event and returns the decoded `<ProductName />SessionPayload`, or `null` if no valid session exists.
 
 ## Signature
 
@@ -73,5 +74,5 @@ Returns a `Promise<ThunderIDSessionPayload | null>`. Returns `null` when:
 
 ## Notes
 
-- Use [`requireServerSession()`](/docs/next/sdks/nuxt/apis/server/require-server-session) to throw a `401` automatically instead of handling `null` manually.
-- The session payload is also available synchronously via [`getThunderIDContext()`](/docs/next/sdks/nuxt/apis/server/get-thunderid-context) if the SSR plugin has already run.
+- Use [`requireServerSession()`](../require-server-session) to throw a `401` automatically instead of handling `null` manually.
+- The session payload is also available synchronously via [`getThunderIDContext()`](../get-thunderid-context) if the SSR plugin has already run.

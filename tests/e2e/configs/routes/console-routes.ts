@@ -46,7 +46,10 @@ export const ConsoleRoutes = {
   /** Applications list page */
   applications: "/console/applications",
 
-  /** Create new application page */
+  /** Application type gallery page */
+  applicationTypes: "/console/applications/types",
+
+  /** Create new application wizard page */
   applicationCreate: "/console/applications/create",
 
   /**

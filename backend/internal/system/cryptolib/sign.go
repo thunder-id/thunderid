@@ -29,6 +29,8 @@ import (
 	"errors"
 	"hash"
 	"math/big"
+
+	"github.com/cloudflare/circl/sign"
 )
 
 // Sign errors.
@@ -57,6 +59,12 @@ func SignAlgorithmFor(alg Algorithm) (SignAlgorithm, error) {
 		return ECDSASHA512, nil
 	case AlgorithmEdDSA:
 		return ED25519, nil
+	case AlgorithmMLDSA44:
+		return MLDSA44, nil
+	case AlgorithmMLDSA65:
+		return MLDSA65, nil
+	case AlgorithmMLDSA87:
+		return MLDSA87, nil
 	default:
 		return "", ErrUnsupportedAlgorithm
 	}
@@ -75,6 +83,8 @@ func Generate(data []byte, alg SignAlgorithm, privateKey crypto.PrivateKey) ([]b
 		return newECDSASign(hashed, privateKey)
 	case ED25519:
 		return newED25519Sign(data, privateKey)
+	case MLDSA44, MLDSA65, MLDSA87:
+		return newMLDSASign(data, privateKey)
 	default:
 		return nil, ErrUnsupportedAlgorithm
 	}
@@ -93,13 +103,15 @@ func Verify(data []byte, signature []byte, alg SignAlgorithm, publicKey crypto.P
 		return verifyECDSA(hashed, signature, publicKey)
 	case ED25519:
 		return verifyED25519(data, signature, publicKey)
+	case MLDSA44, MLDSA65, MLDSA87:
+		return verifyMLDSA(data, signature, publicKey)
 	default:
 		return ErrUnsupportedAlgorithm
 	}
 }
 
 // hashData hashes data using the hash function implied by alg.
-// For ED25519, no pre-hashing is performed and the original data is returned.
+// For ED25519 and MLDSA algorithms, no pre-hashing is performed and the original data is returned.
 func hashData(data []byte, alg SignAlgorithm) ([]byte, crypto.Hash) {
 	var h hash.Hash
 	var hashFunc crypto.Hash
@@ -114,7 +126,7 @@ func hashData(data []byte, alg SignAlgorithm) ([]byte, crypto.Hash) {
 	case ECDSASHA384:
 		h = sha512.New384()
 		hashFunc = crypto.SHA384
-	case ED25519:
+	case ED25519, MLDSA44, MLDSA65, MLDSA87:
 		return data, crypto.Hash(0)
 	default:
 		return nil, crypto.Hash(0)
@@ -220,4 +232,39 @@ func verifyED25519(data, signature []byte, publicKey crypto.PublicKey) error {
 		return ErrInvalidSignature
 	}
 	return nil
+}
+
+// newMLDSASign produces an ML-DSA signature over data with an empty context, as
+// required for the JOSE binding (RFC 9964). The scheme is taken from the key.
+func newMLDSASign(data []byte, privateKey crypto.PrivateKey) ([]byte, error) {
+	sk, ok := privateKey.(sign.PrivateKey)
+	if !ok || !isMLDSAScheme(sk.Scheme().Name()) {
+		return nil, ErrInvalidPrivateKey
+	}
+	return sk.Scheme().Sign(sk, data, nil), nil
+}
+
+// verifyMLDSA verifies an ML-DSA signature over data with an empty context.
+func verifyMLDSA(data, signature []byte, publicKey crypto.PublicKey) error {
+	pk, ok := publicKey.(sign.PublicKey)
+	if !ok || !isMLDSAScheme(pk.Scheme().Name()) {
+		return ErrInvalidPublicKey
+	}
+	if !pk.Scheme().Verify(pk, data, signature, nil) {
+		return ErrInvalidSignature
+	}
+	return nil
+}
+
+// isMLDSAScheme reports whether a circl scheme name is one of the ML-DSA
+// parameter sets. sign.PrivateKey/sign.PublicKey are implemented by other
+// circl schemes (e.g. Ed448, SLH-DSA); this rejects those before signing or
+// verifying with the ML-DSA scheme.
+func isMLDSAScheme(name string) bool {
+	switch SignAlgorithm(name) {
+	case MLDSA44, MLDSA65, MLDSA87:
+		return true
+	default:
+		return false
+	}
 }

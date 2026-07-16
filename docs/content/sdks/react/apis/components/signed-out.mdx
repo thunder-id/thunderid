@@ -1,11 +1,12 @@
 ---
 title: <SignedOut />
-description: Conditionally render content for unauthenticated users
+docType: reference
+description: Conditionally render React content only when no user is currently signed in to the application.
 ---
 
 # `<SignedOut />`
 
-The `SignedOut` component conditionally renders its children only when the user is not authenticated with ThunderID.
+The `SignedOut` component conditionally renders its children only when the user is not authenticated with <ProductName />.
 It checks the current authentication state and displays content for unauthenticated users, while rendering optional `fallback` content (or nothing by default) when the user is authenticated.
 This makes it ideal for showing sign-in prompts, public landing pages, or content that should only be visible to guests.
 

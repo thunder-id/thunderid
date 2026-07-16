@@ -99,7 +99,7 @@ describe('CreateResourceServerPage', () => {
     });
   });
 
-  it('shows the Name step with name and handle fields after navigating to it', async () => {
+  it('shows the Name step with name and identifier fields after navigating to it', async () => {
     renderWithProviders(<CreateResourceServerPage />);
 
     const apiCard = screen.getByRole('button', {name: /API/i});
@@ -108,11 +108,11 @@ describe('CreateResourceServerPage', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('textbox', {name: /resource server name/i})).toBeInTheDocument();
-      expect(screen.getByRole('textbox', {name: /handle/i})).toBeInTheDocument();
+      expect(screen.getByRole('textbox', {name: /identifier/i})).toBeInTheDocument();
     });
   });
 
-  it('advances to the Separator step after filling the name and clicking Next', async () => {
+  it('keeps Continue disabled on the Name step until both name and identifier are filled', async () => {
     renderWithProviders(<CreateResourceServerPage />);
 
     fireEvent.click(screen.getByRole('button', {name: /API/i}));
@@ -124,6 +124,32 @@ describe('CreateResourceServerPage', () => {
 
     fireEvent.change(screen.getByRole('textbox', {name: /resource server name/i}), {
       target: {value: 'Payments API'},
+    });
+
+    expect(screen.getByRole('button', {name: /Continue/i})).toBeDisabled();
+
+    fireEvent.change(screen.getByRole('textbox', {name: /identifier/i}), {
+      target: {value: 'https://api.example.com'},
+    });
+
+    expect(screen.getByRole('button', {name: /Continue/i})).toBeEnabled();
+  });
+
+  it('advances to the Separator step after filling the name and identifier and clicking Next', async () => {
+    renderWithProviders(<CreateResourceServerPage />);
+
+    fireEvent.click(screen.getByRole('button', {name: /API/i}));
+    fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', {name: /resource server name/i})).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByRole('textbox', {name: /resource server name/i}), {
+      target: {value: 'Payments API'},
+    });
+    fireEvent.change(screen.getByRole('textbox', {name: /identifier/i}), {
+      target: {value: 'https://api.example.com'},
     });
 
     fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
@@ -146,15 +172,14 @@ describe('CreateResourceServerPage', () => {
     fireEvent.change(screen.getByRole('textbox', {name: /resource server name/i}), {
       target: {value: 'Payments API'},
     });
-
-    fireEvent.change(screen.getByRole('textbox', {name: /handle/i}), {
-      target: {value: 'payments-api'},
+    fireEvent.change(screen.getByRole('textbox', {name: /identifier/i}), {
+      target: {value: 'https://api.example.com'},
     });
 
     fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
 
     await waitFor(() => {
-      expect(screen.getByText(/payments-api/i)).toBeInTheDocument();
+      expect(screen.getByText('<resource>:<action>')).toBeInTheDocument();
     });
   });
 
@@ -182,6 +207,9 @@ describe('CreateResourceServerPage', () => {
     fireEvent.change(screen.getByRole('textbox', {name: /mcp server name/i}), {
       target: {value: 'Payments MCP'},
     });
+    fireEvent.change(screen.getByRole('textbox', {name: /identifier/i}), {
+      target: {value: 'https://mcp.example.com'},
+    });
 
     fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
 
@@ -203,12 +231,47 @@ describe('CreateResourceServerPage', () => {
     fireEvent.change(screen.getByRole('textbox', {name: /resource server name/i}), {
       target: {value: 'Payments API'},
     });
+    fireEvent.change(screen.getByRole('textbox', {name: /identifier/i}), {
+      target: {value: 'https://api.example.com'},
+    });
 
     fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
 
     await waitFor(() => {
       expect(screen.getByRole('button', {name: /Create resource server/i})).toBeInTheDocument();
     });
+  });
+
+  it('sends the identifier in the create payload', async () => {
+    renderWithProviders(<CreateResourceServerPage />);
+
+    fireEvent.click(screen.getByRole('button', {name: /API/i}));
+    fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', {name: /resource server name/i})).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByRole('textbox', {name: /resource server name/i}), {
+      target: {value: 'Payments API'},
+    });
+    fireEvent.change(screen.getByRole('textbox', {name: /identifier/i}), {
+      target: {value: 'https://api.example.com'},
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', {name: /Create resource server/i})).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: /Create resource server/i}));
+
+    expect(mockCreateResourceServerMutate).toHaveBeenCalledWith(
+      expect.objectContaining({name: 'Payments API', identifier: 'https://api.example.com'}),
+      expect.any(Object),
+    );
+    expect(mockCreateResourceServerMutate.mock.calls[0][0]).not.toHaveProperty('handle');
   });
 
   it('shows the MCP server created success toast after a successful MCP server creation', async () => {
@@ -229,6 +292,9 @@ describe('CreateResourceServerPage', () => {
 
     fireEvent.change(screen.getByRole('textbox', {name: /mcp server name/i}), {
       target: {value: 'Payments MCP'},
+    });
+    fireEvent.change(screen.getByRole('textbox', {name: /identifier/i}), {
+      target: {value: 'https://mcp.example.com'},
     });
 
     fireEvent.click(screen.getByRole('button', {name: /Continue/i}));

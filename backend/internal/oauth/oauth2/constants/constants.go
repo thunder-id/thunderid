@@ -56,6 +56,7 @@ const (
 	RequestParamActorTokenType      string = "actor_token_type"
 	RequestParamRequestedTokenType  string = "requested_token_type"
 	RequestParamAudience            string = "audience"
+	RequestParamAssertion           string = "assertion"
 	RequestParamClaims              string = "claims"
 	RequestParamClaimsLocales       string = "claims_locales"
 	RequestParamNonce               string = "nonce"
@@ -104,7 +105,6 @@ const (
 	ShowInsecureWarning   string = "showInsecureWarning"
 	AppID                 string = "applicationId"
 	ExecutionID           string = "executionId"
-	Assertion             string = "assertion"
 )
 
 // Oauth message types.
@@ -133,6 +133,9 @@ const (
 const (
 	TokenTypeBearer = "Bearer"
 	TokenTypeDPoP   = "DPoP"
+	// TokenTypeNA is the token_type returned in an RFC 8693 response whose issued token is not an
+	// access token. It is used for the ID-JAG (Identity Assertion Authorization Grant) response.
+	TokenTypeNA = "N_A"
 )
 
 // TokenTypeIdentifier defines a type for RFC 8693 token type identifiers.
@@ -148,6 +151,10 @@ const (
 	TokenTypeIdentifierIDToken TokenTypeIdentifier = "urn:ietf:params:oauth:token-type:id_token"
 	//nolint:gosec // Token type identifier, not a credential
 	TokenTypeIdentifierJWT TokenTypeIdentifier = "urn:ietf:params:oauth:token-type:jwt"
+	// TokenTypeIdentifierIDJAG is the requested/issued token type for an Identity Assertion
+	// Authorization Grant (draft-ietf-oauth-identity-assertion-authz-grant).
+	//nolint:gosec // Token type identifier, not a credential
+	TokenTypeIdentifierIDJAG TokenTypeIdentifier = "urn:ietf:params:oauth:token-type:id-jag"
 )
 
 // supportedTokenTypeIdentifiers is the single source of truth for all supported token type identifiers.
@@ -156,6 +163,7 @@ var supportedTokenTypeIdentifiers = []TokenTypeIdentifier{
 	TokenTypeIdentifierRefreshToken,
 	TokenTypeIdentifierIDToken,
 	TokenTypeIdentifierJWT,
+	TokenTypeIdentifierIDJAG,
 }
 
 // IsValid checks if the TokenTypeIdentifier is valid.
@@ -257,6 +265,10 @@ const (
 	ClaimAuthorizedPermissions  string = "authorized_permissions"
 	ClaimAuthorizationRequestID string = "authorization_request_id"
 	ClaimClientID               string = "client_id"
+	// ClaimIDP identifies the source identity provider (by issuer) that authenticated the subject of a
+	// jwt-bearer-grant (ID-JAG) access token, so downstream consumers can distinguish a federated
+	// principal from a local one.
+	ClaimIDP string = "idp"
 )
 
 // OIDC subject types.

@@ -15,6 +15,8 @@ verifyDepsBeforeRun: false
 allowBuilds:
   '@parcel/watcher': false
   '@swc/core': false
+  # JUSTIFICATION: Wayfinder uses better-sqlite3 as the Node 18/20 fallback for node:sqlite.
+  better-sqlite3: true
   core-js: false
   core-js-pure: false
   # JUSTIFICATION: The `esbuild` package is not directly and might be coming from a transitive dependency. Not required to be built as part of the workspace.
@@ -36,8 +38,8 @@ catalog:
   '@testing-library/jest-dom': 6.9.1
   '@testing-library/react': 16.3.0
   '@testing-library/user-event': 14.6.1
-  '@thunderid/react': 0.4.0
-  '@thunderid/react-router': 0.3.0
+  '@thunderid/react': 0.5.0
+  '@thunderid/react-router': 0.4.0
   '@types/lodash-es': 4.17.12
   '@types/node': 24.7.2
   '@types/react': 19.2.14

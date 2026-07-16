@@ -119,7 +119,7 @@ func (s *InitTestSuite) TestRouteTable() {
 		ID: "tw-1", Name: "TW", Type: ncommon.NotificationSenderTypeMessage,
 		Provider: ncommon.MessageProviderTypeTwilio,
 	}
-	s.mockNotif.On("ListSenders", mock.Anything).
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
 		Return([]ncommon.NotificationSenderDTO{*twilioDTO}, (*tidcommon.ServiceError)(nil))
 	s.mockNotif.On("CreateSender", mock.Anything, mock.Anything).
 		Return(twilioDTO, (*tidcommon.ServiceError)(nil))

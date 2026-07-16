@@ -16,11 +16,14 @@
  * under the License.
  */
 
-import {IdentityProviderTypes, type BasicIdentityProvider} from '@thunderid/configure-connections';
+import {
+  IdentityProviderTypes,
+  type BasicIdentityProvider,
+  type ConnectionInstance,
+} from '@thunderid/configure-connections';
 import {describe, expect, it} from 'vitest';
 import {ExecutionTypes} from '../../models/steps';
 import computeExecutorConnections from '../computeExecutorConnections';
-import type {NotificationSender} from '@/features/notification-senders/models/notification-sender';
 
 describe('computeExecutorConnections', () => {
   const createIdp = (id: string, type: BasicIdentityProvider['type'], name = 'Test IDP'): BasicIdentityProvider => ({
@@ -29,10 +32,11 @@ describe('computeExecutorConnections', () => {
     type,
   });
 
-  const createNotificationSender = (id: string, name = 'Test Sender'): NotificationSender => ({
+  const createSMSProvider = (id: string, name = 'Test Sender'): ConnectionInstance => ({
     id,
     name,
-    provider: 'twilio',
+    type: 'twilio',
+    categories: ['sms-provider'],
   });
 
   describe('Identity Providers', () => {
@@ -110,11 +114,11 @@ describe('computeExecutorConnections', () => {
     });
   });
 
-  describe('Notification Senders', () => {
-    it('should map notification senders to SMSExecutor', () => {
-      const senders = [createNotificationSender('sender-1')];
+  describe('SMS Providers', () => {
+    it('should map SMS providers to SMSExecutor', () => {
+      const senders = [createSMSProvider('sender-1')];
 
-      const result = computeExecutorConnections({notificationSenders: senders});
+      const result = computeExecutorConnections({smsProviders: senders});
 
       expect(result).toHaveLength(1);
       expect(result[0].executorName).toBe(ExecutionTypes.SMSExecutor);
@@ -123,12 +127,12 @@ describe('computeExecutorConnections', () => {
 
     it('should include all sender IDs in connections', () => {
       const senders = [
-        createNotificationSender('sender-1', 'Twilio'),
-        createNotificationSender('sender-2', 'Vonage'),
-        createNotificationSender('sender-3', 'Custom'),
+        createSMSProvider('sender-1', 'Twilio'),
+        createSMSProvider('sender-2', 'Vonage'),
+        createSMSProvider('sender-3', 'Custom'),
       ];
 
-      const result = computeExecutorConnections({notificationSenders: senders});
+      const result = computeExecutorConnections({smsProviders: senders});
 
       expect(result).toHaveLength(1);
       expect(result[0].executorName).toBe(ExecutionTypes.SMSExecutor);
@@ -136,14 +140,14 @@ describe('computeExecutorConnections', () => {
     });
   });
 
-  describe('Combined IDPs and Notification Senders', () => {
-    it('should process both IDPs and notification senders', () => {
+  describe('Combined IDPs and SMS Providers', () => {
+    it('should process both IDPs and SMS providers', () => {
       const idps = [createIdp('google-1', IdentityProviderTypes.GOOGLE)];
-      const senders = [createNotificationSender('sender-1')];
+      const senders = [createSMSProvider('sender-1')];
 
       const result = computeExecutorConnections({
         identityProviders: idps,
-        notificationSenders: senders,
+        smsProviders: senders,
       });
 
       expect(result).toHaveLength(2);
@@ -161,11 +165,11 @@ describe('computeExecutorConnections', () => {
         createIdp('google-2', IdentityProviderTypes.GOOGLE),
         createIdp('github-1', IdentityProviderTypes.GITHUB),
       ];
-      const senders = [createNotificationSender('sender-1'), createNotificationSender('sender-2')];
+      const senders = [createSMSProvider('sender-1'), createSMSProvider('sender-2')];
 
       const result = computeExecutorConnections({
         identityProviders: idps,
-        notificationSenders: senders,
+        smsProviders: senders,
       });
 
       expect(result).toHaveLength(3);
@@ -193,8 +197,8 @@ describe('computeExecutorConnections', () => {
       expect(result).toEqual([]);
     });
 
-    it('should return empty array when notificationSenders is undefined', () => {
-      const result = computeExecutorConnections({notificationSenders: undefined});
+    it('should return empty array when smsProviders is undefined', () => {
+      const result = computeExecutorConnections({smsProviders: undefined});
 
       expect(result).toEqual([]);
     });
@@ -205,8 +209,8 @@ describe('computeExecutorConnections', () => {
       expect(result).toEqual([]);
     });
 
-    it('should return empty array when notificationSenders is empty', () => {
-      const result = computeExecutorConnections({notificationSenders: []});
+    it('should return empty array when smsProviders is empty', () => {
+      const result = computeExecutorConnections({smsProviders: []});
 
       expect(result).toEqual([]);
     });
@@ -214,7 +218,7 @@ describe('computeExecutorConnections', () => {
     it('should handle empty arrays for both params', () => {
       const result = computeExecutorConnections({
         identityProviders: [],
-        notificationSenders: [],
+        smsProviders: [],
       });
 
       expect(result).toEqual([]);

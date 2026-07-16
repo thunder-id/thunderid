@@ -1,6 +1,7 @@
 ---
 title: ThunderIDExpressClient
-description: Express-aware client built on top of ThunderIDNodeClient
+docType: reference
+description: Express-aware client built on ThunderIDNodeClient with cookie session management and route middleware.
 ---
 
 # `ThunderIDExpressClient`
@@ -15,7 +16,7 @@ const {ThunderIDExpressClient} = require('@thunderid/express');
 
 ## Overview
 
-In most applications, you do not instantiate this class directly. The [`thunderID()`](/docs/next/sdks/express/apis/middleware/thunderid) middleware creates and initializes it for you, then attaches it to `req.thunderIDAuth` and `res.thunderIDAuth`.
+In most applications, you do not instantiate this class directly. The [`thunderID()`](../../middleware/thunderid) middleware creates and initializes it for you, then attaches it to `req.thunderIDAuth` and `res.thunderIDAuth`.
 
 ## Express-Specific Members
 
@@ -53,6 +54,6 @@ Because `ThunderIDExpressClient` extends `ThunderIDNodeClient`, inherited Node c
 
 ## Related APIs
 
-- [`thunderID()`](/docs/next/sdks/express/apis/middleware/thunderid)
-- [`ExpressClientConfig`](/docs/next/sdks/express/apis/configuration/express-client-config)
-- [`Redirect Flow`](/docs/next/sdks/express/guides/redirect-flow)
+- [`thunderID()`](../../middleware/thunderid)
+- [`ExpressClientConfig`](../../configuration/express-client-config)
+- [`Redirect Flow`](../../../guides/redirect-flow)

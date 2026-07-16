@@ -75,6 +75,9 @@ function BlockAdapter({
           className={classNames('flow-builder-step-content-form-field')}
           availableElements={availableElements}
           onAddElementToForm={onAddElementToForm}
+          // Action blocks are managed as a single unit via the parent's chrome —
+          // the nested trigger button must not render its own border and toolbar.
+          hideChrome
         />
       ))}
     </Box>

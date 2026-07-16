@@ -258,12 +258,12 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetAuthorizedPermissions() {
 		},
 	})
 
-	perms, err := suite.store.GetAuthorizedPermissions(
+	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"user1",
-		[]string{"group1"},
-		[]string{"perm2", "perm3"},
-	)
+		[]string{"group1"}, "",
+
+		[]string{"perm2", "perm3"})
 
 	suite.NoError(err)
 	suite.Equal([]string{"perm2"}, perms)

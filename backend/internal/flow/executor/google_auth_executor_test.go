@@ -21,9 +21,10 @@ package executor
 import (
 	"testing"
 
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	authnoidc "github.com/thunder-id/thunderid/internal/authn/oidc"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/googlemock"
@@ -69,7 +70,7 @@ func (suite *GoogleAuthExecutorTestSuite) TestNewGoogleOIDCAuthExecutor_Success(
 	}
 	baseExec := coremock.NewExecutorInterfaceMock(suite.T())
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameGoogleAuth,
-		providers.ExecutorTypeAuthentication, defaultInputs, []providers.Input{}).
+		providers.ExecutorTypeAuthentication, defaultInputs, []providers.Input{}, mock.Anything).
 		Return(baseExec).Once()
 
 	mockGoogleSvc := &mockGoogleServiceWithOIDC{

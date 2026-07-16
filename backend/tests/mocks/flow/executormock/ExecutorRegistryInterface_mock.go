@@ -98,6 +98,68 @@ func (_c *ExecutorRegistryInterfaceMock_GetExecutor_Call) RunAndReturn(run func(
 	return _c
 }
 
+// GetExecutorMeta provides a mock function for the type ExecutorRegistryInterfaceMock
+func (_mock *ExecutorRegistryInterfaceMock) GetExecutorMeta(name string) (*providers.ExecutorMeta, error) {
+	ret := _mock.Called(name)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetExecutorMeta")
+	}
+
+	var r0 *providers.ExecutorMeta
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(string) (*providers.ExecutorMeta, error)); ok {
+		return returnFunc(name)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string) *providers.ExecutorMeta); ok {
+		r0 = returnFunc(name)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.ExecutorMeta)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(string) error); ok {
+		r1 = returnFunc(name)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// ExecutorRegistryInterfaceMock_GetExecutorMeta_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetExecutorMeta'
+type ExecutorRegistryInterfaceMock_GetExecutorMeta_Call struct {
+	*mock.Call
+}
+
+// GetExecutorMeta is a helper method to define mock.On call
+//   - name string
+func (_e *ExecutorRegistryInterfaceMock_Expecter) GetExecutorMeta(name interface{}) *ExecutorRegistryInterfaceMock_GetExecutorMeta_Call {
+	return &ExecutorRegistryInterfaceMock_GetExecutorMeta_Call{Call: _e.mock.On("GetExecutorMeta", name)}
+}
+
+func (_c *ExecutorRegistryInterfaceMock_GetExecutorMeta_Call) Run(run func(name string)) *ExecutorRegistryInterfaceMock_GetExecutorMeta_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ExecutorRegistryInterfaceMock_GetExecutorMeta_Call) Return(executorMeta *providers.ExecutorMeta, err error) *ExecutorRegistryInterfaceMock_GetExecutorMeta_Call {
+	_c.Call.Return(executorMeta, err)
+	return _c
+}
+
+func (_c *ExecutorRegistryInterfaceMock_GetExecutorMeta_Call) RunAndReturn(run func(name string) (*providers.ExecutorMeta, error)) *ExecutorRegistryInterfaceMock_GetExecutorMeta_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IsRegistered provides a mock function for the type ExecutorRegistryInterfaceMock
 func (_mock *ExecutorRegistryInterfaceMock) IsRegistered(name string) bool {
 	ret := _mock.Called(name)

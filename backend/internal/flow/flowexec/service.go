@@ -316,9 +316,14 @@ func (s *flowExecService) initContext(ctx context.Context, appID string, flowTyp
 
 	flow, svcErr := s.flowProvider.GetFlow(ctx, graphID)
 	if svcErr != nil {
-		logger.Error(ctx, "Error retrieving flow from flow provider",
-			log.String("graphID", graphID), log.String("error", svcErr.Error.DefaultValue))
-		return nil, &tidcommon.InternalServerError
+		// The configured flow may have been deleted while still referenced by the
+		// application. For authentication flows, fall back to the default flow instead
+		// of failing the request.
+		flow, svcErr = s.fallbackToDefaultFlow(ctx, graphID, flowType, svcErr, logger)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		graphID = flow.ID
 	}
 
 	engineCtx.FlowType = flow.FlowType
@@ -340,6 +345,32 @@ func (s *flowExecService) initContext(ctx context.Context, appID string, flowTyp
 	}
 
 	return &engineCtx, nil
+}
+
+// fallbackToDefaultFlow attempts to recover from a failure to retrieve the configured flow.
+// If the flow was not found (e.g. it was deleted while still referenced by the application)
+// and the flow type is authentication, it falls back to the system default authentication
+// flow. Any other case surfaces an internal server error.
+func (s *flowExecService) fallbackToDefaultFlow(ctx context.Context, graphID string,
+	flowType providers.FlowType, origErr *tidcommon.ServiceError, logger *log.Logger) (
+	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
+	if flowType != providers.FlowTypeAuthentication || origErr.Type != tidcommon.ClientErrorType {
+		logger.Error(ctx, "Error retrieving flow from flow provider",
+			log.String("graphID", graphID), log.String("error", origErr.Error.DefaultValue))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	handle := s.cfg.Flow.DefaultAuthFlowHandle
+	logger.Warn(ctx, "Configured authentication flow not found; falling back to default flow",
+		log.String("graphID", graphID), log.String("defaultFlowHandle", handle))
+
+	flow, svcErr := s.flowProvider.GetFlowByHandle(ctx, handle, providers.FlowTypeAuthentication)
+	if svcErr != nil {
+		logger.Error(ctx, "Failed to retrieve default authentication flow",
+			log.String("defaultFlowHandle", handle), log.String("error", svcErr.Error.DefaultValue))
+		return nil, &tidcommon.InternalServerError
+	}
+	return flow, nil
 }
 
 // getFlowExpirySeconds returns the expiry time for a flow in seconds.

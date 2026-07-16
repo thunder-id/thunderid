@@ -44,9 +44,20 @@ type TokenValidatorInterface interface {
 	ValidateRefreshToken(ctx context.Context, token string, clientID string) (*RefreshTokenClaims, error)
 	ValidateSubjectToken(ctx context.Context, token string, oauthApp *providers.OAuthClient) (
 		*SubjectTokenClaims, error)
+	// ValidateIDJAGSubjectToken validates a subject token for the ID-JAG issuance leg of token
+	// exchange (draft-ietf-oauth-identity-assertion-authz-grant). It performs the same validation as
+	// ValidateSubjectToken and additionally requires the token to be a genuine ID token: its typ
+	// header must be "JWT" (rejecting at+jwt access tokens) and it must not carry an access_token_sub
+	// claim (rejecting refresh tokens). This blocks laundering a re-audienced access token or a
+	// refresh token into an ID-JAG.
+	ValidateIDJAGSubjectToken(ctx context.Context, token string, oauthApp *providers.OAuthClient) (
+		*SubjectTokenClaims, error)
 	// ValidateToken verifies a self-issued token's signature and enforces revocation without pinning
 	// its type, returning the raw claims. Used by token introspection, which is token-type agnostic.
 	ValidateToken(ctx context.Context, token string) (map[string]interface{}, error)
+	// ValidateIDJAGAssertion validates an ID-JAG assertion presented on the jwt-bearer grant,
+	// binding it to the authenticated client via its client_id claim.
+	ValidateIDJAGAssertion(ctx context.Context, assertion, clientID string) (*IDJAGAssertionClaims, error)
 }
 
 // TokenValidator implements TokenValidatorInterface.
@@ -213,6 +224,16 @@ func (tv *tokenValidator) ValidateSubjectToken(
 	token string,
 	oauthApp *providers.OAuthClient,
 ) (*SubjectTokenClaims, error) {
+	// An ID-JAG is an authorization grant, not a subject token, and must never be redeemable on token
+	// exchange. Reject it up front based on its typ header before any other processing.
+	header, err := jwt.DecodeJWTHeader(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode token header: %w", err)
+	}
+	if typ, _ := header["typ"].(string); typ == jwt.TokenTypeIDJAG {
+		return nil, fmt.Errorf("an ID-JAG cannot be presented as a subject_token")
+	}
+
 	claims, err := jwt.DecodeJWTPayload(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode token: %w", err)
@@ -239,7 +260,7 @@ func (tv *tokenValidator) ValidateSubjectToken(
 	}
 
 	// Not a server-issued token — try external IDP issuers.
-	issuerInfo, resolveErr := tv.resolveExternalIssuer(ctx, iss)
+	issuerInfo, resolveErr := tv.resolveExternalIssuer(ctx, iss, claims)
 	if resolveErr != nil {
 		return nil, fmt.Errorf("failed to exchange token for issuer %q: %w", iss, resolveErr)
 	}
@@ -258,6 +279,48 @@ func (tv *tokenValidator) ValidateSubjectToken(
 	}
 
 	return tv.extractSubjectTokenClaims(token, iss, claims, oauthApp, issuerInfo.AttributeMappings)
+}
+
+// ValidateIDJAGSubjectToken validates a subject token for the ID-JAG issuance leg of token exchange
+// (draft-ietf-oauth-identity-assertion-authz-grant). Beyond the standard subject-token validation
+// performed by ValidateSubjectToken (signature, revocation deny list, time claims, and claim
+// extraction), it enforces that the token is a genuine ID token. The typ header must be "JWT", which
+// rejects access tokens (typ "at+jwt") and blocks laundering a re-audienced token-exchange access
+// token into an ID-JAG. A top-level access_token_sub claim marks a refresh token (which shares
+// typ "JWT" with ID tokens) and is likewise rejected. It also requires the token's issuer to be this
+// server's own configured issuer, since ID-JAGs may only be issued for self-issued subject tokens.
+// The generic ValidateSubjectToken path used by RFC 8693 token exchange and actor-token validation is
+// intentionally left unchanged.
+func (tv *tokenValidator) ValidateIDJAGSubjectToken(
+	ctx context.Context,
+	token string,
+	oauthApp *providers.OAuthClient,
+) (*SubjectTokenClaims, error) {
+	header, err := jwt.DecodeJWTHeader(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode subject token header: %w", err)
+	}
+	if typ, _ := header["typ"].(string); typ != jwt.TokenTypeJWT {
+		return nil, fmt.Errorf("subject_token must be an ID token, but has typ %q", typ)
+	}
+
+	claims, err := jwt.DecodeJWTPayload(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode subject token payload: %w", err)
+	}
+	if _, isRefreshToken := claims["access_token_sub"]; isRefreshToken {
+		return nil, fmt.Errorf("subject_token must be an ID token, not a refresh token")
+	}
+
+	subjectClaims, err := tv.ValidateSubjectToken(ctx, token, oauthApp)
+	if err != nil {
+		return nil, err
+	}
+	if subjectClaims.Iss != tv.cfg.JWT.Issuer {
+		return nil, fmt.Errorf("subject_token must be issued by this server, got issuer %q", subjectClaims.Iss)
+	}
+
+	return subjectClaims, nil
 }
 
 // ValidateToken verifies a self-issued token's signature (type-agnostic) and enforces the revocation
@@ -281,6 +344,124 @@ func (tv *tokenValidator) ValidateToken(ctx context.Context, token string) (map[
 	return claims, nil
 }
 
+// ValidateIDJAGAssertion validates an ID-JAG assertion presented on the jwt-bearer grant
+// (draft-ietf-oauth-identity-assertion-authz-grant). It requires the oauth-id-jag+jwt typ header,
+// resolves the assertion's issuer to a trusted external IdP with ID-JAG enabled, verifies the
+// signature against that IdP's JWKS, validates the time claims, requires the audience to equal this
+// server's issuer, and binds the assertion to the authenticated client via the client_id claim.
+func (tv *tokenValidator) ValidateIDJAGAssertion(
+	ctx context.Context,
+	assertion string,
+	clientID string,
+) (*IDJAGAssertionClaims, error) {
+	header, err := jwt.DecodeJWTHeader(assertion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode assertion header: %w", err)
+	}
+	if typ, _ := header["typ"].(string); typ != jwt.TokenTypeIDJAG {
+		return nil, fmt.Errorf("unsupported assertion type: expected %q", jwt.TokenTypeIDJAG)
+	}
+
+	claims, err := jwt.DecodeJWTPayload(assertion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode assertion payload: %w", err)
+	}
+
+	iss, err := extractStringClaim(claims, "iss")
+	if err != nil {
+		return nil, fmt.Errorf("assertion is missing 'iss' claim: %w", err)
+	}
+
+	issuerInfo, resolveErr := tv.resolveIDJAGIssuer(ctx, iss)
+	if resolveErr != nil {
+		return nil, fmt.Errorf("untrusted assertion issuer %q: %w", iss, resolveErr)
+	}
+
+	if svcErr := tv.jwtService.VerifyJWTSignatureWithJWKS(ctx, assertion, issuerInfo.JWKSURL); svcErr != nil {
+		return nil, fmt.Errorf("invalid assertion signature: %v", svcErr.Error)
+	}
+
+	if err := tv.validateTimeClaims(claims); err != nil {
+		return nil, err
+	}
+
+	// The draft lists jti, iat, and exp as REQUIRED; exp is enforced by validateTimeClaims above.
+	// Require a non-empty jti and an iat here. One-time-use (replay) caching keyed on jti is
+	// intentionally deferred to a future version, so this remains a presence check for forward
+	// compatibility.
+	if _, iatErr := extractInt64Claim(claims, "iat"); iatErr != nil {
+		return nil, fmt.Errorf("assertion is missing 'iat' claim: %w", iatErr)
+	}
+	jti, jtiErr := extractStringClaim(claims, "jti")
+	if jtiErr != nil {
+		return nil, fmt.Errorf("assertion is missing 'jti' claim: %w", jtiErr)
+	}
+
+	serverIssuer := tv.cfg.JWT.Issuer
+	auds, audErr := extractAudiences(claims)
+	if audErr != nil {
+		return nil, fmt.Errorf("assertion is missing 'aud' claim: %w", audErr)
+	}
+	// The draft permits aud to be a string or an array, but an array MUST contain exactly one element.
+	if len(auds) != 1 {
+		return nil, fmt.Errorf("assertion must have exactly one audience")
+	}
+	if auds[0] != serverIssuer {
+		return nil, fmt.Errorf("assertion audience does not match server issuer %q", serverIssuer)
+	}
+
+	assertionClientID, err := extractStringClaim(claims, "client_id")
+	if err != nil {
+		return nil, fmt.Errorf("assertion is missing 'client_id' claim: %w", err)
+	}
+	if assertionClientID != clientID {
+		return nil, fmt.Errorf("assertion 'client_id' does not match the authenticated client")
+	}
+
+	sub, err := extractStringClaim(claims, "sub")
+	if err != nil {
+		return nil, fmt.Errorf("assertion is missing 'sub' claim: %w", err)
+	}
+
+	return &IDJAGAssertionClaims{
+		Sub:       sub,
+		Iss:       iss,
+		Scopes:    extractScopesFromClaims(claims, false),
+		Resources: extractStringSliceClaim(claims, "resource"),
+		JTI:       jti,
+	}, nil
+}
+
+// resolveIDJAGIssuer looks up an external IDP whose issuer property matches the given issuer and
+// requires ID-JAG to be enabled. It mirrors resolveExternalIssuer but is a separate path so token
+// exchange trust resolution is unaffected.
+func (tv *tokenValidator) resolveIDJAGIssuer(ctx context.Context, issuer string) (
+	*tokenExchangeIssuerInfo, error) {
+	if tv.idpService == nil {
+		return nil, fmt.Errorf("no external issuers configured")
+	}
+
+	idpDTOs, svcErr := tv.idpService.GetIdentityProvidersByProperty(ctx, idp.PropIssuer, issuer)
+	if svcErr != nil || len(idpDTOs) == 0 {
+		return nil, fmt.Errorf("no trusted issuer configured for '%s'", issuer)
+	}
+
+	idpDTO := idpDTOs[0]
+	if idp.GetPropertyValue(idpDTO.Properties, idp.PropIDJagEnabled) != "true" {
+		return nil, fmt.Errorf("ID-JAG not enabled for issuer '%s'", issuer)
+	}
+
+	jwksURL := idp.GetPropertyValue(idpDTO.Properties, idp.PropJwksEndpoint)
+	if jwksURL == "" {
+		return nil, fmt.Errorf("no JWKS endpoint configured for issuer '%s'", issuer)
+	}
+
+	return &tokenExchangeIssuerInfo{
+		Issuer:  issuer,
+		JWKSURL: jwksURL,
+	}, nil
+}
+
 // tokenExchangeIssuerInfo holds the resolved properties needed to validate an external token.
 type tokenExchangeIssuerInfo struct {
 	Issuer               string
@@ -290,8 +471,12 @@ type tokenExchangeIssuerInfo struct {
 }
 
 // resolveExternalIssuer looks up an external IDP whose issuer property matches the given issuer.
-func (tv *tokenValidator) resolveExternalIssuer(ctx context.Context, issuer string) (
-	*tokenExchangeIssuerInfo, error) {
+// The subject token claims are used to resolve the user type for attribute mapping.
+func (tv *tokenValidator) resolveExternalIssuer(
+	ctx context.Context,
+	issuer string,
+	claims map[string]interface{},
+) (*tokenExchangeIssuerInfo, error) {
 	if tv.idpService == nil {
 		return nil, fmt.Errorf("no external issuers configured")
 	}
@@ -315,7 +500,7 @@ func (tv *tokenValidator) resolveExternalIssuer(ctx context.Context, issuer stri
 		Issuer:               issuer,
 		JWKSURL:              jwksURL,
 		TrustedTokenAudience: idp.GetPropertyValue(idpDTO.Properties, idp.PropTrustedTokenAudience),
-		AttributeMappings:    idp.GetAttributeMappings(&idpDTO),
+		AttributeMappings:    idp.GetAttributeMappings(&idpDTO, claims),
 	}, nil
 }
 

@@ -38,7 +38,25 @@ import (
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/setup"
 	"github.com/thunder-id/thunderid/tools/cli/internal/ui"
 	"github.com/thunder-id/thunderid/tools/cli/internal/ui/spinner"
+	"github.com/thunder-id/thunderid/tools/cli/internal/utils"
 )
+
+// nodeVersionWarning returns a non-blocking warning message when the installed
+// Node.js version is below utils.MinNodeVersion, or "" if it's fine. Sample apps
+// launched via the try-* commands run on Node.js, so an outdated version can
+// break them even though it doesn't affect the core server started here.
+func nodeVersionWarning() string {
+	version, err := utils.DetectNodeVersion()
+	if err != nil {
+		return fmt.Sprintf("Could not detect Node.js — v%s or later is required to run sample apps (/try commands).\n%s",
+			utils.MinNodeVersion, utils.NodeUpgradeHint())
+	}
+	if !utils.MeetsMinNodeVersion(version) {
+		return fmt.Sprintf("Node.js v%s detected — v%s or later is recommended. Sample apps (/try commands) may not work correctly.\n%s",
+			version, utils.MinNodeVersion, utils.NodeUpgradeHint())
+	}
+	return ""
+}
 
 // BaseDir is the parent directory that holds all versioned installs and samples.
 func BaseDir() string {
@@ -58,6 +76,11 @@ func Run(verbose, forceSetup bool) {
 	}
 
 	ui.PrintBanner()
+
+	nodeWarning := nodeVersionWarning()
+	if nodeWarning != "" {
+		ui.Warn(nodeWarning)
+	}
 
 	fmt.Print(ui.Dim("  Fetching latest " + product.Name + " release..."))
 	latestVersion, err := release.FetchLatestVersion()
@@ -101,7 +124,7 @@ func Run(verbose, forceSetup bool) {
 		ui.Note("Already running",
 			fmt.Sprintf("%s is already running on port %d.\nAttaching to the existing instance.",
 				product.Name, health.DefaultPort))
-		replLoop(runVersion, path, nil, verbose, isFirstRun, newVersion, 0)
+		replLoop(runVersion, path, nil, verbose, isFirstRun, newVersion, nodeWarning, 0)
 		return
 	}
 
@@ -166,14 +189,14 @@ func Run(verbose, forceSetup bool) {
 	}
 	fmt.Printf("\r\033[2K  %s %s started  %s\n", ui.Green("✓"), product.Name, ui.Dim("logs: "+setup.LogDir(path)))
 
-	replLoop(runVersion, path, proc, verbose, isFirstRun, newVersion, port)
+	replLoop(runVersion, path, proc, verbose, isFirstRun, newVersion, nodeWarning, port)
 }
 
 // replLoop runs the REPL repeatedly, re-entering after no-op upgrades or version switches.
 // An actual upgrade or normal exit breaks the loop.
-func replLoop(version, installPath string, proc *exec.Cmd, verbose, isFirstRun bool, newVersion string, port int) {
+func replLoop(version, installPath string, proc *exec.Cmd, verbose, isFirstRun bool, newVersion, nodeWarning string, port int) {
 	for {
-		upgradeRequested, switchRequested, err := ui.RunREPL(version, proc, installPath, verbose, isFirstRun, newVersion, port)
+		upgradeRequested, switchRequested, err := ui.RunREPL(version, proc, installPath, verbose, isFirstRun, newVersion, nodeWarning, port)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\nREPL error: %v\n", err)
 			os.Exit(1)

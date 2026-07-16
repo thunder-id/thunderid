@@ -35,7 +35,7 @@ import (
 )
 
 // GetConfigsFromFile reads documents for the given resourceType from a single multi-document YAML file.
-// Documents are matched by a "# resource_type: <type>" comment header.
+// Documents are matched by a "resource_type: <type>" field.
 // Environment variable substitution is applied per-document so that non-variable content (e.g.
 // UI template expressions like {{ t(...) }}) in other documents does not interfere.
 func GetConfigsFromFile(filePath, resourceType string) ([][]byte, error) {
@@ -96,23 +96,18 @@ func splitYAMLDocuments(content []byte) [][]byte {
 }
 
 // documentMatchesResourceType checks whether a YAML document chunk declares the given resource type
-// via a "# resource_type: <type>" comment.
+// via a "resource_type: <type>" field.
+// We scan line-by-line rather than parsing the whole document to avoid YAML parse errors caused
+// by unquoted Go template expressions (e.g. {{.VAR}}) that appear in other fields.
 func documentMatchesResourceType(doc []byte, resourceType string) bool {
+	prefix := []byte("resource_type:")
 	for _, line := range bytes.Split(doc, []byte("\n")) {
-		if len(bytes.TrimSpace(line)) == 0 {
-			continue
-		}
-		if line[0] != '#' {
-			break
-		}
-		normalized := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(string(line), "#")))
-		for _, prefix := range []string{"resource_type:", "resource type:", "resourcetype:"} {
-			if strings.HasPrefix(normalized, prefix) {
-				t := strings.TrimSpace(strings.TrimPrefix(normalized, prefix))
-				t = strings.Trim(t, "\"'")
-				if t == resourceType {
-					return true
-				}
+		trimmed := bytes.TrimSpace(line)
+		if bytes.HasPrefix(trimmed, prefix) {
+			value := bytes.TrimSpace(bytes.TrimPrefix(trimmed, prefix))
+			value = bytes.Trim(value, `"'`)
+			if string(value) == resourceType {
+				return true
 			}
 		}
 	}

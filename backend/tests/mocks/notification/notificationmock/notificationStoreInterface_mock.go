@@ -350,6 +350,74 @@ func (_c *notificationStoreInterfaceMock_listSenders_Call) RunAndReturn(run func
 	return _c
 }
 
+// listSendersByType provides a mock function for the type notificationStoreInterfaceMock
+func (_mock *notificationStoreInterfaceMock) listSendersByType(ctx context.Context, senderType common.NotificationSenderType) ([]common.NotificationSenderDTO, error) {
+	ret := _mock.Called(ctx, senderType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for listSendersByType")
+	}
+
+	var r0 []common.NotificationSenderDTO
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, common.NotificationSenderType) ([]common.NotificationSenderDTO, error)); ok {
+		return returnFunc(ctx, senderType)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, common.NotificationSenderType) []common.NotificationSenderDTO); ok {
+		r0 = returnFunc(ctx, senderType)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]common.NotificationSenderDTO)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, common.NotificationSenderType) error); ok {
+		r1 = returnFunc(ctx, senderType)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// notificationStoreInterfaceMock_listSendersByType_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'listSendersByType'
+type notificationStoreInterfaceMock_listSendersByType_Call struct {
+	*mock.Call
+}
+
+// listSendersByType is a helper method to define mock.On call
+//   - ctx context.Context
+//   - senderType common.NotificationSenderType
+func (_e *notificationStoreInterfaceMock_Expecter) listSendersByType(ctx interface{}, senderType interface{}) *notificationStoreInterfaceMock_listSendersByType_Call {
+	return &notificationStoreInterfaceMock_listSendersByType_Call{Call: _e.mock.On("listSendersByType", ctx, senderType)}
+}
+
+func (_c *notificationStoreInterfaceMock_listSendersByType_Call) Run(run func(ctx context.Context, senderType common.NotificationSenderType)) *notificationStoreInterfaceMock_listSendersByType_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 common.NotificationSenderType
+		if args[1] != nil {
+			arg1 = args[1].(common.NotificationSenderType)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *notificationStoreInterfaceMock_listSendersByType_Call) Return(notificationSenderDTOs []common.NotificationSenderDTO, err error) *notificationStoreInterfaceMock_listSendersByType_Call {
+	_c.Call.Return(notificationSenderDTOs, err)
+	return _c
+}
+
+func (_c *notificationStoreInterfaceMock_listSendersByType_Call) RunAndReturn(run func(ctx context.Context, senderType common.NotificationSenderType) ([]common.NotificationSenderDTO, error)) *notificationStoreInterfaceMock_listSendersByType_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // updateSender provides a mock function for the type notificationStoreInterfaceMock
 func (_mock *notificationStoreInterfaceMock) updateSender(ctx context.Context, id string, sender common.NotificationSenderDTO) error {
 	ret := _mock.Called(ctx, id, sender)

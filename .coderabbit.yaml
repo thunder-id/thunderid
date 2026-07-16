@@ -161,6 +161,199 @@ reviews:
         - Consistency: does the style match existing documentation?
         - Broken links or references to renamed/removed entities.
 
+    - path: "docs/content/**/*.mdx"
+      instructions: |
+        Review the documentation quality of this MDX file. Apply the following checks and flag any
+        issues as **suggestions** (not blocking) unless noted otherwise.
+
+        **AI writing patterns — flag as major issues:**
+        Flag any sentence that opens with a rhetorical setup phrase rather than the subject:
+        - "At its core, ...", "Here's where it gets interesting", "But here's the thing",
+          "The bottom line:", "This is where it all comes together", "Credit where it's due"
+        These phrases produce hollow openers. Rewrite starting with the actual subject.
+
+        Flag symmetric contrast constructions that set up a false dichotomy to sound insightful:
+        - Pattern: "[X] alone is not enough. What you really need is [Y]."
+        - Pattern: "It's not just [A] — it's [B]."
+        These structures typically hide a simple statement. Rewrite as a direct statement of what the
+        product does.
+
+        Flag triplet rhythm where three things are listed for rhetorical effect rather than because
+        there are exactly three:
+        - "fast, flexible, and scalable" — if these aren't independently verifiable claims, cut to the
+          most important one.
+
+        Flag the interchangeability test failure: if a sentence could appear unchanged in any other
+        software product's documentation, it is generic. Rewrite to name ThunderID-specific behavior,
+        configuration, or capabilities.
+
+        **Promotional language — flag as major issues:**
+        Flag any sentence that evaluates the product rather than describing it:
+        - "ThunderID makes it easy to...", "ThunderID simplifies...", "ThunderID provides a powerful..."
+        Replace with what the product actually does: "ThunderID issues tokens...", "Configure [X] in..."
+
+        **Instruction precision — flag as suggestions:**
+        In step-by-step instructions, flag:
+        - Steps that describe an outcome instead of an action ("The application is now registered" as a
+          step, when it should be the result after a click action)
+        - Steps that chain two actions with "and": "Click X and fill in Y" → should be two steps
+        - Vague steps: "Configure the settings" without saying which settings or where
+
+        **Concept bleed — flag as major issues:**
+        Flag any page that introduces a concept that belongs on a separate concepts page, mid-way
+        through a quickstart or guide. Quickstarts and guides should link to concepts pages, not define
+        terms inline beyond one sentence.
+
+        **ThunderID-specific technical accuracy — flag as blocking issues:**
+        - "OAuth 2.0 authentication" is wrong — OAuth 2.0 is an authorization protocol, not an
+          authentication protocol. Use "OAuth 2.0 authorization" or name the specific grant type.
+        - "Implicit flow" should note it is deprecated per RFC 9700. Prefer Authorization Code + PKCE.
+        - PKCE verifier and challenge are not the same: the client generates the verifier and derives
+          the challenge from it, not the reverse.
+        - JWTs are signed, not encrypted, unless explicitly using JWE. "Encrypted JWT" must mean JWE.
+        - "Access token" and "ID token" are distinct: access tokens authorize API calls; ID tokens
+          carry user identity claims. Do not use them interchangeably.
+
+        **Page structure — flag as suggestions:**
+        - Quickstart pages should follow: intro → prerequisites → steps (in Stepper) → next steps.
+          Flag any quickstart that jumps into steps without prerequisites, or ends without a
+          "What's next" section.
+        - Concept pages should not contain task steps. Flag any concept page with numbered action steps.
+        - Guide pages should not explain concepts inline beyond one paragraph. Flag and suggest linking
+          to the relevant concept page instead.
+
+        **SEO suggestions — flag as suggestions:**
+        - Flag a `title:` that uses a generic noun phrase without the specific subject
+          (e.g., "Overview", "Introduction", "Getting Started" with no qualifier).
+        - Flag H2 headings that are: "Overview", "Introduction", "Background", "Summary", "Notes",
+          "Configuration" (alone), "Setup" (alone), "Usage" (alone), "Options" (alone).
+          Suggest a heading that names the specific action or concept.
+        - Flag a `description:` that does not state an outcome or answer "why read this page."
+        - Flag a page with two or more H2 sections serving clearly distinct developer search intents
+          (e.g., a guide that creates, edits, deletes, and configures a resource all on one page).
+          Suggest splitting by task, or confirming the page is intentionally a reference hub.
+
+        The checks below mirror the project's `/docs-review-style` and `/docs-review-tech` skills.
+        They cover judgment calls the repo's mechanical CI (Vale, docs-lint.sh) cannot make — CI
+        already hard-blocks on em/en dashes, H1 title case, inclusive-language substitutions
+        (whitelist/blacklist, master/slave), and structural frontmatter/heading/link checks, so do
+        not re-flag those here. Everything below is a **suggestion**, never blocking, unless
+        explicitly marked otherwise.
+
+        **Terminology note:** sign in/out vs. log in/out, and redirect URI vs. callback/redirect
+        URL, are not yet enforced anywhere (Vale or here) — those terms are still being finalized.
+        Do not flag them until this note is updated.
+
+        **Tone and voice:**
+        - Passive voice in instructions ("The configuration can be set by..." instead of
+          "Set the configuration...").
+        - Audience labeling instead of direct address ("Developers can use this..." instead of
+          "Use this...").
+        - Hedging in a required step ("You may want to consider running..." or future-tense
+          "You will need to..." when the step is mandatory — "You can..." is fine only when the
+          step is genuinely optional).
+        - Condescension markers: "Simply run...", "Just add...", "All you need to do is...",
+          "Easily configure...".
+
+        **Wordiness and filler:**
+        - AI-vocabulary words used as filler rather than precisely: leverage, delve, pivotal, robust,
+          seamless, holistic, synergy, paradigm, crucial, intricate, showcase, underscore (verb),
+          streamline (abstract), comprehensive (filler), powerful (filler), enable/allows you to
+          (prefer the imperative or describe the capability directly).
+        - Filler phrases: "in order to" (→ "to"), "due to the fact that" (→ "because"),
+          "it is important to note that", "please note that", "essentially"/"basically" as filler,
+          "ultimately" as an empty closer.
+        - Present-participle tails that fake depth without a real claim ("...allowing you to manage
+          users efficiently." → cut it or make it a real sentence with a specific claim).
+        - Over-explaining a self-evident consequence ("Click Save to save your changes." → "Click Save.").
+
+        **Formatting, terminology, and inclusivity:**
+        - Emojis anywhere in prose, headings, or table cells, including decorative type icons in
+          tables — ThunderID docs use no emojis.
+        - An admonition type mismatched to its content (e.g., `:::warning` for non-risky background
+          info, or `:::note` for something destructive that needs `:::warning`/`:::danger`).
+        - Informal abbreviations in prose: "configs", "dev", "prod", "env(s)", "repo(s)" should be
+          spelled out. Exception: file paths, branch names, and config filenames are correct
+          as-is (`.env`, the `dev` branch).
+        - Wrong terminology in prose (not in code/config values): "app" instead of "application";
+          "setup" (verb) instead of "configure"; "choose"/"pick" instead of "select" for UI
+          dropdowns; "press"/"tap" instead of "click" for **desktop** UI (do not flag tap/press in
+          mobile-SDK docs, where they are correct); "execute"/"invoke" instead of "run" for CLI
+          commands; "add"/"make" instead of "create", or "remove"/"destroy" instead of "delete",
+          for Console resources; "auth token" instead of "access token" (unless specifically
+          discussing a non-JWT token).
+        - "he/him" used for a hypothetical or unnamed user (→ "they/them"). Ableist metaphors for
+          technical behavior (e.g., "crazy configuration") — describe the actual problem instead.
+        - Missing Oxford comma in a list of three or more items. Non-US spellings
+          ("organise", "colour", "licence" as a noun, "cancelled", "centre").
+        - Numbers: spell out one through nine in prose, use numerals for 10 and above; always use
+          numerals for port numbers, version numbers, time values, and counts regardless of size;
+          never spell out "percent".
+        - UI element formatting: **bold** for UI labels/buttons/fields exactly as shown in the
+          interface; `inline code` for file paths, CLI commands, config keys/values, and env
+          variables. No quote marks standing in for either.
+
+        **Sentence and paragraph rhythm:**
+        - Four or more consecutive sentences in running prose landing in the same narrow word-count
+          band, or three or more consecutive paragraphs of identical length — both read as
+          machine-generated monotony.
+        - Three or more sections following the exact same structural template (definition →
+          explanation → example, repeated every H2).
+        - Paragraph-starting connectors that add no content: "Furthermore,", "Moreover,",
+          "In addition to this,", "It is also worth noting that".
+        - A list of items (prerequisites, steps, config options) spelled out in full more than once
+          on the same page — a human abbreviates on second mention ("the same three flags as above").
+        - Three or more consecutive paragraphs following [Statement]. [Qualifier]. [Why it matters].
+          — suggest varying the rhythm.
+
+        **Content depth:**
+        - A guide, quickstart, or reference section with no ThunderID-specific behavior, concrete
+          example, or stated trade-off/limitation — pure generic definition with nothing
+          implementation-specific (concept pages are exempt from this one).
+        - A section a reader could skip entirely without losing anything — it only restates the
+          intro, or gives background the target reader already has.
+        - A guide that embeds a full parameter/field reference table instead of linking to the
+          reference page for it.
+
+        **Step count and structure — always suggestions, never blocking:**
+        - A single Stepper or numbered step list with 10 or more steps: suggest whether it should
+          split across pages, group into labeled phases, or fold trivial steps into a neighbor.
+          Before flagging, check for an HTML comment immediately above the sequence,
+          `<!-- docs-review-style: step-count-confirmed steps=N -->` — if `N` matches the current
+          step count, this was already confirmed by the author; do not flag it.
+        - Steps that bounce between different UI screens/tabs when the interleaved steps don't
+          depend on each other (e.g., Settings → Applications → back to Settings, with nothing the
+          second Settings step needs coming from the Applications step) — suggest grouping
+          same-screen steps together. Before flagging, check for
+          `<!-- docs-review-style: step-locality-confirmed screens=A,B,C -->` matching the current
+          screen order — if present and matching, do not flag it. Do not flag when a genuine
+          dependency forces the order (a later screen needs a value an earlier step produced).
+
+        **Doc-type structural conformance:**
+        - Quickstart: intro sentence should read "Use this guide to [verb] [outcome]," not a
+          description of the page. Step headings (H2 inside Stepper) should be imperative verb
+          phrases ("Configure the Application"), not label nouns ("Application Configuration").
+          Ending section should be exactly `## What's Next`.
+        - Guide: ending section should be exactly `## Next Steps` or `## Related Guides` — flag
+          other labels like `## Go Further`.
+        - Concept: opening paragraph must define the concept ("What is X?"), not open with a task,
+          list, or historical claim. No "How to" in the title or any heading. Ending section should
+          be exactly `## Related`.
+        - Reference: avoid second-person "you" in parameter descriptions — write in the imperative
+          or third person ("Set to `true` to enable caching," not "You can set this to..."). No
+          page-ending section is required.
+        - Use-Case: opening paragraph must name the scenario and the audience it applies to, not
+          open with a feature list. A "When to Choose This Pattern" section must use bullet
+          criteria, not prose. Ending section should be exactly `## Try It Out` or `## Next Steps`.
+
+        **Technical-claim verification — suggestion when unverifiable, blocking when contradicted:**
+        - For any claim about a specific API endpoint, config option, or SDK method, check it
+          against the actual implementation in this repository, not just the OAuth/OIDC facts
+          listed above, before accepting it as correct.
+        - For any Mermaid diagram: the step count and every labeled term in the diagram must
+          exactly match the surrounding prose (same count, same order, same names). Flag any
+          mismatch and state which side, diagram or text, looks authoritative.
+
   auto_review:
     enabled: true
     ignore_title_keywords:
@@ -175,3 +368,5 @@ reviews:
     - "!**/*.pb.go"
     - "!**/node_modules/**"
     - "!docs/__backup__/**"
+    - "!.agent/skills/**"
+    - "!.claude/skills/**"

@@ -1,11 +1,12 @@
 ---
 title: getThunderIDContext()
-description: Read the typed ThunderID context attached to an H3 event
+docType: reference
+description: Read the typed ThunderID context, including user and token data, attached to an H3 event.
 ---
 
 # `getThunderIDContext()`
 
-`getThunderIDContext` returns the ThunderID context object that the SDK's server plugin attaches to each H3 event during SSR. This gives synchronous access to the session and pre-fetched SSR data without an additional async call.
+`get<ProductName />Context` returns the <ProductName /> context object that the SDK's server plugin attaches to each H3 event during SSR. This gives synchronous access to the session and pre-fetched SSR data without an additional async call.
 
 ## Signature
 
@@ -78,6 +79,6 @@ Returns `ThunderIDEventContext | null`. Returns `null` when the server plugin ha
 
 ## Notes
 
-- `getThunderIDContext` is synchronous — it reads data that was attached to the event by the server plugin earlier in the request lifecycle.
-- For routes where the plugin may not have run, fall back to [`useServerSession()`](/docs/next/sdks/nuxt/apis/server/use-server-session).
+- `getThunderIDContext` is synchronous: it reads data that was attached to the event by the server plugin earlier in the request lifecycle.
+- For routes where the plugin may not have run, fall back to [`useServerSession()`](../use-server-session).
 - The `ssr` field is only populated when SSR data-fetching is enabled in `preferences` (it is enabled by default).

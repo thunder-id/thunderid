@@ -1,6 +1,7 @@
 ---
 title: handleSignOut()
-description: Handle sign-out redirects and post-logout completion
+docType: reference
+description: Handle sign-out redirects and post-logout completion with the handleSignOut() Express middleware.
 ---
 
 # `handleSignOut()`
@@ -21,7 +22,7 @@ const {handleSignOut} = require('@thunderid/express');
 
 ## Prerequisites
 
-- Mount [`thunderID()`](/docs/next/sdks/express/apis/middleware/thunderid) before this handler
+- Mount [`thunderID()`](../thunderid) before this handler
 - Mount `cookie-parser` before this handler so the SDK can read `req.cookies`
 - Register this handler on the route that matches your `afterSignOutUrl`
 
@@ -79,6 +80,6 @@ The handler supports two sign-out stages:
 
 ## Related APIs
 
-- [`thunderID()`](/docs/next/sdks/express/apis/middleware/thunderid)
-- [`CookieConfig`](/docs/next/sdks/express/apis/constants/cookie-config)
-- [`Redirect Flow`](/docs/next/sdks/express/guides/redirect-flow)
+- [`thunderID()`](../thunderid)
+- [`CookieConfig`](../../constants/cookie-config)
+- [`Redirect Flow`](../../../guides/redirect-flow)

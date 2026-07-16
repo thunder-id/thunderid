@@ -82,6 +82,11 @@ func registerRoutes(mux *http.ServeMux, h *handler) {
 		getHandler(h, providers.IDPTypeOIDC, oidcFromIDPDTO),
 		updateHandler(h, providers.IDPTypeOIDC, oidcToIDPDTO, oidcFromIDPDTO),
 		collectionOpts, itemOpts)
+	registerVendorRoutes(mux, h, "/connections/oauth", providers.IDPTypeOAuth,
+		createHandler(h, oauthToIDPDTO, oauthFromIDPDTO),
+		getHandler(h, providers.IDPTypeOAuth, oauthFromIDPDTO),
+		updateHandler(h, providers.IDPTypeOAuth, oauthToIDPDTO, oauthFromIDPDTO),
+		collectionOpts, itemOpts)
 
 	// SMS-backed vendors.
 	registerSMSVendorRoutes(mux, h, "/connections/twilio", ncommon.MessageProviderTypeTwilio,

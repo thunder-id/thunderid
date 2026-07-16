@@ -76,7 +76,11 @@ func newConsentExecutor(
 	}
 
 	base := flowFactory.CreateExecutor(ExecutorNameConsent, providers.ExecutorTypeUtility,
-		defaultInputs, prerequisites)
+		defaultInputs, prerequisites, &providers.ExecutorMeta{
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: "timeout"},
+			},
+		})
 
 	return &consentExecutor{
 		Executor:        base,

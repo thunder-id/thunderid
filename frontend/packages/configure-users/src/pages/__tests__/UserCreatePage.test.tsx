@@ -27,6 +27,12 @@ const mockNavigate = vi.fn();
 const mockMutateAsync = vi.fn();
 const mockReset = vi.fn();
 
+// Helper to get the Create User action button (not the breadcrumb)
+const getCreateUserButton = () => {
+  const createButtons = screen.getAllByRole('button', {name: /create user/i});
+  return createButtons[createButtons.length - 1];
+};
+
 // Mock react-router
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
@@ -524,10 +530,12 @@ describe('UserCreatePage', () => {
 
     // Wait for step ready state to update before clicking submit
     await waitFor(() => {
-      expect(screen.getByRole('button', {name: /create user/i})).not.toBeDisabled();
+      const createButtons = screen.getAllByRole('button', {name: /create user/i});
+      expect(createButtons[createButtons.length - 1]).not.toBeDisabled();
     });
 
-    await user.click(screen.getByRole('button', {name: /create user/i}));
+    const createButtons = screen.getAllByRole('button', {name: /create user/i});
+    await user.click(createButtons[createButtons.length - 1]);
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
@@ -552,10 +560,12 @@ describe('UserCreatePage', () => {
     await user.click(screen.getByTestId('fill-form-with-empty-values'));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', {name: /create user/i})).not.toBeDisabled();
+      const createButtons = screen.getAllByRole('button', {name: /create user/i});
+      expect(createButtons[createButtons.length - 1]).not.toBeDisabled();
     });
 
-    await user.click(screen.getByRole('button', {name: /create user/i}));
+    const createButtons = screen.getAllByRole('button', {name: /create user/i});
+    await user.click(createButtons[createButtons.length - 1]);
 
     await waitFor(() => {
       const calledWith = mockMutateAsync.mock.calls[0][0] as {attributes: Record<string, unknown>};
@@ -627,11 +637,11 @@ describe('UserCreatePage', () => {
     await user.click(screen.getByTestId('fill-form'));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', {name: /create user/i})).not.toBeDisabled();
+      expect(getCreateUserButton()).not.toBeDisabled();
     });
 
     // Trigger validation error to open snackbar
-    await user.click(screen.getByRole('button', {name: /create user/i}));
+    await user.click(getCreateUserButton());
 
     await waitFor(() => {
       expect(screen.getByText('Organization unit ID is missing for the selected user type.')).toBeInTheDocument();
@@ -685,10 +695,12 @@ describe('UserCreatePage', () => {
     await user.click(screen.getByTestId('fill-form'));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', {name: /create user/i})).not.toBeDisabled();
+      const createButtons = screen.getAllByRole('button', {name: /create user/i});
+      expect(createButtons[createButtons.length - 1]).not.toBeDisabled();
     });
 
-    await user.click(screen.getByRole('button', {name: /create user/i}));
+    const createButtons = screen.getAllByRole('button', {name: /create user/i});
+    await user.click(createButtons[createButtons.length - 1]);
 
     await waitFor(() => {
       expect(screen.getByText('Organization unit ID is missing for the selected user type.')).toBeInTheDocument();
@@ -719,10 +731,12 @@ describe('UserCreatePage', () => {
     await user.click(screen.getByTestId('fill-form'));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', {name: /create user/i})).not.toBeDisabled();
+      const createButtons = screen.getAllByRole('button', {name: /create user/i});
+      expect(createButtons[createButtons.length - 1]).not.toBeDisabled();
     });
 
-    await user.click(screen.getByRole('button', {name: /create user/i}));
+    const createButtons = screen.getAllByRole('button', {name: /create user/i});
+    await user.click(createButtons[createButtons.length - 1]);
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalled();
@@ -856,9 +870,9 @@ describe('UserCreatePage', () => {
       await user.click(screen.getByTestId('fill-form'));
 
       await waitFor(() => {
-        expect(screen.getByRole('button', {name: /create user/i})).not.toBeDisabled();
+        expect(getCreateUserButton()).not.toBeDisabled();
       });
-      await user.click(screen.getByRole('button', {name: /create user/i}));
+      await user.click(getCreateUserButton());
 
       await waitFor(() => {
         expect(mockMutateAsync).toHaveBeenCalledWith({
@@ -891,9 +905,9 @@ describe('UserCreatePage', () => {
       await user.click(screen.getByTestId('fill-form'));
 
       await waitFor(() => {
-        expect(screen.getByRole('button', {name: /create user/i})).not.toBeDisabled();
+        expect(getCreateUserButton()).not.toBeDisabled();
       });
-      await user.click(screen.getByRole('button', {name: /create user/i}));
+      await user.click(getCreateUserButton());
 
       await waitFor(() => {
         expect(mockMutateAsync).toHaveBeenCalledWith({

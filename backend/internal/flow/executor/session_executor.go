@@ -59,7 +59,9 @@ func newSessionExecutor(flowFactory core.FlowFactoryInterface, sso session.Servi
 		log.String(log.LoggerKeyExecutorName, ExecutorNameSession))
 
 	base := flowFactory.CreateExecutor(ExecutorNameSession, providers.ExecutorTypeAuthentication,
-		[]providers.Input{}, []providers.Input{})
+		[]providers.Input{}, []providers.Input{}, &providers.ExecutorMeta{
+			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAuthentication},
+		})
 
 	return &sessionExecutor{
 		Executor:      base,

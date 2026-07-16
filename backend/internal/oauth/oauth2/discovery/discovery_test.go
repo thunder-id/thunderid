@@ -274,12 +274,13 @@ func TestGetSupportedGrantTypes(t *testing.T) {
 	supported := constants.GetSupportedGrantTypes()
 
 	assert.NotNil(t, supported)
-	assert.Equal(t, 5, len(supported))
+	assert.Equal(t, 6, len(supported))
 	assert.Contains(t, supported, "authorization_code")
 	assert.Contains(t, supported, "client_credentials")
 	assert.Contains(t, supported, "refresh_token")
 	assert.Contains(t, supported, "urn:ietf:params:oauth:grant-type:token-exchange")
 	assert.Contains(t, supported, "urn:openid:params:grant-type:ciba")
+	assert.Contains(t, supported, "urn:ietf:params:oauth:grant-type:jwt-bearer")
 	assert.NotContains(t, supported, "password")
 	assert.NotContains(t, supported, "implicit")
 }

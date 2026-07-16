@@ -1,5 +1,6 @@
 ---
 title: Kubernetes
+docType: guide
 sidebar_position: 2
 persona: iam
 description: Deploy to a Kubernetes cluster using Helm, with PostgreSQL for production and SQLite for single-node setups.
@@ -109,7 +110,7 @@ SQLite on Kubernetes stores database files inside the pod. Without a PersistentV
 :::
 
 :::note
-`--set` values are not saved anywhere. Running `helm get values thunderid` will only show them if you pass `--all`. For anything beyond a quick throwaway install, prefer a values file — it is auditable, version-controllable, and reusable across upgrades. See [Option 2](#option-2-custom-values-file) for the values-file approach.
+`--set` values are not saved anywhere. Running `helm get values thunderid` will only show them if you pass `--all`. For anything beyond a quick throwaway install, prefer a values file: it is auditable, version-controllable, and reusable across upgrades. See [Option 2](#option-2-custom-values-file) for the values-file approach.
 :::
 
 ### Option 2: Custom Values File
@@ -300,9 +301,9 @@ persistence:
   size: 1Gi
 ```
 
-Also set `deployment.securityContext.readOnlyRootFilesystem: false` when using SQLite — the chart sets this to `true` by default, which prevents SQLite from writing its database files.
+Also set `deployment.securityContext.readOnlyRootFilesystem: false` when using SQLite: the chart sets this to `true` by default, which prevents SQLite from writing its database files.
 
-Set `replicaCount: 1` when using SQLite — multiple replicas writing to the same SQLite files will corrupt the database.
+Set `replicaCount: 1` when using SQLite: multiple replicas writing to the same SQLite files will corrupt the database.
 
 ## Health Checks
 
@@ -338,7 +339,7 @@ hpa:
   averageUtilizationMemory: 75
 ```
 
-HPA requires the [Kubernetes Metrics Server](https://github.com/kubernetes-sigs/metrics-server) to be installed in your cluster. HPA is only compatible with PostgreSQL — do not enable it when using SQLite.
+HPA requires the [Kubernetes Metrics Server](https://github.com/kubernetes-sigs/metrics-server) to be installed in your cluster. HPA is only compatible with PostgreSQL. Do not enable it when using SQLite.
 
 ## Image Pull Secrets
 

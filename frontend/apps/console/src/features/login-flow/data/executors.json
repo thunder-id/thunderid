@@ -6,6 +6,7 @@
     "display": {
       "header": "Credentials Auth Executor",
       "label": "Identifier + Password",
+      "description": "Verify a username and password",
       "image": "assets/images/icons/password.svg",
       "showOnResourcePanel": true
     },
@@ -28,6 +29,7 @@
     "display": {
       "header": "OTP Executor",
       "label": "Generate OTP",
+      "description": "Generate a one-time passcode to send to the user",
       "image": "assets/images/icons/mobile-message.svg",
       "showOnResourcePanel": true
     },
@@ -59,6 +61,7 @@
     "display": {
       "header": "OTP Executor",
       "label": "Verify OTP",
+      "description": "Validate the one-time passcode entered by the user",
       "image": "assets/images/icons/mobile-message.svg",
       "showOnResourcePanel": true
     },
@@ -82,6 +85,7 @@
     "display": {
       "header": "OAuth Executor",
       "label": "OAuth",
+      "description": "Authenticate against a generic OAuth 2.0 provider",
       "image": "assets/images/icons/link.svg",
       "showOnResourcePanel": true
     },
@@ -110,6 +114,7 @@
     "display": {
       "header": "OIDC Auth Executor",
       "label": "OIDC Auth",
+      "description": "Authenticate against an OpenID Connect provider",
       "image": "assets/images/icons/link.svg",
       "showOnResourcePanel": true
     },
@@ -138,6 +143,7 @@
     "display": {
       "header": "GitHub Executor",
       "label": "GitHub",
+      "description": "Authenticate the user with GitHub",
       "image": "assets/images/icons/github.svg",
       "showOnResourcePanel": true
     },
@@ -166,6 +172,7 @@
     "display": {
       "header": "Google Executor",
       "label": "Google",
+      "description": "Authenticate the user with Google",
       "image": "assets/images/icons/google-generic.svg",
       "showOnResourcePanel": true
     },
@@ -194,6 +201,7 @@
     "display": {
       "header": "Passkey Executor",
       "label": "Request Passkey",
+      "description": "Start a passkey sign-in challenge",
       "image": "assets/images/icons/fingerprint.svg",
       "showOnResourcePanel": true
     },
@@ -221,6 +229,7 @@
     "display": {
       "header": "Passkey Executor",
       "label": "Verify Passkey",
+      "description": "Verify the passkey sign-in response",
       "image": "assets/images/icons/fingerprint.svg",
       "showOnResourcePanel": true
     },
@@ -244,6 +253,7 @@
     "display": {
       "header": "Passkey Executor",
       "label": "Start Passkey Registration",
+      "description": "Begin registering a new passkey",
       "image": "assets/images/icons/fingerprint.svg",
       "showOnResourcePanel": true
     },
@@ -271,6 +281,7 @@
     "display": {
       "header": "Passkey Executor",
       "label": "Finish Passkey Registration",
+      "description": "Complete and store the passkey registration",
       "image": "assets/images/icons/fingerprint.svg",
       "showOnResourcePanel": true
     },
@@ -294,6 +305,7 @@
     "display": {
       "header": "Identifying Executor",
       "label": "Identify User",
+      "description": "Look up the user from the provided identifier",
       "image": "assets/images/icons/magnifying-glass.svg",
       "showOnResourcePanel": false
     },
@@ -317,6 +329,7 @@
     "display": {
       "header": "Identity Resolver",
       "label": "Resolve User",
+      "description": "Resolve the matched user's account details",
       "image": "assets/images/icons/magnifying-glass.svg",
       "showOnResourcePanel": true
     },
@@ -340,6 +353,7 @@
     "display": {
       "header": "Auth Assertion Executor",
       "label": "Auth Assertion Generator",
+      "description": "Issue the authentication assertion that completes login",
       "image": "assets/images/icons/checkbox-check.svg",
       "showOnResourcePanel": true
     },
@@ -361,6 +375,7 @@
     "display": {
       "header": "Provisioning Executor",
       "label": "Provisioning",
+      "description": "Create or update the user account",
       "image": "assets/images/icons/user.svg",
       "showOnResourcePanel": true
     },
@@ -391,6 +406,7 @@
     "display": {
       "header": "Attribute Collector",
       "label": "Attribute Collector",
+      "description": "Collect user attributes into the flow context",
       "image": "assets/images/icons/form.svg",
       "showOnResourcePanel": true
     },
@@ -413,6 +429,7 @@
     "display": {
       "header": "Authorization Executor",
       "label": "Authorization",
+      "description": "Check whether the user is authorized to continue",
       "image": "assets/images/icons/stamp.svg",
       "showOnResourcePanel": true
     },
@@ -435,6 +452,7 @@
     "display": {
       "header": "OU Executor",
       "label": "OU Creation",
+      "description": "Create an organization unit",
       "image": "assets/images/icons/form.svg",
       "showOnResourcePanel": true
     },
@@ -460,6 +478,7 @@
     "display": {
       "header": "HTTP Request Executor",
       "label": "HTTP Request",
+      "description": "Call an external API over HTTP",
       "image": "assets/images/icons/link.svg",
       "showOnResourcePanel": true
     },
@@ -494,6 +513,7 @@
     "display": {
       "header": "User Type Resolver",
       "label": "User Type Resolver",
+      "description": "Determine the type of the signing-in user",
       "image": "assets/images/icons/user.svg",
       "showOnResourcePanel": true
     },
@@ -519,6 +539,7 @@
     "display": {
       "header": "Magic Link Executor",
       "label": "Generate Magic Link",
+      "description": "Create and email a one-time sign-in link",
       "image": "assets/images/icons/link.svg",
       "showOnResourcePanel": true
     },
@@ -542,6 +563,7 @@
     "display": {
       "header": "Magic Link Executor",
       "label": "Verify Magic Link",
+      "description": "Validate a magic link when it is opened",
       "image": "assets/images/icons/link.svg",
       "showOnResourcePanel": true
     },
@@ -565,6 +587,7 @@
     "display": {
       "header": "Identity Resolver",
       "label": "Identify User",
+      "description": "Look up the user from the provided identifier",
       "image": "assets/images/icons/magnifying-glass.svg",
       "showOnResourcePanel": true
     },
@@ -588,6 +611,7 @@
     "display": {
       "header": "Consent Executor",
       "label": "User Consent",
+      "description": "Record the user's consent decisions",
       "image": "assets/images/icons/stamp.svg",
       "showOnResourcePanel": true
     },
@@ -613,6 +637,7 @@
     "display": {
       "header": "Federated Auth Resolver",
       "label": "Resolve Federated User",
+      "description": "Match a federated identity to a local account",
       "image": "assets/images/icons/magnifying-glass.svg",
       "showOnResourcePanel": true
     },
@@ -635,6 +660,7 @@
     "display": {
       "header": "OU Resolver Executor",
       "label": "Resolve OU",
+      "description": "Resolve the organization unit for the flow",
       "image": "assets/images/icons/magnifying-glass.svg",
       "showOnResourcePanel": true
     },
@@ -660,6 +686,7 @@
     "display": {
       "header": "Invite Executor",
       "label": "Generate Invite",
+      "description": "Create an invitation for a new user",
       "image": "assets/images/icons/link.svg",
       "showOnResourcePanel": true
     },
@@ -683,6 +710,7 @@
     "display": {
       "header": "Invite Executor",
       "label": "Verify Invite",
+      "description": "Validate an invitation code or link",
       "image": "assets/images/icons/link.svg",
       "showOnResourcePanel": true
     },
@@ -706,6 +734,7 @@
     "display": {
       "header": "Email Executor",
       "label": "Send Email",
+      "description": "Send an email through the configured sender",
       "image": "assets/images/icons/email.svg",
       "showOnResourcePanel": true
     },
@@ -732,6 +761,7 @@
     "display": {
       "header": "SMS Executor",
       "label": "Send SMS",
+      "description": "Send an SMS through the configured sender",
       "image": "assets/images/icons/mobile-message.svg",
       "showOnResourcePanel": true
     },
@@ -758,6 +788,7 @@
     "display": {
       "header": "Credential Setter",
       "label": "Set Credentials",
+      "description": "Set or update the user's credentials",
       "image": "assets/images/icons/password.svg",
       "showOnResourcePanel": true
     },
@@ -780,6 +811,7 @@
     "display": {
       "header": "Attribute Uniqueness Validator",
       "label": "Validate Attribute Uniqueness",
+      "description": "Ensure an attribute value is not already taken",
       "image": "assets/images/icons/checkbox-check.svg",
       "showOnResourcePanel": true
     },
@@ -802,6 +834,7 @@
     "display": {
       "header": "Permission Validator",
       "label": "Validate Permission",
+      "description": "Check the user holds a required permission",
       "image": "assets/images/icons/stamp.svg",
       "showOnResourcePanel": true
     },
@@ -827,6 +860,7 @@
     "display": {
       "header": "OpenID4VP Verifier",
       "label": "Verifiable Presentation",
+      "description": "Verify credentials from a digital identity wallet",
       "image": "assets/images/icons/eudi-generic.svg",
       "showOnResourcePanel": true
     },

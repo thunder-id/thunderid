@@ -181,22 +181,15 @@ export default function ConfigureExport({
         if (!trimmedSection) return;
 
         const lines = trimmedSection.split(/\r?\n|\r/);
-        let resourceType = 'unknown';
         let fileName = 'unknown';
 
-        // Extract resource type and file name from comments
+        // Extract file name from comments
         for (const line of lines) {
           if (line.startsWith('#')) {
             const fileNameRegex = /File:\s*(.+\.ya?ml)/i;
             const fileNameMatch = fileNameRegex.exec(line);
             if (fileNameMatch) {
               fileName = fileNameMatch[1];
-            }
-
-            const resourceTypeRegex = /resource_type:\s*(\w+)/;
-            const resourceTypeMatch = resourceTypeRegex.exec(line);
-            if (resourceTypeMatch) {
-              resourceType = resourceTypeMatch[1];
             }
           }
         }
@@ -236,6 +229,7 @@ export default function ConfigureExport({
         try {
           const resource = yaml.parse(yamlContent) as unknown;
           if (resource && typeof resource === 'object') {
+            const resourceType = (resource as Record<string, unknown>).resource_type?.toString() ?? 'unknown';
             if (!resourcesByType[resourceType]) {
               resourcesByType[resourceType] = [];
             }
@@ -244,7 +238,6 @@ export default function ConfigureExport({
         } catch (error) {
           logger.warn('Failed to parse YAML section', {
             fileName,
-            resourceType,
             sectionIndex: idx,
             error: error instanceof Error ? error.message : String(error),
             yamlPreview: yamlContent.substring(0, 200),

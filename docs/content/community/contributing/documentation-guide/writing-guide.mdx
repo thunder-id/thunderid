@@ -1,5 +1,7 @@
 ---
 title: Writing Guide
+docType: community
+description: Authoring guidelines for ThunderID docs, covering page types, structure, sidebar placement, and Docusaurus conventions.
 ---
 
 # Writing Guide
@@ -23,7 +25,7 @@ Before writing <ProductName /> documentation, familiarize yourself with the offi
 
 <ProductName /> documentation is organized into separate sections, each with its own sidebar:
 
-```
+```text
 docs/content/
 ├── guides/           # User guides and tutorials (docsSidebar)
 ├── sdks/             # SDK documentation (per-SDK sidebars)
@@ -136,8 +138,6 @@ npm start
 
 **Source:** <RepoLink path="/blob/main/docs/src/components/Stepper.tsx">`docs/src/components/Stepper.tsx`</RepoLink>
 
----
-
 ### TutorialHero
 
 The `TutorialHero` component creates an attractive hero section for tutorials, automatically organizing content into a two-column layout with icons.
@@ -184,8 +184,6 @@ The `TutorialHero` component creates an attractive hero section for tutorials, a
 **Result:** A two-column layout with heading sections and icon-based list items.
 
 **Source:** <RepoLink path="/blob/main/docs/src/components/TutorialHero.tsx">`docs/src/components/TutorialHero.tsx`</RepoLink>
-
----
 
 ### SDKCard
 
@@ -240,8 +238,6 @@ The `SDKCard` component displays SDK information in an attractive card format wi
 
 **Source:** <RepoLink path="/blob/main/docs/src/components/SDKCard.tsx">`docs/src/components/SDKCard.tsx`</RepoLink>
 
----
-
 ### CodeBlock
 
 The `CodeBlock` component displays code with syntax highlighting. It's a wrapper around Docusaurus's native CodeBlock with additional features for use with `CodeGroup`.
@@ -278,8 +274,6 @@ function App() {
 ```
 
 **Source:** <RepoLink path="/blob/main/docs/src/components/CodeBlock.tsx">`docs/src/components/CodeBlock.tsx`</RepoLink>
-
----
 
 ### CodeGroup
 
@@ -347,11 +341,9 @@ resp, _ := client.Do(req)`}
 
 **Source:** <RepoLink path="/blob/main/docs/src/components/CodeGroup.tsx">`docs/src/components/CodeGroup.tsx`</RepoLink>
 
----
-
 ### ProductName
 
-The `<ProductName />` component renders the current product name (e.g. *ThunderID*) from site config. Always use this component instead of hardcoding the product name — it ensures documentation stays correct if the product is ever renamed.
+The `<ProductName />` component renders the current product name (e.g. *<ProductName />*) from site config. Always use this component instead of hardcoding the product name: it ensures documentation stays correct if the product is ever renamed.
 
 **Usage:**
 
@@ -363,11 +355,9 @@ The `<ProductName />` component renders the current product name (e.g. *ThunderI
 
 **Source:** <RepoLink path="/blob/main/docs/src/components/ProductName.tsx">`docs/src/components/ProductName.tsx`</RepoLink>
 
----
-
 ### RepoLink
 
-The `<RepoLink />` component renders a link to a path within the project's GitHub repository. Always use this component instead of hardcoding the repository URL — it ensures links stay valid if the repository is moved or renamed.
+The `<RepoLink />` component renders a link to a path within the project's GitHub repository. Always use this component instead of hardcoding the repository URL: it ensures links stay valid if the repository is moved or renamed.
 
 **Props:**
 - `path` (optional): Path to append to the base repository URL (e.g. `"/issues"`, `"/blob/main/README.md"`)
@@ -383,11 +373,9 @@ See the <RepoLink path="/blob/main/docs/sidebars.ts">`docs/sidebars.ts`</RepoLin
 
 **Source:** <RepoLink path="/blob/main/docs/src/components/RepoLink.tsx">`docs/src/components/RepoLink.tsx`</RepoLink>
 
----
-
 ### Product Name Placeholders
 
-In contexts where JSX components cannot be used — **frontmatter fields** and **fenced code blocks / inline code spans** — use the `{{ProductName}}` and `{{productSlug}}` string placeholders instead. They are replaced at build time.
+In contexts where JSX components cannot be used, such as **frontmatter fields** and **fenced code blocks / inline code spans**, use the `{{ProductName}}` and `{{productSlug}}` string placeholders instead. They are replaced at build time.
 
 | Placeholder | Replaced with |
 |---|---|
@@ -481,7 +469,7 @@ touch docs/content/guides/advanced-topics/authorization.mdx
 
 Each page should have frontmatter with `sidebar_position`:
 
-```mdx
+```yaml
 ---
 title: Authentication
 sidebar_position: 1
@@ -494,7 +482,7 @@ Content here...
 
 ### Example Guide Structure
 
-```
+```text
 guides/
 ├── introduction.mdx                    # sidebar_position: 1
 ├── installation.mdx                    # sidebar_position: 2
@@ -715,7 +703,7 @@ mkdir design-principles
 
 3. Add content with frontmatter:
 
-```mdx
+```yaml
 ---
 title: Code of Conduct
 sidebar_position: 3
@@ -745,7 +733,7 @@ mkdir docs/content/community/design-principles
 
 ### Example Community Structure
 
-```
+```text
 community/
 ├── contributing/
 │   ├── _category_.json

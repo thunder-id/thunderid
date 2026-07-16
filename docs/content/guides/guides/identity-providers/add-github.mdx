@@ -1,5 +1,6 @@
 ---
 title: Add a GitHub Identity Provider
+docType: guide
 sidebar_position: 3
 persona: iam
 description: Configure a GitHub identity provider to enable Sign in with GitHub for your applications.
@@ -20,11 +21,11 @@ This guide walks you through registering a GitHub identity provider (IdP) in <Pr
 1. Sign in to [GitHub](https://github.com) and go to **Settings** → **Developer settings** → **OAuth Apps**.
 2. Click **New OAuth App**.
 3. Fill in the required fields:
-   - **Application name** — A name for your OAuth app.
-   - **Homepage URL** — The URL of your application.
-   - **Authorization callback URL** — The callback URL for your <ProductName /> deployment:
+   - **Application name**: A name for your OAuth app.
+   - **Homepage URL**: The URL of your application.
+   - **Authorization callback URL**: The callback URL for your <ProductName /> deployment:
 
-     ```
+     ```text
      https://<your-thunderid-host>/oauth2/callback
      ```
 
@@ -83,7 +84,7 @@ You can include the following optional properties in the request `properties` ar
 | `scopes` | Space-separated list of OAuth scopes to request. Include `user:email` to ensure the user's email address is accessible. |
 | `prompt` | Controls GitHub's consent screen behavior. |
 
-To map GitHub's profile fields (e.g. `login`, `avatar_url`) to local user attributes, set the top-level `attributeConfiguration` field — see [Attribute Configuration](../add-oidc-provider#attribute-configuration).
+To map GitHub's profile fields (e.g. `login`, `avatar_url`) to local user attributes, set the top-level `attributeConfiguration` field. See [Attribute Configuration](../add-oidc-provider#attribute-configuration).
 
 Example with optional properties:
 
@@ -105,5 +106,5 @@ curl -kL -X POST https://localhost:8090/identity-providers \
 
 ## Next Steps
 
-- [Connect an IdP to an Application](../connect-idp-to-application) — Add this GitHub IdP to an application's authentication flow.
-- [Manage Identity Providers](../manage-identity-providers) — Update or delete identity providers.
+- [Connect an IdP to an Application](../connect-idp-to-application): Add this GitHub IdP to an application's authentication flow.
+- [Manage Identity Providers](../manage-identity-providers): Update or delete identity providers.

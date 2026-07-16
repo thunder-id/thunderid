@@ -69,7 +69,6 @@ const twoRowsResponse: ResourceServerListResponse = {
     {
       id: 'rs-1',
       name: 'Payments API',
-      handle: 'payments-api',
       identifier: 'https://api.example.com',
       ouId: 'ou-1',
       delimiter: ':',
@@ -78,8 +77,7 @@ const twoRowsResponse: ResourceServerListResponse = {
     {
       id: 'rs-2',
       name: 'System MCP',
-      handle: 'system-mcp',
-      identifier: null,
+      identifier: 'https://mcp.example.com',
       ouId: 'ou-1',
       delimiter: '/',
       type: 'MCP',

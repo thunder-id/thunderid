@@ -158,7 +158,7 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_EntityOnlyAgent() {
 	s.Require().NotEmpty(exportResp.Resources, "expected exported YAML")
 	yamlContent := exportResp.Resources
 
-	s.Assert().Contains(yamlContent, "# resource_type: agent")
+	s.Assert().Contains(yamlContent, "resource_type: agent")
 	s.Assert().Contains(yamlContent, "id: "+createdID)
 	s.Assert().Contains(yamlContent, "ouId: "+s.ouID)
 	s.Assert().Contains(yamlContent, "name: "+agentName)
@@ -223,7 +223,7 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_AgentWithConfidential
 	s.Require().NoError(err)
 	yamlContent := exportResp.Resources
 
-	s.Assert().Contains(yamlContent, "# resource_type: agent")
+	s.Assert().Contains(yamlContent, "resource_type: agent")
 	// ClientID and ClientSecret are parameterized; the plaintext secret must not appear in YAML.
 	s.Assert().NotContains(yamlContent, clientSecret, "client secret must not appear in exported YAML")
 	s.Assert().Contains(yamlContent, "{{", "client_id should be a template variable")
@@ -337,7 +337,7 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_AgentWithAllFields() 
 	yamlContent := exportResp.Resources
 
 	// Assert every significant field appears in the exported YAML.
-	s.Assert().Contains(yamlContent, "# resource_type: agent")
+	s.Assert().Contains(yamlContent, "resource_type: agent")
 	s.Assert().Contains(yamlContent, "id: "+createdID)
 	s.Assert().Contains(yamlContent, "ouId: "+s.ouID)
 	s.Assert().Contains(yamlContent, "name: "+agentName)

@@ -111,8 +111,8 @@ func (suite *HandlerTestSuite) TestHandleResourceServerPostRequest_Success() {
 	reqBody := CreateResourceServerRequest{
 		Name:        "test-rs",
 		Description: "Test",
+		Identifier:  "test-identifier",
 		Type:        providers.ResourceServerTypeMCP,
-		Handle:      "test-handle",
 		OUID:        "ou-123",
 	}
 
@@ -124,7 +124,6 @@ func (suite *HandlerTestSuite) TestHandleResourceServerPostRequest_Success() {
 		Name:        "test-rs",
 		Description: "Test",
 		Type:        providers.ResourceServerTypeMCP,
-		Handle:      "test-handle",
 		OUID:        "ou-123",
 	}, nil)
 
@@ -207,9 +206,9 @@ func (suite *HandlerTestSuite) TestHandleResourceServerGetRequest_NotFound() {
 
 func (suite *HandlerTestSuite) TestHandleResourceServerPutRequest_Success() {
 	reqBody := UpdateResourceServerRequest{
-		Name:   "updated-rs",
-		Handle: "updated-handle-string",
-		OUID:   "ou-123",
+		Name:       "updated-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	suite.mockService.On("UpdateResourceServer", mock.Anything,
@@ -804,9 +803,9 @@ func (suite *HandlerTestSuite) TestHandleError_NotFoundStatus() {
 
 func (suite *HandlerTestSuite) TestHandleError_ConflictStatus() {
 	reqBody := CreateResourceServerRequest{
-		Name:   "test-rs",
-		Handle: "test-handle",
-		OUID:   "ou-123",
+		Name:       "test-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	suite.mockService.On("CreateResourceServer", mock.Anything,
@@ -1001,9 +1000,9 @@ func (suite *HandlerTestSuite) TestHandleResourceServerPutRequest_InvalidJSON() 
 
 func (suite *HandlerTestSuite) TestHandleResourceServerPutRequest_ServiceError() {
 	reqBody := UpdateResourceServerRequest{
-		Name:   "updated-rs",
-		Handle: "updated-handle-string",
-		OUID:   "ou-123",
+		Name:       "updated-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	suite.mockService.On("UpdateResourceServer", mock.Anything,

@@ -1,5 +1,6 @@
 ---
 title: Build a Multi-Factor Sign-In Flow
+docType: guide
 sidebar_position: 4
 persona: iam
 description: Build a sign-in flow with username + password or Google social login on the first factor, and SMS OTP as a second factor for the password path.
@@ -13,14 +14,14 @@ By the end of this guide, you will have a sign-in flow that offers two first-fac
 
 ## Flow Structure
 
-The two paths diverge at the login screen and both end at login success — the password path with an extra OTP step.
+The two paths diverge at the login screen and both end at login success, the password path with an extra OTP step.
 
 <BuildAFlowDiagram />
 
 ## Prerequisites
 
 - <ProductName /> is running. See [Get Started](../../../getting-started/get-thunderid).
-- You have created an application. See [Register an Application](../../../getting-started/register-an-application).
+- You have created an application. See [Register an Application](../../applications/manage-applications).
 - A Google identity provider is configured in <ProductName />. See [Add Google](../../identity-providers/add-google).
 - An SMS notification sender is configured. See [SMS Sender](../../notifications/sms-providers).
 - Each user's profile in <ProductName /> includes a mobile number. The SMS OTP executor reads the number from the user store.
@@ -59,7 +60,7 @@ The login screen now has two actions: the **Sign In** button (routes to the Iden
 
 ## Configure the Google Executor
 
-The Google executor manages the OAuth redirect to Google and the callback. It requires a configured Google identity provider — see [Add Google](../../identity-providers/add-google) if you haven't set one up yet.
+The Google executor manages the OAuth redirect to Google and the callback. It requires a configured Google identity provider. See [Add Google](../../identity-providers/add-google) if you haven't set one up yet.
 
 1. Click <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline",verticalAlign:"middle"}}><path d="M11 10.27 7 3.34"></path><path d="m11 13.73-4 6.93"></path><path d="M12 22v-2"></path><path d="M12 2v2"></path><path d="M14 12h8"></path><path d="m17 20.66-1-1.73"></path><path d="m17 3.34-1 1.73"></path><path d="M2 12h2"></path><path d="m20.66 17-1.73-1"></path><path d="m20.66 7-1.73 1"></path><path d="m3.34 17 1.73-1"></path><path d="m3.34 7 1.73 1"></path><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="12" r="8"></circle></svg> configure icon on the **Google** Executor node.
 2. Set the `Connection` property to the connection name of your configured Google identity provider.
@@ -71,8 +72,8 @@ After a successful username + password check, the flow sends a one-time password
 
 | Node | Role |
 |---|---|
-| **Generate OTP** Executor | Generates the OTP and stores it for delivery. Runs in the background — no user interaction. |
-| **Send SMS** Executor | Delivers the generated OTP to the user's mobile number via SMS. Runs in the background — no user interaction. |
+| **Generate OTP** Executor | Generates the OTP and stores it for delivery. Runs in the background, no user interaction. |
+| **Send SMS** Executor | Delivers the generated OTP to the user's mobile number via SMS. Runs in the background, no user interaction. |
 | **SMS OTP View** | Presents the OTP entry screen to the user. |
 | **Verify OTP** Executor | Validates the code the user entered. |
 
@@ -104,7 +105,7 @@ Before saving, confirm these connections:
 
 | From | Port | To |
 |---|---|---|
-| **START** | — | **Username + Password View** |
+| **START** | - | **Username + Password View** |
 | **Username + Password View** (Sign In) | action | **Identifier + Password** Executor |
 | **Username + Password View** (Continue with Google) | action | **Google** Executor |
 | **Identifier + Password** | success | **Generate OTP** Executor |
@@ -115,7 +116,7 @@ Before saving, confirm these connections:
 | **SMS OTP View** (Verify) | action | **Verify OTP** Executor |
 | **Verify OTP** | success | **Auth Assertion Generator** Executor |
 | **Verify OTP** | incomplete | **SMS OTP View** |
-| **Verify OTP** | failure | *(unconnected — flow terminates; wire to error View in production)* |
+| **Verify OTP** | failure | *(unconnected, flow terminates; wire to error View in production)* |
 | **Auth Assertion Generator** | success | **END** |
 
 :::note
@@ -148,7 +149,7 @@ A flow has no effect until it is assigned to an application.
 
   1. In the Console, go to **Flows** → **+ Create New Flow**.
   2. Select **Self Sign-up** as the flow type and click **Continue**.
-  3. Choose a template — for example, **Basic** ("Username, password, and profile info registration") — or **Blank** to start from scratch.
+  3. Choose a template, for example, **Basic** ("Username, password, and profile info registration"), or **Blank** to start from scratch.
   4. Give the flow a name and click **Create**.
   5. The canvas opens with the selected template pre-wired. Customize the steps as needed, then click **Save**.
 
@@ -167,11 +168,11 @@ A flow has no effect until it is assigned to an application.
 <details>
   <summary>Build and configure a recovery flow</summary>
 
-  A recovery flow lets users regain access to their account — for example, via email-based password reset. To create one:
+  A recovery flow lets users regain access to their account, for example, via email-based password reset. To create one:
 
   1. In the Console, go to **Flows** → **+ Create New Flow**.
   2. Select **Password Recovery** as the flow type and click **Continue**.
-  3. Choose a template — for example, **Email Link** ("Email-based password recovery with email link") or **SMS OTP** — or **Blank** to start from scratch.
+  3. Choose a template, for example, **Email Link** ("Email-based password recovery with email link") or **SMS OTP**, or **Blank** to start from scratch.
   4. Give the flow a name and click **Create**.
   5. Review and customize the canvas, then click **Save**.
 
@@ -190,18 +191,18 @@ A flow has no effect until it is assigned to an application.
 <details>
   <summary>Build and configure a user onboarding flow</summary>
 
-  A user onboarding flow controls how administrators create and onboard new users. Unlike authentication, registration, and recovery flows — which are assigned per application — the user onboarding flow is configured **system-wide**. It runs whenever an admin creates a user through the <ProductName /> Console, regardless of which application they are working in. The same flow also governs admin-initiated user creation via the API.
+  A user onboarding flow controls how administrators create and onboard new users. Unlike authentication, registration, and recovery flows, which are assigned per application, the user onboarding flow is configured **system-wide**. It runs whenever an admin creates a user through the <ProductName /> Console, regardless of which application they are working in. The same flow also governs admin-initiated user creation via the API.
 
   The default built-in flow walks the admin through the following steps:
 
-  1. **Permission check** — validates that the caller holds the required `system` scope.
-  2. **User type selection** — if multiple user types are configured, prompts the admin to select one.
-  3. **Organisation unit (OU) selection** — prompts the admin to choose the target OU from the OU tree.
-  4. **Onboarding mode** — the admin chooses between two paths:
-     - **Create now** — the admin fills in the user's profile details immediately and the user is provisioned on the spot.
-     - **Invite** — the admin enters the user's email address and selects a delivery method: send an invitation email, or copy a shareable link. The invited user follows the link to complete their own registration (the invite link is valid for 24 hours).
+  1. **Permission check**: validates that the caller holds the required `system` scope.
+  2. **User type selection**: if multiple user types are configured, prompts the admin to select one.
+  3. **Organisation unit (OU) selection**: prompts the admin to choose the target OU from the OU tree.
+  4. **Onboarding mode**: the admin chooses between two paths:
+     - **Create now**: the admin fills in the user's profile details immediately and the user is provisioned on the spot.
+     - **Invite**: the admin enters the user's email address and selects a delivery method: send an invitation email, or copy a shareable link. The invited user follows the link to complete their own registration (the invite link is valid for 24 hours).
 
-  To customize the user onboarding flow, you can either edit the default flow directly in the Console's Flow Builder, or create a new one via the `/flows` API. See [API Reference](/docs/next/apis).
+  To customize the user onboarding flow, you can either edit the default flow directly in the Console's Flow Builder, or create a new one via the `/flows` API. See [API Reference](../../../../apis).
 
   To set the flow as the active system-wide user onboarding flow, update `deployment.yaml`:
 
@@ -210,7 +211,7 @@ A flow has no effect until it is assigned to an application.
     user_onboarding_flow_handle: <your-flow-handle>
   ```
 
-  Restart <ProductName /> for the change to take effect. All admin user creation actions — from the Console and the API — use the new flow.
+  Restart <ProductName /> for the change to take effect. All admin user creation actions, from the Console and the API, use the new flow.
 
 </details>
 
@@ -218,18 +219,18 @@ A flow has no effect until it is assigned to an application.
 
 ### Always Wire Failure Outputs
 
-Every executor has a failure output (red dot). Leaving it unconnected does not mean the flow ignores failures — it means the flow terminates with an unhandled error and the user sees nothing. Connect every failure output to either:
+Every executor has a failure output (red dot). Leaving it unconnected does not mean the flow ignores failures: it means the flow terminates with an unhandled error and the user sees nothing. Connect every failure output to either:
 
 - An **error View** that displays a descriptive message
 - The **END** node to terminate the flow explicitly
 
-For retry behavior — such as letting a user re-enter an incorrect OTP — use the **incomplete** output, not the failure output. Wire the incomplete output back to the input View.
+For retry behavior, such as letting a user re-enter an incorrect OTP, use the **incomplete** output, not the failure output. Wire the incomplete output back to the input View.
 
 ### Pass the `user` Object Between Executors
 
 Most executors read from and write to the `user` context variable. The typical chain is:
 
-```
+```text
 Identify User → sets user
   ↓
 Identifier + Password → confirms user is authenticated
@@ -247,5 +248,5 @@ The Attribute Collector's incomplete path lets you collect profile data graduall
 
 ## Reference
 
-- [Flow Concepts](/docs/next/guides/guides/flows/flow-concepts/): Node types, left panel sections, and canvas connection rules. 
-- [Advanced Configurations](/docs/next/guides/guides/flows/advanced-configurations/): Every executor, its required inputs, and its configurations.
+- [Flow Concepts](../flow-concepts): Node types, left panel sections, and canvas connection rules. 
+- [Advanced Configurations](../advanced-configurations): Every executor, its required inputs, and its configurations.

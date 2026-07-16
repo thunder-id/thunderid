@@ -60,6 +60,7 @@ import (
 )
 
 const existingExecutionID = "existing-execution-id"
+const testAppID = "test-app-123"
 
 // txMarkerKey is an unexported type used as a context key for the transaction marker in tests.
 type txMarkerKey struct{}
@@ -73,9 +74,11 @@ func (s *stubTransactioner) Transact(ctx context.Context, txFunc func(context.Co
 }
 
 const testUserOnboardingFlowHandle = "onboarding-handle"
+const testDefaultAuthFlowHandle = "default-auth-handle"
 
 var testFlowConfig = engineconfig.FlowConfig{
 	UserOnboardingFlowHandle: testUserOnboardingFlowHandle,
+	DefaultAuthFlowHandle:    testDefaultAuthFlowHandle,
 }
 
 var testFlowExecCfg = flowconfig.Config{
@@ -161,7 +164,7 @@ func TestInitiateFlowInvalidFlowType(t *testing.T) {
 }
 
 func TestInitiateFlowSuccessScenarios(t *testing.T) {
-	appID := "test-app-123"
+	appID := testAppID
 
 	testConfig := &config.Config{}
 	_ = config.InitializeServerRuntime("/tmp/test", testConfig)
@@ -327,7 +330,7 @@ func TestInitiateFlowSuccessScenarios(t *testing.T) {
 }
 
 func TestInitiateFlowErrorScenarios(t *testing.T) {
-	appID := "test-app-123"
+	appID := testAppID
 
 	testConfig := &config.Config{}
 	_ = config.InitializeServerRuntime("/tmp/test", testConfig)
@@ -471,6 +474,140 @@ func TestInitiateFlowErrorScenarios(t *testing.T) {
 			// All mocks automatically verified by mockery
 		})
 	}
+}
+
+func TestInitiateFlowFallsBackToDefaultFlow(t *testing.T) {
+	appID := testAppID
+
+	testConfig := &config.Config{}
+	_ = config.InitializeServerRuntime("/tmp/test", testConfig)
+
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+	defaultGraph := flowFactory.CreateGraph("default-auth-graph", providers.FlowTypeAuthentication, 1)
+
+	flowNotFound := &tidcommon.ServiceError{
+		Type:  tidcommon.ClientErrorType,
+		Code:  "FLM-1003",
+		Error: tidcommon.I18nMessage{DefaultValue: "Flow not found"},
+	}
+
+	t.Run("auth flow deleted - falls back to default", func(t *testing.T) {
+		mockStore := newFlowStoreInterfaceMock(t)
+		mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
+		mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(t)
+		mockFlowProvider := NewFlowProviderMock(t)
+		mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+		mockCrypto := cryptomock.NewRuntimeCryptoProviderMock(t)
+		mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]byte("encrypted-ctx"), nil, nil)
+
+		service := &flowExecService{
+			graphBuilder:  mockGraphBuilder,
+			flowProvider:  mockFlowProvider,
+			flowStore:     mockStore,
+			actorProvider: actorprovider.Initialize(mockInboundClient, mockEntityProvider, noopAuthnMgr()),
+			transactioner: &stubTransactioner{},
+			cryptoSvc:     mockCrypto,
+			cfg:           testFlowExecCfg,
+		}
+
+		mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).
+			Return(&inboundmodel.InboundClient{ID: appID, AuthFlowID: "stale-auth-graph"}, nil)
+		mockEntityProvider.EXPECT().GetEntity(appID).
+			Return(&providers.Entity{ID: appID, Category: providers.EntityCategoryApp},
+				(*entityprovider.EntityProviderError)(nil))
+
+		// The referenced flow was deleted.
+		mockFlowProvider.EXPECT().GetFlow(mock.Anything, "stale-auth-graph").
+			Return(nil, flowNotFound)
+		// Fallback resolves the default authentication flow by handle.
+		mockFlowProvider.EXPECT().
+			GetFlowByHandle(mock.Anything, testDefaultAuthFlowHandle, providers.FlowTypeAuthentication).
+			Return(&providers.CompleteFlowDefinition{
+				ID:       "default-auth-graph",
+				FlowType: providers.FlowTypeAuthentication,
+			}, nil)
+		mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(defaultGraph, nil)
+		mockStore.EXPECT().StoreFlowContext(mock.Anything, mock.MatchedBy(
+			func(encryptedEngineCtx FlowContextDB) bool {
+				return encryptedEngineCtx.ExecutionID != ""
+			}), mock.Anything).Return(nil)
+
+		executionID, svcErr := service.InitiateFlow(context.Background(), &FlowInitContext{
+			ApplicationID: appID,
+			FlowType:      "AUTHENTICATION",
+		})
+
+		assert.Nil(t, svcErr)
+		assert.NotEmpty(t, executionID)
+	})
+
+	t.Run("server error retrieving flow - no fallback", func(t *testing.T) {
+		mockStore := newFlowStoreInterfaceMock(t)
+		mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
+		mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(t)
+		mockFlowProvider := NewFlowProviderMock(t)
+		mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+
+		service := &flowExecService{
+			graphBuilder:  mockGraphBuilder,
+			flowProvider:  mockFlowProvider,
+			flowStore:     mockStore,
+			actorProvider: actorprovider.Initialize(mockInboundClient, mockEntityProvider, noopAuthnMgr()),
+			transactioner: &stubTransactioner{},
+			cfg:           testFlowExecCfg,
+		}
+
+		mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).
+			Return(&inboundmodel.InboundClient{ID: appID, AuthFlowID: "stale-auth-graph"}, nil)
+		mockFlowProvider.EXPECT().GetFlow(mock.Anything, "stale-auth-graph").
+			Return(nil, &tidcommon.InternalServerError)
+
+		executionID, svcErr := service.InitiateFlow(context.Background(), &FlowInitContext{
+			ApplicationID: appID,
+			FlowType:      "AUTHENTICATION",
+		})
+
+		assert.NotNil(t, svcErr)
+		assert.Empty(t, executionID)
+		assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+
+	t.Run("default flow retrieval fails during fallback", func(t *testing.T) {
+		mockStore := newFlowStoreInterfaceMock(t)
+		mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
+		mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(t)
+		mockFlowProvider := NewFlowProviderMock(t)
+		mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+
+		service := &flowExecService{
+			graphBuilder:  mockGraphBuilder,
+			flowProvider:  mockFlowProvider,
+			flowStore:     mockStore,
+			actorProvider: actorprovider.Initialize(mockInboundClient, mockEntityProvider, noopAuthnMgr()),
+			transactioner: &stubTransactioner{},
+			cfg:           testFlowExecCfg,
+		}
+
+		mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).
+			Return(&inboundmodel.InboundClient{ID: appID, AuthFlowID: "stale-auth-graph"}, nil)
+		// The referenced flow was deleted, triggering the fallback.
+		mockFlowProvider.EXPECT().GetFlow(mock.Anything, "stale-auth-graph").
+			Return(nil, flowNotFound)
+		// Resolving the default authentication flow also fails.
+		mockFlowProvider.EXPECT().
+			GetFlowByHandle(mock.Anything, testDefaultAuthFlowHandle, providers.FlowTypeAuthentication).
+			Return(nil, &tidcommon.InternalServerError)
+
+		executionID, svcErr := service.InitiateFlow(context.Background(), &FlowInitContext{
+			ApplicationID: appID,
+			FlowType:      "AUTHENTICATION",
+		})
+
+		assert.NotNil(t, svcErr)
+		assert.Empty(t, executionID)
+		assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+	})
 }
 
 func TestGetFlowExpirySeconds(t *testing.T) {

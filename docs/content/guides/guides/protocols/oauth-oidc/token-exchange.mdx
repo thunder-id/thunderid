@@ -1,7 +1,8 @@
 ---
 title: Token Exchange
+docType: reference
 sidebar_position: 4
-description: RFC 8693 Token Exchange in {{ProductName}} — swap one token for another to delegate, impersonate, or downscope across services.
+description: RFC 8693 Token Exchange in {{ProductName}}, swap one token for another to delegate, impersonate, or downscope across services.
 ---
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
@@ -32,9 +33,9 @@ Typical uses:
 | `actor_token_type` (input) | Same set as `subject_token_type`; used for delegation chains |
 | `requested_token_type` (output) | `urn:ietf:params:oauth:token-type:access_token` · `:jwt` only. **`id_token` and `refresh_token` outputs are not supported.** |
 | `audience` parameter | Narrows the `aud` claim on the issued token |
-| `resource` parameter | RFC 8707 resource indicator — combined with `audience` when present |
+| `resource` parameter | RFC 8707 resource indicator, combined with `audience` when present |
 | `scope` parameter | Requested scopes; downscoping is allowed, widening is rejected with `invalid_scope` |
-| Client authentication | Required — same methods as the token endpoint |
+| Client authentication | Required, same methods as the token endpoint |
 | Issued token shape | `issued_token_type` is echoed in the response so the caller knows what it received |
 
 ### Request Fields
@@ -49,7 +50,7 @@ Typical uses:
 | `actor_token_type` | No | Required when `actor_token` is supplied |
 | `audience` | No | Logical name(s) of the target service |
 | `resource` | No | Absolute URI of the target resource server (see [Resource Indicators](../resource-indicators)) |
-| `scope` | No | Requested scopes — must be a subset of the subject token's grant |
+| `scope` | No | Requested scopes must be a subset of the subject token's grant |
 
 </details>
 
@@ -107,6 +108,6 @@ Response:
 
 ## Related Guides
 
-- [Resource Indicators](../resource-indicators) — target the new token at a specific resource server
-- [Client Credentials](../client-credentials) — for service tokens that don't require a subject token
-- [Refresh Token](../refresh-token) — for renewing access tokens without exchange semantics
+- [Resource Indicators](../resource-indicators), target the new token at a specific resource server
+- [Client Credentials](../client-credentials), for service tokens that don't require a subject token
+- [Refresh Token](../refresh-token), for renewing access tokens without exchange semantics

@@ -97,10 +97,16 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
 
   const handleSave = (): void => {
     if (selectedNode.type === 'server') {
+      const nextIdentifier = identifier.trim();
+      if (!nextIdentifier) {
+        showToast(t('resourceServers:detail.identifierRequired', 'Identifier is required.'), 'error');
+        return;
+      }
+
       updateRs.mutate(
         {
           id: resourceServer.id,
-          data: {name, description: description || null, identifier: identifier || null, ouId: resourceServer.ouId},
+          data: {name, description: description || null, identifier: nextIdentifier, ouId: resourceServer.ouId},
         },
         {
           onSuccess: () => {
@@ -152,7 +158,7 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
   const isPending =
     updateRs.isPending || updateResource.isPending || updateServerAction.isPending || updateResourceAction.isPending;
 
-  const permission = selectedNode.type === 'server' ? selectedNode.data.handle : selectedNode.data.permission;
+  const permission = selectedNode.type === 'server' ? '' : selectedNode.data.permission;
 
   const handleCopyPermission = (): void => {
     navigator.clipboard
@@ -325,42 +331,46 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
             size="small"
             helperText={t(
               'resourceServers:mcp.detail.permissionScopeHelp',
-              'Built from the resource server handle, the resource path, and the name, joined by the delimiter.',
+              'Built from the resource path and the name, joined by the delimiter.',
             )}
             sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
           />
         </FormControl>
       ) : (
         <>
-          <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
-            <Typography variant="body2" color="text.secondary">
-              {t('resourceServers:detail.permission', 'Permission')}
-            </Typography>
-            <Chip
-              label={permission}
-              size="small"
-              variant="outlined"
-              sx={{fontFamily: 'monospace', fontSize: '0.78rem'}}
-            />
-            <Tooltip title={copiedPermission ? t('common:copied', 'Copied!') : t('common:copy', 'Copy permission')}>
-              <IconButton size="small" sx={{p: 0.25}} onClick={handleCopyPermission}>
-                {copiedPermission ? <Check size={14} /> : <Copy size={14} />}
-              </IconButton>
-            </Tooltip>
-          </Box>
+          {selectedNode.type !== 'server' && (
+            <>
+              <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+                <Typography variant="body2" color="text.secondary">
+                  {t('resourceServers:detail.permission', 'Permission')}
+                </Typography>
+                <Chip
+                  label={permission}
+                  size="small"
+                  variant="outlined"
+                  sx={{fontFamily: 'monospace', fontSize: '0.78rem'}}
+                />
+                <Tooltip title={copiedPermission ? t('common:copied', 'Copied!') : t('common:copy', 'Copy permission')}>
+                  <IconButton size="small" sx={{p: 0.25}} onClick={handleCopyPermission}>
+                    {copiedPermission ? <Check size={14} /> : <Copy size={14} />}
+                  </IconButton>
+                </Tooltip>
+              </Box>
 
-          <Box>
-            <Typography variant="caption" color="text.secondary">
-              {t('resourceServers:detail.fields.handle', 'Handle (immutable)')}
-            </Typography>
-            <Box>
-              <Chip
-                label={selectedNode.data.handle}
-                size="small"
-                sx={{fontFamily: 'monospace', fontSize: '0.75rem', mt: 0.5}}
-              />
-            </Box>
-          </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary">
+                  {t('resourceServers:detail.fields.handle', 'Handle (immutable)')}
+                </Typography>
+                <Box>
+                  <Chip
+                    label={selectedNode.data.handle}
+                    size="small"
+                    sx={{fontFamily: 'monospace', fontSize: '0.75rem', mt: 0.5}}
+                  />
+                </Box>
+              </Box>
+            </>
+          )}
 
           {selectedNode.type === 'server' && (
             <Box>

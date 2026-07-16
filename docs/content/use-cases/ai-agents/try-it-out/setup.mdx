@@ -1,0 +1,62 @@
+---
+title: Set Up Sample Application
+docType: use-case
+description: Import the Wayfinder bundle to run the AI agent walkthroughs against a working sample.
+sidebar_position: 1
+sidebar_label: Set up sample application
+---
+
+# Set Up Sample Application
+
+Complete the setup once. Every walkthrough below builds on the same starting point.
+
+Before you begin, make sure you have:
+
+- <ProductName /> running locally, with `http://localhost:5173` added to the server-config `cors` section so the web app can call <ProductName /> from the browser. Add it to `backend/cmd/server/config/resources/server_configs/cors.yaml`, or use `PUT /server-config/cors` after startup. See [Get <ProductName />](../../../../guides/getting-started/get-thunderid).
+
+  ```yaml
+  name: cors
+  value:
+    allowedOrigins:
+      - "http://localhost:5173"
+  ```
+
+- The Wayfinder sample distribution. The [Get <ProductName />](../../../../guides/getting-started/get-thunderid) step above already pulls the archive that ships it. It contains a `thunderid-config/redirect/` bundle with an importable YAML config and a `thunderid.env` file, plus the Wayfinder web frontend and the Concierge services.
+- **Node.js 20+** for running the sample's services.
+- **An LLM API key.** One of an Anthropic API key from [console.anthropic.com](https://console.anthropic.com) or a Google Gemini API key from [aistudio.google.com](https://aistudio.google.com).
+
+Import the Wayfinder configuration bundle.
+
+1. **Edit `thunderid-config/redirect/thunderid.env`** if you want to change the agent's client secret. The default value (`wayfinder-agent-secret`) matches the sample's defaults.
+
+2. **Import the bundle into <ProductName />.**
+
+   - Sign in to the <ProductName /> Console at [https://localhost:8090/console](https://localhost:8090/console).
+   - On first sign-in, a welcome screen appears with an **Open** button. (Later, reach the same screen from the user profile menu in the top-right corner of the Console.)
+   - Click **Open** and select your `thunderid-config/redirect/thunderid-config.yaml` file from the sample distribution.
+   - Select your `thunderid-config/redirect/thunderid.env` file to provide the environment variables referenced in the YAML.
+   - The Console imports the files and reports the resources it created when the import completes.
+
+   The import creates:
+
+   - **Resource servers:** `wayfinder-agent` (with `agent:access`) and `wayfinder` (with `wayfinder:booking:read`, `wayfinder:booking:create`, `wayfinder:booking:cancel`, `wayfinder:booking:recommend`).
+   - **Roles:** `Chat User`, `Booking User`, and `Recommender`, with users and the agent pre-assigned:
+     - `Chat User` → `john.doe`.
+     - `Booking User` → `john.doe` and `jane.smith`.
+     - `Recommender` → `WAYFINDER-CONCIERGE`.
+   - **Application:** `WAYFINDER` (public, PKCE, redirect to `http://localhost:5173`).
+   - **Agent:** `WAYFINDER-CONCIERGE` (confidential client with `client_credentials` + `authorization_code` grants).
+   - **Flow:** `Wayfinder Agent Authentication Flow` (assigned to the agent).
+   - **Users:** `john.doe` / `john.doe` and `jane.smith` / `jane.smith` (typed as `Customer`).
+
+3. **Start the sample** following the commands in its README.
+
+## Walkthrough Structure
+
+Each walkthrough below starts from the setup above. The walkthroughs map onto the patterns from [Identity for AI Agents](../../overview), so you can read about a pattern and then run it.
+
+Select a walkthrough to begin:
+
+- [Protect the Agent](../protect-the-agent)
+- [Acting on Its Own](../act-on-its-own)
+- [Acting on Behalf of a User](../act-on-behalf-of-user)

@@ -995,7 +995,6 @@ func (ts *AuthzTestSuite) TestAuthorizationCodeFlowWithResourceParameter() {
 	// Create a Resource Server with the matching identifier so the resource parameter is valid
 	rs := testutils.ResourceServer{
 		Name:       "MCP Resource Server",
-		Handle:     "mcp-server",
 		Identifier: resourceURL,
 		OUID:       testOUID,
 	}

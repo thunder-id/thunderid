@@ -27,8 +27,7 @@ type ResourceServerResponse struct {
 	ID          string                       `json:"id"`
 	Name        string                       `json:"name"`
 	Description string                       `json:"description,omitempty"`
-	Handle      string                       `json:"handle"`
-	Identifier  string                       `json:"identifier,omitempty"`
+	Identifier  string                       `json:"identifier"`
 	Type        providers.ResourceServerType `json:"type"`
 	OUID        string                       `json:"ouId"`
 	Delimiter   string                       `json:"delimiter"`
@@ -92,8 +91,7 @@ type ActionListResponse struct {
 type CreateResourceServerRequest struct {
 	Name        string                       `json:"name"                  native:"required"`
 	Description string                       `json:"description,omitempty"`
-	Handle      string                       `json:"handle,omitempty"      native:"omitempty,max=100"`
-	Identifier  string                       `json:"identifier,omitempty"`
+	Identifier  string                       `json:"identifier"            native:"required"`
 	Type        providers.ResourceServerType `json:"type,omitempty"`
 	OUID        string                       `json:"ouId"                  native:"required"`
 	Delimiter   string                       `json:"delimiter,omitempty"`
@@ -103,7 +101,6 @@ type CreateResourceServerRequest struct {
 type UpdateResourceServerRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
-	Handle      string `json:"handle,omitempty"      native:"omitempty,max=100"`
 	Identifier  string `json:"identifier,omitempty"`
 	OUID        string `json:"ouId"                  native:"required"`
 }

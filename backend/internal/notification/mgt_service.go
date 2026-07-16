@@ -39,6 +39,8 @@ type NotificationSenderMgtSvcInterface interface {
 	CreateSender(ctx context.Context, sender common.NotificationSenderDTO) (*common.NotificationSenderDTO,
 		*tidcommon.ServiceError)
 	ListSenders(ctx context.Context) ([]common.NotificationSenderDTO, *tidcommon.ServiceError)
+	ListSendersByType(ctx context.Context, senderType common.NotificationSenderType) ([]common.NotificationSenderDTO,
+		*tidcommon.ServiceError)
 	GetSender(ctx context.Context, id string) (*common.NotificationSenderDTO, *tidcommon.ServiceError)
 	GetSenderByName(ctx context.Context, name string) (*common.NotificationSenderDTO, *tidcommon.ServiceError)
 	UpdateSender(ctx context.Context, id string, sender common.NotificationSenderDTO) (*common.NotificationSenderDTO,
@@ -141,6 +143,23 @@ func (s *notificationSenderMgtService) ListSenders(ctx context.Context) ([]commo
 	senders, err := s.notificationStore.listSenders(ctx)
 	if err != nil {
 		logger.Error(ctx, "Failed to list notification senders", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	return senders, nil
+}
+
+// ListSendersByType retrieves all notification senders of the given type (e.g. only
+// message/SMS senders, excluding email senders).
+func (s *notificationSenderMgtService) ListSendersByType(
+	ctx context.Context, senderType common.NotificationSenderType,
+) ([]common.NotificationSenderDTO, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationSenderMgtService"))
+	logger.Debug(ctx, "Listing notification senders by type", log.String("type", string(senderType)))
+
+	senders, err := s.notificationStore.listSendersByType(ctx, senderType)
+	if err != nil {
+		logger.Error(ctx, "Failed to list notification senders by type", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 

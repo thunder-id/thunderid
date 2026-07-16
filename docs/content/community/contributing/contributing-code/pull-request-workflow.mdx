@@ -1,5 +1,6 @@
 ---
 title: Pull Request Workflow
+docType: community
 description: Step-by-step workflow for making, testing, and submitting code contributions.
 sidebar_position: 4
 hide_table_of_contents: false
@@ -68,7 +69,7 @@ Fixes #123"
 ```
 
 **Best practices:**
-- Make atomic commits (one logical change per commit) — ideally one commit per PR
+- Make atomic commits (one logical change per commit), ideally one commit per PR
 - Write commit messages that explain **why**, not just **what**
 - Reference the issue number using `Fixes #<number>` or `Closes #<number>`
 
@@ -92,7 +93,7 @@ Then create a Pull Request to the `upstream/main` branch on GitHub:
 ## 5. Address Review Feedback
 
 - Respond to reviewer comments promptly
-- Keep commit history clean — rebase review fixes into the appropriate commit rather than adding separate "fix review comments" commits
+- Keep commit history clean: rebase review fixes into the appropriate commit rather than adding separate "fix review comments" commits
 - Push updates to the same branch
 - Re-request review when ready
 

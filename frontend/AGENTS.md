@@ -32,6 +32,14 @@ Use `make` / `pnpm` targets, not Nx (frontend build tooling is migrating to Turb
   (`pnpm test`, `pnpm lint`, and `pnpm prettier --check` scoped to the affected app or package), not the full frontend
   suite.
 
+## i18n Fallback Values
+
+Every `t('key')` call must pass a fallback default string, either positionally as the second argument (third if
+interpolation values follow), e.g. `t('applications:foo.bar', 'Fallback text', {count})`, or as `defaultValue` inside
+the options object, e.g. `t('applications:foo.bar', {defaultValue: 'Fallback text', count})`. Both forms are valid;
+prefer whichever the surrounding code already uses. This matches the existing convention across the codebase and ensures
+the UI degrades gracefully if a key or locale is missing.
+
 ## Browser Automation
 
 Load [.agent/skills/console/SKILL.md](../.agent/skills/console/SKILL.md) only when browser navigation or UI verification

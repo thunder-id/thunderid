@@ -1,0 +1,5 @@
+extends: existence
+message: "Remove the em dash or en dash and rewrite the sentence."
+level: error
+raw:
+  - '[—–]'

@@ -1,7 +1,8 @@
 ---
 title: Issuer Identification
+docType: reference
 sidebar_position: 4
-description: RFC 9207 Authorization Server Issuer Identification in {{ProductName}} — the iss parameter in authorization responses, used by clients to prevent mix-up attacks.
+description: RFC 9207 Authorization Server Issuer Identification in {{ProductName}}, the iss parameter in authorization responses, used by clients to prevent mix-up attacks.
 ---
 
 # Issuer Identification
@@ -47,10 +48,10 @@ Discovery (`/.well-known/oauth-authorization-server`) advertises the support:
 
 | Aspect | Behavior |
 |---|---|
-| Included on success | Yes — every `code` response |
-| Included on error | Yes — every error response that goes via redirect |
+| Included on success | Yes, every `code` response |
+| Included on error | Yes, every error response that goes via redirect |
 | Value | The configured `issuer` URL of the <ProductName /> instance |
-| Per-client opt-out | None — the parameter is always sent |
+| Per-client opt-out | None: the parameter is always sent |
 | Discovery advertisement | `authorization_response_iss_parameter_supported: true` |
 
 </details>
@@ -77,9 +78,9 @@ function handleCallback(url) {
 }
 ```
 
-Clients that talk to a single authorization server should still verify `iss` defensively — the cost is one string comparison.
+Clients that talk to a single authorization server should still verify `iss` defensively: the cost is one string comparison.
 
 ## Related Guides
 
-- [Authorization Code](../authorization-code) — the response that carries `iss`
-- [Server Metadata](../server-metadata) — `iss` is the `issuer` value from discovery
+- [Authorization Code](../authorization-code), the response that carries `iss`
+- [Server Metadata](../server-metadata), `iss` is the `issuer` value from discovery

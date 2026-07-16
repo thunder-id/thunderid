@@ -1,6 +1,7 @@
 ---
 toc_progress: quickstart
 title: Express Quickstart
+docType: quickstart
 sidebar_position: 3
 persona: app
 description: Add {{ProductName}} authentication to an Express application using the @thunderid/express SDK.
@@ -43,13 +44,17 @@ Use this guide to add <ProductName /> authentication to an Express app with sign
 
 ## Run <ProductName />
 
-Start a local ThunderID instance. Pick the method that works best for you:
+Start a local <ProductName /> instance. Pick the method that works best for you:
 
 <RunThunderID />
 
-Once it's running, the console is available at [https://localhost:8090](https://localhost:8090).
+Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
 
 ## Create an Application
+
+:::info Test User
+If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
+:::
 
 Open the Console at <ConsoleUrl />, navigate to **Applications**, and click **Add Application**:
 
@@ -105,7 +110,7 @@ Install the <ProductName /> Express SDK:
 
 ## Add Authentication Middleware and Routes
 
-Create an `index.js` file with ThunderID middleware and auth routes:
+Create an `index.js` file with <ProductName /> middleware and auth routes:
 
 ```js title="index.js" showLineNumbers
 const express = require('express');

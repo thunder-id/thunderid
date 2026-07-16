@@ -52,14 +52,28 @@ vi.mock('../../../api/useSubtreePermissions');
 /* ---------- Fixture ---------- */
 
 const servers = [
-  {id: 'rs-1', name: 'Booking API', handle: 'booking-api', ouId: 'ou-1', delimiter: ':', type: 'API' as const},
-  {id: 'rs-2', name: 'Payments API', handle: 'payments-api', ouId: 'ou-1', delimiter: ':', type: 'API' as const},
+  {
+    id: 'rs-1',
+    name: 'Booking API',
+    identifier: 'https://booking.example.com',
+    ouId: 'ou-1',
+    delimiter: ':',
+    type: 'API' as const,
+  },
+  {
+    id: 'rs-2',
+    name: 'Payments API',
+    identifier: 'https://payments.example.com',
+    ouId: 'ou-1',
+    delimiter: ':',
+    type: 'API' as const,
+  },
 ];
 
 const dotServer = {
   id: 'rs-dot',
   name: 'Ecommerce API',
-  handle: 'ecommerce-api',
+  identifier: 'https://ecommerce.example.com',
   ouId: 'ou-1',
   delimiter: '.',
   type: 'API' as const,
@@ -204,7 +218,7 @@ describe('PermissionCatalog', () => {
     // Before expand: Bookings resource row absent
     expect(screen.queryByText('Bookings')).not.toBeInTheDocument();
     // Click the rs-1 header expand button
-    await user.click(screen.getByRole('button', {name: 'booking-api'}));
+    await user.click(screen.getByRole('button', {name: 'Booking API'}));
     // After expand: Bookings row visible
     expect(await screen.findByText('Bookings')).toBeInTheDocument();
   });
@@ -213,7 +227,7 @@ describe('PermissionCatalog', () => {
     const user = userEvent.setup();
     const onChange = renderCatalog({selected: []});
     // Expand rs-1 server
-    await user.click(screen.getByRole('button', {name: 'booking-api'}));
+    await user.click(screen.getByRole('button', {name: 'Booking API'}));
     await screen.findByRole('checkbox', {name: 'Booking API'});
     await waitFor(() => expect(screen.getByText('Bookings')).toBeInTheDocument());
     const allBookingsCheckboxes = screen.getAllByRole('checkbox', {name: 'bookings'});
@@ -243,7 +257,7 @@ describe('PermissionCatalog', () => {
     ];
     const onChange = renderCatalog({selected: fullySelected});
     // Expand rs-1 server
-    await user.click(screen.getByRole('button', {name: 'booking-api'}));
+    await user.click(screen.getByRole('button', {name: 'Booking API'}));
     await waitFor(() => expect(screen.getByText('Bookings')).toBeInTheDocument());
     // The bookings node checkbox should be in 'all' state — click to clear
     const allBookingsCheckboxes = screen.getAllByRole('checkbox', {name: 'bookings'});
@@ -258,7 +272,7 @@ describe('PermissionCatalog', () => {
     // Only bookings:create selected — partial subtree
     renderCatalog({selected: [{resourceServerId: 'rs-1', permissions: ['bookings:create']}]});
     // Expand rs-1 to see the resource node
-    await user.click(screen.getByRole('button', {name: 'booking-api'}));
+    await user.click(screen.getByRole('button', {name: 'Booking API'}));
     await waitFor(() => expect(screen.getByText('Bookings')).toBeInTheDocument());
     // The bookings node checkbox should be indeterminate
     const allBookingsCheckboxes = screen.getAllByRole('checkbox', {name: 'bookings'});
@@ -343,7 +357,7 @@ describe('PermissionCatalog', () => {
     renderCatalog({selected});
 
     // Expand the dot server
-    await user.click(screen.getByRole('button', {name: 'ecommerce-api'}));
+    await user.click(screen.getByRole('button', {name: 'Ecommerce API'}));
     await waitFor(() => expect(screen.getByText('Products')).toBeInTheDocument());
 
     // The Products resource node checkbox should be indeterminate because
@@ -382,7 +396,7 @@ describe('PermissionCatalog', () => {
 
     renderCatalog({selected});
 
-    await user.click(screen.getByRole('button', {name: 'ecommerce-api'}));
+    await user.click(screen.getByRole('button', {name: 'Ecommerce API'}));
     await waitFor(() => expect(screen.getByText('Products')).toBeInTheDocument());
 
     // Should be 'none' state (neither checked nor indeterminate)
@@ -399,7 +413,7 @@ describe('PermissionCatalog', () => {
     const bookingApiCheckbox = screen.getByRole('checkbox', {name: 'Booking API'});
     expect(bookingApiCheckbox).toBeDisabled();
     // Expand the server and check the resource-level checkboxes
-    await user.click(screen.getByRole('button', {name: 'booking-api'}));
+    await user.click(screen.getByRole('button', {name: 'Booking API'}));
     await waitFor(() => expect(screen.getByText('Bookings')).toBeInTheDocument());
     const allBookingsCheckboxes = screen.getAllByRole('checkbox', {name: 'bookings'});
     allBookingsCheckboxes.forEach((cb) => expect(cb).toBeDisabled());
@@ -410,7 +424,7 @@ describe('PermissionCatalog', () => {
     const emptyServer = {
       id: 'rs-empty',
       name: 'Empty API',
-      handle: 'empty-api',
+      identifier: 'https://empty.example.com',
       ouId: 'ou-1',
       delimiter: ':',
       type: 'API' as const,
@@ -438,7 +452,7 @@ describe('PermissionCatalog', () => {
     renderCatalog({selected: []});
 
     // Expand the server to trigger data fetch and populate the cache
-    await user.click(screen.getByRole('button', {name: 'empty-api'}));
+    await user.click(screen.getByRole('button', {name: 'Empty API'}));
 
     // After expansion the cache returns [] — the checkbox should be disabled
     await waitFor(() => {
@@ -452,7 +466,7 @@ describe('PermissionCatalog', () => {
     const mcpServer = {
       id: 'rs-mcp',
       name: 'My MCP Server',
-      handle: 'my-mcp',
+      identifier: 'https://mcp.example.com',
       ouId: 'ou-1',
       delimiter: ':',
       type: 'MCP' as const,
@@ -497,7 +511,7 @@ describe('PermissionCatalog', () => {
     renderCatalog({selected: []});
 
     // Expand the MCP server
-    await user.click(screen.getByRole('button', {name: 'my-mcp'}));
+    await user.click(screen.getByRole('button', {name: 'My MCP Server'}));
 
     // Both subsection labels should be visible
     await waitFor(() => {
@@ -518,7 +532,7 @@ describe('PermissionCatalog', () => {
     const mcpServer = {
       id: 'rs-mcp',
       name: 'My MCP Server',
-      handle: 'my-mcp',
+      identifier: 'https://mcp.example.com',
       ouId: 'ou-1',
       delimiter: ':',
       type: 'MCP' as const,
@@ -554,7 +568,7 @@ describe('PermissionCatalog', () => {
     const onChange = renderCatalog({selected: []});
 
     // Expand the MCP server
-    await user.click(screen.getByRole('button', {name: 'my-mcp'}));
+    await user.click(screen.getByRole('button', {name: 'My MCP Server'}));
 
     await waitFor(() => expect(screen.getByText('Search Files')).toBeInTheDocument());
 
@@ -578,7 +592,7 @@ describe('PermissionCatalog', () => {
     renderCatalog({selected: []});
 
     // Expand the rs-1 server (API type)
-    await user.click(screen.getByRole('button', {name: 'booking-api'}));
+    await user.click(screen.getByRole('button', {name: 'Booking API'}));
 
     await waitFor(() => expect(screen.getByText('Health Ping')).toBeInTheDocument());
 

@@ -45,7 +45,17 @@ func newOpenID4VPVerifier(
 	authnProvider providers.AuthnProviderManager,
 ) providers.Executor {
 	base := flowFactory.CreateExecutor(
-		ExecutorNameOpenID4VPVerify, providers.ExecutorTypeAuthentication, []providers.Input{}, []providers.Input{})
+		ExecutorNameOpenID4VPVerify,
+		providers.ExecutorTypeAuthentication,
+		[]providers.Input{},
+		[]providers.Input{},
+		&providers.ExecutorMeta{
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: propertyKeyPresentationDefinitionID, IsRequired: true},
+				{Property: common.NodePropertyAllowAuthenticationWithoutLocalUser},
+			},
+		},
+	)
 	return &openid4vpVerifier{
 		Executor:      base,
 		service:       service,

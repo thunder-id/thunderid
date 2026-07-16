@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {Box, Menu, MenuItem, type BoxProps} from '@wso2/oxygen-ui';
+import {Box, Button, Menu, MenuItem, type BoxProps} from '@wso2/oxygen-ui';
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -28,6 +28,8 @@ import {
 import {useNodeId, useReactFlow, type Node} from '@xyflow/react';
 import classNames from 'classnames';
 import {useRef, useState, useMemo, memo, type MouseEvent, type ReactElement, type ReactNode} from 'react';
+import {useTranslation} from 'react-i18next';
+import dashedAddButtonSx from './dashedAddButtonSx';
 import Handle from '../../../dnd/Handle';
 import Sortable from '../../../dnd/Sortable';
 import type {SortableProps} from '../../../dnd/Sortable';
@@ -39,7 +41,7 @@ import useFlowPlugins from '@/features/flows/hooks/useFlowPlugins';
 import useInteractionState from '@/features/flows/hooks/useInteractionState';
 import useUIPanelState from '@/features/flows/hooks/useUIPanelState';
 import useValidationStatus from '@/features/flows/hooks/useValidationStatus';
-import {BlockTypes, type Element} from '@/features/flows/models/elements';
+import {BlockTypes, ElementCategories, type Element} from '@/features/flows/models/elements';
 import type {Resource} from '@/features/flows/models/resources';
 import type {StepData} from '@/features/flows/models/steps';
 
@@ -65,6 +67,13 @@ export interface ReorderableComponentPropsInterface
    * @defaultValue undefined
    */
   onAddElementToForm?: (element: Resource, formId: string) => void;
+  /**
+   * When true, hides all selection chrome (hover border and action toolbar) and
+   * renders only the element content. Used for elements that are managed as part
+   * of their parent unit, e.g. the single trigger button inside an action block.
+   * @defaultValue false
+   */
+  hideChrome?: boolean;
   /**
    * When true, hides the drag grip handle.
    * @defaultValue false
@@ -112,6 +121,7 @@ function ReorderableElement({
   className,
   availableElements = undefined,
   onAddElementToForm = undefined,
+  hideChrome = false,
   hideDrag = false,
   hideEdit = false,
   hideDelete = false,
@@ -119,6 +129,7 @@ function ReorderableElement({
   slotProps = {},
   ...rest
 }: ReorderableComponentPropsInterface): ReactElement {
+  const {t} = useTranslation();
   const handleRef = useRef<HTMLButtonElement>(null);
   const stepId: string | null = useNodeId();
   const {updateNodeData} = useReactFlow();
@@ -132,7 +143,9 @@ function ReorderableElement({
   const menuOpen = Boolean(anchorEl);
 
   // Check if this element is a Form
-  const isForm = element.type === BlockTypes.Form;
+  // Action-category blocks (e.g. social login trigger wrappers) share the BLOCK type
+  // with forms but only group a trigger button — they must not accept extra fields.
+  const isForm = element.type === BlockTypes.Form && element.category !== ElementCategories.Action;
 
   const depsRef = useRef({
     element,
@@ -192,7 +205,16 @@ function ReorderableElement({
       if (deps.stepId) {
         deps.setLastInteractedStepId(deps.stepId);
       }
-      deps.setLastInteractedResource(deps.element);
+
+      // Action blocks (e.g. social login wrappers) carry no meaningful properties of
+      // their own — open the properties of the wrapped trigger button instead.
+      const {element} = deps;
+      const isActionBlock = element.type === BlockTypes.Form && element.category === ElementCategories.Action;
+      const innerAction = isActionBlock
+        ? (element as Element).components?.find((child: Element) => child.category === ElementCategories.Action)
+        : undefined;
+
+      deps.setLastInteractedResource(innerAction ?? element);
     },
 
     handleElementDelete: (): void => {
@@ -318,76 +340,82 @@ function ReorderableElement({
         <Box
           display="flex"
           alignItems="center"
-          className={classNames('reorderable-component', className)}
+          className={classNames({'reorderable-component': !hideChrome}, className)}
           onDoubleClick={handlePropertyPanelOpen}
           sx={{
             position: 'relative',
-            border: '2px dashed transparent',
-            py: 2,
-            px: 1,
-            '&:hover, &:focus, &:active': {
-              borderColor: 'primary.main',
-              bgcolor: 'action.hover',
-              '& > .flow-builder-dnd-actions': {
-                visibility: 'visible',
-              },
-            },
-            // When a nested reorderable is hovered, hide this element's toolbar
-            // so only the innermost element's toolbar is visible.
-            '&:has(.reorderable-component:hover) > .flow-builder-dnd-actions': {
-              visibility: 'hidden',
-            },
+            ...(hideChrome
+              ? {}
+              : {
+                  border: '2px dashed transparent',
+                  py: 2,
+                  px: 1,
+                  '&:hover, &:focus, &:active': {
+                    borderColor: 'primary.main',
+                    bgcolor: 'action.hover',
+                    '& > .flow-builder-dnd-actions': {
+                      visibility: 'visible',
+                    },
+                  },
+                  // When a nested reorderable is hovered, hide this element's toolbar
+                  // so only the innermost element's toolbar is visible.
+                  '&:has(.reorderable-component:hover) > .flow-builder-dnd-actions': {
+                    visibility: 'hidden',
+                  },
+                }),
           }}
         >
-          <Box
-            className="flow-builder-dnd-actions"
-            sx={{
-              visibility: 'hidden',
-              position: 'absolute',
-              bgcolor: 'background.default',
-              right: 0,
-              top: 0,
-              height: 32,
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 0,
-              borderBottomLeftRadius: 4,
-              zIndex: 10,
-              pointerEvents: 'none',
-              '& svg': {pointerEvents: 'auto'},
-            }}
-          >
-            {!hideDrag && (
-              <>
-                <Handle label="Drag" cursor="grab" ref={handleRef}>
-                  <GripVertical size={16} />
+          {!hideChrome && (
+            <Box
+              className="flow-builder-dnd-actions"
+              sx={{
+                visibility: 'hidden',
+                position: 'absolute',
+                bgcolor: 'background.default',
+                right: 0,
+                top: 0,
+                height: 32,
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 0,
+                borderBottomLeftRadius: 4,
+                zIndex: 10,
+                pointerEvents: 'none',
+                '& svg': {pointerEvents: 'auto'},
+              }}
+            >
+              {!hideDrag && (
+                <>
+                  <Handle label="Drag" cursor="grab" ref={handleRef}>
+                    <GripVertical size={16} />
+                  </Handle>
+                  <Handle label="Move up" onClick={handleMoveUp}>
+                    <ChevronUpIcon size={16} />
+                  </Handle>
+                  <Handle label="Move down" onClick={handleMoveDown}>
+                    <ChevronDownIcon size={16} />
+                  </Handle>
+                </>
+              )}
+              {!hideEdit && (
+                <Handle label="Edit" onClick={handlePropertyPanelOpen}>
+                  <PencilLineIcon size={16} />
                 </Handle>
-                <Handle label="Move up" onClick={handleMoveUp}>
-                  <ChevronUpIcon size={16} />
+              )}
+              {extraActions}
+              {isForm && formCompatibleElements.length > 0 && (
+                <Handle label="Add Field" onClick={handleMenuOpen}>
+                  <PlusIcon size={16} />
                 </Handle>
-                <Handle label="Move down" onClick={handleMoveDown}>
-                  <ChevronDownIcon size={16} />
+              )}
+              {!hideDelete && (
+                <Handle label="Delete" onClick={handleElementDelete}>
+                  <TrashIcon size={16} color="red" />
                 </Handle>
-              </>
-            )}
-            {!hideEdit && (
-              <Handle label="Edit" onClick={handlePropertyPanelOpen}>
-                <PencilLineIcon size={16} />
-              </Handle>
-            )}
-            {extraActions}
-            {isForm && formCompatibleElements.length > 0 && (
-              <Handle label="Add Field" onClick={handleMenuOpen}>
-                <PlusIcon size={16} />
-              </Handle>
-            )}
-            {!hideDelete && (
-              <Handle label="Delete" onClick={handleElementDelete}>
-                <TrashIcon size={16} color="red" />
-              </Handle>
-            )}
-          </Box>
+              )}
+            </Box>
+          )}
           <Box
             data-testid="element-content"
             onClick={handlePropertyPanelOpen}
@@ -407,6 +435,22 @@ function ReorderableElement({
               availableElements={availableElements}
               onAddElementToForm={onAddElementToForm}
             />
+            {isForm && formCompatibleElements.length > 0 && (
+              <Button
+                fullWidth
+                size="small"
+                className="nodrag"
+                data-testid="form-add-field-button"
+                startIcon={<PlusIcon size={15} />}
+                onClick={(event: MouseEvent<HTMLElement>) => {
+                  event.stopPropagation();
+                  handleMenuOpen(event);
+                }}
+                sx={dashedAddButtonSx}
+              >
+                {t('flows:core.steps.view.addField', 'Add Field')}
+              </Button>
+            )}
           </Box>
         </Box>
       </ValidationErrorBoundary>
@@ -463,7 +507,22 @@ const MemoizedReorderableElement = memo(ReorderableElement, (prevProps, nextProp
   if (prevProps.className !== nextProps.className) {
     return false;
   }
-  // Don't re-render for availableElements or onAddElementToForm changes
+  // Re-render if any chrome-visibility flag changed — the comparator is
+  // load-bearing for these; a missed flag would freeze stale chrome.
+  if (
+    prevProps.hideChrome !== nextProps.hideChrome ||
+    prevProps.hideDrag !== nextProps.hideDrag ||
+    prevProps.hideEdit !== nextProps.hideEdit ||
+    prevProps.hideDelete !== nextProps.hideDelete
+  ) {
+    return false;
+  }
+  // Re-render if availableElements changed — the persistent add-field button
+  // and its menu render from it, so a late-loaded list must not be swallowed.
+  if (prevProps.availableElements !== nextProps.availableElements) {
+    return false;
+  }
+  // Don't re-render for onAddElementToForm changes
   // (handlers read from refs, so they don't need to trigger re-renders)
   return true;
 });

@@ -67,12 +67,6 @@ describe('GroupsListPage', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/groups/create');
   });
 
-  it('should render search field', () => {
-    renderWithProviders(<GroupsListPage />);
-
-    expect(screen.getByPlaceholderText('Search groups...')).toBeInTheDocument();
-  });
-
   it('should render GroupsList component', () => {
     renderWithProviders(<GroupsListPage />);
 

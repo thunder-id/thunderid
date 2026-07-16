@@ -1,5 +1,6 @@
 ---
 title: Configure It Yourself
+docType: use-case
 description: Build the same Wayfinder Sky Pass setup manually, resource by resource, instead of importing the declarative bundle.
 sidebar_position: 4
 ---
@@ -9,15 +10,15 @@ sidebar_position: 4
 Use this page to build the Sky Pass setup manually instead of importing the declarative bundle. Pick this path when you want to see exactly what gets created, adapt the setup to your own project, or learn the moving parts step by step.
 
 :::note Prerequisites
-Complete the environment steps in [Set Up the Sample](../setup#set-up-your-environment) first — get <ProductName /> behind a public URL, point it at that URL, start it, and get the Wayfinder sample and the Skyline Lounge running. Then return here and follow the steps below instead of the bundle import.
+Complete the environment steps in [Set Up the Sample](../setup#set-up-your-environment) first: get <ProductName /> behind a public URL, point it at that URL, start it, and get the Wayfinder sample and the Skyline Lounge running. Then return here and follow the steps below instead of the bundle import.
 :::
 
-The first section is the shared foundation — required regardless of which walkthrough you run. The remaining sections build on it.
+The first section is the shared foundation, required regardless of which walkthrough you run. The remaining sections build on it.
 
-- [Set Up the Foundation](#set-up-the-foundation) — create the `Customer` user type and John Doe's account.
-- [Set Up the Sky Pass Credential](#set-up-the-sky-pass-credential) — needed for [Issue Credential](../issue-credential).
-- [Set Up the Lounge Presentation](#set-up-the-lounge-presentation) — needed for [Verify Credential](../verify-at-lounge).
-- [Register the Wallet Clients](#register-the-wallet-clients) — needed for both walkthroughs.
+- [Set Up the Foundation](#set-up-the-foundation), create the `Customer` user type and John Doe's account.
+- [Set Up the Sky Pass Credential](#set-up-the-sky-pass-credential), needed for [Issue Credential](../issue-credential).
+- [Set Up the Lounge Presentation](#set-up-the-lounge-presentation), needed for [Verify Credential](../verify-at-lounge).
+- [Register the Wallet Clients](#register-the-wallet-clients), needed for both walkthroughs.
 
 ## Set Up the Foundation
 
@@ -38,11 +39,11 @@ The Sky Pass claims come from the credential subject's profile. The tryout needs
    | `member_id`   | string | Optional          |
    | `tier`        | string | Optional          |
 
-   See [User Types](/docs/next/guides/guides/users/user-types).
+   See [User Types](../../../../guides/guides/users/user-types).
 
 2. **Create John Doe.**
 
-   Navigate to **Users** and create a new user of type `Customer`. Set these values — they are what the walkthrough signs in as and what appears in the issued credential:
+   Navigate to **Users** and create a new user of type `Customer`. Set these values. They are what the walkthrough signs in as and what appears in the issued credential:
 
    | Attribute     | Value                    |
    | ------------- | ------------------------ |
@@ -60,9 +61,9 @@ The Sky Pass claims come from the credential subject's profile. The tryout needs
 The credential configuration defines what <ProductName /> issues over OpenID4VCI. In the Console, navigate to **Verifiable Credentials** → **Templates** and create a new template:
 
 - **Name:** Wayfinder Sky Pass
-- **Handle (identifier / scope):** `wayfinder-skypass` — the create wizard auto-derives the handle from the name (as `wayfinder-sky-pass`); change it to `wayfinder-skypass` so it matches the sample's frontend and kiosk.
+- **Handle (identifier / scope):** `wayfinder-skypass`, the create wizard auto-derives the handle from the name (as `wayfinder-sky-pass`); change it to `wayfinder-skypass` so it matches the sample's frontend and kiosk.
 - **Type (`vct`):** `urn:wayfinder:skypass:1`
-- **Claims:** `full_name`, `given_name`, `family_name`, `email`, `member_id`, `tier` — each sourced from the subject's profile and individually disclosable (SD-JWT).
+- **Claims:** `full_name`, `given_name`, `family_name`, `email`, `member_id`, `tier`, each sourced from the subject's profile and individually disclosable (SD-JWT).
 
 The credential configuration's identifier doubles as the OAuth scope the wallet requests, so no extra scope registration is needed.
 
@@ -71,12 +72,12 @@ The credential configuration's identifier doubles as the OAuth scope the wallet 
 The presentation definition is what the Skyline Lounge asks the wallet to disclose. In the Console, navigate to **Verifiable Credentials** → **Presentations** and create a new definition:
 
 - **Name:** Skyline Lounge Access
-- **Handle (identifier):** `wayfinder-skypass` — as with the credential, override the auto-derived handle so it stays `wayfinder-skypass` (the kiosk requests this definition by that id).
+- **Handle (identifier):** `wayfinder-skypass`, as with the credential, override the auto-derived handle so it stays `wayfinder-skypass` (the kiosk requests this definition by that id).
 - **Type (`vct`):** `urn:wayfinder:skypass:1`
 - **Mandatory claims:** `tier`
 - **Optional claims:** `full_name`
 
-Because only `tier` and `full_name` are requested, the wallet discloses just those two of the pass's six claims — the rest stay hidden.
+Because only `tier` and `full_name` are requested, the wallet discloses just those two of the pass's six claims. The rest stay hidden.
 
 ## Register the Wallet Clients
 
@@ -84,6 +85,6 @@ Each wallet vendor uses a fixed OAuth `client_id` and redirect URI for the OpenI
 
 **Using the Console (recommended)**
 
-In the Console, go to **Applications** → **Add Application** and select **Digital Wallet** as the application type. On the **Connect Your Wallet** step, pick **Heidi** from the wallet dropdown — the Console pre-fills the client ID (`c3ce7a6c-2bbb-4abe-909c-41bc9463d3c5`) and redirect URI (`ch.ubique.funke://issuance`) automatically. Set **Allowed User Types** to `Customer` and finish the wizard. Repeat for **Lissi** (pre-fills `9c481dc3-2ad0-4fe0-881d-c32ad02fe0fc` / `https://oob.lissi.io/vci-cb`).
+In the Console, go to **Applications** → **Add Application** and select **Digital Wallet** as the application type. On the **Connect Your Wallet** step, pick **Heidi** from the wallet dropdown: the Console pre-fills the client ID (`c3ce7a6c-2bbb-4abe-909c-41bc9463d3c5`) and redirect URI (`ch.ubique.funke://issuance`) automatically. Set **Allowed User Types** to `Customer` and finish the wizard. Repeat for **Lissi** (pre-fills `9c481dc3-2ad0-4fe0-881d-c32ad02fe0fc` / `https://oob.lissi.io/vci-cb`).
 
 With the foundation, credential, presentation, and wallet clients in place, continue to [Issue Credential](../issue-credential).

@@ -194,7 +194,6 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_MCPExportImportRou
 	server := &providers.ResourceServer{
 		ID:         serverID,
 		Name:       "Booking MCP",
-		Handle:     "booking-mcp",
 		Identifier: "booking-mcp",
 		Type:       providers.ResourceServerTypeMCP,
 		OUID:       "ou1",
@@ -238,7 +237,7 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_MCPExportImportRou
 	assert.True(s.T(), ok)
 
 	// Marshal the exported DTO to YAML, then re-import it. This guards the export->import
-	// lossless guarantee: type and handle must survive so the kind-vs-type import validation
+	// lossless guarantee: type must survive so the kind-vs-type import validation
 	// accepts the nested action carrying a kind.
 	yamlBytes, marshalErr := yaml.Marshal(dto)
 	assert.NoError(s.T(), marshalErr)
@@ -247,7 +246,6 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_MCPExportImportRou
 	s.Require().NoError(parseErr)
 	s.Require().NotNil(imported)
 	assert.Equal(s.T(), providers.ResourceServerTypeMCP, imported.Type)
-	assert.Equal(s.T(), "booking-mcp", imported.Handle)
 	assert.Len(s.T(), imported.Resources, 1)
 	assert.Len(s.T(), imported.Resources[0].Actions, 1)
 	assert.Equal(s.T(), providers.ActionKindTool, imported.Resources[0].Actions[0].Kind)
@@ -576,45 +574,32 @@ func TestBuildPermissionString(t *testing.T) {
 	tests := []struct {
 		name      string
 		resource  *providers.Resource
-		handler   string
 		delimiter string
 		expected  string
 	}{
 		{
-			name: "root resource with handler",
+			name: "root resource",
 			resource: &providers.Resource{
 				Handle:       "users",
 				ParentHandle: "",
 			},
-			handler:   "booking-api",
 			delimiter: ":",
-			expected:  "booking-api:users",
+			expected:  "users",
 		},
 		{
-			name: "nested resource with handler",
+			name: "nested resource",
 			resource: &providers.Resource{
 				Handle:       "profile",
 				ParentHandle: "users",
 			},
-			handler:   "booking-api",
 			delimiter: ":",
-			expected:  "booking-api:users:profile",
-		},
-		{
-			name: "root resource without handler",
-			resource: &providers.Resource{
-				Handle:       "users",
-				ParentHandle: "",
-			},
-			handler:   "",
-			delimiter: ":",
-			expected:  "users",
+			expected:  "users:profile",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := buildPermissionString(tt.resource, resourceHandleMap, tt.handler, tt.delimiter)
+			result, err := buildPermissionString(tt.resource, resourceHandleMap, tt.delimiter)
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -625,7 +610,6 @@ func TestProcessResourceServer_SetsPermissionsAndDelimiter(t *testing.T) {
 	rs := &providers.ResourceServer{
 		ID:         "rs1",
 		Name:       "Test Server",
-		Handle:     "test-api",
 		OUID:       "ou1",
 		Identifier: "api",
 		Resources: []providers.Resource{
@@ -648,48 +632,16 @@ func TestProcessResourceServer_SetsPermissionsAndDelimiter(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, ":", rs.Delimiter)
-	assert.Equal(t, "test-api:users", rs.Resources[0].Permission)
-	assert.Equal(t, "test-api:users:read", rs.Resources[0].Actions[0].Permission)
-	assert.Equal(t, "test-api:users:profile", rs.Resources[1].Permission)
-}
-
-func TestProcessResourceServer_WithHandlePrefixesPermissions(t *testing.T) {
-	rs := &providers.ResourceServer{
-		ID:     "rs1",
-		Name:   "Test Server",
-		OUID:   "ou1",
-		Handle: "booking-api",
-		Resources: []providers.Resource{
-			{
-				Name:   "Users",
-				Handle: "users",
-				Actions: []providers.Action{
-					{Name: "Read", Handle: "read"},
-				},
-			},
-			{
-				Name:         "Profile",
-				Handle:       "profile",
-				ParentHandle: "users",
-			},
-		},
-	}
-
-	err := ProcessResourceServer(rs)
-
-	assert.NoError(t, err)
-	assert.Equal(t, ":", rs.Delimiter)
-	assert.Equal(t, "booking-api:users", rs.Resources[0].Permission)
-	assert.Equal(t, "booking-api:users:read", rs.Resources[0].Actions[0].Permission)
-	assert.Equal(t, "booking-api:users:profile", rs.Resources[1].Permission)
+	assert.Equal(t, "users", rs.Resources[0].Permission)
+	assert.Equal(t, "users:read", rs.Resources[0].Actions[0].Permission)
+	assert.Equal(t, "users:profile", rs.Resources[1].Permission)
 }
 
 func TestProcessResourceServer_DuplicateHandle(t *testing.T) {
 	rs := &providers.ResourceServer{
-		ID:     "rs1",
-		Name:   "Test Server",
-		Handle: "dup-test",
-		OUID:   "ou1",
+		ID:   "rs1",
+		Name: "Test Server",
+		OUID: "ou1",
 		Resources: []providers.Resource{
 			{Name: "Users", Handle: "users"},
 			{Name: "Users Duplicate", Handle: "users"},
@@ -704,13 +656,12 @@ func TestProcessResourceServer_DuplicateHandle(t *testing.T) {
 
 func TestProcessResourceServer_MCPActionCollidesWithGroupPermission(t *testing.T) {
 	// An MCP resource server where a group (RESOURCE) nested under "ops" shares its handle with a
-	// tool (ACTION) nested under the same "ops" group: both derive "booking-mcp:ops:deploy".
+	// tool (ACTION) nested under the same "ops" group: both derive "ops:deploy".
 	rs := &providers.ResourceServer{
-		ID:     "rs-mcp",
-		Name:   "Booking MCP",
-		Handle: "booking-mcp",
-		OUID:   "ou1",
-		Type:   providers.ResourceServerTypeMCP,
+		ID:   "rs-mcp",
+		Name: "Booking MCP",
+		OUID: "ou1",
+		Type: providers.ResourceServerTypeMCP,
 		Resources: []providers.Resource{
 			{
 				Name:   "Ops",
@@ -731,19 +682,18 @@ func TestProcessResourceServer_MCPActionCollidesWithGroupPermission(t *testing.T
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "duplicate permission")
-	assert.Contains(t, err.Error(), "booking-mcp:ops:deploy")
+	assert.Contains(t, err.Error(), "ops:deploy")
 }
 
 func TestProcessResourceServer_MCPActionCollidesWithNestedGroupPermission(t *testing.T) {
-	// A tool nested under group "a" derives "mcp:a:b". A child group "b" nested under "a" derives the
-	// same "mcp:a:b". The cross-entity collision is caught even though the two collide via different
+	// A tool nested under group "a" derives "a:b". A child group "b" nested under "a" derives the
+	// same "a:b". The cross-entity collision is caught even though the two collide via different
 	// nesting paths rather than at the same level.
 	rs := &providers.ResourceServer{
-		ID:     "rs-mcp",
-		Name:   "Booking MCP",
-		Handle: "mcp",
-		OUID:   "ou1",
-		Type:   providers.ResourceServerTypeMCP,
+		ID:   "rs-mcp",
+		Name: "Booking MCP",
+		OUID: "ou1",
+		Type: providers.ResourceServerTypeMCP,
 		Resources: []providers.Resource{
 			{
 				Name:   "Group A",
@@ -764,16 +714,15 @@ func TestProcessResourceServer_MCPActionCollidesWithNestedGroupPermission(t *tes
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "duplicate permission")
-	assert.Contains(t, err.Error(), "mcp:a:b")
+	assert.Contains(t, err.Error(), "a:b")
 }
 
 func TestProcessResourceServer_MCPNoCollisionSucceeds(t *testing.T) {
 	rs := &providers.ResourceServer{
-		ID:     "rs-mcp",
-		Name:   "Booking MCP",
-		Handle: "booking-mcp",
-		OUID:   "ou1",
-		Type:   providers.ResourceServerTypeMCP,
+		ID:   "rs-mcp",
+		Name: "Booking MCP",
+		OUID: "ou1",
+		Type: providers.ResourceServerTypeMCP,
 		Resources: []providers.Resource{
 			{
 				Name:   "Ops",
@@ -796,20 +745,19 @@ func TestProcessResourceServer_MCPNoCollisionSucceeds(t *testing.T) {
 	err := ProcessResourceServer(rs)
 
 	assert.NoError(t, err)
-	assert.Equal(t, "booking-mcp:ops:deploy", rs.Resources[0].Actions[0].Permission)
-	assert.Equal(t, "booking-mcp:ops:status", rs.Resources[0].Actions[1].Permission)
-	assert.Equal(t, "booking-mcp:users:create", rs.Resources[1].Actions[0].Permission)
+	assert.Equal(t, "ops:deploy", rs.Resources[0].Actions[0].Permission)
+	assert.Equal(t, "ops:status", rs.Resources[0].Actions[1].Permission)
+	assert.Equal(t, "users:create", rs.Resources[1].Actions[0].Permission)
 }
 
 func TestProcessResourceServer_NonMCPSkipsPermissionCollisionCheck(t *testing.T) {
 	// An API resource server with the same structure that collides for MCP must still succeed,
 	// since Rule 6 (cross-entity permission collision) applies only to MCP-type resource servers.
 	rs := &providers.ResourceServer{
-		ID:     "rs-api",
-		Name:   "Booking API",
-		Handle: "booking-api",
-		OUID:   "ou1",
-		Type:   providers.ResourceServerTypeAPI,
+		ID:   "rs-api",
+		Name: "Booking API",
+		OUID: "ou1",
+		Type: providers.ResourceServerTypeAPI,
 		Resources: []providers.Resource{
 			{
 				Name:   "Ops",
@@ -845,7 +793,7 @@ func TestProcessResource_SetsPermissions(t *testing.T) {
 		"child": resource,
 	}
 
-	err := processResource(resource, resourceHandleMap, "", ":")
+	err := processResource(resource, resourceHandleMap, ":")
 
 	assert.NoError(t, err)
 	assert.Equal(t, "root:child", resource.Permission)
@@ -856,7 +804,7 @@ func TestProcessResource_MissingParent(t *testing.T) {
 	resource := &providers.Resource{Handle: "child", ParentHandle: "missing"}
 	resourceHandleMap := map[string]*providers.Resource{}
 
-	err := processResource(resource, resourceHandleMap, "", ":")
+	err := processResource(resource, resourceHandleMap, ":")
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "parent resource handle")
@@ -866,7 +814,6 @@ func TestParseAndValidateResourceServerWrapper_Success(t *testing.T) {
 	yamlData := []byte(`
 id: "rs1"
 name: "Test Server"
-handle: "test-api"
 identifier: "api"
 ouId: "ou1"
 resources:
@@ -886,16 +833,15 @@ resources:
 	assert.NoError(t, err)
 	rs, ok := result.(*providers.ResourceServer)
 	assert.True(t, ok)
-	assert.Equal(t, "test-api:users", rs.Resources[0].Permission)
-	assert.Equal(t, "test-api:users:read", rs.Resources[0].Actions[0].Permission)
-	assert.Equal(t, "test-api:users:profile", rs.Resources[1].Permission)
+	assert.Equal(t, "users", rs.Resources[0].Permission)
+	assert.Equal(t, "users:read", rs.Resources[0].Actions[0].Permission)
+	assert.Equal(t, "users:profile", rs.Resources[1].Permission)
 }
 
 func TestParseAndValidateResourceServerWrapper_MCPPermissionCollisionRejected(t *testing.T) {
 	yamlData := []byte(`
 id: "rs-mcp"
 name: "Booking MCP"
-handle: "booking-mcp"
 type: "MCP"
 ouId: "ou1"
 resources:
@@ -916,14 +862,13 @@ resources:
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "duplicate permission")
-	assert.Contains(t, err.Error(), "booking-mcp:ops:deploy")
+	assert.Contains(t, err.Error(), "ops:deploy")
 }
 
 func TestParseAndValidateResourceServerWrapper_MCPCleanSucceeds(t *testing.T) {
 	yamlData := []byte(`
 id: "rs-mcp"
 name: "Booking MCP"
-handle: "booking-mcp"
 type: "MCP"
 ouId: "ou1"
 resources:
@@ -944,8 +889,8 @@ resources:
 	assert.NoError(t, err)
 	rs, ok := result.(*providers.ResourceServer)
 	assert.True(t, ok)
-	assert.Equal(t, "booking-mcp:ops:deploy", rs.Resources[0].Actions[0].Permission)
-	assert.Equal(t, "booking-mcp:ops:status", rs.Resources[0].Actions[1].Permission)
+	assert.Equal(t, "ops:deploy", rs.Resources[0].Actions[0].Permission)
+	assert.Equal(t, "ops:status", rs.Resources[0].Actions[1].Permission)
 }
 
 func TestParseAndValidateResourceServerWrapper_InvalidYAML(t *testing.T) {
@@ -975,12 +920,22 @@ func TestValidateResourceServerWrapper_EmptyName(t *testing.T) {
 	assert.Contains(t, err.Error(), "name cannot be empty")
 }
 
+func TestValidateResourceServerWrapper_EmptyIdentifier(t *testing.T) {
+	fileStore := newResourceStoreInterfaceMock(t)
+
+	err := validateResourceServerWrapper(&providers.ResourceServer{ID: "rs1", Name: "Server"}, fileStore, nil, nil)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "identifier cannot be empty")
+}
+
 func TestValidateResourceServerWrapper_DuplicateInFileStore(t *testing.T) {
 	fileStore := newResourceStoreInterfaceMock(t)
 	fileStore.On("GetResourceServer", mock.Anything, "rs1").Return(providers.ResourceServer{ID: "rs1"}, nil)
 
 	err := validateResourceServerWrapper(
-		&providers.ResourceServer{ID: "rs1", Name: "Server", OUID: "ou1"}, fileStore, nil, nil)
+		&providers.ResourceServer{ID: "rs1", Name: "Server", Identifier: "test-server", OUID: "ou1"},
+		fileStore, nil, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "duplicate resource server ID")
@@ -991,7 +946,8 @@ func TestValidateResourceServerWrapper_FileStoreError(t *testing.T) {
 	fileStore.On("GetResourceServer", mock.Anything, "rs1").Return(providers.ResourceServer{}, errors.New("file error"))
 
 	err := validateResourceServerWrapper(
-		&providers.ResourceServer{ID: "rs1", Name: "Server", OUID: "ou1"}, fileStore, nil, nil)
+		&providers.ResourceServer{ID: "rs1", Name: "Server", Identifier: "test-server", OUID: "ou1"},
+		fileStore, nil, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to check")
@@ -1005,7 +961,8 @@ func TestValidateResourceServerWrapper_DuplicateInDBStore(t *testing.T) {
 	dbStore.On("GetResourceServer", mock.Anything, "rs1").Return(providers.ResourceServer{ID: "rs1"}, nil)
 
 	err := validateResourceServerWrapper(
-		&providers.ResourceServer{ID: "rs1", Name: "Server", OUID: "ou1"}, fileStore, dbStore, nil)
+		&providers.ResourceServer{ID: "rs1", Name: "Server", Identifier: "test-server", OUID: "ou1"},
+		fileStore, dbStore, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "database store")
@@ -1019,7 +976,8 @@ func TestValidateResourceServerWrapper_DBStoreError(t *testing.T) {
 	dbStore.On("GetResourceServer", mock.Anything, "rs1").Return(providers.ResourceServer{}, errors.New("db error"))
 
 	err := validateResourceServerWrapper(
-		&providers.ResourceServer{ID: "rs1", Name: "Server", OUID: "ou1"}, fileStore, dbStore, nil)
+		&providers.ResourceServer{ID: "rs1", Name: "Server", Identifier: "test-server", OUID: "ou1"},
+		fileStore, dbStore, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "database store")
@@ -1031,7 +989,8 @@ func TestValidateResourceServerWrapper_Success(t *testing.T) {
 		Return(providers.ResourceServer{}, errResourceServerNotFound)
 
 	err := validateResourceServerWrapper(
-		&providers.ResourceServer{ID: "rs1", Name: "Server", OUID: "ou1"}, fileStore, nil, nil)
+		&providers.ResourceServer{ID: "rs1", Name: "Server", Identifier: "test-server", OUID: "ou1"},
+		fileStore, nil, nil)
 
 	assert.NoError(t, err)
 }

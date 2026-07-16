@@ -17,7 +17,7 @@
  */
 
 import userEvent from '@testing-library/user-event';
-import {fireEvent, render, screen} from '@thunderid/test-utils';
+import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ApplicationsListPage from '../ApplicationsListPage';
 
@@ -77,27 +77,10 @@ describe('ApplicationsListPage', () => {
       expect(screen.getByRole('button', {name: /Create Application/i})).toBeInTheDocument();
     });
 
-    it('should render the search field', () => {
-      renderWithProviders();
-
-      const searchInput = screen.getByPlaceholderText('Search applications...');
-      expect(searchInput).toBeInTheDocument();
-      expect(searchInput).toHaveAttribute('type', 'text');
-    });
-
     it('should render the ApplicationsList component', () => {
       renderWithProviders();
 
       expect(screen.getByTestId('applications-list')).toBeInTheDocument();
-    });
-
-    it('should render search icon in the search field', () => {
-      renderWithProviders();
-
-      const searchInput = screen.getByPlaceholderText('Search applications...');
-      const searchInputContainer = searchInput.closest('.MuiInputBase-root');
-
-      expect(searchInputContainer).toBeInTheDocument();
     });
   });
 
@@ -109,7 +92,7 @@ describe('ApplicationsListPage', () => {
       const createButton = screen.getByRole('button', {name: /Create Application/i});
       await user.click(createButton);
 
-      expect(mockNavigate).toHaveBeenCalledWith('/applications/create');
+      expect(mockNavigate).toHaveBeenCalledWith('/applications/types');
     });
 
     it('should handle navigation errors gracefully', async () => {
@@ -123,46 +106,12 @@ describe('ApplicationsListPage', () => {
       const createButton = screen.getByRole('button', {name: /Create Application/i});
       await user.click(createButton);
 
-      expect(mockNavigate).toHaveBeenCalledWith('/applications/create');
+      expect(mockNavigate).toHaveBeenCalledWith('/applications/types');
 
       // Logger should log the error
       expect(consoleErrorSpy).toHaveBeenCalled();
 
       consoleErrorSpy.mockRestore();
-    });
-  });
-
-  describe('Search Functionality', () => {
-    it('should allow typing in the search field', async () => {
-      const user = userEvent.setup();
-      renderWithProviders();
-
-      const searchInput = screen.getByPlaceholderText('Search applications...');
-      await user.type(searchInput, 'My App');
-
-      expect(searchInput).toHaveValue('My App');
-    });
-
-    it('should clear search field value', async () => {
-      const user = userEvent.setup();
-      renderWithProviders();
-
-      const searchInput = screen.getByPlaceholderText('Search applications...');
-      await user.type(searchInput, 'Test');
-      expect(searchInput).toHaveValue('Test');
-
-      await user.clear(searchInput);
-      expect(searchInput).toHaveValue('');
-    });
-
-    it('should handle special characters in search', async () => {
-      const user = userEvent.setup();
-      renderWithProviders();
-
-      const searchInput = screen.getByPlaceholderText('Search applications...');
-      await user.type(searchInput, '!@#$%^&*()');
-
-      expect(searchInput).toHaveValue('!@#$%^&*()');
     });
   });
 
@@ -178,50 +127,8 @@ describe('ApplicationsListPage', () => {
       expect(screen.getByRole('heading', {level: 1})).toBeInTheDocument();
       expect(screen.getByRole('button', {name: /Create Application/i})).toBeInTheDocument();
 
-      // Search section
-      expect(screen.getByPlaceholderText('Search applications...')).toBeInTheDocument();
-
       // Content section
       expect(screen.getByTestId('applications-list')).toBeInTheDocument();
-    });
-
-    it('should render components in correct order', () => {
-      const {container} = renderWithProviders();
-
-      const elements = [
-        screen.getByRole('heading', {level: 1}),
-        screen.getByRole('button', {name: /Create Application/i}),
-        screen.getByPlaceholderText('Search applications...'),
-        screen.getByTestId('applications-list'),
-      ];
-
-      // Verify each element exists in the DOM
-      elements.forEach((element) => {
-        expect(element).toBeInTheDocument();
-      });
-
-      // Verify order by checking positions in the DOM
-      const mainContainer = container.firstChild;
-      expect(mainContainer).toBeInTheDocument();
-    });
-  });
-
-  describe('Responsive Behavior', () => {
-    it('should render with responsive flex properties', () => {
-      const {container} = renderWithProviders();
-
-      // Header stack should have flexWrap
-      const headerStack = container.querySelector('.MuiStack-root');
-      expect(headerStack).toBeInTheDocument();
-    });
-
-    it('should render search field with minimum width', () => {
-      renderWithProviders();
-
-      const searchInput = screen.getByPlaceholderText('Search applications...');
-      const searchField = searchInput.closest('.MuiTextField-root');
-
-      expect(searchField).toBeInTheDocument();
     });
   });
 
@@ -256,17 +163,6 @@ describe('ApplicationsListPage', () => {
       expect(() => renderWithProviders()).not.toThrow();
     });
 
-    it('should render the search input adornment with icon', () => {
-      renderWithProviders();
-
-      const searchInput = screen.getByPlaceholderText('Search applications...');
-      const inputContainer = searchInput.closest('.MuiInputBase-root');
-
-      // The InputAdornment with Search icon should be present
-      expect(inputContainer).toBeInTheDocument();
-      expect(inputContainer?.querySelector('svg')).toBeInTheDocument();
-    });
-
     it('should render with all required MUI components', () => {
       renderWithProviders();
 
@@ -281,14 +177,6 @@ describe('ApplicationsListPage', () => {
       const createButton = screen.getByRole('button', {name: /Create Application/i});
       // Button should have SVG icon
       expect(createButton.querySelector('svg')).toBeInTheDocument();
-    });
-
-    it('should render TextField with correct size', () => {
-      renderWithProviders();
-
-      const searchInput = screen.getByPlaceholderText('Search applications...');
-      const textField = searchInput.closest('.MuiTextField-root');
-      expect(textField).toBeInTheDocument();
     });
 
     it('should render ApplicationsList component', () => {
@@ -312,33 +200,6 @@ describe('ApplicationsListPage', () => {
       // Navigation should be attempted for each click
       expect(mockNavigate).toHaveBeenCalledTimes(3);
     });
-
-    it('should handle long search queries', () => {
-      renderWithProviders();
-
-      const searchInput = screen.getByPlaceholderText('Search applications...');
-      const longQuery = 'A'.repeat(500);
-
-      // Use fireEvent for long input to avoid userEvent.type() per-keystroke overhead
-      fireEvent.change(searchInput, {target: {value: longQuery}});
-
-      expect(searchInput).toHaveValue(longQuery);
-    });
-
-    it('should maintain state after multiple interactions', () => {
-      renderWithProviders();
-
-      // Type in search using fireEvent for cross-platform reliability
-      const searchInput = screen.getByPlaceholderText('Search applications...');
-      fireEvent.change(searchInput, {target: {value: 'Test App'}});
-
-      // Click create button
-      const createButton = screen.getByRole('button', {name: /Create Application/i});
-      fireEvent.click(createButton);
-
-      // Search value should still be there
-      expect(searchInput).toHaveValue('Test App');
-    });
   });
 
   describe('Accessibility', () => {
@@ -350,35 +211,12 @@ describe('ApplicationsListPage', () => {
       expect(h1).toHaveTextContent('Applications');
     });
 
-    it('should have accessible search field', () => {
-      renderWithProviders();
-
-      const searchInput = screen.getByPlaceholderText('Search applications...');
-      expect(searchInput).toHaveAttribute('placeholder', 'Search applications...');
-    });
-
     it('should have accessible buttons', () => {
       renderWithProviders();
 
       const createButton = screen.getByRole('button', {name: /Create Application/i});
       expect(createButton).toBeEnabled();
       expect(createButton).toHaveAccessibleName();
-    });
-
-    it('should be keyboard navigable', async () => {
-      const user = userEvent.setup();
-      renderWithProviders();
-
-      // Tab through interactive elements
-      await user.tab();
-
-      const createButton = screen.getByRole('button', {name: /Create Application/i});
-      expect(createButton).toHaveFocus();
-
-      await user.tab();
-
-      const searchInput = screen.getByPlaceholderText('Search applications...');
-      expect(searchInput).toHaveFocus();
     });
 
     it('should support Enter key on Create Application button', async () => {
@@ -390,7 +228,7 @@ describe('ApplicationsListPage', () => {
 
       await user.keyboard('{Enter}');
 
-      expect(mockNavigate).toHaveBeenCalledWith('/applications/create');
+      expect(mockNavigate).toHaveBeenCalledWith('/applications/types');
     });
   });
 });

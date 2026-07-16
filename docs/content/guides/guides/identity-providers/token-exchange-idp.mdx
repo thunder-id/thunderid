@@ -1,5 +1,6 @@
 ---
 title: Token Exchange with External Identity Providers
+docType: guide
 sidebar_position: 5
 persona: iam
 description: Exchange a token from an external identity provider for a {{ProductName}}-issued access token using RFC 8693 Token Exchange.
@@ -7,7 +8,7 @@ description: Exchange a token from an external identity provider for a {{Product
 
 # Token Exchange with External Identity Providers
 
-<ProductName /> can exchange a token issued by an external identity provider (IdP) for a <ProductName />-issued access token. This lets a client that authenticates users via an external OIDC provider — such as Asgardeo, Google, Azure AD, or Keycloak — obtain a <ProductName />-scoped access token without requiring users to sign in again.
+<ProductName /> can exchange a token issued by an external identity provider (IdP) for a <ProductName />-issued access token. This lets a client that authenticates users via an external OIDC provider, such as Asgardeo, Google, Azure AD, or Keycloak, obtain a <ProductName />-scoped access token without requiring users to sign in again.
 
 This uses [RFC 8693 Token Exchange](https://datatracker.ietf.org/doc/html/rfc8693). For general information about the token exchange grant type, see [Token Exchange](../../protocols/oauth-oidc/token-exchange).
 
@@ -128,6 +129,6 @@ Attribute configuration for token exchange uses the same `attributeConfiguration
 
 ## Next Steps
 
-- [Manage Identity Providers](../manage-identity-providers) — Create, update, and delete identity providers using the API.
-- [Connect an IdP to an Application](../connect-idp-to-application) — Use an IdP for redirect-based sign-in flows.
-- [Token Exchange](../../protocols/oauth-oidc/token-exchange) — Learn about the RFC 8693 token exchange grant type in <ProductName />.
+- [Manage Identity Providers](../manage-identity-providers): Create, update, and delete identity providers using the API.
+- [Connect an IdP to an Application](../connect-idp-to-application): Use an IdP for redirect-based sign-in flows.
+- [Token Exchange](../../protocols/oauth-oidc/token-exchange): Learn about the RFC 8693 token exchange grant type in <ProductName />.

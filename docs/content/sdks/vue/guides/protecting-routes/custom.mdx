@@ -1,6 +1,7 @@
 ---
 title: Custom Implementation
-description: Build custom route protection using SDK primitives
+docType: guide
+description: Build custom route protection in Vue using the useThunderID() composable and SDK authentication primitives.
 ---
 
 # Custom Implementation
@@ -29,7 +30,7 @@ import ContactDetails from '../components/ContactDetails.vue'
 
 ## Custom Composable Using `useThunderID`
 
-For more advanced control — for example, role-based protection or a redirect — use `useThunderID()` together with Vue Router's `useRouter`:
+For more advanced control, such as role-based protection or a redirect, use `useThunderID()` together with Vue Router's `useRouter`:
 
 ```ts title="src/composables/useRequireAuth.ts" showLineNumbers
 import { watchEffect } from 'vue'

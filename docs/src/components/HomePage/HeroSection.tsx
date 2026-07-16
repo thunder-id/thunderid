@@ -284,7 +284,7 @@ export default function HeroSection(): JSX.Element {
               </Button>
               <Button
                 component={Link}
-                href="/docs/next/guides/getting-started/what-is-thunderid"
+                href="/docs/next/guides/getting-started/get-thunderid"
                 variant="text"
                 size="large"
                 sx={{

@@ -1,3 +1,4 @@
+resource_type: user_type
 id: decl-schema-1
 name: Declarative Test Schema
 ouId: decl-ou-1

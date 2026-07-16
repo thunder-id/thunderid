@@ -1,0 +1,141 @@
+---
+title: Try It Out
+docType: use-case
+description: Run the AI agent use cases against the Wayfinder sample, a fictional travel-booking app with a built-in AI chat assistant.
+sidebar_position: 0
+---
+
+
+# Try It Out
+
+Each walkthrough on this page runs one of the agent identity patterns from [Identity for AI Agents](../../overview) against a working sample.
+
+## Meet Wayfinder
+
+Wayfinder is a travel-booking application with an AI agent built in, the **Wayfinder Concierge**, an in-app chat assistant. Through Wayfinder, consumers search for flights and hotels, book trips, and ask the Concierge to do the same on their behalf.
+
+Wayfinder has two principals you'll meet in these walkthroughs: consumers who book travel and chat with the agent, and the **Wayfinder Concierge** that acts as their assistant. Each carries its own identity in <ProductName />.
+
+<WayfinderAgentOrganization />
+
+### Meet the Cast
+
+- **Consumers** book travel and chat with the agent.
+  - **John Doe** is the customer with full access. He can book through the UI *and* talk to the Wayfinder Concierge. He carries both the `Booking User` and `Chat User` roles.
+  - **Jane Smith** also books through the UI, but does not have access to the Wayfinder Concierge. She carries only the `Booking User` role.
+- **The Wayfinder Concierge** is a first-class principal in <ProductName /> with its own credentials. It uses its own identity for browsing tools, and switches to a user-context token when a tool needs the consumer's consent.
+
+## Sample Architecture
+
+Wayfinder runs as three deployable pieces. The **Wayfinder Web** browser app hosts the chat widget, the **AI Agent** drives the conversation, and the **Wayfinder Server** exposes booking data over MCP.
+
+<ProductName /> sits alongside as the identity authority. It issues a user token on sign-in, an M2M token for the agent itself, and an on-behalf-of (OBO) token when the agent acts for the consumer. The Wayfinder Server also fetches <ProductName />'s JWKS to validate every incoming JWT.
+
+<WayfinderAgentArchitecture />
+
+## Identity Model
+
+The setup below creates a set of <ProductName /> resources. Here is what each one is and how it maps to Wayfinder concepts.
+
+### Organization
+
+<ProductName /> can host many isolated tenants. Wayfinder needs only one, so everything lives in a single organization.
+
+### User Types
+
+A user type defines who can exist in the system and what attributes they carry. Each user record belongs to exactly one user type. Wayfinder defines a `Customer` user type for the two demo consumers, John Doe and Jane Smith, with standard attributes like username, email, and name.
+
+See [User Types](../../../guides/guides/users/user-types).
+
+### Resources and Permissions
+
+The **AI Agent API** and the **Wayfinder Server** both need protection in the sample. The AI Agent API decides who is allowed to chat with the agent at all, and the Wayfinder Server decides who can book travel. Each is registered as a resource server, with its actions generating one permission per action.
+
+A **resource server** groups the APIs of one backend. Each resource server defines one or more **resources**, each resource defines **actions**, and <ProductName /> automatically generates a **permission** of the form `<resource_server>:<resource>:<action>` for every action.
+
+```text
+wayfinder-agent                         (Resource Server)
+└── agent                               (Resource)
+    └── access     →  agent:access      (Permission)
+
+wayfinder                               (Resource Server)
+└── booking                             (Resource)
+    ├── read       →  wayfinder:booking:read      (Permission)
+    ├── create     →  wayfinder:booking:create
+    ├── cancel     →  wayfinder:booking:cancel
+    └── recommend  →  wayfinder:booking:recommend
+```
+
+Permissions are issued to the access tokens. See [Resource Servers](../../../guides/guides/resource-servers).
+
+### Roles
+
+A role bundles permissions for a class of principal. A user's or agent's effective permissions are the union of permissions across their roles. Wayfinder defines three roles:
+
+- `Chat User`: grants `agent:access`, the permission required to talk to the Wayfinder Concierge.
+- `Booking User`: grants `wayfinder:booking:read`, `wayfinder:booking:create`, and `wayfinder:booking:cancel` for booking travel through the UI.
+- `Recommender`: grants `wayfinder:booking:recommend`, the permission the Wayfinder Concierge needs to surface flight recommendations on its own.
+
+John Doe carries both user roles; Jane Smith carries only `Booking User`. The `Recommender` role is assigned to the `WAYFINDER-CONCIERGE` agent, not to a user.
+
+See [Authorization](../../../guides/key-concepts/authorization).
+
+### Application
+
+An application is the OAuth2 client that <ProductName /> issues tokens to. Wayfinder Web is registered as `WAYFINDER`, a public, PKCE-enforced browser client.
+
+See [Manage Applications](../../../guides/guides/applications/manage-applications).
+
+### Agent
+
+An agent is a first-class non-human principal in <ProductName /> with its own credentials. The Wayfinder Concierge is registered as `WAYFINDER-CONCIERGE`, with two grants enabled:
+
+- `client_credentials`: for the agent's own M2M token, used to call browsing tools.
+- `authorization_code` (with PKCE): for the on-behalf-of flow, where the user consents and the agent calls mutating tools as the user.
+
+See [Manage Agents](../../../guides/guides/agents/manage-agents) and [Agent Authentication](../../../guides/guides/agents/agent-authentication).
+
+### Flows
+
+A flow is the sequence of steps a user moves through when signing in or granting consent. Wayfinder Web uses the bundled `default-flow` for sign-in. The agent uses a separate **Wayfinder Agent Authentication Flow** that drives the OBO consent screen.
+
+See [Build a Flow](../../../guides/guides/flows/build-a-flow).
+
+## Set Up the Sample
+
+Before running any walkthrough, set up the Wayfinder sample application. Two paths lead to the same end state:
+
+<NextSteps>
+  <NextStepsCard
+    title="Quick Start"
+    description="Download the sample and import a pre-built configuration bundle into <ProductName />. Everything the walkthroughs need is created in one step."
+    href="./setup"
+  />
+  <NextStepsCard
+    title="Configure It Yourself"
+    description="Create the same resources step by step through the console and API. Use this path to understand how each piece is set up."
+    href="../configure-it-yourself"
+  />
+</NextSteps>
+
+## Walkthroughs
+
+Once the sample is running, pick a walkthrough:
+
+<NextSteps>
+  <NextStepsCard
+    title="Protect the Agent"
+    description="Gate access to the Wayfinder Concierge with a scope, and watch John get in while Jane is rejected."
+    href="./protect-the-agent"
+  />
+  <NextStepsCard
+    title="Acting on Its Own"
+    description="Watch the Wayfinder Concierge use its own M2M token to call browsing tools, with no user consent required."
+    href="./act-on-its-own"
+  />
+  <NextStepsCard
+    title="Acting on Behalf of a User"
+    description="Watch the Wayfinder Concierge pause for John's consent and complete a booking with a delegated (OBO) token."
+    href="./act-on-behalf-of-user"
+  />
+</NextSteps>

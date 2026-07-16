@@ -40,7 +40,7 @@ export default function GetStartedPage(): JSX.Element {
       icon: <AppWindow size={36} />,
       title: t('common:welcome.getStarted.options.onboardApp.title'),
       description: t('common:welcome.getStarted.options.onboardApp.description', {productName}),
-      action: () => void navigate('/welcome/get-started/applications/create'),
+      action: () => void navigate('/welcome/get-started/applications/types'),
       actionLabel: t('common:welcome.getStarted.options.onboardApp.action'),
       disabled: false,
     },

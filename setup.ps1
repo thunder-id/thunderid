@@ -57,6 +57,11 @@ $BOOTSTRAP_SKIP_PATTERN = if ($env:BOOTSTRAP_SKIP_PATTERN) { $env:BOOTSTRAP_SKIP
 $BOOTSTRAP_ONLY_PATTERN = if ($env:BOOTSTRAP_ONLY_PATTERN) { $env:BOOTSTRAP_ONLY_PATTERN } else { "" }
 $BOOTSTRAP_DIR = if ($env:BOOTSTRAP_DIR) { $env:BOOTSTRAP_DIR } else { ".\bootstrap" }
 $WITH_CONSENT = if ($env:WITH_CONSENT -eq 'false') { $false } else { $true }
+$ADMIN_USERNAME = if ($env:ADMIN_USERNAME) { $env:ADMIN_USERNAME } else { "admin" }
+# Left empty when not supplied: Set-AdminPassword (below) generates a random password
+# in that case, rather than falling back to a fixed, predictable value.
+$ADMIN_PASSWORD = if ($env:ADMIN_PASSWORD) { $env:ADMIN_PASSWORD } else { "" }
+$ADMIN_PASSWORD_GENERATED = $false
 # Direct Auth Secret gates the Direct API endpoints (secure by default). When not supplied, one is
 # generated during setup and written to deployment.yaml.
 $DIRECT_AUTH_SECRET = if ($env:DIRECT_AUTH_SECRET) { $env:DIRECT_AUTH_SECRET } else { "" }
@@ -318,6 +323,43 @@ function Write-DirectAuthSecret {
     Set-Content -Path $File -Value $out
 }
 
+# Set-AdminPassword ensures the default admin account is usable out of the box while staying secure by
+# default: it uses the provided value, or generates a random one. Unlike the Direct Auth Secret, this
+# intentionally regenerates every run where no value is supplied (no persisted value to check), so
+# re-running setup.ps1 with nothing explicit set is also how an operator resets the password.
+function Set-AdminPassword {
+    if ($ADMIN_PASSWORD) {
+        return
+    }
+
+    # Generate a 12-character password mixing letters, digits, and special characters.
+    # The special set is limited to shell- and YAML-safe punctuation, because the value
+    # flows through environment variables and the bundle's YAML template before it is
+    # stored. Regenerate until the result contains at least one digit and one special
+    # character so it reliably looks like a password.
+    $charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#%+=_.?-'.ToCharArray()
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    do {
+        $bytes = New-Object 'System.Byte[]' 12
+        $rng.GetBytes($bytes)
+        $password = -join ($bytes | ForEach-Object { $charset[$_ % $charset.Length] })
+    } while (-not ($password -match '[0-9]' -and $password -match '[@#%+=_.?-]'))
+
+    $script:ADMIN_PASSWORD = $password
+    $script:ADMIN_PASSWORD_GENERATED = $true
+}
+
+# Show-AdminCredentialsNotice prints the generated admin password once, so the operator can capture it.
+# Only shown when the password was generated during this run (not for operator-supplied values).
+function Show-AdminCredentialsNotice {
+    if (-not $ADMIN_PASSWORD_GENERATED) { return }
+    Write-Host "Admin credentials:"
+    Write-Host "  Username: $ADMIN_USERNAME"
+    Write-Host "  Password: $ADMIN_PASSWORD"
+    Write-Host "  Sign in to the Console with these credentials."
+    Write-Host ""
+}
+
 # Set-DirectAuthSecret ensures the Direct API is usable out of the box while staying secure by default:
 # it respects an existing non-empty secret, otherwise uses the provided value or generates a random
 # one, and writes it into deployment.yaml.
@@ -356,7 +398,8 @@ function Show-DirectAuthSecretNotice {
 # Read configuration
 Read-Config | Out-Null
 
-# Configure the Direct Auth Secret before bootstrap so the Direct API is ready to use.
+# Configure the admin password and Direct Auth Secret before bootstrap so both are ready to use.
+Set-AdminPassword
 Set-DirectAuthSecret
 
 # Construct base URL (internal API endpoint)
@@ -513,10 +556,11 @@ if ($WITH_CONSENT) {
 
 # Create the default resources by delegating to start.ps1 -Bootstrap. The consent
 # server (if enabled) was already started above, so --without-consent is passed so
-# start.ps1 does not start a second one. The public URL is exported so the bootstrap
-# subcommand picks it up; admin credentials are read from the ADMIN_USERNAME /
-# ADMIN_PASSWORD environment variables (default admin / admin) when set.
+# start.ps1 does not start a second one. The public URL and admin credentials are
+# exported so the bootstrap subcommand picks them up.
 $env:PUBLIC_URL = $PUBLIC_URL
+$env:ADMIN_USERNAME = $ADMIN_USERNAME
+$env:ADMIN_PASSWORD = $ADMIN_PASSWORD
 
 $startScript = Join-Path $scriptDir 'start.ps1'
 if (-not (Test-Path $startScript)) {
@@ -549,6 +593,7 @@ try {
         Write-Host ""
         Write-Host "Console URL: ${PUBLIC_URL}/console"
         Write-Host ""
+        Show-AdminCredentialsNotice
         Show-DirectAuthSecretNotice
         Write-Host "Run .\start.ps1 to start ${PRODUCT_NAME}."
         Write-Host ""
@@ -558,6 +603,7 @@ try {
         Write-Host "[OK] Setup completed successfully!" -ForegroundColor Green
         Write-Host "========================================="
         Write-Host ""
+        Show-AdminCredentialsNotice
         Show-DirectAuthSecretNotice
         Write-Host "[INFO] Next steps:"
         Write-Host "   1. Start the server: .\start.ps1" -ForegroundColor Cyan

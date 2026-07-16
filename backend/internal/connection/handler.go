@@ -20,11 +20,14 @@ package connection
 
 import (
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -208,40 +211,52 @@ func (h *handler) usagesInstance(idpType providers.IDPType) http.HandlerFunc {
 	}
 }
 
-// handleListConnections handles GET /connections, returning the available connection types
-// with their configured status and instance count, across both IdP- and SMS-backed vendors.
+// parsePaginationParams parses the limit and offset query parameters, applying the default
+// page size when limit is omitted.
+func parsePaginationParams(query url.Values) (int, int, *tidcommon.ServiceError) {
+	limit := serverconst.DefaultPageSize
+	offset := 0
+
+	if limitStr := query.Get("limit"); limitStr != "" {
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err != nil {
+			return 0, 0, &ErrorInvalidLimit
+		}
+		limit = parsedLimit
+	}
+
+	if offsetStr := query.Get("offset"); offsetStr != "" {
+		parsedOffset, err := strconv.Atoi(offsetStr)
+		if err != nil {
+			return 0, 0, &ErrorInvalidOffset
+		}
+		offset = parsedOffset
+	}
+
+	return limit, offset, nil
+}
+
+// handleListConnections handles GET /connections, returning a paginated flat list of configured
+// connection instances across both IdP- and sender-backed services, optionally filtered by
+// the category query parameter.
 func (h *handler) handleListConnections(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	idpCounts, svcErr := h.svc.typeCounts(ctx)
+	category, ok := parseConnectionCategory(r.URL.Query().Get("category"))
+	if !ok {
+		writeServiceError(ctx, w, &ErrorInvalidConnectionCategory)
+		return
+	}
+	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
 	if svcErr != nil {
 		writeServiceError(ctx, w, svcErr)
 		return
 	}
-	smsCounts, svcErr := h.svc.smsProviderCounts(ctx)
+	resp, svcErr := h.svc.listInstances(ctx, category, limit, offset)
 	if svcErr != nil {
 		writeServiceError(ctx, w, svcErr)
 		return
 	}
-
-	summaries := make([]connectionTypeSummary, 0, len(idpBackedVendors)+len(smsBackedVendors))
-	for _, vendor := range idpBackedVendors {
-		count := idpCounts[vendor.idpType]
-		summaries = append(summaries, connectionTypeSummary{
-			Type:          vendor.name,
-			Configured:    count > 0,
-			InstanceCount: count,
-		})
-	}
-	for _, vendor := range smsBackedVendors {
-		count := smsCounts[vendor.provider]
-		summaries = append(summaries, connectionTypeSummary{
-			Type:          vendor.name,
-			Configured:    count > 0,
-			InstanceCount: count,
-		})
-	}
-
-	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, connectionListResponse{Connections: summaries})
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
 }
 
 // createSMSConnection decodes a typed request, maps it to a notification-sender DTO via the

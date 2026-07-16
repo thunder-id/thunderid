@@ -157,7 +157,7 @@ func Switch(baseDir, currentVersion string, verbose bool) (bool, error) {
 	}
 	fmt.Printf("\r\033[2K  %s Switched to %s v%s  %s\n", ui.Green("✓"), product.Name, selected, ui.Dim("logs: "+setup.LogDir(installPath)))
 
-	_, _, err = ui.RunREPL(selected, proc, installPath, verbose, false, "", 0)
+	_, _, err = ui.RunREPL(selected, proc, installPath, verbose, false, "", "", 0)
 	return true, err
 }
 
@@ -204,7 +204,7 @@ func runDirect(baseDir, activeVersion, newVersion string, verbose bool) error {
 	}
 	fmt.Printf("\r\033[2K  %s %s v%s started  %s\n", ui.Green("✓"), product.Name, newVersion, ui.Dim("logs: "+setup.LogDir(newPath)))
 
-	_, _, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "", 0)
+	_, _, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "", "", 0)
 	return err
 }
 
@@ -272,7 +272,7 @@ func performCutover(baseDir, activeVersion, newVersion, newPath string, stagingP
 	}
 	fmt.Printf("\r\033[2K  %s %s v%s is now live on port %d\n", ui.Green("✓"), product.Name, newVersion, health.DefaultPort)
 
-	_, _, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "", 0)
+	_, _, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "", "", 0)
 	return err
 }
 

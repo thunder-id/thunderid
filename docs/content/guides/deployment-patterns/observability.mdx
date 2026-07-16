@@ -1,5 +1,6 @@
 ---
 title: Observability
+docType: guide
 sidebar_position: 5
 persona: iam
 description: Monitor {{ProductName}} authentication events using console, file, or OpenTelemetry outputs.
@@ -7,7 +8,7 @@ description: Monitor {{ProductName}} authentication events using console, file, 
 
 # Observability
 
-<ProductName /> emits structured events for key identity operations — token issuance, authentication flow execution, and authorization decisions. You can route these events to one or more output backends to monitor your deployment.
+<ProductName /> emits structured events for key identity operations: token issuance, authentication flow execution, and authorization decisions. You can route these events to one or more output backends to monitor your deployment.
 
 ## Output Backends
 
@@ -29,7 +30,7 @@ These backends carry structured **observability events** (token issuance, flow e
 
 ### How It Works
 
-<ProductName /> publishes internal events — such as token issuance and authentication flow execution — as OpenTelemetry spans. Events with the same `TraceID` are grouped into a single distributed trace.
+<ProductName /> publishes internal events, such as token issuance and authentication flow execution, as OpenTelemetry spans. Events with the same `TraceID` are grouped into a single distributed trace.
 
 <ProductName /> exports spans over **OTLP gRPC**. You can point <ProductName /> directly at a backend that accepts OTLP (such as Jaeger or Grafana Tempo), or route spans through an OpenTelemetry Collector for additional processing and fan-out.
 
@@ -64,10 +65,10 @@ observability:
 
 Key settings:
 
-- `otlp_endpoint` — The host and port of your OTLP receiver (gRPC). Do not include the scheme (`grpc://`).
-- `service_name` — Identifies <ProductName /> in your tracing backend. Use a consistent name across deployments.
-- `sample_rate` — Set to `1.0` to capture all traces. Reduce this value for high-traffic deployments (for example, `0.1` samples 10% of traces).
-- `insecure` — Set to `true` only in development environments where TLS is not configured on the collector.
+- `otlp_endpoint`: The host and port of your OTLP receiver (gRPC). Do not include the scheme (`grpc://`).
+- `service_name`: Identifies <ProductName /> in your tracing backend. Use a consistent name across deployments.
+- `sample_rate`: Set to `1.0` to capture all traces. Reduce this value for high-traffic deployments (for example, `0.1` samples 10% of traces).
+- `insecure`: Set to `true` only in development environments where TLS is not configured on the collector.
 
 :::note
 <ProductName /> must be restarted for configuration changes to take effect.
@@ -97,7 +98,7 @@ For valid category values, see [Event Categories](../../getting-started/configur
 
 ### Jaeger
 
-Jaeger v2 accepts OTLP gRPC natively and is the recommended version. For local development, run the all-in-one image with no configuration file — it ships with a default OTLP receiver and in-memory storage already enabled:
+Jaeger v2 accepts OTLP gRPC natively and is the recommended version. For local development, run the all-in-one image with no configuration file. It ships with a default OTLP receiver and in-memory storage already enabled:
 
 ```bash
 docker run --rm \
@@ -108,7 +109,7 @@ docker run --rm \
 
 Open `http://localhost:16686` in your browser to access the Jaeger UI.
 
-For custom deployments — for example, to configure a persistent storage backend — Jaeger v2 is built on the OpenTelemetry Collector framework, so receivers, storage backends, and pipelines must be explicitly declared in a configuration file. Create a `jaeger-config.yaml` file:
+For custom deployments, for example to configure a persistent storage backend, Jaeger v2 is built on the OpenTelemetry Collector framework, so receivers, storage backends, and pipelines must be explicitly declared in a configuration file. Create a `jaeger-config.yaml` file:
 
 ```yaml
 extensions:
@@ -191,7 +192,7 @@ service:
       exporters: [otlp_grpc/jaeger]
 ```
 
-The Collector forwards spans to Jaeger, so both must run together. Use Docker Compose to manage them — it automatically places both containers on a shared network, allowing the Collector to reach Jaeger by service name. Create a `docker-compose.yaml` file (using the same `jaeger-config.yaml` from the [Jaeger](#jaeger) section):
+The Collector forwards spans to Jaeger, so both must run together. Use Docker Compose to manage them: it automatically places both containers on a shared network, allowing the Collector to reach Jaeger by service name. Create a `docker-compose.yaml` file (using the same `jaeger-config.yaml` from the [Jaeger](#jaeger) section):
 
 ```yaml
 services:
@@ -297,10 +298,10 @@ If no spans appear, check the following:
 - Confirm `observability.enabled` is `true` and `observability.output.opentelemetry.enabled` is `true`.
 - Confirm `otlp_endpoint` matches the host and port of your OTLP receiver.
 - If using TLS, ensure the certificate chain is trusted or set `insecure: true` temporarily to rule out TLS issues.
-- Check <ProductName /> startup logs for any errors from the OpenTelemetry subscriber. <ProductName /> uses a lenient failure mode — if the OTLP endpoint is unreachable at startup, the server still starts but spans are silently dropped.
+- Check <ProductName /> startup logs for any errors from the OpenTelemetry subscriber. <ProductName /> uses a lenient failure mode: if the OTLP endpoint is unreachable at startup, the server still starts but spans are silently dropped.
 - If you are using the OpenTelemetry Collector + Jaeger pattern, also check the Collector container logs. <ProductName /> may be exporting spans successfully while the Collector fails to forward them to Jaeger.
 
 ## Next Steps
 
 - See [Observability Configuration](../../getting-started/configuration#observability-configuration) for the full list of settings for each output backend.
-- See the [Observability Contributing Guide](../../../community/contributing/contributing-code/backend-development/observability) to learn how to add instrumentation to new ThunderID components.
+- See the [Observability Contributing Guide](../../../community/contributing/contributing-code/backend-development/observability) to learn how to add instrumentation to new <ProductName /> components.

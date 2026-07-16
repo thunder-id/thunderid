@@ -1,5 +1,6 @@
 ---
 title: Configure and Run
+docType: community
 description: Learn how to build from source, configure the server, and run the backend and frontend together.
 sidebar_position: 2
 hide_table_of_contents: false
@@ -95,20 +96,24 @@ Use this approach when you need to debug the backend and frontend independently.
 
 **Terminal 3 - Seed the initial data (one-time only):**
 
+The `bootstrap` subcommand never invents an admin password on its own. Pass one explicitly with `--admin-password` (or `ADMIN_PASSWORD`).
+
 <CodeGroup>
   <CodeBlock lang="bash" label="Linux/macOS">
     {`PUBLIC_URL="https://localhost:8090" \\
   go run -C backend/cmd/server . bootstrap \\
+  --admin-password "admin" \\
   --console-redirect-uris "https://localhost:5191/console"`}
   </CodeBlock>
   <CodeBlock lang="powershell" label="Windows">
     {`$env:PUBLIC_URL = "https://localhost:8090"
 go run -C backend/cmd/server . bootstrap \`
+  --admin-password "admin" \`
   --console-redirect-uris "https://localhost:5191/console"`}
   </CodeBlock>
 </CodeGroup>
 
-This runs the in-process `bootstrap` subcommand, which creates the default resources (including the `Console` application and the default admin user — credentials default to `admin` / `admin`) directly through the service layer. No temporary server or security bypass is involved. You only need to do this once — the data persists in the SQLite databases, and the subcommand is idempotent if re-run.
+This runs the in-process `bootstrap` subcommand, which creates the default resources (including the `Console` application and the default admin user, credentials default to `admin` / `admin`) directly through the service layer. No temporary server or security bypass is involved. You only need to do this once: the data persists in the SQLite databases, and the subcommand is idempotent if re-run.
 
 :::warning
 Don't use `./setup.sh` here. That script is designed for the packaged distribution zip and expects a compiled `./thunderid` binary at the project root. From source code, run the `bootstrap` subcommand as shown above, or use `make run` (Option A) which handles everything for you.

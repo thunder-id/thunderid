@@ -1,7 +1,8 @@
 ---
 title: Errors
+docType: reference
 displayed_sidebar: javascriptSdkSidebar
-description: Error classes thrown by the ThunderID JavaScript SDK
+description: Error types, error codes, and handling patterns for exceptions thrown by the JavaScript SDK.
 ---
 
 # Errors
@@ -10,15 +11,13 @@ The SDK uses a hierarchy of typed error classes. Catch specific classes to handl
 
 ## Error Hierarchy
 
-```
+```text
 Error
 └── ThunderIDError
     ├── ThunderIDAPIError
     └── ThunderIDRuntimeError
 ThunderIDAuthException  (separate — thrown by auth flow internals)
 ```
-
----
 
 ## `ThunderIDError`
 
@@ -56,8 +55,6 @@ new ThunderIDError(message: string, code: string, origin: string)
 | `code` | `string` | Machine-readable error code |
 | `origin` | `string` | Originating function name |
 
----
-
 ## `ThunderIDAPIError`
 
 Thrown when the <ProductName /> REST API returns an error response (4xx or 5xx).
@@ -94,8 +91,6 @@ new ThunderIDAPIError(
 | `statusCode` | `number` | HTTP status code of the API response |
 | `statusText` | `string` | HTTP status text (e.g., `'Not Found'`, `'Unauthorized'`) |
 
----
-
 ## `ThunderIDRuntimeError`
 
 Thrown when an error occurs during SDK runtime operations unrelated to the API (e.g., storage failures, configuration errors).
@@ -129,8 +124,6 @@ new ThunderIDRuntimeError(
 |----------|------|-------------|
 | `details` | `unknown` | Additional context about the error (original exception, state dump, etc.) |
 
----
-
 ## `ThunderIDAuthException`
 
 Thrown by the core authentication flow methods within `ThunderIDJavaScriptClient` (e.g., `getSignInUrl()`, `requestAccessToken()`, `getSignOutUrl()`). Not a subclass of `ThunderIDError`.
@@ -157,8 +150,6 @@ Auth exception codes follow the pattern `JS-AUTH_CORE-<OPERATION>-<TYPE><INDEX>`
 | `-NE02` | Network error (fetch failed) |
 | `-HE03` | HTTP error (non-2xx response) |
 | `-IV02` | Invalid (resolution or parsing failure) |
-
----
 
 ## Catching All SDK Errors
 

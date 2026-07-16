@@ -1,5 +1,6 @@
 ---
 title: Application Settings
+docType: guide
 sidebar_position: 2
 persona: iam
 description: Configure authentication flows, registration, tokens, customization, and OAuth 2.0 settings applications.
@@ -31,15 +32,15 @@ Under **Access** on the General tab, you can configure which users can register 
 <ProductName /> supports wildcard patterns in redirect URIs, so you can register a single pattern that covers a range of valid callback URLs instead of listing every exact URI.
 
 :::note
-Wildcard redirect URI support is disabled by default. A <ProductName /> administrator must set `oauth.allow_wildcard_redirect_uri: true` in `deployment.yaml` to enable it. See [Configuration](/docs/next/guides/getting-started/configuration) for details.
+Wildcard redirect URI support is disabled by default. A <ProductName /> administrator must set `oauth.allow_wildcard_redirect_uri: true` in `deployment.yaml` to enable it. See [Configuration](../../../getting-started/configuration) for details.
 :::
 
 You can use `*` to match a single path segment or part of a hostname label, and `**` to match zero or more path segments. For example:
 
-- `https://example.com/cb/*` — matches `https://example.com/cb/v1` but not `https://example.com/cb/v1/extra`
-- `https://app-*.example.com/cb` — matches `https://app-prod.example.com/cb` and `https://app-staging.example.com/cb`
+- `https://example.com/cb/*`: matches `https://example.com/cb/v1` but not `https://example.com/cb/v1/extra`
+- `https://app-*.example.com/cb`: matches `https://app-prod.example.com/cb` and `https://app-staging.example.com/cb`
 
-When the authorization request included a `redirect_uri`, the token endpoint validates it with exact matching per [RFC 6749 §4.1.3](https://www.rfc-editor.org/rfc/rfc6749#section-4.1.3) — wildcard expansion does not apply at the token endpoint.
+When the authorization request included a `redirect_uri`, the token endpoint validates it with exact matching per [RFC 6749 §4.1.3](https://www.rfc-editor.org/rfc/rfc6749#section-4.1.3): wildcard expansion does not apply at the token endpoint.
 
 ## Configure Sign-In, Registration, and Recovery Flows
 
@@ -70,9 +71,9 @@ This section applies to OAuth 2.0 / OIDC applications (Browser App, Full-stack A
 
 On the **Token** tab, choose which user attributes each token carries, how long tokens stay valid, and the response format for ID tokens and userinfo.
 
-**Access Token** — select the user attributes to include in the access token payload. Default attributes (`sub`, `iss`, `exp`, and others) are always included and cannot be removed. Set **Token Validity** in seconds (for example, `3600` for one hour).
+**Access Token**: select the user attributes to include in the access token payload. Default attributes (`sub`, `iss`, `exp`, and others) are always included and cannot be removed. Set **Token Validity** in seconds (for example, `3600` for one hour).
 
-**ID Token** — select the user attributes to include. Only attributes covered by the requested scopes are returned. Set **Token Validity** in seconds.
+**ID Token**: select the user attributes to include. Only attributes covered by the requested scopes are returned. Set **Token Validity** in seconds.
 
 You can also configure the ID token response format via the API. These settings are not available in the Console.
 
@@ -82,7 +83,7 @@ You can also configure the ID token response format via the API. These settings 
 | **Encryption Algorithm** | Key-management algorithm. Required for `JWE` and `NESTED_JWT`. Options: `RSA-OAEP`, `RSA-OAEP-256`. Requires an OAuth client certificate. |
 | **Encryption Encoding** | Content-encryption algorithm. Required when Encryption Algorithm is set. Options: `A128CBC-HS256`, `A256GCM`. |
 
-**User Info** — configure what the `/userinfo` endpoint returns. User attributes are configurable from the Console. Response format settings are available via the API only.
+**User Info**: configure what the `/userinfo` endpoint returns. User attributes are configurable from the Console. Response format settings are available via the API only.
 
 | Setting | Description |
 |---------|-------------|
@@ -95,7 +96,7 @@ You can also configure the ID token response format via the API. These settings 
 ## Rotate the Client Secret
 
 :::note
-Client secrets are only present on confidential clients — Full-stack App and Backend Service application types. This section does not apply to public clients such as Browser App or Mobile App.
+Client secrets are only present on confidential clients, Full-stack App and Backend Service application types. This section does not apply to public clients such as Browser App or Mobile App.
 :::
 
 If you need to invalidate the current client secret, open the General tab and click **Regenerate Client Secret** in the **Danger Zone**.
@@ -127,10 +128,10 @@ You can also attach a **Certificate** for client authentication (`private_key_jw
 | `JWKS` | Provide the JSON Web Key Set (JWKS) inline. |
 | `JWKS_URI` | Provide the URL of the application's JWKS endpoint. <ProductName /> fetches the public keys to verify signed requests. Must use HTTPS. |
 
-For full protocol-level details — including ACR values, scope-to-claims mapping, PAR enforcement, and token signing and encryption algorithms — see the [OAuth & OIDC](../../protocols/oauth-oidc/) catalogue.
+For full protocol-level details, including ACR values, scope-to-claims mapping, PAR enforcement, and token signing and encryption algorithms, see the [OAuth & OIDC](../../protocols/oauth-oidc/) catalogue.
 
 ## Related Guides
 
 - [Manage Applications](../manage-applications) - Create, update, and delete applications
 - [OAuth & OIDC](../../protocols/oauth-oidc/) - Protocol-by-protocol reference for OAuth 2.1 and OpenID Connect features
-- [Flows](/docs/next/guides/guides/flows/what-are-flows) - Build and assign custom authentication and registration flows
+- [Flows](../../flows/what-are-flows) - Build and assign custom authentication and registration flows

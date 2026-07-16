@@ -22,15 +22,16 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"mime"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -335,100 +336,92 @@ func registerStaticFileHandlers(ctx context.Context, logger *log.Logger, mux *ht
 
 	// Serve gate application from /gate
 	gateDir := path.Join(serverHome, "apps", "gate")
-	if directoryExists(gateDir) {
+	if handler, err := createStaticFileHandler("/gate/", gateDir, logger); err != nil {
+		logger.Warn(ctx, "Gate application not registered", log.String("directory", gateDir), log.Error(err))
+	} else {
 		logger.Debug(ctx, "Registering static file handler for Gate application",
 			log.String("path", "/gate/"), log.String("directory", gateDir))
-		mux.Handle("/gate/", createStaticFileHandler("/gate/", gateDir, logger))
-	} else {
-		logger.Warn(ctx, "Gate application directory not found", log.String("directory", gateDir))
+		mux.Handle("/gate/", handler)
 	}
 
 	// Serve console application from /console
 	consoleDir := path.Join(serverHome, "apps", "console")
-	if directoryExists(consoleDir) {
+	if handler, err := createStaticFileHandler("/console/", consoleDir, logger); err != nil {
+		logger.Warn(ctx, "Console application not registered", log.String("directory", consoleDir), log.Error(err))
+	} else {
 		logger.Debug(ctx, "Registering static file handler for Console application",
 			log.String("path", "/console/"), log.String("directory", consoleDir))
-		mux.Handle("/console/", createStaticFileHandler("/console/", consoleDir, logger))
-	} else {
-		logger.Warn(ctx, "Console application directory not found", log.String("directory", consoleDir))
+		mux.Handle("/console/", handler)
 	}
 }
 
 // createStaticFileHandler creates a handler for serving static files with SPA fallback.
-func createStaticFileHandler(routePrefix, directory string, logger *log.Logger) http.Handler {
-	fileServer := http.FileServer(http.Dir(directory))
+//
+// All filesystem access is performed through an os.Root anchored at `directory`, which
+// confines every lookup below that directory: any request path that would escape it fails
+// with a path-escape error rather than reaching the filesystem.
+func createStaticFileHandler(routePrefix, directory string, logger *log.Logger) (http.Handler, error) {
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return nil, err
+	}
+	rootFS := root.FS()
+	fileServer := http.FileServerFS(rootFS)
+
+	// serveIndex serves index.html with no-cache headers. It reports whether index.html
+	// existed and was served.
+	serveIndex := func(w http.ResponseWriter, r *http.Request) bool {
+		if _, err := root.Stat("index.html"); err != nil {
+			return false
+		}
+		w.Header().Set(constants.CacheControlHeaderName, constants.CacheControlNoCacheComposite)
+		w.Header().Set(constants.PragmaHeaderName, constants.PragmaNoCache)
+		w.Header().Set(constants.ExpiresHeaderName, constants.ExpiresZero)
+		http.ServeFileFS(w, r, rootFS, "index.html")
+		return true
+	}
 
 	return http.StripPrefix(routePrefix, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Handle root path "/" by explicitly serving index.html
+		// Handle the application root by explicitly serving index.html.
 		if r.URL.Path == "/" || r.URL.Path == "" {
-			indexPath := path.Join(directory, "index.html")
-			if fileExists(indexPath) {
-				// Set no-cache headers for index.html
-				w.Header().Set(constants.CacheControlHeaderName, constants.CacheControlNoCacheComposite)
-				w.Header().Set(constants.PragmaHeaderName, constants.PragmaNoCache)
-				w.Header().Set(constants.ExpiresHeaderName, constants.ExpiresZero)
-				http.ServeFile(w, r, indexPath)
+			if serveIndex(w, r) {
 				return
 			}
 		}
 
-		// Assert the resolved path stays within `directory` before touching the filesystem.
-		filePath := path.Join(directory, r.URL.Path)
-		cleanDir := filepath.Clean(directory)
-		if filePath != cleanDir && !strings.HasPrefix(filePath, cleanDir+string(os.PathSeparator)) {
-			logger.Warn(r.Context(), "Rejected request with out-of-bounds path",
-				log.String("requested_path", r.URL.Path),
-				log.String("route_prefix", routePrefix))
-			http.NotFound(w, r)
-			return
-		}
+		// Resolve the request against the served directory.
+		name := strings.TrimPrefix(r.URL.Path, "/")
+		isIndexHTML := name == "index.html"
 
-		// Check if the requested file is index.html
-		isIndexHTML := r.URL.Path == "/index.html" || path.Base(filePath) == "index.html"
-
-		// Check if file exists
-		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			// For SPA routing, serve index.html for non-existent files
-			indexPath := path.Join(directory, "index.html")
-			if fileExists(indexPath) {
-				logger.Debug(r.Context(), "Serving index.html for SPA routing",
-					log.String("requested_path", r.URL.Path),
-					log.String("route_prefix", routePrefix))
-				// Set no-cache headers for index.html
-				w.Header().Set(constants.CacheControlHeaderName, constants.CacheControlNoCacheComposite)
-				w.Header().Set(constants.PragmaHeaderName, constants.PragmaNoCache)
-				w.Header().Set(constants.ExpiresHeaderName, constants.ExpiresZero)
-				http.ServeFile(w, r, indexPath)
-				return
+		if name != "" {
+			if _, err := root.Stat(name); err != nil {
+				if errors.Is(err, fs.ErrNotExist) {
+					// For SPA routing, serve index.html for non-existent in-bounds paths.
+					logger.Debug(r.Context(), "Serving index.html for SPA routing",
+						log.String("requested_path", r.URL.Path),
+						log.String("route_prefix", routePrefix))
+					if serveIndex(w, r) {
+						return
+					}
+				} else {
+					// The path escapes the served directory (or is otherwise invalid).
+					logger.Warn(r.Context(), "Rejected request with out-of-bounds path",
+						log.String("requested_path", r.URL.Path),
+						log.String("route_prefix", routePrefix))
+					http.NotFound(w, r)
+					return
+				}
 			}
 		}
 
-		// Serve index.html directly with no-cache headers when requested
+		// Serve index.html directly with no-cache headers when requested.
 		if isIndexHTML {
-			indexPath := path.Join(directory, "index.html")
-			if fileExists(indexPath) {
-				// Set no-cache headers for index.html
-				w.Header().Set(constants.CacheControlHeaderName, constants.CacheControlNoCacheComposite)
-				w.Header().Set(constants.PragmaHeaderName, constants.PragmaNoCache)
-				w.Header().Set(constants.ExpiresHeaderName, constants.ExpiresZero)
-				http.ServeFile(w, r, indexPath)
+			if serveIndex(w, r) {
 				return
 			}
 		}
 
-		// Serve the requested file or directory listing
+		// Serve the requested file or directory listing.
 		fileServer.ServeHTTP(w, r)
-	}))
-}
-
-// directoryExists checks if a directory exists.
-func directoryExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
-}
-
-// fileExists checks if a file exists.
-func fileExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir()
+	})), nil
 }

@@ -16,11 +16,18 @@
 -- ----------------------------------------------------------------------------
 
 -- ============================================================
--- Stored procedure: purge all expired runtimedb rows.
+-- Stored procedure: purge expired runtimedb rows in bounded batches.
+--
+-- Deletes expired rows in batches of p_batch_size (default 1000), committing
+-- after each batch to keep locks short on large tables. Must run as a top-level
+-- CALL (the per-batch COMMIT cannot run inside an outer transaction).
 --
 -- Run once manually (ad-hoc / on-demand):
 --   PGPASSWORD=<pass> psql -h <host> -p <port> -U <user> -d <runtimedb> \
 --     -c "CALL cleanup_expired_runtimedb_data();"
+--
+--   -- Optional: override the batch size (rows deleted per batch):
+--   -c "CALL cleanup_expired_runtimedb_data(500);"
 --
 -- Scheduled execution options:
 --
@@ -43,21 +50,60 @@
 -- --        >> /var/log/thunderid-cleanup.log 2>&1
 -- ============================================================
 
-CREATE OR REPLACE PROCEDURE cleanup_expired_runtimedb_data()
+-- Drop the old parameterless signature so re-applying doesn't leave an ambiguous overload.
+DROP PROCEDURE IF EXISTS cleanup_expired_runtimedb_data();
+
+CREATE OR REPLACE PROCEDURE cleanup_expired_runtimedb_data(p_batch_size INT DEFAULT 1000)
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_now TIMESTAMP := NOW() AT TIME ZONE 'UTC';
+    v_now     TIMESTAMP := NOW() AT TIME ZONE 'UTC';
+    v_deleted INT;
+    v_table   TEXT;
+    -- Tables located by ctid. Safe because each is a single, non-partitioned
+    -- relation, so ctid uniquely identifies a row within it.
+    v_ctid_tables TEXT[] := ARRAY[
+        'AUTHORIZATION_CODE',
+        'AUTHORIZATION_REQUEST',
+        'CIBA_AUTH_REQUEST',
+        'WEBAUTHN_SESSION',
+        'PAR_REQUEST',
+        'JTI_RECORD',
+        'OPENID4VP_REQUEST_STATE',
+        'OPENID4VCI_NONCE',
+        'OPENID4VCI_CREDENTIAL_OFFER'
+    ];
 BEGIN
-    DELETE FROM "AUTHORIZATION_CODE"    WHERE EXPIRY_TIME < v_now;
-    DELETE FROM "AUTHORIZATION_REQUEST" WHERE EXPIRY_TIME < v_now;
-    DELETE FROM "CIBA_AUTH_REQUEST"     WHERE EXPIRY_TIME < v_now;
-    DELETE FROM "WEBAUTHN_SESSION"      WHERE EXPIRY_TIME < v_now;
-    DELETE FROM "PAR_REQUEST"           WHERE EXPIRY_TIME < v_now;
-    DELETE FROM "JTI_RECORD"            WHERE EXPIRY_TIME < v_now;
-    DELETE FROM "OPENID4VP_REQUEST_STATE"      WHERE EXPIRY_TIME < v_now;
-    DELETE FROM "OPENID4VCI_NONCE"             WHERE EXPIRY_TIME < v_now;
-    DELETE FROM "OPENID4VCI_CREDENTIAL_OFFER"  WHERE EXPIRY_TIME < v_now;
-    DELETE FROM "RUNTIME_STORE"         WHERE EXPIRY_TIME < v_now;
+    -- Guard against a batch size that would disable batching or make no progress.
+    IF p_batch_size IS NULL OR p_batch_size <= 0 THEN
+        p_batch_size := 1000;
+    END IF;
+
+    FOREACH v_table IN ARRAY v_ctid_tables LOOP
+        LOOP
+            EXECUTE format(
+                'DELETE FROM %I WHERE ctid IN ' ||
+                '(SELECT ctid FROM %I WHERE EXPIRY_TIME < $1 LIMIT $2)',
+                v_table, v_table
+            ) USING v_now, p_batch_size;
+            GET DIAGNOSTICS v_deleted = ROW_COUNT;
+            COMMIT;
+            EXIT WHEN v_deleted = 0;
+        END LOOP;
+    END LOOP;
+
+    -- RUNTIME_STORE is LIST-partitioned by NAMESPACE, where ctid is not unique across
+    -- partitions; match rows by primary key rather than ctid. ORDER BY EXPIRY_TIME lets
+    -- the batch be located via an index scan.
+    LOOP
+        DELETE FROM "RUNTIME_STORE"
+        WHERE (DEPLOYMENT_ID, NAMESPACE, KEY) IN (
+            SELECT DEPLOYMENT_ID, NAMESPACE, KEY FROM "RUNTIME_STORE"
+            WHERE EXPIRY_TIME < v_now ORDER BY EXPIRY_TIME LIMIT p_batch_size
+        );
+        GET DIAGNOSTICS v_deleted = ROW_COUNT;
+        COMMIT;
+        EXIT WHEN v_deleted = 0;
+    END LOOP;
 END;
 $$;

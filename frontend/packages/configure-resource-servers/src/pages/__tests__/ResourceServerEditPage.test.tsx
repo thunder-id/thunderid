@@ -135,7 +135,6 @@ vi.mock('../../components/resource-server-detail/AdvancedTab', () => ({
 const mockResourceServer: ResourceServer = {
   id: 'rs-1',
   name: 'Dark Dodos Smash',
-  handle: 'dark-dodos',
   identifier: 'https://api.example.com',
   ouId: 'ou-1',
   delimiter: '/',
@@ -195,10 +194,10 @@ describe('ResourceServerEditPage', () => {
     expect(screen.getByText('Dark Dodos Smash')).toBeInTheDocument();
   });
 
-  it('renders the handle chip after successful load', () => {
+  it('does not render a resource server handle chip', () => {
     renderWithProviders(<ResourceServerEditPage />);
 
-    expect(screen.getByText('dark-dodos')).toBeInTheDocument();
+    expect(screen.queryByText('dark-dodos')).not.toBeInTheDocument();
   });
 
   it('renders the Resources tab as active by default', () => {
@@ -306,6 +305,26 @@ describe('ResourceServerEditPage', () => {
       },
       expect.any(Object),
     );
+  });
+
+  it('does not save when the identifier is cleared', async () => {
+    renderWithProviders(<ResourceServerEditPage />);
+
+    fireEvent.click(screen.getByRole('tab', {name: 'Advanced Settings'}));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('advanced-tab')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText('Identifier'), {target: {value: '   '}});
+
+    await waitFor(() => {
+      expect(screen.getByTestId('unsaved-changes-bar')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+    expect(mockUpdateMutate).not.toHaveBeenCalled();
   });
 
   it('renders the MCP-specific Danger Zone title for an MCP server', () => {

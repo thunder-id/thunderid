@@ -164,7 +164,7 @@ function CommonElementFactory({
   if (resource.type === ElementTypes.Timer) {
     return <TimerAdapter resource={resource} />;
   }
-  if (resource.type === ElementTypes.Consent) {
+  if (resource.type === ElementTypes.Consent || resource.type === ElementTypes.ConsentInput) {
     return <ConsentAdapter />;
   }
   if (resource.type === ElementTypes.Custom) {

@@ -31,45 +31,45 @@ describe('ConfigureName', () => {
     vi.mocked(generateRandomHumanReadableIdentifiers).mockReturnValue(mockSuggestions);
   });
 
-  it('renders the name and handle input fields', () => {
-    render(<ConfigureName name="" handle="" onNameChange={vi.fn()} onHandleChange={vi.fn()} />);
+  it('renders the name and identifier input fields', () => {
+    render(<ConfigureName name="" identifier="" onNameChange={vi.fn()} onIdentifierChange={vi.fn()} />);
 
     expect(screen.getByRole('textbox', {name: /resource server name/i})).toBeInTheDocument();
-    expect(screen.getByRole('textbox', {name: /handle/i})).toBeInTheDocument();
+    expect(screen.getByRole('textbox', {name: /identifier/i})).toBeInTheDocument();
   });
 
-  it('calls onNameChange when name input changes without auto-deriving handle', () => {
+  it('calls onNameChange when name input changes', () => {
     const onNameChange = vi.fn();
-    const onHandleChange = vi.fn();
-    render(<ConfigureName name="" handle="" onNameChange={onNameChange} onHandleChange={onHandleChange} />);
+    const onIdentifierChange = vi.fn();
+    render(<ConfigureName name="" identifier="" onNameChange={onNameChange} onIdentifierChange={onIdentifierChange} />);
 
     fireEvent.change(screen.getByRole('textbox', {name: /resource server name/i}), {
       target: {value: 'Payments API'},
     });
 
     expect(onNameChange).toHaveBeenCalledWith('Payments API');
-    expect(onHandleChange).not.toHaveBeenCalled();
+    expect(onIdentifierChange).not.toHaveBeenCalled();
   });
 
-  it('calls onHandleChange with invalid characters stripped when handle input changes', () => {
-    const onHandleChange = vi.fn();
-    render(<ConfigureName name="Test" handle="test" onNameChange={vi.fn()} onHandleChange={onHandleChange} />);
+  it('calls onIdentifierChange when the identifier input changes', () => {
+    const onIdentifierChange = vi.fn();
+    render(<ConfigureName name="Test" identifier="" onNameChange={vi.fn()} onIdentifierChange={onIdentifierChange} />);
 
-    fireEvent.change(screen.getByRole('textbox', {name: /handle/i}), {
-      target: {value: 'payments-api!!'},
+    fireEvent.change(screen.getByRole('textbox', {name: /identifier/i}), {
+      target: {value: 'https://api.example.com'},
     });
 
-    expect(onHandleChange).toHaveBeenCalledWith('payments-api');
+    expect(onIdentifierChange).toHaveBeenCalledWith('https://api.example.com');
   });
 
-  it('calls onReadyChange with true when name and handle are non-empty', () => {
+  it('calls onReadyChange with true when name and identifier are non-empty', () => {
     const onReadyChange = vi.fn();
     render(
       <ConfigureName
         name="Test"
-        handle="test"
+        identifier="https://api.example.com"
         onNameChange={vi.fn()}
-        onHandleChange={vi.fn()}
+        onIdentifierChange={vi.fn()}
         onReadyChange={onReadyChange}
       />,
     );
@@ -82,9 +82,9 @@ describe('ConfigureName', () => {
     render(
       <ConfigureName
         name=""
-        handle="test"
+        identifier="https://api.example.com"
         onNameChange={vi.fn()}
-        onHandleChange={vi.fn()}
+        onIdentifierChange={vi.fn()}
         onReadyChange={onReadyChange}
       />,
     );
@@ -92,23 +92,23 @@ describe('ConfigureName', () => {
     expect(onReadyChange).toHaveBeenCalledWith(false);
   });
 
-  it('calls onReadyChange with true when name is non-empty even if handle is empty', () => {
+  it('calls onReadyChange with false when identifier is empty', () => {
     const onReadyChange = vi.fn();
     render(
       <ConfigureName
         name="Test"
-        handle=""
+        identifier=""
         onNameChange={vi.fn()}
-        onHandleChange={vi.fn()}
+        onIdentifierChange={vi.fn()}
         onReadyChange={onReadyChange}
       />,
     );
 
-    expect(onReadyChange).toHaveBeenCalledWith(true);
+    expect(onReadyChange).toHaveBeenCalledWith(false);
   });
 
   it('renders suggestion chips from the returned suggestions', () => {
-    render(<ConfigureName name="" handle="" onNameChange={vi.fn()} onHandleChange={vi.fn()} />);
+    render(<ConfigureName name="" identifier="" onNameChange={vi.fn()} onIdentifierChange={vi.fn()} />);
 
     expect(screen.getByText('Alpha Service')).toBeInTheDocument();
     expect(screen.getByText('Beta Platform')).toBeInTheDocument();
@@ -116,47 +116,42 @@ describe('ConfigureName', () => {
 
   it('fills name when a suggestion chip is clicked', () => {
     const onNameChange = vi.fn();
-    const onHandleChange = vi.fn();
-    render(<ConfigureName name="" handle="" onNameChange={onNameChange} onHandleChange={onHandleChange} />);
+    const onIdentifierChange = vi.fn();
+    render(<ConfigureName name="" identifier="" onNameChange={onNameChange} onIdentifierChange={onIdentifierChange} />);
 
     fireEvent.click(screen.getByText('Alpha Service'));
 
     expect(onNameChange).toHaveBeenCalledWith('Alpha Service');
-    expect(onHandleChange).not.toHaveBeenCalled();
-  });
-
-  it('strips delimiter character from manual handle input', () => {
-    const onHandleChange = vi.fn();
-    render(
-      <ConfigureName name="Test" handle="test" delimiter="/" onNameChange={vi.fn()} onHandleChange={onHandleChange} />,
-    );
-
-    fireEvent.change(screen.getByRole('textbox', {name: /handle/i}), {
-      target: {value: 'my/handle'},
-    });
-
-    expect(onHandleChange).toHaveBeenCalledWith('myhandle');
+    expect(onIdentifierChange).not.toHaveBeenCalled();
   });
 
   it('renders the resource server title and label when selectedType is not MCP', () => {
-    render(<ConfigureName name="" handle="" selectedType="API" onNameChange={vi.fn()} onHandleChange={vi.fn()} />);
+    render(
+      <ConfigureName name="" identifier="" selectedType="API" onNameChange={vi.fn()} onIdentifierChange={vi.fn()} />,
+    );
 
     expect(screen.getByText('Name your resource server')).toBeInTheDocument();
     expect(screen.getByRole('textbox', {name: /resource server name/i})).toBeInTheDocument();
   });
 
   it('renders the MCP server title and label when selectedType is MCP', () => {
-    render(<ConfigureName name="" handle="" selectedType="MCP" onNameChange={vi.fn()} onHandleChange={vi.fn()} />);
+    render(
+      <ConfigureName name="" identifier="" selectedType="MCP" onNameChange={vi.fn()} onIdentifierChange={vi.fn()} />,
+    );
 
     expect(screen.getByText('Name your MCP server')).toBeInTheDocument();
     expect(screen.getByRole('textbox', {name: /mcp server name/i})).toBeInTheDocument();
   });
 
-  it('renders the MCP handle helper text when selectedType is MCP', () => {
-    render(<ConfigureName name="" handle="" selectedType="MCP" onNameChange={vi.fn()} onHandleChange={vi.fn()} />);
+  it('renders the MCP identifier helper text when selectedType is MCP', () => {
+    render(
+      <ConfigureName name="" identifier="" selectedType="MCP" onNameChange={vi.fn()} onIdentifierChange={vi.fn()} />,
+    );
 
     expect(
-      screen.getByText('The handle prefixes every permission in this MCP server. It cannot be changed after creation.'),
+      screen.getByText(
+        'A unique identifier for this MCP server. When set as an absolute URI, it becomes the token audience for RFC 8707 resource indicators.',
+      ),
     ).toBeInTheDocument();
   });
 });

@@ -39,6 +39,7 @@ type TokenRequest struct {
 	RequestedTokenType string   `json:"requested_token_type,omitempty"`
 	Audiences          []string `json:"audiences,omitempty"`
 	AuthReqID          string   `json:"auth_req_id,omitempty"`
+	Assertion          string   `json:"assertion,omitempty"`
 }
 
 // TokenResponse represents the OAuth2 token response.

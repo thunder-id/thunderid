@@ -1344,3 +1344,89 @@ func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_UnknownEntityTy
 	s.NotNil(svcErr)
 	s.Equal(ErrorInvalidAttributeConfiguration.Code, svcErr.Code)
 }
+
+func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_DynamicResolutionValid() {
+	s.mockET.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "employee", false, true, false).
+		Return([]entitytype.AttributeInfo{{Attribute: "firstName"}}, (*tidcommon.ServiceError)(nil))
+
+	idp := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{
+			Default:           "person",
+			ExternalAttribute: "user_type",
+			ValueMapping:      map[string]string{"staff": "employee"},
+		},
+	}}
+	s.Nil(s.idpService.validateAttributeConfiguration(context.Background(), idp))
+}
+
+func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_ExternalAttributeWithoutMapping_OK() {
+	// An external attribute may be configured on its own; every identity resolves to Default until
+	// value mappings are added later.
+	idp := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{
+			Default:           "person",
+			ExternalAttribute: "user_type",
+		},
+	}}
+	s.Nil(s.idpService.validateAttributeConfiguration(context.Background(), idp))
+}
+
+func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_MappingWithoutExternalAttribute() {
+	idp := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{
+			Default:      "person",
+			ValueMapping: map[string]string{"staff": "employee"},
+		},
+	}}
+	svcErr := s.idpService.validateAttributeConfiguration(context.Background(), idp)
+	s.NotNil(svcErr)
+	s.Equal(ErrorInvalidAttributeConfiguration.Code, svcErr.Code)
+	s.Contains(svcErr.ErrorDescription.DefaultValue, "requires an external attribute")
+}
+
+func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_DynamicResolutionDefaultRequired() {
+	idp := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{
+			ExternalAttribute: "user_type",
+			ValueMapping:      map[string]string{"staff": "employee"},
+		},
+	}}
+	svcErr := s.idpService.validateAttributeConfiguration(context.Background(), idp)
+	s.NotNil(svcErr)
+	s.Equal(ErrorInvalidAttributeConfiguration.Code, svcErr.Code)
+	s.Contains(svcErr.ErrorDescription.DefaultValue, "default user type")
+}
+
+func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_DynamicResolutionEmptyMapping() {
+	idp := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{
+			Default:           "person",
+			ExternalAttribute: "user_type",
+			ValueMapping:      map[string]string{"staff": ""},
+		},
+	}}
+	svcErr := s.idpService.validateAttributeConfiguration(context.Background(), idp)
+	s.NotNil(svcErr)
+	s.Equal(ErrorInvalidAttributeConfiguration.Code, svcErr.Code)
+	s.Contains(svcErr.ErrorDescription.DefaultValue, "must not contain empty")
+}
+
+func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_DynamicResolutionInvalidTarget() {
+	s.mockET.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "ghost", false, true, false).
+		Return([]entitytype.AttributeInfo(nil), &tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType, Code: "ETS-1004",
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "user type not found"},
+		})
+
+	idp := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{
+			Default:           "person",
+			ExternalAttribute: "user_type",
+			ValueMapping:      map[string]string{"staff": "ghost"},
+		},
+	}}
+	svcErr := s.idpService.validateAttributeConfiguration(context.Background(), idp)
+	s.NotNil(svcErr)
+	s.Equal(ErrorInvalidAttributeConfiguration.Code, svcErr.Code)
+	s.Contains(svcErr.ErrorDescription.DefaultValue, "invalid user type")
+}

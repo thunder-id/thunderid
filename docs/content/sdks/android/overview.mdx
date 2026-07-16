@@ -1,5 +1,6 @@
 ---
 title: Android SDK Overview
+docType: concept
 displayed_sidebar: androidSdkSidebar
 sidebar_position: 1
 sidebar_label: Overview
@@ -10,8 +11,8 @@ description: Native Android SDK for {{ProductName}} authentication in Kotlin app
 
 The <ProductName /> Android SDK provides two libraries for integrating authentication into your Android applications:
 
-- **`dev.thunderid:android`** — Core authentication client with the full IAM API surface
-- **`dev.thunderid:compose`** — Drop-in Jetpack Compose components built on top of `dev.thunderid:android`
+- **`dev.thunderid:android`**: Core authentication client with the full IAM API surface
+- **`dev.thunderid:compose`**: Drop-in Jetpack Compose components built on top of `dev.thunderid:android`
 
 Both libraries require a minimum SDK version of API 24 (Android 7.0).
 
@@ -42,7 +43,7 @@ dependencyResolutionManagement {
 
 ## Getting Started
 
-To get started quickly, follow the [Android Quickstart Guide](/docs/next/guides/getting-started/connect-your-application/android) for step-by-step setup instructions.
+To get started quickly, follow the [Android Quickstart Guide](../../../guides/getting-started/connect-your-application/android) for step-by-step setup instructions.
 
 ## Quick Example
 
@@ -93,7 +94,7 @@ fun ContentView() {
 
 ## Features
 
-### `dev.thunderid:android` — Core Client
+### `dev.thunderid:android`: Core Client
 
 | Method | Description |
 |--------|-------------|
@@ -110,7 +111,7 @@ fun ContentView() {
 | `exchangeToken(config)` | Perform an OAuth 2.0 token exchange (STS) |
 | `decodeJwtToken(token)` | Decode a JWT string into a `Map<String, Any?>` |
 
-### `dev.thunderid:compose` — Components
+### `dev.thunderid:compose`: Components
 
 #### Actions
 
@@ -145,7 +146,7 @@ fun ContentView() {
 | Type | Description |
 |------|-------------|
 | `ThunderIDState` | Reactive state class provided via `LocalThunderID` |
-| `LocalThunderID` | `CompositionLocal<ThunderIDState>` — read with `LocalThunderID.current` |
+| `LocalThunderID` | `CompositionLocal<ThunderIDState>`, read with `LocalThunderID.current` |
 
 ## Customization
 

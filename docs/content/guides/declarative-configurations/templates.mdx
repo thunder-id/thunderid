@@ -1,5 +1,7 @@
 ---
 title: Template Resources
+docType: reference
+description: Learn about Template Resources and how to apply it in configuration, integration, and operational workflows.
 sidebar_position: 4
 ---
 
@@ -27,21 +29,21 @@ body: |
 
 Required fields
 
-- `id` — unique template identifier
-- `displayName` — human-friendly name
-- `scenario` — scenario type (see supported values below)
-- `type` — template type (e.g., `email`)
-- `subject` — subject used when sending emails
-- `contentType` — MIME type, e.g. `text/plain` or `text/html`
-- `body` — template body using `{{ctx(key)}}` syntax for placeholder substitution
+- `id`: unique template identifier
+- `displayName`: human-friendly name
+- `scenario`: scenario type (see supported values below)
+- `type`: template type (e.g., `email`)
+- `subject`: subject used when sending emails
+- `contentType`: MIME type, e.g. `text/plain` or `text/html`
+- `body`: template body using `{{ctx(key)}}` syntax for placeholder substitution
 
 Supported scenarios
 
-- `USER_INVITE` — used during the user invite flow
+- `USER_INVITE`: used during the user invite flow
 
 Supported context placeholders
 
-- `{{ctx(inviteLink)}}` — the invite link for user registration
+- `{{ctx(inviteLink)}}`: the invite link for user registration
 
 Notes
 

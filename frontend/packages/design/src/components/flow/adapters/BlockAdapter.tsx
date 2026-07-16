@@ -18,7 +18,7 @@
 
 import {EmbeddedFlowComponentType, EmbeddedFlowEventType, type EmbeddedFlowComponent} from '@thunderid/react';
 import {cn} from '@thunderid/utils';
-import {Box, Button} from '@wso2/oxygen-ui';
+import {Box, Button, Stack} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import DividerAdapter from './DividerAdapter';
@@ -71,6 +71,7 @@ function SubmitButtonAdapter({
 
   return (
     <Button
+      id={component.id}
       type={onClick ? 'button' : 'submit'}
       fullWidth
       className={cn(
@@ -99,6 +100,7 @@ function ResendButtonAdapter({component, isLoading, resolve}: ResendButtonAdapte
 
   return (
     <Button
+      id={component.id}
       type="submit"
       fullWidth
       className={cn('Flow--resendButton', 'Button--root')}
@@ -142,6 +144,7 @@ function TriggerButtonAdapter({
 
   return (
     <Button
+      id={component.id}
       fullWidth
       className={cn(
         'Flow--triggerButton',
@@ -161,12 +164,42 @@ function TriggerButtonAdapter({
   );
 }
 
+/**
+ * Expands STACK layout containers so blocks can detect and wire the actions
+ * nested inside them (e.g. two side-by-side submit buttons in a row stack).
+ */
+function flattenThroughStacks(components: EmbeddedFlowComponent[]): EmbeddedFlowComponent[] {
+  return components.flatMap((component: EmbeddedFlowComponent) =>
+    component.type === 'STACK' ? flattenThroughStacks(component.components ?? []) : [component],
+  );
+}
+
 function renderFormSubComponent(
   subComponent: EmbeddedFlowComponent,
   compIndex: number,
   ctx: BlockContext,
 ): JSX.Element | null {
   const sub = subComponent as FlowComponent;
+
+  // STACK is a pure layout container — render it in place and keep its children
+  // in the form context so nested submit/trigger actions stay wired.
+  if (sub.type === 'STACK') {
+    return (
+      <Stack
+        key={sub.id ?? compIndex}
+        id={sub.id}
+        className={cn('Flow--stack')}
+        direction={sub.direction ?? 'column'}
+        spacing={sub.gap ?? 2}
+        alignItems={sub.align ?? 'center'}
+        justifyContent={sub.justify ?? 'flex-start'}
+      >
+        {(sub.components ?? []).map((nested: EmbeddedFlowComponent, nestedIndex: number) =>
+          renderFormSubComponent(nested, nestedIndex, ctx),
+        )}
+      </Stack>
+    );
+  }
   const fieldProps: FlowFieldProps = {
     component: sub,
     values: ctx.values,
@@ -281,7 +314,9 @@ interface FormBlockAdapterProps extends BlockContext {
 function FormBlockAdapter({component, index, ...ctx}: FormBlockAdapterProps): JSX.Element {
   const blockComponents: EmbeddedFlowComponent[] = component.components ?? [];
 
-  const submitActions = blockComponents.filter(
+  // Submit actions may sit inside STACK layout containers — collect through them
+  // so multi-submit wiring and the Enter-key target see every action.
+  const submitActions = flattenThroughStacks(blockComponents).filter(
     (c) =>
       (c.type as EmbeddedFlowComponentType) === EmbeddedFlowComponentType.Action &&
       c.eventType === EmbeddedFlowEventType.Submit,
@@ -333,8 +368,25 @@ function TriggerBlockAdapter({component, index, ...ctx}: TriggerBlockAdapterProp
       className={cn('Flow--triggerBlock')}
       sx={{display: 'flex', flexDirection: 'column', width: '100%', gap: 2, mt: 2}}
     >
-      {blockComponents.map((actionComponent, actionIndex) => {
+      {blockComponents.map(function renderTriggerSub(actionComponent, actionIndex): JSX.Element | null {
         const sub = actionComponent as FlowComponent;
+        if (sub.type === 'STACK') {
+          return (
+            <Stack
+              key={sub.id ?? actionIndex}
+              id={sub.id}
+              className={cn('Flow--stack')}
+              direction={sub.direction ?? 'column'}
+              spacing={sub.gap ?? 2}
+              alignItems={sub.align ?? 'center'}
+              justifyContent={sub.justify ?? 'flex-start'}
+            >
+              {(sub.components ?? []).map((nested: EmbeddedFlowComponent, nestedIndex: number) =>
+                renderTriggerSub(nested, nestedIndex),
+              )}
+            </Stack>
+          );
+        }
         if (
           (sub.type as EmbeddedFlowComponentType) === EmbeddedFlowComponentType.Action &&
           sub.eventType === EmbeddedFlowEventType.Trigger
@@ -373,14 +425,18 @@ export default function BlockAdapter({
 }: BlockAdapterProps): JSX.Element | null {
   const blockComponents: EmbeddedFlowComponent[] = component.components ?? [];
 
-  const hasSubmit = blockComponents.some(
+  // Actions may sit inside STACK layout containers — look through them so the
+  // block is not dropped as action-less.
+  const flattenedComponents = flattenThroughStacks(blockComponents);
+
+  const hasSubmit = flattenedComponents.some(
     (c) =>
       ((c.type as EmbeddedFlowComponentType) === EmbeddedFlowComponentType.Action &&
         c.eventType === EmbeddedFlowEventType.Submit) ||
       (c.type === 'RESEND' && c.eventType === EmbeddedFlowEventType.Submit),
   );
 
-  const hasTrigger = blockComponents.some(
+  const hasTrigger = flattenedComponents.some(
     (c) =>
       (c.type as EmbeddedFlowComponentType) === EmbeddedFlowComponentType.Action &&
       c.eventType === EmbeddedFlowEventType.Trigger,

@@ -1,6 +1,7 @@
 ---
 toc_progress: quickstart
 title: Nuxt Quickstart
+docType: quickstart
 sidebar_position: 3
 persona: app
 description: Add {{ProductName}} authentication to a Nuxt 3 application using the @thunderid/nuxt module.
@@ -28,7 +29,7 @@ Use this guide to add <ProductName /> authentication to a Nuxt 3 application usi
 <TutorialHeroItem icon={<Boxes />}>Create a new Nuxt 3 app</TutorialHeroItem>
 <TutorialHeroItem icon={<Package />}>Register the <code>@thunderid/nuxt</code> module</TutorialHeroItem>
 <TutorialHeroItem icon={<LogIn />}>Add working sign-in and sign-out</TutorialHeroItem>
-<TutorialHeroItem icon={<BookOpen />}>Wrap your app with ThunderIDRoot</TutorialHeroItem>
+<TutorialHeroItem icon={<BookOpen />}>Wrap your app with <ProductName />Root</TutorialHeroItem>
 
 ## Prerequisites
 
@@ -43,13 +44,17 @@ Use this guide to add <ProductName /> authentication to a Nuxt 3 application usi
 
 ## Run <ProductName />
 
-Start a local ThunderID instance. Pick the method that works best for you:
+Start a local <ProductName /> instance. Pick the method that works best for you:
 
 <RunThunderID />
 
-Once it's running, the console is available at [https://localhost:8090](https://localhost:8090).
+Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
 
 ## Create an Application
+
+:::info Test User
+If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
+:::
 
 Open the Console at <ConsoleUrl />, navigate to **Applications**, and click **Add Application**:
 
@@ -143,7 +148,7 @@ THUNDERID_SESSION_SECRET=<a-random-secret-for-session-signing>
 NODE_TLS_REJECT_UNAUTHORIZED=0
 ```
 
-## Wrap Your App with ThunderIDRoot
+## Wrap Your App with <ProductName />Root
 
 The `<ThunderIDRoot>` component mounts the full authentication provider tree. Wrap your application content with it in `app.vue`:
 
@@ -212,7 +217,7 @@ You should see the `<SignInButton />` button. Click it to be redirected to the <
   <a href="../../../guides/flows/what-are-flows" style={{textDecoration: 'none', color: 'inherit'}}>
     <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
       <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Upgrade the Sign-In Flow</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Add MFA, passkeys, or social login to your flow — no app code changes required.</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Add MFA, passkeys, or social login to your flow: no app code changes required.</div>
       <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>Flow Designer →</div>
     </div>
   </a>

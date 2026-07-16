@@ -59,6 +59,7 @@ func (suite *SMSExecutorTestSuite) SetupTest() {
 			{Identifier: common.AttributeMobileNumber, Type: providers.InputTypePhone, Required: true},
 		},
 		[]providers.Input{},
+		mock.Anything,
 	).Return(suite.mockBaseExecutor)
 
 	suite.executor = newSMSExecutor(suite.mockFlowFactory, suite.mockSMSSenderSvc, suite.mockTemplateService, nil)
@@ -326,6 +327,7 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_NilSMSSenderService_Retu
 			{Identifier: common.AttributeMobileNumber, Type: providers.InputTypePhone, Required: true},
 		},
 		[]providers.Input{},
+		mock.Anything,
 	).Return(mockBaseExecutor)
 
 	noServiceExecutor := newSMSExecutor(mockFactory, nil, suite.mockTemplateService, nil)

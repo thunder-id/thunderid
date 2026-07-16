@@ -26,8 +26,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 type ActionAPITestSuite struct {
@@ -55,10 +55,9 @@ func (suite *ActionAPITestSuite) SetupSuite() {
 
 	// Create test resource server
 	rsReq := CreateResourceServerRequest{
-		Name:               "Action Test Server",
-		Description:        "Resource server for action testing",
-		Handle:             "action-test-server",
-		OUID: ouID,
+		Name:        "Action Test Server",
+		Description: "Resource server for action testing",
+		OUID:        ouID,
 	}
 	rsID, err := createResourceServer(rsReq)
 	suite.Require().NoError(err, "Failed to create test resource server")
@@ -109,7 +108,7 @@ func (suite *ActionAPITestSuite) TestCreateActionAtResourceServer() {
 	suite.Equal(req.Name, action.Name)
 	suite.Equal(req.Handle, action.Handle)
 	suite.Equal(req.Description, action.Description)
-	suite.Equal("action-test-server:read", action.Permission, "Server-level action permission should be just the handle")
+	suite.Equal("read", action.Permission, "Server-level action permission should be just the handle")
 }
 
 func (suite *ActionAPITestSuite) TestCreateActionAtResourceServerDuplicateHandle() {
@@ -191,12 +190,12 @@ func (suite *ActionAPITestSuite) TestListActionsAtResourceServer() {
 		if action.ID == action1ID {
 			foundAction1 = true
 			suite.Equal(action1.Name, action.Name)
-			suite.Equal("action-test-server:list-action-1", action.Permission, "Permission should be returned in list response")
+			suite.Equal("list-action-1", action.Permission, "Permission should be returned in list response")
 		}
 		if action.ID == action2ID {
 			foundAction2 = true
 			suite.Equal(action2.Name, action.Name)
-			suite.Equal("action-test-server:list-action-2", action.Permission, "Permission should be returned in list response")
+			suite.Equal("list-action-2", action.Permission, "Permission should be returned in list response")
 		}
 	}
 	suite.True(foundAction1, "Should find first action")
@@ -228,7 +227,7 @@ func (suite *ActionAPITestSuite) TestUpdateActionAtResourceServer() {
 	suite.Equal(updateReq.Name, action.Name, "Name should be mutable")
 	suite.Equal(req.Handle, action.Handle, "Handle should be immutable")
 	suite.Equal(updateReq.Description, action.Description)
-	suite.Equal("action-test-server:update-action", action.Permission, "Permission should be immutable")
+	suite.Equal("update-action", action.Permission, "Permission should be immutable")
 }
 
 func (suite *ActionAPITestSuite) TestDeleteActionAtResourceServer() {
@@ -270,7 +269,7 @@ func (suite *ActionAPITestSuite) TestCreateActionAtResource() {
 	suite.Require().NoError(err)
 	suite.Equal(req.Name, action.Name)
 	suite.Equal(req.Description, action.Description)
-	suite.Equal("action-test-server:test-resource:view", action.Permission, "Action permission should be resource:action")
+	suite.Equal("test-resource:view", action.Permission, "Action permission should be resource:action")
 }
 
 func (suite *ActionAPITestSuite) TestCreateActionAtResourceDuplicateHandle() {
@@ -551,10 +550,9 @@ func (suite *ActionAPITestSuite) TestActionPermissionDerivationWithCustomDelimit
 	// Create resource server with custom delimiter
 	delimiter := "-"
 	rsReq := CreateResourceServerRequest{
-		Name:               "Action Permission Test Server",
-		Handle:            "actionpermtest",
-		OUID: suite.ouID,
-		Delimiter:          &delimiter,
+		Name:      "Action Permission Test Server",
+		OUID:      suite.ouID,
+		Delimiter: &delimiter,
 	}
 	customRsID, err := createResourceServer(rsReq)
 	suite.Require().NoError(err)
@@ -601,7 +599,7 @@ func (suite *ActionAPITestSuite) TestActionPermissionDerivationWithCustomDelimit
 
 	action, err := getActionAtResource(customRsID, level3ID, actionID)
 	suite.Require().NoError(err)
-	suite.Equal("actionpermtest-hotels-rooms-suites-book", action.Permission, "Deeply nested action permission should use custom delimiter")
+	suite.Equal("hotels-rooms-suites-book", action.Permission, "Deeply nested action permission should use custom delimiter")
 }
 
 // Helper functions

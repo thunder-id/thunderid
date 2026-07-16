@@ -50,8 +50,12 @@ func isBootstrapInvocation() bool {
 // caller can log the reason before exiting.
 func runBootstrap(ctx context.Context, logger *log.Logger, serverHome string,
 	importSvc importer.ImportServiceInterface, cacheManager cache.CacheManagerInterface) error {
-	opts := parseBootstrapOptions(serverHome, flag.Args()[1:])
-	err := bootstrap.Run(ctx, importSvc, opts)
+	opts, err := parseBootstrapOptions(serverHome, flag.Args()[1:])
+	if err != nil {
+		shutdownBootstrap(ctx, logger, cacheManager)
+		return err
+	}
+	err = bootstrap.Run(ctx, importSvc, opts)
 	if err == nil {
 		printBootstrapSummary()
 	}
@@ -59,8 +63,7 @@ func runBootstrap(ctx context.Context, logger *log.Logger, serverHome string,
 	return err
 }
 
-// printBootstrapSummary prints the default admin credentials and role created by the
-// bootstrap.
+// printBootstrapSummary prints the admin credentials and role created by the bootstrap.
 func printBootstrapSummary() {
 	fmt.Println()
 	fmt.Println("✅ Default resources setup completed successfully!")
@@ -75,9 +78,11 @@ func printBootstrapSummary() {
 // parseBootstrapOptions parses the bootstrap subcommand flags and exports the admin
 // credentials and public URL to the environment, so the bundle's
 // `{{ .ADMIN_USERNAME }}` / `{{ .ADMIN_PASSWORD }}` / `{{ .PUBLIC_URL }}` placeholders
-// resolve at import time. Flags override the environment, which overrides the
-// defaults (admin/admin and the configured server URL).
-func parseBootstrapOptions(serverHome string, args []string) bootstrap.Options {
+// resolve at import time. Flags override the environment. The admin username defaults
+// to "admin". The admin password has no default and no generation logic here: this
+// subcommand never invents security material on its own, so callers (setup.sh/setup.ps1
+// generate one if needed) must supply a non-empty ADMIN_PASSWORD, or bootstrap fails.
+func parseBootstrapOptions(serverHome string, args []string) (bootstrap.Options, error) {
 	fs := flag.NewFlagSet(bootstrapSubcommand, flag.ContinueOnError)
 	adminUsername := fs.String("admin-username", "", "Username for the default admin user")
 	adminPassword := fs.String("admin-password", "", "Password for the default admin user")
@@ -88,7 +93,14 @@ func parseBootstrapOptions(serverHome string, args []string) bootstrap.Options {
 	_ = fs.Parse(args)
 
 	setEnv("ADMIN_USERNAME", firstNonEmpty(*adminUsername, os.Getenv("ADMIN_USERNAME"), "admin"))
-	setEnv("ADMIN_PASSWORD", firstNonEmpty(*adminPassword, os.Getenv("ADMIN_PASSWORD"), "admin"))
+
+	password := firstNonEmpty(*adminPassword, os.Getenv("ADMIN_PASSWORD"))
+	if password == "" {
+		return bootstrap.Options{}, fmt.Errorf(
+			"no admin password supplied: set --admin-password or ADMIN_PASSWORD")
+	}
+	setEnv("ADMIN_PASSWORD", password)
+
 	setEnv("PUBLIC_URL", firstNonEmpty(os.Getenv("PUBLIC_URL"),
 		config.GetServerURL(&config.GetServerRuntime().Config.Server)))
 	// The bundle ranges over CONSOLE_REDIRECT_URIS, which buildArrayFromEnvVars
@@ -105,7 +117,7 @@ func parseBootstrapOptions(serverHome string, args []string) bootstrap.Options {
 	if dir == "" {
 		dir = path.Join(serverHome, "bootstrap")
 	}
-	return bootstrap.Options{DefaultsDir: dir}
+	return bootstrap.Options{DefaultsDir: dir}, nil
 }
 
 // setEnv sets an environment variable, ignoring the (practically impossible) error

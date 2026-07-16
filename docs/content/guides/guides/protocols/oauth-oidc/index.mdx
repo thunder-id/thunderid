@@ -1,5 +1,6 @@
 ---
 title: OAuth & OpenID Connect
+docType: concept
 sidebar_position: 0
 description: Catalogue of OAuth 2.1, OpenID Connect, and related security extensions supported by {{ProductName}}, with links to detailed protocol guides.
 ---
@@ -42,7 +43,7 @@ Protections layered on top of the core flows.
 |---|---|---|
 | [PKCE](./pkce) | RFC 7636 | Protects authorization codes against interception. Required for public clients. |
 | [Pushed Authorization Requests](./par) | RFC 9126 | Send authorization parameters to <ProductName /> over a back-channel before the redirect. |
-| [DPoP — Sender-Constrained Tokens](./dpop) | RFC 9449 | Bind access and refresh tokens to a client-held key. |
+| [DPoP: Sender-Constrained Tokens](./dpop) | RFC 9449 | Bind access and refresh tokens to a client-held key. |
 | [Issuer Identification](./issuer-identification) | RFC 9207 | Include `iss` in the authorization response to prevent mix-up attacks. |
 | [Resource Indicators](./resource-indicators) | RFC 8707 | Target an access token to a specific resource server via the `resource` parameter. |
 

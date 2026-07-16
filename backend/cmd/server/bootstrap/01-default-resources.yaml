@@ -1,11 +1,11 @@
-# resource_type: organization_unit
+resource_type: organization_unit
 id: 01900000-0000-7000-8000-000000000001
 handle: default
 name: Default
 description: Default organization unit
 logoUrl: "emoji:🏛️"
 ---
-# resource_type: user_type
+resource_type: user_type
 id: 01900000-0000-7000-8000-000000000010
 category: user
 name: Person
@@ -58,7 +58,7 @@ schema:
     required: false
     credential: true
 ---
-# resource_type: user_type
+resource_type: user_type
 id: 01900000-0000-7000-8000-000000000011
 category: agent
 name: default
@@ -92,7 +92,7 @@ schema:
       - assistant
       - custom
 ---
-# resource_type: resource_server
+resource_type: resource_server
 id: 01900000-0000-7000-8000-000000000020
 name: System
 description: System resource server
@@ -135,7 +135,7 @@ resources:
         handle: view
         description: Read-only access to user types
 ---
-# resource_type: flow
+resource_type: flow
 id: 01900000-0000-7000-8000-000000000061
 name: Default Authentication Flow
 handle: default-flow
@@ -299,7 +299,7 @@ nodes:
       x: 2527
       y: 509
 ---
-# resource_type: flow
+resource_type: flow
 id: 01900000-0000-7000-8000-000000000068
 name: Console App Authentication Flow
 handle: console-app-flow
@@ -378,7 +378,7 @@ nodes:
 - id: end
   type: END
 ---
-# resource_type: flow
+resource_type: flow
 id: 01900000-0000-7000-8000-000000000067
 name: Default Recovery Flow
 handle: default-flow
@@ -666,7 +666,7 @@ nodes:
       x: 3600
       y: 375
 ---
-# resource_type: flow
+resource_type: flow
 id: 01900000-0000-7000-8000-000000000064
 name: Default Registration Flow
 handle: default-flow
@@ -906,7 +906,7 @@ nodes:
       x: 2451
       y: 629
 ---
-# resource_type: flow
+resource_type: flow
 id: 01900000-0000-7000-8000-000000000069
 name: Console App Registration Flow
 handle: console-app-flow
@@ -1064,7 +1064,7 @@ nodes:
 - id: end
   type: END
 ---
-# resource_type: flow
+resource_type: flow
 id: 01900000-0000-7000-8000-000000000066
 name: Default User Onboarding Flow
 handle: default-flow
@@ -1679,7 +1679,7 @@ nodes:
       x: 7103
       y: 637
 ---
-# resource_type: theme
+resource_type: theme
 id: 01900000-0000-7000-8000-000000000071
 handle: acrylic-orange
 displayName: Acrylic Orange
@@ -2181,7 +2181,7 @@ theme:
       - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
       - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
 ---
-# resource_type: theme
+resource_type: theme
 id: 01900000-0000-7000-8000-000000000072
 handle: acrylic-purple
 displayName: Acrylic Purple
@@ -2683,7 +2683,7 @@ theme:
       - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
       - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
 ---
-# resource_type: theme
+resource_type: theme
 id: 01900000-0000-7000-8000-000000000073
 handle: classic
 displayName: Classic
@@ -3183,7 +3183,7 @@ theme:
       - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
       - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
 ---
-# resource_type: theme
+resource_type: theme
 id: 01900000-0000-7000-8000-000000000074
 handle: high-contrast
 displayName: High Contrast
@@ -3683,7 +3683,7 @@ theme:
       - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
       - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
 ---
-# resource_type: theme
+resource_type: theme
 id: 01900000-0000-7000-8000-000000000075
 handle: pale-gray
 displayName: Pale Gray
@@ -4185,7 +4185,7 @@ theme:
       - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
       - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
 ---
-# resource_type: theme
+resource_type: theme
 id: 01900000-0000-7000-8000-000000000076
 handle: pale-indigo
 displayName: Pale Indigo
@@ -4687,7 +4687,7 @@ theme:
       - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
       - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
 ---
-# resource_type: application
+resource_type: application
 id: 01900000-0000-7000-8000-000000000060
 name: Console
 description: Management application for ThunderID
@@ -4753,7 +4753,7 @@ inboundAuthConfig:
         ou:
           - ouId
 ---
-# resource_type: user
+resource_type: user
 id: 01900000-0000-7000-8000-000000000030
 type: Person
 ouHandle: default
@@ -4769,7 +4769,7 @@ attributes:
 credentials:
   password: "{{ .ADMIN_PASSWORD }}"
 ---
-# resource_type: group
+resource_type: group
 id: 01900000-0000-7000-8000-000000000040
 name: Administrators
 description: System administrators group
@@ -4778,7 +4778,7 @@ members:
   - id: 01900000-0000-7000-8000-000000000030
     type: user
 ---
-# resource_type: role
+resource_type: role
 id: 01900000-0000-7000-8000-000000000050
 name: Administrator
 description: System administrator role with full permissions
@@ -4791,7 +4791,7 @@ assignments:
   - id: 01900000-0000-7000-8000-000000000040
     type: group
 ---
-# resource_type: translation
+resource_type: translation
 id: 01900000-0000-7000-8000-000000000091
 language: en-US
 translations:

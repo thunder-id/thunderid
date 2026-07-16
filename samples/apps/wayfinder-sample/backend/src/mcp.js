@@ -52,19 +52,19 @@ import {
 // mapped to null require only a valid token.
 const TOOL_PERMISSIONS = {
   search_flights: null,
-  recommend_bookings: "wayfinder:booking:recommend",
+  recommend_bookings: "booking:recommend",
   search_hotels: null,
   get_trips: null,
   get_locations: null,
   get_profile: null,
-  get_flight_bookings: "wayfinder:booking:read",
-  create_booking: "wayfinder:booking:create",
-  delete_all_bookings: "wayfinder:booking:cancel",
-  find_upgrade_options: "wayfinder:upgrade:search",
-  upgrade_booking: "wayfinder:booking:upgrade",   // direct immediate upgrade (seats available)
-  request_upgrade: "wayfinder:booking:upgrade",   // async CIBA upgrade (seats not yet available)
-  get_pending_upgrade: "wayfinder:upgrade:read",
-  process_upgrade: "wayfinder:upgrade:process"
+  get_flight_bookings: "booking:read",
+  create_booking: "booking:create",
+  delete_all_bookings: "booking:cancel",
+  find_upgrade_options: "upgrade:search",
+  upgrade_booking: "booking:upgrade",   // direct immediate upgrade (seats available)
+  request_upgrade: "booking:upgrade",   // async CIBA upgrade (seats not yet available)
+  get_pending_upgrade: "upgrade:read",
+  process_upgrade: "upgrade:process"
 };
 
 let evaluateAuthzenAccess;
@@ -112,7 +112,7 @@ async function requireToolAuthorization(user, toolName) {
                 id: user.id,
             },
             resource: {
-                type: "wayfinder",
+                type: "http://localhost:8787/mcp",
             },
             action: {
                 name: requiredPermission,
@@ -472,14 +472,14 @@ function createTravelMcpServer(user, idToken) {
 
     tool(
         "get_pending_upgrade",
-        "For the upgrade scheduler agent only. Returns the count of pending upgrade requests and one request to process next. Requires wayfinder:upgrade:read scope (M2M token).",
+        "For the upgrade scheduler agent only. Returns the count of pending upgrade requests and one request to process next. Requires upgrade:read scope (M2M token).",
         {},
         async () => toToolContent(getOnePendingUpgrade()),
     );
 
   tool(
     "process_upgrade",
-    "Process a specific upgrade request. Validates that the authenticated user owns the request, resolves the matching Business class flight, updates the booking, and marks the request as success or failed. Requires wayfinder:upgrade:process scope (CIBA user token).",
+    "Process a specific upgrade request. Validates that the authenticated user owns the request, resolves the matching Business class flight, updates the booking, and marks the request as success or failed. Requires upgrade:process scope (CIBA user token).",
     {
       upgradeRequestId: z.string().describe("The ID of the upgrade request to process.")
     },
@@ -644,14 +644,14 @@ export function getProtectedResourceMetadata(request) {
         resource: `${protocol}://${host}/mcp`,
         authorization_servers: issuer ? [issuer] : [],
         scopes_supported: [
-            "wayfinder:booking:read",
-            "wayfinder:booking:create",
-            "wayfinder:booking:cancel",
-            "wayfinder:booking:recommend",
-            "wayfinder:booking:upgrade",
-            "wayfinder:upgrade:read",
-            "wayfinder:upgrade:search",
-            "wayfinder:upgrade:process",
+            "booking:read",
+            "booking:create",
+            "booking:cancel",
+            "booking:recommend",
+            "booking:upgrade",
+            "upgrade:read",
+            "upgrade:search",
+            "upgrade:process",
         ],
         bearer_methods_supported: ["header"],
     };

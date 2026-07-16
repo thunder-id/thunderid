@@ -75,7 +75,11 @@ func (v *flowValidator) ValidateFlowDefinition(
 		return err
 	}
 
-	if err := v.validateNodes(flowDef.Nodes, nodeIndex); err != nil {
+	if err := v.validateFlowTypeBasedConstraints(flowDef.FlowType, flowDef.Nodes); err != nil {
+		return err
+	}
+
+	if err := v.validateNodes(flowDef.Nodes, nodeIndex, flowDef.FlowType); err != nil {
 		return err
 	}
 
@@ -142,6 +146,58 @@ func (v *flowValidator) validateMetadata(flowDef *FlowDefinition) *tidcommon.Ser
 	}
 
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Scope: Flow type-based constraint validation (static maps, no registry)
+// ---------------------------------------------------------------------------
+
+// requiredExecutorsByFlowType maps flow type → executor names that must appear at least once.
+var requiredExecutorsByFlowType = map[providers.FlowType][]string{
+	providers.FlowTypeAuthentication: {executor.ExecutorNameAuthAssert},
+	providers.FlowTypeRegistration:   {executor.ExecutorNameProvisioning, executor.ExecutorNameUserTypeResolver},
+	providers.FlowTypeUserOnboarding: {executor.ExecutorNameProvisioning, executor.ExecutorNameUserTypeResolver},
+}
+
+// validateFlowTypeBasedConstraints checks forbidden and required executor rules for the flow type.
+// Uses static maps only — no registry access required.
+func (v *flowValidator) validateFlowTypeBasedConstraints(
+	flowType providers.FlowType, nodes []providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	return v.validateRequiredExecutors(flowType, nodes)
+}
+
+// validateRequiredExecutors returns an error if a TASK_EXECUTION node with a required executor
+// is absent from the flow for the given flow type.
+func (v *flowValidator) validateRequiredExecutors(
+	flowType providers.FlowType, nodes []providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	required, ok := requiredExecutorsByFlowType[flowType]
+	if !ok {
+		return nil
+	}
+	presentExecutors := collectPresentExecutors(nodes)
+	for _, name := range required {
+		if !presentExecutors[name] {
+			return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+				Key:          "error.flowmgtservice.required_executor_missing_description",
+				DefaultValue: "Flow type {{param(flowType)}} requires executor '{{param(executorName)}}'",
+				Params:       map[string]string{"flowType": string(flowType), "executorName": name},
+			})
+		}
+	}
+	return nil
+}
+
+// collectPresentExecutors returns a set of executor names present in TASK_EXECUTION nodes.
+func collectPresentExecutors(nodes []providers.NodeDefinition) map[string]bool {
+	present := make(map[string]bool)
+	for _, node := range nodes {
+		if node.Type == string(common.NodeTypeTaskExecution) && node.Executor != nil {
+			present[node.Executor.Name] = true
+		}
+	}
+	return present
 }
 
 // ---------------------------------------------------------------------------
@@ -430,6 +486,7 @@ func buildAdjacencyList(nodes []providers.NodeDefinition) map[string][]string {
 // validateNodes validates each node's configuration and registry-dependent checks.
 func (v *flowValidator) validateNodes(
 	nodes []providers.NodeDefinition, nodeIndex map[string]*providers.NodeDefinition,
+	flowType providers.FlowType,
 ) *tidcommon.ServiceError {
 	for i := range nodes {
 		node := &nodes[i]
@@ -437,7 +494,10 @@ func (v *flowValidator) validateNodes(
 			return err
 		}
 		if node.Type == string(common.NodeTypeTaskExecution) {
-			if err := v.validateExecutors(node); err != nil {
+			if err := v.validateExecutorGenericConstraints(node, flowType); err != nil {
+				return err
+			}
+			if err := v.validateExecutorSpecificConstraints(node, nodeIndex, nodes); err != nil {
 				return err
 			}
 		}
@@ -748,9 +808,11 @@ func (v *flowValidator) validateCallNode(node *providers.NodeDefinition) *tidcom
 // Scope: Executor validation
 // ---------------------------------------------------------------------------
 
-// validateExecutors validates that the executor referenced in a task execution node
-// is registered in the executor registry.
-func (v *flowValidator) validateExecutors(node *providers.NodeDefinition) *tidcommon.ServiceError {
+// validateExecutorGenericConstraints validates that the executor referenced in a task execution node
+// is registered in the executor registry, then checks meta-based constraints.
+func (v *flowValidator) validateExecutorGenericConstraints(
+	node *providers.NodeDefinition, flowType providers.FlowType,
+) *tidcommon.ServiceError {
 	if !v.executorRegistry.IsRegistered(node.Executor.Name) {
 		return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
 			Key:          "error.flowmgtservice.executor_not_registered_description",
@@ -758,7 +820,210 @@ func (v *flowValidator) validateExecutors(node *providers.NodeDefinition) *tidco
 			Params:       map[string]string{"nodeID": node.ID, "executorName": node.Executor.Name},
 		})
 	}
+	return v.validateExecutorMeta(node, flowType)
+}
+
+// validateExecutorMeta performs meta-based validation for an executor node:
+// mode, flow type compatibility, and required node properties.
+// If no meta is declared for the executor, all checks are skipped (backward-compatible).
+func (v *flowValidator) validateExecutorMeta(
+	node *providers.NodeDefinition, flowType providers.FlowType,
+) *tidcommon.ServiceError {
+	meta, err := v.executorRegistry.GetExecutorMeta(node.Executor.Name)
+	if err != nil || meta == nil {
+		return nil
+	}
+
+	if err := v.validateExecutorMode(node, meta); err != nil {
+		return err
+	}
+	if err := v.validateExecutorFlowType(node, meta, flowType); err != nil {
+		return err
+	}
+	return v.validateExecutorProperties(node, meta)
+}
+
+// validateExecutorSpecificConstraints dispatches executor-specific validation rules
+// that go beyond the generic meta-based checks.
+func (v *flowValidator) validateExecutorSpecificConstraints(
+	node *providers.NodeDefinition,
+	nodeIndex map[string]*providers.NodeDefinition, nodes []providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	switch node.Executor.Name {
+	case executor.ExecutorNameSSOCheck:
+		return v.validateSSOCheckExecutor(node, nodeIndex)
+	case executor.ExecutorNameSession:
+		return v.validateSessionExecutor(node, nodes)
+	}
 	return nil
+}
+
+// validateExecutorMode checks that the executor mode configured in the node is supported.
+// If the executor declares supported modes and the node omits a mode, the executor's default
+// mode (if any) is accepted; otherwise the node must specify one of the supported modes.
+func (v *flowValidator) validateExecutorMode(
+	node *providers.NodeDefinition, meta *providers.ExecutorMeta,
+) *tidcommon.ServiceError {
+	if len(meta.SupportedModes) == 0 {
+		return nil
+	}
+	if node.Executor.Mode == "" {
+		if meta.DefaultMode != "" {
+			return nil
+		}
+		return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.executor_mode_required_description",
+			DefaultValue: "Node '{{param(nodeID)}}': executor '{{param(executorName)}}' requires a mode",
+			Params:       map[string]string{"nodeID": node.ID, "executorName": node.Executor.Name},
+		})
+	}
+	for _, m := range meta.SupportedModes {
+		if m == node.Executor.Mode {
+			return nil
+		}
+	}
+	return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+		Key: "error.flowmgtservice.unsupported_executor_mode_description",
+		DefaultValue: "Node '{{param(nodeID)}}': executor '{{param(executorName)}}' " +
+			"does not support mode '{{param(mode)}}'",
+		Params: map[string]string{
+			"nodeID":       node.ID,
+			"executorName": node.Executor.Name,
+			"mode":         node.Executor.Mode,
+		},
+	})
+}
+
+// validateExecutorFlowType checks that the executor supports the current flow type.
+func (v *flowValidator) validateExecutorFlowType(
+	node *providers.NodeDefinition, meta *providers.ExecutorMeta, flowType providers.FlowType,
+) *tidcommon.ServiceError {
+	if len(meta.SupportedFlowTypes) == 0 {
+		return nil
+	}
+	for _, ft := range meta.SupportedFlowTypes {
+		if ft == flowType {
+			return nil
+		}
+	}
+	return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+		Key: "error.flowmgtservice.unsupported_executor_flow_type_description",
+		DefaultValue: "Node '{{param(nodeID)}}': executor '{{param(executorName)}}' " +
+			"is not compatible with flow type '{{param(flowType)}}'",
+		Params: map[string]string{
+			"nodeID":       node.ID,
+			"executorName": node.Executor.Name,
+			"flowType":     string(flowType),
+		},
+	})
+}
+
+// validateExecutorProperties validates node properties against executor metadata.
+// It checks that all properties defined in the node are supported by the executor,
+// and that all required properties are present and non-empty.
+func (v *flowValidator) validateExecutorProperties(
+	node *providers.NodeDefinition, meta *providers.ExecutorMeta,
+) *tidcommon.ServiceError {
+	if len(meta.SupportedProperties) == 0 {
+		return nil
+	}
+
+	supported := make(map[string]bool, len(meta.SupportedProperties))
+	for _, prop := range meta.SupportedProperties {
+		supported[prop.Property] = true
+		// Check required properties
+		if prop.IsRequired {
+			val, ok := node.Properties[prop.Property]
+			if !ok || val == nil || val == "" {
+				return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+					Key: "error.flowmgtservice.missing_required_executor_property_description",
+					DefaultValue: "Node '{{param(nodeID)}}': executor '{{param(executorName)}}' " +
+						"requires property '{{param(propertyKey)}}'",
+					Params: map[string]string{
+						"nodeID":       node.ID,
+						"executorName": node.Executor.Name,
+						"propertyKey":  prop.Property,
+					},
+				})
+			}
+		}
+	}
+
+	// Check for unsupported properties
+	for key := range node.Properties {
+		if !supported[key] {
+			return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+				Key: "error.flowmgtservice.unsupported_executor_property_description",
+				DefaultValue: "Node '{{param(nodeID)}}': executor '{{param(executorName)}}' " +
+					"does not support property '{{param(propertyKey)}}'",
+				Params: map[string]string{
+					"nodeID":       node.ID,
+					"executorName": node.Executor.Name,
+					"propertyKey":  key,
+				},
+			})
+		}
+	}
+	return nil
+}
+
+// validateSSOCheckExecutor validates that an SSOCheck node's checkpointRef property references
+// a valid SessionExecutor node.
+func (v *flowValidator) validateSSOCheckExecutor(
+	node *providers.NodeDefinition, nodeIndex map[string]*providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	ref, ok := node.Properties[common.NodePropertyCheckpointRef]
+	if !ok || ref == nil {
+		return nil // Already caught by ExecutorMeta required-property validation.
+	}
+	refStr, ok := ref.(string)
+	if !ok {
+		return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.checkpoint_ref_not_string_description",
+			DefaultValue: "Node '{{param(nodeID)}}': checkpointRef must be a string",
+			Params:       map[string]string{"nodeID": node.ID},
+		})
+	}
+	target, exists := nodeIndex[refStr]
+	if !exists {
+		return tidcommon.CustomServiceError(ErrorInvalidNodeReference, tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.checkpoint_ref_invalid_target_description",
+			DefaultValue: "Node '{{param(nodeID)}}': checkpointRef references " +
+				"non-existent node '{{param(targetNodeID)}}'",
+			Params: map[string]string{"nodeID": node.ID, "targetNodeID": refStr},
+		})
+	}
+	if target.Type != string(common.NodeTypeTaskExecution) ||
+		target.Executor == nil || target.Executor.Name != executor.ExecutorNameSession {
+		return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.checkpoint_ref_not_session_description",
+			DefaultValue: "Node '{{param(nodeID)}}': checkpointRef must reference " +
+				"a SessionExecutor node, got '{{param(targetNodeID)}}'",
+			Params: map[string]string{"nodeID": node.ID, "targetNodeID": refStr},
+		})
+	}
+	return nil
+}
+
+// validateSessionExecutor validates that a SessionExecutor node is referenced by at least one
+// SSOCheckExecutor via checkpointRef.
+func (v *flowValidator) validateSessionExecutor(
+	node *providers.NodeDefinition, nodes []providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	for _, n := range nodes {
+		if n.Type == string(common.NodeTypeTaskExecution) &&
+			n.Executor != nil && n.Executor.Name == executor.ExecutorNameSSOCheck {
+			if ref, ok := n.Properties[common.NodePropertyCheckpointRef].(string); ok && ref == node.ID {
+				return nil
+			}
+		}
+	}
+	return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+		Key: "error.flowmgtservice.orphan_session_executor_description",
+		DefaultValue: "SessionExecutor node '{{param(nodeID)}}' is not referenced " +
+			"by any SSOCheckExecutor via checkpointRef",
+		Params: map[string]string{"nodeID": node.ID},
+	})
 }
 
 // ---------------------------------------------------------------------------

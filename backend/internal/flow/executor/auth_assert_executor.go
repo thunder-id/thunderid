@@ -77,7 +77,11 @@ func newAuthAssertExecutor(
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAuthAssert))
 
 	base := flowFactory.CreateExecutor(ExecutorNameAuthAssert, providers.ExecutorTypeUtility,
-		[]providers.Input{}, []providers.Input{})
+		[]providers.Input{}, []providers.Input{}, &providers.ExecutorMeta{
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: propertyKeyCallbackType},
+			},
+		})
 
 	return &authAssertExecutor{
 		Executor:            base,

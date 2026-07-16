@@ -30,6 +30,8 @@ ENV_FILE=""
 BOOTSTRAP_MODE=false
 BOOTSTRAP_AND_SERVE=false
 BOOTSTRAP_EXTRA_ARGS=()
+ADMIN_USERNAME_FLAG_SET=false
+ADMIN_PASSWORD_FLAG_SET=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -70,6 +72,24 @@ while [[ $# -gt 0 ]]; do
             BOOTSTRAP_EXTRA_ARGS+=(--console-redirect-uris "$2")
             shift 2
             ;;
+        --admin-username)
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                echo "Error: --admin-username requires a value"
+                exit 1
+            fi
+            BOOTSTRAP_EXTRA_ARGS+=(--admin-username "$2")
+            ADMIN_USERNAME_FLAG_SET=true
+            shift 2
+            ;;
+        --admin-password)
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                echo "Error: --admin-password requires a value"
+                exit 1
+            fi
+            BOOTSTRAP_EXTRA_ARGS+=(--admin-password "$2")
+            ADMIN_PASSWORD_FLAG_SET=true
+            shift 2
+            ;;
         --env)
             ENV_FILE="$2"
             shift 2
@@ -90,6 +110,10 @@ while [[ $# -gt 0 ]]; do
             echo "  --without-consent    Disable the bundled consent server"
             echo "  --bootstrap          Create default resources in-process, then exit (used by setup.sh)"
             echo "  --bootstrap-and-serve Create default resources in-process, then start the server"
+            echo "  --admin-username VALUE  Username for the default admin user (--bootstrap-and-serve only)"
+            echo "                          Optional; falls back to ADMIN_USERNAME env var, then defaults to 'admin'"
+            echo "  --admin-password VALUE  Password for the default admin user (--bootstrap-and-serve only)"
+            echo "                          Falls back to ADMIN_PASSWORD env var; bootstrap fails if neither is set"
             echo "  --help               Show this help message"
             echo ""
             echo "First-Time Setup:"
@@ -123,6 +147,14 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# --admin-username/--admin-password only make sense when bootstrapping happens in this
+# invocation, and specifically only for --bootstrap-and-serve — --bootstrap is the
+# seed-only mode setup.sh drives internally via environment variables, not flags.
+if [[ "$ADMIN_USERNAME_FLAG_SET" == "true" || "$ADMIN_PASSWORD_FLAG_SET" == "true" ]] && [ "$BOOTSTRAP_AND_SERVE" != "true" ]; then
+    echo "Error: --admin-username/--admin-password are only valid together with --bootstrap-and-serve"
+    exit 1
+fi
 
 # Resolve relative paths to absolute before the working directory potentially changes.
 if [[ -n "$RESOURCES_FILE" && "$RESOURCES_FILE" != /* ]]; then

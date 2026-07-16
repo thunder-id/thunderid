@@ -21,19 +21,19 @@
  */
 const ConnectionQueryKeys = {
   /**
-   * Base key for all identity-provider domain queries (consumed by useIdentityProviders)
-   */
-  INTEGRATIONS: 'integrations',
-
-  /**
    * Key for identity providers queries
    */
   IDENTITY_PROVIDERS: 'identity-providers',
 
   /**
-   * Key for the connection type summaries list (GET /connections)
+   * Key for SMS provider queries (consumed by useSMSProviders)
    */
-  CONNECTION_TYPES: 'connection-types',
+  SMS_PROVIDERS: 'sms-providers',
+
+  /**
+   * Key for the paginated connection instances list (GET /connections)
+   */
+  CONNECTIONS: 'connections',
 
   /**
    * Key for configured instances of a connection type (GET /connections/{type})

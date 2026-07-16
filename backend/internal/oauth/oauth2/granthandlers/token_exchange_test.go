@@ -1235,7 +1235,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_UnsupportedID
 	assert.NotNil(suite.T(), errResp)
 	assert.Equal(suite.T(), constants.ErrorInvalidRequest, errResp.Error)
 	assert.Contains(suite.T(), errResp.ErrorDescription, "Unsupported requested_token_type")
-	assert.Contains(suite.T(), errResp.ErrorDescription, "Only access tokens and JWT tokens are supported")
+	assert.Contains(suite.T(), errResp.ErrorDescription, "Only access tokens, JWT tokens, and ID-JAGs are supported")
 }
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_UnsupportedRefreshTokenType() {
@@ -1252,7 +1252,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_UnsupportedRe
 	assert.NotNil(suite.T(), errResp)
 	assert.Equal(suite.T(), constants.ErrorInvalidRequest, errResp.Error)
 	assert.Contains(suite.T(), errResp.ErrorDescription, "Unsupported requested_token_type")
-	assert.Contains(suite.T(), errResp.ErrorDescription, "Only access tokens and JWT tokens are supported")
+	assert.Contains(suite.T(), errResp.ErrorDescription, "Only access tokens, JWT tokens, and ID-JAGs are supported")
 }
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_CompleteTokenExchangeFlow() {
@@ -2568,4 +2568,650 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_Multipl
 	assert.Nil(suite.T(), errResp)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), []string{"read", "write"}, result.AccessToken.Scopes)
+}
+
+// ============================================================================
+// ID-JAG Issuance Tests (draft-ietf-oauth-identity-assertion-authz-grant)
+// The server issuer configured in SetupTest is testIDJAGServerIssuer.
+// ============================================================================
+
+const testIDJAGServerIssuer = "https://auth.example.com"
+const testIDJAGAudience = "https://rs.example.com"
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_IDJAGRequestedTokenType() {
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       "subject-token",
+		SubjectTokenType:   string(constants.TokenTypeIdentifierIDToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+	}
+
+	result := suite.handler.ValidateGrant(context.Background(), tokenRequest, suite.oauthApp)
+	assert.Nil(suite.T(), result)
+}
+
+// An ID-JAG request must present an ID token as the subject_token; any other subject_token_type is
+// rejected as invalid_request per the draft's restriction to identity assertions.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_IDJAGWrongSubjectTokenType() {
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       "subject-token",
+		SubjectTokenType:   string(constants.TokenTypeIdentifierAccessToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+	}
+
+	result := suite.handler.ValidateGrant(context.Background(), tokenRequest, suite.oauthApp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), constants.ErrorInvalidRequest, result.Error)
+	assert.Contains(suite.T(), result.ErrorDescription,
+		"ID-JAG requests require subject_token_type urn:ietf:params:oauth:token-type:id_token")
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_Success() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID,
+		"iss": testIDJAGServerIssuer,
+		"aud": testClientID,
+		"exp": float64(now + 3600),
+	})
+
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       subjectToken,
+		SubjectTokenType:   string(constants.TokenTypeIdentifierIDToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+		Scope:              testScopeRead,
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub: testUserID,
+			Iss: testIDJAGServerIssuer,
+			Aud: []string{testClientID},
+		}, nil)
+	suite.mockTokenBuilder.On("BuildIDJAG", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.IDJAGBuildContext) bool {
+			return ctx.Subject == testUserID &&
+				ctx.Audience == testIDJAGAudience &&
+				ctx.ClientID == testClientID &&
+				tokenservice.JoinScopes(ctx.Scopes) == testScopeRead
+		})).Return(&model.TokenDTO{
+		Token:     "test-id-jag",
+		TokenType: constants.TokenTypeNA,
+		IssuedAt:  now,
+		ExpiresIn: 300,
+		Scopes:    []string{testScopeRead},
+		ClientID:  testClientID,
+		Subject:   testUserID,
+		Audiences: []string{testIDJAGAudience},
+	}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), "test-id-jag", result.AccessToken.Token)
+	assert.Equal(suite.T(), constants.TokenTypeNA, result.AccessToken.TokenType)
+	assert.Equal(suite.T(), testClientID, result.AccessToken.ClientID)
+	assert.Equal(suite.T(), testUserID, result.AccessToken.Subject)
+	assert.Equal(suite.T(), []string{testIDJAGAudience}, result.AccessToken.Audiences)
+	assert.Equal(suite.T(), []string{testScopeRead}, result.AccessToken.Scopes)
+	// No refresh token is issued for ID-JAGs.
+	assert.Empty(suite.T(), result.RefreshToken.Token)
+}
+
+// RFC 8707: a resource parameter present on an ID-JAG request is embedded in the issued ID-JAG's
+// resource claim, threaded through IDJAGBuildContext.Resources.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_ResourcePresent_ThreadedToBuildContext() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID,
+		"iss": testIDJAGServerIssuer,
+		"aud": testClientID,
+		"exp": float64(now + 3600),
+	})
+
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       subjectToken,
+		SubjectTokenType:   string(constants.TokenTypeIdentifierIDToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+		Resources:          []string{testRS01URI},
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub: testUserID,
+			Iss: testIDJAGServerIssuer,
+			Aud: []string{testClientID},
+		}, nil)
+	suite.mockTokenBuilder.On("BuildIDJAG", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.IDJAGBuildContext) bool {
+			return len(ctx.Resources) == 1 && ctx.Resources[0] == testRS01URI
+		})).Return(&model.TokenDTO{
+		Token:     "test-id-jag",
+		TokenType: constants.TokenTypeNA,
+		IssuedAt:  now,
+		ExpiresIn: 300,
+		ClientID:  testClientID,
+		Subject:   testUserID,
+		Audiences: []string{testIDJAGAudience},
+	}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+}
+
+// RFC 8707: when no resource parameter is present, the ID-JAG is still valid and no Resources are
+// threaded to the build context.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_ResourceAbsent_BuildContextEmpty() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID,
+		"iss": testIDJAGServerIssuer,
+		"aud": testClientID,
+		"exp": float64(now + 3600),
+	})
+
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       subjectToken,
+		SubjectTokenType:   string(constants.TokenTypeIdentifierIDToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub: testUserID,
+			Iss: testIDJAGServerIssuer,
+			Aud: []string{testClientID},
+		}, nil)
+	suite.mockTokenBuilder.On("BuildIDJAG", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.IDJAGBuildContext) bool {
+			return len(ctx.Resources) == 0
+		})).Return(&model.TokenDTO{
+		Token:     "test-id-jag",
+		TokenType: constants.TokenTypeNA,
+		IssuedAt:  now,
+		ExpiresIn: 300,
+		ClientID:  testClientID,
+		Subject:   testUserID,
+		Audiences: []string{testIDJAGAudience},
+	}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+}
+
+// RFC 8707 §2: an invalid resource URI (not an absolute URI) is rejected as invalid_target before any
+// subject token validation occurs.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_InvalidResourceURIRejected() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       "subject-token",
+		SubjectTokenType:   string(constants.TokenTypeIdentifierIDToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+		Resources:          []string{"not-a-valid-uri"},
+	}
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidTarget, errResp.Error)
+	suite.mockTokenValidator.AssertNotCalled(suite.T(), "ValidateIDJAGSubjectToken",
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_AudienceNotAllowed() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       "subject-token",
+		SubjectTokenType:   string(constants.TokenTypeIdentifierAccessToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{"https://evil.example.com"},
+	}
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidTarget, errResp.Error)
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_MissingAudience() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       "subject-token",
+		SubjectTokenType:   string(constants.TokenTypeIdentifierAccessToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+	}
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidTarget, errResp.Error)
+	assert.Contains(suite.T(), errResp.ErrorDescription, "audience parameter is required")
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_SubjectTokenValidationFailedRejected() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID,
+		"iss": testCustomIssuer,
+		"exp": float64(now + 3600),
+	})
+
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       subjectToken,
+		SubjectTokenType:   string(constants.TokenTypeIdentifierAccessToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+	}
+
+	// ValidateIDJAGSubjectToken rejects external-issuer (and other invalid) subject tokens itself; the
+	// handler maps any validation failure to a single invalid_request response.
+	suite.mockTokenValidator.On("ValidateIDJAGSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(nil, fmt.Errorf("subject_token must be issued by this server, got issuer %q", testCustomIssuer))
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidRequest, errResp.Error)
+	assert.Contains(suite.T(), errResp.ErrorDescription, "subject_token must be an ID token issued to this client")
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_NoIDJAGConfigRejected() {
+	// suite.oauthApp has no IDJAG config configured in SetupTest.
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       "subject-token",
+		SubjectTokenType:   string(constants.TokenTypeIdentifierAccessToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+	}
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidTarget, errResp.Error)
+	assert.Contains(suite.T(), errResp.ErrorDescription, "not permitted to request ID-JAGs")
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_DisabledRejected() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          false,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       "subject-token",
+		SubjectTokenType:   string(constants.TokenTypeIdentifierAccessToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+	}
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidTarget, errResp.Error)
+	assert.Contains(suite.T(), errResp.ErrorDescription, "not permitted to request ID-JAGs")
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_InvalidSubjectToken() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       "subject-token",
+		SubjectTokenType:   string(constants.TokenTypeIdentifierAccessToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGSubjectToken", mock.Anything, "subject-token", suite.oauthApp).
+		Return(nil, errors.New("invalid signature"))
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidRequest, errResp.Error)
+	assert.Contains(suite.T(), errResp.ErrorDescription,
+		"subject_token must be an ID token issued to this client")
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_SubjectTokenEnforcementUnavailable() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       "subject-token",
+		SubjectTokenType:   string(constants.TokenTypeIdentifierAccessToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGSubjectToken", mock.Anything, "subject-token", suite.oauthApp).
+		Return(nil, revocation.ErrEnforcementUnavailable)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorServerError, errResp.Error)
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_BuildError() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID,
+		"iss": testIDJAGServerIssuer,
+		"aud": testClientID,
+		"exp": float64(time.Now().Unix() + 3600),
+	})
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       subjectToken,
+		SubjectTokenType:   string(constants.TokenTypeIdentifierIDToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub: testUserID,
+			Iss: testIDJAGServerIssuer,
+			Aud: []string{testClientID},
+		}, nil)
+	suite.mockTokenBuilder.On("BuildIDJAG", mock.Anything, mock.Anything).
+		Return(nil, errors.New("signing failed"))
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorServerError, errResp.Error)
+}
+
+// A public (none-auth) client cannot request ID-JAGs; the grant requires a confidential client.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_PublicClientRejected() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	suite.oauthApp.TokenEndpointAuthMethod = providers.TokenEndpointAuthMethodNone
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       "subject-token",
+		SubjectTokenType:   string(constants.TokenTypeIdentifierAccessToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+	}
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidClient, errResp.Error)
+	assert.Contains(suite.T(), errResp.ErrorDescription, "confidential client")
+}
+
+// An ID-JAG must target a single RS; supplying more than one audience is rejected as invalid_target.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_MultipleAudiencesRejected() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       "subject-token",
+		SubjectTokenType:   string(constants.TokenTypeIdentifierAccessToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience, "https://rs2.example.com"},
+	}
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidTarget, errResp.Error)
+	assert.Contains(suite.T(), errResp.ErrorDescription, "Exactly one audience")
+}
+
+// The subject token must be bound to the authenticated client: its aud must contain the client_id.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_SubjectTokenAudMismatchRejected() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID,
+		"iss": testIDJAGServerIssuer,
+		"aud": "another-client",
+		"exp": float64(time.Now().Unix() + 3600),
+	})
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       subjectToken,
+		SubjectTokenType:   string(constants.TokenTypeIdentifierIDToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub: testUserID,
+			Iss: testIDJAGServerIssuer,
+			Aud: []string{"another-client"},
+		}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidRequest, errResp.Error)
+	assert.Contains(suite.T(), errResp.ErrorDescription,
+		"subject_token audience does not match the authenticated client")
+}
+
+// An empty subject-token audience does not satisfy the client binding and is rejected.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_SubjectTokenEmptyAudRejected() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID,
+		"iss": testIDJAGServerIssuer,
+		"exp": float64(time.Now().Unix() + 3600),
+	})
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       subjectToken,
+		SubjectTokenType:   string(constants.TokenTypeIdentifierIDToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub: testUserID,
+			Iss: testIDJAGServerIssuer,
+		}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidRequest, errResp.Error)
+	assert.Contains(suite.T(), errResp.ErrorDescription,
+		"subject_token audience does not match the authenticated client")
+}
+
+// A subject token whose multi-valued aud includes the authenticated client satisfies the binding.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_SubjectTokenMultiAudContainingClientAccepted() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID,
+		"iss": testIDJAGServerIssuer,
+		"aud": []string{"another-client", testClientID},
+		"exp": float64(now + 3600),
+	})
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       subjectToken,
+		SubjectTokenType:   string(constants.TokenTypeIdentifierIDToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+		Scope:              testScopeRead,
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub: testUserID,
+			Iss: testIDJAGServerIssuer,
+			Aud: []string{"another-client", testClientID},
+		}, nil)
+	suite.mockTokenBuilder.On("BuildIDJAG", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.IDJAGBuildContext) bool {
+			return ctx.Subject == testUserID && ctx.Audience == testIDJAGAudience
+		})).Return(&model.TokenDTO{
+		Token:     "test-id-jag",
+		TokenType: constants.TokenTypeNA,
+		IssuedAt:  now,
+		ExpiresIn: 300,
+		Scopes:    []string{testScopeRead},
+		ClientID:  testClientID,
+		Subject:   testUserID,
+		Audiences: []string{testIDJAGAudience},
+	}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), "test-id-jag", result.AccessToken.Token)
+}
+
+// All requested scopes are granted as-is; ID-JAG no longer applies a per-application scope allowlist.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_ScopesPassthrough() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID,
+		"iss": testIDJAGServerIssuer,
+		"aud": testClientID,
+		"exp": float64(now + 3600),
+	})
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       subjectToken,
+		SubjectTokenType:   string(constants.TokenTypeIdentifierIDToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+		Scope:              "read delete",
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub: testUserID,
+			Iss: testIDJAGServerIssuer,
+			Aud: []string{testClientID},
+		}, nil)
+	suite.mockTokenBuilder.On("BuildIDJAG", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.IDJAGBuildContext) bool {
+			return tokenservice.JoinScopes(ctx.Scopes) == "read delete"
+		})).Return(&model.TokenDTO{
+		Token:     "test-id-jag",
+		TokenType: constants.TokenTypeNA,
+		IssuedAt:  now,
+		ExpiresIn: 300,
+		Scopes:    []string{"read", "delete"},
+		ClientID:  testClientID,
+		Subject:   testUserID,
+		Audiences: []string{testIDJAGAudience},
+	}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), []string{"read", "delete"}, result.AccessToken.Scopes)
 }

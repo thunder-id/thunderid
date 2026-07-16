@@ -64,7 +64,7 @@ export default function CreateResourceServerPage(): JSX.Element {
   const [currentStep, setCurrentStep] = useState<ResourceServerCreateStep>(ResourceServerCreateStep.TYPE);
   const [selectedType, setSelectedType] = useState<ResourceServerType | undefined>(undefined);
   const [name, setName] = useState('');
-  const [handle, setHandle] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [delimiter, setDelimiter] = useState<PermissionDelimiter>(DEFAULT_PERMISSION_DELIMITER);
   const [ouId, setOuId] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -154,7 +154,7 @@ export default function CreateResourceServerPage(): JSX.Element {
 
     const payload = {
       name: name.trim(),
-      handle: handle.trim() || undefined,
+      identifier: identifier.trim(),
       ouId: resolvedOuId,
       type: selectedType,
       delimiter,
@@ -218,11 +218,10 @@ export default function CreateResourceServerPage(): JSX.Element {
         return (
           <ConfigureName
             name={name}
-            handle={handle}
-            delimiter={delimiter}
+            identifier={identifier}
             selectedType={selectedType}
             onNameChange={setName}
-            onHandleChange={setHandle}
+            onIdentifierChange={setIdentifier}
             onReadyChange={handleNameReadyChange}
           />
         );
@@ -230,7 +229,6 @@ export default function CreateResourceServerPage(): JSX.Element {
         return (
           <ConfigureSeparator
             delimiter={delimiter}
-            handle={handle}
             onDelimiterChange={handleDelimiterChange}
             onReadyChange={handleSeparatorReadyChange}
           />

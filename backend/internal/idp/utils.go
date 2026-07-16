@@ -49,23 +49,40 @@ func GetPropertyValue(properties []cmodels.Property, name string) string {
 	return ""
 }
 
-// GetMappedUserType returns the resolved local user type for the IDP's attribute mapping,
-// or an empty string when no mapping is configured. This iteration resolves to the configured
-// default user type.
-func GetMappedUserType(idp *providers.IDPDTO) string {
+// GetMappedUserType returns the resolved local user type for the IDP's attribute mapping, or an
+// empty string when no mapping is configured. When claim-driven resolution is configured with a
+// value mapping (ExternalAttribute + ValueMapping), the user type is derived by mapping the external
+// claim value. When an external attribute is configured without a value mapping, the external claim
+// value is used directly as the user type. In either case, when the claim is missing or its value is
+// unmapped, the configured default user type is returned.
+func GetMappedUserType(idp *providers.IDPDTO, claims map[string]interface{}) string {
 	if idp == nil || idp.AttributeConfiguration == nil || idp.AttributeConfiguration.UserTypeResolution == nil {
 		return ""
 	}
-	return idp.AttributeConfiguration.UserTypeResolution.Default
+	resolution := idp.AttributeConfiguration.UserTypeResolution
+	externalAttribute := strings.TrimSpace(resolution.ExternalAttribute)
+	if externalAttribute != "" {
+		if value, ok := getNestedValue(claims, externalAttribute); ok {
+			key := sysutils.ConvertInterfaceValueToString(value)
+			if len(resolution.ValueMapping) > 0 {
+				if userType, ok := resolution.ValueMapping[key]; ok {
+					return userType
+				}
+			} else if trimmed := strings.TrimSpace(key); trimmed != "" {
+				return trimmed
+			}
+		}
+	}
+	return resolution.Default
 }
 
 // GetAttributeMappings returns the external→local attribute mappings for the resolved user type's
 // attributes entry, or nil when no mapping is configured.
-func GetAttributeMappings(idp *providers.IDPDTO) []providers.AttributeMapping {
+func GetAttributeMappings(idp *providers.IDPDTO, claims map[string]interface{}) []providers.AttributeMapping {
 	if idp == nil || idp.AttributeConfiguration == nil {
 		return nil
 	}
-	userType := GetMappedUserType(idp)
+	userType := GetMappedUserType(idp, claims)
 	if userType == "" {
 		return nil
 	}

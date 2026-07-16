@@ -169,16 +169,16 @@ func (suite *ExportServiceTestSuite) TestExportResources_DefaultOptions() {
 	assert.Nil(suite.T(), result.EnvFile)
 	assert.Equal(suite.T(), 1, result.Summary.TotalFiles)
 	assert.Contains(suite.T(), result.Summary.ResourceTypes, "application")
-	assert.Contains(suite.T(), result.Files[0].Content, "# resource_type: application")
+	assert.Contains(suite.T(), result.Files[0].Content, "resource_type: application")
 }
 
-func (suite *ExportServiceTestSuite) TestAddResourceTypeComment() {
+func (suite *ExportServiceTestSuite) TestAddResourceTypeField() {
 	content := "name: sample\n"
-	annotated := addResourceTypeComment(content, "application")
+	annotated := addResourceTypeField(content, "application")
 
-	assert.Equal(suite.T(), "# resource_type: application\nname: sample\n", annotated)
+	assert.Equal(suite.T(), "resource_type: application\nname: sample\n", annotated)
 
-	annotatedAgain := addResourceTypeComment(annotated, "application")
+	annotatedAgain := addResourceTypeField(annotated, "application")
 	assert.Equal(suite.T(), annotated, annotatedAgain)
 }
 

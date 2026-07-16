@@ -24,10 +24,9 @@ import {useNavigate} from 'react-router';
 import AddCustomConnectionCard from './AddCustomConnectionCard';
 import ConnectionCard from './ConnectionCard';
 import ConnectionCategoryFilters, {type CategoryFilterValue} from './ConnectionCategoryFilters';
-import useConnectionInstances from '../api/useConnectionInstances';
 import useConnections from '../api/useConnections';
 import {CONNECTION_VENDOR_META} from '../config/connectionVendorMeta';
-import {type ConnectionCardModel, ConnectionTypes} from '../models/connection';
+import type {ConnectionCardModel} from '../models/connection';
 import buildConnectionCards from '../utils/buildConnectionCards';
 
 const SKELETON_COUNT = 6;
@@ -40,16 +39,10 @@ export default function ConnectionsList(): JSX.Element {
   const [category, setCategory] = useState<CategoryFilterValue>('all');
 
   const connectionsQuery = useConnections();
-  const summaries = useMemo(() => connectionsQuery.data ?? [], [connectionsQuery.data]);
-  const oidcConfigured: boolean = summaries.some((s) => s.type === ConnectionTypes.OIDC && s.instanceCount > 0);
-  const oidcInstancesQuery = useConnectionInstances(ConnectionTypes.OIDC, {enabled: oidcConfigured});
 
   const cards: ConnectionCardModel[] = useMemo(
-    () =>
-      buildConnectionCards(summaries, CONNECTION_VENDOR_META, {
-        [ConnectionTypes.OIDC]: oidcInstancesQuery.data ?? [],
-      }),
-    [summaries, oidcInstancesQuery.data],
+    () => buildConnectionCards(connectionsQuery.data?.connections ?? [], CONNECTION_VENDOR_META),
+    [connectionsQuery.data?.connections],
   );
 
   const filteredCards: ConnectionCardModel[] = useMemo(() => {

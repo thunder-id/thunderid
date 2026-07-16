@@ -1,7 +1,8 @@
 ---
 title: Configuration
+docType: reference
 displayed_sidebar: javascriptSdkSidebar
-description: Configuration reference for the JavaScript SDK
+description: Configuration reference for the JavaScript SDK, covering client ID, base URL, scopes, and storage settings.
 ---
 
 # Configuration
@@ -34,21 +35,21 @@ await client.initialize({
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `afterSignInUrl` | `string` | — | URL to redirect to after a successful sign-in. Must match an allowed redirect URI in your IdP |
-| `afterSignOutUrl` | `string` | — | URL to redirect to after sign-out. Must match an allowed post-logout redirect URI |
+| `afterSignInUrl` | `string` | - | URL to redirect to after a successful sign-in. Must match an allowed redirect URI in your IdP |
+| `afterSignOutUrl` | `string` | - | URL to redirect to after sign-out. Must match an allowed post-logout redirect URI |
 | `scopes` | `string \| string[]` | `['openid']` | OAuth 2.0 scopes to request. Accepts a space-separated string or an array |
-| `clientSecret` | `string` | — | Client secret. Only required for confidential clients — do not use in browser applications |
+| `clientSecret` | `string` | - | Client secret. Only required for confidential clients. Do not use in browser applications |
 | `enablePKCE` | `boolean` | `true` | Enable PKCE (RFC 7636). Disable only if your authorization server does not support it |
-| `prompt` | `string` | — | Controls the authentication UI behavior (e.g., `"login"`, `"none"`, `"consent"`) |
+| `prompt` | `string` | - | Controls the authentication UI behavior (e.g., `"login"`, `"none"`, `"consent"`) |
 | `responseMode` | `string` | `'query'` | OAuth 2.0 response mode for the authorization request |
 | `sendCookiesInRequests` | `boolean` | `true` | Include cookies in token, refresh-token, and custom-grant requests |
-| `sendIdTokenInLogoutRequest` | `boolean` | — | Include `id_token_hint` in the logout request to the end-session endpoint |
+| `sendIdTokenInLogoutRequest` | `boolean` | - | Include `id_token_hint` in the logout request to the end-session endpoint |
 | `mode` | `'redirect' \| 'embedded'` | `'redirect'` | Authentication interaction mode. Use `'embedded'` for app-native flows |
-| `signInOptions` | `Record<string, any>` | — | Additional query parameters to include in every authorization request |
-| `signInUrl` | `string` | — | Override the sign-in page URL. Defaults to the <ProductName /> hosted login page |
-| `signOutOptions` | `Record<string, unknown>` | — | Additional parameters to include in the sign-out request |
-| `signUpOptions` | `Record<string, unknown>` | — | Additional parameters to include in the sign-up request |
-| `signUpUrl` | `string` | — | Override the sign-up page URL |
+| `signInOptions` | `Record<string, any>` | - | Additional query parameters to include in every authorization request |
+| `signInUrl` | `string` | - | Override the sign-in page URL. Defaults to the <ProductName /> hosted login page |
+| `signOutOptions` | `Record<string, unknown>` | - | Additional parameters to include in the sign-out request |
+| `signUpOptions` | `Record<string, unknown>` | - | Additional parameters to include in the sign-up request |
+| `signUpUrl` | `string` | - | Override the sign-up page URL |
 
 ### Token Parameters
 
@@ -58,7 +59,7 @@ await client.initialize({
 | `tokenValidation.idToken.validate` | `boolean` | `true` | Whether to validate ID tokens |
 | `tokenValidation.idToken.validateIssuer` | `boolean` | `true` | Whether to validate the `iss` claim in ID tokens |
 | `tokenValidation.idToken.clockTolerance` | `number` | `300` | Allowed clock skew in seconds when validating token expiry |
-| `tokenLifecycle.refreshToken.autoRefresh` | `boolean` | — | Automatically refresh the access token before it expires |
+| `tokenLifecycle.refreshToken.autoRefresh` | `boolean` | - | Automatically refresh the access token before it expires |
 
 ### Session Parameters
 
@@ -76,19 +77,19 @@ By default the SDK fetches `{baseUrl}/.well-known/openid-configuration` to resol
 |-----------|------|---------|-------------|
 | `discovery.wellKnown.enabled` | `boolean` | `true` | Whether to use the well-known discovery document to resolve endpoints |
 | `endpoints.wellKnown` | `string` | `{baseUrl}/.well-known/openid-configuration` | Override the discovery document URL |
-| `endpoints.authorization` | `string` | — | Override the authorization endpoint |
-| `endpoints.token` | `string` | — | Override the token endpoint |
-| `endpoints.endSession` | `string` | — | Override the end-session (logout) endpoint |
-| `endpoints.userInfo` | `string` | — | Override the userinfo endpoint |
-| `endpoints.jwks` | `string` | — | Override the JWKS endpoint |
-| `endpoints.introspection` | `string` | — | Override the token introspection endpoint |
+| `endpoints.authorization` | `string` | - | Override the authorization endpoint |
+| `endpoints.token` | `string` | - | Override the token endpoint |
+| `endpoints.endSession` | `string` | - | Override the end-session (logout) endpoint |
+| `endpoints.userInfo` | `string` | - | Override the userinfo endpoint |
+| `endpoints.jwks` | `string` | - | Override the JWKS endpoint |
+| `endpoints.introspection` | `string` | - | Override the token introspection endpoint |
 
 ### Application Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `applicationId` | `string` | — | UUID of the <ProductName /> application. Used for Application Branding and sign-up flow access URLs |
-| `allowedExternalUrls` | `string[]` | — | URL prefixes the SDK may attach access tokens to when making HTTP requests. Only applies when using the `webWorker` storage type |
+| `applicationId` | `string` | - | UUID of the <ProductName /> application. Used for Application Branding and sign-up flow access URLs |
+| `allowedExternalUrls` | `string[]` | - | URL prefixes the SDK may attach access tokens to when making HTTP requests. Only applies when using the `webWorker` storage type |
 
 ### Preferences
 

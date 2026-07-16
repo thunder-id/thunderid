@@ -1,11 +1,12 @@
 ---
 title: <ThunderIDRoot />
-description: Root provider that mounts all authentication context providers
+docType: reference
+description: Root provider component that mounts authentication context, session hydration, and event listeners.
 ---
 
 # `<ThunderIDRoot />`
 
-The `ThunderIDRoot` component is the root provider for the ThunderID Nuxt SDK. It mounts the full provider tree — i18n, branding, theme, flow, user, and organization — and must wrap all content that uses ThunderID composables or components.
+The `<ProductName />Root` component is the root provider for the <ProductName /> Nuxt SDK. It mounts the full provider tree, including i18n, branding, theme, flow, user, and organization, and must wrap all content that uses <ProductName /> composables or components.
 
 ## Usage
 
@@ -55,5 +56,5 @@ On mount, `ThunderIDRoot`:
 ## Notes
 
 - `ThunderIDRoot` is auto-registered by the module and does not need to be explicitly imported.
-- It must be an ancestor of any component that uses a ThunderID composable or component.
+- It must be an ancestor of any component that uses a <ProductName /> composable or component.
 - When using Nuxt layouts, wrapping the `<slot />` in the default layout is sufficient.

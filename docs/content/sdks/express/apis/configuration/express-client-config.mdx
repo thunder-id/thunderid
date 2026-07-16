@@ -1,6 +1,7 @@
 ---
 title: ExpressClientConfig
-description: Configuration reference for the Express SDK
+docType: reference
+description: Configuration reference for the Express SDK, covering all options accepted by ThunderIDExpressClient.
 ---
 
 # `ExpressClientConfig`
@@ -56,9 +57,9 @@ app.use(
 | `afterSignInUrl` | `string` | ❌ | `${origin}/login` | Callback URL used after sign-in when not explicitly set |
 | `afterSignOutUrl` | `string` | ❌ | `${origin}/logout` | Callback URL used after sign-out when not explicitly set |
 | `mode` | `'redirect' \| 'embedded'` | ❌ | `'redirect'` | Authentication interaction mode |
-| `signInOptions` | `Record<string, any>` | ❌ | None | Additional authorize request parameters |
-| `signOutOptions` | `Record<string, unknown>` | ❌ | None | Additional sign-out request parameters |
-| `applicationId` | `string` | ❌ | None | Application identifier used by some flows such as embedded sign-in |
+| `signInOptions` | `Record<string, any>` | ❌ | - | Additional authorize request parameters |
+| `signOutOptions` | `Record<string, unknown>` | ❌ | - | Additional sign-out request parameters |
+| `applicationId` | `string` | ❌ | - | Application identifier used by some flows such as embedded sign-in |
 
 ## Express Callbacks
 
@@ -89,11 +90,11 @@ The `sessionCookie` field is inherited from `ThunderIDNodeConfig`.
 ## Notes
 
 - `afterSignInUrl` and `afterSignOutUrl` are optional because the Express middleware can derive defaults from the first incoming request origin
-- Use `mode: 'embedded'` only when you plan to mount [`handleFlow()`](/docs/next/sdks/express/apis/middleware/handle-flow)
+- Use `mode: 'embedded'` only when you plan to mount [`handleFlow()`](../../middleware/handle-flow)
 - Other inherited `ThunderIDNodeConfig` and base JavaScript SDK options remain available, but they are outside the scope of this Express-first reference
 
 ## Related APIs
 
-- [`thunderID()`](/docs/next/sdks/express/apis/middleware/thunderid)
-- [`handleFlow()`](/docs/next/sdks/express/apis/middleware/handle-flow)
-- [`CookieConfig`](/docs/next/sdks/express/apis/constants/cookie-config)
+- [`thunderID()`](../../middleware/thunderid)
+- [`handleFlow()`](../../middleware/handle-flow)
+- [`CookieConfig`](../../constants/cookie-config)

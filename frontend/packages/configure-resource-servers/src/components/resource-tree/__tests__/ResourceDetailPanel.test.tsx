@@ -56,7 +56,6 @@ vi.mock('../../../api/useUpdateAction', () => ({
 const mockResourceServer: ResourceServer = {
   id: 'rs-1',
   name: 'Dark Dodos Smash',
-  handle: 'dark-dodos',
   identifier: 'https://api.example.com',
   ouId: 'ou-1',
   delimiter: '/',
@@ -71,7 +70,7 @@ const readOnlyResourceServer: ResourceServer = {
 const mockMcpResourceServer: ResourceServer = {
   id: 'rs-mcp',
   name: 'My MCP Server',
-  handle: 'my-mcp',
+  identifier: 'https://mcp.example.com',
   ouId: 'ou-1',
   delimiter: ':',
   type: 'MCP',
@@ -193,6 +192,30 @@ describe('ResourceDetailPanel', () => {
       },
       expect.any(Object),
     );
+  });
+
+  it('does not save when the server identifier is cleared', async () => {
+    const selectedNode: SelectedNode = {
+      type: 'server',
+      id: 'rs-1',
+      data: mockResourceServer,
+    };
+
+    renderWithProviders(
+      <ResourceDetailPanel selectedNode={selectedNode} resourceServer={mockResourceServer} onRefresh={vi.fn()} />,
+    );
+
+    fireEvent.change(screen.getByDisplayValue('https://api.example.com'), {
+      target: {value: '   '},
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', {name: /Save/i})).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: /Save/i}));
+
+    expect(mockUpdateResourceServerMutate).not.toHaveBeenCalled();
   });
 
   it('renders the delimiter chip when a server node is selected', () => {
@@ -365,7 +388,7 @@ describe('ResourceDetailPanel (MCP non-server node)', () => {
       <ResourceDetailPanel selectedNode={toolNode} resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />,
     );
 
-    expect(screen.getByText(/Built from the resource server handle/i)).toBeInTheDocument();
+    expect(screen.getByText(/Built from the resource path and the name/i)).toBeInTheDocument();
   });
 
   it('renders kind-aware helper text for Name, Handle, Delimiter and Description for a tool node', () => {

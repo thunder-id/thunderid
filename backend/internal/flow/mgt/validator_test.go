@@ -20,12 +20,14 @@ package flowmgt
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
@@ -54,7 +56,7 @@ func minimalValidFlow() *FlowDefinition {
 	return &FlowDefinition{
 		Handle:   "test-flow",
 		Name:     "Test Flow",
-		FlowType: providers.FlowTypeAuthentication,
+		FlowType: providers.FlowTypeRecovery,
 		Nodes:    minimalValidNodes(),
 	}
 }
@@ -1162,6 +1164,7 @@ func (s *ValidatorTestSuite) TestValidateInterceptorApplyTo_NonSelectedScopeSkip
 
 func (s *ValidatorTestSuite) TestValidateFlowDefinition_Valid() {
 	s.mockExecutorRegistry.EXPECT().IsRegistered("test-executor").Return(true)
+	s.mockExecutorRegistry.EXPECT().GetExecutorMeta("test-executor").Return(nil, nil)
 	s.mockGraphBuilder.EXPECT().ValidateGraph(mock.Anything, mock.Anything).Return(nil)
 	err := s.v.ValidateFlowDefinition(context.Background(), minimalValidFlow())
 	s.Nil(err)
@@ -1195,6 +1198,7 @@ func (s *ValidatorTestSuite) TestValidateFlowDefinition_InvalidNodeFormat() {
 
 func (s *ValidatorTestSuite) TestValidateFlowDefinition_InvalidInterceptorFormat() {
 	s.mockExecutorRegistry.EXPECT().IsRegistered("test-executor").Return(true)
+	s.mockExecutorRegistry.EXPECT().GetExecutorMeta("test-executor").Return(nil, nil)
 	fd := minimalValidFlow()
 	fd.Interceptors = []providers.InterceptorDefinition{
 		{Name: "", Mode: providers.InterceptorModePreRequest},
@@ -1248,18 +1252,19 @@ func (s *ValidatorTestSuite) TestValidateExecutors_NotRegistered() {
 		ID:       "task",
 		Executor: &providers.ExecutorDefinition{Name: "unknown-executor"},
 	}
-	err := s.v.validateExecutors(node)
+	err := s.v.validateExecutorGenericConstraints(node, providers.FlowTypeAuthentication)
 	s.Require().NotNil(err)
 	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
 }
 
 func (s *ValidatorTestSuite) TestValidateExecutors_Registered() {
 	s.mockExecutorRegistry.On("IsRegistered", "known-executor").Return(true)
+	s.mockExecutorRegistry.On("GetExecutorMeta", "known-executor").Return(&providers.ExecutorMeta{}, nil)
 	node := &providers.NodeDefinition{
 		ID:       "task",
 		Executor: &providers.ExecutorDefinition{Name: "known-executor"},
 	}
-	err := s.v.validateExecutors(node)
+	err := s.v.validateExecutorGenericConstraints(node, providers.FlowTypeAuthentication)
 	s.Nil(err)
 }
 
@@ -1294,15 +1299,428 @@ func (s *ValidatorTestSuite) TestValidateNodes_ExecutorNotRegistered() {
 	s.mockExecutorRegistry.On("IsRegistered", "test-executor").Return(false)
 	nodes := minimalValidNodes()
 	index, _ := buildNodeIndex(nodes)
-	err := s.v.validateNodes(nodes, index)
+	err := s.v.validateNodes(nodes, index, providers.FlowTypeAuthentication)
 	s.Require().NotNil(err)
 	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
 }
 
 func (s *ValidatorTestSuite) TestValidateNodes_Valid() {
 	s.mockExecutorRegistry.On("IsRegistered", "test-executor").Return(true)
+	s.mockExecutorRegistry.On("GetExecutorMeta", "test-executor").Return(&providers.ExecutorMeta{}, nil)
 	nodes := minimalValidNodes()
 	index, _ := buildNodeIndex(nodes)
-	err := s.v.validateNodes(nodes, index)
+	err := s.v.validateNodes(nodes, index, providers.FlowTypeAuthentication)
+	s.Nil(err)
+}
+
+// ---------------------------------------------------------------------------
+// Tests for validateRequiredExecutors
+// ---------------------------------------------------------------------------
+
+func (s *ValidatorTestSuite) TestValidateRequiredExecutors_AuthAssertMissingInAuthentication() {
+	nodes := []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "task"},
+		{
+			ID: "task", Type: string(common.NodeTypeTaskExecution),
+			Executor:  &providers.ExecutorDefinition{Name: "CredentialsAuthExecutor"},
+			OnSuccess: "end",
+		},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	err := s.v.validateRequiredExecutors(providers.FlowTypeAuthentication, nodes)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
+func (s *ValidatorTestSuite) TestValidateRequiredExecutors_AuthAssertPresentInAuthentication() {
+	nodes := []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "task"},
+		{
+			ID: "task", Type: string(common.NodeTypeTaskExecution),
+			Executor:  &providers.ExecutorDefinition{Name: "AuthAssertExecutor"},
+			OnSuccess: "end",
+		},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	err := s.v.validateRequiredExecutors(providers.FlowTypeAuthentication, nodes)
+	s.Nil(err)
+}
+
+func (s *ValidatorTestSuite) TestValidateRequiredExecutors_ProvisioningMissingInRegistration() {
+	nodes := []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "task"},
+		{
+			ID: "task", Type: string(common.NodeTypeTaskExecution),
+			Executor:  &providers.ExecutorDefinition{Name: "UserTypeResolver"},
+			OnSuccess: "end",
+		},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	err := s.v.validateRequiredExecutors(providers.FlowTypeRegistration, nodes)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
+func (s *ValidatorTestSuite) TestValidateRequiredExecutors_UserTypeResolverMissingInRegistration() {
+	nodes := []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "task"},
+		{
+			ID: "task", Type: string(common.NodeTypeTaskExecution),
+			Executor:  &providers.ExecutorDefinition{Name: "ProvisioningExecutor"},
+			OnSuccess: "end",
+		},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	err := s.v.validateRequiredExecutors(providers.FlowTypeRegistration, nodes)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
+func (s *ValidatorTestSuite) TestValidateRequiredExecutors_AllRequiredPresentInRegistration() {
+	nodes := []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "task1"},
+		{
+			ID: "task1", Type: string(common.NodeTypeTaskExecution),
+			Executor:  &providers.ExecutorDefinition{Name: "ProvisioningExecutor"},
+			OnSuccess: "task2",
+		},
+		{
+			ID: "task2", Type: string(common.NodeTypeTaskExecution),
+			Executor:  &providers.ExecutorDefinition{Name: "UserTypeResolver"},
+			OnSuccess: "end",
+		},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	err := s.v.validateRequiredExecutors(providers.FlowTypeRegistration, nodes)
+	s.Nil(err)
+}
+
+func (s *ValidatorTestSuite) TestValidateRequiredExecutors_RecoveryHasNoRequirements() {
+	nodes := []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "task"},
+		{
+			ID: "task", Type: string(common.NodeTypeTaskExecution),
+			Executor:  &providers.ExecutorDefinition{Name: "CredentialsAuthExecutor"},
+			OnSuccess: "end",
+		},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	err := s.v.validateRequiredExecutors(providers.FlowTypeRecovery, nodes)
+	s.Nil(err)
+}
+
+func (s *ValidatorTestSuite) TestValidateRequiredExecutors_UserOnboardingBothRequired() {
+	nodesWithBoth := []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "task1"},
+		{
+			ID: "task1", Type: string(common.NodeTypeTaskExecution),
+			Executor:  &providers.ExecutorDefinition{Name: "ProvisioningExecutor"},
+			OnSuccess: "task2",
+		},
+		{
+			ID: "task2", Type: string(common.NodeTypeTaskExecution),
+			Executor:  &providers.ExecutorDefinition{Name: "UserTypeResolver"},
+			OnSuccess: "end",
+		},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	err := s.v.validateRequiredExecutors(providers.FlowTypeUserOnboarding, nodesWithBoth)
+	s.Nil(err)
+}
+
+// ---------------------------------------------------------------------------
+// Tests for validateExecutorConstraints
+// ---------------------------------------------------------------------------
+
+type ValidatorServiceTestSuite struct {
+	suite.Suite
+	v                    *flowValidator
+	mockExecutorRegistry *executormock.ExecutorRegistryInterfaceMock
+}
+
+func TestValidatorServiceTestSuite(t *testing.T) {
+	suite.Run(t, new(ValidatorServiceTestSuite))
+}
+
+func (s *ValidatorServiceTestSuite) SetupTest() {
+	s.mockExecutorRegistry = executormock.NewExecutorRegistryInterfaceMock(s.T())
+	s.v = &flowValidator{
+		executorRegistry: s.mockExecutorRegistry,
+	}
+}
+
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_UnsupportedMode() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
+		SupportedModes: []string{"send", "verify"},
+	}, nil)
+	node := &providers.NodeDefinition{
+		ID:       "task",
+		Executor: &providers.ExecutorDefinition{Name: "my-exec", Mode: "generate"},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_SupportedMode() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
+		SupportedModes: []string{"send", "verify"},
+	}, nil)
+	node := &providers.NodeDefinition{
+		ID:       "task",
+		Executor: &providers.ExecutorDefinition{Name: "my-exec", Mode: "send"},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Nil(err)
+}
+
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_ModeRequiredWhenNotSpecified() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
+		SupportedModes: []string{"send", "verify"},
+	}, nil)
+	node := &providers.NodeDefinition{
+		ID:       "task",
+		Executor: &providers.ExecutorDefinition{Name: "my-exec"},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_DefaultModeAccepted() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
+		DefaultMode:    "send",
+		SupportedModes: []string{"send", "verify"},
+	}, nil)
+	node := &providers.NodeDefinition{
+		ID:       "task",
+		Executor: &providers.ExecutorDefinition{Name: "my-exec"},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Nil(err)
+}
+
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_UnsupportedFlowType() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
+		SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAuthentication},
+	}, nil)
+	node := &providers.NodeDefinition{
+		ID:       "task",
+		Executor: &providers.ExecutorDefinition{Name: "my-exec"},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeRecovery)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_SupportedFlowType() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
+		SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAuthentication},
+	}, nil)
+	node := &providers.NodeDefinition{
+		ID:       "task",
+		Executor: &providers.ExecutorDefinition{Name: "my-exec"},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Nil(err)
+}
+
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_MissingRequiredProperty() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "emailTemplate", IsRequired: true},
+		},
+	}, nil)
+	node := &providers.NodeDefinition{
+		ID:         "task",
+		Executor:   &providers.ExecutorDefinition{Name: "my-exec"},
+		Properties: map[string]interface{}{},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_RequiredPropertyPresent() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "emailTemplate", IsRequired: true},
+		},
+	}, nil)
+	node := &providers.NodeDefinition{
+		ID:         "task",
+		Executor:   &providers.ExecutorDefinition{Name: "my-exec"},
+		Properties: map[string]interface{}{"emailTemplate": "welcome-email"},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Nil(err)
+}
+
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_UnsupportedProperty() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "emailTemplate", IsRequired: true},
+		},
+	}, nil)
+	node := &providers.NodeDefinition{
+		ID:         "task",
+		Executor:   &providers.ExecutorDefinition{Name: "my-exec"},
+		Properties: map[string]interface{}{"emailTemplate": "welcome-email", "unknownProp": "value"},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_OptionalPropertyOmitted() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "emailTemplate", IsRequired: true},
+			{Property: "timeout"},
+		},
+	}, nil)
+	node := &providers.NodeDefinition{
+		ID:         "task",
+		Executor:   &providers.ExecutorDefinition{Name: "my-exec"},
+		Properties: map[string]interface{}{"emailTemplate": "welcome-email"},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Nil(err)
+}
+
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_NoMetaSkipsChecks() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(nil, fmt.Errorf("not found"))
+	node := &providers.NodeDefinition{
+		ID:       "task",
+		Executor: &providers.ExecutorDefinition{Name: "my-exec", Mode: "anything"},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Nil(err)
+}
+
+// ---------------------------------------------------------------------------
+// Tests for validateSSOCheckExecutor
+// ---------------------------------------------------------------------------
+
+func (s *ValidatorTestSuite) TestValidateSSOCheckExecutor_ValidPair() {
+	nodes := []providers.NodeDefinition{
+		{
+			ID: "sso-check", Type: string(common.NodeTypeTaskExecution),
+			Executor:   &providers.ExecutorDefinition{Name: executor.ExecutorNameSSOCheck},
+			Properties: map[string]interface{}{common.NodePropertyCheckpointRef: "session"},
+		},
+		{
+			ID: "session", Type: string(common.NodeTypeTaskExecution),
+			Executor: &providers.ExecutorDefinition{Name: executor.ExecutorNameSession},
+		},
+	}
+	index, _ := buildNodeIndex(nodes)
+	err := s.v.validateSSOCheckExecutor(&nodes[0], index)
+	s.Nil(err)
+}
+
+func (s *ValidatorTestSuite) TestValidateSSOCheckExecutor_CheckpointRefNotString() {
+	node := &providers.NodeDefinition{
+		ID:         "sso-check",
+		Type:       string(common.NodeTypeTaskExecution),
+		Executor:   &providers.ExecutorDefinition{Name: executor.ExecutorNameSSOCheck},
+		Properties: map[string]interface{}{common.NodePropertyCheckpointRef: 123},
+	}
+	err := s.v.validateSSOCheckExecutor(node, nil)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+	s.Contains(err.ErrorDescription.DefaultValue, "checkpointRef must be a string")
+}
+
+func (s *ValidatorTestSuite) TestValidateSSOCheckExecutor_CheckpointRefNonExistentNode() {
+	node := &providers.NodeDefinition{
+		ID:         "sso-check",
+		Type:       string(common.NodeTypeTaskExecution),
+		Executor:   &providers.ExecutorDefinition{Name: executor.ExecutorNameSSOCheck},
+		Properties: map[string]interface{}{common.NodePropertyCheckpointRef: "missing-node"},
+	}
+	index := map[string]*providers.NodeDefinition{"sso-check": node}
+	err := s.v.validateSSOCheckExecutor(node, index)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidNodeReference.Code, err.Code)
+	s.Contains(err.ErrorDescription.DefaultValue, "non-existent node")
+}
+
+func (s *ValidatorTestSuite) TestValidateSSOCheckExecutor_CheckpointRefNotSessionExecutor() {
+	otherTask := &providers.NodeDefinition{
+		ID:       "other-task",
+		Type:     string(common.NodeTypeTaskExecution),
+		Executor: &providers.ExecutorDefinition{Name: "CredentialsAuthExecutor"},
+	}
+	node := &providers.NodeDefinition{
+		ID:         "sso-check",
+		Type:       string(common.NodeTypeTaskExecution),
+		Executor:   &providers.ExecutorDefinition{Name: executor.ExecutorNameSSOCheck},
+		Properties: map[string]interface{}{common.NodePropertyCheckpointRef: "other-task"},
+	}
+	index := map[string]*providers.NodeDefinition{"sso-check": node, "other-task": otherTask}
+	err := s.v.validateSSOCheckExecutor(node, index)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+	s.Contains(err.ErrorDescription.DefaultValue, "must reference a SessionExecutor node")
+}
+
+// ---------------------------------------------------------------------------
+// Tests for validateSessionExecutor
+// ---------------------------------------------------------------------------
+
+func (s *ValidatorTestSuite) TestValidateSessionExecutor_ReferencedBySSOCheck() {
+	nodes := []providers.NodeDefinition{
+		{
+			ID: "sso-check", Type: string(common.NodeTypeTaskExecution),
+			Executor:   &providers.ExecutorDefinition{Name: executor.ExecutorNameSSOCheck},
+			Properties: map[string]interface{}{common.NodePropertyCheckpointRef: "session"},
+		},
+		{
+			ID: "session", Type: string(common.NodeTypeTaskExecution),
+			Executor: &providers.ExecutorDefinition{Name: executor.ExecutorNameSession},
+		},
+	}
+	err := s.v.validateSessionExecutor(&nodes[1], nodes)
+	s.Nil(err)
+}
+
+func (s *ValidatorTestSuite) TestValidateSessionExecutor_OrphanSessionExecutor() {
+	nodes := []providers.NodeDefinition{
+		{
+			ID: "session", Type: string(common.NodeTypeTaskExecution),
+			Executor: &providers.ExecutorDefinition{Name: executor.ExecutorNameSession},
+		},
+	}
+	err := s.v.validateSessionExecutor(&nodes[0], nodes)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+	s.Contains(err.ErrorDescription.DefaultValue, "not referenced by any SSOCheckExecutor")
+}
+
+func (s *ValidatorTestSuite) TestValidateSessionExecutor_MultiplePairsValid() {
+	nodes := []providers.NodeDefinition{
+		{
+			ID: "sso-check-1", Type: string(common.NodeTypeTaskExecution),
+			Executor:   &providers.ExecutorDefinition{Name: executor.ExecutorNameSSOCheck},
+			Properties: map[string]interface{}{common.NodePropertyCheckpointRef: "session-1"},
+		},
+		{
+			ID: "session-1", Type: string(common.NodeTypeTaskExecution),
+			Executor: &providers.ExecutorDefinition{Name: executor.ExecutorNameSession},
+		},
+		{
+			ID: "sso-check-2", Type: string(common.NodeTypeTaskExecution),
+			Executor:   &providers.ExecutorDefinition{Name: executor.ExecutorNameSSOCheck},
+			Properties: map[string]interface{}{common.NodePropertyCheckpointRef: "session-2"},
+		},
+		{
+			ID: "session-2", Type: string(common.NodeTypeTaskExecution),
+			Executor: &providers.ExecutorDefinition{Name: executor.ExecutorNameSession},
+		},
+	}
+	err := s.v.validateSessionExecutor(&nodes[1], nodes)
+	s.Nil(err)
+	err = s.v.validateSessionExecutor(&nodes[3], nodes)
 	s.Nil(err)
 }

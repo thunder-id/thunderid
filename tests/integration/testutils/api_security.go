@@ -51,10 +51,21 @@ const DirectAuthHeaderName = "Direct-Auth-Secret"
 // run writes this exact value deterministically; test clients inject it on Direct API requests.
 const DirectAuthHeaderValue = "integration-direct-auth-secret"
 
+// AdminUsername and AdminPassword are the admin credentials the integration server is seeded with.
+// The harness passes them to setup.sh via the ADMIN_USERNAME/ADMIN_PASSWORD env (see RunSetupScript)
+// so every setup run seeds this exact password deterministically, rather than the randomly generated
+// one setup.sh produces when these are left unset.
+const (
+	AdminUsername = "admin"
+	AdminPassword = "integration-admin-password"
+)
+
 // isDirectAuthPath reports whether the path is one of the Direct API endpoints gated by the Direct API
 // Secret.
 func isDirectAuthPath(path string) bool {
-	return strings.HasPrefix(path, "/auth/") || strings.HasPrefix(path, "/register/passkey/")
+	return strings.HasPrefix(path, "/auth/") ||
+		strings.HasPrefix(path, "/register/passkey/") ||
+		strings.HasPrefix(path, "/access/")
 }
 
 // RoundTrip implements http.RoundTripper interface
@@ -171,11 +182,11 @@ func ObtainAdminAccessToken() error {
 	log.Println("Obtaining admin access token...")
 	adminUsername := os.Getenv("ADMIN_USERNAME")
 	if adminUsername == "" {
-		adminUsername = "admin"
+		adminUsername = AdminUsername
 	}
 	adminPassword := os.Getenv("ADMIN_PASSWORD")
 	if adminPassword == "" {
-		adminPassword = "admin"
+		adminPassword = AdminPassword
 	}
 	var err error
 	adminTokenState, err = ObtainAccessTokenWithPassword(

@@ -48,6 +48,7 @@ The `.agent/skills/` entries above are internal guidance for **developing** Thun
 - Do not create fallback tests with mock/hardcoded data when original tests fail. Fix the actual failing tests.
 - Write tests for new features and bug fixes (target 80%+ coverage).
 - Add error handling and logging only where failures are expected and actionable — not for scenarios that cannot happen, and not everywhere.
+- Do not use em dashes (—) or double hyphens (`--`) in copy or UI strings (e.g. i18n locale files). Prefer a comma, period, or rephrasing instead.
 
 ## Git and PR Conventions
 

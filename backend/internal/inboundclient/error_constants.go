@@ -104,6 +104,12 @@ var (
 	ErrOAuthNoneAuthCannotHaveCertOrSecret = errors.New("none auth method cannot have certificate or secret")
 	// ErrOAuthClientCredentialsCannotUseNoneAuth is returned when client_credentials uses none auth method.
 	ErrOAuthClientCredentialsCannotUseNoneAuth = errors.New("client_credentials cannot use none auth method")
+	// ErrOAuthClientJWTBearerCannotUseNoneAuth is returned when the jwt-bearer grant uses none auth method.
+	// The jwt-bearer (ID-JAG) grant relies on client_id binding and requires a confidential client.
+	ErrOAuthClientJWTBearerCannotUseNoneAuth = errors.New("jwt-bearer grant cannot use none auth method")
+	// ErrOAuthClientIDJAGCannotUseNoneAuth is returned when an ID-JAG configuration uses none auth method.
+	// Requesting ID-JAGs requires a confidential client.
+	ErrOAuthClientIDJAGCannotUseNoneAuth = errors.New("ID-JAG configuration cannot use none auth method")
 	// ErrOAuthPublicClientMustUseNoneAuth is returned when a public client uses an auth method other than none.
 	ErrOAuthPublicClientMustUseNoneAuth = errors.New("public client must use none auth method")
 	// ErrOAuthPublicClientMustHavePKCE is returned when a public client does not have PKCE required.

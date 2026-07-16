@@ -1,7 +1,8 @@
 ---
 title: <CallbackRoute />
+docType: reference
 displayed_sidebar: reactRouterSdkSidebar
-description: Handle OAuth 2.0 callback redirects in React Router v6 applications
+description: Handle OAuth 2.0 authorization code callbacks in React Router v6 to complete the sign-in flow.
 ---
 
 # `<CallbackRoute />`
@@ -79,7 +80,7 @@ Override the post-callback navigation with `onNavigate`. Receives the path the u
 
 ### Router Basename
 
-`CallbackRoute` automatically accounts for React Router's `basename` when resolving the post-callback navigation path — no extra configuration needed.
+`CallbackRoute` automatically accounts for React Router's `basename` when resolving the post-callback navigation path, no extra configuration needed.
 
 ```tsx title="src/App.tsx"
 <BrowserRouter basename="/app">
@@ -105,4 +106,4 @@ When the authorization server redirects back to your application, `CallbackRoute
 3. Exchanges the authorization code for tokens via the configured token endpoint
 4. Navigates the user to their original pre-authentication path
 
-It renders nothing visible — it completes silently and redirects immediately on success.
+It renders nothing visible. It completes silently and redirects immediately on success.

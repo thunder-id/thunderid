@@ -20,6 +20,7 @@ import {QueryClient} from '@tanstack/react-query';
 import {waitFor, act, renderHook} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import ConnectionQueryKeys from '../../constants/query-keys';
+import type {ConnectionListResponse} from '../../models/connection';
 import {IdentityProviderTypes} from '../../models/identity-provider';
 import type {IdentityProviderListResponse} from '../../models/responses';
 import useIdentityProviders from '../useIdentityProviders';
@@ -37,6 +38,11 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
     ...actual,
     useConfig: () => ({getServerUrl: () => 'http://localhost:8090'}),
   };
+});
+
+/** Builds a GET /connections envelope response for the mock HTTP client. */
+const connectionsResponse = (connections: ConnectionListResponse['connections']): {data: ConnectionListResponse} => ({
+  data: {totalResults: connections.length, startIndex: 1, count: connections.length, connections, links: []},
 });
 
 describe('useIdentityProviders', () => {
@@ -61,8 +67,20 @@ describe('useIdentityProviders', () => {
     },
   ];
 
+  const mockConnections: ConnectionListResponse['connections'] = [
+    {id: 'idp-1', name: 'Google', description: 'Login with Google', type: 'google', categories: ['identity-provider']},
+    {id: 'idp-2', name: 'GitHub', description: 'Login with GitHub', type: 'github', categories: ['identity-provider']},
+    {
+      id: 'idp-3',
+      name: 'Custom OIDC',
+      description: 'Custom OpenID Connect Provider',
+      type: 'oidc',
+      categories: ['identity-provider'],
+    },
+  ];
+
   beforeEach(() => {
-    mockHttpRequest.mockReset().mockResolvedValue({data: mockIdentityProviders});
+    mockHttpRequest.mockReset().mockResolvedValue(connectionsResponse(mockConnections));
   });
 
   afterEach(() => {
@@ -80,7 +98,7 @@ describe('useIdentityProviders', () => {
   });
 
   describe('Successful Fetch', () => {
-    it('should fetch identity providers successfully', async () => {
+    it('should fetch identity providers successfully, mapped to UPPERCASE type', async () => {
       const {result} = renderHook(() => useIdentityProviders());
 
       await waitFor(() => {
@@ -91,7 +109,7 @@ describe('useIdentityProviders', () => {
       expect(result.current.error).toBeNull();
     });
 
-    it('should call API with correct parameters', async () => {
+    it('should call GET /connections?category=identity-provider', async () => {
       const {result} = renderHook(() => useIdentityProviders());
 
       await waitFor(() => {
@@ -100,7 +118,7 @@ describe('useIdentityProviders', () => {
 
       expect(mockHttpRequest).toHaveBeenCalledWith(
         expect.objectContaining({
-          url: 'http://localhost:8090/identity-providers',
+          url: 'http://localhost:8090/connections?category=identity-provider',
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
@@ -134,7 +152,7 @@ describe('useIdentityProviders', () => {
     });
 
     it('should handle empty list response', async () => {
-      mockHttpRequest.mockResolvedValue({data: []});
+      mockHttpRequest.mockResolvedValue(connectionsResponse([]));
 
       const {result} = renderHook(() => useIdentityProviders());
 
@@ -144,6 +162,24 @@ describe('useIdentityProviders', () => {
 
       expect(result.current.data).toEqual([]);
       expect(Array.isArray(result.current.data)).toBe(true);
+    });
+
+    it('should drop instances whose vendor type has no IdP mapping', async () => {
+      mockHttpRequest.mockResolvedValue(
+        connectionsResponse([
+          ...mockConnections,
+          {id: 'sender-1', name: 'Twilio SMS', type: 'twilio', categories: ['sms-provider']},
+        ]),
+      );
+
+      const {result} = renderHook(() => useIdentityProviders());
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+
+      expect(result.current.data).toHaveLength(3);
+      expect(result.current.data?.some((idp) => idp.id === 'sender-1')).toBe(false);
     });
   });
 
@@ -209,7 +245,7 @@ describe('useIdentityProviders', () => {
     it('should show loading state during fetch', async () => {
       mockHttpRequest.mockReturnValue(
         new Promise((resolve) => {
-          setTimeout(() => resolve({data: mockIdentityProviders}), 100);
+          setTimeout(() => resolve(connectionsResponse(mockConnections)), 100);
         }),
       );
 
@@ -253,16 +289,12 @@ describe('useIdentityProviders', () => {
 
       expect(result.current.data).toHaveLength(3);
 
-      const updatedProviders: IdentityProviderListResponse = [
-        ...mockIdentityProviders,
-        {
-          id: 'idp-4',
-          name: 'OAuth Provider',
-          type: IdentityProviderTypes.OAUTH,
-        },
-      ];
-
-      mockHttpRequest.mockResolvedValue({data: updatedProviders});
+      mockHttpRequest.mockResolvedValue(
+        connectionsResponse([
+          ...mockConnections,
+          {id: 'idp-4', name: 'OAuth Provider', type: 'oauth', categories: ['identity-provider']},
+        ]),
+      );
 
       await act(async () => {
         await result.current.refetch();
@@ -288,7 +320,7 @@ describe('useIdentityProviders', () => {
       const queries = queryClient.getQueryCache().getAll();
       const query = queries.find((q) => {
         const key = q.queryKey as string[];
-        return key[0] === ConnectionQueryKeys.INTEGRATIONS && key[1] === ConnectionQueryKeys.IDENTITY_PROVIDERS;
+        return key[0] === ConnectionQueryKeys.CONNECTIONS && key[1] === ConnectionQueryKeys.IDENTITY_PROVIDERS;
       });
 
       expect(query).toBeDefined();
@@ -361,15 +393,9 @@ describe('useIdentityProviders', () => {
     });
 
     it('should handle provider without description', async () => {
-      const providersWithoutDesc: IdentityProviderListResponse = [
-        {
-          id: 'idp-1',
-          name: 'Google',
-          type: IdentityProviderTypes.GOOGLE,
-        },
-      ];
-
-      mockHttpRequest.mockResolvedValue({data: providersWithoutDesc});
+      mockHttpRequest.mockResolvedValue(
+        connectionsResponse([{id: 'idp-1', name: 'Google', type: 'google', categories: ['identity-provider']}]),
+      );
 
       const {result} = renderHook(() => useIdentityProviders());
 
@@ -382,28 +408,10 @@ describe('useIdentityProviders', () => {
   });
 
   describe('Edge Cases', () => {
-    it('should handle malformed response gracefully', async () => {
-      mockHttpRequest.mockResolvedValue({data: null});
-
-      const {result} = renderHook(() => useIdentityProviders());
-
-      await waitFor(() => {
-        expect(result.current.isSuccess).toBe(true);
-      });
-
-      expect(result.current.data).toBeNull();
-    });
-
     it('should handle response with single provider', async () => {
-      const singleProvider: IdentityProviderListResponse = [
-        {
-          id: 'idp-1',
-          name: 'Google',
-          type: IdentityProviderTypes.GOOGLE,
-        },
-      ];
-
-      mockHttpRequest.mockResolvedValue({data: singleProvider});
+      mockHttpRequest.mockResolvedValue(
+        connectionsResponse([{id: 'idp-1', name: 'Google', type: 'google', categories: ['identity-provider']}]),
+      );
 
       const {result} = renderHook(() => useIdentityProviders());
 
@@ -416,13 +424,14 @@ describe('useIdentityProviders', () => {
     });
 
     it('should handle very large list of providers', async () => {
-      const largeList: IdentityProviderListResponse = Array.from({length: 100}, (_, i) => ({
+      const largeList: ConnectionListResponse['connections'] = Array.from({length: 100}, (_, i) => ({
         id: `idp-${i}`,
         name: `Provider ${i}`,
-        type: IdentityProviderTypes.OIDC,
+        type: 'oidc',
+        categories: ['identity-provider'],
       }));
 
-      mockHttpRequest.mockResolvedValue({data: largeList});
+      mockHttpRequest.mockResolvedValue(connectionsResponse(largeList));
 
       const {result} = renderHook(() => useIdentityProviders());
 
@@ -438,7 +447,7 @@ describe('useIdentityProviders', () => {
     it('should support isLoading flag', async () => {
       mockHttpRequest.mockReturnValue(
         new Promise((resolve) => {
-          setTimeout(() => resolve({data: mockIdentityProviders}), 50);
+          setTimeout(() => resolve(connectionsResponse(mockConnections)), 50);
         }),
       );
 

@@ -1,5 +1,6 @@
 ---
 title: Architecture Decisions
+docType: use-case
 description: "The core design choices for consumer identity: how users authenticate, where identities live, how tokens work, and how the system runs."
 sidebar_position: 2
 ---
@@ -11,11 +12,11 @@ Building a B2C application requires identity architecture that supports the comp
 
 Four decisions shape the architecture:
 
-- **Integration pattern:** where identity screens live and how your application and ThunderID divide responsibility.
+- **Integration pattern:** where identity screens live and how your application and <ProductName /> divide responsibility.
 - **Identity sources:** where customer identities come from and which system owns the canonical record.
 - **Tokens and APIs:** how sessions, tokens, permissions, and API validation work after sign-in.
 - **Run and observe:** how your team deploys, monitors, audits, and connects the identity system.
 
-Start with the integration pattern because it defines the boundary between your application and ThunderID. Review the supporting decisions as your application needs more control over identity data, API protection, deployment, or operations.
+Start with the integration pattern because it defines the boundary between your application and <ProductName />. Review the supporting decisions as your application needs more control over identity data, API protection, deployment, or operations.
 
 <B2CArchitectureDecisions prioritizeIntegration />

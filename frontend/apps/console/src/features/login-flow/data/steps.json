@@ -5,6 +5,7 @@
     "type": "VIEW",
     "display": {
       "label": "Username + Password",
+      "description": "Sign-in screen with username and password fields",
       "image": "assets/images/icons/password.svg",
       "showOnResourcePanel": true
     },
@@ -61,6 +62,7 @@
     "type": "VIEW",
     "display": {
       "label": "Consent View",
+      "description": "Screen asking the user to grant consent",
       "image": "assets/images/icons/stamp.svg",
       "showOnResourcePanel": true
     },
@@ -130,6 +132,7 @@
     "type": "VIEW",
     "display": {
       "label": "Email Input",
+      "description": "Screen for collecting the user's email address",
       "image": "assets/images/icons/email.svg",
       "showOnResourcePanel": true
     },

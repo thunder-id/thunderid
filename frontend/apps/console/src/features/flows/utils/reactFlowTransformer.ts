@@ -170,7 +170,7 @@ const INPUT_ELEMENT_TYPES = new Set<string>([
 /**
  * Derives the eventType for ACTION category components based on buttonType
  */
-function deriveEventType(component?: Element & {buttonType?: string}): string {
+export function deriveEventType(component?: Element & {buttonType?: string}): string {
   const buttonType = component?.buttonType;
 
   if (!buttonType) {
@@ -191,7 +191,7 @@ function deriveEventType(component?: Element & {buttonType?: string}): string {
  * When true, the single button is the form's submit button and its eventType
  * should be promoted from TRIGGER to SUBMIT.
  */
-function shouldPromoteToSubmit(components: Element[]): boolean {
+export function shouldPromoteToSubmit(components: Element[]): boolean {
   const hasInputs = components.some((c) => INPUT_ELEMENT_TYPES.has(c.type));
   const actionCount = components.filter((c) => c.type === ElementTypes.Action).length;
   return hasInputs && actionCount === 1;

@@ -1,12 +1,13 @@
 ---
 title: ThunderIDJavaScriptClient
+docType: reference
 displayed_sidebar: javascriptSdkSidebar
-description: Base authentication client class for building platform adapters
+description: Core authentication client for browser and Node.js environments, extending HttpClient with OAuth 2.0 flows.
 ---
 
 # `ThunderIDJavaScriptClient`
 
-`ThunderIDJavaScriptClient` is the base class that all platform-specific <ProductName /> clients extend. It provides OIDC discovery, PKCE, token exchange, session management, JWT decoding, and agent/OBO authentication. Instantiate it directly only when writing a custom platform adapter — for browser use, prefer `@thunderid/browser`; for React, use `@thunderid/react`.
+`ThunderIDJavaScriptClient` is the base class that all platform-specific <ProductName /> clients extend. It provides OIDC discovery, PKCE, token exchange, session management, JWT decoding, and agent/OBO authentication. Instantiate it directly only when writing a custom platform adapter: for browser use, prefer `@thunderid/browser`; for React, use `@thunderid/react`.
 
 ## Constructor
 
@@ -40,10 +41,10 @@ await client.initialize({
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `config` | `AuthClientConfig` | Application configuration. See [Configuration Reference](/docs/next/sdks/javascript/apis/configuration) |
+| `config` | `AuthClientConfig` | Application configuration. See [Configuration Reference](../configuration) |
 | `storage` | `Storage` | Optional storage override for this instance |
 
-**Returns:** `Promise<boolean>` — `true` when initialization completes.
+**Returns:** `Promise<boolean>`, `true` when initialization completes.
 
 #### `reInitialize(config)`
 
@@ -65,8 +66,6 @@ const config = client.getConfiguration()
 
 **Returns:** `T` (the configuration type)
 
----
-
 ### Authentication State
 
 #### `isSignedIn(userId?)`
@@ -82,8 +81,6 @@ const signedIn = await client.isSignedIn()
 | `userId` | `string` | Optional session ID for multi-user scenarios |
 
 **Returns:** `Promise<boolean>`
-
----
 
 ### Token Management
 
@@ -151,8 +148,6 @@ console.log(discovery?.token_endpoint)
 
 **Returns:** `Promise<OIDCDiscoveryApiResponse | null>`
 
----
-
 ### User and Session
 
 #### `getUser(userId?)`
@@ -212,8 +207,6 @@ const id = client.getInstanceId() // 0 by default
 
 **Returns:** `number`
 
----
-
 ### Platform-Specific Methods to Override
 
 Subclasses must implement these methods. Calling them on `ThunderIDJavaScriptClient` directly throws `Error: Method not implemented.`
@@ -228,8 +221,6 @@ Subclasses must implement these methods. Calling them on `ThunderIDJavaScriptCli
 | `getUserProfile` | `(options?) => Promise<UserProfile>` | Fetch the full user profile |
 | `updateUserProfile` | `(payload, userId?) => Promise<User>` | Update the user's profile |
 | `isLoading` | `() => boolean` | Whether an auth operation is in progress |
-
----
 
 ### Agent and OBO Authentication
 
@@ -271,8 +262,6 @@ const token = await client.getOBOToken(agentConfig, {
 
 **Returns:** `Promise<TokenResponse>`
 
----
-
 ### Static Helpers
 
 #### `ThunderIDJavaScriptClient.isSignOutSuccessful(url)`
@@ -299,11 +288,9 @@ if (ThunderIDJavaScriptClient.didSignOutFail(window.location.href)) {
 
 **Returns:** `boolean`
 
----
-
 ### Backchannel Authentication (CIBA)
 
-These methods implement the OpenID Connect Client-Initiated Backchannel Authentication (CIBA) poll-mode flow. Use them to trigger user authentication on a separate device without a browser redirect. Push mode is **not** supported. For protocol details, see the [Backchannel Authentication guide](/docs/next/guides/guides/protocols/oauth-oidc/backchannel-authentication).
+These methods implement the OpenID Connect Client-Initiated Backchannel Authentication (CIBA) poll-mode flow. Use them to trigger user authentication on a separate device without a browser redirect. Push mode is **not** supported. For protocol details, see the [Backchannel Authentication guide](../../../../guides/guides/protocols/oauth-oidc/backchannel-authentication).
 
 #### `initiateCIBA(options)`
 
@@ -322,9 +309,9 @@ const { authReqId, interval, expiresIn } = await client.initiateCIBA({
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `options.loginHint` | `string` | One of two | A hint identifying the end-user — typically an email address, phone number, or username. |
+| `options.loginHint` | `string` | One of two | A hint identifying the end-user, typically an email address, phone number, or username. |
 | `options.idTokenHint` | `string` | One of two | A previously issued ID token that identifies the end-user. |
-| `options.loginHintToken` | `string` | — | Defined in the CIBA specification but **not supported** by <ProductName />. The server returns `invalid_request` when this parameter is provided. |
+| `options.loginHintToken` | `string` | No | Defined in the CIBA specification but **not supported** by <ProductName />. The server returns `invalid_request` when this parameter is provided. |
 | `options.bindingMessage` | `string` | No | A short, human-readable string displayed on both the consumption and authentication devices to bind the two interactions. Maximum 256 printable characters. |
 | `options.requestedExpiry` | `number` | No | Requested lifetime in seconds for the `auth_req_id`. The server clamps values above its maximum. |
 | `options.acrValues` | `string` | No | Space-separated Authentication Context Class Reference values. |
@@ -390,8 +377,6 @@ try {
 |------|-------|
 | `JS-AUTH_CORE-CIBA2-HE03` | The server returned a terminal error (`expired_token`, `access_denied`, or another non-retryable error). |
 | `JS-AUTH_CORE-CIBA2-AB05` | Polling was cancelled via `AbortSignal`. |
-
----
 
 ### Protected Methods (for subclass use)
 

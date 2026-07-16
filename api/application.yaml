@@ -1267,6 +1267,37 @@ components:
           description: The validity period of the refresh token in seconds. If not specified, falls back to application-level or deployment default.
           example: 86400
 
+    IDJAGConfig:
+      type: object
+      description: |
+        Identity Assertion Authorization Grant (ID-JAG) configuration for OAuth applications
+        (draft-ietf-oauth-identity-assertion-authz-grant). Governs whether this application may
+        exchange a self-issued ID token for an ID-JAG targeted at an external resource
+        authorization server, via the token endpoint's token-exchange grant with
+        requested_token_type=urn:ietf:params:oauth:token-type:id-jag.
+      properties:
+        enabled:
+          type: boolean
+          description: >-
+            Enable ID-JAG issuance for this application. Requires a confidential client
+            (tokenEndpointAuthMethod other than "none") and at least one entry in
+            allowedAudiences.
+          example: true
+          default: false
+        allowedAudiences:
+          type: array
+          items:
+            type: string
+          description: |
+            Resource authorization server identifiers this application may request ID-JAGs for.
+            The audience parameter on the token-exchange request must exactly match one of
+            these values.
+          example: ["https://api.partner.example.com"]
+        validityPeriod:
+          type: integer
+          description: The validity period of an issued ID-JAG in seconds. Defaults to 300 if not specified.
+          example: 300
+          default: 300
 
     UserInfoConfig:
       type: object
@@ -1373,8 +1404,13 @@ components:
           type: array
           items:
             type: string
-            enum: ["authorization_code", "client_credentials", "refresh_token", "implicit", "password", "urn:ietf:params:oauth:grant-type:token-exchange"]
-          description: A list of grant types supported by the OAuth application. Defaults to ["authorization_code"] if not specified.
+            enum: ["authorization_code", "client_credentials", "refresh_token", "implicit", "password", "urn:ietf:params:oauth:grant-type:token-exchange", "urn:ietf:params:oauth:grant-type:jwt-bearer"]
+          description: >-
+            A list of grant types supported by the OAuth application. Defaults to
+            ["authorization_code"] if not specified. The
+            urn:ietf:params:oauth:grant-type:jwt-bearer grant, used to present an ID-JAG assertion
+            issued by a trusted external IdP (draft-ietf-oauth-identity-assertion-authz-grant),
+            requires a confidential client (tokenEndpointAuthMethod other than "none").
           example: ["authorization_code", "refresh_token"]
         responseTypes:
           type: array
@@ -1430,6 +1466,8 @@ components:
               $ref: '#/components/schemas/IDTokenConfig'
             refreshToken:
               $ref: '#/components/schemas/RefreshTokenConfig'
+            idJag:
+              $ref: '#/components/schemas/IDJAGConfig'
         userInfo:
           $ref: '#/components/schemas/UserInfoConfig'
         scopeClaims:
@@ -1479,8 +1517,13 @@ components:
           type: array
           items:
             type: string
-            enum: ["authorization_code", "client_credentials", "refresh_token", "implicit", "password", "urn:ietf:params:oauth:grant-type:token-exchange"]
-          description: A list of grant types supported by the OAuth application. Defaults to ["authorization_code"] if not specified.
+            enum: ["authorization_code", "client_credentials", "refresh_token", "implicit", "password", "urn:ietf:params:oauth:grant-type:token-exchange", "urn:ietf:params:oauth:grant-type:jwt-bearer"]
+          description: >-
+            A list of grant types supported by the OAuth application. Defaults to
+            ["authorization_code"] if not specified. The
+            urn:ietf:params:oauth:grant-type:jwt-bearer grant, used to present an ID-JAG assertion
+            issued by a trusted external IdP (draft-ietf-oauth-identity-assertion-authz-grant),
+            requires a confidential client (tokenEndpointAuthMethod other than "none").
           example: ["authorization_code", "refresh_token"]
         responseTypes:
           type: array
@@ -1536,6 +1579,8 @@ components:
               $ref: '#/components/schemas/IDTokenConfig'
             refreshToken:
               $ref: '#/components/schemas/RefreshTokenConfig'
+            idJag:
+              $ref: '#/components/schemas/IDJAGConfig'
         userInfo:
           $ref: '#/components/schemas/UserInfoConfig'
         scopeClaims:

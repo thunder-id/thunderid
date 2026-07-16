@@ -20,31 +20,58 @@ import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import ConnectionQueryKeys from '../constants/query-keys';
-import type {ConnectionListResponse, ConnectionTypeSummary} from '../models/connection';
+import type {ConnectionInstanceCategory, ConnectionListResponse} from '../models/connection';
+
+export interface UseConnectionsParams {
+  category?: ConnectionInstanceCategory;
+  limit?: number;
+  offset?: number;
+}
+
+export interface UseConnectionsOptions {
+  enabled?: boolean;
+}
 
 /**
- * Fetch the available connection types with their configured status and instance count
- * (GET /connections). Unwraps the `connections` array from the response envelope.
+ * Fetch a paginated list of the configured connection instances (GET /connections),
+ * optionally filtered by functional category. Returns the full paginated envelope.
  */
-export default function useConnections(): UseQueryResult<ConnectionTypeSummary[]> {
+export default function useConnections(
+  params?: UseConnectionsParams,
+  options?: UseConnectionsOptions,
+): UseQueryResult<ConnectionListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
+  const {category, limit, offset} = params ?? {};
 
-  return useQuery<ConnectionTypeSummary[]>({
-    queryKey: [ConnectionQueryKeys.CONNECTION_TYPES],
-    queryFn: async (): Promise<ConnectionTypeSummary[]> => {
+  return useQuery<ConnectionListResponse>({
+    queryKey: [ConnectionQueryKeys.CONNECTIONS, {category, limit, offset}],
+    enabled: options?.enabled ?? true,
+    queryFn: async (): Promise<ConnectionListResponse> => {
       const serverUrl: string = getServerUrl();
+      const searchParams: URLSearchParams = new URLSearchParams();
+      if (category) {
+        searchParams.set('category', category);
+      }
+      if (limit !== undefined) {
+        searchParams.set('limit', String(limit));
+      }
+      if (offset !== undefined) {
+        searchParams.set('offset', String(offset));
+      }
+      const queryString: string = searchParams.toString();
+      const query: string = queryString ? `?${queryString}` : '';
       const response: {
         data: ConnectionListResponse;
       } = await http.request({
-        url: `${serverUrl}/connections`,
+        url: `${serverUrl}/connections${query}`,
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
       } as unknown as Parameters<typeof http.request>[0]);
 
-      return response.data.connections;
+      return response.data;
     },
   });
 }

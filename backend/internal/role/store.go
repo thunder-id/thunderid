@@ -55,8 +55,9 @@ type roleStoreInterface interface {
 	RemoveAssignments(ctx context.Context, id string, assignments []RoleAssignment) error
 	CheckRoleNameExists(ctx context.Context, ouID, name string) (bool, error)
 	CheckRoleNameExistsExcludingID(ctx context.Context, ouID, name, excludeRoleID string) (bool, error)
-	GetAuthorizedPermissions(
-		ctx context.Context, entityID string, groupIDs []string, requestedPermissions []string) ([]string, error)
+	GetAuthorizedPermissionsByResourceServer(
+		ctx context.Context, entityID string, groupIDs []string, resourceServerID string,
+		requestedPermissions []string) ([]string, error)
 	GetUserRoles(ctx context.Context, entityID string, groupIDs []string) ([]string, error)
 	// GetEntityRoleIDs returns the set of role IDs assigned to the entity directly or via
 	// group membership. Unlike GetUserRoles this does not require the role to exist in the
@@ -597,12 +598,13 @@ func (s *roleStore) CheckRoleNameExistsExcludingID(
 	return parseBoolFromCount(results)
 }
 
-// GetAuthorizedPermissions retrieves the permissions that an entity is authorized for based on their
-// direct role assignments and group memberships.
-func (s *roleStore) GetAuthorizedPermissions(
+// GetAuthorizedPermissionsByResourceServer retrieves the permissions that an entity is authorized for based on
+// their direct role assignments and group memberships, scoped to a resource server when provided.
+func (s *roleStore) GetAuthorizedPermissionsByResourceServer(
 	ctx context.Context,
 	entityID string,
 	groupIDs []string,
+	resourceServerID string,
 	requestedPermissions []string,
 ) ([]string, error) {
 	dbClient, err := s.getConfigDBClient()
@@ -616,7 +618,8 @@ func (s *roleStore) GetAuthorizedPermissions(
 	}
 
 	// Build dynamic query based on provided parameters
-	query, args := buildAuthorizedPermissionsQuery(entityID, groupIDs, requestedPermissions, s.deploymentID)
+	query, args := buildAuthorizedPermissionsQuery(
+		entityID, groupIDs, resourceServerID, requestedPermissions, s.deploymentID)
 
 	results, err := dbClient.QueryContext(ctx, query, args...)
 	if err != nil {

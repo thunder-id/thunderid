@@ -398,6 +398,12 @@ packages:
           structname: '{{.InterfaceName}}Mock'
           pkgname: flowexec
           filename: "{{.InterfaceName}}_mock_test.go"
+      Executor:
+        config:
+          dir: internal/flow/core
+          structname: ExecutorInterfaceMock
+          pkgname: core
+          filename: "ExecutorInterface_mock_test.go"
 
   github.com/thunder-id/thunderid/internal/flow/graphbuilder:
     interfaces:

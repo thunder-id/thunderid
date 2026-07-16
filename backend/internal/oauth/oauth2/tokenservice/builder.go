@@ -38,6 +38,7 @@ type TokenBuilderInterface interface {
 	BuildAccessToken(ctx context.Context, tokenCtx *AccessTokenBuildContext) (*oauth2model.TokenDTO, error)
 	BuildRefreshToken(ctx context.Context, tokenCtx *RefreshTokenBuildContext) (*oauth2model.TokenDTO, error)
 	BuildIDToken(ctx context.Context, tokenCtx *IDTokenBuildContext) (*oauth2model.TokenDTO, error)
+	BuildIDJAG(ctx context.Context, tokenCtx *IDJAGBuildContext) (*oauth2model.TokenDTO, error)
 }
 
 // TokenBuilder implements TokenBuilderInterface.
@@ -117,6 +118,63 @@ func (tb *tokenBuilder) BuildAccessToken(
 	return tokenDTO, nil
 }
 
+// BuildIDJAG builds an Identity Assertion Authorization Grant (ID-JAG) JWT targeted at an external
+// resource authorization server (draft-ietf-oauth-identity-assertion-authz-grant). The token carries
+// typ=oauth-id-jag+jwt and is signed with the server's own key. token_type is "N_A" because the
+// issued token is not an access token.
+func (tb *tokenBuilder) BuildIDJAG(
+	ctx context.Context,
+	tokenCtx *IDJAGBuildContext,
+) (*oauth2model.TokenDTO, error) {
+	if tokenCtx == nil {
+		return nil, fmt.Errorf("build context cannot be nil")
+	}
+
+	validityPeriod := providers.DefaultIDJAGValidityPeriod
+	if tokenCtx.OAuthApp != nil && tokenCtx.OAuthApp.Token != nil && tokenCtx.OAuthApp.Token.IDJAG != nil &&
+		tokenCtx.OAuthApp.Token.IDJAG.ValidityPeriod > 0 {
+		validityPeriod = tokenCtx.OAuthApp.Token.IDJAG.ValidityPeriod
+	}
+
+	claims := map[string]interface{}{
+		"aud":       tokenCtx.Audience,
+		"client_id": tokenCtx.ClientID,
+	}
+	if len(tokenCtx.Scopes) > 0 {
+		claims["scope"] = JoinScopes(tokenCtx.Scopes)
+	}
+	// RFC 8707: a single resource is embedded as a string, multiple resources as an array.
+	if len(tokenCtx.Resources) == 1 {
+		claims["resource"] = tokenCtx.Resources[0]
+	} else if len(tokenCtx.Resources) > 1 {
+		claims["resource"] = tokenCtx.Resources
+	}
+
+	token, iat, err := tb.jwtService.GenerateJWT(
+		ctx,
+		tokenCtx.Subject,
+		tb.cfg.JWT.Issuer,
+		validityPeriod,
+		claims,
+		jwt.TokenTypeIDJAG,
+		"",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate ID-JAG: %v", err.Error)
+	}
+
+	return &oauth2model.TokenDTO{
+		Token:     token,
+		TokenType: constants.TokenTypeNA,
+		IssuedAt:  iat,
+		ExpiresIn: validityPeriod,
+		Scopes:    tokenCtx.Scopes,
+		ClientID:  tokenCtx.ClientID,
+		Subject:   tokenCtx.Subject,
+		Audiences: []string{tokenCtx.Audience},
+	}, nil
+}
+
 // buildAccessTokenClaims builds the claims map for an access token.
 func (tb *tokenBuilder) buildAccessTokenClaims(
 	ctx *AccessTokenBuildContext,
@@ -143,6 +201,13 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 	// Set after merging subject attributes to prevent them from overwriting this system claim.
 	if ctx.AttributeCacheID != "" {
 		claims["aci"] = ctx.AttributeCacheID
+	}
+
+	// Set after merging user attributes so a federated principal's attributes cannot spoof the source
+	// IdP. For a jwt-bearer-grant (ID-JAG) token the `sub` is an external IdP identifier and MUST be
+	// interpreted together with this claim.
+	if ctx.SourceIDP != "" {
+		claims[constants.ClaimIDP] = ctx.SourceIDP
 	}
 
 	if ctx.ActorClaims != nil {

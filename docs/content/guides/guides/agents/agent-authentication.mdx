@@ -1,5 +1,6 @@
 ---
 title: Agent Authentication
+docType: guide
 sidebar_position: 2
 persona: iam
 description: Issue M2M and on-behalf-of tokens to agents using {{ProductName}}'s OAuth 2.0 token endpoint.
@@ -9,14 +10,14 @@ description: Issue M2M and on-behalf-of tokens to agents using {{ProductName}}'s
 
 An agent occupies multiple identity postures simultaneously, and each posture requires a different authentication pattern.
 
-- **Agent as subject** — the agent authenticates as itself to call APIs on its own behalf. Use the M2M (client credentials) pattern.
-- **Agent as actor** — the agent carries delegated authority on behalf of a user or another principal. Use the OBO (token exchange) pattern. The access the agent carries can never exceed the authority that was delegated to it.
+- **Agent as subject**: the agent authenticates as itself to call APIs on its own behalf. Use the M2M (client credentials) pattern.
+- **Agent as actor**: the agent carries delegated authority on behalf of a user or another principal. Use the OBO (token exchange) pattern. The access the agent carries can never exceed the authority that was delegated to it.
 
 Both patterns use the token endpoint at `POST /oauth2/token`. The agent must be [registered with an OAuth inbound auth config](../manage-agents) before it can request tokens.
 
 ## M2M Tokens (Agent as Subject)
 
-Use M2M tokens in the subject posture — the agent calls APIs on its own behalf with no user involved. Common cases: background jobs, data pipelines, service-to-service calls.
+Use M2M tokens in the subject posture: the agent calls APIs on its own behalf with no user involved. Common cases: background jobs, data pipelines, service-to-service calls.
 
 ### Request a Token
 
@@ -39,7 +40,7 @@ curl -X POST https://localhost:8090/oauth2/token \
   -d 'scope=invoices:read invoices:write'
 ```
 
-Group membership is evaluated transitively — if the agent is a member of a group that inherits permissions from a parent group, those permissions are included.
+Group membership is evaluated transitively: if the agent is a member of a group that inherits permissions from a parent group, those permissions are included.
 
 ### Narrow to a Specific Resource Server
 
@@ -58,7 +59,7 @@ curl -X POST https://localhost:8090/oauth2/token \
 
 ## OBO Tokens (Agent as Actor)
 
-Use OBO tokens in the actor posture — the agent carries delegated authority from a user to a downstream service. The agent can never hold more authority than the principal that empowered it: the issued token's scopes are strictly bounded by what the user's token already contained.
+Use OBO tokens in the actor posture: the agent carries delegated authority from a user to a downstream service. The agent can never hold more authority than the principal that empowered it: the issued token's scopes are strictly bounded by what the user's token already contained.
 
 <ProductName /> implements [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693) token exchange.
 
@@ -75,7 +76,7 @@ curl -X POST https://localhost:8090/oauth2/token \
   -d 'subject_token_type=urn:ietf:params:oauth:token-type:jwt'
 ```
 
-The issued token represents the agent acting on behalf of the user. Its scopes are bounded by the scopes present in the `subject_token` — the agent cannot escalate the user's permissions.
+The issued token represents the agent acting on behalf of the user. Its scopes are bounded by the scopes present in the `subject_token`: the agent cannot escalate the user's permissions.
 
 ### Request a Constrained Scope
 
@@ -183,6 +184,6 @@ Refresh tokens preserve the original full set of authorized audiences, so later 
 
 ## Next Steps
 
-- [Manage Agents](../manage-agents) — Configure OAuth credentials, assign groups, and rotate secrets.
-- [Resource Servers](../../resource-servers) — Register resource servers and define the scopes they accept.
-- [Resource Indicators](../../resource-indicators) — Use RFC 8707 `resource` parameters to issue audience-restricted tokens.
+- [Manage Agents](../manage-agents): Configure OAuth credentials, assign groups, and rotate secrets.
+- [Resource Servers](../../resource-servers): Register resource servers and define the scopes they accept.
+- [Resource Indicators](../../protocols/oauth-oidc/resource-indicators): Use RFC 8707 `resource` parameters to issue audience-restricted tokens.

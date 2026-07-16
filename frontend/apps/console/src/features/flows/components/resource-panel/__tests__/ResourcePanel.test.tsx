@@ -37,6 +37,10 @@ const translations: Record<string, string> = {
   'flows:core.headerPanel.cancelEdit': 'Cancel',
   'flows:core.resourcePanel.starterTemplates.title': 'Starter Templates',
   'flows:core.resourcePanel.starterTemplates.description': 'Quick start templates for your flow',
+  'flows:core.resourcePanel.search.placeholder': 'Search (e.g. MFA, social, consent)',
+  'flows:core.resourcePanel.search.clear': 'Clear search',
+  'flows:core.resourcePanel.search.noResults': 'No matching resources',
+  'flows:core.resourcePanel.search.noResultsHint': 'Try a different keyword',
   'flows:core.resourcePanel.widgets.title': 'Widgets',
   'flows:core.resourcePanel.widgets.description': 'Configurable widgets',
   'flows:core.resourcePanel.steps.title': 'Steps',
@@ -134,9 +138,10 @@ const createMockResources = (overrides: Partial<Resources> = {}): Resources =>
     ],
     executors: [
       {
-        type: 'API_EXECUTOR',
+        type: 'TASK_EXECUTION',
         resourceType: 'STEP',
-        display: {label: 'API Executor', showOnResourcePanel: true},
+        category: 'EXECUTOR',
+        display: {label: 'Google', showOnResourcePanel: true},
       },
     ],
     ...overrides,
@@ -302,28 +307,65 @@ describe('ResourcePanel', () => {
   });
 
   describe('Resource Sections', () => {
-    it('should render Widgets accordion', () => {
+    it('should render Widgets, Steps, Components, and Executors accordions', () => {
       render(<ResourcePanel resources={createMockResources()} onAdd={vi.fn()} open />);
 
       expect(screen.getByText('Widgets')).toBeInTheDocument();
-    });
-
-    it('should render Steps accordion', () => {
-      render(<ResourcePanel resources={createMockResources()} onAdd={vi.fn()} open />);
-
       expect(screen.getByText('Steps')).toBeInTheDocument();
+      expect(screen.getByText('Components')).toBeInTheDocument();
+      expect(screen.getByText('Executors')).toBeInTheDocument();
     });
 
-    it('should render Components accordion', () => {
+    it('should show section descriptions in the collapsed accordion summary', () => {
       render(<ResourcePanel resources={createMockResources()} onAdd={vi.fn()} open />);
+
+      expect(screen.getByText('Configurable widgets').closest('.MuiAccordionSummary-root')).not.toBeNull();
+      expect(screen.getByText('Execution handlers').closest('.MuiAccordionSummary-root')).not.toBeNull();
+    });
+  });
+
+  describe('Search', () => {
+    it('should filter resources by label and hide sections without matches', () => {
+      render(<ResourcePanel resources={createMockResources()} onAdd={vi.fn()} open />);
+
+      const searchInput = screen.getByPlaceholderText('Search (e.g. MFA, social, consent)');
+      fireEvent.change(searchInput, {target: {value: 'Text Input'}});
 
       expect(screen.getByText('Components')).toBeInTheDocument();
+      expect(screen.getByText('Text Input')).toBeInTheDocument();
+      expect(screen.queryByText('Widgets')).not.toBeInTheDocument();
+      expect(screen.queryByText('Executors')).not.toBeInTheDocument();
     });
 
-    it('should render Executors accordion', () => {
+    it('should match resources via capability synonyms', () => {
       render(<ResourcePanel resources={createMockResources()} onAdd={vi.fn()} open />);
 
+      const searchInput = screen.getByPlaceholderText('Search (e.g. MFA, social, consent)');
+      fireEvent.change(searchInput, {target: {value: 'social'}});
+
       expect(screen.getByText('Executors')).toBeInTheDocument();
+      expect(screen.getByText('Google')).toBeInTheDocument();
+      expect(screen.queryByText('Components')).not.toBeInTheDocument();
+    });
+
+    it('should show an empty state when nothing matches', () => {
+      render(<ResourcePanel resources={createMockResources()} onAdd={vi.fn()} open />);
+
+      const searchInput = screen.getByPlaceholderText('Search (e.g. MFA, social, consent)');
+      fireEvent.change(searchInput, {target: {value: 'zzz-no-match'}});
+
+      expect(screen.getByText('No matching resources')).toBeInTheDocument();
+    });
+
+    it('should restore all sections when the search is cleared', () => {
+      render(<ResourcePanel resources={createMockResources()} onAdd={vi.fn()} open />);
+
+      const searchInput = screen.getByPlaceholderText('Search (e.g. MFA, social, consent)');
+      fireEvent.change(searchInput, {target: {value: 'zzz-no-match'}});
+      fireEvent.click(screen.getByRole('button', {name: 'Clear search'}));
+
+      expect(screen.getByText('Widgets')).toBeInTheDocument();
+      expect(screen.getByText('Components')).toBeInTheDocument();
     });
   });
 

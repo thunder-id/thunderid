@@ -166,6 +166,7 @@ const sidebars: SidebarsConfig = {
                 {
                   type: 'category',
                   label: 'Walkthroughs',
+                  key: 'b2c-walkthroughs',
                   collapsible: true,
                   collapsed: true,
                   items: [
@@ -263,14 +264,25 @@ const sidebars: SidebarsConfig = {
                   collapsible: true,
                   collapsed: true,
                   key: 'ai-agents-try-it-out',
-                  link: {type: 'doc', id: 'use-cases/ai-agents/try-it-out'},
+                  link: {type: 'doc', id: 'use-cases/ai-agents/try-it-out/index'},
                   items: [
-                    {type: 'doc', id: 'use-cases/ai-agents/try-it-out/protect-the-agent', label: 'Protect the Agent'},
-                    {type: 'doc', id: 'use-cases/ai-agents/try-it-out/act-on-its-own', label: 'Acting on Its Own'},
+                    {type: 'doc', id: 'use-cases/ai-agents/try-it-out/setup', label: 'Set up sample application', key: 'ai-agents-setup'},
+                    {type: 'doc', id: 'use-cases/ai-agents/configure-it-yourself', label: 'Configure It Yourself', key: 'ai-agents-configure-it-yourself'},
                     {
-                      type: 'doc',
-                      id: 'use-cases/ai-agents/try-it-out/act-on-behalf-of-user',
-                      label: 'Acting on Behalf of a User',
+                      type: 'category',
+                      label: 'Walkthroughs',
+                      key: 'ai-agents-walkthroughs',
+                      collapsible: true,
+                      collapsed: true,
+                      items: [
+                        {type: 'doc', id: 'use-cases/ai-agents/try-it-out/protect-the-agent', label: 'Protect the Agent'},
+                        {type: 'doc', id: 'use-cases/ai-agents/try-it-out/act-on-its-own', label: 'Acting on Its Own'},
+                        {
+                          type: 'doc',
+                          id: 'use-cases/ai-agents/try-it-out/act-on-behalf-of-user',
+                          label: 'Acting on Behalf of a User',
+                        },
+                      ],
                     },
                   ],
                 },
@@ -918,9 +930,22 @@ const sidebars: SidebarsConfig = {
           collapsed: true,
           items: [
             {
-              type: 'doc',
-              id: 'guides/deployment-patterns/docker',
+              type: 'category',
               label: 'Docker',
+              collapsible: true,
+              collapsed: false,
+              items: [
+                {
+                  type: 'doc',
+                  id: 'guides/deployment-patterns/docker',
+                  label: 'Deploy with Docker',
+                },
+                {
+                  type: 'doc',
+                  id: 'guides/deployment-patterns/docker-production',
+                  label: 'Production Recommendations',
+                },
+              ],
             },
             {
               type: 'doc',
@@ -943,6 +968,11 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           id: 'guides/deployment-patterns/production-guidelines',
           label: 'Production Guidelines',
+        },
+        {
+          type: 'doc',
+          id: 'guides/deployment-patterns/observability',
+          label: 'Observability',
         },
       ],
     },

@@ -87,17 +87,13 @@ vi.mock('@/features/flows/hooks/useValidationStatus', () => ({
   }),
 }));
 
-// Mock useIdentityProviders
+// Mock useIdentityProviders + useSMSProviders
 const mockIdentityProviders = vi.fn<() => {data: unknown[]; isLoading: boolean}>();
+const mockSMSProviders = vi.fn<() => {data: unknown[]; isLoading: boolean}>();
 vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
   useIdentityProviders: () => mockIdentityProviders(),
-}));
-
-// Mock useNotificationSenders
-const mockNotificationSenders = vi.fn<() => {data: unknown[]; isLoading: boolean}>();
-vi.mock('@/features/notification-senders/api/useNotificationSenders', () => ({
-  default: () => mockNotificationSenders(),
+  useSMSProviders: () => mockSMSProviders(),
 }));
 
 describe('ExecutionExtendedProperties', () => {
@@ -109,7 +105,7 @@ describe('ExecutionExtendedProperties', () => {
       data: [],
       isLoading: false,
     });
-    mockNotificationSenders.mockReturnValue({
+    mockSMSProviders.mockReturnValue({
       data: [],
       isLoading: false,
     });
@@ -746,7 +742,7 @@ describe('ExecutionExtendedProperties', () => {
     } as unknown as Resource;
 
     it('should render SMS template and sender configuration', () => {
-      mockNotificationSenders.mockReturnValue({
+      mockSMSProviders.mockReturnValue({
         data: [{id: 'sender-1', name: 'Twilio'}],
         isLoading: false,
       });
@@ -759,7 +755,7 @@ describe('ExecutionExtendedProperties', () => {
     });
 
     it('should call onChange with debounce when SMS template changes', () => {
-      mockNotificationSenders.mockReturnValue({
+      mockSMSProviders.mockReturnValue({
         data: [],
         isLoading: false,
       });
@@ -774,7 +770,7 @@ describe('ExecutionExtendedProperties', () => {
     });
 
     it('should show warning when no senders are available', () => {
-      mockNotificationSenders.mockReturnValue({
+      mockSMSProviders.mockReturnValue({
         data: [],
         isLoading: false,
       });

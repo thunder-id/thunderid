@@ -16,23 +16,23 @@
  * under the License.
  */
 
+import {useSMSProviders} from '@thunderid/configure-connections';
 import {Alert, FormHelperText, FormLabel, MenuItem, Select, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import type {StepData} from '@/features/flows/models/steps';
-import useNotificationSenders from '@/features/notification-senders/api/useNotificationSenders';
 
 function SmsProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
   const {t} = useTranslation();
-  const {data: notificationSenders, isLoading: isLoadingSenders} = useNotificationSenders();
+  const {data: smsProviders, isLoading: isLoadingSMSProviders} = useSMSProviders();
 
   const properties = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;
     return (stepData?.properties ?? {}) as Record<string, unknown>;
   }, [resource]);
 
-  const hasSenders = (notificationSenders?.length ?? 0) > 0;
+  const hasSenders = (smsProviders?.length ?? 0) > 0;
   const smsSenderId = (properties.senderId as string) || '';
   const isSenderPlaceholder = smsSenderId === '' || smsSenderId === '{{SENDER_ID}}';
 
@@ -63,12 +63,12 @@ function SmsProperties({resource, onChange}: CommonResourcePropertiesPropsInterf
           onChange={(e) => onChange('data.properties.senderId', e.target.value, resource)}
           displayEmpty
           fullWidth
-          disabled={isLoadingSenders || !hasSenders}
+          disabled={isLoadingSMSProviders || !hasSenders}
         >
           <MenuItem value="" disabled>
-            {isLoadingSenders ? t('common:status.loading') : t('flows:core.executions.smsOtp.sender.placeholder')}
+            {isLoadingSMSProviders ? t('common:status.loading') : t('flows:core.executions.smsOtp.sender.placeholder')}
           </MenuItem>
-          {notificationSenders?.map((sender) => (
+          {smsProviders?.map((sender) => (
             <MenuItem key={sender.id} value={sender.id}>
               {sender.name}
             </MenuItem>
@@ -76,7 +76,7 @@ function SmsProperties({resource, onChange}: CommonResourcePropertiesPropsInterf
         </Select>
       </div>
 
-      {!isLoadingSenders && !hasSenders && (
+      {!isLoadingSMSProviders && !hasSenders && (
         <Alert severity="warning">{t('flows:core.executions.smsOtp.sender.noSenders')}</Alert>
       )}
     </Stack>

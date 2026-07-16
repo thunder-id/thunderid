@@ -69,7 +69,7 @@ export default function McpCapabilitiesPanel({resourceServer, onRefresh}: McpCap
     setAddDialog({
       mode,
       parentResourceId,
-      parentPermission: parentPermission ?? resourceServer.handle,
+      parentPermission: parentPermission ?? '',
     });
   };
 

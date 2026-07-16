@@ -28,9 +28,10 @@ import {EdgeStyleTypes} from '../../../models/steps';
 import BaseEdge from '../BaseEdge';
 
 // Use vi.hoisted to define mocks that need to be referenced in vi.mock
-const {mockDeleteElements, mockUseNodes} = vi.hoisted(() => ({
+const {mockDeleteElements, mockGetNodes, mockUseStore} = vi.hoisted(() => ({
   mockDeleteElements: vi.fn().mockResolvedValue({}),
-  mockUseNodes: vi.fn(() => []),
+  mockGetNodes: vi.fn(() => []),
+  mockUseStore: vi.fn(() => 'stable-obstacles-key'),
 }));
 
 // Mock the calculateEdgePath utility
@@ -72,8 +73,11 @@ vi.mock('@xyflow/react', () => ({
   ),
   useReactFlow: () => ({
     deleteElements: mockDeleteElements,
+    getNodes: mockGetNodes,
   }),
-  useNodes: mockUseNodes,
+  useStore: mockUseStore,
+  getBezierPath: vi.fn(() => ['M 0,0 C 50,0 50,100 200,100', 100, 50, 0, 0]),
+  getSmoothStepPath: vi.fn(() => ['M 0,0 L 100,0 L 100,100 L 200,100', 100, 50, 0, 0]),
   Position: {
     Left: 'left',
     Right: 'right',
@@ -163,6 +167,7 @@ describe('BaseEdge', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseStore.mockReturnValue('stable-obstacles-key');
   });
 
   describe('Rendering', () => {
@@ -602,6 +607,44 @@ describe('BaseEdge', () => {
 
       // Delete button should still be visible
       expect(screen.getByTestId('x-icon')).toBeInTheDocument();
+    });
+  });
+
+  describe('Dragging Performance', () => {
+    it('should use smart routing when no node is being dragged', async () => {
+      const {calculateEdgePath} = await import('../../../utils/calculateEdgePath');
+
+      render(<BaseEdge {...defaultProps} />, {
+        wrapper: createWrapper(),
+      });
+
+      expect(calculateEdgePath).toHaveBeenCalled();
+    });
+
+    it('should skip smart routing and use the built-in step path while a node is dragged', async () => {
+      const {calculateEdgePath} = await import('../../../utils/calculateEdgePath');
+      const {getSmoothStepPath} = await import('@xyflow/react');
+      mockUseStore.mockReturnValue('dragging');
+
+      render(<BaseEdge {...defaultProps} />, {
+        wrapper: createWrapper(),
+      });
+
+      expect(calculateEdgePath).not.toHaveBeenCalled();
+      expect(getSmoothStepPath).toHaveBeenCalled();
+    });
+
+    it('should use the built-in bezier path while dragging with the bezier edge style', async () => {
+      const {calculateEdgePath} = await import('../../../utils/calculateEdgePath');
+      const {getBezierPath} = await import('@xyflow/react');
+      mockUseStore.mockReturnValue('dragging');
+
+      render(<BaseEdge {...defaultProps} />, {
+        wrapper: createWrapper({edgeStyle: EdgeStyleTypes.Bezier}),
+      });
+
+      expect(calculateEdgePath).not.toHaveBeenCalled();
+      expect(getBezierPath).toHaveBeenCalled();
     });
   });
 });

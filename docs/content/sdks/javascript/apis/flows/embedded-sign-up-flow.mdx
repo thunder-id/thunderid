@@ -1,7 +1,8 @@
 ---
 title: Embedded Sign-Up Flow (V1)
+docType: reference
 displayed_sidebar: javascriptSdkSidebar
-description: V1 function for app-native registration flows
+description: Embedded sign-up flow component for collecting user details and completing registration through the SDK.
 ---
 
 # Embedded Sign-Up Flow (V1)
@@ -9,7 +10,7 @@ description: V1 function for app-native registration flows
 `executeEmbeddedSignUpFlow` drives a step-by-step registration flow without a browser redirect.
 
 :::note
-For new integrations, prefer [`executeEmbeddedSignUpFlowV2`](/docs/next/sdks/javascript/apis/flows/embedded-sign-up-flow-v2).
+For new integrations, prefer [`executeEmbeddedSignUpFlowV2`](../embedded-sign-up-flow-v2).
 :::
 
 ## `executeEmbeddedSignUpFlow(config)`
@@ -36,8 +37,8 @@ const response = await executeEmbeddedSignUpFlow({
 | `config.baseUrl` | `string` | ✅ | <ProductName /> base URL |
 | `config.payload` | `EmbeddedFlowExecuteRequestPayload` | ✅ | Flow step payload |
 | `config.payload.flowType` | `EmbeddedFlowType` | ✅ | Must be `EmbeddedFlowType.Registration` |
-| `config.payload.flowId` | `string` | — | Flow ID from a previous step response |
-| `config.payload.selectedAuthenticator` | `object` | — | Authenticator selection (for later steps) |
+| `config.payload.flowId` | `string` | ❌ | Flow ID from a previous step response |
+| `config.payload.selectedAuthenticator` | `object` | ❌ | Authenticator selection (for later steps) |
 
 ## Response: `EmbeddedFlowExecuteResponse`
 

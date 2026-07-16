@@ -137,7 +137,7 @@ function generateBookingReference() {
 async function handleBooking(request) {
   const user = await resolveUser(request);
 
-  requireScope(user, "wayfinder:booking:create");
+  requireScope(user, "booking:create");
 
   const body = await readJsonBody(request);
   const itemType = body.type;
@@ -239,7 +239,7 @@ async function route(request, response) {
     if (request.method === "GET" && url.pathname === "/api/bookings/recommended") {
       const user = await resolveUser(request);
 
-      requireScope(user, "wayfinder:booking:recommend");
+      requireScope(user, "booking:recommend");
 
       const rawLimit = Number(url.searchParams.get("limit") || 3);
       const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 3, 1), 10);
@@ -293,7 +293,7 @@ async function route(request, response) {
     if (request.method === "GET" && url.pathname === "/api/bookings/flights") {
       const user = await resolveUser(request);
 
-      requireScope(user, "wayfinder:booking:read");
+      requireScope(user, "booking:read");
 
       const username = user.id;
 
@@ -311,7 +311,7 @@ async function route(request, response) {
     if (request.method === "DELETE" && url.pathname === "/api/bookings/flights") {
       const user = await resolveUser(request);
 
-      requireScope(user, "wayfinder:booking:cancel");
+      requireScope(user, "booking:cancel");
 
       const username = user.id;
       const result = deleteBookingsForUser(username);

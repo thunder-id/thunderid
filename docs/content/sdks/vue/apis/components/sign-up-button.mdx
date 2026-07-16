@@ -1,11 +1,12 @@
 ---
 title: <SignUpButton />
-description: Trigger the sign-up registration flow
+docType: reference
+description: Trigger the sign-up registration flow from a pre-styled button component in Vue applications.
 ---
 
 # `<SignUpButton />`
 
-The `SignUpButton` component triggers the sign-up (registration) flow when clicked. It automatically handles loading state and error handling, and supports custom UI via a scoped default slot. If a `signUpUrl` is configured on the [`<ThunderIDProvider />`](/docs/next/sdks/vue/apis/providers/thunderid-provider), the button navigates to that URL instead of triggering the embedded flow.
+The `SignUpButton` component triggers the sign-up (registration) flow when clicked. It automatically handles loading state and error handling, and supports custom UI via a scoped default slot. If a `signUpUrl` is configured on the [`<ThunderIDProvider />`](../../providers/thunderid-provider), the button navigates to that URL instead of triggering the embedded flow.
 
 ## Usage
 
@@ -75,7 +76,7 @@ import { SignUpButton } from '@thunderid/vue'
 
 The button includes a default vendor-prefixed class for targeting:
 
-- `.thunderid-sign-up-button` – Main sign-up button element
+- `.thunderid-sign-up-button`: Main sign-up button element
 
 ### CSS Custom Properties (CSS Variables)
 

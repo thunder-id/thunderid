@@ -1,7 +1,8 @@
 ---
 title: Embedded Sign-In Flow (V2)
+docType: reference
 displayed_sidebar: javascriptSdkSidebar
-description: V2 function for app-native authentication flows
+description: Embedded sign-in flow component (version 2) with improved step handling and structured state management.
 ---
 
 # Embedded Sign-In Flow (V2)
@@ -48,13 +49,13 @@ if (step2.flowStatus === EmbeddedSignInFlowStatusV2.Complete) {
 | `config.url` | `string` | ✅ | Full endpoint URL. Mutually exclusive with `baseUrl` |
 | `config.baseUrl` | `string` | ✅ | <ProductName /> base URL |
 | `config.payload` | `EmbeddedSignInFlowRequestV2` | ✅ | Flow request body |
-| `config.payload.applicationId` | `string` | — | Application ID. Required for the first step |
-| `config.payload.flowType` | `string` | — | Flow type. Required for the first step (e.g., `'SIGN_IN'`) |
-| `config.payload.executionId` | `string` | — | Execution ID from a prior response. Required for subsequent steps |
-| `config.payload.action` | `string` | — | Action to take at the current step |
-| `config.payload.inputs` | `Record<string, string>` | — | Step-specific input fields (e.g., credentials) |
-| `config.payload.challengeToken` | `string` | — | Challenge token from a prior step (e.g., for MFA) |
-| `config.authId` | `string` | — | Optional authentication context ID |
+| `config.payload.applicationId` | `string` | No | Application ID. Required for the first step |
+| `config.payload.flowType` | `string` | No | Flow type. Required for the first step (e.g., `'SIGN_IN'`) |
+| `config.payload.executionId` | `string` | No | Execution ID from a prior response. Required for subsequent steps |
+| `config.payload.action` | `string` | No | Action to take at the current step |
+| `config.payload.inputs` | `Record<string, string>` | No | Step-specific input fields (e.g., credentials) |
+| `config.payload.challengeToken` | `string` | No | Challenge token from a prior step (e.g., for MFA) |
+| `config.authId` | `string` | No | Optional authentication context ID |
 
 ## Response: `EmbeddedSignInFlowResponseV2`
 
@@ -76,7 +77,7 @@ if (step2.flowStatus === EmbeddedSignInFlowStatusV2.Complete) {
 | Value | Description |
 |-------|-------------|
 | `Incomplete` | Flow has more steps |
-| `Complete` | Authentication succeeded — use `assertion` to obtain tokens |
+| `Complete` | Authentication succeeded: use `assertion` to obtain tokens |
 | `Error` | Authentication failed, check `error` for details |
 
 ### `EmbeddedSignInFlowTypeV2`

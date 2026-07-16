@@ -1,5 +1,6 @@
 ---
 title: Configure It Yourself
+docType: use-case
 description: Build the same Wayfinder sample setup manually, resource by resource, instead of importing the declarative bundle.
 sidebar_position: 6
 ---
@@ -9,15 +10,15 @@ sidebar_position: 6
 Use this page to build the Wayfinder setup manually instead of importing the declarative bundle. Pick this path when you want to see exactly what gets created, adapt the setup to your own project, or learn the moving parts step by step.
 
 :::note Prerequisites
-Complete the environment steps in [Set Up Sample Application](../setup#set-up-your-environment) first — run <ProductName />, configure CORS, and get the Wayfinder sample running. Then return here and follow the steps below instead of the bundle import.
+Complete the environment steps in [Set Up Sample Application](../setup#set-up-your-environment) first: run <ProductName />, configure CORS, and get the Wayfinder sample running. Then return here and follow the steps below instead of the bundle import.
 :::
 
-The first section is the shared foundation — required regardless of which use cases you plan to exercise. The remaining three are independent and can be applied in any order.
+The first section is the shared foundation, required regardless of which use cases you plan to exercise. The remaining three are independent and can be applied in any order.
 
-- [Set Up the Foundation](#set-up-the-foundation) — shared resources every walkthrough builds on.
-- [Build the Registration Flow](#build-the-registration-flow) — needed for [Self Sign-Up](../self-sign-up).
-- [Build the Account Recovery Flow](#build-the-account-recovery-flow) — needed for [Account Recovery](../account-recovery).
-- [Set up Internal User Onboarding](#set-up-internal-user-onboarding) — needed for [Onboard Internal Users](../onboard-internal-users).
+- [Set Up the Foundation](#set-up-the-foundation), shared resources every walkthrough builds on.
+- [Build the Registration Flow](#build-the-registration-flow), needed for [Self Sign-Up](../self-sign-up).
+- [Build the Account Recovery Flow](#build-the-account-recovery-flow), needed for [Account Recovery](../account-recovery).
+- [Set up Internal User Onboarding](#set-up-internal-user-onboarding), needed for [Onboard Internal Users](../onboard-internal-users).
 
 ## Set Up the Foundation
 
@@ -36,7 +37,7 @@ These resources are shared by every B2C walkthrough.
    | `family_name` | string | Optional            |
    | `sub`         | string | Optional            |
 
-   See [User Types](/docs/next/guides/guides/users/user-types).
+   See [User Types](../../../../guides/guides/users/user-types).
 
 2. **Create the `wayfinder` resource server.**
 
@@ -67,7 +68,7 @@ These resources are shared by every B2C walkthrough.
 
    This generates three permissions: `wayfinder:booking:read`, `wayfinder:booking:create`, and `wayfinder:booking:cancel`.
 
-   See [Resource Servers](/docs/next/guides/guides/resource-servers).
+   See [Resource Servers](../../../../guides/guides/resource-servers).
 
 3. **Create the `Traveler` role.**
 
@@ -90,7 +91,7 @@ These resources are shared by every B2C walkthrough.
      }'
    ```
 
-   See [Authorization](/docs/next/guides/key-concepts/authorization).
+   See [Authorization](../../../../guides/key-concepts/authorization).
 
 4. **Register the `WAYFINDER` application.**
 
@@ -103,7 +104,7 @@ These resources are shared by every B2C walkthrough.
    | PKCE                | Required                  |
    | Allowed user types  | `Customer`                |
 
-   See [Manage Applications](/docs/next/guides/guides/applications/manage-applications).
+   See [Manage Applications](../../../../guides/guides/applications/manage-applications).
 
 5. **Create John Doe as a `Customer`.**
 
@@ -111,7 +112,7 @@ These resources are shared by every B2C walkthrough.
 
    Navigate to **Roles** → open the `Traveler` role → **Assignments** tab. Click **Add** and select John to assign the role.
 
-   See [Manage Users](/docs/next/guides/guides/users/manage-users).
+   See [Manage Users](../../../../guides/guides/users/manage-users).
 
 ## Build the Registration Flow
 
@@ -254,11 +255,11 @@ The registration flow drives [Self Sign-Up](../self-sign-up). It:
 
    Replace `wayfinder-traveler-role` with the ID of the `Traveler` role you created above if it differs.
 
-   See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow).
+   See [Build a Flow](../../../../guides/guides/flows/build-a-flow).
 
 2. Go to **Applications** → **WAYFINDER** → **Flows** and select the registration flow you just created from the **Registration Flow** dropdown. Save the application.
 
-   See [Manage Applications](/docs/next/guides/guides/applications/manage-applications).
+   See [Manage Applications](../../../../guides/guides/applications/manage-applications).
 
 ## Build the Account Recovery Flow
 
@@ -413,11 +414,11 @@ SMTP must be configured for the recovery email to reach the user. The SMTP step 
 
    </details>
 
-   See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow).
+   See [Build a Flow](../../../../guides/guides/flows/build-a-flow).
 
 2. Go to **Applications** → **WAYFINDER** → **Flows** and select the recovery flow you just created from the **Recovery Flow** dropdown. Save the application.
 
-   See [Manage Applications](/docs/next/guides/guides/applications/manage-applications).
+   See [Manage Applications](../../../../guides/guides/applications/manage-applications).
 
 ## Set up Internal User Onboarding
 
@@ -432,7 +433,7 @@ These resources drive [Onboard Internal Users](../onboard-internal-users).
    | `password`    | string | Credential                       |
    | `displayName` | string | Captured on invitation accept    |
 
-   See [User Types](/docs/next/guides/guides/users/user-types).
+   See [User Types](../../../../guides/guides/users/user-types).
 
 2. **Create the staff roles.** Navigate to **Roles** → **Add Role**. Add the three staff roles:
 
@@ -442,7 +443,7 @@ These resources drive [Onboard Internal Users](../onboard-internal-users).
    | `DestinationsAdmin` | Curate featured destinations     |
    | `OpsAdmin`          | Invite and manage other staff    |
 
-   See [Authorization](/docs/next/guides/key-concepts/authorization).
+   See [Authorization](../../../../guides/key-concepts/authorization).
 
 3. **Create the user onboarding flow.** Save the JSON below as `wayfinder-onboarding-flow.json` and POST it to the flows API. The flow validates admin permission, resolves the user type, prompts for the staff role (Support or DestinationsAdmin), collects the invitee's email, sends the invitation, and on accept provisions the new user with the matching role attached via `properties.assignRole`.
 
@@ -736,7 +737,7 @@ These resources drive [Onboard Internal Users](../onboard-internal-users).
 
    Replace `wayfinder-support-role-id` and `wayfinder-destinations-admin-role-id` with the IDs of the `Support` and `DestinationsAdmin` roles you created in step 2.
 
-   See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow).
+   See [Build a Flow](../../../../guides/guides/flows/build-a-flow).
 
 4. <ProductName /> permits one `USER_ONBOARDING` flow at a time, selected by handle in `deployment.yaml`. Point it at your flow and restart:
 
@@ -747,4 +748,4 @@ These resources drive [Onboard Internal Users](../onboard-internal-users).
 
 5. **Create Alex Carter as a `Staff` user** with the `OpsAdmin` role so he can issue invitations. Navigate to **Users** → **Add User**.
 
-   See [Manage Users](/docs/next/guides/guides/users/manage-users).
+   See [Manage Users](../../../../guides/guides/users/manage-users).

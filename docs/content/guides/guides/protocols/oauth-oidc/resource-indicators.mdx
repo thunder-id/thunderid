@@ -1,7 +1,8 @@
 ---
 title: Resource Indicators
+docType: reference
 sidebar_position: 5
-description: RFC 8707 Resource Indicators in {{ProductName}} — target access tokens to specific resource servers via the resource parameter, with audience-restricted aud claims.
+description: RFC 8707 Resource Indicators in {{ProductName}}, to target access tokens to specific resource servers via the resource parameter, with audience-restricted aud claims.
 ---
 
 # Resource Indicators
@@ -62,7 +63,7 @@ The issued access token carries the resource identifier as its `aud`:
 |---|---|---|
 | One `resource` | 1 | JSON string: `"aud": "https://api.example.com/payments"` |
 | Multiple `resource` parameters | 2+ | JSON array: `"aud": ["https://api.example.com/payments", "https://api.example.com/bookings"]` |
-| No `resource` parameter | — | <ProductName /> discovers which registered resource servers own the granted scopes and includes their identifiers. Falls back to the `client_id` if no resource server matches. |
+| No `resource` parameter | 0 | <ProductName /> discovers which registered resource servers own the granted scopes and includes their identifiers. Falls back to the `client_id` if no resource server matches. |
 
 Both string and array forms comply with [RFC 7519 §4.1.3](https://datatracker.ietf.org/doc/html/rfc7519#section-4.1.3). Resource servers must accept either form.
 
@@ -97,7 +98,7 @@ Resource indicators activate as soon as you register a resource server with an a
 
 ### Register a Resource Server
 
-See [Resource Servers](/docs/next/guides/guides/resource-servers) for full setup. At minimum:
+See [Resource Servers](../../../resource-servers) for full setup. At minimum:
 
 | Field | Value |
 |---|---|
@@ -119,7 +120,7 @@ curl -X POST https://{{productSlug}}.example.com/oauth2/token \
 
 ## Related Guides
 
-- [Authorization](/docs/next/guides/key-concepts/authorization) — how resource servers, permissions, and scopes fit together
-- [Resource Servers](/docs/next/guides/guides/resource-servers) — register a resource server
-- [Refresh Token](../refresh-token) — narrowing on refresh
-- [Token Exchange](../token-exchange) — `resource` is supported on exchange too
+- [Authorization](../../../../key-concepts/authorization), how resource servers, permissions, and scopes fit together
+- [Resource Servers](../../../resource-servers), register a resource server
+- [Refresh Token](../refresh-token), narrowing on refresh
+- [Token Exchange](../token-exchange), `resource` is supported on exchange too

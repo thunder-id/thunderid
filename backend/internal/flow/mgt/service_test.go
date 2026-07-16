@@ -31,6 +31,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -108,6 +110,19 @@ func validFlowNodes() []providers.NodeDefinition {
 	return []providers.NodeDefinition{
 		{ID: "start", Type: "START", OnSuccess: "prompt"},
 		{ID: "prompt", Type: "PROMPT", Next: "end"},
+		{ID: "end", Type: "END"},
+	}
+}
+
+// authCapableNodes returns nodes that satisfy the Authentication flow's required executor constraint.
+func authCapableNodes() []providers.NodeDefinition {
+	return []providers.NodeDefinition{
+		{ID: "start", Type: "START", OnSuccess: "assert"},
+		{
+			ID: "assert", Type: string(common.NodeTypeTaskExecution),
+			Executor:  &providers.ExecutorDefinition{Name: executor.ExecutorNameAuthAssert},
+			OnSuccess: "end",
+		},
 		{ID: "end", Type: "END"},
 	}
 }
@@ -799,11 +814,12 @@ func (s *FlowMgtServiceTestSuite) TestCreateFlow_WithAutoInference() {
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test", testConfig)
 
+	authNodes := authCapableNodes()
 	flowDef := &FlowDefinition{
 		Handle:   "test-handle",
 		Name:     "Auth Flow",
 		FlowType: providers.FlowTypeAuthentication,
-		Nodes:    validFlowNodes(),
+		Nodes:    authNodes,
 	}
 	expectedFlow := &providers.CompleteFlowDefinition{
 		Handle:        "test-handle",
@@ -842,11 +858,12 @@ func (s *FlowMgtServiceTestSuite) TestCreateFlow_AutoInferenceFailure() {
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test", testConfig)
 
+	authNodes := authCapableNodes()
 	flowDef := &FlowDefinition{
 		Handle:   "test-handle",
 		Name:     "Auth Flow",
 		FlowType: providers.FlowTypeAuthentication,
-		Nodes:    validFlowNodes(),
+		Nodes:    authNodes,
 	}
 	expectedFlow := &providers.CompleteFlowDefinition{
 		Handle:        "test-handle",
@@ -855,7 +872,6 @@ func (s *FlowMgtServiceTestSuite) TestCreateFlow_AutoInferenceFailure() {
 		ActiveVersion: 1,
 	}
 
-	// Mock expectations in the correct order of execution
 	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
 	s.mockStore.EXPECT().IsFlowExistsByHandle(mock.Anything, "test-handle",
 		providers.FlowTypeAuthentication).Return(false, nil)

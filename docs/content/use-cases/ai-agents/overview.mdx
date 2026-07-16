@@ -1,5 +1,6 @@
 ---
 title: Identity for AI Agents
+docType: use-case
 description: Identify common AI agent identity needs - protecting your agent, calling services, and orchestrating multi-agent workflows.
 sidebar_position: 1
 ---
@@ -28,7 +29,7 @@ In this model:
 
 - Each agent is a first-class identity with its own credentials and assigned permissions.
 - Callers authenticate before invoking protected agent capabilities.
-- ThunderID issues tokens that represent the agent, the user, or both depending on the flow.
+- <ProductName /> issues tokens that represent the agent, the user, or both depending on the flow.
 - Services validate tokens, check scopes, and enforce audience restrictions.
 - Delegated and multi-agent flows preserve actor context so downstream services can audit who initiated each action.
 
@@ -54,8 +55,8 @@ Review the full pattern guide: [Solution Patterns](../solution-patterns).
 ## Implementation Paths
 
 <div className="uc-cap-grid">
-  <article id="protect-your-agent" className="uc-cap-card"><h3>Protect Your Agent</h3><p>Require callers to present valid tokens before invoking agent capabilities.</p><p><a href="../try-it-out">Start with: Try It Out - Protect Your Agent</a></p></article>
-  <article id="connect-to-services" className="uc-cap-card"><h3>Connect to Services</h3><p>Let agents call APIs, MCP servers, tools, and internal services with the right token flow.</p><p><a href="../try-it-out">Start with: Try It Out - Connect to Services</a></p></article>
+  <article id="protect-your-agent" className="uc-cap-card"><h3>Protect Your Agent</h3><p>Require callers to present valid tokens before invoking agent capabilities.</p><p><a href="../try-it-out/">Start with: Try It Out - Protect Your Agent</a></p></article>
+  <article id="connect-to-services" className="uc-cap-card"><h3>Connect to Services</h3><p>Let agents call APIs, MCP servers, tools, and internal services with the right token flow.</p><p><a href="../try-it-out/">Start with: Try It Out - Connect to Services</a></p></article>
   <article id="multi-agent-workflows" className="uc-cap-card"><h3>Secure Multi-Agent Workflows</h3><p>Downscope tokens as one agent delegates work to another and preserve the original actor context.</p><p><a href="../solution-patterns#token-exchange">Start with: Token Exchange</a></p></article>
   <article id="scope-intersection" className="uc-cap-card"><h3>Apply Scope Intersection</h3><p>Keep delegated tokens within the overlap of user authority and agent permissions.</p><p><a href="../solution-patterns#scope-granularity">Start with: Scope Granularity</a></p></article>
   <article id="credential-lifecycle" className="uc-cap-card"><h3>Manage Credential Lifecycle</h3><p>Issue, rotate, expire, revoke, and audit credentials for each agent identity.</p><p><a href="../solution-patterns#credential-lifecycle">Start with: Credential Lifecycle</a></p></article>
@@ -69,8 +70,8 @@ Review the full pattern guide: [Solution Patterns](../solution-patterns).
 Start by choosing the token pattern, then register the agent and define the resource scopes it needs. After that, protect the agent's inbound API and configure the outbound service flow.
 
 - [Solution Patterns](../solution-patterns)
-- [Try It Out - Protect Your Agent](../try-it-out)
-- [MCP Authorization](../mcp-authorization)
+- [Try It Out - Protect Your Agent](../try-it-out/)
+- [MCP Authorization](../mcp-authorization/overview)
 
 ## Related Use Cases
 

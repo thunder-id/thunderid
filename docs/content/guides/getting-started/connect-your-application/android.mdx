@@ -1,6 +1,7 @@
 ---
 toc_progress: quickstart
 title: Android Quickstart
+docType: quickstart
 sidebar_position: 8.5
 persona: app
 description: Add {{ProductName}} authentication to an Android application using the ThunderID Android SDK for Jetpack Compose.
@@ -18,7 +19,7 @@ import {
 
 # Android Quickstart
 
-Use this guide to add <ProductName /> authentication to an Android application using the ThunderID Android SDK for Jetpack Compose.
+Use this guide to add <ProductName /> authentication to an Android application using the <ProductName /> Android SDK for Jetpack Compose.
 
 <TutorialHero>
 
@@ -45,13 +46,17 @@ Check out the complete <RepoLink path="/tree/main/sdks/android/samples/quickstar
 
 ## Run <ProductName />
 
-Start a local ThunderID instance. Pick the method that works best for you:
+Start a local <ProductName /> instance. Pick the method that works best for you:
 
 <RunThunderID />
 
-Once it's running, the console is available at [https://localhost:8090](https://localhost:8090).
+Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
 
 ## Create an Application
+
+:::info Test User
+If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
+:::
 
 Open the Console at <ConsoleUrl />, navigate to **Applications**, and click **Add Application**:
 
@@ -67,7 +72,7 @@ In Android Studio, create a new project using the **Empty Activity** template wi
 If you already have an existing Android project, skip this step.
 :::
 
-## Install the ThunderID Compose SDK
+## Install the <ProductName /> Compose SDK
 
 Add the <ProductName /> Maven repository to your `settings.gradle.kts`:
 
@@ -127,13 +132,13 @@ Open `AndroidManifest.xml` and add an intent filter with your scheme to your lau
 
 In the console, open your registered application and add the following as an **Allowed Redirect URI**:
 
-```
+```text
 dev.thunderid.quickstart://callback
 ```
 
 Add the same value as an **Allowed Post-Logout Redirect URI**:
 
-```
+```text
 dev.thunderid.quickstart://logout
 ```
 

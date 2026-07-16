@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
@@ -191,4 +192,32 @@ func (s *IDPExporterTestSuite) TestValidateResource_NoProperties() {
 	// Should still succeed but log a warning
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "Test IDP", name)
+}
+
+// TestParseIDPDTOFromNode_CarriesAttributeConfiguration ensures the declarative loader
+// propagates attribute_configuration (account linking, user type resolution, attribute
+// mappings) from YAML into the IDP DTO, matching the REST API create/update behavior.
+func (s *IDPExporterTestSuite) TestParseIDPDTOFromNode_CarriesAttributeConfiguration() {
+	const idpYAML = `
+id: test-idp-id
+name: TestIDP
+type: GOOGLE
+attribute_configuration:
+  accountLinking:
+    attributes:
+      - email
+properties:
+  - name: client_id
+    value: abc
+`
+	var node yaml.Node
+	err := yaml.Unmarshal([]byte(idpYAML), &node)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(node.Content)
+
+	dto, err := idp.ParseIDPDTOFromNode(node.Content[0])
+	s.Require().NoError(err)
+	s.Require().NotNil(dto.AttributeConfiguration, "attribute configuration must be carried through")
+	s.Require().NotNil(dto.AttributeConfiguration.AccountLinking, "account linking must be carried through")
+	assert.Equal(s.T(), []string{"email"}, dto.AttributeConfiguration.AccountLinking.Attributes)
 }

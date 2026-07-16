@@ -1,5 +1,6 @@
 ---
 title: Skills
+docType: reference
 sidebar_position: 2
 description: Use ThunderID agent skills to set up the server and integrate authentication into any framework with a single prompt.
 ---
@@ -124,7 +125,7 @@ npx skills add thunder-id/skills
 
 Run the following slash command in Claude Code:
 
-```
+```tsx
 /plugin marketplace add thunder-id/skills
 ```
 
@@ -147,9 +148,9 @@ Run the following command in your terminal, then restart Codex:
 codex plugin marketplace add thunder-id/skills
 ```
 
-After restarting, open **`/plugins`**, select **ThunderID Skills**, install and enable `thunder-id-skills`, then start a new thread.
+After restarting, open **`/plugins`**, select **<ProductName /> Skills**, install and enable `thunder-id-skills`, then start a new thread.
 
-{/* Screenshot placeholder: Codex /plugins panel showing ThunderID Skills installed and enabled */}
+{/* Screenshot placeholder: Codex /plugins panel showing <ProductName /> Skills installed and enabled */}
 
   </TabItem>
 </Tabs>
@@ -160,16 +161,16 @@ After restarting, open **`/plugins`**, select **ThunderID Skills**, install and 
   <Grid size={{xs: 12}}>
     <SkillCard
       icon={<SkillsLogo size={28} />}
-      title="Setup ThunderID"
+      title="Setup <ProductName />"
       skillCommand="/setup-thunderid"
-      description="Download, configure, and start the ThunderID server. Supports npx (recommended) and Docker Compose. Outputs the Sample App Client ID you need for SDK integration."
+      description="Download, configure, and start the <ProductName /> server. Supports npx (recommended) and Docker Compose. Outputs the Sample App Client ID you need for SDK integration."
     />
   </Grid>
 </Grid>
 
 ## Integration Skills
 
-Choose the skill that matches your framework. Each skill registers an application in the ThunderID Console, installs the correct SDK, and wires up authentication in your project.
+Choose the skill that matches your framework. Each skill registers an application in the <ProductName /> Console, installs the correct SDK, and wires up authentication in your project.
 
 ### Frontend
 
@@ -198,7 +199,7 @@ Choose the skill that matches your framework. Each skill registers an applicatio
       title="Nuxt"
       skillCommand="/integrate-nuxt"
       pkg="@thunderid/nuxt"
-      description="Add authentication to a Nuxt 3 application using the official ThunderID Nuxt module."
+      description="Add authentication to a Nuxt 3 application using the official <ProductName /> Nuxt module."
     />
   </Grid>
   <Grid size={{xs: 12}}>
@@ -234,7 +235,7 @@ Choose the skill that matches your framework. Each skill registers an applicatio
       title="Browser / Vanilla JS"
       skillCommand="/integrate-browser"
       pkg="@thunderid/browser"
-      description="Add authentication to a plain HTML and JavaScript app with no framework — ideal for simple SPAs or prototype projects."
+      description="Add authentication to a plain HTML and JavaScript app with no framework, ideal for simple SPAs or prototype projects."
     />
   </Grid>
 </Grid>
@@ -266,7 +267,7 @@ Choose the skill that matches your framework. Each skill registers an applicatio
       title="Universal JavaScript"
       skillCommand="/integrate-javascript"
       pkg="@thunderid/javascript"
-      description="Use the core JavaScript SDK directly for custom integrations, edge runtimes, or any environment without a dedicated ThunderID SDK."
+      description="Use the core JavaScript SDK directly for custom integrations, edge runtimes, or any environment without a dedicated <ProductName /> SDK."
     />
   </Grid>
 </Grid>
@@ -279,7 +280,7 @@ Choose the skill that matches your framework. Each skill registers an applicatio
       icon={<AngularLogo size={36} />}
       title="Generic OIDC"
       skillCommand="/integrate-oidc"
-      description="Integrate ThunderID via a standard OIDC library for any framework or language without an official SDK — Angular, SvelteKit, Python, Go, .NET, and more."
+      description="Integrate <ProductName /> via a standard OIDC library for any framework or language without an official SDK, such as Angular, SvelteKit, Python, Go, .NET, and more."
     />
   </Grid>
 </Grid>
@@ -290,23 +291,23 @@ Type a plain-language request in your AI assistant's chat. The assistant detects
 
 | You Say | Skill |
 |---|---|
-| "Set up ThunderID on my machine" | `/setup-thunderid` |
-| "Add ThunderID to my Next.js app" | `/integrate-nextjs` |
-| "Add ThunderID to my Nuxt app" | `/integrate-nuxt` |
-| "Integrate ThunderID into my React app" | `/integrate-react` |
-| "Add ThunderID to my React Router app" | `/integrate-react-router` |
-| "Add ThunderID to my TanStack Router app" | `/integrate-tanstack-router` |
-| "Add ThunderID to my Vue app" | `/integrate-vue` |
+| "Set up <ProductName /> on my machine" | `/setup-thunderid` |
+| "Add <ProductName /> to my Next.js app" | `/integrate-nextjs` |
+| "Add <ProductName /> to my Nuxt app" | `/integrate-nuxt` |
+| "Integrate <ProductName /> into my React app" | `/integrate-react` |
+| "Add <ProductName /> to my React Router app" | `/integrate-react-router` |
+| "Add <ProductName /> to my TanStack Router app" | `/integrate-tanstack-router` |
+| "Add <ProductName /> to my Vue app" | `/integrate-vue` |
 | "Protect routes in my Express app" | `/integrate-express` |
-| "Add ThunderID to my Fastify / Hono app" | `/integrate-node` |
-| "Add ThunderID to my vanilla JS app" | `/integrate-browser` |
-| "Integrate ThunderID without a framework" | `/integrate-javascript` |
-| "Add ThunderID to my Angular / SvelteKit / Python / Go app" | `/integrate-oidc` |
+| "Add <ProductName /> to my Fastify / Hono app" | `/integrate-node` |
+| "Add <ProductName /> to my vanilla JS app" | `/integrate-browser` |
+| "Integrate <ProductName /> without a framework" | `/integrate-javascript` |
+| "Add <ProductName /> to my Angular / SvelteKit / Python / Go app" | `/integrate-oidc` |
 
 You can also invoke skills directly by name. In Claude Code, type `/integrate-nextjs`. In Codex, type `/integrate-nextjs` in a thread. Both assistants run the skill immediately without further prompting.
 
-{/* Screenshot placeholder: Split view showing the same "Add ThunderID to my Next.js app" prompt in Claude Code (left) and Codex (right), each running the integrate-nextjs skill */}
+{/* Screenshot placeholder: Split view showing the same "Add <ProductName /> to my Next.js app" prompt in Claude Code (left) and Codex (right), each running the integrate-nextjs skill */}
 
 :::tip Run Setup First
-If ThunderID is not running yet, ask your assistant to "set up ThunderID" before running an integration skill. The setup skill outputs the Sample App **Client ID** that the integration skills need to configure your application.
+If <ProductName /> is not running yet, ask your assistant to "set up <ProductName />" before running an integration skill. The setup skill outputs the Sample App **Client ID** that the integration skills need to configure your application.
 :::

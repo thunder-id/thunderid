@@ -72,7 +72,11 @@ func newUserTypeResolver(
 	}
 
 	base := flowFactory.CreateExecutor(ExecutorNameUserTypeResolver, providers.ExecutorTypeRegistration,
-		defaultInputs, []providers.Input{})
+		defaultInputs, []providers.Input{}, &providers.ExecutorMeta{
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: propertyKeyAllowedUserTypes},
+			},
+		})
 
 	return &userTypeResolver{
 		Executor:          base,

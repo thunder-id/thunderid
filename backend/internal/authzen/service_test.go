@@ -75,9 +75,9 @@ func (s *ServiceTestSuite) mockValidAction(permission string) {
 		Return([]string{}, nil)
 }
 
-func (s *ServiceTestSuite) mockResourceServerHandle(handle string) {
-	s.resourceMock.On("GetResourceServerByHandle", mock.Anything, handle).
-		Return(&providers.ResourceServer{ID: testResourceServerID, Handle: handle}, nil).Once()
+func (s *ServiceTestSuite) mockResourceServerIdentifier(identifier string) {
+	s.resourceMock.On("GetResourceServerByIdentifier", mock.Anything, identifier).
+		Return(&providers.ResourceServer{ID: testResourceServerID, Identifier: identifier}, nil).Once()
 }
 
 func (s *ServiceTestSuite) TestEvaluateAccessAllowed() {
@@ -88,7 +88,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessAllowed() {
 	}
 
 	s.mockValidSubject()
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.mockValidAction(testBookingReadAction)
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return([]providers.EntityGroup{
 		{ID: "group1"},
@@ -97,7 +97,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessAllowed() {
 	}, nil)
 	s.authzMock.On("EvaluateAccess", mock.Anything, providers.AccessEvaluationRequest{
 		Subject:        providers.Subject{Type: "user", ID: "user1", GroupIDs: []string{"group1", "group2"}},
-		ResourceServer: providers.AccessEvaluationResourceServer{Handle: "booking"},
+		ResourceServer: providers.AccessEvaluationResourceServer{ID: testResourceServerID},
 		Permission:     providers.Permission{Name: testBookingReadAction},
 	}).Return(&providers.AccessEvaluationResponse{Decision: true}, nil)
 
@@ -131,7 +131,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessPassesPropertiesToAuthz() {
 	}
 
 	s.mockValidSubject()
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.mockValidAction(testBookingReadAction)
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return([]providers.EntityGroup{}, nil)
 	s.authzMock.On("EvaluateAccess", mock.Anything, providers.AccessEvaluationRequest{
@@ -142,7 +142,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessPassesPropertiesToAuthz() {
 			Properties: subjectProperties,
 		},
 		ResourceServer: providers.AccessEvaluationResourceServer{
-			Handle:     "booking",
+			ID:         testResourceServerID,
 			Properties: resourceProperties,
 		},
 		Permission: providers.Permission{
@@ -166,12 +166,12 @@ func (s *ServiceTestSuite) TestEvaluateAccessDenied() {
 	}
 
 	s.mockValidSubject()
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.mockValidAction("booking:delete")
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return([]providers.EntityGroup{}, nil)
 	s.authzMock.On("EvaluateAccess", mock.Anything, providers.AccessEvaluationRequest{
 		Subject:        providers.Subject{Type: "user", ID: "user1", GroupIDs: []string{}},
-		ResourceServer: providers.AccessEvaluationResourceServer{Handle: "booking"},
+		ResourceServer: providers.AccessEvaluationResourceServer{ID: testResourceServerID},
 		Permission:     providers.Permission{Name: "booking:delete"},
 	}).Return(&providers.AccessEvaluationResponse{Decision: false}, nil)
 
@@ -195,7 +195,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessProviderNotImplementedUsesEmptyGrou
 		entityprovider.NewEntityProviderError(
 			entityprovider.ErrorCodeNotImplemented, "not implemented", "not implemented"),
 	)
-	s.mockResourceServerHandle("report")
+	s.mockResourceServerIdentifier("report")
 	s.mockValidAction("report:read")
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "app1").Return(
 		[]providers.EntityGroup(nil),
@@ -204,7 +204,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessProviderNotImplementedUsesEmptyGrou
 	)
 	s.authzMock.On("EvaluateAccess", mock.Anything, providers.AccessEvaluationRequest{
 		Subject:        providers.Subject{Type: "app", ID: "app1", GroupIDs: []string{}},
-		ResourceServer: providers.AccessEvaluationResourceServer{Handle: "report"},
+		ResourceServer: providers.AccessEvaluationResourceServer{ID: testResourceServerID},
 		Permission:     providers.Permission{Name: "report:read"},
 	}).Return(&providers.AccessEvaluationResponse{Decision: true}, nil)
 
@@ -222,12 +222,12 @@ func (s *ServiceTestSuite) TestEvaluateAccessSkipsSubjectValidationWhenTypeEmpty
 		Action:   Action{Name: testBookingReadAction},
 	}
 
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.mockValidAction(testBookingReadAction)
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return([]providers.EntityGroup{}, nil)
 	s.authzMock.On("EvaluateAccess", mock.Anything, providers.AccessEvaluationRequest{
 		Subject:        providers.Subject{ID: "user1", GroupIDs: []string{}},
-		ResourceServer: providers.AccessEvaluationResourceServer{Handle: "booking"},
+		ResourceServer: providers.AccessEvaluationResourceServer{ID: testResourceServerID},
 		Permission:     providers.Permission{Name: testBookingReadAction},
 	}).Return(&providers.AccessEvaluationResponse{Decision: true}, nil)
 
@@ -247,7 +247,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessGroupResolutionFailure() {
 	}
 
 	s.mockValidSubject()
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.mockValidAction(testBookingReadAction)
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return(
 		[]providers.EntityGroup(nil),
@@ -270,12 +270,12 @@ func (s *ServiceTestSuite) TestEvaluateAccessAuthorizationFailure() {
 	}
 
 	s.mockValidSubject()
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.mockValidAction(testBookingReadAction)
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return([]providers.EntityGroup{}, nil)
 	s.authzMock.On("EvaluateAccess", mock.Anything, providers.AccessEvaluationRequest{
 		Subject:        providers.Subject{Type: "user", ID: "user1", GroupIDs: []string{}},
-		ResourceServer: providers.AccessEvaluationResourceServer{Handle: "booking"},
+		ResourceServer: providers.AccessEvaluationResourceServer{ID: testResourceServerID},
 		Permission:     providers.Permission{Name: testBookingReadAction},
 	}).Return((*providers.AccessEvaluationResponse)(nil), &tidcommon.InternalServerError)
 
@@ -367,7 +367,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessInvalidAction() {
 	}
 
 	s.mockValidSubject()
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.resourceMock.On("ValidatePermissions", mock.Anything, testResourceServerID, []string{"booking:write"}).
 		Return([]string{"booking:write"}, nil)
 
@@ -389,7 +389,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessUnknownResourceReturnsErrorContext(
 	}
 
 	s.mockValidSubject()
-	s.resourceMock.On("GetResourceServerByHandle", mock.Anything, "unknown").
+	s.resourceMock.On("GetResourceServerByIdentifier", mock.Anything, "unknown").
 		Return((*providers.ResourceServer)(nil), &resource.ErrorResourceServerNotFound).Once()
 
 	resp, svcErr := s.service.EvaluateAccess(context.Background(), req)
@@ -423,7 +423,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessBatchPreservesOrder() {
 		ID:       testSubjectID,
 		Category: providers.EntityCategoryUser,
 	}, nil).Once()
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.mockValidAction(testBookingReadAction)
 	s.mockValidAction("booking:delete")
 	s.entityProviderMock.On("GetTransitiveEntityGroups", testSubjectID).
@@ -432,7 +432,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessBatchPreservesOrder() {
 		mock.MatchedBy(func(req providers.AccessEvaluationsRequest) bool {
 			return len(req.Evaluations) == 2 &&
 				req.Evaluations[0].Subject.ID == testSubjectID &&
-				req.Evaluations[0].ResourceServer.Handle == "booking" &&
+				req.Evaluations[0].ResourceServer.ID == testResourceServerID &&
 				req.Evaluations[0].Permission.Name == testBookingReadAction &&
 				req.Evaluations[1].Permission.Name == "booking:delete"
 		})).
@@ -480,7 +480,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessBatchInvalidActionReturnsFalse() {
 		ID:       "user1",
 		Category: providers.EntityCategoryUser,
 	}, nil).Once()
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.mockValidAction(testBookingReadAction)
 	s.resourceMock.On("ValidatePermissions", mock.Anything, testResourceServerID, []string{"booking:archive"}).
 		Return([]string{"booking:archive"}, nil)
@@ -533,7 +533,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessBatchInvalidSubjectReturnsItemError
 		Category: providers.EntityCategoryUser,
 	}, nil).Once()
 	s.mockValidSubject()
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.mockValidAction(testBookingReadAction)
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return([]providers.EntityGroup{}, nil).Once()
 	s.authzMock.On("EvaluateAccessBatch", mock.Anything,
@@ -582,7 +582,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessBatchGroupResolutionFailureReturnsI
 		ID:       "user2",
 		Category: providers.EntityCategoryUser,
 	}, nil).Once()
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.mockValidAction(testBookingReadAction)
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return(
 		[]providers.EntityGroup(nil),
@@ -633,7 +633,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessBatchMissingActionReturnsItemError(
 		ID:       "user1",
 		Category: providers.EntityCategoryUser,
 	}, nil).Once()
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.mockValidAction(testBookingReadAction)
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return([]providers.EntityGroup{}, nil).Once()
 	s.authzMock.On("EvaluateAccessBatch", mock.Anything,
@@ -678,7 +678,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessBatchAllInvalidActionsReturnsFalseW
 		ID:       "user1",
 		Category: providers.EntityCategoryUser,
 	}, nil).Once()
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.resourceMock.On("ValidatePermissions", mock.Anything, testResourceServerID, []string{"booking:archive"}).
 		Return([]string{"booking:archive"}, nil)
 	s.resourceMock.On("ValidatePermissions", mock.Anything, testResourceServerID, []string{"booking:export"}).
@@ -714,7 +714,7 @@ func (s *ServiceTestSuite) TestSearchActionsReturnsAuthorizedActions() {
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return([]providers.EntityGroup{
 		{ID: "group1"},
 	}, nil)
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	bookingResourceID := testBookingResourceID
 	invoiceResourceID := "invoice1"
 	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil),
@@ -751,7 +751,7 @@ func (s *ServiceTestSuite) TestSearchActionsReturnsAuthorizedActions() {
 			return len(req.Evaluations) == 3 &&
 				req.Evaluations[0].Subject.ID == "user1" &&
 				req.Evaluations[0].Subject.GroupIDs[0] == "group1" &&
-				req.Evaluations[0].ResourceServer.Handle == "booking" &&
+				req.Evaluations[0].ResourceServer.ID == testResourceServerID &&
 				req.Evaluations[0].Permission.Name == "booking:booking:read" &&
 				req.Evaluations[1].Permission.Name == "booking:booking:delete" &&
 				req.Evaluations[2].Permission.Name == "invoice:invoice:approve"
@@ -780,7 +780,7 @@ func (s *ServiceTestSuite) TestSearchActionsPaginatesResourceServerActions() {
 	}
 
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return([]providers.EntityGroup{}, nil)
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil),
 		providers.ActionKind(""), serverconst.MaxPageSize, 0).
 		Return(&resource.ActionList{
@@ -831,7 +831,7 @@ func (s *ServiceTestSuite) TestSearchActionsReturnsEmptyResultsWhenDenied() {
 	}
 
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return([]providers.EntityGroup{}, nil)
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil),
 		providers.ActionKind(""), mock.Anything, 0).
 		Return(&resource.ActionList{
@@ -892,7 +892,7 @@ func (s *ServiceTestSuite) TestSearchActionsUnknownResourceReturnsInvalidResourc
 		Resource: Resource{Type: "unknown", ID: testBookingResourceID},
 	}
 
-	s.resourceMock.On("GetResourceServerByHandle", mock.Anything, "unknown").
+	s.resourceMock.On("GetResourceServerByIdentifier", mock.Anything, "unknown").
 		Return((*providers.ResourceServer)(nil), &resource.ErrorResourceServerNotFound).Once()
 
 	resp, svcErr := s.service.SearchActions(context.Background(), req)
@@ -909,7 +909,7 @@ func (s *ServiceTestSuite) TestSearchActionsResourceServiceError() {
 	}
 
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return([]providers.EntityGroup{}, nil)
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil),
 		providers.ActionKind(""), mock.Anything, 0).
 		Return((*resource.ActionList)(nil), &tidcommon.InternalServerError)
@@ -928,7 +928,7 @@ func (s *ServiceTestSuite) TestSearchActionsAuthorizationServiceError() {
 	}
 
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return([]providers.EntityGroup{}, nil)
-	s.mockResourceServerHandle("booking")
+	s.mockResourceServerIdentifier("booking")
 	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil),
 		providers.ActionKind(""), mock.Anything, 0).
 		Return(&resource.ActionList{

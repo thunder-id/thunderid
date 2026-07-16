@@ -17,7 +17,7 @@
  */
 
 import {Box, Card, CardActionArea, CardContent, Chip, Stack, Typography} from '@wso2/oxygen-ui';
-import {CircleCheck, LogIn, Send, ShieldCheck, Webhook} from '@wso2/oxygen-ui-icons-react';
+import {CircleCheck, KeyRound, LogIn, Send, ShieldCheck, Webhook} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {type ConnectionType, ConnectionTypes} from '../../models/connection';
@@ -51,7 +51,16 @@ export default function SelectConnectionType({selectedType, onSelect}: SelectCon
       comingSoon: false,
     },
     {
-      // FE-only placeholder; the backend message-sender API is not wired yet.
+      type: ConnectionTypes.OAUTH,
+      labelKey: 'wizard.type.oauth.label',
+      descriptionKey: 'wizard.type.oauth.description',
+      tagKey: 'wizard.type.oauth.tag',
+      icon: <KeyRound size={28} />,
+      tagIcon: <LogIn size={14} />,
+      comingSoon: false,
+    },
+    {
+      // FE-only placeholder; the backend SMS provider API is not wired yet.
       type: 'custom-sms' as ConnectionType,
       labelKey: 'wizard.type.sms.label',
       descriptionKey: 'wizard.type.sms.description',

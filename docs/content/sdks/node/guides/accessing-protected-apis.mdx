@@ -1,5 +1,6 @@
 ---
 title: Accessing Protected APIs
+docType: guide
 description: Use the access token to call downstream APIs from a Node.js server-side application
 ---
 
@@ -9,7 +10,7 @@ This guide shows how to retrieve the user's access token from the <ProductName /
 
 ## Prerequisites
 
-- Complete the [Handling Authentication](/docs/next/sdks/node/guides/handling-authentication) guide to set up the client and session management.
+- Complete the [Handling Authentication](../handling-authentication) guide to set up the client and session management.
 - The user must be signed in before you retrieve an access token.
 
 ## Retrieve the Access Token
@@ -134,5 +135,5 @@ await auth.revokeAccessToken(sessionId)
 
 ## Next Steps
 
-- [Protecting Routes](/docs/next/sdks/node/guides/protecting-routes) — Restrict access to routes based on authentication state
-- [`ThunderIDNodeClient`](/docs/next/sdks/node/apis/clients/thunderid-node-client) — Base client class reference
+- [Protecting Routes](../protecting-routes): Restrict access to routes based on authentication state
+- [`ThunderIDNodeClient`](../../apis/clients/thunderid-node-client): Base client class reference

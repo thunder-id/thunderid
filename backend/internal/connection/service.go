@@ -20,11 +20,15 @@ package connection
 
 import (
 	"context"
+	"sort"
+	"strings"
 
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -60,17 +64,113 @@ func (s *service) listByType(ctx context.Context, idpType providers.IDPType) ([]
 	return instances, nil
 }
 
-// typeCounts returns the number of configured instances per identity-provider type.
-func (s *service) typeCounts(ctx context.Context) (map[providers.IDPType]int, *tidcommon.ServiceError) {
-	all, svcErr := s.idpService.GetIdentityProviderList(ctx)
-	if svcErr != nil {
+// idpVendorName returns the connection vendor name for an identity-provider type, or false
+// when the type has no registered vendor (such instances are not exposed by /connections).
+func idpVendorName(idpType providers.IDPType) (string, bool) {
+	for _, vendor := range idpBackedVendors {
+		if vendor.idpType == idpType {
+			return vendor.name, true
+		}
+	}
+	return "", false
+}
+
+// validatePaginationParams validates the limit and offset pagination parameters.
+func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
+	if limit < 1 || limit > serverconst.MaxPageSize {
+		return &ErrorInvalidLimit
+	}
+	if offset < 0 {
+		return &ErrorInvalidOffset
+	}
+	return nil
+}
+
+// listInstances returns a page of the configured connection instances across the IdP- and
+// sender-backed services, optionally filtered to a single category (empty means no filter).
+// The merged list is sorted by type, then name (case-insensitive), then ID, so the listing —
+// and therefore pagination — is deterministic regardless of the underlying stores' iteration
+// order. Both backing services return full lists, so the page is sliced in memory.
+func (s *service) listInstances(ctx context.Context, category connectionCategory,
+	limit, offset int) (*connectionListResponse, *tidcommon.ServiceError) {
+	if svcErr := validatePaginationParams(limit, offset); svcErr != nil {
 		return nil, svcErr
 	}
-	counts := make(map[providers.IDPType]int)
-	for _, instance := range all {
-		counts[instance.Type]++
+
+	instances := make([]connectionInstance, 0)
+
+	// Skip the identity-provider fetch entirely when only sms-provider instances were
+	// requested. GetIdentityProviderList has no category-scoped variant (every idp.IDPType is
+	// vendor-backed, so there is nothing to filter server-side the way notification senders
+	// are), but the category check still avoids an unnecessary store call in that case.
+	if category == "" || category == categoryIdentityProvider {
+		idps, svcErr := s.idpService.GetIdentityProviderList(ctx)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		for _, instance := range idps {
+			vendor, ok := idpVendorName(instance.Type)
+			if !ok {
+				continue
+			}
+			instances = append(instances, connectionInstance{
+				ID:          instance.ID,
+				Name:        instance.Name,
+				Description: instance.Description,
+				Type:        vendor,
+				Categories:  []connectionCategory{categoryIdentityProvider},
+			})
+		}
 	}
-	return counts, nil
+
+	if category == "" || category == categorySMSProvider {
+		senders, svcErr := s.notificationService.ListSendersByType(ctx, ncommon.NotificationSenderTypeMessage)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		for _, sender := range senders {
+			instances = append(instances, connectionInstance{
+				ID:          sender.ID,
+				Name:        sender.Name,
+				Description: sender.Description,
+				Type:        string(sender.Provider),
+				Categories:  []connectionCategory{categorySMSProvider},
+			})
+		}
+	}
+
+	sort.SliceStable(instances, func(i, j int) bool {
+		if instances[i].Type != instances[j].Type {
+			return instances[i].Type < instances[j].Type
+		}
+		nameI, nameJ := strings.ToLower(instances[i].Name), strings.ToLower(instances[j].Name)
+		if nameI != nameJ {
+			return nameI < nameJ
+		}
+		return instances[i].ID < instances[j].ID
+	})
+
+	total := len(instances)
+	page := make([]connectionInstance, 0)
+	if offset < total {
+		end := offset + limit
+		if end > total {
+			end = total
+		}
+		page = instances[offset:end]
+	}
+
+	extraQuery := ""
+	if category != "" {
+		extraQuery = "&category=" + string(category)
+	}
+	return &connectionListResponse{
+		TotalResults: total,
+		StartIndex:   offset + 1,
+		Count:        len(page),
+		Connections:  page,
+		Links:        sysutils.BuildPaginationLinks("/connections", limit, offset, total, extraQuery),
+	}, nil
 }
 
 // getByType fetches a single instance and verifies it is of the expected type, returning
@@ -115,33 +215,17 @@ func (s *service) deleteByType(ctx context.Context, idpType providers.IDPType, i
 // listSMSByProvider returns the configured message senders of the given provider.
 func (s *service) listSMSByProvider(ctx context.Context, provider ncommon.MessageProviderType) (
 	[]ncommon.NotificationSenderDTO, *tidcommon.ServiceError) {
-	all, svcErr := s.notificationService.ListSenders(ctx)
+	all, svcErr := s.notificationService.ListSendersByType(ctx, ncommon.NotificationSenderTypeMessage)
 	if svcErr != nil {
 		return nil, svcErr
 	}
 	instances := make([]ncommon.NotificationSenderDTO, 0)
 	for _, instance := range all {
-		if instance.Type == ncommon.NotificationSenderTypeMessage && instance.Provider == provider {
+		if instance.Provider == provider {
 			instances = append(instances, instance)
 		}
 	}
 	return instances, nil
-}
-
-// smsProviderCounts returns the number of configured message senders per provider.
-func (s *service) smsProviderCounts(ctx context.Context) (map[ncommon.MessageProviderType]int,
-	*tidcommon.ServiceError) {
-	all, svcErr := s.notificationService.ListSenders(ctx)
-	if svcErr != nil {
-		return nil, svcErr
-	}
-	counts := make(map[ncommon.MessageProviderType]int)
-	for _, instance := range all {
-		if instance.Type == ncommon.NotificationSenderTypeMessage {
-			counts[instance.Provider]++
-		}
-	}
-	return counts, nil
 }
 
 // getSMSByProvider fetches a single message sender and verifies it is of the expected provider,

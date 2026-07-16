@@ -1,9 +1,10 @@
 ---
 title: JavaScript SDK Overview
+docType: concept
 displayed_sidebar: javascriptSdkSidebar
 sidebar_position: 1
 sidebar_label: Overview
-description: Framework-agnostic core library for {{ProductName}} authentication
+description: JavaScript SDK for identity and authentication in browser environments and Node.js server applications.
 ---
 
 # JavaScript SDK
@@ -36,8 +37,8 @@ Install the <ProductName /> JavaScript SDK using your preferred package manager:
 
 | Use case | Recommended SDK |
 |----------|----------------|
-| React applications | [`@thunderid/react`](/docs/next/sdks/react/overview) |
-| Vanilla JavaScript browser apps | [`@thunderid/browser`](/docs/next/sdks/browser/overview) |
+| React applications | [`@thunderid/react`](../../react/overview) |
+| Vanilla JavaScript browser apps | [`@thunderid/browser`](../../browser/overview) |
 | Express.js middleware | `@thunderid/express` |
 | Custom platform adapter | `@thunderid/javascript` (this SDK) |
 | Building a new framework SDK | `@thunderid/javascript` (this SDK) |
@@ -79,10 +80,10 @@ await auth.initialize({
 
 ### Core APIs
 
-- **[`ThunderIDJavaScriptClient`](/docs/next/sdks/javascript/apis/thunderid-javascript-client)** — Base class for all platform SDKs. Handles OIDC discovery, PKCE, token exchange, session storage, JWT decoding, and agent/OBO authentication.
-- **[Configuration](/docs/next/sdks/javascript/apis/configuration)** — Full reference for all initialization options including auth, token validation, discovery, and preferences.
-- **[`HttpClient`](/docs/next/sdks/javascript/apis/http-client)** — Abstract HTTP client base with handler lifecycle, request/response callbacks, and parallel request support.
-- **[`StorageManager`](/docs/next/sdks/javascript/apis/storage-manager)** — Typed storage layer for config, OIDC metadata, session, and temporary PKCE data.
+- **[`ThunderIDJavaScriptClient`](../apis/thunderid-javascript-client)**: Base class for all platform SDKs. Handles OIDC discovery, PKCE, token exchange, session storage, JWT decoding, and agent/OBO authentication.
+- **[Configuration](../apis/configuration)**: Full reference for all initialization options including auth, token validation, discovery, and preferences.
+- **[`HttpClient`](../apis/http-client)**: Abstract HTTP client base with handler lifecycle, request/response callbacks, and parallel request support.
+- **[`StorageManager`](../apis/storage-manager)**: Typed storage layer for config, OIDC metadata, session, and temporary PKCE data.
 
 ### Auth Flow Functions
 
@@ -92,41 +93,41 @@ Standalone functions for driving authentication flows step-by-step without brows
 Initiating a **sign-in** flow directly from a **browser SPA** via `POST /flow/execute` (passing
 `applicationId` and `flowType`) is **not supported**.
 
-Browser SPAs must use the redirect-based OAuth2 `authorization_code` + PKCE flow instead — see
-[Register an application](/docs/next/guides/getting-started/register-an-application) and the
-[Browser SDK overview](/docs/next/sdks/browser/overview). Calling these functions to *continue* a
+Browser SPAs must use the redirect-based OAuth2 `authorization_code` + PKCE flow instead. See
+[Register an application](../../../guides/guides/applications/manage-applications) and the
+[Browser SDK overview](../../browser/overview). Calling these functions to *continue* a
 flow with an `executionId` (as the hosted sign-in pages do) and initiating the flow from server-side
 (confidential client) code are unaffected.
 :::
 
 #### V2 Flows
-- **[Sign-In Flow](/docs/next/sdks/javascript/apis/flows/embedded-sign-in-flow-v2)** — `executeEmbeddedSignInFlowV2`
-- **[Sign-Up Flow](/docs/next/sdks/javascript/apis/flows/embedded-sign-up-flow-v2)** — `executeEmbeddedSignUpFlowV2`
-- **[Recovery Flow](/docs/next/sdks/javascript/apis/flows/embedded-recovery-flow-v2)** — `executeEmbeddedRecoveryFlowV2`
-- **[User Onboarding Flow](/docs/next/sdks/javascript/apis/flows/embedded-onboarding-flow-v2)** — `executeEmbeddedUserOnboardingFlowV2`
-- **[Flow Meta](/docs/next/sdks/javascript/apis/flows/flow-meta-v2)** — `getFlowMetaV2` — aggregated app/org branding, theme, and i18n metadata
+- **[Sign-In Flow](../apis/flows/embedded-sign-in-flow-v2)**: `executeEmbeddedSignInFlowV2`
+- **[Sign-Up Flow](../apis/flows/embedded-sign-up-flow-v2)**: `executeEmbeddedSignUpFlowV2`
+- **[Recovery Flow](../apis/flows/embedded-recovery-flow-v2)**: `executeEmbeddedRecoveryFlowV2`
+- **[User Onboarding Flow](../apis/flows/embedded-onboarding-flow-v2)**: `executeEmbeddedUserOnboardingFlowV2`
+- **[Flow Meta](../apis/flows/flow-meta-v2)**: `getFlowMetaV2`, aggregated app/org branding, theme, and i18n metadata
 
 #### V1 Flows
-- **[Embedded Sign-In Flow](/docs/next/sdks/javascript/apis/flows/embedded-sign-in-flow)** — `initializeEmbeddedSignInFlow` / `executeEmbeddedSignInFlow`
-- **[Embedded Sign-Up Flow](/docs/next/sdks/javascript/apis/flows/embedded-sign-up-flow)** — `executeEmbeddedSignUpFlow`
+- **[Embedded Sign-In Flow](../apis/flows/embedded-sign-in-flow)**: `initializeEmbeddedSignInFlow` / `executeEmbeddedSignInFlow`
+- **[Embedded Sign-Up Flow](../apis/flows/embedded-sign-up-flow)**: `executeEmbeddedSignUpFlow`
 
 ### User & Profile
 
-- **[User Profile](/docs/next/sdks/javascript/apis/user/user-profile)** — `getUserInfo`
+- **[User Profile](../apis/user/user-profile)**: `getUserInfo`
 
 ### Branding & Theme
 
-- **[Branding](/docs/next/sdks/javascript/apis/branding)** — `getBrandingPreference`, `transformBrandingPreferenceToTheme`
-- **[Theme](/docs/next/sdks/javascript/apis/theme)** — `createTheme`, `DEFAULT_THEME`
+- **[Branding](../apis/branding)**: `getBrandingPreference`, `transformBrandingPreferenceToTheme`
+- **[Theme](../apis/theme)**: `createTheme`, `DEFAULT_THEME`
 
 ### Internationalization
 
-- **[Internationalization](/docs/next/sdks/javascript/apis/i18n)** — `getDefaultI18nBundles`, `normalizeTranslations`, `TranslationBundleConstants`. Built-in support for 9 locales.
+- **[Internationalization](../apis/i18n)**: `getDefaultI18nBundles`, `normalizeTranslations`, `TranslationBundleConstants`. Built-in support for 9 locales.
 
 ### Errors
 
-- **[Errors](/docs/next/sdks/javascript/apis/errors)** — `ThunderIDError`, `ThunderIDAPIError`, `ThunderIDRuntimeError`, `ThunderIDAuthException`
+- **[Errors](../apis/errors)**: `ThunderIDError`, `ThunderIDAPIError`, `ThunderIDRuntimeError`, `ThunderIDAuthException`
 
 ### Utilities
 
-- **[Utilities](/docs/next/sdks/javascript/apis/utilities)** — Encoding, auth helpers, URL utilities, data manipulation, V2 flow template literals, BEM styling, and structured logging.
+- **[Utilities](../apis/utilities)**: Encoding, auth helpers, URL utilities, data manipulation, V2 flow template literals, BEM styling, and structured logging.

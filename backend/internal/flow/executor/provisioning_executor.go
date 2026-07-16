@@ -72,7 +72,21 @@ func newProvisioningExecutor(
 		log.String(log.LoggerKeyExecutorName, ExecutorNameProvisioning))
 
 	base := flowFactory.CreateExecutor(ExecutorNameProvisioning, providers.ExecutorTypeRegistration,
-		[]providers.Input{}, []providers.Input{})
+		[]providers.Input{}, []providers.Input{}, &providers.ExecutorMeta{
+			SupportedFlowTypes: []providers.FlowType{
+				providers.FlowTypeAuthentication,
+				providers.FlowTypeRegistration,
+				providers.FlowTypeUserOnboarding,
+			},
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: propertyKeyDynamicInputsIncludeOptional},
+				{Property: propertyKeyDynamicInputsIncludeOptionalCredentials},
+				{Property: propertyKeyMaxDynamicInputsPerPrompt},
+				{Property: propertyKeyAssignGroup},
+				{Property: propertyKeyAssignRole},
+				{Property: common.NodePropertyAllowCrossOUProvisioning},
+			},
+		})
 
 	identifyingExec := newIdentifyingExecutor(ExecutorNameProvisioning,
 		[]providers.Input{}, []providers.Input{}, flowFactory, entityProvider)

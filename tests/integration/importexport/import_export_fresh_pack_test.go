@@ -759,7 +759,8 @@ func (s *GroupRoleResourceImportExportSuite) TestGroupExportMultipleGroups() {
 func (s *GroupRoleResourceImportExportSuite) TestImportGroupWithMembers() {
 	groupName := "Import Members Group " + s.handleSuffix
 
-	yamlContent := fmt.Sprintf(`name: %s
+	yamlContent := fmt.Sprintf(`resource_type: group
+name: %s
 description: Imported group with a member
 ouId: %s
 members:
@@ -801,7 +802,8 @@ members:
 func (s *GroupRoleResourceImportExportSuite) TestImportGroupWithoutMembers() {
 	groupName := "Import No Members Group " + s.handleSuffix
 
-	yamlContent := fmt.Sprintf(`name: %s
+	yamlContent := fmt.Sprintf(`resource_type: group
+name: %s
 description: Imported group without members
 ouId: %s
 `, groupName, s.ouID)
@@ -841,7 +843,8 @@ func (s *GroupRoleResourceImportExportSuite) TestImportGroupUpsertUpdateWithMemb
 	defer testutils.DeleteGroup(groupID)
 
 	// Second import (update path) with the same ID and members
-	yamlContent := fmt.Sprintf(`id: %s
+	yamlContent := fmt.Sprintf(`resource_type: group
+id: %s
 name: Upsert Members Group %s
 description: Updated via import
 ouId: %s
@@ -888,7 +891,8 @@ func (s *GroupRoleResourceImportExportSuite) TestImportRoleWithAssignmentsCreate
 
 	roleName := "Import Role With Assignments " + s.handleSuffix
 
-	yamlContent := fmt.Sprintf(`name: %s
+	yamlContent := fmt.Sprintf(`resource_type: role
+name: %s
 description: Imported role with group assignment
 ouId: %s
 permissions: []
@@ -948,7 +952,8 @@ func (s *GroupRoleResourceImportExportSuite) TestImportRoleWithAssignmentsUpdate
 	s.Require().NoError(err)
 	defer testutils.DeleteRole(roleID)
 
-	yamlContent := fmt.Sprintf(`id: %s
+	yamlContent := fmt.Sprintf(`resource_type: role
+id: %s
 name: Upsert Role %s
 description: Updated via import with assignment
 ouId: %s
@@ -994,7 +999,8 @@ assignments:
 func (s *GroupRoleResourceImportExportSuite) TestImportRoleNoAssignments() {
 	roleName := "Import Role No Assignments " + s.handleSuffix
 
-	yamlContent := fmt.Sprintf(`name: %s
+	yamlContent := fmt.Sprintf(`resource_type: role
+name: %s
 description: Imported role without assignments
 ouId: %s
 permissions: []
@@ -1028,12 +1034,12 @@ permissions: []
 // parent-child resource hierarchy. Verifies the child resource is created with the
 // correct parent (resolved via the handle map) and actions are attached.
 func (s *GroupRoleResourceImportExportSuite) TestImportResourceServerWithNestedResources() {
-	handle := "nested-rs-" + s.handleSuffix
+	identifier := "nested-rs-" + s.handleSuffix
 
-	yamlContent := fmt.Sprintf(`# resource_type: resource_server
+	yamlContent := fmt.Sprintf(`resource_type: resource_server
 name: Nested Resource Server %s
 description: Resource server with nested resources
-handle: %s
+identifier: %s
 ouId: %s
 delimiter: ":"
 resources:
@@ -1050,7 +1056,7 @@ resources:
     actions:
       - name: Read Child
         handle: read-child
-`, s.handleSuffix, handle, s.ouID,
+`, s.handleSuffix, identifier, s.ouID,
 		s.handleSuffix, s.handleSuffix, s.handleSuffix)
 
 	resp, err := s.importResources(importRequest{
@@ -1098,17 +1104,17 @@ resources:
 // already exists (upsert path). The nested resources also already exist so conflict
 // recovery must use the scoped parent ID when looking up the existing child resource.
 func (s *GroupRoleResourceImportExportSuite) TestImportResourceServerUpsertNestedResources() {
-	handle := "upsert-rs-" + s.handleSuffix
+	identifier := "upsert-rs-" + s.handleSuffix
 
 	buildYAML := func(id string) string {
 		idLine := ""
 		if id != "" {
 			idLine = "id: " + id + "\n"
 		}
-		return fmt.Sprintf(`# resource_type: resource_server
+		return fmt.Sprintf(`resource_type: resource_server
 %sname: Upsert Resource Server %s
 description: Resource server for upsert test
-handle: %s
+identifier: %s
 ouId: %s
 delimiter: ":"
 resources:
@@ -1123,7 +1129,7 @@ resources:
     actions:
       - name: Write
         handle: write
-`, idLine, s.handleSuffix, handle, s.ouID,
+`, idLine, s.handleSuffix, identifier, s.ouID,
 			s.handleSuffix, s.handleSuffix, s.handleSuffix)
 	}
 

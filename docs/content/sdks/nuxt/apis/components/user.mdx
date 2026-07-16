@@ -1,6 +1,7 @@
 ---
 title: <ThunderIDUser />
-description: Access authenticated user data via slot props
+docType: reference
+description: Access authenticated user data and display user attributes in templates via scoped slot props.
 ---
 
 # `<ThunderIDUser />`
@@ -46,7 +47,7 @@ Show alternative content when no user is signed in:
 | Slot | Slot Props | Description |
 | :--- | :--- | :--- |
 | `default` | `{ user: User \| null }` | Receives the authenticated user object |
-| `fallback` | — | Rendered when no user is signed in |
+| `fallback` | - | Rendered when no user is signed in |
 
 ### `User` Slot Prop
 

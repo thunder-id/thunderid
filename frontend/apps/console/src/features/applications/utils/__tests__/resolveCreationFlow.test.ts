@@ -27,10 +27,9 @@ const CustomPlatformTemplate = CustomPlatformTemplateJson as ApplicationTemplate
 const MCPClientTemplate = MCPClientTemplateJson as ApplicationTemplate;
 
 describe('resolveCreationFlow', () => {
-  it('returns the default user-facing flow (8 steps) when template is null', () => {
+  it('returns the default user-facing flow (7 steps) when template is null', () => {
     const flow = resolveCreationFlow(null);
     expect(flow.steps).toEqual([
-      ApplicationCreateFlowStep.STACK,
       ApplicationCreateFlowStep.NAME,
       ApplicationCreateFlowStep.ORGANIZATION_UNIT,
       ApplicationCreateFlowStep.DESIGN,
@@ -44,7 +43,6 @@ describe('resolveCreationFlow', () => {
   it('returns the default user-facing flow when the template has no creationFlow field', () => {
     const flow = resolveCreationFlow({id: 'react', displayName: 'React'});
     expect(flow.steps).toEqual([
-      ApplicationCreateFlowStep.STACK,
       ApplicationCreateFlowStep.NAME,
       ApplicationCreateFlowStep.ORGANIZATION_UNIT,
       ApplicationCreateFlowStep.DESIGN,
@@ -78,10 +76,9 @@ describe('resolveCreationFlow', () => {
     ]);
   });
 
-  it('returns STACK, NAME, ORGANIZATION_UNIT, CLIENT_TYPE, and COMPLETE steps for the mcp-client template', () => {
+  it('returns NAME, ORGANIZATION_UNIT, CLIENT_TYPE, and COMPLETE steps for the mcp-client template', () => {
     const flow = resolveCreationFlow(MCPClientTemplate);
     expect(flow.steps).toEqual([
-      ApplicationCreateFlowStep.STACK,
       ApplicationCreateFlowStep.NAME,
       ApplicationCreateFlowStep.ORGANIZATION_UNIT,
       ApplicationCreateFlowStep.CLIENT_TYPE,

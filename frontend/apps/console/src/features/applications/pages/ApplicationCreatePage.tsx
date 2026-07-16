@@ -23,7 +23,7 @@ import {useLogger} from '@thunderid/logger/react';
 import {Box, Stack, Button, IconButton, LinearProgress, Alert, CircularProgress, AppBreadcrumbs} from '@wso2/oxygen-ui';
 import {X} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
-import {useState, useCallback, useMemo} from 'react';
+import {useState, useCallback, useEffect, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useLocation, useNavigate} from 'react-router';
 import useCreateFlow from '../../flows/api/useCreateFlow';
@@ -39,7 +39,6 @@ import ConfigureDetails from '../components/create-application/ConfigureDetails'
 import ConfigureExperience from '../components/create-application/ConfigureExperience';
 import ConfigureName from '../components/create-application/ConfigureName';
 import ConfigureOrganizationUnit from '../components/create-application/ConfigureOrganizationUnit';
-import ConfigureStack from '../components/create-application/ConfigureStack';
 import ConfigureMcpClientType from '../components/create-application/mcp/ConfigureMcpClientType';
 import McpConnectComplete from '../components/create-application/mcp/McpConnectComplete';
 import ShowClientSecret from '../components/create-application/ShowClientSecret';
@@ -175,8 +174,39 @@ export default function ApplicationCreatePage(): JSX.Element {
     COMPLETE: true,
   });
 
-  const [oauthConfig, setOAuthConfig] = useState<OAuth2Config | null>(null);
   const [walletClientId, setWalletClientId] = useState<string>('');
+
+  // The template is chosen on the standalone selection page before this wizard mounts. If the
+  // wizard is reached directly (e.g. a bookmarked URL) with no template, send the user back to it.
+  useEffect((): void => {
+    if (selectedTemplateConfig) return;
+    void navigate(isWelcomeFlow ? '/welcome/get-started/applications/types' : '/applications/types');
+  }, [selectedTemplateConfig, isWelcomeFlow, navigate]);
+
+  // Derive the OAuth config from the selected template's defaults, mirroring what the removed
+  // in-wizard template step used to seed on mount.
+  const oauthConfig = useMemo<OAuth2Config | null>(() => {
+    if (!selectedTemplateConfig) return null;
+
+    const oauthInboundConfig: OAuth2Config = selectedTemplateConfig.defaults?.inboundAuthConfig?.[0]?.config ?? {
+      publicClient: false,
+      pkceRequired: false,
+      grantTypes: [],
+      responseTypes: [],
+      redirectUris: [],
+      tokenEndpointAuthMethod: TokenEndpointAuthMethods.CLIENT_SECRET_BASIC,
+    };
+
+    return {
+      publicClient: oauthInboundConfig.publicClient,
+      pkceRequired: oauthInboundConfig.pkceRequired,
+      grantTypes: [...oauthInboundConfig.grantTypes],
+      responseTypes: [...(oauthInboundConfig.responseTypes ?? [])],
+      redirectUris: oauthInboundConfig.redirectUris ? [...oauthInboundConfig.redirectUris] : [],
+      tokenEndpointAuthMethod: oauthInboundConfig.tokenEndpointAuthMethod,
+      scopes: ['openid', 'profile', 'email'],
+    };
+  }, [selectedTemplateConfig]);
 
   const effectiveOauthConfig = useMemo(() => {
     if (!oauthConfig) return oauthConfig;
@@ -477,13 +507,6 @@ export default function ApplicationCreatePage(): JSX.Element {
     [handleStepReadyChange],
   );
 
-  const handleTechnologyStepReadyChange = useCallback(
-    (isReady: boolean): void => {
-      handleStepReadyChange(ApplicationCreateFlowStep.STACK, isReady);
-    },
-    [handleStepReadyChange],
-  );
-
   const handleConfigureStepReadyChange = useCallback(
     (isReady: boolean): void => {
       handleStepReadyChange(ApplicationCreateFlowStep.CONFIGURE, isReady);
@@ -559,15 +582,6 @@ export default function ApplicationCreatePage(): JSX.Element {
             userTypes={userTypesData?.types ?? []}
             selectedUserTypes={selectedUserTypes}
             onUserTypesChange={setSelectedUserTypes}
-          />
-        );
-
-      case ApplicationCreateFlowStep.STACK:
-        return (
-          <ConfigureStack
-            oauthConfig={oauthConfig}
-            onOAuthConfigChange={setOAuthConfig}
-            onReadyChange={handleTechnologyStepReadyChange}
           />
         );
 
@@ -674,7 +688,6 @@ export default function ApplicationCreatePage(): JSX.Element {
         <Box
           sx={{
             flex:
-              currentStep === ApplicationCreateFlowStep.STACK ||
               currentStep === ApplicationCreateFlowStep.NAME ||
               currentStep === ApplicationCreateFlowStep.ORGANIZATION_UNIT ||
               currentStep === ApplicationCreateFlowStep.CLIENT_TYPE ||
@@ -723,7 +736,6 @@ export default function ApplicationCreatePage(): JSX.Element {
                 py: 8,
                 px: 20,
                 mx:
-                  currentStep === ApplicationCreateFlowStep.STACK ||
                   currentStep === ApplicationCreateFlowStep.NAME ||
                   currentStep === ApplicationCreateFlowStep.ORGANIZATION_UNIT ||
                   currentStep === ApplicationCreateFlowStep.CLIENT_TYPE ||
@@ -736,7 +748,7 @@ export default function ApplicationCreatePage(): JSX.Element {
               <Box
                 sx={{
                   width: '100%',
-                  maxWidth: {xs: '100%', md: currentStep === ApplicationCreateFlowStep.STACK ? '70%' : 800},
+                  maxWidth: {xs: '100%', md: 800},
                   display: 'flex',
                   flexDirection: 'column',
                 }}
@@ -796,8 +808,7 @@ export default function ApplicationCreatePage(): JSX.Element {
           </Box>
         </Box>
         {/* Right side - Preview (show from design step onwards, but hide on complete step) */}
-        {currentStep !== ApplicationCreateFlowStep.STACK &&
-          currentStep !== ApplicationCreateFlowStep.NAME &&
+        {currentStep !== ApplicationCreateFlowStep.NAME &&
           currentStep !== ApplicationCreateFlowStep.ORGANIZATION_UNIT &&
           currentStep !== ApplicationCreateFlowStep.CLIENT_TYPE &&
           currentStep !== ApplicationCreateFlowStep.COMPLETE &&

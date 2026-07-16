@@ -58,7 +58,10 @@ var defaultCommands = []SlashCommand{
 		Section:     "Server",
 		Action: func(baseURL string) ([]string, error) {
 			if health.CheckReady(baseURL) {
-				return []string{Green("●") + " " + product.Name + " is running at " + Cyan(baseURL)}, nil
+				return []string{
+					Green("●") + " " + product.Name + " is running at " + Cyan(baseURL),
+					Green("●") + " Console: " + Cyan(baseURL+"/console"),
+				}, nil
 			}
 			return []string{Yellow("○") + " " + product.Name + " is not responding"}, nil
 		},
@@ -329,6 +332,7 @@ type ReplModel struct {
 	upgradeRequested  bool // set when the /upgrade command is executed
 	switchRequested   bool // set when the /use command is executed
 	newVersion        string
+	nodeWarning       string // non-empty shows a persistent Node.js version notice below the banner
 
 	showWalkthrough  bool
 	walkthroughPanes []walkthroughPane
@@ -918,9 +922,6 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 				} else {
 					m.input.Focus()
 					m.input.Placeholder = "Type / for commands, Ctrl+C to exit"
-					m.messages = append(m.messages,
-						Green("●")+" "+product.Name+" is running at "+Cyan(m.baseURL),
-					)
 				}
 				if m.newVersion != "" {
 					m.messages = append(m.messages,
@@ -1380,17 +1381,19 @@ func (m ReplModel) render() string {
 
 	b.WriteString(BannerString() + "\n")
 
-	statusPart := ""
-	switch m.status {
-	case statusStarting:
-		statusPart = m.spinner.View() + " Starting..."
-	case statusReady:
-		statusPart = Green("●") + " Running at " + Cyan(m.baseURL)
-	case statusStopped:
-		statusPart = Red("○") + " Stopped"
+	if m.nodeWarning != "" {
+		b.WriteString(noteBoxStyle.Render(Yellow("⚠ "+m.nodeWarning)) + "\n\n")
 	}
 
-	b.WriteString(Bold("⚡ "+product.Name+" v"+m.version) + "  " + statusPart + "\n")
+	b.WriteString(Bold("⚡ "+product.Name+" v"+m.version) + "\n")
+	switch m.status {
+	case statusStarting:
+		b.WriteString(m.spinner.View() + " Starting...\n")
+	case statusReady:
+		b.WriteString(StatusBoxString(m.baseURL) + "\n")
+	case statusStopped:
+		b.WriteString(Red("○") + " Stopped\n")
+	}
 	b.WriteString(Dim(strings.Repeat("─", clamp(m.width-2, 20, 80))) + "\n\n")
 
 	if m.showOnboarding && m.status == statusReady {
@@ -1474,14 +1477,16 @@ func clamp(v, min, max int) int {
 
 // RunREPL starts the interactive REPL and blocks until the user exits.
 // newVersion, if non-empty, causes a banner to appear prompting the user to /upgrade.
+// nodeWarning, if non-empty, is shown below the banner for the life of the session.
 // port overrides the default health-check port when non-zero.
 // Returns upgradeRequested=true when the user ran /upgrade, switchRequested=true when /use.
 func RunREPL(
 	version string, proc *exec.Cmd, installPath string,
-	verbose, isFirstRun bool, newVersion string, port int,
+	verbose, isFirstRun bool, newVersion, nodeWarning string, port int,
 ) (upgradeRequested, switchRequested bool, err error) {
 	m := NewReplModel(version, proc, installPath, verbose, isFirstRun)
 	m.newVersion = newVersion
+	m.nodeWarning = nodeWarning
 	if port > 0 {
 		m.checkPort = port
 	}

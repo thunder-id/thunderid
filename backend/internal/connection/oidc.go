@@ -43,6 +43,7 @@ type oidcConnectionRequest struct {
 	Prompt                string   `json:"prompt,omitempty"`
 	TokenExchangeEnabled  *bool    `json:"tokenExchangeEnabled,omitempty"`
 	TrustedTokenAudience  string   `json:"trustedTokenAudience,omitempty"`
+	IDJagEnabled          *bool    `json:"idJagEnabled,omitempty"`
 
 	AttributeConfiguration *providers.AttributeConfiguration `json:"attributeConfiguration,omitempty"`
 }
@@ -66,6 +67,7 @@ type oidcConnectionResponse struct {
 	Prompt                string   `json:"prompt,omitempty"`
 	TokenExchangeEnabled  *bool    `json:"tokenExchangeEnabled,omitempty"`
 	TrustedTokenAudience  string   `json:"trustedTokenAudience,omitempty"`
+	IDJagEnabled          *bool    `json:"idJagEnabled,omitempty"`
 
 	AttributeConfiguration *providers.AttributeConfiguration `json:"attributeConfiguration,omitempty"`
 }
@@ -103,6 +105,13 @@ func oidcToIDPDTO(req oidcConnectionRequest) (*providers.IDPDTO, error) {
 			value    string
 			isSecret bool
 		}{idp.PropTokenExchangeEnabled, "true", false})
+	}
+	if req.IDJagEnabled != nil {
+		fields = append(fields, struct {
+			name     string
+			value    string
+			isSecret bool
+		}{idp.PropIDJagEnabled, strconv.FormatBool(*req.IDJagEnabled), false})
 	}
 	for _, field := range fields {
 		if props, err = appendProperty(props, field.name, field.value, field.isSecret); err != nil {
@@ -144,6 +153,11 @@ func oidcFromIDPDTO(dto providers.IDPDTO) (oidcConnectionResponse, error) {
 	if raw, ok := values[idp.PropTokenExchangeEnabled]; ok {
 		if enabled, parseErr := strconv.ParseBool(raw); parseErr == nil {
 			resp.TokenExchangeEnabled = &enabled
+		}
+	}
+	if raw, ok := values[idp.PropIDJagEnabled]; ok {
+		if enabled, parseErr := strconv.ParseBool(raw); parseErr == nil {
+			resp.IDJagEnabled = &enabled
 		}
 	}
 	resp.AttributeConfiguration = dto.AttributeConfiguration

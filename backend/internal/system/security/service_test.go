@@ -31,9 +31,8 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-var testPublicPaths = []string{
+var testPublicPaths = append([]string{
 	"/health/**",
-	"/auth/**",
 	"/flow/execute/**",
 	"/oauth2/**",
 	"/.well-known/openid-configuration/**",
@@ -45,7 +44,7 @@ var testPublicPaths = []string{
 	"/i18n/languages",
 	"/i18n/languages/*/translations/resolve",
 	"/i18n/languages/*/translations/ns/*/keys/*/resolve",
-}
+}, directAuthPaths...)
 
 // SecurityServiceTestSuite defines the test suite for SecurityService
 type SecurityServiceTestSuite struct {
@@ -218,6 +217,17 @@ func (suite *SecurityServiceTestSuite) TestProcess_DirectAuthSecret() {
 		suite.True(IsRuntimeContext(ctx))
 	})
 
+	suite.Run("valid secret is admitted for AuthZEN access evaluation", func() {
+		svc := suite.newDirectAuthTestService(secret, passthroughAuthenticator())
+		req := httptest.NewRequest(http.MethodPost, "/access/v1/evaluation", nil)
+		req.Header.Set(directAuthHeaderName, secret)
+
+		ctx, err := svc.Process(req)
+
+		suite.NoError(err)
+		suite.True(IsRuntimeContext(ctx))
+	})
+
 	suite.Run("missing secret is rejected", func() {
 		svc := suite.newDirectAuthTestService(secret, nil)
 		req := httptest.NewRequest(http.MethodPost, "/auth/credentials/authenticate", nil)
@@ -287,6 +297,11 @@ func (suite *SecurityServiceTestSuite) TestIsDirectAPIPath() {
 
 	suite.True(svc.isDirectAuthPath(context.Background(), "/auth/credentials/authenticate"))
 	suite.True(svc.isDirectAuthPath(context.Background(), "/register/passkey/start"))
+	suite.True(svc.isDirectAuthPath(context.Background(), "/access/v1/evaluation"))
+	suite.True(svc.isDirectAuthPath(context.Background(), "/access/v1/evaluations"))
+	suite.True(svc.isDirectAuthPath(context.Background(), "/access/v1/search/action"))
+	suite.True(svc.isDirectAuthPath(context.Background(), "/access/v1/future-endpoint"))
+	suite.False(svc.isDirectAuthPath(context.Background(), "/.well-known/authzen-configuration"))
 	suite.False(svc.isDirectAuthPath(context.Background(), "/health/liveness"))
 	// Paths longer than the maximum allowed length are rejected by the length guard.
 	suite.False(svc.isDirectAuthPath(context.Background(), "/auth/"+strings.Repeat("a", maxPublicPathLength)))

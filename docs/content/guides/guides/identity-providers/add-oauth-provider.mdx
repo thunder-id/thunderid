@@ -1,5 +1,6 @@
 ---
 title: Add an OAuth 2.0 Identity Provider
+docType: guide
 sidebar_position: 5
 persona: iam
 description: Configure a generic OAuth 2.0 identity provider for federated authentication.
@@ -76,7 +77,7 @@ curl -kL -X POST https://localhost:8090/identity-providers \
 | `logout_endpoint` | The provider's logout endpoint URL. |
 | `prompt` | The `prompt` parameter to send in authorization requests. |
 
-To map this provider's claims to local user attributes, set the top-level `attributeConfiguration` field — see [Attribute Configuration](../add-oidc-provider#attribute-configuration).
+To map this provider's claims to local user attributes, set the top-level `attributeConfiguration` field. See [Attribute Configuration](../add-oidc-provider#attribute-configuration).
 
 Example with optional properties:
 
@@ -102,5 +103,5 @@ curl -kL -X POST https://localhost:8090/identity-providers \
 
 ## Next Steps
 
-- [Connect an IdP to an Application](../connect-idp-to-application) — Add this OAuth 2.0 IdP to an application's authentication flow.
-- [Manage Identity Providers](../manage-identity-providers) — Update or delete identity providers.
+- [Connect an IdP to an Application](../connect-idp-to-application): Add this OAuth 2.0 IdP to an application's authentication flow.
+- [Manage Identity Providers](../manage-identity-providers): Update or delete identity providers.

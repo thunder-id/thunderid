@@ -29,7 +29,10 @@ Once running, ThunderID is available at:
 | `https://localhost:8090` | ThunderID Server |
 | `https://localhost:8090/console` | ThunderID Console |
 
-> **Default credentials:** `admin` / `admin`
+> **Admin credentials:** the username is `admin`; the password is randomly generated during setup and printed to the console output of the `thunderid-setup` service. If you ran `docker compose up` in the foreground, look for the "Admin credentials" block in the terminal output. If you ran it detached (`-d`), retrieve it with:
+> ```bash
+> docker compose logs thunderid-setup
+> ```
 
 ---
 

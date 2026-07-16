@@ -1,4 +1,4 @@
-# resource_type: user_type
+resource_type: user_type
 id: 019e3a5c-04ea-7d18-8ae6-f828b1f3d60f
 category: user
 name: Customer
@@ -49,7 +49,7 @@ schema: {
   }
 
 ---
-# resource_type: application
+resource_type: application
 id: 019e3a5c-0532-7b06-aa66-ec42ad05784e
 ouHandle: default
 name: React SDK Sample
@@ -128,7 +128,7 @@ inboundAuthConfig:
           - picture
 
 ---
-# resource_type: server_config
+resource_type: server_config
 name: cors
 value:
   allowedOrigins:

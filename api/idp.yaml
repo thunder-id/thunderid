@@ -626,8 +626,21 @@ components:
       properties:
         default:
           type: string
-          description: Default local user type for federated just-in-time provisioning.
+          description: >
+            Fallback local user type, used when claim-driven resolution is not configured or the
+            external attribute's value does not match a mapping.
           example: "Person"
+        externalAttribute:
+          type: string
+          description: External claim whose value selects the local user type.
+          example: "user_type"
+        valueMapping:
+          type: object
+          description: Maps an external attribute value to a local user type.
+          additionalProperties:
+            type: string
+          example:
+            staff: "Employee"
 
     UserTypeAttributeMapping:
       type: object

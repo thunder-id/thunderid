@@ -1,6 +1,7 @@
 ---
 title: Passkeys
-description: Configure and use Passkeys for passwordless sign-in
+docType: concept
+description: Configure and use passkeys for phishing-resistant passwordless sign-in with WebAuthn.
 ---
 
 # Passkeys
@@ -17,7 +18,7 @@ Passkeys are a modern, secure alternative to passwords based on the WebAuthn sta
 
 <ProductName /> supports passkeys through three approaches:
 
-1. **<ProductName /> Gate (Hosted UI)**: Use <ProductName />'s hosted authentication pages (`gate`) by configuring passkeys in your application settings—no custom UI or API calls needed
+1. **<ProductName /> Gate (Hosted UI)**: Use <ProductName />'s hosted authentication pages (`gate`) by configuring passkeys in your application settings, no custom UI or API calls needed
 2. **Direct API approach**: Direct HTTP endpoints (`/register/passkey/*` and `/auth/passkey/*`) for full control over the registration and authentication flow
 3. **Flow-based approach**: Integrate passkeys into orchestrated authentication/registration flows via the `/flow/execute` API, combining passkeys with other authentication methods
 
@@ -52,7 +53,7 @@ The simplest way to enable passkeys is through <ProductName /> Gate, <ProductNam
    - The flow builder UI lets you customize which executors run and configure relying party settings
 3. **Integrate with your application**:
    - Redirect users to <ProductName />'s OAuth2 authorize endpoint:
-     ```
+     ```text
      https://localhost:8090/oauth2/authorize?client_id=<your-client-id>&redirect_uri=<your-callback>&response_type=code&scope=openid
      ```
    - <ProductName /> automatically redirects to <ProductName /> Gate (e.g., `https://localhost:5190/gate/signin`) based on the `gate_client` configuration in `deployment.yaml`
@@ -81,7 +82,7 @@ This approach requires **no custom UI development** or direct WebAuthn API calls
 
 ### Registration Flow
 
-1) **Start registration** – create WebAuthn creation options and a session token.
+1) **Start registration.** Create WebAuthn creation options and a session token.
 
 ```bash
 curl -k -X POST https://localhost:8090/register/passkey/start \
@@ -101,9 +102,9 @@ Response fields:
 - `publicKeyCredentialCreationOptions`: pass directly to `navigator.credentials.create()` (after Base64URL→ArrayBuffer conversion).
 - `sessionToken`: required for the finish call.
 
-2) **Run WebAuthn ceremony in the browser** – call `navigator.credentials.create()` with the returned options. See the sample implementation in `samples/apps/react-vanilla-sample/src/services/authService.ts`.
+2) **Run the WebAuthn ceremony in the browser.** Call `navigator.credentials.create()` with the returned options. See the sample implementation in `samples/apps/react-vanilla-sample/src/services/authService.ts`.
 
-3) **Finish registration** – send the attestation result with the session token.
+3) **Finish registration.** Send the attestation result with the session token.
 
 ```bash
 curl -k -X POST https://localhost:8090/register/passkey/finish \
@@ -126,7 +127,7 @@ On success, the API returns passkey registration metadata for the newly created 
 
 ### Authentication Flow
 
-1) **Start authentication** – request assertion options.
+1) **Start authentication.** Request assertion options.
 
 ```bash
 curl -k -X POST https://localhost:8090/auth/passkey/start \
@@ -142,9 +143,9 @@ curl -k -X POST https://localhost:8090/auth/passkey/start \
   - `publicKeyCredentialRequestOptions`: pass to `navigator.credentials.get()`.
   - `sessionToken`: required for finish.
 
-2) **Run WebAuthn assertion in the browser** – call `navigator.credentials.get()` with the options.
+2) **Run a WebAuthn assertion in the browser.** Call `navigator.credentials.get()` with the options.
 
-3) **Finish authentication** – send the assertion result with the session token.
+3) **Finish authentication.** Send the assertion result with the session token.
 
 ```bash
 curl -k -X POST https://localhost:8090/auth/passkey/finish \
@@ -177,7 +178,7 @@ Applications configured with the `authorization_code` grant type cannot start fl
 
 ### Authentication with Flow/Execute
 
-1) **Start the flow** – send an initial flow request.
+1) **Start the flow.** Send an initial flow request.
 
 ```bash
 curl -k -X POST https://localhost:8090/flow/execute \
@@ -190,9 +191,9 @@ curl -k -X POST https://localhost:8090/flow/execute \
 
 - The response includes an `executionId` and a step `action` for passkeys. `data.additionalData.passkeyChallenge` contains the WebAuthn request options. The passkey session token is stored server-side in the flow context runtime data and is managed by the server; the client does not need to read or send it.
 
-2) **Run WebAuthn in the browser** – call `navigator.credentials.get()` with the decoded `passkeyChallenge`.
+2) **Run WebAuthn in the browser.** Call `navigator.credentials.get()` with the decoded `passkeyChallenge`.
 
-3) **Continue the flow** – post the assertion back to the flow engine.
+3) **Continue the flow.** Post the assertion back to the flow engine.
 
 ```bash
 curl -k -X POST https://localhost:8090/flow/execute \
@@ -216,7 +217,7 @@ curl -k -X POST https://localhost:8090/flow/execute \
 
 > Passkey registration in a flow must run **after the user is created or identified**. Ensure the flow provisions the user (e.g., collecting username/email and running provisioning) or resolves an existing user before the passkey register start node, as shown in the bundled flow definitions.
 
-1) **Start a registration flow** – send an initial flow request.
+1) **Start a registration flow.** Send an initial flow request.
 
 ```bash
 curl -k -X POST https://localhost:8090/flow/execute \
@@ -231,9 +232,9 @@ curl -k -X POST https://localhost:8090/flow/execute \
 
 - The response includes an `executionId`, a registration step `action`, and `data.additionalData.passkeyCreationOptions` with the WebAuthn creation options. The passkey session state is maintained server-side and associated with the flow, so clients only need to carry `executionId` (and the step `action`) between calls. Ensure the flow has already collected the user identifier before this step because registration requires a user ID.
 
-2) **Run WebAuthn in the browser** – call `navigator.credentials.create()` with the decoded `passkeyCreationOptions`.
+2) **Run WebAuthn in the browser.** Call `navigator.credentials.create()` with the decoded `passkeyCreationOptions`.
 
-3) **Finish registration in the flow** – post the attestation back to the flow engine.
+3) **Finish registration in the flow.** Post the attestation back to the flow engine.
 
 ```bash
 curl -k -X POST https://localhost:8090/flow/execute \

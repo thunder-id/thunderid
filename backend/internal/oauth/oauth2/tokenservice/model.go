@@ -67,6 +67,10 @@ type AccessTokenBuildContext struct {
 	// DPoPJkt, when set, sender-constrains the access token to the supplied JWK thumbprint.
 	// The token receives a `cnf.jkt` claim and is issued with `token_type=DPoP`.
 	DPoPJkt string
+	// SourceIDP, when set, records the issuer of the external identity provider that authenticated the
+	// subject (used by the jwt-bearer/ID-JAG grant). It is emitted as the `idp` claim so downstream
+	// consumers can distinguish a federated principal from a local one.
+	SourceIDP string
 }
 
 // RefreshTokenBuildContext contains all the information needed to build a refresh token.
@@ -82,6 +86,19 @@ type RefreshTokenBuildContext struct {
 	ClaimsLocales        string
 	DPoPJkt              string
 	ActorSub             string
+}
+
+// IDJAGBuildContext contains all the information needed to build an ID-JAG (Identity Assertion
+// Authorization Grant, draft-ietf-oauth-identity-assertion-authz-grant).
+type IDJAGBuildContext struct {
+	Subject  string
+	Audience string
+	ClientID string
+	Scopes   []string
+	// Resources holds the RFC 8707 resource parameter values, when present on the request. Embedded
+	// in the ID-JAG's `resource` claim so the resource AS can process them on the jwt-bearer leg.
+	Resources []string
+	OAuthApp  *providers.OAuthClient
 }
 
 // IDTokenBuildContext contains all the information needed to build an ID token (OIDC).
@@ -129,6 +146,20 @@ type SubjectTokenClaims struct {
 	CnfJkt string
 	// JTI is the subject token's unique identifier, populated only for self-issued tokens and used
 	// for deny-list (revocation) enforcement. Empty for externally-issued subject tokens.
+	JTI string
+}
+
+// IDJAGAssertionClaims represents the validated claims from an ID-JAG assertion presented on the
+// jwt-bearer grant (draft-ietf-oauth-identity-assertion-authz-grant).
+type IDJAGAssertionClaims struct {
+	Sub    string
+	Iss    string
+	Scopes []string
+	// Resources holds the RFC 8707 `resource` claim values carried by the assertion, when present.
+	// Empty when the assertion carries no resource claim.
+	Resources []string
+	// JTI is the assertion's unique identifier. It is required by the draft and validated for presence;
+	// one-time-use (replay) caching keyed on it is deferred to a future version.
 	JTI string
 }
 

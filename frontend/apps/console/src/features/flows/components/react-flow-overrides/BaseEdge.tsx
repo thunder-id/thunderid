@@ -18,10 +18,20 @@
 
 import {Box} from '@wso2/oxygen-ui';
 import {XIcon} from '@wso2/oxygen-ui-icons-react';
-import {BaseEdge as XYFlowBaseEdge, EdgeLabelRenderer, useReactFlow, useNodes, type EdgeProps} from '@xyflow/react';
-import {useState, type ReactElement, type SyntheticEvent} from 'react';
+import {
+  BaseEdge as XYFlowBaseEdge,
+  EdgeLabelRenderer,
+  getBezierPath,
+  getSmoothStepPath,
+  useReactFlow,
+  useStore,
+  type EdgeProps,
+  type ReactFlowState,
+} from '@xyflow/react';
+import {useMemo, useState, type ReactElement, type SyntheticEvent} from 'react';
 import useFlowConfig from '../../hooks/useFlowConfig';
-import {calculateEdgePath, type EdgeStyle} from '../../utils/calculateEdgePath';
+import {EdgeStyleTypes} from '../../models/steps';
+import {calculateEdgePath, type EdgePathResult, type EdgeStyle} from '../../utils/calculateEdgePath';
 
 /**
  * Props interface of {@link BaseEdge}
@@ -34,9 +44,54 @@ export type BaseEdgePropsInterface = EdgeProps;
 const SMOOTH_STEP_BORDER_RADIUS = 20;
 
 /**
+ * Sentinel obstacle key returned while any node is being dragged, so edges skip
+ * the expensive smart routing and stay stable across drag ticks.
+ */
+const DRAGGING_OBSTACLES_KEY = 'dragging';
+
+/**
+ * Cache of computed obstacle keys per store nodes snapshot. The selector runs for
+ * every edge on every store update (including pan/zoom frames); React Flow only
+ * replaces the nodes array when a node actually changes, so caching on the array
+ * identity turns the O(edges × nodes) string building into a single computation.
+ */
+const obstaclesKeyCache = new WeakMap<object, string>();
+
+/**
+ * Derives a coarse key of all node bounds from the React Flow store. The key only
+ * changes when a node settles at a new position or size — during a drag it returns
+ * a constant, so edges neither re-render per drag tick nor re-route until drop.
+ */
+function selectObstaclesKey(state: ReactFlowState): string {
+  const {nodes} = state;
+
+  if (nodes.some((node) => node.dragging)) {
+    return DRAGGING_OBSTACLES_KEY;
+  }
+
+  const cached = obstaclesKeyCache.get(nodes);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const key = nodes
+    .map(
+      (node) =>
+        `${node.id}:${Math.round(node.position.x)},${Math.round(node.position.y)},` +
+        `${Math.round(node.measured?.width ?? 0)}x${Math.round(node.measured?.height ?? 0)}`,
+    )
+    .join('|');
+  obstaclesKeyCache.set(nodes, key);
+  return key;
+}
+
+/**
  * Enhanced edge component with custom routing algorithm to avoid nodes.
  * Includes custom delete button and label functionality with hover effects.
  * Supports multiple edge styles: Bezier, Smooth Step (with rounded corners), and Step.
+ *
+ * While a node is being dragged, the edge falls back to the cheap built-in path so
+ * dragging stays smooth; the smart obstacle-avoiding route is recomputed on drop.
  */
 function BaseEdge({
   id,
@@ -52,27 +107,41 @@ function BaseEdge({
   markerEnd,
   markerStart,
 }: BaseEdgePropsInterface): ReactElement {
-  const {deleteElements} = useReactFlow();
+  const {deleteElements, getNodes} = useReactFlow();
   const [isHovered, setIsHovered] = useState<boolean>(false);
-  const nodes = useNodes();
   const {edgeStyle} = useFlowConfig();
+  const obstaclesKey = useStore(selectObstaclesKey);
 
-  // Calculate smart path that routes around nodes with the selected edge style
   const {
     path: edgePath,
     centerX: labelX,
     centerY: labelY,
-  } = calculateEdgePath(
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-    nodes,
-    edgeStyle as EdgeStyle,
-    SMOOTH_STEP_BORDER_RADIUS,
-  );
+  } = useMemo((): EdgePathResult => {
+    if (obstaclesKey === DRAGGING_OBSTACLES_KEY) {
+      const pathParams = {sourcePosition, sourceX, sourceY, targetPosition, targetX, targetY};
+      const [path, centerX, centerY] =
+        edgeStyle === EdgeStyleTypes.Bezier
+          ? getBezierPath(pathParams)
+          : getSmoothStepPath({
+              ...pathParams,
+              borderRadius: edgeStyle === EdgeStyleTypes.Step ? 0 : SMOOTH_STEP_BORDER_RADIUS,
+            });
+      return {centerX, centerY, path};
+    }
+
+    // Calculate smart path that routes around nodes with the selected edge style
+    return calculateEdgePath(
+      sourceX,
+      sourceY,
+      targetX,
+      targetY,
+      sourcePosition,
+      targetPosition,
+      getNodes(),
+      edgeStyle as EdgeStyle,
+      SMOOTH_STEP_BORDER_RADIUS,
+    );
+  }, [sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, obstaclesKey, edgeStyle, getNodes]);
 
   const handleDelete = (event: SyntheticEvent) => {
     event.stopPropagation();

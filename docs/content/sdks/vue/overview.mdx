@@ -1,8 +1,9 @@
 ---
 title: Vue SDK Overview
+docType: concept
 sidebar_position: 1
 sidebar_label: Overview
-description: Vue SDK for seamless authentication integration
+description: Vue 3 SDK for adding authentication with composables, pre-built components, and route guard utilities.
 ---
 
 # Vue SDK
@@ -33,16 +34,16 @@ Install the <ProductName /> Vue SDK using your preferred package manager:
 
 ## Getting Started
 
-To get started quickly, check out our [Vue Quickstart Guide](/docs/next/guides/getting-started/connect-your-application/vue) for step-by-step instructions.
+To get started quickly, check out our [Vue Quickstart Guide](../../../guides/getting-started/connect-your-application/vue) for step-by-step instructions.
 
 :::warning Use the redirect-based sign-in flow
 Browser SPAs should sign in using the redirect-based OAuth2 `authorization_code` + PKCE flow. Use
-the [`<SignInButton />`](/docs/next/sdks/vue/apis/components/sign-in-button) component.
+the [`<SignInButton />`](../apis/components/sign-in-button) component.
 
-**Initiating a sign-in flow directly in the browser** — the embedded `<SignIn />` component or
-`useThunderID().signIn({ applicationId })` used standalone — is **not supported** for browser SPAs.
+**Initiating a sign-in flow directly in the browser**, the embedded `<SignIn />` component or
+`useThunderID().signIn({ applicationId })` used standalone, is **not supported** for browser SPAs.
 See
-[Register an application](/docs/next/guides/getting-started/register-an-application).
+[Register an application](../../../guides/guides/applications/manage-applications).
 :::
 
 ## Features
@@ -51,32 +52,32 @@ See
 
 The SDK provides a root provider component that manages authentication state across your application via Vue's `provide`/`inject`.
 
-- **[`<ThunderIDProvider />`](/docs/next/sdks/vue/apis/providers/thunderid-provider)** - Root provider component that wraps your application and manages authentication state
+- **[`<ThunderIDProvider />`](../apis/providers/thunderid-provider)** - Root provider component that wraps your application and manages authentication state
 
 ### Components
 
 Pre-built, customizable components for common authentication flows and user management.
 
 #### Action Components
-- **[`<SignInButton />`](/docs/next/sdks/vue/apis/components/sign-in-button)** - Trigger sign-in flow
-- **[`<SignOutButton />`](/docs/next/sdks/vue/apis/components/sign-out-button)** - Sign out the current user
-- **[`<SignUpButton />`](/docs/next/sdks/vue/apis/components/sign-up-button)** - Trigger sign-up flow
+- **[`<SignInButton />`](../apis/components/sign-in-button)** - Trigger sign-in flow
+- **[`<SignOutButton />`](../apis/components/sign-out-button)** - Sign out the current user
+- **[`<SignUpButton />`](../apis/components/sign-up-button)** - Trigger sign-up flow
 
 #### Control Components
-- **[`<SignedIn />`](/docs/next/sdks/vue/apis/components/signed-in)** - Conditionally render content for authenticated users
-- **[`<SignedOut />`](/docs/next/sdks/vue/apis/components/signed-out)** - Conditionally render content for unauthenticated users
-- **[`<Loading />`](/docs/next/sdks/vue/apis/components/loading)** - Display loading state during authentication
+- **[`<SignedIn />`](../apis/components/signed-in)** - Conditionally render content for authenticated users
+- **[`<SignedOut />`](../apis/components/signed-out)** - Conditionally render content for unauthenticated users
+- **[`<Loading />`](../apis/components/loading)** - Display loading state during authentication
 
 #### User Self-care Components
-- **[`<UserDropdown />`](/docs/next/sdks/vue/apis/components/user-dropdown)** - User menu with profile and settings
-- **[`<UserProfile />`](/docs/next/sdks/vue/apis/components/user-profile)** - Complete user profile management interface
-- **[`<User />`](/docs/next/sdks/vue/apis/components/user)** - Display user information
+- **[`<UserDropdown />`](../apis/components/user-dropdown)** - User menu with profile and settings
+- **[`<UserProfile />`](../apis/components/user-profile)** - Complete user profile management interface
+- **[`<User />`](../apis/components/user)** - Display user information
 
 ### Composables
 
 Vue composables for programmatic access to authentication and user data.
 
-- **[`useThunderID()`](/docs/next/sdks/vue/apis/composables/use-thunderid)** - Access the main <ProductName /> SDK instance
+- **[`useThunderID()`](../apis/composables/use-thunderid)** - Access the main <ProductName /> SDK instance
 
 ## Customization
 

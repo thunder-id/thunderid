@@ -1,8 +1,9 @@
 ---
 title: Node.js SDK Overview
+docType: concept
 sidebar_position: 1
 sidebar_label: Overview
-description: Node.js SDK for server-side authentication integration
+description: Node.js SDK for server-side authentication with session management, token handling, and API protection.
 ---
 
 # Node.js SDK
@@ -33,10 +34,10 @@ Install the <ProductName /> Node.js SDK using your preferred package manager:
 
 ## Next Steps
 
-To integrate the SDK into your application, start with the [Handling Authentication](/docs/next/sdks/node/guides/handling-authentication) guide, which walks you through client setup, the sign-in flow, and sign-out. Then explore:
+To integrate the SDK into your application, start with the [Handling Authentication](../guides/handling-authentication) guide, which walks you through client setup, the sign-in flow, and sign-out. Then explore:
 
-- [Protecting Routes](/docs/next/sdks/node/guides/protecting-routes) — Restrict access based on session state
-- [Accessing Protected APIs](/docs/next/sdks/node/guides/accessing-protected-apis) — Call downstream APIs with the access token
+- [Protecting Routes](../guides/protecting-routes): Restrict access based on session state
+- [Accessing Protected APIs](../guides/accessing-protected-apis): Call downstream APIs with the access token
 
 ## Features
 
@@ -44,17 +45,17 @@ To integrate the SDK into your application, start with the [Handling Authenticat
 
 The SDK provides authentication clients designed for server-side Node.js applications.
 
-- **[`ThunderIDNodeClient`](/docs/next/sdks/node/apis/clients/thunderid-node-client)** — Abstract base class for building Node.js framework integrations
+- **[`ThunderIDNodeClient`](../apis/clients/thunderid-node-client)**: Abstract base class for building Node.js framework integrations
 
 ### Configuration
 
-- **[`ThunderIDNodeConfig`](/docs/next/sdks/node/apis/config/thunderid-node-config)** — Configuration type for the Node.js SDK
+- **[`ThunderIDNodeConfig`](../apis/config/thunderid-node-config)**: Configuration type for the Node.js SDK
 
 ### Utilities
 
 Helper functions and constants for session and cookie management.
 
-- **[`CookieConfig`](/docs/next/sdks/node/apis/utilities/cookie-config)** — Default cookie configuration constants
-- **[`CookieOptions`](/docs/next/sdks/node/apis/utilities/cookie-options)** — Cookie configuration interface
-- **[`generateSessionId()`](/docs/next/sdks/node/apis/utilities/generate-session-id)** — Generate unique session identifiers
-- **[`getSessionCookieOptions()`](/docs/next/sdks/node/apis/utilities/get-session-cookie-options)** — Build cookie options with defaults applied
+- **[`CookieConfig`](../apis/utilities/cookie-config)**: Default cookie configuration constants
+- **[`CookieOptions`](../apis/utilities/cookie-options)**: Cookie configuration interface
+- **[`generateSessionId()`](../apis/utilities/generate-session-id)**: Generate unique session identifiers
+- **[`getSessionCookieOptions()`](../apis/utilities/get-session-cookie-options)**: Build cookie options with defaults applied

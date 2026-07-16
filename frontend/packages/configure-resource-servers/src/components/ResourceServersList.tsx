@@ -100,24 +100,6 @@ export default function ResourceServersList(): JSX.Element {
           ),
       },
       {
-        field: 'handle',
-        headerName: t('resourceServers:listing.columns.handle', 'Handle'),
-        width: 160,
-        renderCell: (params: DataGrid.GridRenderCellParams<ResourceServer>) =>
-          params.row.handle ? (
-            <Chip
-              label={params.row.handle}
-              size="small"
-              variant="outlined"
-              sx={{fontFamily: 'monospace', fontSize: '0.75rem'}}
-            />
-          ) : (
-            <Typography variant="body2" color="text.disabled">
-              -
-            </Typography>
-          ),
-      },
-      {
         field: 'actions',
         headerName: t('resourceServers:listing.columns.actions', 'Actions'),
         width: 150,

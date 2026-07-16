@@ -1,5 +1,6 @@
 ---
 title: MCP Authorization
+docType: use-case
 description: Connect an external MCP client to the Wayfinder MCP server through {{ProductName}}, then watch scope enforcement deny a privileged tool until the user grants the missing permission at consent.
 sidebar_position: 1
 ---
@@ -9,7 +10,7 @@ sidebar_position: 1
 In this walkthrough, `john.doe` signs in to MCP Inspector through <ProductName />, picks which `wayfinder:booking:*` permissions to grant, and calls a few MCP tools. Calling a tool he didn't grant a permission for hits a `403`. He reconnects, grants the missing permission, and the same call succeeds.
 
 :::note Prerequisites
-Complete [Set Up Your Environment](../../try-it-out#set-up-your-environment) before starting this walkthrough.
+Complete [Set Up Your Environment](../../../try-it-out/setup) before starting this walkthrough.
 :::
 
 ## Walk Through the Use Case
@@ -53,7 +54,7 @@ In the **Tools** tab, Inspector calls `tools/list` and shows the Wayfinder tool 
 
 ### 5. Call a Tool the User Has Scope For
 
-Pick `search_flights`. Set `from=Colombo`, `to=Singapore`, click **Run Tool**. The result is a JSON list of flights — exactly what `GET /api/flights` returns to the Wayfinder web UI, served from the same service module.
+Pick `search_flights`. Set `from=Colombo`, `to=Singapore`, click **Run Tool**. The result is a JSON list of flights, exactly what `GET /api/flights` returns to the Wayfinder web UI, served from the same service module.
 
 Pick `create_booking`. Set `type=flight`, `itemId=flight-cmb-sin-01`, `travelers=1`. The booking succeeds. The token carries `wayfinder:booking:create`, so the MCP server's per-tool scope check passes.
 
@@ -63,7 +64,7 @@ Pick `delete_all_bookings`. Click **Run Tool**.
 
 You see an MCP error:
 
-```
+```text
 Insufficient scope for tool delete_all_bookings. Required: wayfinder:booking:cancel
 ```
 
@@ -71,13 +72,13 @@ Insufficient scope for tool delete_all_bookings. Required: wayfinder:booking:can
 
 ### 7. Grant the Missing Permission and Retry
 
-In Inspector, click **Disconnect** and reconnect. The sign-in flow runs again — this time, tick `wayfinder:booking:cancel` at the consent screen along with the other two.
+In Inspector, click **Disconnect** and reconnect. The sign-in flow runs again. This time, tick `wayfinder:booking:cancel` at the consent screen along with the other two.
 
 A new token is issued, this one carrying `wayfinder:booking:cancel`. Call `delete_all_bookings` again. It succeeds.
 
 ## Try a Variant
 
-- **Show the JWT.** In Inspector's Auth panel, view the access token's claims. The `aud` is `http://localhost:8787/mcp` — the Wayfinder MCP server's resource indicator, derived from the granted `wayfinder:booking:*` scopes — and `scope` matches exactly what `john.doe` ticked at consent.
+- **Show the JWT.** In Inspector's Auth panel, view the access token's claims. The `aud` is `http://localhost:8787/mcp`, the Wayfinder MCP server's resource indicator, derived from the granted `wayfinder:booking:*` scopes, and `scope` matches exactly what `john.doe` ticked at consent.
 - **Use a different user.** Create a fresh `Customer` user with no roles. Sign in via Inspector. Tools that need a `wayfinder:booking:*` scope fail; browsing tools (`search_flights`, `search_hotels`) still work.
 
 ## Going Deeper

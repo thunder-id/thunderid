@@ -23,7 +23,7 @@
 package connection
 
 import (
-	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -34,39 +34,53 @@ type idpBackedVendor struct {
 }
 
 // idpBackedVendors is the set of connection types backed by the identity-provider service.
-// A single generic "oidc" connection (shown as "Custom OIDC" in the console) covers custom
-// providers; a dedicated generic OAuth type can be added later if a non-OIDC provider needs it.
+// The generic "oidc" connection covers custom OIDC providers;
+// "oauth" covers OAuth 2.0 providers that don't implement OIDC discovery and have no id_token,
+// relying on userInfoEndpoint instead.
 var idpBackedVendors = []idpBackedVendor{
 	{name: "google", idpType: providers.IDPTypeGoogle},
 	{name: "github", idpType: providers.IDPTypeGitHub},
 	{name: "oidc", idpType: providers.IDPTypeOIDC},
+	{name: "oauth", idpType: providers.IDPTypeOAuth},
 }
 
-// smsBackedVendor maps a connection path segment to an underlying message-provider type.
-type smsBackedVendor struct {
-	name     string
-	provider ncommon.MessageProviderType
+// connectionCategory is the functional category of a connection instance, used as the
+// value of the category query parameter on GET /connections.
+type connectionCategory string
+
+const (
+	categoryIdentityProvider connectionCategory = "identity-provider"
+	categorySMSProvider      connectionCategory = "sms-provider"
+)
+
+// parseConnectionCategory validates the raw category query value. Empty means "no filter";
+// any other unrecognized value returns false.
+func parseConnectionCategory(raw string) (connectionCategory, bool) {
+	switch connectionCategory(raw) {
+	case "", categoryIdentityProvider, categorySMSProvider:
+		return connectionCategory(raw), true
+	default:
+		return "", false
+	}
 }
 
-// smsBackedVendors is the set of connection types backed by the notification-sender service.
-// The custom SMS gateway (ncommon.MessageProviderTypeCustom) is intentionally not exposed here.
-var smsBackedVendors = []smsBackedVendor{
-	{name: "twilio", provider: ncommon.MessageProviderTypeTwilio},
-	{name: "vonage", provider: ncommon.MessageProviderTypeVonage},
+// connectionInstance is a single configured connection instance in the flat GET /connections
+// listing, spanning IdP- and sender-backed connections.
+type connectionInstance struct {
+	ID          string               `json:"id"`
+	Name        string               `json:"name"`
+	Description string               `json:"description,omitempty"`
+	Type        string               `json:"type"`
+	Categories  []connectionCategory `json:"categories"`
 }
 
-// connectionTypeSummary is a single entry in the GET /connections listing. It carries only
-// the structural data the listing page needs; presentation metadata (logo, display name,
-// categories) lives in the frontend.
-type connectionTypeSummary struct {
-	Type          string `json:"type"`
-	Configured    bool   `json:"configured"`
-	InstanceCount int    `json:"instanceCount"`
-}
-
-// connectionListResponse is the payload for GET /connections.
+// connectionListResponse is the paginated payload for GET /connections (the flat instance list).
 type connectionListResponse struct {
-	Connections []connectionTypeSummary `json:"connections"`
+	TotalResults int                  `json:"totalResults"`
+	StartIndex   int                  `json:"startIndex"`
+	Count        int                  `json:"count"`
+	Connections  []connectionInstance `json:"connections"`
+	Links        []sysutils.Link      `json:"links"`
 }
 
 // connectionInstanceSummary is a single configured instance returned by

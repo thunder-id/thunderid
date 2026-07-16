@@ -72,10 +72,10 @@ describe('StartBuildingSection', () => {
       expect(screen.getByRole('button', {name: 'Create Application'})).toBeInTheDocument();
     });
 
-    it('navigates to /applications/create when the button is clicked', () => {
+    it('navigates to /applications/types when the button is clicked', () => {
       render(<StartBuildingSection />);
       fireEvent.click(screen.getByRole('button', {name: 'Create Application'}));
-      expect(mockNavigate).toHaveBeenCalledWith('/applications/create');
+      expect(mockNavigate).toHaveBeenCalledWith('/applications/types');
     });
 
     it('does not render the "Create Applications" view button when totalResults is 0', () => {
@@ -97,7 +97,7 @@ describe('StartBuildingSection', () => {
     it('navigates to /applications when the button is clicked', () => {
       render(<StartBuildingSection />);
       fireEvent.click(screen.getByRole('button', {name: 'Create Applications'}));
-      expect(mockNavigate).toHaveBeenCalledWith('/applications/create');
+      expect(mockNavigate).toHaveBeenCalledWith('/applications/types');
     });
 
     it('does not render the create-only button when apps exist', () => {

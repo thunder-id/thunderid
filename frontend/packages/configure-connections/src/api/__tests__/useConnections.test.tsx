@@ -34,32 +34,70 @@ describe('useConnections', () => {
   beforeEach(() => {
     mockHttpRequest.mockReset().mockResolvedValue({
       data: {
+        totalResults: 3,
+        startIndex: 1,
+        count: 3,
         connections: [
-          {type: 'google', configured: true, instanceCount: 1},
-          {type: 'github', configured: false, instanceCount: 0},
+          {id: 'g-1', name: 'My Google', type: 'google', categories: ['identity-provider']},
+          {
+            id: 'o-1',
+            name: 'Corp OIDC',
+            description: 'Corporate login',
+            type: 'oidc',
+            categories: ['identity-provider'],
+          },
+          {id: 's-1', name: 'Twilio SMS', type: 'twilio', categories: ['sms-provider']},
         ],
+        links: [],
       },
     });
   });
 
   afterEach(() => vi.clearAllMocks());
 
-  it('unwraps the connections array from the response envelope', async () => {
+  it('returns the paginated envelope', async () => {
     const {result} = renderHook(() => useConnections());
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(result.current.data).toHaveLength(2);
-    expect(result.current.data?.[0]).toEqual({type: 'google', configured: true, instanceCount: 1});
+    expect(result.current.data?.totalResults).toBe(3);
+    expect(result.current.data?.startIndex).toBe(1);
+    expect(result.current.data?.count).toBe(3);
+    expect(result.current.data?.connections).toHaveLength(3);
+    expect(result.current.data?.connections[0]).toEqual({
+      id: 'g-1',
+      name: 'My Google',
+      type: 'google',
+      categories: ['identity-provider'],
+    });
   });
 
-  it('calls GET /connections', async () => {
+  it('calls GET /connections without query params when none are provided', async () => {
     const {result} = renderHook(() => useConnections());
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(mockHttpRequest).toHaveBeenCalledWith(
       expect.objectContaining({url: 'https://localhost:8090/connections', method: 'GET'}),
     );
+  });
+
+  it('appends category, limit and offset query params when provided', async () => {
+    const {result} = renderHook(() => useConnections({category: 'identity-provider', limit: 10, offset: 20}));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockHttpRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'https://localhost:8090/connections?category=identity-provider&limit=10&offset=20',
+        method: 'GET',
+      }),
+    );
+  });
+
+  it('does not fetch when disabled', async () => {
+    renderHook(() => useConnections(undefined, {enabled: false}));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockHttpRequest).not.toHaveBeenCalled();
   });
 
   it('surfaces errors', async () => {

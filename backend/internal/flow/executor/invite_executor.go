@@ -53,6 +53,12 @@ func newInviteExecutor(flowFactory core.FlowFactoryInterface) *inviteExecutor {
 		providers.ExecutorTypeUtility,
 		defaultInputs,
 		[]providers.Input{},
+		&providers.ExecutorMeta{
+			SupportedModes: []string{ExecutorModeGenerate, ExecutorModeVerify},
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: propertyKeyInviteBaseURL},
+			},
+		},
 	)
 	return &inviteExecutor{
 		Executor: base,

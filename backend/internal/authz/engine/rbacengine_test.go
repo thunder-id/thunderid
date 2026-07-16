@@ -50,12 +50,12 @@ func (suite *RBACEngineTestSuite) SetupTest() {
 func (suite *RBACEngineTestSuite) TestEvaluateAccessSuccess() {
 	request := AccessEvaluationRequest{
 		Subject:        Subject{ID: testUserID1, GroupIDs: []string{"group1"}},
-		ResourceServer: ResourceServer{Handle: "document"},
+		ResourceServer: ResourceServer{},
 		Permission:     Permission{Name: "document:read"},
 	}
 
-	suite.mockRoleService.On("GetAuthorizedPermissions", mock.Anything, testUserID1,
-		[]string{"group1"}, []string{"document:read"}).
+	suite.mockRoleService.On("GetAuthorizedPermissionsByResourceServer", mock.Anything, testUserID1,
+		[]string{"group1"}, "", []string{"document:read"}).
 		Return([]string{"document:read"}, nil)
 
 	result, err := suite.engine.EvaluateAccess(context.Background(), request)
@@ -68,12 +68,12 @@ func (suite *RBACEngineTestSuite) TestEvaluateAccessSuccess() {
 func (suite *RBACEngineTestSuite) TestEvaluateAccessDenied() {
 	request := AccessEvaluationRequest{
 		Subject:        Subject{ID: testUserID1, GroupIDs: []string{"group1"}},
-		ResourceServer: ResourceServer{Handle: "document"},
+		ResourceServer: ResourceServer{},
 		Permission:     Permission{Name: "document:delete"},
 	}
 
-	suite.mockRoleService.On("GetAuthorizedPermissions", mock.Anything, testUserID1,
-		[]string{"group1"}, []string{"document:delete"}).
+	suite.mockRoleService.On("GetAuthorizedPermissionsByResourceServer", mock.Anything, testUserID1,
+		[]string{"group1"}, "", []string{"document:delete"}).
 		Return([]string{}, nil)
 
 	result, err := suite.engine.EvaluateAccess(context.Background(), request)
@@ -88,19 +88,19 @@ func (suite *RBACEngineTestSuite) TestEvaluateAccessBatchPreservesOrder() {
 		Evaluations: []AccessEvaluationRequest{
 			{
 				Subject:        Subject{ID: testUserID1, GroupIDs: []string{"group1"}},
-				ResourceServer: ResourceServer{Handle: "document"},
+				ResourceServer: ResourceServer{},
 				Permission:     Permission{Name: "document:read"},
 			},
 			{
 				Subject:        Subject{ID: testUserID1, GroupIDs: []string{"group1"}},
-				ResourceServer: ResourceServer{Handle: "document"},
+				ResourceServer: ResourceServer{},
 				Permission:     Permission{Name: "document:delete"},
 			},
 		},
 	}
 
-	suite.mockRoleService.On("GetAuthorizedPermissions", mock.Anything, testUserID1,
-		[]string{"group1"}, []string{"document:read", "document:delete"}).
+	suite.mockRoleService.On("GetAuthorizedPermissionsByResourceServer", mock.Anything, testUserID1,
+		[]string{"group1"}, "", []string{"document:read", "document:delete"}).
 		Return([]string{"document:read"}, nil)
 
 	result, err := suite.engine.EvaluateAccessBatch(context.Background(), request)
@@ -110,18 +110,51 @@ func (suite *RBACEngineTestSuite) TestEvaluateAccessBatchPreservesOrder() {
 	suite.Len(result.Evaluations, 2)
 	suite.True(result.Evaluations[0].Decision)
 	suite.False(result.Evaluations[1].Decision)
-	suite.mockRoleService.AssertNumberOfCalls(suite.T(), "GetAuthorizedPermissions", 1)
+	suite.mockRoleService.AssertNumberOfCalls(suite.T(), "GetAuthorizedPermissionsByResourceServer", 1)
+}
+
+func (suite *RBACEngineTestSuite) TestEvaluateAccessBatchScopesByResourceServerID() {
+	request := AccessEvaluationsRequest{
+		Evaluations: []AccessEvaluationRequest{
+			{
+				Subject:        Subject{ID: testUserID1, GroupIDs: []string{"group1"}},
+				ResourceServer: ResourceServer{ID: "booking-api"},
+				Permission:     Permission{Name: "read"},
+			},
+			{
+				Subject:        Subject{ID: testUserID1, GroupIDs: []string{"group1"}},
+				ResourceServer: ResourceServer{ID: "invoice-api"},
+				Permission:     Permission{Name: "read"},
+			},
+		},
+	}
+
+	suite.mockRoleService.On("GetAuthorizedPermissionsByResourceServer", mock.Anything, testUserID1,
+		[]string{"group1"}, "booking-api", []string{"read"}).
+		Return([]string{"read"}, nil)
+	suite.mockRoleService.On("GetAuthorizedPermissionsByResourceServer", mock.Anything, testUserID1,
+		[]string{"group1"}, "invoice-api", []string{"read"}).
+		Return([]string{}, nil)
+
+	result, err := suite.engine.EvaluateAccessBatch(context.Background(), request)
+
+	suite.Nil(err)
+	suite.NotNil(result)
+	suite.Len(result.Evaluations, 2)
+	suite.True(result.Evaluations[0].Decision)
+	suite.False(result.Evaluations[1].Decision)
+	suite.mockRoleService.AssertNumberOfCalls(suite.T(), "GetAuthorizedPermissionsByResourceServer", 2)
 }
 
 func (suite *RBACEngineTestSuite) TestEvaluateAccessUsesActionNameAsPermission() {
 	request := AccessEvaluationRequest{
 		Subject:        Subject{ID: testUserID1},
-		ResourceServer: ResourceServer{Handle: "document"},
+		ResourceServer: ResourceServer{},
 		Permission:     Permission{Name: "document:read"},
 	}
 
-	suite.mockRoleService.On("GetAuthorizedPermissions", mock.Anything, testUserID1,
-		[]string(nil), []string{"document:read"}).
+	suite.mockRoleService.On("GetAuthorizedPermissionsByResourceServer", mock.Anything, testUserID1,
+		[]string(nil), "", []string{"document:read"}).
 		Return([]string{"document:read"}, nil)
 
 	result, err := suite.engine.EvaluateAccess(context.Background(), request)
@@ -137,13 +170,13 @@ func (suite *RBACEngineTestSuite) TestEvaluateAccessBatchEmpty() {
 	suite.Nil(err)
 	suite.NotNil(result)
 	suite.Empty(result.Evaluations)
-	suite.mockRoleService.AssertNotCalled(suite.T(), "GetAuthorizedPermissions")
+	suite.mockRoleService.AssertNotCalled(suite.T(), "GetAuthorizedPermissionsByResourceServer")
 }
 
 func (suite *RBACEngineTestSuite) TestEvaluateAccessRoleServiceError() {
 	request := AccessEvaluationRequest{
 		Subject:        Subject{ID: testUserID1, GroupIDs: []string{"group1"}},
-		ResourceServer: ResourceServer{Handle: "document"},
+		ResourceServer: ResourceServer{},
 		Permission:     Permission{Name: "document:read"},
 	}
 	roleServiceError := &tidcommon.ServiceError{
@@ -157,8 +190,8 @@ func (suite *RBACEngineTestSuite) TestEvaluateAccessRoleServiceError() {
 		},
 	}
 
-	suite.mockRoleService.On("GetAuthorizedPermissions", mock.Anything, testUserID1,
-		[]string{"group1"}, []string{"document:read"}).
+	suite.mockRoleService.On("GetAuthorizedPermissionsByResourceServer", mock.Anything, testUserID1,
+		[]string{"group1"}, "", []string{"document:read"}).
 		Return([]string(nil), roleServiceError)
 
 	result, err := suite.engine.EvaluateAccess(context.Background(), request)

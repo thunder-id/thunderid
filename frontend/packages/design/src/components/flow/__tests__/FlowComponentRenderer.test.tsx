@@ -17,7 +17,7 @@
  */
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import {screen, cleanup} from '@testing-library/react';
+import {screen, cleanup, fireEvent} from '@testing-library/react';
 import type {EmbeddedFlowComponent} from '@thunderid/react';
 import {describe, it, expect, afterEach, vi} from 'vitest';
 import renderWithProviders from '../../../test/renderWithProviders';
@@ -169,5 +169,98 @@ describe('FlowComponentRenderer — COPYABLE_TEXT routing', () => {
     );
 
     expect(container.firstChild).toBeNull();
+  });
+});
+
+describe('FlowComponentRenderer — BLOCK with STACK-nested actions', () => {
+  const blockWithStackedActions = {
+    id: 'block_onboarding_mode',
+    type: 'BLOCK',
+    components: [
+      {
+        id: 'stack_actions',
+        type: 'STACK',
+        direction: 'row',
+        justify: 'center',
+        components: [
+          {id: 'action_create', type: 'ACTION', label: 'Create User', variant: 'PRIMARY', eventType: 'SUBMIT'},
+          {id: 'action_invite', type: 'ACTION', label: 'Invite User', variant: 'OUTLINED', eventType: 'SUBMIT'},
+        ],
+      },
+    ],
+  } as unknown as EmbeddedFlowComponent;
+
+  it('renders submit actions nested inside a stack', () => {
+    renderWithProviders(
+      <FlowComponentRenderer
+        component={blockWithStackedActions}
+        index={0}
+        values={{}}
+        isLoading={false}
+        resolve={identity}
+        onInputChange={noop}
+        onSubmit={noop}
+      />,
+    );
+
+    expect(screen.getByRole('button', {name: 'Create User'})).toBeTruthy();
+    expect(screen.getByRole('button', {name: 'Invite User'})).toBeTruthy();
+  });
+
+  it('exposes the component id on rendered action buttons', () => {
+    renderWithProviders(
+      <FlowComponentRenderer
+        component={blockWithStackedActions}
+        index={0}
+        values={{}}
+        isLoading={false}
+        resolve={identity}
+        onInputChange={noop}
+        onSubmit={noop}
+      />,
+    );
+
+    // Consumers (e.g. the flow preview) map DOM buttons back to their flow
+    // components through this id.
+    expect(screen.getByRole('button', {name: 'Create User'}).id).toBe('action_create');
+    expect(screen.getByRole('button', {name: 'Invite User'}).id).toBe('action_invite');
+  });
+
+  it('dispatches the secondary stacked action on click', () => {
+    const onSubmit = vi.fn();
+    renderWithProviders(
+      <FlowComponentRenderer
+        component={blockWithStackedActions}
+        index={0}
+        values={{}}
+        isLoading={false}
+        resolve={identity}
+        onInputChange={noop}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', {name: 'Invite User'}));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({id: 'action_invite'}), {});
+  });
+
+  it('dispatches the primary stacked action via form submit', () => {
+    const onSubmit = vi.fn();
+    renderWithProviders(
+      <FlowComponentRenderer
+        component={blockWithStackedActions}
+        index={0}
+        values={{}}
+        isLoading={false}
+        resolve={identity}
+        onInputChange={noop}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', {name: 'Create User'}));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({id: 'action_create'}), {});
   });
 });

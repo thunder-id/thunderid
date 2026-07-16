@@ -39,9 +39,7 @@ type resourceStoreInterface interface {
 	UpdateResourceServer(ctx context.Context, id string, rs providers.ResourceServer) error
 	DeleteResourceServer(ctx context.Context, id string) error
 	CheckResourceServerNameExists(ctx context.Context, name string) (bool, error)
-	CheckResourceServerHandleExists(ctx context.Context, handle string) (bool, error)
 	CheckResourceServerIdentifierExists(ctx context.Context, identifier string) (bool, error)
-	GetResourceServerByHandle(ctx context.Context, handle string) (providers.ResourceServer, error)
 	GetResourceServerByIdentifier(ctx context.Context, identifier string) (providers.ResourceServer, error)
 	CheckResourceServerHasDependencies(ctx context.Context, resServerID string) (bool, error)
 	IsResourceServerDeclarative(id string) bool
@@ -123,7 +121,6 @@ func (s *resourceStore) CreateResourceServer(ctx context.Context, id string, rs 
 			rs.OUID,
 			rs.Name,
 			rs.Description,
-			resolveNullableString(rs.Handle),
 			resolveNullableString(rs.Identifier),
 			resolveNullableString(string(rs.Type)),
 			buildPropertiesJSON(rs),
@@ -209,7 +206,6 @@ func (s *resourceStore) UpdateResourceServer(ctx context.Context, id string, rs 
 			rs.OUID,
 			rs.Name,
 			rs.Description,
-			resolveNullableString(rs.Handle),
 			resolveNullableString(rs.Identifier),
 			resolveNullableString(string(rs.Type)),
 			buildPropertiesJSON(rs),
@@ -251,21 +247,6 @@ func (s *resourceStore) CheckResourceServerNameExists(ctx context.Context, name 
 	return exists, err
 }
 
-// CheckResourceServerHandleExists checks if a resource server handle exists.
-func (s *resourceStore) CheckResourceServerHandleExists(ctx context.Context, handle string) (bool, error) {
-	var exists bool
-	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
-		results, err := dbClient.QueryContext(ctx, queryCheckResourceServerHandleExists, handle, s.deploymentID)
-		if err != nil {
-			return fmt.Errorf("failed to check resource server handle: %w", err)
-		}
-
-		exists, err = parseBoolFromCount(results)
-		return err
-	})
-	return exists, err
-}
-
 // CheckResourceServerIdentifierExists checks if a resource server identifier exists.
 func (s *resourceStore) CheckResourceServerIdentifierExists(ctx context.Context, identifier string) (bool, error) {
 	var exists bool
@@ -279,28 +260,6 @@ func (s *resourceStore) CheckResourceServerIdentifierExists(ctx context.Context,
 		return err
 	})
 	return exists, err
-}
-
-// GetResourceServerByHandle retrieves a resource server by its handle.
-func (s *resourceStore) GetResourceServerByHandle(
-	ctx context.Context,
-	handle string,
-) (providers.ResourceServer, error) {
-	var rs providers.ResourceServer
-	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
-		results, err := dbClient.QueryContext(ctx, queryGetResourceServerByHandle, handle, s.deploymentID)
-		if err != nil {
-			return fmt.Errorf("failed to get resource server by handle: %w", err)
-		}
-
-		if len(results) == 0 {
-			return errResourceServerNotFound
-		}
-
-		rs, err = buildResourceServerFromResultRow(results[0])
-		return err
-	})
-	return rs, err
 }
 
 // GetResourceServerByIdentifier retrieves a resource server by its identifier.
@@ -1112,10 +1071,6 @@ func buildResourceServerFromResultRow(row map[string]interface{}) (providers.Res
 
 	if desc, ok := row["description"].(string); ok {
 		rs.Description = desc
-	}
-
-	if handle, ok := row["handle"].(string); ok {
-		rs.Handle = handle
 	}
 
 	if identifier, ok := row["identifier"].(string); ok {

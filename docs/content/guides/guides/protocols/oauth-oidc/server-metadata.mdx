@@ -1,5 +1,6 @@
 ---
 title: Server Metadata
+docType: reference
 sidebar_position: 1
 description: The OAuth 2.1 Authorization Server Metadata and OIDC Discovery documents published by {{ProductName}} at the .well-known endpoints.
 ---
@@ -8,7 +9,7 @@ description: The OAuth 2.1 Authorization Server Metadata and OIDC Discovery docu
 
 **Server Metadata** ([RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) and [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html)) is a standardized JSON document that lists every OAuth 2.1 and OpenID Connect endpoint, every supported algorithm, and every feature flag for a <ProductName /> instance. Clients fetch it once at startup (or on demand) and use it instead of hard-coding endpoint URLs.
 
-<ProductName /> publishes two documents — one for OAuth and one for OIDC. The OIDC document is a strict superset of the OAuth one.
+<ProductName /> publishes two documents: one for OAuth and one for OIDC. The OIDC document is a strict superset of the OAuth one.
 
 ## How It Works
 
@@ -17,7 +18,7 @@ description: The OAuth 2.1 Authorization Server Metadata and OIDC Discovery docu
 | `GET /.well-known/oauth-authorization-server` | RFC 8414 |
 | `GET /.well-known/openid-configuration` | OIDC Discovery 1.0 |
 
-Both endpoints are public — no authentication required.
+Both endpoints are public: no authentication required.
 
 ```bash
 curl https://{{productSlug}}.example.com/.well-known/openid-configuration
@@ -89,7 +90,7 @@ The OAuth-only document at `/.well-known/oauth-authorization-server` omits the O
 | Caching | The document is generated per-instance from runtime configuration. Cache freely on the client. |
 | `issuer` | The deployment's configured issuer URL. Must match the `iss` claim in issued tokens. |
 | Endpoint URLs | Absolute URLs rooted at the configured issuer |
-| Subject types | `public` only — pairwise subject identifiers are not supported |
+| Subject types | `public` only. Pairwise subject identifiers are not supported |
 | `require_pushed_authorization_requests` | Reflects the global `oauth.par.require_par` setting |
 | `authorization_response_iss_parameter_supported` | Always `true` (see [Issuer Identification](../issuer-identification)) |
 
@@ -119,7 +120,7 @@ const client = new OIDCClient({
 
 ## Related Guides
 
-- [JWKS](../jwks) — the public-key endpoint pointed to by `jwks_uri`
-- [Issuer Identification](../issuer-identification) — uses the `issuer` value advertised here
-- [Pushed Authorization Requests](../par) — `pushed_authorization_request_endpoint`
-- [Dynamic Client Registration](../dynamic-client-registration) — `registration_endpoint`
+- [JWKS](../jwks), the public-key endpoint pointed to by `jwks_uri`
+- [Issuer Identification](../issuer-identification), uses the `issuer` value advertised here
+- [Pushed Authorization Requests](../par), `pushed_authorization_request_endpoint`
+- [Dynamic Client Registration](../dynamic-client-registration), `registration_endpoint`

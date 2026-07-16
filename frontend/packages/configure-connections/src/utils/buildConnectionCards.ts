@@ -16,55 +16,38 @@
  * under the License.
  */
 
-import type {
-  ConnectionCardModel,
-  ConnectionInstanceSummary,
-  ConnectionTypeSummary,
-  ConnectionVendorMeta,
-} from '../models/connection';
+import type {ConnectionCardModel, ConnectionInstance, ConnectionVendorMeta} from '../models/connection';
 
 /**
- * Merge connection type summaries, the FE vendor-meta catalog, and per-type instances into the
- * flat list of cards the listing grid renders.
+ * Merge the flat GET /connections instance list with the FE vendor-meta catalog into the list
+ * of cards the listing grid renders.
  *
- * - branded vendors → one singleton card; a configured card opens its detail page, an
- *   unconfigured one opens the configure wizard.
- * - custom vendors → one card per configured instance (each opens its own detail page).
+ * - every configured instance → one card titled by the instance name (each opens its own
+ *   detail page), for branded and custom vendors alike.
+ * - branded vendors with no instances → one unconfigured card that opens the configure wizard.
+ * - custom vendors with no instances → no card (creation goes through the custom-connection
+ *   wizard entry point).
  * - coming-soon vendors → one static, non-interactive card.
+ * - instances whose type has no vendor meta (e.g. custom SMS gateway senders) are not rendered.
  *
  * Pure function — no i18n, no hooks — so it is trivially unit-testable. The card carries a
  * `descriptionKey`; the rendering component resolves it.
  */
 export default function buildConnectionCards(
-  summaries: ConnectionTypeSummary[],
+  instances: ConnectionInstance[],
   vendorMetas: ConnectionVendorMeta[],
-  instancesByType: Record<string, ConnectionInstanceSummary[]>,
 ): ConnectionCardModel[] {
+  const instancesByType: Record<string, ConnectionInstance[]> = {};
+  for (const instance of instances) {
+    (instancesByType[instance.type] ??= []).push(instance);
+  }
+
   const cards: ConnectionCardModel[] = [];
 
   for (const meta of vendorMetas) {
-    if (meta.presentation === 'branded' && meta.backendType) {
-      const summary: ConnectionTypeSummary | undefined = summaries.find((s) => s.type === meta.backendType);
-      const configured: boolean = summary?.configured ?? false;
-
-      cards.push({
-        id: meta.key,
-        vendorKey: meta.key,
-        backendType: meta.backendType,
-        displayName: meta.displayName,
-        descriptionKey: meta.descriptionKey,
-        logo: meta.logo,
-        categories: meta.categories,
-        status: configured ? 'configured' : 'not-configured',
-        comingSoon: false,
-        navTarget: configured ? `/connections/${meta.backendType}` : `/connections/${meta.backendType}/configure`,
-      });
-      continue;
-    }
-
-    if (meta.presentation === 'custom' && meta.backendType) {
-      const instances: ConnectionInstanceSummary[] = instancesByType[meta.backendType] ?? [];
-      for (const instance of instances) {
+    if ((meta.presentation === 'branded' || meta.presentation === 'custom') && meta.backendType) {
+      const vendorInstances: ConnectionInstance[] = instancesByType[meta.backendType] ?? [];
+      for (const instance of vendorInstances) {
         cards.push({
           id: `${meta.key}:${instance.id}`,
           vendorKey: meta.key,
@@ -76,6 +59,21 @@ export default function buildConnectionCards(
           status: 'configured',
           comingSoon: false,
           navTarget: `/connections/${meta.backendType}/${instance.id}`,
+        });
+      }
+
+      if (meta.presentation === 'branded' && vendorInstances.length === 0) {
+        cards.push({
+          id: meta.key,
+          vendorKey: meta.key,
+          backendType: meta.backendType,
+          displayName: meta.displayName,
+          descriptionKey: meta.descriptionKey,
+          logo: meta.logo,
+          categories: meta.categories,
+          status: 'not-configured',
+          comingSoon: false,
+          navTarget: `/connections/${meta.backendType}/configure`,
         });
       }
       continue;

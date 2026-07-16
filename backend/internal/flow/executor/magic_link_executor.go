@@ -79,7 +79,13 @@ func newMagicLinkExecutor(
 	identifyExec := newIdentifyingExecutor(ExecutorNameMagicLink, defaultInputs, prerequisites,
 		flowFactory, entityProvider)
 	base := flowFactory.CreateExecutor(ExecutorNameMagicLink, providers.ExecutorTypeAuthentication,
-		defaultInputs, prerequisites)
+		defaultInputs, prerequisites, &providers.ExecutorMeta{
+			SupportedModes: []string{ExecutorModeGenerate, ExecutorModeVerify},
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: propertyKeyTokenExpiry},
+				{Property: propertyKeyMagicLinkURL},
+			},
+		})
 
 	return &magicLinkExecutor{
 		Executor:                     base,

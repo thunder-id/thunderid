@@ -256,9 +256,12 @@ func (ts *tokenService) ProcessTokenRequest(
 	// For token exchange, determine the issued_token_type from the request.
 	if grantType == providers.GrantTypeTokenExchange {
 		requestedTokenType := tokenRequest.RequestedTokenType
-		if requestedTokenType == "" || requestedTokenType == string(constants.TokenTypeIdentifierAccessToken) {
+		switch {
+		case requestedTokenType == string(constants.TokenTypeIdentifierIDJAG):
+			tokenResponse.IssuedTokenType = string(constants.TokenTypeIdentifierIDJAG)
+		case requestedTokenType == "" || requestedTokenType == string(constants.TokenTypeIdentifierAccessToken):
 			tokenResponse.IssuedTokenType = string(constants.TokenTypeIdentifierAccessToken)
-		} else {
+		default:
 			tokenResponse.IssuedTokenType = string(constants.TokenTypeIdentifierJWT)
 		}
 	}

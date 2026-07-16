@@ -30,6 +30,7 @@ import (
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -80,6 +81,120 @@ func (s *ServiceTestSuite) TestListByTypeError() {
 		Return(([]idp.BasicIDPDTO)(nil), &tidcommon.InternalServerError)
 
 	_, svcErr := s.svc.listByType(context.Background(), providers.IDPTypeGoogle)
+	s.NotNil(svcErr)
+}
+
+func (s *ServiceTestSuite) TestListInstancesAllCategories() {
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).Return([]idp.BasicIDPDTO{
+		{ID: "1", Name: "google B", Type: providers.IDPTypeGoogle},
+		{ID: "2", Name: "Google A", Type: providers.IDPTypeGoogle},
+		{ID: "3", Name: "Legacy", Type: providers.IDPType("SAML")},
+	}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
+		Return([]ncommon.NotificationSenderDTO{
+			{ID: "s1", Name: "SMS", Type: ncommon.NotificationSenderTypeMessage,
+				Provider: ncommon.MessageProviderTypeCustom},
+		}, (*tidcommon.ServiceError)(nil))
+
+	got, svcErr := s.svc.listInstances(context.Background(), "", serverconst.DefaultPageSize, 0)
+	s.Nil(svcErr)
+	s.Require().Len(got.Connections, 3) // unknown IdP type skipped; senders are already message-only
+	s.Equal(3, got.TotalResults)
+	s.Equal(1, got.StartIndex)
+	s.Equal(3, got.Count)
+
+	// Sorted by type, then lowercase name, then ID; case-insensitive name ordering.
+	s.Equal("s1", got.Connections[0].ID)
+	s.Equal("custom", got.Connections[0].Type)
+	s.Equal([]connectionCategory{categorySMSProvider}, got.Connections[0].Categories)
+	s.Equal("2", got.Connections[1].ID) // "Google A" before "google B"
+	s.Equal("google", got.Connections[1].Type)
+	s.Equal([]connectionCategory{categoryIdentityProvider}, got.Connections[1].Categories)
+	s.Equal("1", got.Connections[2].ID)
+}
+
+func (s *ServiceTestSuite) TestListInstancesPaginates() {
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).Return([]idp.BasicIDPDTO{
+		{ID: "1", Name: "A", Type: providers.IDPTypeGoogle},
+		{ID: "2", Name: "B", Type: providers.IDPTypeGoogle},
+		{ID: "3", Name: "C", Type: providers.IDPTypeGoogle},
+	}, (*tidcommon.ServiceError)(nil))
+
+	got, svcErr := s.svc.listInstances(context.Background(), categoryIdentityProvider, 1, 1)
+	s.Nil(svcErr)
+	s.Equal(3, got.TotalResults)
+	s.Equal(2, got.StartIndex)
+	s.Equal(1, got.Count)
+	s.Require().Len(got.Connections, 1)
+	s.Equal("2", got.Connections[0].ID)
+
+	// Page links carry the category filter.
+	s.Require().NotEmpty(got.Links)
+	for _, link := range got.Links {
+		s.Contains(link.Href, "category=identity-provider")
+	}
+}
+
+func (s *ServiceTestSuite) TestListInstancesOffsetPastEnd() {
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).Return([]idp.BasicIDPDTO{
+		{ID: "1", Name: "A", Type: providers.IDPTypeGoogle},
+	}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
+
+	got, svcErr := s.svc.listInstances(context.Background(), "", serverconst.DefaultPageSize, 10)
+	s.Nil(svcErr)
+	s.Equal(1, got.TotalResults)
+	s.Equal(11, got.StartIndex)
+	s.Equal(0, got.Count)
+	s.NotNil(got.Connections)
+	s.Empty(got.Connections)
+}
+
+func (s *ServiceTestSuite) TestListInstancesInvalidPagination() {
+	cases := []struct{ limit, offset int }{
+		{0, 0}, {-1, 0}, {serverconst.MaxPageSize + 1, 0}, {10, -1},
+	}
+	for _, tc := range cases {
+		_, svcErr := s.svc.listInstances(context.Background(), "", tc.limit, tc.offset)
+		s.Require().NotNil(svcErr, "limit=%d offset=%d", tc.limit, tc.offset)
+	}
+	s.mockIDP.AssertNotCalled(s.T(), "GetIdentityProviderList", mock.Anything)
+	s.mockNotif.AssertNotCalled(s.T(), "ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage)
+}
+
+func (s *ServiceTestSuite) TestListInstancesIdentityProviderSkipsSenders() {
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).Return([]idp.BasicIDPDTO{
+		{ID: "1", Name: "G", Type: providers.IDPTypeGoogle},
+	}, (*tidcommon.ServiceError)(nil))
+
+	got, svcErr := s.svc.listInstances(context.Background(), categoryIdentityProvider,
+		serverconst.DefaultPageSize, 0)
+	s.Nil(svcErr)
+	s.Len(got.Connections, 1)
+	s.mockNotif.AssertNotCalled(s.T(), "ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage)
+}
+
+func (s *ServiceTestSuite) TestListInstancesSMSSkipsIdPs() {
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
+		Return([]ncommon.NotificationSenderDTO{
+			{ID: "s1", Name: "SMS", Type: ncommon.NotificationSenderTypeMessage,
+				Provider: ncommon.MessageProviderTypeTwilio},
+		}, (*tidcommon.ServiceError)(nil))
+
+	got, svcErr := s.svc.listInstances(context.Background(), categorySMSProvider,
+		serverconst.DefaultPageSize, 0)
+	s.Nil(svcErr)
+	s.Require().Len(got.Connections, 1)
+	s.Equal("s1", got.Connections[0].ID)
+	s.mockIDP.AssertNotCalled(s.T(), "GetIdentityProviderList", mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestListInstancesError() {
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).
+		Return(([]idp.BasicIDPDTO)(nil), &tidcommon.InternalServerError)
+
+	_, svcErr := s.svc.listInstances(context.Background(), "", serverconst.DefaultPageSize, 0)
 	s.NotNil(svcErr)
 }
 
@@ -186,11 +301,12 @@ func (s *ServiceTestSuite) authToken(value string) []cmodels.Property {
 }
 
 func (s *ServiceTestSuite) TestListSMSByProviderFilters() {
-	s.mockNotif.On("ListSenders", mock.Anything).Return([]ncommon.NotificationSenderDTO{
-		{ID: "1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeTwilio},
-		{ID: "2", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeVonage},
-		{ID: "3", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeTwilio},
-	}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
+		Return([]ncommon.NotificationSenderDTO{
+			{ID: "1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeTwilio},
+			{ID: "2", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeVonage},
+			{ID: "3", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeTwilio},
+		}, (*tidcommon.ServiceError)(nil))
 
 	got, svcErr := s.svc.listSMSByProvider(context.Background(), ncommon.MessageProviderTypeTwilio)
 	s.Nil(svcErr)
@@ -198,32 +314,11 @@ func (s *ServiceTestSuite) TestListSMSByProviderFilters() {
 }
 
 func (s *ServiceTestSuite) TestListSMSByProviderError() {
-	s.mockNotif.On("ListSenders", mock.Anything).
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
 		Return(([]ncommon.NotificationSenderDTO)(nil), &tidcommon.InternalServerError)
 
 	_, svcErr := s.svc.listSMSByProvider(context.Background(), ncommon.MessageProviderTypeTwilio)
 	s.NotNil(svcErr)
-}
-
-func (s *ServiceTestSuite) TestSMSProviderCountsError() {
-	s.mockNotif.On("ListSenders", mock.Anything).
-		Return(([]ncommon.NotificationSenderDTO)(nil), &tidcommon.InternalServerError)
-
-	_, svcErr := s.svc.smsProviderCounts(context.Background())
-	s.NotNil(svcErr)
-}
-
-func (s *ServiceTestSuite) TestSMSProviderCountsIgnoresNonMessage() {
-	s.mockNotif.On("ListSenders", mock.Anything).Return([]ncommon.NotificationSenderDTO{
-		{ID: "1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeTwilio},
-		{ID: "2", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeTwilio},
-		{ID: "3", Type: ncommon.NotificationSenderTypeEmail, Provider: ncommon.MessageProviderTypeVonage},
-	}, (*tidcommon.ServiceError)(nil))
-
-	counts, svcErr := s.svc.smsProviderCounts(context.Background())
-	s.Nil(svcErr)
-	s.Equal(2, counts[ncommon.MessageProviderTypeTwilio])
-	s.Equal(0, counts[ncommon.MessageProviderTypeVonage])
 }
 
 func (s *ServiceTestSuite) TestGetSMSByProviderMismatchReturnsNotFound() {

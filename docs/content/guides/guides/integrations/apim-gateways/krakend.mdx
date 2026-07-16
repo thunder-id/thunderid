@@ -1,5 +1,6 @@
 ---
 title: Protect APIs on KrakenD with {{ProductName}}
+docType: guide
 description: Configure KrakenD API Gateway to validate JWTs issued by {{ProductName}} and enforce access control on your upstream APIs.
 sidebar_position: 1
 ---
@@ -15,14 +16,14 @@ This guide explains how to secure your APIs at the [KrakenD](https://www.krakend
 The guide covers two core integration approaches available in KrakenD:
 
 - **[Token Validation](#configure-jwt-token-validation-in-krakend):** Configure [KrakenD](https://www.krakend.io/) to validate incoming JWTs issued by <ProductName /> using the [`auth/validator`](https://www.krakend.io/docs/authorization/jwt-validation/) component, ensuring only authenticated requests access your APIs.
-- **[Scope-Based Authorization](#configure-scope-based-authorization-in-krakend):** Leverage <ProductName />'s [RBAC](/docs/next/guides/key-concepts/authorization/) capabilities to enforce strict, KrakenD-driven access control policies on upstream APIs.
+- **[Scope-Based Authorization](#configure-scope-based-authorization-in-krakend):** Leverage <ProductName />'s [RBAC](../../../../key-concepts/authorization) capabilities to enforce strict, KrakenD-driven access control policies on upstream APIs.
 
 
 ## Prerequisites
 
 Before you begin, ensure you have the following:
 
-- A running <ProductName /> installation. Follow [Get <ProductName />](/docs/next/guides/getting-started/get-thunderid) for download, setup, and start commands.
+- A running <ProductName /> installation. Follow [Get <ProductName />](../../../../getting-started/get-thunderid) for download, setup, and start commands.
 - [KrakenD](https://www.krakend.io/docs/overview/installing/) installed.
 - A backend REST API service running and accessible (for example, `http://localhost:8081`).
 - `curl` available in your terminal.
@@ -148,13 +149,13 @@ Add the `auth/validator` block inside the endpoint:
 }
 ```
 
-**Configuration reference** — see the full list of options in the [JWT validation docs](https://www.krakend.io/docs/authorization/jwt-validation/):
+**Configuration reference:** See the full list of options in the [JWT validation docs](https://www.krakend.io/docs/authorization/jwt-validation/):
 
 | Field | Value | Description |
 |---|---|---|
 | `alg` | `RS256` | Signing algorithm used by <ProductName /> |
 | `jwk_url` | `https://<THUNDERID_HOST>:<THUNDERID_PORT>/oauth2/jwks` | <ProductName /> JWKS endpoint for fetching public keys |
-| `disable_jwk_security` | `true` | Skips TLS certificate verification. Use only in local development — remove in production. |
+| `disable_jwk_security` | `true` | Skips TLS certificate verification. Use only in local development. Remove in production. |
 | `cache` | `true` | Caches JWKS keys to avoid fetching them on every request |
 
 Restart KrakenD to apply the changes:
@@ -166,7 +167,7 @@ krakend run -c krakend.json
 
 The log output confirms authentication is active:
 
-```
+```text
 KRAKEND INFO: Starting KrakenD v2.13.7
 KRAKEND INFO: [SERVICE: Gin] Listening on port: 8082
 KRAKEND DEBUG: [ENDPOINT: /api/items][JWTValidator] Validator enabled for this endpoint
@@ -174,14 +175,14 @@ KRAKEND DEBUG: [ENDPOINT: /api/items][JWTValidator] Validator enabled for this e
 
 ### Try It Out
 
-**Request without a token — expect `401 Unauthorized`:**
+**Request without a token, expect `401 Unauthorized`:**
 
 ```bash
 curl --location 'http://localhost:8082/api/items' \
   --header 'Content-Type: application/json'
 ```
 
-**Request with a valid <ProductName /> token — expect `200 OK`:**
+**Request with a valid <ProductName /> token, expect `200 OK`:**
 
 ```bash
 curl --location 'http://localhost:8082/api/items' \
@@ -193,7 +194,7 @@ curl --location 'http://localhost:8082/api/items' \
 
 JWT token validation confirms that a token is valid and was issued by <ProductName />. It does not control what the token holder is allowed to do. With the configuration from the previous section, KrakenD accepts any valid <ProductName /> token regardless of the application or its assigned permissions.
 
-Scope-based authorization adds a second layer of control. <ProductName /> embeds scopes in tokens based on the roles assigned to an application. KrakenD then checks those scopes on every request and rejects tokens that do not carry the required permissions. This lets you enforce scope-based access control — for example, restricting a read endpoint to tokens with `booking-api:item:read` and a write endpoint to tokens with `booking-api:item:write` — without changing the upstream service.
+Scope-based authorization adds a second layer of control. <ProductName /> embeds scopes in tokens based on the roles assigned to an application. KrakenD then checks those scopes on every request and rejects tokens that do not carry the required permissions. This lets you enforce scope-based access control, for example, restricting a read endpoint to tokens with `booking-api:item:read` and a write endpoint to tokens with `booking-api:item:write`, without changing the upstream service.
 
 The steps below build on the JWT Token Validation from the previous section. You will define a Resource Server, a Resource, and actions in <ProductName /> to model your API permissions. Then bundle them into a role, assign the role to your application, and update the KrakenD configuration to enforce scope validation.
 
@@ -203,7 +204,7 @@ The steps below build on the JWT Token Validation from the previous section. You
 
 A Resource Server represents your API in <ProductName />. 
 The Resource Server groups all resources and actions under a single identifier and acts as the audience for tokens issued to clients of that API. 
-For a full reference, see [Resource Servers](/docs/next/guides/guides/resource-servers).
+For a full reference, see [Resource Servers](../../../resource-servers).
 
 **Using the Console:**
 
@@ -320,7 +321,7 @@ Add `scopes`, `scopes_key`, and `scopes_matcher` to the `auth/validator` block y
 | Field | Value | Description |
 |---|---|---|
 | `scopes_key` | `scope` | JWT claim that stores scopes |
-| `scopes_matcher` | `any` | `any` — the token needs at least one matching scope; `all` — the token must carry every listed scope |
+| `scopes_matcher` | `any` | `any`: the token needs at least one matching scope; `all`: the token must carry every listed scope |
 | `scopes` | `["booking-api:item:read"]` | Required scopes to access this endpoint |
 
 Restart KrakenD to apply:
@@ -358,7 +359,7 @@ The response confirms the scope is present:
 
 #### Call the Protected API
 
-**With a token that has the required scope — expect `200 OK`:**
+**With a token that has the required scope, expect `200 OK`:**
 
 ```bash
 curl --location 'http://localhost:8082/api/items' \
@@ -366,7 +367,7 @@ curl --location 'http://localhost:8082/api/items' \
   --header 'Content-Type: application/json'
 ```
 
-**With a token missing the required scope — expect `403 Forbidden`:**
+**With a token missing the required scope, expect `403 Forbidden`:**
 
 ```bash
 curl --location 'http://localhost:8082/api/items' \

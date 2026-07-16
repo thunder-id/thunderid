@@ -1,7 +1,8 @@
 ---
 title: Accessing Protected APIs
+docType: guide
 displayed_sidebar: browserSdkSidebar
-description: Make authenticated API requests using the Browser SDK
+description: Make authenticated HTTP requests from a browser application using the Browser SDK's built-in HTTP client.
 ---
 
 # Accessing Protected APIs
@@ -128,9 +129,9 @@ async function fetchData() {
 }
 ```
 
-You can also use [Event Hooks](/docs/next/sdks/browser/apis/hooks) to track HTTP request lifecycle events globally:
+You can also use [Event Hooks](../../apis/hooks) to track HTTP request lifecycle events globally:
 
-```js
+```javascript
 import { Hooks } from '@thunderid/browser'
 
 auth.on(Hooks.HttpRequestError, (error) => {

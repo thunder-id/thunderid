@@ -101,12 +101,13 @@ export interface IdentityProviderProperty {
  *
  * @public
  * @remarks
- * This model is returned by GET /identity-providers (list endpoint).
+ * This model is returned by {@link useIdentityProviders}, backed by
+ * GET /connections?category=identity-provider.
  * For full details including properties, use {@link IdentityProvider}.
  *
  * @example
  * ```typescript
- * // Example response from GET /identity-providers
+ * // Example data returned by useIdentityProviders()
  * const idpList: BasicIdentityProvider[] = [
  *   {
  *     id: 'ec08e7c1-8f9c-4a89-b40c-886a938f7707',

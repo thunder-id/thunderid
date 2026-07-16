@@ -1,18 +1,19 @@
 ---
 title: Configure It Yourself
-description: Build the AI agent identity model manually instead of importing the Wayfinder bundle — resource servers, roles, users, application, agent, and the agent authentication flow.
+docType: use-case
+description: Build the AI agent identity model manually instead of importing the Wayfinder bundle, resource servers, roles, users, application, agent, and the agent authentication flow.
 sidebar_position: 6
 ---
 
 # Configure It Yourself
 
-Use this page to build the Wayfinder AI agent setup manually instead of importing the declarative bundle from [Try It Out](../try-it-out). Pick this path when you want to see exactly what gets created, adapt the setup to your own project, or learn the moving parts step by step. The end state is identical — every walkthrough works against either path.
+Use this page to build the Wayfinder AI agent setup manually instead of importing the declarative bundle from [Try It Out](../try-it-out/). Pick this path when you want to see exactly what gets created, adapt the setup to your own project, or learn the moving parts step by step. The end state is identical. Every walkthrough works against either path.
 
-The first section is the shared foundation — required regardless of which walkthroughs you plan to exercise. The remaining sections build on it.
+The first section is the shared foundation, required regardless of which walkthroughs you plan to exercise. The remaining sections build on it.
 
-- [Set Up the Foundation](#set-up-the-foundation) — resource servers, roles, demo users, and the `WAYFINDER` application.
-- [Register the Wayfinder Concierge Agent](#register-the-wayfinder-concierge-agent) — needed for [Acting on Its Own](../try-it-out/act-on-its-own) and [Acting on Behalf of a User](../try-it-out/act-on-behalf-of-user).
-- [Build the Agent Authentication Flow](#build-the-agent-authentication-flow) — drives the OBO consent screen used by [Acting on Behalf of a User](../try-it-out/act-on-behalf-of-user).
+- [Set Up the Foundation](#set-up-the-foundation): resource servers, roles, demo users, and the `WAYFINDER` application.
+- [Register the Wayfinder Concierge Agent](#register-the-wayfinder-concierge-agent): needed for [Acting on Its Own](../try-it-out/act-on-its-own) and [Acting on Behalf of a User](../try-it-out/act-on-behalf-of-user).
+- [Build the Agent Authentication Flow](#build-the-agent-authentication-flow): drives the OBO consent screen used by [Acting on Behalf of a User](../try-it-out/act-on-behalf-of-user).
 
 ## Set Up the Foundation
 
@@ -57,11 +58,11 @@ The foundation creates the two resource servers, three roles, two demo users, an
    | -------- | -------------------- |
    | `access` | `agent:access`       |
 
-   See [Resource Servers](/docs/next/guides/guides/resource-servers).
+   See [Resource Servers](../../../guides/guides/resource-servers).
 
 2. **Create the `wayfinder` resource server.**
 
-   Invoke the **Resource Management API** again. The identifier is `http://localhost:8787/mcp` — a URL-shaped identifier per [RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707) that matches what the Wayfinder MCP server advertises in `/.well-known/oauth-protected-resource`. MCP Inspector reads that metadata and passes the value back as `resource=...` on `/oauth2/token`; <ProductName /> would reject the request with `invalid_target` otherwise. This resource server protects both the REST surface (`/api/*`) and the MCP surface (`/mcp`) of the Wayfinder server — both check the same `wayfinder:booking:*` permissions:
+   Invoke the **Resource Management API** again. The identifier is `http://localhost:8787/mcp`, a URL-shaped identifier per [RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707) that matches what the Wayfinder MCP server advertises in `/.well-known/oauth-protected-resource`. MCP Inspector reads that metadata and passes the value back as `resource=...` on `/oauth2/token`; <ProductName /> would reject the request with `invalid_target` otherwise. This resource server protects both the REST surface (`/api/*`) and the MCP surface (`/mcp`) of the Wayfinder server. Both check the same `wayfinder:booking:*` permissions:
 
    ```bash
    curl -kL -X POST https://localhost:8090/resource-servers \
@@ -86,7 +87,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
      -d '{ "name": "Booking", "handle": "booking" }'
    ```
 
-   Then add four actions under the resource — repeat the call below for each handle (`read`, `create`, `cancel`, `recommend`):
+   Then add four actions under the resource. Repeat the call below for each handle (`read`, `create`, `cancel`, `recommend`):
 
    ```bash
    curl -kL -X POST https://localhost:8090/resource-servers/<wayfinder-rs-id>/resources/<booking-resource-id>/actions \
@@ -165,7 +166,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
      }'
    ```
 
-   See [Authorization](/docs/next/guides/key-concepts/authorization).
+   See [Authorization](../../../guides/key-concepts/authorization).
 
 6. **Create the `Customer` user type.**
 
@@ -179,7 +180,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    | `given_name`  | string | No       |                                        |
    | `family_name` | string | No       |                                        |
 
-   See [User Types](/docs/next/guides/guides/users/user-types).
+   See [User Types](../../../guides/guides/users/user-types).
 
 7. **Create the two demo users.**
 
@@ -190,7 +191,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    | `john.doe`   | `john.doe`   |
    | `jane.smith` | `jane.smith` |
 
-   See [Manage Users](/docs/next/guides/guides/users/manage-users).
+   See [Manage Users](../../../guides/guides/users/manage-users).
 
 8. **Assign user roles.**
 
@@ -209,7 +210,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    | PKCE                | Required                                       |
    | Allowed user types  | `Customer`                                     |
 
-   See [Manage Applications](/docs/next/guides/guides/applications/manage-applications).
+   See [Manage Applications](../../../guides/guides/applications/manage-applications).
 
 ## Register the Wayfinder Concierge Agent
 
@@ -223,7 +224,7 @@ The Concierge runs as a first-class agent in <ProductName />. It needs its own c
    - Under **Protocol** settings, enable the **Authorization Code** grant. Client Credentials is on by default for agents.
    - Add the redirect URI `{{WayFinderSampleUrl}}/agent-callback`.
 
-   See [Manage Agents](/docs/next/guides/guides/agents/manage-agents) and [Agent Authentication](/docs/next/guides/guides/agents/agent-authentication).
+   See [Manage Agents](../../../guides/guides/agents/manage-agents) and [Agent Authentication](../../../guides/guides/agents/agent-authentication).
 
 2. **Assign the `Recommender` role to the agent.**
 
@@ -245,9 +246,9 @@ Navigate to **Flows** and create a flow with these steps:
 
 Attach the flow to the `WAYFINDER-CONCIERGE` agent (set `auth_flow_handle` on the agent to the flow's handle).
 
-The complete flow definition is in the Wayfinder sample distribution at `thunderid-config/redirect/thunderid-config.yaml` under the `wayfinder-agent-auth-flow` entry — copy it as a reference.
+The complete flow definition is in the Wayfinder sample distribution at `thunderid-config/redirect/thunderid-config.yaml` under the `wayfinder-agent-auth-flow` entry: copy it as a reference.
 
-See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow).
+See [Build a Flow](../../../guides/guides/flows/build-a-flow).
 
 ## Start the Sample
 

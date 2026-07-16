@@ -1,10 +1,12 @@
 ---
 title: Secure ThunderID Using a Third-Party Identity Provider
+docType: guide
+description: Learn about Secure ThunderID Using a Third-Party Identity Provider and how to apply it in configuration, integration, and operational workflows.
 ---
 
-# Secure ThunderID Using a Third-Party Identity Provider
+# Secure <ProductName /> Using a Third-Party Identity Provider
 
-By default, <ProductName /> only accepts tokens it issued itself. Your users might authenticate against an external authorization server — another <ProductName /> instance, an enterprise identity provider, or any standard OIDC provider. In that case, those users cannot call <ProductName />'s own APIs or sign in to the <ProductName /> Console unless <ProductName /> can validate their tokens.
+By default, <ProductName /> only accepts tokens it issued itself. Your users might authenticate against an external authorization server: another <ProductName /> instance, an enterprise identity provider, or any standard OIDC provider. In that case, those users cannot call <ProductName />'s own APIs or sign in to the <ProductName /> Console unless <ProductName /> can validate their tokens.
 
 The trusted issuer feature enables this. You configure <ProductName /> to trust a specific external authorization server, and <ProductName /> fetches that server's public signing keys to validate incoming tokens locally. <ProductName /> acts as the resource server: it accepts and validates tokens the external server issued, without issuing its own tokens for those users or duplicating the user directory.
 
@@ -50,7 +52,7 @@ server:
 | `required_claims` | No | A list of claims that every accepted token must contain, each paired with an expected value. Tokens that are missing a required claim or carry a different value are rejected. Use this to scope accepted tokens further, for example to a specific organization unit. |
 
 
-The JWKS cache time-to-live applies to signing keys fetched from this endpoint and is configured at `server.security.jwks_cache_ttl`, not inside the `trusted_issuer` block. See [Security Configuration](/docs/next/guides/getting-started/configuration#security-configuration) for details.
+The JWKS cache time-to-live applies to signing keys fetched from this endpoint and is configured at `server.security.jwks_cache_ttl`, not inside the `trusted_issuer` block. See [Security Configuration](../../getting-started/configuration#security-configuration) for details.
 
 ## Configure the Console
 
@@ -120,8 +122,8 @@ If any check fails, <ProductName /> rejects the token.
 
 Configuring `server.security.trusted_issuer` does not stop <ProductName /> from accepting the tokens it issues itself. <ProductName /> selects the verifier based on the token's `iss` claim:
 
-- `iss` matches `trusted_issuer.issuer` — the token is verified against the central server's JWKS endpoint.
-- `iss` matches this <ProductName /> instance's own issuer (configured at `jwt.issuer`, defaulting to the instance's public URL) — the token is verified with the local signing key.
+- `iss` matches `trusted_issuer.issuer`: the token is verified against the central server's JWKS endpoint.
+- `iss` matches this <ProductName /> instance's own issuer (configured at `jwt.issuer`, defaulting to the instance's public URL): the token is verified with the local signing key.
 - Any other `iss` value, or a token whose payload cannot be parsed, is rejected.
 
 This means service accounts, the system bootstrap token, and Console sessions that are not delegated all continue to work unchanged. Verification never falls back between verifiers: a token routed to the JWKS verifier that fails signature validation is rejected immediately. <ProductName /> does not retry it against the local signing key.
@@ -173,6 +175,6 @@ configuration:
 
 ## Related Guides
 
-- [Resource Indicators](../protocols/oauth-oidc/resource-indicators) — Use the `resource` parameter to set the `aud` claim on tokens issued by the central authorization server.
-- [Resource Servers](../resource-servers) — Define resource servers with identifiers and permissions.
-- [Security Configuration](/docs/next/guides/getting-started/configuration#security-configuration) — Configure JWKS cache TTL and other security settings.
+- [Resource Indicators](../protocols/oauth-oidc/resource-indicators), use the `resource` parameter to set the `aud` claim on tokens issued by the central authorization server.
+- [Resource Servers](../resource-servers), define resource servers with identifiers and permissions.
+- [Security Configuration](../../getting-started/configuration#security-configuration), configure JWKS cache TTL and other security settings.

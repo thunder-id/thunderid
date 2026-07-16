@@ -1,12 +1,13 @@
 ---
 title: Identity Concepts
-description: How the Wayfinder AI agent sample maps to product concepts — user types, resource servers, permissions, roles, application, agent, and flows.
+docType: use-case
+description: "How the Wayfinder AI agent sample maps to product concepts: user types, resource servers, permissions, roles, application, agent, and flows."
 sidebar_position: 5
 ---
 
 # Identity Concepts
 
-This page explains the identity concepts behind the AI agent sample you set up in [Try It Out](../try-it-out). Each section describes one <ProductName /> concept and shows how the sample uses it.
+This page explains the identity concepts behind the AI agent sample you set up in [Try It Out](../try-it-out/). Each section describes one <ProductName /> concept and shows how the sample uses it.
 
 ## Organization
 
@@ -14,9 +15,9 @@ This page explains the identity concepts behind the AI agent sample you set up i
 
 ## User Types
 
-A user type defines who can exist in the system and what attributes they carry. Each user record belongs to exactly one user type. Wayfinder defines a `Customer` user type for the two demo consumers — John Doe and Jane Smith — with standard attributes like username, email, and name.
+A user type defines who can exist in the system and what attributes they carry. Each user record belongs to exactly one user type. Wayfinder defines a `Customer` user type for the two demo consumers, John Doe and Jane Smith, with standard attributes like username, email, and name.
 
-See [User Types](/docs/next/guides/guides/users/user-types).
+See [User Types](../../../guides/guides/users/user-types).
 
 ## Resources and Permissions
 
@@ -24,7 +25,7 @@ The **AI Agent API** and the **Wayfinder Server** both need protection in the sa
 
 A **resource server** groups the APIs of one backend. Each resource server defines one or more **resources**, each resource defines **actions**, and <ProductName /> automatically generates one permission per action. When a resource server has a handle, the complete permission string uses the form `<resource-server-handle>:<resource>:<action>`.
 
-```
+```text
 wayfinder-agent                         (Resource Server)
 └── agent                               (Resource)
     └── access     →  agent:access      (Permission)
@@ -39,7 +40,7 @@ wayfinder                               (Resource Server)
 
 `wayfinder` protects both the booking REST API on `/api/*` and the MCP tools on `/mcp`. The Wayfinder Server checks the same `wayfinder:booking:*` permissions on both surfaces in scope mode. In AuthZEN mode, the MCP server sends the same complete permission string as `action.name` in an AuthZEN access evaluation request.
 
-Permissions are included in access tokens. See [Resource Servers](/docs/next/guides/guides/resource-servers).
+Permissions are included in access tokens. See [Resource Servers](../../../guides/guides/resource-servers).
 
 ## Roles
 
@@ -51,27 +52,27 @@ A role bundles permissions for a class of principal. A user's or agent's effecti
 
 John Doe carries both user roles; Jane Smith carries only `Booking User`. The `Recommender` role is assigned to the `WAYFINDER-CONCIERGE` agent, not to a user.
 
-See [Authorization](/docs/next/guides/key-concepts/authorization).
+See [Authorization](../../../guides/key-concepts/authorization).
 
 ## Application
 
-An application is the OAuth2 client that <ProductName /> issues tokens to. Wayfinder Web is registered as `WAYFINDER` — a public, PKCE-enforced browser client.
+An application is the OAuth2 client that <ProductName /> issues tokens to. Wayfinder Web is registered as `WAYFINDER`, a public, PKCE-enforced browser client.
 
-See [Manage Applications](/docs/next/guides/guides/applications/manage-applications).
+See [Manage Applications](../../../guides/guides/applications/manage-applications).
 
 ## Agent
 
 An agent is a first-class non-human principal in <ProductName /> with its own credentials. The Wayfinder Concierge is registered as `WAYFINDER-CONCIERGE`, with two grants enabled:
 
-- `client_credentials` — for the agent's own M2M token, used to call browsing tools.
-- `authorization_code` (with PKCE) — for the on-behalf-of flow, where the user consents and the agent calls mutating tools as the user.
+- `client_credentials`: for the agent's own M2M token, used to call browsing tools.
+- `authorization_code` (with PKCE): for the on-behalf-of flow, where the user consents and the agent calls mutating tools as the user.
 
-See [Manage Agents](/docs/next/guides/guides/agents/manage-agents) and [Agent Authentication](/docs/next/guides/guides/agents/agent-authentication).
+See [Manage Agents](../../../guides/guides/agents/manage-agents) and [Agent Authentication](../../../guides/guides/agents/agent-authentication).
 
 ## Flows
 
 A flow is the sequence of steps a user moves through when signing in or granting consent. Wayfinder Web uses the bundled `default-flow` for sign-in. The agent uses a separate **Wayfinder Agent Authentication Flow** that drives the OBO consent screen.
 
-The consent screen surfaces each requested `wayfinder:booking:*` permission as an individual toggle. The user picks which ones to grant, and the issued token carries only what they ticked — the agent cannot widen its access after the fact. The resulting OBO token identifies *both* the user (as the subject) and the agent (as the actor), so downstream services know the request was made by an agent acting for that user. The token's effective permissions are the intersection of what the user holds and what the user just consented to.
+The consent screen surfaces each requested `wayfinder:booking:*` permission as an individual toggle. The user picks which ones to grant, and the issued token carries only what they ticked. The agent cannot widen its access after the fact. The resulting OBO token identifies *both* the user (as the subject) and the agent (as the actor), so downstream services know the request was made by an agent acting for that user. The token's effective permissions are the intersection of what the user holds and what the user just consented to.
 
-See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow) and [Agent Authentication](/docs/next/guides/guides/agents/agent-authentication).
+See [Build a Flow](../../../guides/guides/flows/build-a-flow) and [Agent Authentication](../../../guides/guides/agents/agent-authentication).

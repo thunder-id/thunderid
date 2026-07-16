@@ -180,15 +180,6 @@ func (c *compositeResourceStore) CheckResourceServerNameExists(ctx context.Conte
 	)
 }
 
-// CheckResourceServerHandleExists checks whether a resource server handle exists in either store.
-func (c *compositeResourceStore) CheckResourceServerHandleExists(
-	ctx context.Context, handle string) (bool, error) {
-	return declarativeresource.CompositeBooleanCheckHelper(
-		func() (bool, error) { return c.fileStore.CheckResourceServerHandleExists(ctx, handle) },
-		func() (bool, error) { return c.dbStore.CheckResourceServerHandleExists(ctx, handle) },
-	)
-}
-
 // CheckResourceServerIdentifierExists checks whether a resource server identifier exists in either store.
 func (c *compositeResourceStore) CheckResourceServerIdentifierExists(
 	ctx context.Context, identifier string) (bool, error) {
@@ -196,29 +187,6 @@ func (c *compositeResourceStore) CheckResourceServerIdentifierExists(
 		func() (bool, error) { return c.fileStore.CheckResourceServerIdentifierExists(ctx, identifier) },
 		func() (bool, error) { return c.dbStore.CheckResourceServerIdentifierExists(ctx, identifier) },
 	)
-}
-
-// GetResourceServerByHandle retrieves a resource server by handle from the composite store.
-func (c *compositeResourceStore) GetResourceServerByHandle(
-	ctx context.Context, handle string) (providers.ResourceServer, error) {
-	server, err := declarativeresource.CompositeGetHelper(
-		func() (providers.ResourceServer, error) {
-			s, err := c.dbStore.GetResourceServerByHandle(ctx, handle)
-			if err == nil {
-				s.IsReadOnly = false
-			}
-			return s, err
-		},
-		func() (providers.ResourceServer, error) {
-			s, err := c.fileStore.GetResourceServerByHandle(ctx, handle)
-			if err == nil {
-				s.IsReadOnly = true
-			}
-			return s, err
-		},
-		errResourceServerNotFound,
-	)
-	return server, err
 }
 
 // GetResourceServerByIdentifier retrieves a resource server by identifier from the composite store.

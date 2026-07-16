@@ -671,6 +671,28 @@ func (suite *InboundClientServiceTestSuite) TestValidateTokenEndpointAuthMethod_
 	assert.ErrorIs(suite.T(), err, ErrOAuthClientCredentialsCannotUseNoneAuth)
 }
 
+func (suite *InboundClientServiceTestSuite) TestValidateTokenEndpointAuthMethod_NoneJWTBearerRejected() {
+	p := &providers.OAuthProfile{
+		TokenEndpointAuthMethod: "none",
+		PublicClient:            true,
+		GrantTypes:              []string{string(providers.GrantTypeJWTBearer)},
+	}
+	err := validateTokenEndpointAuthMethod(p, false)
+	assert.ErrorIs(suite.T(), err, ErrOAuthClientJWTBearerCannotUseNoneAuth)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateTokenEndpointAuthMethod_NoneIDJAGConfigRejected() {
+	p := &providers.OAuthProfile{
+		TokenEndpointAuthMethod: "none",
+		PublicClient:            true,
+		Token: &providers.OAuthTokenConfig{
+			IDJAG: &providers.IDJAGConfig{Enabled: true},
+		},
+	}
+	err := validateTokenEndpointAuthMethod(p, false)
+	assert.ErrorIs(suite.T(), err, ErrOAuthClientIDJAGCannotUseNoneAuth)
+}
+
 // validateUserInfoConfig — happy paths
 
 func (suite *InboundClientServiceTestSuite) TestValidateUserInfoConfig_NilUserInfo() {
@@ -1093,6 +1115,55 @@ func (suite *InboundClientServiceTestSuite) TestResolveAssertion_InputOverridesD
 		&inboundmodel.AssertionConfig{ValidityPeriod: 600},
 	)
 	assert.Equal(suite.T(), int64(1200), out.ValidityPeriod)
+}
+
+// ----- resolveIDJAG -----
+
+func (suite *InboundClientServiceTestSuite) TestResolveIDJAG_NilReturnsNil() {
+	assert.Nil(suite.T(), resolveIDJAG(nil))
+	assert.Nil(suite.T(), resolveIDJAG(&providers.OAuthTokenConfig{}))
+}
+
+func (suite *InboundClientServiceTestSuite) TestResolveIDJAG_NegativeValidityDefaults() {
+	out := resolveIDJAG(&providers.OAuthTokenConfig{
+		IDJAG: &providers.IDJAGConfig{
+			Enabled:          true,
+			AllowedAudiences: []string{"https://rs.example.com"},
+			ValidityPeriod:   -5,
+		},
+	})
+	assert.NotNil(suite.T(), out)
+	assert.True(suite.T(), out.Enabled)
+	assert.Equal(suite.T(), providers.DefaultIDJAGValidityPeriod, out.ValidityPeriod)
+	assert.Equal(suite.T(), []string{"https://rs.example.com"}, out.AllowedAudiences)
+}
+
+func (suite *InboundClientServiceTestSuite) TestResolveIDJAG_ZeroValidityDefaults() {
+	out := resolveIDJAG(&providers.OAuthTokenConfig{
+		IDJAG: &providers.IDJAGConfig{ValidityPeriod: 0},
+	})
+	assert.NotNil(suite.T(), out)
+	assert.Equal(suite.T(), providers.DefaultIDJAGValidityPeriod, out.ValidityPeriod)
+}
+
+func (suite *InboundClientServiceTestSuite) TestResolveIDJAG_PositiveValidityPreserved() {
+	out := resolveIDJAG(&providers.OAuthTokenConfig{
+		IDJAG: &providers.IDJAGConfig{ValidityPeriod: 900},
+	})
+	assert.NotNil(suite.T(), out)
+	assert.Equal(suite.T(), int64(900), out.ValidityPeriod)
+}
+
+func (suite *InboundClientServiceTestSuite) TestResolveIDJAG_PropagatesEnabled() {
+	out := resolveIDJAG(&providers.OAuthTokenConfig{
+		IDJAG: &providers.IDJAGConfig{
+			Enabled:          true,
+			AllowedAudiences: []string{"https://rs.example.com"},
+		},
+	})
+	assert.NotNil(suite.T(), out)
+	assert.True(suite.T(), out.Enabled)
+	assert.Equal(suite.T(), []string{"https://rs.example.com"}, out.AllowedAudiences)
 }
 
 // ----- resolveOAuthTokens -----

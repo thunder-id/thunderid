@@ -1,43 +1,44 @@
 ---
 title: Verify Credential
+docType: use-case
 description: John presents his Sky Pass at the Skyline Lounge kiosk, which verifies it with OpenID4VP and grants access by tier.
 sidebar_position: 3
 ---
 
 # Verify Credential
 
-In this walkthrough, John presents the **Sky Pass** he holds in his wallet at the **Skyline Lounge** kiosk. The lounge is a separate relying party from Wayfinder — it never calls Wayfinder and stores nothing about John. It asks <ProductName /> to verify the presentation over OpenID4VP, reads only the claims it needs, and grants or denies entry based on the verified tier.
+In this walkthrough, John presents the **Sky Pass** he holds in his wallet at the **Skyline Lounge** kiosk. The lounge is a separate relying party from Wayfinder: it never calls Wayfinder and stores nothing about John. It asks <ProductName /> to verify the presentation over OpenID4VP, reads only the claims it needs, and grants or denies entry based on the verified tier.
 
 :::note Prerequisites
-Complete [Issue Credential](../issue-credential) first — the wallet must already hold a Sky Pass issued by this <ProductName /> instance.
+Complete [Issue Credential](../issue-credential) first: the wallet must already hold a Sky Pass issued by this <ProductName /> instance.
 :::
 
 :::info Background
-The [Decentralized Identity overview](../../overview) covers the issuer–holder–verifier trust triangle behind this use case.
+The [Decentralized Identity overview](../../overview) covers the issuer-holder-verifier trust triangle behind this use case.
 :::
 
 ## Try the Use Case
 
 1. Open the Skyline Lounge kiosk at `http://localhost:8795` and select **Present Sky Pass**. The kiosk shows a QR code.
-2. Open your wallet and scan it. The wallet fetches the signed presentation request from <ProductName /> and shows what the lounge is asking for: your **tier**, and optionally your **name**. The wallet may warn that the verifier is unverified — expected for a local setup. Proceed past the warning.
-3. Approve the presentation. The wallet discloses only those claims — nothing else from the pass — and posts the proof to <ProductName />.
+2. Open your wallet and scan it. The wallet fetches the signed presentation request from <ProductName /> and shows what the lounge is asking for: your **tier**, and optionally your **name**. The wallet may warn that the verifier is unverified, as expected for a local setup. Proceed past the warning.
+3. Approve the presentation. The wallet discloses only those claims, nothing else from the pass, and posts the proof to <ProductName />.
 4. The kiosk polls the result and shows the decision: **access granted** for a `Gold` or `Platinum` tier (with a greeting by name), or **access denied** otherwise.
 
 **What happened**
 
-- The lounge called <ProductName />'s `/openid4vp/initiate` with the `wayfinder-skypass` presentation definition and rendered the returned wallet URL as a QR. No OAuth client registration was needed — <ProductName /> signs the request object with its verifier key (`x509_san_dns`), which the wallet trusts.
+- The lounge called <ProductName />'s `/openid4vp/initiate` with the `wayfinder-skypass` presentation definition and rendered the returned wallet URL as a QR. No OAuth client registration was needed: <ProductName /> signs the request object with its verifier key (`x509_san_dns`), which the wallet trusts.
 - The wallet presented the pass with **selective disclosure**: the credential carries six claims, but the definition asks only for `tier` (mandatory) and `full_name` (optional), so that is all the lounge receives.
-- <ProductName /> checked the issuer signature, the holder key binding, and the nonce, then returned the verified claims. The lounge made the **access decision itself** — comparing the verified `tier` against its allowed list — proving the verifier trusts the proof, not a live call back to the issuer.
+- <ProductName /> checked the issuer signature, the holder key binding, and the nonce, then returned the verified claims. The lounge made the **access decision itself**, comparing the verified `tier` against its allowed list, proving the verifier trusts the proof, not a live call back to the issuer.
 
 ## Try a Variant
 
-- Set `ALLOWED_TIERS=Platinum` in the lounge's `.env` and re-verify John's `Gold` pass — access is now denied, decided entirely on the verified claim.
+- Set `ALLOWED_TIERS=Platinum` in the lounge's `.env` and re-verify John's `Gold` pass: access is now denied, decided entirely on the verified claim.
 - Edit the `wayfinder-skypass` presentation definition to also request `member_id`, and watch the wallet's disclosure prompt change to include it.
-- Skip the Skyline Lounge kiosk entirely: in the Console go to **Verifiable Credentials** → **Presentations**, click **Verify** next to the Skyline Lounge Access definition, and scan the QR that appears. The Console polls live and shows the verified claims — including the `tier` and `full_name` John disclosed — as soon as the wallet responds.
+- Skip the Skyline Lounge kiosk entirely: in the Console go to **Verifiable Credentials** → **Presentations**, click **Verify** next to the Skyline Lounge Access definition, and scan the QR that appears. The Console polls live and shows the verified claims, including the `tier` and `full_name` John disclosed, as soon as the wallet responds.
 - By default, the presentation definition accepts credentials from any issuer. To restrict it to a specific issuer, add the issuer's x509 certificate to `openid4vp.trusted_anchors` in the server configuration, then open the **Skyline Lounge Access** definition in the Console (**Verifiable Credentials → Presentations**), open the **Issuer Trust** tab, and select the certificate.
 
 ## Going Deeper
 
 - The [Decentralized Identity overview](../../overview) explains why offline, cryptographic verification removes the central intermediary that traditional federation requires.
 - Prefer to define the lounge's request manually? See [Set Up the Lounge Presentation](../configure-it-yourself#set-up-the-lounge-presentation) in Configure It Yourself.
-- Want the full protocol detail? The [OpenID for Verifiable Presentations](/docs/next/guides/guides/protocols/openid4vc/openid4vp) guide covers the presentation request, response token, and SD-JWT VC verification.
+- Want the full protocol detail? The [OpenID for Verifiable Presentations](../../../../guides/guides/protocols/openid4vc/openid4vp) guide covers the presentation request, response token, and SD-JWT VC verification.

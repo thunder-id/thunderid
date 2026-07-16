@@ -1,5 +1,6 @@
 ---
 title: Manage Resource Servers
+docType: guide
 sidebar_position: 14
 persona: iam
 description: Create and manage resource servers, resources, and actions to define permissions.
@@ -20,20 +21,20 @@ A resource server in <ProductName /> represents an API, service, or application 
 <ProductName /> derives permission strings from a three-level hierarchy:
 
 ```
-Resource Server (handle: "booking-api", delimiter: ":")
-├── Action: "list"           → Permission: "booking-api:list"
+Resource Server (identifier: "https://api.example.com/booking", delimiter: ":")
+├── Action: "list"           → Permission: "list"
 └── Resource: "reservations"
-    ├── Action: "create"     → Permission: "booking-api:reservations:create"
-    ├── Action: "view"       → Permission: "booking-api:reservations:view"
+    ├── Action: "create"     → Permission: "reservations:create"
+    ├── Action: "view"       → Permission: "reservations:view"
     └── Resource: "online"
-        └── Action: "create" → Permission: "booking-api:reservations:online:create"
+        └── Action: "create" → Permission: "reservations:online:create"
 ```
 
-Permission strings use one of two forms. Flat permissions follow `{rs-handle}{delimiter}{action-handle}` (for example, `booking-api:list`). Hierarchical permissions follow `{rs-handle}{delimiter}{resource-handle}{delimiter}{action-handle}` (for example, `booking-api:reservations:create`). The resource server handle always prefixes the permission string.
+Permission strings use one of two forms. Flat permissions, for server-level actions, are just the `{action-handle}` (for example, `list`). Hierarchical permissions follow `{resource-handle}{delimiter}{action-handle}` (for example, `reservations:create`). Permission strings are not prefixed by the resource server; the resource server is identified by its `identifier`, which becomes the access token audience.
 
-- **Resource Server** — container for all resources and actions. Requires a unique `handle` and an optional `identifier`. When the identifier is set to an absolute URI, the resource server is used in [resource indicator](../resource-indicators) flows (RFC 8707).
-- **Resource** — a named entity within a resource server. Resources can nest to form hierarchies.
-- **Action** — an operation that can be performed. Actions can exist at the resource server level (global) or within a specific resource.
+- **Resource Server**: container for all resources and actions. Requires a unique `identifier`. When the identifier is set to an absolute URI, the resource server is used in [resource indicator](../protocols/oauth-oidc/resource-indicators) flows (RFC 8707).
+- **Resource**: a named entity within a resource server. Resources can nest to form hierarchies.
+- **Action**: an operation that can be performed. Actions can exist at the resource server level (global) or within a specific resource.
 
 ## Create a Resource Server
 
@@ -46,7 +47,6 @@ curl -kL -X POST https://localhost:8090/resource-servers \
   -d '{
     "name": "Booking API",
     "description": "Handles reservation operations",
-    "handle": "booking-api",
     "identifier": "https://api.example.com/booking",
     "ouId": "<organization-unit-id>",
     "delimiter": ":"
@@ -60,7 +60,6 @@ curl -kL -X POST https://localhost:8090/resource-servers \
   "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "name": "Booking API",
   "description": "Handles reservation operations",
-  "handle": "booking-api",
   "identifier": "https://api.example.com/booking",
   "ouId": "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87",
   "delimiter": ":"
@@ -72,14 +71,13 @@ curl -kL -X POST https://localhost:8090/resource-servers \
 | Field | Required | Description |
 |-------|----------|-------------|
 | `name` | Yes | Display name for the resource server. Must be unique. |
-| `handle` | No | Immutable prefix for all permission strings. Must be unique if provided. Use lowercase with hyphens (for example, `booking-api`). |
-| `identifier` | No | Optional identifier for the resource server. Must be unique if provided. When set to an absolute URI (for example, `https://api.example.com/booking`), the resource server is used in RFC 8707 resource indicator flows and the identifier becomes the access token audience claim value. |
+| `identifier` | Yes | Unique identifier for the resource server. When set to an absolute URI (for example, `https://api.example.com/booking`), the resource server is used in RFC 8707 resource indicator flows and the identifier becomes the access token audience claim value. |
 | `ouId` | Yes | Organization unit ID. |
 | `delimiter` | No | Character that separates hierarchy levels in permission strings. Defaults to `:`. Immutable after creation. Allowed characters: `a-z A-Z 0-9 . _ : - /`. |
 | `description` | No | Description of the resource server. |
 
 :::note
-The `handle` and `delimiter` fields cannot be changed after creation. Plan these values before creating the resource server.
+The `delimiter` field cannot be changed after creation. Plan this value before creating the resource server.
 :::
 
 ## Define Permissions
@@ -109,11 +107,11 @@ curl -kL -X POST https://localhost:8090/resource-servers/<resource-server-id>/ac
   "name": "List Bookings",
   "description": "Permission to list all bookings",
   "handle": "list",
-  "permission": "booking-api:list"
+  "permission": "list"
 }
 ```
 
-The resulting permission is `booking-api:list` — the resource server handle followed by the action handle.
+The resulting permission is `list`. A server-level action is just the action handle.
 
 ### Hierarchical Permissions
 
@@ -143,7 +141,7 @@ curl -kL -X POST https://localhost:8090/resource-servers/<resource-server-id>/re
   }'
 ```
 
-The resulting permission is `booking-api:reservations:create`.
+The resulting permission is `reservations:create`.
 
 **3. Create nested resources (optional):**
 
@@ -160,7 +158,7 @@ curl -kL -X POST https://localhost:8090/resource-servers/<resource-server-id>/re
   }'
 ```
 
-Actions on this nested resource produce permissions like `booking-api:reservations:online:create`.
+Actions on this nested resource produce permissions like `reservations:online:create`.
 
 :::note
 The `handle` and `parent` fields on a resource are immutable after creation.
@@ -184,7 +182,7 @@ curl -kL https://localhost:8090/resource-servers/<resource-server-id> \
 
 ## Update a Resource Server
 
-Update the name, description, identifier, or organization unit. The `handle` and `delimiter` cannot be changed.
+Update the name, description, identifier, or organization unit. The `delimiter` cannot be changed.
 
 ```bash
 curl -kL -X PUT https://localhost:8090/resource-servers/<resource-server-id> \
@@ -295,12 +293,12 @@ curl -kL -X DELETE https://localhost:8090/resource-servers/<resource-server-id>/
 
 ## Best Practices
 
-- **Plan handle names before creation.** The `handle` on resource servers, resources, and actions is immutable. Use lowercase with hyphens for readability (for example, `booking-api`, `reservations`, `create`).
-- **Use absolute URIs as identifiers for RFC 8707.** The `identifier` field accepts any string, but only resource servers with absolute URI identifiers (such as `https://api.example.com/booking`) are used in [resource indicator](../resource-indicators) flows. Set a URI identifier if you need audience-restricted access tokens.
+- **Plan handle names before creation.** The `handle` on resources and actions is immutable, as is the resource server `delimiter`. Use lowercase with hyphens for readability (for example, `reservations`, `create`).
+- **Use absolute URIs as identifiers for RFC 8707.** The `identifier` field accepts any string, but only resource servers with absolute URI identifiers (such as `https://api.example.com/booking`) are used in [resource indicator](../protocols/oauth-oidc/resource-indicators) flows. Set a URI identifier if you need audience-restricted access tokens.
 - **Create one resource server per API boundary.** Separate resource servers for different microservices or applications produce cleaner permission models and more targeted access tokens.
 - **Choose the delimiter before creation.** The delimiter separates hierarchy levels in permission strings and cannot be changed. The colon (`:`) is the most common choice.
 
 ## Next Steps
 
-- [Resource Indicators](../resource-indicators) — request audience-restricted access tokens targeting specific resource servers.
-- [Organization Units](../organization-units) — organize resource servers within organizational boundaries.
+- [Resource Indicators](../protocols/oauth-oidc/resource-indicators), request audience-restricted access tokens targeting specific resource servers.
+- [Organization Units](../organization-units), organize resource servers within organizational boundaries.

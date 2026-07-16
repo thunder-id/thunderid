@@ -1,7 +1,8 @@
 ---
 title: HttpClient
+docType: reference
 displayed_sidebar: javascriptSdkSidebar
-description: Abstract HTTP client base class with handler lifecycle and callbacks
+description: Abstract HTTP client base class with handler lifecycle, callbacks, and pluggable transport implementation.
 ---
 
 # `HttpClient`
@@ -36,7 +37,7 @@ class FetchHttpClient extends HttpClient {
 
 ## Abstract Methods
 
-#### `transport<T>(config)`
+### `transport<T>(config)`
 
 Implement the actual HTTP transport. Called by `request()` after handler and callback checks.
 

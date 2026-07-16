@@ -1,13 +1,14 @@
 ---
-title: DPoP — Sender-Constrained Tokens
+title: "DPoP: Sender-Constrained Tokens"
+docType: reference
 sidebar_position: 3
-description: RFC 9449 Demonstrating Proof-of-Possession in {{ProductName}} — bind access and refresh tokens to a client-held key so stolen tokens are useless without the key.
+description: RFC 9449 Demonstrating Proof-of-Possession in {{ProductName}}, to bind access and refresh tokens to a client-held key so stolen tokens are useless without the key.
 ---
 import { DPoPDiagram } from '../../../../../src/components/OAuthFlowDiagrams';
 
-# DPoP — Sender-Constrained Tokens
+# DPoP: Sender-Constrained Tokens
 
-**Demonstrating Proof-of-Possession at the Application Layer** ([RFC 9449](https://datatracker.ietf.org/doc/html/rfc9449)) — DPoP — binds an access token to a public key held by the client. <ProductName /> embeds a thumbprint of the client's key in the token's `cnf.jkt` claim. The resource server then requires every request to carry a fresh DPoP **proof JWT** signed with the matching private key. A token stolen in transit is useless without the private key.
+**Demonstrating Proof-of-Possession at the Application Layer** ([RFC 9449](https://datatracker.ietf.org/doc/html/rfc9449)) (DPoP) binds an access token to a public key held by the client. <ProductName /> embeds a thumbprint of the client's key in the token's `cnf.jkt` claim. The resource server then requires every request to carry a fresh DPoP **proof JWT** signed with the matching private key. A token stolen in transit is useless without the private key.
 
 DPoP is an alternative to mutual TLS bound tokens (RFC 8705, not supported in <ProductName />) that works at the application layer without TLS client certificates.
 
@@ -29,7 +30,7 @@ The proof JWT is a one-time, short-lived JWT signed by the client. Each call to 
 | Header type | The proof's JWT header must include `typ: dpop+jwt` |
 | Replay protection | JTI-based replay store; each `jti` accepted at most once within the configured window |
 | Where DPoP applies | `/oauth2/token`, `/oauth2/par`, and downstream resource servers that validate the proof |
-| Server-issued nonces | **Not implemented** — <ProductName /> does not issue `DPoP-Nonce` challenges today |
+| Server-issued nonces | **Not implemented**: <ProductName /> does not issue `DPoP-Nonce` challenges today |
 
 ### Required Proof Claims
 
@@ -61,7 +62,7 @@ The client signs a JWT with this structure for every protected request:
 
 ## Try It in <ProductName />
 
-DPoP activates implicitly: send a `DPoP` header on the token request and the issued token will be DPoP-bound. No per-application opt-in is required — any client may use DPoP if it wants to.
+DPoP activates implicitly: send a `DPoP` header on the token request and the issued token will be DPoP-bound. No per-application opt-in is required: any client may use DPoP if it wants to.
 
 ### Request a DPoP-Bound Token
 
@@ -109,7 +110,7 @@ curl -X POST https://{{productSlug}}.example.com/oauth2/token \
 
 ## Related Guides
 
-- [Authorization Code](../authorization-code) — initial token issuance
-- [Refresh Token](../refresh-token) — DPoP binding is preserved on refresh
-- [Pushed Authorization Requests](../par) — a DPoP proof at PAR time binds the resulting auth code
-- [Token Formats](../token-formats) — the `cnf` claim in JWT access tokens
+- [Authorization Code](../authorization-code), initial token issuance
+- [Refresh Token](../refresh-token), DPoP binding is preserved on refresh
+- [Pushed Authorization Requests](../par), a DPoP proof at PAR time binds the resulting auth code
+- [Token Formats](../token-formats), the `cnf` claim in JWT access tokens

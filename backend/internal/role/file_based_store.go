@@ -395,11 +395,13 @@ func (f *fileBasedStore) CheckRoleNameExistsExcludingID(
 	return false, nil
 }
 
-// GetAuthorizedPermissions returns permissions from roles assigned to the entity or groups in the file store.
-func (f *fileBasedStore) GetAuthorizedPermissions(
+// GetAuthorizedPermissionsByResourceServer returns permissions from roles assigned to the entity or groups in
+// the file store, scoped to a resource server when provided.
+func (f *fileBasedStore) GetAuthorizedPermissionsByResourceServer(
 	ctx context.Context,
 	entityID string,
 	groupIDs []string,
+	resourceServerID string,
 	requestPermissions []string,
 ) ([]string, error) {
 	if len(requestPermissions) == 0 {
@@ -438,6 +440,9 @@ func (f *fileBasedStore) GetAuthorizedPermissions(
 			continue
 		}
 		for _, resourcePerms := range roleData.Permissions {
+			if resourceServerID != "" && resourcePerms.ResourceServerID != resourceServerID {
+				continue
+			}
 			for _, perm := range resourcePerms.Permissions {
 				if requestedSet[perm] {
 					permitted[perm] = true

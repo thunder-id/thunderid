@@ -1,5 +1,6 @@
 ---
 title: Add an OIDC Identity Provider
+docType: guide
 sidebar_position: 4
 persona: iam
 description: Configure a generic OpenID Connect identity provider for federated authentication.
@@ -18,7 +19,7 @@ This guide explains how to register a generic OpenID Connect (OIDC) identity pro
 :::tip Finding endpoint URLs
 Most OIDC providers publish their endpoint URLs in a discovery document at:
 
-```
+```text
 https://<provider-domain>/.well-known/openid-configuration
 ```
 
@@ -115,7 +116,7 @@ External providers emit attributes under their own names, which may differ from 
 
 | Field | Description |
 |-------|-------------|
-| `userTypeResolution` | Resolves the local user type for an incoming identity. **Required** when `userTypeAttributeMappings` is configured (it selects which mapping profile applies); otherwise optional. |
+| `userTypeResolution` | Resolves the local user type for an incoming identity. **Required** when `userTypeAttributeMappings` is configured (it selects which mapping profile applies); otherwise optional. Can be a static `default` or derived from a claim. See [Claim-driven user type resolution](#claim-driven-user-type-resolution). |
 | `userTypeAttributeMappings` | An array where each entry holds the attribute mappings for one user type. |
 
 Each entry has a `userType` (the user type whose schema defines the valid local targets) and an `attributes` array. Each item in `attributes` has the following fields:
@@ -127,11 +128,38 @@ Each entry has a `userType` (the user type whose schema defines the valid local 
 
 Behavior:
 
-- The `externalAttribute` (source) supports attributes in complex forms. We can use **dot notation** to read a value nested inside another attribute — for example, `email.work` reads the `work` field from an `email` object.
+- The `externalAttribute` (source) supports attributes in complex forms. Use **dot notation** to read a value nested inside another attribute. For example, `email.work` reads the `work` field from an `email` object.
 - The `localAttribute` (target) must be an attribute defined in the profile's `userType` schema; this is validated when the IdP is created or updated.
 - An attribute whose name is mapped is renamed to its local attribute; attributes without a mapping pass through unchanged.
 
 The mapping applies both when a user signs in through this IdP in an authentication flow and when a token from this IdP is exchanged (see [Trusted Issuer](../../trusted-issuer#attribute-configuration)). The resulting local attributes flow into the issued access and ID tokens, subject to the application's `userAttributes` configuration.
+
+### Claim-driven user type resolution
+
+By default, every federated identity resolves to the `default` user type. To derive the user type from an incoming claim instead, set `externalAttribute` (the claim to read) and `valueMapping` (external value to local user type):
+
+```json
+{
+  "attributeConfiguration": {
+    "userTypeResolution": {
+      "default": "Person",
+      "externalAttribute": "user_type",
+      "valueMapping": {
+        "staff": "Employee",
+        "partner": "Contractor"
+      }
+    }
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `default` | **Required.** Fallback user type, used when the claim is missing or its value is not mapped. |
+| `externalAttribute` | External claim whose value selects the local user type. Supports dot notation for nested claims (for example, `profile.role`). |
+| `valueMapping` | Maps an external claim value to a local user type. Requires `externalAttribute`. |
+
+The resolved user type selects which `userTypeAttributeMappings` profile applies.
 
 Example with token exchange enabled:
 
@@ -185,5 +213,5 @@ Behavior:
 
 ## Next Steps
 
-- [Connect an IdP to an Application](../connect-idp-to-application) — Add this OIDC IdP to an application's authentication flow.
-- [Manage Identity Providers](../manage-identity-providers) — Update or delete identity providers.
+- [Connect an IdP to an Application](../connect-idp-to-application): Add this OIDC IdP to an application's authentication flow.
+- [Manage Identity Providers](../manage-identity-providers): Update or delete identity providers.

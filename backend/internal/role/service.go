@@ -48,8 +48,8 @@ type RoleServiceInterface interface {
 		*RoleWithPermissions, *tidcommon.ServiceError)
 	DeleteRole(ctx context.Context, id string) *tidcommon.ServiceError
 	IsRoleDeclarative(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
-	GetAuthorizedPermissions(
-		ctx context.Context, entityID string, groups []string, requestedPermissions []string,
+	GetAuthorizedPermissionsByResourceServer(
+		ctx context.Context, entityID string, groups []string, resourceServerID string, requestedPermissions []string,
 	) ([]string, *tidcommon.ServiceError)
 	GetUserRoles(ctx context.Context, entityID string, groupIDs []string) ([]string, *tidcommon.ServiceError)
 	ResolveRoleOUHandle(
@@ -401,13 +401,16 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.Ser
 	return nil
 }
 
-// GetAuthorizedPermissions checks which requested permissions are authorized for the entity based on roles.
-func (rs *roleService) GetAuthorizedPermissions(
-	ctx context.Context, entityID string, groups []string, requestedPermissions []string,
+// GetAuthorizedPermissionsByResourceServer checks which requested permissions are authorized for the entity
+// based on roles, scoped to a resource server when provided.
+func (rs *roleService) GetAuthorizedPermissionsByResourceServer(
+	ctx context.Context, entityID string, groups []string, resourceServerID string, requestedPermissions []string,
 ) ([]string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Authorizing permissions",
-		log.MaskedString(log.LoggerKeyUserID, entityID), log.Int("groupCount", len(groups)))
+		log.MaskedString(log.LoggerKeyUserID, entityID),
+		log.Int("groupCount", len(groups)),
+		log.String("resourceServerID", resourceServerID))
 
 	// Handle nil groups slice
 	if groups == nil {
@@ -425,11 +428,13 @@ func (rs *roleService) GetAuthorizedPermissions(
 	}
 
 	// Get authorized permissions from store
-	authorizedPermissions, err := rs.roleStore.GetAuthorizedPermissions(ctx, entityID, groups, requestedPermissions)
+	authorizedPermissions, err := rs.roleStore.GetAuthorizedPermissionsByResourceServer(
+		ctx, entityID, groups, resourceServerID, requestedPermissions)
 	if err != nil {
 		logger.Error(ctx, "Failed to get authorized permissions",
 			log.MaskedString(log.LoggerKeyUserID, entityID),
 			log.Int("groupCount", len(groups)),
+			log.String("resourceServerID", resourceServerID),
 			log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
@@ -437,6 +442,7 @@ func (rs *roleService) GetAuthorizedPermissions(
 	logger.Debug(ctx, "Retrieved authorized permissions",
 		log.MaskedString(log.LoggerKeyUserID, entityID),
 		log.Int("groupCount", len(groups)),
+		log.String("resourceServerID", resourceServerID),
 		log.Int("requestedCount", len(requestedPermissions)),
 		log.Int("authorizedCount", len(authorizedPermissions)))
 

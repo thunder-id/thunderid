@@ -373,6 +373,76 @@ func (_c *NotificationSenderMgtSvcInterfaceMock_ListSenders_Call) RunAndReturn(r
 	return _c
 }
 
+// ListSendersByType provides a mock function for the type NotificationSenderMgtSvcInterfaceMock
+func (_mock *NotificationSenderMgtSvcInterfaceMock) ListSendersByType(ctx context.Context, senderType common.NotificationSenderType) ([]common.NotificationSenderDTO, *common0.ServiceError) {
+	ret := _mock.Called(ctx, senderType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListSendersByType")
+	}
+
+	var r0 []common.NotificationSenderDTO
+	var r1 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, common.NotificationSenderType) ([]common.NotificationSenderDTO, *common0.ServiceError)); ok {
+		return returnFunc(ctx, senderType)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, common.NotificationSenderType) []common.NotificationSenderDTO); ok {
+		r0 = returnFunc(ctx, senderType)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]common.NotificationSenderDTO)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, common.NotificationSenderType) *common0.ServiceError); ok {
+		r1 = returnFunc(ctx, senderType)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common0.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// NotificationSenderMgtSvcInterfaceMock_ListSendersByType_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListSendersByType'
+type NotificationSenderMgtSvcInterfaceMock_ListSendersByType_Call struct {
+	*mock.Call
+}
+
+// ListSendersByType is a helper method to define mock.On call
+//   - ctx context.Context
+//   - senderType common.NotificationSenderType
+func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) ListSendersByType(ctx interface{}, senderType interface{}) *NotificationSenderMgtSvcInterfaceMock_ListSendersByType_Call {
+	return &NotificationSenderMgtSvcInterfaceMock_ListSendersByType_Call{Call: _e.mock.On("ListSendersByType", ctx, senderType)}
+}
+
+func (_c *NotificationSenderMgtSvcInterfaceMock_ListSendersByType_Call) Run(run func(ctx context.Context, senderType common.NotificationSenderType)) *NotificationSenderMgtSvcInterfaceMock_ListSendersByType_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 common.NotificationSenderType
+		if args[1] != nil {
+			arg1 = args[1].(common.NotificationSenderType)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *NotificationSenderMgtSvcInterfaceMock_ListSendersByType_Call) Return(notificationSenderDTOs []common.NotificationSenderDTO, serviceError *common0.ServiceError) *NotificationSenderMgtSvcInterfaceMock_ListSendersByType_Call {
+	_c.Call.Return(notificationSenderDTOs, serviceError)
+	return _c
+}
+
+func (_c *NotificationSenderMgtSvcInterfaceMock_ListSendersByType_Call) RunAndReturn(run func(ctx context.Context, senderType common.NotificationSenderType) ([]common.NotificationSenderDTO, *common0.ServiceError)) *NotificationSenderMgtSvcInterfaceMock_ListSendersByType_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetDependencyRegistry provides a mock function for the type NotificationSenderMgtSvcInterfaceMock
 func (_mock *NotificationSenderMgtSvcInterfaceMock) SetDependencyRegistry(r resourcedependency.Registry) {
 	_mock.Called(r)

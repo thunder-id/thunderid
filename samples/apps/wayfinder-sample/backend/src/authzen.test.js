@@ -26,8 +26,7 @@ import {
 
 const env = {
     THUNDER_BASE_URL: "https://localhost:8090",
-    THUNDERID_AUTHZEN_CLIENT_ID: "authzen-client",
-    THUNDERID_AUTHZEN_CLIENT_SECRET: "authzen-client-secret",
+    THUNDERID_DIRECT_AUTH_SECRET: "authzen-direct-auth-secret",
 };
 const silentLogger = {
     error() {},
@@ -50,7 +49,7 @@ test("rejects unsupported authorization modes", () => {
     );
 });
 
-test("requests and reuses a client token for access evaluations", async () => {
+test("sends the direct auth secret for access evaluations", async () => {
     const requests = [];
     const logs = [];
     const logger = {
@@ -67,13 +66,6 @@ test("requests and reuses a client token for access evaluations", async () => {
     const fetchImpl = async (url, options) => {
         requests.push({ url, options });
 
-        if (url.endsWith("/oauth2/token")) {
-            return Response.json({
-                access_token: "authzen-access-token",
-                expires_in: 3600,
-            });
-        }
-
         return Response.json({ decision: true });
     };
     const evaluateAccess = createAuthzenAuthorizer({
@@ -83,44 +75,50 @@ test("requests and reuses a client token for access evaluations", async () => {
     });
     const request = {
         subject: { id: "user-1" },
-        resource: { type: "wayfinder" },
-        action: { name: "wayfinder:booking:read" },
+        resource: { type: "http://localhost:8787/mcp" },
+        action: { name: "booking:read" },
     };
 
     assert.equal((await evaluateAccess(request)).decision, true);
     assert.equal((await evaluateAccess(request)).decision, true);
-    assert.equal(requests.length, 3);
-    assert.equal(requests[0].url, "https://localhost:8090/oauth2/token");
-    assert.match(String(requests[0].options.body), /scope=system/);
-    assert.ok(requests[0].options.signal instanceof AbortSignal);
+    assert.equal(requests.length, 2);
     assert.equal(
-        requests[1].options.headers.Authorization,
-        "Bearer authzen-access-token",
+        requests[0].url,
+        "https://localhost:8090/access/v1/evaluation",
     );
-    assert.ok(requests[1].options.signal instanceof AbortSignal);
-    assert.deepEqual(JSON.parse(requests[1].options.body), request);
-    assert.match(logs[0], /Client token acquired client=authzen-client/);
+    assert.equal(
+        requests[0].options.headers["Direct-Auth-Secret"],
+        "authzen-direct-auth-secret",
+    );
+    assert.ok(requests[0].options.signal instanceof AbortSignal);
+    assert.deepEqual(JSON.parse(requests[0].options.body), request);
     assert.match(
-        logs[1],
-        /ALLOW subject=user-1 resource=wayfinder action=wayfinder:booking:read/,
+        logs[0],
+        /ALLOW subject=user-1 resource=http:\/\/localhost:8787\/mcp action=booking:read/,
     );
-    assert.doesNotMatch(logs.join(" "), /authzen-access-token/);
-    assert.doesNotMatch(logs.join(" "), /authzen-client-secret/);
+    assert.doesNotMatch(logs.join(" "), /authzen-direct-auth-secret/);
 });
 
-test("shares an in-flight client token request across concurrent evaluations", async () => {
-    let tokenRequests = 0;
-    let evaluationRequests = 0;
-    const fetchImpl = async (url) => {
-        if (url.endsWith("/oauth2/token")) {
-            tokenRequests += 1;
-            await new Promise((resolve) => setTimeout(resolve, 10));
-            return Response.json({
-                access_token: "authzen-access-token",
-                expires_in: 3600,
-            });
-        }
+test("requires the direct auth secret in authzen mode", async () => {
+    const evaluateAccess = createAuthzenAuthorizer({
+        env: { THUNDER_BASE_URL: "https://localhost:8090" },
+        fetchImpl: async () => Response.json({ decision: true }),
+        logger: silentLogger,
+    });
 
+    await assert.rejects(
+        evaluateAccess({
+            subject: { id: "user-1" },
+            resource: { type: "http://localhost:8787/mcp" },
+            action: { name: "booking:read" },
+        }),
+        /THUNDER_BASE_URL and THUNDERID_DIRECT_AUTH_SECRET are required/,
+    );
+});
+
+test("sends one PDP request per concurrent evaluation", async () => {
+    let evaluationRequests = 0;
+    const fetchImpl = async () => {
         evaluationRequests += 1;
         return Response.json({ decision: true });
     };
@@ -131,8 +129,8 @@ test("shares an in-flight client token request across concurrent evaluations", a
     });
     const request = {
         subject: { id: "user-1" },
-        resource: { type: "wayfinder" },
-        action: { name: "wayfinder:booking:read" },
+        resource: { type: "http://localhost:8787/mcp" },
+        action: { name: "booking:read" },
     };
 
     await Promise.all([
@@ -141,15 +139,11 @@ test("shares an in-flight client token request across concurrent evaluations", a
         evaluateAccess(request),
     ]);
 
-    assert.equal(tokenRequests, 1);
     assert.equal(evaluationRequests, 3);
 });
 
 test("fails closed when the PDP response has no decision", async () => {
-    const fetchImpl = async (url) =>
-        url.endsWith("/oauth2/token")
-            ? Response.json({ access_token: "authzen-access-token" })
-            : Response.json({});
+    const fetchImpl = async () => Response.json({});
     const evaluateAccess = createAuthzenAuthorizer({
         env,
         fetchImpl,
@@ -159,18 +153,15 @@ test("fails closed when the PDP response has no decision", async () => {
     await assert.rejects(
         evaluateAccess({
             subject: { id: "user-1" },
-            resource: { type: "wayfinder" },
-            action: { name: "wayfinder:booking:read" },
+            resource: { type: "http://localhost:8787/mcp" },
+            action: { name: "booking:read" },
         }),
         /returned no decision/,
     );
 });
 
 test("fails closed when the PDP denies the permission", async () => {
-    const fetchImpl = async (url) =>
-        url.endsWith("/oauth2/token")
-            ? Response.json({ access_token: "authzen-access-token" })
-            : Response.json({ decision: false });
+    const fetchImpl = async () => Response.json({ decision: false });
     const evaluateAccess = createAuthzenAuthorizer({
         env,
         fetchImpl,
@@ -180,14 +171,14 @@ test("fails closed when the PDP denies the permission", async () => {
     await assert.rejects(
         evaluateAccess({
             subject: { id: "agent-1" },
-            resource: { type: "wayfinder" },
-            action: { name: "wayfinder:booking:create" },
+            resource: { type: "http://localhost:8787/mcp" },
+            action: { name: "booking:create" },
         }),
         (error) => {
             assert.equal(error.code, "insufficient_permission");
             assert.equal(
                 error.requiredPermission,
-                "wayfinder:booking:create",
+                "booking:create",
             );
             return true;
         },

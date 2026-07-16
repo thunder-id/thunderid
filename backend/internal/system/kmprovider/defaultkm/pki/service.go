@@ -28,6 +28,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"os"
 	"path"
@@ -82,11 +83,7 @@ func newPKIService() (PKIServiceInterface, error) {
 			return nil, errors.New("key file not found at " + keyFilePath)
 		}
 
-		tlsCert, err := tls.LoadX509KeyPair(certFilePath, keyFilePath)
-		if err != nil {
-			return nil, err
-		}
-		algorithm, err := getAlgorithmFromKey(tlsCert.PrivateKey)
+		tlsCert, algorithm, err := loadCertKeyPair(certFilePath, keyFilePath)
 		if err != nil {
 			return nil, err
 		}
@@ -215,8 +212,77 @@ func pkiAlgorithmToJWSAlgorithms(alg PKIAlgorithm) []string {
 		return []string{string(jws.ES512)}
 	case Ed25519:
 		return []string{string(jws.EdDSA)}
+	case MLDSA44:
+		return []string{string(jws.MLDSA44)}
+	case MLDSA65:
+		return []string{string(jws.MLDSA65)}
+	case MLDSA87:
+		return []string{string(jws.MLDSA87)}
 	default:
 		return nil
+	}
+}
+
+// loadCertKeyPair loads a certificate/key pair from the given file paths. ML-DSA
+// keys (RFC 9881 PKCS#8) are loaded via the ML-DSA codec since the standard
+// library cannot parse them; all other keys use tls.LoadX509KeyPair.
+func loadCertKeyPair(certFilePath, keyFilePath string) (tls.Certificate, PKIAlgorithm, error) {
+	keyPEM, err := os.ReadFile(path.Clean(keyFilePath))
+	if err != nil {
+		return tls.Certificate{}, "", err
+	}
+	if keyBlock, _ := pem.Decode(keyPEM); keyBlock != nil {
+		if _, isMLDSA := cryptolib.MLDSAAlgFromPKCS8(keyBlock.Bytes); isMLDSA {
+			return loadMLDSACertKeyPair(certFilePath, keyBlock.Bytes)
+		}
+	}
+
+	tlsCert, err := tls.LoadX509KeyPair(certFilePath, keyFilePath)
+	if err != nil {
+		return tls.Certificate{}, "", err
+	}
+	algorithm, err := getAlgorithmFromKey(tlsCert.PrivateKey)
+	if err != nil {
+		return tls.Certificate{}, "", err
+	}
+	return tlsCert, algorithm, nil
+}
+
+// loadMLDSACertKeyPair builds a tls.Certificate for an ML-DSA key pair. The
+// private key is reconstructed with the ML-DSA codec and the certificate DER is
+// retained as-is (the standard library cannot parse the ML-DSA public key, so it
+// is derived from the private key when needed).
+func loadMLDSACertKeyPair(certFilePath string, keyDER []byte) (tls.Certificate, PKIAlgorithm, error) {
+	privKey, alg, err := cryptolib.ParseMLDSAPKCS8(keyDER)
+	if err != nil {
+		return tls.Certificate{}, "", err
+	}
+	certPEM, err := os.ReadFile(path.Clean(certFilePath))
+	if err != nil {
+		return tls.Certificate{}, "", err
+	}
+	certBlock, _ := pem.Decode(certPEM)
+	if certBlock == nil {
+		return tls.Certificate{}, "", errors.New("failed to decode ML-DSA certificate PEM")
+	}
+	tlsCert := tls.Certificate{
+		Certificate: [][]byte{certBlock.Bytes},
+		PrivateKey:  privKey,
+	}
+	return tlsCert, mldsaPKIAlgorithm(alg), nil
+}
+
+// mldsaPKIAlgorithm maps a cryptolib ML-DSA algorithm to its PKIAlgorithm.
+func mldsaPKIAlgorithm(alg cryptolib.Algorithm) PKIAlgorithm {
+	switch alg {
+	case cryptolib.AlgorithmMLDSA44:
+		return MLDSA44
+	case cryptolib.AlgorithmMLDSA65:
+		return MLDSA65
+	case cryptolib.AlgorithmMLDSA87:
+		return MLDSA87
+	default:
+		return ""
 	}
 }
 

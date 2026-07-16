@@ -192,8 +192,7 @@ type ResourceServer struct {
 	ID          string             `yaml:"id"                    json:"-"`
 	Name        string             `yaml:"name"                  json:"name"`
 	Description string             `yaml:"description,omitempty" json:"description,omitempty"`
-	Handle      string             `yaml:"handle"                json:"handle"`
-	Identifier  string             `yaml:"identifier,omitempty"  json:"identifier,omitempty"`
+	Identifier  string             `yaml:"identifier"            json:"identifier"`
 	Type        ResourceServerType `yaml:"type,omitempty"        json:"type,omitempty"`
 	OUID        string             `yaml:"ouId,omitempty"        json:"ouId"`
 	OUHandle    string             `yaml:"ouHandle,omitempty"    json:"-"`
@@ -580,6 +579,16 @@ type OAuthTokenConfig struct {
 	AccessToken  *AccessTokenConfig  `json:"accessToken,omitempty"  yaml:"accessToken,omitempty"  jsonschema:"Access token configuration."`
 	IDToken      *IDTokenConfig      `json:"idToken,omitempty"      yaml:"idToken,omitempty"      jsonschema:"ID token configuration."`
 	RefreshToken *RefreshTokenConfig `json:"refreshToken,omitempty" yaml:"refreshToken,omitempty" jsonschema:"Refresh token configuration."`
+	IDJAG        *IDJAGConfig        `json:"idJag,omitempty"        yaml:"idJag,omitempty"        jsonschema:"Identity Assertion Authorization Grant (ID-JAG) configuration."`
+}
+
+// IDJAGConfig is the Identity Assertion Authorization Grant (ID-JAG) configuration. Enabled must be
+// true and AllowedAudiences must be non-empty for the application to request ID-JAGs via token
+// exchange.
+type IDJAGConfig struct {
+	Enabled          bool     `json:"enabled"                    yaml:"enabled"                    jsonschema:"Enable ID-JAG issuance for this application."`
+	AllowedAudiences []string `json:"allowedAudiences,omitempty" yaml:"allowedAudiences,omitempty" jsonschema:"Resource authorization server identifiers for which this application may request ID-JAGs."`
+	ValidityPeriod   int64    `json:"validityPeriod,omitempty"   yaml:"validityPeriod,omitempty"   jsonschema:"Validity period of an issued ID-JAG in seconds. Defaults to 300 when unset."`
 }
 
 // AccessTokenConfig is the access token configuration, split by token subject: an end user
@@ -719,11 +728,14 @@ type AttributeMapping struct {
 	LocalAttribute    string `json:"localAttribute"    yaml:"local_attribute"`
 }
 
-// UserTypeResolution resolves which local user type an incoming identity maps to. This iteration
-// supports only Default (a fixed user type); claim-driven resolution is added later as additional
-// fields without a breaking change.
+// UserTypeResolution resolves which local user type an incoming identity maps to. Default is the
+// fixed user type applied when claim-driven resolution is not configured or does not match. When
+// ExternalAttribute and ValueMapping are set, the user type is derived from the value of the external
+// attribute (ValueMapping maps an external value to a local user type), falling back to Default.
 type UserTypeResolution struct {
-	Default string `json:"default,omitempty" yaml:"default,omitempty"`
+	Default           string            `json:"default,omitempty"           yaml:"default,omitempty"`
+	ExternalAttribute string            `json:"externalAttribute,omitempty" yaml:"externalAttribute,omitempty"`
+	ValueMapping      map[string]string `json:"valueMapping,omitempty"      yaml:"valueMapping,omitempty"`
 }
 
 // UserTypeAttributeMapping holds the external-to-local attribute mappings for a single local user type.
@@ -859,6 +871,27 @@ type Consent struct {
 	CreatedTime int64
 	// UpdatedTime is the Unix timestamp when the consent was last updated
 	UpdatedTime int64
+}
+
+// ExecutorSupportedProperties describes the properties that an executor supports, including whether each property is required.
+type ExecutorSupportedProperties struct {
+	// Property is the name of the property that the executor supports.
+	Property string `json:"property"`
+	// IsRequired indicates whether the property is required for the executor to function correctly.
+	IsRequired bool `json:"isRequired"`
+}
+
+// ExecutorMeta describes the static capabilities of an executor.
+type ExecutorMeta struct {
+	// DefaultMode is used when the node does not specify a mode.
+	// If empty and SupportedModes is non-empty, mode is required in the node definition.
+	DefaultMode string `json:"defaultMode"`
+	// SupportedModes lists valid executor modes. Empty means all modes are permitted.
+	SupportedModes []string `json:"supportedModes"`
+	// SupportedFlowTypes lists flow types this executor may be used in. Empty means all.
+	SupportedFlowTypes []FlowType `json:"supportedFlowTypes"`
+	// SupportedProperties lists NodeDefinition.Properties keys that must be non-empty.
+	SupportedProperties []ExecutorSupportedProperties `json:"supportedProperties"`
 }
 
 // ExecutorResponse represents the response from an executor
@@ -1088,7 +1121,7 @@ type Subject struct {
 
 // AccessEvaluationResourceServer identifies the resource server for an access evaluation.
 type AccessEvaluationResourceServer struct {
-	Handle     string                 `json:"handle"`
+	ID         string                 `json:"id,omitempty"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 

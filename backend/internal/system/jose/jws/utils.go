@@ -83,9 +83,31 @@ func JWKToPublicKey(jwk map[string]interface{}) (crypto.PublicKey, error) {
 		return jwkToECDSAPublicKey(jwk)
 	case "OKP":
 		return jwkToOKPPublicKey(jwk)
+	case "AKP":
+		return jwkToAKPPublicKey(jwk)
 	default:
 		return nil, fmt.Errorf("unsupported JWK kty: %s", kty)
 	}
+}
+
+// jwkToAKPPublicKey converts an AKP (Algorithm Key Pair) JWK to an ML-DSA public
+// key, per RFC 9964. The alg member identifies the ML-DSA parameter set and pub
+// carries the base64url-encoded raw public key.
+func jwkToAKPPublicKey(jwk map[string]interface{}) (crypto.PublicKey, error) {
+	alg, algOK := jwk["alg"].(string)
+	pubStr, pubOK := jwk["pub"].(string)
+	if !algOK || !pubOK {
+		return nil, errors.New("JWK missing AKP alg or pub")
+	}
+	pubBytes, err := base64.RawURLEncoding.DecodeString(pubStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode AKP pub: %w", err)
+	}
+	pub, err := cryptolib.MLDSAPublicKeyFromBytes(cryptolib.Algorithm(alg), pubBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse AKP public key: %w", err)
+	}
+	return pub, nil
 }
 
 // jwkToRSAPublicKey converts a JWK to an RSA public key.
@@ -257,6 +279,13 @@ func canonicalJWK(jwk map[string]interface{}) ([]byte, error) {
 			return nil, errors.New("OKP JWK missing required members crv/x")
 		}
 		ordered = []struct{ k, v string }{{"crv", crv}, {"kty", "OKP"}, {"x", x}}
+	case "AKP":
+		alg, _ := jwk["alg"].(string)
+		pub, _ := jwk["pub"].(string)
+		if alg == "" || pub == "" {
+			return nil, errors.New("AKP JWK missing required members alg/pub")
+		}
+		ordered = []struct{ k, v string }{{"alg", alg}, {"kty", "AKP"}, {"pub", pub}}
 	default:
 		return nil, fmt.Errorf("unsupported JWK kty for thumbprint: %s", kty)
 	}

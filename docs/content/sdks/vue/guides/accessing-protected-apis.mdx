@@ -1,6 +1,7 @@
 ---
 title: Accessing Protected APIs
-description: Learn how to make authenticated API requests using the Vue SDK
+docType: guide
+description: Make authenticated HTTP requests from a Vue application using the Browser SDK's built-in HTTP client.
 ---
 
 # Accessing Protected APIs
@@ -138,7 +139,7 @@ The storage type must be set to `webWorker` for the token to be automatically at
 :::
 
 :::warning
-Note that you don't need to manually specify the Authorization header — the `http` function intercepts the request and attaches the access token automatically.
+Note that you don't need to manually specify the Authorization header: the `http` function intercepts the request and attaches the access token automatically.
 :::
 
 ### Parallel API Requests

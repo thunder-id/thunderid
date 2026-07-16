@@ -46,6 +46,8 @@ $ENV_FILE = ""
 $BOOTSTRAP_MODE = $false
 $BOOTSTRAP_AND_SERVE = $false
 $BOOTSTRAP_EXTRA_ARGS = @()
+$ADMIN_USERNAME_FLAG_SET = $false
+$ADMIN_PASSWORD_FLAG_SET = $false
 $script:bootstrapExitCode = 0
 
 # Parse command line arguments
@@ -112,6 +114,32 @@ while ($i -lt $args.Count) {
             }
             break
         }
+        '--admin-username' {
+            $i++
+            if ($i -lt $args.Count) {
+                $BOOTSTRAP_EXTRA_ARGS += @('--admin-username', $args[$i])
+                $ADMIN_USERNAME_FLAG_SET = $true
+                $i++
+            }
+            else {
+                Write-Host "Missing value for --admin-username" -ForegroundColor Red
+                exit 1
+            }
+            break
+        }
+        '--admin-password' {
+            $i++
+            if ($i -lt $args.Count) {
+                $BOOTSTRAP_EXTRA_ARGS += @('--admin-password', $args[$i])
+                $ADMIN_PASSWORD_FLAG_SET = $true
+                $i++
+            }
+            else {
+                Write-Host "Missing value for --admin-password" -ForegroundColor Red
+                exit 1
+            }
+            break
+        }
         '--env' {
             $i++
             if ($i -lt $args.Count) {
@@ -140,6 +168,10 @@ while ($i -lt $args.Count) {
             Write-Host "  --without-consent    Disable the bundled consent server"
             Write-Host "  --bootstrap          Create default resources in-process, then exit (used by setup.ps1)"
             Write-Host "  --bootstrap-and-serve Create default resources in-process, then start the server"
+            Write-Host "  --admin-username VALUE  Username for the default admin user (--bootstrap-and-serve only)"
+            Write-Host "                          Optional; falls back to ADMIN_USERNAME env var, then defaults to 'admin'"
+            Write-Host "  --admin-password VALUE  Password for the default admin user (--bootstrap-and-serve only)"
+            Write-Host "                          Falls back to ADMIN_PASSWORD env var; bootstrap fails if neither is set"
             Write-Host "  --help               Show this help message"
             Write-Host ""
             Write-Host "First-Time Setup:"
@@ -168,6 +200,14 @@ while ($i -lt $args.Count) {
             }
         }
     }
+}
+
+# --admin-username/--admin-password only make sense when bootstrapping happens in this
+# invocation, and specifically only for --bootstrap-and-serve — --bootstrap is the
+# seed-only mode setup.ps1 drives internally via environment variables, not flags.
+if (($ADMIN_USERNAME_FLAG_SET -or $ADMIN_PASSWORD_FLAG_SET) -and -not $BOOTSTRAP_AND_SERVE) {
+    Write-Host "Error: --admin-username/--admin-password are only valid together with --bootstrap-and-serve" -ForegroundColor Red
+    exit 1
 }
 
 # Resolve relative paths to absolute.

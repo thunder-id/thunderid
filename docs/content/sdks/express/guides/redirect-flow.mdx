@@ -1,6 +1,7 @@
 ---
 title: Redirect Flow
-description: Build the standard Express sign-in and protected-route flow
+docType: guide
+description: Build the standard Express sign-in and protected-route flow using redirect-based OAuth 2.0 PKCE.
 ---
 
 # Redirect Flow
@@ -93,7 +94,7 @@ app.get('/me', protect(), async (req, res) => {
 
 ## Related APIs
 
-- [`thunderID()`](/docs/next/sdks/express/apis/middleware/thunderid)
-- [`handleSignIn()`](/docs/next/sdks/express/apis/middleware/handle-sign-in)
-- [`handleSignOut()`](/docs/next/sdks/express/apis/middleware/handle-sign-out)
-- [`protect()`](/docs/next/sdks/express/apis/middleware/protect)
+- [`thunderID()`](../../apis/middleware/thunderid)
+- [`handleSignIn()`](../../apis/middleware/handle-sign-in)
+- [`handleSignOut()`](../../apis/middleware/handle-sign-out)
+- [`protect()`](../../apis/middleware/protect)

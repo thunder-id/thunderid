@@ -1,7 +1,8 @@
 ---
 title: Branding
+docType: reference
 displayed_sidebar: javascriptSdkSidebar
-description: Fetch and apply branding preferences from ThunderID
+description: Fetch and apply branding preferences from ThunderID for consistent visual styling across auth flows.
 ---
 
 # Branding
@@ -28,11 +29,11 @@ console.log(branding.preference?.theme?.LIGHT?.colors?.primary?.main)
 | Parameter | Type | Required | Description |
 |-----------|------|:--------:|-------------|
 | `config.baseUrl` | `string` | ✅ | <ProductName /> base URL |
-| `config.locale` | `string` | — | BCP 47 locale for localized branding (e.g., `'en-US'`) |
-| `config.name` | `string` | — | Organization or application name to scope the request |
-| `config.type` | `string` | — | Branding type (e.g., `'ORG'`, `'APP'`) |
-| `config.fetcher` | `function` | — | Custom fetch function override |
-| `config.headers` | `Record<string, string>` | — | Additional request headers |
+| `config.locale` | `string` | No | BCP 47 locale for localized branding (e.g., `'en-US'`) |
+| `config.name` | `string` | No | Organization or application name to scope the request |
+| `config.type` | `string` | No | Branding type (e.g., `'ORG'`, `'APP'`) |
+| `config.fetcher` | `function` | No | Custom fetch function override |
+| `config.headers` | `Record<string, string>` | No | Additional request headers |
 
 ### Response: `BrandingPreference`
 
@@ -86,8 +87,6 @@ console.log(branding.preference?.theme?.LIGHT?.colors?.primary?.main)
 | `outlined` | `object` | Outlined component colors |
 | `illustrations` | `object` | Illustration accent colors |
 
----
-
 ## `transformBrandingPreferenceToTheme(branding)`
 
 Convert a `BrandingPreference` response into a `Theme` object compatible with `createTheme()`. Used internally by the React and Browser SDKs when `preferences.theme.inheritFromBranding` is `true`.
@@ -99,4 +98,4 @@ const branding = await getBrandingPreference({ baseUrl: 'https://localhost:8090'
 const theme = transformBrandingPreferenceToTheme(branding)
 ```
 
-**Returns:** `Theme` — see [Theme](/docs/next/sdks/javascript/apis/theme) for the shape.
+**Returns:** `Theme`. See [Theme](../theme) for the shape.

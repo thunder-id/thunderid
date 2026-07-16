@@ -278,6 +278,29 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestListSenders_StoreError()
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
+func (suite *NotificationSenderMgtServiceTestSuite) TestListSendersByType() {
+	senders := []common.NotificationSenderDTO{suite.getValidTwilioSender()}
+	senders[0].ID = "id1"
+
+	suite.mockStore.EXPECT().listSendersByType(mock.Anything, common.NotificationSenderTypeMessage).
+		Return(senders, nil).Once()
+
+	result, err := suite.service.ListSendersByType(context.Background(), common.NotificationSenderTypeMessage)
+	suite.Nil(err)
+	suite.NotNil(result)
+	suite.Len(result, 1)
+}
+
+func (suite *NotificationSenderMgtServiceTestSuite) TestListSendersByType_StoreError() {
+	suite.mockStore.EXPECT().listSendersByType(mock.Anything, common.NotificationSenderTypeMessage).
+		Return(nil, errors.New("database error")).Once()
+
+	result, err := suite.service.ListSendersByType(context.Background(), common.NotificationSenderTypeMessage)
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
 func (suite *NotificationSenderMgtServiceTestSuite) TestGetSender() {
 	sender := suite.getValidTwilioSender()
 	sender.ID = testSenderID

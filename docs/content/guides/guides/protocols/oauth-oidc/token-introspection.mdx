@@ -1,7 +1,8 @@
 ---
 title: Token Introspection
+docType: reference
 sidebar_position: 1
-description: RFC 7662 OAuth 2.1 Token Introspection in {{ProductName}} — ask the authorization server whether a token is active and what it carries.
+description: RFC 7662 OAuth 2.1 Token Introspection in {{ProductName}}, ask the authorization server whether a token is active and what it carries.
 ---
 import { TokenIntrospectionDiagram } from '../../../../../src/components/OAuthFlowDiagrams';
 
@@ -21,10 +22,10 @@ Use it when a resource server cannot or should not validate JWTs locally. For ex
 | Aspect | Behavior |
 |---|---|
 | Endpoint | `POST /oauth2/introspect` |
-| Authentication | Required — same client authentication method as the token endpoint (see [Client Authentication Methods](../client-authentication-methods)) |
+| Authentication | Required, same client authentication method as the token endpoint (see [Client Authentication Methods](../client-authentication-methods)) |
 | Who can call | Any registered client. Best practice: register the resource server as a confidential client and use its credentials |
-| `token_type_hint` parameter | Accepted but not used internally — the server determines the token type itself |
-| Inactive token response | `{ "active": false }` with HTTP 200 — never leaks reason |
+| `token_type_hint` parameter | Accepted but not used internally: the server determines the token type itself |
+| Inactive token response | `{ "active": false }` with HTTP 200, never leaks reason |
 | Active token response | Standard claims (see below) |
 | Tokens supported | Access tokens and refresh tokens |
 
@@ -61,7 +62,7 @@ A common pattern is to verify the JWT locally on most calls and call introspecti
 
 ## Try It in <ProductName />
 
-Introspection is always available. To call it, register a client with permission to introspect — typically the resource server itself.
+Introspection is always available. To call it, register a client with permission to introspect, typically the resource server itself.
 
 ### Register an Introspection Client
 
@@ -84,7 +85,7 @@ curl -X POST https://{{productSlug}}.example.com/oauth2/introspect \
   -d "token=$ACCESS_TOKEN"
 ```
 
-Active token — returns the metadata shown in [Active Token Response](#active-token-response) above:
+Active token: returns the metadata shown in [Active Token Response](#active-token-response) above:
 
 ```json
 {
@@ -108,6 +109,6 @@ Inactive, expired, or unknown token:
 
 ## Related Guides
 
-- [JWKS](../jwks) — public keys for local JWT validation
-- [Client Authentication Methods](../client-authentication-methods) — required on the introspection endpoint
-- [Server Metadata](../server-metadata) — `introspection_endpoint` is advertised
+- [JWKS](../jwks), public keys for local JWT validation
+- [Client Authentication Methods](../client-authentication-methods), required on the introspection endpoint
+- [Server Metadata](../server-metadata), `introspection_endpoint` is advertised

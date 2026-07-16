@@ -1,5 +1,6 @@
 ---
 title: Self Sign-Up
+docType: use-case
 description: Configure {{ProductName}} for self-registration and integrate it into your own application.
 sidebar_position: 3
 ---
@@ -9,7 +10,7 @@ sidebar_position: 3
 This walkthrough configures <ProductName /> so that new consumers can register themselves with an email and password. <ProductName /> creates a user record and returns the new user to your app signed in.
 
 :::info Background
-[Enable Self Sign-Up](../../customer-identity#enable-self-sign-up) covers the requirements story behind this use case.
+[B2C Identity Overview](../..) covers the requirements story behind this use case.
 :::
 
 :::note Prerequisites
@@ -27,11 +28,11 @@ In the redirect-based pattern, your app redirects the user to <ProductName /> fo
 
 **1. Build a registration flow**
 
-Build a `REGISTRATION` flow using the Flow Designer or the flows API. See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow).
+Build a `REGISTRATION` flow using the Flow Designer or the flows API. See [Build a Flow](../../../../guides/guides/flows/build-a-flow).
 
 Your registration flow should collect the user's credentials, provision the account, and return an auth assertion so the user lands signed in.
 
-To automatically assign a default role to every self-registered user, create the role under **Roles** → **Add Role**. Then set `properties.assignRole` to that role's ID on the `ProvisioningExecutor` node in your flow. See [Authorization](/docs/next/guides/key-concepts/authorization).
+To automatically assign a default role to every self-registered user, create the role under **Roles** → **Add Role**. Then set `properties.assignRole` to that role's ID on the `ProvisioningExecutor` node in your flow. See [Authorization](../../../../guides/key-concepts/authorization).
 
 <details>
   <summary>Sample registration flow</summary>
@@ -156,7 +157,7 @@ To automatically assign a default role to every self-registered user, create the
 
 Go to **Applications** → your app → **Flows** tab. Under **Registration Flow**, select the flow you created. Save the application.
 
-See [Manage Applications](/docs/next/guides/guides/applications/manage-applications).
+See [Manage Applications](../../../../guides/guides/applications/manage-applications).
 
 ### Integrate into Your App
 
@@ -164,13 +165,13 @@ Trigger sign-up from your app using the SDK. The registration experience is host
 
 | Framework   | Where to integrate                                                                                                                         |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| React       | [React Quickstart](/docs/next/guides/getting-started/connect-your-application/react) — `<SignUpButton />` component                       |
-| Next.js     | [Next.js Quickstart](/docs/next/guides/getting-started/connect-your-application/nextjs)                                                    |
-| Vue         | [Vue Quickstart](/docs/next/guides/getting-started/connect-your-application/vue)                                                           |
-| Browser SDK | [Browser SDK Overview](/docs/next/sdks/browser/overview)                                                                                   |
+| React       | [React Quickstart](../../../../guides/getting-started/connect-your-application/react), `<SignUpButton />` component                       |
+| Next.js     | [Next.js Quickstart](../../../../guides/getting-started/connect-your-application/nextjs)                                                    |
+| Vue         | [Vue Quickstart](../../../../guides/getting-started/connect-your-application/vue)                                                           |
+| Browser SDK | [Browser SDK Overview](../../../../sdks/browser/overview)                                                                                   |
 
 :::tip Using a different SDK?
-The redirect-based pattern is standard OAuth 2.0 authorization code flow with PKCE, so **any OIDC-compliant SDK works** — you are not limited to the <ProductName /> SDK. Point it at your <ProductName /> server's discovery endpoint (`http://localhost:8080/oauth2/token/.well-known/openid-configuration`) and use your **Client ID** from the registered application.
+The redirect-based pattern is standard OAuth 2.0 authorization code flow with PKCE, so **any OIDC-compliant SDK works**. You are not limited to the <ProductName /> SDK. Point it at your <ProductName /> server's discovery endpoint (`http://localhost:8080/oauth2/token/.well-known/openid-configuration`) and use your **Client ID** from the registered application.
 :::
 
 ### Try It Out
@@ -186,21 +187,21 @@ The redirect-based pattern is standard OAuth 2.0 authorization code flow with PK
 <details>
   <summary>App-native step-by-step</summary>
 
-Coming soon. See the [App-native pattern](../../solution-patterns#app-native) for what to expect.
+Coming soon. See the [App-native pattern](../../integration-patterns#app-native) for what to expect.
 
 </details>
 
 <details>
   <summary>App-native managed</summary>
 
-Coming soon. See the [App-native pattern](../../solution-patterns#app-native) for what to expect.
+Coming soon. See the [App-native pattern](../../integration-patterns#app-native) for what to expect.
 
 </details>
 
 <details>
   <summary>Direct API</summary>
 
-Coming soon. See the [Direct API pattern](../../solution-patterns#direct-api) for what to expect.
+Coming soon. See the [Direct API pattern](../../integration-patterns#direct-api) for what to expect.
 
 </details>
 
@@ -208,4 +209,4 @@ Coming soon. See the [Direct API pattern](../../solution-patterns#direct-api) fo
 
 - Want to understand how user types and schemas work? See [User Types](../../identity-concepts#user-types) in Identity Concepts.
 - Want to automatically assign a role to self-registered users? See [Roles](../../identity-concepts#roles) in Identity Concepts.
-- Want to see this use case running against the Wayfinder sample? See [Self Sign-Up — Try It Out](../../try-it-out/self-sign-up).
+- Want to see this use case running against the Wayfinder sample? See [Self Sign-Up: Try It Out](../../try-it-out/self-sign-up).

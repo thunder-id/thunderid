@@ -107,6 +107,154 @@ func (_c *TokenValidatorInterfaceMock_ValidateAccessToken_Call) RunAndReturn(run
 	return _c
 }
 
+// ValidateIDJAGAssertion provides a mock function for the type TokenValidatorInterfaceMock
+func (_mock *TokenValidatorInterfaceMock) ValidateIDJAGAssertion(ctx context.Context, assertion string, clientID string) (*tokenservice.IDJAGAssertionClaims, error) {
+	ret := _mock.Called(ctx, assertion, clientID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateIDJAGAssertion")
+	}
+
+	var r0 *tokenservice.IDJAGAssertionClaims
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*tokenservice.IDJAGAssertionClaims, error)); ok {
+		return returnFunc(ctx, assertion, clientID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *tokenservice.IDJAGAssertionClaims); ok {
+		r0 = returnFunc(ctx, assertion, clientID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*tokenservice.IDJAGAssertionClaims)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, assertion, clientID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// TokenValidatorInterfaceMock_ValidateIDJAGAssertion_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateIDJAGAssertion'
+type TokenValidatorInterfaceMock_ValidateIDJAGAssertion_Call struct {
+	*mock.Call
+}
+
+// ValidateIDJAGAssertion is a helper method to define mock.On call
+//   - ctx context.Context
+//   - assertion string
+//   - clientID string
+func (_e *TokenValidatorInterfaceMock_Expecter) ValidateIDJAGAssertion(ctx interface{}, assertion interface{}, clientID interface{}) *TokenValidatorInterfaceMock_ValidateIDJAGAssertion_Call {
+	return &TokenValidatorInterfaceMock_ValidateIDJAGAssertion_Call{Call: _e.mock.On("ValidateIDJAGAssertion", ctx, assertion, clientID)}
+}
+
+func (_c *TokenValidatorInterfaceMock_ValidateIDJAGAssertion_Call) Run(run func(ctx context.Context, assertion string, clientID string)) *TokenValidatorInterfaceMock_ValidateIDJAGAssertion_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *TokenValidatorInterfaceMock_ValidateIDJAGAssertion_Call) Return(iDJAGAssertionClaims *tokenservice.IDJAGAssertionClaims, err error) *TokenValidatorInterfaceMock_ValidateIDJAGAssertion_Call {
+	_c.Call.Return(iDJAGAssertionClaims, err)
+	return _c
+}
+
+func (_c *TokenValidatorInterfaceMock_ValidateIDJAGAssertion_Call) RunAndReturn(run func(ctx context.Context, assertion string, clientID string) (*tokenservice.IDJAGAssertionClaims, error)) *TokenValidatorInterfaceMock_ValidateIDJAGAssertion_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateIDJAGSubjectToken provides a mock function for the type TokenValidatorInterfaceMock
+func (_mock *TokenValidatorInterfaceMock) ValidateIDJAGSubjectToken(ctx context.Context, token string, oauthApp *providers.OAuthClient) (*tokenservice.SubjectTokenClaims, error) {
+	ret := _mock.Called(ctx, token, oauthApp)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateIDJAGSubjectToken")
+	}
+
+	var r0 *tokenservice.SubjectTokenClaims
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *providers.OAuthClient) (*tokenservice.SubjectTokenClaims, error)); ok {
+		return returnFunc(ctx, token, oauthApp)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *providers.OAuthClient) *tokenservice.SubjectTokenClaims); ok {
+		r0 = returnFunc(ctx, token, oauthApp)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*tokenservice.SubjectTokenClaims)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *providers.OAuthClient) error); ok {
+		r1 = returnFunc(ctx, token, oauthApp)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// TokenValidatorInterfaceMock_ValidateIDJAGSubjectToken_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateIDJAGSubjectToken'
+type TokenValidatorInterfaceMock_ValidateIDJAGSubjectToken_Call struct {
+	*mock.Call
+}
+
+// ValidateIDJAGSubjectToken is a helper method to define mock.On call
+//   - ctx context.Context
+//   - token string
+//   - oauthApp *providers.OAuthClient
+func (_e *TokenValidatorInterfaceMock_Expecter) ValidateIDJAGSubjectToken(ctx interface{}, token interface{}, oauthApp interface{}) *TokenValidatorInterfaceMock_ValidateIDJAGSubjectToken_Call {
+	return &TokenValidatorInterfaceMock_ValidateIDJAGSubjectToken_Call{Call: _e.mock.On("ValidateIDJAGSubjectToken", ctx, token, oauthApp)}
+}
+
+func (_c *TokenValidatorInterfaceMock_ValidateIDJAGSubjectToken_Call) Run(run func(ctx context.Context, token string, oauthApp *providers.OAuthClient)) *TokenValidatorInterfaceMock_ValidateIDJAGSubjectToken_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 *providers.OAuthClient
+		if args[2] != nil {
+			arg2 = args[2].(*providers.OAuthClient)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *TokenValidatorInterfaceMock_ValidateIDJAGSubjectToken_Call) Return(subjectTokenClaims *tokenservice.SubjectTokenClaims, err error) *TokenValidatorInterfaceMock_ValidateIDJAGSubjectToken_Call {
+	_c.Call.Return(subjectTokenClaims, err)
+	return _c
+}
+
+func (_c *TokenValidatorInterfaceMock_ValidateIDJAGSubjectToken_Call) RunAndReturn(run func(ctx context.Context, token string, oauthApp *providers.OAuthClient) (*tokenservice.SubjectTokenClaims, error)) *TokenValidatorInterfaceMock_ValidateIDJAGSubjectToken_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ValidateRefreshToken provides a mock function for the type TokenValidatorInterfaceMock
 func (_mock *TokenValidatorInterfaceMock) ValidateRefreshToken(ctx context.Context, token string, clientID string) (*tokenservice.RefreshTokenClaims, error) {
 	ret := _mock.Called(ctx, token, clientID)

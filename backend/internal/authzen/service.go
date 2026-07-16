@@ -106,7 +106,8 @@ func (s *authzenService) EvaluateAccess(ctx context.Context, request AccessEvalu
 		return nil, svcErr
 	}
 
-	authzResp, svcErr := s.authzService.EvaluateAccess(ctx, toAuthzAccessEvaluationRequest(request, groupIDs))
+	authzResp, svcErr := s.authzService.EvaluateAccess(
+		ctx, toAuthzAccessEvaluationRequest(request, groupIDs, resourceServerID))
 	if svcErr != nil {
 		s.logger.Error(ctx, "Authorization evaluation failed",
 			log.MaskedString(log.LoggerKeyUserID, request.Subject.ID),
@@ -131,7 +132,7 @@ func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request Access
 	responses := make([]AccessEvaluationResponse, len(request.Evaluations))
 	authzEvaluationIndexes := make([]int, 0, len(request.Evaluations))
 	groupIDsBySubject := make(map[string][]string)
-	resourceServerIDsByHandle := make(map[string]string)
+	resourceServerIDsByIdentifier := make(map[string]string)
 	validSubjects := make(map[string]struct{})
 	validActions := make(map[string]struct{})
 	for i, evaluation := range request.Evaluations {
@@ -143,7 +144,7 @@ func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request Access
 			continue
 		}
 
-		resourceServerID, ok := resourceServerIDsByHandle[evaluation.Resource.Type]
+		resourceServerID, ok := resourceServerIDsByIdentifier[evaluation.Resource.Type]
 		if !ok {
 			resolvedResourceServerID, svcErr := s.resolveResourceServerID(ctx, evaluation.Resource.Type)
 			if svcErr != nil {
@@ -156,7 +157,7 @@ func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request Access
 				}
 				return nil, svcErr
 			}
-			resourceServerIDsByHandle[evaluation.Resource.Type] = resolvedResourceServerID
+			resourceServerIDsByIdentifier[evaluation.Resource.Type] = resolvedResourceServerID
 			resourceServerID = resolvedResourceServerID
 		}
 
@@ -203,7 +204,8 @@ func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request Access
 			groupIDsBySubject[evaluation.Subject.ID] = resolvedGroupIDs
 			groupIDs = resolvedGroupIDs
 		}
-		authzEvaluations = append(authzEvaluations, toAuthzAccessEvaluationRequest(evaluation, groupIDs))
+		authzEvaluations = append(
+			authzEvaluations, toAuthzAccessEvaluationRequest(evaluation, groupIDs, resourceServerID))
 		authzEvaluationIndexes = append(authzEvaluationIndexes, i)
 	}
 
@@ -285,7 +287,7 @@ func (s *authzenService) SearchActions(ctx context.Context, request AccessAction
 				Properties: request.Subject.Properties,
 			},
 			ResourceServer: providers.AccessEvaluationResourceServer{
-				Handle:     request.Resource.Type,
+				ID:         resourceServerID,
 				Properties: request.Resource.Properties,
 			},
 			Permission: providers.Permission{
@@ -502,24 +504,24 @@ func validateEvaluationRequest(request AccessEvaluationRequest) *tidcommon.Servi
 	return nil
 }
 
-// resolveResourceServerID resolves a resource server handle to its internal ID.
-func (s *authzenService) resolveResourceServerID(ctx context.Context, resourceServerHandle string) (
+// resolveResourceServerID resolves a resource server identifier to its internal ID.
+func (s *authzenService) resolveResourceServerID(ctx context.Context, resourceServerIdentifier string) (
 	string, *tidcommon.ServiceError) {
-	if strings.TrimSpace(resourceServerHandle) == "" {
+	if strings.TrimSpace(resourceServerIdentifier) == "" {
 		return "", &ErrorMissingResource
 	}
 
 	if s.resourceService == nil {
-		return resourceServerHandle, nil
+		return resourceServerIdentifier, nil
 	}
 
-	resourceServer, svcErr := s.resourceService.GetResourceServerByHandle(ctx, resourceServerHandle)
+	resourceServer, svcErr := s.resourceService.GetResourceServerByIdentifier(ctx, resourceServerIdentifier)
 	if svcErr != nil {
 		if svcErr.Code == resource.ErrorResourceServerNotFound.Code {
 			return "", &ErrorInvalidResource
 		}
-		s.logger.Error(ctx, "Failed to retrieve resource server by handle",
-			log.String("resourceServerHandle", resourceServerHandle),
+		s.logger.Error(ctx, "Failed to retrieve resource server by identifier",
+			log.String("resourceServerIdentifier", resourceServerIdentifier),
 			log.String("error", svcErr.Error.DefaultValue))
 		return "", &tidcommon.InternalServerError
 	}
@@ -554,8 +556,11 @@ func (s *authzenService) resolveGroupIDs(ctx context.Context, entityID string) (
 }
 
 // toAuthzAccessEvaluationRequest converts an AuthZEN request to an authorization request.
-func toAuthzAccessEvaluationRequest(request AccessEvaluationRequest,
-	groupIDs []string) providers.AccessEvaluationRequest {
+func toAuthzAccessEvaluationRequest(
+	request AccessEvaluationRequest,
+	groupIDs []string,
+	resourceServerID string,
+) providers.AccessEvaluationRequest {
 	return providers.AccessEvaluationRequest{
 		Subject: providers.Subject{
 			Type:       request.Subject.Type,
@@ -564,7 +569,7 @@ func toAuthzAccessEvaluationRequest(request AccessEvaluationRequest,
 			Properties: request.Subject.Properties,
 		},
 		ResourceServer: providers.AccessEvaluationResourceServer{
-			Handle:     request.Resource.Type,
+			ID:         resourceServerID,
 			Properties: request.Resource.Properties,
 		},
 		Permission: providers.Permission{

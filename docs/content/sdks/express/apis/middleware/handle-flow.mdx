@@ -1,6 +1,7 @@
 ---
 title: handleFlow()
-description: Drive the embedded sign-in flow lifecycle through JSON requests
+docType: reference
+description: Drive the embedded sign-in flow lifecycle through JSON requests using the handleFlow() Express middleware.
 ---
 
 # `handleFlow()`
@@ -21,7 +22,7 @@ const {handleFlow} = require('@thunderid/express');
 
 ## Prerequisites
 
-- Mount [`thunderID()`](/docs/next/sdks/express/apis/middleware/thunderid) with `mode: 'embedded'`
+- Mount [`thunderID()`](../thunderid) with `mode: 'embedded'`
 - Mount `express.json()` before this handler so the SDK can read `req.body`
 - Keep `handleSignIn()` mounted on your callback route so the returned redirect URL can complete sign-in
 
@@ -128,6 +129,6 @@ The handler returns `500` JSON responses for these cases:
 
 ## Related APIs
 
-- [`thunderID()`](/docs/next/sdks/express/apis/middleware/thunderid)
-- [`handleSignIn()`](/docs/next/sdks/express/apis/middleware/handle-sign-in)
-- [`Embedded Sign-In`](/docs/next/sdks/express/guides/embedded-sign-in)
+- [`thunderID()`](../thunderid)
+- [`handleSignIn()`](../handle-sign-in)
+- [`Embedded Sign-In`](../../../guides/embedded-sign-in)

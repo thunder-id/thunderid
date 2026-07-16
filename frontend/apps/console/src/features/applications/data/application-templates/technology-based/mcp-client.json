@@ -3,7 +3,7 @@
   "displayName": "MCP Client",
   "description": "AI application that connects to MCP servers using the Model Context Protocol",
   "creationFlow": {
-    "steps": ["STACK", "NAME", "ORGANIZATION_UNIT", "CLIENT_TYPE", "COMPLETE"]
+    "steps": ["NAME", "ORGANIZATION_UNIT", "CLIENT_TYPE", "COMPLETE"]
   },
   "defaults": {
     "name": "MCP Client Application",

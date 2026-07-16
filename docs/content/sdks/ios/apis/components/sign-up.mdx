@@ -1,11 +1,12 @@
 ---
 title: SignUp
-description: Embedded registration form driven by the Flow Execution API
+docType: reference
+description: Embedded SwiftUI registration form driven by the ThunderID Flow Execution API for multi-step sign-up.
 ---
 
 # `SignUp`
 
-The `SignUp` component renders a full app-native registration form. It drives the Flow Execution API registration loop automatically — initiating the flow, presenting the server-defined inputs and actions on each step, and completing when the user is registered and authenticated.
+The `SignUp` component renders a full app-native registration form. It drives the Flow Execution API registration loop automatically: initiating the flow, presenting the server-defined inputs and actions on each step, and completing when the user is registered and authenticated.
 
 `SignUp` requires `.thunderIDProvider(config:)` in its ancestor view hierarchy.
 
@@ -90,4 +91,4 @@ struct CustomSignUpView: View {
 }
 ```
 
-`SignUpState` exposes the same properties and methods as `SignInState`. See [SignIn — SignInState Properties](/docs/next/sdks/ios/apis/components/sign-in#signinstate-properties) for the full reference.
+`SignUpState` exposes the same properties and methods as `SignInState`. See [SignIn: SignInState Properties](../sign-in#signinstate-properties) for the full reference.

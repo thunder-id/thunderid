@@ -84,11 +84,11 @@ func (suite *ProvisioningExecutorTestSuite) SetupTest() {
 	// Mock the embedded identifying executor first
 	identifyingMock := suite.createMockIdentifyingExecutor()
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameIdentifying, providers.ExecutorTypeUtility,
-		mock.Anything, mock.Anything).Return(identifyingMock).Maybe()
+		mock.Anything, mock.Anything, mock.Anything).Return(identifyingMock).Maybe()
 
 	mockExec := suite.createMockProvisioningExecutor()
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameProvisioning, providers.ExecutorTypeRegistration,
-		[]providers.Input{}, []providers.Input{}).Return(mockExec)
+		[]providers.Input{}, []providers.Input{}, mock.Anything).Return(mockExec)
 
 	suite.executor = newProvisioningExecutor(suite.mockFlowFactory,
 		suite.mockGroupService, suite.mockRoleService, suite.mockRoleAssignmentService, suite.mockEntityProvider,
@@ -559,11 +559,11 @@ func (suite *ProvisioningExecutorTestSuite) newExecutorWithNodeInputs(inputs []p
 
 	mockFlowFactory := coremock.NewFlowFactoryInterfaceMock(suite.T())
 	mockFlowFactory.On("CreateExecutor", ExecutorNameProvisioning, providers.ExecutorTypeRegistration,
-		mock.Anything, mock.Anything).Return(mockExec)
+		mock.Anything, mock.Anything, mock.Anything).Return(mockExec)
 
 	identifyingMock := suite.createMockIdentifyingExecutor()
 	mockFlowFactory.On("CreateExecutor", ExecutorNameIdentifying, providers.ExecutorTypeUtility,
-		mock.Anything, mock.Anything).Return(identifyingMock).Maybe()
+		mock.Anything, mock.Anything, mock.Anything).Return(identifyingMock).Maybe()
 
 	return newProvisioningExecutor(mockFlowFactory,
 		suite.mockGroupService, suite.mockRoleService, suite.mockRoleAssignmentService, suite.mockEntityProvider,

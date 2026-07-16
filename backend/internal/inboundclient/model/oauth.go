@@ -33,6 +33,7 @@ var (
 		string(jws.RS256), string(jws.RS512), string(jws.PS256),
 		string(jws.ES256), string(jws.ES384), string(jws.ES512),
 		string(jws.EdDSA),
+		string(jws.MLDSA44), string(jws.MLDSA65), string(jws.MLDSA87),
 	}
 	SupportedUserInfoEncryptionAlgs = []string{string(jwe.RSAOAEP), string(jwe.RSAOAEP256)}
 	SupportedUserInfoEncryptionEncs = []string{string(jwe.A128CBCHS256), string(jwe.A256GCM)}

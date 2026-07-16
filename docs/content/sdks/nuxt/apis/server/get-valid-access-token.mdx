@@ -1,6 +1,7 @@
 ---
 title: getValidAccessToken()
-description: Get a valid access token, refreshing it automatically if expired
+docType: reference
+description: Retrieve a valid access token from the server session, refreshing it automatically when it has expired.
 ---
 
 # `getValidAccessToken()`
@@ -52,4 +53,4 @@ Throws a `ThunderIDError` with code `ErrorCode.TokenRefreshFailed` if:
 
 - If the access token is still valid, no network request is made.
 - If a refresh occurs, the updated session is written back to the response cookie so the client remains in sync.
-- To access session metadata alongside the token, call [`requireServerSession()`](/docs/next/sdks/nuxt/apis/server/require-server-session) first and use `getValidAccessToken` only when you need to forward the token to an external API.
+- To access session metadata alongside the token, call [`requireServerSession()`](../require-server-session) first and use `getValidAccessToken` only when you need to forward the token to an external API.

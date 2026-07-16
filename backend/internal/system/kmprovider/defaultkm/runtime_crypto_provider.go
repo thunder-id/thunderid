@@ -20,11 +20,16 @@ package defaultkm
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
 	"errors"
 	"fmt"
+
+	"github.com/cloudflare/circl/sign/mldsa/mldsa44"
+	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
+	"github.com/cloudflare/circl/sign/mldsa/mldsa87"
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
@@ -151,12 +156,23 @@ func (s *runtimeCryptoService) GetPublicKeys(
 
 	keys := make([]kmprovider.PublicKeyInfo, 0, len(allCerts))
 	for id, cert := range allCerts {
+		pub := cert.PublicKey
+		if pub == nil {
+			// ML-DSA: the standard library cannot parse the certificate's public
+			// key, so derive it from the configured private key.
+			derived, ok := s.derivePublicKey(ctx, id)
+			if !ok {
+				continue
+			}
+			pub = derived
+		}
+
 		var alg cryptolib.Algorithm
-		switch pub := cert.PublicKey.(type) {
+		switch p := pub.(type) {
 		case *rsa.PublicKey:
 			alg = cryptolib.AlgorithmRS256
 		case *ecdsa.PublicKey:
-			switch pub.Curve.Params().Name {
+			switch p.Curve.Params().Name {
 			case "P-256":
 				alg = cryptolib.AlgorithmES256
 			case "P-384":
@@ -166,11 +182,19 @@ func (s *runtimeCryptoService) GetPublicKeys(
 			default:
 				s.logger.Warn(ctx, "Unsupported EC curve; skipping",
 					log.String("keyID", id),
-					log.String("curve", pub.Curve.Params().Name))
+					log.String("curve", p.Curve.Params().Name))
 				continue
 			}
 		case ed25519.PublicKey:
 			alg = cryptolib.AlgorithmEdDSA
+		case *mldsa44.PublicKey, *mldsa65.PublicKey, *mldsa87.PublicKey:
+			// ML-DSA (RFC 9964).
+			mldsaAlg, ok := cryptolib.MLDSAAlgForPublicKey(p)
+			if !ok {
+				s.logger.Debug(ctx, "Unsupported public key type; skipping", log.String("keyID", id))
+				continue
+			}
+			alg = mldsaAlg
 		default:
 			s.logger.Debug(ctx, "Unsupported public key type; skipping", log.String("keyID", id))
 			continue
@@ -186,7 +210,7 @@ func (s *runtimeCryptoService) GetPublicKeys(
 		keys = append(keys, kmprovider.PublicKeyInfo{
 			KeyID:               id,
 			Algorithm:           alg,
-			PublicKey:           cert.PublicKey,
+			PublicKey:           pub,
 			Thumbprint:          s.pkiService.GetCertThumbprint(id),
 			CertificateDER:      cert.Raw,
 			CertificateChainDER: s.pkiService.GetCertificateChain(id),
@@ -194,6 +218,23 @@ func (s *runtimeCryptoService) GetPublicKeys(
 	}
 
 	return keys, nil
+}
+
+// derivePublicKey returns the public key derived from the configured private key
+// for the given key ID. It is used for ML-DSA keys, whose certificate public key
+// the standard library cannot parse.
+func (s *runtimeCryptoService) derivePublicKey(ctx context.Context, id string) (crypto.PublicKey, bool) {
+	privKey, svcErr := s.pkiService.GetPrivateKey(ctx, id)
+	if svcErr != nil {
+		s.logger.Debug(ctx, "No public key available; skipping", log.String("keyID", id))
+		return nil, false
+	}
+	signer, ok := privKey.(crypto.Signer)
+	if !ok {
+		s.logger.Debug(ctx, "Unsupported private key type; skipping", log.String("keyID", id))
+		return nil, false
+	}
+	return signer.Public(), true
 }
 
 func (s *runtimeCryptoService) Verify(

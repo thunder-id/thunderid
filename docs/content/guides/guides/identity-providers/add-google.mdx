@@ -1,5 +1,6 @@
 ---
 title: Add a Google Identity Provider
+docType: guide
 sidebar_position: 2
 persona: iam
 description: Configure a Google identity provider to enable Sign in with Google for your applications.
@@ -24,11 +25,11 @@ This guide walks you through registering a Google identity provider (IdP) in <Pr
 5. Set **Application type** to **Web application**.
 6. Under **Authorized redirect URIs**, add the callback URL for your <ProductName /> deployment:
 
-   ```
+   ```text
    https://<your-thunderid-host>/oauth2/callback
    ```
 
-7. Click **Create**. Google displays your **Client ID** and **Client Secret**. Copy both values — you need them in the next step.
+7. Click **Create**. Google displays your **Client ID** and **Client Secret**. Copy both values. You need them in the next step.
 
 ## Step 2: Create the Google IdP
 
@@ -104,5 +105,5 @@ curl -kL -X POST https://localhost:8090/identity-providers \
 
 ## Next Steps
 
-- [Connect an IdP to an Application](../connect-idp-to-application) — Add this Google IdP to an application's authentication flow.
-- [Manage Identity Providers](../manage-identity-providers) — Update or delete identity providers.
+- [Connect an IdP to an Application](../connect-idp-to-application): Add this Google IdP to an application's authentication flow.
+- [Manage Identity Providers](../manage-identity-providers): Update or delete identity providers.

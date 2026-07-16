@@ -1,7 +1,8 @@
 ---
 title: Configuration
+docType: reference
 displayed_sidebar: nextjsSdkSidebar
-description: Configuration options for the Next.js SDK
+description: Configuration options for the Next.js SDK, including client credentials, session settings, and redirect URLs.
 ---
 
 # Configuration
@@ -25,7 +26,7 @@ THUNDERID_SECRET=<a-random-secret-for-session-signing>
 |----------|-------------|
 | `NEXT_PUBLIC_THUNDERID_BASE_URL` | Your <ProductName /> instance URL. The `NEXT_PUBLIC_` prefix makes this available to client components |
 | `NEXT_PUBLIC_THUNDERID_CLIENT_ID` | The Client ID from your <ProductName /> application |
-| `THUNDERID_CLIENT_SECRET` | The Client Secret from your <ProductName /> application. Server-side only — never exposed to the browser |
+| `THUNDERID_CLIENT_SECRET` | The Client Secret from your <ProductName /> application. Server-side only, never exposed to the browser |
 | `THUNDERID_SECRET` | A random string (at least 32 characters) used to sign session cookies with HMAC-SHA256. Required in production; a development fallback is used when not set |
 
 ### Optional Variables

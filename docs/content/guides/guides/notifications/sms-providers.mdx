@@ -1,17 +1,18 @@
 ---
 title: Configure an SMS Provider
+docType: guide
 description: Set up an SMS notification sender to deliver One-Time Passwords and other SMS messages in {{ProductName}}.
 ---
 
 # Configure an SMS Provider
 
-<ProductName /> sends SMS messages — such as One-Time Passwords (OTPs) — through a notification sender. A notification sender connects <ProductName /> to a messaging provider that delivers SMS to end users.
+<ProductName /> sends SMS messages, such as One-Time Passwords (OTPs), through a notification sender. A notification sender connects <ProductName /> to a messaging provider that delivers SMS to end users.
 
 Three messaging providers are supported:
 
-- **Twilio** — requires an Account SID, Auth Token, and Sender ID
-- **Vonage** — requires an API Key, API Secret, and Sender ID
-- **Custom** — connects to any SMS gateway via an HTTP webhook
+- **Twilio**: requires an Account SID, Auth Token, and Sender ID
+- **Vonage**: requires an API Key, API Secret, and Sender ID
+- **Custom**: connects to any SMS gateway via an HTTP webhook
 
 ## Prerequisites
 
@@ -52,8 +53,6 @@ curl -X POST https://localhost:8090/notification-senders/message \
 | `sender_id` | ✅ | ❌ | The Twilio phone number or messaging service SID used as the sender. |
 | `supported_channels` | ❌ | ❌ | The communication channels supported by this sender. Defaults to `sms`. |
 
----
-
 ### Vonage
 
 1. Log in to the [Vonage API Dashboard](https://dashboard.nexmo.com) and retrieve your **API Key**, **API Secret**, and sender name or virtual number.
@@ -89,8 +88,6 @@ curl -X POST https://localhost:8090/notification-senders/message \
 :::note
 Vonage requires the recipient phone number in E.164 format without a leading `+` or `00`. <ProductName /> strips these prefixes automatically before sending.
 :::
-
----
 
 ### Custom Provider
 
@@ -166,4 +163,4 @@ curl -X DELETE https://localhost:8090/notification-senders/message/<sender-id> \
 
 ## Next Steps
 
-- [Build a Flow](../../flows/build-a-flow) — Add an SMS OTP step to a sign-in or registration flow
+- [Build a Flow](../../flows/build-a-flow): Add an SMS OTP step to a sign-in or registration flow

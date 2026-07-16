@@ -1,7 +1,8 @@
 ---
 title: Claims & Scopes
+docType: reference
 sidebar_position: 3
-description: How OpenID Connect scopes map to claims in {{ProductName}} — standard OIDC scopes, custom scope-to-claim mapping, and the claims request parameter.
+description: How OpenID Connect scopes map to claims in {{ProductName}}, including standard OIDC scopes, custom scope-to-claim mapping, and the claims request parameter.
 ---
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
@@ -12,9 +13,9 @@ A **scope** is what a client *asks for*. A **claim** is what <ProductName /> *re
 
 <ProductName /> implements three layers:
 
-1. **Standard OIDC scopes** ([OIDC Core §5.4](https://openid.net/specs/openid-connect-core-1_0.html#ScopeClaims)) — `openid`, `profile`, `email`, `phone`, `address` — with fixed claim sets defined by the spec.
-2. **Application-defined scope-to-claim mappings** (`scopeClaims`) — request a scope, get a configurable bundle of claims.
-3. **The `claims` request parameter** ([OIDC Core §5.5](https://openid.net/specs/openid-connect-core-1_0.html#ClaimsParameter)) — request specific claims directly, claim-by-claim.
+1. **Standard OIDC scopes** ([OIDC Core §5.4](https://openid.net/specs/openid-connect-core-1_0.html#ScopeClaims)): `openid`, `profile`, `email`, `phone`, `address`, with fixed claim sets defined by the spec.
+2. **Application-defined scope-to-claim mappings** (`scopeClaims`): request a scope, get a configurable bundle of claims.
+3. **The `claims` request parameter** ([OIDC Core §5.5](https://openid.net/specs/openid-connect-core-1_0.html#ClaimsParameter)): request specific claims directly, claim-by-claim.
 
 ## Standard OIDC Scopes
 
@@ -26,7 +27,7 @@ A **scope** is what a client *asks for*. A **claim** is what <ProductName /> *re
 | `phone` | `phone_number`, `phone_number_verified` |
 | `address` | `address` (structured JSON object) |
 
-The actual values come from the authenticated user's attributes — claims are omitted when the user has no value for them.
+The actual values come from the authenticated user's attributes. Claims are omitted when the user has no value for them.
 
 ## Custom Scope-to-Claim Mapping (`scopeClaims`)
 
@@ -44,10 +45,10 @@ Each application can define its own scope-to-claim bundles. Asking for the scope
 
 | Behavior | Detail |
 |---|---|
-| Overrides the standard mapping | Yes — `profile` here returns only the three listed claims, not the full OIDC `profile` set |
-| Custom scope names | Allowed — `roles` here is an application-defined scope |
+| Overrides the standard mapping | Yes, `profile` here returns only the three listed claims, not the full OIDC `profile` set |
+| Custom scope names | Allowed, `roles` here is an application-defined scope |
 | Scope not in `scopeClaims` | Returns no extra claims (but the scope still passes through to access tokens) |
-| Bypasses resource-server filtering | Yes — see "Filtering rules" below |
+| Bypasses resource-server filtering | Yes, see "Filtering rules" below |
 
 ## `claims` Request Parameter
 
@@ -114,7 +115,7 @@ The `scopeClaims` mapping is configured on the application object itself, alongs
 
 ## Related Guides
 
-- [OpenID Connect](../openid-connect) — the spec that defines standard scopes and the `claims` parameter
-- [UserInfo](../userinfo) — receives the same claim set as the ID Token
-- [Resource Indicators](../resource-indicators) — how scopes are filtered by targeted resource servers
-- [Token Formats](../token-formats) — `userAttributes` selection on access and ID tokens
+- [OpenID Connect](../openid-connect), the spec that defines standard scopes and the `claims` parameter
+- [UserInfo](../userinfo), receives the same claim set as the ID Token
+- [Resource Indicators](../resource-indicators), how scopes are filtered by targeted resource servers
+- [Token Formats](../token-formats), `userAttributes` selection on access and ID tokens

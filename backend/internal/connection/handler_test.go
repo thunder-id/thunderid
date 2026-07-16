@@ -56,47 +56,186 @@ func (s *HandlerTestSuite) SetupTest() {
 	s.handler, s.mockIDP, s.mockNotif = newConnectionTestHandler(s.T())
 }
 
-func (s *HandlerTestSuite) TestListConnections() {
+// mockListFixtures registers the shared list fixtures: 2 google + 1 oidc IdPs, and a twilio and
+// a custom message sender.
+func (s *HandlerTestSuite) mockListFixtures() {
 	s.mockIDP.On("GetIdentityProviderList", mock.Anything).Return([]idp.BasicIDPDTO{
-		{ID: "1", Type: providers.IDPTypeGoogle},
-		{ID: "2", Type: providers.IDPTypeGoogle},
-		{ID: "3", Type: providers.IDPTypeOIDC},
+		{ID: "1", Name: "Google One", Type: providers.IDPTypeGoogle},
+		{ID: "2", Name: "Google Two", Type: providers.IDPTypeGoogle},
+		{ID: "3", Name: "Corp OIDC", Description: "corp", Type: providers.IDPTypeOIDC},
 	}, (*tidcommon.ServiceError)(nil))
-	s.mockNotif.On("ListSenders", mock.Anything).Return([]ncommon.NotificationSenderDTO{
-		{ID: "s1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeTwilio},
-	}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
+		Return([]ncommon.NotificationSenderDTO{
+			{ID: "s1", Name: "Twilio SMS", Type: ncommon.NotificationSenderTypeMessage,
+				Provider: ncommon.MessageProviderTypeTwilio},
+			{ID: "s2", Name: "Gateway", Type: ncommon.NotificationSenderTypeMessage,
+				Provider: ncommon.MessageProviderTypeCustom},
+		}, (*tidcommon.ServiceError)(nil))
+}
 
-	req := httptest.NewRequest(http.MethodGet, "/connections", nil)
+func (s *HandlerTestSuite) listConnections(target string) (*httptest.ResponseRecorder, connectionListResponse) {
+	req := httptest.NewRequest(http.MethodGet, target, nil)
 	rr := httptest.NewRecorder()
 	s.handler.handleListConnections(rr, req)
+	var resp connectionListResponse
+	if rr.Code == http.StatusOK {
+		s.Require().NoError(json.NewDecoder(rr.Body).Decode(&resp))
+	}
+	return rr, resp
+}
+
+func (s *HandlerTestSuite) TestListConnections() {
+	s.mockListFixtures()
+
+	rr, resp := s.listConnections("/connections")
 
 	s.Equal(http.StatusOK, rr.Code)
-	var resp connectionListResponse
-	s.Require().NoError(json.NewDecoder(rr.Body).Decode(&resp))
-
-	byType := make(map[string]connectionTypeSummary, len(resp.Connections))
+	s.Require().Len(resp.Connections, 5)
+	s.Equal(5, resp.TotalResults)
+	s.Equal(1, resp.StartIndex)
+	s.Equal(5, resp.Count)
+	// Sorted by type, then name, then ID.
+	ids := make([]string, 0, len(resp.Connections))
 	for _, c := range resp.Connections {
-		byType[c.Type] = c
+		ids = append(ids, c.ID)
 	}
-	s.Len(resp.Connections, len(idpBackedVendors)+len(smsBackedVendors))
-	s.Equal(2, byType["google"].InstanceCount)
-	s.True(byType["google"].Configured)
-	s.Equal(1, byType["oidc"].InstanceCount)
-	s.Equal(0, byType["github"].InstanceCount)
-	s.False(byType["github"].Configured)
-	s.Equal(1, byType["twilio"].InstanceCount)
-	s.True(byType["twilio"].Configured)
-	s.Equal(0, byType["vonage"].InstanceCount)
-	s.False(byType["vonage"].Configured)
+	s.Equal([]string{"s2", "1", "2", "3", "s1"}, ids)
+	s.Equal("custom", resp.Connections[0].Type)
+	s.Equal([]connectionCategory{categorySMSProvider}, resp.Connections[0].Categories)
+	s.Equal("google", resp.Connections[1].Type)
+	s.Equal([]connectionCategory{categoryIdentityProvider}, resp.Connections[1].Categories)
+	s.Equal("oidc", resp.Connections[3].Type)
+	s.Equal("corp", resp.Connections[3].Description)
+	s.Equal("twilio", resp.Connections[4].Type)
+	s.Empty(resp.Links)
+}
+
+func (s *HandlerTestSuite) TestListConnectionsPagination() {
+	s.mockListFixtures()
+
+	rr, resp := s.listConnections("/connections?limit=2&offset=1")
+
+	s.Equal(http.StatusOK, rr.Code)
+	s.Equal(5, resp.TotalResults)
+	s.Equal(2, resp.StartIndex)
+	s.Equal(2, resp.Count)
+	s.Require().Len(resp.Connections, 2)
+	s.Equal("1", resp.Connections[0].ID)
+	s.Equal("2", resp.Connections[1].ID)
+
+	rels := make([]string, 0, len(resp.Links))
+	for _, link := range resp.Links {
+		rels = append(rels, link.Rel)
+	}
+	s.Contains(rels, "next")
+	s.Contains(rels, "prev")
+}
+
+func (s *HandlerTestSuite) TestListConnectionsOffsetPastEnd() {
+	s.mockListFixtures()
+
+	rr, resp := s.listConnections("/connections?offset=100")
+
+	s.Equal(http.StatusOK, rr.Code)
+	s.Equal(5, resp.TotalResults)
+	s.Equal(101, resp.StartIndex)
+	s.Equal(0, resp.Count)
+	s.NotNil(resp.Connections)
+	s.Empty(resp.Connections)
+}
+
+func (s *HandlerTestSuite) TestListConnectionsInvalidLimit() {
+	targets := []string{
+		"/connections?limit=abc",
+		"/connections?limit=0",
+		"/connections?limit=-5",
+		"/connections?limit=101",
+	}
+	for _, target := range targets {
+		rr, _ := s.listConnections(target)
+		s.Equal(http.StatusBadRequest, rr.Code, target)
+		s.Contains(rr.Body.String(), "CON-1002", target)
+	}
+	s.mockIDP.AssertNotCalled(s.T(), "GetIdentityProviderList", mock.Anything)
+	s.mockNotif.AssertNotCalled(s.T(), "ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage)
+}
+
+func (s *HandlerTestSuite) TestListConnectionsInvalidOffset() {
+	for _, target := range []string{"/connections?offset=abc", "/connections?offset=-1"} {
+		rr, _ := s.listConnections(target)
+		s.Equal(http.StatusBadRequest, rr.Code, target)
+		s.Contains(rr.Body.String(), "CON-1003", target)
+	}
+	s.mockIDP.AssertNotCalled(s.T(), "GetIdentityProviderList", mock.Anything)
+	s.mockNotif.AssertNotCalled(s.T(), "ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage)
+}
+
+func (s *HandlerTestSuite) TestListConnectionsIdentityProviderCategory() {
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).Return([]idp.BasicIDPDTO{
+		{ID: "1", Name: "Google One", Type: providers.IDPTypeGoogle},
+		{ID: "3", Name: "Corp OIDC", Type: providers.IDPTypeOIDC},
+	}, (*tidcommon.ServiceError)(nil))
+
+	rr, resp := s.listConnections("/connections?category=identity-provider")
+
+	s.Equal(http.StatusOK, rr.Code)
+	s.Require().Len(resp.Connections, 2)
+	s.Equal("google", resp.Connections[0].Type)
+	s.Equal("oidc", resp.Connections[1].Type)
+	s.mockNotif.AssertNotCalled(s.T(), "ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage)
+}
+
+func (s *HandlerTestSuite) TestListConnectionsSMSProviderCategory() {
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
+		Return([]ncommon.NotificationSenderDTO{
+			{ID: "s1", Name: "Twilio SMS", Type: ncommon.NotificationSenderTypeMessage,
+				Provider: ncommon.MessageProviderTypeTwilio},
+			{ID: "s2", Name: "Gateway", Type: ncommon.NotificationSenderTypeMessage,
+				Provider: ncommon.MessageProviderTypeCustom},
+		}, (*tidcommon.ServiceError)(nil))
+
+	rr, resp := s.listConnections("/connections?category=sms-provider")
+
+	s.Equal(http.StatusOK, rr.Code)
+	s.Require().Len(resp.Connections, 2)
+	s.Equal("custom", resp.Connections[0].Type)
+	s.Equal("twilio", resp.Connections[1].Type)
+	s.mockIDP.AssertNotCalled(s.T(), "GetIdentityProviderList", mock.Anything)
+}
+
+func (s *HandlerTestSuite) TestListConnectionsEmptyCategory() {
+	s.mockListFixtures()
+
+	rr, resp := s.listConnections("/connections?category=")
+
+	s.Equal(http.StatusOK, rr.Code)
+	s.Len(resp.Connections, 5)
+}
+
+func (s *HandlerTestSuite) TestListConnectionsInvalidCategory() {
+	for _, target := range []string{"/connections?category=bogus", "/connections?category=email-provider"} {
+		rr, _ := s.listConnections(target)
+		s.Equal(http.StatusBadRequest, rr.Code, target)
+		s.Contains(rr.Body.String(), "CON-1001", target)
+	}
+	s.mockIDP.AssertNotCalled(s.T(), "GetIdentityProviderList", mock.Anything)
+	s.mockNotif.AssertNotCalled(s.T(), "ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage)
 }
 
 func (s *HandlerTestSuite) TestListConnectionsServiceError() {
 	s.mockIDP.On("GetIdentityProviderList", mock.Anything).
 		Return(([]idp.BasicIDPDTO)(nil), &tidcommon.InternalServerError)
 
-	req := httptest.NewRequest(http.MethodGet, "/connections", nil)
-	rr := httptest.NewRecorder()
-	s.handler.handleListConnections(rr, req)
+	rr, _ := s.listConnections("/connections")
+
+	s.Equal(http.StatusInternalServerError, rr.Code)
+}
+
+func (s *HandlerTestSuite) TestListConnectionsSenderServiceError() {
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
+		Return(([]ncommon.NotificationSenderDTO)(nil), &tidcommon.InternalServerError)
+
+	rr, _ := s.listConnections("/connections?category=sms-provider")
 
 	s.Equal(http.StatusInternalServerError, rr.Code)
 }
@@ -392,7 +531,7 @@ func (s *SMSHandlerTestSuite) TestUpdateFromDTOError() {
 }
 
 func (s *SMSHandlerTestSuite) TestListInstancesServiceError() {
-	s.mockNotif.On("ListSenders", mock.Anything).
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
 		Return(([]ncommon.NotificationSenderDTO)(nil), &tidcommon.InternalServerError)
 
 	req := httptest.NewRequest(http.MethodGet, "/connections/twilio", nil)
@@ -402,13 +541,14 @@ func (s *SMSHandlerTestSuite) TestListInstancesServiceError() {
 }
 
 func (s *SMSHandlerTestSuite) TestListInstancesSuccess() {
-	s.mockNotif.On("ListSenders", mock.Anything).Return([]ncommon.NotificationSenderDTO{
-		{
-			ID: "tw-1", Name: "A", Description: "d",
-			Type: ncommon.NotificationSenderTypeMessage, Provider: stubProvider,
-		},
-		{ID: "vo-1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeVonage},
-	}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
+		Return([]ncommon.NotificationSenderDTO{
+			{
+				ID: "tw-1", Name: "A", Description: "d",
+				Type: ncommon.NotificationSenderTypeMessage, Provider: stubProvider,
+			},
+			{ID: "vo-1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeVonage},
+		}, (*tidcommon.ServiceError)(nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/connections/twilio", nil)
 	rr := httptest.NewRecorder()

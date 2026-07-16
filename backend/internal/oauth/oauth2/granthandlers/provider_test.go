@@ -137,6 +137,14 @@ func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_CIBA() {
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
 }
 
+func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_JWTBearer() {
+	handler, err := suite.provider.GetGrantHandler(providers.GrantTypeJWTBearer)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), handler)
+	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
+}
+
 func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_UnsupportedGrantType() {
 	unsupportedGrantTypes := []struct {
 		name      string
@@ -163,6 +171,7 @@ func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_AllSupportedType
 		providers.GrantTypeAuthorizationCode,
 		providers.GrantTypeRefreshToken,
 		providers.GrantTypeCIBA,
+		providers.GrantTypeJWTBearer,
 	}
 
 	for _, grantType := range supportedTypes {

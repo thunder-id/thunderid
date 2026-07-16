@@ -42,6 +42,7 @@ import (
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -257,7 +258,8 @@ func TestCreateStaticFileHandler(t *testing.T) {
 	requireWriteFile(t, filepath.Join(tmpDir, "index.html"), indexContent)
 	requireWriteFile(t, filepath.Join(tmpDir, "hello.txt"), fileContent)
 
-	handler := createStaticFileHandler("/app/", tmpDir, logger)
+	handler, err := createStaticFileHandler("/app/", tmpDir, logger)
+	require.NoError(t, err)
 
 	t.Run("serves existing file", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/app/hello.txt", nil)
@@ -291,6 +293,38 @@ func TestCreateStaticFileHandler(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, rr.Code)
 		assert.NotContains(t, rr.Body.String(), "root:")
 	})
+
+	t.Run("returns error when the directory cannot be opened", func(t *testing.T) {
+		_, err := createStaticFileHandler("/app/", filepath.Join(tmpDir, "does-not-exist"), logger)
+		require.Error(t, err)
+	})
+
+	t.Run("returns 404 when index.html is absent and file not found", func(t *testing.T) {
+		noIndexDir := t.TempDir()
+		requireWriteFile(t, filepath.Join(noIndexDir, "asset.txt"), []byte("asset"))
+		noIndexHandler, err := createStaticFileHandler("/app/", noIndexDir, logger)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/app/unknown", nil)
+		rr := httptest.NewRecorder()
+
+		noIndexHandler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+	})
+
+	t.Run("serves nested index.html through the normal file flow", func(t *testing.T) {
+		require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "nested"), 0o750))
+		requireWriteFile(t, filepath.Join(tmpDir, "nested", "index.html"), []byte("nested index"))
+
+		req := httptest.NewRequest(http.MethodGet, "/app/nested/index.html", nil)
+		rr := httptest.NewRecorder()
+
+		handler.ServeHTTP(rr, req)
+
+		// The nested file must not be served through the root index.html no-cache branch.
+		assert.Empty(t, rr.Header().Get(constants.CacheControlHeaderName))
+	})
 }
 
 func TestCreateStaticFileHandler_CacheHeaders(t *testing.T) {
@@ -307,7 +341,8 @@ func TestCreateStaticFileHandler_CacheHeaders(t *testing.T) {
 	requireWriteFile(t, filepath.Join(tmpDir, "styles.css"), cssContent)
 	requireWriteFile(t, filepath.Join(tmpDir, "logo.png"), imageContent)
 
-	handler := createStaticFileHandler("/app/", tmpDir, logger)
+	handler, err := createStaticFileHandler("/app/", tmpDir, logger)
+	require.NoError(t, err)
 
 	t.Run("sets cache headers when serving index.html at root", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/app/", nil)
@@ -421,42 +456,6 @@ func TestCreateStaticFileHandler_CacheHeaders(t *testing.T) {
 		assert.Empty(t, rr.Header().Get(constants.ExpiresHeaderName),
 			"Expires should not be set for files that contain 'index.html' but are not exactly 'index.html'")
 		assert.Equal(t, string(customIndexFile), rr.Body.String())
-	})
-}
-
-func TestDirectoryExists(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	t.Run("returns true for existing directory", func(t *testing.T) {
-		assert.True(t, directoryExists(tmpDir))
-	})
-
-	t.Run("returns false for non-existent directory", func(t *testing.T) {
-		assert.False(t, directoryExists(filepath.Join(tmpDir, "nonexistent")))
-	})
-
-	t.Run("returns false for file, not directory", func(t *testing.T) {
-		filePath := filepath.Join(tmpDir, "file.txt")
-		requireWriteFile(t, filePath, []byte("content"))
-		assert.False(t, directoryExists(filePath))
-	})
-}
-
-func TestFileExists(t *testing.T) {
-	tmpDir := t.TempDir()
-	filePath := filepath.Join(tmpDir, "file.txt")
-	requireWriteFile(t, filePath, []byte("content"))
-
-	t.Run("returns true for existing file", func(t *testing.T) {
-		assert.True(t, fileExists(filePath))
-	})
-
-	t.Run("returns false for non-existent file", func(t *testing.T) {
-		assert.False(t, fileExists(filepath.Join(tmpDir, "nonexistent.txt")))
-	})
-
-	t.Run("returns false for directory, not file", func(t *testing.T) {
-		assert.False(t, fileExists(tmpDir))
 	})
 }
 

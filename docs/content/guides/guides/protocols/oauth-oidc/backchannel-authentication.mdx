@@ -1,16 +1,17 @@
 ---
 title: Backchannel Authentication (CIBA)
+docType: reference
 sidebar_position: 5
-description: OpenID Connect Client-Initiated Backchannel Authentication (CIBA) in {{ProductName}} — trigger user authentication on a separate device without a browser redirect.
+description: OpenID Connect Client-Initiated Backchannel Authentication (CIBA) in {{ProductName}}, to trigger user authentication on a separate device without a browser redirect.
 ---
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 # Backchannel Authentication (CIBA)
 
-**Client-Initiated Backchannel Authentication (CIBA)** ([CIBA Core 1.0](https://openid.net/specs/openid-client-initiated-backchannel-authentication-core-1_0.html)) is an OpenID Connect extension that lets a client application trigger user authentication on a separate device — without any browser redirect.
+**Client-Initiated Backchannel Authentication (CIBA)** ([CIBA Core 1.0](https://openid.net/specs/openid-client-initiated-backchannel-authentication-core-1_0.html)) is an OpenID Connect extension that lets a client application trigger user authentication on a separate device, without any browser redirect.
 
-In every traditional OpenID Connect flow, the same device that initiates the request also completes the sign-in. CIBA breaks that assumption. A **consumption device** (for example, a call center terminal or a point-of-sale terminal) starts the request. The user authenticates on an **authentication device** (for example, their phone). The two devices share no direct connection — <ProductName /> coordinates between them.
+In every traditional OpenID Connect flow, the same device that initiates the request also completes the sign-in. CIBA breaks that assumption. A **consumption device** (for example, a call center terminal or a point-of-sale terminal) starts the request. The user authenticates on an **authentication device** (for example, their phone). The two devices share no direct connection: <ProductName /> coordinates between them.
 
 <ProductName /> supports CIBA in **poll mode** only. The `login_hint_token` hint type is defined in the specification but is **not** supported; use `login_hint` or `id_token_hint` instead.
 
@@ -24,18 +25,18 @@ Typical use cases include:
 
 The flow proceeds in three phases:
 
-**Phase 1 — Initiation**
+**Phase 1: Initiation**
 
 1. The client sends `POST /oauth2/bc-authorize` with a user hint (for example, `login_hint`) and the requested scopes.
 2. <ProductName /> validates the request and sends a notification to the user's authentication device.
 3. <ProductName /> returns an `auth_req_id`, a polling interval, and an expiry time.
 
-**Phase 2 — User Authentication**
+**Phase 2: User Authentication**
 
 4. The user reviews the request on their authentication device and approves or denies it.
 5. <ProductName /> records the decision and marks the `auth_req_id` accordingly.
 
-**Phase 3 — Token Retrieval**
+**Phase 3: Token Retrieval**
 
 6. The client polls `POST /oauth2/token` with `grant_type=urn:openid:params:grant-type:ciba` until the user has acted.
 7. <ProductName /> returns an access token and, when `openid` is in the scope, an ID token.
@@ -94,7 +95,7 @@ Content-Type: application/json
 
 ## Run the Flow
 
-### Step 1 — Initiate Backchannel Authentication
+### Step 1: Initiate Backchannel Authentication
 
 ```bash
 curl -X POST https://{{productSlug}}.example.com/oauth2/bc-authorize \
@@ -115,7 +116,7 @@ Response:
 }
 ```
 
-### Step 2 — Poll the Token Endpoint
+### Step 2: Poll the Token Endpoint
 
 Poll until the user approves, the request expires, or an error is returned.
 
@@ -161,7 +162,7 @@ Wait for the interval (or a longer interval after a `slow_down` response), then 
 
 ## Related Guides
 
-- [Client Authentication Methods](../client-authentication-methods) — required for confidential clients
-- [OpenID Connect](../openid-connect) — add `openid` to the scope to receive an ID token
-- [Server Metadata](../server-metadata) — the `backchannel_authentication_endpoint` field in the OIDC discovery document
-- [Claims & Scopes](../claims-and-scopes) — configure which claims appear in the issued tokens
+- [Client Authentication Methods](../client-authentication-methods), required for confidential clients
+- [OpenID Connect](../openid-connect), add `openid` to the scope to receive an ID token
+- [Server Metadata](../server-metadata), the `backchannel_authentication_endpoint` field in the OIDC discovery document
+- [Claims & Scopes](../claims-and-scopes), configure which claims appear in the issued tokens

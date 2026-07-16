@@ -32,13 +32,17 @@ import ColorSchemeSync from './ColorSchemeSync';
 export default function PreviewThemeProvider({
   colorScheme,
   colorSchemeNode = undefined,
+  baseTheme = undefined,
   children,
 }: {
   colorScheme: 'light' | 'dark';
   colorSchemeNode?: HTMLElement | null;
+  /** Base theme the resolved design is merged over. Defaults to Acrylic Orange. */
+  baseTheme?: Theme;
   children: ReactNode;
 }): JSX.Element {
-  const {theme} = useDesign(AcrylicOrangeTheme as Theme);
+  const effectiveBaseTheme = baseTheme ?? (AcrylicOrangeTheme as Theme);
+  const {theme} = useDesign(effectiveBaseTheme);
 
   // MUI's ThemeProvider supports CSS-vars-specific props (colorSchemeNode,
   // disableNestedContext, storageManager) at runtime, but the TypeScript types
@@ -52,7 +56,7 @@ export default function PreviewThemeProvider({
   } as Record<string, unknown>;
 
   return (
-    <ThemeProvider theme={theme ?? AcrylicOrangeTheme} defaultMode={colorScheme} {...cssVarsProps}>
+    <ThemeProvider theme={theme ?? effectiveBaseTheme} defaultMode={colorScheme} {...cssVarsProps}>
       <ColorSchemeSync mode={colorScheme} />
       {children}
     </ThemeProvider>

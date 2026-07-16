@@ -109,9 +109,8 @@ export default function AddNodeDialog({
   const createResource = useCreateResource(resourceServerId);
   const createAction = useCreateAction(resourceServerId, resourceId);
 
-  const derivedPermission = handle.trim()
-    ? `${parentPermission}${delimiter}${handle.trim()}`
-    : `${parentPermission}${delimiter}…`;
+  const permissionPrefix = parentPermission ? `${parentPermission}${delimiter}` : '';
+  const derivedPermission = handle.trim() ? `${permissionPrefix}${handle.trim()}` : `${permissionPrefix}…`;
 
   const handleClose = (): void => {
     setName('');

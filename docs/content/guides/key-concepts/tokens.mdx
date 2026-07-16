@@ -1,5 +1,6 @@
 ---
 title: Tokens
+docType: concept
 sidebar_position: 5
 description: Understand the types of tokens issued by the server and how claims like audience and scope are determined.
 ---
@@ -14,15 +15,15 @@ Access tokens are JWTs that a client presents to a resource server to access pro
 
 | Claim | Description |
 |-------|-------------|
-| `sub` | The subject — the user ID or client ID the token represents. |
-| `aud` | The audience — identifies the intended recipient of the token. Accepts a string or a JSON array of strings. |
-| `scope` | The granted scopes — the permissions the token carries. |
-| `iss` | The issuer — the <ProductName /> instance that issued the token. |
+| `sub` | The subject, the user ID or client ID the token represents. |
+| `aud` | The audience, which identifies the intended recipient of the token. Accepts a string or a JSON array of strings. |
+| `scope` | The granted scopes, the permissions the token carries. |
+| `iss` | The issuer, the <ProductName /> instance that issued the token. |
 | `exp` | The expiry time as a Unix timestamp. |
 
 ### Audience Claim Behavior
 
-The `aud` claim varies based on whether the client used [resource indicators](/docs/next/guides/guides/resource-indicators):
+The `aud` claim varies based on whether the client used [resource indicators](../../guides/protocols/oauth-oidc/resource-indicators):
 
 - **With `resource` parameter:** The `aud` claim contains the identifier(s) of the targeted resource server(s).
 - **Without `resource` parameter:** <ProductName /> discovers which registered resource servers own the granted scopes and includes their identifiers. If no resource server matches, the `aud` defaults to the client ID.
@@ -35,7 +36,7 @@ Both forms comply with [RFC 7519 Section 4.1.3](https://datatracker.ietf.org/doc
 
 Refresh tokens allow a client to get a new access token without requiring the user to re-authenticate. A refresh token is issued alongside the access token when the client uses a grant type that supports refresh (such as the authorization code grant).
 
-When refreshing, the client can include the `resource` parameter to narrow the audience of the new access token to a subset of the original. See [Resource Indicators — Narrow the Audience on Token Refresh](/docs/next/guides/guides/resource-indicators#narrow-the-audience-on-token-refresh).
+When refreshing, the client can include the `resource` parameter to narrow the audience of the new access token to a subset of the original. See [Resource Indicators: Narrow the Audience on Token Refresh](../../guides/protocols/oauth-oidc/resource-indicators#narrow-the-audience-on-token-refresh).
 
 ## ID Tokens
 

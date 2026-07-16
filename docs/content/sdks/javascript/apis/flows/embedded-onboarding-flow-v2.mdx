@@ -1,7 +1,8 @@
 ---
 title: User Onboarding Flow (V2)
+docType: reference
 displayed_sidebar: javascriptSdkSidebar
-description: V2 function for post-sign-in user onboarding flows
+description: Embedded onboarding flow component (version 2) for collecting additional user details after registration.
 ---
 
 # User Onboarding Flow (V2)
@@ -43,11 +44,11 @@ const step2 = await executeEmbeddedUserOnboardingFlowV2({
 | `config.url` | `string` | ✅ | Full endpoint URL. Mutually exclusive with `baseUrl` |
 | `config.baseUrl` | `string` | ✅ | <ProductName /> base URL |
 | `config.payload` | `EmbeddedFlowExecuteRequestConfigV2` | ✅ | Flow request body |
-| `config.payload.applicationId` | `string` | — | Application ID. Required for the first step |
-| `config.payload.flowType` | `string` | — | Must be `'USER_ONBOARDING'` for the first step |
-| `config.payload.executionId` | `string` | — | Execution ID from a prior response |
-| `config.payload.inputs` | `Record<string, string>` | — | Step input values |
-| `config.payload.challengeToken` | `string` | — | Challenge token from a prior step |
+| `config.payload.applicationId` | `string` | No | Application ID. Required for the first step |
+| `config.payload.flowType` | `string` | No | Must be `'USER_ONBOARDING'` for the first step |
+| `config.payload.executionId` | `string` | No | Execution ID from a prior response |
+| `config.payload.inputs` | `Record<string, string>` | No | Step input values |
+| `config.payload.challengeToken` | `string` | No | Challenge token from a prior step |
 
 ## Response: `EmbeddedUserOnboardingFlowResponse`
 

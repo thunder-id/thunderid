@@ -201,6 +201,11 @@ func buildIDPDTOFromRequest(idpRequest idpRequestWithID) (*providers.IDPDTO, err
 		idpDTO.Properties = properties
 	}
 
+	// Carry the attribute configuration (user type resolution, attribute mappings,
+	// account linking) from the declarative resource. Mirrors the REST API create/update
+	// path so file-based IDPs behave identically to API-managed ones.
+	idpDTO.AttributeConfiguration = sanitizeAttributeConfiguration(idpRequest.AttributeConfiguration)
+
 	return idpDTO, nil
 }
 

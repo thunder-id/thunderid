@@ -1,8 +1,9 @@
 ---
 title: React SDK Overview
+docType: concept
 sidebar_position: 1
 sidebar_label: Overview
-description: React SDK for seamless authentication integration
+description: React SDK for authentication with hooks, context providers, pre-built components, and route protection.
 ---
 
 # React SDK
@@ -33,16 +34,16 @@ Install the <ProductName /> React SDK using your preferred package manager:
 
 ## Getting Started
 
-To get started quickly, check out our [React Quickstart Guide](/docs/next/guides/getting-started/connect-your-application/react) for step-by-step instructions.
+To get started quickly, check out our [React Quickstart Guide](../../../guides/getting-started/connect-your-application/react) for step-by-step instructions.
 
 :::warning Use the redirect-based sign-in flow
 Browser SPAs should sign in using the redirect-based OAuth2 `authorization_code` + PKCE flow. Use
-the [`<SignInButton />`](/docs/next/sdks/react/apis/components/sign-in-button) component.
+the [`<SignInButton />`](../apis/components/sign-in-button) component.
 
-**Initiating a sign-in flow directly in the browser** — the embedded `<SignIn />` component or
-`useThunderID().signIn({ applicationId })` used standalone — is **not supported** for browser SPAs.
+**Initiating a sign-in flow directly in the browser**, the embedded `<SignIn />` component or
+`useThunderID().signIn({ applicationId })` used standalone, is **not supported** for browser SPAs.
 See
-[Register an application](/docs/next/guides/getting-started/register-an-application).
+[Register an application](../../../guides/guides/applications/manage-applications).
 :::
 
 ## Features
@@ -51,32 +52,32 @@ See
 
 The SDK provides a powerful context provider that manages authentication state across your application.
 
-- **[`<ThunderIDProvider />`](/docs/next/sdks/react/apis/contexts/thunderid-provider)** - Root provider component that wraps your application and manages authentication state
+- **[`<ThunderIDProvider />`](../apis/contexts/thunderid-provider)** - Root provider component that wraps your application and manages authentication state
 
 ### Components
 
 Pre-built, customizable components for common authentication flows and user management.
 
 #### Action Components
-- **[`<SignInButton />`](/docs/next/sdks/react/apis/components/sign-in-button)** - Trigger sign-in flow
-- **[`<SignOutButton />`](/docs/next/sdks/react/apis/components/sign-out-button)** - Sign out the current user
-- **[`<SignUpButton />`](/docs/next/sdks/react/apis/components/sign-up-button)** - Trigger sign-up flow
+- **[`<SignInButton />`](../apis/components/sign-in-button)** - Trigger sign-in flow
+- **[`<SignOutButton />`](../apis/components/sign-out-button)** - Sign out the current user
+- **[`<SignUpButton />`](../apis/components/sign-up-button)** - Trigger sign-up flow
 
 #### Control Components
-- **[`<SignedIn />`](/docs/next/sdks/react/apis/components/signed-in)** - Conditionally render content for authenticated users
-- **[`<SignedOut />`](/docs/next/sdks/react/apis/components/signed-out)** - Conditionally render content for unauthenticated users
-- **[`<Loading />`](/docs/next/sdks/react/apis/components/loading)** - Display loading state during authentication
+- **[`<SignedIn />`](../apis/components/signed-in)** - Conditionally render content for authenticated users
+- **[`<SignedOut />`](../apis/components/signed-out)** - Conditionally render content for unauthenticated users
+- **[`<Loading />`](../apis/components/loading)** - Display loading state during authentication
 
 #### User Self-care Components
-- **[`<UserDropdown />`](/docs/next/sdks/react/apis/components/user-dropdown)** - User menu with profile and settings
-- **[`<UserProfile />`](/docs/next/sdks/react/apis/components/user-profile)** - Complete user profile management interface
-- **[`<User />`](/docs/next/sdks/react/apis/components/user)** - Display user information
+- **[`<UserDropdown />`](../apis/components/user-dropdown)** - User menu with profile and settings
+- **[`<UserProfile />`](../apis/components/user-profile)** - Complete user profile management interface
+- **[`<User />`](../apis/components/user)** - Display user information
 
 ### Hooks
 
 React hooks for programmatic access to authentication and user data.
 
-- **[`useThunderID()`](/docs/next/sdks/react/apis/hooks/use-thunderid)** - Access the main <ProductName /> SDK instance
+- **[`useThunderID()`](../apis/hooks/use-thunderid)** - Access the main <ProductName /> SDK instance
 
 ## Customization
 

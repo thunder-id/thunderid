@@ -206,10 +206,10 @@ export async function resolveUser(request) {
       givenName: "Local",
       familyName: "Traveler",
       scopes: [
-        "wayfinder:booking:read",
-        "wayfinder:booking:create",
-        "wayfinder:booking:cancel",
-        "wayfinder:booking:recommend"
+        "booking:read",
+        "booking:create",
+        "booking:cancel",
+        "booking:recommend"
       ]
     };
   }

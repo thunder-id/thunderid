@@ -57,10 +57,22 @@ function TabPanel({children, value, index}: TabPanelProps): JSX.Element {
 
 /** Canonical serialization of an attribute configuration for dirty-checking (order-independent). */
 function canonicalAttr(config: AttributeConfiguration | undefined): string {
-  const mappings = config?.userTypeAttributeMappings?.[0]?.attributes ?? [];
+  const resolution = config?.userTypeResolution;
+  const valueMapping = Object.entries(resolution?.valueMapping ?? {})
+    .map(([value, userType]) => `${value}=${userType}`)
+    .sort();
+  const groups = (config?.userTypeAttributeMappings ?? [])
+    .map((group) => ({
+      userType: group.userType,
+      maps: group.attributes.map((m) => `${m.externalAttribute}=${m.localAttribute}`).sort(),
+    }))
+    .sort((a, b) => a.userType.localeCompare(b.userType));
   return JSON.stringify({
-    default: config?.userTypeResolution?.default ?? '',
-    maps: mappings.map((m) => `${m.externalAttribute}=${m.localAttribute}`).sort(),
+    default: resolution?.default ?? '',
+    externalAttribute: resolution?.externalAttribute ?? '',
+    valueMapping,
+    groups,
+    linking: [...(config?.accountLinking?.attributes ?? [])].sort(),
   });
 }
 
@@ -265,16 +277,14 @@ export default function ConnectionDetailPage(): JSX.Element | null {
 
           {supportsAttributes && (
             <TabPanel value={activeTab} index={1}>
-              <SettingsCard title={t('detail.provisioning.title')} description={t('detail.provisioning.description')}>
-                <AttributeMappingSection
-                  key={`attrs-${resolvedId}-${attrsKey}`}
-                  initialConfig={baselineAttr}
-                  onChange={(config, isValid) => {
-                    setEditedAttr(config);
-                    setAttrValid(isValid);
-                  }}
-                />
-              </SettingsCard>
+              <AttributeMappingSection
+                key={`attrs-${resolvedId}-${attrsKey}`}
+                initialConfig={baselineAttr}
+                onChange={(config, isValid) => {
+                  setEditedAttr(config);
+                  setAttrValid(isValid);
+                }}
+              />
             </TabPanel>
           )}
 

@@ -1,5 +1,7 @@
 ---
 title: Advanced Topics
+docType: community
+description: Learn about Advanced Topics and how to apply it in configuration, integration, and operational workflows.
 ---
 
 # Advanced Topics
@@ -468,7 +470,7 @@ pnpm docusaurus write-translations --locale fr
 
 Translate files in `i18n/fr/`:
 
-```
+```text
 i18n/
 └── fr/
     ├── docusaurus-plugin-content-docs/
@@ -595,7 +597,7 @@ future: {
 
 Use optimized images:
 
-```mdx
+```jsx
 import ThemedImage from '@theme/ThemedImage';
 import ExampleDocumentScreenLight from './assets/images/consent-login-screen-light.png';
 import ExampleDocumentScreenDark from './assets/images/consent-login-screen-dark.png';
@@ -613,7 +615,7 @@ import ExampleDocumentScreenDark from './assets/images/consent-login-screen-dark
 
 Lazy load heavy components:
 
-```tsx
+```jsx
 import React, {lazy, Suspense} from 'react';
 
 const HeavyComponent = lazy(() => import('./HeavyComponent'));

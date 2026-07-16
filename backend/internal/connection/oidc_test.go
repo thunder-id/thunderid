@@ -81,6 +81,20 @@ func (s *OIDCTestSuite) TestToIDPDTOEnablesTokenExchangeWithTrustedAudience() {
 	s.Equal("okta-client-id", values[idp.PropTrustedTokenAudience])
 }
 
+func (s *OIDCTestSuite) TestToIDPDTOMapsIDJagEnabled() {
+	dto, err := oidcToIDPDTO(oidcConnectionRequest{
+		Name: "Okta", ClientID: "c", ClientSecret: "s", RedirectURI: "https://app/cb",
+		AuthorizationEndpoint: "https://okta/auth", TokenEndpoint: "https://okta/token",
+		Issuer: "https://okta", JwksEndpoint: "https://okta/keys",
+		IDJagEnabled: boolPtr(true),
+	})
+	s.Require().NoError(err)
+
+	values, err := propertyValues(dto.Properties)
+	s.Require().NoError(err)
+	s.Equal("true", values[idp.PropIDJagEnabled])
+}
+
 func (s *OIDCTestSuite) TestAttributeConfigurationRoundTrips() {
 	attrCfg := &providers.AttributeConfiguration{
 		UserTypeResolution: &providers.UserTypeResolution{Default: "Person"},
@@ -132,6 +146,29 @@ func (s *OIDCTestSuite) TestGetParsesTokenExchangeAndMasks() {
 	s.Require().NotNil(resp.TokenExchangeEnabled)
 	s.True(*resp.TokenExchangeEnabled)
 	s.Equal("okta-client-id", resp.TrustedTokenAudience)
+}
+
+func (s *OIDCTestSuite) TestGetParsesIDJagEnabled() {
+	s.mockIDP.On("GetIdentityProvider", mock.Anything, "o-2").
+		Return(&providers.IDPDTO{
+			ID:   "o-2",
+			Name: "External",
+			Type: providers.IDPTypeOIDC,
+			Properties: []cmodels.Property{
+				mustProperty(s.T(), idp.PropIDJagEnabled, "true", false),
+			},
+		}, (*tidcommon.ServiceError)(nil))
+
+	req := httptest.NewRequest(http.MethodGet, "/connections/oidc/o-2", nil)
+	req.SetPathValue("id", "o-2")
+	rr := httptest.NewRecorder()
+	getHandler(s.handler, providers.IDPTypeOIDC, oidcFromIDPDTO)(rr, req)
+
+	s.Equal(http.StatusOK, rr.Code)
+	var resp oidcConnectionResponse
+	s.Require().NoError(json.NewDecoder(rr.Body).Decode(&resp))
+	s.Require().NotNil(resp.IDJagEnabled)
+	s.True(*resp.IDJagEnabled)
 }
 
 func (s *OIDCTestSuite) TestUpdateAndDelete() {

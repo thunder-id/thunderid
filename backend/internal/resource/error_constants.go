@@ -314,19 +314,6 @@ var (
 			DefaultValue: "A resource server with the specified ID already exists",
 		},
 	}
-	// ErrorDelimiterInResourceServerHandle is returned when the resource server handle contains the delimiter.
-	ErrorDelimiterInResourceServerHandle = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "RES-1022",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.resourceservice.delimiter_conflict_in_resource_server_handle",
-			DefaultValue: "Delimiter conflict in handle",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.resourceservice.delimiter_conflict_in_resource_server_handle_description",
-			DefaultValue: "Resource server handle cannot contain the delimiter character",
-		},
-	}
 	// ErrorConsentSyncFailed is returned when resource permission changes fail to sync with the consent service.
 	ErrorConsentSyncFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -339,19 +326,6 @@ var (
 			Key: "error.resourceservice.consent_sync_failed_description",
 			DefaultValue: "Failed to sync resource permission changes with the consent " +
 				"service : code - {{param(code)}}",
-		},
-	}
-	// ErrorImmutableHandle is returned when attempting to change a resource server's handle.
-	ErrorImmutableHandle = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "RES-1025",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.resourceservice.immutable_handle",
-			DefaultValue: "Handle is immutable",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.resourceservice.immutable_handle_description",
-			DefaultValue: "Resource server handle cannot be changed after creation",
 		},
 	}
 )

@@ -102,7 +102,6 @@ func (ts *TokenExchangeTestSuite) SetupSuite() {
 	// Create resource server for resource parameter tests
 	rs := testutils.ResourceServer{
 		Name:       "Token Exchange Test RS",
-		Handle:     "te-resource-server",
 		Identifier: "https://resource.example.com",
 		OUID:       ts.oUID,
 	}

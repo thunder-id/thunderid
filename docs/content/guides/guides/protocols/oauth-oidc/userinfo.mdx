@@ -1,7 +1,8 @@
 ---
 title: UserInfo
+docType: reference
 sidebar_position: 2
-description: The OpenID Connect UserInfo endpoint in {{ProductName}} — returns claims about the authenticated user, in JSON, JWS, JWE, or NESTED_JWT.
+description: The OpenID Connect UserInfo endpoint in {{ProductName}}, returns claims about the authenticated user, in JSON, JWS, JWE, or NESTED_JWT.
 ---
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
@@ -11,7 +12,7 @@ import { UserInfoDiagram } from '../../../../../src/components/OAuthFlowDiagrams
 
 The **UserInfo** endpoint ([OIDC Core §5.3](https://openid.net/specs/openid-connect-core-1_0.html#UserInfo)) returns claims about the user whose access token authorizes the call. It is the canonical way for an OIDC client to get fresh user attributes without re-authenticating.
 
-The endpoint is OIDC-specific: the access token must have been issued with the `openid` scope. Which claims come back depends on the **scopes** the token carries — see [Claims & Scopes](../claims-and-scopes).
+The endpoint is OIDC-specific: the access token must have been issued with the `openid` scope. Which claims come back depends on the **scopes** the token carries. See [Claims & Scopes](../claims-and-scopes).
 
 ## How It Works
 
@@ -29,7 +30,7 @@ The client presents the access token as a Bearer (or DPoP) credential. <ProductN
 | Token type | Accepts `Bearer`; also accepts `DPoP` when the token is sender-constrained |
 | Response formats | `JSON` (default), `JWS` (signed), `JWE` (encrypted), `NESTED_JWT` (signed then encrypted) |
 | Format selection | Configured per application on `userInfo.responseType` |
-| Claims returned | Filtered by the scopes the access token carries — see [Claims & Scopes](../claims-and-scopes) |
+| Claims returned | Filtered by the scopes the access token carries. See [Claims & Scopes](../claims-and-scopes) |
 | Custom attributes | Configurable per application via `userInfo.userAttributes` |
 | Invalid or expired token | `401 Unauthorized` |
 | Token missing the `openid` scope | `403 Forbidden` with `insufficient_scope` |
@@ -41,7 +42,7 @@ The client presents the access token as a Bearer (or DPoP) credential. <ProductN
 | `JSON` | `application/json` | Default. Plain JSON object. |
 | `JWS` | `application/jwt` | When the client must verify integrity of the response cryptographically. |
 | `JWE` | `application/jwt` | When the response must be confidential end-to-end (e.g. crosses an intermediary). Requires an OAuth client certificate. |
-| `NESTED_JWT` | `application/jwt` | Sign-then-encrypt — both properties. Requires an OAuth client certificate. |
+| `NESTED_JWT` | `application/jwt` | Sign-then-encrypt, both properties. Requires an OAuth client certificate. |
 
 The signing and encryption algorithm tables live on the [Token Formats](../token-formats) page.
 
@@ -58,7 +59,7 @@ UserInfo is always available for tokens that carry the `openid` scope. To custom
 2. Open the **Token** tab and find the **UserInfo** section.
 3. Pick the **Response Type** (`JSON` / `JWS` / `JWE` / `NESTED_JWT`).
 4. For signed or encrypted responses, configure the signing algorithm, encryption algorithms, and certificate.
-5. Choose the **User Attributes** to return — typically these mirror the ID Token attributes.
+5. Choose the **User Attributes** to return. These typically mirror the ID Token attributes.
 6. Save.
 
 </TabItem>
@@ -102,9 +103,9 @@ JSON response:
 }
 ```
 
-Signed (JWS) response — the body is a JWT, not JSON:
+Signed (JWS) response: the body is a JWT, not JSON:
 
-```
+```http
 HTTP/1.1 200 OK
 Content-Type: application/jwt
 
@@ -123,7 +124,7 @@ curl https://{{productSlug}}.example.com/oauth2/userinfo \
 
 ## Related Guides
 
-- [OpenID Connect](../openid-connect) — the protocol that defines UserInfo
-- [Claims & Scopes](../claims-and-scopes) — how the returned claim set is determined
-- [Token Formats](../token-formats) — JWS, JWE, NESTED_JWT details
-- [DPoP](../dpop) — when the access token is sender-constrained
+- [OpenID Connect](../openid-connect), the protocol that defines UserInfo
+- [Claims & Scopes](../claims-and-scopes), how the returned claim set is determined
+- [Token Formats](../token-formats), JWS, JWE, NESTED_JWT details
+- [DPoP](../dpop), when the access token is sender-constrained

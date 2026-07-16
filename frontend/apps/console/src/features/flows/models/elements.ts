@@ -68,6 +68,7 @@ export const ElementTypes = {
   Resend: 'RESEND',
   Timer: 'TIMER',
   Consent: 'CONSENT',
+  ConsentInput: 'CONSENT_INPUT',
   Custom: 'CUSTOM',
 } as const;
 

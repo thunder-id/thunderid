@@ -1,3 +1,4 @@
+resource_type: application
 id: decl-app-confidential-1
 name: Declarative Test Confidential Application
 description: A declarative confidential test application for integration testing

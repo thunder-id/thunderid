@@ -1,11 +1,12 @@
 ---
 title: requireServerSession()
-description: Read the session or throw a 401 error
+docType: reference
+description: Read the active session from an H3 event or throw a 401 response if no valid session is found.
 ---
 
 # `requireServerSession()`
 
-`requireServerSession` reads the ThunderID session from the current H3 event and returns the decoded `ThunderIDSessionPayload`. If no valid session exists, it throws an H3 error with status code `401`.
+`requireServerSession` reads the <ProductName /> session from the current H3 event and returns the decoded `<ProductName />SessionPayload`. If no valid session exists, it throws an H3 error with status code `401`.
 
 ## Signature
 
@@ -51,7 +52,7 @@ export default defineEventHandler(async (event) => {
 
 ## Return Value
 
-Returns a `Promise<ThunderIDSessionPayload>`. See [`useServerSession()`](/docs/next/sdks/nuxt/apis/server/use-server-session#thunderidsessionpayload) for the full payload shape.
+Returns a `Promise<ThunderIDSessionPayload>`. See [`useServerSession()`](../use-server-session#thunderidsessionpayload) for the full payload shape.
 
 ## Error Behavior
 
@@ -63,5 +64,5 @@ createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
 ## Notes
 
-- Use [`useServerSession()`](/docs/next/sdks/nuxt/apis/server/use-server-session) when you want to handle the unauthenticated case yourself instead of throwing automatically.
-- If the access token in the session may be expired, use [`getValidAccessToken()`](/docs/next/sdks/nuxt/apis/server/get-valid-access-token) after calling `requireServerSession` to ensure you have a fresh token.
+- Use [`useServerSession()`](../use-server-session) when you want to handle the unauthenticated case yourself instead of throwing automatically.
+- If the access token in the session may be expired, use [`getValidAccessToken()`](../get-valid-access-token) after calling `requireServerSession` to ensure you have a fresh token.

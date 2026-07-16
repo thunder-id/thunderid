@@ -21,6 +21,7 @@ package granthandlers
 import (
 	"context"
 	"errors"
+	"slices"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -120,10 +121,22 @@ func (h *tokenExchangeGrantHandler) ValidateGrant(ctx context.Context, tokenRequ
 		}
 		// TODO: Add support for other token types if needed
 		if requestedType != constants.TokenTypeIdentifierAccessToken &&
-			requestedType != constants.TokenTypeIdentifierJWT {
+			requestedType != constants.TokenTypeIdentifierJWT &&
+			requestedType != constants.TokenTypeIdentifierIDJAG {
 			return &model.ErrorResponse{
-				Error:            constants.ErrorInvalidRequest,
-				ErrorDescription: "Unsupported requested_token_type. Only access tokens and JWT tokens are supported",
+				Error: constants.ErrorInvalidRequest,
+				ErrorDescription: "Unsupported requested_token_type. Only access tokens, JWT tokens, " +
+					"and ID-JAGs are supported",
+			}
+		}
+
+		// The draft restricts the subject token to an identity assertion; we support only ID tokens in v1.
+		if requestedType == constants.TokenTypeIdentifierIDJAG &&
+			tokenRequest.SubjectTokenType != string(constants.TokenTypeIdentifierIDToken) {
+			return &model.ErrorResponse{
+				Error: constants.ErrorInvalidRequest,
+				ErrorDescription: "ID-JAG requests require subject_token_type " +
+					"urn:ietf:params:oauth:token-type:id_token",
 			}
 		}
 	}
@@ -136,6 +149,13 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 	oauthApp *providers.OAuthClient) (
 	*model.TokenResponseDTO, *model.ErrorResponse) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "TokenExchangeGrantHandler"))
+
+	// An ID-JAG request (draft-ietf-oauth-identity-assertion-authz-grant) follows a distinct path:
+	// it exchanges a self-issued ID token for a JWT authorization grant targeted at an external
+	// resource authorization server, rather than issuing an access token.
+	if constants.TokenTypeIdentifier(tokenRequest.RequestedTokenType) == constants.TokenTypeIdentifierIDJAG {
+		return h.handleIDJAGGrant(ctx, tokenRequest, oauthApp)
+	}
 
 	// Validate and extract subject token claims. ValidateSubjectToken enforces the RFC 7009 deny list
 	// for self-issued tokens; a revoked token is rejected as invalid_request like any other invalid
@@ -234,6 +254,109 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 
 	return &model.TokenResponseDTO{
 		AccessToken: *accessToken,
+	}, nil
+}
+
+// handleIDJAGGrant issues an ID-JAG (Identity Assertion Authorization Grant) in response to a
+// token-exchange request with requested_token_type=urn:ietf:params:oauth:token-type:id-jag. The
+// subject_token must be a self-issued token, and the audience parameter must match one of the
+// application's configured allowed audiences. DPoP binding is out of scope for ID-JAGs.
+func (h *tokenExchangeGrantHandler) handleIDJAGGrant(ctx context.Context, tokenRequest *model.TokenRequest,
+	oauthApp *providers.OAuthClient) (*model.TokenResponseDTO, *model.ErrorResponse) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "TokenExchangeGrantHandler"))
+
+	// The resource parameter (RFC 8707) is optional for ID-JAG requests; when present it is validated
+	// up front and later embedded in the ID-JAG's `resource` claim for the resource AS to process.
+	if errResp := resourceindicators.ValidateResourceURIs(tokenRequest.Resources); errResp != nil {
+		return nil, errResp
+	}
+
+	// The application must have ID-JAG enabled and configured with at least one allowed audience.
+	if oauthApp == nil || oauthApp.Token == nil || oauthApp.Token.IDJAG == nil ||
+		!oauthApp.Token.IDJAG.Enabled || len(oauthApp.Token.IDJAG.AllowedAudiences) == 0 {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidTarget,
+			ErrorDescription: "The client is not permitted to request ID-JAGs",
+		}
+	}
+
+	// Only confidential clients may request ID-JAGs; a public client cannot safely hold the grant.
+	if oauthApp.TokenEndpointAuthMethod == providers.TokenEndpointAuthMethodNone {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidClient,
+			ErrorDescription: "ID-JAG requests require a confidential client",
+		}
+	}
+
+	// The audience parameter is required and must exactly match a configured allowed audience. Exactly
+	// one audience is permitted so the issued ID-JAG is unambiguously targeted at a single RS.
+	if len(tokenRequest.Audiences) == 0 {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidTarget,
+			ErrorDescription: "The audience parameter is required for ID-JAG requests",
+		}
+	}
+	if len(tokenRequest.Audiences) > 1 {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidTarget,
+			ErrorDescription: "Exactly one audience is required for ID-JAG requests",
+		}
+	}
+	audience := tokenRequest.Audiences[0]
+	if !slices.Contains(oauthApp.Token.IDJAG.AllowedAudiences, audience) {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidTarget,
+			ErrorDescription: "The requested audience is not permitted for this client",
+		}
+	}
+
+	// The subject token must be a genuine self-issued ID token. ValidateIDJAGSubjectToken rejects
+	// access tokens (typ at+jwt), refresh tokens (access_token_sub claim), and external-issuer subject
+	// tokens, so a re-audienced token-exchange access token cannot be laundered into an ID-JAG.
+	subjectClaims, err := h.tokenValidator.ValidateIDJAGSubjectToken(ctx, tokenRequest.SubjectToken, oauthApp)
+	if err != nil {
+		logger.Debug(ctx, "Failed to validate subject token for ID-JAG request", log.Error(err))
+		if errors.Is(err, revocation.ErrEnforcementUnavailable) {
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Token revocation status could not be verified",
+			}
+		}
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidRequest,
+			ErrorDescription: "subject_token must be an ID token issued to this client",
+		}
+	}
+
+	// Bind the subject token to the authenticated client: the draft requires the assertion's audience
+	// to match the client_id of the client authentication.
+	if len(subjectClaims.Aud) == 0 || !slices.Contains(subjectClaims.Aud, tokenRequest.ClientID) {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidRequest,
+			ErrorDescription: "subject_token audience does not match the authenticated client",
+		}
+	}
+
+	grantedScopes := tokenservice.ParseScopes(tokenRequest.Scope)
+
+	idjag, err := h.tokenBuilder.BuildIDJAG(ctx, &tokenservice.IDJAGBuildContext{
+		Subject:   subjectClaims.Sub,
+		Audience:  audience,
+		ClientID:  tokenRequest.ClientID,
+		Scopes:    grantedScopes,
+		Resources: tokenRequest.Resources,
+		OAuthApp:  oauthApp,
+	})
+	if err != nil {
+		logger.Error(ctx, "Failed to generate ID-JAG", log.Error(err))
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to generate token",
+		}
+	}
+
+	return &model.TokenResponseDTO{
+		AccessToken: *idjag,
 	}, nil
 }
 

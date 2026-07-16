@@ -252,6 +252,37 @@ describe('View', () => {
       expect(screen.getByText('Button')).toBeInTheDocument();
     });
 
+    it('should render a persistent dashed add button below the components', () => {
+      render(<View availableElements={mockElements} deletable={false} />);
+
+      expect(screen.getByTestId('view-add-element-button')).toBeInTheDocument();
+    });
+
+    it('should not render the dashed add button when no elements are available', () => {
+      render(<View availableElements={[]} deletable={false} />);
+
+      expect(screen.queryByTestId('view-add-element-button')).not.toBeInTheDocument();
+    });
+
+    it('should show the dashed add button once the available elements load', () => {
+      const {rerender} = render(<View availableElements={[]} deletable={false} />);
+
+      expect(screen.queryByTestId('view-add-element-button')).not.toBeInTheDocument();
+
+      rerender(<View availableElements={mockElements} deletable={false} />);
+
+      expect(screen.getByTestId('view-add-element-button')).toBeInTheDocument();
+    });
+
+    it('should open the add menu from the dashed add button', () => {
+      render(<View availableElements={mockElements} deletable={false} />);
+
+      fireEvent.click(screen.getByTestId('view-add-element-button'));
+
+      expect(screen.getByText('Text Input')).toBeInTheDocument();
+      expect(screen.getByText('Button')).toBeInTheDocument();
+    });
+
     it('should call onAddElement when menu item is clicked', () => {
       const onAddElement = vi.fn();
       render(<View availableElements={mockElements} onAddElement={onAddElement} deletable={false} />);

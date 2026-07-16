@@ -1,5 +1,6 @@
 ---
 title: Express SDK Overview
+docType: concept
 sidebar_position: 1
 sidebar_label: Overview
 description: Express SDK reference for <ProductName /> authentication middleware and handlers
@@ -29,7 +30,7 @@ Install the <ProductName /> Express SDK using your preferred package manager:
 
 ## Quick Start
 
-For end-to-end setup instructions, see the [Express quickstart guide](/docs/next/guides/getting-started/connect-your-application/express).
+For end-to-end setup instructions, see the [Express quickstart guide](../../../guides/getting-started/connect-your-application/express).
 
 ## Prerequisites
 
@@ -41,10 +42,10 @@ For end-to-end setup instructions, see the [Express quickstart guide](/docs/next
 
 This SDK section focuses on the Express-specific public surface exported by `@thunderid/express`:
 
-- Middleware and handlers: [`thunderID()`](/docs/next/sdks/express/apis/middleware/thunderid), [`handleSignIn()`](/docs/next/sdks/express/apis/middleware/handle-sign-in), [`handleSignOut()`](/docs/next/sdks/express/apis/middleware/handle-sign-out), [`protect()`](/docs/next/sdks/express/apis/middleware/protect), and [`handleFlow()`](/docs/next/sdks/express/apis/middleware/handle-flow)
-- Client additions: [`ThunderIDExpressClient`](/docs/next/sdks/express/apis/client/thunderid-express-client)
-- Configuration types: [`ExpressClientConfig`](/docs/next/sdks/express/apis/configuration/express-client-config), `StrictExpressClientConfig`, and `ThunderIDExpressConfig`
-- Constants: [`CookieConfig`](/docs/next/sdks/express/apis/constants/cookie-config) and `SESSION_COOKIE_NAME`
+- Middleware and handlers: [`thunderID()`](../apis/middleware/thunderid), [`handleSignIn()`](../apis/middleware/handle-sign-in), [`handleSignOut()`](../apis/middleware/handle-sign-out), [`protect()`](../apis/middleware/protect), and [`handleFlow()`](../apis/middleware/handle-flow)
+- Client additions: [`ThunderIDExpressClient`](../apis/client/thunderid-express-client)
+- Configuration types: [`ExpressClientConfig`](../apis/configuration/express-client-config), `StrictExpressClientConfig`, and `ThunderIDExpressConfig`
+- Constants: [`CookieConfig`](../apis/constants/cookie-config) and `SESSION_COOKIE_NAME`
 
 :::note
 `@thunderid/express` also re-exports the `@thunderid/node` surface. This Express SDK section only documents the inherited Node and JavaScript SDK behavior that directly affects Express integration.
@@ -97,7 +98,7 @@ app.get('/protected', protect(), (_req, res) => {
 });
 ```
 
-See the [redirect flow guide](/docs/next/sdks/express/guides/redirect-flow) for the full route wiring pattern.
+See the [redirect flow guide](../guides/redirect-flow) for the full route wiring pattern.
 
 ### Embedded Sign-In
 
@@ -133,7 +134,7 @@ app.get('/login', handleSignIn());
 app.get('/logout', handleSignOut());
 ```
 
-See the [embedded sign-in guide](/docs/next/sdks/express/guides/embedded-sign-in) for the request and response lifecycle.
+See the [embedded sign-in guide](../guides/embedded-sign-in) for the request and response lifecycle.
 
 ## Default Behavior
 

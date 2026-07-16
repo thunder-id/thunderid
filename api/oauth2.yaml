@@ -189,8 +189,26 @@ paths:
       description: |
         Issues access tokens, refresh tokens, and ID tokens. Supports the following grant types:
         `authorization_code`, `client_credentials`, `refresh_token`, `password`,
-        `urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693).
+        `urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693), and
+        `urn:ietf:params:oauth:grant-type:jwt-bearer` (draft-ietf-oauth-identity-assertion-authz-grant).
         Requires client authentication via HTTP Basic auth or `client_id`/`client_secret` form parameters.
+
+        Token exchange additionally supports requesting an Identity Assertion Authorization Grant
+        (ID-JAG) by setting `requested_token_type` to
+        `urn:ietf:params:oauth:token-type:id-jag`, with `subject_token_type` set to
+        `urn:ietf:params:oauth:token-type:id_token` and a single required `audience` value matching
+        one of the client's configured `allowedAudiences`. The `resource` parameter is optional and,
+        when present, is embedded in the issued ID-JAG for the resource authorization server to
+        process. Requires the client to be confidential and to have ID-JAG issuance enabled
+        (`token.idJag.enabled`) on its application configuration. The response has
+        `issued_token_type=urn:ietf:params:oauth:token-type:id-jag` and `token_type=N_A`, since the
+        issued value is a JWT authorization grant rather than an access token.
+
+        The `urn:ietf:params:oauth:grant-type:jwt-bearer` grant presents an ID-JAG assertion (obtained
+        from a trusted external IdP) via the required `assertion` parameter, and exchanges it for a
+        ThunderID access token. Optional `scope` and `resource` parameters further narrow the granted
+        scopes and audience; `resource` must be a subset of the assertion's own `resource` claim when
+        the assertion carries one. No refresh token is issued for this grant.
       tags:
         - Token
       requestBody:
@@ -559,6 +577,7 @@ components:
             - refresh_token
             - password
             - urn:ietf:params:oauth:grant-type:token-exchange
+            - urn:ietf:params:oauth:grant-type:jwt-bearer
           description: The OAuth 2.0 grant type.
         client_id:
           type: string
@@ -601,13 +620,29 @@ components:
           description: The type URI of the actor token.
         requested_token_type:
           type: string
-          description: The desired type of the issued token.
+          description: >-
+            The desired type of the issued token (token exchange only). Set to
+            `urn:ietf:params:oauth:token-type:id-jag` to request an Identity Assertion Authorization
+            Grant instead of an access token; this requires `subject_token_type` to be
+            `urn:ietf:params:oauth:token-type:id_token` and exactly one `audience` value.
         audience:
           type: string
-          description: Target audience for the issued token. May be repeated.
+          description: >-
+            Target audience for the issued token. May be repeated for token exchange. Required, and
+            limited to exactly one value, when requesting an ID-JAG
+            (`requested_token_type=urn:ietf:params:oauth:token-type:id-jag`); the value must match one
+            of the client's configured `allowedAudiences`.
         resource:
           type: string
-          description: Resource indicator (RFC 8707). May be repeated.
+          description: >-
+            Resource indicator (RFC 8707). May be repeated. Optional for ID-JAG requests, where it is
+            embedded in the issued ID-JAG's `resource` claim. For the jwt-bearer grant, when present it
+            must be a subset of the assertion's own `resource` claim.
+        assertion:
+          type: string
+          description: >-
+            ID-JAG assertion JWT issued by a trusted external IdP (draft-ietf-oauth-identity-assertion-authz-grant).
+            Required for the `urn:ietf:params:oauth:grant-type:jwt-bearer` grant.
 
     TokenResponse:
       type: object

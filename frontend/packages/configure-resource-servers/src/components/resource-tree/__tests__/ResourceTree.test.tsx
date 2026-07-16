@@ -24,7 +24,6 @@ import ResourceTree from '../ResourceTree';
 const mockResourceServer = {
   id: 'rs-1',
   name: 'Dark Dodos Smash',
-  handle: 'dark-dodos',
   identifier: 'https://api.example.com',
   ouId: 'ou-1',
   delimiter: '/',
@@ -34,7 +33,7 @@ const mockResourceServer = {
 const mockMcpResourceServer = {
   id: 'rs-mcp',
   name: 'My MCP Server',
-  handle: 'my-mcp',
+  identifier: 'https://mcp.example.com',
   ouId: 'ou-1',
   delimiter: ':',
   type: 'MCP' as const,

@@ -72,28 +72,11 @@ describe('UsersListPage', () => {
     expect(createButton).toBeInTheDocument();
   });
 
-  it('renders search input', () => {
-    render(<UsersListPage />);
-
-    const searchInput = screen.getByPlaceholderText('Search users...');
-    expect(searchInput).toBeInTheDocument();
-  });
-
   it('renders search icon', () => {
     const {container} = render(<UsersListPage />);
 
     const searchIcon = container.querySelector('svg');
     expect(searchIcon).toBeInTheDocument();
-  });
-
-  it('allows typing in search input', async () => {
-    const user = userEvent.setup();
-    render(<UsersListPage />);
-
-    const searchInput = screen.getByPlaceholderText('Search users...');
-    await user.type(searchInput, 'john doe');
-
-    expect(searchInput).toHaveValue('john doe');
   });
 
   it('navigates to add user flow when create button is clicked', async () => {

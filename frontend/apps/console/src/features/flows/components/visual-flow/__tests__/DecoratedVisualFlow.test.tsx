@@ -128,10 +128,7 @@ vi.mock('../../../utils/computeExecutorConnections', () => ({
 vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
   useIdentityProviders: () => ({data: []}),
-}));
-
-vi.mock('@/features/notification-senders/api/useNotificationSenders', () => ({
-  default: () => ({data: []}),
+  useSMSProviders: () => ({data: []}),
 }));
 
 // Use vi.hoisted for mocks that need to be referenced in vi.mock
@@ -242,7 +239,7 @@ vi.mock('classnames', () => ({
 
 // Mock child components
 vi.mock('../VisualFlow', () => ({
-  default: ({nodes, edges, onNodeDragStop}: any) => (
+  default: ({nodes, edges, onNodeDragStop, onNodeClick}: any) => (
     <div
       data-testid="visual-flow"
       data-nodes={JSON.stringify(nodes)}
@@ -251,6 +248,17 @@ vi.mock('../VisualFlow', () => ({
     >
       <button data-testid="node-drag-stop-trigger" onClick={onNodeDragStop}>
         Node Drag Stop
+      </button>
+      <button
+        data-testid="node-click-trigger"
+        onClick={(event) =>
+          (onNodeClick as ((e: unknown, n: unknown) => void) | undefined)?.(event, {
+            id: 'clicked-node',
+            position: {x: 0, y: 0},
+          })
+        }
+      >
+        Node Click
       </button>
     </div>
   ),
@@ -398,6 +406,36 @@ describe('DecoratedVisualFlow', () => {
       renderComponent(<DecoratedVisualFlow {...defaultProps} />);
 
       expect(screen.getByTestId('visual-flow')).toBeInTheDocument();
+    });
+
+    it('should render a prominent simulate button in the top bar', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      expect(screen.getByTestId('simulate-flow-button')).toBeInTheDocument();
+    });
+
+    it('should disable save while previewing so the zoomed viewport is not persisted', () => {
+      const nodes = [{id: 'node-1', position: {x: 0, y: 0}, data: {}}] as Node[];
+      renderComponent(<DecoratedVisualFlow {...defaultProps} nodes={nodes} onSave={vi.fn()} />);
+
+      expect(screen.getByTestId('save-flow-button')).toBeEnabled();
+
+      fireEvent.click(screen.getByTestId('simulate-flow-button'));
+
+      expect(screen.getByTestId('save-flow-button')).toBeDisabled();
+    });
+
+    it('should focus the clicked node via fitView', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      fireEvent.click(screen.getByTestId('node-click-trigger'));
+
+      expect(mockFitView).toHaveBeenCalledWith({
+        nodes: [{id: 'clicked-node'}],
+        padding: 0.3,
+        maxZoom: 1.2,
+        duration: 500,
+      });
     });
 
     it('should render ValidationPanel', () => {
@@ -629,7 +667,7 @@ describe('DecoratedVisualFlow', () => {
 
       renderComponent(<DecoratedVisualFlow {...defaultProps} />);
 
-      expect(mockCompute).toHaveBeenCalledWith({identityProviders: [], notificationSenders: []});
+      expect(mockCompute).toHaveBeenCalledWith({identityProviders: [], smsProviders: []});
     });
   });
 

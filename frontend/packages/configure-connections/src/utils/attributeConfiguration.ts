@@ -19,35 +19,84 @@
 import type {PropertyDefinition} from '@thunderid/configure-user-types';
 import type {AttributeConfiguration, AttributeMapping} from '../models/connection';
 
-/** Editable form state backing the attribute-mapping section. */
-export interface AttributeMappingFormState {
-  /** Default local user type federated identities are provisioned as. */
+/** A single external-value → local-user-type entry in the claim-driven resolution table. */
+export interface ValueMappingEntry {
+  value: string;
+  userType: string;
+}
+
+/** An attribute-mapping profile for one user type, as edited in the form. */
+export interface MappingGroup {
   userType: string;
   rows: AttributeMapping[];
 }
 
-/** A blank mapping row. */
-export const emptyMappingRow = (): AttributeMapping => ({externalAttribute: '', localAttribute: ''});
+/** Editable form state backing the attribute-configuration section (all three sub-sections). */
+export interface AttributeMappingFormState {
+  /** Default local user type an external identity resolves to (fallback when dynamic). */
+  defaultUserType: string;
+  /** Whether the user type is resolved from an external attribute's value. */
+  resolveDynamic: boolean;
+  /** External attribute whose value drives dynamic resolution. */
+  externalAttribute: string;
+  /** External-value → local-user-type mappings for dynamic resolution. */
+  valueMapping: ValueMappingEntry[];
+  /** Per-user-type attribute-mapping profiles. */
+  groups: MappingGroup[];
+  /** External attributes combined (AND) to link a returning identity to an existing account. */
+  linking: string[];
+}
 
 /**
- * Build the API `attributeConfiguration` from the section state. Returns `undefined` when no
- * user type is selected (mappings cannot be attached to a user type). Incomplete rows (missing
- * either side) are dropped; the mappings entry is omitted entirely when no complete rows remain
- * (a default user type alone is still a valid configuration).
+ * Build the API `attributeConfiguration` from the section state. Returns `undefined` when the whole
+ * configuration is empty (no default type, no dynamic resolution, no complete mappings, no linking).
+ * Incomplete mapping rows (missing either side) are dropped and groups without a user type or
+ * without complete rows are omitted; the external attribute is included whenever dynamic resolution
+ * is enabled (value mappings are optional — every identity resolves to the default until they're
+ * added); account linking is included only when it has non-empty attributes.
  */
 export function toAttributeConfiguration(state: AttributeMappingFormState): AttributeConfiguration | undefined {
-  const userType: string = state.userType.trim();
-  if (!userType) {
+  const defaultUserType: string = state.defaultUserType.trim();
+
+  const valueMapping: Record<string, string> = {};
+  if (state.resolveDynamic) {
+    for (const entry of state.valueMapping) {
+      const value: string = entry.value.trim();
+      const userType: string = entry.userType.trim();
+      if (value !== '' && userType !== '') {
+        valueMapping[value] = userType;
+      }
+    }
+  }
+  const externalAttribute: string = state.externalAttribute.trim();
+  // An external attribute alone is enough — every identity resolves to the default until value
+  // mappings are added, matching the backend (which only rejects a value mapping with no attribute).
+  const hasDynamic: boolean = state.resolveDynamic && externalAttribute !== '';
+  const hasValueMapping: boolean = hasDynamic && Object.keys(valueMapping).length > 0;
+
+  const userTypeAttributeMappings = state.groups
+    .map((group) => ({
+      userType: group.userType.trim(),
+      attributes: group.rows
+        .map((row) => ({externalAttribute: row.externalAttribute.trim(), localAttribute: row.localAttribute.trim()}))
+        .filter((row) => row.externalAttribute !== '' && row.localAttribute !== ''),
+    }))
+    .filter((group) => group.userType !== '' && group.attributes.length > 0);
+
+  const linking: string[] = state.linking.map((attribute) => attribute.trim()).filter((attribute) => attribute !== '');
+
+  if (defaultUserType === '' && !hasDynamic && userTypeAttributeMappings.length === 0 && linking.length === 0) {
     return undefined;
   }
 
-  const attributes: AttributeMapping[] = state.rows
-    .map((row) => ({externalAttribute: row.externalAttribute.trim(), localAttribute: row.localAttribute.trim()}))
-    .filter((row) => row.externalAttribute !== '' && row.localAttribute !== '');
-
   return {
-    userTypeResolution: {default: userType},
-    ...(attributes.length > 0 ? {userTypeAttributeMappings: [{userType, attributes}]} : {}),
+    userTypeResolution: {
+      default: defaultUserType,
+      ...(hasDynamic ? {externalAttribute} : {}),
+      ...(hasValueMapping ? {valueMapping} : {}),
+    },
+    ...(userTypeAttributeMappings.length > 0 ? {userTypeAttributeMappings} : {}),
+    ...(linking.length > 0 ? {accountLinking: {attributes: linking}} : {}),
   };
 }
 
@@ -55,12 +104,26 @@ export function toAttributeConfiguration(state: AttributeMappingFormState): Attr
  * Derive editable section state from a fetched `attributeConfiguration` (edit prefill).
  */
 export function fromAttributeConfiguration(config: AttributeConfiguration | undefined): AttributeMappingFormState {
-  const userType: string = config?.userTypeResolution?.default ?? '';
-  const entry =
-    config?.userTypeAttributeMappings?.find((mapping) => mapping.userType === userType) ??
-    config?.userTypeAttributeMappings?.[0];
-  const rows: AttributeMapping[] = (entry?.attributes ?? []).map((attribute) => ({...attribute}));
-  return {userType, rows};
+  const resolution = config?.userTypeResolution;
+  const valueMapping: ValueMappingEntry[] = Object.entries(resolution?.valueMapping ?? {}).map(([value, userType]) => ({
+    value,
+    userType,
+  }));
+  const resolveDynamic: boolean = Boolean(resolution?.externalAttribute) || valueMapping.length > 0;
+
+  const groups: MappingGroup[] = (config?.userTypeAttributeMappings ?? []).map((mapping) => ({
+    userType: mapping.userType,
+    rows: mapping.attributes.map((attribute) => ({...attribute})),
+  }));
+
+  return {
+    defaultUserType: resolution?.default ?? '',
+    resolveDynamic,
+    externalAttribute: resolution?.externalAttribute ?? '',
+    valueMapping,
+    groups,
+    linking: [...(config?.accountLinking?.attributes ?? [])],
+  };
 }
 
 /**

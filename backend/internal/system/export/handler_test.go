@@ -469,7 +469,7 @@ func (suite *HandlerTestSuite) TestHandleExportRequest_Success() {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(suite.T(), err)
 	assert.Contains(suite.T(), response.Resources, "# File: Test_App_1.yaml")
-	assert.Contains(suite.T(), response.Resources, "# resource_type: application")
+	assert.Contains(suite.T(), response.Resources, "resource_type: application")
 	assert.Contains(suite.T(), response.Resources, "name: Test App 1")
 	assert.Equal(suite.T(), "", response.EnvironmentVariables)
 }
@@ -575,7 +575,7 @@ func (suite *HandlerTestSuite) TestHandleExportRequest_MultipleFiles() {
 	assert.Contains(suite.T(), response.Resources, "---")
 	assert.Equal(suite.T(), "", response.EnvironmentVariables)
 
-	resourceTypeHeaders := strings.Count(response.Resources, "# resource_type: application")
+	resourceTypeHeaders := strings.Count(response.Resources, "resource_type: application")
 	assert.Equal(suite.T(), 2, resourceTypeHeaders)
 }
 

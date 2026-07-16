@@ -99,7 +99,13 @@ func newOAuthExecutor(
 		log.String(log.LoggerKeyExecutorName, name))
 
 	base := flowFactory.CreateExecutor(name, providers.ExecutorTypeAuthentication,
-		defaultInputs, prerequisites)
+		defaultInputs, prerequisites, &providers.ExecutorMeta{
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: "idpId", IsRequired: true},
+				{Property: common.NodePropertyAllowAuthenticationWithoutLocalUser},
+				{Property: common.NodePropertyAllowRegistrationWithExistingUser},
+			},
+		})
 
 	return &oAuthExecutor{
 		Executor:      base,

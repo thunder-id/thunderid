@@ -127,20 +127,20 @@ func RunSetupOnPort(installPath string, verbose bool, port int) error {
 		cmd = exec.Command("bash", "setup.sh")
 	}
 	cmd.Dir = root
-	adminUser := os.Getenv("THUNDER_ADMIN_USERNAME")
+	adminUser := os.Getenv("THUNDERID_ADMIN_USERNAME")
 	if adminUser == "" {
 		adminUser = "admin"
 	}
-	adminPass := os.Getenv("THUNDER_ADMIN_PASSWORD")
-	if adminPass == "" {
-		adminPass = "admin"
-	}
+	// Left empty when not supplied: setup.sh/setup.ps1 treat an empty value as not
+	// provided, so they generate a random password rather than falling back to a
+	// fixed, predictable one.
+	adminPass := os.Getenv("THUNDERID_ADMIN_PASSWORD")
 	env := append(os.Environ(),
 		"ADMIN_USERNAME="+adminUser,
 		"ADMIN_PASSWORD="+adminPass,
 	)
 	if port > 0 {
-		env = append(env, fmt.Sprintf("THUNDER_PORT=%d", port))
+		env = append(env, fmt.Sprintf("THUNDERID_PORT=%d", port))
 	}
 	cmd.Env = env
 	cmd.Stdin = nil // no stdin → prevents any remaining interactive prompts
@@ -163,7 +163,27 @@ func RunSetupOnPort(installPath string, verbose bool, port int) error {
 		}
 		return fmt.Errorf("%w\n\nRun with --verbose for full setup output", err)
 	}
+	// Always surface the admin credentials block, even in non-verbose mode — this is
+	// the only place a generated admin password is shown when running non-verbosely.
+	printAdminCredentials(outBuf.String())
 	return nil
+}
+
+// printAdminCredentials extracts and prints the admin credentials block from captured
+// setup output, if present. setup.sh/setup.ps1 print this block followed by a blank
+// line, only when the password was generated this run.
+func printAdminCredentials(output string) {
+	start := strings.Index(output, "Admin credentials:")
+	if start == -1 {
+		return
+	}
+	block := output[start:]
+	if idx := strings.Index(block, "\n\n"); idx != -1 {
+		block = block[:idx+1]
+	} else if idx := strings.Index(block, "\r\n\r\n"); idx != -1 {
+		block = block[:idx+2]
+	}
+	fmt.Print(block)
 }
 
 // StartBackground starts Thunder detached from the terminal on the default port.

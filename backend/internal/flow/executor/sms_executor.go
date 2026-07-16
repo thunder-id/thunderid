@@ -62,6 +62,12 @@ func newSMSExecutor(flowFactory core.FlowFactoryInterface,
 			{Identifier: common.AttributeMobileNumber, Type: providers.InputTypePhone, Required: true},
 		},
 		[]providers.Input{},
+		&providers.ExecutorMeta{
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: propertyKeyNotificationSenderID, IsRequired: true},
+				{Property: propertyKeySMSTemplate, IsRequired: true},
+			},
+		},
 	)
 	return &smsExecutor{
 		Executor:        base,

@@ -1,6 +1,7 @@
 ---
 title: Solution Patterns
-description: Token flows and supporting patterns for adding identity to AI agents.
+docType: use-case
+description: Token flows and supporting patterns for adding secure identity management to AI agents and MCP servers.
 sidebar_position: 2
 ---
 
@@ -33,27 +34,27 @@ The four flows differ on who the token represents and how it is obtained. Choose
 
 ### Client Credentials Grant
 
-When the agent acts on its own — running a scheduled task, processing a queue, monitoring a system — there is no user behind the call. The agent authenticates directly to <ProductName /> with its own Client ID and Client Secret and receives an access token scoped to its pre-provisioned permissions. The token identifies the agent as the subject.
+When the agent acts on its own, running a scheduled task, processing a queue, monitoring a system, there is no user behind the call. The agent authenticates directly to <ProductName /> with its own Client ID and Client Secret and receives an access token scoped to its pre-provisioned permissions. The token identifies the agent as the subject.
 
-This is the simplest flow and fits any agent that operates autonomously. Coverage includes nightly jobs, background workers, internal data syncs, and any agent-to-service call where no user context is needed. The trade-off: permissions are static — assigned at provisioning, applied to every request — so any decision that depends on user identity falls to a delegated flow.
+This is the simplest flow and fits any agent that operates autonomously. Coverage includes nightly jobs, background workers, internal data syncs, and any agent-to-service call where no user context is needed. The trade-off: permissions are static, assigned at provisioning, applied to every request, so any decision that depends on user identity falls to a delegated flow.
 
-This flow is built using the standard OAuth2 `client_credentials` grant. See [Agent Authentication](/docs/next/guides/guides/agents/agent-authentication).
+This flow is built using the standard OAuth2 `client_credentials` grant. See [Agent Authentication](../../../guides/guides/agents/agent-authentication).
 
 ### Authorization Code with OBO
 
 When a user is present at the moment the agent acts, the agent obtains a token through a standard consent flow. The user authenticates, approves the agent's access, and <ProductName /> issues a token that identifies the user as the subject and the agent as the actor. Services that receive this token can enforce access based on the user's permissions while knowing the agent is the intermediary.
 
-This is the right flow for interactive assistants, chat-driven agents, and any case where the user is at the keyboard when the agent needs delegated access. The pattern covers consent capture, scope intersection (the token never exceeds what the user can do), and revocation — the user can withdraw consent at any time.
+This is the right flow for interactive assistants, chat-driven agents, and any case where the user is at the keyboard when the agent needs delegated access. The pattern covers consent capture, scope intersection (the token never exceeds what the user can do), and revocation, the user can withdraw consent at any time.
 
-This flow is built using OAuth2 authorization code followed by a token exchange that converts the user's token into an on-behalf-of (OBO) token carrying the agent as actor. See [Agent Authentication](/docs/next/guides/guides/agents/agent-authentication).
+This flow is built using OAuth2 authorization code followed by a token exchange that converts the user's token into an on-behalf-of (OBO) token carrying the agent as actor. See [Agent Authentication](../../../guides/guides/agents/agent-authentication).
 
 ### Backchannel Authorization (CIBA)
 
-When delegated access is needed but the user is not present — a background workflow requiring approval, or a scheduled agent — there is no browser to redirect. Instead, the agent sends an authorization request through a back channel. <ProductName /> notifies the user on a separate device. After the user approves, <ProductName /> issues a delegated token to the agent.
+When delegated access is needed but the user is not present, a background workflow requiring approval, or a scheduled agent, there is no browser to redirect. Instead, the agent sends an authorization request through a back channel. <ProductName /> notifies the user on a separate device. After the user approves, <ProductName /> issues a delegated token to the agent.
 
-This pattern fits long-running agents, asynchronous workflows, and any case where the user authorizes once on their phone while the agent continues on a server. The trade-off is latency — the agent must wait for the user to act — and the user must have a registered device that can receive the prompt.
+This pattern fits long-running agents, asynchronous workflows, and any case where the user authorizes once on their phone while the agent continues on a server. The trade-off is latency, the agent must wait for the user to act, and the user must have a registered device that can receive the prompt.
 
-This flow is built using the OpenID Connect CIBA grant. See [Backchannel Authentication (CIBA)](/docs/next/guides/guides/protocols/oauth-oidc/backchannel-authentication).
+This flow is built using the OpenID Connect CIBA grant. See [Backchannel Authentication (CIBA)](../../../guides/guides/protocols/oauth-oidc/backchannel-authentication).
 
 ### Token Exchange
 
@@ -61,7 +62,7 @@ When one agent delegates work to another, the parent agent exchanges its current
 
 This pattern fits multi-agent workflows where each hop should receive only what it needs. The chain is preserved: the new token carries the original user as subject (if any) and an actor chain of every agent that participated. The final service can inspect the chain to understand who initiated the request and how it arrived.
 
-This flow is built using OAuth2 token exchange ([RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693)). See [Agent Authentication](/docs/next/guides/guides/agents/agent-authentication).
+This flow is built using OAuth2 token exchange ([RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693)). See [Agent Authentication](../../../guides/guides/agents/agent-authentication).
 
 ## Part B: Supporting Patterns
 
@@ -69,11 +70,11 @@ These compose with any flow in Part A. They are independent decisions: an autono
 
 ### Resource Servers and Audience Locking
 
-A resource server in <ProductName /> groups related capabilities into a protected unit. Each resource server defines scopes, and every issued token is bound to a specific audience — typically the resource server's identifier. A token with `data:read` for resource server A cannot be used against resource server B, even if B has a scope of the same name.
+A resource server in <ProductName /> groups related capabilities into a protected unit. Each resource server defines scopes, and every issued token is bound to a specific audience, typically the resource server's identifier. A token with `data:read` for resource server A cannot be used against resource server B, even if B has a scope of the same name.
 
 Audience locking is the primary defense against token replay. When the parent agent in a chain exchanges its token, it specifies a target resource indicator, and <ProductName /> binds the new token to that target. If the child agent tries to use the token against a different service, the service rejects it.
 
-#### How ThunderID Helps
+#### How <ProductName /> Helps
 
 - Lets you group related capabilities into resource servers.
 - Lets each resource server define scopes for individual capabilities or capability groups.
@@ -82,11 +83,11 @@ Audience locking is the primary defense against token replay. When the parent ag
 
 ### Scope Granularity
 
-Scopes describe what the bearer of the token may do. The right granularity depends on how independently you want to grant and revoke access. One scope per endpoint gives maximum flexibility but multiplies management overhead. One scope per capability group is the common middle ground — coarse enough to be readable, fine enough to support meaningful separation between read-only and write access.
+Scopes describe what the bearer of the token may do. The right granularity depends on how independently you want to grant and revoke access. One scope per endpoint gives maximum flexibility but multiplies management overhead. One scope per capability group is the common middle ground, coarse enough to be readable, fine enough to support meaningful separation between read-only and write access.
 
 For agents, scope granularity also shapes downscoping during multi-agent delegation. A parent that holds a coarse `analytics:*` scope can downscope to `analytics:read` for a child; a parent that only holds `analytics:read` cannot widen to `analytics:write` no matter what it does.
 
-#### How ThunderID Helps
+#### How <ProductName /> Helps
 
 - Supports fine-grained scopes when you need per-endpoint control.
 - Supports capability-level scopes for a simpler and more readable permission model.
@@ -95,9 +96,9 @@ For agents, scope granularity also shapes downscoping during multi-agent delegat
 
 ### Delegation Chain Preservation
 
-When multiple agents participate in a single request, every hop should be visible to the final service. The token carries the original user as subject, and each agent in the chain as a successive actor. The final service can inspect this chain to attribute the action and enforce policies based on how the request arrived — for example, "only allow this if a human user initiated the chain."
+When multiple agents participate in a single request, every hop should be visible to the final service. The token carries the original user as subject, and each agent in the chain as a successive actor. The final service can inspect this chain to attribute the action and enforce policies based on how the request arrived, for example, "only allow this if a human user initiated the chain."
 
-#### How ThunderID Helps
+#### How <ProductName /> Helps
 
 - Issues tokens with a subject claim for the originating user when user context exists.
 - Preserves the actor chain across agent-to-agent delegation.
@@ -108,7 +109,7 @@ When multiple agents participate in a single request, every hop should be visibl
 
 Each agent has its own Client ID and Client Secret. These credentials need a lifecycle: issuance at registration, rotation on a schedule, and revocation when the agent is decommissioned or compromised. Because each agent is a distinct identity, revoking one agent's credentials does not affect any other agent's operation.
 
-#### How ThunderID Helps
+#### How <ProductName /> Helps
 
 - Generates agent credentials during registration.
 - Supports credential rotation on a schedule or on demand.
@@ -122,10 +123,8 @@ Every implementation touches these regardless of which flow you pick.
 - **Agent type**: autonomous (own identity only), interactive (delegated, user present), hybrid (some calls autonomous, others delegated).
 - **Token lifetimes**: short-lived access tokens with refresh, versus long-lived per-call tokens. Shorter tokens reduce blast radius if leaked; refresh tokens preserve usability.
 - **Observability**: logging every token issuance, exchange, and validation produces the audit trail you need to investigate incidents and prove compliance.
-- **Storage**: where the agent stores its Client Secret and any refresh tokens it holds — secrets manager, environment variable, or hardware-backed store.
-
----
+- **Storage**: where the agent stores its Client Secret and any refresh tokens it holds, secrets manager, environment variable, or hardware-backed store.
 
 ## Next Steps
 
-Choose the flow that fits your agent, then see it running in **[Try It Out](../try-it-out)**.
+Choose the flow that fits your agent, then see it running in **[Try It Out](../try-it-out/)**.

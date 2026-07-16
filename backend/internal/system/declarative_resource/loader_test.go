@@ -645,7 +645,7 @@ func (suite *ResourceLoaderTestSuite) removeRootYAMLFile(filename string) {
 // TestLoadResources_FromRootDirFile verifies that a YAML file placed directly in
 // config/resources/ is picked up when no --resources flag is set and no subdir exists.
 func (suite *ResourceLoaderTestSuite) TestLoadResources_FromRootDirFile() {
-	content := `# resource_type: testresource
+	content := `resource_type: testresource
 id: root-res-1
 name: Root Resource
 description: Loaded from root dir
@@ -682,7 +682,7 @@ description: Should be shadowed
 value: 1`)
 
 	// level-2: root dir file with matching resource_type
-	suite.createRootYAMLFile("root-prec2.yaml", `# resource_type: prec-subdir-di
+	suite.createRootYAMLFile("root-prec2.yaml", `resource_type: prec-subdir-di
 id: root-res
 name: Root Resource
 description: From root dir
@@ -711,7 +711,7 @@ value: 99
 // TestLoadResources_ArgFileTakesPrecedenceOverRootDir verifies level-1 beats level-2.
 func (suite *ResourceLoaderTestSuite) TestLoadResources_ArgFileTakesPrecedenceOverRootDir() {
 	// level-2: root dir file
-	suite.createRootYAMLFile("root-prec3.yaml", `# resource_type: argvresource
+	suite.createRootYAMLFile("root-prec3.yaml", `resource_type: argvresource
 id: from-root
 name: Root File Resource
 description: Should be ignored
@@ -720,7 +720,7 @@ value: 1
 	defer suite.removeRootYAMLFile("root-prec3.yaml")
 
 	// level-1: explicit arg file (wins)
-	argContent := `# resource_type: argvresource
+	argContent := `resource_type: argvresource
 id: from-arg
 name: Arg File Resource
 description: From arg file

@@ -1,9 +1,10 @@
 ---
 title: Browser SDK Overview
+docType: concept
 displayed_sidebar: browserSdkSidebar
 sidebar_position: 1
 sidebar_label: Overview
-description: Vanilla JavaScript SDK for browser-based authentication
+description: Vanilla JavaScript SDK for browser-based authentication using OAuth 2.0 PKCE without a framework.
 ---
 
 # Browser SDK
@@ -34,7 +35,7 @@ Install the <ProductName /> Browser SDK using your preferred package manager:
 
 ## Getting Started
 
-To get started quickly, check out our [Vanilla JavaScript Quickstart Guide](/docs/next/guides/getting-started/connect-your-application/browser) for step-by-step instructions.
+To get started quickly, check out our [Vanilla JavaScript Quickstart Guide](../../../guides/getting-started/connect-your-application/browser) for step-by-step instructions.
 
 :::warning Use the redirect-based sign-in flow
 Browser SPAs should sign in using the redirect-based OAuth2 `authorization_code` + PKCE flow. Use
@@ -42,7 +43,7 @@ the client's `signIn()` method, which redirects to `/oauth2/authorize`.
 
 **Initiating a sign-in flow directly in the browser** via `executeEmbeddedSignInFlowV2` (passing
 `applicationId` and `flowType`) is **not supported** for browser SPAs. See
-[Register an application](/docs/next/guides/getting-started/register-an-application).
+[Register an application](../../../guides/guides/applications/manage-applications).
 :::
 
 ## Quick Example
@@ -74,7 +75,7 @@ await auth.signOut()
 
 ## Features
 
-### ThunderIDBrowserClient
+### <ProductName />BrowserClient
 
 The main client class that manages the full authentication lifecycle.
 
@@ -166,10 +167,10 @@ await auth.initialize({
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `clientId` | `string` | — | **Required.** The Client ID from your <ProductName /> application |
-| `baseUrl` | `string` | — | **Required.** Your <ProductName /> instance URL |
-| `afterSignInUrl` | `string` | — | URL to redirect to after sign-in |
-| `afterSignOutUrl` | `string` | — | URL to redirect to after sign-out |
+| `clientId` | `string` | - | **Required.** The Client ID from your <ProductName /> application |
+| `baseUrl` | `string` | - | **Required.** Your <ProductName /> instance URL |
+| `afterSignInUrl` | `string` | - | URL to redirect to after sign-in |
+| `afterSignOutUrl` | `string` | - | URL to redirect to after sign-out |
 | `scopes` | `string[]` | `['openid', 'profile']` | OAuth 2.0 scopes to request |
 | `storage` | `string` | `'sessionStorage'` | Storage backend: `'sessionStorage'`, `'localStorage'`, or `'browserMemory'` |
 | `periodicTokenRefresh` | `boolean` | `false` | Automatically refresh tokens before expiry |

@@ -60,11 +60,11 @@ func (suite *CredentialsAuthExecutorTestSuite) SetupTest() {
 	// Mock the embedded identifying executor first
 	identifyingMock := createMockIdentifyingExecutor(suite.T())
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameIdentifying, providers.ExecutorTypeUtility,
-		mock.Anything, mock.Anything).Return(identifyingMock).Maybe()
+		mock.Anything, mock.Anything, mock.Anything).Return(identifyingMock).Maybe()
 
 	mockExec := createMockCredentialsAuthExecutor(suite.T())
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameCredentialsAuth, providers.ExecutorTypeAuthentication,
-		defaultInputs, []providers.Input{}).Return(mockExec)
+		defaultInputs, []providers.Input{}, mock.Anything).Return(mockExec)
 
 	suite.executor = newCredentialsAuthExecutor(suite.mockFlowFactory, suite.mockEntityProvider,
 		suite.mockAuthnProvider)

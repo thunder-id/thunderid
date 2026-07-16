@@ -1,5 +1,6 @@
 ---
 title: Protect APIs on Azure API Management with {{ProductName}}
+docType: guide
 description: Configure Azure API Management to validate JWTs issued by {{ProductName}} and enforce access control on your APIs.
 sidebar_position: 2
 ---
@@ -16,13 +17,13 @@ This guide explains how to secure your APIs at the [Azure API Management](https:
 The guide covers two core integration approaches available in Azure APIM:
 
 - **[Token Validation](#configure-jwt-token-validation-in-azure-api-management):** Configure Azure APIM to validate incoming JWTs issued by <ProductName /> using the [`validate-jwt`](https://learn.microsoft.com/en-us/azure/api-management/validate-jwt-policy) policy, ensuring only authenticated requests access your APIs.
-- **[Scope-Based Authorization](#configure-scope-based-authorization-in-azure-api-management):** Leverage <ProductName />'s [RBAC](/docs/next/guides/key-concepts/authorization/) capabilities to enforce strict, Azure APIM-driven access control policies on upstream APIs.
+- **[Scope-Based Authorization](#configure-scope-based-authorization-in-azure-api-management):** Leverage <ProductName />'s [RBAC](../../../../key-concepts/authorization) capabilities to enforce strict, Azure APIM-driven access control policies on upstream APIs.
 
 ## Prerequisites
 
 Before you begin, ensure you have the following:
 
-- A running <ProductName /> installation. Follow [Get <ProductName />](/docs/next/guides/getting-started/get-thunderid) for download, setup, and start commands.
+- A running <ProductName /> installation. Follow [Get <ProductName />](../../../../getting-started/get-thunderid) for download, setup, and start commands.
 - An [Azure API Management](https://learn.microsoft.com/en-us/azure/api-management/get-started-create-service-instance) service instance.
 - A backend API imported or created in Azure APIM.
 - `curl` available in your terminal.
@@ -45,7 +46,7 @@ Azure API Management is a cloud-hosted service and cannot reach a <ProductName /
 
 3. ngrok prints a forwarding URL:
 
-   ```
+   ```text
    Forwarding   https://abc123.ngrok-free.app -> http://localhost:8090
    ```
 
@@ -130,7 +131,7 @@ Azure APIM enforces JWT validation through [inbound policies](https://learn.micr
 ```
 
 :::note
-Azure APIM fetches the <ProductName /> OIDC Discovery endpoint to resolve the JWKS URI. It validates that both the `issuer` and `jwks_uri` in the discovery document match the configured <ProductName /> URL. Ensure `public_url` in `deployment.yaml` is set correctly — a mismatch causes the `validate-jwt` policy to fail on save.
+Azure APIM fetches the <ProductName /> OIDC Discovery endpoint to resolve the JWKS URI. It validates that both the `issuer` and `jwks_uri` in the discovery document match the configured <ProductName /> URL. Ensure `public_url` in `deployment.yaml` is set correctly: a mismatch causes the `validate-jwt` policy to fail on save.
 :::
 
 #### Manage API Revisions
@@ -178,7 +179,7 @@ All API traffic now flows through the updated JWT validation policy.
 
 ### Try It Out
 
-**Request without a token — expect `401 Unauthorized`:**
+**Request without a token, expect `401 Unauthorized`:**
 
 ```bash
 curl --location 'https://<AZURE_APIM_GATEWAY_URL>/<API_PATH>' \
@@ -186,7 +187,7 @@ curl --location 'https://<AZURE_APIM_GATEWAY_URL>/<API_PATH>' \
   --header 'Content-Type: application/json'
 ```
 
-**Request with a valid <ProductName /> token — expect `200 OK`:**
+**Request with a valid <ProductName /> token, expect `200 OK`:**
 
 ```bash
 curl --location 'https://<AZURE_APIM_GATEWAY_URL>/<API_PATH>' \
@@ -223,8 +224,8 @@ Azure APIM enforces a subscription key requirement on APIs by default. You have 
 
 JWT validation confirms that a token is valid and was issued by <ProductName />. It does not control what the token holder is allowed to do. With the configuration from the previous section, Azure APIM accepts any valid <ProductName /> token regardless of the application or its assigned permissions.
 
-Scope-based authorization adds a second layer of control. <ProductName /> embeds scopes in tokens based on the roles assigned to an application. The `validate-jwt` policy checks those scopes on every request and rejects tokens that do not carry the required permissions. This lets you enforce scope-based access control — for example, 
-restricting a write endpoint to tokens with `booking-api:item:write` and a read endpoint to tokens with `booking-api:item:read` — without changing the backend service.
+Scope-based authorization adds a second layer of control. <ProductName /> embeds scopes in tokens based on the roles assigned to an application. The `validate-jwt` policy checks those scopes on every request and rejects tokens that do not carry the required permissions. This lets you enforce scope-based access control, for example, 
+restricting a write endpoint to tokens with `booking-api:item:write` and a read endpoint to tokens with `booking-api:item:read`, without changing the backend service.
 
 The steps below build on the JWT validation configuration from the previous section. You will define a Resource Server, a Resource, and Actions in <ProductName /> to model your API permissions. Then bundle those permissions into a Role, assign the Role to your application, and update the Azure APIM policy to enforce scope validation.
 
@@ -235,7 +236,7 @@ To get a token with scopes that protect your APIs, define a Resource Server with
 
 #### Create a Resource Server
 
-A Resource Server represents your API in <ProductName />. The Resource Server groups all resources and actions under a single identifier and acts as the audience for tokens issued to clients of that API. For a full reference, see [Resource Servers](/docs/next/guides/guides/resource-servers).
+A Resource Server represents your API in <ProductName />. The Resource Server groups all resources and actions under a single identifier and acts as the audience for tokens issued to clients of that API. For a full reference, see [Resource Servers](../../../resource-servers).
 
 **Using the Console:**
 
@@ -332,7 +333,7 @@ Update the `validate-jwt` policy to add a `<required-claims>` block. Azure APIM 
 | Attribute | Value | Description |
 |---|---|---|
 | `name` | `scope` | JWT claim that stores scopes |
-| `match` | `any` | `any` — the token needs at least one matching value; `all` — the token must carry every listed value |
+| `match` | `any` | `any`: the token needs at least one matching value; `all`: the token must carry every listed value |
 | `separator` | ` ` (space) | Delimiter used to split the `scope` claim string into individual scope values |
 | `<value>` | `booking-api:item:write` | Required scope value to access this operation |
 
@@ -364,7 +365,7 @@ The response confirms the scope is present:
 
 #### Call the Protected API
 
-**With a token that has the required scope — expect `200 OK`:**
+**With a token that has the required scope, expect `200 OK`:**
 
 ```bash
 curl --location 'https://<AZURE_APIM_GATEWAY_URL>/<API_PATH>' \
@@ -373,7 +374,7 @@ curl --location 'https://<AZURE_APIM_GATEWAY_URL>/<API_PATH>' \
   --header 'Content-Type: application/json'
 ```
 
-**With a token missing the required scope — expect `401 Unauthorized`:**
+**With a token missing the required scope, expect `401 Unauthorized`:**
 
 ```bash
 curl --location 'https://<AZURE_APIM_GATEWAY_URL>/<API_PATH>' \

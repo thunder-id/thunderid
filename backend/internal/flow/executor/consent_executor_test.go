@@ -63,7 +63,8 @@ func (suite *ConsentExecutorTestSuite) SetupTest() {
 
 	mockExec := createMockExecutorWithInputs(suite.T())
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameConsent, providers.ExecutorTypeUtility,
-		mock.AnythingOfType("[]providers.Input"), mock.AnythingOfType("[]providers.Input")).Return(mockExec)
+		mock.AnythingOfType("[]providers.Input"), mock.AnythingOfType("[]providers.Input"),
+		mock.Anything).Return(mockExec)
 
 	suite.executor = newConsentExecutor(suite.mockFlowFactory, suite.mockConsentEnforcer, suite.mockAuthnProvider)
 }

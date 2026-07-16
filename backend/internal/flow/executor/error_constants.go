@@ -885,11 +885,12 @@ var (
 		Code: "FET-1062",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.attribute_not_unique",
-			DefaultValue: "Attribute value already exists",
+			DefaultValue: "User already exists with the provided {{param(attribute)}}",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.attribute_not_unique_desc",
-			DefaultValue: "The provided attribute value already exists and must be unique",
+			Key: "flows.executor.errors.attribute_not_unique_desc",
+			DefaultValue: "The provided {{param(attribute)}} is already associated with another user" +
+				" and expects a unique value",
 		},
 	}
 
@@ -1198,8 +1199,10 @@ var (
 
 // errAttributeNotUniqueFor returns a ServiceError for a specific attribute that is not unique.
 func errAttributeNotUniqueFor(attrName string) *tidcommon.ServiceError {
+	params := map[string]string{"attribute": attrName}
 	e := ErrAttributeNotUnique
-	e.ErrorDescription.DefaultValue = fmt.Sprintf("The attribute '%s' already exists and must be unique", attrName)
+	e.Error.Params = params
+	e.ErrorDescription.Params = params
 	return &e
 }
 

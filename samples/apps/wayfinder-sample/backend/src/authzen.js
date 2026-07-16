@@ -16,7 +16,6 @@
  * under the License.
  */
 
-const TOKEN_EXPIRY_SKEW_MS = 30_000;
 const AUTHZEN_REQUEST_TIMEOUT_MS = 5_000;
 
 let authorizationMode;
@@ -50,92 +49,25 @@ export function createAuthzenAuthorizer({
     fetchImpl = globalThis.fetch,
     logger = console,
 } = {}) {
-    let cachedToken = null;
-    let tokenExpiresAt = 0;
-    let tokenRequest = null;
-
-    async function getAuthzenToken() {
-        if (cachedToken && Date.now() < tokenExpiresAt) {
-            return cachedToken;
-        }
-
-        if (!tokenRequest) {
-            tokenRequest = requestAuthzenToken().finally(() => {
-                tokenRequest = null;
-            });
-        }
-
-        return tokenRequest;
-    }
-
-    async function requestAuthzenToken() {
-        const baseUrl = env.THUNDER_BASE_URL;
-        const clientId = env.THUNDERID_AUTHZEN_CLIENT_ID;
-        const clientSecret = env.THUNDERID_AUTHZEN_CLIENT_SECRET;
-
-        if (!baseUrl || !clientId || !clientSecret) {
-            throw new Error(
-                "THUNDER_BASE_URL, THUNDERID_AUTHZEN_CLIENT_ID, and THUNDERID_AUTHZEN_CLIENT_SECRET are required in AuthZEN mode",
-            );
-        }
-
-        const credentials = Buffer.from(
-            `${clientId}:${clientSecret}`,
-        ).toString("base64");
-        const response = await fetchImpl(`${baseUrl}/oauth2/token`, {
-            method: "POST",
-            headers: {
-                Authorization: `Basic ${credentials}`,
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            signal: AbortSignal.timeout(AUTHZEN_REQUEST_TIMEOUT_MS),
-            body: new URLSearchParams({
-                grant_type: "client_credentials",
-                scope: "system",
-            }),
-        });
-
-        if (!response.ok) {
-            logger.error(
-                `[authzen] Client token request failed client=${clientId} status=${response.status}`,
-            );
-            throw new Error(
-                `AuthZEN client token request failed with status ${response.status}`,
-            );
-        }
-
-        const tokenResponse = await response.json();
-
-        if (!tokenResponse.access_token) {
-            throw new Error(
-                "AuthZEN client token response has no access token",
-            );
-        }
-
-        const expiresIn = Number(tokenResponse.expires_in || 3600);
-        cachedToken = tokenResponse.access_token;
-        tokenExpiresAt =
-            Date.now() +
-            Math.max(expiresIn * 1000 - TOKEN_EXPIRY_SKEW_MS, 0);
-
-        logger.log(
-            `[authzen] Client token acquired client=${clientId} expiresIn=${expiresIn}s`,
-        );
-
-        return cachedToken;
-    }
-
     return async function evaluateAccess({ subject, resource, action }) {
+        const baseUrl = env.THUNDER_BASE_URL;
+        const directAuthSecret = env.THUNDERID_DIRECT_AUTH_SECRET;
+
+        if (!baseUrl || !directAuthSecret) {
+            throw new Error(
+                "THUNDER_BASE_URL and THUNDERID_DIRECT_AUTH_SECRET are required in AuthZEN mode",
+            );
+        }
+
         const subjectLabel = subject.type
             ? `${subject.type}:${subject.id}`
             : subject.id;
-        const accessToken = await getAuthzenToken();
         const response = await fetchImpl(
-            `${env.THUNDER_BASE_URL}/access/v1/evaluation`,
+            `${baseUrl}/access/v1/evaluation`,
             {
                 method: "POST",
                 headers: {
-                    Authorization: `Bearer ${accessToken}`,
+                    "Direct-Auth-Secret": directAuthSecret,
                     "Content-Type": "application/json",
                 },
                 signal: AbortSignal.timeout(AUTHZEN_REQUEST_TIMEOUT_MS),

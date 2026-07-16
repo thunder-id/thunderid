@@ -86,13 +86,6 @@ describe('AgentsListPage', () => {
     expect(screen.getByTestId('agent-add-button')).toBeInTheDocument();
   });
 
-  it('renders the search field', () => {
-    render(<AgentsListPage />);
-
-    const searchInput = screen.getByPlaceholderText('Search agents');
-    expect(searchInput).toBeInTheDocument();
-  });
-
   it('renders the AgentsList component', () => {
     render(<AgentsListPage />);
 

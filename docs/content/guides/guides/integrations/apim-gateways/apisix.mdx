@@ -1,5 +1,6 @@
 ---
 title: Protect APIs on Apache APISIX with {{ProductName}}
+docType: guide
 description: Configure Apache APISIX to validate JWT access tokens issued by {{ProductName}} and enforce scope-based authorization on your upstream APIs.
 sidebar_position: 1
 ---
@@ -15,11 +16,11 @@ This guide explains how to secure your APIs at the [Apache APISIX](https://apisi
 The guide covers two core integration approaches available in Apache APISIX:
 
 - **[Token Validation](#configure-jwt-token-validation-in-apache-apisix):** Configure APISIX to validate incoming JWTs issued by <ProductName /> using the [OpenID Connect plugin](https://apisix.apache.org/docs/apisix/plugins/openid-connect/), ensuring only authenticated requests access your APIs.
-- **[Scope-Based Authorization](#configure-scope-based-authorization-in-apache-apisix):** Leverage <ProductName />'s [RBAC](/docs/next/guides/key-concepts/authorization/) capabilities to enforce strict, APISIX-driven access control policies on upstream APIs.
+- **[Scope-Based Authorization](#configure-scope-based-authorization-in-apache-apisix):** Leverage <ProductName />'s [RBAC](../../../../key-concepts/authorization) capabilities to enforce strict, APISIX-driven access control policies on upstream APIs.
 
 ## Prerequisites
 
-- <ProductName /> is installed and configured, and reachable from the APISIX Docker container. See [Get <ProductName />](/docs/next/guides/getting-started/get-thunderid).
+- <ProductName /> is installed and configured, and reachable from the APISIX Docker container. See [Get <ProductName />](../../../../getting-started/get-thunderid).
 - Docker is installed on your machine (required to run Apache APISIX).
 - `curl` is available in your terminal.
 
@@ -44,7 +45,7 @@ Apache APISIX runs inside a Docker container and cannot resolve `localhost` to y
 3. Restart <ProductName /> after saving the change.
 
 :::important
-`<THUNDER_HOST>` must be a hostname the APISIX container can resolve to your <ProductName /> instance — not `localhost`, which from inside the container points to APISIX itself. The same hostname must appear in the discovery document's `issuer`, the access token's `iss` claim, and the plugin's `discovery` URL.
+`<THUNDER_HOST>` must be a hostname the APISIX container can resolve to your <ProductName /> instance, not `localhost`, which from inside the container points to APISIX itself. The same hostname must appear in the discovery document's `issuer`, the access token's `iss` claim, and the plugin's `discovery` URL.
 :::
 
 #### Create an Application
@@ -123,13 +124,13 @@ With `discovery` set, the plugin fetches <ProductName />'s JWKS and verifies eac
 
 ### Try It Out
 
-**Request without a token — expect `401 Unauthorized`:**
+**Request without a token, expect `401 Unauthorized`:**
 
 ```bash
 curl -i 'http://127.0.0.1:9080/anything/test'
 ```
 
-**Request with a valid <ProductName /> token — expect `200 OK`:**
+**Request with a valid <ProductName /> token, expect `200 OK`:**
 
 ```bash
 export ACCESS_TOKEN="<ACCESS_TOKEN>"
@@ -151,23 +152,23 @@ The steps below build on the JWT validation configuration from the previous sect
 
 #### Create a Resource Server
 
-A Resource Server represents your API in <ProductName />. It groups all resources and actions under a single handle, which prefixes every permission (scope) the API exposes.
+A Resource Server represents your API in <ProductName />. It groups the resources and actions that model your API, and exposes a permission (scope) for each action.
 
 1. In the Console, navigate to **Resource Servers** → **Add resource server**.
 2. For the type, select **API**.
-3. Enter a **Resource Server Name** (for example, `HTTPBin API`) and a **Handle** (`httpbin`). The handle prefixes every permission and cannot be changed after creation.
+3. Enter a **Resource Server Name** (for example, `HTTPBin API`) and an **Identifier** (for example, `https://httpbin.example.com`).
 4. For the **Permission Delimiter**, select `:`.
 5. Select the **Organization** the resource server belongs to, then create it.
 
 #### Add Resources and Actions
 
-A Resource represents an entity within the API, and Actions define the operations allowed on it. Each action produces a scope in the format `<resource-server-handle>:<resource-handle>:<action-handle>`.
+A Resource represents an entity within the API, and Actions define the operations allowed on it. Each action produces a scope in the format `<resource-handle>:<action-handle>`.
 
 1. Open the resource server you just created and go to the **Resources & Actions** tab.
 2. Click **Add Resource** and enter a **Name** (for example, `Headers`) and a **Handle** (`headers`).
 3. Under that resource, click **Add Action** and enter a **Name** (for example, `Read Headers`) and a **Handle** (`read`).
 
-This produces the permission `httpbin:headers:read`, which <ProductName /> includes in tokens issued to applications that hold a role granting it.
+This produces the permission `headers:read`, which <ProductName /> includes in tokens issued to applications that hold a role granting it.
 
 #### Create a Role and Assign Permission
 
@@ -176,7 +177,7 @@ Roles bundle one or more permissions together. Assigning a role to an applicatio
 1. Navigate to **Roles** → **Add Role**.
 2. Enter a **Role Name** (for example, `Headers reader`).
 3. Click **Continue**.
-4. Under **Assign permissions**, choose `httpbin:headers:read`.
+4. Under **Assign permissions**, choose `headers:read`.
 5. Click **Continue**.
 
 #### Assign the Role to the Application
@@ -188,7 +189,7 @@ Assign the role to the application you created in the previous section. <Product
 
 ### Configure Apache APISIX
 
-Update the route to require the generated scope. APISIX rejects tokens that do not carry `httpbin:headers:read` with `403 Forbidden`.
+Update the route to require the generated scope. APISIX rejects tokens that do not carry `headers:read` with `403 Forbidden`.
 
 ```bash
 curl -i 'http://127.0.0.1:9180/apisix/admin/routes' -X PUT -d '{
@@ -202,7 +203,7 @@ curl -i 'http://127.0.0.1:9180/apisix/admin/routes' -X PUT -d '{
       "use_jwks": true,
       "discovery": "https://<THUNDER_HOST>:8090/.well-known/openid-configuration",
       "ssl_verify": false,
-      "required_scopes": ["httpbin:headers:read"]
+      "required_scopes": ["headers:read"]
     }
   },
   "upstream": {
@@ -224,7 +225,7 @@ Request a token for the application that has the role assigned:
 curl -k -X POST 'https://<THUNDER_HOST>:8090/oauth2/token' \
   --header 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode 'grant_type=client_credentials' \
-  --data-urlencode 'scope=httpbin:headers:read' \
+  --data-urlencode 'scope=headers:read' \
   --data-urlencode 'client_id=<CLIENT_ID>' \
   --data-urlencode 'client_secret=<CLIENT_SECRET>'
 ```
@@ -236,13 +237,13 @@ The response confirms the scope is present:
   "access_token": "<ACCESS_TOKEN>",
   "token_type": "Bearer",
   "expires_in": 3600,
-  "scope": "httpbin:headers:read"
+  "scope": "headers:read"
 }
 ```
 
 #### Call the Protected API
 
-**With a token that has the required scope — the request is forwarded to the upstream:**
+**With a token that has the required scope, the request is forwarded to the upstream:**
 
 ```bash
 export ACCESS_TOKEN="<ACCESS_TOKEN>"
@@ -250,25 +251,25 @@ curl -i 'http://127.0.0.1:9080/anything/test' \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
-APISIX verifies the token carries the `httpbin:headers:read` scope and forwards the request to the upstream.
+APISIX verifies the token carries the `headers:read` scope and forwards the request to the upstream.
 
-**With a token missing the required scope — expect `403 Forbidden`:**
+**With a token missing the required scope, expect `403 Forbidden`:**
 
 ```bash
 curl -i 'http://127.0.0.1:9080/anything/test' \
   -H "Authorization: Bearer <TOKEN_WITHOUT_REQUIRED_SCOPE>"
 ```
 
-APISIX inspects the token, finds the `httpbin:headers:read` scope absent, and returns `403 Forbidden`.
+APISIX inspects the token, finds the `headers:read` scope absent, and returns `403 Forbidden`.
 
 ## Plugin Parameter Reference
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| `discovery` | `https://<THUNDER_HOST>:8090/.well-known/openid-configuration` | <ProductName />'s OIDC discovery endpoint. The plugin fetches the JWKS from here and verifies each token's signature, issuer, and expiry. The hostname must be resolvable from inside the APISIX Docker container — use your host machine's IP address, not `localhost`. |
+| `discovery` | `https://<THUNDER_HOST>:8090/.well-known/openid-configuration` | <ProductName />'s OIDC discovery endpoint. The plugin fetches the JWKS from here and verifies each token's signature, issuer, and expiry. The hostname must be resolvable from inside the APISIX Docker container. Use your host machine's IP address, not `localhost`. |
 | `client_id` | `<CLIENT_ID>` | Client ID of the <ProductName /> Backend Service application. |
 | `client_secret` | `<CLIENT_SECRET>` | Client secret of the <ProductName /> Backend Service application. |
 | `bearer_only` | `true` | Requires a Bearer token in all requests. APISIX returns `401` for requests without a valid token instead of redirecting to a sign-in page. |
 | `use_jwks` | `true` | Validates JWT signatures using the JWKS endpoint fetched from the discovery document. |
 | `ssl_verify` | `false` | Disables TLS certificate verification. Use this during local development when <ProductName /> uses a self-signed certificate. Enable certificate verification in production. |
-| `required_scopes` | `["httpbin:headers:read"]` | Scopes the token must carry. Missing scopes are rejected with `403`. Omit to accept any valid token. |
+| `required_scopes` | `["headers:read"]` | Scopes the token must carry. Missing scopes are rejected with `403`. Omit to accept any valid token. |

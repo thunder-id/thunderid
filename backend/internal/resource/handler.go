@@ -84,7 +84,6 @@ func (h *resourceHandler) HandleResourceServerPostRequest(w http.ResponseWriter,
 	serviceReq := providers.ResourceServer{
 		Name:        sanitized.Name,
 		Description: sanitized.Description,
-		Handle:      sanitized.Handle,
 		Identifier:  sanitized.Identifier,
 		Type:        sanitized.Type,
 		OUID:        sanitized.OUID,
@@ -134,7 +133,6 @@ func (h *resourceHandler) HandleResourceServerPutRequest(w http.ResponseWriter, 
 	serviceReq := providers.ResourceServer{
 		Name:        sanitized.Name,
 		Description: sanitized.Description,
-		Handle:      sanitized.Handle,
 		Identifier:  sanitized.Identifier,
 		OUID:        sanitized.OUID,
 	}
@@ -614,7 +612,6 @@ func sanitizeCreateResourceServerRequest(req *CreateResourceServerRequest) Creat
 	return CreateResourceServerRequest{
 		Name:        sysutils.SanitizeString(req.Name),
 		Description: sysutils.SanitizeString(req.Description),
-		Handle:      sysutils.SanitizeString(req.Handle),
 		Identifier:  sysutils.SanitizeString(req.Identifier),
 		Type:        req.Type,
 		OUID:        sysutils.SanitizeString(req.OUID),
@@ -627,7 +624,6 @@ func sanitizeUpdateResourceServerRequest(req *UpdateResourceServerRequest) Updat
 	return UpdateResourceServerRequest{
 		Name:        sysutils.SanitizeString(req.Name),
 		Description: sysutils.SanitizeString(req.Description),
-		Handle:      sysutils.SanitizeString(req.Handle),
 		Identifier:  sysutils.SanitizeString(req.Identifier),
 		OUID:        sysutils.SanitizeString(req.OUID),
 	}
@@ -688,7 +684,6 @@ func toResourceServerResponse(rs *providers.ResourceServer) *ResourceServerRespo
 		ID:          rs.ID,
 		Name:        rs.Name,
 		Description: rs.Description,
-		Handle:      rs.Handle,
 		Identifier:  rs.Identifier,
 		Type:        resType,
 		OUID:        rs.OUID,

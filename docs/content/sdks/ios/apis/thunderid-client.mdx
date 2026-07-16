@@ -1,6 +1,7 @@
 ---
 title: ThunderIDClient
-description: Core authentication client for the ThunderID iOS SDK
+docType: reference
+description: Core authentication client for the iOS SDK, with methods for sign-in, token refresh, and user data.
 ---
 
 # `ThunderIDClient`
@@ -29,8 +30,6 @@ try await client.initialize(config: ThunderIDConfig(
 When using `ThunderIDSwiftUI`, you do not need to create a `ThunderIDClient` directly. Apply `.thunderIDProvider(config:)` to your root view and access the client through `@EnvironmentObject var state: ThunderIDState`.
 :::
 
----
-
 ## Initialization
 
 ### `initialize(config:storage:)`
@@ -43,14 +42,12 @@ func initialize(config: ThunderIDConfig, storage: StorageAdapter? = nil) async t
 
 | Parameter | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `config` | `ThunderIDConfig` | ✅ | SDK configuration. See [Configuration](/docs/next/sdks/ios/apis/configuration). |
+| `config` | `ThunderIDConfig` | ✅ | SDK configuration. See [Configuration](../configuration). |
 | `storage` | `StorageAdapter?` | ❌ | Custom token storage backend. Defaults to `KeychainStorageAdapter`. |
 
 **Returns:** `true` when initialization succeeds.
 
 **Throws:** `IAMError` with code `.alreadyInitialized` if the SDK is already initialized, or `.invalidConfiguration` if `baseUrl` is empty or does not use HTTPS.
-
----
 
 ### `reInitialize(baseUrl:clientId:)`
 
@@ -62,8 +59,6 @@ func reInitialize(baseUrl: String? = nil, clientId: String? = nil) async throws 
 
 **Throws:** `IAMError` with code `.sdkNotInitialized` if `initialize()` has not been called first.
 
----
-
 ### `getConfiguration()`
 
 Returns the current SDK configuration.
@@ -73,8 +68,6 @@ func getConfiguration() throws -> ThunderIDConfig
 ```
 
 **Throws:** `IAMError` with code `.sdkNotInitialized` if the SDK has not been initialized.
-
----
 
 ## App-Native Authentication
 
@@ -104,8 +97,6 @@ func signIn(
 The `SignIn` and `SignUp` SwiftUI components manage this loop for you. Use `signIn(payload:request:sessionId:)` directly only when building a fully custom sign-in UI.
 :::
 
----
-
 ### `signUp(payload:request:)`
 
 Submits a step in the registration flow. Same loop pattern as `signIn`.
@@ -116,8 +107,6 @@ func signUp(
     request: EmbeddedFlowRequestConfig? = nil
 ) async throws -> EmbeddedFlowResponse
 ```
-
----
 
 ## Redirect-Based Authentication
 
@@ -139,8 +128,6 @@ func buildSignInURL(options: SignInOptions? = nil) throws -> URL
 
 **Throws:** `IAMError` with code `.invalidConfiguration` if `clientId` is not set.
 
----
-
 ### `handleRedirectCallback(url:)`
 
 Exchanges the authorization code from the callback URL for tokens and returns the signed-in user.
@@ -151,8 +138,6 @@ func handleRedirectCallback(url: URL) async throws -> User
 
 **Throws:** `IAMError` with code `.invalidGrant` if the URL does not contain a valid authorization code, or if the PKCE verifier is missing (call `buildSignInURL` first).
 
----
-
 ## Session
 
 ### `isSignedIn(sessionId:)`
@@ -162,8 +147,6 @@ Returns `true` if an access token is present in the token store.
 ```swift
 func isSignedIn(sessionId: String? = nil) async throws -> Bool
 ```
-
----
 
 ### `signOut(options:sessionId:)`
 
@@ -180,8 +163,6 @@ func signOut(options: SignOutOptions? = nil, sessionId: String? = nil) async thr
 
 **Returns:** The `afterSignOutUrl` from your configuration, or `"/"` if not set.
 
----
-
 ### `clearSession(sessionId:)`
 
 Clears the local session without revoking the refresh token on the server.
@@ -190,8 +171,6 @@ Clears the local session without revoking the refresh token on the server.
 func clearSession(sessionId: String? = nil)
 ```
 
----
-
 ### `isLoading()`
 
 Returns `true` while a sign-in or sign-out operation is in progress.
@@ -199,8 +178,6 @@ Returns `true` while a sign-in or sign-out operation is in progress.
 ```swift
 func isLoading() -> Bool
 ```
-
----
 
 ## Token Management
 
@@ -213,8 +190,6 @@ func getAccessToken(sessionId: String? = nil) async throws -> String
 ```
 
 **Throws:** `IAMError` with code `.sessionExpired` if the refresh token is also expired.
-
----
 
 ### `decodeJwtToken(_:)`
 
@@ -233,8 +208,6 @@ let claims: [String: AnyCodable] = try client.decodeJwtToken(accessToken)
 let sub = claims["sub"]?.value as? String
 ```
 
----
-
 ### `exchangeToken(config:sessionId:)`
 
 Performs an OAuth 2.0 token exchange (RFC 8693). Useful for Security Token Service (STS) scenarios.
@@ -245,8 +218,6 @@ func exchangeToken(
     sessionId: String? = nil
 ) async throws -> TokenResponse
 ```
-
----
 
 ## User and Profile
 
@@ -260,8 +231,6 @@ func getUser(options: [String: Any]? = nil) async throws -> User
 
 **Returns:** A `User` with `sub`, `username`, `email`, `displayName`, `profilePicture`, and raw `claims`.
 
----
-
 ### `getUserProfile(options:)`
 
 Fetches the full user profile from `/scim2/Me`.
@@ -272,8 +241,6 @@ func getUserProfile(options: [String: Any]? = nil) async throws -> UserProfile
 
 **Returns:** A `UserProfile` with `id` and a `claims` dictionary containing all SCIM attributes.
 
----
-
 ### `updateUserProfile(payload:userId:)`
 
 Updates the user profile via `/scim2/Me` (or `/scim2/Users/<userId>` if `userId` is provided).
@@ -281,8 +248,6 @@ Updates the user profile via `/scim2/Me` (or `/scim2/Users/<userId>` if `userId`
 ```swift
 func updateUserProfile(payload: [String: Any], userId: String? = nil) async throws -> User
 ```
-
----
 
 ## Error Handling
 

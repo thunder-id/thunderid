@@ -1,6 +1,7 @@
 ---
 title: protect()
-description: Block unauthenticated requests before a route handler runs
+docType: reference
+description: Block unauthenticated requests before a route handler runs using the protect() Express middleware.
 ---
 
 # `protect()`
@@ -23,7 +24,7 @@ const {protect} = require('@thunderid/express');
 
 ## Prerequisites
 
-- Mount [`thunderID()`](/docs/next/sdks/express/apis/middleware/thunderid) before this middleware
+- Mount [`thunderID()`](../thunderid) before this middleware
 - Mount `cookie-parser` before this middleware so the SDK can read `req.cookies`
 
 ## Usage
@@ -78,6 +79,6 @@ If no `onUnauthenticated` callback is provided, the middleware returns `401` wit
 
 ## Related APIs
 
-- [`thunderID()`](/docs/next/sdks/express/apis/middleware/thunderid)
-- [`handleSignIn()`](/docs/next/sdks/express/apis/middleware/handle-sign-in)
-- [`Redirect Flow`](/docs/next/sdks/express/guides/redirect-flow)
+- [`thunderID()`](../thunderid)
+- [`handleSignIn()`](../handle-sign-in)
+- [`Redirect Flow`](../../../guides/redirect-flow)

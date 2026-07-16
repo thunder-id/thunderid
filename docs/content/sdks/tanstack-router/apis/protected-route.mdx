@@ -1,7 +1,8 @@
 ---
 title: <ProtectedRoute />
+docType: reference
 displayed_sidebar: tanstackRouterSdkSidebar
-description: Guard routes in TanStack Router applications with authentication
+description: Guard routes in TanStack Router by redirecting unauthenticated users or rendering a fallback component.
 ---
 
 # `<ProtectedRoute />`
@@ -9,7 +10,7 @@ description: Guard routes in TanStack Router applications with authentication
 The `ProtectedRoute` component wraps a route component and enforces authentication. When the user is not signed in it either redirects to a specified URL or renders a fallback element. While authentication state is being resolved it shows a loading state.
 
 :::note
-`ProtectedRoute` must be rendered inside a `ThunderIDProvider`. It also requires TanStack Router's router context — wrap your application with `RouterProvider`.
+`ProtectedRoute` must be rendered inside a `ThunderIDProvider`. It also requires TanStack Router's router context: wrap your application with `RouterProvider`.
 :::
 
 ## Usage
@@ -122,7 +123,7 @@ You must provide either `redirectTo` or `fallback`. If neither is provided, a `T
 
 ## Differences from `@thunderid/react-router`
 
-The TanStack Router `ProtectedRoute` does not include `onSignIn` or `signInOptions` props. For custom sign-in logic, use the [`useThunderID()`](/docs/next/sdks/react/apis/hooks/use-thunderid) hook directly in the protected component or layout.
+The TanStack Router `ProtectedRoute` does not include `onSignIn` or `signInOptions` props. For custom sign-in logic, use the [`useThunderID()`](../../../react/apis/hooks/use-thunderid) hook directly in the protected component or layout.
 
 ## Error Handling
 

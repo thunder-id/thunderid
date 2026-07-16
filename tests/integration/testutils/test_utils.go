@@ -1003,9 +1003,13 @@ func RunSetupScript() error {
 	cmd.Dir = absProductHome // Run from product directory
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	// Pin the Direct Auth Secret so every setup run (main and re-runs) writes the same value the test
-	// clients send, instead of generating a fresh random secret each time.
-	cmd.Env = append(os.Environ(), "DIRECT_AUTH_SECRET="+DirectAuthHeaderValue)
+	// Pin the Direct Auth Secret and admin credentials so every setup run (main and re-runs) seeds
+	// the same values the test clients use, instead of generating fresh ones each time.
+	cmd.Env = append(os.Environ(),
+		"DIRECT_AUTH_SECRET="+DirectAuthHeaderValue,
+		"ADMIN_USERNAME="+AdminUsername,
+		"ADMIN_PASSWORD="+AdminPassword,
+	)
 
 	log.Println("Setup script will start server, run bootstrap, and stop server automatically")
 

@@ -1,6 +1,7 @@
 ---
 title: handleSignIn()
-description: Handle sign-in redirects and authorization-code callbacks
+docType: reference
+description: Handle sign-in redirects and OAuth 2.0 authorization-code callbacks with the handleSignIn() Express middleware.
 ---
 
 # `handleSignIn()`
@@ -21,7 +22,7 @@ const {handleSignIn} = require('@thunderid/express');
 
 ## Prerequisites
 
-- Mount [`thunderID()`](/docs/next/sdks/express/apis/middleware/thunderid) before this handler
+- Mount [`thunderID()`](../thunderid) before this handler
 - Register this handler on the route that matches your `afterSignInUrl`
 
 ## Usage
@@ -75,6 +76,6 @@ The handler uses the initialized Express config callbacks if they are provided.
 
 ## Related APIs
 
-- [`thunderID()`](/docs/next/sdks/express/apis/middleware/thunderid)
-- [`handleSignOut()`](/docs/next/sdks/express/apis/middleware/handle-sign-out)
-- [`Redirect Flow`](/docs/next/sdks/express/guides/redirect-flow)
+- [`thunderID()`](../thunderid)
+- [`handleSignOut()`](../handle-sign-out)
+- [`Redirect Flow`](../../../guides/redirect-flow)

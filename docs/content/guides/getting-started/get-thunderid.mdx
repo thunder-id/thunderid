@@ -1,7 +1,8 @@
 ---
 title: Get started
+docType: guide
 sidebar_position: 2
-description: Download and run using the release artifact, Docker Compose, or Helm
+description: Download and run ThunderID using the release artifact, Docker Compose, or Helm on Kubernetes.
 ---
 
 import Tabs from '@theme/Tabs';
@@ -25,7 +26,7 @@ Get the latest release of <ProductName /> and run it locally on your machine.
 - Your operating system and architecture (macOS, Linux, or Windows)
 - Terminal or command prompt access
 
-<Stepper stepNode="h2" as="h3">
+<Stepper stepNode="h2" as="h2">
 
 ## Download the Distribution
 
@@ -90,20 +91,26 @@ Launch the <ProductName /> server:
 :::tip Seed and start in one step
 For local and development setups, you can combine both steps with the
 `--bootstrap-and-serve` flag. It creates or updates the default resources as
-needed (idempotent, so it's safe to re-run), then starts the server:
+needed (idempotent, so it's safe to re-run), then starts the server.
+
+Unlike `setup`, this mode does not generate an admin password for you. You must
+provide one, either with the `--admin-password` flag or the `ADMIN_PASSWORD`
+environment variable. If neither is set, startup fails. The `--admin-username`
+flag is optional and defaults to `admin`, so passing just `--admin-password` is
+enough.
 
 <Tabs groupId="os">
 <TabItem value="unix" label="Linux / macOS">
 
 ```bash
-./start.sh --bootstrap-and-serve
+./start.sh --bootstrap-and-serve --admin-password <your-admin-password>
 ```
 
 </TabItem>
 <TabItem value="windows" label="Windows">
 
 ```powershell
-.\start.ps1 --bootstrap-and-serve
+.\start.ps1 --bootstrap-and-serve --admin-password <your-admin-password>
 ```
 
 </TabItem>
@@ -131,7 +138,7 @@ The quickest way to get <ProductName /> up and running with all dependencies con
 - Docker and Docker Compose installed on your machine
 - Terminal or command prompt access
 
-<Stepper stepNode="h2" as="h3">
+<Stepper stepNode="h2" as="h2">
 
 ## Start <ProductName />
 
@@ -167,7 +174,7 @@ Deploy <ProductName /> on Kubernetes with PostgreSQL using Helm charts.
 - [Helm](https://helm.sh/docs/intro/install/) and [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) installed
 - Terminal or command prompt access
 
-<Stepper stepNode="h2" as="h3">
+<Stepper stepNode="h2" as="h2">
 
 ## Set Up the Database
 
@@ -258,20 +265,20 @@ Access <ProductName /> on **https://localhost:8090/console**
 <NextSteps>
   <NextStepsCard
     title="Explore Use Cases"
-    description="See how the platform fits B2C apps, B2B organizations, and AI agents — with architecture patterns and ready-to-run samples."
-    href="/docs/next/use-cases/overview"
+    description="See how the platform fits B2C apps, B2B organizations, and AI agents, with architecture patterns and ready-to-run samples."
+    href="../../../use-cases/overview"
     cta="Browse use cases"
   />
   <NextStepsCard
     title="Manage Applications"
     description="Register applications, configure OAuth settings, manage redirect URIs, and control access policies from the Console."
-    href="/docs/next/guides/guides/applications/manage-applications"
+    href="../../guides/applications/manage-applications"
     cta="Manage applications"
   />
   <NextStepsCard
     title="Build a Sign-In Flow"
-    description="Use the visual flow designer to configure authentication — add MFA, passkeys, or social login without changing app code."
-    href="/docs/next/guides/guides/flows/build-a-flow"
+    description="Use the visual flow designer to configure authentication: add MFA, passkeys, or social login without changing app code."
+    href="../../guides/flows/build-a-flow"
     cta="Open flow designer"
   />
 </NextSteps>

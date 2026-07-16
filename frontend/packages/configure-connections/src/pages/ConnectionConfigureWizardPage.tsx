@@ -24,10 +24,9 @@ import {useNavigate, useParams} from 'react-router';
 import useCreateConnection from '../api/useCreateConnection';
 import ConnectionForm from '../components/ConnectionForm';
 import ConnectionFullPageLayout from '../components/ConnectionFullPageLayout';
-import ConnectionAttributeMappingStep from '../components/create-connection/ConnectionAttributeMappingStep';
 import {CONNECTION_FORM_FIELDS} from '../config/connectionFormFields';
 import {VENDOR_META_BY_TYPE} from '../config/connectionVendorMeta';
-import type {AttributeConfiguration, ConnectionType} from '../models/connection';
+import type {ConnectionResponse, ConnectionType} from '../models/connection';
 import {
   type ConnectionFormValues,
   emptyFormValues,
@@ -36,14 +35,9 @@ import {
 } from '../utils/connectionFormMapping';
 import isConflictError from '../utils/isConflictError';
 
-const Step = {CONFIGURE: 'CONFIGURE', ATTRIBUTES: 'ATTRIBUTES'} as const;
-type Step = (typeof Step)[keyof typeof Step];
-
 /**
- * Full-screen wizard for configuring a branded catalog vendor. IdP vendors (Google/GitHub) get
- * two steps — credentials then the optional attribute mapping; vendors without attribute mapping
- * (SMS: Twilio/Vonage) get a single credentials step. The connection name is fixed to the vendor
- * display name.
+ * Full-screen wizard for configuring a branded catalog vendor: a single credentials step. The
+ * connection name is fixed to the vendor display name.
  */
 export default function ConnectionConfigureWizardPage(): JSX.Element | null {
   const {t} = useTranslation('connections');
@@ -53,15 +47,10 @@ export default function ConnectionConfigureWizardPage(): JSX.Element | null {
 
   const connectionType = type as ConnectionType;
   const meta = VENDOR_META_BY_TYPE[connectionType];
-  const supportsAttributes: boolean = meta?.supportsAttributeMapping ?? false;
-  const steps: Step[] = supportsAttributes ? [Step.CONFIGURE, Step.ATTRIBUTES] : [Step.CONFIGURE];
 
   const createMutation = useCreateConnection(connectionType);
 
-  const [step, setStep] = useState<Step>(Step.CONFIGURE);
   const [editedValues, setEditedValues] = useState<ConnectionFormValues>({});
-  const [attrConfig, setAttrConfig] = useState<AttributeConfiguration | undefined>(undefined);
-  const [attrValid, setAttrValid] = useState(true);
   const [nameError, setNameError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -87,20 +76,17 @@ export default function ConnectionConfigureWizardPage(): JSX.Element | null {
     void navigate('/connections');
   };
 
-  const progress: number = ((steps.indexOf(step) + 1) / steps.length) * 100;
-
   const handleCreate = (): void => {
-    if (!formValid || !attrValid) {
+    if (!formValid) {
       return;
     }
     setNameError(null);
     const payload = {
       ...formValuesToRequest(values, fields, {mode: 'create', secretReplaced: true}),
       name: meta.displayName,
-      ...(supportsAttributes ? {attributeConfiguration: attrConfig} : {}),
     };
     createMutation.mutate(payload, {
-      onSuccess: () => close(),
+      onSuccess: (created: ConnectionResponse) => void navigate(`/connections/${connectionType}/${created.id}`),
       onError: (error: Error) => {
         if (isConflictError(error)) {
           setNameError(t('error.duplicateName'));
@@ -109,88 +95,54 @@ export default function ConnectionConfigureWizardPage(): JSX.Element | null {
     });
   };
 
-  const crumbs =
-    step === Step.CONFIGURE
-      ? [
-          {key: 'connections', label: t('listing.title'), onClick: close},
-          {key: 'vendor', label: meta.displayName},
-          {key: 'configure', label: t('form.chrome.configure')},
-        ]
-      : [
-          {key: 'connections', label: t('listing.title'), onClick: close},
-          {key: 'vendor', label: meta.displayName},
-          {key: 'configure', label: t('form.chrome.configure'), onClick: () => setStep(Step.CONFIGURE)},
-          {key: 'attributes', label: t('wizard.steps.attributeMapping')},
-        ];
+  const crumbs = [
+    {key: 'connections', label: t('listing.title'), onClick: close},
+    {key: 'vendor', label: meta.displayName},
+    {key: 'configure', label: t('form.chrome.configure')},
+  ];
 
   return (
     <ConnectionFullPageLayout
       label={t('form.chrome.configure')}
       onClose={close}
-      progress={progress}
       breadcrumb={<AppBreadcrumbs items={crumbs} />}
     >
-      {step === Step.CONFIGURE ? (
-        <Stack direction="column" spacing={3}>
-          <Stack direction="column" spacing={1}>
-            <Typography variant="h4" fontWeight={700}>
-              {t('configure.heading', {vendor: meta.displayName})}
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              {t('configure.subheading')}
-            </Typography>
-          </Stack>
-
-          <Paper variant="outlined" sx={{p: 3}}>
-            <ConnectionForm
-              type={connectionType}
-              mode="create"
-              values={values}
-              secretReplacing={false}
-              hasStoredSecret={false}
-              vendorDisplayName={meta.displayName}
-              nameError={nameError}
-              showNameField={false}
-              onFieldChange={(name, value) => setEditedValues((prev) => ({...prev, [name]: value}))}
-              onSecretReplacingChange={() => undefined}
-            />
-          </Paper>
-
-          <Box sx={{display: 'flex', justifyContent: 'flex-end'}}>
-            {supportsAttributes ? (
-              <Button
-                variant="contained"
-                disabled={!formValid}
-                onClick={() => setStep(Step.ATTRIBUTES)}
-                data-testid="wizard-continue"
-              >
-                {t('common:actions.continue')}
-              </Button>
-            ) : (
-              <Button
-                variant="contained"
-                disabled={!formValid || createMutation.isPending}
-                onClick={handleCreate}
-                data-testid="wizard-create"
-              >
-                {t('form.actions.create')}
-              </Button>
-            )}
-          </Box>
+      <Stack direction="column" spacing={3}>
+        <Stack direction="column" spacing={1}>
+          <Typography variant="h4" fontWeight={700}>
+            {t('configure.heading', {vendor: meta.displayName})}
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            {t('configure.subheading')}
+          </Typography>
         </Stack>
-      ) : (
-        <ConnectionAttributeMappingStep
-          vendorDisplayName={meta.displayName}
-          onChange={(config, valid) => {
-            setAttrConfig(config);
-            setAttrValid(valid);
-          }}
-          onBack={() => setStep(Step.CONFIGURE)}
-          onCreate={handleCreate}
-          isPending={createMutation.isPending}
-          createDisabled={!formValid || !attrValid}
-        />
-      )}
+
+        <Paper variant="outlined" sx={{p: 3}}>
+          <ConnectionForm
+            type={connectionType}
+            mode="create"
+            values={values}
+            secretReplacing={false}
+            hasStoredSecret={false}
+            vendorDisplayName={meta.displayName}
+            nameError={nameError}
+            showNameField={false}
+            onFieldChange={(name, value) => setEditedValues((prev) => ({...prev, [name]: value}))}
+            onSecretReplacingChange={() => undefined}
+          />
+        </Paper>
+
+        <Box sx={{display: 'flex', justifyContent: 'flex-end'}}>
+          <Button
+            variant="contained"
+            disabled={!formValid || createMutation.isPending}
+            onClick={handleCreate}
+            data-testid="wizard-create"
+          >
+            {t('form.actions.create')}
+          </Button>
+        </Box>
+      </Stack>
     </ConnectionFullPageLayout>
   );
 }

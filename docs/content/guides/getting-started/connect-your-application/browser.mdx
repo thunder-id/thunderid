@@ -1,6 +1,7 @@
 ---
 toc_progress: quickstart
 title: Vanilla JavaScript Quickstart
+docType: quickstart
 sidebar_position: 4
 persona: app
 description: Add {{ProductName}} authentication to a browser-based application using the @thunderid/browser SDK.
@@ -43,13 +44,17 @@ Use this guide to add <ProductName /> authentication to a browser-based applicat
 
 ## Run <ProductName />
 
-Start a local ThunderID instance. Pick the method that works best for you:
+Start a local <ProductName /> instance. Pick the method that works best for you:
 
 <RunThunderID />
 
-Once it's running, the console is available at [https://localhost:8090](https://localhost:8090).
+Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
 
 ## Create an Application
+
+:::info Test User
+If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
+:::
 
 Open the Console at <ConsoleUrl />, navigate to **Applications**, and click **Add Application**:
 
@@ -57,6 +62,10 @@ Open the Console at <ConsoleUrl />, navigate to **Applications**, and click **Ad
 2. Enter a name (e.g. `My JavaScript App`) and create an application. The rest of the settings can stay at their defaults.
 3. Copy the **Client ID** from the **General** tab. You'll need it when configuring the SDK.
 4. Under **General**, add `http://localhost:5173` to the list of **Authorized Redirect URIs**.
+
+:::warning Configure CORS
+The Browser SDK calls the <ProductName /> API directly from the browser, so you need to allow your app's origin. In the Console, go to **Settings**, and under the **System** section, open the **CORS** tab. Enter `http://localhost:5173` (or the relevant URL for your setup) and click **Add Origin**.
+:::
 
 ## Create a JavaScript App
 

@@ -1,15 +1,16 @@
 ---
 title: Docker
+docType: guide
 sidebar_position: 1
 persona: iam
-description: Deploy using Docker — a portable, self-contained setup with full configuration control and no cluster infrastructure required.
+description: Deploy using Docker, a portable, self-contained setup with full configuration control and no cluster infrastructure required.
 ---
 
 import {NextSteps, NextStepsCard} from '../../../src/components/NextSteps';
 
 # Deploy <ProductName /> with Docker
 
-This guide walks you through deploying <ProductName /> using Docker. Run it as a single container with SQLite, or connect it to an external PostgreSQL database for a more durable setup — all without any cluster infrastructure.
+This guide walks you through deploying <ProductName /> using Docker. Run it as a single container with SQLite, or connect it to an external PostgreSQL database for a more durable setup, all without any cluster infrastructure.
 
 ## Prerequisites
 
@@ -190,7 +191,7 @@ Once the container is running, access <ProductName /> at the following endpoints
 
 ### Embedded SQLite (Default)
 
-<ProductName /> uses SQLite by default. No additional setup is required — it works out of the box with no external dependencies.
+<ProductName /> uses SQLite by default. No additional setup is required: it works out of the box with no external dependencies.
 
 Mount a named volume to persist the database across container restarts:
 
@@ -243,7 +244,7 @@ For a more durable setup, connect <ProductName /> to an external PostgreSQL data
   />
   <NextStepsCard
     title="Deploy on Kubernetes"
-    description="Run ThunderID on your own cluster with full control over infrastructure, scaling, and configuration."
+    description="Run <ProductName /> on your own cluster with full control over infrastructure, scaling, and configuration."
     href="../kubernetes"
     cta="Go to Kubernetes guide"
   />

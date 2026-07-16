@@ -1,5 +1,6 @@
 ---
 title: Set Up the Sample
+docType: use-case
 description: Run the ThunderID distribution behind a public URL, import the Wayfinder Sky Pass bundle, and run the Wayfinder and Skyline Lounge sample apps.
 sidebar_position: 1
 sidebar_label: Set up the sample
@@ -19,15 +20,15 @@ Skip the bundle import and follow [Configure It Yourself](../configure-it-yourse
 
 ### Get <ProductName />
 
-Download and extract the <ProductName /> distribution — follow [Get <ProductName />](/docs/next/guides/getting-started/get-thunderid) for the steps.
+Download and extract the <ProductName /> distribution. Follow [Get <ProductName />](../../../../guides/getting-started/get-thunderid) for the steps.
 
-Don't start the server yet — you need to point it at your public URL first.
+Don't start the server yet: you need to point it at your public URL first.
 
 ### Get a public HTTPS URL for <ProductName />
 
 The wallet scans QR codes that point at <ProductName />, so it must be reachable over public HTTPS. Two options:
 
-**Option A — Tunnel a local instance** (free, no infrastructure needed)
+**Option A: Tunnel a local instance** (free, no infrastructure needed)
 
 Use [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/do-more-with-tunnels/trycloudflare/) or any HTTPS tunnel:
 
@@ -37,13 +38,11 @@ cloudflared tunnel --url https://localhost:8090 --no-tls-verify
 
 The terminal prints a public URL such as `https://<random>.trycloudflare.com`.
 
-**Option B — Deploy to a server**
+**Option B: Deploy to a server**
 
-Deploy <ProductName /> to any cloud or on-premise host where it is reachable over HTTPS. See [Deployment Patterns](/docs/next/guides/deployment-patterns/production-guidelines) for guidance.
+Deploy <ProductName /> to any cloud or on-premise host where it is reachable over HTTPS. See [Deployment Patterns](../../../../guides/deployment-patterns/production-guidelines) for guidance.
 
----
-
-Either way, note your base URL as **`<PUBLIC_URL>`** and the hostname without `https://` as **`<PUBLIC_HOST>`** — used in the steps below.
+Either way, note your base URL as **`<PUBLIC_URL>`** and the hostname without `https://` as **`<PUBLIC_HOST>`**, used in the steps below.
 
 ### Point <ProductName /> at the public URL
 
@@ -70,7 +69,7 @@ server: {
 },
 ```
 
-See [Configuration](/docs/next/guides/getting-started/configuration) for a full reference.
+See [Configuration](../../../../guides/getting-started/configuration) for a full reference.
 
 ### Configure the Server
 
@@ -86,8 +85,12 @@ value:
 
 ### Start <ProductName />
 
+`--bootstrap-and-serve` requires an admin password. Provide one with the
+`--admin-password` flag (or the `ADMIN_PASSWORD` environment variable), or startup
+fails. The `--admin-username` flag is optional and defaults to `admin`.
+
 ```bash
-./start.sh --bootstrap-and-serve
+./start.sh --bootstrap-and-serve --admin-password <your-admin-password>
 ```
 
 <ProductName /> is now running and reachable at `<PUBLIC_URL>`.
@@ -143,4 +146,4 @@ Pick a walkthrough to begin. Each one starts from the setup above.
 ## Going Deeper
 
 - New to decentralized identity? See the [Decentralized Identity overview](../../overview).
-- Ready for production? See the [Production Deployment Guidelines](/docs/next/guides/deployment-patterns/production-guidelines).
+- Ready for production? See the [Production Deployment Guidelines](../../../../guides/deployment-patterns/production-guidelines).

@@ -56,6 +56,7 @@ type ExecutorRegistryInterface interface {
 	GetExecutor(name string) (providers.Executor, error)
 	RegisterExecutor(name string, ex providers.Executor)
 	IsRegistered(name string) bool
+	GetExecutorMeta(name string) (*providers.ExecutorMeta, error)
 }
 
 // executorRegistry is the default implementation of ExecutorRegistryInterface.
@@ -115,6 +116,15 @@ func (r *executorRegistry) IsRegistered(name string) bool {
 	defer r.mu.RUnlock()
 	_, ok := r.executors[name]
 	return ok
+}
+
+// GetExecutorMeta retrieves the ExecutorMeta for the named executor.
+func (r *executorRegistry) GetExecutorMeta(name string) (*providers.ExecutorMeta, error) {
+	exec, err := r.GetExecutor(name)
+	if err != nil {
+		return nil, err
+	}
+	return exec.GetMeta(), nil
 }
 
 // ExecutorDependencies holds service dependencies required to construct built-in executors.

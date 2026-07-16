@@ -102,15 +102,18 @@ func TestResolveTemplate_DoesNotCollideWithLiteralPlaceholderLookingText(t *test
 
 func TestParseDocuments(t *testing.T) {
 	content := strings.Join([]string{
+		"resource_type: application",
 		"name: app-one",
 		"authFlowId: flow-1",
 		"---",
+		"resource_type: identity_provider",
 		"name: idp-one",
 		"type: GOOGLE",
 		"properties:",
 		"- name: client_id",
 		"  value: abc",
 		"---",
+		"resource_type: flow",
 		"id: flow-1",
 		"handle: login",
 		"name: Login Flow",
@@ -127,73 +130,9 @@ func TestParseDocuments(t *testing.T) {
 	assert.Equal(t, resourceTypeFlow, docs[2].ResourceType)
 }
 
-func TestClassifyResourceType_AdditionalResources(t *testing.T) {
-	testCases := []struct {
-		name     string
-		yamlDoc  string
-		expected string
-	}{
-		{
-			name:     "organization unit",
-			yamlDoc:  "id: ou-1\nhandle: root\nname: Root\n",
-			expected: resourceTypeOrganizationUnit,
-		},
-		{
-			name:     "user type with organization_unit_id",
-			yamlDoc:  "id: sch-1\nname: Schema\nouId: ou-1\nschema: '{}'\n",
-			expected: resourceTypeEntityType,
-		},
-		{
-			name:     "user type with ou_handle",
-			yamlDoc:  "id: sch-1\nname: Schema\nouHandle: customers\nschema: '{}'\n",
-			expected: resourceTypeEntityType,
-		},
-		{
-			name:     "resource server",
-			yamlDoc:  "id: rs-1\nidentifier: api://rs-1\ndelimiter: ':'\nresources: []\n",
-			expected: resourceTypeResourceServer,
-		},
-		{name: "role", yamlDoc: "id: role-1\nname: Admin\npermissions: []\n", expected: resourceTypeRole},
-		{name: "theme", yamlDoc: "id: th-1\ndisplayName: Theme\ntheme: {}\n", expected: resourceTypeTheme},
-		{name: "layout", yamlDoc: "id: ly-1\ndisplayName: Layout\nlayout: {}\n", expected: resourceTypeLayout},
-		{name: "user", yamlDoc: "id: u-1\ntype: person\nouId: ou-1\nattributes: {}\n", expected: resourceTypeUser},
-		{name: "translation", yamlDoc: "language: en-US\ntranslations: {}\n", expected: resourceTypeTranslation},
-		{
-			name:     "agent with owner",
-			yamlDoc:  "id: agt-1\nouId: ou-1\ntype: default\nname: Test Agent\nowner: owner-id-1\n",
-			expected: resourceTypeAgent,
-		},
-		{
-			name: "agent with auth_flow_id is still agent not application",
-			yamlDoc: "id: agt-2\nouId: ou-1\ntype: default\nname: OAuth Agent\n" +
-				"owner: owner-id-1\nauthFlowId: flow-1\n",
-			expected: resourceTypeAgent,
-		},
-		{
-			name: "agent without owner but with type and auth_flow_id",
-			yamlDoc: "id: agt-3\nouId: ou-1\ntype: default\nname: Auth Agent\n" +
-				"authFlowId: flow-1\n",
-			expected: resourceTypeAgent,
-		},
-		{
-			name:     "application without top-level type is still application",
-			yamlDoc:  "name: app-one\nauthFlowId: flow-1\n",
-			expected: resourceTypeApplication,
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			docs, err := parseDocuments(testCase.yamlDoc)
-			require.NoError(t, err)
-			require.Len(t, docs, 1)
-			assert.Equal(t, testCase.expected, docs[0].ResourceType)
-		})
-	}
-}
-
 func TestParseDocuments_AgentDocument(t *testing.T) {
 	content := strings.Join([]string{
+		"resource_type: agent",
 		"id: agt-1",
 		"ouId: ou-1",
 		"type: default",
@@ -210,6 +149,7 @@ func TestParseDocuments_AgentDocument(t *testing.T) {
 
 func TestParseDocuments_AgentWithOAuthNotClassifiedAsApplication(t *testing.T) {
 	content := strings.Join([]string{
+		"resource_type: agent",
 		"id: agt-2",
 		"ouId: ou-1",
 		"type: default",
@@ -229,8 +169,8 @@ func TestParseDocuments_AgentWithOAuthNotClassifiedAsApplication(t *testing.T) {
 	assert.Equal(t, resourceTypeAgent, docs[0].ResourceType)
 }
 
-func TestParseDocuments_UsesResourceTypeComment(t *testing.T) {
-	content := "# resource_type: application\nname: idp-one\ntype: GOOGLE\nproperties: []\n"
+func TestParseDocuments_UsesResourceTypeField(t *testing.T) {
+	content := "resource_type: application\nname: idp-one\ntype: GOOGLE\nproperties: []\n"
 
 	docs, err := parseDocuments(content)
 	require.NoError(t, err)
@@ -238,8 +178,8 @@ func TestParseDocuments_UsesResourceTypeComment(t *testing.T) {
 	assert.Equal(t, resourceTypeApplication, docs[0].ResourceType)
 }
 
-func TestParseDocuments_UsesResourceTypeCommentWithFileHeader(t *testing.T) {
-	content := "# File: app-one.yaml\n# resource_type: application\nname: app-one\nauthFlowId: flow-1\n"
+func TestParseDocuments_ResourceTypeFieldTakesPrecedenceOverStructure(t *testing.T) {
+	content := "resource_type: application\nname: app-one\nauth_flow_id: flow-1\n"
 
 	docs, err := parseDocuments(content)
 	require.NoError(t, err)
@@ -272,23 +212,17 @@ func TestParseDocuments_FailsForUnknownResourceType(t *testing.T) {
 	assert.Contains(t, err.Error(), "unable to determine resource type")
 }
 
-func TestParseDocuments_FailsForAmbiguousResourceType(t *testing.T) {
-	content := strings.Join([]string{
-		"name: maybe-role-or-idp",
-		"type: GOOGLE",
-		"permissions: []",
-		"properties: []",
-		"",
-	}, "\n")
+func TestParseDocuments_FailsForInvalidResourceType(t *testing.T) {
+	content := "resource_type: not_a_real_type\nname: something\n"
 
 	_, err := parseDocuments(content)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unable to determine resource type")
 }
 
-func TestParseDocuments_ExplicitResourceTypeOverridesAmbiguousHeuristics(t *testing.T) {
+func TestParseDocuments_ExplicitResourceTypeOverridesAmbiguousStructure(t *testing.T) {
 	content := strings.Join([]string{
-		"# resource_type: identity_provider",
+		"resource_type: identity_provider",
 		"name: google",
 		"type: GOOGLE",
 		"permissions: []",

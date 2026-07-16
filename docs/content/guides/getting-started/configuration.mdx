@@ -1,5 +1,7 @@
 ---
 title: Configuration
+docType: reference
+description: Configure server, storage, security, observability, and runtime settings for {{ProductName}} deployments.
 sidebar_position: 3
 ---
 
@@ -11,8 +13,8 @@ sidebar_position: 3
 
 <ProductName /> uses a two-tier configuration system:
 
-1. **Default Configuration** — Provides sensible defaults for all settings. These are built into <ProductName />.
-2. **Deployment Configuration** — Located at `deployment.yaml` in your <ProductName /> installation directory. This file overrides specific defaults for your deployment.
+1. **Default Configuration**. Provides sensible defaults for all settings. These are built into <ProductName />.
+2. **Deployment Configuration**. Located at `deployment.yaml` in your <ProductName /> installation directory. This file overrides specific defaults for your deployment.
 
 :::note
 Only settings you want to override need to be specified in `deployment.yaml`. All other values will use the built-in defaults.
@@ -140,7 +142,7 @@ Stores identity provider configurations, applications, and authentication flows.
 |---------|---------|-------------|
 | `database.config.type` | `sqlite` | Database type (`sqlite` or `postgres`) |
 
-**`database.config.postgres.*`** — only read when `database.config.type: postgres`:
+**`database.config.postgres.*`** is only read when `database.config.type: postgres`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -157,7 +159,7 @@ Stores identity provider configurations, applications, and authentication flows.
 | `database.config.postgres.min_retry_backoff_ms` | `50` | Minimum delay before retrying in milliseconds |
 | `database.config.postgres.max_retry_backoff_ms` | `2000` | Maximum delay before retrying in milliseconds |
 
-**`database.config.sqlite.*`** — only read when `database.config.type: sqlite`:
+**`database.config.sqlite.*`** is only read when `database.config.type: sqlite`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -178,7 +180,7 @@ Stores runtime data like sessions, tokens, and temporary data. The runtime datab
 |---------|---------|-------------|
 | `database.runtime.type` | `sqlite` | Database type (`sqlite`, `postgres`, or `redis`) |
 
-**`database.runtime.postgres.*`** — only read when `database.runtime.type: postgres`:
+**`database.runtime.postgres.*`** is only read when `database.runtime.type: postgres`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -195,7 +197,7 @@ Stores runtime data like sessions, tokens, and temporary data. The runtime datab
 | `database.runtime.postgres.min_retry_backoff_ms` | `50` | Minimum delay before retrying in milliseconds |
 | `database.runtime.postgres.max_retry_backoff_ms` | `2000` | Maximum delay before retrying in milliseconds |
 
-**`database.runtime.sqlite.*`** — only read when `database.runtime.type: sqlite`:
+**`database.runtime.sqlite.*`** is only read when `database.runtime.type: sqlite`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -208,14 +210,14 @@ Stores runtime data like sessions, tokens, and temporary data. The runtime datab
 | `database.runtime.sqlite.min_retry_backoff_ms` | `50` | Minimum delay before retrying in milliseconds |
 | `database.runtime.sqlite.max_retry_backoff_ms` | `2000` | Maximum delay before retrying in milliseconds |
 
-**`database.runtime.redis.*`** — only read when `database.runtime.type: redis`:
+**`database.runtime.redis.*`** is only read when `database.runtime.type: redis`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `database.runtime.redis.address` | `""` | Redis server address in `host:port` format, for example `localhost:6379` |
-| `database.runtime.redis.username` | `""` | Redis ACL username — leave empty if ACLs are not configured |
+| `database.runtime.redis.username` | `""` | Redis ACL username. Leave empty if ACLs are not configured |
 | `database.runtime.redis.password` | `""` | Redis password or ACL user password |
-| `database.runtime.redis.db` | `0` | Redis logical database index (0–15) |
+| `database.runtime.redis.db` | `0` | Redis logical database index (0 to 15) |
 | `database.runtime.redis.key_prefix` | `""` | Prefix applied to all Redis keys written by <ProductName />, for example `{{productSlug}}:` |
 | `database.runtime.redis.max_retries` | `5` | Maximum retry attempts for transient Redis network and timeout issues |
 | `database.runtime.redis.min_retry_backoff_ms` | `10` | Minimum delay before Redis retries in milliseconds |
@@ -250,7 +252,7 @@ Stores user profiles and credentials.
 |---------|---------|-------------|
 | `database.user.type` | `sqlite` | Database type (`sqlite` or `postgres`) |
 
-**`database.user.postgres.*`** — only read when `database.user.type: postgres`:
+**`database.user.postgres.*`** is only read when `database.user.type: postgres`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -267,7 +269,7 @@ Stores user profiles and credentials.
 | `database.user.postgres.min_retry_backoff_ms` | `50` | Minimum delay before retrying in milliseconds |
 | `database.user.postgres.max_retry_backoff_ms` | `2000` | Maximum delay before retrying in milliseconds |
 
-**`database.user.sqlite.*`** — only read when `database.user.type: sqlite`:
+**`database.user.sqlite.*`** is only read when `database.user.type: sqlite`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -398,7 +400,7 @@ OAuth 2.0 and OpenID Connect settings.
 | `oauth.allow_wildcard_redirect_uri` | `false` | If `true`, allows wildcard patterns in registered redirect URIs: `*` and `**` in the path component, and `*` in the host component (label-internal, alphanumeric only). When `false`, only exact redirect URI matching is performed and registering a wildcard URI returns a `400 Bad Request` error. |
 
 :::note
-Enabling `oauth.allow_wildcard_redirect_uri` affects all applications in the deployment. See [Use Wildcard Redirect URIs](/docs/next/guides/guides/applications/application-settings#use-wildcard-redirect-uris) for pattern syntax and matching rules.
+Enabling `oauth.allow_wildcard_redirect_uri` affects all applications in the deployment. See [Use Wildcard Redirect URIs](../../guides/applications/application-settings#use-wildcard-redirect-uris) for pattern syntax and matching rules.
 :::
 
 ## Flow Configuration
@@ -439,7 +441,7 @@ flow:
     - InviteExecutor
 ```
 
-For the complete list of built-in executor names and configuration details, see [Executor Details and Configuration](/docs/next/guides/guides/flows/advanced-configurations#executor-details-and-configuration).
+For the complete list of built-in executor names and configuration details, see [Executor Details and Configuration](../../guides/flows/advanced-configurations#executor-details-and-configuration).
 
 ## User Configuration
 
@@ -459,7 +461,7 @@ Controls declarative configuration support.
 
 ### Resource Loading Precedence
 
-At startup, <ProductName /> resolves declarative resources using the following precedence. Only the first matching source is used — sources are not merged.
+At startup, <ProductName /> resolves declarative resources using the following precedence. Only the first matching source is used. Sources are not merged.
 
 | Priority | Source | When active |
 |----------|--------|-------------|
@@ -483,9 +485,9 @@ With environment variable substitution:
 ./start.sh resources.yml --env my.env
 ```
 
-Each document in the file must declare its type with a `# resource_type: <type>` comment at the top. Supported types:
+Each document in the file must declare its type with a `resource_type: <type>` field. Supported types:
 
-```
+```text
 application, flow, group, identity_provider, layout, notification_sender,
 organization_unit, resource_server, role, theme, translation, user, user_schema
 ```
@@ -493,18 +495,18 @@ organization_unit, resource_server, role, theme, translation, user, user_schema
 Example single file:
 
 ```yaml
-# resource_type: application
+resource_type: application
 name: My App
 ouHandle: default
 authFlowHandle: default-flow
 ---
-# resource_type: group
+resource_type: group
 name: admins
 description: Administrators
 ```
 
 :::warning
-When `--resources` is active, any files in `config/resources/` — including per-type subdirectories — are silently ignored. If you need files from the directory to be loaded, do not pass a `--resources` argument.
+When `--resources` is active, any files in `config/resources/`, including per-type subdirectories, are silently ignored. If you need files from the directory to be loaded, do not pass a `--resources` argument.
 :::
 
 ### Resources Directory (No Startup Flag)
@@ -513,15 +515,15 @@ If you do not pass a `--resources` argument, <ProductName /> automatically picks
 
 Place a multi-document YAML file in `config/resources/`:
 
-```
+```text
 repository/
   resources/
-    my-resources.yaml   ← loaded automatically at startup
-    groups/             ← used only when no root-level YAML files exist
+    my-resources.yaml   # loaded automatically at startup
+    groups/             # used only when no root-level YAML files exist
       admins.yaml
 ```
 
-The file must use the same `# resource_type: <type>` document headers as the single-file startup format. On startup, <ProductName /> scans all `*.yaml` and `*.yml` files at that root level and loads every document whose `resource_type` matches a configured declarative resource type.
+The file must use the same `resource_type: <type>` document fields as the single-file startup format. On startup, <ProductName /> scans all `*.yaml` and `*.yml` files at that root level and loads every document whose `resource_type` matches a configured declarative resource type.
 
 :::note
 If any `*.yaml` or `*.yml` file is found at the `config/resources/` root, per-type subdirectories (priority 3) are skipped entirely for that resource type.
@@ -531,11 +533,11 @@ If any `*.yaml` or `*.yml` file is found at the `config/resources/` root, per-ty
 
 For Helm deployments, this setting is managed through `declarativeResources.enabled` in the Helm values. When enabled, the chart mounts declarative resource files from either a ConfigMap or Secret into the <ProductName /> `config/resources` directory.
 
-Two mounting modes are available — use the one that fits your resource layout.
+Two mounting modes are available. Use the one that fits your resource layout.
 
 #### Combined File Mode
 
-Use `singleFile.keys` to mount one or more combined YAML files (multi-document format with `# resource_type: <type>` headers) directly under `config/resources`. Each key in your ConfigMap or Secret is mounted as `<key>.yaml` at that path. <ProductName /> scans the directory at startup and loads every document whose `resource_type` matches a configured declarative resource type.
+Use `singleFile.keys` to mount one or more combined YAML files (multi-document format with `resource_type: <type>` fields) directly under `config/resources`. Each key in your ConfigMap or Secret is mounted as `<key>.yaml` at that path. <ProductName /> scans the directory at startup and loads every document whose `resource_type` matches a configured declarative resource type.
 
 ```yaml
 declarativeResources:
@@ -573,12 +575,12 @@ declarativeResources:
   configMap:
     name: declarative-resources
     items:
-      # Format 1 — string shorthand: key and path are the same
+      # Format 1: string shorthand; key and path are the same
       - "identity_providers/google.yaml"
-      # Format 2 — explicit key/path mapping
+      # Format 2: explicit key/path mapping
       - key: app1
         path: applications/application1.yaml
-      # Format 3 — per-item mountPath override (absolute path)
+      # Format 3: per-item mountPath override (absolute path)
       - key: org-default
         path: organization_units/default.yaml
         mountPath: /opt/thunderid/config/resources/organization_units/default.yaml
@@ -601,7 +603,7 @@ Authorization resource settings.
 
 ## Observability Configuration
 
-Monitoring and observability settings. <ProductName /> supports three output backends — console, file, and OpenTelemetry (OTel) — and you can enable any combination of them independently.
+Monitoring and observability settings. <ProductName /> supports three output backends: console, file, and OpenTelemetry (OTel). You can enable any combination of them independently.
 
 ### Top-Level Settings
 
@@ -767,7 +769,7 @@ External authentication provider settings.
 
 Each request is assigned a correlation ID (trace ID), which the server generates when the client does not supply one. <ProductName /> forwards this ID on outbound HTTP calls so a request can be traced across services. The REST authentication provider, the consent service, the flow HTTP request executor, and the Vonage notification provider all set the `X-Correlation-ID` header when it is missing. For the REST authentication provider, the header name is configurable via `authn_provider.rest.correlation_id_header`.
 
-**Example** — forward the correlation ID under a custom header name:
+**Example:** forward the correlation ID under a custom header name:
 ```yaml
 authn_provider:
   type: rest
@@ -809,7 +811,7 @@ Anchor every regex with `^` and `$` and escape literal dots. Unanchored patterns
 :::
 
 :::warning
-The `null` origin is shared by sandboxed iframes, `file://` and `data:` documents, and some redirects, so allowing `"null"` cannot identify the caller. List it only when you intend to trust those contexts — with credentialed responses, it lets any such page make authenticated requests.
+The `null` origin is shared by sandboxed iframes, `file://` and `data:` documents, and some redirects, so allowing `"null"` cannot identify the caller. List it only when you intend to trust those contexts. With credentialed responses, it lets any such page make authenticated requests.
 :::
 
 ## Passkey Configuration
@@ -834,18 +836,18 @@ Controls server-wide security behavior that is not specific to any single authen
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `server.security.jwks_cache_ttl` | `300` | JWKS cache TTL in seconds. Applies to every JWKS consumer in the server (trusted issuer validation, federated OIDC authenticators such as Google, and so on). Fetched signing keys are reused from the in-process cache for this duration before being re-fetched. Plan external-server key rotations with at least this much overlap. Set to `0` to disable caching |
-| `server.security.system_permission_prefix` | `""` (empty) | Prefix for system permission strings used in API authorization. When empty, permissions use their base names (for example, `system`, `system:ou`). When set, the prefix is prepended to every system permission (for example, `mgmt:system`, `mgmt:system:ou`). This value must match the system resource server's current handle. Changes require a server restart |
-| `server.security.direct_auth_secret` | `""` (empty) | Secret that gates the Direct API authentication endpoints (`/auth/**` and `/register/passkey/**`). These endpoints are **secure by default**. While this is empty they are blocked with `401`. When set, callers must send the value in the `Direct-Auth-Secret` header; a missing or incorrect value is rejected with `401`. See [Integration Models](/docs/next/guides/key-concepts/authentication/integration-models#direct-api) |
+| `server.security.system_permission_prefix` | `""` (empty) | Prefix for system permission strings used in API authorization. When empty, permissions use their base names (for example, `system`, `system:ou`). When set, the prefix is prepended to every system permission (for example, `mgmt:system`, `mgmt:system:ou`). If you set a prefix, update the Console scopes to match. Changes require a server restart |
+| `server.security.direct_auth_secret` | `""` (empty) | Secret that gates the Direct API authentication endpoints (`/auth/**` and `/register/passkey/**`) and protected AuthZEN access endpoints (`/access/**`). AuthZEN discovery (`/.well-known/authzen-configuration`) remains public. The protected endpoints are **secure by default**. While this is empty they are blocked with `401`. When set, callers must send the value in the `Direct-Auth-Secret` header; a missing or incorrect value is rejected with `401`. See [Integration Models](../../key-concepts/authentication/integration-models#direct-api) |
 
 :::tip
-If the system resource server has a custom handle, set `system_permission_prefix` to match the handle value and restart the server. You must also update the Console scopes to match the new permission strings.
+If you set a custom `system_permission_prefix`, update the Console scopes to match the new permission strings and restart the server.
 :::
 
 ## Trusted Issuer Configuration
 
 Maps to `TrustedIssuerConfig` in the backend, nested under `server.security.trusted_issuer`. Setting `server.security.trusted_issuer.issuer` activates the feature: <ProductName /> trusts access tokens issued by an external authorization server and validates them against the external server's JWKS endpoint. When `issuer` is set, `jwks_url` and `audience` are required and <ProductName /> fails to start if either is missing. This is used for federated authentication scenarios where a central <ProductName /> instance issues tokens that tenant instances accept.
 
-Enabling a trusted issuer is additive and non-breaking. <ProductName /> still accepts the tokens it issues itself, routed by the token's `iss` claim. Existing `client_credentials`, system, and console callers keep working without configuration changes. See [Self-Issued Tokens](/docs/next/guides/guides/trusted-issuer#self-issued-tokens) in the Trusted Issuer guide.
+Enabling a trusted issuer is additive and non-breaking. <ProductName /> still accepts the tokens it issues itself, routed by the token's `iss` claim. Existing `client_credentials`, system, and console callers keep working without configuration changes. See [Self-Issued Tokens](../../guides/trusted-issuer#self-issued-tokens) in the Trusted Issuer guide.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -868,5 +870,5 @@ server:
 ```
 
 :::note
-The frontend must include a matching `resource` parameter in the authorization request so the external authorization server sets the token's `aud` claim to this server's identifier. See the [Trusted Issuer](/docs/next/guides/guides/trusted-issuer) guide for the end-to-end setup.
+The frontend must include a matching `resource` parameter in the authorization request so the external authorization server sets the token's `aud` claim to this server's identifier. See the [Trusted Issuer](../../guides/trusted-issuer) guide for the end-to-end setup.
 :::

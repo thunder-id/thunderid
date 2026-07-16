@@ -37,7 +37,16 @@ var magicLinkRegistrationFlow = testutils.Flow{
 		{
 			"id":        "start",
 			"type":      "START",
-			"onSuccess": "prompt_email",
+			"onSuccess": "user_type_resolver",
+		},
+		{
+			"id":   "user_type_resolver",
+			"type": "TASK_EXECUTION",
+			"executor": map[string]interface{}{
+				"name": "UserTypeResolver",
+			},
+			"onSuccess":    "prompt_email",
+			"onIncomplete": "prompt_email",
 		},
 		{
 			"id":   "prompt_email",

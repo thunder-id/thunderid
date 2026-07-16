@@ -1,7 +1,8 @@
 ---
 title: OpenID for Verifiable Credential Issuance (OpenID4VCI)
+docType: reference
 sidebar_position: 1
-description: OpenID4VCI in {{ProductName}} — issue SD-JWT VCs to digital wallets via the authorization code grant and generate credential offers for wallet onboarding.
+description: OpenID4VCI in {{ProductName}}, issue SD-JWT VCs to digital wallets via the authorization code grant and generate credential offers for wallet onboarding.
 ---
 
 # OpenID for Verifiable Credential Issuance (OpenID4VCI)
@@ -16,7 +17,7 @@ Credential configurations are managed resources you create through the <ProductN
 
 1. An operator creates a **credential configuration** in the <ProductName /> Console, specifying the credential type (`vct`) and which user profile claims to include as selectively disclosable attributes.
 2. <ProductName /> advertises the credential configuration in its issuer metadata at `GET /.well-known/openid-credential-issuer`.
-3. A relying party (or <ProductName /> itself) generates a **credential offer** — a compact `openid-credential-offer://` deep link the user opens in their wallet.
+3. A relying party (or <ProductName /> itself) generates a **credential offer**: a compact `openid-credential-offer://` deep link the user opens in their wallet.
 4. The wallet resolves the offer and redirects the user to the <ProductName /> authorization endpoint with the credential configuration handle as the OAuth scope.
 5. The user authenticates. <ProductName /> issues an access token scoped to the credential configuration.
 6. The wallet requests a fresh `c_nonce` from `POST /openid4vci/nonce` to bind the credential to its key.
@@ -154,11 +155,11 @@ Response:
 }
 ```
 
-For batch issuance, pass multiple proof JWTs in `proofs.jwt` — one SD-JWT VC is returned per proof.
+For batch issuance, pass multiple proof JWTs in `proofs.jwt`: one SD-JWT VC is returned per proof.
 
 ## Related Guides
 
-- [OpenID for Verifiable Presentations](../openid4vp) — verify a previously issued SD-JWT VC at a relying party
-- [DPoP](../../oauth-oidc/dpop) — bind access tokens to a wallet key to prevent token theft
-- [Authorization Code](../../oauth-oidc/authorization-code) — the underlying grant used in the issuance flow
-- [JWKS](../../oauth-oidc/jwks) — public keys used by wallets to verify the issued credential signature
+- [OpenID for Verifiable Presentations](../openid4vp), verify a previously issued SD-JWT VC at a relying party
+- [DPoP](../../oauth-oidc/dpop), bind access tokens to a wallet key to prevent token theft
+- [Authorization Code](../../oauth-oidc/authorization-code), the underlying grant used in the issuance flow
+- [JWKS](../../oauth-oidc/jwks), public keys used by wallets to verify the issued credential signature

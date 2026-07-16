@@ -1,7 +1,8 @@
 ---
 title: Embedded Sign-In Flow (V1)
+docType: reference
 displayed_sidebar: javascriptSdkSidebar
-description: Low-level V1 functions for app-native authentication flows
+description: Embedded sign-in flow component for the JavaScript SDK, driving multi-step authentication UIs.
 ---
 
 # Embedded Sign-In Flow (V1)
@@ -9,7 +10,7 @@ description: Low-level V1 functions for app-native authentication flows
 These functions implement app-native (embedded) sign-in for the V1 flow protocol. They allow you to drive the authentication sequence step-by-step without a browser redirect to the identity provider. Used internally by `ThunderIDJavaScriptClient.getAgentToken()`.
 
 :::note
-For new integrations, prefer the [V2 flow functions](/docs/next/sdks/javascript/apis/flows/embedded-sign-in-flow-v2), which offer a richer response model and better error handling.
+For new integrations, prefer the [V2 flow functions](../embedded-sign-in-flow-v2), which offer a richer response model and better error handling.
 :::
 
 ## `initializeEmbeddedSignInFlow(config)`
@@ -46,9 +47,9 @@ const response = await initializeEmbeddedSignInFlow({
 | `config.payload.redirect_uri` | `string` | ✅ | Redirect URI registered with the application |
 | `config.payload.scope` | `string` | ✅ | Space-separated scopes |
 | `config.payload.state` | `string` | ✅ | Random state for CSRF protection |
-| `config.payload.code_challenge` | `string` | — | PKCE code challenge |
-| `config.payload.code_challenge_method` | `string` | — | PKCE method (e.g., `'S256'`) |
-| `config.payload.response_mode` | `string` | — | Set to `'direct'` for embedded flows |
+| `config.payload.code_challenge` | `string` | No | PKCE code challenge |
+| `config.payload.code_challenge_method` | `string` | No | PKCE method (e.g., `'S256'`) |
+| `config.payload.response_mode` | `string` | No | Set to `'direct'` for embedded flows |
 
 ### Response: `EmbeddedSignInFlowInitiateResponse`
 
@@ -77,8 +78,6 @@ const response = await initializeEmbeddedSignInFlow({
 | `idp` | `string` | Identity provider name |
 | `metadata` | `object` | Authenticator-specific metadata |
 | `requiredParams` | `string[]` | Parameters the authenticator requires (e.g., `['username', 'password']`) |
-
----
 
 ## `executeEmbeddedSignInFlow(config)`
 
@@ -133,7 +132,7 @@ if (response.flowStatus === EmbeddedSignInFlowStatus.SuccessCompleted) {
 | Value | Description |
 |-------|-------------|
 | `Incomplete` | Flow has more steps to complete |
-| `SuccessCompleted` | Authentication succeeded — `authData` contains the authorization code |
+| `SuccessCompleted` | Authentication succeeded: `authData` contains the authorization code |
 | `FailCompleted` | Authentication failed definitively |
 | `FailIncomplete` | A step failed but the flow can continue (e.g., wrong credentials) |
 

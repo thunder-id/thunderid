@@ -58,7 +58,7 @@ func newFederatedAuthResolverExecutor(
 		log.String(log.LoggerKeyExecutorName, ExecutorNameFederatedAuthResolver))
 
 	base := flowFactory.CreateExecutor(ExecutorNameFederatedAuthResolver,
-		providers.ExecutorTypeAuthentication, nil, nil)
+		providers.ExecutorTypeAuthentication, nil, nil, &providers.ExecutorMeta{})
 
 	return &federatedAuthResolverExecutor{
 		Executor:      base,

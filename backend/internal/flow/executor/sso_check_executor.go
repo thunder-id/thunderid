@@ -45,7 +45,12 @@ func newSSOCheckExecutor(flowFactory core.FlowFactoryInterface, sso session.Serv
 		log.String(log.LoggerKeyExecutorName, ExecutorNameSSOCheck))
 
 	base := flowFactory.CreateExecutor(ExecutorNameSSOCheck, providers.ExecutorTypeUtility,
-		[]providers.Input{}, []providers.Input{})
+		[]providers.Input{}, []providers.Input{}, &providers.ExecutorMeta{
+			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAuthentication},
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: common.NodePropertyCheckpointRef, IsRequired: true},
+			},
+		})
 
 	return &ssoCheckExecutor{
 		Executor: base,

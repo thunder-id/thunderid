@@ -16,14 +16,14 @@
  * under the License.
  */
 
-import {GitHub, Google, MessageSquare, Send, ShieldCheck} from '@wso2/oxygen-ui-icons-react';
+import {GitHub, Google, KeyRound, MessageSquare, Send, ShieldCheck} from '@wso2/oxygen-ui-icons-react';
 import {CONNECTION_CATEGORIES} from '../constants/connection-categories';
 import {type ConnectionCategory, ConnectionTypes, type ConnectionVendorMeta} from '../models/connection';
 
 /**
  * Frontend-owned catalog of every connection vendor the console presents.
  *
- * The backend `/connections` API only knows `google`/`github`/`oidc`; this map adds all
+ * The backend `/connections` API only knows `google`/`github`/`oidc`/`oauth`; this map adds all
  * presentation (logo, name, categories) plus the coming-soon placeholder vendors that are
  * not yet wired to an API.
  */
@@ -51,12 +51,21 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
   {
     key: 'oidc',
     backendType: ConnectionTypes.OIDC,
-    displayName: 'Custom OIDC',
+    displayName: 'OpenID Connect',
     descriptionKey: 'connections:vendor.oidc.description',
     logo: <ShieldCheck />,
     categories: ['enterprise'],
     presentation: 'custom',
     supportsAttributeMapping: true,
+  },
+  {
+    key: 'oauth',
+    backendType: ConnectionTypes.OAUTH,
+    displayName: 'OAuth 2.0',
+    descriptionKey: 'connections:vendor.oauth.description',
+    logo: <KeyRound />,
+    categories: ['enterprise'],
+    presentation: 'custom',
   },
   {
     key: 'twilio',

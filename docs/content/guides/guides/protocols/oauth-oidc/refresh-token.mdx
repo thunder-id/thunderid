@@ -1,7 +1,8 @@
 ---
 title: Refresh Token
+docType: reference
 sidebar_position: 3
-description: The OAuth 2.1 Refresh Token grant in {{ProductName}} — exchange a refresh token for a new access token, with optional rotation and audience preservation.
+description: The OAuth 2.1 Refresh Token grant in {{ProductName}}, to exchange a refresh token for a new access token, with optional rotation and audience preservation.
 ---
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
@@ -10,7 +11,7 @@ import TabItem from '@theme/TabItem';
 
 The **Refresh Token** grant ([RFC 6749 §6](https://datatracker.ietf.org/doc/html/rfc6749#section-6)) lets a client obtain a new access token without prompting the user to sign in again. The client sends its refresh token to the token endpoint and receives a new access token (and optionally a new refresh token) in return.
 
-Refresh tokens are long-lived credentials and must be treated as such — they replace the user's session. <ProductName /> supports rotation so refresh tokens themselves can be short-lived in practice.
+Refresh tokens are long-lived credentials and must be treated as such: they replace the user's session. <ProductName /> supports rotation so refresh tokens themselves can be short-lived in practice.
 
 ## How It Works
 
@@ -24,8 +25,8 @@ Content-Type: application/x-www-form-urlencoded
 
 grant_type=refresh_token
 &refresh_token=<refresh_token>
-&scope=openid%20profile             # optional — narrow only
-&resource=https://api.example.com   # optional — narrow audience
+&scope=openid%20profile             # optional, narrow only
+&resource=https://api.example.com   # optional, narrow audience
 ```
 
 Response (rotation enabled):
@@ -46,9 +47,9 @@ Response (rotation enabled):
 | Aspect | Behavior |
 |---|---|
 | Endpoint | `POST /oauth2/token` with `grant_type=refresh_token` |
-| Client authentication | Same methods as the original grant — see [Client Authentication Methods](../client-authentication-methods) |
+| Client authentication | Same methods as the original grant, see [Client Authentication Methods](../client-authentication-methods) |
 | Rotation | Controlled globally by `oauth.refresh_token.renew_on_grant` in `deployment.yaml`. When enabled, every refresh issues a new `refresh_token`; when disabled, the existing one is reused |
-| Old token after rotation | Stateless JWTs with no revocation — a rotated-out token stays valid until it expires. No reuse detection |
+| Old token after rotation | Stateless JWTs with no revocation: a rotated-out token stays valid until it expires. No reuse detection |
 | Audience preservation | Per RFC 8707 §5, the new access token carries the **full original `aud`** when `resource` is not supplied |
 | Audience narrowing | Supply `resource` to receive a new access token whose `aud` is a subset of the original |
 | Scope narrowing | The `scope` parameter may request a subset of the originally granted scopes. Asking for a wider scope returns `invalid_scope` |
@@ -100,7 +101,7 @@ Refresh token rotation is a deployment-wide setting, not per client. Enable it b
 
 ## Related Guides
 
-- [Authorization Code](../authorization-code) — the most common source of refresh tokens
-- [Resource Indicators](../resource-indicators) — narrow the audience of the refreshed access token
-- [DPoP](../dpop) — refresh tokens issued under DPoP remain sender-constrained
-- [Token Formats](../token-formats) — token lifetimes, signing and encryption settings
+- [Authorization Code](../authorization-code), the most common source of refresh tokens
+- [Resource Indicators](../resource-indicators), narrow the audience of the refreshed access token
+- [DPoP](../dpop), refresh tokens issued under DPoP remain sender-constrained
+- [Token Formats](../token-formats), token lifetimes, signing and encryption settings

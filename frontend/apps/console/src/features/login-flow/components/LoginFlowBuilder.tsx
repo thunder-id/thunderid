@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useIdentityProviders} from '@thunderid/configure-connections';
+import {useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
 import {Alert, Box, Snackbar, Stack} from '@wso2/oxygen-ui';
 import type {Edge, Node} from '@xyflow/react';
 import {useEdgesState, useNodesState, useUpdateNodeInternals} from '@xyflow/react';
@@ -43,7 +43,6 @@ import useFlowConfig from '@/features/flows/hooks/useFlowConfig';
 import useFlowEvents from '@/features/flows/hooks/useFlowEvents';
 import useValidationStatus from '@/features/flows/hooks/useValidationStatus';
 import {ExecutionTypes, StepTypes, type StepData} from '@/features/flows/models/steps';
-import useNotificationSenders from '@/features/notification-senders/api/useNotificationSenders';
 
 const SMS_EXECUTORS = new Set<string>([ExecutionTypes.SMSExecutor]);
 
@@ -111,7 +110,7 @@ function LoginFlowBuilder() {
 
   // Auto-assign connections for executor nodes with placeholder IDP/sender IDs
   const {data: identityProviders} = useIdentityProviders();
-  const {data: notificationSenders} = useNotificationSenders();
+  const {data: smsProviders} = useSMSProviders();
   const hasAutoAssignedRef = useRef<boolean>(false);
 
   useEffect(() => {
@@ -120,7 +119,7 @@ function LoginFlowBuilder() {
     }
 
     // Wait until both data sources are available
-    if (!identityProviders || !notificationSenders) {
+    if (!identityProviders || !smsProviders) {
       return;
     }
 
@@ -138,9 +137,9 @@ function LoginFlowBuilder() {
           (stepData?.properties as Record<string, string> | undefined) ?? {};
 
         // Handle SMS executors - auto-assign senderId
-        if (SMS_EXECUTORS.has(executorName) && notificationSenders) {
+        if (SMS_EXECUTORS.has(executorName) && smsProviders) {
           if (currentSenderId === '{{SENDER_ID}}' || currentSenderId === '') {
-            if (notificationSenders.length === 1) {
+            if (smsProviders.length === 1) {
               changed = true;
               return {
                 ...node,
@@ -148,7 +147,7 @@ function LoginFlowBuilder() {
                   ...node.data,
                   properties: {
                     ...((stepData?.properties as Record<string, unknown>) ?? {}),
-                    senderId: notificationSenders[0].id,
+                    senderId: smsProviders[0].id,
                   },
                 },
               };
@@ -183,7 +182,7 @@ function LoginFlowBuilder() {
 
       return currentNodes;
     });
-  }, [identityProviders, notificationSenders, nodes.length, setNodes]);
+  }, [identityProviders, smsProviders, nodes.length, setNodes]);
 
   // Element addition hook
   const {handleAddElementToView, handleAddElementToForm} = useElementAddition({

@@ -1,5 +1,6 @@
 ---
 title: Dynamic Client Registration
+docType: reference
 sidebar_position: 3
 persona: developer
 description: Register OAuth 2.1 clients programmatically via the DCR endpoint, including localized metadata fields using OIDC language tags.
@@ -10,7 +11,7 @@ import { DCRDiagram } from '../../../../../src/components/OAuthFlowDiagrams';
 
 **Dynamic Client Registration** ([RFC 7591](https://www.rfc-editor.org/rfc/rfc7591)) lets you create an OAuth 2.1 client at <ProductName /> with an HTTP request instead of going through the Console. It is used by automated provisioning pipelines, SDK installers that bootstrap their own clients, and federation flows where a relying party registers itself on first contact.
 
-The endpoint accepts the standard RFC 7591 metadata fields plus localized variants of human-readable strings (OIDC language tags). The full RFC 7592 client management protocol (PUT/DELETE on a registration access token) is **not** supported — registration is one-shot.
+The endpoint accepts the standard RFC 7591 metadata fields plus localized variants of human-readable strings (OIDC language tags). The full RFC 7592 client management protocol (PUT/DELETE on a registration access token) is **not** supported: registration is one-shot.
 
 :::note
 DCR registers **applications** only. Agents are provisioned through the <ProductName /> Console or the agent management API, not through `/oauth2/dcr/register`. Applications that use the embedded sign-in approach are also registered through the Console rather than via DCR.
@@ -26,8 +27,8 @@ DCR registers **applications** only. Agents are provisioned through the <Product
 | Aspect | Behavior |
 |---|---|
 | Endpoint | `POST /oauth2/dcr/register` |
-| Authentication | Optional — configurable. When enabled, the caller must authenticate as a privileged client. |
-| RFC 7592 management | Not supported — no PUT/DELETE on registered clients |
+| Authentication | Optional, configurable. When enabled, the caller must authenticate as a privileged client. |
+| RFC 7592 management | Not supported, no PUT/DELETE on registered clients |
 | Localized metadata | Supported via `<field>#<bcp47-tag>` syntax (see below) |
 | Returned credentials | `client_id`, `client_secret` (for confidential clients), and the full echoed metadata |
 | Discovery field | `registration_endpoint` in [Server Metadata](../server-metadata) |
@@ -70,9 +71,9 @@ A successful registration returns `201 Created` with the assigned `client_id`, `
 | Field | Required | Description |
 |-------|----------|-------------|
 | `redirect_uris` | Yes | One or more URIs <ProductName /> redirects to after authentication. |
-| `grant_types` | No | OAuth 2.1 grant types the client may use. Specify explicitly — no default is applied. Supported values: `authorization_code`, `refresh_token`, `client_credentials`, `urn:ietf:params:oauth:grant-type:token-exchange`. |
+| `grant_types` | No | OAuth 2.1 grant types the client may use. Specify explicitly. No default is applied. Supported values: `authorization_code`, `refresh_token`, `client_credentials`, `urn:ietf:params:oauth:grant-type:token-exchange`. |
 | `ou_id` | No | The organization unit ID to associate the registered client with. If omitted, the client is registered under the root organization unit. |
-| `response_types` | No | OAuth 2.1 response types. Specify explicitly — no default is applied. Use `code`. |
+| `response_types` | No | OAuth 2.1 response types. Specify explicitly. No default is applied. Use `code`. |
 | `token_endpoint_auth_method` | No | How the client authenticates at the token endpoint. Supported values: `client_secret_basic` (default), `client_secret_post`, `private_key_jwt`, `none`. |
 | `client_name` | No | Human-readable name of the client. |
 | `client_uri` | No | URL of the client's home page. |
@@ -97,7 +98,7 @@ A successful registration returns `201 Created`. The response echoes all registe
 | Field | Description |
 |-------|-------------|
 | `client_id` | The OAuth 2.1 client identifier assigned by <ProductName />. |
-| `client_secret` | The client secret. Present only for confidential clients. Store this value securely — <ProductName /> does not return it again. |
+| `client_secret` | The client secret. Present only for confidential clients. Store this value securely. <ProductName /> does not return it again. |
 | `client_secret_expires_at` | Expiry time of the client secret as a Unix timestamp. `0` means the secret does not expire. |
 | `app_id` | The internal <ProductName /> application identifier linked to this registered client. |
 
@@ -147,7 +148,7 @@ All localized fields are echoed back in the registration response.
 
 ## Related Guides
 
-- [Manage Applications](../../../applications/manage-applications) — Register and manage applications from the <ProductName /> Console
-- [Application Settings](../../../applications/application-settings) — Configure flows, tokens, and OAuth 2.1 settings
-- [Client Authentication Methods](../client-authentication-methods) — pick `token_endpoint_auth_method` at registration time
-- [Server Metadata](../server-metadata) — advertises the `registration_endpoint`
+- [Manage Applications](../../../applications/manage-applications): Register and manage applications from the <ProductName /> Console
+- [Application Settings](../../../applications/application-settings): Configure flows, tokens, and OAuth 2.1 settings
+- [Client Authentication Methods](../client-authentication-methods), pick `token_endpoint_auth_method` at registration time
+- [Server Metadata](../server-metadata), advertises the `registration_endpoint`

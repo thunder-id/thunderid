@@ -1,0 +1,30 @@
+name: 🥒 Docs Lint (Full Site)
+
+on:
+  schedule:
+    # Runs every day at 03:00 UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  docs-lint-full:
+    name: Docs lint (whole site)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: 🔧 Install Vale
+        run: |
+          gh release download --repo errata-ai/vale --pattern 'vale_*_Linux_64-bit.tar.gz' --dir /tmp --clobber
+          tar -xzf /tmp/vale_*_Linux_64-bit.tar.gz -C /tmp vale
+          sudo mv /tmp/vale /usr/local/bin/vale
+          vale sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: 🔍 Run docs-lint (whole site, no DOCS_LINT_BASE_REF)
+        run: ./scripts/docs-lint.sh

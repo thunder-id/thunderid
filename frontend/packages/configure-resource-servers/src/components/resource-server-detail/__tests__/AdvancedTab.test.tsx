@@ -25,7 +25,6 @@ const mockResourceServer: ResourceServer = {
   id: 'rs-1',
   name: 'Test API',
   description: 'Existing API description',
-  handle: 'test-api',
   identifier: 'https://api.example.com',
   ouId: 'ou-1',
   delimiter: ':',
@@ -41,7 +40,6 @@ const mockMcpServer: ResourceServer = {
   ...mockResourceServer,
   id: 'rs-2',
   name: 'Test MCP Server',
-  handle: 'test-mcp',
   type: 'MCP',
 };
 

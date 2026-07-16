@@ -1,5 +1,6 @@
 ---
 title: Protect APIs on Envoy with {{ProductName}}
+docType: guide
 description: Configure Envoy to validate JWTs issued by {{ProductName}}, enforce scope-based authorization, or call the AuthZEN policy decision point.
 sidebar_position: 2
 ---
@@ -25,7 +26,7 @@ The guide covers three integration approaches available in Envoy:
 
 Before you begin, ensure you have the following:
 
-- A running <ProductName /> installation. Follow [Get <ProductName />](/docs/next/guides/getting-started/get-thunderid) for download, setup, and start commands.
+- A running <ProductName /> installation. Follow [Get <ProductName />](../../../../getting-started/get-thunderid) for download, setup, and start commands.
 - The latest stable [Envoy](https://www.envoyproxy.io/docs/envoy/latest/start/install) version installed.
 - A backend REST API service running and accessible to Envoy. The examples use `http://localhost:9000`.
 - `curl` available in your terminal.
@@ -254,7 +255,7 @@ envoy -c envoy.yaml
 
 ### Try It Out
 
-**Request without a token — expect `401 Unauthorized`:**
+**Request without a token, expect `401 Unauthorized`:**
 
 ```bash
 curl -i --location 'http://localhost:8080/resources' \
@@ -269,7 +270,7 @@ HTTP/1.1 401 Unauthorized
 Jwt is missing
 ```
 
-**Request with a valid <ProductName /> token — expect `200 OK`:**
+**Request with a valid <ProductName /> token, expect `200 OK`:**
 
 ```bash
 curl -i --location 'http://localhost:8080/resources' \
@@ -300,7 +301,7 @@ Expected response:
 
 JWT authentication confirms that a token is valid and was issued by <ProductName />. It does not control what the token holder is allowed to do. With the configuration from the previous section, Envoy accepts any valid <ProductName /> token for the protected route.
 
-Scope-based authorization adds a second layer of control. <ProductName /> embeds scopes in tokens based on the roles assigned to an application. Envoy then checks those scopes on every request and rejects tokens that do not carry the required permissions. This lets you enforce scope-based authorization — for example, restricting a read endpoint to tokens with `resources-api:resource:read` — without changing the upstream service.
+Scope-based authorization adds a second layer of control. <ProductName /> embeds scopes in tokens based on the roles assigned to an application. Envoy then checks those scopes on every request and rejects tokens that do not carry the required permissions. This lets you enforce scope-based authorization, for example, restricting a read endpoint to tokens with `resource:read`, without changing the upstream service.
 
 The steps below build on the JWT authentication configuration from the previous section. You will define a Resource Server, a Resource, and actions in <ProductName /> to model your API permissions. Then bundle them into a role, assign the role to your application, and update the Envoy configuration to enforce scope validation.
 
@@ -310,7 +311,7 @@ The steps below build on the JWT authentication configuration from the previous 
 
 A Resource Server represents your API in <ProductName />.
 The Resource Server groups all resources and actions under a single identifier and acts as the audience for tokens issued to clients of that API.
-For a full reference, see [Resource Servers](/docs/next/guides/guides/resource-servers).
+For a full reference, see [Resource Servers](../../../resource-servers).
 
 **Using the Console:**
 
@@ -318,7 +319,6 @@ For a full reference, see [Resource Servers](/docs/next/guides/guides/resource-s
 2. Navigate to **Resource Servers** → **New Resource Server**.
 3. Fill in the following fields:
    - **Name**: `Resources API`
-   - **Handle**: `resources-api`
    - **Identifier**: `https://api.example.com/resources`
    - **Description**: `Handles resource operations`
    - **Delimiter**: `:` (colon)
@@ -341,7 +341,7 @@ A Resource represents a specific entity within the API, such as `/resources`. Re
 #### Create Resource Actions
 
 Actions define the operations allowed on a resource.
-Each action produces a scope in the format `<resource-server-handle>:<resource-handle>:<action-handle>`.
+Each action produces a scope in the format `<resource-handle>:<action-handle>`.
 <ProductName /> includes these scopes in tokens issued to applications that hold the corresponding role.
 
 **Using the Console:**
@@ -353,7 +353,7 @@ Each action produces a scope in the format `<resource-server-handle>:<resource-h
    - **Handle**: `read`
    - **Description**: `Permission to read resources`
 4. Click **Create**.
-5. Note the generated permission shown in the action details: `resources-api:resource:read`.
+5. Note the generated permission shown in the action details: `resource:read`.
 
 #### Create a Role and assign permission
 
@@ -363,7 +363,7 @@ Roles bundle one or more permissions together. Assign roles to applications to c
 2. Fill in the following fields:
    - **Name**: `Resources API Reader`
 3. Click **Continue**.
-4. Under **Assign permissions**, choose `resources-api:resource:read`.
+4. Under **Assign permissions**, choose `resource:read`.
 5. Click **Continue**.
 
 #### Assign a Role to the Application
@@ -436,7 +436,7 @@ http_filters:
                         name: "x-jwt-scope"
                         string_match:
                           safe_regex:
-                            regex: "(^|\\s)resources-api:resource:read(\\s|$)"
+                            regex: "(^|\\s)resource:read(\\s|$)"
             principals:
               - any: true
   - name: envoy.filters.http.router
@@ -446,7 +446,7 @@ http_filters:
 
 </div>
 
-Add one scope policy for each protected route or operation. For example, an update endpoint can require a separate scope such as `resources-api:resource:update`.
+Add one scope policy for each protected route or operation. For example, an update endpoint can require a separate scope such as `resource:update`.
 
 **Scope configuration reference:**
 
@@ -454,7 +454,7 @@ Add one scope policy for each protected route or operation. For example, an upda
 |---|---|---|
 | `claim_to_headers.claim_name` | `scope` | JWT claim that stores scopes |
 | `claim_to_headers.header_name` | `x-jwt-scope` | Header Envoy uses to check the token scopes |
-| `string_match.safe_regex.regex` | `(^\|\\s)resources-api:resource:read(\\s\|$)` | Required scope to access the matching route. The regular expression matches scope token boundaries in a space-delimited scope claim. |
+| `string_match.safe_regex.regex` | `(^\|\\s)resource:read(\\s\|$)` | Required scope to access the matching route. The regular expression matches scope token boundaries in a space-delimited scope claim. |
 | `action` | `ALLOW` | Allows only requests that match one of the configured scope policies |
 
 Restart Envoy to apply the changes:
@@ -476,7 +476,7 @@ curl -kL -X POST 'https://<THUNDER_HOST>:8090/oauth2/token' \
   --user '<CLIENT_ID>:<CLIENT_SECRET>' \
   --header 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode 'grant_type=client_credentials' \
-  --data-urlencode 'scope=resources-api:resource:read'
+  --data-urlencode 'scope=resource:read'
 ```
 
 The response confirms the scope is present:
@@ -486,13 +486,13 @@ The response confirms the scope is present:
   "access_token": "<ACCESS_TOKEN>",
   "token_type": "Bearer",
   "expires_in": 3600,
-  "scope": "resources-api:resource:read"
+  "scope": "resource:read"
 }
 ```
 
 #### Call the Protected API
 
-**With a token that has the required scope — expect `200 OK`:**
+**With a token that has the required scope, expect `200 OK`:**
 
 ```bash
 curl -i --location 'http://localhost:8080/resources' \
@@ -500,7 +500,7 @@ curl -i --location 'http://localhost:8080/resources' \
   --header 'Content-Type: application/json'
 ```
 
-**With a token missing the required scope — expect `403 Forbidden`:**
+**With a token missing the required scope, expect `403 Forbidden`:**
 
 ```bash
 curl -i --location 'http://localhost:8080/resources' \
@@ -521,6 +521,8 @@ RBAC: access denied
 <EnvoyPDPIntegrationDiagram />
 
 JWT authentication and scope-based authorization make decisions from token contents. AuthZEN PDP authorization lets Envoy ask <ProductName /> for a policy decision on each request. Use this pattern when the gateway must evaluate the subject, resource, action, and request context before it forwards traffic to the upstream service.
+
+For endpoint behavior and standalone PDP examples, see [Policy Decision Point](../../protocols/authzen/pdp.mdx).
 
 Because Envoy requests a new decision for each request, changes to a subject's roles or permissions can affect authorization without waiting for an existing access token to expire.
 
@@ -545,56 +547,33 @@ The adapter sends this AuthZEN request for `GET /resources/<RESOURCE_ID>`:
     "id": "<SUBJECT_ID>"
   },
   "resource": {
-    "type": "resources-api",
+    "type": "https://api.example.com/resources",
     "id": "<RESOURCE_ID>"
   },
   "action": {
-    "name": "resources-api:resource:read"
+    "name": "resource:read"
   }
 }
 ```
 
-The action name must match a permission registered in <ProductName />. In this guide, the Resource Server handle, Resource handle, and Action handle produce `resources-api:resource:read`; if your adapter sends a different action name, the PDP returns `decision: false`.
+The action name must match a permission registered in <ProductName />. In this guide, the Resource handle and Action handle produce `resource:read`; if your adapter sends a different action name, the PDP returns `decision: false`.
 
 ### Configure the Authorization Adapter
 
 Run the authorization adapter as a separate service next to Envoy. Envoy sends external authorization checks to the adapter, and the adapter sends AuthZEN access evaluation requests to <ProductName />.
 
-Configure the adapter with the <ProductName /> base URL and credentials that can invoke the AuthZEN PDP. These credentials authorize the adapter to call `/access/v1/evaluation`; the API caller token remains the token that Envoy receives in the `Authorization` header.
+Configure the adapter with the <ProductName /> base URL and the Direct Auth Secret that can invoke the AuthZEN PDP. These credentials authorize the adapter to call `/access/v1/evaluation`; the API caller token remains the token that Envoy receives in the `Authorization` header.
 
-Use a dedicated application for the adapter and grant it the `system` scope required to call the AuthZEN evaluation API. Then choose one adapter token mode:
-
-<Tabs groupId="envoy-authzen-adapter-token">
-<TabItem value="static-token" label="Static Token" default>
-
-Request a [client credentials](/docs/next/guides/guides/protocols/oauth-oidc/client-credentials/) token for the adapter application:
-
-```bash
-curl -kL -X POST 'https://<THUNDER_HOST>:8090/oauth2/token' \
-  --user '<ADAPTER_CLIENT_ID>:<ADAPTER_CLIENT_SECRET>' \
-  --header 'Content-Type: application/x-www-form-urlencoded' \
-  --data-urlencode 'grant_type=client_credentials' \
-  --data-urlencode 'scope=system'
-```
-
-Save the returned `access_token` as `ADAPTER_ACCESS_TOKEN`. Use it as `THUNDERID_TOKEN` when you start the adapter.
-
-</TabItem>
-<TabItem value="client-credentials" label="Client Credentials">
-
-Let the adapter request and refresh its own [client credentials](/docs/next/guides/guides/protocols/oauth-oidc/client-credentials/) token. Set `THUNDERID_CLIENT_ID`, `THUNDERID_CLIENT_SECRET`, and `THUNDERID_SCOPE` before you start the adapter.
-
-</TabItem>
-</Tabs>
+Set `server.security.direct_auth_secret` in the <ProductName /> deployment configuration and restart <ProductName />. Store the same value as `THUNDERID_DIRECT_AUTH_SECRET` when you start the adapter. A missing or incorrect secret causes <ProductName /> to reject the PDP call with `401`.
 
 Use `AUTHZEN_ADAPTER_PORT` when you configure Envoy's HTTP `ext_authz` service. Use `AUTHZEN_GRPC_ADAPTER_PORT` when you configure Envoy's gRPC `ext_authz` service.
 
 :::tip Local development adapter
 The adapter bridges Envoy `ext_authz` and the <ProductName /> AuthZEN PDP. It reads the identity and request context forwarded by Envoy, builds an AuthZEN access evaluation request, calls `/access/v1/evaluation`, and returns allow or deny to Envoy.
 
-For local development, the sample adapter can also handle adapter token configuration, self-signed TLS, HTTP and gRPC `ext_authz` endpoints, health checks, and structured logging.
+For local development, the sample adapter can also handle Direct Auth Secret configuration, self-signed TLS, HTTP and gRPC `ext_authz` endpoints, health checks, and structured logging.
 
-For static token mode, set the required environment variables first. Then start the adapter:
+Set the required environment variables first. Then start the adapter:
 
 ```bash
 python authzen_adapter.py
@@ -611,52 +590,35 @@ Use the following configuration for the adapter. The minimized snippets below us
 A fuller local adapter can also use the optional transport and gRPC startup settings.
 
 - Base URL setting. Required.
-- Static token: `THUNDERID_TOKEN`. Requires the `system` scope.
-- Client ID: `THUNDERID_CLIENT_ID`. Used in client credentials mode.
-- Client secret: `THUNDERID_CLIENT_SECRET`.
-- Scope: `THUNDERID_SCOPE`. Defaults to `system`.
-- Token endpoint override: `THUNDERID_TOKEN_URL`.
+- Direct Auth Secret: `THUNDERID_DIRECT_AUTH_SECRET`. Required.
 - TLS verification: `THUNDERID_TLS_VERIFY`.
 - Local transport switch: `THUNDERID_HTTP_TRANSPORT`.
 - HTTP adapter port: `AUTHZEN_ADAPTER_PORT`. Defaults to `8181`.
 - gRPC adapter port: `AUTHZEN_GRPC_ADAPTER_PORT`. Defaults to `8182`.
 - gRPC startup switch: `AUTHZEN_ENABLE_GRPC`.
 - PDP call timeout: `AUTHZEN_ADAPTER_TIMEOUT`. Defaults to `10`.
-- Token refresh window: `AUTHZEN_TOKEN_REFRESH_SKEW`. Defaults to `30`.
 
 The adapter can be implemented in any language. It must do four things:
 
 1. Read the authenticated subject from the claims Envoy forwards after JWT validation.
 2. Map the incoming method and path to the permission name that <ProductName /> evaluates.
-3. Call the <ProductName /> AuthZEN PDP at `/access/v1/evaluation` with the adapter access token.
+3. Call the <ProductName /> AuthZEN PDP at `/access/v1/evaluation` with the Direct Auth Secret.
 4. Return allow to Envoy only when the PDP response contains `decision: true`.
 
-The shared token handling, request mapping, and PDP call can look like this. The example omits `subject.type` because the AuthZEN field is optional and the subject can be a user, application, or agent:
+The request mapping and PDP call can look like this. The example omits `subject.type` because the AuthZEN field is optional and the subject can be a user, application, or agent:
 
 <div className="envoy-scroll-code">
 
 ```python
-import base64
 import json
 import os
 import ssl
-import time
-import urllib.parse
 import urllib.request
-from threading import Lock
 
 base_url = os.environ["THUNDERID" + "_BASE" + "_URL"].rstrip("/")  # URL.
-token_url = os.environ.get("THUNDERID_TOKEN_URL", f"{base_url}/oauth2/token")  # Token URL.
-scope = os.environ.get("THUNDERID_SCOPE", "system")  # Scope.
-client_id = os.environ.get("THUNDERID_CLIENT_ID", "")  # Client ID.
-client_secret = os.environ.get("THUNDERID_CLIENT_SECRET", "")  # Secret.
-static_token = os.environ.get("THUNDERID_TOKEN", "").strip()  # Static token.
+direct_auth_secret = os.environ["THUNDERID_DIRECT_AUTH_SECRET"]  # Direct Auth Secret.
 tls_verify = os.environ.get("THUNDERID_TLS_VERIFY", "false").lower() == "true"  # TLS.
 timeout = float(os.environ.get("AUTHZEN_ADAPTER_TIMEOUT", "10"))  # Timeout.
-refresh_skew = int(os.environ.get("AUTHZEN_TOKEN_REFRESH_SKEW", "30"))  # Refresh.
-
-cache = {"access_token": static_token, "expiresAt": 0}
-lock = Lock()
 
 
 def tls_context():
@@ -665,54 +627,13 @@ def tls_context():
     return ssl._create_unverified_context()
 
 
-def get_access_token():
-    if static_token:
-        return static_token
-
-    if not client_id or not client_secret:
-        raise RuntimeError(
-            "Set THUNDERID_TOKEN or THUNDERID_CLIENT_ID and THUNDERID_CLIENT_SECRET"
-        )
-
-    now = time.time()
-    with lock:
-        cached_token = cache["access_token"]
-        expiresAt = cache["expiresAt"]
-        if cached_token and now < expiresAt - refresh_skew:
-            return cached_token
-
-        credentials = f"{client_id}:{client_secret}".encode()
-        basic_auth = base64.b64encode(credentials).decode()
-        body = urllib.parse.urlencode(
-            {"grant_type": "client_credentials", "scope": scope}
-        ).encode()
-        request = urllib.request.Request(
-            token_url,
-            data=body,
-            method="POST",
-            headers={
-                "content-type": "application/x-www-form-urlencoded",
-                "authorization": f"Basic {basic_auth}",
-            },
-        )
-
-        with urllib.request.urlopen(
-            request, timeout=timeout, context=tls_context()
-        ) as response:
-            token_payload = json.loads(response.read())
-
-        cache["access_token"] = token_payload["access_token"]
-        cache["expiresAt"] = now + int(token_payload.get("expires_in", 300))
-        return cache["access_token"]
-
-
 def resource_id_from_path(path):
     return path.rsplit("/", 1)[-1]
 
 def action_for(method, path):
     if method == "GET" and path.startswith("/resources"):
-        return "resources-api:resource:read"
-    return "resources-api:resource:unknown"
+        return "resource:read"
+    return "resource:unknown"
 
 def build_authzen_request(method, path, headers):
     subject = {"id": headers.get("x-authenticated-subject", "").strip()}
@@ -735,7 +656,7 @@ def build_authzen_request(method, path, headers):
     return {
         "subject": subject,
         "resource": {
-            "type": "resources-api",
+            "type": "https://api.example.com/resources",
             "id": resource_id_from_path(path),
         },
         "action": {
@@ -752,7 +673,7 @@ def evaluate_with_thunderid(authzen_request):
         method="POST",
         headers={
             "content-type": "application/json",
-            "authorization": f"Bearer {get_access_token()}",
+            "Direct-Auth-Secret": direct_auth_secret,
         },
     )
 
@@ -1171,7 +1092,7 @@ Start the authorization adapter with the <ProductName /> PDP settings:
 
 ```bash
 export THUNDERID_BASE_URL="https://localhost:8090"
-export THUNDERID_TOKEN="<ADAPTER_ACCESS_TOKEN>"
+export THUNDERID_DIRECT_AUTH_SECRET="<direct-auth-secret>"
 export AUTHZEN_ADAPTER_PORT=8181
 export AUTHZEN_GRPC_ADAPTER_PORT=8182
 
@@ -1187,16 +1108,16 @@ envoy -c envoy.yaml
 
 #### Obtain an Access Token
 
-Use a user token or client credentials token for a subject that has the `resources-api:resource:read` permission through the `Resources API Reader` role.
+Use a user token or client credentials token for a subject that has the `resource:read` permission through the `Resources API Reader` role.
 
-For a [client credentials](/docs/next/guides/guides/protocols/oauth-oidc/client-credentials/) token, request the corresponding scope from <ProductName />:
+For a [client credentials](../../../protocols/oauth-oidc/client-credentials) token, request the corresponding scope from <ProductName />:
 
 ```bash
 curl -kL -X POST 'https://<THUNDER_HOST>:8090/oauth2/token' \
   --user '<CLIENT_ID>:<CLIENT_SECRET>' \
   --header 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode 'grant_type=client_credentials' \
-  --data-urlencode 'scope=resources-api:resource:read'
+  --data-urlencode 'scope=resource:read'
 ```
 
 Save the returned `access_token` as `ACCESS_TOKEN`. The token contains the scope associated with the assigned permission.

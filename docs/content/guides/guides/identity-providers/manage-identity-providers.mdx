@@ -1,5 +1,6 @@
 ---
 title: Manage Identity Providers
+docType: guide
 sidebar_position: 1
 persona: iam
 description: Create, update, and delete identity providers in {{ProductName}} using the REST API.
@@ -130,7 +131,7 @@ curl -kL -X DELETE https://localhost:8090/identity-providers/<idp-id> \
 A successful delete returns `204 No Content`.
 
 :::warning
-Deleting an identity provider is permanent. If an authentication flow (or another resource) still references this identity provider, the delete request is rejected with `409 Conflict`. Remove or update the referencing resources — for example, the flow node that uses this IdP — before deleting it.
+Deleting an identity provider is permanent. If an authentication flow (or another resource) still references this identity provider, the delete request is rejected with `409 Conflict`. Remove or update the referencing resources, for example, the flow node that uses this IdP, before deleting it.
 :::
 
 :::note
@@ -139,4 +140,4 @@ Read-only identity providers created through declarative configuration return an
 
 ## Next Steps
 
-- [Connect an IdP to an Application](../connect-idp-to-application) — Assign a configured IdP to an application's sign-in flow.
+- [Connect an IdP to an Application](../connect-idp-to-application): Assign a configured IdP to an application's sign-in flow.

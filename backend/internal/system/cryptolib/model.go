@@ -43,6 +43,12 @@ const (
 	AlgorithmES512 Algorithm = "ES512"
 	// AlgorithmEdDSA represents EdDSA signature algorithm.
 	AlgorithmEdDSA Algorithm = "EdDSA"
+	// AlgorithmMLDSA44 represents the ML-DSA-44 post-quantum signature algorithm (RFC 9964).
+	AlgorithmMLDSA44 Algorithm = "ML-DSA-44"
+	// AlgorithmMLDSA65 represents the ML-DSA-65 post-quantum signature algorithm (RFC 9964).
+	AlgorithmMLDSA65 Algorithm = "ML-DSA-65"
+	// AlgorithmMLDSA87 represents the ML-DSA-87 post-quantum signature algorithm (RFC 9964).
+	AlgorithmMLDSA87 Algorithm = "ML-DSA-87"
 	// AlgorithmRSAOAEP256 represents RSA-OAEP key encryption with SHA-256.
 	AlgorithmRSAOAEP256 Algorithm = "RSA-OAEP-256"
 	// AlgorithmECDHES represents ECDH-ES direct key agreement.
@@ -89,6 +95,12 @@ const (
 	ECDSASHA512 SignAlgorithm = "ECDSA-SHA512"
 	// ED25519 represents the Ed25519 signature algorithm.
 	ED25519 SignAlgorithm = "ED25519"
+	// MLDSA44 represents the ML-DSA-44 post-quantum signature algorithm.
+	MLDSA44 SignAlgorithm = "ML-DSA-44"
+	// MLDSA65 represents the ML-DSA-65 post-quantum signature algorithm.
+	MLDSA65 SignAlgorithm = "ML-DSA-65"
+	// MLDSA87 represents the ML-DSA-87 post-quantum signature algorithm.
+	MLDSA87 SignAlgorithm = "ML-DSA-87"
 )
 
 // AlgorithmParams carries the algorithm and any algorithm-specific inputs for a crypto operation.

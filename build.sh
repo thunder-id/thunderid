@@ -1057,7 +1057,7 @@ function run() {
     # the backend without manual configuration. Regenerated on every run and picked up by
     # the bootstrap one-shot; it is git-ignored and never packaged (see build()).
     cat > "$BACKEND_DIR/bootstrap/02-server-configurations.yaml" <<EOF
-# resource_type: server_config
+resource_type: server_config
 name: cors
 value:
   allowedOrigins:
@@ -1065,9 +1065,11 @@ value:
     - "https://localhost:$CONSOLE_APP_DEFAULT_PORT"
 EOF
 
+    # Local dev only: default to admin/admin if not supplied. This path never produces a
+    # shared or distributed artifact, so a fixed default here is acceptable.
     if ! ( cd "$BACKEND_DIR" && \
-        ADMIN_USERNAME="${ADMIN_USERNAME:-}" \
-        ADMIN_PASSWORD="${ADMIN_PASSWORD:-}" \
+        ADMIN_USERNAME="${ADMIN_USERNAME:-admin}" \
+        ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}" \
         PUBLIC_URL="$PUBLIC_URL" \
         go run . bootstrap --console-redirect-uris "https://localhost:$CONSOLE_APP_DEFAULT_PORT/console" ); then
         echo "❌ Initial data setup failed"

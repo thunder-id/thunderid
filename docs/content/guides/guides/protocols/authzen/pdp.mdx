@@ -1,9 +1,8 @@
 ---
 title: Policy Decision Point
+docType: reference
 sidebar_position: 1
-description:
-  Use {{ProductName}} as an AuthZEN policy decision point for metadata discovery, access evaluation, batch evaluation,
-  and action search.
+description: Use {{ProductName}} as an AuthZEN policy decision point for metadata discovery, access evaluation, batch evaluation, and action search.
 ---
 
 import {AuthZENPDPDiagram} from '../../../../../src/components/AuthZENPDPDiagram';
@@ -17,9 +16,8 @@ adapter, service, or application, calls <ProductName /> before it allows access 
 
 <AuthZENPDPDiagram />
 
-The PEP calls <ProductName /> with an access token that can invoke the AuthZEN API. Protected AuthZEN endpoints require
-the `system` scope. For service-to-service integrations, use the
-[Client Credentials](/docs/next/guides/guides/protocols/oauth-oidc/client-credentials) grant to issue the PEP token.
+The PEP calls <ProductName /> with the server-level Direct Auth Secret. AuthZEN access endpoints under `/access/**`
+require the `Direct-Auth-Secret` header. The metadata endpoint stays public so PEPs can discover the PDP endpoints.
 
 ```json
 {
@@ -28,11 +26,11 @@ the `system` scope. For service-to-service integrations, use the
     "id": "<subject-id>"
   },
   "resource": {
-    "type": "booking-api",
+    "type": "https://api.example.com/booking",
     "id": "<booking-id>"
   },
   "action": {
-    "name": "booking-api:reservations:view"
+    "name": "reservations:view"
   }
 }
 ```
@@ -56,7 +54,7 @@ the `system` scope. For service-to-service integrations, use the
 | Action search            | `POST /access/v1/search/action`                                                                                                                   |
 | `subject.id`             | Required. Identifies the user, application, or agent being evaluated.                                                                             |
 | `subject.type`           | Optional. When provided, <ProductName /> validates that the subject ID matches the subject category.                                              |
-| `resource.type`          | Required. Maps to the <ProductName /> resource server handle.                                                                                     |
+| `resource.type`          | Required. Maps to the <ProductName /> resource server identifier.                                                                                 |
 | `resource.id`            | Optional in <ProductName />. Identifies the protected resource instance when provided and is reserved for future resource-instance authorization. |
 | `action.name`            | Required. Must match a permission registered on the resource server.                                                                              |
 | `context`                | Optional object for request-time attributes.                                                                                                      |
@@ -65,7 +63,7 @@ the `system` scope. For service-to-service integrations, use the
 
 ## Configure <ProductName />
 
-The following example creates the `booking-api:reservations:view` permission and assigns it to a subject that can view
+The following example creates the `reservations:view` permission and assigns it to a subject that can view
 reservations.
 
 ### Create a Resource Server
@@ -74,12 +72,12 @@ reservations.
 2. Select **Resource Servers**, then select **New Resource Server**.
 3. Enter the following values:
    - **Name**: `Booking API`
-   - **Handle**: `booking-api`
+   - **Identifier**: `https://api.example.com/booking`
    - **Delimiter**: `:`
 4. Select **Create**.
 
 For details about resource server fields and permission formats, see
-[Resource Servers](/docs/next/guides/guides/resource-servers).
+[Resource Servers](../../../resource-servers).
 
 ### Create a Resource
 
@@ -98,7 +96,7 @@ For details about resource server fields and permission formats, see
    - **Name**: `View Reservations`
    - **Handle**: `view`
 4. Select **Create**.
-5. Confirm that the generated permission is `booking-api:reservations:view`.
+5. Confirm that the generated permission is `reservations:view`.
 
 The `action.name` value in an AuthZEN request must match this complete permission string.
 
@@ -106,47 +104,45 @@ The `action.name` value in an AuthZEN request must match this complete permissio
 
 1. Select **Roles**, then select **New Role**.
 2. Create a role named `Booking API Viewer`.
-3. Add the `booking-api:reservations:view` permission to the role.
+3. Add the `reservations:view` permission to the role.
 4. Complete the role creation.
 5. Open the role and select the **Assignments** tab.
 6. Add the users, groups, applications, or agents that can view reservations.
 
 The authorization decision evaluates the user, application, or agent identified by `subject.id`. For a group assignment,
 use the ID of a group member as `subject.id`; <ProductName /> includes the subject's group memberships in the
-evaluation. For more information, see [Roles](/docs/next/guides/guides/users/manage-roles).
+evaluation. For more information, see [Roles](../../../users/manage-roles).
 
-### Configure the PEP Application
+### Configure the Direct Auth Secret
 
-The PEP uses a separate application identity to call the protected AuthZEN endpoints. This application does not replace
-the subject in the evaluation request.
+The PEP uses the server-level Direct Auth Secret to call protected AuthZEN endpoints. This secret authenticates the PEP
+or adapter that sends the request. It does not replace the subject in the evaluation request.
 
-1. Select **Applications**, then select **Add Application**.
-2. Select **Backend Service**.
-3. Enter a name such as `AuthZEN PEP`, select an organization unit, and create the application.
-4. Save the client ID and client secret.
-5. Assign the application to a role that grants the `system` permission. The default **Administrator** role grants this
-   permission.
+1. Open your <ProductName /> deployment configuration.
+2. Set `server.security.direct_auth_secret` to a strong secret value.
+3. Restart the server.
+4. Store the same secret in the PEP or adapter configuration.
 
-Request a Client Credentials token for the PEP application:
+Example:
 
-```bash
-curl -X POST https://{{productSlug}}.example.com/oauth2/token \
-  -u "$CLIENT_ID:$CLIENT_SECRET" \
-  -d "grant_type=client_credentials" \
-  -d "scope=system"
+```yaml
+server:
+  security:
+    direct_auth_secret: "<direct-auth-secret>"
 ```
 
-Use the returned access token in the `Authorization` header when the PEP calls an AuthZEN endpoint. For more
-information, see [Client Credentials](/docs/next/guides/guides/protocols/oauth-oidc/client-credentials).
+Use this value in the `Direct-Auth-Secret` header when the PEP calls a protected AuthZEN endpoint. A missing or
+incorrect secret returns `401`. For more information, see
+[Security Configuration](../../../../getting-started/configuration#security-configuration).
 
 ### Map the Configuration to AuthZEN
 
 Use the configured values in an access evaluation request:
 
 - Set `subject.id` to the ID of the user, application, or agent being evaluated.
-- Set `resource.type` to the resource server handle, `booking-api`.
+- Set `resource.type` to the resource server identifier, `https://api.example.com/booking`.
 - Optionally set `resource.id` to the reservation instance identifier.
-- Set `action.name` to the generated permission, `booking-api:reservations:view`.
+- Set `action.name` to the generated permission, `reservations:view`.
 
 ## Discover AuthZEN Metadata
 
@@ -176,18 +172,18 @@ the subject has the requested permission.
 ```bash
 curl -X POST https://{{productSlug}}.example.com/access/v1/evaluation \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <access-token>' \
+  -H 'Direct-Auth-Secret: <direct-auth-secret>' \
   -d '{
     "subject": {
       "type": "user",
       "id": "<subject-id>"
     },
     "resource": {
-      "type": "booking-api",
+      "type": "https://api.example.com/booking",
       "id": "<booking-id>"
     },
     "action": {
-      "name": "booking-api:reservations:view"
+      "name": "reservations:view"
     }
   }'
 ```
@@ -211,7 +207,7 @@ Denied response:
 }
 ```
 
-If `resource.type` does not match a resource server handle, or `action.name` does not match a registered permission,
+If `resource.type` does not match a resource server identifier, or `action.name` does not match a registered permission,
 
 <ProductName /> returns a denied decision with error context instead of allowing the request.
 
@@ -223,7 +219,7 @@ preserves request order in the response, so each result maps to the evaluation a
 ```bash
 curl -X POST https://{{productSlug}}.example.com/access/v1/evaluations \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <access-token>' \
+  -H 'Direct-Auth-Secret: <direct-auth-secret>' \
   -d '{
     "evaluations": [
       {
@@ -232,11 +228,11 @@ curl -X POST https://{{productSlug}}.example.com/access/v1/evaluations \
           "id": "<subject-id>"
         },
         "resource": {
-          "type": "booking-api",
+          "type": "https://api.example.com/booking",
           "id": "<booking-id>"
         },
         "action": {
-          "name": "booking-api:reservations:view"
+          "name": "reservations:view"
         }
       },
       {
@@ -245,11 +241,11 @@ curl -X POST https://{{productSlug}}.example.com/access/v1/evaluations \
           "id": "<subject-id>"
         },
         "resource": {
-          "type": "booking-api",
+          "type": "https://api.example.com/booking",
           "id": "<booking-id>"
         },
         "action": {
-          "name": "booking-api:reservations:delete"
+          "name": "reservations:delete"
         }
       }
     ]
@@ -284,14 +280,14 @@ resource. <ProductName /> checks the permissions under the target resource serve
 ```bash
 curl -X POST https://{{productSlug}}.example.com/access/v1/search/action \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <access-token>' \
+  -H 'Direct-Auth-Secret: <direct-auth-secret>' \
   -d '{
     "subject": {
       "type": "user",
       "id": "<subject-id>"
     },
     "resource": {
-      "type": "booking-api",
+      "type": "https://api.example.com/booking",
       "id": "<booking-id>"
     }
   }'
@@ -303,10 +299,10 @@ Response:
 {
   "results": [
     {
-      "name": "booking-api:reservations:view"
+      "name": "reservations:view"
     },
     {
-      "name": "booking-api:reservations:update"
+      "name": "reservations:update"
     }
   ]
 }
@@ -314,9 +310,9 @@ Response:
 
 ## Related Guides
 
-- [Resource Servers](/docs/next/guides/guides/resource-servers) — define protected APIs, resources, and actions.
-- [Roles](/docs/next/guides/guides/users/manage-roles) — assign permissions to users, groups, applications, and agents.
-- [Client Credentials](/docs/next/guides/guides/protocols/oauth-oidc/client-credentials) — issue service tokens for
-  machine-to-machine integrations.
-- [Envoy](/docs/next/guides/guides/integrations/apim-gateways/envoy) — configure Envoy to call <ProductName /> as an
+- [Resource Servers](../../../resource-servers) define protected APIs, resources, and actions.
+- [Roles](../../../users/manage-roles) assign permissions to users, groups, applications, and agents.
+- [Security Configuration](../../../../getting-started/configuration#security-configuration) describes how to configure the
+  Direct Auth Secret for protected direct endpoints.
+- [Envoy](../../../integrations/apim-gateways/envoy) shows how to configure Envoy to call <ProductName /> as an
   AuthZEN PDP.

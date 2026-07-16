@@ -58,7 +58,7 @@ func newAuthorizationExecutor(
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAuthorization))
 
 	base := flowFactory.CreateExecutor(ExecutorNameAuthorization, providers.ExecutorTypeUtility,
-		[]providers.Input{}, []providers.Input{})
+		[]providers.Input{}, []providers.Input{}, &providers.ExecutorMeta{})
 
 	return &authorizationExecutor{
 		Executor:       base,

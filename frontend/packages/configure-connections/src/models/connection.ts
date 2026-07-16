@@ -25,6 +25,7 @@ export const ConnectionTypes = {
   GOOGLE: 'google',
   GITHUB: 'github',
   OIDC: 'oidc',
+  OAUTH: 'oauth',
   TWILIO: 'twilio',
   VONAGE: 'vonage',
 } as const;
@@ -44,16 +45,50 @@ export type ConnectionCategory =
   | 'data-store';
 
 /**
- * One entry of GET /connections — structural data only.
+ * Functional categories served by the backend /connections?category= filter.
  */
-export interface ConnectionTypeSummary {
-  type: ConnectionType;
-  configured: boolean;
-  instanceCount: number;
+export const ConnectionInstanceCategories = {
+  IDENTITY_PROVIDER: 'identity-provider',
+  SMS_PROVIDER: 'sms-provider',
+} as const;
+
+export type ConnectionInstanceCategory =
+  (typeof ConnectionInstanceCategories)[keyof typeof ConnectionInstanceCategories];
+
+/**
+ * Instance vendor type — ConnectionType plus 'custom' (custom SMS gateway senders, which
+ * have no /connections CRUD vendor yet but appear in the flat listing).
+ */
+export type ConnectionInstanceType = ConnectionType | 'custom';
+
+/**
+ * One entry of GET /connections — a configured connection instance.
+ */
+export interface ConnectionInstance {
+  id: string;
+  name: string;
+  description?: string;
+  type: ConnectionInstanceType;
+  categories: ConnectionInstanceCategory[];
 }
 
+/**
+ * A pagination link on a list response.
+ */
+export interface ConnectionListLink {
+  href: string;
+  rel: string;
+}
+
+/**
+ * Paginated response of GET /connections.
+ */
 export interface ConnectionListResponse {
-  connections: ConnectionTypeSummary[];
+  totalResults: number;
+  startIndex: number;
+  count: number;
+  connections: ConnectionInstance[];
+  links: ConnectionListLink[];
 }
 
 /**
@@ -96,10 +131,16 @@ export interface AttributeMapping {
 }
 
 /**
- * Resolves which local user type a federated identity is provisioned as.
+ * Resolves which local user type a federated identity maps to (selecting its attribute-mapping
+ * profile). `default` is the fixed fallback type. When `externalAttribute` and `valueMapping` are
+ * set, the type is derived from the
+ * value of that external attribute (`valueMapping` maps an external value to a local user type),
+ * falling back to `default`.
  */
 export interface UserTypeResolution {
   default: string;
+  externalAttribute?: string;
+  valueMapping?: Record<string, string>;
 }
 
 /**
@@ -111,11 +152,21 @@ export interface UserTypeAttributeMapping {
 }
 
 /**
+ * Resolves a returning federated identity to an existing local account when its subject identifier
+ * does not match an existing local subject. The listed external attributes are matched together (AND)
+ * to identify a unique account.
+ */
+export interface AccountLinking {
+  attributes: string[];
+}
+
+/**
  * External-to-local attribute mapping configuration for an authentication provider.
  */
 export interface AttributeConfiguration {
   userTypeResolution: UserTypeResolution;
   userTypeAttributeMappings?: UserTypeAttributeMapping[];
+  accountLinking?: AccountLinking;
 }
 
 /**
@@ -161,6 +212,17 @@ export interface TwilioConnectionRequest {
 }
 
 /**
+ * Request payload for generic OAuth 2.0 connections — no OpenID Connect discovery and no
+ * id_token, so the user profile is always fetched from userInfoEndpoint (required, unlike OIDC).
+ */
+export interface OAuth2ConnectionRequest extends OAuthConnectionRequest {
+  authorizationEndpoint: string;
+  tokenEndpoint: string;
+  userInfoEndpoint: string;
+  logoutEndpoint?: string;
+}
+
+/**
  * Request payload for a Vonage SMS connection.
  */
 export interface VonageConnectionRequest {
@@ -175,6 +237,7 @@ export interface VonageConnectionRequest {
 export type ConnectionRequest =
   | OAuthConnectionRequest
   | OIDCConnectionRequest
+  | OAuth2ConnectionRequest
   | TwilioConnectionRequest
   | VonageConnectionRequest;
 

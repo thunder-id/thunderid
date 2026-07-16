@@ -1,12 +1,13 @@
 ---
 title: Try It Out
+docType: use-case
 description: Issue a verifiable credential from Wayfinder to a real wallet, then verify it at the Skyline Lounge, to see decentralized identity in action with ThunderID.
 sidebar_position: 0
 ---
 
 # Try It Out
 
-The walkthroughs in this section use Wayfinder, a fictional consumer travel-booking app, as the sample. Wayfinder **issues** John Doe a **Sky Pass** loyalty credential into his mobile wallet. The **Skyline Lounge** — a separate relying party — **verifies** it to grant access by tier. Both run against a local <ProductName />.
+The walkthroughs in this section use Wayfinder, a fictional consumer travel-booking app, as the sample. Wayfinder **issues** John Doe a **Sky Pass** loyalty credential into his mobile wallet. The **Skyline Lounge**, a separate relying party, **verifies** it to grant access by tier. Both run against a local <ProductName />.
 
 ## Cast
 
@@ -16,7 +17,7 @@ The tryout centers on one member. John Doe is the credential subject: he receive
 
 ## Architecture
 
-Decentralized identity forms a **trust triangle** of three roles: **Issuer**, **Holder**, and **Verifier**. <ProductName /> powers both the Issuer and the Verifier from the inside — neither Wayfinder nor the Skyline Lounge implement any credential protocol themselves.
+Decentralized identity forms a **trust triangle** of three roles: **Issuer**, **Holder**, and **Verifier**. <ProductName /> powers both the Issuer and the Verifier from the inside: neither Wayfinder nor the Skyline Lounge implement any credential protocol themselves.
 
 In **issuance** (OpenID4VCI), Wayfinder triggers a credential offer and delegates everything else to <ProductName />: it authenticates John, signs the Sky Pass, and delivers it to his wallet.
 
@@ -43,7 +44,7 @@ Before running any walkthrough, set up the Wayfinder sample. Two paths lead to t
 
 ## Walkthroughs
 
-Once the sample is running, do them in order — issue the pass before you verify it:
+Once the sample is running, do them in order, issuing the pass before you verify it:
 
 <NextSteps>
   <NextStepsCard

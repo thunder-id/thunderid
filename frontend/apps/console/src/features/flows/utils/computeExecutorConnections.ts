@@ -16,10 +16,13 @@
  * under the License.
  */
 
-import {IdentityProviderTypes, type BasicIdentityProvider} from '@thunderid/configure-connections';
+import {
+  IdentityProviderTypes,
+  type BasicIdentityProvider,
+  type ConnectionInstance,
+} from '@thunderid/configure-connections';
 import type {ExecutorConnectionInterface} from '../models/metadata';
 import {ExecutionTypes} from '../models/steps';
-import type {NotificationSender} from '@/features/notification-senders/models/notification-sender';
 
 /**
  * Mapping from IDP types to executor names.
@@ -31,18 +34,18 @@ const IDP_TYPE_TO_EXECUTOR: Record<string, string> = {
 
 export interface ComputeExecutorConnectionsParams {
   identityProviders?: BasicIdentityProvider[];
-  notificationSenders?: NotificationSender[];
+  smsProviders?: ConnectionInstance[];
 }
 
 /**
- * Computes executor connections from identity providers and notification senders.
+ * Computes executor connections from identity providers and SMS providers.
  * Groups connections by their corresponding executor type.
  *
- * @param params - Object containing identity providers and notification senders
+ * @param params - Object containing identity providers and SMS providers
  * @returns Array of executor connections with their associated IDs
  */
 const computeExecutorConnections = (params: ComputeExecutorConnectionsParams): ExecutorConnectionInterface[] => {
-  const {identityProviders, notificationSenders} = params;
+  const {identityProviders, smsProviders} = params;
 
   const executorMap = new Map<string, string[]>();
 
@@ -59,10 +62,10 @@ const computeExecutorConnections = (params: ComputeExecutorConnectionsParams): E
     });
   }
 
-  // Process notification senders (for SMS executor)
-  if (notificationSenders && notificationSenders.length > 0) {
-    const senderIds = notificationSenders.map((sender) => sender.id);
-    executorMap.set(ExecutionTypes.SMSExecutor, senderIds);
+  // Process SMS providers (for SMS executor)
+  if (smsProviders && smsProviders.length > 0) {
+    const providerIds = smsProviders.map((provider) => provider.id);
+    executorMap.set(ExecutionTypes.SMSExecutor, providerIds);
   }
 
   return Array.from(executorMap.entries()).map(([executorName, connections]) => ({

@@ -53,6 +53,12 @@ func newEmailExecutor(flowFactory core.FlowFactoryInterface, emailClient email.E
 			{Identifier: userAttributeEmail, Type: providers.InputTypeEmail, Required: true},
 		},
 		[]providers.Input{},
+		&providers.ExecutorMeta{
+			SupportedModes: []string{ExecutorModeSend},
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: propertyKeyEmailTemplate, IsRequired: true},
+			},
+		},
 	)
 	return &emailExecutor{
 		Executor:        base,

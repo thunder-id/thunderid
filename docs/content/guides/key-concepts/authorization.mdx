@@ -1,5 +1,6 @@
 ---
 title: Authorization
+docType: concept
 sidebar_position: 4
 description: Understand how access to resources is controlled through permissions, roles, and audience-restricted tokens.
 ---
@@ -10,11 +11,11 @@ description: Understand how access to resources is controlled through permission
 
 ## Resource Servers and Permissions
 
-A resource server represents an API or service that defines a set of permissions. Permissions are structured strings derived from a hierarchy of resources and actions. For example, a booking API resource server might define permissions like `booking-api:reservations:create` and `booking-api:reservations:view`.
+A resource server represents an API or service that defines a set of permissions. Permissions are structured strings derived from a hierarchy of resources and actions. For example, a booking API resource server might define permissions like `reservations:create` and `reservations:view`.
 
-Each resource server has a `handle` that prefixes all its permission strings, a configurable `delimiter` that separates hierarchy levels, and an optional `identifier`. When the identifier is an absolute URI, the resource server is used in RFC 8707 resource indicator flows. The identifier becomes the audience claim value in access tokens.
+Each resource server has a required `identifier` and a configurable `delimiter` that separates hierarchy levels. Permission strings are built from the resource and action handles joined by the delimiter; they are not prefixed by the resource server. When the identifier is an absolute URI, the resource server is used in RFC 8707 resource indicator flows, and the identifier becomes the audience claim value in access tokens.
 
-See [Manage Resource Servers](/docs/next/guides/guides/resource-servers) for setup instructions.
+See [Manage Resource Servers](../../guides/resource-servers) for setup instructions.
 
 ## Audience-Restricted Tokens (RFC 8707)
 
@@ -22,7 +23,7 @@ When a client includes the `resource` parameter in an OAuth 2.0 request, <Produc
 
 This mechanism prevents a token issued for one service from being reused at another. A client can target a single resource server or multiple resource servers in the same request. Requested scopes are filtered to only those defined on the targeted resource servers.
 
-See [Resource Indicators](/docs/next/guides/guides/resource-indicators) for usage details.
+See [Resource Indicators](../../guides/protocols/oauth-oidc/resource-indicators) for usage details.
 
 ## Scope Filtering
 

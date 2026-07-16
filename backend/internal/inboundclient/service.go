@@ -933,6 +933,15 @@ func validateTokenEndpointAuthMethod(p *providers.OAuthProfile, hasClientSecret 
 		if slices.Contains(p.GrantTypes, string(providers.GrantTypeClientCredentials)) {
 			return ErrOAuthClientCredentialsCannotUseNoneAuth
 		}
+		// The jwt-bearer (ID-JAG) grant is bound to the client via client_id only, so it requires a
+		// confidential client.
+		if slices.Contains(p.GrantTypes, string(providers.GrantTypeJWTBearer)) {
+			return ErrOAuthClientJWTBearerCannotUseNoneAuth
+		}
+		// Requesting ID-JAGs is likewise restricted to confidential clients.
+		if p.Token != nil && p.Token.IDJAG != nil && p.Token.IDJAG.Enabled {
+			return ErrOAuthClientIDJAGCannotUseNoneAuth
+		}
 	}
 	return nil
 }
@@ -1190,6 +1199,7 @@ func applyInboundDefaults(c *inboundmodel.InboundClient, oauthProfile *providers
 		AccessToken:  accessToken,
 		IDToken:      idToken,
 		RefreshToken: refreshToken,
+		IDJAG:        resolveIDJAG(oauthProfile.Token),
 	}
 	oauthProfile.UserInfo = resolveUserInfo(oauthProfile.UserInfo, idToken)
 	oauthProfile.ScopeClaims = resolveScopeClaims(oauthProfile.ScopeClaims)
@@ -1317,6 +1327,23 @@ func resolveUserAccessTokenSubConfig(
 		}
 	}
 	return userConfig
+}
+
+// resolveIDJAG resolves the ID-JAG config, defaulting the validity period when unset. Returns nil when
+// the application has no ID-JAG block configured, which disables ID-JAG issuance for the application.
+func resolveIDJAG(in *providers.OAuthTokenConfig) *providers.IDJAGConfig {
+	if in == nil || in.IDJAG == nil {
+		return nil
+	}
+	validityPeriod := in.IDJAG.ValidityPeriod
+	if validityPeriod <= 0 {
+		validityPeriod = providers.DefaultIDJAGValidityPeriod
+	}
+	return &providers.IDJAGConfig{
+		Enabled:          in.IDJAG.Enabled,
+		AllowedAudiences: in.IDJAG.AllowedAudiences,
+		ValidityPeriod:   validityPeriod,
+	}
 }
 
 // resolveUserInfo resolves user info config, defaulting user attributes to the ID token config.

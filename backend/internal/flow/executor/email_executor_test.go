@@ -62,6 +62,7 @@ func (suite *EmailExecutorTestSuite) SetupTest() {
 			{Identifier: userAttributeEmail, Type: providers.InputTypeEmail, Required: true},
 		},
 		[]providers.Input{},
+		mock.Anything,
 	).Return(mockBaseExecutor)
 
 	suite.executor = newEmailExecutor(
@@ -486,6 +487,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NilTemplateService() {
 			{Identifier: userAttributeEmail, Type: providers.InputTypeEmail, Required: true},
 		},
 		[]providers.Input{},
+		mock.Anything,
 	).Return(mockBaseExecutor)
 
 	noServiceExecutor := newEmailExecutor(mockFactory, suite.mockEmailClient, nil, suite.mockEntityProvider)
@@ -679,6 +681,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NilEmailClient_Returns
 			{Identifier: userAttributeEmail, Type: providers.InputTypeEmail, Required: true},
 		},
 		[]providers.Input{},
+		mock.Anything,
 	).Return(mockBaseExecutor)
 
 	noEmailExecutor := newEmailExecutor(mockFactory, nil, suite.mockTemplateService, suite.mockEntityProvider)
@@ -1106,6 +1109,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NilEntityProvider_Retu
 			{Identifier: userAttributeEmail, Type: providers.InputTypeEmail, Required: true},
 		},
 		[]providers.Input{},
+		mock.Anything,
 	).Return(mockBaseExecutor)
 
 	noProviderExecutor := newEmailExecutor(mockFactory, suite.mockEmailClient, suite.mockTemplateService, nil)

@@ -114,6 +114,24 @@ func PrintBanner() {
 	fmt.Println(BannerString())
 }
 
+// StatusBoxString returns a bordered box showing the backend and console URLs
+// for a running server, styled to match the rest of the intro/banner chrome.
+func StatusBoxString(baseURL string) string {
+	dot := greenStyle.Render("●")
+	label := lipgloss.NewStyle().Foreground(lipgloss.Color(colorGrey)).Width(9)
+
+	rows := lipgloss.JoinVertical(lipgloss.Left,
+		dot+" "+label.Render("Backend")+CyanStyle.Render(baseURL),
+		dot+" "+label.Render("Console")+CyanStyle.Render(baseURL+"/console"),
+	)
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(colorGreen)).
+		Padding(0, 1).
+		Render(rows)
+}
+
 // Note prints a bordered note box with title and body.
 func Note(title, body string) {
 	content := boldStyle.Render(title) + "\n" + greyStyle.Render(body)

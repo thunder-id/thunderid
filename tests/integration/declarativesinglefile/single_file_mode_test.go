@@ -56,13 +56,13 @@ import (
 // The {{ t(...) }} expression in the GitHub IDP description verifies that
 // non-Go-template expressions inside the file are preserved as-is and do not
 // cause parse errors during env-var substitution.
-const resourcesYAML = `# resource_type: organization_unit
+const resourcesYAML = `resource_type: organization_unit
 id: sf-decl-ou-1
 handle: sf-decl-ou-1
 name: Single File Declarative OU
 description: Organization unit loaded via single-file mode
 ---
-# resource_type: identity_provider
+resource_type: identity_provider
 id: sf-decl-idp-1
 name: Single File GitHub IDP
 description: "{{ t(idp.github.description) }}"
@@ -78,7 +78,7 @@ properties:
     value: https://localhost:8095/callback
     isSecret: false
 ---
-# resource_type: identity_provider
+resource_type: identity_provider
 id: sf-decl-idp-2
 name: Single File Google IDP
 description: IDP loaded via single-file mode

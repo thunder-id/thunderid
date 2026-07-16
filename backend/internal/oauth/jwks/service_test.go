@@ -133,6 +133,41 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_EdDSA_Success() {
 	assert.NotEmpty(suite.T(), k.X5tS256)
 }
 
+func (suite *JWKSServiceTestSuite) TestGetJWKS_MLDSA_Success() {
+	signer, err := cryptolib.GenerateMLDSAKey(cryptolib.AlgorithmMLDSA65)
+	assert.NoError(suite.T(), err)
+	info := kmprovider.PublicKeyInfo{
+		KeyID:          "kid-1",
+		Algorithm:      cryptolib.AlgorithmMLDSA65,
+		PublicKey:      signer.Public(),
+		Thumbprint:     "kid-1",
+		CertificateDER: []byte("mldsa-cert-raw"),
+	}
+	suite.cryptoMock.EXPECT().GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{}).
+		Return([]kmprovider.PublicKeyInfo{info}, nil)
+
+	resp, svcErr := suite.jwksService.GetJWKS(context.Background())
+	assert.Nil(suite.T(), svcErr)
+	assert.NotNil(suite.T(), resp)
+	assert.Len(suite.T(), resp.Keys, 1)
+	k := resp.Keys[0]
+	assert.Equal(suite.T(), "AKP", k.Kty)
+	assert.Equal(suite.T(), "ML-DSA-65", k.Alg)
+	assert.Equal(suite.T(), "sig", k.Use)
+	assert.NotEmpty(suite.T(), k.Pub)
+	assert.Empty(suite.T(), k.Crv)
+	assert.Empty(suite.T(), k.X)
+	assert.NotEmpty(suite.T(), k.X5c)
+	assert.NotEmpty(suite.T(), k.X5t)
+	assert.NotEmpty(suite.T(), k.X5tS256)
+}
+
+func (suite *JWKSServiceTestSuite) TestGetMLDSAPublicKeyJWKS_NonMLDSAKey() {
+	ecdsaKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	_, ok := getMLDSAPublicKeyJWKS(&ecdsaKey.PublicKey, "kid-1", nil, "", "")
+	assert.False(suite.T(), ok)
+}
+
 func (suite *JWKSServiceTestSuite) TestGetJWKS_GetPublicKeysError() {
 	suite.cryptoMock.EXPECT().GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{}).
 		Return(nil, errors.New("provider error"))

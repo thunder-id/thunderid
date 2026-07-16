@@ -505,10 +505,7 @@ vi.mock('@/features/flows/api/useGetFlowById', () => ({
 vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
   useIdentityProviders: () => ({data: [], isLoading: false}),
-}));
-
-vi.mock('@/features/notification-senders/api/useNotificationSenders', () => ({
-  default: () => ({data: [], isLoading: false}),
+  useSMSProviders: () => ({data: [], isLoading: false}),
 }));
 
 // Mock utility functions

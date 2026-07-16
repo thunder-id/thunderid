@@ -21,9 +21,11 @@ export {default as useConnection} from './api/useConnection';
 export {default as useConnectionInstances} from './api/useConnectionInstances';
 export * from './api/useConnectionInstances';
 export {default as useConnections} from './api/useConnections';
+export * from './api/useConnections';
 export {default as useCreateConnection} from './api/useCreateConnection';
 export {default as useDeleteConnection} from './api/useDeleteConnection';
 export {default as useIdentityProviders} from './api/useIdentityProviders';
+export {default as useSMSProviders} from './api/useSMSProviders';
 export {default as useUpdateConnection} from './api/useUpdateConnection';
 
 // Components
@@ -38,7 +40,6 @@ export {default as ConnectionFullPageLayout} from './components/ConnectionFullPa
 export {default as ConnectionsList} from './components/ConnectionsList';
 export {default as MaskedSecretField} from './components/MaskedSecretField';
 export {default as ReadOnlyCopyField} from './components/ReadOnlyCopyField';
-export {default as ConnectionAttributeMappingStep} from './components/create-connection/ConnectionAttributeMappingStep';
 export {default as SelectConnectionType} from './components/create-connection/SelectConnectionType';
 
 // Config

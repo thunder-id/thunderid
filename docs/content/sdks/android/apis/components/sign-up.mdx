@@ -1,11 +1,12 @@
 ---
 title: SignUp
-description: Embedded registration form driven by the Flow Execution API
+docType: reference
+description: Embedded Kotlin registration composable driven by the ThunderID Flow Execution API for multi-step sign-up.
 ---
 
 # `SignUp`
 
-The `SignUp` composable renders a full app-native registration form. It drives the Flow Execution API loop automatically — initiating the registration flow, presenting the server-defined inputs and actions on each step, and completing when the user is registered and authenticated.
+The `SignUp` composable renders a full app-native registration form. It drives the Flow Execution API loop automatically: initiating the registration flow, presenting the server-defined inputs and actions on each step, and completing when the user is registered and authenticated.
 
 `SignUp` requires `ThunderIDProvider` in its ancestor composable hierarchy.
 
@@ -72,4 +73,4 @@ fun CustomRegisterView() {
 }
 ```
 
-`SignUpState` has the same shape as [`SignInState`](/docs/next/sdks/android/apis/components/sign-in#signinstate-properties): `inputs`, `actions`, `isLoading`, `error`, `binding(name)`, and `submit(actionId)`.
+`SignUpState` has the same shape as [`SignInState`](../sign-in#signinstate-properties): `inputs`, `actions`, `isLoading`, `error`, `binding(name)`, and `submit(actionId)`.

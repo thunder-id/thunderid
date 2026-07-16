@@ -51,49 +51,36 @@ vi.mock('../../components/ConnectionForm', () => ({
   },
 }));
 
-vi.mock('../../components/create-connection/ConnectionAttributeMappingStep', () => ({
-  default: function StubAttributeMappingStep({
-    onChange,
-    onCreate,
-  }: {
-    onChange: (c: unknown, v: boolean) => void;
-    onCreate: () => void;
-  }) {
-    useEffect(() => {
-      onChange(undefined, true);
-    }, [onChange]);
-    return (
-      <button type="button" data-testid="wizard-create" onClick={onCreate}>
-        create
-      </button>
-    );
-  },
-}));
-
 describe('ConnectionConfigureWizardPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockParams.type = 'google';
   });
 
-  it('walks configure → attribute mapping and creates with the fixed vendor name', () => {
+  it('shows a single configure step and creates with the fixed vendor name', () => {
     render(<ConnectionConfigureWizardPage />);
 
-    // Step 1: the credentials form is shown; Continue is enabled once valid.
+    // Single step: the credentials form is shown with a Create button (no attribute-mapping step).
     expect(screen.getByTestId('connection-fullpage-content')).toBeInTheDocument();
     expect(screen.getByTestId('stub-connection-form')).toBeInTheDocument();
     expect(screen.getByText('Configure your Google connection')).toBeInTheDocument();
-    // Assert on the raw step-label key: its real translation ("Configure") collides with the heading text.
-    expect(screen.queryByText('wizard.steps.configure')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('wizard-continue'));
-
-    // Step 2: create.
     fireEvent.click(screen.getByTestId('wizard-create'));
 
     expect(mutateMock).toHaveBeenCalledTimes(1);
     const payload = mutateMock.mock.calls[0][0] as {name: string; clientId: string; attributeConfiguration?: unknown};
     expect(payload).toMatchObject({name: 'Google', clientId: 'x', clientSecret: 's'});
     expect(payload.attributeConfiguration).toBeUndefined();
+  });
+
+  it('navigates to the connection detail page after a successful create', () => {
+    render(<ConnectionConfigureWizardPage />);
+
+    fireEvent.click(screen.getByTestId('wizard-create'));
+
+    const {onSuccess} = mutateMock.mock.calls[0][1] as {onSuccess: (data: {id: string}) => void};
+    onSuccess({id: 'conn-1'});
+
+    expect(navigateMock).toHaveBeenCalledWith('/connections/google/conn-1');
   });
 
   it('SMS vendor: single configure step creates without attribute mapping', () => {

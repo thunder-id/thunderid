@@ -137,7 +137,14 @@ const (
 	GrantTypeTokenExchange GrantType = "urn:ietf:params:oauth:grant-type:token-exchange" //nolint:gosec
 	// GrantTypeCIBA represents the OpenID Connect CIBA (Client-Initiated Backchannel Authentication) grant type.
 	GrantTypeCIBA GrantType = "urn:openid:params:grant-type:ciba"
+	// GrantTypeJWTBearer represents the JWT bearer grant type used to present an ID-JAG assertion
+	// (draft-ietf-oauth-identity-assertion-authz-grant) issued by a trusted external IdP.
+	GrantTypeJWTBearer GrantType = "urn:ietf:params:oauth:grant-type:jwt-bearer" //nolint:gosec
 )
+
+// DefaultIDJAGValidityPeriod is the default validity period, in seconds, of an issued ID-JAG when the
+// application does not configure one.
+const DefaultIDJAGValidityPeriod int64 = 300
 
 // ResponseType defines a type for OAuth2 response types.
 type ResponseType string
@@ -171,6 +178,7 @@ var SupportedGrantTypes = []GrantType{
 	GrantTypeRefreshToken,
 	GrantTypeTokenExchange,
 	GrantTypeCIBA,
+	GrantTypeJWTBearer,
 }
 
 // IsValid checks if the GrantType is valid.

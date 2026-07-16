@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -59,7 +58,6 @@ func parseDocuments(content string) ([]parsedDocument, error) {
 	decoder := yaml.NewDecoder(bytes.NewReader([]byte(content)))
 
 	docs := make([]parsedDocument, 0)
-	var previousFootComment string
 
 	for seq := 0; ; seq++ {
 		var doc yaml.Node
@@ -80,16 +78,9 @@ func parseDocuments(content string) ([]parsedDocument, error) {
 			return nil, fmt.Errorf("document %d root must be a YAML mapping", seq+1)
 		}
 
-		resourceType := classifyResourceTypeWithComments(&doc, root, previousFootComment)
+		resourceType := resourceTypeFromField(root)
 		if resourceType == resourceTypeUnknown {
 			return nil, fmt.Errorf("unable to determine resource type for document %d", seq+1)
-		}
-
-		// Save the foot comments for the next document, because yaml.v3 attaches
-		// the next document's head comment (after ---) as the previous document's foot comment.
-		previousFootComment = doc.FootComment
-		if previousFootComment == "" {
-			previousFootComment = root.FootComment
 		}
 
 		docs = append(docs, parsedDocument{
@@ -102,63 +93,15 @@ func parseDocuments(content string) ([]parsedDocument, error) {
 	return docs, nil
 }
 
-func classifyResourceTypeWithComments(doc *yaml.Node, node *yaml.Node, previousFootComment string) string {
-	commentCandidates := []string{
-		previousFootComment,
-		doc.HeadComment,
-		doc.LineComment,
-		node.HeadComment,
-		node.LineComment,
-	}
-	for _, contentNode := range node.Content {
-		commentCandidates = append(
-			commentCandidates,
-			contentNode.HeadComment,
-			contentNode.LineComment,
-		)
-	}
-
-	if resourceType := resourceTypeFromComments(commentCandidates...); resourceType != resourceTypeUnknown {
-		return resourceType
-	}
-
-	return classifyResourceType(node)
-}
-
-func resourceTypeFromComments(comments ...string) string {
-	for _, comment := range comments {
-		if resourceType := parseResourceTypeFromComment(comment); resourceType != resourceTypeUnknown {
-			return resourceType
-		}
-	}
-
-	return resourceTypeUnknown
-}
-
-func parseResourceTypeFromComment(comment string) string {
-	if strings.TrimSpace(comment) == "" {
-		return resourceTypeUnknown
-	}
-
-	for _, line := range strings.Split(comment, "\n") {
-		normalized := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(line, "#")))
-		if normalized == "" {
-			continue
-		}
-
-		for _, prefix := range []string{"resource_type:", "resource type:", "resourcetype:"} {
-			if !strings.HasPrefix(normalized, prefix) {
-				continue
-			}
-
-			resourceType := strings.TrimSpace(strings.TrimPrefix(normalized, prefix))
-			resourceType = strings.Trim(resourceType, "\"'")
-			if isKnownResourceType(resourceType) {
-				return resourceType
+func resourceTypeFromField(node *yaml.Node) string {
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == "resource_type" {
+			value := node.Content[i+1].Value
+			if isKnownResourceType(value) {
+				return value
 			}
 		}
 	}
-
 	return resourceTypeUnknown
 }
 
@@ -185,102 +128,4 @@ func isKnownResourceType(resourceType string) bool {
 
 	_, exists := knownTypes[resourceType]
 	return exists
-}
-
-func classifyResourceType(node *yaml.Node) string {
-	matches := make([]string, 0, 4)
-
-	if hasAllKeys(node, "language", "translations") {
-		matches = append(matches, resourceTypeTranslation)
-	}
-
-	if hasAllKeys(node, "schema") && hasAnyKey(node, "ouId", "ouHandle") {
-		matches = append(matches, resourceTypeEntityType)
-	}
-
-	if hasAllKeys(node, "identifier", "resources") {
-		matches = append(matches, resourceTypeResourceServer)
-	}
-
-	if hasAllKeys(node, "name", "permissions") {
-		matches = append(matches, resourceTypeRole)
-	}
-
-	if hasAllKeys(node, "displayName", "theme") {
-		matches = append(matches, resourceTypeTheme)
-	}
-
-	if hasAllKeys(node, "displayName", "layout") {
-		matches = append(matches, resourceTypeLayout)
-	}
-
-	if hasAllKeys(node, "type", "attributes") && hasAnyKey(node, "ouId", "ouHandle") {
-		matches = append(matches, resourceTypeUser)
-	}
-
-	if hasAllKeys(node, "flowType", "nodes", "handle", "name") {
-		matches = append(matches, resourceTypeFlow)
-	}
-
-	if hasAllKeys(node, "type", "properties", "name") {
-		matches = append(matches, resourceTypeIdentityProvider)
-	}
-
-	if hasAnyKey(node, "owner") ||
-		(hasAnyKey(node, "type") &&
-			hasAnyKey(node, "authFlowId", "registrationFlowId", "inboundAuthConfig", "allowedUserTypes") &&
-			!hasAnyKey(node, "properties")) {
-		matches = append(matches, resourceTypeAgent)
-	}
-
-	if !hasAnyKey(node, "owner") &&
-		!(hasAnyKey(node, "type") &&
-			hasAnyKey(node, "authFlowId", "registrationFlowId", "inboundAuthConfig", "allowedUserTypes") &&
-			!hasAnyKey(node, "properties")) &&
-		hasAnyKey(node, "authFlowId", "registrationFlowId", "inboundAuthConfig", "allowedUserTypes") {
-		matches = append(matches, resourceTypeApplication)
-	}
-
-	if hasAllKeys(node, "name") && hasAnyKey(node, "ouId", "ouHandle") &&
-		!hasAnyKey(node, "handle", "permissions", "identifier", "type", "flowType",
-			"displayName", "properties", "schema") {
-		matches = append(matches, resourceTypeGroup)
-	}
-
-	if hasAllKeys(node, "handle", "name") &&
-		!hasAnyKey(node, "flowType", "nodes", "authFlowId", "registrationFlowId", "inboundAuthConfig") {
-		matches = append(matches, resourceTypeOrganizationUnit)
-	}
-
-	if len(matches) != 1 {
-		return resourceTypeUnknown
-	}
-
-	return matches[0]
-}
-
-func hasAllKeys(node *yaml.Node, keys ...string) bool {
-	for _, key := range keys {
-		if !hasAnyKey(node, key) {
-			return false
-		}
-	}
-	return true
-}
-
-func hasAnyKey(node *yaml.Node, keys ...string) bool {
-	if node == nil || node.Kind != yaml.MappingNode {
-		return false
-	}
-
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		key := node.Content[i]
-		for _, candidate := range keys {
-			if key.Value == candidate {
-				return true
-			}
-		}
-	}
-
-	return false
 }

@@ -868,11 +868,11 @@ func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_SubPreservedAlongsideOthe
 }
 
 func (s *IDPUtilsTestSuite) TestGetAttributeMappings_NilIDP() {
-	s.Nil(GetAttributeMappings(nil))
+	s.Nil(GetAttributeMappings(nil, nil))
 }
 
 func (s *IDPUtilsTestSuite) TestGetAttributeMappings_NilAttributeConfiguration() {
-	s.Nil(GetAttributeMappings(&providers.IDPDTO{}))
+	s.Nil(GetAttributeMappings(&providers.IDPDTO{}, nil))
 }
 
 func (s *IDPUtilsTestSuite) TestGetAttributeMappings_ReturnsMappings() {
@@ -881,19 +881,85 @@ func (s *IDPUtilsTestSuite) TestGetAttributeMappings_ReturnsMappings() {
 		UserTypeResolution:        &providers.UserTypeResolution{Default: "person"},
 		UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{UserType: "person", Attributes: mappings}},
 	}}
-	s.Equal(mappings, GetAttributeMappings(idpDTO))
+	s.Equal(mappings, GetAttributeMappings(idpDTO, nil))
+}
+
+func (s *IDPUtilsTestSuite) TestGetAttributeMappings_ResolvedByClaim() {
+	personMappings := []providers.AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}}
+	employeeMappings := []providers.AttributeMapping{{ExternalAttribute: "emp_id", LocalAttribute: "employeeNumber"}}
+	idpDTO := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{
+			Default:           "person",
+			ExternalAttribute: "user_type",
+			ValueMapping:      map[string]string{"staff": "employee"},
+		},
+		UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{
+			{UserType: "person", Attributes: personMappings},
+			{UserType: "employee", Attributes: employeeMappings},
+		},
+	}}
+	s.Equal(employeeMappings, GetAttributeMappings(idpDTO, map[string]interface{}{"user_type": "staff"}))
 }
 
 func (s *IDPUtilsTestSuite) TestGetMappedUserType_NilIDP() {
-	s.Equal("", GetMappedUserType(nil))
+	s.Equal("", GetMappedUserType(nil, nil))
 }
 
 func (s *IDPUtilsTestSuite) TestGetMappedUserType_NilAttributeConfiguration() {
-	s.Equal("", GetMappedUserType(&providers.IDPDTO{}))
+	s.Equal("", GetMappedUserType(&providers.IDPDTO{}, nil))
 }
 
 func (s *IDPUtilsTestSuite) TestGetMappedUserType_ReturnsEntityType() {
 	s.Equal("person", GetMappedUserType(&providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
 		UserTypeResolution: &providers.UserTypeResolution{Default: "person"},
-	}}))
+	}}, nil))
+}
+
+func (s *IDPUtilsTestSuite) TestGetMappedUserType_DynamicResolution() {
+	idpDTO := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{
+			Default:           "person",
+			ExternalAttribute: "user_type",
+			ValueMapping:      map[string]string{"staff": "employee", "client": "customer"},
+		},
+	}}
+
+	// Mapped value resolves to its user type.
+	s.Equal("employee", GetMappedUserType(idpDTO, map[string]interface{}{"user_type": "staff"}))
+	// Unmapped value falls back to the default.
+	s.Equal("person", GetMappedUserType(idpDTO, map[string]interface{}{"user_type": "guest"}))
+	// Missing attribute falls back to the default.
+	s.Equal("person", GetMappedUserType(idpDTO, map[string]interface{}{"other": "x"}))
+	// Nil claims fall back to the default.
+	s.Equal("person", GetMappedUserType(idpDTO, nil))
+}
+
+func (s *IDPUtilsTestSuite) TestGetMappedUserType_DirectValueResolution() {
+	idpDTO := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{
+			Default:           "person",
+			ExternalAttribute: "user_type",
+		},
+	}}
+
+	// With no value mapping, the external claim value is used directly as the user type.
+	s.Equal("employee", GetMappedUserType(idpDTO, map[string]interface{}{"user_type": "employee"}))
+	// Missing attribute falls back to the default.
+	s.Equal("person", GetMappedUserType(idpDTO, map[string]interface{}{"other": "x"}))
+	// Empty claim value falls back to the default.
+	s.Equal("person", GetMappedUserType(idpDTO, map[string]interface{}{"user_type": "  "}))
+	// Nil claims fall back to the default.
+	s.Equal("person", GetMappedUserType(idpDTO, nil))
+}
+
+func (s *IDPUtilsTestSuite) TestGetMappedUserType_DynamicResolutionNestedClaim() {
+	idpDTO := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{
+			Default:           "person",
+			ExternalAttribute: "profile.role",
+			ValueMapping:      map[string]string{"admin": "employee"},
+		},
+	}}
+	claims := map[string]interface{}{"profile": map[string]interface{}{"role": "admin"}}
+	s.Equal("employee", GetMappedUserType(idpDTO, claims))
 }

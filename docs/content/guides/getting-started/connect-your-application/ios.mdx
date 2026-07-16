@@ -1,6 +1,7 @@
 ---
 toc_progress: quickstart
 title: iOS Quickstart
+docType: quickstart
 sidebar_position: 8
 persona: app
 description: Add {{ProductName}} authentication to an iOS application using the ThunderID iOS SDK for SwiftUI.
@@ -19,14 +20,14 @@ import {
 
 # iOS Quickstart
 
-Use this guide to add <ProductName /> authentication to an iOS application using the ThunderID iOS SDK for SwiftUI.
+Use this guide to add <ProductName /> authentication to an iOS application using the <ProductName /> iOS SDK for SwiftUI.
 
 <TutorialHero>
 
 ## What You Will Learn
 
 <TutorialHeroItem icon={<Boxes />}>Create a new Xcode project</TutorialHeroItem>
-<TutorialHeroItem icon={<Package />}>Install the <code>ThunderIDSwiftUI</code> Swift package</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>Install the <code><ProductName />SwiftUI</code> Swift package</TutorialHeroItem>
 <TutorialHeroItem icon={<LogIn />}>Add working sign-in and sign-out using SwiftUI components</TutorialHeroItem>
 <TutorialHeroItem icon={<BookOpen />}>Display the signed-in user's name</TutorialHeroItem>
 
@@ -46,13 +47,17 @@ Check out the complete <RepoLink path="/tree/main/sdks/ios/Samples/Quickstart">i
 
 ## Run <ProductName />
 
-Start a local ThunderID instance. Pick the method that works best for you:
+Start a local <ProductName /> instance. Pick the method that works best for you:
 
 <RunThunderID />
 
-Once it's running, the console is available at [https://localhost:8090](https://localhost:8090).
+Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
 
 ## Create an Application
+
+:::info Test User
+If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
+:::
 
 Open the Console at <ConsoleUrl />, navigate to **Applications**, and click **Add Application**:
 
@@ -68,15 +73,15 @@ In Xcode, create a new project using the **iOS > App** template. Choose **SwiftU
 If you already have an existing iOS project, skip this step.
 :::
 
-## Install ThunderIDSwiftUI
+## Install <ProductName />SwiftUI
 
 In Xcode, go to **File > Add Package Dependencies** and enter the package URL:
 
-```
+```text
 https://github.com/thunderid/thunderid-ios-sdk
 ```
 
-When prompted to choose package products, select **ThunderIDSwiftUI**. This includes the core `ThunderID` client as a dependency.
+When prompted to choose package products, select **<ProductName />SwiftUI**. This includes the core `<ProductName />` client as a dependency.
 
 :::note
 If you manage dependencies with CocoaPods, add the following to your `Podfile` instead:
@@ -110,13 +115,13 @@ Open your app's `Info.plist` and add a URL scheme under **URL Types**. For examp
 
 In the console, open your registered application and add the following as an **Allowed Redirect URI**:
 
-```
+```text
 io.thunderid.b2c://callback
 ```
 
 Add the same value as an **Allowed Post-Logout Redirect URI**:
 
-```
+```text
 io.thunderid.b2c://logout
 ```
 

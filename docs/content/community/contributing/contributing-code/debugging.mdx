@@ -1,5 +1,6 @@
 ---
 title: Debugging
+docType: community
 description: Set up and debug the backend, frontend apps, and sample applications locally.
 sidebar_position: 7
 hide_table_of_contents: false
@@ -39,7 +40,7 @@ This guide focuses on local development and debugging with SQLite for database s
 
 ### Optional
 
-- **[yq](https://github.com/mikefarah/yq)** — YAML parser for better config parsing
+- **[yq](https://github.com/mikefarah/yq)**: YAML parser for better config parsing
   ```bash
   brew install yq
   ```
@@ -59,7 +60,7 @@ value:
     - "https://localhost:5191"
 ```
 
-**Gate client port** — add this to `backend/cmd/server/deployment.yaml` (so the backend knows where to redirect for auth):
+**Gate client port**: add this to `backend/cmd/server/deployment.yaml` (so the backend knows where to redirect for auth):
 
 ```yaml
 gate_client:
@@ -76,11 +77,13 @@ cd <repo-root>
 
 Seed the initial data (one-time only) with the in-process `bootstrap` subcommand.
 It creates the default resources directly through the service layer, so no running
-server or security bypass is required:
+server or security bypass is required. The subcommand never invents an admin password
+on its own, so pass one explicitly with `--admin-password`:
 
 ```bash
 PUBLIC_URL="https://localhost:8090" \
   go run -C backend/cmd/server . bootstrap \
+  --admin-password "admin" \
   --console-redirect-uris "https://localhost:5191/console"
 ```
 
@@ -181,7 +184,7 @@ Run the `symlink` script to build the SDK packages and print the `file:` path en
 pnpm symlink
 ```
 
-The script outputs multiple blocks — copy the `overrides` block.
+The script outputs multiple blocks. Copy the `overrides` block.
 
 ### Apply and Install
 
@@ -202,20 +205,20 @@ This walks through debugging the user creation flow from the UI to database stor
 
 In Chrome DevTools, open:
 
-- `features/users/api/useCreateUser.ts` — set a breakpoint at `const serverUrl: string = getServerUrl();`
+- `features/users/api/useCreateUser.ts`: set a breakpoint at `const serverUrl: string = getServerUrl();`
 
 ### 2. Set Backend Breakpoints
 
 In VS Code, open these files and set breakpoints:
 
-- `backend/internal/user/handler.go` — at the beginning of `HandleUserPostRequest`
-- `backend/internal/user/service.go` — at the beginning of `CreateUser`
-- `backend/internal/user/store.go` — at the beginning of `CreateUser`
+- `backend/internal/user/handler.go`: at the beginning of `HandleUserPostRequest`
+- `backend/internal/user/service.go`: at the beginning of `CreateUser`
+- `backend/internal/user/store.go`: at the beginning of `CreateUser`
 
 ### 3. Trigger the Flow
 
 1. Navigate to [https://localhost:5191/console](https://localhost:5191/console)
-2. Log in with the admin credentials configured during setup (default: `admin` / `admin`)
+2. Log in with the admin credentials from Step 2 (username `admin`, password `admin` if you used the example above)
 3. Go to **Users** section
 4. Click **Add User**
 5. Select **User Type: Person**
@@ -227,7 +230,7 @@ In VS Code, open these files and set breakpoints:
 
 ### 4. Debug the Flow
 
-- Chrome pauses at the frontend breakpoint — inspect variables and step through the API call
+- Chrome pauses at the frontend breakpoint: inspect variables and step through the API call
 - Once the API call is made, VS Code pauses at the backend breakpoints
 - Use the **Variables** panel to inspect request data
 - Step through the code (`F10` step over, `F11` step into, `F5` continue)

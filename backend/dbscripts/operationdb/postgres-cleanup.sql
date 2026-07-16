@@ -16,15 +16,22 @@
 -- ----------------------------------------------------------------------------
 
 -- ============================================================
--- Stored procedure: purge expired operationdb rows.
+-- Stored procedure: purge expired operationdb rows in bounded batches.
 --
 -- Unlike runtimedb, operation data is authoritative and must survive a
 -- runtime flush; only rows past their EXPIRY_TIME are safe to delete. A revoked
 -- token's row is removable once the token itself would have naturally expired.
 --
+-- Deletes expired rows in batches of p_batch_size (default 1000), committing
+-- after each batch to keep locks short on large tables. Must run as a top-level
+-- CALL (the per-batch COMMIT cannot run inside an outer transaction).
+--
 -- Run once manually (ad-hoc / on-demand):
 --   PGPASSWORD=<pass> psql -h <host> -p <port> -U <user> -d <operationdb> \
 --     -c "CALL cleanup_expired_operationdb_data();"
+--
+--   -- Optional: override the batch size (rows deleted per batch):
+--   -c "CALL cleanup_expired_operationdb_data(500);"
 --
 -- Scheduled execution options:
 --
@@ -47,12 +54,29 @@
 -- --        >> /var/log/thunderid-operation-cleanup.log 2>&1
 -- ============================================================
 
-CREATE OR REPLACE PROCEDURE cleanup_expired_operationdb_data()
+-- Drop the old parameterless signature so re-applying doesn't leave an ambiguous overload.
+DROP PROCEDURE IF EXISTS cleanup_expired_operationdb_data();
+
+CREATE OR REPLACE PROCEDURE cleanup_expired_operationdb_data(p_batch_size INT DEFAULT 1000)
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_now TIMESTAMP := NOW() AT TIME ZONE 'UTC';
+    v_now     TIMESTAMP := NOW() AT TIME ZONE 'UTC';
+    v_deleted INT;
 BEGIN
-    DELETE FROM "REVOKED_TOKEN" WHERE EXPIRY_TIME < v_now;
+    -- Guard against a batch size that would disable batching or make no progress.
+    IF p_batch_size IS NULL OR p_batch_size <= 0 THEN
+        p_batch_size := 1000;
+    END IF;
+
+    LOOP
+        DELETE FROM "REVOKED_TOKEN"
+        WHERE ctid IN (
+            SELECT ctid FROM "REVOKED_TOKEN" WHERE EXPIRY_TIME < v_now LIMIT p_batch_size
+        );
+        GET DIAGNOSTICS v_deleted = ROW_COUNT;
+        COMMIT;
+        EXIT WHEN v_deleted = 0;
+    END LOOP;
 END;
 $$;

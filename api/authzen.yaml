@@ -45,7 +45,7 @@ paths:
       description: |
         Evaluates whether a subject can perform an action on a resource.
 
-        The resource `type` maps to a ThunderID resource server handle. The action `name`
+        The resource `type` maps to a ThunderID resource server identifier. The action `name`
         maps to a permission registered under that resource server. If the subject type is
         omitted, subject type validation is skipped. Unknown resources and unregistered actions
         are returned as denied decisions with an error context instead of transport errors.
@@ -65,7 +65,7 @@ paths:
                     type: user
                     id: user1
                   resource:
-                    type: booking
+                    type: https://api.example.com/booking
                     id: booking123
                   action:
                     name: booking:read
@@ -105,7 +105,7 @@ paths:
                         type: user
                         id: user1
                       resource:
-                        type: booking
+                        type: https://api.example.com/booking
                         id: booking123
                       action:
                         name: booking:read
@@ -113,7 +113,7 @@ paths:
                         type: user
                         id: user1
                       resource:
-                        type: booking
+                        type: https://api.example.com/booking
                         id: booking123
                       action:
                         name: booking:delete
@@ -149,7 +149,7 @@ paths:
                     type: user
                     id: user1
                   resource:
-                    type: booking
+                    type: https://api.example.com/booking
                     id: booking123
       responses:
         "200":
@@ -252,8 +252,8 @@ components:
       properties:
         type:
           type: string
-          description: ThunderID resource server handle.
-          example: booking
+          description: ThunderID resource server identifier.
+          example: https://api.example.com/booking
         id:
           type: string
           description: Resource identifier.

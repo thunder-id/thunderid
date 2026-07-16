@@ -42,6 +42,7 @@ type GrantHandlerProvider struct {
 	refreshTokenGrantHandler      GrantHandlerInterface
 	tokenExchangeGrantHandler     GrantHandlerInterface
 	cibaGrantHandler              GrantHandlerInterface
+	jwtBearerGrantHandler         GrantHandlerInterface
 }
 
 // newGrantHandlerProvider creates a new instance of GrantHandlerProvider.
@@ -70,6 +71,8 @@ func newGrantHandlerProvider(
 		tokenExchangeGrantHandler: newTokenExchangeGrantHandler(
 			tokenBuilder, tokenValidator, resourceService),
 		cibaGrantHandler: newCIBAGrantHandler(cibaService, tokenBuilder, attrCacheService),
+		jwtBearerGrantHandler: newJWTBearerGrantHandler(
+			tokenBuilder, tokenValidator, resourceService),
 	}
 }
 
@@ -86,6 +89,8 @@ func (p *GrantHandlerProvider) GetGrantHandler(grantType providers.GrantType) (G
 		return p.tokenExchangeGrantHandler, nil
 	case providers.GrantTypeCIBA:
 		return p.cibaGrantHandler, nil
+	case providers.GrantTypeJWTBearer:
+		return p.jwtBearerGrantHandler, nil
 	default:
 		return nil, constants.UnSupportedGrantTypeError
 	}

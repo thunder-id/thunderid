@@ -51,7 +51,7 @@ func (suite *AuthorizationServiceTestSuite) SetupTest() {
 func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessSuccess() {
 	request := providers.AccessEvaluationRequest{
 		Subject:        providers.Subject{ID: "user1", GroupIDs: []string{"group1"}},
-		ResourceServer: providers.AccessEvaluationResourceServer{Handle: "document"},
+		ResourceServer: providers.AccessEvaluationResourceServer{ID: "document"},
 		Permission:     providers.Permission{Name: "read"},
 	}
 
@@ -60,7 +60,7 @@ func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessSuccess() {
 			return len(req.Evaluations) == 1 &&
 				req.Evaluations[0].Subject.ID == "user1" &&
 				req.Evaluations[0].Subject.GroupIDs[0] == "group1" &&
-				req.Evaluations[0].ResourceServer.Handle == "document" &&
+				req.Evaluations[0].ResourceServer.ID == "document" &&
 				req.Evaluations[0].Permission.Name == "read"
 		})).
 		Return(&engine.AccessEvaluationsResponse{
@@ -79,12 +79,12 @@ func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessBatchSuccess() {
 		Evaluations: []providers.AccessEvaluationRequest{
 			{
 				Subject:        providers.Subject{ID: "user1", GroupIDs: []string{"group1"}},
-				ResourceServer: providers.AccessEvaluationResourceServer{Handle: "document"},
+				ResourceServer: providers.AccessEvaluationResourceServer{ID: "document"},
 				Permission:     providers.Permission{Name: "read"},
 			},
 			{
 				Subject:        providers.Subject{ID: "user1", GroupIDs: []string{"group1"}},
-				ResourceServer: providers.AccessEvaluationResourceServer{Handle: "document"},
+				ResourceServer: providers.AccessEvaluationResourceServer{ID: "document"},
 				Permission:     providers.Permission{Name: "delete"},
 			},
 		},
@@ -112,7 +112,7 @@ func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessBatchReturnsContex
 		Evaluations: []providers.AccessEvaluationRequest{
 			{
 				Subject:        providers.Subject{ID: "user1"},
-				ResourceServer: providers.AccessEvaluationResourceServer{Handle: "document"},
+				ResourceServer: providers.AccessEvaluationResourceServer{ID: "document"},
 				Permission:     providers.Permission{Name: "read"},
 			},
 		},
@@ -146,7 +146,7 @@ func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessPassesPropertiesTo
 			Properties: subjectProperties,
 		},
 		ResourceServer: providers.AccessEvaluationResourceServer{
-			Handle:     "document",
+			ID:         "document",
 			Properties: resourceProperties,
 		},
 		Permission: providers.Permission{
@@ -190,7 +190,7 @@ func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessBatchEngineError()
 		Evaluations: []providers.AccessEvaluationRequest{
 			{
 				Subject:        providers.Subject{ID: "user1"},
-				ResourceServer: providers.AccessEvaluationResourceServer{Handle: "document"},
+				ResourceServer: providers.AccessEvaluationResourceServer{ID: "document"},
 				Permission:     providers.Permission{Name: "read"},
 			},
 		},
@@ -209,7 +209,7 @@ func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessBatchEngineError()
 func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessEmptyEngineResponse() {
 	request := providers.AccessEvaluationRequest{
 		Subject:        providers.Subject{ID: "user1"},
-		ResourceServer: providers.AccessEvaluationResourceServer{Handle: "document"},
+		ResourceServer: providers.AccessEvaluationResourceServer{ID: "document"},
 		Permission:     providers.Permission{Name: "read"},
 	}
 

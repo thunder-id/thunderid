@@ -57,7 +57,7 @@ export default function useCreateConnection(
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({queryKey: [ConnectionQueryKeys.CONNECTION_TYPES]}).catch(() => {
+      queryClient.invalidateQueries({queryKey: [ConnectionQueryKeys.CONNECTIONS]}).catch(() => {
         // Ignore invalidation errors
       });
       queryClient.invalidateQueries({queryKey: [ConnectionQueryKeys.CONNECTION_INSTANCES, type]}).catch(() => {

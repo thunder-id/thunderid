@@ -34,7 +34,7 @@ type FlowFactoryInterface interface {
 		NodeInterface, error)
 	CreateGraph(id string, _type providers.FlowType, version int) GraphInterface
 	CreateExecutor(name string, executorType providers.ExecutorType,
-		defaultInputs, prerequisites []providers.Input) providers.Executor
+		defaultInputs, prerequisites []providers.Input, meta *providers.ExecutorMeta) providers.Executor
 	CreateInterceptor(name string, isDefault bool, priority int) InterceptorInterface
 	CreateInterceptorUnit(name string, mode providers.InterceptorMode,
 		scope providers.InterceptorScope, applyTo []string,
@@ -100,8 +100,8 @@ func (f *flowFactory) CreateGraph(id string, _type providers.FlowType, version i
 
 // CreateExecutor creates a new executor with the given properties
 func (f *flowFactory) CreateExecutor(name string, executorType providers.ExecutorType,
-	defaultInputs, prerequisites []providers.Input) providers.Executor {
-	return newExecutor(name, executorType, defaultInputs, prerequisites)
+	defaultInputs, prerequisites []providers.Input, meta *providers.ExecutorMeta) providers.Executor {
+	return newExecutor(name, executorType, defaultInputs, prerequisites, meta)
 }
 
 // CreateInterceptor creates a new interceptor with the given properties

@@ -141,7 +141,7 @@ func mockEvaluateAccessBatch(
 				evaluation := req.Evaluations[i]
 				if evaluation.Subject.ID != entityID ||
 					len(evaluation.Subject.GroupIDs) != 0 ||
-					evaluation.ResourceServer.Handle != "" ||
+					evaluation.ResourceServer.ID != "" ||
 					evaluation.Permission.Name != scope {
 					return false
 				}

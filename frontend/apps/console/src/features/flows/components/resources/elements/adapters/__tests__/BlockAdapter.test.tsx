@@ -27,8 +27,10 @@ import type {Element as FlowElement} from '@/features/flows/models/elements';
 vi.mock('../BlockAdapter.scss', () => ({}));
 
 vi.mock('@/features/flows/components/resources/steps/view/ReorderableElement', () => ({
-  ReorderableElement: ({element, id}: {element: FlowElement; id: string}) => (
-    <div data-testid={`reorderable-element-${id}`}>{element.id}</div>
+  ReorderableElement: ({element, id, hideChrome = false}: {element: FlowElement; id: string; hideChrome?: boolean}) => (
+    <div data-testid={`reorderable-element-${id}`} data-hide-chrome={hideChrome}>
+      {element.id}
+    </div>
   ),
 }));
 
@@ -115,6 +117,15 @@ describe('BlockAdapter', () => {
       expect(screen.getByTestId('reorderable-element-comp-1')).toBeInTheDocument();
       expect(screen.getByTestId('reorderable-element-comp-2')).toBeInTheDocument();
       expect(screen.getByTestId('reorderable-element-comp-3')).toBeInTheDocument();
+    });
+
+    it('should render nested elements without their own chrome', () => {
+      const components = [createMockElement({id: 'comp-1'})];
+      const resource = createMockElement({components});
+
+      render(<BlockAdapter resource={resource} />, {wrapper: createWrapper()});
+
+      expect(screen.getByTestId('reorderable-element-comp-1')).toHaveAttribute('data-hide-chrome', 'true');
     });
 
     it('should pass availableElements to ReorderableElement', () => {

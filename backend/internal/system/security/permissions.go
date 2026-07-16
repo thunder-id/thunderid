@@ -26,6 +26,7 @@ import "strings"
 var directAuthPaths = []string{
 	"/auth/**",
 	"/register/passkey/**",
+	"/access/**",
 }
 
 // publicPaths defines the list of public paths using glob patterns.

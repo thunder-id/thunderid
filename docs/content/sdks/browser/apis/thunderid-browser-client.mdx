@@ -1,7 +1,8 @@
 ---
 title: ThunderIDBrowserClient
+docType: reference
 displayed_sidebar: browserSdkSidebar
-description: Main authentication client for browser applications
+description: Main authentication client for browser apps with sign-in, token management, and HTTP request methods.
 ---
 
 # `ThunderIDBrowserClient`
@@ -29,7 +30,7 @@ export default auth
 
 ## Constructor
 
-```js
+```javascript
 const auth = new ThunderIDBrowserClient(instanceId?)
 ```
 
@@ -45,20 +46,20 @@ const auth = new ThunderIDBrowserClient(instanceId?)
 
 Initialize the client with your <ProductName /> application configuration.
 
-```js
+```javascript
 await auth.initialize({
   clientId: '<your-client-id>',
   baseUrl: 'https://localhost:8090',
 })
 ```
 
-**Returns:** `Promise<boolean>` — `true` when initialization completes.
+**Returns:** `Promise<boolean>`, `true` when initialization completes.
 
 #### `isInitialized()`
 
 Check whether the client has completed initialization. This method blocks until initialization finishes.
 
-```js
+```javascript
 const ready = await auth.isInitialized()
 ```
 
@@ -68,7 +69,7 @@ const ready = await auth.isInitialized()
 
 Update configuration at runtime without creating a new client instance.
 
-```js
+```javascript
 await auth.reInitialize({
   scopes: ['openid', 'profile', 'email'],
 })
@@ -82,23 +83,23 @@ await auth.reInitialize({
 
 Redirect the user to the <ProductName /> sign-in page. After authentication, the user is redirected back to your application.
 
-```js
+```javascript
 await auth.signIn()
 ```
 
 You can pass additional parameters:
 
-```js
+```javascript
 await auth.signIn({ fidp: 'GoogleOIDCAuthenticator' })
 ```
 
-**Returns:** `Promise<User | undefined>` — The authenticated user on callback, or `undefined` during the redirect.
+**Returns:** `Promise<User | undefined>`, the authenticated user on callback, or `undefined` during the redirect.
 
 #### `signInSilently(additionalParams?)`
 
 Perform a background token refresh without user interaction using a hidden iframe.
 
-```js
+```javascript
 const user = await auth.signInSilently()
 ```
 
@@ -108,7 +109,7 @@ const user = await auth.signInSilently()
 
 Sign out the current user, clear the session, and redirect to the post-logout URL.
 
-```js
+```javascript
 await auth.signOut()
 ```
 
@@ -120,7 +121,7 @@ await auth.signOut()
 
 Retrieve the current access token.
 
-```js
+```javascript
 const token = await auth.getAccessToken()
 ```
 
@@ -130,7 +131,7 @@ const token = await auth.getAccessToken()
 
 Retrieve the raw ID token.
 
-```js
+```javascript
 const idToken = await auth.getIdToken()
 ```
 
@@ -140,7 +141,7 @@ const idToken = await auth.getIdToken()
 
 Retrieve the decoded ID token claims as an object.
 
-```js
+```javascript
 const claims = await auth.getDecodedIdToken()
 console.log(claims.sub, claims.email)
 ```
@@ -151,7 +152,7 @@ console.log(claims.sub, claims.email)
 
 Manually refresh the access token.
 
-```js
+```javascript
 const user = await auth.refreshAccessToken()
 ```
 
@@ -161,7 +162,7 @@ const user = await auth.refreshAccessToken()
 
 Revoke the access token and end the session.
 
-```js
+```javascript
 await auth.revokeAccessToken()
 ```
 
@@ -171,7 +172,7 @@ await auth.revokeAccessToken()
 
 Enable automatic periodic token refresh before the access token expires.
 
-```js
+```javascript
 await auth.startAutoRefreshToken()
 ```
 
@@ -183,7 +184,7 @@ await auth.startAutoRefreshToken()
 
 Retrieve the authenticated user's profile information.
 
-```js
+```javascript
 const user = await auth.getUser()
 console.log(user.displayName, user.email)
 ```
@@ -206,7 +207,7 @@ The `User` object includes:
 
 Check whether a user is currently signed in.
 
-```js
+```javascript
 const signedIn = await auth.isSignedIn()
 ```
 
@@ -216,7 +217,7 @@ const signedIn = await auth.isSignedIn()
 
 Check whether the current session is still active.
 
-```js
+```javascript
 const active = await auth.isSessionActive()
 ```
 
@@ -226,7 +227,7 @@ const active = await auth.isSessionActive()
 
 Retrieve the OIDC provider endpoint URLs (authorize, token, userinfo, etc.).
 
-```js
+```javascript
 const endpoints = await auth.getOpenIDProviderEndpoints()
 console.log(endpoints.authorizationEndpoint)
 ```
@@ -239,7 +240,7 @@ console.log(endpoints.authorizationEndpoint)
 
 Make an authenticated HTTP request. The SDK automatically attaches the access token as a Bearer token.
 
-```js
+```javascript
 const response = await auth.httpRequest({
   url: 'https://api.example.com/data',
   method: 'GET',
@@ -257,7 +258,7 @@ console.log(response.data)
 
 Make multiple authenticated HTTP requests in parallel.
 
-```js
+```javascript
 const [users, roles] = await auth.httpRequestAll([
   { url: 'https://api.example.com/users', method: 'GET' },
   { url: 'https://api.example.com/roles', method: 'GET' },
@@ -270,7 +271,7 @@ const [users, roles] = await auth.httpRequestAll([
 
 Retrieve the underlying `FetchHttpClient` instance for advanced use cases.
 
-```js
+```javascript
 const client = auth.getHttpClient()
 ```
 
@@ -280,7 +281,7 @@ const client = auth.getHttpClient()
 
 Control whether the SDK automatically attaches access tokens to HTTP requests.
 
-```js
+```javascript
 await auth.disableHttpHandler()  // Stop attaching tokens
 await auth.enableHttpHandler()   // Resume attaching tokens
 ```

@@ -521,7 +521,6 @@ func (s *FileBasedResourceStoreTestSuite) TestCreateAndGetResourceServer() {
 		ID:          "rs-test",
 		Name:        "Test Server",
 		Description: "A test server",
-		Handle:      "test-handle",
 		Identifier:  "test-server",
 		OUID:        "ou1",
 		Delimiter:   ":",
@@ -540,11 +539,6 @@ func (s *FileBasedResourceStoreTestSuite) TestCreateAndGetResourceServer() {
 	assert.Equal(s.T(), "rs-test", rs.ID)
 	assert.Equal(s.T(), "Test Server", rs.Name)
 	assert.Equal(s.T(), "test-server", rs.Identifier)
-
-	rs, err = s.store.GetResourceServerByHandle(s.ctx, "test-handle")
-	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), "rs-test", rs.ID)
-	assert.Equal(s.T(), "test-handle", rs.Handle)
 }
 
 func (s *FileBasedResourceStoreTestSuite) TestGetResourceServerList_WithData() {

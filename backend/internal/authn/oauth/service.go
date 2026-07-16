@@ -343,7 +343,7 @@ func (s *oAuthAuthnService) BuildFederatedAuthResult(ctx context.Context, idpID,
 		return nil, svcErr
 	}
 
-	mappings := idp.GetAttributeMappings(idpDTO)
+	mappings := idp.GetAttributeMappings(idpDTO, claims)
 	mappedClaims := idp.ApplyAttributeMappings(claims, mappings)
 
 	token, svcErr := s.buildAccountLinkingFilter(ctx, idpDTO, sub, mappedClaims, mappings)

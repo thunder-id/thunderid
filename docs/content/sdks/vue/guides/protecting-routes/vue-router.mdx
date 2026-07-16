@@ -1,13 +1,14 @@
 ---
 title: Vue Router
-description: Protect routes in Vue Router applications with authentication
+docType: guide
+description: Protect Vue Router routes by adding navigation guards that redirect unauthenticated users to sign-in.
 ---
 
 # Vue Router
 
 `@thunderid/vue` ships with `createThunderIDGuard`, a navigation-guard factory that integrates with [Vue Router](https://router.vuejs.org/). The guard checks the user's authentication state and redirects unauthenticated users to a fallback route. It also waits for the SDK to finish initializing on first load so that protected routes are not falsely treated as unauthenticated during the initial bootstrap.
 
-`createCallbackRoute` is a companion helper that returns a route record for the OAuth2 callback — useful when you want a dedicated `/callback` route instead of relying on the redirect landing on `/`.
+`createCallbackRoute` is a companion helper that returns a route record for the OAuth2 callback, useful when you want a dedicated `/callback` route instead of relying on the redirect landing on `/`.
 
 :::note Requires Vue Router
 These helpers expect `vue-router` to be installed as a peer dependency:
@@ -131,5 +132,5 @@ const router = createRouter({
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `path` | `string` | `'/callback'` | URL path for the callback route |
-| `name` | `string` | – | Optional route name |
-| `onError` | `(error: Error) => void` | – | Handler invoked if the callback encounters an error |
+| `name` | `string` | - | Optional route name |
+| `onError` | `(error: Error) => void` | - | Handler invoked if the callback encounters an error |

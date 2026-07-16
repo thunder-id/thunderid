@@ -1,8 +1,9 @@
 ---
 title: Organization Units
+docType: guide
 sidebar_position: 11
 persona: iam
-description: Create and manage organization units to structure your users.
+description: Create and manage organization units to structure users into hierarchical groups for access control.
 ---
 
 import Tabs from '@theme/Tabs';
@@ -21,7 +22,7 @@ OUs can be nested to any depth. Common patterns include:
 <Tabs>
 <TabItem value="department" label="By Department" default>
 
-```
+```text
 engineering/
   frontend/
   backend/
@@ -33,7 +34,7 @@ hr/
 </TabItem>
 <TabItem value="region" label="By Region">
 
-```
+```text
 americas/
   us/
   latam/
@@ -112,7 +113,7 @@ When creating an OU through the API, you can also provide the following optional
 | `policyUri` | URL of the Privacy Policy page. |
 | `cookiePolicyUri` | URL of the Cookie Policy page. |
 
-**Example — create an OU with branding:**
+**Example: create an OU with branding:**
 
 ```bash
 curl -kL -X POST "https://localhost:8090/organization-units" \
@@ -201,14 +202,14 @@ Filtering applies to the following list endpoints:
 
 A filter expression can contain one or more conditions joined by `AND` or `OR`:
 
-```
+```bash
 attribute operator "value" [AND|OR attribute operator "value" ...]
 ```
 
-- **attribute** — the OU field to filter on.
-- **operator** — the comparison operator (`eq`, `gt`, or `lt`).
-- **value** — the value to compare against. Enclose string values in double quotes.
-- **AND / OR** — logical connectors between conditions. `AND` has higher precedence than `OR`, matching standard SQL behaviour.
+- **attribute**: the OU field to filter on.
+- **operator**: the comparison operator (`eq`, `gt`, or `lt`).
+- **value**: the value to compare against. Enclose string values in double quotes.
+- **AND / OR**: logical connectors between conditions. `AND` has higher precedence than `OR`, matching standard SQL behaviour.
 
 ### Supported Operators
 
@@ -237,14 +238,14 @@ curl -kL "https://localhost:8090/organization-units?filter=name%20eq%20%22Engine
   -H 'Authorization: Bearer <access-token>'
 ```
 
-**Filter with AND — both conditions must match:**
+**Filter with AND, both conditions must match:**
 
 ```bash
 curl -kL "https://localhost:8090/organization-units?filter=name%20eq%20%22Engineering%22%20AND%20handle%20eq%20%22engineering%22" \
   -H 'Authorization: Bearer <access-token>'
 ```
 
-**Filter with OR — either condition may match:**
+**Filter with OR, either condition may match:**
 
 ```bash
 curl -kL "https://localhost:8090/organization-units?filter=name%20eq%20%22Engineering%22%20OR%20name%20eq%20%22Sales%22" \

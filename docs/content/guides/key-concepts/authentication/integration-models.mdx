@@ -1,5 +1,6 @@
 ---
 title: Integration Models
+docType: concept
 sidebar_position: 1
 description: Understand how {{ProductName}} authenticates users and the three integration models available for your application.
 ---
@@ -38,7 +39,7 @@ Choose this approach when <ProductName /> should own the entire authentication s
 
 <RedirectBasedDiagram />
 
-See the [API Reference](/docs/next/apis/#tag/authorization) for endpoint specifications.
+See the [API Reference](../../../../apis#tag/authorization) for endpoint specifications.
 
 
 ## App-Native
@@ -55,9 +56,9 @@ App-native **sign-in** is **not supported for browser-based single-page applicat
 :::
 
 :::note[Grant Type Requirement]
-This restriction applies to **authentication** flows only. The Flow Execution API rejects a new authentication-flow initiation request (`flowType: AUTHENTICATION` with no `executionId`) from an application configured with the `authorization_code` grant type. Such applications must initiate authentication through the [Authorization endpoint](/docs/next/apis/#tag/authorization) (`GET /oauth2/authorize`), which then drives the flow internally.
+This restriction applies to **authentication** flows only. The Flow Execution API rejects a new authentication-flow initiation request (`flowType: AUTHENTICATION` with no `executionId`) from an application configured with the `authorization_code` grant type. Such applications must initiate authentication through the [Authorization endpoint](../../../../apis#tag/authorization) (`GET /oauth2/authorize`), which then drives the flow internally.
 
-Registration, recovery, and user onboarding flows are **not** restricted — they have no redirect-based equivalent and can still be initiated directly through the Flow Execution API regardless of grant type. Continuation requests that carry a valid `executionId` are also always accepted.
+Registration, recovery, and user onboarding flows are **not** restricted because they have no redirect-based equivalent and can still be initiated directly through the Flow Execution API regardless of grant type. Continuation requests that carry a valid `executionId` are also always accepted.
 :::
 
 ### Key Features
@@ -77,7 +78,7 @@ Registration, recovery, and user onboarding flows are **not** restricted — the
 
 <AppNativeDiagram />
 
-See the [API Reference](/docs/next/apis/#tag/flow-execution) for endpoint specifications.
+See the [API Reference](../../../../apis#tag/flow-execution) for endpoint specifications.
 
 ### Integration Modes
 
@@ -289,15 +290,15 @@ Choose this approach when your application needs direct control over individual 
 
 <DirectAPIDiagram />
 
-See the [API Reference](/docs/next/apis/#tag/credentials) for endpoint specifications.
+See the [API Reference](../../../../apis#tag/credentials) for endpoint specifications.
 
 ### Direct Auth Secret
 
-Because Direct API endpoints take no application identifier and require no application registration, <ProductName /> gates them with a server-level secret. These endpoints are **secure by default**: they are blocked until you set `server.security.direct_auth_secret` in the deployment configuration. Once set, every call to a Direct API endpoint (`/auth/**` and `/register/passkey/**`) must include that value in the `Direct-Auth-Secret` header. A request with a missing or incorrect value — or any request while no secret is configured — is rejected with `401`.
+Because Direct API endpoints take no application identifier and require no application registration, <ProductName /> gates them with a server-level secret. These endpoints are **secure by default**: they are blocked until you set `server.security.direct_auth_secret` in the deployment configuration. Once set, every call to a Direct API endpoint (`/auth/**` and `/register/passkey/**`) must include that value in the `Direct-Auth-Secret` header. Protected AuthZEN PDP endpoints also use this header for PEP and adapter calls. A request with a missing or incorrect value, or any request while no secret is configured, is rejected with `401`.
 
-On a fresh setup, the `setup.sh` / `setup.ps1` script generates a secret, writes it to `deployment.yaml`, and prints it once — use that value, override it with `--direct-auth-secret`, or set your own in the configuration.
+On a fresh setup, the `setup.sh` / `setup.ps1` script generates a secret, writes it to `deployment.yaml`, and prints it once. Use that value, override it with `--direct-auth-secret`, or set your own in the configuration.
 
-This suits the intended Direct API callers — CLI tools, automation scripts, and server-to-server integrations — which can hold a configured secret. Browser and mobile applications, which cannot safely store a static secret, should use the [Redirect-Based](#redirect-based) or [App-Native](#app-native) model instead.
+This suits the intended Direct API callers, such as CLI tools, automation scripts, and server-to-server integrations, which can hold a configured secret. Browser and mobile applications, which cannot safely store a static secret, should use the [Redirect-Based](#redirect-based) or [App-Native](#app-native) model instead.
 
 ```bash
 curl -X POST https://localhost:8090/auth/credentials/authenticate \
@@ -309,7 +310,7 @@ curl -X POST https://localhost:8090/auth/credentials/authenticate \
   }'
 ```
 
-See [Security Configuration](/docs/next/guides/getting-started/configuration#security-configuration) for details.
+See [Security Configuration](../../../getting-started/configuration#security-configuration) for details.
 
 ### Step-Up Authentication
 
@@ -441,5 +442,5 @@ To obtain OAuth 2.0 access tokens, exchange the assertion token at the token end
 
 ## Related Reference
 
-- [Tokens](/docs/next/guides/key-concepts/tokens): Access tokens, ID tokens, and refresh tokens
-- [Authorization](/docs/next/guides/key-concepts/authorization): How <ProductName /> controls access to resources after authentication
+- [Tokens](../../tokens): Access tokens, ID tokens, and refresh tokens
+- [Authorization](../../authorization): How <ProductName /> controls access to resources after authentication

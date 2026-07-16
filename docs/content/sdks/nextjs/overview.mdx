@@ -1,9 +1,10 @@
 ---
 title: Next.js SDK Overview
+docType: concept
 displayed_sidebar: nextjsSdkSidebar
 sidebar_position: 1
 sidebar_label: Overview
-description: Next.js SDK for server-side authentication integration
+description: Next.js SDK for server-side authentication with App Router support, middleware, and server actions.
 ---
 
 # Next.js SDK
@@ -30,7 +31,7 @@ Install the <ProductName /> Next.js SDK using your preferred package manager:
 
 ## Getting Started
 
-To get started quickly, check out our [Next.js Quickstart Guide](/docs/next/guides/getting-started/connect-your-application/nextjs) for step-by-step instructions.
+To get started quickly, check out our [Next.js Quickstart Guide](../../../guides/getting-started/connect-your-application/nextjs) for step-by-step instructions.
 
 ## Architecture
 
@@ -45,40 +46,40 @@ The Next.js SDK uses a **server-first** approach:
 
 ### Server Exports
 
-- **[`<ThunderIDProvider />`](/docs/next/sdks/nextjs/apis/thunderid-provider)** — Server-side provider that wraps your app layout
-- **[Server Actions](/docs/next/sdks/nextjs/apis/server-actions)** — Authentication, session, and user management actions
-- **[`thunderid()`](/docs/next/sdks/nextjs/apis/server-actions#thunderid-client-access)** — Direct access to the server-side client for token and session operations
+- **[`<ThunderIDProvider />`](../apis/thunderid-provider)**: Server-side provider that wraps your app layout
+- **[Server Actions](../apis/server-actions)**: Authentication, session, and user management actions
+- **[`thunderid()`](../apis/server-actions#thunderid-client-access)**: Direct access to the server-side client for token and session operations
 
 ### Middleware (`@thunderid/nextjs/server`)
 
-- **[`thunderIDProxy()`](/docs/next/sdks/nextjs/apis/middleware)** — Automatic token refresh and route protection
-- **[`createRouteMatcher()`](/docs/next/sdks/nextjs/apis/middleware#createroutematcher)** — Define protected route patterns
+- **[`thunderIDProxy()`](../apis/middleware)**: Automatic token refresh and route protection
+- **[`createRouteMatcher()`](../apis/middleware#createroutematcher)**: Define protected route patterns
 
 ### Client Components (`@thunderid/nextjs`)
 
 #### Action Components
-- `<SignInButton />` — Trigger sign-in flow
-- `<SignOutButton />` — Sign out the current user
-- `<SignUpButton />` — Trigger sign-up flow
+- `<SignInButton />`: Trigger sign-in flow
+- `<SignOutButton />`: Sign out the current user
+- `<SignUpButton />`: Trigger sign-up flow
 
 #### Control Components
-- `<SignedIn />` — Conditionally render content for authenticated users
-- `<SignedOut />` — Conditionally render content for unauthenticated users
+- `<SignedIn />`: Conditionally render content for authenticated users
+- `<SignedOut />`: Conditionally render content for unauthenticated users
 
 #### User Self-Care Components
-- `<UserDropdown />` — User menu with profile and settings
-- `<UserProfile />` — Complete user profile management interface
-- `<User />` — Display user information
+- `<UserDropdown />`: User menu with profile and settings
+- `<UserProfile />`: Complete user profile management interface
+- `<User />`: Display user information
 
 #### Organization Components (B2B)
-- `<CreateOrganization />` — Create new organizations
-- `<OrganizationProfile />` — Manage organization settings
-- `<OrganizationSwitcher />` — Switch between organizations
-- `<OrganizationList />` — List user's organizations
+- `<CreateOrganization />`: Create new organizations
+- `<OrganizationProfile />`: Manage organization settings
+- `<OrganizationSwitcher />`: Switch between organizations
+- `<OrganizationList />`: List user's organizations
 
 ### Hooks
 
-- **`useThunderID()`** — Access authentication state and methods from client components
+- **`useThunderID()`**: Access authentication state and methods from client components
 
 ## Environment Variables
 

@@ -115,6 +115,14 @@ export default function ResourceServerEditPage(): JSX.Element {
 
   const handleSave = (): void => {
     if (!resourceServer) return;
+
+    const nextIdentifier =
+      'identifier' in editedFields ? (editedFields.identifier ?? '').trim() : (resourceServer.identifier ?? '').trim();
+    if (!nextIdentifier) {
+      showToast(t('resourceServers:edit.identifierRequired', 'Identifier is required.'), 'error');
+      return;
+    }
+
     updateRs.mutate(
       {
         id: resourceServer.id,
@@ -126,12 +134,7 @@ export default function ResourceServerEditPage(): JSX.Element {
                 ? editedFields.description
                 : null
               : (resourceServer.description ?? null),
-          identifier:
-            'identifier' in editedFields
-              ? editedFields.identifier?.trim()
-                ? editedFields.identifier
-                : null
-              : (resourceServer.identifier ?? null),
+          identifier: 'identifier' in editedFields ? nextIdentifier : resourceServer.identifier,
           ouId: resourceServer.ouId,
         },
       },
@@ -297,9 +300,6 @@ export default function ResourceServerEditPage(): JSX.Element {
                 </Box>
               }
             />
-            {resourceServer.handle && (
-              <Chip label={resourceServer.handle} size="small" sx={{fontFamily: 'monospace'}} />
-            )}
             {resourceServer.isReadOnly && (
               <Chip label={t('resourceServers:edit.systemResourceServer', 'System')} size="small" color="default" />
             )}

@@ -719,7 +719,7 @@ func TestImportResources_CreateApplication(t *testing.T) {
 	svc := newTestImportService(nil)
 
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
-		Content: "id: app-1\nname: My App\nauthFlowId: flow-1\n",
+		Content: "resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n",
 		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetRuntime},
 	})
 
@@ -738,7 +738,7 @@ func TestImportResources_UpdateApplication(t *testing.T) {
 	})
 
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
-		Content: "id: app-1\nname: My App\nauthFlowId: flow-1\n",
+		Content: "resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n",
 		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetRuntime},
 	})
 
@@ -754,7 +754,7 @@ func TestImportResources_DryRunCreateApplicationWithoutWrite(t *testing.T) {
 	svc := newTestImportService(appSvc)
 
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
-		Content: "id: app-1\nname: My App\nauthFlowId: flow-1\n",
+		Content: "resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n",
 		DryRun:  true,
 		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetRuntime},
 	})
@@ -776,7 +776,7 @@ func TestImportResources_DryRunUpdateApplicationWithoutWrite(t *testing.T) {
 	svc := newTestImportService(appSvc)
 
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
-		Content: "id: app-1\nname: My App\nauthFlowId: flow-1\n",
+		Content: "resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n",
 		DryRun:  true,
 		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetRuntime},
 	})
@@ -793,7 +793,7 @@ func TestImportResources_DryRunValidationFailure(t *testing.T) {
 	svc := newTestImportService(nil)
 
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
-		Content: "id:\n- app-1\nname: My App\nauthFlowId: flow-1\n",
+		Content: "resource_type: application\nid:\n- app-1\nname: My App\nauthFlowId: flow-1\n",
 		DryRun:  true,
 		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetRuntime},
 	})
@@ -808,12 +808,14 @@ func TestImportResources_CreateIDPAndFlow(t *testing.T) {
 	svc := newTestImportService(nil)
 
 	content := strings.Join([]string{
+		"resource_type: identity_provider",
 		"name: idp-one",
 		"type: GOOGLE",
 		"properties:",
 		"- name: client_id",
 		"  value: abc",
 		"---",
+		"resource_type: flow",
 		"handle: login",
 		"name: Login Flow",
 		"flowType: AUTHENTICATION",
@@ -837,7 +839,7 @@ func TestImportResources_DefaultsToRuntimeTarget(t *testing.T) {
 	svc := newTestImportService(appSvc)
 
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
-		Content: "id: app-1\nname: My App\nauthFlowId: flow-1\n",
+		Content: "resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n",
 	})
 
 	require.Nil(t, err)
@@ -854,8 +856,8 @@ func TestImportResources_PreservesExplicitFalseOptions(t *testing.T) {
 
 	falseVal := false
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
-		Content: "id: app-1\nname: My App\nauthFlowId: flow-1\n" +
-			"---\nid: app-2\nname: My App 2\nauthFlowId: flow-1\n",
+		Content: "resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n" +
+			"---\nresource_type: application\nid: app-2\nname: My App 2\nauthFlowId: flow-1\n",
 		Options: &ImportOptions{
 			Upsert:          &falseVal,
 			ContinueOnError: &falseVal,
@@ -874,7 +876,7 @@ func TestImportResources_ApplicationAdapterNotConfigured(t *testing.T) {
 	svc := newImportService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
-		Content: "id: app-1\nname: My App\nauthFlowId: flow-1\n",
+		Content: "resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n",
 	})
 
 	require.Nil(t, err)
@@ -894,6 +896,7 @@ func TestImportResources_RoleImportIncludesAssignments(t *testing.T) {
 	)
 
 	content := strings.Join([]string{
+		"resource_type: role",
 		"id: role-1",
 		"name: Admin",
 		"ouId: ou-1",
@@ -924,6 +927,7 @@ func TestImportResources_GroupImportIncludesMembers(t *testing.T) {
 	svc := newImportService(nil, nil, nil, nil, nil, nil, nil, groupSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
+		"resource_type: group",
 		"id: group-new",
 		"name: Engineers",
 		"ouId: ou-1",
@@ -954,6 +958,7 @@ func TestImportResources_RoleImportNoAssignments(t *testing.T) {
 	)
 
 	content := strings.Join([]string{
+		"resource_type: role",
 		"id: role-new",
 		"name: Viewer",
 		"ouId: ou-1",
@@ -979,6 +984,7 @@ func TestImportResources_RoleUpsertUpdateIncludesAssignments(t *testing.T) {
 	)
 
 	content := strings.Join([]string{
+		"resource_type: role",
 		"id: role-1",
 		"name: Admin",
 		"ouId: ou-1",
@@ -1016,6 +1022,7 @@ func TestImportResources_RoleAssignmentFailureReturnsError(t *testing.T) {
 
 	// role-1 exists in the fake → update path → AddAssignments is called separately → fails
 	content := strings.Join([]string{
+		"resource_type: role",
 		"id: role-1",
 		"name: Admin",
 		"ouId: ou-1",
@@ -1038,6 +1045,7 @@ func TestImportResources_GroupImportNoMembers(t *testing.T) {
 	svc := newImportService(nil, nil, nil, nil, nil, nil, nil, groupSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
+		"resource_type: group",
 		"id: group-new",
 		"name: Empty",
 		"ouId: ou-1",
@@ -1058,6 +1066,7 @@ func TestImportResources_GroupUpsertUpdateIncludesMembers(t *testing.T) {
 	svc := newImportService(nil, nil, nil, nil, nil, nil, nil, groupSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
+		"resource_type: group",
 		"id: group-1",
 		"name: Admins",
 		"ouId: ou-1",
@@ -1090,6 +1099,7 @@ func TestImportResources_GroupMemberFailureReturnsError(t *testing.T) {
 	svc := newImportService(nil, nil, nil, nil, nil, nil, nil, groupSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
+		"resource_type: group",
 		"id: group-new",
 		"name: Engineers",
 		"ouId: ou-1",
@@ -1111,6 +1121,7 @@ func TestImportResources_UserCredentialFailureRollsBackCreate(t *testing.T) {
 	svc := newImportService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
+		"resource_type: user",
 		"id: user-1",
 		"type: customer",
 		"ouId: ou-1",
@@ -1136,6 +1147,7 @@ func TestImportResources_OrganizationUnitUpsertCreatePreservesID(t *testing.T) {
 	svc := newImportService(nil, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
+		"resource_type: organization_unit",
 		"id: ou-123",
 		"handle: eng",
 		"name: Engineering",
@@ -1164,6 +1176,7 @@ func TestImportResources_FlowUpsertCreatePreservesID(t *testing.T) {
 	svc := newImportService(nil, nil, flowSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
+		"resource_type: flow",
 		"id: missing-flow-id",
 		"handle: registration-flow",
 		"name: Updated Registration Flow",
@@ -1202,6 +1215,7 @@ func TestImportResources_FlowUpsertDuplicateHandleFallsBackToHandleUpdate(t *tes
 	svc := newImportService(nil, nil, flowSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
+		"resource_type: flow",
 		"id: missing-flow-id",
 		"handle: registration-flow",
 		"name: Updated Registration Flow",
@@ -1242,7 +1256,7 @@ func TestImportResources_ApplicationFlowReferencesAreRemappedFromFlowAlias(t *te
 	svc := newImportService(appSvc, nil, flowSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
-		"# resource_type: flow",
+		"resource_type: flow",
 		"id: missing-registration-flow-id",
 		"handle: registration-flow",
 		"name: Updated Registration Flow",
@@ -1250,7 +1264,7 @@ func TestImportResources_ApplicationFlowReferencesAreRemappedFromFlowAlias(t *te
 		"nodes: []",
 		"",
 		"---",
-		"# resource_type: application",
+		"resource_type: application",
 		"name: My App",
 		"authFlowId: auth-flow-1",
 		"registrationFlowId: missing-registration-flow-id",
@@ -1277,6 +1291,7 @@ func TestImportResources_ThemeUpsertCreatePreservesID(t *testing.T) {
 	svc := newImportService(nil, nil, nil, nil, nil, nil, nil, nil, nil, themeSvc, nil, nil, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
+		"resource_type: theme",
 		"id: thm-123",
 		"handle: default-theme",
 		"displayName: Default Theme",
@@ -1309,6 +1324,7 @@ func TestImportResources_EntityTypeUpsertCreatePreservesID(t *testing.T) {
 	)
 
 	content := strings.Join([]string{
+		"resource_type: user_type",
 		"id: usrs-123",
 		"name: customer",
 		"ouId: ou-1",
@@ -1348,12 +1364,14 @@ func TestImportResources_UpsertCreatePreservesIDsAcrossResourceTypes(t *testing.
 	)
 
 	content := strings.Join([]string{
+		"resource_type: organization_unit",
 		"id: ou-123",
 		"handle: eng",
 		"name: Engineering",
 		"description: Engineering OU",
 		"",
 		"---",
+		"resource_type: theme",
 		"id: thm-123",
 		"handle: default-theme",
 		"displayName: Default Theme",
@@ -1362,6 +1380,7 @@ func TestImportResources_UpsertCreatePreservesIDsAcrossResourceTypes(t *testing.
 		"    light: {}",
 		"",
 		"---",
+		"resource_type: user_type",
 		"id: usrs-123",
 		"name: customer",
 		"ouId: ou-123",
@@ -1370,6 +1389,7 @@ func TestImportResources_UpsertCreatePreservesIDsAcrossResourceTypes(t *testing.
 		"  properties: {}",
 		"",
 		"---",
+		"resource_type: flow",
 		"id: flow-123",
 		"handle: registration-flow",
 		"name: Registration Flow",
@@ -1426,6 +1446,7 @@ func TestImportResources_EntityTypeOUHandlePassedToService(t *testing.T) {
 	)
 
 	content := strings.Join([]string{
+		"resource_type: user_type",
 		"id: usrs-123",
 		"name: customer",
 		"ouHandle: default",
@@ -1447,6 +1468,7 @@ func TestImportResources_EntityTypeOUHandlePassedToService(t *testing.T) {
 
 func TestImportResources_StripsClientSecretForPublicClientWithNoneAuthMethod(t *testing.T) {
 	content := strings.Join([]string{
+		"resource_type: application",
 		"id: app-1",
 		"name: My App",
 		"authFlowId: flow-1",
@@ -1479,6 +1501,7 @@ func TestImportResources_StripsClientSecretForPublicClientWithNoneAuthMethod(t *
 
 func TestImportResources_KeepsClientSecretForConfidentialClient(t *testing.T) {
 	content := strings.Join([]string{
+		"resource_type: application",
 		"id: app-1",
 		"name: My App",
 		"authFlowId: flow-1",
@@ -1534,7 +1557,7 @@ func TestImportResources_FileTargetReturnsError(t *testing.T) {
 	svc := newImportService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
-		Content: "id: app-1\nname: My App\nauthFlowId: flow-1\n",
+		Content: "resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n",
 		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetFile},
 	})
 
@@ -1559,7 +1582,7 @@ func TestDeleteResource_RemovesDeclarativeFile(t *testing.T) {
 	require.NoError(t, os.MkdirAll(resourceDir, 0o750))
 	require.NoError(t, os.WriteFile(
 		filepath.Join(resourceDir, "app-1.yaml"),
-		[]byte("# resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n"),
+		[]byte("resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n"),
 		0o600,
 	))
 
@@ -1583,7 +1606,7 @@ func TestImportResources_ApplicationOUHandlePassedToService(t *testing.T) {
 
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
 		Content: strings.Join([]string{
-			"# resource_type: application",
+			"resource_type: application",
 			"name: My App",
 			"ouHandle: default",
 			"",
@@ -1603,7 +1626,7 @@ func TestImportResources_ApplicationAuthFlowHandlePassedToService(t *testing.T) 
 
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
 		Content: strings.Join([]string{
-			"# resource_type: application",
+			"resource_type: application",
 			"name: My App",
 			"authFlowHandle: login-flow",
 			"",
@@ -1623,7 +1646,7 @@ func TestImportResources_ApplicationRegistrationFlowHandlePassedToService(t *tes
 
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
 		Content: strings.Join([]string{
-			"# resource_type: application",
+			"resource_type: application",
 			"name: My App",
 			"registrationFlowHandle: reg-flow",
 			"isRegistrationFlowEnabled: true",
@@ -1645,7 +1668,7 @@ func TestImportResources_ApplicationRecoveryFlowHandlePassedToService(t *testing
 
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
 		Content: strings.Join([]string{
-			"# resource_type: application",
+			"resource_type: application",
 			"name: My App",
 			"recoveryFlowHandle: recovery-flow",
 			"isRecoveryFlowEnabled: true",
@@ -1668,7 +1691,7 @@ func TestImportResources_DryRunSkipsApplicationHandleResolution(t *testing.T) {
 
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
 		Content: strings.Join([]string{
-			"# resource_type: application",
+			"resource_type: application",
 			"name: My App",
 			"ouHandle: nonexistent-ou",
 			"authFlowHandle: nonexistent-flow",
@@ -1731,7 +1754,7 @@ func (f *fakeAgentService) UpdateAgent(
 	return &agentmodel.AgentCompleteResponse{ID: agentID, Name: req.Name}, nil
 }
 
-const agentYAML = "# resource_type: agent\n" +
+const agentYAML = "resource_type: agent\n" +
 	"id: agent-1\ntype: default\nouId: root\nname: Test Agent\ndescription: desc\n"
 
 func TestImportAgent_Create(t *testing.T) {
@@ -1874,7 +1897,7 @@ func TestImportAgent_DecodeError(t *testing.T) {
 	svc := newImportService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil)
 
 	// ID field is a sequence, not a string — decode into AgentRequestWithID will fail.
-	invalidYAML := "# resource_type: agent\nid:\n  - bad\nname: Test\n"
+	invalidYAML := "resource_type: agent\nid:\n  - bad\nname: Test\n"
 	resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{Content: invalidYAML})
 
 	require.Nil(t, svcErr)
@@ -2008,14 +2031,14 @@ func TestImportAgent_FlowAliasRemapsFlowIDs(t *testing.T) {
 			)
 
 			content := strings.Join([]string{
-				"# resource_type: flow",
+				"resource_type: flow",
 				"id: " + tc.flowID,
 				"handle: " + tc.flowHandle,
 				"name: " + tc.flowName,
 				"flowType: " + tc.flowType,
 				"nodes: []",
 				"---",
-				"# resource_type: agent",
+				"resource_type: agent",
 				"id: " + tc.agentID,
 				"type: default",
 				"ouId: root",
@@ -2040,7 +2063,7 @@ func TestImportAgent_StripsClientSecretForPublicAgentWithNoneAuthMethod(t *testi
 	svc := newImportService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil)
 
 	content := strings.Join([]string{
-		"# resource_type: agent",
+		"resource_type: agent",
 		"id: agent-pub",
 		"type: default",
 		"ouId: root",
@@ -2133,6 +2156,7 @@ func TestImportRole_OUHandleResolved(t *testing.T) {
 	)
 
 	content := strings.Join([]string{
+		"resource_type: role",
 		"id: role-new",
 		"name: Viewer",
 		"ouHandle: default",
@@ -2161,6 +2185,7 @@ func TestImportRole_OUHandleNotFound(t *testing.T) {
 	)
 
 	content := strings.Join([]string{
+		"resource_type: role",
 		"id: role-new",
 		"name: Viewer",
 		"ouHandle: missing",
@@ -2188,6 +2213,7 @@ func TestImportRole_OUIDWinsOverHandle(t *testing.T) {
 	)
 
 	content := strings.Join([]string{
+		"resource_type: role",
 		"id: role-new",
 		"name: Viewer",
 		"ouId: ou-explicit",
@@ -2215,6 +2241,7 @@ func TestImportGroup_OUHandleResolved(t *testing.T) {
 	svc := newImportService(nil, nil, nil, ouSvc, nil, nil, nil, groupSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
+		"resource_type: group",
 		"id: group-new",
 		"name: Engineers",
 		"ouHandle: default",
@@ -2238,6 +2265,7 @@ func TestImportGroup_OUHandleNotFound(t *testing.T) {
 	svc := newImportService(nil, nil, nil, ouSvc, nil, nil, nil, groupSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
+		"resource_type: group",
 		"id: group-new",
 		"name: Engineers",
 		"ouHandle: missing",
@@ -2260,6 +2288,7 @@ func TestImportGroup_OUIDWinsOverHandle(t *testing.T) {
 	svc := newImportService(nil, nil, nil, ouSvc, nil, nil, nil, groupSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
+		"resource_type: group",
 		"id: group-new",
 		"name: Engineers",
 		"ouId: ou-explicit",
@@ -2286,6 +2315,7 @@ func TestImportUser_OUHandleResolved(t *testing.T) {
 	svc := newImportService(nil, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
+		"resource_type: user",
 		"id: user-new",
 		"type: person",
 		"ouHandle: default",
@@ -2314,6 +2344,7 @@ func TestImportUser_OUHandleNotFound(t *testing.T) {
 	svc := newImportService(nil, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
+		"resource_type: user",
 		"id: user-new",
 		"type: person",
 		"ouHandle: missing",
@@ -2338,6 +2369,7 @@ func TestImportUser_OUIDWinsOverHandle(t *testing.T) {
 	svc := newImportService(nil, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
+		"resource_type: user",
 		"id: user-new",
 		"type: person",
 		"ouId: ou-explicit",
@@ -2369,7 +2401,7 @@ func TestImportResourceServer_OUHandleResolved(t *testing.T) {
 	svc := newImportService(nil, nil, nil, ouSvc, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
-		"# resource_type: resource_server",
+		"resource_type: resource_server",
 		"id: rs-new",
 		"name: Test RS",
 		"handle: test-rs",
@@ -2399,7 +2431,7 @@ func TestImportResourceServer_OUHandleNotFound(t *testing.T) {
 	svc := newImportService(nil, nil, nil, ouSvc, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
-		"# resource_type: resource_server",
+		"resource_type: resource_server",
 		"id: rs-new",
 		"name: Test RS",
 		"handle: test-rs",
@@ -2425,7 +2457,7 @@ func TestImportResourceServer_OUIDWinsOverHandle(t *testing.T) {
 	svc := newImportService(nil, nil, nil, ouSvc, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
-		"# resource_type: resource_server",
+		"resource_type: resource_server",
 		"id: rs-new",
 		"name: Test RS",
 		"handle: test-rs",
@@ -2454,6 +2486,7 @@ func TestImportResources_IDPPropertiesArePassedToService(t *testing.T) {
 
 	// is_secret with empty value avoids the encryption path while still verifying the flag is parsed.
 	content := strings.Join([]string{
+		"resource_type: identity_provider",
 		"name: google-idp",
 		"type: GOOGLE",
 		"properties:",
@@ -2495,6 +2528,7 @@ func TestImportResources_IDPUpsertUpdatePropertiesArePassedToService(t *testing.
 	svc := newImportService(nil, idpSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	content := strings.Join([]string{
+		"resource_type: identity_provider",
 		"id: idp-1",
 		"name: google-idp",
 		"type: GOOGLE",

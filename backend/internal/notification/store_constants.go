@@ -43,6 +43,13 @@ var (
 			`FROM "NOTIFICATION_SENDER" WHERE DEPLOYMENT_ID = $1`,
 	}
 
+	// queryGetNotificationSendersByType is the query to get all notification senders of a given type.
+	queryGetNotificationSendersByType = dbmodel.DBQuery{
+		ID: "NMQ-SM-10",
+		Query: `SELECT ID, NAME, DESCRIPTION, TYPE, PROVIDER, PROPERTIES ` +
+			`FROM "NOTIFICATION_SENDER" WHERE TYPE = $1 AND DEPLOYMENT_ID = $2`,
+	}
+
 	// queryUpdateNotificationSender is the query to update a notification sender.
 	queryUpdateNotificationSender = dbmodel.DBQuery{
 		ID: "NMQ-SM-06",

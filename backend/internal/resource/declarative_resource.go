@@ -109,7 +109,6 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 		ID:          server.ID,
 		Name:        server.Name,
 		Description: server.Description,
-		Handle:      server.Handle,
 		Identifier:  server.Identifier,
 		Type:        server.Type,
 		OUID:        server.OUID,
@@ -333,7 +332,7 @@ func ProcessResourceServer(rs *providers.ResourceServer) error {
 
 	// Process resources and compute permissions
 	for i := range rs.Resources {
-		if err := processResource(&rs.Resources[i], resourceHandleMap, rs.Handle, delimiter); err != nil {
+		if err := processResource(&rs.Resources[i], resourceHandleMap, delimiter); err != nil {
 			return err
 		}
 	}
@@ -385,10 +384,9 @@ func checkDuplicateMCPPermissions(rs *providers.ResourceServer) error {
 func processResource(
 	res *providers.Resource,
 	resourceHandleMap map[string]*providers.Resource,
-	rsHandle string,
 	delimiter string,
 ) error {
-	permission, err := buildPermissionString(res, resourceHandleMap, rsHandle, delimiter)
+	permission, err := buildPermissionString(res, resourceHandleMap, delimiter)
 	if err != nil {
 		return err
 	}
@@ -406,14 +404,9 @@ func processResource(
 func buildPermissionString(
 	res *providers.Resource,
 	resourceHandleMap map[string]*providers.Resource,
-	rsHandle string,
 	delimiter string,
 ) (string, error) {
 	var parts []string
-
-	if rsHandle != "" {
-		parts = append(parts, rsHandle)
-	}
 
 	parentChain := []string{}
 	visited := make(map[string]bool)
@@ -467,6 +460,10 @@ func validateResourceServerWrapper(
 
 	if rs.Name == "" {
 		return fmt.Errorf("resource server name cannot be empty")
+	}
+
+	if rs.Identifier == "" {
+		return fmt.Errorf("resource server identifier cannot be empty")
 	}
 
 	if service != nil {

@@ -1,5 +1,6 @@
 ---
 title: Manage Applications
+docType: guide
 sidebar_position: 1
 persona: iam
 description: Register, update, and delete applications to enable OAuth 2.0 authentication for your services.
@@ -50,7 +51,7 @@ Enter an **Application Name**. This name identifies the application in the Conso
 
 Choose an **Application Logo** from the available icons, or click **Shuffle** to cycle through options. This logo appears on the sign-in page and consent screen.
 
-Select a **Theme** — **Classic** or **High Contrast** — for the authentication pages of this application.
+Select a **Theme**, **Classic** or **High Contrast**, for the authentication pages of this application.
 
 :::note
 Backend Service applications skip the appearance, sign-in options, and sign-in experience steps and go directly to the creation step.
@@ -64,8 +65,8 @@ Select the sign-in methods users will use to authenticate with this application 
 
 **Sign-In Approach** determines how users reach the sign-in experience:
 
-- **Redirect to <ProductName /> sign-in/sign-up handling pages** (recommended) — users are redirected to <ProductName />-hosted sign-in pages. You can customize these pages with the Flow Designer and integrate with SDKs.
-- **Embedded sign-in/sign-up components in your app** — the sign-in experience renders inside your application using <ProductName />'s UI components or APIs. No redirect occurs.
+- **Redirect to <ProductName /> sign-in/sign-up handling pages** (recommended): users are redirected to <ProductName />-hosted sign-in pages. You can customize these pages with the Flow Designer and integrate with SDKs.
+- **Embedded sign-in/sign-up components in your app**: the sign-in experience renders inside your application using <ProductName />'s UI components or APIs. No redirect occurs.
 
 :::note
 **Browser App** applications (SPAs) support only the **Redirect** approach. Because they run entirely in the browser as public clients, they cannot drive embedded (app-native) flow execution securely, so the embedded option is not offered for them. Other application types, such as **Mobile App** and **Full-stack App**, continue to support the embedded approach.
@@ -78,9 +79,9 @@ Learn more about user types in [User Types](../../users/user-types).
 
 This step varies based on your application type and sign-in options. Backend Service applications skip this step entirely.
 
-**Browser App and Full-stack App** — enter the **Hosting URL** where your application is deployed (for example, `https://yourapp.example.com`). For the callback URL, choose whether to use the same URL or provide a custom one.
+**Browser App and Full-stack App**: enter the **Hosting URL** where your application is deployed (for example, `https://yourapp.example.com`). For the callback URL, choose whether to use the same URL or provide a custom one.
 
-**Mobile App** — enter a **Deep Link or Universal Link** that <ProductName /> redirects users back to after authentication (for example, `com.example.app://auth/callback` or `https://yourapp.example.com/auth/callback`).
+**Mobile App**: enter a **Deep Link or Universal Link** that <ProductName /> redirects users back to after authentication (for example, `com.example.app://auth/callback` or `https://yourapp.example.com/auth/callback`).
 
 If you selected **Passkey** as a sign-in option, this step also shows **Passkey Settings**. Configure the **Relying Party ID** (your application's domain, for example `yourapp.example.com`) and **Relying Party Name** (a label shown to users during passkey prompts).
 

@@ -20,25 +20,45 @@ import type {PropertyDefinition} from '@thunderid/configure-user-types';
 import {describe, expect, it} from 'vitest';
 import type {AttributeConfiguration} from '../../models/connection';
 import {
+  type AttributeMappingFormState,
   flattenUserTypeAttributes,
   fromAttributeConfiguration,
   toAttributeConfiguration,
 } from '../attributeConfiguration';
 
+const emptyState: AttributeMappingFormState = {
+  defaultUserType: '',
+  resolveDynamic: false,
+  externalAttribute: '',
+  valueMapping: [],
+  groups: [],
+  linking: [],
+};
+
 describe('toAttributeConfiguration', () => {
-  it('returns undefined when no user type is selected', () => {
-    expect(
-      toAttributeConfiguration({userType: '', rows: [{externalAttribute: 'a', localAttribute: 'b'}]}),
-    ).toBeUndefined();
+  it('returns undefined when the whole configuration is empty', () => {
+    expect(toAttributeConfiguration(emptyState)).toBeUndefined();
   });
 
-  it('builds the config and drops incomplete rows, trimming values', () => {
+  it('builds a static default-only config', () => {
+    expect(toAttributeConfiguration({...emptyState, defaultUserType: ' Person '})).toEqual({
+      userTypeResolution: {default: 'Person'},
+    });
+  });
+
+  it('builds per-user-type mappings, dropping incomplete rows and empty groups, trimming values', () => {
     const cfg = toAttributeConfiguration({
-      userType: ' Person ',
-      rows: [
-        {externalAttribute: ' given_name ', localAttribute: ' firstName '},
-        {externalAttribute: 'email', localAttribute: ''},
-        {externalAttribute: '', localAttribute: 'x'},
+      ...emptyState,
+      defaultUserType: 'Person',
+      groups: [
+        {
+          userType: ' Person ',
+          rows: [
+            {externalAttribute: ' given_name ', localAttribute: ' firstName '},
+            {externalAttribute: 'email', localAttribute: ''},
+          ],
+        },
+        {userType: 'Employee', rows: [{externalAttribute: '', localAttribute: ''}]},
       ],
     });
     expect(cfg).toEqual({
@@ -49,34 +69,89 @@ describe('toAttributeConfiguration', () => {
     });
   });
 
-  it('omits the mappings entry when a user type is set but no complete rows exist', () => {
-    const cfg = toAttributeConfiguration({userType: 'Person', rows: [{externalAttribute: 'a', localAttribute: ''}]});
+  it('includes the external attribute and drops incomplete value-mapping entries', () => {
+    const cfg = toAttributeConfiguration({
+      ...emptyState,
+      defaultUserType: 'Person',
+      resolveDynamic: true,
+      externalAttribute: ' user_type ',
+      valueMapping: [
+        {value: ' staff ', userType: ' Employee '},
+        {value: 'incomplete', userType: ''},
+      ],
+    });
+    expect(cfg).toEqual({
+      userTypeResolution: {default: 'Person', externalAttribute: 'user_type', valueMapping: {staff: 'Employee'}},
+    });
+  });
+
+  it('includes the external attribute alone when no value mappings are configured', () => {
+    const cfg = toAttributeConfiguration({
+      ...emptyState,
+      defaultUserType: 'Person',
+      resolveDynamic: true,
+      externalAttribute: 'user_type',
+      valueMapping: [],
+    });
+    expect(cfg).toEqual({userTypeResolution: {default: 'Person', externalAttribute: 'user_type'}});
+  });
+
+  it('omits dynamic fields when the toggle is off even if value mappings linger in state', () => {
+    const cfg = toAttributeConfiguration({
+      ...emptyState,
+      defaultUserType: 'Person',
+      resolveDynamic: false,
+      externalAttribute: 'user_type',
+      valueMapping: [{value: 'staff', userType: 'Employee'}],
+    });
     expect(cfg).toEqual({userTypeResolution: {default: 'Person'}});
-    expect(cfg).not.toHaveProperty('userTypeAttributeMappings');
+  });
+
+  it('includes account linking only for non-empty trimmed attributes', () => {
+    const cfg = toAttributeConfiguration({...emptyState, defaultUserType: 'Person', linking: [' email ', '', '  ']});
+    expect(cfg).toEqual({userTypeResolution: {default: 'Person'}, accountLinking: {attributes: ['email']}});
   });
 });
 
 describe('fromAttributeConfiguration', () => {
   it('returns empty state for undefined config', () => {
-    expect(fromAttributeConfiguration(undefined)).toEqual({userType: '', rows: []});
+    expect(fromAttributeConfiguration(undefined)).toEqual(emptyState);
   });
 
-  it('extracts the default user type and its mapping rows', () => {
+  it('hydrates all three sections and infers the dynamic toggle', () => {
     const cfg: AttributeConfiguration = {
-      userTypeResolution: {default: 'Person'},
+      userTypeResolution: {
+        default: 'Person',
+        externalAttribute: 'user_type',
+        valueMapping: {staff: 'Employee'},
+      },
       userTypeAttributeMappings: [
         {userType: 'Person', attributes: [{externalAttribute: 'given_name', localAttribute: 'firstName'}]},
-        {userType: 'Other', attributes: [{externalAttribute: 'x', localAttribute: 'y'}]},
       ],
+      accountLinking: {attributes: ['email']},
     };
     expect(fromAttributeConfiguration(cfg)).toEqual({
-      userType: 'Person',
-      rows: [{externalAttribute: 'given_name', localAttribute: 'firstName'}],
+      defaultUserType: 'Person',
+      resolveDynamic: true,
+      externalAttribute: 'user_type',
+      valueMapping: [{value: 'staff', userType: 'Employee'}],
+      groups: [{userType: 'Person', rows: [{externalAttribute: 'given_name', localAttribute: 'firstName'}]}],
+      linking: ['email'],
     });
   });
 
-  it('round-trips with toAttributeConfiguration', () => {
-    const state = {userType: 'Person', rows: [{externalAttribute: 'email', localAttribute: 'email'}]};
+  it('round-trips a rich state with toAttributeConfiguration', () => {
+    const state: AttributeMappingFormState = {
+      defaultUserType: 'Person',
+      resolveDynamic: true,
+      externalAttribute: 'user_type',
+      valueMapping: [{value: 'staff', userType: 'Employee'}],
+      groups: [
+        {userType: 'Person', rows: [{externalAttribute: 'email', localAttribute: 'email'}]},
+        {userType: 'Employee', rows: [{externalAttribute: 'emp_id', localAttribute: 'employeeNumber'}]},
+      ],
+      linking: ['email'],
+    };
     expect(fromAttributeConfiguration(toAttributeConfiguration(state))).toEqual(state);
   });
 });

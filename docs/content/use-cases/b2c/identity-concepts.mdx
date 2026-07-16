@@ -1,6 +1,7 @@
 ---
 title: Identity Concepts
-description: How the Wayfinder sample maps to product concepts — user types, resource servers, permissions, roles, applications, and flows.
+docType: use-case
+description: "How the Wayfinder sample maps to product concepts: user types, resource servers, permissions, roles, applications, and flows."
 sidebar_position: 5
 ---
 
@@ -19,7 +20,7 @@ A user type defines who can exist in the system and what attributes they carry. 
 - `Customer`: a consumer who books travel, with profile attributes required for a traveller.
 - `Staff`: an internal team member who manages the product, with profile attributes required for a staff member.
 
-See [User Types](/docs/next/guides/guides/users/user-types).
+See [User Types](../../../guides/guides/users/user-types).
 
 ## Resources and Permissions
 
@@ -29,7 +30,7 @@ A **resource server** represents the APIs of a single backend. Each resource ser
 
 Wayfinder's API is one resource server with the `wayfinder` handle. It includes a `booking` resource that has three actions: `read`, `create`, and `cancel`. The generated permissions are `wayfinder:booking:read`, `wayfinder:booking:create`, and `wayfinder:booking:cancel`.
 
-```
+```text
 wayfinder                               (Resource Server)
 └── booking                             (Resource)
     ├── read     →  wayfinder:booking:read        (Permission)
@@ -37,7 +38,7 @@ wayfinder                               (Resource Server)
     └── cancel   →  wayfinder:booking:cancel
 ```
 
-Permissions are included in access tokens. See [Resource Servers](/docs/next/guides/guides/resource-servers).
+Permissions are included in access tokens. See [Resource Servers](../../../guides/guides/resource-servers).
 
 ## Roles
 
@@ -48,16 +49,16 @@ A role groups permissions for a user category. A user's effective permissions ar
 - `DestinationsAdmin`: staff role for curating featured destinations.
 - `OpsAdmin`: staff role for inviting and managing other staff.
 
-See [Authorization](/docs/next/guides/key-concepts/authorization).
+See [Authorization](../../../guides/key-concepts/authorization).
 
 ## Application
 
 An application is the OAuth2 client that <ProductName /> issues tokens to. Wayfinder Web is registered as `WAYFINDER`.
 
-See [Manage Applications](/docs/next/guides/guides/applications/manage-applications).
+See [Manage Applications](../../../guides/guides/applications/manage-applications).
 
 ## Flows
 
 A flow is the sequence of steps a user moves through when signing in, signing up, or recovering. Wayfinder uses the bundled `default-flow` for sign-in, plus separate registration, recovery, and staff onboarding flows for the other use cases.
 
-See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow).
+See [Build a Flow](../../../guides/guides/flows/build-a-flow).

@@ -53,7 +53,7 @@ All commands use the named session `-s=thunderid` so the browser persists across
 
 ThunderID Console requires authentication. The sign-in form is dynamically rendered by the ThunderID SDK, so always use `snapshot` to get element refs before interacting.
 
-Default credentials: `admin` / `admin`
+Username is `admin`. For `make run`, the password defaults to `admin` unless overridden via `ADMIN_PASSWORD` (source-only local dev path). For `./setup.sh`/`./setup.ps1`, the password is randomly generated and printed to the console/log output unless explicitly supplied via `ADMIN_PASSWORD` — check there for the current value rather than assuming a fixed one.
 
 ### First-Time Login
 
@@ -72,8 +72,9 @@ playwright-cli snapshot -s=thunderid
 # 3. Fill username (use the ref from snapshot for the username input)
 playwright-cli fill <username-ref> "admin" -s=thunderid
 
-# 4. Fill password (use the ref from snapshot for the password input)
-playwright-cli fill <password-ref> "admin" -s=thunderid
+# 4. Fill password (use the ref from snapshot for the password input;
+#    use the actual generated password from the setup console output, not a literal "admin")
+playwright-cli fill <password-ref> "<generated-password>" -s=thunderid
 
 # 5. Click Sign In (use the ref from snapshot for the submit button)
 playwright-cli click <submit-ref> -s=thunderid

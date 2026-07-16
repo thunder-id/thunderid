@@ -194,6 +194,23 @@ describe('ReorderableElement', () => {
     display: {label: 'Login Form', image: '', showOnResourcePanel: true},
   } as Resource;
 
+  const mockTriggerButton = {
+    id: 'google-button-1',
+    type: 'ACTION',
+    category: 'ACTION',
+    resourceType: 'ELEMENT',
+    display: {label: 'Continue with Google', image: '', showOnResourcePanel: true},
+  };
+
+  const mockActionBlockElement: Resource = {
+    id: 'action-block-1',
+    type: BlockTypes.Form,
+    category: 'ACTION',
+    resourceType: 'ELEMENT',
+    components: [mockTriggerButton],
+    display: {label: 'Continue with Google', image: '', showOnResourcePanel: true},
+  } as unknown as Resource;
+
   const mockAvailableElements: Resource[] = [
     {
       id: 'text-input',
@@ -285,6 +302,93 @@ describe('ReorderableElement', () => {
       render(<ReorderableElement id="sortable-1" index={0} element={mockFormElement} availableElements={[]} />);
 
       expect(screen.queryByTestId('handle-add field')).not.toBeInTheDocument();
+    });
+
+    it('should render a persistent dashed add field button for Form elements', () => {
+      render(
+        <ReorderableElement
+          id="sortable-1"
+          index={0}
+          element={mockFormElement}
+          availableElements={mockAvailableElements}
+        />,
+      );
+
+      expect(screen.getByTestId('form-add-field-button')).toBeInTheDocument();
+    });
+
+    it('should hide the selection chrome when hideChrome is set', () => {
+      render(
+        <ReorderableElement
+          id="sortable-1"
+          index={0}
+          element={mockElement}
+          availableElements={mockAvailableElements}
+          hideChrome
+        />,
+      );
+
+      expect(screen.queryByTestId('handle-drag')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('handle-edit')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('handle-delete')).not.toBeInTheDocument();
+      expect(screen.getByTestId('element-content')).toBeInTheDocument();
+    });
+
+    it('should not render add field buttons for action-category blocks like social login wrappers', () => {
+      render(
+        <ReorderableElement
+          id="sortable-1"
+          index={0}
+          element={mockActionBlockElement}
+          availableElements={mockAvailableElements}
+        />,
+      );
+
+      expect(screen.queryByTestId('form-add-field-button')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('handle-add field')).not.toBeInTheDocument();
+    });
+
+    it('should open the wrapped trigger button properties when editing an action block', () => {
+      render(
+        <ReorderableElement
+          id="sortable-1"
+          index={0}
+          element={mockActionBlockElement}
+          availableElements={mockAvailableElements}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('handle-edit'));
+
+      expect(mockSetLastInteractedResource).toHaveBeenCalledWith(mockTriggerButton);
+    });
+
+    it('should not render the dashed add field button for non-Form elements', () => {
+      render(
+        <ReorderableElement
+          id="sortable-1"
+          index={0}
+          element={mockElement}
+          availableElements={mockAvailableElements}
+        />,
+      );
+
+      expect(screen.queryByTestId('form-add-field-button')).not.toBeInTheDocument();
+    });
+
+    it('should open the add field menu from the dashed add field button', () => {
+      render(
+        <ReorderableElement
+          id="sortable-1"
+          index={0}
+          element={mockFormElement}
+          availableElements={mockAvailableElements}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('form-add-field-button'));
+
+      expect(screen.getByRole('menu')).toBeInTheDocument();
     });
 
     it('should open menu when Add Field button is clicked', () => {

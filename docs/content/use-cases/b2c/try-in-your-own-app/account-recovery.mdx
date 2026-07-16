@@ -1,20 +1,21 @@
 ---
 title: Account Recovery
+docType: use-case
 description: Configure {{ProductName}} for password recovery and integrate it into your own application.
 sidebar_position: 5
 ---
 
 # Account Recovery
 
-This walkthrough configures <ProductName /> to let users reset a forgotten password through an email link. <ProductName /> identifies the user, sends the recovery email, verifies the link, and lets the user set a new password — all on the hosted sign-in pages in the redirect-based pattern.
+This walkthrough configures <ProductName /> to let users reset a forgotten password through an email link. <ProductName /> identifies the user, sends the recovery email, verifies the link, and lets the user set a new password, all on the hosted sign-in pages in the redirect-based pattern.
 
 :::info Background
-[Add Account Recovery](../../customer-identity#add-account-recovery) covers the requirements story behind this use case.
+[B2C Identity Overview](../..) covers the requirements story behind this use case.
 :::
 
 :::note Prerequisites
 - Complete the [Login](../add-login) walkthrough first. The user type and application set up there are required here.
-- Configure SMTP so that <ProductName /> can send recovery emails. See [Email Configuration](/docs/next/guides/getting-started/configuration#email-configuration), then restart <ProductName /> for the changes to take effect.
+- Configure SMTP so that <ProductName /> can send recovery emails. See [Email Configuration](../../../../guides/getting-started/configuration#email-configuration), then restart <ProductName /> for the changes to take effect.
 :::
 
 ## Pick Your Pattern
@@ -28,7 +29,7 @@ In the redirect-based pattern, the entire recovery experience is hosted by <Prod
 
 **1. Build a recovery flow**
 
-Build a `RECOVERY` flow that identifies the user, generates a recovery token, sends the email, verifies the link, and lets the user set a new password. See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow).
+Build a `RECOVERY` flow that identifies the user, generates a recovery token, sends the email, verifies the link, and lets the user set a new password. See [Build a Flow](../../../../guides/guides/flows/build-a-flow).
 
 <details>
   <summary>Sample recovery flow</summary>
@@ -165,7 +166,7 @@ Build a `RECOVERY` flow that identifies the user, generates a recovery token, se
 
 Go to **Applications** → your app → **Flows** tab. Under **Recovery Flow**, select the flow you created. Save the application.
 
-See [Manage Applications](/docs/next/guides/guides/applications/manage-applications).
+See [Manage Applications](../../../../guides/guides/applications/manage-applications).
 
 ### Integrate into Your App
 
@@ -173,10 +174,10 @@ The recovery flow is hosted on <ProductName />. Your app only needs a **Forgot p
 
 | Framework   | Where to integrate                                                                            |
 | ----------- | --------------------------------------------------------------------------------------------- |
-| React       | [React SDK Overview](/docs/next/sdks/react/overview) — use the SDK's recovery entry point    |
-| Next.js     | [Next.js Quickstart](/docs/next/guides/getting-started/connect-your-application/nextjs)       |
-| Vue         | [Vue Quickstart](/docs/next/guides/getting-started/connect-your-application/vue)              |
-| Browser SDK | [Browser SDK Overview](/docs/next/sdks/browser/overview)                                      |
+| React       | [React SDK Overview](../../../../sdks/react/overview), use the SDK's recovery entry point    |
+| Next.js     | [Next.js Quickstart](../../../../guides/getting-started/connect-your-application/nextjs)       |
+| Vue         | [Vue Quickstart](../../../../guides/getting-started/connect-your-application/vue)              |
+| Browser SDK | [Browser SDK Overview](../../../../sdks/browser/overview)                                      |
 
 ### Try It Out
 
@@ -192,18 +193,18 @@ The recovery flow is hosted on <ProductName />. Your app only needs a **Forgot p
 <details>
   <summary>App-native step-by-step</summary>
 
-Coming soon. See the [App-native pattern](../../solution-patterns#app-native) for what to expect.
+Coming soon. See the [App-native pattern](../../integration-patterns#app-native) for what to expect.
 
 </details>
 
 <details>
   <summary>App-native managed</summary>
 
-Coming soon. See the [App-native pattern](../../solution-patterns#app-native) for what to expect.
+Coming soon. See the [App-native pattern](../../integration-patterns#app-native) for what to expect.
 
 </details>
 
 ## Going Deeper
 
 - Want to understand how the recovery flow nodes work? See [Flows](../../identity-concepts#flows) in Identity Concepts.
-- Want to see this use case running against the Wayfinder sample? See [Account Recovery — Try It Out](../../try-it-out/account-recovery).
+- Want to see this use case running against the Wayfinder sample? See [Account Recovery: Try It Out](../../try-it-out/account-recovery).

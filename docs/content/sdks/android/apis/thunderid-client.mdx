@@ -1,6 +1,7 @@
 ---
 title: ThunderIDClient
-description: Core authentication client for the ThunderID Android SDK
+docType: reference
+description: Core authentication client for the Android SDK, with methods for sign-in, token refresh, and user data.
 ---
 
 # `ThunderIDClient`
@@ -32,8 +33,6 @@ client.initialize(
 When using `dev.thunderid:compose`, you do not need to create a `ThunderIDClient` directly. Wrap your UI in `ThunderIDProvider(config = ...)` and access the client through `LocalThunderID.current.client`.
 :::
 
----
-
 ## Initialization
 
 ### `initialize(config, storage)`
@@ -46,14 +45,12 @@ suspend fun initialize(config: ThunderIDConfig, storage: StorageAdapter? = null)
 
 | Parameter | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `config` | `ThunderIDConfig` | ✅ | SDK configuration. See [Configuration](/docs/next/sdks/android/apis/configuration). |
+| `config` | `ThunderIDConfig` | ✅ | SDK configuration. See [Configuration](../configuration). |
 | `storage` | `StorageAdapter?` | ❌ | Custom token storage backend. Defaults to `EncryptedStorageAdapter`. |
 
 **Returns:** `true` when initialization succeeds.
 
 **Throws:** `IAMException` with code `ALREADY_INITIALIZED` if the SDK is already initialized, or `INVALID_CONFIGURATION` if `baseUrl` is empty or does not use HTTPS.
-
----
 
 ### `reInitialize(baseUrl, clientId)`
 
@@ -65,8 +62,6 @@ suspend fun reInitialize(baseUrl: String? = null, clientId: String? = null): Boo
 
 **Throws:** `IAMException` with code `SDK_NOT_INITIALIZED` if `initialize()` has not been called first.
 
----
-
 ### `getConfiguration()`
 
 Returns the current SDK configuration.
@@ -76,8 +71,6 @@ fun getConfiguration(): ThunderIDConfig
 ```
 
 **Throws:** `IAMException` with code `SDK_NOT_INITIALIZED` if the SDK has not been initialized.
-
----
 
 ## App-Native Authentication
 
@@ -105,8 +98,6 @@ suspend fun signIn(
 The `SignIn` and `SignUp` composables manage this loop for you. Use `signIn(payload, request)` directly only when building a fully custom sign-in UI.
 :::
 
----
-
 ### `signUp(payload, request)`
 
 Submits a step in the registration flow. Same loop pattern as `signIn`.
@@ -117,8 +108,6 @@ suspend fun signUp(
     request: EmbeddedFlowRequestConfig? = null
 ): EmbeddedFlowResponse
 ```
-
----
 
 ## Redirect-Based Authentication
 
@@ -140,8 +129,6 @@ fun buildSignInUrl(options: SignInOptions? = null): String
 
 **Throws:** `IAMException` with code `INVALID_CONFIGURATION` if `clientId` is not set.
 
----
-
 ### `handleRedirectCallback(url)`
 
 Exchanges the authorization code from the callback URL for tokens and returns the signed-in user.
@@ -152,8 +139,6 @@ suspend fun handleRedirectCallback(url: String): User
 
 **Throws:** `IAMException` with code `INVALID_GRANT` if the URL does not contain a valid authorization code, or if the PKCE verifier is missing (call `buildSignInUrl` first).
 
----
-
 ## Session
 
 ### `isSignedIn()`
@@ -163,8 +148,6 @@ Returns `true` if an access token is present in the token store.
 ```kotlin
 suspend fun isSignedIn(): Boolean
 ```
-
----
 
 ### `signOut(options)`
 
@@ -180,8 +163,6 @@ suspend fun signOut(options: SignOutOptions? = null): String
 
 **Returns:** The `afterSignOutUrl` from your configuration, or `"/"` if not set.
 
----
-
 ### `clearSession()`
 
 Clears the local session without revoking the refresh token on the server.
@@ -190,8 +171,6 @@ Clears the local session without revoking the refresh token on the server.
 fun clearSession()
 ```
 
----
-
 ### `isLoading()`
 
 Returns `true` while a sign-in or sign-out operation is in progress.
@@ -199,8 +178,6 @@ Returns `true` while a sign-in or sign-out operation is in progress.
 ```kotlin
 fun isLoading(): Boolean
 ```
-
----
 
 ## Token Management
 
@@ -213,8 +190,6 @@ suspend fun getAccessToken(): String
 ```
 
 **Throws:** `IAMException` with code `SESSION_EXPIRED` if the refresh token is also expired.
-
----
 
 ### `decodeJwtToken(token)`
 
@@ -234,8 +209,6 @@ val claims = client.decodeJwtToken(token)
 val sub = claims["sub"] as? String
 ```
 
----
-
 ### `exchangeToken(config)`
 
 Performs an OAuth 2.0 token exchange (RFC 8693). Useful for Security Token Service (STS) scenarios.
@@ -243,8 +216,6 @@ Performs an OAuth 2.0 token exchange (RFC 8693). Useful for Security Token Servi
 ```kotlin
 suspend fun exchangeToken(config: TokenExchangeRequestConfig): TokenResponse
 ```
-
----
 
 ## User and Profile
 
@@ -258,8 +229,6 @@ suspend fun getUser(): User
 
 **Returns:** A `User` with `sub`, `username`, `email`, `displayName`, `profilePicture`, and raw `claims`.
 
----
-
 ### `getUserProfile()`
 
 Fetches the full user profile from `/scim2/Me`.
@@ -268,8 +237,6 @@ Fetches the full user profile from `/scim2/Me`.
 suspend fun getUserProfile(): UserProfile
 ```
 
----
-
 ### `updateUserProfile(payload, userId)`
 
 Updates the user profile via `/scim2/Me` (or `/scim2/Users/<userId>` if `userId` is provided).
@@ -277,8 +244,6 @@ Updates the user profile via `/scim2/Me` (or `/scim2/Users/<userId>` if `userId`
 ```kotlin
 suspend fun updateUserProfile(payload: Map<String, Any>, userId: String? = null): User
 ```
-
----
 
 ## Error Handling
 

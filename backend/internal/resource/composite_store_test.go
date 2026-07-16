@@ -136,44 +136,6 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServer_DBError() {
 	s.fileStoreMock.AssertNotCalled(s.T(), "GetResourceServer")
 }
 
-func (s *CompositeResourceStoreTestSuite) TestGetResourceServerByHandle_FoundInDB() {
-	rs := providers.ResourceServer{
-		ID:     "rs1",
-		Name:   "DB Server",
-		Handle: "test-handle",
-	}
-
-	s.dbStoreMock.On("GetResourceServerByHandle", s.ctx, "test-handle").Return(rs, nil)
-
-	result, err := s.compositeStore.GetResourceServerByHandle(s.ctx, "test-handle")
-
-	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), "DB Server", result.Name)
-	assert.False(s.T(), result.IsReadOnly, "DB resource server should have IsReadOnly=false")
-	s.dbStoreMock.AssertExpectations(s.T())
-	s.fileStoreMock.AssertNotCalled(s.T(), "GetResourceServerByHandle")
-}
-
-func (s *CompositeResourceStoreTestSuite) TestGetResourceServerByHandle_FoundInFile() {
-	fileRS := providers.ResourceServer{
-		ID:     "rs-file",
-		Name:   "File Server",
-		Handle: "test-handle",
-	}
-
-	s.dbStoreMock.On("GetResourceServerByHandle", s.ctx, "test-handle").
-		Return(providers.ResourceServer{}, errResourceServerNotFound)
-	s.fileStoreMock.On("GetResourceServerByHandle", s.ctx, "test-handle").Return(fileRS, nil)
-
-	result, err := s.compositeStore.GetResourceServerByHandle(s.ctx, "test-handle")
-
-	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), "File Server", result.Name)
-	assert.True(s.T(), result.IsReadOnly, "File resource server should have IsReadOnly=true")
-	s.dbStoreMock.AssertExpectations(s.T())
-	s.fileStoreMock.AssertExpectations(s.T())
-}
-
 func (s *CompositeResourceStoreTestSuite) TestGetResourceServerList_MergesBothStores() {
 	dbServers := []providers.ResourceServer{
 		{ID: "rs-db1", Name: "DB Server 1"},

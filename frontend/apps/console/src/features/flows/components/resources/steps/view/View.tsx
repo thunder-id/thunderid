@@ -16,7 +16,18 @@
  * under the License.
  */
 
-import {Box, FormGroup, IconButton, Menu, MenuItem, Paper, Tooltip, Typography, type Theme} from '@wso2/oxygen-ui';
+import {
+  Box,
+  Button,
+  FormGroup,
+  IconButton,
+  Menu,
+  MenuItem,
+  Paper,
+  Tooltip,
+  Typography,
+  type Theme,
+} from '@wso2/oxygen-ui';
 import {CogIcon, PlusIcon, TrashIcon} from '@wso2/oxygen-ui-icons-react';
 import {Handle, Position, useNodeId, useReactFlow} from '@xyflow/react';
 import {
@@ -30,6 +41,7 @@ import {
   type ReactElement,
 } from 'react';
 import {useTranslation} from 'react-i18next';
+import dashedAddButtonSx from './dashedAddButtonSx';
 import ReorderableViewElement from './ReorderableElement';
 import Droppable from '../../../dnd/Droppable';
 import GapDropZone from '../../../dnd/GapDropZone';
@@ -389,6 +401,21 @@ function View({
                   </Fragment>
                 ))}
               </Droppable>
+              {filteredAvailableElements.length > 0 && (
+                <Box sx={{px: 1, pb: 1}}>
+                  <Button
+                    fullWidth
+                    size="small"
+                    className="nodrag"
+                    data-testid="view-add-element-button"
+                    startIcon={<PlusIcon size={15} />}
+                    onClick={handleMenuOpen}
+                    sx={dashedAddButtonSx}
+                  >
+                    {t('flows:core.steps.view.addComponent', 'Add Component')}
+                  </Button>
+                </Box>
+              )}
             </FormGroup>
           </Box>
         </Paper>
@@ -424,7 +451,12 @@ const MemoizedView = memo(View, (prevProps, nextProps) => {
   if (prevProps.enableSourceHandle !== nextProps.enableSourceHandle) {
     return false;
   }
-  // Don't re-render for callback changes (availableElements, onAddElement, etc.)
+  // Re-render if availableElements changed — the persistent add button and its
+  // menu render from it, so a late-loaded list must not be swallowed.
+  if (prevProps.availableElements !== nextProps.availableElements) {
+    return false;
+  }
+  // Don't re-render for callback changes (onAddElement, etc.)
   // These are read via refs or stable references in the component
   return true;
 });

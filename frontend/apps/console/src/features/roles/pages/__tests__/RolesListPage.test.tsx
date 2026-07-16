@@ -84,12 +84,6 @@ describe('RolesListPage', () => {
     expect(screen.getByRole('button', {name: /add role/i})).toBeInTheDocument();
   });
 
-  it('should render the search field', () => {
-    render(<RolesListPage />);
-
-    expect(screen.getByRole('textbox')).toBeInTheDocument();
-  });
-
   it('should navigate to create page when Add Role button is clicked', async () => {
     const user = userEvent.setup();
     render(<RolesListPage />);

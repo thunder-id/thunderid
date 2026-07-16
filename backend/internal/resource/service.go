@@ -72,9 +72,6 @@ type ResourceServiceInterface interface {
 		ctx context.Context, id string, rs providers.ResourceServer,
 	) (*providers.ResourceServer, *tidcommon.ServiceError)
 	DeleteResourceServer(ctx context.Context, id string) *tidcommon.ServiceError
-	GetResourceServerByHandle(
-		ctx context.Context, handle string,
-	) (*providers.ResourceServer, *tidcommon.ServiceError)
 	GetResourceServerByIdentifier(
 		ctx context.Context, identifier string,
 	) (*providers.ResourceServer, *tidcommon.ServiceError)
@@ -272,32 +269,16 @@ func (rs *resourceService) CreateResourceServer(
 		return nil, &ErrorNameConflict
 	}
 
-	// Check handle uniqueness (if provided)
-	if resourceServer.Handle != "" {
-		handleExists, err := rs.resourceStore.CheckResourceServerHandleExists(ctx, resourceServer.Handle)
-		if err != nil {
-			rs.logger.Error(ctx, "Failed to check resource server handle", log.Error(err))
-			return nil, &tidcommon.InternalServerError
-		}
-		if handleExists {
-			rs.logger.Debug(ctx, "Resource server handle already exists",
-				log.String("handle", resourceServer.Handle))
-			return nil, &ErrorHandleConflict
-		}
+	// Check identifier uniqueness
+	identifierExists, err := rs.resourceStore.CheckResourceServerIdentifierExists(ctx, resourceServer.Identifier)
+	if err != nil {
+		rs.logger.Error(ctx, "Failed to check resource server identifier", log.Error(err))
+		return nil, &tidcommon.InternalServerError
 	}
-
-	// Check identifier uniqueness (if provided)
-	if resourceServer.Identifier != "" {
-		identifierExists, err := rs.resourceStore.CheckResourceServerIdentifierExists(ctx, resourceServer.Identifier)
-		if err != nil {
-			rs.logger.Error(ctx, "Failed to check resource server identifier", log.Error(err))
-			return nil, &tidcommon.InternalServerError
-		}
-		if identifierExists {
-			rs.logger.Debug(ctx, "Resource server identifier already exists",
-				log.String("identifier", resourceServer.Identifier))
-			return nil, &ErrorIdentifierConflict
-		}
+	if identifierExists {
+		rs.logger.Debug(ctx, "Resource server identifier already exists",
+			log.String("identifier", resourceServer.Identifier))
+		return nil, &ErrorIdentifierConflict
 	}
 
 	// Set default type if not provided
@@ -308,16 +289,6 @@ func (rs *resourceService) CreateResourceServer(
 	// Set default delimiter if not provided
 	if resourceServer.Delimiter == "" {
 		resourceServer.Delimiter = rs.defaultDelimiter
-	}
-
-	// Validate handle format and ensure it does not contain the delimiter character
-	if resourceServer.Handle != "" {
-		if svcErr := validateHandle(resourceServer.Handle, resourceServer.Delimiter); svcErr != nil {
-			if svcErr.Code == ErrorDelimiterInHandle.Code {
-				return nil, &ErrorDelimiterInResourceServerHandle
-			}
-			return nil, svcErr
-		}
 	}
 
 	id := resourceServer.ID
@@ -351,7 +322,6 @@ func (rs *resourceService) CreateResourceServer(
 			ID:          id,
 			Name:        resourceServer.Name,
 			Description: resourceServer.Description,
-			Handle:      resourceServer.Handle,
 			Identifier:  resourceServer.Identifier,
 			Type:        resourceServer.Type,
 			OUID:        resourceServer.OUID,
@@ -381,28 +351,6 @@ func (rs *resourceService) GetResourceServer(
 			return nil, &ErrorResourceServerNotFound
 		}
 		rs.logger.Error(ctx, "Failed to get resource server", log.Error(err))
-		return nil, &tidcommon.InternalServerError
-	}
-
-	return &resourceServer, nil
-}
-
-// GetResourceServerByHandle retrieves a resource server by its handle.
-func (rs *resourceService) GetResourceServerByHandle(
-	ctx context.Context, handle string,
-) (*providers.ResourceServer, *tidcommon.ServiceError) {
-	if handle == "" {
-		return nil, &ErrorResourceServerNotFound
-	}
-
-	resourceServer, err := rs.resourceStore.GetResourceServerByHandle(ctx, handle)
-	if err != nil {
-		if errors.Is(err, errResourceServerNotFound) {
-			rs.logger.Debug(ctx, "Resource server not found for handle",
-				log.String("handle", handle))
-			return nil, &ErrorResourceServerNotFound
-		}
-		rs.logger.Error(ctx, "Failed to get resource server by handle", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 
@@ -503,13 +451,6 @@ func (rs *resourceService) UpdateResourceServer(
 	// Type is immutable and always preserved from the existing record
 	resourceServer.Type = existingResServer.Type
 
-	// Handle is immutable after creation. Preserve existing when omitted; reject any change.
-	if resourceServer.Handle == "" {
-		resourceServer.Handle = existingResServer.Handle
-	} else if resourceServer.Handle != existingResServer.Handle {
-		return nil, &ErrorImmutableHandle
-	}
-
 	// Identifier: preserve existing if not provided; check uniqueness if changed
 	if resourceServer.Identifier == "" {
 		resourceServer.Identifier = existingResServer.Identifier
@@ -558,7 +499,6 @@ func (rs *resourceService) UpdateResourceServer(
 			ID:          id,
 			Name:        resourceServer.Name,
 			Description: resourceServer.Description,
-			Handle:      resourceServer.Handle,
 			Identifier:  resourceServer.Identifier,
 			Type:        resourceServer.Type,
 			OUID:        resourceServer.OUID,
@@ -1488,6 +1428,9 @@ func (rs *resourceService) validateResourceServerCreate(
 	if resourceServer.OUID == "" {
 		return &ErrorInvalidRequestFormat
 	}
+	if resourceServer.Identifier == "" {
+		return &ErrorInvalidRequestFormat
+	}
 	if resourceServer.Type != "" && !resourceServer.Type.IsValid() {
 		return &ErrorInvalidRequestFormat
 	}
@@ -1655,9 +1598,6 @@ func derivePermission(
 ) string {
 	if parentResource != nil {
 		return parentResource.Permission + resourceServer.Delimiter + handle
-	}
-	if resourceServer.Handle != "" {
-		return resourceServer.Handle + resourceServer.Delimiter + handle
 	}
 	return handle
 }

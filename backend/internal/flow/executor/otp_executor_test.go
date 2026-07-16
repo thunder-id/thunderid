@@ -84,7 +84,7 @@ func (suite *OTPExecutorTestSuite) SetupTest() {
 	suite.mockBaseExec.On("ValidatePrerequisites", mock.Anything, mock.Anything, mock.Anything).Return(true).Maybe()
 
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameOTPExecutor, providers.ExecutorTypeAuthentication,
-		defaultInputs, prerequisites).Return(suite.mockBaseExec)
+		defaultInputs, prerequisites, mock.Anything).Return(suite.mockBaseExec)
 
 	suite.executor = newOTPExecutor(suite.mockFlowFactory, suite.mockOTPService,
 		suite.mockAuthnProvider, suite.mockEntityProvider)

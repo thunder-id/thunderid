@@ -21,21 +21,8 @@ import {Typography, type TypographyProps} from '@wso2/oxygen-ui';
 import {useMemo, type CSSProperties, type ReactElement, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import TemplatePlaceholder, {containsTemplateLiteral} from './TemplatePlaceholder';
+import {VARIANT_TO_MUI_MAP} from '@/features/flows/constants/typographyVariantMaps';
 import {TypographyVariants, type Element} from '@/features/flows/models/elements';
-
-/**
- * Maps our typography variant names to Material UI typography variant names.
- */
-const VARIANT_TO_MUI_MAP: Record<string, TypographyProps['variant']> = {
-  [TypographyVariants.H1]: 'h1',
-  [TypographyVariants.H2]: 'h2',
-  [TypographyVariants.H3]: 'h3',
-  [TypographyVariants.H4]: 'h4',
-  [TypographyVariants.H5]: 'h5',
-  [TypographyVariants.H6]: 'h6',
-  [TypographyVariants.Body1]: 'body1',
-  [TypographyVariants.Body2]: 'body2',
-};
 
 /**
  * Configuration interface for Typography element.
