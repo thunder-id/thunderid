@@ -128,7 +128,7 @@ func (e *executor) ValidatePrerequisites(ctx *providers.NodeContext, execResp *p
 			}
 		}
 
-		metadata := BuildGetAttributesMetadata(ctx)
+		metadata := e.BuildGetAttributesMetadata(ctx)
 		providerAuthUser, authAttributes, err := authnProvider.GetUserAttributes(ctx.Context, nil, metadata, authUser)
 		if err != nil {
 			logger.Debug(ctx.Context,
@@ -262,7 +262,7 @@ func buildAppMetadataFromContext(ctx *providers.NodeContext) map[string]interfac
 }
 
 // BuildRuntimeMetadata constructs the runtime metadata for authentication.
-func BuildRuntimeMetadata(ctx *providers.NodeContext) map[string]string {
+func (e *executor) BuildRuntimeMetadata(ctx *providers.NodeContext) map[string]string {
 	runtimeMetadata := map[string]string{
 		"authorization_request_id": ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID],
 		"current_client_id":        ctx.RuntimeData[common.RuntimeKeyClientID],
@@ -280,21 +280,21 @@ func BuildRuntimeMetadata(ctx *providers.NodeContext) map[string]string {
 }
 
 // BuildAuthnMetadata constructs the metadata for authentication.
-func BuildAuthnMetadata(ctx *providers.NodeContext) *providers.AuthnMetadata {
+func (e *executor) BuildAuthnMetadata(ctx *providers.NodeContext) *providers.AuthnMetadata {
 	return &providers.AuthnMetadata{
 		AppMetadata:     buildAppMetadataFromContext(ctx),
-		RuntimeMetadata: BuildRuntimeMetadata(ctx),
+		RuntimeMetadata: e.BuildRuntimeMetadata(ctx),
 	}
 }
 
 // BuildGetAttributesMetadata constructs the metadata for fetching user attributes.
-func BuildGetAttributesMetadata(ctx *providers.NodeContext) *providers.GetAttributesMetadata {
+func (e *executor) BuildGetAttributesMetadata(ctx *providers.NodeContext) *providers.GetAttributesMetadata {
 	metadata := &providers.GetAttributesMetadata{
 		AppMetadata:     buildAppMetadataFromContext(ctx),
-		RuntimeMetadata: BuildRuntimeMetadata(ctx),
+		RuntimeMetadata: e.BuildRuntimeMetadata(ctx),
 	}
 
-	if locale, exists := ctx.RuntimeData["required_locales"]; exists && locale != "" {
+	if locale, exists := ctx.RuntimeData[common.RuntimeKeyRequiredLocales]; exists && locale != "" {
 		metadata.Locale = locale
 	}
 

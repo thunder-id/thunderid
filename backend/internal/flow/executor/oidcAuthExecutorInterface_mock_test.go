@@ -36,6 +36,59 @@ func (_m *oidcAuthExecutorInterfaceMock) EXPECT() *oidcAuthExecutorInterfaceMock
 	return &oidcAuthExecutorInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// BuildAuthnMetadata provides a mock function for the type oidcAuthExecutorInterfaceMock
+func (_mock *oidcAuthExecutorInterfaceMock) BuildAuthnMetadata(ctx *providers.NodeContext) *providers.AuthnMetadata {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BuildAuthnMetadata")
+	}
+
+	var r0 *providers.AuthnMetadata
+	if returnFunc, ok := ret.Get(0).(func(*providers.NodeContext) *providers.AuthnMetadata); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.AuthnMetadata)
+		}
+	}
+	return r0
+}
+
+// oidcAuthExecutorInterfaceMock_BuildAuthnMetadata_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BuildAuthnMetadata'
+type oidcAuthExecutorInterfaceMock_BuildAuthnMetadata_Call struct {
+	*mock.Call
+}
+
+// BuildAuthnMetadata is a helper method to define mock.On call
+//   - ctx *providers.NodeContext
+func (_e *oidcAuthExecutorInterfaceMock_Expecter) BuildAuthnMetadata(ctx interface{}) *oidcAuthExecutorInterfaceMock_BuildAuthnMetadata_Call {
+	return &oidcAuthExecutorInterfaceMock_BuildAuthnMetadata_Call{Call: _e.mock.On("BuildAuthnMetadata", ctx)}
+}
+
+func (_c *oidcAuthExecutorInterfaceMock_BuildAuthnMetadata_Call) Run(run func(ctx *providers.NodeContext)) *oidcAuthExecutorInterfaceMock_BuildAuthnMetadata_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 *providers.NodeContext
+		if args[0] != nil {
+			arg0 = args[0].(*providers.NodeContext)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *oidcAuthExecutorInterfaceMock_BuildAuthnMetadata_Call) Return(authnMetadata *providers.AuthnMetadata) *oidcAuthExecutorInterfaceMock_BuildAuthnMetadata_Call {
+	_c.Call.Return(authnMetadata)
+	return _c
+}
+
+func (_c *oidcAuthExecutorInterfaceMock_BuildAuthnMetadata_Call) RunAndReturn(run func(ctx *providers.NodeContext) *providers.AuthnMetadata) *oidcAuthExecutorInterfaceMock_BuildAuthnMetadata_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // BuildAuthorizeFlow provides a mock function for the type oidcAuthExecutorInterfaceMock
 func (_mock *oidcAuthExecutorInterfaceMock) BuildAuthorizeFlow(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) error {
 	ret := _mock.Called(ctx, execResp)
@@ -89,6 +142,112 @@ func (_c *oidcAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call) Return(err erro
 }
 
 func (_c *oidcAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call) RunAndReturn(run func(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) error) *oidcAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// BuildGetAttributesMetadata provides a mock function for the type oidcAuthExecutorInterfaceMock
+func (_mock *oidcAuthExecutorInterfaceMock) BuildGetAttributesMetadata(ctx *providers.NodeContext) *providers.GetAttributesMetadata {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BuildGetAttributesMetadata")
+	}
+
+	var r0 *providers.GetAttributesMetadata
+	if returnFunc, ok := ret.Get(0).(func(*providers.NodeContext) *providers.GetAttributesMetadata); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.GetAttributesMetadata)
+		}
+	}
+	return r0
+}
+
+// oidcAuthExecutorInterfaceMock_BuildGetAttributesMetadata_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BuildGetAttributesMetadata'
+type oidcAuthExecutorInterfaceMock_BuildGetAttributesMetadata_Call struct {
+	*mock.Call
+}
+
+// BuildGetAttributesMetadata is a helper method to define mock.On call
+//   - ctx *providers.NodeContext
+func (_e *oidcAuthExecutorInterfaceMock_Expecter) BuildGetAttributesMetadata(ctx interface{}) *oidcAuthExecutorInterfaceMock_BuildGetAttributesMetadata_Call {
+	return &oidcAuthExecutorInterfaceMock_BuildGetAttributesMetadata_Call{Call: _e.mock.On("BuildGetAttributesMetadata", ctx)}
+}
+
+func (_c *oidcAuthExecutorInterfaceMock_BuildGetAttributesMetadata_Call) Run(run func(ctx *providers.NodeContext)) *oidcAuthExecutorInterfaceMock_BuildGetAttributesMetadata_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 *providers.NodeContext
+		if args[0] != nil {
+			arg0 = args[0].(*providers.NodeContext)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *oidcAuthExecutorInterfaceMock_BuildGetAttributesMetadata_Call) Return(getAttributesMetadata *providers.GetAttributesMetadata) *oidcAuthExecutorInterfaceMock_BuildGetAttributesMetadata_Call {
+	_c.Call.Return(getAttributesMetadata)
+	return _c
+}
+
+func (_c *oidcAuthExecutorInterfaceMock_BuildGetAttributesMetadata_Call) RunAndReturn(run func(ctx *providers.NodeContext) *providers.GetAttributesMetadata) *oidcAuthExecutorInterfaceMock_BuildGetAttributesMetadata_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// BuildRuntimeMetadata provides a mock function for the type oidcAuthExecutorInterfaceMock
+func (_mock *oidcAuthExecutorInterfaceMock) BuildRuntimeMetadata(ctx *providers.NodeContext) map[string]string {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BuildRuntimeMetadata")
+	}
+
+	var r0 map[string]string
+	if returnFunc, ok := ret.Get(0).(func(*providers.NodeContext) map[string]string); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]string)
+		}
+	}
+	return r0
+}
+
+// oidcAuthExecutorInterfaceMock_BuildRuntimeMetadata_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BuildRuntimeMetadata'
+type oidcAuthExecutorInterfaceMock_BuildRuntimeMetadata_Call struct {
+	*mock.Call
+}
+
+// BuildRuntimeMetadata is a helper method to define mock.On call
+//   - ctx *providers.NodeContext
+func (_e *oidcAuthExecutorInterfaceMock_Expecter) BuildRuntimeMetadata(ctx interface{}) *oidcAuthExecutorInterfaceMock_BuildRuntimeMetadata_Call {
+	return &oidcAuthExecutorInterfaceMock_BuildRuntimeMetadata_Call{Call: _e.mock.On("BuildRuntimeMetadata", ctx)}
+}
+
+func (_c *oidcAuthExecutorInterfaceMock_BuildRuntimeMetadata_Call) Run(run func(ctx *providers.NodeContext)) *oidcAuthExecutorInterfaceMock_BuildRuntimeMetadata_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 *providers.NodeContext
+		if args[0] != nil {
+			arg0 = args[0].(*providers.NodeContext)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *oidcAuthExecutorInterfaceMock_BuildRuntimeMetadata_Call) Return(stringToString map[string]string) *oidcAuthExecutorInterfaceMock_BuildRuntimeMetadata_Call {
+	_c.Call.Return(stringToString)
+	return _c
+}
+
+func (_c *oidcAuthExecutorInterfaceMock_BuildRuntimeMetadata_Call) RunAndReturn(run func(ctx *providers.NodeContext) map[string]string) *oidcAuthExecutorInterfaceMock_BuildRuntimeMetadata_Call {
 	_c.Call.Return(run)
 	return _c
 }

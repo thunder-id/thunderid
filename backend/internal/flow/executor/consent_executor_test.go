@@ -80,6 +80,7 @@ func createMockExecutorWithInputs(t *testing.T) *coremock.ExecutorInterfaceMock 
 	mockExec.On("GetPrerequisites").Return([]providers.Input{
 		{Identifier: userAttributeUserID, Type: providers.InputTypeText, Required: true},
 	}).Maybe()
+	mockExec.On("BuildRuntimeMetadata", mock.Anything).Return(map[string]string{}).Maybe()
 	return mockExec
 }
 

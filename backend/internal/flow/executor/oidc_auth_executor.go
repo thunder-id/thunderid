@@ -157,7 +157,7 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 
 	existingCtxUserAttributes := make(map[string]interface{})
 	if execResp.AuthUser.IsAuthenticated() {
-		metadata := core.BuildGetAttributesMetadata(ctx)
+		metadata := o.BuildGetAttributesMetadata(ctx)
 		authUser, attributes, err := o.authnProvider.GetUserAttributes(ctx.Context, nil, metadata, execResp.AuthUser)
 		if err != nil {
 			logger.Warn(ctx.Context,

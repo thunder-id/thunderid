@@ -224,7 +224,7 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 
 	existingCtxUserAttributes := make(map[string]interface{})
 	if execResp.AuthUser.IsAuthenticated() {
-		metadata := core.BuildGetAttributesMetadata(ctx)
+		metadata := o.BuildGetAttributesMetadata(ctx)
 		authUser, attributes, err := o.authnProvider.GetUserAttributes(ctx.Context, nil, metadata, execResp.AuthUser)
 		if err != nil {
 			logger.Warn(ctx.Context,
@@ -245,7 +245,7 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 		},
 	}
 
-	metadata := core.BuildAuthnMetadata(ctx)
+	metadata := o.BuildAuthnMetadata(ctx)
 	authUser, federatedAttributes, svcErr := o.authnProvider.AuthenticateUser(
 		ctx.Context, nil, credentials, nil, metadata, execResp.AuthUser)
 	if svcErr != nil {

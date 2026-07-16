@@ -136,7 +136,7 @@ func (a *attributeCollector) HasRequiredInputs(ctx *providers.NodeContext,
 		return true
 	}
 
-	metadata := core.BuildGetAttributesMetadata(ctx)
+	metadata := a.BuildGetAttributesMetadata(ctx)
 	// Update the executor response with the required inputs retrieved from authenticated user attributes.
 	authUser, authnUserAttrs, svcErr := a.authnProvider.GetUserAttributes(ctx.Context, nil, metadata, execResp.AuthUser)
 	if svcErr != nil {

@@ -203,7 +203,7 @@ func (b *credentialsAuthExecutor) authenticateUser(ctx *providers.NodeContext,
 	}
 
 	// For authentication flows, call Authenticate directly.
-	metadata := core.BuildAuthnMetadata(ctx)
+	metadata := b.BuildAuthnMetadata(ctx)
 	authUser, authenticatedClaims, svcErr := b.authnProvider.AuthenticateUser(ctx.Context, userIdentifiers,
 		userCredentials, nil, metadata, execResp.AuthUser)
 	execResp.AuthUser = authUser
