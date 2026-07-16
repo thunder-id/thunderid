@@ -166,7 +166,7 @@ func (f *federatedAuthResolverExecutor) Execute(ctx *providers.NodeContext) (*pr
 	credentials := map[string]interface{}{
 		userAttributeSub: sub,
 	}
-	metadata := buildAuthnMetadata(ctx)
+	metadata := core.BuildAuthnMetadata(ctx)
 	authUser, _, err := f.authnProvider.AuthenticateUser(
 		ctx.Context, identifiers, credentials, nil, metadata, execResp.AuthUser)
 	execResp.AuthUser = authUser
