@@ -35,6 +35,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
 // GroupExporterTestSuite contains tests for the groupExporter.
@@ -484,6 +485,42 @@ func (suite *GroupExporterTestSuite) TestValidateGroupWrapper_WithMembers() {
 	err := validateGroupWrapper(grp, nil, nil, nil)
 
 	assert.NoError(suite.T(), err)
+}
+
+func (suite *GroupExporterTestSuite) TestValidateGroupWrapper_OUExists() {
+	grp := &groupDeclarativeResource{ID: "group1", Name: "Admins", OUID: "ou1"}
+
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "ou1").Return(true, nil)
+
+	err := validateGroupWrapper(grp, nil, nil, ouSvcMock)
+
+	assert.NoError(suite.T(), err)
+}
+
+func (suite *GroupExporterTestSuite) TestValidateGroupWrapper_OUNotFound() {
+	grp := &groupDeclarativeResource{ID: "group1", Name: "Admins", OUID: "missing-ou"}
+
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "missing-ou").Return(false, nil)
+
+	err := validateGroupWrapper(grp, nil, nil, ouSvcMock)
+
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "not found for group")
+}
+
+func (suite *GroupExporterTestSuite) TestValidateGroupWrapper_OUCheckServiceError() {
+	grp := &groupDeclarativeResource{ID: "group1", Name: "Admins", OUID: "ou1"}
+
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "ou1").
+		Return(false, &tidcommon.InternalServerError)
+
+	err := validateGroupWrapper(grp, nil, nil, ouSvcMock)
+
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "failed to check existence of organization unit")
 }
 
 // Test validateGroupWrapper - wrong type

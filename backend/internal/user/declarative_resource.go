@@ -31,6 +31,8 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
@@ -184,13 +186,19 @@ func (e *userExporter) GetResourceRules() *declarativeresource.ResourceRules {
 
 // makeUserDeclarativeConfig creates the declarative loader configuration for user resources.
 // This provides user-specific parser and validator callbacks to the entity service.
-// When userService is non-nil, ou_handle is resolved to ou_id during parsing.
-func makeUserDeclarativeConfig(userService UserServiceInterface) entity.DeclarativeLoaderConfig {
+// When userService is non-nil, ou_handle is resolved to ou_id during parsing. ouService and
+// entityTypeService are used to validate references without requiring an authenticated actor,
+// since declarative resources are loaded at startup outside any request context.
+func makeUserDeclarativeConfig(
+	userService UserServiceInterface,
+	ouService oupkg.OrganizationUnitServiceInterface,
+	entityTypeService entitytype.EntityTypeServiceInterface,
+) entity.DeclarativeLoaderConfig {
 	return entity.DeclarativeLoaderConfig{
 		Directory: "users",
 		Category:  providers.EntityCategoryUser,
 		Parser:    makeUserParser(userService),
-		Validator: makeUserValidator(),
+		Validator: makeUserValidator(ouService, entityTypeService),
 	}
 }
 
@@ -223,7 +231,13 @@ func makeUserParser(
 }
 
 // makeUserValidator creates a validator callback for declarative user resources.
-func makeUserValidator() func(e *providers.Entity, svc entity.EntityServiceInterface) error {
+// ouService and entityTypeService validate references directly at the store/existence level,
+// bypassing the authorization checks that entityTypeService.GetEntityTypeByName enforces for
+// authenticated API requests, since declarative loading runs at startup with no actor in context.
+func makeUserValidator(
+	ouService oupkg.OrganizationUnitServiceInterface,
+	entityTypeService entitytype.EntityTypeServiceInterface,
+) func(e *providers.Entity, svc entity.EntityServiceInterface) error {
 	return func(e *providers.Entity, svc entity.EntityServiceInterface) error {
 		if e.ID == "" {
 			return fmt.Errorf("user ID is required")
@@ -236,6 +250,29 @@ func makeUserValidator() func(e *providers.Entity, svc entity.EntityServiceInter
 		}
 		if len(e.Attributes) == 0 {
 			return fmt.Errorf("user attributes are required")
+		}
+
+		if ouService != nil {
+			exists, svcErr := ouService.IsOrganizationUnitExists(context.Background(), e.OUID)
+			if svcErr != nil {
+				return fmt.Errorf("failed to verify organization unit %q for user '%s': %s",
+					e.OUID, e.ID, svcErr.Error.DefaultValue)
+			}
+			if !exists {
+				return fmt.Errorf("organization unit %q not found for user '%s'", e.OUID, e.ID)
+			}
+		}
+
+		if entityTypeService != nil {
+			exists, svcErr := entityTypeService.IsEntityTypeExists(
+				context.Background(), entitytype.TypeCategoryUser, e.Type)
+			if svcErr != nil {
+				return fmt.Errorf("failed to verify user type %q for user '%s': %s",
+					e.Type, e.ID, svcErr.Error.DefaultValue)
+			}
+			if !exists {
+				return fmt.Errorf("user type %q not found for user '%s'", e.Type, e.ID)
+			}
 		}
 
 		var attrs map[string]interface{}

@@ -99,6 +99,12 @@ func (s *InlineStubEntityTypeService) ResolveEntityTypeHandles(
 	return nil
 }
 
+func (s *InlineStubEntityTypeService) IsEntityTypeExists(
+	ctx context.Context, cat TypeCategory, name string,
+) (bool, *tidcommon.ServiceError) {
+	return true, nil
+}
+
 func (s *InlineStubEntityTypeService) ValidateEntity(
 	ctx context.Context, cat TypeCategory, name string, schema json.RawMessage, flag bool,
 ) (bool, *tidcommon.ServiceError) {

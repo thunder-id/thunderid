@@ -33,6 +33,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/yaml.v3"
+
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
 // ResourceServerExporterTestSuite tests the resourceServerExporter.
@@ -905,7 +907,7 @@ func TestParseAndValidateResourceServerWrapper_InvalidYAML(t *testing.T) {
 }
 
 func TestValidateResourceServerWrapper_InvalidType(t *testing.T) {
-	err := validateResourceServerWrapper("invalid", newResourceStoreInterfaceMock(t), nil, nil)
+	err := validateResourceServerWrapper("invalid", newResourceStoreInterfaceMock(t), nil, nil, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid type")
@@ -914,7 +916,7 @@ func TestValidateResourceServerWrapper_InvalidType(t *testing.T) {
 func TestValidateResourceServerWrapper_EmptyName(t *testing.T) {
 	fileStore := newResourceStoreInterfaceMock(t)
 
-	err := validateResourceServerWrapper(&providers.ResourceServer{ID: "rs1"}, fileStore, nil, nil)
+	err := validateResourceServerWrapper(&providers.ResourceServer{ID: "rs1"}, fileStore, nil, nil, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "name cannot be empty")
@@ -923,7 +925,7 @@ func TestValidateResourceServerWrapper_EmptyName(t *testing.T) {
 func TestValidateResourceServerWrapper_EmptyIdentifier(t *testing.T) {
 	fileStore := newResourceStoreInterfaceMock(t)
 
-	err := validateResourceServerWrapper(&providers.ResourceServer{ID: "rs1", Name: "Server"}, fileStore, nil, nil)
+	err := validateResourceServerWrapper(&providers.ResourceServer{ID: "rs1", Name: "Server"}, fileStore, nil, nil, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "identifier cannot be empty")
@@ -935,7 +937,7 @@ func TestValidateResourceServerWrapper_DuplicateInFileStore(t *testing.T) {
 
 	err := validateResourceServerWrapper(
 		&providers.ResourceServer{ID: "rs1", Name: "Server", Identifier: "test-server", OUID: "ou1"},
-		fileStore, nil, nil)
+		fileStore, nil, nil, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "duplicate resource server ID")
@@ -947,7 +949,7 @@ func TestValidateResourceServerWrapper_FileStoreError(t *testing.T) {
 
 	err := validateResourceServerWrapper(
 		&providers.ResourceServer{ID: "rs1", Name: "Server", Identifier: "test-server", OUID: "ou1"},
-		fileStore, nil, nil)
+		fileStore, nil, nil, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to check")
@@ -962,7 +964,7 @@ func TestValidateResourceServerWrapper_DuplicateInDBStore(t *testing.T) {
 
 	err := validateResourceServerWrapper(
 		&providers.ResourceServer{ID: "rs1", Name: "Server", Identifier: "test-server", OUID: "ou1"},
-		fileStore, dbStore, nil)
+		fileStore, dbStore, nil, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "database store")
@@ -977,7 +979,7 @@ func TestValidateResourceServerWrapper_DBStoreError(t *testing.T) {
 
 	err := validateResourceServerWrapper(
 		&providers.ResourceServer{ID: "rs1", Name: "Server", Identifier: "test-server", OUID: "ou1"},
-		fileStore, dbStore, nil)
+		fileStore, dbStore, nil, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "database store")
@@ -990,9 +992,49 @@ func TestValidateResourceServerWrapper_Success(t *testing.T) {
 
 	err := validateResourceServerWrapper(
 		&providers.ResourceServer{ID: "rs1", Name: "Server", Identifier: "test-server", OUID: "ou1"},
-		fileStore, nil, nil)
+		fileStore, nil, nil, nil)
 
 	assert.NoError(t, err)
+}
+
+func TestValidateResourceServerWrapper_OUExists(t *testing.T) {
+	fileStore := newResourceStoreInterfaceMock(t)
+	fileStore.On("GetResourceServer", mock.Anything, "rs1").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouSvcMock.On("IsOrganizationUnitExists", mock.Anything, "ou1").Return(true, nil)
+
+	err := validateResourceServerWrapper(
+		&providers.ResourceServer{ID: "rs1", Name: "Server", Identifier: "test-server", OUID: "ou1"},
+		fileStore, nil, nil, ouSvcMock)
+
+	assert.NoError(t, err)
+}
+
+func TestValidateResourceServerWrapper_OUNotFound(t *testing.T) {
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouSvcMock.On("IsOrganizationUnitExists", mock.Anything, "missing-ou").Return(false, nil)
+
+	err := validateResourceServerWrapper(
+		&providers.ResourceServer{ID: "rs1", Name: "Server", Identifier: "test-server", OUID: "missing-ou"},
+		nil, nil, nil, ouSvcMock)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "organization unit \"missing-ou\" not found")
+}
+
+func TestValidateResourceServerWrapper_OUCheckServiceError(t *testing.T) {
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouSvcMock.On("IsOrganizationUnitExists", mock.Anything, "ou1").
+		Return(false, &tidcommon.InternalServerError)
+
+	err := validateResourceServerWrapper(
+		&providers.ResourceServer{ID: "rs1", Name: "Server", Identifier: "test-server", OUID: "ou1"},
+		nil, nil, nil, ouSvcMock)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to verify organization unit")
 }
 
 func TestLoadDeclarativeResources_CompositeFileStoreTypeError(t *testing.T) {
@@ -1000,7 +1042,7 @@ func TestLoadDeclarativeResources_CompositeFileStoreTypeError(t *testing.T) {
 	dbStore := newResourceStoreInterfaceMock(t)
 	compositeStore := newCompositeResourceStore(fileStore, dbStore)
 
-	err := loadDeclarativeResources(compositeStore, nil)
+	err := loadDeclarativeResources(compositeStore, nil, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to assert fileStore")
@@ -1009,7 +1051,7 @@ func TestLoadDeclarativeResources_CompositeFileStoreTypeError(t *testing.T) {
 func TestLoadDeclarativeResources_InvalidStoreType(t *testing.T) {
 	invalidStore := newResourceStoreInterfaceMock(t)
 
-	err := loadDeclarativeResources(invalidStore, nil)
+	err := loadDeclarativeResources(invalidStore, nil, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid store type")

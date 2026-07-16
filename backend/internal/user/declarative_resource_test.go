@@ -27,13 +27,18 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	entitypkg "github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
 // DeclarativeResourceTestSuite tests user declarative resource parsing and export.
@@ -293,9 +298,108 @@ func (suite *DeclarativeResourceTestSuite) TestMakeUserValidator_Success() {
 	svcMock.On("GetEntity", context.Background(), "user-1").
 		Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound)
 
-	validator := makeUserValidator()
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "ou-1").
+		Return(true, nil)
+	entityTypeSvcMock := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	entityTypeSvcMock.On("IsEntityTypeExists", context.Background(), entitytype.TypeCategoryUser, "person").
+		Return(true, nil)
+
+	validator := makeUserValidator(ouSvcMock, entityTypeSvcMock)
 	err = validator(e, svcMock)
 	suite.NoError(err)
+}
+
+func (suite *DeclarativeResourceTestSuite) TestMakeUserValidator_UnresolvedOrganizationUnit() {
+	attrs, err := json.Marshal(map[string]interface{}{"username": "alice"})
+	suite.Require().NoError(err)
+
+	e := &providers.Entity{
+		ID:         "user-1",
+		Type:       "person",
+		OUID:       "nonexistent-ou",
+		Attributes: attrs,
+	}
+
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "nonexistent-ou").
+		Return(false, nil)
+
+	validator := makeUserValidator(ouSvcMock, nil)
+	err = validator(e, entitymock.NewEntityServiceInterfaceMock(suite.T()))
+	suite.Error(err)
+	suite.Contains(err.Error(), "organization unit \"nonexistent-ou\" not found")
+}
+
+func (suite *DeclarativeResourceTestSuite) TestMakeUserValidator_OUCheckServiceError() {
+	attrs, err := json.Marshal(map[string]interface{}{"username": "alice"})
+	suite.Require().NoError(err)
+
+	e := &providers.Entity{
+		ID:         "user-1",
+		Type:       "person",
+		OUID:       "ou-1",
+		Attributes: attrs,
+	}
+
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "ou-1").
+		Return(false, &tidcommon.InternalServerError)
+
+	validator := makeUserValidator(ouSvcMock, nil)
+	err = validator(e, entitymock.NewEntityServiceInterfaceMock(suite.T()))
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to verify organization unit")
+}
+
+func (suite *DeclarativeResourceTestSuite) TestMakeUserValidator_EntityTypeCheckServiceError() {
+	attrs, err := json.Marshal(map[string]interface{}{"username": "alice"})
+	suite.Require().NoError(err)
+
+	e := &providers.Entity{
+		ID:         "user-1",
+		Type:       "person",
+		OUID:       "ou-1",
+		Attributes: attrs,
+	}
+
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "ou-1").
+		Return(true, nil)
+
+	entityTypeSvcMock := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	entityTypeSvcMock.On("IsEntityTypeExists", context.Background(), entitytype.TypeCategoryUser, "person").
+		Return(false, &tidcommon.InternalServerError)
+
+	validator := makeUserValidator(ouSvcMock, entityTypeSvcMock)
+	err = validator(e, entitymock.NewEntityServiceInterfaceMock(suite.T()))
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to verify user type")
+}
+
+func (suite *DeclarativeResourceTestSuite) TestMakeUserValidator_EntityTypeNotFound() {
+	attrs, err := json.Marshal(map[string]interface{}{"username": "alice"})
+	suite.Require().NoError(err)
+
+	e := &providers.Entity{
+		ID:         "user-1",
+		Type:       "person",
+		OUID:       "ou-1",
+		Attributes: attrs,
+	}
+
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "ou-1").
+		Return(true, nil)
+
+	entityTypeSvcMock := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	entityTypeSvcMock.On("IsEntityTypeExists", context.Background(), entitytype.TypeCategoryUser, "person").
+		Return(false, nil)
+
+	validator := makeUserValidator(ouSvcMock, entityTypeSvcMock)
+	err = validator(e, entitymock.NewEntityServiceInterfaceMock(suite.T()))
+	suite.Error(err)
+	suite.Contains(err.Error(), "user type \"person\" not found")
 }
 
 func (suite *DeclarativeResourceTestSuite) TestMakeUserValidator_DuplicateEntity() {
@@ -313,7 +417,14 @@ func (suite *DeclarativeResourceTestSuite) TestMakeUserValidator_DuplicateEntity
 	svcMock.On("GetEntity", context.Background(), "user-1").
 		Return(&providers.Entity{Category: providers.EntityCategoryUser, ID: "user-1"}, nil)
 
-	validator := makeUserValidator()
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "ou-1").
+		Return(true, nil)
+	entityTypeSvcMock := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	entityTypeSvcMock.On("IsEntityTypeExists", context.Background(), entitytype.TypeCategoryUser, "person").
+		Return(true, nil)
+
+	validator := makeUserValidator(ouSvcMock, entityTypeSvcMock)
 	err = validator(e, svcMock)
 	suite.Error(err)
 	suite.Contains(err.Error(), "duplicate user ID")
@@ -334,7 +445,14 @@ func (suite *DeclarativeResourceTestSuite) TestMakeUserValidator_DBError() {
 	svcMock.On("GetEntity", context.Background(), "user-1").
 		Return((*providers.Entity)(nil), errors.New("db error"))
 
-	validator := makeUserValidator()
+	ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvcMock.On("IsOrganizationUnitExists", context.Background(), "ou-1").
+		Return(true, nil)
+	entityTypeSvcMock := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	entityTypeSvcMock.On("IsEntityTypeExists", context.Background(), entitytype.TypeCategoryUser, "person").
+		Return(true, nil)
+
+	validator := makeUserValidator(ouSvcMock, entityTypeSvcMock)
 	err = validator(e, svcMock)
 	suite.Error(err)
 	suite.Contains(err.Error(), "checking user existence")

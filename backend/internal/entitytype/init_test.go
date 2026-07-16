@@ -1201,6 +1201,8 @@ schema: |
 
 	mux := http.NewServeMux()
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	mockOUService.On("IsOrganizationUnitExists", mock.Anything, "550e8400-e29b-41d4-a716-446655440000").
+		Return(true, nil)
 	mockConsentService := mockConsentServiceWithDisabled(t)
 
 	// Initialize should return an error due to validation failure
