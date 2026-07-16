@@ -19,6 +19,9 @@
 package core
 
 import (
+	"strings"
+
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -124,7 +127,9 @@ func (e *executor) ValidatePrerequisites(ctx *providers.NodeContext, execResp *p
 				authenticatedUserAttributes[userAttributeUserID] = entityRef.EntityID
 			}
 		}
-		providerAuthUser, authAttributes, err := authnProvider.GetUserAttributes(ctx.Context, nil, nil, authUser)
+
+		metadata := BuildGetAttributesMetadata(ctx)
+		providerAuthUser, authAttributes, err := authnProvider.GetUserAttributes(ctx.Context, nil, metadata, authUser)
 		if err != nil {
 			logger.Debug(ctx.Context,
 				"Failed to get attributes for authenticated user, proceeding without user attributes")
@@ -229,4 +234,69 @@ func (e *executor) appendMissingInputs(ctx *providers.NodeContext, execResp *pro
 	missing := collectMissingInputs(ctx, GetPresentedOptionalInputs(ctx.RuntimeData), requiredInputs, logger)
 	execResp.Inputs = append(execResp.Inputs, missing...)
 	return len(missing) > 0
+}
+
+// buildAppMetadataFromContext constructs application metadata from the node context,
+// including application metadata and OAuth client IDs.
+func buildAppMetadataFromContext(ctx *providers.NodeContext) map[string]interface{} {
+	appMetadata := make(map[string]interface{})
+
+	if ctx.Application.Metadata != nil {
+		for key, value := range ctx.Application.Metadata {
+			appMetadata[key] = value
+		}
+	}
+
+	var clientIDs []string
+	for _, inboundConfig := range ctx.Application.InboundAuthConfig {
+		if inboundConfig.OAuthConfig != nil && inboundConfig.OAuthConfig.ClientID != "" {
+			clientIDs = append(clientIDs, inboundConfig.OAuthConfig.ClientID)
+		}
+	}
+
+	if len(clientIDs) > 0 {
+		appMetadata["client_ids"] = clientIDs
+	}
+
+	return appMetadata
+}
+
+// BuildRuntimeMetadata constructs the runtime metadata for authentication.
+func BuildRuntimeMetadata(ctx *providers.NodeContext) map[string]string {
+	runtimeMetadata := map[string]string{
+		"authorization_request_id": ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID],
+		"current_client_id":        ctx.RuntimeData[common.RuntimeKeyClientID],
+	}
+
+	if ctx.RuntimeData != nil {
+		for key, value := range ctx.RuntimeData {
+			// Only the ext_* runtime data keys are passed to the authn provider.
+			if strings.HasPrefix(key, "ext_") {
+				runtimeMetadata[key] = value
+			}
+		}
+	}
+	return runtimeMetadata
+}
+
+// BuildAuthnMetadata constructs the metadata for authentication.
+func BuildAuthnMetadata(ctx *providers.NodeContext) *providers.AuthnMetadata {
+	return &providers.AuthnMetadata{
+		AppMetadata:     buildAppMetadataFromContext(ctx),
+		RuntimeMetadata: BuildRuntimeMetadata(ctx),
+	}
+}
+
+// BuildGetAttributesMetadata constructs the metadata for fetching user attributes.
+func BuildGetAttributesMetadata(ctx *providers.NodeContext) *providers.GetAttributesMetadata {
+	metadata := &providers.GetAttributesMetadata{
+		AppMetadata:     buildAppMetadataFromContext(ctx),
+		RuntimeMetadata: BuildRuntimeMetadata(ctx),
+	}
+
+	if locale, exists := ctx.RuntimeData["required_locales"]; exists && locale != "" {
+		metadata.Locale = locale
+	}
+
+	return metadata
 }

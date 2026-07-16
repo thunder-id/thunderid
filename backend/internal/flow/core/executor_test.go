@@ -655,3 +655,262 @@ func (s *ExecutorTestSuite) TestGetExecutionPolicy() {
 	s.Nil(exec.GetExecutionPolicy(""))
 	s.Nil(exec.GetExecutionPolicy("custom"))
 }
+
+func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithAllFields() {
+	ctx := &providers.NodeContext{
+		Application: providers.Application{
+			Metadata: map[string]interface{}{
+				"tenant_id": "tenant-123",
+				"region":    "us-west",
+			},
+			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+				{
+					Type: providers.OAuthInboundAuthType,
+					OAuthConfig: &providers.OAuthConfigWithSecret{
+						ClientID: "oauth-client-1",
+					},
+				},
+				{
+					Type: providers.OAuthInboundAuthType,
+					OAuthConfig: &providers.OAuthConfigWithSecret{
+						ClientID: "oauth-client-2",
+					},
+				},
+			},
+		},
+	}
+
+	metadata := BuildAuthnMetadata(ctx)
+
+	s.NotNil(metadata)
+	s.NotNil(metadata.AppMetadata)
+	s.Equal("tenant-123", metadata.AppMetadata["tenant_id"])
+	s.Equal("us-west", metadata.AppMetadata["region"])
+
+	clientIDs, ok := metadata.AppMetadata["client_ids"].([]string)
+	s.True(ok)
+	s.Len(clientIDs, 2)
+	s.Contains(clientIDs, "oauth-client-1")
+	s.Contains(clientIDs, "oauth-client-2")
+}
+
+func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithNoMetadata() {
+	ctx := &providers.NodeContext{
+		Application: providers.Application{},
+	}
+
+	metadata := BuildAuthnMetadata(ctx)
+
+	s.NotNil(metadata)
+	s.NotNil(metadata.AppMetadata)
+	s.Len(metadata.AppMetadata, 0)
+	s.NotNil(metadata.RuntimeMetadata)
+	s.Equal("", metadata.RuntimeMetadata["authorization_request_id"])
+	s.Equal("", metadata.RuntimeMetadata["current_client_id"])
+}
+
+func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithOnlyAppMetadata() {
+	ctx := &providers.NodeContext{
+		Application: providers.Application{
+			Metadata: map[string]interface{}{
+				"environment": "production",
+				"version":     "1.0.0",
+			},
+		},
+	}
+
+	metadata := BuildAuthnMetadata(ctx)
+
+	s.NotNil(metadata)
+	s.Equal("production", metadata.AppMetadata["environment"])
+	s.Equal("1.0.0", metadata.AppMetadata["version"])
+	_, hasClientIDs := metadata.AppMetadata["client_ids"]
+	s.False(hasClientIDs)
+}
+
+func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithOnlyClientIDs() {
+	ctx := &providers.NodeContext{
+		Application: providers.Application{
+			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+				{
+					Type: providers.OAuthInboundAuthType,
+					OAuthConfig: &providers.OAuthConfigWithSecret{
+						ClientID: "single-oauth-client",
+					},
+				},
+			},
+		},
+	}
+
+	metadata := BuildAuthnMetadata(ctx)
+
+	s.NotNil(metadata)
+	clientIDs, ok := metadata.AppMetadata["client_ids"].([]string)
+	s.True(ok)
+	s.Len(clientIDs, 1)
+	s.Equal("single-oauth-client", clientIDs[0])
+}
+
+func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithNilOAuthConfig() {
+	ctx := &providers.NodeContext{
+		Application: providers.Application{
+			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+				{
+					Type:        providers.OAuthInboundAuthType,
+					OAuthConfig: nil,
+				},
+			},
+		},
+	}
+
+	metadata := BuildAuthnMetadata(ctx)
+
+	s.NotNil(metadata)
+	_, hasClientIDs := metadata.AppMetadata["client_ids"]
+	s.False(hasClientIDs)
+}
+
+func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithEmptyClientID() {
+	ctx := &providers.NodeContext{
+		Application: providers.Application{
+			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+				{
+					Type: providers.OAuthInboundAuthType,
+					OAuthConfig: &providers.OAuthConfigWithSecret{
+						ClientID: "",
+					},
+				},
+			},
+		},
+	}
+
+	metadata := BuildAuthnMetadata(ctx)
+
+	s.NotNil(metadata)
+	_, hasClientIDs := metadata.AppMetadata["client_ids"]
+	s.False(hasClientIDs)
+}
+
+func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithMixedInboundConfigs() {
+	ctx := &providers.NodeContext{
+		Application: providers.Application{
+			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+				{
+					Type: providers.OAuthInboundAuthType,
+					OAuthConfig: &providers.OAuthConfigWithSecret{
+						ClientID: "valid-client",
+					},
+				},
+				{
+					Type:        providers.OAuthInboundAuthType,
+					OAuthConfig: nil,
+				},
+				{
+					Type: providers.OAuthInboundAuthType,
+					OAuthConfig: &providers.OAuthConfigWithSecret{
+						ClientID: "",
+					},
+				},
+				{
+					Type: providers.OAuthInboundAuthType,
+					OAuthConfig: &providers.OAuthConfigWithSecret{
+						ClientID: "another-valid-client",
+					},
+				},
+			},
+		},
+	}
+
+	metadata := BuildAuthnMetadata(ctx)
+
+	s.NotNil(metadata)
+	clientIDs, ok := metadata.AppMetadata["client_ids"].([]string)
+	s.True(ok)
+	s.Len(clientIDs, 2)
+	s.Contains(clientIDs, "valid-client")
+	s.Contains(clientIDs, "another-valid-client")
+}
+
+func (s *ExecutorTestSuite) TestBuildGetAttributesMetadata_WithLocale() {
+	ctx := &providers.NodeContext{
+		Application: providers.Application{
+			Metadata: map[string]interface{}{
+				"tenant_id": "tenant-123",
+			},
+		},
+		RuntimeData: map[string]string{
+			"required_locales": "en-US",
+		},
+	}
+
+	metadata := BuildGetAttributesMetadata(ctx)
+
+	s.NotNil(metadata)
+	s.Equal("en-US", metadata.Locale)
+	s.Equal("tenant-123", metadata.AppMetadata["tenant_id"])
+}
+
+func (s *ExecutorTestSuite) TestBuildGetAttributesMetadata_WithoutLocale() {
+	ctx := &providers.NodeContext{
+		Application: providers.Application{},
+		RuntimeData: map[string]string{},
+	}
+
+	metadata := BuildGetAttributesMetadata(ctx)
+
+	s.NotNil(metadata)
+	s.Empty(metadata.Locale)
+	s.NotNil(metadata.AppMetadata)
+	s.Len(metadata.AppMetadata, 0)
+	s.NotNil(metadata.RuntimeMetadata)
+	s.Equal("", metadata.RuntimeMetadata["authorization_request_id"])
+	s.Equal("", metadata.RuntimeMetadata["current_client_id"])
+}
+
+func (s *ExecutorTestSuite) TestBuildAuthnMetadata_WithRuntimeMetadata() {
+	ctx := &providers.NodeContext{
+		Application: providers.Application{},
+		RuntimeData: map[string]string{
+			common.RuntimeKeyAuthorizationRequestID: "auth-req-123",
+			common.RuntimeKeyClientID:               "oauth-client-abc",
+			"ext_customKey":                         "custom-value",
+			"non_ext_key":                           "should-be-excluded",
+		},
+	}
+
+	metadata := BuildAuthnMetadata(ctx)
+
+	s.NotContains(metadata.AppMetadata, "current_client_id")
+	s.Equal("oauth-client-abc", metadata.RuntimeMetadata["current_client_id"])
+	s.Equal("auth-req-123", metadata.RuntimeMetadata["authorization_request_id"])
+	s.Equal("custom-value", metadata.RuntimeMetadata["ext_customKey"])
+	s.NotContains(metadata.RuntimeMetadata, "non_ext_key")
+}
+
+func (s *ExecutorTestSuite) TestBuildGetAttributesMetadata_WithRuntimeMetadata() {
+	ctx := &providers.NodeContext{
+		Application: providers.Application{
+			Metadata: map[string]interface{}{
+				"tenant_id": "tenant-123",
+			},
+		},
+		RuntimeData: map[string]string{
+			common.RuntimeKeyAuthorizationRequestID: "auth-req-456",
+			common.RuntimeKeyClientID:               "oauth-client-xyz",
+			"ext_tenantHint":                        "hint-value",
+			"required_locales":                      "en-GB",
+			"internal_key":                          "ignored",
+		},
+	}
+
+	metadata := BuildGetAttributesMetadata(ctx)
+
+	s.Equal("en-GB", metadata.Locale)
+	s.Equal("tenant-123", metadata.AppMetadata["tenant_id"])
+	s.NotContains(metadata.AppMetadata, "current_client_id")
+	s.Equal("oauth-client-xyz", metadata.RuntimeMetadata["current_client_id"])
+	s.Equal("auth-req-456", metadata.RuntimeMetadata["authorization_request_id"])
+	s.Equal("hint-value", metadata.RuntimeMetadata["ext_tenantHint"])
+	s.NotContains(metadata.RuntimeMetadata, "internal_key")
+	s.NotContains(metadata.RuntimeMetadata, "required_locales")
+}
