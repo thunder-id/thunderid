@@ -171,6 +171,10 @@ vi.mock('@/components/edit-user/CredentialsTabPanel', () => ({
   ),
 }));
 
+vi.mock('@thunderid/configure-sessions', () => ({
+  UserSessionsTab: ({userId}: {userId: string}) => <div data-testid="user-sessions-tab" data-user-id={userId} />,
+}));
+
 describe('UserEditPage', () => {
   const mockUserData: User = {
     id: 'user123',
@@ -414,10 +418,10 @@ describe('UserEditPage', () => {
       expect(screen.getByText('Employee')).toBeInTheDocument();
     });
 
-    it('renders the General and Attributes tabs, and the Delete button', () => {
+    it('renders the General, Attributes, and Sessions tabs, and the Delete button', () => {
       render(<UserEditPage />);
 
-      expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['General', 'Attributes']);
+      expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['General', 'Attributes', 'Sessions']);
       expect(screen.getByRole('button', {name: /^delete$/i})).toBeInTheDocument();
     });
 
@@ -657,6 +661,24 @@ describe('UserEditPage', () => {
     });
   });
 
+  describe('Sessions tab', () => {
+    it('renders a Sessions tab', () => {
+      render(<UserEditPage />);
+
+      expect(screen.getByRole('tab', {name: 'Sessions'})).toBeInTheDocument();
+    });
+
+    it('passes the userId to UserSessionsTab when selected', async () => {
+      const user = userEvent.setup();
+      render(<UserEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Sessions'}));
+
+      const panel = screen.getByTestId('user-sessions-tab');
+      expect(panel).toHaveAttribute('data-user-id', 'user123');
+    });
+  });
+
   describe('Credentials tab', () => {
     const schemaWithCredentials: ApiUserType = {
       id: 'employee',
@@ -686,6 +708,7 @@ describe('UserEditPage', () => {
       expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
         'General',
         'Attributes',
+        'Sessions',
         'Credentials',
       ]);
     });

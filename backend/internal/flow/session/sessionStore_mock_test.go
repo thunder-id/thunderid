@@ -6,6 +6,7 @@ package session
 
 import (
 	"context"
+	"time"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -35,6 +36,150 @@ type sessionStoreMock_Expecter struct {
 
 func (_m *sessionStoreMock) EXPECT() *sessionStoreMock_Expecter {
 	return &sessionStoreMock_Expecter{mock: &_m.Mock}
+}
+
+// CountByApp provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) CountByApp(ctx context.Context, appID string, now time.Time) (int, error) {
+	ret := _mock.Called(ctx, appID, now)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CountByApp")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) (int, error)); ok {
+		return returnFunc(ctx, appID, now)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) int); ok {
+		r0 = returnFunc(ctx, appID, now)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Time) error); ok {
+		r1 = returnFunc(ctx, appID, now)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sessionStoreMock_CountByApp_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CountByApp'
+type sessionStoreMock_CountByApp_Call struct {
+	*mock.Call
+}
+
+// CountByApp is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+//   - now time.Time
+func (_e *sessionStoreMock_Expecter) CountByApp(ctx interface{}, appID interface{}, now interface{}) *sessionStoreMock_CountByApp_Call {
+	return &sessionStoreMock_CountByApp_Call{Call: _e.mock.On("CountByApp", ctx, appID, now)}
+}
+
+func (_c *sessionStoreMock_CountByApp_Call) Run(run func(ctx context.Context, appID string, now time.Time)) *sessionStoreMock_CountByApp_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_CountByApp_Call) Return(n int, err error) *sessionStoreMock_CountByApp_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *sessionStoreMock_CountByApp_Call) RunAndReturn(run func(ctx context.Context, appID string, now time.Time) (int, error)) *sessionStoreMock_CountByApp_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// CountBySubject provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) CountBySubject(ctx context.Context, subjectID string, now time.Time) (int, error) {
+	ret := _mock.Called(ctx, subjectID, now)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CountBySubject")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) (int, error)); ok {
+		return returnFunc(ctx, subjectID, now)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) int); ok {
+		r0 = returnFunc(ctx, subjectID, now)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Time) error); ok {
+		r1 = returnFunc(ctx, subjectID, now)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sessionStoreMock_CountBySubject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CountBySubject'
+type sessionStoreMock_CountBySubject_Call struct {
+	*mock.Call
+}
+
+// CountBySubject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - subjectID string
+//   - now time.Time
+func (_e *sessionStoreMock_Expecter) CountBySubject(ctx interface{}, subjectID interface{}, now interface{}) *sessionStoreMock_CountBySubject_Call {
+	return &sessionStoreMock_CountBySubject_Call{Call: _e.mock.On("CountBySubject", ctx, subjectID, now)}
+}
+
+func (_c *sessionStoreMock_CountBySubject_Call) Run(run func(ctx context.Context, subjectID string, now time.Time)) *sessionStoreMock_CountBySubject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_CountBySubject_Call) Return(n int, err error) *sessionStoreMock_CountBySubject_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *sessionStoreMock_CountBySubject_Call) RunAndReturn(run func(ctx context.Context, subjectID string, now time.Time) (int, error)) *sessionStoreMock_CountBySubject_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // Create provides a mock function for the type sessionStoreMock
@@ -532,6 +677,92 @@ func (_c *sessionStoreMock_GetByHandle_Call) RunAndReturn(run func(ctx context.C
 	return _c
 }
 
+// ListByApp provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) ListByApp(ctx context.Context, appID string, now time.Time, limit int, offset int) ([]Session, error) {
+	ret := _mock.Called(ctx, appID, now, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListByApp")
+	}
+
+	var r0 []Session
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, int, int) ([]Session, error)); ok {
+		return returnFunc(ctx, appID, now, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, int, int) []Session); ok {
+		r0 = returnFunc(ctx, appID, now, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]Session)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Time, int, int) error); ok {
+		r1 = returnFunc(ctx, appID, now, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sessionStoreMock_ListByApp_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListByApp'
+type sessionStoreMock_ListByApp_Call struct {
+	*mock.Call
+}
+
+// ListByApp is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+//   - now time.Time
+//   - limit int
+//   - offset int
+func (_e *sessionStoreMock_Expecter) ListByApp(ctx interface{}, appID interface{}, now interface{}, limit interface{}, offset interface{}) *sessionStoreMock_ListByApp_Call {
+	return &sessionStoreMock_ListByApp_Call{Call: _e.mock.On("ListByApp", ctx, appID, now, limit, offset)}
+}
+
+func (_c *sessionStoreMock_ListByApp_Call) Run(run func(ctx context.Context, appID string, now time.Time, limit int, offset int)) *sessionStoreMock_ListByApp_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_ListByApp_Call) Return(sessions []Session, err error) *sessionStoreMock_ListByApp_Call {
+	_c.Call.Return(sessions, err)
+	return _c
+}
+
+func (_c *sessionStoreMock_ListByApp_Call) RunAndReturn(run func(ctx context.Context, appID string, now time.Time, limit int, offset int) ([]Session, error)) *sessionStoreMock_ListByApp_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListBySessionID provides a mock function for the type sessionStoreMock
 func (_mock *sessionStoreMock) ListBySessionID(ctx context.Context, sessionID string) ([]Participant, error) {
 	ret := _mock.Called(ctx, sessionID)
@@ -596,6 +827,92 @@ func (_c *sessionStoreMock_ListBySessionID_Call) Return(participants []Participa
 }
 
 func (_c *sessionStoreMock_ListBySessionID_Call) RunAndReturn(run func(ctx context.Context, sessionID string) ([]Participant, error)) *sessionStoreMock_ListBySessionID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListBySubject provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) ListBySubject(ctx context.Context, subjectID string, now time.Time, limit int, offset int) ([]Session, error) {
+	ret := _mock.Called(ctx, subjectID, now, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListBySubject")
+	}
+
+	var r0 []Session
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, int, int) ([]Session, error)); ok {
+		return returnFunc(ctx, subjectID, now, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, int, int) []Session); ok {
+		r0 = returnFunc(ctx, subjectID, now, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]Session)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Time, int, int) error); ok {
+		r1 = returnFunc(ctx, subjectID, now, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sessionStoreMock_ListBySubject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListBySubject'
+type sessionStoreMock_ListBySubject_Call struct {
+	*mock.Call
+}
+
+// ListBySubject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - subjectID string
+//   - now time.Time
+//   - limit int
+//   - offset int
+func (_e *sessionStoreMock_Expecter) ListBySubject(ctx interface{}, subjectID interface{}, now interface{}, limit interface{}, offset interface{}) *sessionStoreMock_ListBySubject_Call {
+	return &sessionStoreMock_ListBySubject_Call{Call: _e.mock.On("ListBySubject", ctx, subjectID, now, limit, offset)}
+}
+
+func (_c *sessionStoreMock_ListBySubject_Call) Run(run func(ctx context.Context, subjectID string, now time.Time, limit int, offset int)) *sessionStoreMock_ListBySubject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_ListBySubject_Call) Return(sessions []Session, err error) *sessionStoreMock_ListBySubject_Call {
+	_c.Call.Return(sessions, err)
+	return _c
+}
+
+func (_c *sessionStoreMock_ListBySubject_Call) RunAndReturn(run func(ctx context.Context, subjectID string, now time.Time, limit int, offset int) ([]Session, error)) *sessionStoreMock_ListBySubject_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -55,6 +55,7 @@ vi.mock('react-i18next', () => ({
         'applications:edit.page.tabs.customization': 'Customization',
         'applications:edit.page.tabs.token': 'Token',
         'applications:edit.page.tabs.advanced': 'Advanced Settings',
+        'applications:edit.page.tabs.sessions': 'Sessions',
         'applications:edit.page.unsavedChanges': 'You have unsaved changes',
         'applications:edit.page.reset': 'Reset',
         'applications:edit.page.save': 'Save Changes',
@@ -121,6 +122,12 @@ vi.mock('../../components/edit-application/advanced-settings/EditAdvancedSetting
 
 vi.mock('../../components/edit-application/integration-guides/IntegrationGuides', () => ({
   default: vi.fn(() => <div data-testid="integration-guides">Integration Guides</div>),
+}));
+
+vi.mock('@thunderid/configure-sessions', () => ({
+  ApplicationSessionsTab: ({appId}: {appId: string}) => (
+    <div data-testid="application-sessions-tab" data-app-id={appId} />
+  ),
 }));
 
 vi.mock('../../components/edit-application/mcp/McpConnectTab', () => ({
@@ -401,6 +408,7 @@ describe('ApplicationEditPage', () => {
       expect(screen.getByRole('tab', {name: /customization/i})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: /token/i})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: /advanced/i})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: /sessions/i})).toBeInTheDocument();
     });
 
     it('should render overview tab when integration guides are available', () => {
@@ -475,6 +483,20 @@ describe('ApplicationEditPage', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('edit-advanced-settings')).toBeInTheDocument();
+      });
+    });
+
+    it('should switch to sessions tab when clicked', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      const sessionsTab = screen.getByRole('tab', {name: /sessions/i});
+      await user.click(sessionsTab);
+
+      await waitFor(() => {
+        const sessionsTabPanel = screen.getByTestId('application-sessions-tab');
+        expect(sessionsTabPanel).toBeInTheDocument();
+        expect(sessionsTabPanel).toHaveAttribute('data-app-id', 'test-app-id');
       });
     });
 
@@ -1421,6 +1443,20 @@ describe('ApplicationEditPage', () => {
         expect(screen.getByTestId('edit-flows-settings')).toBeInTheDocument();
       });
     });
+
+    it('should switch to sessions tab when integration guides exist', async () => {
+      const user = userEvent.setup();
+      mockGetIntegrationGuidesForTemplate.mockReturnValue(['react-vite']);
+
+      renderComponent();
+
+      const sessionsTab = screen.getByRole('tab', {name: /sessions/i});
+      await user.click(sessionsTab);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('application-sessions-tab')).toBeInTheDocument();
+      });
+    });
   });
 
   describe('Description Escape with Edited Value', () => {
@@ -1545,6 +1581,27 @@ describe('ApplicationEditPage', () => {
       expect(screen.getByRole('tab', {name: 'Customization'})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: 'Token'})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: 'Advanced Settings'})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Sessions'})).toBeInTheDocument();
+    });
+
+    it('renders the Sessions tab panel with the application id when clicked', async () => {
+      mockUseGetApplication.mockReturnValue({
+        data: mockMcpApplication,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      const user = userEvent.setup();
+      renderComponent();
+
+      await user.click(screen.getByRole('tab', {name: 'Sessions'}));
+
+      await waitFor(() => {
+        const sessionsTabPanel = screen.getByTestId('application-sessions-tab');
+        expect(sessionsTabPanel).toBeInTheDocument();
+        expect(sessionsTabPanel).toHaveAttribute('data-app-id', 'test-mcp-app-id');
+      });
     });
 
     it('renders the General tab panel by default', () => {
@@ -1575,6 +1632,7 @@ describe('ApplicationEditPage', () => {
       expect(screen.getByRole('tab', {name: 'Advanced Settings'})).toBeInTheDocument();
       expect(screen.queryByRole('tab', {name: 'Flows'})).not.toBeInTheDocument();
       expect(screen.queryByRole('tab', {name: 'Customization'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', {name: 'Sessions'})).not.toBeInTheDocument();
     });
 
     it('passes allowedGrantTypes to EditAdvancedSettings for the mcp-client Advanced tab', async () => {

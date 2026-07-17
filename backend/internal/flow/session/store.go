@@ -295,6 +295,81 @@ func (st *store) DeleteBySessionID(ctx context.Context, sessionID string) error 
 	})
 }
 
+// ListBySubject returns the subject's live sessions, most recently active first. Liveness
+// (ACTIVE state, both deadlines) is filtered in SQL because expired rows are retained.
+func (st *store) ListBySubject(ctx context.Context, subjectID string, now time.Time,
+	limit, offset int) ([]Session, error) {
+	return st.listSessions(ctx, queryListSessionsBySubject, subjectID, now, limit, offset)
+}
+
+// CountBySubject counts the subject's live sessions.
+func (st *store) CountBySubject(ctx context.Context, subjectID string, now time.Time) (int, error) {
+	return st.countSessions(ctx, queryCountSessionsBySubject, subjectID, now)
+}
+
+// ListByApp returns live sessions the application has joined, most recently active first.
+func (st *store) ListByApp(ctx context.Context, appID string, now time.Time,
+	limit, offset int) ([]Session, error) {
+	return st.listSessions(ctx, queryListSessionsByApp, appID, now, limit, offset)
+}
+
+// CountByApp counts live sessions the application has joined.
+func (st *store) CountByApp(ctx context.Context, appID string, now time.Time) (int, error) {
+	return st.countSessions(ctx, queryCountSessionsByApp, appID, now)
+}
+
+// listSessions runs a liveness-filtered, paginated session list query keyed by one leading
+// argument (subject or application id).
+func (st *store) listSessions(ctx context.Context, query model.DBQuery, key string, now time.Time,
+	limit, offset int) ([]Session, error) {
+	var result []Session
+
+	err := withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		results, queryErr := dbClient.QueryContext(ctx, query, key, now, now, st.deploymentID, limit, offset)
+		if queryErr != nil {
+			return fmt.Errorf("failed to execute query: %w", queryErr)
+		}
+		for _, row := range results {
+			s, buildErr := buildSessionFromRow(row)
+			if buildErr != nil {
+				return buildErr
+			}
+			result = append(result, *s)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// countSessions runs a liveness-filtered session count query keyed by one leading argument.
+func (st *store) countSessions(ctx context.Context, query model.DBQuery, key string,
+	now time.Time) (int, error) {
+	total := 0
+
+	err := withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		results, queryErr := dbClient.QueryContext(ctx, query, key, now, now, st.deploymentID)
+		if queryErr != nil {
+			return fmt.Errorf("failed to execute query: %w", queryErr)
+		}
+		if len(results) != 1 {
+			return fmt.Errorf("unexpected number of results: %d", len(results))
+		}
+		parsed, parseErr := parseInt(results[0]["total"], "total")
+		if parseErr != nil {
+			return parseErr
+		}
+		total = parsed
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
 // buildParticipantFromRow maps a database result row into a Participant.
 func buildParticipantFromRow(row map[string]interface{}) (Participant, error) {
 	sessionID, err := parseString(row["session_id"], "session_id")

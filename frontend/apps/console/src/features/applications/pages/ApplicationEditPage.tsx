@@ -17,6 +17,7 @@
  */
 
 import {PageLoadingAnimation, ResourceAvatar, UnsavedChangesBar} from '@thunderid/components';
+import {ApplicationSessionsTab} from '@thunderid/configure-sessions';
 import {useLogger} from '@thunderid/logger/react';
 import {
   Box,
@@ -282,6 +283,12 @@ export default function ApplicationEditPage() {
               />
             ),
           },
+          {
+            key: 'sessions',
+            label: t('applications:edit.page.tabs.sessions', 'Sessions'),
+            panel: <ApplicationSessionsTab appId={application.id} />,
+            hidden: isMcpM2mOnly,
+          },
         ] satisfies McpTabConfig[]
       ).filter((tab) => !tab.hidden)
     : [];
@@ -502,6 +509,12 @@ export default function ApplicationEditPage() {
               aria-controls={`edit-tabpanel-${hasIntegrationGuides ? 5 : 4}`}
               sx={{textTransform: 'none'}}
             />
+            <Tab
+              label={t('applications:edit.page.tabs.sessions', 'Sessions')}
+              id={`edit-tab-${hasIntegrationGuides ? 6 : 5}`}
+              aria-controls={`edit-tabpanel-${hasIntegrationGuides ? 6 : 5}`}
+              sx={{textTransform: 'none'}}
+            />
           </Tabs>
 
           {/* Tab Panels */}
@@ -563,6 +576,11 @@ export default function ApplicationEditPage() {
                 showAttestation={supportsAttestation}
                 onValidationChange={setAdvancedSettingsInvalid}
               />
+            </TabPanel>
+
+            {/* Sessions Tab */}
+            <TabPanel value={activeTab} index={hasIntegrationGuides ? 6 : 5}>
+              <ApplicationSessionsTab appId={application.id} />
             </TabPanel>
           </>
         </>

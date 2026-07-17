@@ -64,6 +64,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
+	sessionmgt "github.com/thunder-id/thunderid/internal/flow/session/mgt"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
@@ -365,6 +366,13 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		runtimeCryptoSvc)
 	fatalOnError(ctx, logger, err, "Failed to initialize ApplicationService")
 	exporters = append(exporters, applicationExporter)
+
+	// Wire the read-only session management endpoints. Registered here (after the user and
+	// application services exist) so the listing can resolve subject and application display names
+	// server-side.
+	sessionmgt.Initialize(mux,
+		flowsession.NewManagementService(dbprovider.GetDBProvider(), runtime.Config.Server.Identifier),
+		newSessionNameResolver(userService, applicationService))
 
 	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService,
 		roleService)

@@ -1,17 +1,17 @@
 {
   "private": true,
-  "name": "@thunderid/configure-users",
+  "name": "@thunderid/configure-sessions",
   "version": "0.0.0",
-  "description": "Users feature for ⚡️ ThunderID applications",
+  "description": "Sessions feature for ⚡️ ThunderID applications",
   "keywords": [
     "thunderid",
     "admin",
-    "users",
+    "sessions",
     "react",
     "feature",
     "wso2"
   ],
-  "homepage": "https://github.com/thunder-id/thunderid/tree/main/frontend/packages/configure-users#readme",
+  "homepage": "https://github.com/thunder-id/thunderid/tree/main/frontend/packages/configure-sessions#readme",
   "bugs": {
     "url": "https://github.com/thunder-id/thunderid/issues"
   },
@@ -37,7 +37,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/thunder-id/thunderid",
-    "directory": "frontend/packages/configure-users"
+    "directory": "frontend/packages/configure-sessions"
   },
   "scripts": {
     "build": "pnpm clean:dist && rolldown -c rolldown.config.js && tsc -p tsconfig.lib.json --emitDeclarationOnly --outDir dist",
@@ -57,12 +57,8 @@
     "@testing-library/user-event": "catalog:",
     "@thunderid/components": "workspace:^",
     "@thunderid/contexts": "workspace:^",
-    "@thunderid/design": "workspace:^",
     "@thunderid/eslint-plugin": "workspace:^",
-    "@thunderid/configure-organization-units": "workspace:^",
-    "@thunderid/configure-sessions": "workspace:^",
     "@thunderid/hooks": "workspace:^",
-    "@thunderid/i18n": "workspace:^",
     "@thunderid/logger": "workspace:^",
     "@thunderid/prettier-config": "workspace:^",
     "@thunderid/test-utils": "workspace:^",
@@ -86,22 +82,16 @@
   "dependencies": {},
   "peerDependencies": {
     "@thunderid/react": "catalog:",
-    "@hookform/resolvers": "catalog:",
     "@wso2/oxygen-ui": "catalog:",
     "@wso2/oxygen-ui-icons-react": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@thunderid/components": "workspace:^",
-    "@thunderid/configure-sessions": "workspace:^",
     "@thunderid/contexts": "workspace:^",
-    "@thunderid/design": "workspace:^",
     "@thunderid/hooks": "workspace:^",
-    "@thunderid/i18n": "workspace:^",
     "@thunderid/logger": "workspace:^",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-hook-form": "catalog:",
     "react-i18next": "catalog:",
-    "react-router": "catalog:",
-    "zod": "catalog:"
+    "react-router": "catalog:"
   }
 }

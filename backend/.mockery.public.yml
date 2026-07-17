@@ -394,6 +394,7 @@ packages:
       Service:
       Resolver:
       HandleTransport:
+      ManagementService:
 
   github.com/thunder-id/thunderid/internal/flow/mgt:
     config:

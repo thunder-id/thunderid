@@ -161,6 +161,7 @@ type SystemPermissions struct {
 	UserTypeView  string
 	AgentType     string
 	AgentTypeView string
+	SessionView   string
 }
 
 // sysPerms holds the active system permissions, initialized by InitSystemPermissions.
@@ -194,6 +195,7 @@ func InitSystemPermissions(handle string) {
 		UserTypeView:  buildPermission(handle, "system", "usertype", "view"),
 		AgentType:     buildPermission(handle, "system", "agenttype"),
 		AgentTypeView: buildPermission(handle, "system", "agenttype", "view"),
+		SessionView:   buildPermission(handle, "system", "session", "view"),
 	}
 	sysPerms = p
 
@@ -245,6 +247,7 @@ func InitSystemPermissions(handle string) {
 		{"POST /users/me/update-credentials", ""},
 		{"GET /register/passkey/**", ""},
 		{"POST /register/passkey/**", ""},
+		{"GET /sessions/me", ""},
 
 		// Organization unit APIs — exact named paths before wildcards.
 		{"GET /organization-units/tree", p.OUView},
@@ -262,6 +265,9 @@ func InitSystemPermissions(handle string) {
 		{"GET /users/**", p.UserView},
 		{"PUT /users/**", p.User},
 		{"DELETE /users/**", p.User},
+
+		// Session management APIs.
+		{"GET /sessions", p.SessionView},
 
 		// Group APIs.
 		{"GET /groups", p.GroupView},

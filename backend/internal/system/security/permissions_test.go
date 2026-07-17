@@ -431,6 +431,16 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			method: http.MethodDelete, path: "/organization-units/tree", wantPerm: p.OU,
 		},
 
+		// ---- Session management ----
+		{
+			name:   "GET /sessions/me self-service",
+			method: http.MethodGet, path: "/sessions/me", wantPerm: "",
+		},
+		{
+			name:   "GET /sessions requires session view",
+			method: http.MethodGet, path: "/sessions", wantPerm: p.SessionView,
+		},
+
 		// ---- Unmapped paths fall back to Root ----
 		{
 			name:   "Unmapped path falls back to system",
