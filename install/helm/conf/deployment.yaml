@@ -265,7 +265,7 @@ passkey:
   {{- end }}
 
 openid4vp:
-  client_id: {{ .Values.configuration.openid4vp.clientId | quote }}
+  client_id_scheme: {{ .Values.configuration.openid4vp.clientIdScheme | quote }}
   signing_key_id: {{ .Values.configuration.openid4vp.signingKeyId | quote }}
   ephemeral_key_id: {{ .Values.configuration.openid4vp.ephemeralKeyId | quote }}
   response_enc_values:

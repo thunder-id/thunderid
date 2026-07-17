@@ -246,6 +246,10 @@ configuration:
       - id: "default-key"
         certFile: "config/certs/signing.cert"
         keyFile: "config/certs/signing.key"
+      # Certificate-backed ECDSA key used by the OpenID4VP and OpenID4VCI engines.
+      - id: "ecdsa-key"
+        certFile: "config/certs/ecdsa-signing.cert"
+        keyFile: "config/certs/ecdsa-signing.key"
 
   # Database configuration
   database:
@@ -425,12 +429,13 @@ configuration:
       - "https://localhost:8090"
 
   # OpenID4VP (verifiable presentation / verifier) configuration.
-  # Leave signingKeyId empty to keep the verifier signing engine disabled.
   openid4vp:
-    # Verifier client_id, scheme-prefixed (e.g. "x509_san_dns:<host>" or "x509_hash:<hash>").
-    clientId: "x509_san_dns:localhost"
-    # Key ID (from crypto.keys) used to sign the request object. Empty disables OpenID4VP.
-    signingKeyId: ""
+    # Scheme used to derive the verifier client_id from the signing certificate.
+    # One of: "x509_hash", "x509_san_dns", "redirect_uri".
+    clientIdScheme: "x509_san_dns"
+    # Key ID (from crypto.keys) used to sign the request object. The key must be
+    # certificate-backed. Leaving this empty falls back to the built-in default.
+    signingKeyId: "ecdsa-key"
     # Ephemeral key ID (from crypto.keys) used for response encryption.
     ephemeralKeyId: "vp-enc"
     # Supported response encryption (JWE enc) values.
@@ -453,10 +458,10 @@ configuration:
     trustedAnchors: []
 
   # OpenID4VCI (verifiable credential issuance / issuer) configuration.
-  # Leave signingKeyId empty to keep the issuer engine disabled.
   openid4vci:
-    # Key ID (from crypto.keys) used to sign issued SD-JWT credentials. Empty disables OpenID4VCI.
-    signingKeyId: ""
+    # Key ID (from crypto.keys) used to sign issued SD-JWT credentials.
+    # Leaving this empty falls back to the built-in default.
+    signingKeyId: "ecdsa-key"
     nonceTtlSeconds: 300
     proofMaxAgeSeconds: 300
     credentialValiditySeconds: 2592000
