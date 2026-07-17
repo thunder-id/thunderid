@@ -36,6 +36,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
@@ -44,7 +45,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
+	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
@@ -59,6 +62,7 @@ const (
 	testClientID         = "client123"
 	testUserID           = "user123"
 	testScopeRead        = "read"
+	testLocalEmail       = "local@example.com"
 	// testTokenExchangeDefaultRSID / testTokenExchangeDefaultRSAudience model the
 	// deployment-configured default resource server used when a request carries no explicit
 	// resource parameter.
@@ -261,9 +265,375 @@ func (suite *TokenExchangeGrantHandlerTestSuite) setupSuccessfulJWTMockWithScope
 // TestNewTokenExchangeGrantHandler tests the constructor
 func (suite *TokenExchangeGrantHandlerTestSuite) TestNewTokenExchangeGrantHandler() {
 	handler := newTokenExchangeGrantHandler(suite.mockTokenBuilder, suite.mockTokenValidator,
-		suite.mockAuthzService, suite.mockActorProvider, suite.mockResourceService, suite.mockServerConfigSvc)
+		suite.mockAuthzService, suite.mockActorProvider, suite.mockResourceService, suite.mockServerConfigSvc,
+		nil, nil, oauthconfig.Config{})
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
+}
+
+// newAccountLinkingHandler builds a token exchange handler wired with the given authn provider and IDP
+// service, reusing the suite's mocks. Its configured issuer is the suite's server issuer so an external
+// subject token (testCustomIssuer) is treated as federated.
+func (suite *TokenExchangeGrantHandlerTestSuite) newAccountLinkingHandler(
+	authnProvider providers.AuthnProviderManager, idpService providers.IDPProvider) *tokenExchangeGrantHandler {
+	return &tokenExchangeGrantHandler{
+		tokenBuilder:        suite.mockTokenBuilder,
+		tokenValidator:      suite.mockTokenValidator,
+		authzService:        suite.mockAuthzService,
+		actorProvider:       suite.mockActorProvider,
+		resourceService:     suite.mockResourceService,
+		serverConfigService: suite.mockServerConfigSvc,
+		authnProvider:       authnProvider,
+		idpService:          idpService,
+		cfg:                 oauthconfig.Config{JWT: engineconfig.JWTConfig{Issuer: "https://auth.example.com"}},
+	}
+}
+
+// accountLinkingIDPService returns an IDP service mock resolving the issuer to an IDP configured to
+// link accounts by the "email" attribute (external name equal to its local name, no attribute mapping
+// configured).
+func (suite *TokenExchangeGrantHandlerTestSuite) accountLinkingIDPService() *idpmock.IDPServiceInterfaceMock {
+	m := idpmock.NewIDPServiceInterfaceMock(suite.T())
+	m.On("GetIdentityProvidersByProperty", mock.Anything, mock.Anything, mock.Anything).
+		Return([]providers.IDPDTO{{
+			AttributeConfiguration: &providers.AttributeConfiguration{
+				AccountLinking: &providers.AccountLinking{Attributes: []string{"email"}},
+			},
+		}}, nil)
+	return m
+}
+
+// remappedAccountLinkingIDPService returns an IDP service mock resolving the issuer to an IDP that
+// links accounts by the external attribute "mail", mapped to the local attribute "emailAddress" under
+// the default user type.
+func (suite *TokenExchangeGrantHandlerTestSuite) remappedAccountLinkingIDPService() *idpmock.IDPServiceInterfaceMock {
+	m := idpmock.NewIDPServiceInterfaceMock(suite.T())
+	m.On("GetIdentityProvidersByProperty", mock.Anything, mock.Anything, mock.Anything).
+		Return([]providers.IDPDTO{{
+			AttributeConfiguration: &providers.AttributeConfiguration{
+				UserTypeResolution: &providers.UserTypeResolution{Default: "Person"},
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{
+					UserType: "Person",
+					Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "mail", LocalAttribute: "emailAddress"},
+					},
+				}},
+				AccountLinking: &providers.AccountLinking{Attributes: []string{"mail"}},
+			},
+		}}, nil)
+	return m
+}
+
+// noLinkingIDPService returns an IDP service mock resolving the issuer to an IDP with no account-linking
+// configured.
+func (suite *TokenExchangeGrantHandlerTestSuite) noLinkingIDPService() *idpmock.IDPServiceInterfaceMock {
+	m := idpmock.NewIDPServiceInterfaceMock(suite.T())
+	m.On("GetIdentityProvidersByProperty", mock.Anything, mock.Anything, mock.Anything).
+		Return([]providers.IDPDTO{{}}, nil)
+	return m
+}
+
+// federatedSubjectClaims returns validated subject-token claims for an externally-issued (federated)
+// subject token, as the validator would produce.
+func federatedSubjectClaims(userAttributes map[string]interface{}) *tokenservice.SubjectTokenClaims {
+	return &tokenservice.SubjectTokenClaims{
+		Sub:            "fed-sub",
+		Iss:            testCustomIssuer,
+		Scopes:         []string{testScopeRead},
+		UserAttributes: userAttributes,
+	}
+}
+
+// TestHandleGrant_AccountLinking_ResolvesByLinkedAttribute verifies that a federated subject token whose
+// issuing IDP links accounts by a configured attribute yields a token subject equal to the resolved
+// local user ID, with the local user's stored attributes merged over the federated claims (local
+// attributes win).
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AccountLinking_ResolvesByLinkedAttribute() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{"sub": "fed-sub"})
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(federatedSubjectClaims(map[string]interface{}{"email": "fed@example.com", "name": "Fed Name"}), nil)
+
+	authnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
+	authnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{EntityID: testUserID}, nil)
+	authnProvider.On("GetUserAttributes", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.AttributesResponse{
+			Attributes: map[string]*providers.AttributeResponse{
+				"email":        {Value: testLocalEmail},
+				"organization": {Value: "Acme"},
+			},
+		}, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.Subject == testUserID &&
+				ctx.SubjectAttributes["email"] == testLocalEmail &&
+				ctx.SubjectAttributes["name"] == "Fed Name" &&
+				ctx.SubjectAttributes["organization"] == "Acme"
+		})).Return(&model.TokenDTO{
+		Token:     testTokenExchangeJWT,
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  now,
+		ExpiresIn: 7200,
+		Scopes:    []string{testScopeRead},
+		ClientID:  testClientID,
+	}, nil)
+
+	handler := suite.newAccountLinkingHandler(authnProvider, suite.accountLinkingIDPService())
+	result, errResp := handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), testTokenExchangeJWT, result.AccessToken.Token)
+}
+
+// TestHandleGrant_AccountLinking_ResolvesByRemappedAttribute verifies that when the account-linking
+// attribute's external name differs from its local name (per the IDP's attribute mappings), the filter
+// is built from the translated local name and its value in the already-mapped subject-token attributes.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AccountLinking_ResolvesByRemappedAttribute() {
+	now := time.Now().Unix()
+	suite.oauthApp.Token.AccessToken.UserConfig.Attributes = []string{"emailAddress"}
+
+	subjectToken := suite.createTestJWT(map[string]interface{}{"sub": "fed-sub"})
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+
+	// The validator would have mapped the external "mail" claim to the local "emailAddress" attribute.
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(federatedSubjectClaims(map[string]interface{}{"emailAddress": "fed@example.com"}), nil)
+
+	authnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
+	authnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{EntityID: testUserID}, nil)
+	authnProvider.On("GetUserAttributes", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.AttributesResponse{
+			Attributes: map[string]*providers.AttributeResponse{
+				"emailAddress": {Value: testLocalEmail},
+			},
+		}, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.Subject == testUserID && ctx.SubjectAttributes["emailAddress"] == testLocalEmail
+		})).Return(&model.TokenDTO{
+		Token:     testTokenExchangeJWT,
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  now,
+		ExpiresIn: 7200,
+		Scopes:    []string{testScopeRead},
+		ClientID:  testClientID,
+	}, nil)
+
+	handler := suite.newAccountLinkingHandler(authnProvider, suite.remappedAccountLinkingIDPService())
+	result, errResp := handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), testTokenExchangeJWT, result.AccessToken.Token)
+}
+
+// TestHandleGrant_AccountLinking_StripsReservedLocalClaims verifies that reserved/standard claim names
+// present in the linked local user's stored attributes never leak into the issued token, even when the
+// app's attribute allow-list would otherwise permit them.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AccountLinking_StripsReservedLocalClaims() {
+	now := time.Now().Unix()
+	// Allow-list a reserved claim name so this test isolates the ExtractUserAttributes filtering from
+	// the allow-list filtering.
+	suite.oauthApp.Token.AccessToken.UserConfig.Attributes = []string{"email", "scope"}
+
+	subjectToken := suite.createTestJWT(map[string]interface{}{"sub": "fed-sub"})
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(federatedSubjectClaims(map[string]interface{}{"email": "fed@example.com"}), nil)
+
+	authnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
+	authnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{EntityID: testUserID}, nil)
+	authnProvider.On("GetUserAttributes", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.AttributesResponse{
+			Attributes: map[string]*providers.AttributeResponse{
+				"email": {Value: testLocalEmail},
+				"scope": {Value: "injected admin"}, // reserved claim name; must be stripped
+			},
+		}, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			_, hasScope := ctx.SubjectAttributes["scope"]
+			return ctx.Subject == testUserID &&
+				ctx.SubjectAttributes["email"] == testLocalEmail &&
+				!hasScope
+		})).Return(&model.TokenDTO{
+		Token:     testTokenExchangeJWT,
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  now,
+		ExpiresIn: 7200,
+		Scopes:    []string{testScopeRead},
+		ClientID:  testClientID,
+	}, nil)
+
+	handler := suite.newAccountLinkingHandler(authnProvider, suite.accountLinkingIDPService())
+	result, errResp := handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+}
+
+// TestHandleGrant_AccountLinking_SkippedWhenNoLinkedAttributes verifies that when the issuing IDP has no
+// account-linking configured, no local-user lookup is attempted and the federated subject is kept.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AccountLinking_SkippedWhenNoLinkedAttributes() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{"sub": "fed-sub"})
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(federatedSubjectClaims(map[string]interface{}{"email": "fed@example.com"}), nil)
+
+	// No account linking configured, so the authn provider must never be consulted.
+	authnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.Subject == "fed-sub" && ctx.SubjectAttributes["email"] == "fed@example.com"
+		})).Return(&model.TokenDTO{
+		Token:     testTokenExchangeJWT,
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  now,
+		ExpiresIn: 7200,
+		Scopes:    []string{testScopeRead},
+		ClientID:  testClientID,
+	}, nil)
+
+	handler := suite.newAccountLinkingHandler(authnProvider, suite.noLinkingIDPService())
+	result, errResp := handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), testTokenExchangeJWT, result.AccessToken.Token)
+	authnProvider.AssertNotCalled(suite.T(), "GetEntityReference", mock.Anything, mock.Anything)
+}
+
+// TestHandleGrant_AccountLinking_FallsBackWhenNoLocalUser verifies that when account linking is
+// configured but no unique local user matches, the exchange keeps the federated subject and claims.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AccountLinking_FallsBackWhenNoLocalUser() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{"sub": "fed-sub"})
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(federatedSubjectClaims(map[string]interface{}{"email": "fed@example.com"}), nil)
+
+	authnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
+	authnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.Subject == "fed-sub" && ctx.SubjectAttributes["email"] == "fed@example.com"
+		})).Return(&model.TokenDTO{
+		Token:     testTokenExchangeJWT,
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  now,
+		ExpiresIn: 7200,
+		Scopes:    []string{testScopeRead},
+		ClientID:  testClientID,
+	}, nil)
+
+	handler := suite.newAccountLinkingHandler(authnProvider, suite.accountLinkingIDPService())
+	result, errResp := handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), testTokenExchangeJWT, result.AccessToken.Token)
+}
+
+// TestHandleGrant_AccountLinking_ServerErrorFails verifies that a server error while resolving the
+// linked local user fails the exchange with server_error rather than issuing a token.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AccountLinking_ServerErrorFails() {
+	subjectToken := suite.createTestJWT(map[string]interface{}{"sub": "fed-sub"})
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(federatedSubjectClaims(map[string]interface{}{"email": "fed@example.com"}), nil)
+
+	authnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
+	authnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, nil, &tidcommon.InternalServerError)
+
+	handler := suite.newAccountLinkingHandler(authnProvider, suite.accountLinkingIDPService())
+	result, errResp := handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorServerError, errResp.Error)
+}
+
+// TestHandleGrant_AccountLinking_AttributeFetchFailureFails verifies that once a local user is resolved,
+// a failure to load its attributes fails the exchange instead of falling back to the federated subject.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AccountLinking_AttributeFetchFailureFails() {
+	subjectToken := suite.createTestJWT(map[string]interface{}{"sub": "fed-sub"})
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(federatedSubjectClaims(map[string]interface{}{"email": "fed@example.com"}), nil)
+
+	authnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
+	authnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{EntityID: testUserID}, nil)
+	authnProvider.On("GetUserAttributes", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
+
+	handler := suite.newAccountLinkingHandler(authnProvider, suite.accountLinkingIDPService())
+	result, errResp := handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorServerError, errResp.Error)
+}
+
+// TestHandleGrant_AccountLinking_SkippedForSelfIssued verifies that a self-issued subject token (issuer
+// equal to the server issuer) never engages the IDP service or authn provider, keeping the subject
+// unchanged.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AccountLinking_SkippedForSelfIssued() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{"sub": testUserID})
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:            testUserID,
+			Iss:            "https://auth.example.com",
+			Scopes:         []string{testScopeRead},
+			UserAttributes: map[string]interface{}{"email": testUserEmail},
+		}, nil)
+
+	// The IDP service and authn provider are wired but must never be called for a self-issued token.
+	authnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
+	idpService := idpmock.NewIDPServiceInterfaceMock(suite.T())
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.Subject == testUserID && ctx.SubjectAttributes["email"] == testUserEmail
+		})).Return(&model.TokenDTO{
+		Token:     testTokenExchangeJWT,
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  now,
+		ExpiresIn: 7200,
+		Scopes:    []string{testScopeRead},
+		ClientID:  testClientID,
+	}, nil)
+
+	handler := suite.newAccountLinkingHandler(authnProvider, idpService)
+	result, errResp := handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	idpService.AssertNotCalled(suite.T(), "GetIdentityProvidersByProperty",
+		mock.Anything, mock.Anything, mock.Anything)
+	authnProvider.AssertNotCalled(suite.T(), "GetEntityReference", mock.Anything, mock.Anything)
 }
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_Success() {

@@ -119,10 +119,18 @@ If any step fails, the exchange returns HTTP 400 with `error=invalid_request` an
 
 Attribute configuration for token exchange uses the same `attributeConfiguration` structure as federated sign-in. See [Add an OIDC Identity Provider](../add-oidc-provider#attribute-configuration) for the full reference.
 
+## Account Linking
+
+By default, the exchanged token carries the external user's `sub` and mapped attributes. When the issuing IdP has account linking configured through `attributeConfiguration.accountLinking.attributes`, <ProductName /> resolves the external subject to a local user:
+
+1. The configured account-linking attributes (resolved to local attribute names via the IdP's attribute mappings) are matched against the token's mapped attributes to look up a unique local user.
+2. When a unique local user is found, the exchanged token's subject becomes the local user ID, and the local user's stored attributes are merged over the mapped external attributes. Local attributes take precedence on conflict.
+3. When account linking is not configured, or no unique local user matches, the exchange retains the external subject and attributes.
+
 ## Limitations
 
 - Only JWT tokens are supported. Opaque tokens (for example, GitHub access tokens) cannot be exchanged.
-- The external user's `sub` is passed through as-is. No local user lookup or just-in-time provisioning occurs.
+- Without account linking configured, the external user's `sub` is passed through as-is and no just-in-time provisioning occurs. See [Account Linking](#account-linking).
 - No scope mapping is applied; external token scopes use the existing intersection logic. External claims can be renamed to local attributes via the IdP's `attributeConfiguration` (see [Attribute Configuration](#attribute-configuration)); the resulting attributes are still filtered by the application's `userAttributes` configuration.
 - Token exchange is available to all applications that have the token exchange grant type. No per-application IdP restriction applies.
 

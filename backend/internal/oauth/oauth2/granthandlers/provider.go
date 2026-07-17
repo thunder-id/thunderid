@@ -60,6 +60,8 @@ func newGrantHandlerProvider(
 	serverConfigService serverconfig.ServerConfigService,
 	cibaService ciba.CIBAServiceInterface,
 	refreshTokenRevoker revocation.RefreshTokenRevokerInterface,
+	authnProvider providers.AuthnProviderManager,
+	idpService providers.IDPProvider,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {
 	return &GrantHandlerProvider{
@@ -71,7 +73,8 @@ func newGrantHandlerProvider(
 			jwtService, tokenBuilder, tokenValidator, attrCacheService, resourceService,
 			serverConfigService, refreshTokenRevoker, cfg),
 		tokenExchangeGrantHandler: newTokenExchangeGrantHandler(
-			tokenBuilder, tokenValidator, rbacAuthzService, actorProvider, resourceService, serverConfigService),
+			tokenBuilder, tokenValidator, rbacAuthzService, actorProvider, resourceService,
+			serverConfigService, authnProvider, idpService, cfg),
 		cibaGrantHandler: newCIBAGrantHandler(cibaService, tokenBuilder, attrCacheService),
 		jwtBearerGrantHandler: newJWTBearerGrantHandler(
 			tokenBuilder, tokenValidator, resourceService, serverConfigService),
