@@ -32,6 +32,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -1299,6 +1300,60 @@ func TestHandleUserUsagesGetRequest_NotFound(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	handler.HandleUserUsagesGetRequest(rr, req)
+
+	require.Equal(t, http.StatusNotFound, rr.Code)
+}
+
+func TestHandleSelfUserMetadataGetRequest_Success(t *testing.T) {
+	userID := testUserID123
+	authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
+
+	mockSvc := NewUserServiceInterfaceMock(t)
+	expectedSchema := &entitytype.EntityType{
+		Name:   "employee",
+		Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+	}
+	mockSvc.On("GetUserMetadata", mock.Anything, userID).Return(expectedSchema, nil)
+
+	handler := newUserHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/users/me/meta", nil)
+	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
+	rr := httptest.NewRecorder()
+
+	handler.HandleSelfUserMetadataGetRequest(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Contains(t, rr.Header().Get("Content-Type"), "application/json")
+
+	var res map[string]interface{}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&res))
+	require.NotNil(t, res["schema"])
+}
+
+func TestHandleSelfUserMetadataGetRequest_Unauthorized(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	handler := newUserHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/users/me/meta", nil)
+	rr := httptest.NewRecorder()
+
+	handler.HandleSelfUserMetadataGetRequest(rr, req)
+
+	require.Equal(t, http.StatusUnauthorized, rr.Code)
+}
+
+func TestHandleSelfUserMetadataGetRequest_ServiceError(t *testing.T) {
+	userID := testUserID123
+	authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
+
+	mockSvc := NewUserServiceInterfaceMock(t)
+	mockSvc.On("GetUserMetadata", mock.Anything, userID).Return(nil, &ErrorUserNotFound)
+
+	handler := newUserHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/users/me/meta", nil)
+	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
+	rr := httptest.NewRecorder()
+
+	handler.HandleSelfUserMetadataGetRequest(rr, req)
 
 	require.Equal(t, http.StatusNotFound, rr.Code)
 }

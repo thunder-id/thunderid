@@ -160,6 +160,17 @@ func registerRoutes(mux *http.ServeMux, userHandler *userHandler) {
 		w.WriteHeader(http.StatusNoContent)
 	}, optsSelf))
 
+	optsMeta := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("GET /users/me/meta", userHandler.HandleSelfUserMetadataGetRequest, optsMeta))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /users/me/meta", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}, optsMeta))
+
 	optsSelfCredentials := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,

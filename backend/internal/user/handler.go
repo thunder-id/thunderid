@@ -436,6 +436,31 @@ func (uh *userHandler) HandleSelfUserPutRequest(w http.ResponseWriter, r *http.R
 	logger.Debug(ctx, "Self user PUT response sent", log.MaskedString(log.LoggerKeyUserID, userID))
 }
 
+// HandleSelfUserMetadataGetRequest handles the self user metadata retrieval.
+func (uh *userHandler) HandleSelfUserMetadataGetRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, handlerLoggerComponentName))
+
+	userID := security.GetSubject(ctx)
+	if strings.TrimSpace(userID) == "" {
+		handleError(ctx, w, &ErrorAuthenticationFailed)
+		return
+	}
+
+	userMetadata, svcErr := uh.userService.GetUserMetadata(ctx, userID)
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+
+	response := map[string]interface{}{
+		"schema": userMetadata.Schema,
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, response)
+
+	logger.Debug(ctx, "Self user metadata GET response sent", log.MaskedString(log.LoggerKeyUserID, userID))
+}
+
 // HandleSelfUserCredentialUpdateRequest handles the credential update for the authenticated user.
 func (uh *userHandler) HandleSelfUserCredentialUpdateRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

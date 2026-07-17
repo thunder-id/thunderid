@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -487,6 +488,76 @@ func (_c *UserServiceInterfaceMock_GetUserList_Call) Return(userListResponse *Us
 }
 
 func (_c *UserServiceInterfaceMock_GetUserList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int, filters map[string]interface{}, includeDisplay bool) (*UserListResponse, *common.ServiceError)) *UserServiceInterfaceMock_GetUserList_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetUserMetadata provides a mock function for the type UserServiceInterfaceMock
+func (_mock *UserServiceInterfaceMock) GetUserMetadata(ctx context.Context, userID string) (*entitytype.EntityType, *common.ServiceError) {
+	ret := _mock.Called(ctx, userID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetUserMetadata")
+	}
+
+	var r0 *entitytype.EntityType
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*entitytype.EntityType, *common.ServiceError)); ok {
+		return returnFunc(ctx, userID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *entitytype.EntityType); ok {
+		r0 = returnFunc(ctx, userID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*entitytype.EntityType)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, userID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// UserServiceInterfaceMock_GetUserMetadata_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUserMetadata'
+type UserServiceInterfaceMock_GetUserMetadata_Call struct {
+	*mock.Call
+}
+
+// GetUserMetadata is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+func (_e *UserServiceInterfaceMock_Expecter) GetUserMetadata(ctx interface{}, userID interface{}) *UserServiceInterfaceMock_GetUserMetadata_Call {
+	return &UserServiceInterfaceMock_GetUserMetadata_Call{Call: _e.mock.On("GetUserMetadata", ctx, userID)}
+}
+
+func (_c *UserServiceInterfaceMock_GetUserMetadata_Call) Run(run func(ctx context.Context, userID string)) *UserServiceInterfaceMock_GetUserMetadata_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_GetUserMetadata_Call) Return(entityType *entitytype.EntityType, serviceError *common.ServiceError) *UserServiceInterfaceMock_GetUserMetadata_Call {
+	_c.Call.Return(entityType, serviceError)
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_GetUserMetadata_Call) RunAndReturn(run func(ctx context.Context, userID string) (*entitytype.EntityType, *common.ServiceError)) *UserServiceInterfaceMock_GetUserMetadata_Call {
 	_c.Call.Return(run)
 	return _c
 }

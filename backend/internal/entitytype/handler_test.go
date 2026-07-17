@@ -112,6 +112,12 @@ func (s *InlineStubEntityTypeService) ValidateEntityUniqueness(
 	return true, nil
 }
 
+func (s *InlineStubEntityTypeService) GetSelfUserTypeSchema(
+	ctx context.Context, cat TypeCategory, name string,
+) (*EntityType, *tidcommon.ServiceError) {
+	return &EntityType{Name: name, Category: cat}, nil
+}
+
 // --- POST ENDPOINT TESTS ---
 
 func TestHandleEntityTypePostRequest_Success(t *testing.T) {

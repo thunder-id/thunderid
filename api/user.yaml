@@ -1280,6 +1280,67 @@ paths:
                   key: "error.internal_server_error_description"
                   defaultValue: "An unexpected error occurred while processing the request"
 
+  /users/me/meta:
+    get:
+      tags:
+        - Self
+      summary: Get self user schema metadata
+      security:
+        - OAuth2: []
+      responses:
+        "200":
+          description: Schema metadata for the caller's user type
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schema]
+                properties:
+                  schema:
+                    $ref: '#/components/schemas/UserType/properties/schema'
+        "401":
+          description: Unauthorized - missing or invalid authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AUTH-4010"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "Authentication is required to access this resource"
+        "404":
+          description: User type schema not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "USR-1044"
+                message:
+                  key: "error.userservice.user_type_not_found"
+                  defaultValue: "User type not found"
+                description:
+                  key: "error.userservice.user_type_not_found_description"
+                  defaultValue: "The user type schema for the user does not exist"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "USR-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
   /users/me/update-credentials:
     post:
       tags:

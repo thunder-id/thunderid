@@ -597,6 +597,82 @@ func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeList_Call) RunAndReturn(ru
 	return _c
 }
 
+// GetSelfUserTypeSchema provides a mock function for the type EntityTypeServiceInterfaceMock
+func (_mock *EntityTypeServiceInterfaceMock) GetSelfUserTypeSchema(ctx context.Context, category entitytype.TypeCategory, userTypeName string) (*entitytype.EntityType, *common.ServiceError) {
+	ret := _mock.Called(ctx, category, userTypeName)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetSelfUserTypeSchema")
+	}
+
+	var r0 *entitytype.EntityType
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string) (*entitytype.EntityType, *common.ServiceError)); ok {
+		return returnFunc(ctx, category, userTypeName)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string) *entitytype.EntityType); ok {
+		r0 = returnFunc(ctx, category, userTypeName)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*entitytype.EntityType)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, category, userTypeName)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// EntityTypeServiceInterfaceMock_GetSelfUserTypeSchema_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetSelfUserTypeSchema'
+type EntityTypeServiceInterfaceMock_GetSelfUserTypeSchema_Call struct {
+	*mock.Call
+}
+
+// GetSelfUserTypeSchema is a helper method to define mock.On call
+//   - ctx context.Context
+//   - category entitytype.TypeCategory
+//   - userTypeName string
+func (_e *EntityTypeServiceInterfaceMock_Expecter) GetSelfUserTypeSchema(ctx interface{}, category interface{}, userTypeName interface{}) *EntityTypeServiceInterfaceMock_GetSelfUserTypeSchema_Call {
+	return &EntityTypeServiceInterfaceMock_GetSelfUserTypeSchema_Call{Call: _e.mock.On("GetSelfUserTypeSchema", ctx, category, userTypeName)}
+}
+
+func (_c *EntityTypeServiceInterfaceMock_GetSelfUserTypeSchema_Call) Run(run func(ctx context.Context, category entitytype.TypeCategory, userTypeName string)) *EntityTypeServiceInterfaceMock_GetSelfUserTypeSchema_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 entitytype.TypeCategory
+		if args[1] != nil {
+			arg1 = args[1].(entitytype.TypeCategory)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityTypeServiceInterfaceMock_GetSelfUserTypeSchema_Call) Return(entityType *entitytype.EntityType, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_GetSelfUserTypeSchema_Call {
+	_c.Call.Return(entityType, serviceError)
+	return _c
+}
+
+func (_c *EntityTypeServiceInterfaceMock_GetSelfUserTypeSchema_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, userTypeName string) (*entitytype.EntityType, *common.ServiceError)) *EntityTypeServiceInterfaceMock_GetSelfUserTypeSchema_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetUniqueAttributes provides a mock function for the type EntityTypeServiceInterfaceMock
 func (_mock *EntityTypeServiceInterfaceMock) GetUniqueAttributes(ctx context.Context, category entitytype.TypeCategory, entityType string) ([]string, *common.ServiceError) {
 	ret := _mock.Called(ctx, category, entityType)

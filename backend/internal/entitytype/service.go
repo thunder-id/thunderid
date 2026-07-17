@@ -84,6 +84,9 @@ type EntityTypeServiceInterface interface {
 		ctx context.Context, category TypeCategory, names []string,
 	) (map[string]string, *tidcommon.ServiceError)
 	ResolveEntityTypeHandles(ctx context.Context, entityType *EntityType) *tidcommon.ServiceError
+	GetSelfUserTypeSchema(
+		ctx context.Context, category TypeCategory, userTypeName string,
+	) (*EntityType, *tidcommon.ServiceError)
 }
 
 // entityTypeService is the default implementation of the EntityTypeServiceInterface.
@@ -322,6 +325,31 @@ func (us *entityTypeService) GetEntityType(
 		} else if handle, ok := handleMap[entityType.OUID]; ok {
 			entityType.OUHandle = handle
 		}
+	}
+
+	return &entityType, nil
+}
+
+// GetSelfUserTypeSchema retrieves the schema config by name without admin access check
+func (us *entityTypeService) GetSelfUserTypeSchema(
+	ctx context.Context, category TypeCategory, userTypeName string,
+) (*EntityType, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
+
+	if svcErr := validateCategory(category); svcErr != nil {
+		return nil, svcErr
+	}
+
+	if userTypeName == "" {
+		return nil, invalidEntityTypeRequestErr(category, "schema name must not be empty")
+	}
+
+	entityType, err := us.entityTypeStore.GetEntityTypeByName(ctx, category, userTypeName)
+	if err != nil {
+		if errors.Is(err, ErrEntityTypeNotFound) {
+			return nil, entityTypeNotFoundErr(category)
+		}
+		return nil, logAndReturnServerError(ctx, logger, "Failed to get entity type", err)
 	}
 
 	return &entityType, nil
