@@ -220,7 +220,7 @@ Before deploying <ProductName />, prepare the PostgreSQL instance:
     `GRANT ON ALL TABLES` covers tables that already exist. `ALTER DEFAULT PRIVILEGES` ensures tables created by future migrations are also accessible.
 
 4. Run the initialization scripts to create the schema:
-    - Apply the database scripts for <RepoLink path="/blob/main/backend/dbscripts/configdb/postgres.sql">configdb</RepoLink>, <RepoLink path="/blob/main/backend/dbscripts/runtime-transient/postgres.sql">runtime_transient</RepoLink>, <RepoLink path="/blob/main/backend/dbscripts/entitydb/postgres.sql">entitydb</RepoLink>, and <RepoLink path="/blob/main/backend/dbscripts/runtime-persistent/postgres.sql">runtime_persistent</RepoLink>.
+    - Apply the database scripts for <RepoLink path="/blob/main/backend/dbscripts/configdb/postgres.sql">configdb</RepoLink>, <RepoLink path="/blob/main/backend/dbscripts/runtime_transient/postgres.sql">runtime_transient</RepoLink>, <RepoLink path="/blob/main/backend/dbscripts/entitydb/postgres.sql">entitydb</RepoLink>, and <RepoLink path="/blob/main/backend/dbscripts/runtime_persistent/postgres.sql">runtime_persistent</RepoLink>.
 
 For a PostgreSQL setup using Helm, refer to the [Bitnami PostgreSQL Helm Chart](https://bitnami.com/stacks/postgresql).
 
@@ -276,7 +276,7 @@ configuration:
       sqliteOptions: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
     runtime_transient:
       type: sqlite
-      sqlitePath: database/runtime-transient.db
+      sqlitePath: database/runtime_transient.db
       sqliteOptions: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
     entity:
       type: sqlite
@@ -284,7 +284,7 @@ configuration:
       sqliteOptions: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
     runtime_persistent:
       type: sqlite
-      sqlitePath: database/runtime-persistent.db
+      sqlitePath: database/runtime_persistent.db
       sqliteOptions: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
 ```
 

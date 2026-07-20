@@ -201,7 +201,7 @@ Stores short-lived runtime data such as authorization codes, authorization reque
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `database.runtime_transient.sqlite.path` | `database/runtime-transient.db` | SQLite database file path |
+| `database.runtime_transient.sqlite.path` | `database/runtime_transient.db` | SQLite database file path |
 | `database.runtime_transient.sqlite.options` | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` | SQLite connection options |
 | `database.runtime_transient.sqlite.max_open_conns` | `500` | Maximum number of open connections |
 | `database.runtime_transient.sqlite.max_idle_conns` | `100` | Maximum number of idle connections |
@@ -311,7 +311,7 @@ Stores SSO sessions, revoked tokens, and consent records. This database is requi
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `database.runtime_persistent.sqlite.path` | `database/runtime-persistent.db` | SQLite database file path |
+| `database.runtime_persistent.sqlite.path` | `database/runtime_persistent.db` | SQLite database file path |
 | `database.runtime_persistent.sqlite.options` | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` | SQLite connection options |
 | `database.runtime_persistent.sqlite.max_open_conns` | `500` | Maximum number of open connections |
 | `database.runtime_persistent.sqlite.max_idle_conns` | `100` | Maximum number of idle connections |

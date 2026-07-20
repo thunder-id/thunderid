@@ -202,9 +202,9 @@ Prepare the PostgreSQL instance before deployment:
 
     ```bash
     psql -h <db-host> -U <db-user> -d configdb    -f backend/dbscripts/configdb/postgres.sql
-    psql -h <db-host> -U <db-user> -d runtime_transient   -f backend/dbscripts/runtime-transient/postgres.sql
+    psql -h <db-host> -U <db-user> -d runtime_transient   -f backend/dbscripts/runtime_transient/postgres.sql
     psql -h <db-host> -U <db-user> -d entitydb      -f backend/dbscripts/entitydb/postgres.sql
-    psql -h <db-host> -U <db-user> -d runtime_persistent -f backend/dbscripts/runtime-persistent/postgres.sql
+    psql -h <db-host> -U <db-user> -d runtime_persistent -f backend/dbscripts/runtime_persistent/postgres.sql
     ```
 
 :::warning

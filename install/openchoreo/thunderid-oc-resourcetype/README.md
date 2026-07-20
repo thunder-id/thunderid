@@ -53,9 +53,9 @@ resources for services explicitly opted into `mutable`/`composite` stores.
    ```bash
    # against each database, run the matching script:
    backend/dbscripts/configdb/postgres.sql     # → configdb
-   backend/dbscripts/runtime-transient/postgres.sql    # → runtime_transient
+   backend/dbscripts/runtime_transient/postgres.sql    # → runtime_transient
    backend/dbscripts/entitydb/postgres.sql       # → entitydb
-   backend/dbscripts/runtime-persistent/postgres.sql  # → runtime_persistent
+   backend/dbscripts/runtime_persistent/postgres.sql  # → runtime_persistent
    ```
 
    The default `dbType: sqlite` needs no database at all: it uses the
