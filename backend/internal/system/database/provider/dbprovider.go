@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -39,9 +39,9 @@ const (
 	dataSourceTypeSQLite   = "sqlite"
 
 	dbNameConfig            = "config"
-	dbNameRuntimeTransient  = "runtime-transient"
+	dbNameRuntimeTransient  = "runtime_transient"
 	dbNameEntity            = "entity"
-	dbNameRuntimePersistent = "runtime-persistent"
+	dbNameRuntimePersistent = "runtime_persistent"
 )
 
 // dbConfig represents the local database configuration.

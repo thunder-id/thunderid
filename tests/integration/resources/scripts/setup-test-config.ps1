@@ -110,7 +110,7 @@ if ($DbType -eq "postgres") {
     username: ""
     password: ""
     sslmode: ""
-    path: "database/runtime-transient.db"
+    path: "database/runtime_transient.db"
     options: "cache=shared"
 
   entity:
@@ -132,7 +132,7 @@ if ($DbType -eq "postgres") {
     username: ""
     password: ""
     sslmode: ""
-    path: "database/runtime-persistent.db"
+    path: "database/runtime_persistent.db"
     options: "cache=shared"
 "@
 }

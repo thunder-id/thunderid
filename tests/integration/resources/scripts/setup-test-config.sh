@@ -81,7 +81,7 @@ elif [ "$DB_TYPE" = "redis" ]; then
   runtime_persistent:
     type: sqlite
     sqlite:
-      path: "database/runtime-persistent.db"
+      path: "database/runtime_persistent.db"
       options: "cache=shared"
 EOF
 else
@@ -95,7 +95,7 @@ else
   runtime_transient:
     type: sqlite
     sqlite:
-      path: "database/runtime-transient.db"
+      path: "database/runtime_transient.db"
       options: "cache=shared"
 
   entity:
@@ -107,7 +107,7 @@ else
   runtime_persistent:
     type: sqlite
     sqlite:
-      path: "database/runtime-persistent.db"
+      path: "database/runtime_persistent.db"
       options: "cache=shared"
 EOF
 fi

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 # ----------------------------------------------------------------------------
-# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+# Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
 #
 # WSO2 LLC. licenses this file to you under the Apache License,
 # Version 2.0 (the "License"); you may not use this file except
@@ -34,18 +34,18 @@ set -euo pipefail
 #
 # Usage examples:
 #   # SQLite (local development)
-#   ./cleanup_runtime_transient_db.sh -type sqlite -path /path/to/runtime-transient.db
+#   ./cleanup_runtime_transient_db.sh -type sqlite -path /path/to/runtime_transient.db
 #
 #   # PostgreSQL
 #   ./cleanup_runtime_transient_db.sh -type postgres -host localhost -port 5432 \
 #       -name thunderidruntime -username thunderid -password secret
 #
 #   # With options
-#   ./cleanup_runtime_transient_db.sh -type sqlite -path /path/to/runtime-transient.db \
+#   ./cleanup_runtime_transient_db.sh -type sqlite -path /path/to/runtime_transient.db \
 #       -batch_size 500 -grace_period 120 -deployment_id my-deployment
 #
 #   # Dry run (show counts without deleting)
-#   ./cleanup_runtime_transient_db.sh -type sqlite -path /path/to/runtime-transient.db -dry_run
+#   ./cleanup_runtime_transient_db.sh -type sqlite -path /path/to/runtime_transient.db -dry_run
 #
 #   # Cron (every 30 minutes)
 #   */30 * * * * /opt/thunderid/scripts/cleanup_runtime_transient_db.sh \
