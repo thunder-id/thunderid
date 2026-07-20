@@ -133,6 +133,52 @@ reviews:
         Do not flag:
         - The package's own `routes/types.ts` (or equivalent) file defining its default paths.
         - External URLs (`http://`, `https://`, `mailto:`).
+    - path: "frontend/**/pages/*EditPage.tsx"
+      instructions: |
+        Reset-key propagation check. Edit pages in this codebase track edits in a local `editedX`
+        state object and expose Save/Reset through `UnsavedChangesBar`. If this page renders a
+        child section component that keeps its OWN local/uncontrolled state derived from server
+        data (e.g. `useState` seeded from props, `react-hook-form` `defaultValues`, a
+        locally-managed list such as redirect URIs, or an in-place text-edit draft), calling
+        `setEditedX({})` alone does NOT reset that child's internal state on Save or Reset — the
+        section keeps showing stale edits even though the unsaved-changes bar disappears.
+
+        Check whether this page defines a reset-key state variable (commonly named
+        `sectionResetKey`, `attributesResetKey`, or `<name>ResetKey`) that is:
+        1. Incremented inside the `onReset` handler alongside `setEditedX({})`.
+        2. Incremented again after a successful save, but only AFTER the post-save `refetch()`
+           resolves (bumping it before refetch resolves risks passing stale data into the
+           remounted child).
+        3. Passed down as a prop (e.g. `sectionResetKey={sectionResetKey}`) to every child section
+           that holds such local state, so those children can use it (typically as a `key` or a
+           `useEffect` dependency) to reinitialize or remount cleanly.
+
+        If this page has stateful child sections but no reset-key prop reaches them, flag it as a
+        **major issue**: "This Edit page has child sections with local state but no reset-key
+        prop — Save/Reset may leave stale local state behind in `<section>`. See
+        `ApplicationEditPage.tsx` (`sectionResetKey`) or `UserEditPage.tsx`
+        (`attributesResetKey`) for the established pattern." Do not flag pages where all editing
+        happens through the single `editedX` object with no per-section local state — the
+        reset-key pattern is unnecessary there.
+
+    - path: "frontend/**/components/edit-*/**/*.tsx"
+      instructions: |
+        This is a child section component rendered inside an Edit page (see the
+        `sectionResetKey`/`attributesResetKey` reset-key pattern enforced on sibling
+        `*EditPage.tsx` files). If this component keeps its own local state initialized from
+        server-provided props (`useState`, `react-hook-form` defaults, a locally-managed
+        list/array, an in-place edit draft), check that it accepts a reset-key prop (e.g.
+        `sectionResetKey`) from its parent and actually uses it — typically as `key={sectionResetKey}`
+        on itself or an inner element, or as a dependency that re-syncs local state inside a
+        `useEffect` — so that a Save or Reset on the parent Edit page clears this component's
+        local state instead of leaving stale edits visible.
+
+        Flag as a **major issue** if the component has such local state but does not receive or
+        use a reset-key prop: "This section keeps local state derived from props but has no
+        reset-key mechanism — a Save/Reset on the parent Edit page will not clear it here." Do
+        not flag purely presentational components, or components whose only state is UI-only
+        (e.g. an "is editing" toggle, dropdown open/closed state) with nothing server-derived to
+        go stale.
 
     - path: "docs/**"
       instructions: |

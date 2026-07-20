@@ -18,21 +18,35 @@
 
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {useState} from 'react';
 import {describe, it, expect, vi} from 'vitest';
 import type {Application} from '../../../../../applications/models/application';
 import type {Agent} from '../../../../models/agent';
 import EditTokensSettings from '../EditTokensSettings';
 
 vi.mock('../../../../../applications/components/edit-application/token-settings/EditTokenSettings', () => ({
-  default: ({application}: {application: Application}) => (
-    <div data-testid="token-settings" data-readonly={String(application.isReadOnly)} />
+  default: ({application, sectionResetKey}: {application: Application; sectionResetKey?: number}) => (
+    <div
+      data-testid="token-settings"
+      data-readonly={String(application.isReadOnly)}
+      data-section-reset-key={String(sectionResetKey)}
+    />
   ),
 }));
 
 vi.mock('../AgentAccessTokenSection', () => ({
-  default: ({agent}: {agent: Agent}) => (
-    <div data-testid="agent-access-token" data-readonly={String(agent.isReadOnly)} />
-  ),
+  // Carries local click state so a changed key (remount) is observable as the counter resetting.
+  default: function MockAgentAccessTokenSection({agent}: {agent: Agent}) {
+    const [clicks, setClicks] = useState(0);
+    return (
+      <div data-testid="agent-access-token" data-readonly={String(agent.isReadOnly)}>
+        Clicks: {clicks}
+        <button type="button" data-testid="agent-access-token-bump" onClick={() => setClicks((c) => c + 1)}>
+          Bump
+        </button>
+      </div>
+    );
+  },
 }));
 
 describe('EditTokensSettings', () => {
@@ -133,5 +147,65 @@ describe('EditTokensSettings', () => {
 
     expect(screen.getByTestId('agent-access-token')).toHaveAttribute('data-readonly', 'false');
     expect(screen.queryByText(/These settings are frozen for this agent/)).not.toBeInTheDocument();
+  });
+
+  describe('section reset', () => {
+    const oauth2Config = {grantTypes: ['authorization_code'], responseTypes: ['code']};
+
+    it('forwards sectionResetKey to the User tab EditTokenSettings for in-place reset', () => {
+      const {rerender} = render(
+        <EditTokensSettings
+          agent={baseAgent}
+          editedAgent={{}}
+          oauth2Config={oauth2Config}
+          onFieldChange={mockOnFieldChange}
+          sectionResetKey={0}
+        />,
+      );
+
+      expect(screen.getByTestId('token-settings')).toHaveAttribute('data-section-reset-key', '0');
+
+      rerender(
+        <EditTokensSettings
+          agent={baseAgent}
+          editedAgent={{}}
+          oauth2Config={oauth2Config}
+          onFieldChange={mockOnFieldChange}
+          sectionResetKey={1}
+        />,
+      );
+
+      // Same element (no remount), new prop — proves in-place reset, preserving its own sub-tabs.
+      expect(screen.getByTestId('token-settings')).toHaveAttribute('data-section-reset-key', '1');
+    });
+
+    it('remounts the Agent tab section, dropping its local state, when sectionResetKey changes', async () => {
+      const user = userEvent.setup();
+      const {rerender} = render(
+        <EditTokensSettings
+          agent={baseAgent}
+          editedAgent={{}}
+          oauth2Config={oauth2Config}
+          onFieldChange={mockOnFieldChange}
+          sectionResetKey={0}
+        />,
+      );
+
+      await user.click(screen.getByRole('tab', {name: 'Agent'}));
+      await user.click(screen.getByTestId('agent-access-token-bump'));
+      expect(screen.getByTestId('agent-access-token')).toHaveTextContent('Clicks: 1');
+
+      rerender(
+        <EditTokensSettings
+          agent={baseAgent}
+          editedAgent={{}}
+          oauth2Config={oauth2Config}
+          onFieldChange={mockOnFieldChange}
+          sectionResetKey={1}
+        />,
+      );
+
+      expect(screen.getByTestId('agent-access-token')).toHaveTextContent('Clicks: 0');
+    });
   });
 });

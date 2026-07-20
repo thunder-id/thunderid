@@ -18,20 +18,33 @@
 
 import {render, screen, fireEvent} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {useState} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Application} from '../../../../models/application';
 import type {OAuth2Config} from '../../../../models/oauth';
 import McpConnectTab from '../McpConnectTab';
 
 vi.mock('../McpAccessSection', () => ({
-  default: ({onValidationChange}: {onValidationChange?: (hasErrors: boolean) => void}) => (
-    <div data-testid="mcp-access-section">
-      McpAccessSection
-      <button type="button" data-testid="mcp-access-section-report-invalid" onClick={() => onValidationChange?.(true)}>
-        Report invalid
-      </button>
-    </div>
-  ),
+  default: function MockMcpAccessSection({onValidationChange}: {onValidationChange?: (hasErrors: boolean) => void}) {
+    // Mimics McpAccessSection's real redirect-URI list, which lives in local state — used to
+    // prove that a changed sectionResetKey remounts (rather than just re-renders) it.
+    const [clicks, setClicks] = useState(0);
+    return (
+      <div data-testid="mcp-access-section">
+        McpAccessSection, Clicks: {clicks}
+        <button
+          type="button"
+          data-testid="mcp-access-section-report-invalid"
+          onClick={() => onValidationChange?.(true)}
+        >
+          Report invalid
+        </button>
+        <button type="button" data-testid="mcp-access-section-bump" onClick={() => setClicks((c) => c + 1)}>
+          Bump
+        </button>
+      </div>
+    );
+  },
 }));
 
 vi.mock('../../general-settings/DangerZoneSection', () => ({
@@ -427,6 +440,62 @@ describe('McpConnectTab', () => {
       fireEvent.click(screen.getByTestId('delete-button'));
 
       expect(screen.getByTestId('delete-dialog')).toBeInTheDocument();
+    });
+  });
+
+  describe('Access section reset', () => {
+    it('remounts McpAccessSection, dropping its local state, when sectionResetKey changes', () => {
+      const {rerender} = render(
+        <McpConnectTab
+          application={buildApplication()}
+          oauth2Config={userDelegatedOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          isReadOnly={false}
+          sectionResetKey={0}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('mcp-access-section-bump'));
+      expect(screen.getByTestId('mcp-access-section')).toHaveTextContent('Clicks: 1');
+
+      rerender(
+        <McpConnectTab
+          application={buildApplication()}
+          oauth2Config={userDelegatedOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          isReadOnly={false}
+          sectionResetKey={1}
+        />,
+      );
+
+      expect(screen.getByTestId('mcp-access-section')).toHaveTextContent('Clicks: 0');
+    });
+
+    it('keeps McpAccessSection mounted when sectionResetKey stays the same', () => {
+      const {rerender} = render(
+        <McpConnectTab
+          application={buildApplication()}
+          oauth2Config={userDelegatedOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          isReadOnly={false}
+          sectionResetKey={0}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('mcp-access-section-bump'));
+      expect(screen.getByTestId('mcp-access-section')).toHaveTextContent('Clicks: 1');
+
+      rerender(
+        <McpConnectTab
+          application={buildApplication()}
+          oauth2Config={userDelegatedOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          isReadOnly={false}
+          sectionResetKey={0}
+        />,
+      );
+
+      expect(screen.getByTestId('mcp-access-section')).toHaveTextContent('Clicks: 1');
     });
   });
 });

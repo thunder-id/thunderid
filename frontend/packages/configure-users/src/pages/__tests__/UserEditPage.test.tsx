@@ -159,6 +159,15 @@ vi.mock('@/components/edit-user/EditUserAttributes', () => ({
       <button type="button" onClick={() => onFieldChange('attributes', {department: 'sales'})}>
         Edit an attribute
       </button>
+      {/* Emits the original saved attributes, so the page treats it as no change. */}
+      <button
+        type="button"
+        onClick={() =>
+          onFieldChange('attributes', {username: 'john_doe', email: 'john@example.com', age: 30, active: true})
+        }
+      >
+        Revert attributes
+      </button>
     </div>
   ),
 }));
@@ -479,6 +488,18 @@ describe('UserEditPage', () => {
       expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
       expect(screen.getByRole('button', {name: 'Save'})).toBeInTheDocument();
       expect(screen.getByRole('button', {name: 'Reset'})).toBeInTheDocument();
+    });
+
+    it('hides the unsaved-changes bar when attributes are manually reverted to the saved values', async () => {
+      const user = userEvent.setup();
+      render(<UserEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
+
+      await user.click(screen.getByText('Revert attributes'));
+      expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
     });
 
     it('does not submit if user ouId is missing', async () => {

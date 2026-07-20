@@ -918,6 +918,9 @@ importers:
       '@thunderid/types':
         specifier: workspace:^
         version: link:../types
+      '@thunderid/utils':
+        specifier: workspace:^
+        version: link:../utils
       '@types/node':
         specifier: 'catalog:'
         version: 24.7.2
@@ -1560,6 +1563,9 @@ importers:
       '@thunderid/types':
         specifier: workspace:^
         version: link:../types
+      '@thunderid/utils':
+        specifier: workspace:^
+        version: link:../utils
       '@types/node':
         specifier: 'catalog:'
         version: 24.7.2

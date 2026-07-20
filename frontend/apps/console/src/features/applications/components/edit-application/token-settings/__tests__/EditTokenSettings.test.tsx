@@ -16,7 +16,9 @@
  * under the License.
  */
 
-import {render, screen, waitFor} from '@thunderid/test-utils';
+import {render, screen, waitFor, fireEvent} from '@thunderid/test-utils';
+import {useState} from 'react';
+import {Controller, type Control} from 'react-hook-form';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Application} from '../../../../models/application';
 import type {OAuth2Config} from '../../../../models/oauth';
@@ -110,18 +112,63 @@ vi.mock('../ScopeSection', () => ({
 // TokenValidationSection is called with tokenType="oauth" in OAuth mode and
 // tokenType="shared" in native mode. The mock splits "oauth" into separate
 // access, id, and refresh testids to match test expectations.
+//
+// The mock also carries its own local "selected tab" state (mirroring activeValidationTab)
+// and react-hook-form Controller bound to the refreshTokenValidity/validityPeriod
+// field it's given. Reset-behavior tests prove the field value reverts on a sectionResetKey
+// bump, but the selected tab state survives because the component isn't remounted.
 vi.mock('../TokenValidationSection', () => ({
-  default: ({tokenType}: {tokenType: string}) => {
+  default: function MockTokenValidationSection({
+    control,
+    tokenType,
+  }: {
+    control: Control<{
+      validityPeriod: number;
+      accessTokenValidity: number;
+      idTokenValidity: number;
+      refreshTokenValidity: number;
+    }>;
+    tokenType: string;
+  }) {
+    const [activeValidationTab, setActiveValidationTab] = useState<'access' | 'id' | 'refresh'>('access');
+    const fieldName = tokenType === 'oauth' ? 'refreshTokenValidity' : 'validityPeriod';
+
+    const renderInput = () => (
+      <Controller
+        name={fieldName}
+        control={control}
+        render={({field}) => (
+          <input
+            data-testid={`${fieldName}-input`}
+            value={field.value}
+            onChange={(e) => field.onChange(parseInt(e.target.value, 10))}
+          />
+        )}
+      />
+    );
+
     if (tokenType === 'oauth') {
       return (
         <>
           <div data-testid="token-validation-section-access">Access Token Validation</div>
           <div data-testid="token-validation-section-id">ID Token Validation</div>
-          <div data-testid="token-validation-section-refresh">Refresh Token Validation</div>
+          <div data-testid="token-validation-section-refresh">
+            Refresh Token Validation
+            <button type="button" data-testid="select-refresh-tab" onClick={() => setActiveValidationTab('refresh')}>
+              Select Refresh Tab
+            </button>
+            <div data-testid="active-validation-tab">{activeValidationTab}</div>
+            {renderInput()}
+          </div>
         </>
       );
     }
-    return <div data-testid={`token-validation-section-${tokenType}`}>Token Validation Section - {tokenType}</div>;
+    return (
+      <div data-testid={`token-validation-section-${tokenType}`}>
+        Token Validation Section - {tokenType}
+        {renderInput()}
+      </div>
+    );
   },
 }));
 
@@ -484,6 +531,105 @@ describe('EditTokenSettings', () => {
 
       excluded.forEach((attr) => expect(attributesList).not.toContain(attr));
       included.forEach((attr) => expect(attributesList).toContain(attr));
+    });
+  });
+
+  describe('Token Validity reset', () => {
+    const mockOAuth2Config: OAuth2Config = {
+      token: {
+        accessToken: {userConfig: {validityPeriod: 1800, attributes: []}},
+        idToken: {validityPeriod: 3600, userAttributes: []},
+        refreshToken: {validityPeriod: 86400},
+      },
+    } as unknown as OAuth2Config;
+
+    it('reverts the Refresh Token validity value but keeps the selected sub-tab when sectionResetKey changes', async () => {
+      const {rerender} = render(
+        <EditTokenSettings
+          application={mockApplication}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          sectionResetKey={0}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('select-refresh-tab'));
+      expect(screen.getByTestId('active-validation-tab')).toHaveTextContent('refresh');
+
+      const input = screen.getByTestId('refreshTokenValidity-input');
+      fireEvent.change(input, {target: {value: '999'}});
+      expect(input).toHaveValue('999');
+
+      rerender(
+        <EditTokenSettings
+          application={mockApplication}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          sectionResetKey={1}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('refreshTokenValidity-input')).toHaveValue('86400');
+      });
+      // The sub-tab selection must survive the reset — TokenValidationSection isn't remounted.
+      expect(screen.getByTestId('active-validation-tab')).toHaveTextContent('refresh');
+    });
+
+    it('keeps the typed value when sectionResetKey stays the same', () => {
+      const {rerender} = render(
+        <EditTokenSettings
+          application={mockApplication}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          sectionResetKey={0}
+        />,
+      );
+
+      const input = screen.getByTestId('refreshTokenValidity-input');
+      fireEvent.change(input, {target: {value: '999'}});
+
+      rerender(
+        <EditTokenSettings
+          application={mockApplication}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          sectionResetKey={0}
+        />,
+      );
+
+      expect(screen.getByTestId('refreshTokenValidity-input')).toHaveValue('999');
+    });
+
+    it('does not re-dirty the assertion field after a reset in native (non-OAuth) mode', async () => {
+      const nativeApplication: Application = {
+        ...mockApplication,
+        assertion: {validityPeriod: 3600, userAttributes: []},
+      } as Application;
+
+      const {rerender} = render(
+        <EditTokenSettings application={nativeApplication} onFieldChange={mockOnFieldChange} sectionResetKey={0} />,
+      );
+
+      const input = screen.getByTestId('validityPeriod-input');
+      fireEvent.change(input, {target: {value: '999'}});
+
+      await waitFor(() => {
+        expect(mockOnFieldChange).toHaveBeenCalledWith('assertion', expect.objectContaining({validityPeriod: 999}));
+      });
+      mockOnFieldChange.mockClear();
+
+      rerender(
+        <EditTokenSettings application={nativeApplication} onFieldChange={mockOnFieldChange} sectionResetKey={1} />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('validityPeriod-input')).toHaveValue('3600');
+      });
+
+      // Give the (guarded) commit effect a chance to fire and confirm it stayed a no-op.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockOnFieldChange).not.toHaveBeenCalled();
     });
   });
 });

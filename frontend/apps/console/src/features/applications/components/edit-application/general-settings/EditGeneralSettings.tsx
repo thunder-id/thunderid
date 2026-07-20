@@ -55,6 +55,11 @@ interface EditGeneralSettingsProps {
    */
   oauth2Config?: OAuth2Config;
   /**
+   * Bumped by the parent on Save/Reset to force AccessSection to remount and drop its local
+   * redirect URI list state.
+   */
+  sectionResetKey?: number;
+  /**
    * The name of the field that was recently copied to clipboard
    */
   copiedField: string | null;
@@ -91,6 +96,7 @@ export default function EditGeneralSettings({
   editedApp,
   onFieldChange,
   oauth2Config = undefined,
+  sectionResetKey = 0,
   copiedField,
   onCopyToClipboard,
   onDeleteSuccess = undefined,
@@ -157,6 +163,7 @@ export default function EditGeneralSettings({
           onCopyToClipboard={onCopyToClipboard}
         />
         <AccessSection
+          key={sectionResetKey}
           application={application}
           editedApp={editedApp}
           oauth2Config={oauth2Config}
