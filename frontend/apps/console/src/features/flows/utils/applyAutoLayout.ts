@@ -17,7 +17,7 @@
  */
 
 import type {Edge, Node} from '@xyflow/react';
-import ELK from 'elkjs/lib/elk.bundled.js';
+import type {ELK} from 'elkjs/lib/elk-api';
 
 /**
  * Configuration options for auto-layout.
@@ -50,7 +50,15 @@ export interface AutoLayoutOptions {
   offsetY?: number;
 }
 
-const elk = new ELK();
+// ELK (the layout engine) is ~1.5MB. It is only needed when a layout is actually
+// requested (toolbar button, or opening a flow with no stored positions), so it is
+// dynamically imported and cached rather than bundled into the builder's entry chunk.
+let elkPromise: Promise<ELK> | undefined;
+
+const getElk = async (): Promise<ELK> => {
+  elkPromise ??= import('elkjs/lib/elk.bundled.js').then((module) => new module.default());
+  return elkPromise;
+};
 
 /**
  * Applies automatic layout to nodes using ELK (Eclipse Layout Kernel).
@@ -171,6 +179,7 @@ export default async function applyAutoLayout(
 
   try {
     // Run ELK layout algorithm
+    const elk = await getElk();
     const layoutedGraph = await elk.layout(elkGraph);
 
     // Map the calculated positions back to React Flow nodes
