@@ -18,7 +18,10 @@
 
 package session
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // sessionStore is the package-private persistence contract covering SSO sessions, their
 // per-checkpoint session contexts, and their participants. A single runtime-persistent-DB-backed
@@ -57,4 +60,16 @@ type sessionStore interface {
 	ListBySessionID(ctx context.Context, sessionID string) ([]Participant, error)
 	// DeleteBySessionID removes all participants of a session.
 	DeleteBySessionID(ctx context.Context, sessionID string) error
+
+	// ListBySubject returns the subject's live sessions (ACTIVE and within both deadlines at now),
+	// most recently active first, paginated. Liveness is filtered in SQL because expired rows are
+	// retained until cleanup exists.
+	ListBySubject(ctx context.Context, subjectID string, now time.Time, limit, offset int) ([]Session, error)
+	// CountBySubject counts the subject's live sessions at now.
+	CountBySubject(ctx context.Context, subjectID string, now time.Time) (int, error)
+	// ListByApp returns live sessions the given application has joined, most recently active
+	// first, paginated.
+	ListByApp(ctx context.Context, appID string, now time.Time, limit, offset int) ([]Session, error)
+	// CountByApp counts live sessions the given application has joined at now.
+	CountByApp(ctx context.Context, appID string, now time.Time) (int, error)
 }

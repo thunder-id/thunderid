@@ -23,6 +23,7 @@ import {
   UnsavedChangesBar,
   getInitials,
 } from '@thunderid/components';
+import {UserSessionsTab} from '@thunderid/configure-sessions';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import type {User} from '@thunderid/types';
@@ -383,6 +384,11 @@ export default function UserEditPage() {
           onFieldChange={handleFieldChange}
         />
       ),
+    },
+    {
+      key: 'sessions',
+      label: t('users:manageUser.tabs.sessions', 'Sessions'),
+      render: () => <UserSessionsTab userId={userId!} />,
     },
   ];
 

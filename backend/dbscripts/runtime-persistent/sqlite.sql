@@ -89,6 +89,10 @@ CREATE TABLE "SSO_SESSION_PARTICIPANT" (
     PRIMARY KEY (SESSION_ID, DEPLOYMENT_ID, APP_ID)
 );
 
+-- Supports listing sessions by participating application (the composite PK's leading column is
+-- SESSION_ID, so it cannot serve the APP_ID predicate).
+CREATE INDEX idx_sso_session_participant_app ON "SSO_SESSION_PARTICIPANT" (DEPLOYMENT_ID, APP_ID);
+
 -- Table to store consent records.
 CREATE TABLE "CONSENT" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
