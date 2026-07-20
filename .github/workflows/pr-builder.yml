@@ -78,6 +78,16 @@ jobs:
       - name: ⚙️ Set up Go Environment
         uses: ./.github/actions/setup-go
 
+      - name: 🗄️ Cache Go Modules
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-modules-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-modules-
+
       - name: 🔧 Install Mockery
         run: make install-mockery
 
@@ -102,11 +112,39 @@ jobs:
           fi
           echo "✅ All mock files are up to date"
 
-  lint:
-    name: 🧹 Lint Code
+  lint-backend:
+    name: 🧹 Lint Backend
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: ⚙️ Set up Go Environment
+        uses: ./.github/actions/setup-go
+
+      - name: 🗄️ Cache Go Modules
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-modules-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-modules-
+
+      - name: 📦 Prepare golangci-lint Locally
+        run: make golangci-lint
+
+      - name: 🔍 Run Backend Linter
+        run: make lint_backend
+
+  lint-frontend:
+    name: 🧹 Lint Frontend
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -122,28 +160,23 @@ jobs:
       - name: 🔄 Fetch main branch for Turbo affected base
         run: git fetch origin main:main --update-head-ok || true
 
-      - name: ⚙️ Set up Go Environment
-        uses: ./.github/actions/setup-go
+      - name: 📦 Install Dependencies
+        run: pnpm install --frozen-lockfile
 
-      - name: 📦 Prepare golangci-lint Locally
-        run: make golangci-lint
+      - name: 🗂️ Set up Turbo Cache
+        uses: ./.github/actions/setup-turbo-cache
 
-      - name: 🔍 Run Backend Linter
-        run: make lint_backend
-
-      - name: 🧩 Install Dependencies & Build Frontend
-        run: |
-          make build_frontend
+      - name: 🔨 Build Frontend Packages
+        working-directory: frontend
+        run: pnpm build:packages
 
       - name: 🔍 Run Frontend Linter
-        run: |
-          pnpm turbo run lint --affected --filter=!./tests/**
+        run: pnpm turbo run lint --affected --filter=!./tests/**
         env:
           TURBO_SCM_BASE: main
 
       - name: 🎨 Check Frontend Formatting
-        run: |
-          pnpm format:check
+        run: pnpm format:check
 
   build:
     name: 🛠️ Build Product
@@ -335,9 +368,9 @@ jobs:
       - name: 🗂️ Set up Turbo Cache
         uses: ./.github/actions/setup-turbo-cache
 
-      - name: 🔨 Build Frontend
-        run: |
-          pnpm build:frontend
+      - name: 🔨 Build Frontend Packages
+        working-directory: frontend
+        run: pnpm build:packages
 
       - name: 🧪 Run Gate Tests with Coverage
         run: |
@@ -384,9 +417,9 @@ jobs:
       - name: 🗂️ Set up Turbo Cache
         uses: ./.github/actions/setup-turbo-cache
 
-      - name: 🔨 Build Frontend
-        run: |
-          pnpm build:frontend
+      - name: 🔨 Build Frontend Packages
+        working-directory: frontend
+        run: pnpm build:packages
 
       - name: 🧪 Run Console Tests with Coverage
         run: |
@@ -618,17 +651,10 @@ jobs:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: ⚙️ Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - name: ⚙️ Set up Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
         with:
-          node-version: 'lts/*'
-
-      - name: 📦 Install pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
-        with:
-          run_install: false
-          cache_dependency_path: pnpm-lock.yaml
-          version: ${{ env.PNPM_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: 📥 Download Built Distribution
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
