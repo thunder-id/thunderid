@@ -93,6 +93,8 @@ You can also configure the ID token response format via the API. These settings 
 | **Encryption Algorithm** | Required for `JWE` and `NESTED_JWT`. Options: `RSA-OAEP`, `RSA-OAEP-256`. Requires an OAuth client certificate. |
 | **Encryption Encoding** | Required when Encryption Algorithm is set. Options: `A128CBC-HS256`, `A256GCM`. |
 
+For the `client_credentials` grant, the token represents the application itself rather than a user. You can add the application's OU claims (`ouId`, `ouName`, `ouHandle`) to it via the API using `clientConfig.attributes`.
+
 ## Rotate the Client Secret
 
 :::note

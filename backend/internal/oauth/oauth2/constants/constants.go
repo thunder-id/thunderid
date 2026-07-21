@@ -268,10 +268,13 @@ const (
 
 // Custom JWT claim names.
 const (
-	ClaimUserType               string = "userType"
-	ClaimOUID                   string = "ouId"
-	ClaimOUName                 string = "ouName"
-	ClaimOUHandle               string = "ouHandle"
+	ClaimUserType string = "userType"
+	ClaimOUID     string = "ouId"
+	ClaimOUName   string = "ouName"
+	ClaimOUHandle string = "ouHandle"
+	// ClaimName and ClaimOwner carry an agent's system-attribute name/owner on its client token.
+	ClaimName                   string = "name"
+	ClaimOwner                  string = "owner"
 	ClaimClaimsRequest          string = "claims_req"
 	ClaimClaimsLocales          string = "claims_locales"
 	ClaimCompletedAuthClass     string = "completed_auth_class"

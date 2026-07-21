@@ -38,6 +38,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
+	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 )
 
 type UtilsTestSuite struct {
@@ -54,7 +55,8 @@ func TestUtilsTestSuite(t *testing.T) {
 func (s *UtilsTestSuite) SetupTest() {
 	s.mockInbound = inboundclientmock.NewInboundClientServiceInterfaceMock(s.T())
 	s.mockEntity = entityprovidermock.NewEntityProviderInterfaceMock(s.T())
-	s.provider = Initialize(s.mockInbound, s.mockEntity, managermock.NewAuthnProviderManagerMock(s.T()))
+	s.provider = Initialize(s.mockInbound, s.mockEntity, managermock.NewAuthnProviderManagerMock(s.T()),
+		rolemock.NewRoleServiceInterfaceMock(s.T()))
 }
 
 func (s *UtilsTestSuite) TestBuildApplication_Success() {
@@ -215,7 +217,8 @@ func (s *UtilsTestSuite) TestReadEntitySystemAttributes_EmptyAttributes() {
 func TestBuildApplication_InboundClientStoreError(t *testing.T) {
 	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
 	mockEntity := entityprovidermock.NewEntityProviderInterfaceMock(t)
-	provider := Initialize(mockInbound, mockEntity, managermock.NewAuthnProviderManagerMock(t))
+	provider := Initialize(mockInbound, mockEntity, managermock.NewAuthnProviderManagerMock(t),
+		rolemock.NewRoleServiceInterfaceMock(t))
 
 	mockInbound.On("GetInboundClientByEntityID", mock.Anything, "app-1").
 		Return((*inboundmodel.InboundClient)(nil), errors.New("db error"))

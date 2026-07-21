@@ -82,6 +82,7 @@ type ActorProvider interface {
 	) *common.ServiceError
 	GetActor(actorID string) (*Entity, *common.ServiceError)
 	GetActorGroups(actorID string) ([]EntityGroup, *common.ServiceError)
+	GetActorRoles(actorID string, groupIDs []string) ([]string, *common.ServiceError)
 }
 
 // I18nProvider defines the interface for the i18n provider.

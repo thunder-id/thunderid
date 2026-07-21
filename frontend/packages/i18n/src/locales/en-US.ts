@@ -1211,7 +1211,7 @@ const translations = {
     'edit.tokens.agent.attributes.description':
       'Attributes included in the access token this agent receives for its own requests (client_credentials grant).',
     'edit.tokens.agent.attributes.label': 'Add or Remove Attributes',
-    'edit.tokens.agent.attributes.hint': "Click on this agent's attributes to add them to its access token.",
+    'edit.tokens.agent.attributes.hint': 'Click on agent attributes to add them to its access token.',
     'edit.tokens.agent.attributes.empty':
       'No attributes available. Configure attributes for this agent in the Attributes tab.',
     'edit.tokens.agent.validity.title': 'Token Validity',

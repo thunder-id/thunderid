@@ -451,6 +451,11 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ClientAttri
 		OUID:                    "ou-456",
 		GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
 		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
+				ClientConfig: &providers.AccessTokenSubConfig{Attributes: []string{constants.ClaimOUID}},
+			},
+		},
 	}
 
 	mockEvaluateAccessBatch(suite.mockAuthzService, oauthAppWithOU.ID, defaultRSID, []string{"read"}, []string{"read"})
@@ -711,6 +716,101 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AgentOwnAtt
 	}, nil)
 
 	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, agentApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+}
+
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AgentSystemAttributes_Embedded() {
+	tokenRequest := &model.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     testClientID,
+		ClientSecret: "secret123",
+		Scope:        "",
+	}
+
+	agentApp := &providers.OAuthClient{
+		ID:                      testEntityID,
+		ClientID:                testClientID,
+		EntityCategory:          providers.EntityCategoryAgent,
+		GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
+				ClientConfig: &providers.AccessTokenSubConfig{Attributes: []string{"name", "owner"}},
+			},
+		},
+	}
+
+	suite.mockEntityProvider.On("GetActor", agentApp.ID).Return(&providers.Entity{
+		ID:               agentApp.ID,
+		Category:         providers.EntityCategoryAgent,
+		SystemAttributes: []byte(`{"name":"Ledger Agent","owner":"user-123","clientId":"cid"}`),
+	}, (*tidcommon.ServiceError)(nil))
+
+	suite.mockTokenBuilder.On("BuildAccessToken",
+		mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.SubjectAttributes["name"] == "Ledger Agent" &&
+				ctx.SubjectAttributes["owner"] == "user-123" &&
+				ctx.SubjectAttributes["clientId"] == nil
+		})).Return(&model.TokenDTO{
+		Token:     testJWTToken,
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  int64(1234567890),
+		ExpiresIn: 3600,
+		Scopes:    []string{},
+		ClientID:  testClientID,
+	}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, agentApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+}
+
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ApplicationSystemAttributes_NotEmbedded() {
+	tokenRequest := &model.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     testClientID,
+		ClientSecret: "secret123",
+		Scope:        "",
+	}
+
+	appApp := &providers.OAuthClient{
+		ID:                      testEntityID,
+		ClientID:                testClientID,
+		EntityCategory:          providers.EntityCategoryApp,
+		GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
+		Token: &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
+				ClientConfig: &providers.AccessTokenSubConfig{Attributes: []string{"name", "owner"}},
+			},
+		},
+	}
+
+	// Applications store name in SystemAttributes too; the category gate must keep it out of the token.
+	suite.mockEntityProvider.On("GetActor", appApp.ID).Return(&providers.Entity{
+		ID:               appApp.ID,
+		Category:         providers.EntityCategoryApp,
+		SystemAttributes: []byte(`{"name":"My Application","clientId":"cid"}`),
+	}, (*tidcommon.ServiceError)(nil))
+
+	suite.mockTokenBuilder.On("BuildAccessToken",
+		mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.SubjectAttributes["name"] == nil && ctx.SubjectAttributes["owner"] == nil
+		})).Return(&model.TokenDTO{
+		Token:     testJWTToken,
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  int64(1234567890),
+		ExpiresIn: 3600,
+		Scopes:    []string{},
+		ClientID:  testClientID,
+	}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, appApp)
 
 	assert.Nil(suite.T(), errResp)
 	assert.NotNil(suite.T(), result)

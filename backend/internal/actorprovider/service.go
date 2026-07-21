@@ -27,6 +27,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -36,20 +37,23 @@ type actorProvider struct {
 	inboundClient  inboundclient.InboundClientServiceInterface
 	entityProvider entityprovider.EntityProviderInterface
 	authnProvider  providers.AuthnProviderManager
+	roleService    role.RoleServiceInterface
 	logger         *log.Logger
 }
 
 // newActorProvider creates a new actorProvider backed by the given inbound-client, entity-provider,
-// and authentication provider.
+// authentication provider, and role service.
 func newActorProvider(
 	inboundClient inboundclient.InboundClientServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	authnProvider providers.AuthnProviderManager,
+	roleService role.RoleServiceInterface,
 ) providers.ActorProvider {
 	return &actorProvider{
 		inboundClient:  inboundClient,
 		entityProvider: entityProvider,
 		authnProvider:  authnProvider,
+		roleService:    roleService,
 		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ActorProvider")),
 	}
 }
@@ -133,6 +137,16 @@ func (p *actorProvider) GetActorGroups(
 		return nil, mapEntityProviderError(epErr)
 	}
 	return groups, nil
+}
+
+// GetActorRoles returns the roles assigned to the actor, directly and through the given groups.
+func (p *actorProvider) GetActorRoles(
+	actorID string, groupIDs []string,
+) ([]string, *tidcommon.ServiceError) {
+	if p.roleService == nil {
+		return nil, nil
+	}
+	return p.roleService.GetUserRoles(context.Background(), actorID, groupIDs)
 }
 
 func mapEntityProviderError(epErr *entityprovider.EntityProviderError) *tidcommon.ServiceError {

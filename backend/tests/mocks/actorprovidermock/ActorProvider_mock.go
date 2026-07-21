@@ -232,6 +232,76 @@ func (_c *ActorProviderMock_GetActorGroups_Call) RunAndReturn(run func(actorID s
 	return _c
 }
 
+// GetActorRoles provides a mock function for the type ActorProviderMock
+func (_mock *ActorProviderMock) GetActorRoles(actorID string, groupIDs []string) ([]string, *common.ServiceError) {
+	ret := _mock.Called(actorID, groupIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetActorRoles")
+	}
+
+	var r0 []string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(string, []string) ([]string, *common.ServiceError)); ok {
+		return returnFunc(actorID, groupIDs)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string, []string) []string); ok {
+		r0 = returnFunc(actorID, groupIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(string, []string) *common.ServiceError); ok {
+		r1 = returnFunc(actorID, groupIDs)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ActorProviderMock_GetActorRoles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetActorRoles'
+type ActorProviderMock_GetActorRoles_Call struct {
+	*mock.Call
+}
+
+// GetActorRoles is a helper method to define mock.On call
+//   - actorID string
+//   - groupIDs []string
+func (_e *ActorProviderMock_Expecter) GetActorRoles(actorID interface{}, groupIDs interface{}) *ActorProviderMock_GetActorRoles_Call {
+	return &ActorProviderMock_GetActorRoles_Call{Call: _e.mock.On("GetActorRoles", actorID, groupIDs)}
+}
+
+func (_c *ActorProviderMock_GetActorRoles_Call) Run(run func(actorID string, groupIDs []string)) *ActorProviderMock_GetActorRoles_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 []string
+		if args[1] != nil {
+			arg1 = args[1].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ActorProviderMock_GetActorRoles_Call) Return(strings []string, serviceError *common.ServiceError) *ActorProviderMock_GetActorRoles_Call {
+	_c.Call.Return(strings, serviceError)
+	return _c
+}
+
+func (_c *ActorProviderMock_GetActorRoles_Call) RunAndReturn(run func(actorID string, groupIDs []string) ([]string, *common.ServiceError)) *ActorProviderMock_GetActorRoles_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetInboundClientByID provides a mock function for the type ActorProviderMock
 func (_mock *ActorProviderMock) GetInboundClientByID(ctx context.Context, id string) (*providers.InboundClient, *common.ServiceError) {
 	ret := _mock.Called(ctx, id)

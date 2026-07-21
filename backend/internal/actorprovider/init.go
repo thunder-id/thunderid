@@ -23,15 +23,17 @@ package actorprovider
 import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// Initialize creates the default ActorProvider backed by inbound-client, entity-provider, and
-// authentication provider services.
+// Initialize creates the default ActorProvider backed by inbound-client, entity-provider,
+// authentication provider, and role services.
 func Initialize(
 	inboundClient inboundclient.InboundClientServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	authnProvider providers.AuthnProviderManager,
+	roleService role.RoleServiceInterface,
 ) providers.ActorProvider {
-	return newActorProvider(inboundClient, entityProvider, authnProvider)
+	return newActorProvider(inboundClient, entityProvider, authnProvider, roleService)
 }
