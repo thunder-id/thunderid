@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useConfig} from '@thunderid/contexts';
+import {useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import {waitFor, act, renderHook} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
@@ -37,6 +37,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   return {
     ...actual,
     useConfig: vi.fn(),
+    useToast: vi.fn(),
   };
 });
 
@@ -139,10 +140,12 @@ describe('useCreateApplication', () => {
   };
 
   let mockHttpRequest: ReturnType<typeof vi.fn>;
+  let mockShowToast: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     // Mock HTTP request function
     mockHttpRequest = vi.fn();
+    mockShowToast = vi.fn();
 
     // Mock useThunderID hook
     vi.mocked(useThunderID).mockReturnValue({
@@ -155,6 +158,11 @@ describe('useCreateApplication', () => {
     vi.mocked(useConfig).mockReturnValue({
       getServerUrl: () => 'https://localhost:8090',
     } as ReturnType<typeof useConfig>);
+
+    // Mock useToast hook
+    vi.mocked(useToast).mockReturnValue({
+      showToast: mockShowToast,
+    } as unknown as ReturnType<typeof useToast>);
   });
 
   afterEach(() => {
@@ -264,6 +272,40 @@ describe('useCreateApplication', () => {
     expect(result.current.error).toEqual(networkError);
     expect(result.current.data).toBeUndefined();
     expect(result.current.isPending).toBe(false);
+  });
+
+  it('should not show a toast for a duplicate name error (APP-1020)', async () => {
+    const duplicateError = Object.assign(new Error('Bad Request'), {
+      response: {status: 400, data: {code: 'APP-1020', message: 'Application already exists'}},
+    });
+    mockHttpRequest.mockRejectedValueOnce(duplicateError);
+
+    const {result} = renderHook(() => useCreateApplication());
+
+    result.current.mutate(mockRequest);
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+
+  it('should show an error toast for non-duplicate errors', async () => {
+    const genericError = Object.assign(new Error('Internal Server Error'), {
+      response: {status: 500, data: {code: 'APP-1500'}},
+    });
+    mockHttpRequest.mockRejectedValueOnce(genericError);
+
+    const {result} = renderHook(() => useCreateApplication());
+
+    result.current.mutate(mockRequest);
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith(expect.any(String), 'error');
   });
 
   it('should invalidate applications query on success', async () => {

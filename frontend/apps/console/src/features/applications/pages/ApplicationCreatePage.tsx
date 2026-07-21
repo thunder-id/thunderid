@@ -20,6 +20,7 @@ import {AuthenticatorTypes, IdentityProviderTypes, useIdentityProviders} from '@
 import {useHasMultipleOUs} from '@thunderid/configure-organization-units';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
 import {useLogger} from '@thunderid/logger/react';
+import {getErrorMessage} from '@thunderid/utils';
 import {Box, Stack, Button, IconButton, LinearProgress, Alert, CircularProgress, AppBreadcrumbs} from '@wso2/oxygen-ui';
 import {X} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
@@ -55,12 +56,14 @@ import {McpClientTypes} from '../models/mcp-client';
 import {OAuth2GrantTypes, TokenEndpointAuthMethods, type OAuth2Config} from '../models/oauth';
 import type {CreateApplicationRequest} from '../models/requests';
 import getConfigurationTypeFromTemplate from '../utils/getConfigurationTypeFromTemplate';
+import isDuplicateAppNameError from '../utils/isDuplicateAppNameError';
 import resolveCreationFlow from '../utils/resolveCreationFlow';
 import GatePreview from '@/components/GatePreview/GatePreview';
 import buildPreviewMock from '@/components/GatePreview/mocks/buildPreviewMock';
 
 export default function ApplicationCreatePage(): JSX.Element {
   const {t} = useTranslation();
+  const {t: tApplications} = useTranslation('applications');
 
   const {
     currentStep,
@@ -138,8 +141,21 @@ export default function ApplicationCreatePage(): JSX.Element {
     [applicationsData],
   );
 
+  // Application names already in use, so the name step can flag a duplicate before submission.
+  const existingAppNames = useMemo(
+    (): string[] => (applicationsData?.applications ?? []).map((app) => app.name).filter(Boolean),
+    [applicationsData],
+  );
+
   const [selectedUserTypes, setSelectedUserTypes] = useState<string[]>([]);
   const [createdApplication, setCreatedApplication] = useState<Application | null>(null);
+  // Track names that the server rejected as duplicates (APP-1020)
+  const [rejectedAppNames, setRejectedAppNames] = useState<string[]>([]);
+
+  const knownAppNames = useMemo(
+    (): string[] => [...existingAppNames, ...rejectedAppNames],
+    [existingAppNames, rejectedAppNames],
+  );
 
   const createFlow = useCreateFlow();
   const {data: idpData} = useIdentityProviders();
@@ -371,7 +387,16 @@ export default function ApplicationCreatePage(): JSX.Element {
         }
       },
       onError: (err: Error) => {
-        setError(err.message ?? 'Failed to create application. Please try again.');
+        if (isDuplicateAppNameError(err)) {
+          // The client-side pre-check can miss names beyond the fetched list; record the rejected
+          // name so the name step flags it (preventing a resubmit-and-fail loop)
+          // then send the user back with the specific message.
+          setRejectedAppNames((prev) => (prev.includes(appName) ? prev : [...prev, appName]));
+          setError(tApplications('onboarding.configure.name.duplicate'));
+          setCurrentStep(ApplicationCreateFlowStep.NAME);
+          return;
+        }
+        setError(getErrorMessage(err, tApplications, 'create.error'));
       },
     });
   };
@@ -525,7 +550,12 @@ export default function ApplicationCreatePage(): JSX.Element {
     switch (currentStep) {
       case ApplicationCreateFlowStep.NAME:
         return (
-          <ConfigureName appName={appName} onAppNameChange={setAppName} onReadyChange={handleNameStepReadyChange} />
+          <ConfigureName
+            appName={appName}
+            onAppNameChange={setAppName}
+            onReadyChange={handleNameStepReadyChange}
+            existingAppNames={knownAppNames}
+          />
         );
 
       case ApplicationCreateFlowStep.CLIENT_TYPE:

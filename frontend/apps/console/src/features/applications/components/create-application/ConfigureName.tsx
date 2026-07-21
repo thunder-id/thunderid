@@ -43,6 +43,11 @@ export interface ConfigureNameProps {
    * Callback function to broadcast whether this step is ready to proceed
    */
   onReadyChange?: (isReady: boolean) => void;
+
+  /**
+   * Application names already in use, so a duplicate can be flagged before submission
+   */
+  existingAppNames?: string[];
 }
 
 /**
@@ -61,6 +66,7 @@ export interface ConfigureNameProps {
  * @param props.appName - The current application name value
  * @param props.onAppNameChange - Callback invoked when the name is changed
  * @param props.onReadyChange - Optional callback to notify parent of step readiness
+ * @param props.existingAppNames - Optional list of application names already in use
  *
  * @returns JSX element displaying the application name configuration interface
  *
@@ -88,21 +94,25 @@ export default function ConfigureName({
   appName,
   onAppNameChange,
   onReadyChange = undefined,
+  existingAppNames = [],
 }: ConfigureNameProps): JSX.Element {
   const {t} = useTranslation();
   const theme = useTheme();
 
   const appNameSuggestions: string[] = useMemo((): string[] => generateRandomHumanReadableIdentifiers(), []);
 
+  // Exact match, mirroring the server's uniqueness check.
+  const isDuplicateName: boolean = appName !== '' && existingAppNames.includes(appName);
+
   /**
    * Broadcast readiness whenever appName changes.
    */
   useEffect((): void => {
-    const isReady: boolean = appName.trim().length > 0;
+    const isReady: boolean = appName.trim().length > 0 && !isDuplicateName;
     if (onReadyChange) {
       onReadyChange(isReady);
     }
-  }, [appName, onReadyChange]);
+  }, [appName, isDuplicateName, onReadyChange]);
 
   const handleNameSuggestionClick = (suggestion: string): void => {
     onAppNameChange(suggestion);
@@ -122,6 +132,8 @@ export default function ConfigureName({
           value={appName}
           onChange={(e: ChangeEvent<HTMLInputElement>): void => onAppNameChange(e.target.value)}
           placeholder={t('applications:onboarding.configure.name.placeholder')}
+          error={isDuplicateName}
+          helperText={isDuplicateName ? t('applications:onboarding.configure.name.duplicate') : undefined}
           inputProps={{
             'data-testid': 'app-name-input',
           }}
