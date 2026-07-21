@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -542,9 +542,9 @@ func RunInitScript(zipFilePattern string) error {
 		dbFileName string
 	}{
 		{"configdb", "dbscripts/configdb", "configdb.db"},
-		{"runtime_transient", "dbscripts/runtime-transient", "runtime-transient.db"},
+		{"runtime_transient", "dbscripts/runtime_transient", "runtime_transient.db"},
 		{"entitydb", "dbscripts/entitydb", "entitydb.db"},
-		{"runtime_persistent", "dbscripts/runtime-persistent", "runtime-persistent.db"},
+		{"runtime_persistent", "dbscripts/runtime_persistent", "runtime_persistent.db"},
 	}
 
 	for _, db := range databases {

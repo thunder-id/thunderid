@@ -20,7 +20,7 @@ database:
   runtime_transient:
     type: sqlite
     sqlite:
-      path: "/data/runtime-transient.db"
+      path: "/data/runtime_transient.db"
       options: "cache=shared"
 
 oauth:

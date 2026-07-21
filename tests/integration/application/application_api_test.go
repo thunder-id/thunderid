@@ -3622,13 +3622,15 @@ func (ts *ApplicationAPITestSuite) TestApplicationCreateWithDefaultAuthFlowID() 
 	ts.Assert().NotEmpty(retrievedApp.AuthFlowID)
 }
 
-// TestApplicationCreateWithoutRegistrationFlowID tests creating application without a registration
-// flow ID when auto-inference is disabled (default). The registration flow ID should remain empty.
+// TestApplicationCreateWithoutRegistrationFlowID tests creating an application without a
+// RegistrationFlowID when its AuthFlowID transitively references a registration flow. The server
+// must auto-fill RegistrationFlowID with the reachable target and force IsRegistrationFlowEnabled
+// to false.
 func (ts *ApplicationAPITestSuite) TestApplicationCreateWithoutRegistrationFlowID() {
 	app := Application{
 		OUID:                      testOUID,
 		Name:                      "No Registration Flow Test",
-		Description:               "Test that registration flow is not inferred when auto-inference is disabled",
+		Description:               "Test that registration flow is auto-filled from the referenced auth flow",
 		IsRegistrationFlowEnabled: true,
 		AuthFlowID:                defaultAuthFlowID,
 		Certificate:               nil,
@@ -3641,8 +3643,10 @@ func (ts *ApplicationAPITestSuite) TestApplicationCreateWithoutRegistrationFlowI
 	retrievedApp, err := getApplicationByID(appID)
 	ts.Require().NoError(err)
 
-	// Verify registration flow ID was not inferred (auto-inference is disabled by default)
-	ts.Assert().Empty(retrievedApp.RegistrationFlowID)
+	ts.Assert().Equal(defaultRegistrationFlowID, retrievedApp.RegistrationFlowID,
+		"auto-fill must populate RegistrationFlowID from the auth flow's reachable target")
+	ts.Assert().False(retrievedApp.IsRegistrationFlowEnabled,
+		"auto-fill must force IsRegistrationFlowEnabled to false")
 }
 
 // TestApplicationCreateWithDuplicateClientID tests creating application with duplicate client ID

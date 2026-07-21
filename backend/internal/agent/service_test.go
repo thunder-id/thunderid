@@ -154,6 +154,11 @@ func (r noopDepRegistry) CascadeDelete(context.Context, string, string) (int, er
 	return 0, r.cascadeErr
 }
 
+func (noopDepRegistry) ValidateReferenceUpdate(
+	context.Context, string, string) *tidcommon.ServiceError {
+	return nil
+}
+
 // buildAgentEntityFixture returns an providers.Entity with system attributes for the given fields.
 func buildAgentEntityFixture(name, description, owner, clientID string) *providers.Entity {
 	attrs := map[string]interface{}{}

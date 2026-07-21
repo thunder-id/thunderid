@@ -129,3 +129,9 @@ type updateFlowInput struct {
 	Nodes        []providers.NodeDefinition        `json:"nodes"                  jsonschema:"Array of nodes defining the flow steps. Required for PUT."`
 	Interceptors []providers.InterceptorDefinition `json:"interceptors,omitempty" jsonschema:"Optional array of interceptor declarations for cross-cutting concerns."`
 }
+
+// CallTarget describes one flow reachable from a starting flow via CALL nodes.
+type CallTarget struct {
+	FlowID   string
+	FlowType providers.FlowType
+}

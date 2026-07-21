@@ -30,6 +30,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // Test Suite
@@ -572,6 +573,11 @@ func (s *stubUsageRegistry) GetDependencies(
 
 func (s *stubUsageRegistry) CascadeDelete(_ context.Context, _, _ string) (int, error) {
 	return 0, nil
+}
+
+func (s *stubUsageRegistry) ValidateReferenceUpdate(
+	_ context.Context, _, _ string) *tidcommon.ServiceError {
+	return nil
 }
 
 // Test GetLayoutUsages - Empty ID

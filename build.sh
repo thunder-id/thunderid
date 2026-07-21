@@ -1,6 +1,6 @@
 #!/bin/bash
 # ----------------------------------------------------------------------------
-# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+# Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
 #
 # WSO2 LLC. licenses this file to you under the Apache License,
 # Version 2.0 (the "License"); you may not use this file except
@@ -303,8 +303,8 @@ function initialize_databases() {
 
     mkdir -p "$REPOSITORY_DB_DIR"
 
-    db_files=("configdb.db" "runtime-transient.db" "entitydb.db" "runtime-persistent.db")
-    script_paths=("configdb/sqlite.sql" "runtime-transient/sqlite.sql" "entitydb/sqlite.sql" "runtime-persistent/sqlite.sql")
+    db_files=("configdb.db" "runtime_transient.db" "entitydb.db" "runtime_persistent.db")
+    script_paths=("configdb/sqlite.sql" "runtime_transient/sqlite.sql" "entitydb/sqlite.sql" "runtime_persistent/sqlite.sql")
 
     for ((i = 0; i < ${#db_files[@]}; i++)); do
         db_file="${db_files[$i]}"
@@ -476,9 +476,11 @@ function prepare_backend_for_packaging() {
     mkdir -p "$DIST_DIR/$PRODUCT_FOLDER/$SECURITY_DIR"
     # Never ship key material: strip any dev certs/keys that "cp -r config" above may have copied in.
     rm -f "$DIST_DIR/$PRODUCT_FOLDER/$SECURITY_DIR"/*.cert "$DIST_DIR/$PRODUCT_FOLDER/$SECURITY_DIR"/*.key
-    # Never ship runtime secrets: strip the dev Direct Auth Secret that "cp -r config" may have copied in.
-    # setup.sh generates a fresh per-deployment secret.
-    rm -rf "$DIST_DIR/$PRODUCT_FOLDER/config/secrets"
+    # Ship an empty config/secrets directory (like config/certs) so a named volume mounted there
+    # inherits the runtime user's ownership instead of being created as root. Never ship the dev
+    # Direct Auth Secret that "cp -r config" may have copied in; setup.sh generates a fresh one.
+    mkdir -p "$DIST_DIR/$PRODUCT_FOLDER/config/secrets"
+    rm -f "$DIST_DIR/$PRODUCT_FOLDER/config/secrets/direct_auth_secret"
 
     # Copy bootstrap directory
     echo "Copying bootstrap scripts..."

@@ -443,3 +443,11 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: scim
       filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/system/resourcedependency:
+    config:
+      all: true
+      dir: internal/system/resourcedependency
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: resourcedependency
+      filename: "{{.InterfaceName}}_mock_test.go"

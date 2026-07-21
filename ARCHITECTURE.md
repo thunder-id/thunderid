@@ -9,7 +9,7 @@ backend/cmd/server/
   main.go               # startup
   servicemanager.go     # calls every internal/*/init.go to register routes
   bootstrap/flows/      # JSON auth/registration flow definitions (auto-seeded)
-  repository/           # configdb.db · runtime-transient.db · runtime-persistent.db · entitydb.db created at runtime in the configured data directory (SQLite or Postgres)
+  repository/           # configdb.db · runtime_transient.db · runtime_persistent.db · entitydb.db created at runtime in the configured data directory (SQLite or Postgres)
 backend/internal/
   authn/                # credential / OTP / passkey / social login
   oauth/                # OAuth 2.0 + OIDC server (authorize, token, introspect, userinfo, JWKS, DCR)

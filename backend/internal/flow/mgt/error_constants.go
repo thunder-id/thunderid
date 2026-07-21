@@ -329,6 +329,34 @@ var (
 			DefaultValue: "Input configuration is invalid",
 		},
 	}
+	// ErrorCallTargetFlowNotFound is the error returned when a CALL node references a flow that does not exist.
+	ErrorCallTargetFlowNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.call_target_flow_not_found",
+			DefaultValue: "Call target flow not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.call_target_flow_not_found_description",
+			DefaultValue: "A CALL node references a flow that does not exist",
+		},
+	}
+	// ErrorFlowUpdateBlockedByDependent is the error returned when a flow update is rejected because
+	// one or more dependent resources (e.g. applications) would end up in a conflicting state.
+	ErrorFlowUpdateBlockedByDependent = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1026",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.flow_update_blocked_by_dependent",
+			DefaultValue: "Flow update conflicts with a resource that references this flow",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.flow_update_blocked_by_dependent_description",
+			DefaultValue: "The flow update would leave a resource that references this flow in an " +
+				"inconsistent state and has been rejected.",
+		},
+	}
 )
 
 // Internal errors

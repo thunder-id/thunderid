@@ -67,13 +67,13 @@ thunderid-component:
         path: "database/configdb.db"
     runtime_transient:
       sqlite:
-        path: "database/runtime-transient.db"
+        path: "database/runtime_transient.db"
     entity:
       sqlite:
         path: "database/entitydb.db"
     runtime_persistent:
       sqlite:
-        path: "database/runtime-persistent.db"
+        path: "database/runtime_persistent.db"
 
     # ── PostgreSQL (used when type: postgres) — uncomment and fill in ─────────
     # config:

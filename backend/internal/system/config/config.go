@@ -434,6 +434,14 @@ type TranslationConfig struct {
 type LogConfig struct {
 	Level  string          `yaml:"level"  json:"level"`
 	Output LogOutputConfig `yaml:"output" json:"output"`
+	Access LogAccessConfig `yaml:"access" json:"access"`
+}
+
+// LogAccessConfig holds the access log settings.
+type LogAccessConfig struct {
+	// ExcludePaths lists extra path prefixes whose requests are served without an access log line.
+	// The Gate and Console frontend prefixes are always excluded in addition to these.
+	ExcludePaths []string `yaml:"exclude_paths" json:"exclude_paths"`
 }
 
 // LogOutputConfig holds the log output destinations.

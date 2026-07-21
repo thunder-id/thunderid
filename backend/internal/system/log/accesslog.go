@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
@@ -29,8 +30,16 @@ import (
 
 // AccessLogHandler logs HTTP requests in Apache CLF with response time and correlation ID.
 // The correlation ID should be set in the context by the CorrelationIDMiddleware.
-func AccessLogHandler(logger *Logger, next http.Handler) http.Handler {
+// Paths matching skipPrefixes are served without an access log line (e.g. /console/, /gate/).
+func AccessLogHandler(logger *Logger, skipPrefixes []string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, prefix := range skipPrefixes {
+			if strings.HasPrefix(r.URL.Path, prefix) {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+
 		start := time.Now()
 
 		// Extract correlation ID from context

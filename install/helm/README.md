@@ -85,13 +85,15 @@ helm install my-thunderid oci://ghcr.io/thunder-id/helm-charts/thunderid \
   --set configuration.database.config.type=sqlite \
   --set configuration.database.runtime_transient.type=sqlite \
   --set configuration.database.entity.type=sqlite \
-  --set configuration.database.runtime_persistent.type=sqlite
+  --set configuration.database.runtime_persistent.type=sqlite \
+  --set deployment.securityContext.readOnlyRootFilesystem=false
 ```
 
 **Note:** When using SQLite:
 - **Persistence is automatically enabled** when any database is configured to use SQLite
 - The setup job's init container will automatically copy SQLite databases from the image to a PVC
 - Database files will persist across pod restarts
+- **`deployment.securityContext.readOnlyRootFilesystem` must be `false`** (the chart defaults it to `true`), otherwise the setup job and server cannot write to the container filesystem
 
 ### 2. Get the External IP
 
@@ -423,7 +425,7 @@ Password fields are available in `configuration.database.config.postgres`, `conf
 | `configuration.database.config.postgres.max_idle_conns`  | Maximum number of idle connections in the pool                                                                                                          | `100`                        |
 | `configuration.database.config.postgres.conn_max_lifetime` | Maximum lifetime of a connection in seconds                                                                                                             | `3600`                       |
 | `configuration.database.runtime_transient.type`             | Runtime-transient database type (`postgres`, `sqlite`, or `redis`)                                                                                               | `postgres`                   |
-| `configuration.database.runtime_transient.sqlite.path`       | SQLite database path (for SQLite only)                                                                                                                  | `database/runtime-transient.db` |
+| `configuration.database.runtime_transient.sqlite.path`       | SQLite database path (for SQLite only)                                                                                                                  | `database/runtime_transient.db` |
 | `configuration.database.runtime_transient.sqlite.options`    | SQLite options (for SQLite only)                                                                                                                        | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` |
 | `configuration.database.runtime_transient.sqlite.max_open_conns` | Maximum number of open connections for SQLite                                                                                                      | `500`                        |
 | `configuration.database.runtime_transient.sqlite.max_idle_conns` | Maximum number of idle SQLite connections                                                                                                          | `100`                        |
@@ -464,7 +466,7 @@ Password fields are available in `configuration.database.config.postgres`, `conf
 | `configuration.database.entity.postgres.max_idle_conns`      | Maximum number of idle connections in the pool                                                                                                          | `100`                        |
 | `configuration.database.entity.postgres.conn_max_lifetime`   | Maximum lifetime of a connection in seconds                                                                                                             | `3600`                       |
 | `configuration.database.runtime_persistent.type`           | Runtime-persistent database type (postgres or sqlite). Stores SSO sessions, revoked tokens, and consent records.                                                 | `postgres`                   |
-| `configuration.database.runtime_persistent.sqlite.path`     | SQLite database path (for SQLite only)                                                                                                                  | `database/runtime-persistent.db` |
+| `configuration.database.runtime_persistent.sqlite.path`     | SQLite database path (for SQLite only)                                                                                                                  | `database/runtime_persistent.db` |
 | `configuration.database.runtime_persistent.sqlite.options`  | SQLite options (for SQLite only)                                                                                                                        | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` |
 | `configuration.database.runtime_persistent.sqlite.max_open_conns` | Maximum number of open connections for SQLite                                                                                                     | `500`                        |
 | `configuration.database.runtime_persistent.sqlite.max_idle_conns` | Maximum number of idle SQLite connections                                                                                                         | `100`                        |

@@ -28,6 +28,7 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 const loggerComponentName = "DependencyRegistry"
@@ -151,11 +152,20 @@ type CascadeDeleter interface {
 	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
 }
 
+// UpdateValidator is an optional interface a Provider may implement to validate that its owned
+// dependents remain consistent after the target resource has been updated. Called by the registry
+// after the target has been persisted (typically inside the update transaction) so returning a
+// non-nil ServiceError rolls back the update.
+type UpdateValidator interface {
+	ValidateReferenceUpdate(ctx context.Context, resourceType, id string) *tidcommon.ServiceError
+}
+
 // Registry fans out dependency lookups to all registered providers.
 type Registry interface {
 	RegisterProvider(p Provider)
 	GetDependencies(ctx context.Context, resourceType, id string) (*DependenciesResponse, error)
 	CascadeDelete(ctx context.Context, resourceType, id string) (int, error)
+	ValidateReferenceUpdate(ctx context.Context, resourceType, id string) *tidcommon.ServiceError
 }
 
 // registry is the default implementation of Registry.
@@ -246,4 +256,21 @@ func (r *registry) CascadeDelete(ctx context.Context, resourceType, id string) (
 		total += deleted
 	}
 	return total, nil
+}
+
+// ValidateReferenceUpdate asks every provider that implements UpdateValidator to verify that its
+// owned dependents remain consistent after (resourceType, id) has been updated. It stops and
+// returns the first validation error so the caller can abort the update transaction.
+func (r *registry) ValidateReferenceUpdate(ctx context.Context, resourceType, id string) *tidcommon.ServiceError {
+	for _, p := range r.providers {
+		validator, ok := p.(UpdateValidator)
+		if !ok {
+			continue
+		}
+		if svcErr := validator.ValidateReferenceUpdate(ctx, resourceType, id); svcErr != nil {
+			return svcErr
+		}
+	}
+
+	return nil
 }

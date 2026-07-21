@@ -3715,6 +3715,11 @@ func (s *stubUsageRegistry) CascadeDelete(_ context.Context, _, _ string) (int, 
 	return 0, s.cascadeErr
 }
 
+func (s *stubUsageRegistry) ValidateReferenceUpdate(
+	_ context.Context, _, _ string) *tidcommon.ServiceError {
+	return nil
+}
+
 func newUserForUsages(id string) *providers.Entity {
 	return &providers.Entity{ID: id, Category: providers.EntityCategoryUser, Type: "Person"}
 }

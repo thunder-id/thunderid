@@ -58,8 +58,9 @@ var (
 
 type FlowMetaAPITestSuite struct {
 	suite.Suite
-	appID string
-	ouID  string
+	appID              string
+	ouID               string
+	isolatedAuthFlowID string
 }
 
 func TestFlowMetaAPITestSuite(t *testing.T) {
@@ -71,6 +72,12 @@ func (suite *FlowMetaAPITestSuite) SetupSuite() {
 	ouID, err := testutils.CreateOrganizationUnit(testOU)
 	suite.Require().NoError(err, "Failed to create OU during setup")
 	suite.ouID = ouID
+
+	// Create isolated auth flow to avoid cross-type reference validation with default auth flow.
+	isolatedAuthID, err := testutils.CreateIsolatedAuthFlow("flowmeta-api-isolated-auth")
+	suite.Require().NoError(err, "Failed to create isolated auth flow")
+	suite.isolatedAuthFlowID = isolatedAuthID
+	testApp.AuthFlowID = isolatedAuthID
 
 	// Create Application
 	testApp.OUID = suite.ouID
@@ -84,6 +91,12 @@ func (suite *FlowMetaAPITestSuite) TearDownSuite() {
 		err := testutils.DeleteApplication(suite.appID)
 		if err != nil {
 			suite.T().Logf("Failed to delete application during teardown: %v", err)
+		}
+	}
+
+	if suite.isolatedAuthFlowID != "" {
+		if err := testutils.DeleteFlow(suite.isolatedAuthFlowID); err != nil {
+			suite.T().Logf("Failed to delete isolated auth flow during teardown: %v", err)
 		}
 	}
 

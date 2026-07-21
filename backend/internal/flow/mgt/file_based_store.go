@@ -172,6 +172,9 @@ func (f *fileBasedStore) DeleteFlow(_ context.Context, flowID string) error {
 	return errors.New("DeleteFlow is not supported in file-based store")
 }
 
+// InvalidateCache is a no-op for the file-based store; nothing is cached at this layer.
+func (f *fileBasedStore) InvalidateCache(_ context.Context, _, _ string, _ providers.FlowType) {}
+
 // ListFlowVersions implements flowStoreInterface.
 func (f *fileBasedStore) ListFlowVersions(_ context.Context, flowID string) ([]BasicFlowVersion, error) {
 	return nil, errors.New("ListFlowVersions is not supported in file-based store")

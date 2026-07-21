@@ -435,6 +435,12 @@ func (ts *HTTPRequestRuntimeDataRegistrationFlowTestSuite) SetupSuite() {
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, flowID)
 	httpRequestRuntimeDataApp.RegistrationFlowID = flowID
 
+	// Create isolated auth flow to avoid cross-type reference validation with default auth flow.
+	isolatedAuthID, err := testutils.CreateIsolatedAuthFlow("http-request-runtime-data-isolated-auth")
+	ts.Require().NoError(err, "Failed to create isolated auth flow")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, isolatedAuthID)
+	httpRequestRuntimeDataApp.AuthFlowID = isolatedAuthID
+
 	httpRequestRuntimeDataApp.OUID = httpRequestRuntimeDataOUID
 	appID, err := testutils.CreateApplication(httpRequestRuntimeDataApp)
 	ts.Require().NoError(err, "Failed to create runtime data test application")

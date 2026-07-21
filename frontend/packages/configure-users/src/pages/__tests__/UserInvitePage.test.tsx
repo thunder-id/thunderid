@@ -549,6 +549,35 @@ describe('UserInvitePage', () => {
       expect(mockResetFlow).toHaveBeenCalled();
     });
 
+    it('should re-trigger the auto-invite after "Add Another User" resets the flow', async () => {
+      const invitePrompt: EmbeddedFlowComponent[] = [
+        heading('How would you like to add a user?'),
+        block([submitAction('Invite user', {id: 'action_invite_user'})]),
+      ];
+
+      // Auto-invite fires once on arrival.
+      mockInviteUserRenderProps.components = invitePrompt;
+      const {rerender} = render(<UserInvitePage />);
+
+      await waitFor(() => {
+        expect(mockHandleSubmit).toHaveBeenCalledTimes(1);
+      });
+
+      // Advance to the completion step, then click "Add Another User".
+      mockInviteUserRenderProps = {...mockInviteUserRenderProps, components: [heading('Done')]};
+      rerender(<UserInvitePage />);
+      await userEvent.click(screen.getByRole('button', {name: /add another user/i}));
+      expect(mockResetFlow).toHaveBeenCalled();
+
+      // Prompt returns; auto-invite must fire again.
+      mockInviteUserRenderProps = {...mockInviteUserRenderProps, components: invitePrompt};
+      rerender(<UserInvitePage />);
+
+      await waitFor(() => {
+        expect(mockHandleSubmit).toHaveBeenCalledTimes(2);
+      });
+    });
+
     it('should navigate to /users when footer Close button is clicked in display-only state', async () => {
       mockInviteUserRenderProps.components = [heading('Done')];
 

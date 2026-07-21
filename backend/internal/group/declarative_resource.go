@@ -24,8 +24,6 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
-	"bytes"
-
 	"gopkg.in/yaml.v3"
 
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
@@ -214,13 +212,12 @@ func parseToGroupWrapper(data []byte) (interface{}, error) {
 	return parseToGroup(data)
 }
 
-// parseToGroup parses YAML data into a groupDeclarativeResource.
-// Unknown fields are rejected to surface typos in declarative config files.
+// parseToGroup parses YAML data into a groupDeclarativeResource. Unknown fields, such as the
+// loader's resource_type routing discriminator, are ignored, consistent with the other
+// declarative resource parsers (role, user, and so on).
 func parseToGroup(data []byte) (*groupDeclarativeResource, error) {
 	var grp groupDeclarativeResource
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
-	if err := dec.Decode(&grp); err != nil {
+	if err := yaml.Unmarshal(data, &grp); err != nil {
 		return nil, err
 	}
 

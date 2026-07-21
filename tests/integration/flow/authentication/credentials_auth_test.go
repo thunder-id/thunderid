@@ -22,9 +22,9 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 var (
@@ -612,6 +612,7 @@ func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlow_WithoutTokenConf
 		ClientSecret:              "flow_test_secret_no_token_config",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{"credentials_auth_user"},
+		AuthFlowID:                ts.config.CreatedFlowIDs[0],
 		// TokenConfig is nil - not specified
 	}
 
@@ -672,6 +673,7 @@ func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlow_WithEmptyUserAtt
 		ClientSecret:              "flow_test_secret_empty_attrs",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{"credentials_auth_user"},
+		AuthFlowID:                ts.config.CreatedFlowIDs[0],
 		AssertionConfig: map[string]interface{}{
 			"userAttributes": []string{}, // Empty array
 		},

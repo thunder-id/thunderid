@@ -24,6 +24,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/cert"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 var (
@@ -206,4 +207,19 @@ func (e *CertOperationError) Error() string {
 // IsClientError reports whether the underlying cert service error is a client error.
 func (e *CertOperationError) IsClientError() bool {
 	return e.Underlying != nil && e.Underlying.Type == tidcommon.ClientErrorType
+}
+
+// FlowMismatchError is returned when a flow reached from one of the inbound client's configured flows
+// does not align with the inbound client's per-type flow ID (registration/recovery). SourceFlowType
+// is the type of the client-level flow whose flow reached the mismatched reference; FlowType
+// is the type of the referenced flow.
+type FlowMismatchError struct {
+	SourceFlowType providers.FlowType
+	FlowType       providers.FlowType
+	msg            string
+}
+
+// Error implements the error interface.
+func (e *FlowMismatchError) Error() string {
+	return e.msg
 }

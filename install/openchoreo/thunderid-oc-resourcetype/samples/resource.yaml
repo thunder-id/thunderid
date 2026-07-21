@@ -29,10 +29,17 @@
 # Prerequisites (in order):
 #   1. The thunderid (Cluster)ResourceType is installed:
 #        helm install thunderid-type install/openchoreo/thunderid-oc-resourcetype
-#   2. The environment values are pushed to the platform secret store as
-#      properties of one secret, e.g.:
+#   2. The JWT signing pairs are generated (the image ships none) and
+#      pushed, with the environment values, as properties of one secret:
+#        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+#          -keyout signing.key -out signing.cert -subj "/CN=localhost"
+#        openssl ecparam -name prime256v1 -genkey -noout -out ecdsa-signing.key
+#        openssl req -new -x509 -nodes -days 3650 -key ecdsa-signing.key \
+#          -out ecdsa-signing.cert -subj "/CN=localhost"
 #        bao kv put secret/thunderid/dev \
 #          CRYPTO_ENCRYPTION_KEY=<64_HEX_CHAR_KEY> ADMIN_PASSWORD=<PASSWORD> \
+#          signing.cert=@signing.cert signing.key=@signing.key \
+#          ecdsa-signing.cert=@ecdsa-signing.cert ecdsa-signing.key=@ecdsa-signing.key \
 #          DB_CONFIG_HOSTNAME=<DB_HOST> DB_CONFIG_PORT=5432 ... (see README)
 #      The databases must be a fresh schema (no rows for the resource IDs
 #      in this file).
@@ -55,10 +62,11 @@ spec:
     name: thunderid
   parameters:
     # Platform secret store location of the environment values (database
-    # connection details, crypto encryption key, admin password). Every
-    # property stored at the remote key is materialized into the container
-    # environment — see the README's Secret Store Contract for the
-    # required properties.
+    # connection details, crypto encryption key, admin password) and the JWT
+    # signing key files. Scalar properties are materialized into the
+    # container environment; the certificate/key properties are mounted as
+    # files. See the README's Secret Store Contract for the full property
+    # list.
     secretStore:
       name: default          # ClusterSecretStore (or SecretStore) name
       # kind: ClusterSecretStore   # or SecretStore (namespaced); default ClusterSecretStore
@@ -73,6 +81,10 @@ spec:
         value: CONSOLE
       - name: CONSOLE_REDIRECT_URIS_0
         value: "<SERVER_PUBLIC_URL>/console"
+      # Resolves the System resource_server identifier below. Keep equal to the
+      # binding's serverPublicUrl so the Console's resource_identifier matches.
+      - name: SERVER_PUBLIC_URL
+        value: "<SERVER_PUBLIC_URL>"
 
     # ─── Optional parameters (defaults shown) ─────────────────────────────
 
@@ -101,6 +113,7 @@ spec:
     #       # ... full Console frontend configuration
     #     };
 
+    # ─── Optional runtime parameters (defaults shown) ─────────────────────
     # runtime:
     #   imagePullPolicy: Always            # Always | IfNotPresent | Never
     #   # Database engine. sqlite (default): bundled files, ephemeral,
@@ -109,7 +122,7 @@ spec:
     #   dbType: sqlite                     # sqlite | postgres
     #   port: 8090                         # server port (container, Service, route, probe)
     #   defaultAuthFlowHandle: ""          # flow used when an application pins no authFlowId
-    #   declarativeResourcesEnabled: true  # false — services default to database-backed stores
+    #   declarativeResourcesEnabled: true  # false: services default to database-backed stores
     #   gate:
     #     clientBase: "/gate"
     #   console:
@@ -126,7 +139,7 @@ spec:
     #
     #   # Store mode per service: "" inherits the global mode (declarative
     #   # when declarativeResourcesEnabled, mutable otherwise); or set
-    #   # mutable | declarative | composite per service — e.g. composite
+    #   # mutable | declarative | composite per service, e.g. composite
     #   # for users and groups keeps the file-defined admin while sign-up
     #   # and Console user management write to the database.
     #   stores:
@@ -144,27 +157,29 @@ spec:
     #     resourceServer: ""
     #     serverConfig: ""
     #
-    #   # HTTPS serving with certificate overrides — a stock OpenChoreo
-    #   # installation does not support this out of the box: the data-plane
-    #   # cluster-agent must be allowed to manage
-    #   # gateway.kgateway.dev/backendconfigpolicies (the policy that makes
-    #   # the gateway originate TLS to the backend). certs projects
-    #   # properties stored at storeKey over /opt/thunderid/config/certs/,
-    #   # replacing the image's bundled self-signed files. Publish a ca.crt
-    #   # property and set tls.verifyBackend: true to have the gateway
-    #   # verify the backend certificate.
+    #   # By default the certificate files are read from secretStore.key
+    #   # (see prerequisites step 2). Set certs.storeKey to read them from a
+    #   # separate store entry instead; extraFiles projects extra properties.
+    #   certs:
+    #     storeKey: thunderid/dev-certs
+    #     extraFiles: []
+    #
+    #   # HTTPS serving. A stock OpenChoreo installation does not support
+    #   # this out of the box: the data-plane cluster-agent must be allowed
+    #   # to manage gateway.kgateway.dev/backendconfigpolicies (the policy
+    #   # that makes the gateway originate TLS to the backend). With
+    #   # tls.enabled, publish server.cert/server.key at the resolved
+    #   # certificate key; publish ca.crt and set verifyBackend: true to
+    #   # have the gateway verify the backend certificate.
     #   tls:
     #     enabled: true
     #     minVersion: "1.3"                # 1.2 | 1.3
     #     verifyBackend: false
-    #   certs:
-    #     storeKey: thunderid/dev-certs
-    #     files: [server.cert, server.key, signing.cert, signing.key]
 
     # Declarative resources (required) — the sole provisioning mechanism.
     declarativeResources: |
       # File: Console.yaml
-      # resource_type: application
+      resource_type: application
       id: 01900000-0000-7000-8000-000000000060
       ouId: 01900000-0000-7000-8000-000000000001
       name: Console
@@ -250,7 +265,7 @@ spec:
 
       ---
       # File: Default_Basic_Authentication_Flow.yaml
-      # resource_type: flow
+      resource_type: flow
       id: 01900000-0000-7000-8000-000000000061
       handle: default-basic-flow
       name: Default Basic Authentication Flow
@@ -300,7 +315,7 @@ spec:
 
       ---
       # File: Default_CIBA_Email_Notification_Flow.yaml
-      # resource_type: flow
+      resource_type: flow
       id: 01900000-0000-7000-8000-000000000062
       handle: default-ciba-email-flow
       name: Default CIBA Email Notification Flow
@@ -403,7 +418,7 @@ spec:
 
       ---
       # File: Console_App_Authentication_Flow.yaml
-      # resource_type: flow
+      resource_type: flow
       id: 01900000-0000-7000-8000-000000000068
       handle: console-app-flow
       name: Console App Authentication Flow
@@ -453,7 +468,7 @@ spec:
 
       ---
       # File: Disambiguation_Login_Flow.yaml
-      # resource_type: flow
+      resource_type: flow
       id: 01900000-0000-7000-8000-000000000063
       handle: default-disambiguation-login-flow
       name: Disambiguation Login Flow
@@ -550,7 +565,7 @@ spec:
 
       ---
       # File: Email_Link_Password_Recovery_Flow.yaml
-      # resource_type: flow
+      resource_type: flow
       id: 01900000-0000-7000-8000-000000000067
       handle: email-link-based-password-recovery
       name: Email Link Password Recovery Flow
@@ -726,7 +741,7 @@ spec:
 
       ---
       # File: Default_Basic_Registration_Flow.yaml
-      # resource_type: flow
+      resource_type: flow
       id: 01900000-0000-7000-8000-000000000064
       handle: default-basic-flow
       name: Default Basic Registration Flow
@@ -810,7 +825,7 @@ spec:
 
       ---
       # File: Default_SMS_Self-Invite_Registration_Flow.yaml
-      # resource_type: flow
+      resource_type: flow
       id: 01900000-0000-7000-8000-000000000065
       handle: default-self-invite-sms-flow
       name: Default SMS Self-Invite Registration Flow
@@ -930,7 +945,7 @@ spec:
 
       ---
       # File: Console_App_Registration_Flow.yaml
-      # resource_type: flow
+      resource_type: flow
       id: 01900000-0000-7000-8000-000000000069
       handle: console-app-flow
       name: Console App Registration Flow
@@ -1031,7 +1046,7 @@ spec:
 
       ---
       # File: User_Onboarding_Flow.yaml
-      # resource_type: flow
+      resource_type: flow
       id: 01900000-0000-7000-8000-000000000066
       handle: default-user-onboarding
       name: User Onboarding Flow
@@ -1388,7 +1403,7 @@ spec:
 
       ---
       # File: Administrators.yaml
-      # resource_type: group
+      resource_type: group
       id: 01900000-0000-7000-8000-000000000040
       name: Administrators
       description: System administrators group
@@ -1399,7 +1414,7 @@ spec:
 
       ---
       # File: Default.yaml
-      # resource_type: organization_unit
+      resource_type: organization_unit
       id: 01900000-0000-7000-8000-000000000001
       handle: default
       name: Default
@@ -1411,12 +1426,12 @@ spec:
 
       ---
       # File: System.yaml
-      # resource_type: resource_server
+      resource_type: resource_server
       id: 01900000-0000-7000-8000-000000000020
       name: System
       description: System resource server
       handle: ""
-      identifier: https://localhost:8090/mcp
+      identifier: {{.SERVER_PUBLIC_URL}}/mcp
       type: CUSTOM
       ouId: 01900000-0000-7000-8000-000000000001
       delimiter: ":"
@@ -1459,7 +1474,7 @@ spec:
 
       ---
       # File: Administrator.yaml
-      # resource_type: role
+      resource_type: role
       id: 01900000-0000-7000-8000-000000000050
       name: Administrator
       description: System administrator role with full permissions
@@ -1474,7 +1489,7 @@ spec:
 
       ---
       # File: cors.yaml
-      # resource_type: server_config
+      resource_type: server_config
       name: cors
       # Origins allowed to call the APIs from the browser. Must list every
       # origin the Console/Gate are served from when it differs from the API
@@ -1484,7 +1499,7 @@ spec:
 
       ---
       # File: Acrylic_Orange.yaml
-      # resource_type: theme
+      resource_type: theme
       id: 01900000-0000-7000-8000-000000000071
       handle: acrylic-orange
       displayName: Acrylic Orange
@@ -1496,7 +1511,7 @@ spec:
 
       ---
       # File: Acrylic_Purple.yaml
-      # resource_type: theme
+      resource_type: theme
       id: 01900000-0000-7000-8000-000000000072
       handle: acrylic-purple
       displayName: Acrylic Purple
@@ -1508,7 +1523,7 @@ spec:
 
       ---
       # File: Classic.yaml
-      # resource_type: theme
+      resource_type: theme
       id: 01900000-0000-7000-8000-000000000073
       handle: classic
       displayName: Classic
@@ -1520,7 +1535,7 @@ spec:
 
       ---
       # File: High_Contrast.yaml
-      # resource_type: theme
+      resource_type: theme
       id: 01900000-0000-7000-8000-000000000074
       handle: high-contrast
       displayName: High Contrast
@@ -1532,7 +1547,7 @@ spec:
 
       ---
       # File: Pale_Gray.yaml
-      # resource_type: theme
+      resource_type: theme
       id: 01900000-0000-7000-8000-000000000075
       handle: pale-gray
       displayName: Pale Gray
@@ -1544,7 +1559,7 @@ spec:
 
       ---
       # File: Pale_Indigo.yaml
-      # resource_type: theme
+      resource_type: theme
       id: 01900000-0000-7000-8000-000000000076
       handle: pale-indigo
       displayName: Pale Indigo
@@ -1556,7 +1571,7 @@ spec:
 
       ---
       # File: en-US.yaml
-      # resource_type: translation
+      resource_type: translation
       language: en-US
       translations:
         recovery:
@@ -1845,7 +1860,7 @@ spec:
 
       ---
       # File: admin.yaml
-      # resource_type: user
+      resource_type: user
       id: 01900000-0000-7000-8000-000000000030
       type: Person
       ouId: 01900000-0000-7000-8000-000000000001
@@ -1863,7 +1878,7 @@ spec:
 
       ---
       # File: Person.yaml
-      # resource_type: user_type
+      resource_type: user_type
       id: 01900000-0000-7000-8000-000000000010
       category: user
       name: Person

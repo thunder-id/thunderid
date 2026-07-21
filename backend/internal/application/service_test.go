@@ -185,6 +185,11 @@ func (r noopDepRegistry) CascadeDelete(context.Context, string, string) (int, er
 	return 0, r.cascadeErr
 }
 
+func (noopDepRegistry) ValidateReferenceUpdate(
+	context.Context, string, string) *tidcommon.ServiceError {
+	return nil
+}
+
 // recordingDepRegistry is a resourcedependency.Registry that records CascadeDelete invocations so
 // tests can assert dependents were removed. cascadeCalls is incremented on each CascadeDelete.
 type recordingDepRegistry struct{ cascadeCalls *int }
@@ -199,6 +204,11 @@ func (recordingDepRegistry) GetDependencies(
 func (r recordingDepRegistry) CascadeDelete(context.Context, string, string) (int, error) {
 	*r.cascadeCalls++
 	return 1, nil
+}
+
+func (recordingDepRegistry) ValidateReferenceUpdate(
+	context.Context, string, string) *tidcommon.ServiceError {
+	return nil
 }
 
 // resetIdentifyEntity removes broad IdentifyEntity expectations from the entity provider mock
@@ -3087,6 +3097,93 @@ func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_JWKSURINotSSR
 		"error.applicationservice.idtoken_jwks_uri_not_ssrf_safe_description",
 		svcErr.ErrorDescription.Key,
 	)
+}
+
+// ----- translateInboundClientFKError: FlowMismatchError branch -----
+
+func (suite *ServiceTestSuite) TestTranslateInboundClientFKError_FlowMismatchProducesParametricError() {
+	err := &inboundclient.FlowMismatchError{
+		SourceFlowType: providers.FlowTypeAuthentication,
+		FlowType:       providers.FlowTypeRegistration,
+	}
+	svcErr := translateInboundClientFKError(err)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorApplicationFlowMismatch.Code, svcErr.Code)
+	assert.Equal(suite.T(), "authentication", svcErr.ErrorDescription.Params["sourceFlowType"])
+	assert.Equal(suite.T(), "registration", svcErr.ErrorDescription.Params["flowType"])
+}
+
+func (suite *ServiceTestSuite) TestTranslateInboundClientFKError_UnknownReturnsNil() {
+	svcErr := translateInboundClientFKError(errors.New("something else"))
+	assert.Nil(suite.T(), svcErr)
+}
+
+// ----- applicationService.ValidateReferenceUpdate -----
+
+func (suite *ServiceTestSuite) TestValidateReferenceUpdate_NonFlowResourceIsNoOp() {
+	svc, _ := suite.setupTestService()
+	svcErr := svc.ValidateReferenceUpdate(context.Background(), resourcedependency.ResourceTypeTheme, "t1")
+	assert.Nil(suite.T(), svcErr)
+}
+
+func (suite *ServiceTestSuite) TestValidateReferenceUpdate_GetEntityIDsErrorMapsToInternal() {
+	svc, mockStore := suite.setupTestService()
+	mockStore.EXPECT().GetEntityIDsByReference(
+		mock.Anything, resourcedependency.ResourceTypeFlow, "flow-1",
+		serverconst.MaxCompositeStoreRecords, 0,
+	).Return(nil, 0, errors.New("db failure"))
+	svcErr := svc.ValidateReferenceUpdate(context.Background(), resourcedependency.ResourceTypeFlow, "flow-1")
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestValidateReferenceUpdate_NoReferencingAppsReturnsNil() {
+	svc, mockStore := suite.setupTestService()
+	mockStore.EXPECT().GetEntityIDsByReference(
+		mock.Anything, resourcedependency.ResourceTypeFlow, "flow-1",
+		serverconst.MaxCompositeStoreRecords, 0,
+	).Return([]string{}, 0, nil)
+	svcErr := svc.ValidateReferenceUpdate(context.Background(), resourcedependency.ResourceTypeFlow, "flow-1")
+	assert.Nil(suite.T(), svcErr)
+}
+
+func (suite *ServiceTestSuite) TestValidateReferenceUpdate_RevalidateFlowMismatchTranslated() {
+	svc, mockStore := suite.setupTestService()
+	mockStore.EXPECT().GetEntityIDsByReference(
+		mock.Anything, resourcedependency.ResourceTypeFlow, "flow-1",
+		serverconst.MaxCompositeStoreRecords, 0,
+	).Return([]string{"app-1"}, 1, nil)
+	mockStore.EXPECT().RevalidateFKs(mock.Anything, "app-1").Return(&inboundclient.FlowMismatchError{
+		SourceFlowType: providers.FlowTypeAuthentication,
+		FlowType:       providers.FlowTypeRegistration,
+	})
+	svcErr := svc.ValidateReferenceUpdate(context.Background(), resourcedependency.ResourceTypeFlow, "flow-1")
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorApplicationFlowMismatch.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestValidateReferenceUpdate_RevalidateUnknownErrorMapsToInternal() {
+	svc, mockStore := suite.setupTestService()
+	mockStore.EXPECT().GetEntityIDsByReference(
+		mock.Anything, resourcedependency.ResourceTypeFlow, "flow-1",
+		serverconst.MaxCompositeStoreRecords, 0,
+	).Return([]string{"app-1"}, 1, nil)
+	mockStore.EXPECT().RevalidateFKs(mock.Anything, "app-1").Return(errors.New("unmapped"))
+	svcErr := svc.ValidateReferenceUpdate(context.Background(), resourcedependency.ResourceTypeFlow, "flow-1")
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestValidateReferenceUpdate_AllRevalidationsSucceedReturnsNil() {
+	svc, mockStore := suite.setupTestService()
+	mockStore.EXPECT().GetEntityIDsByReference(
+		mock.Anything, resourcedependency.ResourceTypeFlow, "flow-1",
+		serverconst.MaxCompositeStoreRecords, 0,
+	).Return([]string{"app-1", "app-2"}, 2, nil)
+	mockStore.EXPECT().RevalidateFKs(mock.Anything, "app-1").Return(nil)
+	mockStore.EXPECT().RevalidateFKs(mock.Anything, "app-2").Return(nil)
+	svcErr := svc.ValidateReferenceUpdate(context.Background(), resourcedependency.ResourceTypeFlow, "flow-1")
+	assert.Nil(suite.T(), svcErr)
 }
 
 var validAcrMapping = engineconfig.AuthClassConfig{

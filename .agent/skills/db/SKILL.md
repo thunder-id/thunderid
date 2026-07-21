@@ -188,7 +188,7 @@ Use these rules for all temporary runtime tables in `runtime_transient`.
 4. Cleanup jobs must delete expired rows regularly.
 5. For association tables, if the foreign key to the owning runtime record uses `ON DELETE CASCADE`, deleting an expired owner row also removes related association rows automatically.
 6. An association table does not require its own `EXPIRY_TIME` column unless the association has an independent expiry lifecycle.
-7. When runtime tables are added, removed, or renamed, update both cleanup artifacts: `backend/dbscripts/runtime-transient/postgres-cleanup.sql` and `backend/scripts/cleanup_runtime_transient_db.sh`.
+7. When runtime tables are added, removed, or renamed, update both cleanup artifacts: `backend/dbscripts/runtime_transient/postgres-cleanup.sql` and `backend/scripts/cleanup_runtime_transient_db.sh`.
 
 ### Expiry Column
 
@@ -212,7 +212,7 @@ WHERE AUTH_ID = $1 AND EXPIRY_TIME > $2 AND DEPLOYMENT_ID = $3
 
 Use the existing cleanup artifacts in this repository:
 
-- `backend/dbscripts/runtime-transient/postgres-cleanup.sql`: defines the PostgreSQL stored procedure `cleanup_expired_runtime_transient_data` (UTC-based cleanup).
+- `backend/dbscripts/runtime_transient/postgres-cleanup.sql`: defines the PostgreSQL stored procedure `cleanup_expired_runtime_transient_data` (UTC-based cleanup).
 - `backend/scripts/cleanup_runtime_transient_db.sh`: provides scheduled/manual cleanup support for PostgreSQL and SQLite.
 
 Keep these two files in sync with the current set of runtime tables.
@@ -294,6 +294,6 @@ Use a consistent prefix per store and increment the sequence number for each new
 | Query parameter order | Keep `DEPLOYMENT_ID` as the last parameter in parameterized queries. |
 | Runtime table expiry column | For runtime owner tables, require `EXPIRY_TIME TIMESTAMP NOT NULL`. |
 | Association table expiry column | Omit `EXPIRY_TIME` when lifecycle is inherited via `ON DELETE CASCADE`; add it only if association rows expire independently. |
-| Expired data cleanup | Use `backend/dbscripts/runtime-transient/postgres-cleanup.sql` and `backend/scripts/cleanup_runtime_transient_db.sh`; keep both updated when runtime tables change. |
+| Expired data cleanup | Use `backend/dbscripts/runtime_transient/postgres-cleanup.sql` and `backend/scripts/cleanup_runtime_transient_db.sh`; keep both updated when runtime tables change. |
 | Query declaration format | Define queries as `DBQuery` values with unique query IDs. |
 | Table identifier format | Use uppercase table names in double quotes in schema scripts and embedded SQL. |
