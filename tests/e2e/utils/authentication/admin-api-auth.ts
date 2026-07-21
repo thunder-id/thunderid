@@ -43,10 +43,22 @@ export async function getAdminToken(request: import("@playwright/test").APIReque
   if (!flowResponse.ok()) throw new Error(`Failed to start authentication flow: ${await flowResponse.text()}`);
   const flowData = await flowResponse.json();
 
+  // Initiate the flow execution.
+  // The action information is getting cleared once the start not completes and will not reach the credetnial prompt node.
+  // So we need to call the flow/execute endpoint twice to get the action information and then send the credentials.
+  const flowInitResponse = await request.post(`${serverUrl}/flow/execute`, {
+    data: {
+      executionId: flowData.executionId
+    },
+    ignoreHTTPSErrors: true,
+  });
+  if (!flowInitResponse.ok()) throw new Error(`Failed to initiate authentication flow: ${await flowInitResponse.text()}`);
+  const flowInitData = await flowInitResponse.json();
+
   const authResponse = await request.post(`${serverUrl}/flow/execute`, {
     data: {
-      executionId: flowData.executionId,
-      ...(flowData.challengeToken && { challengeToken: flowData.challengeToken }),
+      executionId: flowInitData.executionId,
+      ...(flowInitData.challengeToken && { challengeToken: flowInitData.challengeToken }),
       inputs: { username: adminUsername, password: adminPassword, requested_permissions: "system" },
       action: "action_001",
     },
