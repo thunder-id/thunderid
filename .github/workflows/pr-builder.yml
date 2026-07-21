@@ -717,9 +717,18 @@ jobs:
             exit 1
           fi
 
+          INIT_RESP=$(curl -sk -X POST "$SERVER_URL/flow/execute" \
+            -H "Content-Type: application/json" \
+            -d "{\"executionId\": \"$EXEC_ID\"}")
+          CHALLENGE_TOKEN=$(echo "$INIT_RESP" | jq -r '.challengeToken // empty')
+          if [ -z "$CHALLENGE_TOKEN" ]; then
+            echo "❌ Flow initiation did not return a challengeToken: $INIT_RESP"
+            exit 1
+          fi
+
           FLOW_RESP=$(curl -sk -X POST "$SERVER_URL/flow/execute" \
             -H "Content-Type: application/json" \
-            -d "{\"executionId\": \"$EXEC_ID\", \"inputs\": {\"username\": \"admin\", \"password\": \"admin\"}, \"action\": \"action_001\"}")
+            -d "{\"executionId\": \"$EXEC_ID\", \"challengeToken\": \"$CHALLENGE_TOKEN\", \"inputs\": {\"username\": \"admin\", \"password\": \"admin\"}, \"action\": \"action_001\"}")
           ASSERTION=$(echo "$FLOW_RESP" | jq -r '.assertion // empty')
           if [ -z "$ASSERTION" ]; then
             echo "❌ Flow execution did not return an assertion: $FLOW_RESP"
