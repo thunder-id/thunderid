@@ -2100,7 +2100,7 @@ const translations = {
       "This secret is shown only once. Store it securely — you'll need to regenerate it if it's lost.",
     'onboarding.mcp.complete.m2m.tokenHint':
       "Request tokens with grant_type=client_credentials and include the target MCP server's resource parameter so the token is audience-scoped.",
-    'onboarding.mcp.complete.goToApp': 'Go to application',
+    'onboarding.mcp.complete.goToApp': 'Go to MCP client',
     'onboarding.mcp.complete.copySecret': 'Copy secret',
     'onboarding.mcp.complete.copied': 'Copied',
     'onboarding.configure.design.title': 'Design Your Application',

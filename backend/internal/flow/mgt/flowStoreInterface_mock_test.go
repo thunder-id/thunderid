@@ -385,6 +385,64 @@ func (_c *flowStoreInterfaceMock_GetFlowVersion_Call) RunAndReturn(run func(ctx 
 	return _c
 }
 
+// InvalidateCache provides a mock function for the type flowStoreInterfaceMock
+func (_mock *flowStoreInterfaceMock) InvalidateCache(ctx context.Context, flowID string, handle string, flowType providers.FlowType) {
+	_mock.Called(ctx, flowID, handle, flowType)
+	return
+}
+
+// flowStoreInterfaceMock_InvalidateCache_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'InvalidateCache'
+type flowStoreInterfaceMock_InvalidateCache_Call struct {
+	*mock.Call
+}
+
+// InvalidateCache is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowID string
+//   - handle string
+//   - flowType providers.FlowType
+func (_e *flowStoreInterfaceMock_Expecter) InvalidateCache(ctx interface{}, flowID interface{}, handle interface{}, flowType interface{}) *flowStoreInterfaceMock_InvalidateCache_Call {
+	return &flowStoreInterfaceMock_InvalidateCache_Call{Call: _e.mock.On("InvalidateCache", ctx, flowID, handle, flowType)}
+}
+
+func (_c *flowStoreInterfaceMock_InvalidateCache_Call) Run(run func(ctx context.Context, flowID string, handle string, flowType providers.FlowType)) *flowStoreInterfaceMock_InvalidateCache_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 providers.FlowType
+		if args[3] != nil {
+			arg3 = args[3].(providers.FlowType)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *flowStoreInterfaceMock_InvalidateCache_Call) Return() *flowStoreInterfaceMock_InvalidateCache_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *flowStoreInterfaceMock_InvalidateCache_Call) RunAndReturn(run func(ctx context.Context, flowID string, handle string, flowType providers.FlowType)) *flowStoreInterfaceMock_InvalidateCache_Call {
+	_c.Run(run)
+	return _c
+}
+
 // IsFlowExistsByHandle provides a mock function for the type flowStoreInterfaceMock
 func (_mock *flowStoreInterfaceMock) IsFlowExistsByHandle(ctx context.Context, handle string, flowType providers.FlowType) (bool, error) {
 	ret := _mock.Called(ctx, handle, flowType)

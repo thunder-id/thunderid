@@ -188,6 +188,28 @@ Protect the encryption key with the same level of care as a database password. I
 
 :::
 
+## Provide the Direct Auth Secret
+
+<ProductName /> gates the Direct API endpoints (`/auth/**`, `/register/passkey/**`) and the protected AuthZEN access endpoints (`/access/**`) with a server-level Direct Auth Secret. During setup, each deployment generates its own secret. The default `deployment.yaml` references it as a file, so the value stays out of the config file:
+
+```yaml
+server:
+  security:
+    direct_auth_secret: "file://config/secrets/direct_auth_secret"
+```
+
+For production, either keep the generated per-deployment secret (ensuring `config/secrets` is persisted) or provide your own. To provide your own, generate a strong value and write it to the secret file:
+
+```bash
+openssl rand -hex 32
+```
+
+```bash
+printf '%s' "<generated-secret>" > config/secrets/direct_auth_secret
+```
+
+Replace `<generated-secret>` with the output from the previous command. Do not include whitespace or newline characters. Callers must send this value in the `Direct-Auth-Secret` header. You can also supply the secret directly as an inline value, but prefer the `file://` path form or a secrets manager to keep it out of `deployment.yaml`.
+
 ## Configure a CORS Allowlist
 
 Cross-Origin Resource Sharing (CORS) controls which browser origins can call <ProductName />. Origins are stored in the server-config `cors` section. No origins are allowed by default, so list each production app explicitly.

@@ -137,9 +137,10 @@ spec:
               default: "sqlite"
             # enabled: false — serve plain HTTP (default); true — serve HTTPS
             # from the ThunderID container using config/certs/server.cert and
-            # server.key (the image's self-signed pair unless overridden via
-            # runtime.certs below). Enabling HTTPS also renders a
-            # BackendConfigPolicy so the gateway originates TLS to the
+            # server.key. The image ships no serving pair, so these files must
+            # be supplied as server.cert/server.key properties at the resolved
+            # certificate key (see runtime.certs below). Enabling HTTPS also
+            # renders a BackendConfigPolicy so the gateway originates TLS to the
             # backend (requires the data-plane cluster-agent to be allowed
             # to manage gateway.kgateway.dev/backendconfigpolicies).
             tls:
@@ -149,25 +150,34 @@ spec:
                 enabled: { type: boolean, default: false }
                 minVersion: { type: string, enum: ["1.2", "1.3"], default: "1.3" }
                 # Verify the backend certificate at the gateway against the
-                # root CA published as the ca.crt property at
-                # runtime.certs.storeKey. When false the gateway encrypts
-                # but skips verification, which is the only workable mode
-                # with the image's bundled self-signed certificate.
+                # root CA published as the ca.crt property at the resolved
+                # certificate key. When false the gateway encrypts but skips
+                # verification, the workable mode for a self-signed serving
+                # certificate.
                 verifyBackend: { type: boolean, default: false }
-            # Override individual certificate/key files under
-            # /opt/thunderid/config/certs/ from the platform secret store.
-            # storeKey is the remote path holding the files as properties;
-            # files lists which properties to project — each overlays the
-            # matching bundled file, the rest stay visible. Known files:
-            # server.cert, server.key (HTTPS serving pair), signing.cert,
-            # signing.key, ecdsa-signing.cert, ecdsa-signing.key (JWT
-            # signing), crypto.key, and ca.crt (for tls.verifyBackend).
+            # Certificate/key material projected under
+            # /opt/thunderid/config/certs/. The image ships NO key material,
+            # so the JWT signing pairs must be supplied as properties of a
+            # platform secret store entry (the same way CRYPTO_ENCRYPTION_KEY
+            # is). By default they are read from secretStore.key alongside the
+            # environment values; set storeKey to read the certificate files
+            # from a separate store entry instead. The JWT signing pairs are
+            # always mounted; the HTTPS serving pair is mounted additionally
+            # when tls.enabled. Required properties at the resolved key:
+            #   signing.cert, signing.key             (RSA JWT signing pair)
+            #   ecdsa-signing.cert, ecdsa-signing.key (ECDSA JWT signing pair)
+            # With tls.enabled, additionally:
+            #   server.cert, server.key               (HTTPS serving pair)
+            # With tls.verifyBackend, additionally:
+            #   ca.crt                                (root CA for the gateway)
+            # extraFiles projects any further properties (by name) over
+            # config/certs/ beyond the set above.
             certs:
               type: object
               default: {}
               properties:
                 storeKey: { type: string, default: "" }
-                files:
+                extraFiles:
                   type: array
                   default: []
                   items:
@@ -203,6 +213,10 @@ spec:
                 # Must cover the management scopes the Console requests —
                 # matches frontend/apps/console/public/config.js.
                 scopes: { type: string, default: "[\"openid\", \"profile\", \"email\", \"ou\", \"system\", \"system:user\", \"system:group\", \"system:ou:view\", \"system:usertype:view\"]" }
+                # Resource indicator (RFC 8707) the Console sends on token requests.
+                # Must match the System resource_server identifier in declarativeResources.
+                # Empty (default) derives it as "<serverPublicUrl>/mcp"; set to override.
+                resourceIdentifier: { type: string, default: "" }
             jwt:
               type: object
               default: {}
@@ -329,9 +343,10 @@ spec:
             - extract:
                 key: "${parameters.secretStore.key}"
 
-    # Materializes the certificate override files from the platform secret
-    # store — properties at storeKey become the file contents projected
-    # over /opt/thunderid/config/certs/.
+    # Materializes certificate files from a separate secret store entry when
+    # runtime.certs.storeKey is set. When it is empty (the default) the
+    # certificate properties are read from the -env Secret instead, so no
+    # extra ExternalSecret is needed.
     - id: certs-secret
       includeWhen: "${parameters.runtime.certs.storeKey != ''}"
       template:
@@ -399,10 +414,6 @@ spec:
               port: ${environmentConfigs.gateClientPort}
               scheme: "${environmentConfigs.gateClientScheme}"
 
-            crypto:
-              encryption:
-                key: "{{ "{{.CRYPTO_ENCRYPTION_KEY}}" }}"
-
             database:
               config:
                 type: "sqlite"
@@ -415,7 +426,7 @@ spec:
               runtime_transient:
                 type: "sqlite"
                 sqlite:
-                  path: "database/runtime-transient.db"
+                  path: "database/runtime_transient.db"
                   options: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
                   max_open_conns: 500
                   max_idle_conns: 100
@@ -431,7 +442,7 @@ spec:
               runtime_persistent:
                 type: "sqlite"
                 sqlite:
-                  path: "database/runtime-persistent.db"
+                  path: "database/runtime_persistent.db"
                   options: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
                   max_open_conns: 500
                   max_idle_conns: 100
@@ -517,10 +528,6 @@ spec:
               hostname: "${environmentConfigs.gateClientHostname}"
               port: ${environmentConfigs.gateClientPort}
               scheme: "${environmentConfigs.gateClientScheme}"
-
-            crypto:
-              encryption:
-                key: "{{ "{{.CRYPTO_ENCRYPTION_KEY}}" }}"
 
             database:
               config:
@@ -692,6 +699,7 @@ spec:
                 base: "${parameters.runtime.console.clientBase}",
                 client_id: "${parameters.runtime.console.clientId}",
                 scopes: ${parameters.runtime.console.scopes},
+                resource_identifier: "${parameters.runtime.console.resourceIdentifier != '' ? parameters.runtime.console.resourceIdentifier : environmentConfigs.serverPublicUrl + '/mcp'}",
               },
               server: {
                 public_url: "${environmentConfigs.consolePublicUrl != '' ? environmentConfigs.consolePublicUrl : environmentConfigs.serverPublicUrl}",
@@ -761,14 +769,21 @@ spec:
                     initialDelaySeconds: 5
                     periodSeconds: 10
                     failureThreshold: 3
+                  # The image ships no key material, so the JWT signing pairs
+                  # are always mounted from the certs-override Secret (the -env
+                  # Secret by default, or -certs when runtime.certs.storeKey is
+                  # set); the HTTPS serving pair is added when tls.enabled,
+                  # plus any runtime.certs.extraFiles.
                   volumeMounts: |
                     ${[
                       {"name": "thunderid-config", "mountPath": "/opt/thunderid/deployment.yaml", "subPath": "deployment.yaml"},
                       {"name": "gate-config", "mountPath": "/opt/thunderid/apps/gate/config.js", "subPath": "config.js"},
                       {"name": "console-config", "mountPath": "/opt/thunderid/apps/console/config.js", "subPath": "config.js"},
                       {"name": "declarative-resources", "mountPath": "/opt/thunderid/config/resources.yaml", "subPath": "resources.yaml"}
-                    ] + (parameters.runtime.certs.storeKey != ""
-                      ? parameters.runtime.certs.files.map(f, {"name": "certs-override", "mountPath": "/opt/thunderid/config/certs/" + f, "subPath": f, "readOnly": true}) : [])}
+                    ] + (["crypto.key", "signing.cert", "signing.key", "ecdsa-signing.cert", "ecdsa-signing.key"]
+                      + (parameters.runtime.tls.enabled ? ["server.cert", "server.key"] : [])
+                      + parameters.runtime.certs.extraFiles)
+                      .map(f, {"name": "certs-override", "mountPath": "/opt/thunderid/config/certs/" + f, "subPath": f, "readOnly": true})}
                   resources:
                     requests:
                       cpu: "${environmentConfigs.resourceRequestsCpu}"
@@ -781,9 +796,9 @@ spec:
                   {"name": "thunderid-config", "configMap": {"name": metadata.name + "-config"}},
                   {"name": "gate-config", "configMap": {"name": metadata.name + "-gate-config"}},
                   {"name": "console-config", "configMap": {"name": metadata.name + "-console-config"}},
-                  {"name": "declarative-resources", "configMap": {"name": metadata.name + "-resources"}}
-                ] + (parameters.runtime.certs.storeKey != "" && size(parameters.runtime.certs.files) > 0
-                  ? [{"name": "certs-override", "secret": {"secretName": metadata.name + "-certs"}}] : [])}
+                  {"name": "declarative-resources", "configMap": {"name": metadata.name + "-resources"}},
+                  {"name": "certs-override", "secret": {"secretName": parameters.runtime.certs.storeKey != "" ? metadata.name + "-certs" : metadata.name + "-env"}}
+                ]}
 
     - id: service
       template:
@@ -804,11 +819,12 @@ spec:
               name: http
 
     # Gateway-to-backend TLS origination (kgateway). When
-    # runtime.tls.verifyBackend is true AND runtime.certs.storeKey provides
-    # a ca.crt property (materialized into the -certs Secret), the gateway
-    # verifies the backend certificate against that root CA; otherwise
-    # verification is skipped (still encrypted in transit) — the only
-    # workable mode for the image's bundled self-signed certificate.
+    # runtime.tls.verifyBackend is true, the gateway verifies the backend
+    # certificate against the ca.crt property materialized into the
+    # certs-override Secret (the -env Secret by default, or -certs when
+    # runtime.certs.storeKey is set); otherwise verification is skipped
+    # (still encrypted in transit), the workable mode for a self-signed
+    # serving certificate.
     - id: backend-tls-policy
       includeWhen: "${parameters.runtime.tls.enabled}"
       template:
@@ -824,8 +840,8 @@ spec:
               kind: Service
               name: "${metadata.name}"
           tls: |
-            ${parameters.runtime.tls.verifyBackend && parameters.runtime.certs.storeKey != ""
-              ? {"secretRef": {"name": metadata.name + "-certs"},
+            ${parameters.runtime.tls.verifyBackend
+              ? {"secretRef": {"name": parameters.runtime.certs.storeKey != "" ? metadata.name + "-certs" : metadata.name + "-env"},
                  "simpleTLS": true,
                  "parameters": {"minVersion": parameters.runtime.tls.minVersion, "maxVersion": "1.3"}}
               : {"insecureSkipVerify": true,

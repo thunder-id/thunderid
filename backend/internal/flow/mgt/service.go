@@ -28,6 +28,7 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
@@ -67,6 +68,7 @@ type FlowMgtServiceInterface interface {
 		*providers.CompleteFlowDefinition, *tidcommon.ServiceError)
 	GetGraph(ctx context.Context, flowID string) (core.GraphInterface, *tidcommon.ServiceError)
 	IsValidFlow(ctx context.Context, flowID string, flowType providers.FlowType) (bool, *tidcommon.ServiceError)
+	GetReachableCallTargets(ctx context.Context, flowID string) ([]CallTarget, *tidcommon.ServiceError)
 	SetDependencyRegistry(r resourcedependency.Registry)
 	GetFlowUsages(ctx context.Context, flowID string) (
 		*resourcedependency.DependenciesResponse, *tidcommon.ServiceError)
@@ -226,6 +228,60 @@ func (s *flowMgtService) GetFlow(ctx context.Context, flowID string) (
 	return flow, nil
 }
 
+// GetReachableCallTargets returns every flow reachable from flowID via CALL nodes, transitively.
+// The starting flow itself is not included. Cycles are safe: each flow is visited at most once.
+// A missing intermediate flow is treated as a hard error since it means the graph is unbuildable.
+func (s *flowMgtService) GetReachableCallTargets(ctx context.Context, flowID string) (
+	[]CallTarget, *tidcommon.ServiceError) {
+	if flowID == "" {
+		return nil, &ErrorMissingFlowID
+	}
+
+	visited := map[string]struct{}{flowID: {}}
+	results := make([]CallTarget, 0)
+	queue := []string{flowID}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		flow, err := s.store.GetFlowByID(ctx, current)
+		if err != nil {
+			if errors.Is(err, errFlowNotFound) {
+				if current == flowID {
+					return nil, &ErrorFlowNotFound
+				}
+				return nil, &ErrorCallTargetFlowNotFound
+			}
+			s.logger.Error(ctx, "Failed to load flow while walking call targets",
+				log.String(logKeyFlowID, current), log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+
+		if current != flowID {
+			results = append(results, CallTarget{
+				FlowID:   flow.ID,
+				FlowType: flow.FlowType,
+			})
+		}
+
+		for i := range flow.Nodes {
+			node := &flow.Nodes[i]
+			if node.Type != string(common.NodeTypeCall) || node.Flow == nil || node.Flow.Ref == "" {
+				continue
+			}
+			targetID := node.Flow.Ref
+			if _, seen := visited[targetID]; seen {
+				continue
+			}
+			visited[targetID] = struct{}{}
+			queue = append(queue, targetID)
+		}
+	}
+
+	return results, nil
+}
+
 // SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
 // provider services are initialized to avoid a cyclic import.
 func (s *flowMgtService) SetDependencyRegistry(r resourcedependency.Registry) {
@@ -357,11 +413,16 @@ func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef 
 
 	var updatedFlow *providers.CompleteFlowDefinition
 	var validationSvcErr *tidcommon.ServiceError
+	var storeWriteAttempted bool
+	var existingHandle string
+	var existingType providers.FlowType
 	txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		existingFlow, err := s.store.GetFlowByID(txCtx, flowID)
 		if err != nil {
 			return err
 		}
+		existingHandle = existingFlow.Handle
+		existingType = existingFlow.FlowType
 
 		if existingFlow.IsReadOnly {
 			validationSvcErr = &ErrorFlowDeclarativeReadOnly
@@ -380,10 +441,39 @@ func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef 
 			return errClientValidation
 		}
 
+		storeWriteAttempted = true
 		var updateErr error
 		updatedFlow, updateErr = s.store.UpdateFlow(txCtx, flowID, flowDef)
-		return updateErr
+		if updateErr != nil {
+			return updateErr
+		}
+
+		if s.dependencyRegistry != nil {
+			if vErr := s.dependencyRegistry.ValidateReferenceUpdate(
+				txCtx, resourcedependency.ResourceTypeFlow, flowID); vErr != nil {
+				if vErr.Type == tidcommon.ClientErrorType {
+					logger.Debug(ctx, "Flow update blocked by dependent resource validation",
+						log.String("dependentCode", vErr.Code))
+					validationSvcErr = &ErrorFlowUpdateBlockedByDependent
+					return errClientValidation
+				}
+
+				return fmt.Errorf("failed to validate flow update against dependent resources: code=%s, error=%s",
+					vErr.Code, vErr.ErrorDescription)
+			}
+		}
+
+		return nil
 	})
+	// If the store write was attempted, both the flow-store cache and the graph-builder cache may
+	// have been populated with the uncommitted new definition during dependent-resource
+	// validation (mid-transaction reads see the write inside the same tx). Whether the transaction
+	// committed or rolled back, purge both caches so subsequent reads rebuild from the on-disk row.
+	if storeWriteAttempted {
+		s.store.InvalidateCache(ctx, flowID, existingHandle, existingType)
+		s.graphBuilder.InvalidateCache(ctx, flowID)
+	}
+
 	if txErr != nil {
 		if errors.Is(txErr, errClientValidation) {
 			return nil, validationSvcErr
@@ -396,9 +486,6 @@ func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef 
 	}
 
 	logger.Debug(ctx, "Flow updated successfully")
-
-	// Invalidate the cached graph since the flow has been updated
-	s.graphBuilder.InvalidateCache(ctx, flowID)
 
 	return updatedFlow, nil
 }

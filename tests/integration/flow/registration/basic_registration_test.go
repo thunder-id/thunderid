@@ -164,10 +164,11 @@ type BasicRegistrationFlowTestSuite struct {
 	suite.Suite
 	config           *common.TestSuiteConfig
 	entityTypeID     string
-	testAppID        string
-	testOUID         string
-	testUserTypeName string
-	testFlowID       string
+	testAppID          string
+	testOUID           string
+	testUserTypeName   string
+	testFlowID         string
+	isolatedAuthFlowID string
 }
 
 func TestBasicRegistrationFlowTestSuite(t *testing.T) {
@@ -201,6 +202,13 @@ func (ts *BasicRegistrationFlowTestSuite) SetupSuite() {
 	}
 	ts.testFlowID = flowID
 
+	// Create isolated auth flow to avoid cross-type reference validation with default auth flow.
+	isolatedAuthID, err := testutils.CreateIsolatedAuthFlow("basic-registration-isolated-auth")
+	if err != nil {
+		ts.T().Fatalf("Failed to create isolated auth flow: %v", err)
+	}
+	ts.isolatedAuthFlowID = isolatedAuthID
+
 	// Create test application with allowed user types
 	testApp := testutils.Application{
 		OUID:                      ts.testOUID,
@@ -208,6 +216,7 @@ func (ts *BasicRegistrationFlowTestSuite) SetupSuite() {
 		Description:               "Application for testing registration flows",
 		IsRegistrationFlowEnabled: true,
 		RegistrationFlowID:        ts.testFlowID,
+		AuthFlowID:                ts.isolatedAuthFlowID,
 		ClientID:                  "reg_flow_test_client",
 		ClientSecret:              "reg_flow_test_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
@@ -241,6 +250,13 @@ func (ts *BasicRegistrationFlowTestSuite) TearDownSuite() {
 	if ts.testFlowID != "" {
 		if err := testutils.DeleteFlow(ts.testFlowID); err != nil {
 			ts.T().Logf("Failed to delete registration flow during teardown: %v", err)
+		}
+	}
+
+	// Delete isolated auth flow
+	if ts.isolatedAuthFlowID != "" {
+		if err := testutils.DeleteFlow(ts.isolatedAuthFlowID); err != nil {
+			ts.T().Logf("Failed to delete isolated auth flow during teardown: %v", err)
 		}
 	}
 
@@ -530,6 +546,7 @@ func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlow_WithoutToken
 		Description:               "Application for testing default behavior without token config",
 		IsRegistrationFlowEnabled: true,
 		RegistrationFlowID:        ts.testFlowID,
+		AuthFlowID:                ts.isolatedAuthFlowID,
 		ClientID:                  "reg_flow_test_client_no_token_config",
 		ClientSecret:              "reg_flow_test_secret_no_token_config",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
@@ -598,6 +615,7 @@ func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlow_WithEmptyUse
 		Description:               "Application for testing behavior with empty user_attributes",
 		IsRegistrationFlowEnabled: true,
 		RegistrationFlowID:        ts.testFlowID,
+		AuthFlowID:                ts.isolatedAuthFlowID,
 		ClientID:                  "reg_flow_test_client_empty_attrs",
 		ClientSecret:              "reg_flow_test_secret_empty_attrs",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
@@ -848,6 +866,7 @@ func (ts *BasicRegistrationFlowTestSuite) TestSchemaDriverInputs_OptionalAttrPro
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{testUserType.Name},
 		RegistrationFlowID:        flowID,
+		AuthFlowID:                ts.isolatedAuthFlowID,
 	})
 	ts.Require().NoError(err, "Failed to create test app")
 	defer func() {
@@ -1023,10 +1042,12 @@ func (ts *BasicRegistrationFlowTestSuite) TestSchemaDriverInputs_DisplayNameUsed
 		Name:                      "DisplayName Label Test App",
 		IsRegistrationFlowEnabled: true,
 		RegistrationFlowID:        regFlowID,
-		ClientID:                  "dn_label_test_client",
-		ClientSecret:              "dn_label_test_secret",
-		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{schemaWithDisplayName.Name},
+		// This test uses the default registration flow, which CALLs the default auth flow.
+		// Let the server default AuthFlowID to the default auth flow so the two are consistent.
+		ClientID:         "dn_label_test_client",
+		ClientSecret:     "dn_label_test_secret",
+		RedirectURIs:     []string{"http://localhost:3000/callback"},
+		AllowedUserTypes: []string{schemaWithDisplayName.Name},
 	})
 	ts.Require().NoError(err, "Failed to create displayName test app")
 	defer func() {

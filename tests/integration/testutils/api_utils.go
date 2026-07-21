@@ -1486,6 +1486,36 @@ func CreateFlow(flowDefinition Flow) (string, error) {
 	return flowID, nil
 }
 
+// CreateIsolatedAuthFlow creates a minimal AUTHENTICATION flow with no CALL nodes, suitable for
+// tests that attach a custom registration/recovery/signout flow to an application: reusing the
+// default auth flow would trigger cross-type reference validation (APP-1039) because it CALLs the
+// default registration and recovery flows. The handle is caller-supplied so tests can craft unique
+// values per suite and clean up deterministically.
+func CreateIsolatedAuthFlow(handle string) (string, error) {
+	return CreateFlow(Flow{
+		Name:     "Isolated Auth Flow " + handle,
+		FlowType: "AUTHENTICATION",
+		Handle:   handle,
+		Nodes: []map[string]interface{}{
+			{
+				"id":        "start",
+				"type":      "START",
+				"onSuccess": "auth_assert",
+			},
+			{
+				"id":        "auth_assert",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+				"onSuccess": "end",
+			},
+			{
+				"id":   "end",
+				"type": "END",
+			},
+		},
+	})
+}
+
 // DeleteFlow deletes a flow by ID
 func DeleteFlow(flowID string) error {
 	req, err := http.NewRequest("DELETE", TestServerURL+"/flows/"+flowID, nil)

@@ -124,16 +124,32 @@ func (s *cacheBackedFlowStore) GetFlowByHandle(ctx context.Context, handle strin
 	return flow, nil
 }
 
-// UpdateFlow updates an existing flow definition and refreshes the cache.
+// UpdateFlow updates an existing flow definition and invalidates any cached copies.
+// It invalidates rather than repopulates the cache because the underlying store write may still
+// be inside an outer transaction that has not yet committed.
 func (s *cacheBackedFlowStore) UpdateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (
 	*providers.CompleteFlowDefinition, error) {
 	updatedFlow, err := s.store.UpdateFlow(ctx, flowID, flow)
 	if err != nil {
 		return nil, err
 	}
-	s.cacheFlow(ctx, updatedFlow)
+	s.invalidateFlowCache(ctx, flowID)
+	s.invalidateFlowCacheByHandle(ctx, updatedFlow.Handle, updatedFlow.FlowType)
 
 	return updatedFlow, nil
+}
+
+// InvalidateCache drops the cached entries for the flow keyed by ID and by handle+type. Called
+// post-transaction by flowMgtService.UpdateFlow to purge any entries repopulated by dependent-
+// resource walkers reading the uncommitted mid-transaction row.
+func (s *cacheBackedFlowStore) InvalidateCache(
+	ctx context.Context, flowID, handle string, flowType providers.FlowType) {
+	if flowID != "" {
+		s.invalidateFlowCache(ctx, flowID)
+	}
+	if handle != "" {
+		s.invalidateFlowCacheByHandle(ctx, handle, flowType)
+	}
 }
 
 // DeleteFlow deletes a flow definition by its ID and invalidates the cache.

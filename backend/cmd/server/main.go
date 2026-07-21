@@ -224,6 +224,19 @@ func loadCertConfig(ctx context.Context, logger *log.Logger, runtimeSvc kmprovid
 	}
 }
 
+// accessLogExcludePaths returns the path prefixes excluded from the access log: the always-excluded
+// Gate and Console frontend paths plus any configured extras. Empty and root ("/") entries are
+// dropped because they match every request and would silently disable all access logging.
+func accessLogExcludePaths(configured []string) []string {
+	paths := []string{"/gate/", "/console/"}
+	for _, prefix := range configured {
+		if prefix != "" && prefix != "/" {
+			paths = append(paths, prefix)
+		}
+	}
+	return paths
+}
+
 // createHTTPServer creates and configures an HTTP server with common settings.
 func createHTTPServer(ctx context.Context, logger *log.Logger, cfg *config.Config, mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface, revocationEnforcer revocationcache.EnforcerInterface) *http.Server {
@@ -232,7 +245,9 @@ func createHTTPServer(ctx context.Context, logger *log.Logger, cfg *config.Confi
 	// Build the middleware chain with proper execution order.
 	// Request flow: CorrelationID (outermost) -> AccessLog -> Security -> Route Handler (innermost)
 	// Note: Middlewares are wrapped in reverse order - the last added will execute first.
-	handler := log.AccessLogHandler(logger, securityMiddleware)
+	// The Gate and Console frontend paths are always excluded from the access log to keep it
+	// focused on API traffic. Additional prefixes can be excluded via log.access.exclude_paths.
+	handler := log.AccessLogHandler(logger, accessLogExcludePaths(cfg.Log.Access.ExcludePaths), securityMiddleware)
 	handler = middleware.CorrelationIDMiddleware(handler)
 
 	// Build the server address using hostname and port from the configurations.

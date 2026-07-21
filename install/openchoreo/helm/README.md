@@ -222,9 +222,9 @@ To promote ThunderID to `staging` or `production`:
 | `thunderid-component.database.type` | Database engine: `sqlite` or `postgres` | `sqlite` |
 | `thunderid-component.database.storageSize` | PVC size for SQLite files | `1Gi` |
 | `thunderid-component.database.config.path` | SQLite config DB path (relative to ThunderID working directory) | `database/configdb.db` |
-| `thunderid-component.database.runtime_transient.path` | SQLite runtime-transient DB path | `database/runtime-transient.db` |
+| `thunderid-component.database.runtime_transient.path` | SQLite runtime-transient DB path | `database/runtime_transient.db` |
 | `thunderid-component.database.entity.path` | SQLite entity DB path | `database/entitydb.db` |
-| `thunderid-component.database.runtime_persistent.path` | SQLite runtime-persistent DB path | `database/runtime-persistent.db` |
+| `thunderid-component.database.runtime_persistent.path` | SQLite runtime-persistent DB path | `database/runtime_persistent.db` |
 | `thunderid-component.database.host` | PostgreSQL hostname (`postgres` only) | — |
 | `thunderid-component.database.port` | PostgreSQL port — rendered as an integer in the ConfigMap (`postgres` only) | `5432` |
 | `thunderid-component.database.config.database` | Config DB name (`postgres` only) | `postgredb` |

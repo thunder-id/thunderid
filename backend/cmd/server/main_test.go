@@ -657,3 +657,17 @@ func runExitHelper(t *testing.T, envKey, testName string) {
 		t.Fatalf("expected process to exit with code 1, got %v", err)
 	}
 }
+
+func TestAccessLogExcludePaths(t *testing.T) {
+	// The frontend prefixes are always present, even with no configured extras.
+	assert.Equal(t, []string{"/gate/", "/console/"}, accessLogExcludePaths(nil))
+
+	// Configured prefixes are appended after the built-in frontend prefixes.
+	assert.Equal(t, []string{"/gate/", "/console/", "/health/", "/metrics/"},
+		accessLogExcludePaths([]string{"/health/", "/metrics/"}))
+
+	// Empty and root ("/") entries are dropped so they cannot match every request
+	// and silently disable all access logging.
+	assert.Equal(t, []string{"/gate/", "/console/", "/health/"},
+		accessLogExcludePaths([]string{"", "/health/", "/"}))
+}

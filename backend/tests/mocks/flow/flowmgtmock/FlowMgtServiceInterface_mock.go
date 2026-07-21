@@ -533,6 +533,76 @@ func (_c *FlowMgtServiceInterfaceMock_GetGraph_Call) RunAndReturn(run func(ctx c
 	return _c
 }
 
+// GetReachableCallTargets provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) GetReachableCallTargets(ctx context.Context, flowID string) ([]flowmgt.CallTarget, *common.ServiceError) {
+	ret := _mock.Called(ctx, flowID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetReachableCallTargets")
+	}
+
+	var r0 []flowmgt.CallTarget
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]flowmgt.CallTarget, *common.ServiceError)); ok {
+		return returnFunc(ctx, flowID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []flowmgt.CallTarget); ok {
+		r0 = returnFunc(ctx, flowID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]flowmgt.CallTarget)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, flowID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// FlowMgtServiceInterfaceMock_GetReachableCallTargets_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetReachableCallTargets'
+type FlowMgtServiceInterfaceMock_GetReachableCallTargets_Call struct {
+	*mock.Call
+}
+
+// GetReachableCallTargets is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowID string
+func (_e *FlowMgtServiceInterfaceMock_Expecter) GetReachableCallTargets(ctx interface{}, flowID interface{}) *FlowMgtServiceInterfaceMock_GetReachableCallTargets_Call {
+	return &FlowMgtServiceInterfaceMock_GetReachableCallTargets_Call{Call: _e.mock.On("GetReachableCallTargets", ctx, flowID)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetReachableCallTargets_Call) Run(run func(ctx context.Context, flowID string)) *FlowMgtServiceInterfaceMock_GetReachableCallTargets_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetReachableCallTargets_Call) Return(callTargets []flowmgt.CallTarget, serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_GetReachableCallTargets_Call {
+	_c.Call.Return(callTargets, serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetReachableCallTargets_Call) RunAndReturn(run func(ctx context.Context, flowID string) ([]flowmgt.CallTarget, *common.ServiceError)) *FlowMgtServiceInterfaceMock_GetReachableCallTargets_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetResourceDependencies provides a mock function for the type FlowMgtServiceInterfaceMock
 func (_mock *FlowMgtServiceInterfaceMock) GetResourceDependencies(ctx context.Context, resourceType string, id string) ([]resourcedependency.ResourceDependency, error) {
 	ret := _mock.Called(ctx, resourceType, id)

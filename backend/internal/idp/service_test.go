@@ -63,6 +63,11 @@ func (r *stubDependencyRegistry) CascadeDelete(context.Context, string, string) 
 	return 0, nil
 }
 
+func (r *stubDependencyRegistry) ValidateReferenceUpdate(
+	context.Context, string, string) *tidcommon.ServiceError {
+	return nil
+}
+
 // newNoBlockingDepsRegistry returns a registry reporting confirmed-empty dependencies, so that
 // deletion is permitted by the blocking guard.
 func newNoBlockingDepsRegistry() *stubDependencyRegistry {

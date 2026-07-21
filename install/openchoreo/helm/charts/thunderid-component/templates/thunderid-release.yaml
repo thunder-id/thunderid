@@ -73,11 +73,11 @@ spec:
         - key: DB_CONFIG_PATH
           value: {{ .Values.database.config.path | default "database/configdb.db" | quote }}
         - key: DB_RUNTIME_TRANSIENT_PATH
-          value: {{ .Values.database.runtime_transient.path | default "database/runtime-transient.db" | quote }}
+          value: {{ .Values.database.runtime_transient.path | default "database/runtime_transient.db" | quote }}
         - key: DB_ENTITY_PATH
           value: {{ .Values.database.entity.path | default "database/entitydb.db" | quote }}
         - key: DB_RUNTIME_PERSISTENT_PATH
-          value: {{ .Values.database.runtime_persistent.path | default "database/runtime-persistent.db" | quote }}
+          value: {{ .Values.database.runtime_persistent.path | default "database/runtime_persistent.db" | quote }}
         - key: CRYPTO_ENCRYPTION_KEY
           value: {{ .Values.crypto.encryption.key | quote }}
     endpoints:

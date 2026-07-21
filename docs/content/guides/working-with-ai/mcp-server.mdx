@@ -1,7 +1,7 @@
 ---
 title: MCP Server
 docType: guide
-description: Learn about MCP Server and how to apply it in configuration, integration, and operational workflows.
+description: Connect MCP clients to the ThunderID MCP server using OAuth sign-in, with a step-by-step MCP Inspector walkthrough.
 sidebar_position: 3
 persona: iam
 hide_table_of_contents: false
@@ -12,178 +12,128 @@ import TabItem from '@theme/TabItem';
 
 # <ProductName /> MCP Server
 
-<ProductName /> provides a Model Context Protocol (MCP) server that enables AI assistants and development tools to interact with <ProductName />'s identity management capabilities. Connect Claude Desktop, Claude Code, or VS Code with Copilot to manage applications, authentication flows, users, and themes directly from your conversation.
+<ProductName /> provides a Model Context Protocol (MCP) server that lets AI assistants and MCP clients manage applications, authentication flows, users, and themes directly.
 
 ## Overview
 
-The MCP server is available through the `/mcp` endpoint of your <ProductName /> instance (default: `https://localhost:8090/mcp`). MCP clients can automatically discover the available tools through the protocol. No additional setup is required.
+The MCP server is available through the `/mcp` endpoint of your <ProductName /> instance (default: `https://localhost:8090/mcp`). MCP clients discover the available tools automatically through the protocol.
 
 ### Authentication
 
-The MCP endpoint is secured with OAuth 2.0 Bearer Token authentication following the [MCP Authorization Specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization). Clients must present a valid JWT access token with the `system` scope. <ProductName /> validates the token signature, issuer, audience (set to the MCP server URL), and expiry. See [Setup](#setup) for connection instructions.
+The endpoint follows the [MCP Authorization Specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization). The MCP server publishes protected resource metadata at `/.well-known/oauth-protected-resource`, advertising <ProductName /> as the OAuth authorization server. Spec-compliant MCP clients discover this automatically and run an OAuth authorization code + PKCE flow: you sign in through the browser, and the client obtains and refreshes tokens on its own. There is no manual token handling.
+
+Access requires the `system` scope, and permissions come from the signed-in user, so sign in with an administrator account.
 
 ## Prerequisites
 
 - <ProductName /> server running (default: `https://localhost:8090`)
-- <ProductName /> certificate trusted by your system - add `backend/cmd/server/config/certs/server.cert` to your system's trusted certificate store (Keychain on macOS, certificate store on Linux/Windows)
-- One of the following installed: Claude Desktop, Claude Code CLI, or VS Code with the GitHub Copilot extension
-- Access to the <ProductName /> Console
+- Access to the <ProductName /> Console with an administrator account
+- Node.js and npm installed (to run MCP Inspector via `npx`)
 
 ## Setup
 
-<Stepper stepNode="h3" as="h3">
-
-### Create an Application
-
-In the <ProductName /> Console, create a Backend Service application to use as your MCP client.
-
-1. Go to **Applications** and click **Add Application**.
-2. Select **Backend Service** as the application type.
-3. Provide a name for the application (for example, `My MCP Client`).
-4. Select an organization unit and click **Create**.
-
-:::warning Save your client secret
-Copy and store the client secret now - it will not be shown again.
-:::
-
-After saving the secret, note the **Client ID** from the application details view. You will need both values in the next steps.
-
-### Assign the Application to the Administrator Role
-
-Assign your application to the Administrator role so it has the permissions needed to access <ProductName /> APIs through the MCP server.
-
-1. Go to **Roles** and select **Administrator**.
-2. Click the **Assignments** tab.
-3. Under **Apps**, click **Add** and select the application you created.
-
-### Get an Access Token
-
-Exchange your application credentials for a bearer token scoped to the MCP server. Replace `<CLIENT_ID>` and `<CLIENT_SECRET>` with the values from your application.
-
-```bash
-curl -kL -X POST https://localhost:8090/oauth2/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -u "<CLIENT_ID>:<CLIENT_SECRET>" \
-  -d "grant_type=client_credentials" \
-  -d "scope=system"
-```
-
-Copy the `access_token` value from the response. This token is valid for 3600 seconds (1 hour). You will need to repeat this step when it expires.
-
-:::tip Refresh the token
-When you receive a 401 from the MCP server, generate a new token using the same command and update your configuration with the new value.
-:::
-
-### Configure Your AI Tool
+Pick your MCP client below. MCP Inspector works today; step-by-step guides for the other clients are on the way.
 
 <Tabs>
-<TabItem value="claude-desktop" label="Claude Desktop" default>
+<TabItem value="mcp-inspector" label="MCP Inspector" default>
 
-Add the following to your Claude Desktop configuration file. Replace `<ACCESS_TOKEN>` with the token from the previous step.
+<Stepper stepNode="h3" as="h3">
 
-**Configuration file locations:**
+### Register an MCP Client
 
-| OS | Path |
-|---|---|
-| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
-| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
-| Linux | `~/.config/Claude/claude_desktop_config.json` |
+In the <ProductName /> Console, register an application for MCP Inspector.
 
-```json
-{
-  "mcpServers": {
-    "{{productSlug}}-mcp": {
-      "type": "http",
-      "url": "https://localhost:8090/mcp",
-      "headers": {
-        "Authorization": "Bearer <ACCESS_TOKEN>"
-      }
-    }
-  }
-}
+1. Go to **Applications** and click **Add Application**.
+2. Select **MCP Client**.
+3. Enter a name (for example, `MCP Inspector`).
+4. If prompted, select an organization unit.
+5. On the **Client type** step, select **On behalf of a user**. This configures the Authorization Code flow with PKCE as a public client.
+6. Under **Redirect URIs**, add `http://localhost:6274/oauth/callback`. The wizard shows this exact URI as a copyable hint for MCP Inspector.
+7. Click **Finish**.
+8. From the completion screen, copy the **Client ID**. You need it when connecting from MCP Inspector. No client secret is required because this is a public client.
+
+### Allow the MCP Inspector Origin
+
+MCP Inspector runs in the browser at `http://localhost:6274` and calls <ProductName /> cross-origin, so its origin must be allowed in the CORS configuration.
+
+Create or update `config/resources/server_configs/cors.yaml` in your <ProductName /> distribution, or use `PUT /server-config/cors` after startup:
+
+```yaml
+name: cors
+value:
+  allowedOrigins:
+    - "http://localhost:6274"
 ```
 
-Restart Claude Desktop after saving the file. The <ProductName /> tools will appear in Claude's tool list.
+If the file already exists, append the origin to the existing `allowedOrigins` list instead of replacing it. Restart <ProductName /> after editing the file so the change takes effect.
+
+### Trust the <ProductName /> Certificate
+
+MCP Inspector's proxy runs on Node.js. Point Node.js at the <ProductName /> self-signed certificate so TLS connections to `https://localhost:8090` are trusted, without adding anything to your system trust store:
+
+```bash
+export NODE_EXTRA_CA_CERTS=<THUNDERID_HOME>/config/certs/server.cert
+```
+
+`<THUNDERID_HOME>` is the directory of your <ProductName /> distribution. The certificate generated during setup includes subject alternative names for `localhost` and `127.0.0.1`, so modern TLS clients accept it once it is trusted. Run the export in the same terminal session you launch MCP Inspector from.
+
+### Launch MCP Inspector
+
+```bash
+npx @modelcontextprotocol/inspector
+```
+
+The Inspector UI opens at `http://localhost:6274`.
+
+### Connect to the MCP Server
+
+1. Set **Transport Type** to **Streamable HTTP**.
+2. Set **URL** to `https://localhost:8090/mcp`.
+3. Expand the **Authentication** section and select **OAuth**.
+4. Enter the **Client ID** you copied earlier. Leave **Client Secret** empty.
+5. Set **Scope** to `system`.
+6. Click **Connect**.
+7. A browser tab opens with the <ProductName /> sign-in page. Sign in with your administrator account.
+8. Review and approve the requested permissions on the consent screen.
+9. You are redirected back to MCP Inspector, now connected. Tokens are obtained and refreshed automatically from here on.
+
+### Verify the Connection
+
+1. In MCP Inspector, open the **Tools** tab and click **List Tools**.
+2. Select a tool such as `list_applications` and run it.
+3. The response lists the applications registered in <ProductName />, including the MCP Inspector application you just created.
+
+If the connection fails, see the [Troubleshooting](#troubleshooting) section below.
+
+</Stepper>
+
+</TabItem>
+<TabItem value="claude-desktop" label="Claude Desktop">
+
+:::note Coming soon
+A step-by-step guide for connecting Claude Desktop to the <ProductName /> MCP server is on the way. Any MCP client that supports the MCP Authorization Specification with OAuth can connect today using the same application registered in the MCP Inspector guide above.
+:::
 
 </TabItem>
 <TabItem value="claude-code" label="Claude Code">
 
-Run the following command to add the MCP server to your Claude Code configuration. Replace `<ACCESS_TOKEN>` with the token from the previous step.
-
-```bash
-claude mcp add --transport http {{productSlug}}-mcp https://localhost:8090/mcp \
-  --header "Authorization: Bearer <ACCESS_TOKEN>"
-```
-
-To verify the server was added:
-
-```bash
-claude mcp list
-```
-
-You should see `{{productSlug}}-mcp` listed with the MCP server URL.
+:::note Coming soon
+A step-by-step guide for connecting Claude Code to the <ProductName /> MCP server is on the way. Any MCP client that supports the MCP Authorization Specification with OAuth can connect today using the same application registered in the MCP Inspector guide above.
+:::
 
 </TabItem>
-<TabItem value="vscode-copilot" label="VS Code with Copilot">
+<TabItem value="github-copilot" label="GitHub Copilot">
 
-VS Code reads MCP server configuration from a `.vscode/mcp.json` file in your workspace, or from your user-level MCP configuration for global access.
-
-#### Workspace Configuration
-
-Create or edit `.vscode/mcp.json` in your project root. Use the `inputs` field to avoid storing the token in plain text - VS Code will prompt for it once and store it securely:
-
-```json
-{
-  "inputs": [
-    {
-      "type": "promptString",
-      "id": "thunderid-token",
-      "description": "{{ProductName}} MCP access token",
-      "password": true
-    }
-  ],
-  "servers": {
-    "{{productSlug}}-mcp": {
-      "type": "http",
-      "url": "https://localhost:8090/mcp",
-      "headers": {
-        "Authorization": "Bearer ${input:thunderid-token}"
-      }
-    }
-  }
-}
-```
-
-#### User Configuration
-
-To make the server available across all workspaces, open the VS Code command palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run **MCP: Open User Configuration**, then add the same JSON above.
-
-#### Start the Server
-
-Open the command palette and run **MCP: List Servers** to see `{{productSlug}}-mcp`. Click **Start** next to it, or select it and choose **Start Server**. VS Code will prompt for the access token the first time.
-
-:::note Token storage
-VS Code stores the token securely using the system keychain after the first prompt. When the token expires, run **MCP: Reset Stored Inputs** from the command palette, then restart the server to enter a new token.
+:::note Coming soon
+A step-by-step guide for connecting GitHub Copilot to the <ProductName /> MCP server is on the way. Any MCP client that supports the MCP Authorization Specification with OAuth can connect today using the same application registered in the MCP Inspector guide above.
 :::
 
 </TabItem>
 </Tabs>
 
-### Verify the Connection
-
-Ask your AI assistant to confirm the MCP tools are working:
-
-> "List the applications registered in <ProductName />"
-
-The assistant will call the appropriate tool and return the list of registered applications.
-
-If the assistant cannot reach the server, see the [Troubleshooting](#troubleshooting) section below.
-
-</Stepper>
-
 ## What You Can Do
 
-Once connected, your AI assistant can work with <ProductName /> resources directly. MCP clients discover the available tools automatically - you just describe what you need in natural language.
+Once connected, your AI assistant can work with <ProductName /> resources directly. MCP clients discover the available tools automatically, you just describe what you need in natural language.
 
 | Toolset | Description |
 |---------|-------------|
@@ -216,7 +166,7 @@ To add authentication to an existing React application instead:
 
 > "Integrate authentication with <ProductName /> for this application"
 
-The assistant installs the SDK, configures the auth provider, and adds sign-in and sign-out components - without scaffolding a new project.
+The assistant installs the SDK, configures the auth provider, and adds sign-in and sign-out components without scaffolding a new project.
 
 ### Add Signup to a React App
 
@@ -228,36 +178,47 @@ The assistant enables self-registration on your <ProductName /> application and 
 
 ## Troubleshooting
 
-### 401 Unauthorized
+### Browser shows a CORS error or the connection hangs
 
-The access token has expired or is invalid.
+The Inspector origin is missing from the CORS configuration.
 
-1. Generate a new token using the command in [Get an Access Token](#get-an-access-token).
-2. Update the `Authorization` header value in your configuration with the new token.
-3. **Claude Desktop**: restart after saving the config file.
-4. **Claude Code**: re-add the server with the new token (`claude mcp add ...`).
-5. **VS Code**: run **MCP: Reset Stored Inputs** from the command palette, then restart the server.
+1. Re-check the `cors.yaml` step under [Allow the MCP Inspector Origin](#allow-the-mcp-inspector-origin).
+2. Restart <ProductName /> after saving the change.
 
-### Certificate / TLS Errors
+### Certificate or TLS errors
 
-The <ProductName /> certificate is not trusted by your system.
+`NODE_EXTRA_CA_CERTS` was not set in the terminal that launched Inspector, or it points to the wrong path.
 
-1. Add `backend/cmd/server/config/certs/server.cert` to your system's trusted certificate store.
-2. Restart your AI tool so it picks up the updated certificate trust settings.
+1. Export it again in the same terminal: `export NODE_EXTRA_CA_CERTS=<THUNDERID_HOME>/config/certs/server.cert`.
+2. Relaunch MCP Inspector from that terminal.
 
-### MCP Server Not Responding
+### Redirect URI error during sign-in
 
-Verify <ProductName /> is running and the MCP endpoint is reachable:
+The redirect URI on the application does not exactly match `http://localhost:6274/oauth/callback`.
+
+1. Edit the application in the Console.
+2. Correct the redirect URI under **Redirect URIs** and save.
+
+### 403 or insufficient scope after connecting
+
+The signed-in user lacks administrator permissions, or the scope was not set to `system`.
+
+1. Sign in with an administrator account.
+2. Confirm the **Scope** field in MCP Inspector is set to `system`.
+
+### MCP server not responding
+
+Verify <ProductName /> is running and the endpoint is reachable:
 
 ```bash
 curl -k https://localhost:8090/mcp
 ```
 
-A `401 Unauthorized` response with a `WWW-Authenticate` header confirms the server is up and secured. Any other error indicates the server is not running or the URL is incorrect.
+A `401 Unauthorized` response with a `WWW-Authenticate` header confirms the endpoint is up and secured. Any other error indicates the server is not running or the URL is incorrect.
 
 ## Related Documentation
 
 - [API Reference](../../../apis) - Application and Flow Management REST APIs
 - [React SDK](../../../sdks/react/overview) - <ProductName /> React SDK documentation
-- [VS Code MCP Configuration](https://code.visualstudio.com/docs/copilot/reference/mcp-configuration) - VS Code MCP reference
+- [Securing MCP](../../../use-cases/ai-agents/mcp-authorization/overview) - governing MCP clients and protecting MCP servers with <ProductName />
 - [MCP Authorization Specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization) - MCP auth protocol details

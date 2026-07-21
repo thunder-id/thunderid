@@ -136,9 +136,10 @@ func (ts *SMSOTPRecoveryFlowTestSuite) SetupSuite() {
 	ts.smsFlowID = customFlowID
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, customFlowID)
 
-	authFlowID, err := testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
-	ts.Require().NoError(err, "Failed to get default auth flow ID")
+	authFlowID, err := testutils.CreateIsolatedAuthFlow("sms-otp-recovery-isolated-auth")
+	ts.Require().NoError(err, "Failed to create isolated auth flow")
 	ts.authFlowID = authFlowID
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, authFlowID)
 
 	// Create test application with SMS OTP recovery flow
 	appID, err := testutils.CreateApplication(testutils.Application{

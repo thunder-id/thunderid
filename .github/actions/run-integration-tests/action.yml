@@ -41,9 +41,9 @@ runs:
         PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d postgredb -c "CREATE DATABASE entitydb;"
         PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d postgredb -c "CREATE DATABASE runtime_persistent;"
         PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d configdb < backend/dbscripts/configdb/postgres.sql
-        PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d runtime_transient < backend/dbscripts/runtime-transient/postgres.sql
+        PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d runtime_transient < backend/dbscripts/runtime_transient/postgres.sql
         PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d entitydb < backend/dbscripts/entitydb/postgres.sql
-        PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d runtime_persistent < backend/dbscripts/runtime-persistent/postgres.sql
+        PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d runtime_persistent < backend/dbscripts/runtime_persistent/postgres.sql
 
     - name: 📝 Configure Test Database
       shell: bash

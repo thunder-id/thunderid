@@ -234,7 +234,8 @@ helm install {{productSlug}} oci://ghcr.io/thunder-id/helm-charts/{{productSlug}
   --set configuration.database.runtime_persistent.postgres.sslmode=disable \
   --set configuration.server.publicUrl=https://localhost:8090 \
   --set configuration.gateClient.hostname=localhost \
-  --set configuration.gateClient.port=8090
+  --set configuration.gateClient.port=8090 \
+  --set deployment.securityContext.readOnlyRootFilesystem=false
 ```
 
 Wait for <ProductName /> to be ready:

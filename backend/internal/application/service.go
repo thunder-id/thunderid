@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -688,6 +689,41 @@ func (as *applicationService) GetResourceDependencies(
 		})
 	}
 	return usages, nil
+}
+
+// ValidateReferenceUpdate re-validates every application that references (resourceType, id) after
+// that resource has been updated. It implements resourcedependency.UpdateValidator so the registry
+// can invoke it from within the update transaction. Only flow updates are handled as of now.
+func (as *applicationService) ValidateReferenceUpdate(
+	ctx context.Context, resourceType, id string) *tidcommon.ServiceError {
+	if resourceType != resourcedependency.ResourceTypeFlow {
+		return nil
+	}
+
+	ids, _, err := as.inboundClientService.GetEntityIDsByReference(
+		ctx, resourceType, id, serverconst.MaxCompositeStoreRecords, 0)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to list applications referencing flow for revalidation",
+			log.String("flowID", id), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+
+	for _, entityID := range ids {
+		if err := as.inboundClientService.RevalidateFKs(ctx, entityID); err != nil {
+			as.logger.Debug(ctx, "Flow update rejected: application FK revalidation failed",
+				log.String("flowID", id), log.String("appID", entityID), log.Error(err))
+
+			if svcErr := translateInboundClientFKError(err); svcErr != nil {
+				return svcErr
+			}
+
+			as.logger.Error(ctx, "Failed to revalidate application after flow update",
+				log.String("flowID", id), log.String("appID", entityID), log.Error(err))
+			return &tidcommon.InternalServerError
+		}
+	}
+
+	return nil
 }
 
 // isIdentifierTaken checks if an entity with the given identifier already exists.
@@ -1470,6 +1506,14 @@ func translateIDTokenValidationError(err error) *tidcommon.ServiceError {
 // translateInboundClientFKError maps inbound-client foreign-key sentinel errors to
 // application-service errors.
 func translateInboundClientFKError(err error) *tidcommon.ServiceError {
+	var fm *inboundclient.FlowMismatchError
+	if errors.As(err, &fm) {
+		return ErrorApplicationFlowMismatch.WithParams(map[string]string{
+			"sourceFlowType": strings.ToLower(string(fm.SourceFlowType)),
+			"flowType":       strings.ToLower(string(fm.FlowType)),
+		})
+	}
+
 	switch {
 	case errors.Is(err, inboundclient.ErrFKInvalidAuthFlow):
 		return &ErrorInvalidAuthFlowID

@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
 # ----------------------------------------------------------------------------
-# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+# Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
 #
 # WSO2 LLC. licenses this file to you under the Apache License,
 # Version 2.0 (the "License"); you may not use this file except
@@ -580,8 +580,8 @@ function Initialize-Databases {
 
     New-Item -Path $REPOSITORY_DB_DIR -ItemType Directory -Force | Out-Null
 
-    $db_files = @("configdb.db", "runtime-transient.db", "entitydb.db", "runtime-persistent.db")
-    $script_paths = @("configdb/sqlite.sql", "runtime-transient/sqlite.sql", "entitydb/sqlite.sql", "runtime-persistent/sqlite.sql")
+    $db_files = @("configdb.db", "runtime_transient.db", "entitydb.db", "runtime_persistent.db")
+    $script_paths = @("configdb/sqlite.sql", "runtime_transient/sqlite.sql", "entitydb/sqlite.sql", "runtime_persistent/sqlite.sql")
 
     for ($i = 0; $i -lt $db_files.Length; $i++) {
         $db_file = $db_files[$i]

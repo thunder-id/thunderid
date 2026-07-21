@@ -43,17 +43,18 @@ docker pull ghcr.io/thunder-id/thunderid:latest
 
 ### Step 2: Set Up the Server
 
-Run the one-time setup script before starting <ProductName /> for the first time. It initializes the configuration and database. Mount a named volume for `config/certs`, where setup generates this deployment's TLS, JWT signing, and encryption keys, so the server can read them. If you are using SQLite, also mount a volume for the database so it persists:
+Run the one-time setup script before starting <ProductName /> for the first time. It initializes the configuration and database. Mount a named volume for `config/certs`, where setup generates this deployment's TLS, JWT signing, and encryption keys, and one for `config/secrets`, where setup writes the Direct Auth Secret, so the server can read them. If you are using SQLite, also mount a volume for the database so it persists:
 
 ```bash
 docker run -it --rm \
   -v thunderid-data:/opt/thunderid/database \
   -v thunderid-certs:/opt/thunderid/config/certs \
+  -v thunderid-secrets:/opt/thunderid/config/secrets \
   ghcr.io/thunder-id/thunderid:latest \
   ./setup.sh
 ```
 
-The container exits after setup completes. The generated key material is unique to this deployment and is reused on later runs. The server fails to start if it is missing, so always run setup, with the `config/certs` volume mounted, before starting the server.
+The container exits after setup completes. The generated key material is unique to this deployment and is reused on later runs. The server fails to start if it is missing, so always run setup, with the `config/certs` and `config/secrets` volumes mounted, before starting the server.
 
 ### Step 3: Start the Server
 
@@ -66,10 +67,11 @@ docker run -d \
   -p 8090:8090 \
   -v thunderid-data:/opt/thunderid/database \
   -v thunderid-certs:/opt/thunderid/config/certs \
+  -v thunderid-secrets:/opt/thunderid/config/secrets \
   ghcr.io/thunder-id/thunderid:latest
 ```
 
-<ProductName /> is now running at `https://localhost:8090`. Mount the same `thunderid-certs` volume you used during setup so the server reads the generated key material.
+<ProductName /> is now running at `https://localhost:8090`. Mount the same `thunderid-certs` and `thunderid-secrets` volumes you used during setup so the server reads the generated key material and the Direct Auth Secret.
 
 To follow the logs:
 
@@ -89,6 +91,7 @@ docker run -d \
   -v $(pwd)/deployment.yaml:/opt/thunderid/deployment.yaml \
   -v thunderid-data:/opt/thunderid/database \
   -v thunderid-certs:/opt/thunderid/config/certs \
+  -v thunderid-secrets:/opt/thunderid/config/secrets \
   ghcr.io/thunder-id/thunderid:latest
 ```
 
@@ -104,6 +107,7 @@ docker run -d \
   -v $(pwd)/certs/server.key:/opt/thunderid/config/certs/server.key \
   -v thunderid-data:/opt/thunderid/database \
   -v thunderid-certs:/opt/thunderid/config/certs \
+  -v thunderid-secrets:/opt/thunderid/config/secrets \
   ghcr.io/thunder-id/thunderid:latest
 ```
 
@@ -123,6 +127,7 @@ services:
     volumes:
       - ./deployment.yaml:/opt/thunderid/deployment.yaml
       - thunderid-certs:/opt/thunderid/config/certs
+      - thunderid-secrets:/opt/thunderid/config/secrets
     depends_on:
       postgres:
         condition: service_healthy
@@ -145,9 +150,10 @@ services:
 volumes:
   postgres-data:
   thunderid-certs:
+  thunderid-secrets:
 ```
 
-This snippet runs the server only. Before the first start, run setup once (see [Set Up the Server](#step-2-set-up-the-server)) against the same `thunderid-certs` volume so the key material exists, since the server does not start without it. For a Compose setup that runs the setup step automatically, see the quick-start under `install/quick-start`.
+This snippet runs the server only. Before the first start, run setup once (see [Set Up the Server](#step-2-set-up-the-server)) against the same `thunderid-certs` and `thunderid-secrets` volumes so the key material and Direct Auth Secret exist, since the server does not start without them. For a Compose setup that runs the setup step automatically, see the quick-start under `install/quick-start`.
 
 Create a `.env` file alongside `docker-compose.yml` to keep credentials out of version control:
 

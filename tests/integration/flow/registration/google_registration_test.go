@@ -364,6 +364,12 @@ func (ts *GoogleRegistrationFlowTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create Google registration flow with existing user")
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, flowIDWithExisting)
 
+	// Create isolated auth flow to avoid cross-type reference validation with default auth flow.
+	isolatedAuthID, err := testutils.CreateIsolatedAuthFlow("google-registration-isolated-auth")
+	ts.Require().NoError(err, "Failed to create isolated auth flow")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, isolatedAuthID)
+	googleRegTestApp.AuthFlowID = isolatedAuthID
+
 	// Create test application with the first flow
 	googleRegTestApp.OUID = googleRegTestOUID
 	appID, err := testutils.CreateApplication(googleRegTestApp)

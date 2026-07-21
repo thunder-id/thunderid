@@ -30,8 +30,9 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
     base: {{ .Values.configuration.consoleClient.path | quote }},
     client_id: {{ .Values.configuration.consoleClient.clientId | quote }},
     scopes: {{ .Values.configuration.consoleClient.scopes }},
-    {{- if .Values.configuration.consoleClient.resourceIdentifier }}
-    resource_identifier: {{ .Values.configuration.consoleClient.resourceIdentifier | quote }},
+    {{- $resourceIdentifier := .Values.configuration.consoleClient.resourceIdentifier | default (printf "%s/mcp" .Values.configuration.server.publicUrl) }}
+    {{- if $resourceIdentifier }}
+    resource_identifier: {{ $resourceIdentifier | quote }},
     {{- end }}
   },
   {{- if .Values.configuration.server.publicUrl }}

@@ -68,8 +68,9 @@ func (s *stubTransactioner) Transact(ctx context.Context, txFunc func(context.Co
 // The real registry never returns an error from GetDependencies, so a stub is required to
 // exercise the error branch of GetFlowUsages.
 type stubDependencyRegistry struct {
-	resp *resourcedependency.DependenciesResponse
-	err  error
+	resp        *resourcedependency.DependenciesResponse
+	err         error
+	validateErr *tidcommon.ServiceError
 }
 
 func (r *stubDependencyRegistry) RegisterProvider(resourcedependency.Provider) {}
@@ -83,6 +84,11 @@ func (r *stubDependencyRegistry) CascadeDelete(context.Context, string, string) 
 	return 0, nil
 }
 
+func (r *stubDependencyRegistry) ValidateReferenceUpdate(
+	context.Context, string, string) *tidcommon.ServiceError {
+	return r.validateErr
+}
+
 func (s *FlowMgtServiceTestSuite) SetupTest() {
 	s.mockStore = newFlowStoreInterfaceMock(s.T())
 	s.mockInference = newFlowInferenceServiceInterfaceMock(s.T())
@@ -92,6 +98,10 @@ func (s *FlowMgtServiceTestSuite) SetupTest() {
 	s.mockValidator = NewFlowValidatorInterfaceMock(s.T())
 	s.service = newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{})
+
+	// UpdateFlow / DeleteFlow / RestoreFlowVersion invalidate the store cache post-transaction.
+	// The mock is applied here so individual tests don't need to repeat the expectation.
+	s.mockStore.EXPECT().InvalidateCache(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe()
 
 	testConfig := &config.Config{
 		Flow: engineconfig.FlowConfig{
@@ -1145,6 +1155,91 @@ func (s *FlowMgtServiceTestSuite) TestUpdateFlow_Success() {
 	s.Equal(updatedFlow, result)
 }
 
+func (s *FlowMgtServiceTestSuite) TestUpdateFlow_DependencyRegistryRejectsUpdate() {
+	existingFlow := &providers.CompleteFlowDefinition{
+		ID:       testFlowIDService,
+		Handle:   "test-handle",
+		FlowType: providers.FlowTypeAuthentication,
+	}
+	flowDef := &FlowDefinition{
+		Handle:   "test-handle",
+		Name:     "Updated",
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes:    validFlowNodes(),
+	}
+	updatedFlow := &providers.CompleteFlowDefinition{Handle: "test-handle", Name: "Updated"}
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(existingFlow, nil)
+	s.mockStore.EXPECT().UpdateFlow(mock.Anything, testFlowIDService, flowDef).Return(updatedFlow, nil)
+	s.mockGraphBuilder.EXPECT().InvalidateCache(mock.Anything, testFlowIDService)
+
+	validationErr := &tidcommon.ServiceError{Code: "X", Type: tidcommon.ClientErrorType}
+	s.service.(*flowMgtService).dependencyRegistry = &stubDependencyRegistry{validateErr: validationErr}
+
+	result, err := s.service.UpdateFlow(context.Background(), testFlowIDService, flowDef)
+
+	s.Nil(result)
+	// The dependent resource's error code must not leak; the caller sees a flow-scoped error.
+	s.Require().NotNil(err)
+	s.Equal(ErrorFlowUpdateBlockedByDependent.Code, err.Code)
+}
+
+func (s *FlowMgtServiceTestSuite) TestUpdateFlow_DependencyRegistryServerErrorMapsToInternal() {
+	// A server-error from the dependency registry is not a client-side conflict, so it must not be
+	// translated into ErrorFlowUpdateBlockedByDependent. It surfaces as an internal server error.
+	existingFlow := &providers.CompleteFlowDefinition{
+		ID:       testFlowIDService,
+		Handle:   "test-handle",
+		FlowType: providers.FlowTypeAuthentication,
+	}
+	flowDef := &FlowDefinition{
+		Handle:   "test-handle",
+		Name:     "Updated",
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes:    validFlowNodes(),
+	}
+	updatedFlow := &providers.CompleteFlowDefinition{Handle: "test-handle", Name: "Updated"}
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(existingFlow, nil)
+	s.mockStore.EXPECT().UpdateFlow(mock.Anything, testFlowIDService, flowDef).Return(updatedFlow, nil)
+	s.mockGraphBuilder.EXPECT().InvalidateCache(mock.Anything, testFlowIDService)
+
+	serverErr := &tidcommon.ServiceError{Code: "INTERNAL", Type: tidcommon.ServerErrorType}
+	s.service.(*flowMgtService).dependencyRegistry = &stubDependencyRegistry{validateErr: serverErr}
+
+	result, err := s.service.UpdateFlow(context.Background(), testFlowIDService, flowDef)
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (s *FlowMgtServiceTestSuite) TestUpdateFlow_DependencyRegistryPasses() {
+	existingFlow := &providers.CompleteFlowDefinition{
+		ID:       testFlowIDService,
+		Handle:   "test-handle",
+		FlowType: providers.FlowTypeAuthentication,
+	}
+	flowDef := &FlowDefinition{
+		Handle:   "test-handle",
+		Name:     "Updated",
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes:    validFlowNodes(),
+	}
+	updatedFlow := &providers.CompleteFlowDefinition{Handle: "test-handle", Name: "Updated"}
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(existingFlow, nil)
+	s.mockStore.EXPECT().UpdateFlow(mock.Anything, testFlowIDService, flowDef).Return(updatedFlow, nil)
+	s.mockGraphBuilder.EXPECT().InvalidateCache(mock.Anything, testFlowIDService)
+
+	s.service.(*flowMgtService).dependencyRegistry = &stubDependencyRegistry{}
+
+	result, err := s.service.UpdateFlow(context.Background(), testFlowIDService, flowDef)
+
+	s.Nil(err)
+	s.Equal(updatedFlow, result)
+}
+
 func (s *FlowMgtServiceTestSuite) TestUpdateFlow_EmptyID() {
 	flowDef := &FlowDefinition{Name: "Test", FlowType: providers.FlowTypeAuthentication}
 
@@ -1238,6 +1333,9 @@ func (s *FlowMgtServiceTestSuite) TestUpdateFlow_StoreError() {
 	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
 	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(existingFlow, nil)
 	s.mockStore.EXPECT().UpdateFlow(mock.Anything, testFlowIDService, flowDef).Return(nil, errors.New("db error"))
+	// Store write was attempted (and may have applied partial writes rolled back by the tx), so
+	// the graph cache is invalidated regardless of the store error.
+	s.mockGraphBuilder.EXPECT().InvalidateCache(mock.Anything, testFlowIDService)
 
 	result, err := s.service.UpdateFlow(context.Background(), testFlowIDService, flowDef)
 
@@ -2013,4 +2111,129 @@ func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_ListError() {
 
 	s.Error(err)
 	s.Nil(usages)
+}
+
+// buildFlowDef builds a minimal CompleteFlowDefinition with the given ID, type, and CALL-node
+// target IDs. Non-CALL structure (START/END) is omitted since the walker doesn't need it.
+func buildFlowDef(id string, flowType providers.FlowType, callTargets ...string) *providers.CompleteFlowDefinition {
+	nodes := make([]providers.NodeDefinition, 0, len(callTargets))
+	for i, targetID := range callTargets {
+		nodes = append(nodes, providers.NodeDefinition{
+			ID:   "call-" + string(rune('a'+i)),
+			Type: string(common.NodeTypeCall),
+			Flow: &providers.FlowReferenceDefinition{Ref: targetID},
+		})
+	}
+	return &providers.CompleteFlowDefinition{ID: id, FlowType: flowType, Nodes: nodes}
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetReachableCallTargets_Empty() {
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, "auth").
+		Return(buildFlowDef("auth", providers.FlowTypeAuthentication), nil)
+
+	targets, err := s.service.GetReachableCallTargets(context.Background(), "auth")
+	s.Require().Nil(err)
+	s.Empty(targets)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetReachableCallTargets_DirectRegistration() {
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, "auth").
+		Return(buildFlowDef("auth", providers.FlowTypeAuthentication, "reg"), nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, "reg").
+		Return(buildFlowDef("reg", providers.FlowTypeRegistration), nil)
+
+	targets, err := s.service.GetReachableCallTargets(context.Background(), "auth")
+	s.Require().Nil(err)
+	s.Equal([]CallTarget{{FlowID: "reg", FlowType: providers.FlowTypeRegistration}}, targets)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetReachableCallTargets_TransitiveRecovery() {
+	// auth -> reg -> recovery. Walker must reach recovery via reg.
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, "auth").
+		Return(buildFlowDef("auth", providers.FlowTypeAuthentication, "reg"), nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, "reg").
+		Return(buildFlowDef("reg", providers.FlowTypeRegistration, "rec"), nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, "rec").
+		Return(buildFlowDef("rec", providers.FlowTypeRecovery), nil)
+
+	targets, err := s.service.GetReachableCallTargets(context.Background(), "auth")
+	s.Require().Nil(err)
+	s.Len(targets, 2)
+	byID := map[string]providers.FlowType{}
+	for _, t := range targets {
+		byID[t.FlowID] = t.FlowType
+	}
+	s.Equal(providers.FlowTypeRegistration, byID["reg"])
+	s.Equal(providers.FlowTypeRecovery, byID["rec"])
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetReachableCallTargets_CycleSafe() {
+	// auth -> reg -> auth (cycle). Walker must terminate and not double-emit auth.
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, "auth").
+		Return(buildFlowDef("auth", providers.FlowTypeAuthentication, "reg"), nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, "reg").
+		Return(buildFlowDef("reg", providers.FlowTypeRegistration, "auth"), nil)
+
+	targets, err := s.service.GetReachableCallTargets(context.Background(), "auth")
+	s.Require().Nil(err)
+	// Only reg is in the results (starting flow "auth" is excluded, and the cycle re-visit is skipped).
+	s.Equal([]CallTarget{{FlowID: "reg", FlowType: providers.FlowTypeRegistration}}, targets)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetReachableCallTargets_MissingStart() {
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, "missing").
+		Return(nil, errFlowNotFound)
+
+	targets, err := s.service.GetReachableCallTargets(context.Background(), "missing")
+	s.Nil(targets)
+	s.Require().NotNil(err)
+	s.Equal(ErrorFlowNotFound.Code, err.Code)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetReachableCallTargets_MissingCallTarget() {
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, "auth").
+		Return(buildFlowDef("auth", providers.FlowTypeAuthentication, "ghost"), nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, "ghost").
+		Return(nil, errFlowNotFound)
+
+	targets, err := s.service.GetReachableCallTargets(context.Background(), "auth")
+	s.Nil(targets)
+	s.Require().NotNil(err)
+	s.Equal(ErrorCallTargetFlowNotFound.Code, err.Code)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetReachableCallTargets_IgnoresBlankRefs() {
+	def := buildFlowDef("auth", providers.FlowTypeAuthentication)
+	def.Nodes = append(def.Nodes, providers.NodeDefinition{
+		ID:   "call-empty",
+		Type: string(common.NodeTypeCall),
+		Flow: &providers.FlowReferenceDefinition{Ref: ""},
+	})
+	def.Nodes = append(def.Nodes, providers.NodeDefinition{
+		ID:   "call-noflow",
+		Type: string(common.NodeTypeCall),
+		Flow: nil,
+	})
+
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, "auth").Return(def, nil)
+
+	targets, err := s.service.GetReachableCallTargets(context.Background(), "auth")
+	s.Require().Nil(err)
+	s.Empty(targets)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetReachableCallTargets_EmptyFlowID() {
+	targets, err := s.service.GetReachableCallTargets(context.Background(), "")
+	s.Nil(targets)
+	s.Require().NotNil(err)
+	s.Equal(ErrorMissingFlowID.Code, err.Code)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetReachableCallTargets_StoreErrorMapsToInternal() {
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, "auth").Return(nil, errors.New("db down"))
+
+	targets, err := s.service.GetReachableCallTargets(context.Background(), "auth")
+	s.Nil(targets)
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
 }

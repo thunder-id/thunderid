@@ -338,6 +338,11 @@ func (s *CacheBackedFlowStoreTestSuite) TestGetFlowByHandleNilFlow() {
 }
 
 func (s *CacheBackedFlowStoreTestSuite) TestUpdateFlowSuccess() {
+	// Pre-populate the cache with the pre-update value so we can assert the entry is invalidated
+	// (rather than repopulated with the possibly-uncommitted new value).
+	pre := s.createTestFlow()
+	s.cacheData["flow-1"] = pre
+
 	flowDef := &FlowDefinition{
 		Handle:   "test-handle",
 		Name:     "Updated Flow",
@@ -358,9 +363,9 @@ func (s *CacheBackedFlowStoreTestSuite) TestUpdateFlowSuccess() {
 	s.Equal("Updated Flow", result.Name)
 	s.Equal(2, result.ActiveVersion)
 
-	cached, ok := s.cacheData["flow-1"]
-	s.True(ok)
-	s.Equal("Updated Flow", cached.Name)
+	_, ok := s.cacheData["flow-1"]
+	s.False(ok, "UpdateFlow must invalidate the cache entry, not repopulate it with the "+
+		"possibly-uncommitted new value")
 }
 
 func (s *CacheBackedFlowStoreTestSuite) TestUpdateFlowError() {

@@ -810,6 +810,12 @@ function InviteUserFlowBridge({
     }
   }, [inviteAction, renderProps]);
 
+  // Clear the auto-invite guard on reset so the restarted prompt is auto-submitted again.
+  const handleReset = useCallback(() => {
+    autoInviteTriggeredRef.current = false;
+    onResetLocalState();
+  }, [onResetLocalState]);
+
   // Derive current step label from the HEADING_1 component
   const currentStepLabel = components?.length ? deriveStepLabel(components, resolve, t) : '';
 
@@ -847,7 +853,7 @@ function InviteUserFlowBridge({
       renderProps={renderProps}
       flowError={flowError}
       handleClose={handleClose}
-      onResetLocalState={onResetLocalState}
+      onResetLocalState={handleReset}
     />
   );
 }

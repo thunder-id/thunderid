@@ -381,6 +381,12 @@ func (ts *GithubRegistrationFlowTestSuite) SetupSuite() {
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, flowID)
 	githubRegTestApp.RegistrationFlowID = flowID
 
+	// Create isolated auth flow to avoid cross-type reference validation with default auth flow.
+	isolatedAuthID, err := testutils.CreateIsolatedAuthFlow("github-registration-isolated-auth")
+	ts.Require().NoError(err, "Failed to create isolated auth flow")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, isolatedAuthID)
+	githubRegTestApp.AuthFlowID = isolatedAuthID
+
 	// Create test application
 	githubRegTestApp.OUID = githubRegTestOUID
 	appID, err := testutils.CreateApplication(githubRegTestApp)

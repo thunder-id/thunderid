@@ -53,9 +53,9 @@ resources for services explicitly opted into `mutable`/`composite` stores.
    ```bash
    # against each database, run the matching script:
    backend/dbscripts/configdb/postgres.sql     # → configdb
-   backend/dbscripts/runtime-transient/postgres.sql    # → runtime_transient
+   backend/dbscripts/runtime_transient/postgres.sql    # → runtime_transient
    backend/dbscripts/entitydb/postgres.sql       # → entitydb
-   backend/dbscripts/runtime-persistent/postgres.sql  # → runtime_persistent
+   backend/dbscripts/runtime_persistent/postgres.sql  # → runtime_persistent
    ```
 
    The default `dbType: sqlite` needs no database at all: it uses the
@@ -89,34 +89,68 @@ Secrets Operator `ClusterSecretStore` configured for the data plane, e.g.
 the OpenBao instance installed with OpenChoreo) as properties of **one
 remote secret per environment**:
 
+The image ships **no** JWT signing key material, so generate the two
+signing pairs first (self-signed is fine, the keys sign tokens rather than
+terminate TLS). This mirrors what `setup.sh` generates for a local install:
+
+```bash
+# RSA signing pair
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout signing.key -out signing.cert \
+  -subj "/O=WSO2/OU=ThunderID/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+
+# ECDSA signing pair
+openssl ecparam -name prime256v1 -genkey -noout -param_enc named_curve -out ecdsa-signing.key
+openssl req -new -x509 -nodes -days 3650 -key ecdsa-signing.key -out ecdsa-signing.cert \
+  -subj "/O=WSO2/OU=ThunderID/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+```
+
+Then push everything, including those files, as properties of **one remote
+secret per environment** (`@file` reads a property value from a file):
+
 ```bash
 bao kv put secret/thunderid/dev \
   CRYPTO_ENCRYPTION_KEY=<64_HEX_CHAR_KEY> \
   ADMIN_PASSWORD=<PASSWORD> \
+  signing.cert=@signing.cert signing.key=@signing.key \
+  ecdsa-signing.cert=@ecdsa-signing.cert ecdsa-signing.key=@ecdsa-signing.key \
   DB_CONFIG_HOSTNAME=<DB_HOST> DB_CONFIG_PORT=5432 DB_CONFIG_NAME=configdb \
   DB_CONFIG_USERNAME=<DB_USER> DB_CONFIG_PASSWORD=<DB_PASSWORD> DB_CONFIG_SSLMODE=require \
   ... # same six for DB_RUNTIME_TRANSIENT_*, DB_ENTITY_*, DB_RUNTIME_PERSISTENT_*
 ```
 
 The ResourceType renders an `ExternalSecret` that extracts every property at
-`secretStore.key` into the container environment. ThunderID fails fast at
-startup when a referenced property is missing. The `DB_*` properties are
-only needed with `runtime.dbType: postgres`:
+`secretStore.key` into the `-env` Secret. Scalar values (`CRYPTO_ENCRYPTION_KEY`,
+`ADMIN_PASSWORD`, `DB_*`) are injected as environment variables via `envFrom`;
+the certificate/key properties are mounted as files under
+`config/certs/` instead (their dotted names are not valid environment
+variable names, so `envFrom` skips them, which is expected). ThunderID fails
+fast at startup when a referenced property is missing. The `DB_*` properties
+are only needed with `runtime.dbType: postgres`:
 
 | Property | Description |
 |----------|-------------|
 | `CRYPTO_ENCRYPTION_KEY` | 32-byte hex key (`openssl rand -hex 32`) |
 | `ADMIN_PASSWORD` | Admin user password, resolving the `{{.ADMIN_PASSWORD}}` placeholder in the declarative resources file |
+| `signing.cert` / `signing.key` | RSA JWT signing pair, mounted over `config/certs/` |
+| `ecdsa-signing.cert` / `ecdsa-signing.key` | ECDSA JWT signing pair, mounted over `config/certs/` |
+| `server.cert` / `server.key` | HTTPS serving pair, required with `runtime.tls.enabled` |
+| `ca.crt` | Root CA, required with `runtime.tls.verifyBackend` |
 | `DB_CONFIG_HOSTNAME` / `_PORT` / `_NAME` / `_USERNAME` / `_PASSWORD` / `_SSLMODE` | Config database connection (postgres only) |
 | `DB_RUNTIME_TRANSIENT_*` (same six) | Runtime-transient database connection (postgres only) |
 | `DB_ENTITY_*` (same six) | Entity database connection (postgres only) |
 | `DB_RUNTIME_PERSISTENT_*` (same six) | Runtime-persistent database connection (postgres only) |
 
-The rendered `deployment.yaml` keeps these fields as `{{.VAR}}` placeholders;
-ThunderID resolves them from the environment at startup. The materialized
-Secret is injected via `envFrom`. The values only transit between the store
-and the data plane and never appear in any control-plane object — the same
-guarantee OpenChoreo's `SecretReference` mechanism gives Component secrets.
+The rendered `deployment.yaml` keeps the scalar fields as `{{.VAR}}`
+placeholders; ThunderID resolves them from the environment at startup. The
+values only transit between the store and the data plane and never appear in
+any control-plane object, the same guarantee OpenChoreo's `SecretReference`
+mechanism gives Component secrets. To keep the certificate files in a
+separate store entry (different rotation or access), set
+`runtime.certs.storeKey`. See
+[TLS and Custom Hostnames](#tls-and-custom-hostnames).
 
 ## Create a ThunderID Instance
 
@@ -248,30 +282,27 @@ Semantics to be aware of:
 `runtime.tls.enabled: true` switches ThunderID from plain HTTP to HTTPS:
 `http_only` flips to `false` in the rendered `deployment.yaml`, and a
 kgateway `BackendConfigPolicy` is rendered so the gateway originates TLS to
-the backend. Set `runtime.tls.verifyBackend: true` to have the gateway
-verify the backend certificate against the root CA. This **requires
-`runtime.certs.storeKey`** to be set and that store entry to include a
-`ca.crt` property — the gateway policy references the `-certs` Secret
-materialized from it. If `verifyBackend` is set without `certs.storeKey`,
-the gateway silently falls back to skipping verification (no `-certs`
-Secret exists to reference). Left off, verification is skipped — encrypted
-but unverified, which is the only workable mode for self-signed
-certificates like the image's bundled pair. The serving certificate is `config/certs/server.cert` /
-`server.key` — the image's self-signed pair by default.
+the backend. It also requires the HTTPS serving pair (`server.cert` /
+`server.key`) to be present at the resolved certificate key. Set
+`runtime.tls.verifyBackend: true` to have the gateway verify the backend
+certificate against the root CA published as the `ca.crt` property there.
+Left off, verification is skipped (encrypted but unverified), the workable
+mode for a self-signed serving certificate.
 
-The image bundles all its certificate material under
-`/opt/thunderid/config/certs/` (HTTPS serving pair, JWT signing pairs,
-crypto key). `runtime.certs` overrides any subset of these from the
-platform secret store: `storeKey` names a remote secret whose properties
-are the file contents. Each property listed in `certs.files` is projected
-over the matching bundled file — the rest stay visible.
-Production deployments should at minimum override the JWT signing pair
-(`signing.cert` / `signing.key`) and, with TLS enabled, the serving pair:
+Certificate files (the always-required JWT signing pairs, plus
+`server.cert` / `server.key` when TLS is enabled) are read from
+`secretStore.key` by default, alongside the environment values, and mounted
+over `/opt/thunderid/config/certs/`. See the
+[Secret Store Contract](#secret-store-contract) for how to generate and
+push them. To keep them in a **separate** store entry (different rotation
+or access), set `runtime.certs.storeKey`; the files are then materialized
+from that entry into a dedicated `-certs` Secret instead:
 
 ```bash
 bao kv put secret/thunderid/dev-certs \
-  server.cert=@tls.crt server.key=@tls.key \
-  signing.cert=@jwt.crt signing.key=@jwt.key ca.crt=@ca.crt
+  signing.cert=@signing.cert signing.key=@signing.key \
+  ecdsa-signing.cert=@ecdsa-signing.cert ecdsa-signing.key=@ecdsa-signing.key \
+  server.cert=@server.cert server.key=@server.key ca.crt=@ca.crt
 ```
 
 ```yaml
@@ -282,8 +313,10 @@ bao kv put secret/thunderid/dev-certs \
         verifyBackend: true    # gateway verifies against the ca.crt property
       certs:
         storeKey: thunderid/dev-certs
-        files: [server.cert, server.key, signing.cert, signing.key]
 ```
+
+`runtime.certs.extraFiles` projects any further properties from the
+resolved key by name over `config/certs/`.
 
 > **RBAC prerequisite:** the data-plane `cluster-agent` ClusterRole must
 > allow `gateway.kgateway.dev/backendconfigpolicies`. OpenChoreo data-plane
@@ -313,9 +346,9 @@ A second `HTTPRoute` is rendered for that hostname and the Console's
 | `runtime.stores.<service>` | Store mode override per service — `mutable`, `declarative`, or `composite`. Services: `user`, `userType`, `organizationUnit`, `identityProvider`, `application`, `group`, `role`, `theme`, `layout`, `translation`, `flow`, `resourceServer`, `serverConfig` | `""` (inherit) |
 | `runtime.tls.enabled` | `false` → plain HTTP; `true` → ThunderID serves HTTPS and a `BackendConfigPolicy` makes the gateway originate TLS to the backend | `false` |
 | `runtime.tls.minVersion` | Minimum TLS version (`1.2` / `1.3`) | `1.3` |
-| `runtime.tls.verifyBackend` | Verify the backend certificate at the gateway against the `ca.crt` property at `runtime.certs.storeKey` (**requires** `certs.storeKey`; ignored otherwise); off skips verification (encrypted, unverified) | `false` |
-| `runtime.certs.storeKey` | Secret store path holding certificate/key files as properties, projected over `config/certs/` | `""` |
-| `runtime.certs.files` | Properties to project — each overlays the matching bundled file (`server.cert`, `server.key`, `signing.cert`, `signing.key`, `ecdsa-signing.cert`, `ecdsa-signing.key`, `crypto.key`); the rest stay visible | `[]` |
+| `runtime.tls.verifyBackend` | Verify the backend certificate at the gateway against the `ca.crt` property at `runtime.certs.storeKey` (publish `ca.crt` there when enabling this); off skips verification (encrypted, unverified) | `false` |
+| `runtime.certs.storeKey` | Optional separate store entry for the certificate/key files. Empty (default): read them from `secretStore.key` alongside the environment values. Set: materialize them from this entry into a dedicated `-certs` Secret. Either way the JWT signing pairs are always mounted over `config/certs/`, plus the serving pair when `tls.enabled` | `""` (use `secretStore.key`) |
+| `runtime.certs.extraFiles` | Additional properties to project over `config/certs/` beyond the always-mounted signing (and, with TLS, serving) pairs | `[]` |
 | `runtime.defaultAuthFlowHandle` | Flow handle used when an application does not pin its own `authFlowId`; empty inherits the server default | `""` |
 | `runtime.dbType` | Database engine — `sqlite` (bundled files, ephemeral pod-local storage, development only) or `postgres` (externally hosted, production) | `sqlite` |
 | `runtime.imagePullPolicy` | `Always` / `IfNotPresent` / `Never` | `Always` |
