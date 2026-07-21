@@ -37,7 +37,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
@@ -45,7 +44,6 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
-	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
 )
 
 // nolint:gosec // Test token, not a real credential
@@ -65,7 +63,6 @@ type ClientCredentialsGrantHandlerTestSuite struct {
 	mockAuthzService    *authzmock.AuthorizationProviderMock
 	mockEntityProvider  *actorprovidermock.ActorProviderMock
 	mockResourceService *resourcemock.ResourceServiceInterfaceMock
-	mockServerConfig    *serverconfigmock.ServerConfigServiceMock
 	handler             *clientCredentialsGrantHandler
 	oauthApp            *providers.OAuthClient
 }
@@ -91,30 +88,27 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 	suite.mockAuthzService = authzmock.NewAuthorizationProviderMock(suite.T())
 	suite.mockEntityProvider = actorprovidermock.NewActorProviderMock(suite.T())
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	suite.mockServerConfig = serverconfigmock.NewServerConfigServiceMock(suite.T())
 
-	// Explicit resource: resolve the identifier to an RS whose ID and Identifier are the identifier.
+	// Explicit resource resolves to an RS whose ID and Identifier are the identifier; an empty
+	// identifier resolves to the configured default resource server, as the default-aware provider does.
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
 		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
+			if identifier == "" {
+				return &providers.ResourceServer{ID: defaultRSID, Identifier: defaultRSIdentifier}
+			}
 			return &providers.ResourceServer{ID: identifier, Identifier: identifier}
 		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
-	// No resource: fall back to the configured default resource server.
-	suite.mockServerConfig.On("GetMergedConfig", mock.Anything, "defaultResourceServer").
-		Return(resource.DefaultResourceServerConfig{ResourceServerID: defaultRSID}, nil).Maybe()
-	suite.mockResourceService.On("GetResourceServer", mock.Anything, defaultRSID).
-		Return(&providers.ResourceServer{ID: defaultRSID, Identifier: defaultRSIdentifier}, nil).Maybe()
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil).Maybe()
 
 	suite.handler = &clientCredentialsGrantHandler{
-		tokenBuilder:        suite.mockTokenBuilder,
-		ouService:           suite.mockOUService,
-		authzService:        suite.mockAuthzService,
-		actorProvider:       suite.mockEntityProvider,
-		resourceService:     suite.mockResourceService,
-		serverConfigService: suite.mockServerConfig,
+		tokenBuilder:    suite.mockTokenBuilder,
+		ouService:       suite.mockOUService,
+		authzService:    suite.mockAuthzService,
+		actorProvider:   suite.mockEntityProvider,
+		resourceService: suite.mockResourceService,
 	}
 	suite.mockEntityProvider.On("GetActorGroups", mock.Anything).
 		Return([]providers.EntityGroup{}, nil).Maybe()
@@ -172,7 +166,7 @@ func mockEvaluateAccessBatch(
 func (suite *ClientCredentialsGrantHandlerTestSuite) TestNewClientCredentialsGrantHandler() {
 	handler := newClientCredentialsGrantHandler(
 		suite.mockTokenBuilder, suite.mockOUService, suite.mockAuthzService,
-		suite.mockEntityProvider, suite.mockResourceService, suite.mockServerConfig)
+		suite.mockEntityProvider, suite.mockResourceService)
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
 }
@@ -810,20 +804,19 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NoResourceN
 	mockAuthzService := authzmock.NewAuthorizationProviderMock(suite.T())
 	mockResourceService := resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	mockEntityProvider := actorprovidermock.NewActorProviderMock(suite.T())
-	mockServerConfig := serverconfigmock.NewServerConfigServiceMock(suite.T())
 
 	handler := &clientCredentialsGrantHandler{
-		tokenBuilder:        mockTokenBuilder,
-		ouService:           suite.mockOUService,
-		authzService:        mockAuthzService,
-		actorProvider:       mockEntityProvider,
-		resourceService:     mockResourceService,
-		serverConfigService: mockServerConfig,
+		tokenBuilder:    mockTokenBuilder,
+		ouService:       suite.mockOUService,
+		authzService:    mockAuthzService,
+		actorProvider:   mockEntityProvider,
+		resourceService: mockResourceService,
 	}
 
-	// No default resource server configured.
-	mockServerConfig.On("GetMergedConfig", mock.Anything, "defaultResourceServer").
-		Return(resource.DefaultResourceServerConfig{}, nil)
+	// No default resource server configured: the provider resolves the empty identifier to a client
+	// error, which HandleGrant maps to invalid_target.
+	mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "").
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"})
 
 	tokenRequest := &model.TokenRequest{
 		GrantType:    "client_credentials",

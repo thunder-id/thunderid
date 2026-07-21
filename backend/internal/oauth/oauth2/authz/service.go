@@ -278,20 +278,8 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(scope, app.ScopeClaims)
 	oidcScopes = oauth2utils.FilterOIDCScopesByAllowedScopes(oidcScopes, app.Scopes)
 
-	// Resolve resource identifiers to Resource Servers and downscope non-OIDC scopes against
-	// the union of permissions defined on those Resource Servers. Unknown identifiers cause
-	// invalid_target; scopes not defined on any RS are silently dropped.
-	_, nonOidcScopes, errResp := resourceindicators.ResolveAndDownscope(
-		ctx, as.resourceService, resources, nonOidcScopes)
-	if errResp != nil {
-		return nil, &AuthorizationError{
-			Code:              errResp.Error,
-			Message:           errResp.ErrorDescription,
-			SendErrorToClient: true,
-			ClientRedirectURI: redirectURI,
-			State:             state,
-		}
-	}
+	// The single target resource server, downscoping, and audience binding are resolved in
+	// initiateFlowAndStoreRequest, the path shared by both standard and PAR-based requests.
 
 	// Construct authorization request context.
 	oauthParams := &oauth2model.OAuthParameters{
@@ -337,6 +325,40 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	ctx context.Context, oauthParams *oauth2model.OAuthParameters,
 	app *providers.OAuthClient, initiatorReq *providers.InitiatorRequest,
 ) (*AuthorizationInitResult, *AuthorizationError) {
+	// Bind the request to a single target resource server before the flow starts. OIDC-only or
+	// scopeless requests stay unbound and their audience is the client_id. A permission-bearing
+	// request resolves an explicit resource or the configured default, rejecting with invalid_target
+	// when neither is available. The resolved resource server id is threaded into the flow so the
+	// authorization executor scopes its permission evaluation to it.
+	targetRS, errResp := resourceindicators.ResolveAudienceBinding(
+		ctx, as.resourceService, oauthParams.Resources, oauthParams.PermissionScopes)
+	if errResp != nil {
+		return nil, &AuthorizationError{
+			Code:              errResp.Error,
+			Message:           errResp.ErrorDescription,
+			SendErrorToClient: oauthParams.RedirectURI != "",
+			ClientRedirectURI: oauthParams.RedirectURI,
+			State:             oauthParams.State,
+		}
+	}
+	resourceServerIdentifier := ""
+	if targetRS != nil {
+		downscoped, dErr := resourceindicators.DownscopeToResourceServer(
+			ctx, as.resourceService, targetRS.ID, oauthParams.PermissionScopes)
+		if dErr != nil {
+			return nil, &AuthorizationError{
+				Code:              dErr.Error,
+				Message:           dErr.ErrorDescription,
+				SendErrorToClient: oauthParams.RedirectURI != "",
+				ClientRedirectURI: oauthParams.RedirectURI,
+				State:             oauthParams.State,
+			}
+		}
+		oauthParams.PermissionScopes = downscoped
+		oauthParams.Resources = []string{targetRS.Identifier}
+		resourceServerIdentifier = targetRS.Identifier
+	}
+
 	effectiveAcrValues := requestvalidator.ResolveACRValues(oauthParams.AcrValues, app.AcrValues)
 	essentialAttributes, optionalAttributes := getRequiredAttributes(
 		oauthParams.StandardScopes, oauthParams.ClaimsRequest, oauthParams.ResponseType, app)
@@ -362,6 +384,7 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	runtimeData := map[string]string{
 		flowcm.RuntimeKeyClientID:                      oauthParams.ClientID,
 		flowcm.RuntimeKeyRequestedPermissions:          utils.StringifyStringArray(oauthParams.PermissionScopes, " "),
+		flowcm.RuntimeKeyResourceServerIdentifier:      resourceServerIdentifier,
 		flowcm.RuntimeKeyRequiredEssentialAttributes:   essentialAttributes,
 		flowcm.RuntimeKeyRequiredOptionalAttributes:    optionalAttributes,
 		flowcm.RuntimeKeyRequiredLocales:               oauthParams.ClaimsLocales,

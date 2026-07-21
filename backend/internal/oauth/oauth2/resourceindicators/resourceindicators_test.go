@@ -30,9 +30,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
-	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
 )
 
 type ResourceIndicatorsTestSuite struct {
@@ -132,20 +130,17 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_Single
 	rs := providers.ResourceServer{ID: "rs01", Identifier: "https://api.example.com"}
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "https://api.example.com").
 		Return(&rs, nil)
-	serverConfig := serverconfigmock.NewServerConfigServiceMock(suite.T())
 
 	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		serverConfig, []string{"https://api.example.com"})
+		[]string{"https://api.example.com"})
 
 	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), &rs, resolved)
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_MultipleResources_ReturnsInvalidTarget() {
-	serverConfig := serverconfigmock.NewServerConfigServiceMock(suite.T())
-
 	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		serverConfig, []string{"https://a.example.com", "https://b.example.com"})
+		[]string{"https://a.example.com", "https://b.example.com"})
 
 	assert.Nil(suite.T(), resolved)
 	assert.NotNil(suite.T(), err)
@@ -156,10 +151,9 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_Unknow
 	svcErr := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RSE-4041"}
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "https://unknown.example.com").
 		Return(nil, svcErr)
-	serverConfig := serverconfigmock.NewServerConfigServiceMock(suite.T())
 
 	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		serverConfig, []string{"https://unknown.example.com"})
+		[]string{"https://unknown.example.com"})
 
 	assert.Nil(suite.T(), resolved)
 	assert.NotNil(suite.T(), err)
@@ -170,81 +164,61 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_Lookup
 	svcErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "SSE-5000"}
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "https://api.example.com").
 		Return(nil, svcErr)
-	serverConfig := serverconfigmock.NewServerConfigServiceMock(suite.T())
 
 	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		serverConfig, []string{"https://api.example.com"})
+		[]string{"https://api.example.com"})
 
 	assert.Nil(suite.T(), resolved)
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), constants.ErrorServerError, err.Error)
 }
 
-func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_NoResource_DefaultConfigured_Resolves() {
+// When no resource is supplied, the resolver asks the provider to resolve the empty identifier; a
+// default-aware provider turns this into the deployment's configured default resource server.
+func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_NoResource_ProviderResolvesDefault() {
 	rs := providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"}
-	suite.mockResourceService.On("GetResourceServer", mock.Anything, "rs-1").
+	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "").
 		Return(&rs, nil)
-	serverConfig := serverconfigmock.NewServerConfigServiceMock(suite.T())
-	serverConfig.On("GetMergedConfig", mock.Anything, "defaultResourceServer").
-		Return(resource.DefaultResourceServerConfig{ResourceServerID: "rs-1"}, nil)
 
 	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		serverConfig, []string{})
+		[]string{})
 
 	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), &rs, resolved)
 }
 
-func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_EmptyDefaultID_ReturnsInvalidTarget() {
-	serverConfig := serverconfigmock.NewServerConfigServiceMock(suite.T())
-	serverConfig.On("GetMergedConfig", mock.Anything, "defaultResourceServer").
-		Return(resource.DefaultResourceServerConfig{ResourceServerID: ""}, nil)
-
-	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		serverConfig, []string{})
-
-	assert.Nil(suite.T(), resolved)
-	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), constants.ErrorInvalidTarget, err.Error)
-}
-
-func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_NilServerConfig_ReturnsInvalidTarget() {
-	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		nil, []string{})
-
-	assert.Nil(suite.T(), resolved)
-	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), constants.ErrorInvalidTarget, err.Error)
-}
-
-func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_DefaultRSNotFound_ReturnsInvalidTarget() {
+func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_NoResource_ProviderClientError() {
 	svcErr := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RSE-4041"}
-	suite.mockResourceService.On("GetResourceServer", mock.Anything, "rs-1").
+	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "").
 		Return(nil, svcErr)
-	serverConfig := serverconfigmock.NewServerConfigServiceMock(suite.T())
-	serverConfig.On("GetMergedConfig", mock.Anything, "defaultResourceServer").
-		Return(resource.DefaultResourceServerConfig{ResourceServerID: "rs-1"}, nil)
 
 	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		serverConfig, []string{})
+		[]string{})
 
 	assert.Nil(suite.T(), resolved)
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), constants.ErrorInvalidTarget, err.Error)
 }
 
-func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_MergedConfigError_ReturnsServerError() {
+func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_NoResource_ProviderServerError() {
 	svcErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "SCE-5000"}
-	serverConfig := serverconfigmock.NewServerConfigServiceMock(suite.T())
-	serverConfig.On("GetMergedConfig", mock.Anything, "defaultResourceServer").
+	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "").
 		Return(nil, svcErr)
 
 	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		serverConfig, []string{})
+		[]string{})
 
 	assert.Nil(suite.T(), resolved)
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), constants.ErrorServerError, err.Error)
+}
+
+func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_NilResourceService_ReturnsInvalidTarget() {
+	resolved, err := ResolveTargetResourceServer(context.Background(), nil, []string{})
+
+	assert.Nil(suite.T(), resolved)
+	assert.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), constants.ErrorInvalidTarget, err.Error)
 }
 
 // DownscopeToResourceServer tests
@@ -368,10 +342,8 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveAndDownscope_UnknownIdentif
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_InvalidResourceURI_ReturnsInvalidTarget() {
-	serverConfig := serverconfigmock.NewServerConfigServiceMock(suite.T())
-
 	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		serverConfig, []string{"api.example.com/resource"})
+		[]string{"api.example.com/resource"})
 
 	assert.Nil(suite.T(), resolved)
 	assert.NotNil(suite.T(), err)
@@ -381,22 +353,17 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_Invali
 // ResolveAudienceBinding tests
 
 func (suite *ResourceIndicatorsTestSuite) TestResolveAudienceBinding_NoResourceNoPermissionScopes_ReturnsNil() {
-	serverConfig := serverconfigmock.NewServerConfigServiceMock(suite.T())
-
-	rs, err := ResolveAudienceBinding(context.Background(), suite.mockResourceService, serverConfig, nil, nil)
+	rs, err := ResolveAudienceBinding(context.Background(), suite.mockResourceService, nil, nil)
 
 	assert.Nil(suite.T(), rs)
 	assert.Nil(suite.T(), err)
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestResolveAudienceBinding_PermissionScopes_ResolvesDefault() {
-	suite.mockResourceService.On("GetResourceServer", mock.Anything, "rs-1").
+	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "").
 		Return(&providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"}, nil)
-	serverConfig := serverconfigmock.NewServerConfigServiceMock(suite.T())
-	serverConfig.On("GetMergedConfig", mock.Anything, "defaultResourceServer").
-		Return(resource.DefaultResourceServerConfig{ResourceServerID: "rs-1"}, nil)
 
-	rs, err := ResolveAudienceBinding(context.Background(), suite.mockResourceService, serverConfig,
+	rs, err := ResolveAudienceBinding(context.Background(), suite.mockResourceService,
 		nil, []string{"read"})
 
 	assert.Nil(suite.T(), err)
@@ -408,9 +375,8 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveAudienceBinding_ExplicitRes
 	rs := providers.ResourceServer{ID: "rs01", Identifier: "https://api.example.com"}
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "https://api.example.com").
 		Return(&rs, nil)
-	serverConfig := serverconfigmock.NewServerConfigServiceMock(suite.T())
 
-	resolved, err := ResolveAudienceBinding(context.Background(), suite.mockResourceService, serverConfig,
+	resolved, err := ResolveAudienceBinding(context.Background(), suite.mockResourceService,
 		[]string{"https://api.example.com"}, nil)
 
 	assert.Nil(suite.T(), err)

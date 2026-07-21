@@ -138,6 +138,11 @@ const (
 	RuntimeKeyClientID = "clientId"
 	// RuntimeKeyRequestedPermissions holds the space-separated permission scopes requested by the OAuth client.
 	RuntimeKeyRequestedPermissions = "requested_permissions"
+	// RuntimeKeyResourceServerIdentifier holds the identifier of the single resource server the request is
+	// bound to. When set, the authorization executor resolves it and scopes its permission evaluation to
+	// that resource server. Using the identifier (not the internal ID) keeps the executor contract the
+	// same for OAuth requests and direct flow executions.
+	RuntimeKeyResourceServerIdentifier = "resource_server_identifier"
 	// RuntimeKeyConsentedPermissions holds the space-separated permission scopes the user has consented to
 	// release to the client, as produced by the ConsentExecutor.
 	RuntimeKeyConsentedPermissions = "consented_permissions"

@@ -58,7 +58,8 @@ type parService struct {
 
 // newPARService creates a new PAR service instance.
 func newPARService(
-	store parStoreInterface, resourceService providers.ResourceServerProvider, cfg oauthconfig.Config,
+	store parStoreInterface, resourceService providers.ResourceServerProvider,
+	cfg oauthconfig.Config,
 ) PARServiceInterface {
 	return &parService{
 		store:           store,
@@ -119,12 +120,14 @@ func (s *parService) HandlePushedAuthorizationRequest(
 	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(scope, oauthApp.ScopeClaims)
 	oidcScopes = oauth2utils.FilterOIDCScopesByAllowedScopes(oidcScopes, oauthApp.Scopes)
 
-	// Resolve resource identifiers to Resource Servers and downscope non-OIDC scopes against
-	// the union of permissions defined on those Resource Servers. Unknown identifiers cause
-	// invalid_target; scopes not defined on any RS are silently dropped.
-	_, nonOidcScopes, errResp := resourceindicators.ResolveAndDownscope(
-		ctx, s.resourceService, resources, nonOidcScopes)
-	if errResp != nil {
+	// Validate up front that the request can bind to a resource server: an explicit resource must
+	// resolve, or (with no resource) either the request is OIDC-only or a default resource server is
+	// configured; otherwise reject with invalid_target. This mirrors the redirect-URI validation done
+	// here at push time. The authoritative binding and per-resource-server downscoping still happen
+	// when the pushed request is redeemed at the authorization endpoint, so both standard and
+	// PAR-based requests bind identically.
+	if _, errResp := resourceindicators.ResolveAudienceBinding(
+		ctx, s.resourceService, resources, nonOidcScopes); errResp != nil {
 		return nil, errResp.Error, errResp.ErrorDescription
 	}
 

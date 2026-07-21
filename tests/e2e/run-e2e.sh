@@ -131,6 +131,7 @@ curl -sk -o /dev/null -D /tmp/authz_headers.txt \
     --data-urlencode "client_id=CONSOLE" \
     --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
     --data-urlencode "scope=system" \
+    --data-urlencode "resource=$SERVER_URL/mcp" \
     --data-urlencode "response_type=code" \
     --data-urlencode "code_challenge=$CODE_CHALLENGE" \
     --data-urlencode "code_challenge_method=S256"
@@ -179,6 +180,7 @@ TOKEN_RESP=$(curl -sk -X POST "$SERVER_URL/oauth2/token" \
     --data-urlencode "code=$AUTH_CODE" \
     --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
     --data-urlencode "client_id=CONSOLE" \
+    --data-urlencode "resource=$SERVER_URL/mcp" \
     --data-urlencode "code_verifier=$CODE_VERIFIER")
 ADMIN_TOKEN=$(echo "$TOKEN_RESP" | python3 -c "import sys, json; print(json.load(sys.stdin).get('access_token', ''))" 2>/dev/null || echo "")
 

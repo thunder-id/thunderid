@@ -153,6 +153,7 @@ type ExecutorDependencies struct {
 	GoogleSvc             google.GoogleOIDCAuthnServiceInterface
 	OpenID4VPVerifierSvc  openid4vp.OpenID4VPServiceInterface
 	SessionService        session.Service
+	ResourceService       providers.ResourceServerProvider
 }
 
 type builtInExecutorRegistrar func(ExecutorRegistryInterface, ExecutorDependencies)
@@ -210,7 +211,8 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameAuthorization: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAuthorization, newAuthorizationExecutor(
-				deps.FlowFactory, deps.AuthZService, deps.EntityProvider, deps.AuthnProvider))
+				deps.FlowFactory, deps.AuthZService, deps.EntityProvider, deps.AuthnProvider,
+				deps.ResourceService))
 		},
 		ExecutorNameHTTPRequest: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameHTTPRequest, newHTTPRequestExecutor(deps.FlowFactory, deps.OUService,

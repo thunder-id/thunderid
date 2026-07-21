@@ -33,18 +33,16 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
-	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // authorizationCodeGrantHandler handles the authorization code grant type.
 type authorizationCodeGrantHandler struct {
-	authzService        authz.AuthorizeServiceInterface
-	tokenBuilder        tokenservice.TokenBuilderInterface
-	attributeCache      attributecache.AttributeCacheServiceInterface
-	resourceService     providers.ResourceServerProvider
-	serverConfigService serverconfig.ServerConfigService
+	authzService    authz.AuthorizeServiceInterface
+	tokenBuilder    tokenservice.TokenBuilderInterface
+	attributeCache  attributecache.AttributeCacheServiceInterface
+	resourceService providers.ResourceServerProvider
 }
 
 // newAuthorizationCodeGrantHandler creates a new instance of AuthorizationCodeGrantHandler.
@@ -53,14 +51,12 @@ func newAuthorizationCodeGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	attributeCache attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
-	serverConfigService serverconfig.ServerConfigService,
 ) GrantHandlerInterface {
 	return &authorizationCodeGrantHandler{
-		authzService:        authzService,
-		tokenBuilder:        tokenBuilder,
-		attributeCache:      attributeCache,
-		resourceService:     resourceService,
-		serverConfigService: serverConfigService,
+		authzService:    authzService,
+		tokenBuilder:    tokenBuilder,
+		attributeCache:  attributeCache,
+		resourceService: resourceService,
 	}
 }
 
@@ -145,7 +141,7 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(
 		strings.Join(authorizedScopes, " "), oauthApp.ScopeClaims)
 	targetRS, errResp := resourceindicators.ResolveAudienceBinding(
-		ctx, h.resourceService, h.serverConfigService, effectiveResources, nonOidcScopes)
+		ctx, h.resourceService, effectiveResources, nonOidcScopes)
 	if errResp != nil {
 		return nil, errResp
 	}

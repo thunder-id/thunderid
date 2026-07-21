@@ -128,7 +128,7 @@ Run the following command with the extracted `executionId`.
 
 ```bash
 ADMIN_TOKEN_RESPONSE=$(curl -k -s -X POST 'https://localhost:8090/flow/execute' \
-  -d '{"executionId":"'$EXECUTION_ID'","inputs":{"username":"admin","password":"admin","requested_permissions":"system"},"action":"action_001"}')
+  -d '{"executionId":"'$EXECUTION_ID'","inputs":{"username":"admin","password":"admin","requested_permissions":"system","resource_server_identifier":"https://localhost:8090/mcp"},"action":"action_001"}')
 
 ADMIN_TOKEN=$(echo $ADMIN_TOKEN_RESPONSE | jq -r '.assertion')
 ```

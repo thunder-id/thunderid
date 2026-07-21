@@ -41,14 +41,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
-	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
 )
 
 const (
@@ -74,7 +72,6 @@ type TokenExchangeGrantHandlerTestSuite struct {
 	mockAuthzService    *authzmock.AuthorizationProviderMock
 	mockActorProvider   *actorprovidermock.ActorProviderMock
 	mockResourceService *resourcemock.ResourceServiceInterfaceMock
-	mockServerConfigSvc *serverconfigmock.ServerConfigServiceMock
 	handler             *tokenExchangeGrantHandler
 	oauthApp            *providers.OAuthClient
 }
@@ -100,7 +97,6 @@ func (suite *TokenExchangeGrantHandlerTestSuite) SetupTest() {
 	suite.mockAuthzService = authzmock.NewAuthorizationProviderMock(suite.T())
 	suite.mockActorProvider = actorprovidermock.NewActorProviderMock(suite.T())
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	suite.mockServerConfigSvc = serverconfigmock.NewServerConfigServiceMock(suite.T())
 	suite.mockActorProvider.On("GetActorGroups", mock.Anything).
 		Return([]providers.EntityGroup{}, nil).Maybe()
 	suite.mockAuthzService.On("EvaluateAccessBatch", mock.Anything, mock.Anything).
@@ -115,30 +111,29 @@ func (suite *TokenExchangeGrantHandlerTestSuite) SetupTest() {
 			}
 			return &providers.AccessEvaluationsResponse{Evaluations: evaluations}
 		}, nil).Maybe()
-	// Explicit resource parameter resolves to an RS whose identifier equals the resource URI.
+	// Explicit resource parameter resolves to an RS whose identifier equals the resource URI; an
+	// empty identifier resolves to the configured default resource server, as the default-aware
+	// provider does.
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
 		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
+			if identifier == "" {
+				return &providers.ResourceServer{
+					ID:         testTokenExchangeDefaultRSID,
+					Identifier: testTokenExchangeDefaultRSAudience,
+				}
+			}
 			return &providers.ResourceServer{ID: identifier, Identifier: identifier}
 		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil).Maybe()
-	// No explicit resource -> deployment default RS.
-	suite.mockServerConfigSvc.On("GetMergedConfig", mock.Anything, "defaultResourceServer").
-		Return(resource.DefaultResourceServerConfig{ResourceServerID: testTokenExchangeDefaultRSID}, nil).Maybe()
-	suite.mockResourceService.On("GetResourceServer", mock.Anything, testTokenExchangeDefaultRSID).
-		Return(&providers.ResourceServer{
-			ID:         testTokenExchangeDefaultRSID,
-			Identifier: testTokenExchangeDefaultRSAudience,
-		}, nil).Maybe()
 	suite.handler = &tokenExchangeGrantHandler{
-		tokenBuilder:        suite.mockTokenBuilder,
-		tokenValidator:      suite.mockTokenValidator,
-		authzService:        suite.mockAuthzService,
-		actorProvider:       suite.mockActorProvider,
-		resourceService:     suite.mockResourceService,
-		serverConfigService: suite.mockServerConfigSvc,
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		authzService:    suite.mockAuthzService,
+		actorProvider:   suite.mockActorProvider,
+		resourceService: suite.mockResourceService,
 	}
 
 	suite.oauthApp = &providers.OAuthClient{
@@ -261,7 +256,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) setupSuccessfulJWTMockWithScope
 // TestNewTokenExchangeGrantHandler tests the constructor
 func (suite *TokenExchangeGrantHandlerTestSuite) TestNewTokenExchangeGrantHandler() {
 	handler := newTokenExchangeGrantHandler(suite.mockTokenBuilder, suite.mockTokenValidator,
-		suite.mockAuthzService, suite.mockActorProvider, suite.mockResourceService, suite.mockServerConfigSvc)
+		suite.mockAuthzService, suite.mockActorProvider, suite.mockResourceService)
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
 }
@@ -2197,19 +2192,17 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_NoResource_NoDe
 
 	tokenRequest := suite.createBasicTokenRequest(subjectToken)
 
-	// Fresh mocks so the default GetMergedConfig / GetResourceServer stubs from SetupTest are not
-	// used; the default RS ID is empty here.
+	// Fresh resource mock so the default-resolution stub from SetupTest is not used; resolving the
+	// empty identifier yields a client error (no default RS configured), mapped to invalid_target.
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	scfg := serverconfigmock.NewServerConfigServiceMock(suite.T())
-	scfg.On("GetMergedConfig", mock.Anything, "defaultResourceServer").
-		Return(resource.DefaultResourceServerConfig{ResourceServerID: ""}, nil)
+	rsvc.On("GetResourceServerByIdentifier", mock.Anything, "").
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"})
 	h := &tokenExchangeGrantHandler{
-		tokenBuilder:        suite.mockTokenBuilder,
-		tokenValidator:      suite.mockTokenValidator,
-		authzService:        suite.mockAuthzService,
-		actorProvider:       suite.mockActorProvider,
-		resourceService:     rsvc,
-		serverConfigService: scfg,
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		authzService:    suite.mockAuthzService,
+		actorProvider:   suite.mockActorProvider,
+		resourceService: rsvc,
 	}
 
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
@@ -2771,12 +2764,11 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_DownscopeValida
 	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string(nil), &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "RES-5001"})
 	handler := &tokenExchangeGrantHandler{
-		tokenBuilder:        suite.mockTokenBuilder,
-		tokenValidator:      suite.mockTokenValidator,
-		authzService:        suite.mockAuthzService,
-		actorProvider:       suite.mockActorProvider,
-		resourceService:     rsvc,
-		serverConfigService: suite.mockServerConfigSvc,
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		authzService:    suite.mockAuthzService,
+		actorProvider:   suite.mockActorProvider,
+		resourceService: rsvc,
 	}
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
@@ -2816,11 +2808,10 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AppAuthorizatio
 		})
 	// actorProvider nil so app group resolution is skipped and evaluation runs directly.
 	handler := &tokenExchangeGrantHandler{
-		tokenBuilder:        suite.mockTokenBuilder,
-		tokenValidator:      suite.mockTokenValidator,
-		authzService:        authzService,
-		resourceService:     rsvc,
-		serverConfigService: suite.mockServerConfigSvc,
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		authzService:    authzService,
+		resourceService: rsvc,
 	}
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{

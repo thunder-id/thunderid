@@ -32,11 +32,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
-	"github.com/thunder-id/thunderid/internal/resource"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
-	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
 )
 
 const testAssertion = "test-id-jag-assertion" //nolint:gosec // Test assertion, not a real credential
@@ -53,7 +52,6 @@ type JWTBearerGrantHandlerTestSuite struct {
 	mockTokenBuilder    *tokenservicemock.TokenBuilderInterfaceMock
 	mockTokenValidator  *tokenservicemock.TokenValidatorInterfaceMock
 	mockResourceService *resourcemock.ResourceServiceInterfaceMock
-	mockServerConfigSvc *serverconfigmock.ServerConfigServiceMock
 	handler             *jwtBearerGrantHandler
 	oauthApp            *providers.OAuthClient
 }
@@ -66,20 +64,17 @@ func (suite *JWTBearerGrantHandlerTestSuite) SetupTest() {
 	suite.mockTokenBuilder = tokenservicemock.NewTokenBuilderInterfaceMock(suite.T())
 	suite.mockTokenValidator = tokenservicemock.NewTokenValidatorInterfaceMock(suite.T())
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	suite.mockServerConfigSvc = serverconfigmock.NewServerConfigServiceMock(suite.T())
-	// A request that resolves no explicit resource falls back to the deployment default RS.
-	suite.mockServerConfigSvc.On("GetMergedConfig", mock.Anything, "defaultResourceServer").
-		Return(resource.DefaultResourceServerConfig{ResourceServerID: testJWTBearerDefaultRSID}, nil).Maybe()
-	suite.mockResourceService.On("GetResourceServer", mock.Anything, testJWTBearerDefaultRSID).
+	// A request that resolves no explicit resource (empty identifier) falls back to the deployment
+	// default RS, as the default-aware provider does.
+	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "").
 		Return(&providers.ResourceServer{
 			ID:         testJWTBearerDefaultRSID,
 			Identifier: testJWTBearerDefaultRSAudience,
 		}, nil).Maybe()
 	suite.handler = &jwtBearerGrantHandler{
-		tokenBuilder:        suite.mockTokenBuilder,
-		tokenValidator:      suite.mockTokenValidator,
-		resourceService:     suite.mockResourceService,
-		serverConfigService: suite.mockServerConfigSvc,
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		resourceService: suite.mockResourceService,
 	}
 
 	suite.oauthApp = &providers.OAuthClient{
@@ -99,7 +94,7 @@ func (suite *JWTBearerGrantHandlerTestSuite) SetupTest() {
 
 func (suite *JWTBearerGrantHandlerTestSuite) TestNewJWTBearerGrantHandler() {
 	handler := newJWTBearerGrantHandler(suite.mockTokenBuilder, suite.mockTokenValidator,
-		suite.mockResourceService, suite.mockServerConfigSvc)
+		suite.mockResourceService)
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
 }
@@ -385,14 +380,13 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_AssertionResource_A
 // no defaultResourceServer is configured, there is no target to bind to and the request is rejected
 // with invalid_target.
 func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_AssertionNoResource_NoDefault_InvalidTarget() {
-	scfg := serverconfigmock.NewServerConfigServiceMock(suite.T())
-	scfg.On("GetMergedConfig", mock.Anything, "defaultResourceServer").
-		Return(resource.DefaultResourceServerConfig{ResourceServerID: ""}, nil)
+	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	rsvc.On("GetResourceServerByIdentifier", mock.Anything, "").
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"})
 	handler := &jwtBearerGrantHandler{
-		tokenBuilder:        suite.mockTokenBuilder,
-		tokenValidator:      suite.mockTokenValidator,
-		resourceService:     suite.mockResourceService,
-		serverConfigService: scfg,
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		resourceService: rsvc,
 	}
 
 	tokenRequest := &model.TokenRequest{

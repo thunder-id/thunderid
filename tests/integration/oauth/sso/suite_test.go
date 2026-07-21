@@ -55,6 +55,12 @@ const (
 	testPassword     = "testpass123"
 	ssoReuseUsername = "sso_reuse_user"
 	logoutUsername   = "sso_logout_user"
+	ssoScopeUsername = "sso_scope_user"
+
+	// Two resource servers defining the same permission string, used by the cross-resource-server
+	// SSO regression: the scope user is granted "read" on rs-A only.
+	rsAIdentifier = "https://sso-scope-a.example.com"
+	rsBIdentifier = "https://sso-scope-b.example.com"
 
 	// ssoCookiePrefix is the per-flow SSO handle cookie prefix minted by the session transport.
 	ssoCookiePrefix = "tid_sso_"
@@ -200,6 +206,10 @@ type SSOLogoutTestSuite struct {
 	authFlowID       string
 	signOutFlowID    string
 	resourceServerID string
+	rsAID            string
+	rsBID            string
+	scopeRoleID      string
+	scopeUserID      string
 	userIDs          []string
 }
 
@@ -239,6 +249,43 @@ func (ts *SSOLogoutTestSuite) SetupSuite() {
 	for _, username := range []string{ssoReuseUsername, logoutUsername} {
 		ts.createUser(username)
 	}
+
+	// Cross-resource-server SSO regression fixtures: two resource servers defining the
+	// same "read" permission, and a user granted it on rs-A only.
+	readAction := []testutils.Action{{Name: "Read", Handle: "read", Description: "Read permission"}}
+	rsAID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:        "SSO Scope Resource Server A",
+		Description: "Resource server A for the cross-RS SSO regression",
+		Identifier:  rsAIdentifier,
+		OUID:        testOUID,
+	}, readAction)
+	ts.Require().NoError(err, "Failed to create resource server A")
+	ts.rsAID = rsAID
+
+	rsBID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:        "SSO Scope Resource Server B",
+		Description: "Resource server B (defines the same permission strings as A)",
+		Identifier:  rsBIdentifier,
+		OUID:        testOUID,
+	}, readAction)
+	ts.Require().NoError(err, "Failed to create resource server B")
+	ts.rsBID = rsBID
+
+	ts.scopeUserID = ts.createUser(ssoScopeUsername)
+
+	scopeRoleID, err := testutils.CreateRole(testutils.Role{
+		Name:        "SSO_ScopeReader",
+		Description: "Grants read on resource server A only (OAuth SSO test)",
+		OUID:        testOUID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: ts.rsAID, Permissions: []string{"read"}},
+		},
+		Assignments: []testutils.Assignment{
+			{ID: ts.scopeUserID, Type: "user"},
+		},
+	})
+	ts.Require().NoError(err, "Failed to create scope role")
+	ts.scopeRoleID = scopeRoleID
 }
 
 func (ts *SSOLogoutTestSuite) TearDownSuite() {
@@ -258,6 +305,20 @@ func (ts *SSOLogoutTestSuite) TearDownSuite() {
 	if ts.resourceServerID != "" {
 		if err := testutils.DeleteResourceServer(ts.resourceServerID); err != nil {
 			ts.T().Errorf("Failed to delete resource server: %v", err)
+		}
+	}
+	if ts.scopeRoleID != "" {
+		if err := testutils.DeleteRole(ts.scopeRoleID); err != nil {
+			ts.T().Errorf("Failed to delete scope role: %v", err)
+		}
+	}
+	// rs-A/rs-B carry actions; deletion may report a dependency error (RES-1006) which is harmless on
+	// the temporary test database, so log rather than fail.
+	for _, rsID := range []string{ts.rsAID, ts.rsBID} {
+		if rsID != "" {
+			if err := testutils.DeleteResourceServer(rsID); err != nil {
+				ts.T().Logf("Failed to delete SSO scope resource server %s: %v", rsID, err)
+			}
 		}
 	}
 	// Delete the OU's children (users, then the user type) before the OU itself, otherwise the OU
@@ -346,7 +407,7 @@ func (ts *SSOLogoutTestSuite) deleteAppByID(id string) {
 	}
 }
 
-func (ts *SSOLogoutTestSuite) createUser(username string) {
+func (ts *SSOLogoutTestSuite) createUser(username string) string {
 	user := testutils.User{
 		OUID: testOUID,
 		Type: testUserType.Name,
@@ -359,6 +420,7 @@ func (ts *SSOLogoutTestSuite) createUser(username string) {
 	userID, err := testutils.CreateUser(user)
 	ts.Require().NoError(err, "Failed to create test user %s", username)
 	ts.userIDs = append(ts.userIDs, userID)
+	return userID
 }
 
 // newSessionClient returns a browser-like HTTP client: a cookie jar carries the per-flow SSO
@@ -504,4 +566,98 @@ func (ts *SSOLogoutTestSuite) login(client *http.Client, username, state string)
 	token := ts.exchangeCode(client, code)
 	ts.Require().NotEmpty(token.IDToken, "id_token should be issued for openid scope")
 	return token.IDToken
+}
+
+// authorizeWithResource starts an authorization code flow bound to the given RFC 8707 resource and
+// returns the authId and executionId issued at the gate redirect.
+func (ts *SSOLogoutTestSuite) authorizeWithResource(client *http.Client, scope, state, resource string) (
+	string, string) {
+	params := url.Values{}
+	params.Set("client_id", clientID)
+	params.Set("redirect_uri", redirectURI)
+	params.Set("response_type", "code")
+	params.Set("scope", scope)
+	params.Set("state", state)
+	params.Set("resource", resource)
+
+	req, err := http.NewRequest("GET", testutils.TestServerURL+"/oauth2/authorize?"+params.Encode(), nil)
+	ts.Require().NoError(err)
+
+	resp, err := client.Do(req)
+	ts.Require().NoError(err, "authorize request failed")
+	defer resp.Body.Close()
+
+	ts.Require().Equal(http.StatusFound, resp.StatusCode, "authorize should redirect to the gate")
+	authID, executionID, err := testutils.ExtractAuthData(resp.Header.Get("Location"))
+	ts.Require().NoError(err, "failed to extract auth data from authorize redirect")
+	return authID, executionID
+}
+
+// exchangeCodeWithResource swaps an authorization code for tokens, binding the token to the given
+// RFC 8707 resource.
+func (ts *SSOLogoutTestSuite) exchangeCodeWithResource(
+	client *http.Client, code, resource string,
+) *testutils.TokenResponse {
+	form := url.Values{}
+	form.Set("grant_type", "authorization_code")
+	form.Set("code", code)
+	form.Set("redirect_uri", redirectURI)
+	form.Set("resource", resource)
+
+	req, err := http.NewRequest("POST", testutils.TestServerURL+"/oauth2/token", strings.NewReader(form.Encode()))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(clientID, clientSecret)
+
+	resp, err := client.Do(req)
+	ts.Require().NoError(err, "token request failed")
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, "token request failed: %s", string(respBody))
+
+	var token testutils.TokenResponse
+	ts.Require().NoError(json.Unmarshal(respBody, &token), "failed to decode token response")
+	return &token
+}
+
+// loginWithResource drives a first-time login to completion for the given scope/resource and returns
+// the issued token response.
+func (ts *SSOLogoutTestSuite) loginWithResource(
+	client *http.Client, username, state, scope, resource string,
+) *testutils.TokenResponse {
+	authID, executionID := ts.authorizeWithResource(client, scope, state, resource)
+
+	initial := ts.flowExecute(client, map[string]interface{}{"executionId": executionID})
+	ts.Require().NotEqual("COMPLETE", initial.FlowStatus, "first login must prompt for credentials")
+
+	step := ts.flowExecute(client, map[string]interface{}{
+		"executionId":    executionID,
+		"inputs":         map[string]string{"username": username, "password": testPassword},
+		"action":         "action_001",
+		"challengeToken": initial.ChallengeToken,
+	})
+	ts.Require().Equal("COMPLETE", step.FlowStatus, "credential login should complete the flow")
+	ts.Require().NotEmpty(step.Assertion, "login should yield an assertion")
+
+	clientRedirect := ts.completeAuthorization(client, authID, step.Assertion)
+	code, err := testutils.ExtractAuthorizationCode(clientRedirect)
+	ts.Require().NoError(err, "failed to extract authorization code")
+
+	return ts.exchangeCodeWithResource(client, code, resource)
+}
+
+// tokenScopes returns the space-separated `scope` claim of a decoded access token as a slice.
+func (ts *SSOLogoutTestSuite) tokenScopes(accessToken string) []string {
+	claims, err := testutils.DecodeJWT(accessToken)
+	ts.Require().NoError(err, "failed to decode access token")
+	scopeStr, _ := claims.Additional["scope"].(string)
+	return strings.Fields(scopeStr)
+}
+
+// tokenAudience returns the `aud` claim of a decoded access token.
+func (ts *SSOLogoutTestSuite) tokenAudience(accessToken string) string {
+	claims, err := testutils.DecodeJWT(accessToken)
+	ts.Require().NoError(err, "failed to decode access token")
+	return claims.Aud
 }

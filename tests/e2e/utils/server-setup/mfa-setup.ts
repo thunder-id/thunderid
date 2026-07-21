@@ -212,6 +212,10 @@ export class MFASetup {
           username: this.config.adminUsername,
           password: this.config.adminPassword,
           requested_permissions: "system",
+          // Scope the permission evaluation to the System resource server (identifier from
+          // backend/cmd/server/bootstrap/01-default-resources.yaml). Direct /flow/execute calls
+          // do not pass through the OAuth layer, so the target resource server must be declared here.
+          resource_server_identifier: "https://localhost:8090/mcp",
         },
         action: "action_001",
       },

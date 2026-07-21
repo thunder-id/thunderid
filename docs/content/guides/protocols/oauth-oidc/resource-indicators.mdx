@@ -15,6 +15,8 @@ The effect: a token issued for the payments API cannot be replayed against the b
 
 The `resource` parameter is accepted on authorization and PAR requests, on authorization code, client credentials, JWT bearer, refresh token, and token exchange requests, and on CIBA backchannel authentication requests (`POST /oauth2/bc-authorize`). A CIBA request binds to its resource server at initiation, before the user authorizes it. A `resource` supplied when polling the token endpoint must match that binding.
 
+For permission-bearing authorization requests, resource binding is resolved per request and is honored across single sign-on: when a request is satisfied by an existing SSO session, its permission scopes are evaluated against that request's own `resource` (or the configured default resource server), so a session established for one resource server never leaks permission scopes to a different one on SSO reuse. OIDC-only and scopeless requests without `resource` remain unbound to a resource server and use the `client_id` as the audience.
+
 ```http
 GET /oauth2/authorize
   ?response_type=code

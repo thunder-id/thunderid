@@ -310,9 +310,9 @@ func (ts *RefreshTokenTestSuite) obtainTokensViaAuthCodeFlow(
 	scope string) *testutils.TokenResponse {
 
 	// Step 1: Initiate authorization flow.
-	resp, err := testutils.InitiateAuthorizationFlow(
+	resp, err := testutils.InitiateAuthorizationFlowWithResource(
 		refreshTokenTestClientID, refreshTokenTestRedirectURI,
-		"code", scope, "test-state")
+		"code", scope, "test-state", refreshTokenTestResource)
 	ts.Require().NoError(err, "Failed to initiate authorization flow")
 	defer resp.Body.Close()
 	ts.Require().Equal(http.StatusFound, resp.StatusCode,
