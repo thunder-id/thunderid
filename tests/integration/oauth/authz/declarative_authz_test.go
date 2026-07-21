@@ -29,8 +29,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -112,6 +112,9 @@ func (ts *DeclarativeAuthzTestSuite) TestConfidentialClientAuthorize() {
 func (ts *DeclarativeAuthzTestSuite) TestConfidentialClientClientCredentialsGrant() {
 	form := url.Values{}
 	form.Set("grant_type", "client_credentials")
+	// Bind the token to a single resource server (RFC 8707). Use the declarative resource server
+	// loaded by the integration bootstrap in the same OU as this confidential client.
+	form.Set("resource", "https://localhost:8090/decl-rs-1")
 
 	req, err := http.NewRequest(
 		http.MethodPost,

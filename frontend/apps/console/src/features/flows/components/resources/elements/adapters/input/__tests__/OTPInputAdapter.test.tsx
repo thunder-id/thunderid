@@ -164,7 +164,7 @@ describe('OTPInputAdapter', () => {
 
   describe('Custom Styling', () => {
     it('should apply className when provided', () => {
-      const resource = createMockElement({className: 'custom-otp'});
+      const resource = createMockElement({classes: 'custom-otp'});
 
       const {container} = render(<OTPInputAdapter resource={resource} />);
 

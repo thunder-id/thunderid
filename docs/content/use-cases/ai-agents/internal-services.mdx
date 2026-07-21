@@ -1,0 +1,108 @@
+---
+title: Internal Business Services
+docType: use-case
+description: Solve the dual-identity problem when an AI agent calls internal APIs, MCP servers, and tools on its own behalf or for a user.
+sidebar_position: 6
+---
+
+# Accessing Internal Business Services (Agent → Resource)
+
+An agent's real work happens against internal systems: it queries a knowledge base, calls an internal API, invokes a tool on an MCP server, or writes a record to a system of record. Sometimes it does this on its own behalf, as part of infrastructure-level automation; more often it does it for a user who asked for something. Either way, the resource on the other side has to make an access decision, and for agents that decision has two halves.
+
+This is the dual-identity problem. When an agent calls an internal service for a user, the service must validate two things at once: that the *agent* is a known, authorized caller, and that the *user* it is acting for is entitled to the operation. Miss the first and any agent can pass itself off as a trusted one; miss the second and the agent becomes a confused deputy, using its own broad access to do things the user could never do directly. <ProductName /> makes both identities explicit in every call and lets each resource enforce both.
+
+## IAM Capabilities Required
+
+**Secure agent-to-service authentication** to let an agent prove its own identity to internal tools, MCP servers, and APIs with its own credentials, never a shared key or a borrowed account.
+
+**Agent RBAC** to grant an agent access to internal resources through roles and group memberships, so its permissions are managed as policy rather than baked into code.
+
+**Delegated authorization (on-behalf-of)** to carry the user's identity alongside the agent's when the agent acts for a user, so downstream services can enforce the user's own entitlements.
+
+**Fine-grained tool authorization** to control access down to the individual tool or endpoint, and to the operation within it, so a grant can permit a read while denying a delete.
+
+## Autonomous Resource Access
+
+### The Challenge
+
+Not everything an agent does is on behalf of a user. A data-pipeline agent refreshes a warehouse table; a monitoring agent reads metrics; a build agent publishes an artifact. These are infrastructure-level tasks the agent performs under its own authority, with no user in the loop. The temptation is to run them with a shared service-account key or an over-broad admin credential, because "it is just a background job." That is exactly how an agent ends up with far more access than its task needs and no way to attribute what it did.
+
+### How <ProductName /> Solves It
+
+When an agent acts on its own behalf, <ProductName /> authenticates it as a first-class identity using its own credentials (client credentials or `private_key_jwt`) and issues an access token scoped to what its role permits. The agent's permissions come from its group memberships and role assignments in <ProductName />, not from a secret with implicit power. Access is granted as policy, and every call the agent makes is attributable to its identity, so an autonomous task is governed and auditable rather than anonymous.
+
+Because authorization is role-based, widening or narrowing what an autonomous agent can reach is a membership change, not a redeployment, and the resource sees a token whose scopes describe exactly what this agent is allowed to do.
+
+### Scenario: A Data-Pipeline Agent
+
+A data-engineering agent runs a nightly job that loads records into a warehouse. It authenticates to <ProductName /> with `private_key_jwt` and receives a token scoped, through its role, to write only the staging tables it owns. It calls the warehouse's internal API under its own identity, with no user delegation involved. Every write is logged against the agent, and when the team later narrows its access to a single schema, they change its role membership; the agent's credential and code are untouched.
+
+## Delegated Access and the Dual-Identity Problem
+
+### The Challenge
+
+When an agent acts for a user, the naive approaches both fail. If the agent calls the internal service under only its own identity, the service cannot enforce the user's permissions and the audit trail loses the user entirely: it looks like the agent did everything itself. If instead the agent borrows the user's credentials, it becomes a credential proxy that can act as the user long after the request, with none of the scoping the user intended. A service receiving such a call cannot tell a legitimate delegated action from an over-reaching one.
+
+### How <ProductName /> Solves It
+
+<ProductName /> carries both identities in a single token using OAuth token exchange ([RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693)). The token identifies the user as the `subject` and the agent as the `actor`, so the internal service can answer both questions from one credential: is the user entitled to this operation, and is this agent an authorized delegate acting for them? The agent proves it is a specific, registered delegate with its own credentials; the user's authority is present but bounded by the delegated scope, never handed over wholesale.
+
+Downstream propagation preserves both identities. When a call crosses from one internal service to the next (an API to an MCP server, for example), <ProductName /> exchanges the token for a new one that still carries the user as subject and the agent as actor, so the dual-identity check can be re-applied at every hop rather than trusted once at the edge.
+
+### Scenario: An Agent Querying an Internal API for a User
+
+A support agent, asked by an analyst to pull a customer's account history, calls the internal Accounts API. <ProductName /> issues a token with the analyst as `subject` and the support agent as `actor`. The API validates both: the analyst is cleared to see this customer's records, and the support agent is authorized to act on the analyst's behalf for this scope. The agent cannot see any account the analyst could not see, and the access log records both the analyst who authorized it and the agent that executed it.
+
+## Fine-Grained Tool Authorization
+
+### The Challenge
+
+An MCP server or an internal API is not a single permission; it is a surface of many operations, and they are not equally sensitive. A tool that can `read_document` and one that can `delete_document` may sit behind the same endpoint. Treating access as all-or-nothing (the agent may call the server, or it may not) gives an agent that needs to read the ability to delete. For autonomous systems acting at machine speed, that gap between "can reach the tool" and "may perform this specific operation" is where real damage happens.
+
+### How <ProductName /> Solves It
+
+<ProductName /> scopes authorization to the individual tool and operation, not just the service. An agent's grant can permit `get_revenue_report` while denying `issue_refund` on the same MCP server, or allow a read on an API resource while rejecting a write. The scopes an agent carries name the operations it may perform, and the resource enforces them per call, so the line is drawn at the operation rather than the endpoint.
+
+This makes least privilege practical for tool use. An agent is provisioned with exactly the operations its task requires, and expanding that set is a deliberate authorization change, not a side effect of granting access to a server that happens to expose more.
+
+### Scenario: Read Allowed, Delete Denied
+
+A knowledge-management agent is authorized to search and retrieve documents from an internal MCP server but must never remove them. <ProductName /> grants it the `search` and `read` tool scopes and withholds `delete`. When the agent invokes retrieval, the server accepts the call; if a manipulated prompt ever induces it to attempt a delete, the server rejects the request because the scope was never granted. The destructive operation fails at the authorization layer, not at the agent's discretion.
+
+## Context-Aware Delegation
+
+### The Challenge
+
+For the most sensitive resources, a static "this agent may access this API" grant is too blunt. Whether a given request should be allowed can depend on context: how sensitive the target data is, how much the user is actually cleared for, and how trusted the specific agent is. A high-clearance user working through a low-trust agent, or a trusted agent reaching for data above the user's clearance, should not automatically succeed just because a coarse grant exists.
+
+### How <ProductName /> Solves It
+
+For sensitive requests, <ProductName /> evaluates the user's clearance and the agent's trust tier together before issuing a credential, and the credential it issues is short-lived and downscoped to that specific request rather than a standing grant. The decision combines both identities' context: the user's entitlements and the agent's attributes (its risk tier, environment, and role) shape what, if anything, is authorized for this call.
+
+Because the resulting token is narrow and short-lived, authority does not accumulate. The agent receives just enough access for the operation in front of it, and that access expires quickly, so a sensitive grant cannot be replayed or repurposed later.
+
+### Scenario: Clearance and Trust Tier Together
+
+A finance analyst asks an agent to open a restricted revenue forecast. <ProductName /> sees that the analyst is cleared for the forecast but that the requesting agent sits in a lower trust tier, and issues a short-lived, read-only token scoped to just that document for this request. The same agent asked to reach a document above the analyst's clearance is refused outright. Access reflects both who authorized it and how much the agent acting for them can be trusted, decided per request rather than granted once and left open.
+
+## Key Principles
+
+**Both identities are always present.** When an agent acts for a user, every call carries the user as subject and the agent as actor, so resources enforce the user's entitlements and the agent's delegation rights together.
+
+**Agents authenticate as themselves.** An agent proves its own identity with its own credentials to every internal service, never a shared key or a borrowed account, and every call is attributable to it.
+
+**Authorization is role-based and least-privilege.** Access comes from roles and group memberships and is scoped to the specific tools and operations a task requires, down to allowing a read while denying a delete.
+
+**Sensitive access is contextual and short-lived.** For high-value resources, <ProductName /> weighs the user's clearance and the agent's trust tier and issues a downscoped, short-lived credential for that request rather than a standing grant.
+
+## Guides
+
+- [Agent Authentication](../../../guides/guides/agents/agent-authentication): Authenticate an agent to an internal API or MCP server and issue on-behalf-of tokens.
+- [Resource Servers](../../../guides/guides/resource-servers): Define resources, actions, and the scopes that make fine-grained tool authorization possible.
+
+## Related Use Cases
+
+- [Invoking the Agent and Authenticating Users](../invoking-the-agent): How the user's identity and consent enter the delegation carried into these resource calls.
+- [Agent as Subject](../agent-as-subject): The authentication mechanisms an agent uses to prove its own identity.
+- [Multi-Agent Interactions](../multi-agent): How the dual-identity token is preserved as work passes between agents.
+- [External Integration](../external-integration): The equivalent pattern for third-party SaaS beyond the organization's own services.

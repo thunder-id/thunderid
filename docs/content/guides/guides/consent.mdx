@@ -1,5 +1,7 @@
 ---
 title: Consent
+docType: guide
+description: Learn about Consent and how to apply it in configuration, integration, and operational workflows.
 ---
 
 import ThemedImage from '@theme/ThemedImage';
@@ -10,53 +12,11 @@ import ConsentLoginScreenDark from './assets/images/consent-login-screen-dark.pn
 
 # Consent
 
-<ProductName /> provides built-in support for capturing user consent during the login flow. A lightweight default consent server is packed with the <ProductName /> distribution and is enabled by default to seamlessly handle consent approvals.
+<ProductName /> provides built-in support for capturing user consent during the login flow.
 
 :::note
 As of now, <ProductName /> only supports **attribute consent**.
 :::
-
-## Startup Flags
-
-<ProductName /> automatically starts the default consent server when running the startup script. You can disable this behavior if you prefer to use an external consent server or want to run <ProductName /> without consent capabilities.
-
-#### Zip distribution
-For Zip distributions, you can pass the `--without-consent` flag when executing the startup script:
-
-```bash
-# Linux/macOS
-./start.sh --without-consent
-
-# Windows
-./start.ps1 --without-consent
-```
-
-#### Docker distribution
-For Docker or container-based deployments, you can disable the bundled consent server by setting the `WITH_CONSENT` environment variable to `false` (e.g., in your `docker-compose.yml`):
-
-```yaml
-environment:
-  - WITH_CONSENT=false
-```
-
-## Server Configurations
-
-<ProductName /> communicates with the consent server via a REST API. You can configure the connection details in the `deployment.yaml` file.
-
-The default configuration block looks like this:
-
-```yaml
-consent:
-  enabled: true
-  base_url: "http://localhost:9090/api/v1"
-  timeout: 5
-  max_retries: 3
-```
-
-- **`enabled`**: Enable or disable consent functionality (default: `true`).
-- **`base_url`**: The base URL of the consent server API (default: `http://localhost:9090/api/v1`).
-- **`timeout`**: HTTP request timeout in seconds (default: `5`).
-- **`max_retries`**: Maximum retry attempts for transient errors (default: `3`).
 
 ## Attribute Consent in Login Flows
 
@@ -128,7 +88,7 @@ curl --location -X POST 'https://localhost:8090/applications' \
 
 To verify the attribute consent flow using an application configured with consent requirements:
 
-1. Ensure that the consent server is running (if using the bundled server) and that the application is configured to request the necessary user attributes.
+1. Ensure that the application is configured to request the necessary user attributes.
 2. Start the login process for the application (e.g., by accessing the application's login page).
 3. After successful authentication, you should be presented with the consent page, prompting you to grant or deny consent for sharing the requested attributes with the application.
 4. Review the requested attributes and choose to either **Allow** or **Deny** consent.

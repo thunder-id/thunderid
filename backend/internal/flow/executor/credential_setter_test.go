@@ -58,7 +58,7 @@ func (suite *CredentialSetterTestSuite) SetupTest() {
 				Type:       providers.InputTypeText,
 				Required:   true,
 			},
-		}).Return(suite.mockBaseExecutor)
+		}, mock.Anything).Return(suite.mockBaseExecutor)
 
 	suite.executor = newCredentialSetter(suite.mockFlowFactory, suite.mockEntityProvider, suite.mockAuthnProvider)
 }

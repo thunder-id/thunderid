@@ -75,7 +75,7 @@ func assertEmptyInputPostconditions(
 	builderCalled bool,
 ) {
 	require.False(t, builderCalled)
-	providerMock.AssertNotCalled(t, "GetUserDBClient", mock.Anything)
+	providerMock.AssertNotCalled(t, "GetEntityDBClient", mock.Anything)
 	dbClientMock.AssertNotCalled(t, "QueryContext", mock.Anything, mock.Anything, mock.Anything)
 }
 
@@ -135,7 +135,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupListCount() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -153,7 +153,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupListCount() {
 				_ *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(nil, errors.New("no client")).
 					Once()
 			},
@@ -167,7 +167,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupListCount() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -231,7 +231,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupList() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -269,7 +269,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupList() {
 				_ *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(nil, errors.New("boom")).
 					Once()
 			},
@@ -284,7 +284,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupList() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -304,7 +304,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupList() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -378,7 +378,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroup() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -407,7 +407,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroup() {
 				_ *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(nil, errors.New("client fail")).
 					Once()
 			},
@@ -421,7 +421,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroup() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -440,7 +440,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroup() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -459,7 +459,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroup() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -481,7 +481,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroup() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -550,7 +550,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupMembers() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -578,7 +578,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupMembers() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -597,7 +597,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupMembers() {
 				_ *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(nil, errors.New("client fail")).
 					Once()
 			},
@@ -649,7 +649,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupMemberCount() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -670,7 +670,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupMemberCount() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -689,7 +689,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupMemberCount() {
 				_ *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(nil, errors.New("client fail")).
 					Once()
 			},
@@ -703,7 +703,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupMemberCount() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -722,7 +722,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupMemberCount() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -787,7 +787,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_UpdateGroup() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 				dbClientMock.
@@ -815,7 +815,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_UpdateGroup() {
 				_ *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(nil, errors.New("client fail")).
 					Once()
 			},
@@ -829,7 +829,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_UpdateGroup() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 				dbClientMock.
@@ -857,7 +857,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_UpdateGroup() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 				dbClientMock.
@@ -922,7 +922,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_DeleteGroup() {
 				_ *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(nil, errors.New("client fail")).
 					Once()
 			},
@@ -936,7 +936,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_DeleteGroup() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 				dbClientMock.
@@ -960,7 +960,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_DeleteGroup() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 				dbClientMock.
@@ -994,7 +994,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_DeleteGroup() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 				dbClientMock.
@@ -1072,7 +1072,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_ValidateGroupIDs() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -1091,7 +1091,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_ValidateGroupIDs() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -1110,7 +1110,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_ValidateGroupIDs() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -1129,7 +1129,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_ValidateGroupIDs() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 			},
@@ -1156,7 +1156,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_ValidateGroupIDs() {
 				_ *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(nil, errors.New("client fail")).
 					Once()
 			},
@@ -1233,7 +1233,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupsByOrganizationUnitCoun
 				_ *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(nil, errors.New("client fail")).
 					Once()
 			},
@@ -1246,7 +1246,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupsByOrganizationUnitCoun
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -1264,7 +1264,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupsByOrganizationUnitCoun
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -1282,7 +1282,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupsByOrganizationUnitCoun
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -1336,7 +1336,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupsByOrganizationUnit() {
 				_ *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(nil, errors.New("client fail")).
 					Once()
 			},
@@ -1349,7 +1349,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupsByOrganizationUnit() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -1375,7 +1375,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupsByOrganizationUnit() {
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(dbClientMock, nil).
 					Once()
 
@@ -1516,7 +1516,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_CheckGroupNameConflictForCreate
 				_ *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(nil, errors.New("client fail")).
 					Once()
 			},
@@ -1626,7 +1626,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_CheckGroupNameConflictForUpdate
 				_ *providermock.DBClientInterfaceMock,
 			) {
 				providerMock.
-					On("GetUserDBClient").
+					On("GetEntityDBClient").
 					Return(nil, errors.New("client fail")).
 					Once()
 			},
@@ -1727,7 +1727,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupsByIDs() {
 				providerMock *providermock.DBProviderInterfaceMock,
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
-				providerMock.On("GetUserDBClient").Return(dbClientMock, nil).Once()
+				providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
 				dbClientMock.On("QueryContext", mock.Anything, queryMatcher(), "grp-1", "grp-2", testDeploymentID).
 					Return([]map[string]interface{}{
 						{"id": "grp-1", "ou_id": "ou-1", "name": "Group One", "description": "First group"},
@@ -1743,7 +1743,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupsByIDs() {
 				providerMock *providermock.DBProviderInterfaceMock,
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
-				providerMock.On("GetUserDBClient").Return(dbClientMock, nil).Once()
+				providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
 				dbClientMock.On(
 					"QueryContext", mock.Anything, queryMatcher(), "grp-1", "grp-missing", testDeploymentID,
 				).
@@ -1760,7 +1760,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupsByIDs() {
 				providerMock *providermock.DBProviderInterfaceMock,
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
-				providerMock.On("GetUserDBClient").Return(dbClientMock, nil).Once()
+				providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
 				dbClientMock.On("QueryContext", mock.Anything, queryMatcher(), "grp-1", testDeploymentID).
 					Return(nil, errors.New("query fail")).Once()
 			},
@@ -1773,7 +1773,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupsByIDs() {
 				providerMock *providermock.DBProviderInterfaceMock,
 				_ *providermock.DBClientInterfaceMock,
 			) {
-				providerMock.On("GetUserDBClient").Return(nil, errors.New("client fail")).Once()
+				providerMock.On("GetEntityDBClient").Return(nil, errors.New("client fail")).Once()
 			},
 			wantErr: "failed to get database client",
 		},
@@ -1852,7 +1852,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetTransitiveGroupsForEntity() 
 				providerMock *providermock.DBProviderInterfaceMock,
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
-				providerMock.On("GetUserDBClient").Return(dbClientMock, nil).Once()
+				providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
 				dbClientMock.On("QueryContext", mock.Anything,
 					QueryGetTransitiveGroupsForMember, "user-001", testDeploymentID).
 					Return([]map[string]interface{}{
@@ -1873,7 +1873,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetTransitiveGroupsForEntity() 
 				providerMock *providermock.DBProviderInterfaceMock,
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
-				providerMock.On("GetUserDBClient").Return(dbClientMock, nil).Once()
+				providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
 				dbClientMock.On("QueryContext", mock.Anything,
 					QueryGetTransitiveGroupsForMember, "user-002", testDeploymentID).
 					Return([]map[string]interface{}{}, nil).Once()
@@ -1889,7 +1889,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetTransitiveGroupsForEntity() 
 				providerMock *providermock.DBProviderInterfaceMock,
 				_ *providermock.DBClientInterfaceMock,
 			) {
-				providerMock.On("GetUserDBClient").Return(nil, errors.New("client fail")).Once()
+				providerMock.On("GetEntityDBClient").Return(nil, errors.New("client fail")).Once()
 			},
 			expectErr: "failed to get database client",
 		},
@@ -1900,7 +1900,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetTransitiveGroupsForEntity() 
 				providerMock *providermock.DBProviderInterfaceMock,
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
-				providerMock.On("GetUserDBClient").Return(dbClientMock, nil).Once()
+				providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
 				dbClientMock.On("QueryContext", mock.Anything,
 					QueryGetTransitiveGroupsForMember, "user-001", testDeploymentID).
 					Return(nil, errors.New("query fail")).Once()
@@ -1914,7 +1914,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetTransitiveGroupsForEntity() 
 				providerMock *providermock.DBProviderInterfaceMock,
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
-				providerMock.On("GetUserDBClient").Return(dbClientMock, nil).Once()
+				providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
 				dbClientMock.On("QueryContext", mock.Anything,
 					QueryGetTransitiveGroupsForMember, "user-001", testDeploymentID).
 					Return([]map[string]interface{}{
@@ -1930,7 +1930,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetTransitiveGroupsForEntity() 
 				providerMock *providermock.DBProviderInterfaceMock,
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
-				providerMock.On("GetUserDBClient").Return(dbClientMock, nil).Once()
+				providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
 				dbClientMock.On("QueryContext", mock.Anything,
 					QueryGetTransitiveGroupsForMember, "user-001", testDeploymentID).
 					Return([]map[string]interface{}{
@@ -1946,7 +1946,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetTransitiveGroupsForEntity() 
 				providerMock *providermock.DBProviderInterfaceMock,
 				dbClientMock *providermock.DBClientInterfaceMock,
 			) {
-				providerMock.On("GetUserDBClient").Return(dbClientMock, nil).Once()
+				providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
 				dbClientMock.On("QueryContext", mock.Anything,
 					QueryGetTransitiveGroupsForMember, "user-001", testDeploymentID).
 					Return([]map[string]interface{}{
@@ -1979,4 +1979,36 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetTransitiveGroupsForEntity() 
 			}
 		})
 	}
+}
+
+func (suite *GroupStoreTestSuite) TestDeleteMembershipsByMember() {
+	suite.Run("success returns rows affected", func() {
+		providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+		dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+		providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+		dbClientMock.On("ExecuteContext", mock.Anything, QueryDeleteGroupMembershipsByMember,
+			string(memberTypeEntity), "user-1", testDeploymentID).Return(int64(2), nil).Once()
+
+		store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+		deleted, err := store.DeleteMembershipsByMember(
+			context.Background(), string(memberTypeEntity), "user-1")
+
+		require.NoError(suite.T(), err)
+		require.Equal(suite.T(), int64(2), deleted)
+	})
+
+	suite.Run("db error is propagated", func() {
+		providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+		dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+		providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+		dbClientMock.On("ExecuteContext", mock.Anything, QueryDeleteGroupMembershipsByMember,
+			string(memberTypeEntity), "user-1", testDeploymentID).Return(int64(0), errors.New("db error")).Once()
+
+		store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+		deleted, err := store.DeleteMembershipsByMember(
+			context.Background(), string(memberTypeEntity), "user-1")
+
+		require.Error(suite.T(), err)
+		require.Equal(suite.T(), int64(0), deleted)
+	})
 }

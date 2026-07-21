@@ -25,12 +25,12 @@ import {
   Button,
   IconButton,
   LinearProgress,
-  Breadcrumbs,
+  AppBreadcrumbs,
   Typography,
   Alert,
   Snackbar,
 } from '@wso2/oxygen-ui';
-import {X, ChevronRight} from '@wso2/oxygen-ui-icons-react';
+import {X} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useState, useCallback, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -113,6 +113,13 @@ export default function UserCreatePage(): JSX.Element {
     if (createUserMutation.isPending) return;
     Promise.resolve(navigate('/users')).catch((_error: unknown) => {
       logger.error('Failed to navigate to users page', {error: _error});
+    });
+  };
+
+  const handleBreadcrumbHome = (): void => {
+    if (createUserMutation.isPending) return;
+    Promise.resolve(navigate('/users/add')).catch((_error: unknown) => {
+      logger.error('Failed to navigate to add user page', {error: _error});
     });
   };
 
@@ -316,6 +323,13 @@ export default function UserCreatePage(): JSX.Element {
     return activeSteps.slice(0, currentIndex + 1);
   };
 
+  const handleBreadcrumbClick = useCallback(
+    (step: UserCreateFlowStep): void => {
+      setCurrentStep(step);
+    },
+    [setCurrentStep],
+  );
+
   const handleCloseSnackbar = () => {
     setSnackbarOpen(false);
   };
@@ -342,35 +356,17 @@ export default function UserCreatePage(): JSX.Element {
             >
               <X size={24} />
             </IconButton>
-            <Breadcrumbs separator={<ChevronRight size={16} />} aria-label="breadcrumb">
-              {getBreadcrumbSteps().map((step, index, array) => {
-                const isLast = index === array.length - 1;
-
-                return isLast ? (
-                  <Typography key={step} variant="h5" color="text.primary">
-                    {steps[step]?.label}
-                  </Typography>
-                ) : (
-                  <Typography
-                    key={step}
-                    variant="h5"
-                    color="inherit"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setCurrentStep(step)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setCurrentStep(step);
-                      }
-                    }}
-                    sx={{cursor: 'pointer', '&:hover': {textDecoration: 'underline'}}}
-                  >
-                    {steps[step]?.label}
-                  </Typography>
-                );
-              })}
-            </Breadcrumbs>
+            <AppBreadcrumbs
+              items={[
+                {key: 'add-user', label: t('users:addUser', 'Add User'), onClick: handleBreadcrumbHome},
+                {key: 'create-user', label: t('users:createWizard.title', 'Create User')},
+                ...getBreadcrumbSteps().map((step) => ({
+                  key: step,
+                  label: steps[step]?.label ?? step,
+                  onClick: () => handleBreadcrumbClick(step),
+                })),
+              ]}
+            />
           </Stack>
         </Box>
 

@@ -196,7 +196,7 @@ describe('computeValidationNotifications', () => {
         createNode({
           id: 'sms-1',
           data: {
-            action: {executor: {name: 'SMSOTPAuthExecutor'}},
+            action: {executor: {name: 'SMSExecutor'}},
             properties: {senderId: '{{SENDER_ID}}'},
           } as unknown as StepData,
         }),
@@ -385,12 +385,12 @@ describe('computeValidationNotifications', () => {
   });
 
   describe('Execution validation', () => {
-    it('should validate SMS OTP executor with missing senderId', () => {
+    it('should validate SMS executor with missing senderId', () => {
       const nodes = [
         createNode({
           id: 'sms-step-1',
           data: {
-            action: {executor: {name: 'SMSOTPAuthExecutor'}},
+            action: {executor: {name: 'SMSExecutor'}},
           } as unknown as StepData,
         }),
       ];
@@ -410,7 +410,7 @@ describe('computeValidationNotifications', () => {
         createNode({
           id: 'sms-step-1',
           data: {
-            action: {executor: {name: 'SMSOTPAuthExecutor'}},
+            action: {executor: {name: 'SMSExecutor'}},
             properties: {senderId: 'my-sender'},
           } as unknown as StepData,
         }),

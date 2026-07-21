@@ -8,6 +8,7 @@ import (
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewInterceptorInterfaceMock creates a new instance of InterceptorInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -95,6 +96,52 @@ func (_c *InterceptorInterfaceMock_Execute_Call) Return(interceptorResponse *com
 }
 
 func (_c *InterceptorInterfaceMock_Execute_Call) RunAndReturn(run func(ctx *core.InterceptorContext) (*common.InterceptorResponse, error)) *InterceptorInterfaceMock_Execute_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetInputs provides a mock function for the type InterceptorInterfaceMock
+func (_mock *InterceptorInterfaceMock) GetInputs() []providers.Input {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetInputs")
+	}
+
+	var r0 []providers.Input
+	if returnFunc, ok := ret.Get(0).(func() []providers.Input); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.Input)
+		}
+	}
+	return r0
+}
+
+// InterceptorInterfaceMock_GetInputs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetInputs'
+type InterceptorInterfaceMock_GetInputs_Call struct {
+	*mock.Call
+}
+
+// GetInputs is a helper method to define mock.On call
+func (_e *InterceptorInterfaceMock_Expecter) GetInputs() *InterceptorInterfaceMock_GetInputs_Call {
+	return &InterceptorInterfaceMock_GetInputs_Call{Call: _e.mock.On("GetInputs")}
+}
+
+func (_c *InterceptorInterfaceMock_GetInputs_Call) Run(run func()) *InterceptorInterfaceMock_GetInputs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *InterceptorInterfaceMock_GetInputs_Call) Return(inputs []providers.Input) *InterceptorInterfaceMock_GetInputs_Call {
+	_c.Call.Return(inputs)
+	return _c
+}
+
+func (_c *InterceptorInterfaceMock_GetInputs_Call) RunAndReturn(run func() []providers.Input) *InterceptorInterfaceMock_GetInputs_Call {
 	_c.Call.Return(run)
 	return _c
 }

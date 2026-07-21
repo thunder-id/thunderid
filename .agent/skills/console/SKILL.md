@@ -53,7 +53,7 @@ All commands use the named session `-s=thunderid` so the browser persists across
 
 ThunderID Console requires authentication. The sign-in form is dynamically rendered by the ThunderID SDK, so always use `snapshot` to get element refs before interacting.
 
-Default credentials: `admin` / `admin`
+Username is `admin`. For `make run`, the password defaults to `admin` unless overridden via `ADMIN_PASSWORD` (source-only local dev path). For `./setup.sh`/`./setup.ps1`, the password is randomly generated and printed to the console/log output unless explicitly supplied via `ADMIN_PASSWORD` — check there for the current value rather than assuming a fixed one.
 
 ### First-Time Login
 
@@ -72,8 +72,9 @@ playwright-cli snapshot -s=thunderid
 # 3. Fill username (use the ref from snapshot for the username input)
 playwright-cli fill <username-ref> "admin" -s=thunderid
 
-# 4. Fill password (use the ref from snapshot for the password input)
-playwright-cli fill <password-ref> "admin" -s=thunderid
+# 4. Fill password (use the ref from snapshot for the password input;
+#    use the actual generated password from the setup console output, not a literal "admin")
+playwright-cli fill <password-ref> "<generated-password>" -s=thunderid
 
 # 5. Click Sign In (use the ref from snapshot for the submit button)
 playwright-cli click <submit-ref> -s=thunderid
@@ -93,112 +94,34 @@ playwright-cli state-load thunderid-auth -s=thunderid
 playwright-cli goto {CONSOLE_URL} -s=thunderid
 ```
 
-## Route Map
+## Routes
 
-The ThunderID Console base path is `/console`. Append routes below to the resolved `{CONSOLE_URL}`. The sidebar is organized into categories.
+Routes change often, so they are not duplicated here — a copied table goes stale. Derive routes from these source files, relative to the repository root:
 
-### Sidebar Navigation
+- Route definitions: `frontend/apps/console/src/App.tsx`
+- Sidebar navigation and categories: `frontend/apps/console/src/layouts/DashboardLayout.tsx`
 
-| Category | Page | Path |
-|---|---|---|
-| - | Home | `/console/home` |
-| Resources | Applications | `/console/applications` |
-| Identities | Users | `/console/users` |
-| Identities | Groups | `/console/groups` |
-| Identities | Roles | `/console/roles` |
-| Identities | User Types | `/console/user-types` |
-| Configure | Organization Units | `/console/organization-units` |
-| Configure | Flows | `/console/flows` |
-| Configure | Integrations | `/console/integrations` |
-| Customize | Design | `/console/design` |
-| Customize | Translations | `/console/translations` |
-
-### Creation Routes
-
-| Resource | Path |
-|---|---|
-| Application | `/console/applications/create` |
-| User | `/console/users/create` |
-| Invite User | `/console/users/invite` |
-| Group | `/console/groups/create` |
-| Role | `/console/roles/create` |
-| User Type | `/console/user-types/create` |
-| Organization Unit | `/console/organization-units/create` |
-| Theme | `/console/design/themes/create` |
-| Translation | `/console/translations/create` |
-
-### Detail/Edit Routes
-
-| Resource | Path |
-|---|---|
-| Application | `/console/applications/:applicationId` |
-| User | `/console/users/:userId` |
-| Group | `/console/groups/:groupId` |
-| Role | `/console/roles/:roleId` |
-| User Type | `/console/user-types/:id` |
-| Organization Unit | `/console/organization-units/:id` |
-| Theme Builder | `/console/design/themes/:themeId` |
-| Layout Builder | `/console/design/layouts/:layoutId` |
-| Login Flow | `/console/flows/signin` or `/console/flows/signin/:flowId` |
-| Translation | `/console/translations/:language` |
+The Console base path is `/console`; append a route from `App.tsx` to the resolved `{CONSOLE_URL}` (e.g. `{CONSOLE_URL}/users`).
 
 ## Common Patterns
 
-### Navigate to a Page
+Almost every interaction is the same loop: `goto` (or `click` a sidebar/button ref) → `snapshot` to get fresh refs → `fill`/`click` by ref → `snapshot` to confirm. Always re-snapshot after a navigation or action, since refs change. Examples — navigating, creating a resource, and searching:
 
 ```bash
+# Navigate / create / search all follow the goto → snapshot → act → snapshot loop
 playwright-cli goto {CONSOLE_URL}/users -s=thunderid
-playwright-cli snapshot -s=thunderid
-```
-
-### Navigate via Sidebar
-
-```bash
-# Snapshot to see sidebar element refs
-playwright-cli snapshot -s=thunderid
-# Click a sidebar item by its ref
-playwright-cli click <sidebar-item-ref> -s=thunderid
-```
-
-### Create a Resource (e.g., User)
-
-```bash
-# Navigate to users list
-playwright-cli goto {CONSOLE_URL}/users -s=thunderid
-playwright-cli snapshot -s=thunderid
-
-# Click the "Add User" or create button
+playwright-cli snapshot -s=thunderid                 # get current refs
 playwright-cli click <create-button-ref> -s=thunderid
 playwright-cli snapshot -s=thunderid
-
-# Fill the creation form fields using refs from snapshot
-playwright-cli fill <field-ref> "value" -s=thunderid
-
-# Submit
+playwright-cli fill <field-ref> "value" -s=thunderid # or <search-input-ref> "john"
 playwright-cli click <submit-ref> -s=thunderid
 playwright-cli snapshot -s=thunderid
 ```
 
-### Search in a List
-
-```bash
-playwright-cli goto {CONSOLE_URL}/users -s=thunderid
-playwright-cli snapshot -s=thunderid
-playwright-cli fill <search-input-ref> "john" -s=thunderid
-playwright-cli snapshot -s=thunderid
-```
-
-### Inspect an Element
+Inspect an element, or capture a screenshot:
 
 ```bash
 playwright-cli eval "el => el.getAttribute('data-testid')" <ref> -s=thunderid
-playwright-cli eval "el => el.textContent" <ref> -s=thunderid
-```
-
-### Take a Screenshot
-
-```bash
-playwright-cli screenshot -s=thunderid
 playwright-cli screenshot --filename=console-users.png -s=thunderid
 ```
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -25,7 +25,8 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
-	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -36,13 +37,15 @@ type TokenIntrospectionServiceInterface interface {
 
 // tokenIntrospectionService implements the TokenIntrospectionServiceInterface.
 type tokenIntrospectionService struct {
-	jwtService jwt.JWTServiceInterface
+	tokenValidator tokenservice.TokenValidatorInterface
 }
 
 // newTokenIntrospectionService creates a new tokenIntrospectionService instance (internal use).
-func newTokenIntrospectionService(jwtService jwt.JWTServiceInterface) TokenIntrospectionServiceInterface {
+func newTokenIntrospectionService(
+	tokenValidator tokenservice.TokenValidatorInterface,
+) TokenIntrospectionServiceInterface {
 	return &tokenIntrospectionService{
-		jwtService: jwtService,
+		tokenValidator: tokenValidator,
 	}
 }
 
@@ -57,33 +60,22 @@ func (s *tokenIntrospectionService) IntrospectToken(
 		return nil, errors.New("token is required")
 	}
 
-	if !s.validateToken(ctx, logger, token) {
-		return &IntrospectResponse{
-			Active: false,
-		}, nil
-	}
-
-	_, payload, err := jwt.DecodeJWT(token)
+	// ValidateToken verifies the signature and enforces the RFC 7009 deny list. A revoked or otherwise
+	// invalid token is inactive per RFC 7662; if the deny list cannot be consulted we fail closed
+	// (surface a server error) rather than asserting the token is active.
+	payload, err := s.tokenValidator.ValidateToken(ctx, token)
 	if err != nil {
-		logger.Debug(ctx, "Failed to decode JWT", log.Error(err))
+		if errors.Is(err, revocation.ErrEnforcementUnavailable) {
+			logger.Error(ctx, "Token revocation status could not be verified", log.Error(err))
+			return nil, err
+		}
+		logger.Debug(ctx, "Token is inactive", log.Error(err))
 		return &IntrospectResponse{
 			Active: false,
 		}, nil
 	}
-
-	// TODO: Add validations for token revocation and validity to be used by the resource server
-	//  who makes the introspection call when the support is implemented.
 
 	return s.prepareValidResponse(payload), nil
-}
-
-// validateToken verifies the signature and validity of the token.
-func (s *tokenIntrospectionService) validateToken(ctx context.Context, logger *log.Logger, token string) bool {
-	if err := s.jwtService.VerifyJWT(ctx, token, "", ""); err != nil {
-		logger.Debug(ctx, "Failed to verify refresh token", log.String("error", err.Error.DefaultValue))
-		return false
-	}
-	return true
 }
 
 // prepareValidResponse prepares the response for a valid token introspection.

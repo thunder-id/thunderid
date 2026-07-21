@@ -22,6 +22,8 @@ export {default as useGetResourceServer} from './api/useGetResourceServer';
 export {default as useCreateResourceServer} from './api/useCreateResourceServer';
 export {default as useUpdateResourceServer} from './api/useUpdateResourceServer';
 export {default as useDeleteResourceServer} from './api/useDeleteResourceServer';
+export {default as useGetDefaultResourceServer} from './api/useGetDefaultResourceServer';
+export {default as useSetDefaultResourceServer} from './api/useSetDefaultResourceServer';
 export {default as useGetResources} from './api/useGetResources';
 export {default as useCreateResource} from './api/useCreateResource';
 export {default as useUpdateResource} from './api/useUpdateResource';
@@ -40,6 +42,8 @@ export type {SelectedScopesFieldProps} from './components/permission-catalog/Sel
 export {default as ResourceServersList} from './components/ResourceServersList';
 export {default as ResourceServerDeleteDialog} from './components/ResourceServerDeleteDialog';
 export type {ResourceServerDeleteDialogProps} from './components/ResourceServerDeleteDialog';
+export {default as SetDefaultResourceServerDialog} from './components/SetDefaultResourceServerDialog';
+export type {SetDefaultResourceServerDialogProps} from './components/SetDefaultResourceServerDialog';
 
 // Constants
 export {default as ResourceServerQueryKeys} from './constants/resource-server-query-keys';
@@ -59,6 +63,9 @@ export type {
   CreateActionRequest,
   UpdateActionRequest,
   ResourcePermissions,
+  DefaultResourceServerValue,
+  ServerConfigLayers,
+  DefaultResourceServerConfigResponse,
 } from './models/resource-server';
 
 // Utils

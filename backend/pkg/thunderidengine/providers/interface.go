@@ -104,12 +104,12 @@ type ResourceServerProvider interface {
 	GetResourceServerByIdentifier(
 		ctx context.Context, identifier string,
 	) (*ResourceServer, *common.ServiceError)
+	GetResourceServer(
+		ctx context.Context, id string,
+	) (*ResourceServer, *common.ServiceError)
 	ValidatePermissions(
 		ctx context.Context, resourceServerID string, permissions []string,
 	) ([]string, *common.ServiceError)
-	FindResourceServersByPermissions(
-		ctx context.Context, permissions []string,
-	) ([]ResourceServer, *common.ServiceError)
 }
 
 // IDPProvider defines the interface for the identity provider provider.
@@ -141,6 +141,14 @@ type ConsentProvider interface {
 		*Consent, *common.ServiceError)
 }
 
+// CaptchaValidationProvider defines the contract for verifying captcha tokens.
+type CaptchaValidationProvider interface {
+	// Verify validates the given captcha token and returns the verification result. An invalid
+	// token is reported through the result's negative verdict, while operational failures (provider
+	// unavailable or misconfigured) are returned as a server-side service error.
+	Verify(ctx context.Context, token string) (*CaptchaVerificationResult, *common.ServiceError)
+}
+
 // Executor defines the interface for executors.
 type Executor interface {
 	Execute(ctx *NodeContext) (*ExecutorResponse, error)
@@ -155,6 +163,7 @@ type Executor interface {
 		authnProvider AuthnProviderManager) string
 	GetRequiredInputs(ctx *NodeContext) []Input
 	GetExecutionPolicy(mode string) *ExecutionPolicy
+	GetMeta() *ExecutorMeta
 }
 
 // ObservabilityProvider defines the interface for the observability provider.
@@ -182,4 +191,36 @@ type AuthorizationProvider interface {
 		ctx context.Context,
 		request AccessEvaluationsRequest,
 	) (*AccessEvaluationsResponse, *common.ServiceError)
+}
+
+// AttestationProvider verifies a platform attestation token (e.g. a Google Play Integrity token)
+// against an application's attestation configuration, proving the binary identity of a mobile
+// client. It reports the verification outcome as a boolean rather than an error so that a definitive
+// rejection (token invalid) is not mistaken for an operational failure (provider outage,
+// misconfiguration): the latter is surfaced as a non-nil ServiceError.
+type AttestationProvider interface {
+	// Verify returns true when the token proves the expected binary identity. It returns false with
+	// a nil error for a definitive rejection, and a non-nil ServiceError for an operational failure
+	// that prevented verification from completing.
+	Verify(ctx context.Context, cfg *AttestationConfig, token string) (bool, *common.ServiceError)
+}
+
+// RuntimeStoreProvider defines the interface for runtime store operations.
+type RuntimeStoreProvider interface {
+	// Put stores a value in the runtime store with the specified key and TTL (time-to-live) in seconds.
+	Put(ctx context.Context, namespace RuntimeStoreNamespace, key string, value []byte, ttlSeconds int64) error
+
+	// Get retrieves a value from the runtime store by its key.
+	Get(ctx context.Context, namespace RuntimeStoreNamespace, key string) ([]byte, error)
+
+	// Update updates the value associated with a key in the runtime store.
+	Update(ctx context.Context, namespace RuntimeStoreNamespace, key string, value []byte) error
+
+	// Delete removes a value from the runtime store by its key.
+	Delete(ctx context.Context, namespace RuntimeStoreNamespace, key string) error
+
+	// Take retrieves and removes a value from the runtime store by its key.
+	Take(ctx context.Context, namespace RuntimeStoreNamespace, key string) ([]byte, error)
+
+	ExtendTTL(ctx context.Context, namespace RuntimeStoreNamespace, key string, ttlSeconds int64) error
 }

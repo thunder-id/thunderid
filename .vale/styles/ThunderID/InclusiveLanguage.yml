@@ -1,0 +1,18 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+level: error
+ignorecase: true
+swap:
+  '\bwhitelist\b': allowlist
+  '\bwhitelists\b': allowlists
+  '\bwhitelisted\b': allowlisted
+  '\bwhitelisting\b': allowlisting
+  '\bblacklist\b': denylist
+  '\bblacklists\b': denylists
+  '\bblacklisted\b': denylisted
+  '\bblacklisting\b': denylisting
+  '\bmaster/slave\b': primary/replica
+  '\bsanity check\b': confidence check
+  '\bsanity-check\b': confidence check
+  '\bdummy value\b': placeholder value
+  '\bdummy data\b': placeholder data

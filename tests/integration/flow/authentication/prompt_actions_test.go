@@ -97,7 +97,7 @@ var (
 						},
 					},
 				},
-				"onSuccess": "sms_otp_send",
+				"onSuccess": "generate_otp",
 			},
 			{
 				"id":   "prompt_mobile",
@@ -114,20 +114,37 @@ var (
 						},
 						"action": map[string]interface{}{
 							"ref":      "action_mobile",
-							"nextNode": "sms_otp_send",
+							"nextNode": "generate_otp",
 						},
 					},
 				},
 			},
 			{
-				"id":   "sms_otp_send",
+				"id":   "generate_otp",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "OTPExecutor",
+					"mode": "generate",
+					"inputs": []map[string]interface{}{
+						{
+							"ref":        "input_mobile",
+							"identifier": "mobile_number",
+							"type":       "PHONE_INPUT",
+							"required":   true,
+						},
+					},
+				},
+				"onSuccess": "sms_send",
+			},
+			{
+				"id":   "sms_send",
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
-					"senderId": "placeholder-sender-id",
+					"senderId":    "placeholder-sender-id",
+					"smsTemplate": "OTP",
 				},
 				"executor": map[string]interface{}{
-					"name": "SMSOTPAuthExecutor",
-					"mode": "send",
+					"name": "SMSExecutor",
 				},
 				"onSuccess": "prompt_otp",
 			},
@@ -146,19 +163,16 @@ var (
 						},
 						"action": map[string]interface{}{
 							"ref":      "action_otp",
-							"nextNode": "sms_otp_verify",
+							"nextNode": "verify_otp",
 						},
 					},
 				},
 			},
 			{
-				"id":   "sms_otp_verify",
+				"id":   "verify_otp",
 				"type": "TASK_EXECUTION",
-				"properties": map[string]interface{}{
-					"senderId": "placeholder-sender-id",
-				},
 				"executor": map[string]interface{}{
-					"name": "SMSOTPAuthExecutor",
+					"name": "OTPExecutor",
 					"mode": "verify",
 				},
 				"onSuccess": "auth_assert",
@@ -336,8 +350,7 @@ func (ts *PromptActionsAndMFAFlowTestSuite) SetupSuite() {
 
 	// Update flow definition with created sender ID
 	nodes := promptActionsFlow.Nodes.([]map[string]interface{})
-	nodes[5]["properties"].(map[string]interface{})["senderId"] = senderID // sms_otp_send node
-	nodes[7]["properties"].(map[string]interface{})["senderId"] = senderID // sms_otp_verify node
+	nodes[6]["properties"].(map[string]interface{})["senderId"] = senderID // sms_send node
 	promptActionsFlow.Nodes = nodes
 
 	// Create flow

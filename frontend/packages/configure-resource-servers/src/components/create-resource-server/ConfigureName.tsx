@@ -21,22 +21,24 @@ import {Box, Chip, FormControl, FormLabel, Stack, TextField, Typography, useThem
 import {Lightbulb} from '@wso2/oxygen-ui-icons-react';
 import {useEffect, useMemo, type ChangeEvent, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import type {ResourceServerType} from '../../models/resource-server';
 
 interface ConfigureNameProps {
   name: string;
-  handle: string;
-  delimiter?: string;
+  identifier: string;
+  /** The resource server type selected in the previous step, used to tailor copy for MCP servers. */
+  selectedType?: ResourceServerType;
   onNameChange: (name: string) => void;
-  onHandleChange: (handle: string) => void;
+  onIdentifierChange: (identifier: string) => void;
   onReadyChange?: (isReady: boolean) => void;
 }
 
 export default function ConfigureName({
   name,
-  handle,
-  delimiter = undefined,
+  identifier,
+  selectedType = undefined,
   onNameChange,
-  onHandleChange,
+  onIdentifierChange,
   onReadyChange = undefined,
 }: ConfigureNameProps): JSX.Element {
   const {t} = useTranslation();
@@ -46,9 +48,9 @@ export default function ConfigureName({
 
   useEffect((): void => {
     if (onReadyChange) {
-      onReadyChange(name.trim().length > 0);
+      onReadyChange(name.trim().length > 0 && identifier.trim().length > 0);
     }
-  }, [name, onReadyChange]);
+  }, [name, identifier, onReadyChange]);
 
   const handleNameChange = (e: ChangeEvent<HTMLInputElement>): void => {
     onNameChange(e.target.value);
@@ -58,20 +60,23 @@ export default function ConfigureName({
     onNameChange(suggestion);
   };
 
-  const handleHandleChange = (e: ChangeEvent<HTMLInputElement>): void => {
-    const sanitized = e.target.value.toLowerCase().replace(/[^a-z0-9._\-:/]/g, '');
-    onHandleChange(delimiter ? sanitized.replace(new RegExp(`\\${delimiter}`, 'g'), '') : sanitized);
+  const handleIdentifierChange = (e: ChangeEvent<HTMLInputElement>): void => {
+    onIdentifierChange(e.target.value);
   };
 
   return (
     <Stack direction="column" spacing={4}>
       <Typography variant="h1" gutterBottom>
-        {t('resourceServers:create.name.title', 'Name your resource server')}
+        {selectedType === 'MCP'
+          ? t('resourceServers:create.name.titleMcp', 'Name your MCP server')
+          : t('resourceServers:create.name.title', 'Name your resource server')}
       </Typography>
 
       <FormControl fullWidth required>
         <FormLabel htmlFor="resource-server-name-input">
-          {t('resourceServers:create.name.nameLabel', 'Resource Server Name')}
+          {selectedType === 'MCP'
+            ? t('resourceServers:create.name.nameLabelMcp', 'MCP Server Name')
+            : t('resourceServers:create.name.nameLabel', 'Resource Server Name')}
         </FormLabel>
         <TextField
           id="resource-server-name-input"
@@ -111,20 +116,31 @@ export default function ConfigureName({
         </Box>
       </Stack>
 
-      <FormControl fullWidth>
-        <FormLabel htmlFor="resource-server-handle-input">
-          {t('resourceServers:create.name.handleLabel', 'Handle (Optional)')}
+      <FormControl fullWidth required>
+        <FormLabel htmlFor="resource-server-identifier-input">
+          {t('resourceServers:create.name.identifierLabel', 'Identifier')}
         </FormLabel>
         <TextField
-          id="resource-server-handle-input"
+          id="resource-server-identifier-input"
           fullWidth
-          value={handle}
-          onChange={handleHandleChange}
-          placeholder={t('resourceServers:create.name.handlePlaceholder', 'e.g. payments-api')}
-          helperText={t(
-            'resourceServers:create.name.handleHint',
-            'The handle prefixes every permission in this resource server. It cannot be changed after creation.',
-          )}
+          value={identifier}
+          onChange={handleIdentifierChange}
+          placeholder={
+            selectedType === 'MCP'
+              ? t('resourceServers:create.name.identifierPlaceholderMcp', 'https://mcp.example.com')
+              : t('resourceServers:create.name.identifierPlaceholder', 'https://api.example.com')
+          }
+          helperText={
+            selectedType === 'MCP'
+              ? t(
+                  'resourceServers:create.name.identifierHintMcp',
+                  'A unique identifier for this MCP server. When set as an absolute URI, it becomes the token audience for RFC 8707 resource indicators.',
+                )
+              : t(
+                  'resourceServers:create.name.identifierHint',
+                  'A unique identifier for this resource server. When set as an absolute URI, it becomes the token audience for RFC 8707 resource indicators.',
+                )
+          }
         />
       </FormControl>
     </Stack>

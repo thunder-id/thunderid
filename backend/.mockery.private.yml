@@ -37,6 +37,14 @@ packages:
       pkgname: introspect
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation:
+    config:
+      all: true
+      dir: internal/oauth/oauth2/revocation
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: revocation
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/oauth/oauth2/par:
     config:
       all: true
@@ -44,6 +52,15 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: par
       filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/logout:
+    interfaces:
+      logoutRequestStoreInterface:
+        config:
+          dir: internal/oauth/oauth2/logout
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: logout
+          filename: "{{.InterfaceName}}_mock_test.go"
 
   github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop:
     config:
@@ -124,7 +141,15 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: flowexec
       filename: "{{.InterfaceName}}_mock_test.go"
-  
+
+  github.com/thunder-id/thunderid/internal/flow/session:
+    config:
+      all: true
+      dir: internal/flow/session
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: session
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/flow/mgt:
     config:
       all: true
@@ -366,6 +391,14 @@ packages:
       pkgname: template
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/runtimestore/redisstore:
+    config:
+      all: true
+      dir: internal/runtimestore/redisstore
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: redisstore
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/pkg/thunderidengine/providers:
     interfaces:
       FlowProvider:
@@ -373,6 +406,18 @@ packages:
           dir: internal/flow/flowexec
           structname: '{{.InterfaceName}}Mock'
           pkgname: flowexec
+          filename: "{{.InterfaceName}}_mock_test.go"
+      Executor:
+        config:
+          dir: internal/flow/core
+          structname: ExecutorInterfaceMock
+          pkgname: core
+          filename: "ExecutorInterface_mock_test.go"
+      RuntimeStoreProvider:
+        config:
+          dir: internal/oauth/oauth2/logout
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: logout
           filename: "{{.InterfaceName}}_mock_test.go"
 
   github.com/thunder-id/thunderid/internal/flow/graphbuilder:
@@ -384,6 +429,13 @@ packages:
           pkgname: flowexec
           filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/attestation:
+    config:
+      all: true
+      dir: internal/attestation
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: attestation
+      
   github.com/thunder-id/thunderid/internal/scim:
     config:
       all: true

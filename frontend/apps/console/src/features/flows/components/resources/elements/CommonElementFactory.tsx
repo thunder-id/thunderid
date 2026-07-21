@@ -134,7 +134,7 @@ function CommonElementFactory({
     return <TypographyAdapter stepId={stepId} resource={resource} />;
   }
   if (resource.type === ElementTypes.RichText) {
-    return <RichTextAdapter resource={resource} />;
+    return <RichTextAdapter resource={resource} elementIndex={elementIndex} />;
   }
   if (resource.type === ElementTypes.Divider) {
     return <DividerAdapter resource={resource} />;
@@ -164,7 +164,7 @@ function CommonElementFactory({
   if (resource.type === ElementTypes.Timer) {
     return <TimerAdapter resource={resource} />;
   }
-  if (resource.type === ElementTypes.Consent) {
+  if (resource.type === ElementTypes.Consent || resource.type === ElementTypes.ConsentInput) {
     return <ConsentAdapter />;
   }
   if (resource.type === ElementTypes.Custom) {

@@ -56,22 +56,33 @@ if ($DbType -eq "postgres") {
     path: ""
     options: ""
 
-  runtime:
+  runtime_transient:
     type: postgres
     hostname: localhost
     port: 5432
-    name: runtimedb
+    name: runtime_transient
     username: dbuser
     password: dbpassword
     sslmode: disable
     path: ""
     options: ""
 
-  user:
+  entity:
     type: postgres
     hostname: localhost
     port: 5432
-    name: userdb
+    name: entitydb
+    username: dbuser
+    password: dbpassword
+    sslmode: disable
+    path: ""
+    options: ""
+
+  runtime_persistent:
+    type: postgres
+    hostname: localhost
+    port: 5432
+    name: runtime_persistent
     username: dbuser
     password: dbpassword
     sslmode: disable
@@ -91,7 +102,7 @@ if ($DbType -eq "postgres") {
     path: "database/configdb.db"
     options: "cache=shared"
 
-  runtime:
+  runtime_transient:
     type: sqlite
     hostname: ""
     port: 0
@@ -99,10 +110,10 @@ if ($DbType -eq "postgres") {
     username: ""
     password: ""
     sslmode: ""
-    path: "database/runtimedb.db"
+    path: "database/runtime-transient.db"
     options: "cache=shared"
 
-  user:
+  entity:
     type: sqlite
     hostname: ""
     port: 0
@@ -110,7 +121,18 @@ if ($DbType -eq "postgres") {
     username: ""
     password: ""
     sslmode: ""
-    path: "database/userdb.db"
+    path: "database/entitydb.db"
+    options: "cache=shared"
+
+  runtime_persistent:
+    type: sqlite
+    hostname: ""
+    port: 0
+    name: ""
+    username: ""
+    password: ""
+    sslmode: ""
+    path: "database/runtime-persistent.db"
     options: "cache=shared"
 "@
 }

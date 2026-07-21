@@ -18,6 +18,7 @@
 
 import type {NodeProps} from '@xyflow/react';
 import type {ReactElement} from 'react';
+import Call from './call/Call';
 import End from './end/End';
 import Execution from './execution/Execution';
 import Rule from './rule/Rule';
@@ -115,6 +116,10 @@ function CommonStepFactory({
 
   if (resources?.[0].type === StepTypes.End) {
     return <End resources={resources} data={data} {...rest} />;
+  }
+
+  if (resources?.[0].type === StepTypes.Call) {
+    return <Call resources={resources} data={data} {...rest} />;
   }
 
   return null;

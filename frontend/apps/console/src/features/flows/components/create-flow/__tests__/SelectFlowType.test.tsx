@@ -84,6 +84,13 @@ describe('SelectFlowType', () => {
       expect(screen.getByTestId('icon-key-round')).toBeInTheDocument();
       expect(screen.getByTestId('icon-user-plus')).toBeInTheDocument();
     });
+
+    it('should render SignOut option', () => {
+      render(<SelectFlowType {...defaultProps} />);
+
+      expect(screen.getByText('Sign Out')).toBeInTheDocument();
+      expect(screen.getByText('Confirm and terminate an established SSO session')).toBeInTheDocument();
+    });
   });
 
   describe('Selection', () => {
@@ -93,6 +100,15 @@ describe('SelectFlowType', () => {
       fireEvent.click(screen.getByText('Sign-in'));
 
       expect(mockOnTypeChange).toHaveBeenCalledWith('AUTHENTICATION');
+      expect(mockOnReadyChange).toHaveBeenCalledWith(true);
+    });
+
+    it('should call onTypeChange with SIGNOUT when SignOut is clicked', () => {
+      render(<SelectFlowType {...defaultProps} />);
+
+      fireEvent.click(screen.getByText('Sign Out'));
+
+      expect(mockOnTypeChange).toHaveBeenCalledWith('SIGNOUT');
       expect(mockOnReadyChange).toHaveBeenCalledWith(true);
     });
 

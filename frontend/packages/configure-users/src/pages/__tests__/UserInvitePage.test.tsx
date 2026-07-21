@@ -344,6 +344,18 @@ describe('UserInvitePage', () => {
 
       expect(mockNavigate).toHaveBeenCalledWith('/users');
     });
+
+    it('should navigate to /users/add when Add User breadcrumb is clicked', async () => {
+      mockInviteUserRenderProps.isLoading = true;
+      mockInviteUserRenderProps.components = [];
+
+      render(<UserInvitePage />);
+
+      const addUserBreadcrumb = screen.getByRole('button', {name: /add user/i});
+      await userEvent.click(addUserBreadcrumb);
+
+      expect(mockNavigate).toHaveBeenCalledWith('/users/add');
+    });
   });
 
   /* ----- Form fields rendering ----- */
@@ -668,7 +680,7 @@ describe('UserInvitePage', () => {
       render(<UserInvitePage />);
 
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/users/create');
+        expect(mockNavigate).toHaveBeenCalledWith('/users/add/create');
       });
 
       expect(mockLoggerInfo).toHaveBeenCalledWith(
@@ -694,7 +706,7 @@ describe('UserInvitePage', () => {
       }
 
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/users/create');
+        expect(mockNavigate).toHaveBeenCalledWith('/users/add/create');
       });
     });
   });

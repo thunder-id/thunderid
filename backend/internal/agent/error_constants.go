@@ -430,20 +430,6 @@ var (
 		},
 	}
 
-	// ErrorConsentSyncFailed is returned when attribute changes fail to sync with the consent service.
-	ErrorConsentSyncFailed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "AGT-1035",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.agentservice.consent_sync_failed",
-			DefaultValue: "Consent sync failed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.agentservice.consent_sync_failed_description",
-			DefaultValue: "Failed to sync agent attribute changes with the consent service : code - {{param(code)}}",
-		},
-	}
-
 	// ErrorCertificateClientError is returned when a certificate operation fails due to a client error.
 	ErrorCertificateClientError = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

@@ -35,6 +35,7 @@ import (
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/oauth"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oauthmock"
@@ -82,11 +83,13 @@ func (suite *GithubOAuthAuthnServiceTestSuite) SetupTest() {
 
 func (suite *GithubOAuthAuthnServiceTestSuite) TestBuildAuthorizeURLSuccess() {
 	expectedURL := "https://github.com/login/oauth/authorize?client_id=test"
-	suite.mockOAuthService.On("BuildAuthorizeURL", mock.Anything, testGithubIDPID).Return(expectedURL, nil)
+	suite.mockOAuthService.On("BuildAuthorizeURL", mock.Anything, testGithubIDPID).
+		Return(expectedURL, map[string]string{oauth2const.RequestParamState: "test-state"}, nil)
 
-	url, err := suite.service.BuildAuthorizeURL(context.Background(), testGithubIDPID)
+	url, metadata, err := suite.service.BuildAuthorizeURL(context.Background(), testGithubIDPID)
 	suite.Nil(err)
 	suite.Equal(expectedURL, url)
+	suite.Equal("test-state", metadata[oauth2const.RequestParamState])
 }
 
 func (suite *GithubOAuthAuthnServiceTestSuite) TestBuildAuthorizeURLError() {
@@ -96,10 +99,12 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestBuildAuthorizeURLError() {
 			Key: "error.test.failed_to_build_url", DefaultValue: "Failed to build URL",
 		},
 	}
-	suite.mockOAuthService.On("BuildAuthorizeURL", mock.Anything, testGithubIDPID).Return("", svcErr)
+	suite.mockOAuthService.On("BuildAuthorizeURL", mock.Anything, testGithubIDPID).
+		Return("", (map[string]string)(nil), svcErr)
 
-	url, err := suite.service.BuildAuthorizeURL(context.Background(), testGithubIDPID)
+	url, metadata, err := suite.service.BuildAuthorizeURL(context.Background(), testGithubIDPID)
 	suite.Empty(url)
+	suite.Nil(metadata)
 	suite.NotNil(err)
 	suite.Equal(svcErr.Code, err.Code)
 }
@@ -416,8 +421,9 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestConstructorAndInjectInternal(
 
 	// test BuildAuthorizeURL delegation
 	expectedURL := "https://github.com/login/oauth/authorize?client_id=test"
-	suite.mockOAuthService.On("BuildAuthorizeURL", mock.Anything, testGithubIDPID).Return(expectedURL, nil)
-	url, err := gsvc.BuildAuthorizeURL(context.Background(), testGithubIDPID)
+	suite.mockOAuthService.On("BuildAuthorizeURL", mock.Anything, testGithubIDPID).
+		Return(expectedURL, map[string]string{oauth2const.RequestParamState: "test-state"}, nil)
+	url, _, err := gsvc.BuildAuthorizeURL(context.Background(), testGithubIDPID)
 	suite.Nil(err)
 	suite.Equal(expectedURL, url)
 
@@ -542,8 +548,14 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestAuthenticateSuccess() {
 	suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).Return(oauthConfig, nil)
 	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, oauthConfig, testAccessToken).
 		Return(userInfo, nil)
+	suite.mockOAuthService.On("BuildFederatedAuthResult", mock.Anything, testGithubIDPID, "12345", mock.Anything).
+		Return(&authncm.AuthnResult{
+			Token:               map[string]interface{}{"sub": "12345"},
+			AuthenticatedClaims: map[string]interface{}{"email": "test@example.com"},
+		}, nil)
 
-	result, err := suite.service.Authenticate(context.Background(), testGithubIDPID, code)
+	result, err := suite.service.Authenticate(context.Background(), testGithubIDPID,
+		authncm.AuthorizationData{Code: code})
 	suite.Nil(err)
 	suite.NotNil(result)
 	suite.Equal("12345", result.Token["sub"])
@@ -560,7 +572,8 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestAuthenticateExchangeCodeError
 	}
 	suite.mockOAuthService.On("ExchangeCodeForToken", mock.Anything, testGithubIDPID, code, true).Return(nil, svcErr)
 
-	result, err := suite.service.Authenticate(context.Background(), testGithubIDPID, code)
+	result, err := suite.service.Authenticate(context.Background(), testGithubIDPID,
+		authncm.AuthorizationData{Code: code})
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(svcErr.Code, err.Code)
@@ -579,7 +592,8 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestAuthenticateFetchUserInfoErro
 	suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).
 		Return(nil, svcErr).Once()
 
-	result, err := suite.service.Authenticate(context.Background(), testGithubIDPID, code)
+	result, err := suite.service.Authenticate(context.Background(), testGithubIDPID,
+		authncm.AuthorizationData{Code: code})
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal("FETCH-001", err.Code)
@@ -609,7 +623,8 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestAuthenticateSubClaimNotFound(
 	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, oauthConfig, testAccessToken).
 		Return(userInfo, nil)
 
-	result, err := suite.service.Authenticate(context.Background(), testGithubIDPID, code)
+	result, err := suite.service.Authenticate(context.Background(), testGithubIDPID,
+		authncm.AuthorizationData{Code: code})
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(authncm.ErrorSubClaimNotFound.Code, err.Code)
@@ -639,7 +654,8 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestAuthenticateSubClaimEmptyStri
 	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, oauthConfig, testAccessToken).
 		Return(userInfo, nil)
 
-	result, err := suite.service.Authenticate(context.Background(), testGithubIDPID, code)
+	result, err := suite.service.Authenticate(context.Background(), testGithubIDPID,
+		authncm.AuthorizationData{Code: code})
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(authncm.ErrorSubClaimNotFound.Code, err.Code)
@@ -669,8 +685,23 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestAuthenticateSubClaimNonString
 	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, oauthConfig, testAccessToken).
 		Return(userInfo, nil)
 
-	result, err := suite.service.Authenticate(context.Background(), testGithubIDPID, code)
+	result, err := suite.service.Authenticate(context.Background(), testGithubIDPID,
+		authncm.AuthorizationData{Code: code})
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(authncm.ErrorSubClaimNotFound.Code, err.Code)
+}
+
+func (suite *GithubOAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultDelegates() {
+	expected := &authncm.AuthnResult{
+		Token:               map[string]interface{}{"email": "user@example.com"},
+		AuthenticatedClaims: map[string]interface{}{"email": "user@example.com"},
+	}
+	suite.mockOAuthService.On("BuildFederatedAuthResult", mock.Anything, testGithubIDPID, "sub-1", mock.Anything).
+		Return(expected, nil)
+
+	result, err := suite.service.BuildFederatedAuthResult(
+		context.Background(), testGithubIDPID, "sub-1", map[string]interface{}{"email": "user@example.com"})
+	suite.Nil(err)
+	suite.Equal(expected, result)
 }

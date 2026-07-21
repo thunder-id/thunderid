@@ -143,66 +143,6 @@ func (_c *themeMgtStoreInterfaceMock_DeleteTheme_Call) RunAndReturn(run func(id 
 	return _c
 }
 
-// GetApplicationsCountByThemeID provides a mock function for the type themeMgtStoreInterfaceMock
-func (_mock *themeMgtStoreInterfaceMock) GetApplicationsCountByThemeID(id string) (int, error) {
-	ret := _mock.Called(id)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetApplicationsCountByThemeID")
-	}
-
-	var r0 int
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(string) (int, error)); ok {
-		return returnFunc(id)
-	}
-	if returnFunc, ok := ret.Get(0).(func(string) int); ok {
-		r0 = returnFunc(id)
-	} else {
-		r0 = ret.Get(0).(int)
-	}
-	if returnFunc, ok := ret.Get(1).(func(string) error); ok {
-		r1 = returnFunc(id)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// themeMgtStoreInterfaceMock_GetApplicationsCountByThemeID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetApplicationsCountByThemeID'
-type themeMgtStoreInterfaceMock_GetApplicationsCountByThemeID_Call struct {
-	*mock.Call
-}
-
-// GetApplicationsCountByThemeID is a helper method to define mock.On call
-//   - id string
-func (_e *themeMgtStoreInterfaceMock_Expecter) GetApplicationsCountByThemeID(id interface{}) *themeMgtStoreInterfaceMock_GetApplicationsCountByThemeID_Call {
-	return &themeMgtStoreInterfaceMock_GetApplicationsCountByThemeID_Call{Call: _e.mock.On("GetApplicationsCountByThemeID", id)}
-}
-
-func (_c *themeMgtStoreInterfaceMock_GetApplicationsCountByThemeID_Call) Run(run func(id string)) *themeMgtStoreInterfaceMock_GetApplicationsCountByThemeID_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
-		if args[0] != nil {
-			arg0 = args[0].(string)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
-func (_c *themeMgtStoreInterfaceMock_GetApplicationsCountByThemeID_Call) Return(n int, err error) *themeMgtStoreInterfaceMock_GetApplicationsCountByThemeID_Call {
-	_c.Call.Return(n, err)
-	return _c
-}
-
-func (_c *themeMgtStoreInterfaceMock_GetApplicationsCountByThemeID_Call) RunAndReturn(run func(id string) (int, error)) *themeMgtStoreInterfaceMock_GetApplicationsCountByThemeID_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // GetTheme provides a mock function for the type themeMgtStoreInterfaceMock
 func (_mock *themeMgtStoreInterfaceMock) GetTheme(id string) (Theme, error) {
 	ret := _mock.Called(id)

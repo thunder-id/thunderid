@@ -42,7 +42,7 @@ const {default: useExportConfiguration} = await import('../useExportConfiguratio
 describe('useExportConfiguration', () => {
   const mockRequest: ExportRequest = {
     applications: ['*'],
-    identityProviders: ['*'],
+    connections: ['*'],
     flows: ['*'],
   };
 

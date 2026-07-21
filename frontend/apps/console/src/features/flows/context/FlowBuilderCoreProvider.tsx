@@ -18,7 +18,7 @@
 
 import {I18nDefaultConstants} from '@thunderid/i18n';
 import {Stack, Typography} from '@wso2/oxygen-ui';
-import {Settings} from '@wso2/oxygen-ui-icons-react';
+import {CogIcon} from '@wso2/oxygen-ui-icons-react';
 import {type EdgeTypes, type Node, type NodeTypes, ReactFlowProvider} from '@xyflow/react';
 import merge from 'lodash-es/merge';
 import startCase from 'lodash-es/startCase';
@@ -193,7 +193,7 @@ function FlowContextWrapper({
 
     setResourcePropertiesPanelHeadingRef.current(
       <Stack direction="row" className="sub-title" gap={1} alignItems="center">
-        <Settings />
+        <CogIcon />
         <Typography variant="h5">{headerText} Properties</Typography>
       </Stack>,
     );

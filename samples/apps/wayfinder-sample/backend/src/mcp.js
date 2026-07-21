@@ -24,6 +24,10 @@ import { z } from "zod";
 
 import { resolveUser, validateIdToken } from "./auth.js";
 import {
+    createAuthzenAuthorizer,
+    getAuthorizationMode,
+} from "./authzen.js";
+import {
   createBookingRecord,
   createUpgradeRequest,
   deleteBookingsForUser,
@@ -43,10 +47,10 @@ import {
   updateUpgradeStatus
 } from "./db.js";
 
-// Per-tool scope requirements. Mirrors the REST API's requireScope() guards so
-// each MCP tool enforces the same scope as the endpoint it wraps. Tools mapped
-// to null require only a valid token.
-const TOOL_SCOPES = {
+// Per-tool permission requirements. Scope mode checks these values in the
+// caller token; AuthZEN mode sends them to the PDP as action names. Tools
+// mapped to null require only a valid token.
+const TOOL_PERMISSIONS = {
   search_flights: null,
   recommend_bookings: "booking:recommend",
   search_hotels: null,
@@ -62,6 +66,16 @@ const TOOL_SCOPES = {
   get_pending_upgrade: "upgrade:read",
   process_upgrade: "upgrade:process"
 };
+
+let evaluateAuthzenAccess;
+
+function getAuthzenAuthorizer() {
+    if (!evaluateAuthzenAccess) {
+        evaluateAuthzenAccess = createAuthzenAuthorizer();
+    }
+
+    return evaluateAuthzenAccess;
+}
 
 function generateBookingReference() {
     return `WF-${randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
@@ -81,21 +95,41 @@ function toToolContent(data) {
     };
 }
 
-function requireToolScope(user, toolName) {
-    const required = TOOL_SCOPES[toolName];
+async function requireToolAuthorization(user, toolName) {
+    if (!Object.hasOwn(TOOL_PERMISSIONS, toolName)) {
+        throw new Error(`Missing permission mapping for tool ${toolName}`);
+    }
 
-    if (!required) {
+    const requiredPermission = TOOL_PERMISSIONS[toolName];
+
+    if (requiredPermission === null) {
+        return;
+    }
+
+    if (getAuthorizationMode() === "authzen") {
+        await getAuthzenAuthorizer()({
+            subject: {
+                id: user.id,
+            },
+            resource: {
+                type: "http://localhost:8787/mcp",
+            },
+            action: {
+                name: requiredPermission,
+            },
+        });
+
         return;
     }
 
     const scopes = user?.scopes || [];
 
-    if (!scopes.includes(required)) {
+    if (!scopes.includes(requiredPermission)) {
         const error = new Error(
-            `Insufficient scope for tool ${toolName}. Required: ${required}`,
+            `Insufficient scope for tool ${toolName}. Required: ${requiredPermission}`,
         );
         error.code = "insufficient_scope";
-        error.requiredScope = required;
+        error.requiredScope = requiredPermission;
         throw error;
     }
 }
@@ -139,11 +173,11 @@ function createTravelMcpServer(user, idToken) {
         version: "1.0.0",
     });
 
-    // Wrap server.tool with a per-tool scope check so authorization is enforced
-    // at the MCP layer rather than relying on the REST API downstream.
+    // Enforce the configured authorization mode at the MCP layer rather than
+    // relying on the REST API downstream.
     function tool(name, description, schema, handler) {
         server.tool(name, description, schema, async (args) => {
-            requireToolScope(user, name);
+            await requireToolAuthorization(user, name);
 
             return handler(args);
         });

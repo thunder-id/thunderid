@@ -65,12 +65,15 @@ thunderid-component:
     config:
       sqlite:
         path: "database/configdb.db"
-    runtime:
+    runtime_transient:
       sqlite:
-        path: "database/runtimedb.db"
-    user:
+        path: "database/runtime-transient.db"
+    entity:
       sqlite:
-        path: "database/userdb.db"
+        path: "database/entitydb.db"
+    runtime_persistent:
+      sqlite:
+        path: "database/runtime-persistent.db"
 
     # ── PostgreSQL (used when type: postgres) — uncomment and fill in ─────────
     # config:
@@ -81,19 +84,27 @@ thunderid-component:
     #     username: <DB_USERNAME>
     #     password: <DB_PASSWORD>
     #     sslmode: disable        # Use verify-full in production
-    # runtime:
+    # runtime_transient:
     #   postgres:
     #     hostname: <DB_HOST>
     #     port: 5432
-    #     name: runtimedb
+    #     name: runtime_transient
     #     username: <DB_USERNAME>
     #     password: <DB_PASSWORD>
     #     sslmode: disable
-    # user:
+    # entity:
     #   postgres:
     #     hostname: <DB_HOST>
     #     port: 5432
-    #     name: userdb
+    #     name: entitydb
+    #     username: <DB_USERNAME>
+    #     password: <DB_PASSWORD>
+    #     sslmode: disable
+    # runtime_persistent:
+    #   postgres:
+    #     hostname: <DB_HOST>
+    #     port: 5432
+    #     name: runtime_persistent
     #     username: <DB_USERNAME>
     #     password: <DB_PASSWORD>
     #     sslmode: disable
@@ -129,10 +140,6 @@ thunderid-component:
     scopes: '["openid", "profile", "email", "system"]'
 
   serverPublicUrl: "<SERVER_PUBLIC_URL>"  # ThunderID's externally accessible URL
-
-  consent:
-    enabled: false
-    baseUrl: "http://localhost:9090/api/v1"
 
   # ── OpenChoreo platform ──────────────────────────────────────────────────────
   dataPlane:

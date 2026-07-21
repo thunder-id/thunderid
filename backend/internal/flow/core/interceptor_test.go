@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/stretchr/testify/suite"
 
@@ -110,8 +111,83 @@ func (s *InterceptorTestSuite) TestInterceptorResponse_Fail() {
 	s.Nil(result.EngineOutputs)
 }
 
+// GetInputs tests
+
+func (s *InterceptorTestSuite) TestGetInputs_ReturnsNilByDefault() {
+	ic := newInterceptor(testInterceptorName, false, 1)
+	s.Nil(ic.GetInputs())
+}
+
+func (s *InterceptorTestSuite) TestGetInputs_ReturnsPopulatedInputs() {
+	ic := &interceptor{
+		Name:      testInterceptorName,
+		isDefault: false,
+		Priority:  1,
+		Inputs: []providers.Input{
+			{Identifier: "challenge", Type: "TEXT_INPUT", OneTimeUse: true},
+			{Identifier: "token", Type: "TEXT_INPUT", OneTimeUse: true},
+		},
+	}
+
+	inputs := ic.GetInputs()
+	s.Len(inputs, 2)
+	s.Equal("challenge", inputs[0].Identifier)
+	s.True(inputs[0].OneTimeUse)
+	s.Equal("token", inputs[1].Identifier)
+}
+
 // Interface compliance
 
 func (s *InterceptorTestSuite) TestInterceptor_ImplementsInterface() {
 	var _ InterceptorInterface = (*interceptor)(nil)
+}
+
+// InterceptorContext consumed inputs
+
+func (s *InterceptorTestSuite) TestInterceptorContext_ConsumeInput_RecordsAndReturnsValue() {
+	ic := &InterceptorContext{UserInputs: map[string]string{"captcha": "abc"}}
+
+	v, ok := ic.ConsumeInput("captcha")
+
+	s.True(ok)
+	s.Equal("abc", v)
+	s.Equal([]string{"captcha"}, ic.GetConsumedInputs())
+}
+
+func (s *InterceptorTestSuite) TestInterceptorContext_ConsumeInput_MissingKeyDoesNotRecord() {
+	ic := &InterceptorContext{UserInputs: map[string]string{"other": "x"}}
+
+	v, ok := ic.ConsumeInput("captcha")
+
+	s.False(ok)
+	s.Equal("", v)
+	s.Empty(ic.GetConsumedInputs())
+}
+
+func (s *InterceptorTestSuite) TestInterceptorContext_AppendConsumedInputs_AppendsWithoutReading() {
+	ic := &InterceptorContext{UserInputs: map[string]string{"a": "1"}}
+
+	ic.AppendConsumedInputs([]string{"a", "b"})
+
+	s.Equal([]string{"a", "b"}, ic.GetConsumedInputs())
+	s.Equal("1", ic.UserInputs["a"], "AppendConsumedInputs must not mutate UserInputs")
+}
+
+func (s *InterceptorTestSuite) TestInterceptorContext_AppendConsumedInputs_EmptyIsNoop() {
+	ic := &InterceptorContext{}
+
+	ic.AppendConsumedInputs(nil)
+	ic.AppendConsumedInputs([]string{})
+
+	s.Empty(ic.GetConsumedInputs())
+}
+
+func (s *InterceptorTestSuite) TestInterceptorContext_ConsumeInput_AccumulatesAcrossCalls() {
+	ic := &InterceptorContext{UserInputs: map[string]string{"a": "1", "b": "2"}}
+
+	ic.ConsumeInput("a")
+	ic.AppendConsumedInputs([]string{"c"})
+	ic.ConsumeInput("b")
+
+	s.Equal([]string{"a", "c", "b"}, ic.GetConsumedInputs())
 }

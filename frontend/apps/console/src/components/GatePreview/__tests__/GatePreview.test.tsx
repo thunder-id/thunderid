@@ -34,9 +34,13 @@ vi.mock('@thunderid/design', () => ({
   AcrylicOrangeTheme: {},
 }));
 
-vi.mock('@emotion/cache', () => ({
-  default: () => ({key: 'test', nonce: undefined, container: document.head, insert: vi.fn()}),
-}));
+vi.mock('@emotion/cache', async (importActual) => {
+  const actual = await importActual<typeof import('@emotion/cache')>();
+  return {
+    ...actual,
+    default: (options: Parameters<typeof actual.default>[0]) => actual.default({...options, container: document.head}),
+  };
+});
 
 vi.mock('@emotion/react', () => ({
   CacheProvider: ({children}: {children: React.ReactNode}) => children,

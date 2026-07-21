@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -27,12 +27,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
 
 var testPublicPaths = []string{
 	"/health/**",
-	"/auth/**",
 	"/flow/execute/**",
 	"/oauth2/**",
 	"/.well-known/openid-configuration/**",
@@ -44,24 +44,33 @@ var testPublicPaths = []string{
 	"/i18n/languages",
 	"/i18n/languages/*/translations/resolve",
 	"/i18n/languages/*/translations/ns/*/keys/*/resolve",
+	"/auth/**",
+	"/register/passkey/**",
+	"/access/**",
 }
 
 // SecurityServiceTestSuite defines the test suite for SecurityService
 type SecurityServiceTestSuite struct {
 	suite.Suite
-	service   *securityService
-	mockAuth1 *AuthenticatorInterfaceMock
-	mockAuth2 *AuthenticatorInterfaceMock
-	testCtx   *SecurityContext
+	service        *securityService
+	mockAuth1      *AuthenticatorInterfaceMock
+	mockAuth2      *AuthenticatorInterfaceMock
+	mockRevocation *RevocationEnforcerInterfaceMock
+	testCtx        *SecurityContext
 }
 
 func (suite *SecurityServiceTestSuite) SetupTest() {
 	suite.mockAuth1 = &AuthenticatorInterfaceMock{}
 	suite.mockAuth2 = &AuthenticatorInterfaceMock{}
+	suite.mockRevocation = &RevocationEnforcerInterfaceMock{}
+	// Default to "not revoked" so existing authentication paths pass; Maybe() keeps it optional for
+	// tests where authentication never yields a security context.
+	suite.mockRevocation.On("EnsureNotRevoked", mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	var err error
 	suite.service, err = newSecurityService(
-		[]AuthenticatorInterface{suite.mockAuth1, suite.mockAuth2}, testPublicPaths, apiPermissionEntries)
+		[]AuthenticatorInterface{suite.mockAuth1, suite.mockAuth2}, suite.mockRevocation,
+		testPublicPaths, apiPermissionEntries)
 	suite.Require().NoError(err)
 
 	// Create test authentication context with "system" permission so that
@@ -94,8 +103,8 @@ func (suite *SecurityServiceTestSuite) TestProcess_PublicPaths() {
 		name string
 		path string
 	}{
-		{"Auth path", "/auth/login"},
-		{"Auth path with subpath", "/auth/register/user"},
+		{"Gate path", "/gate/login"},
+		{"Gate path with subpath", "/gate/account/settings"},
 		{"OAuth2 token", "/oauth2/token"},
 		{"OAuth2 authorize", "/oauth2/authorize"},
 		{"OAuth2 well-known", "/oauth2/.well-known/openid_configuration"},
@@ -107,7 +116,7 @@ func (suite *SecurityServiceTestSuite) TestProcess_PublicPaths() {
 		{"Signin path with subpath", "/gate/forgot-password"},
 		{"Console path", "/console/dashboard"},
 		{"Console path with subpath", "/console/api/test"},
-		{"Auth without trailing slash", "/auth"},
+		{"Gate without trailing slash", "/gate"},
 		{"OAuth2 token without params", "/oauth2/token"},
 		{"Signin without trailing slash", "/gate/signin"},
 		{"Console without trailing slash", "/console"},
@@ -175,6 +184,13 @@ func (suite *SecurityServiceTestSuite) TestProcess_SuccessfulAuthentication_Seco
 	assert.Equal(suite.T(), "user123", userID)
 }
 
+// TestInitialize verifies the security middleware is constructed successfully.
+func (suite *SecurityServiceTestSuite) TestInitialize() {
+	mw, err := Initialize(nil, nil)
+	suite.Require().NoError(err)
+	suite.Require().NotNil(mw)
+}
+
 // Test Process method when no authenticator can handle the request
 func (suite *SecurityServiceTestSuite) TestProcess_NoHandlerFound() {
 	req := httptest.NewRequest(http.MethodGet, "/api/protected", nil)
@@ -205,6 +221,54 @@ func (suite *SecurityServiceTestSuite) TestProcess_AuthenticationFailure() {
 
 	assert.Nil(suite.T(), ctx)
 	assert.Equal(suite.T(), authError, err)
+}
+
+// Test Process rejects a request whose token has been revoked, before authorization.
+func (suite *SecurityServiceTestSuite) TestProcess_RevokedToken() {
+	req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
+
+	suite.testCtx.revocationID = "jti-123"
+	suite.mockAuth1.On("CanHandle", req).Return(true)
+	suite.mockAuth1.On("Authenticate", req).Return(suite.testCtx, nil)
+
+	mockRevocation := &RevocationEnforcerInterfaceMock{}
+	revokedErr := errors.New("token has been revoked")
+	mockRevocation.On("EnsureNotRevoked", mock.Anything, "jti-123").Return(revokedErr)
+
+	service, err := newSecurityService(
+		[]AuthenticatorInterface{suite.mockAuth1}, mockRevocation, testPublicPaths, apiPermissionEntries)
+	suite.Require().NoError(err)
+
+	ctx, err := service.Process(req)
+
+	assert.Nil(suite.T(), ctx)
+	// A revoked token is surfaced as an invalid token so the response does not disclose the reason.
+	assert.Equal(suite.T(), errInvalidToken, err)
+	mockRevocation.AssertExpectations(suite.T())
+}
+
+// Test Process consults the enforcer with the token's revocation identifier and proceeds when the
+// token is not revoked.
+func (suite *SecurityServiceTestSuite) TestProcess_NotRevokedToken() {
+	req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
+
+	suite.testCtx.revocationID = "jti-456"
+	suite.mockAuth1.On("CanHandle", req).Return(true)
+	suite.mockAuth1.On("Authenticate", req).Return(suite.testCtx, nil)
+
+	mockRevocation := &RevocationEnforcerInterfaceMock{}
+	mockRevocation.On("EnsureNotRevoked", mock.Anything, "jti-456").Return(nil)
+
+	service, err := newSecurityService(
+		[]AuthenticatorInterface{suite.mockAuth1}, mockRevocation, testPublicPaths, apiPermissionEntries)
+	suite.Require().NoError(err)
+
+	ctx, err := service.Process(req)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), ctx)
+	assert.Equal(suite.T(), "user123", GetSubject(ctx))
+	mockRevocation.AssertExpectations(suite.T())
 }
 
 // Test Process method with specific security errors
@@ -337,7 +401,7 @@ func (suite *SecurityServiceTestSuite) TestIsPublicPath() {
 
 // Test SecurityService with empty authenticators list
 func (suite *SecurityServiceTestSuite) TestProcess_EmptyAuthenticators() {
-	service, err := newSecurityService([]AuthenticatorInterface{}, testPublicPaths, apiPermissionEntries)
+	service, err := newSecurityService([]AuthenticatorInterface{}, nil, testPublicPaths, apiPermissionEntries)
 	suite.Require().NoError(err)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/protected", nil)
@@ -350,7 +414,7 @@ func (suite *SecurityServiceTestSuite) TestProcess_EmptyAuthenticators() {
 
 // Test SecurityService with nil authenticators list
 func (suite *SecurityServiceTestSuite) TestProcess_NilAuthenticators() {
-	service, err := newSecurityService(nil, testPublicPaths, apiPermissionEntries)
+	service, err := newSecurityService(nil, nil, testPublicPaths, apiPermissionEntries)
 	suite.Require().NoError(err)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/protected", nil)
@@ -405,7 +469,7 @@ func (suite *SecurityServiceTestSuite) TestProcess_PublicPathVariations() {
 	}{
 		// Test case sensitivity and exact matching
 		{"OAuth2 with query params", "/oauth2/token?grant_type=authorization_code"},
-		{"Auth with fragment", "/auth/login#section"},
+		{"Gate with fragment", "/gate/login#section"},
 		{"Well-known with path", "/oauth2/.well-known/openid_configuration"},
 		{"Nested signin path", "/gate/forgot-password/confirm"},
 		{"Deep console path", "/console/api/v1/test"},
@@ -468,7 +532,7 @@ func (suite *SecurityServiceTestSuite) TestNewSecurityService_Error() {
 
 	for _, tt := range tests {
 		suite.Run(tt.name, func() {
-			service, err := newSecurityService(nil, tt.publicPaths, tt.apiPerms)
+			service, err := newSecurityService(nil, nil, tt.publicPaths, tt.apiPerms)
 			assert.Error(suite.T(), err)
 			assert.Nil(suite.T(), service)
 			assert.Contains(suite.T(), err.Error(), tt.errContains)
@@ -478,7 +542,7 @@ func (suite *SecurityServiceTestSuite) TestNewSecurityService_Error() {
 
 // Test Process method with public path and valid token
 func (suite *SecurityServiceTestSuite) TestProcess_PublicPath_WithToken() {
-	req := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+	req := httptest.NewRequest(http.MethodGet, "/gate/login", nil)
 	// Add Authorization header to simulate optional auth
 	req.Header.Add("Authorization", "Bearer valid_token")
 
@@ -498,7 +562,7 @@ func (suite *SecurityServiceTestSuite) TestProcess_PublicPath_WithToken() {
 
 // Test Process method with public path and invalid token (optional auth failure)
 func (suite *SecurityServiceTestSuite) TestProcess_PublicPath_WithInvalidToken() {
-	req := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+	req := httptest.NewRequest(http.MethodGet, "/gate/login", nil)
 	// Add Authorization header
 	req.Header.Add("Authorization", "Bearer invalid_token")
 

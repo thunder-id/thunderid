@@ -45,9 +45,10 @@
   "dependencies": {
     "@docsearch/docusaurus-adapter": "catalog:",
     "@docusaurus/core": "3.9.2",
+    "@docusaurus/plugin-content-blog": "3.9.2",
     "@docusaurus/plugin-content-docs": "3.9.2",
     "@docusaurus/preset-classic": "3.9.2",
-    "@docusaurus/theme-common": "^3.10.1",
+    "@docusaurus/theme-common": "3.9.2",
     "@mdx-js/react": "3.0.0",
     "@scalar/api-reference-react": "0.9.38",
     "@thunderid/design": "workspace:^",

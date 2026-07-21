@@ -103,11 +103,13 @@ CREATE TABLE "INBOUND_CLIENT" (
     IS_REGISTRATION_FLOW_ENABLED CHAR(1) DEFAULT '1',
     RECOVERY_FLOW_ID VARCHAR(100),
     IS_RECOVERY_FLOW_ENABLED CHAR(1) DEFAULT '0',
+    SIGNOUT_FLOW_ID VARCHAR(100),
+    IS_SIGNOUT_FLOW_ENABLED CHAR(1) DEFAULT '0',
     THEME_ID VARCHAR(36),
     LAYOUT_ID VARCHAR(36),
     PROPERTIES TEXT,
-    FOREIGN KEY (THEME_ID) REFERENCES "THEME"(ID) ON DELETE RESTRICT,
-    FOREIGN KEY (LAYOUT_ID) REFERENCES "LAYOUT"(ID) ON DELETE RESTRICT
+    FOREIGN KEY (THEME_ID) REFERENCES "THEME"(ID) ON DELETE SET NULL,
+    FOREIGN KEY (LAYOUT_ID) REFERENCES "LAYOUT"(ID) ON DELETE SET NULL
 );
 
 -- Index for efficient lookups by theme.
@@ -180,8 +182,7 @@ CREATE TABLE "RESOURCE_SERVER" (
     OU_ID VARCHAR(36) NOT NULL,
     NAME VARCHAR(100) NOT NULL,
     DESCRIPTION TEXT,
-    HANDLE VARCHAR(100),
-    IDENTIFIER VARCHAR(2048),
+    IDENTIFIER VARCHAR(2048) NOT NULL,
     TYPE VARCHAR(20) CHECK (TYPE IS NULL OR TYPE IN ('API', 'MCP', 'CUSTOM')),
     PROPERTIES TEXT,
     CREATED_AT TEXT DEFAULT (datetime('now')),
@@ -192,15 +193,9 @@ CREATE TABLE "RESOURCE_SERVER" (
 -- Composite index for name-based resource server lookups
 CREATE INDEX idx_resource_server_name_deployment ON "RESOURCE_SERVER" (DEPLOYMENT_ID, NAME);
 
--- Unique constraint: Resource server handle must be unique per deployment (when not null)
-CREATE UNIQUE INDEX uq_resource_server_handle
-    ON "RESOURCE_SERVER"(HANDLE, DEPLOYMENT_ID)
-    WHERE HANDLE IS NOT NULL;
-
--- Unique constraint: Resource server identifier must be unique per deployment (when not null)
+-- Unique constraint: Resource server identifier must be unique per deployment
 CREATE UNIQUE INDEX uq_resource_server_identifier
-    ON "RESOURCE_SERVER"(IDENTIFIER, DEPLOYMENT_ID)
-    WHERE IDENTIFIER IS NOT NULL;
+    ON "RESOURCE_SERVER"(IDENTIFIER, DEPLOYMENT_ID);
 
 -- Table to store resources within resource servers.
 CREATE TABLE "RESOURCE" (

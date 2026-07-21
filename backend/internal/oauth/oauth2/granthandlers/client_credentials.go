@@ -27,17 +27,19 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // clientCredentialsGrantHandler handles the client credentials grant type.
 type clientCredentialsGrantHandler struct {
-	tokenBuilder    tokenservice.TokenBuilderInterface
-	ouService       providers.OrganizationUnitProvider
-	authzService    providers.AuthorizationProvider
-	actorProvider   providers.ActorProvider
-	resourceService providers.ResourceServerProvider
+	tokenBuilder        tokenservice.TokenBuilderInterface
+	ouService           providers.OrganizationUnitProvider
+	authzService        providers.AuthorizationProvider
+	actorProvider       providers.ActorProvider
+	resourceService     providers.ResourceServerProvider
+	serverConfigService serverconfig.ServerConfigService
 }
 
 // newClientCredentialsGrantHandler creates a new instance of ClientCredentialsGrantHandler.
@@ -47,13 +49,15 @@ func newClientCredentialsGrantHandler(
 	authzService providers.AuthorizationProvider,
 	actorProvider providers.ActorProvider,
 	resourceService providers.ResourceServerProvider,
+	serverConfigService serverconfig.ServerConfigService,
 ) GrantHandlerInterface {
 	return &clientCredentialsGrantHandler{
-		tokenBuilder:    tokenBuilder,
-		ouService:       ouService,
-		authzService:    authzService,
-		actorProvider:   actorProvider,
-		resourceService: resourceService,
+		tokenBuilder:        tokenBuilder,
+		ouService:           ouService,
+		authzService:        authzService,
+		actorProvider:       actorProvider,
+		resourceService:     resourceService,
+		serverConfigService: serverConfigService,
 	}
 }
 
@@ -81,69 +85,63 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ClientCredentialsGrantHandler"))
 
 	scopes := tokenservice.ParseScopes(tokenRequest.Scope)
-	hasResourceParam := len(tokenRequest.Resources) > 0
 
-	// Resolve each requested resource identifier to an internal Resource Server.
-	// Unknown identifiers cause a 400 invalid_target.
-	resolvedRSes, errResp := resourceindicators.ResolveResourceServers(ctx, h.resourceService, tokenRequest.Resources)
+	// A client_credentials token carries no OIDC scopes, so every requested scope is a permission
+	// scope. Bind the token to a single resource server (RFC 8707 resource or the configured
+	// default). A request with neither scopes nor a resource is not bound to a resource server: its
+	// audience is the client_id and it carries no scopes.
+	targetRS, errResp := resourceindicators.ResolveAudienceBinding(
+		ctx, h.resourceService, h.serverConfigService, tokenRequest.Resources, scopes)
 	if errResp != nil {
 		return nil, errResp
 	}
 
-	// Per-RS valid scopes (intersection of requested scopes with the RS's defined permissions).
-	// Scopes not defined on any requested RS are silently dropped.
-	rsValidScopes, errResp := resourceindicators.ComputeRSValidScopes(ctx, h.resourceService, resolvedRSes, scopes)
-	if errResp != nil {
-		return nil, errResp
-	}
+	audiences := []string{tokenRequest.ClientID}
+	if targetRS != nil {
+		audiences = []string{targetRS.Identifier}
 
-	if hasResourceParam {
-		scopes = resourceindicators.UnionScopes(rsValidScopes)
-	}
+		// Downscope requested scopes to permissions defined on the target resource server.
+		scopes, errResp = resourceindicators.DownscopeToResourceServer(ctx, h.resourceService, targetRS.ID, scopes)
+		if errResp != nil {
+			return nil, errResp
+		}
 
-	if len(scopes) > 0 {
-		var groupIDs []string
-		if h.actorProvider != nil {
-			groups, groupErr := h.actorProvider.GetActorGroups(oauthApp.ID)
-			if groupErr != nil {
-				logger.Error(ctx, "Failed to resolve app group memberships",
-					log.String("appID", oauthApp.ID), log.String("error", groupErr.Error.DefaultValue))
+		if len(scopes) > 0 {
+			var groupIDs []string
+			if h.actorProvider != nil {
+				groups, groupErr := h.actorProvider.GetActorGroups(oauthApp.ID)
+				if groupErr != nil {
+					logger.Error(ctx, "Failed to resolve app group memberships",
+						log.String("appID", oauthApp.ID), log.String("error", groupErr.Error.DefaultValue))
+					return nil, &model.ErrorResponse{
+						Error:            constants.ErrorServerError,
+						ErrorDescription: "Failed to generate token",
+					}
+				} else {
+					for _, group := range groups {
+						if group.ID != "" && !slices.Contains(groupIDs, group.ID) {
+							groupIDs = append(groupIDs, group.ID)
+						}
+					}
+				}
+			}
+
+			authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx,
+				buildAccessEvaluationsRequest(oauthApp.ID, groupIDs, scopes, targetRS.ID))
+			if svcErr != nil {
+				logger.Error(ctx, "Failed to get authorized permissions for app",
+					log.String("appID", oauthApp.ID), log.String("error", svcErr.Error.DefaultValue))
 				return nil, &model.ErrorResponse{
 					Error:            constants.ErrorServerError,
 					ErrorDescription: "Failed to generate token",
 				}
-			} else {
-				for _, group := range groups {
-					if group.ID != "" && !slices.Contains(groupIDs, group.ID) {
-						groupIDs = append(groupIDs, group.ID)
-					}
-				}
 			}
-		}
 
-		authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx,
-			buildAccessEvaluationsRequest(oauthApp.ID, groupIDs, scopes))
-		if svcErr != nil {
-			logger.Error(ctx, "Failed to get authorized permissions for app",
-				log.String("appID", oauthApp.ID), log.String("error", svcErr.Error.DefaultValue))
-			return nil, &model.ErrorResponse{
-				Error:            constants.ErrorServerError,
-				ErrorDescription: "Failed to generate token",
-			}
+			scopes = filterAuthorizedScopes(scopes, authzResp.Evaluations)
 		}
-
-		scopes = filterAuthorizedScopes(scopes, authzResp.Evaluations)
 	}
 
-	// aud is composed by resourceindicators.ComposeAudiences: RS identifiers when any RS contributes
-	// (explicit resource params or implicit discovery via granted scopes), else clientID fallback.
-	audiences, errResp := resourceindicators.ComposeAudiences(ctx, h.resourceService, tokenRequest.ClientID,
-		resolvedRSes, scopes)
-	if errResp != nil {
-		return nil, errResp
-	}
-
-	clientAttributes, clientAttrErr := tokenservice.BuildClientAttributes(ctx, oauthApp, h.ouService)
+	clientAttributes, clientAttrErr := tokenservice.BuildClientAttributes(ctx, oauthApp, h.ouService, h.actorProvider)
 	if clientAttrErr != nil {
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorServerError,
@@ -152,15 +150,15 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	}
 
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, &tokenservice.AccessTokenBuildContext{
-		Subject:          oauthApp.ID,
-		Audiences:        audiences,
-		ClientID:         tokenRequest.ClientID,
-		Scopes:           scopes,
-		UserAttributes:   make(map[string]interface{}),
-		GrantType:        string(providers.GrantTypeClientCredentials),
-		OAuthApp:         oauthApp,
-		ClientAttributes: clientAttributes,
-		DPoPJkt:          dpop.GetJkt(ctx),
+		Subject:           oauthApp.ID,
+		Audiences:         audiences,
+		ClientID:          tokenRequest.ClientID,
+		Scopes:            scopes,
+		SubjectAttributes: clientAttributes,
+		GrantType:         string(providers.GrantTypeClientCredentials),
+		OAuthApp:          oauthApp,
+		ValidityPeriod:    oauthApp.ClientAccessTokenConfig().ValidityPeriodOrZero(),
+		DPoPJkt:           dpop.GetJkt(ctx),
 	})
 	if err != nil {
 		return nil, &model.ErrorResponse{
@@ -178,6 +176,7 @@ func buildAccessEvaluationsRequest(
 	entityID string,
 	groupIDs []string,
 	permissions []string,
+	resourceServerID string,
 ) providers.AccessEvaluationsRequest {
 	evaluations := make([]providers.AccessEvaluationRequest, 0, len(permissions))
 	for _, permission := range permissions {
@@ -186,7 +185,8 @@ func buildAccessEvaluationsRequest(
 				ID:       entityID,
 				GroupIDs: groupIDs,
 			},
-			Permission: providers.Permission{Name: permission},
+			ResourceServer: providers.AccessEvaluationResourceServer{ID: resourceServerID},
+			Permission:     providers.Permission{Name: permission},
 		})
 	}
 	return providers.AccessEvaluationsRequest{Evaluations: evaluations}

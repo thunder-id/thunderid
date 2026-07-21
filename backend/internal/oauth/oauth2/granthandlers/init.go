@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -23,7 +23,9 @@ import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -41,7 +43,9 @@ func Initialize(
 	authzService providers.AuthorizationProvider,
 	actorProvider providers.ActorProvider,
 	resourceService providers.ResourceServerProvider,
+	serverConfigService serverconfig.ServerConfigService,
 	cibaService ciba.CIBAServiceInterface,
+	refreshTokenRevoker revocation.RefreshTokenRevokerInterface,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {
 	return newGrantHandlerProvider(
@@ -54,7 +58,9 @@ func Initialize(
 		authzService,
 		actorProvider,
 		resourceService,
+		serverConfigService,
 		cibaService,
+		refreshTokenRevoker,
 		cfg,
 	)
 }

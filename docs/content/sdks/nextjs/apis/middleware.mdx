@@ -1,7 +1,8 @@
 ---
 title: Middleware
+docType: reference
 displayed_sidebar: nextjsSdkSidebar
-description: Protect routes and refresh tokens with Next.js middleware
+description: Protect routes and refresh tokens automatically with Next.js Edge middleware using ThunderIDMiddleware.
 ---
 
 # Middleware
@@ -59,7 +60,7 @@ The `thunderid` object passed to your handler provides:
 
 Create a function that matches requests against a list of route patterns.
 
-```ts
+```typescript
 import { createRouteMatcher } from '@thunderid/nextjs/server'
 
 const isProtectedRoute = createRouteMatcher([

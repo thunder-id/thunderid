@@ -39,8 +39,8 @@ func (_m *FlowExecServiceInterfaceMock) EXPECT() *FlowExecServiceInterfaceMock_E
 }
 
 // Execute provides a mock function for the type FlowExecServiceInterfaceMock
-func (_mock *FlowExecServiceInterfaceMock) Execute(ctx context.Context, appID string, executionID string, flowType string, verbose bool, action string, inputs map[string]string, challengeToken string, flowSecret string) (*FlowStep, *common.ServiceError) {
-	ret := _mock.Called(ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken, flowSecret)
+func (_mock *FlowExecServiceInterfaceMock) Execute(ctx context.Context, appID string, executionID string, flowType string, verbose bool, action string, inputs map[string]string, challengeToken string, flowSecret string, attestationToken string) (*FlowStep, *common.ServiceError) {
+	ret := _mock.Called(ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken, flowSecret, attestationToken)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Execute")
@@ -48,18 +48,18 @@ func (_mock *FlowExecServiceInterfaceMock) Execute(ctx context.Context, appID st
 
 	var r0 *FlowStep
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, bool, string, map[string]string, string, string) (*FlowStep, *common.ServiceError)); ok {
-		return returnFunc(ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken, flowSecret)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, bool, string, map[string]string, string, string, string) (*FlowStep, *common.ServiceError)); ok {
+		return returnFunc(ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken, flowSecret, attestationToken)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, bool, string, map[string]string, string, string) *FlowStep); ok {
-		r0 = returnFunc(ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken, flowSecret)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, bool, string, map[string]string, string, string, string) *FlowStep); ok {
+		r0 = returnFunc(ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken, flowSecret, attestationToken)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*FlowStep)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, bool, string, map[string]string, string, string) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken, flowSecret)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, bool, string, map[string]string, string, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken, flowSecret, attestationToken)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -83,11 +83,12 @@ type FlowExecServiceInterfaceMock_Execute_Call struct {
 //   - inputs map[string]string
 //   - challengeToken string
 //   - flowSecret string
-func (_e *FlowExecServiceInterfaceMock_Expecter) Execute(ctx interface{}, appID interface{}, executionID interface{}, flowType interface{}, verbose interface{}, action interface{}, inputs interface{}, challengeToken interface{}, flowSecret interface{}) *FlowExecServiceInterfaceMock_Execute_Call {
-	return &FlowExecServiceInterfaceMock_Execute_Call{Call: _e.mock.On("Execute", ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken, flowSecret)}
+//   - attestationToken string
+func (_e *FlowExecServiceInterfaceMock_Expecter) Execute(ctx interface{}, appID interface{}, executionID interface{}, flowType interface{}, verbose interface{}, action interface{}, inputs interface{}, challengeToken interface{}, flowSecret interface{}, attestationToken interface{}) *FlowExecServiceInterfaceMock_Execute_Call {
+	return &FlowExecServiceInterfaceMock_Execute_Call{Call: _e.mock.On("Execute", ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken, flowSecret, attestationToken)}
 }
 
-func (_c *FlowExecServiceInterfaceMock_Execute_Call) Run(run func(ctx context.Context, appID string, executionID string, flowType string, verbose bool, action string, inputs map[string]string, challengeToken string, flowSecret string)) *FlowExecServiceInterfaceMock_Execute_Call {
+func (_c *FlowExecServiceInterfaceMock_Execute_Call) Run(run func(ctx context.Context, appID string, executionID string, flowType string, verbose bool, action string, inputs map[string]string, challengeToken string, flowSecret string, attestationToken string)) *FlowExecServiceInterfaceMock_Execute_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -125,6 +126,10 @@ func (_c *FlowExecServiceInterfaceMock_Execute_Call) Run(run func(ctx context.Co
 		if args[8] != nil {
 			arg8 = args[8].(string)
 		}
+		var arg9 string
+		if args[9] != nil {
+			arg9 = args[9].(string)
+		}
 		run(
 			arg0,
 			arg1,
@@ -135,6 +140,7 @@ func (_c *FlowExecServiceInterfaceMock_Execute_Call) Run(run func(ctx context.Co
 			arg6,
 			arg7,
 			arg8,
+			arg9,
 		)
 	})
 	return _c
@@ -145,7 +151,7 @@ func (_c *FlowExecServiceInterfaceMock_Execute_Call) Return(flowStep *FlowStep, 
 	return _c
 }
 
-func (_c *FlowExecServiceInterfaceMock_Execute_Call) RunAndReturn(run func(ctx context.Context, appID string, executionID string, flowType string, verbose bool, action string, inputs map[string]string, challengeToken string, flowSecret string) (*FlowStep, *common.ServiceError)) *FlowExecServiceInterfaceMock_Execute_Call {
+func (_c *FlowExecServiceInterfaceMock_Execute_Call) RunAndReturn(run func(ctx context.Context, appID string, executionID string, flowType string, verbose bool, action string, inputs map[string]string, challengeToken string, flowSecret string, attestationToken string) (*FlowStep, *common.ServiceError)) *FlowExecServiceInterfaceMock_Execute_Call {
 	_c.Call.Return(run)
 	return _c
 }

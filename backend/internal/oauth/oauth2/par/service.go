@@ -94,6 +94,9 @@ func (s *parService) HandlePushedAuthorizationRequest(
 	if errResp := resourceindicators.ValidateResourceURIs(resources); errResp != nil {
 		return nil, errResp.Error, errResp.ErrorDescription
 	}
+	if len(resources) > 1 {
+		return nil, oauth2const.ErrorInvalidTarget, "Only a single resource parameter is supported"
+	}
 
 	// Parse the claims parameter if present.
 	var claimsRequest *oauth2model.ClaimsRequest
@@ -109,6 +112,7 @@ func (s *parService) HandlePushedAuthorizationRequest(
 
 	scope := params[oauth2const.RequestParamScope]
 	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(scope, oauthApp.ScopeClaims)
+	oidcScopes = oauth2utils.FilterOIDCScopesByAllowedScopes(oidcScopes, oauthApp.Scopes)
 
 	// Resolve resource identifiers to Resource Servers and downscope non-OIDC scopes against
 	// the union of permissions defined on those Resource Servers. Unknown identifiers cause

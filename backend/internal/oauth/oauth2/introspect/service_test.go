@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -19,19 +19,13 @@
 package introspect
 
 import (
-	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
-
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"encoding/base64"
-	"encoding/json"
+	"errors"
 	"testing"
-	"time"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
-	"github.com/thunder-id/thunderid/internal/system/cryptolib"
-	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -40,13 +34,8 @@ import (
 
 type TokenIntrospectionServiceTestSuite struct {
 	suite.Suite
-	jwtServiceMock     *jwtmock.JWTServiceInterfaceMock
+	tokenValidatorMock *tokenservicemock.TokenValidatorInterfaceMock
 	introspectService  TokenIntrospectionServiceInterface
-	validToken         string
-	expiredToken       string
-	notBeforeToken     string
-	missingClaimsToken string
-	privateKey         *rsa.PrivateKey
 }
 
 func TestTokenIntrospectionServiceTestSuite(t *testing.T) {
@@ -54,21 +43,8 @@ func TestTokenIntrospectionServiceTestSuite(t *testing.T) {
 }
 
 func (s *TokenIntrospectionServiceTestSuite) SetupTest() {
-	s.jwtServiceMock = jwtmock.NewJWTServiceInterfaceMock(s.T())
-
-	// Create a private key for signing JWT tokens
-	var err error
-	s.privateKey, err = rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		s.T().Fatal("Error generating RSA key:", err)
-	}
-
-	s.introspectService = newTokenIntrospectionService(s.jwtServiceMock)
-
-	s.validToken = s.createValidToken()
-	s.expiredToken = s.createExpiredToken()
-	s.notBeforeToken = s.createNotBeforeToken()
-	s.missingClaimsToken = s.createMissingClaimsToken()
+	s.tokenValidatorMock = tokenservicemock.NewTokenValidatorInterfaceMock(s.T())
+	s.introspectService = newTokenIntrospectionService(s.tokenValidatorMock)
 }
 
 func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_EmptyToken() {
@@ -78,356 +54,9 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_EmptyToken() {
 	assert.Nil(s.T(), response)
 }
 
-func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_PublicKeyNotAvailable() {
-	s.jwtServiceMock.On("GetPublicKey").Return(nil).Maybe()
-	s.jwtServiceMock.On("VerifyJWT", mock.Anything, mock.Anything, "", "").Return(
-		&tidcommon.ServiceError{
-			Type: tidcommon.ServerErrorType,
-			Code: "PUBLIC_KEY_NOT_AVAILABLE",
-			Error: tidcommon.I18nMessage{
-				Key: "error.test.public_key_not_available", DefaultValue: "Public key not available",
-			},
-			ErrorDescription: tidcommon.I18nMessage{
-				Key:          "error.test.the_public_key_is_not_available_for_verification",
-				DefaultValue: "The public key is not available for verification",
-			},
-		})
-
-	response, err := s.introspectService.IntrospectToken(context.Background(), s.validToken, "")
-	assert.NoError(s.T(), err)
-	assert.NotNil(s.T(), response)
-	assert.False(s.T(), response.Active)
-	s.jwtServiceMock.AssertExpectations(s.T())
-}
-
-func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_InvalidSignature() {
-	s.jwtServiceMock.On("GetPublicKey").Return(&s.privateKey.PublicKey).Maybe()
-
-	// Use a different private key to create an invalid signature
-	differentKey, _ := rsa.GenerateKey(rand.Reader, 2048)
-	header := map[string]interface{}{"alg": "RS256", "typ": "JWT"}
+// A valid token is reported active with its claims surfaced in the response.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_ValidToken_Active() {
 	claims := map[string]interface{}{
-		"exp": float64(time.Now().Add(time.Hour).Unix()),
-		"nbf": float64(time.Now().Add(-time.Minute).Unix()),
-	}
-
-	headerBytes, _ := json.Marshal(header)
-	claimsBytes, _ := json.Marshal(claims)
-	headerEncoded := base64.RawURLEncoding.EncodeToString(headerBytes)
-	claimsEncoded := base64.RawURLEncoding.EncodeToString(claimsBytes)
-
-	signingInput := headerEncoded + "." + claimsEncoded
-	signature, err := cryptolib.Generate([]byte(signingInput), cryptolib.RSASHA256, differentKey)
-	if err != nil {
-		s.T().Fatal("Error signing token:", err)
-	}
-	signatureEncoded := base64.RawURLEncoding.EncodeToString(signature)
-
-	invalidToken := signingInput + "." + signatureEncoded
-
-	s.jwtServiceMock.On("VerifyJWT", mock.Anything, invalidToken, "", "").Return(
-		&tidcommon.ServiceError{
-			Type:  tidcommon.ServerErrorType,
-			Code:  "INVALID_SIGNATURE",
-			Error: tidcommon.I18nMessage{Key: "error.test.invalid_signature", DefaultValue: "Invalid signature"},
-			ErrorDescription: tidcommon.I18nMessage{
-				Key: "error.test.the_jwt_signature_is_invalid", DefaultValue: "The JWT signature is invalid",
-			},
-		})
-
-	// Test with a token having invalid signature
-	response, err := s.introspectService.IntrospectToken(context.Background(), invalidToken, "")
-	assert.NoError(s.T(), err)
-	assert.NotNil(s.T(), response)
-	assert.False(s.T(), response.Active)
-	s.jwtServiceMock.AssertExpectations(s.T())
-}
-
-func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_DecodeFailsAfterVerify() {
-	// Test case where VerifyJWT succeeds but DecodeJWT fails
-	// This can happen with a malformed JWT structure (e.g., missing dots or invalid base64)
-	malformedToken := "header.payload" // Missing signature part
-
-	s.jwtServiceMock.On("VerifyJWT", mock.Anything, malformedToken, "", "").Return(nil)
-
-	response, err := s.introspectService.IntrospectToken(context.Background(), malformedToken, "")
-	assert.NoError(s.T(), err)
-	assert.NotNil(s.T(), response)
-	assert.False(s.T(), response.Active)
-	s.jwtServiceMock.AssertExpectations(s.T())
-}
-
-func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken() {
-	testCases := []struct {
-		name           string
-		token          string
-		tokenFn        func(*TokenIntrospectionServiceTestSuite) string
-		expectError    bool
-		errorContains  string
-		active         bool
-		expectedFields map[string]interface{}
-	}{
-		{
-			name:        "InvalidTokenFormat",
-			token:       "not-a-valid-jwt-token",
-			expectError: false,
-			active:      false,
-		},
-		{
-			name:        "ExpiredToken",
-			tokenFn:     func(s *TokenIntrospectionServiceTestSuite) string { return s.expiredToken },
-			expectError: false,
-			active:      false,
-		},
-		{
-			name:        "FutureToken",
-			tokenFn:     func(s *TokenIntrospectionServiceTestSuite) string { return s.notBeforeToken },
-			expectError: false,
-			active:      false,
-		},
-		{
-			name:        "ValidToken",
-			tokenFn:     func(s *TokenIntrospectionServiceTestSuite) string { return s.validToken },
-			expectError: false,
-			active:      true,
-			expectedFields: map[string]interface{}{
-				"TokenType": constants.TokenTypeBearer,
-				"Scope":     "openid profile",
-				"ClientID":  "client123",
-				"Username":  "user@example.com",
-				"Sub":       "user123",
-				"Aud":       "api.example.com",
-				"Iss":       "https://example.com",
-				"Jti":       "token-id-123",
-			},
-		},
-		{
-			name:        "ValidTokenWithArrayAud",
-			tokenFn:     func(s *TokenIntrospectionServiceTestSuite) string { return s.createArrayAudToken() },
-			expectError: false,
-			active:      true,
-			expectedFields: map[string]interface{}{
-				"Aud": []string{"api.example.com", "api2.example.com"},
-			},
-		},
-		{
-			name: "TokenWithMissingExpClaim",
-			tokenFn: func(s *TokenIntrospectionServiceTestSuite) string {
-				claims := map[string]interface{}{
-					"nbf": float64(time.Now().Add(-time.Minute).Unix()),
-					"iat": float64(time.Now().Unix()),
-				}
-				return s.createToken(claims)
-			},
-			expectError: false,
-			active:      false,
-		},
-		{
-			name: "TokenWithMissingNbfClaim",
-			tokenFn: func(s *TokenIntrospectionServiceTestSuite) string {
-				claims := map[string]interface{}{
-					"exp": float64(time.Now().Add(time.Hour).Unix()),
-					"iat": float64(time.Now().Unix()),
-				}
-				return s.createToken(claims)
-			},
-			expectError: false,
-			active:      false,
-		},
-		{
-			name:        "TokenWithMissingOptionalClaims",
-			tokenFn:     func(s *TokenIntrospectionServiceTestSuite) string { return s.missingClaimsToken },
-			expectError: false,
-			active:      true,
-			expectedFields: map[string]interface{}{
-				"TokenType": constants.TokenTypeBearer,
-				"Scope":     "",
-				"ClientID":  "",
-				"Username":  "",
-				"Sub":       "",
-				"Aud":       nil,
-				"Iss":       "",
-				"Jti":       "",
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		s.Run(tc.name, func() {
-			s.jwtServiceMock.On("GetPublicKey").Return(&s.privateKey.PublicKey).Maybe()
-
-			var token string
-			if tc.token != "" {
-				token = tc.token
-			} else if tc.tokenFn != nil {
-				token = tc.tokenFn(s)
-			}
-
-			// Mock VerifyJWT based on test case
-			switch tc.name {
-			case "InvalidTokenFormat":
-				s.jwtServiceMock.On("VerifyJWT", mock.Anything, token, "", "").Return(
-					&tidcommon.ServiceError{
-						Type: tidcommon.ServerErrorType,
-						Code: "INVALID_TOKEN_FORMAT",
-						Error: tidcommon.I18nMessage{
-							Key: "error.test.invalid_token_format", DefaultValue: "Invalid token format",
-						},
-						ErrorDescription: tidcommon.I18nMessage{
-							Key: "error.test.the_token_format_is_invalid", DefaultValue: "The token format is invalid",
-						},
-					})
-			case "ExpiredToken":
-				s.jwtServiceMock.On("VerifyJWT", mock.Anything, token, "", "").Return(
-					&tidcommon.ServiceError{
-						Type: tidcommon.ClientErrorType,
-						Code: "TOKEN_EXPIRED",
-						Error: tidcommon.I18nMessage{
-							Key: "error.test.token_has_expired", DefaultValue: "Token has expired",
-						},
-						ErrorDescription: tidcommon.I18nMessage{
-							Key: "error.test.the_token_has_expired", DefaultValue: "The token has expired",
-						},
-					})
-			case "FutureToken":
-				s.jwtServiceMock.On("VerifyJWT", mock.Anything, token, "", "").Return(
-					&tidcommon.ServiceError{
-						Type: tidcommon.ClientErrorType,
-						Code: "TOKEN_NOT_VALID_YET",
-						Error: tidcommon.I18nMessage{
-							Key: "error.test.token_not_valid_yet", DefaultValue: "Token not valid yet",
-						},
-						ErrorDescription: tidcommon.I18nMessage{
-							Key:          "error.test.the_token_is_not_valid_yet_nbf",
-							DefaultValue: "The token is not valid yet (nbf)",
-						},
-					})
-			case "TokenWithMissingExpClaim":
-				s.jwtServiceMock.On("VerifyJWT", mock.Anything, token, "", "").Return(
-					&tidcommon.ServiceError{
-						Type: tidcommon.ClientErrorType,
-						Code: "MISSING_EXP_CLAIM",
-						Error: tidcommon.I18nMessage{
-							Key: "error.test.missing_exp_claim", DefaultValue: "Missing exp claim",
-						},
-						ErrorDescription: tidcommon.I18nMessage{
-							Key:          "error.test.missing_or_invalid_exp_claim",
-							DefaultValue: "Missing or invalid 'exp' claim",
-						},
-					})
-			case "TokenWithMissingNbfClaim":
-				s.jwtServiceMock.On("VerifyJWT", mock.Anything, token, "", "").Return(
-					&tidcommon.ServiceError{
-						Type: tidcommon.ClientErrorType,
-						Code: "MISSING_NBF_CLAIM",
-						Error: tidcommon.I18nMessage{
-							Key: "error.test.missing_nbf_claim", DefaultValue: "Missing nbf claim",
-						},
-						ErrorDescription: tidcommon.I18nMessage{
-							Key:          "error.test.missing_or_invalid_nbf_claim",
-							DefaultValue: "Missing or invalid 'nbf' claim",
-						},
-					})
-			case "ValidToken", "TokenWithMissingOptionalClaims":
-				s.jwtServiceMock.On("VerifyJWT", mock.Anything, token, "", "").Return(nil)
-			default:
-				s.jwtServiceMock.On("VerifyJWT", mock.Anything, token, "", "").Return(nil)
-			}
-
-			response, err := s.introspectService.IntrospectToken(context.Background(), token, "")
-
-			if tc.expectError {
-				assert.Error(s.T(), err)
-				if tc.errorContains != "" {
-					assert.Contains(s.T(), err.Error(), tc.errorContains)
-				}
-			} else {
-				assert.NoError(s.T(), err)
-				assert.NotNil(s.T(), response)
-				assert.Equal(s.T(), tc.active, response.Active)
-
-				if tc.expectedFields != nil && tc.active {
-					// Verify expected fields
-					for field, value := range tc.expectedFields {
-						switch field {
-						case "TokenType":
-							assert.Equal(s.T(), value, response.TokenType)
-						case "Scope":
-							assert.Equal(s.T(), value, response.Scope)
-						case "ClientID":
-							assert.Equal(s.T(), value, response.ClientID)
-						case "Username":
-							assert.Equal(s.T(), value, response.Username)
-						case "Sub":
-							assert.Equal(s.T(), value, response.Sub)
-						case "Aud":
-							assert.Equal(s.T(), value, response.Aud)
-						case "Iss":
-							assert.Equal(s.T(), value, response.Iss)
-						case "Jti":
-							assert.Equal(s.T(), value, response.Jti)
-						}
-					}
-				}
-			}
-			s.jwtServiceMock.AssertExpectations(s.T())
-		})
-	}
-}
-
-// TestIntrospectToken_DPoPBoundToken_SurfacesCnfAndDPoPType verifies that a token
-// carrying cnf.jkt is reported with token_type=DPoP and the cnf claim is surfaced.
-func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_DPoPBoundToken_SurfacesCnfAndDPoPType() {
-	claims := map[string]any{
-		"exp":       float64(time.Now().Add(time.Hour).Unix()),
-		"nbf":       float64(time.Now().Add(-time.Minute).Unix()),
-		"iat":       float64(time.Now().Unix()),
-		"sub":       "user123",
-		"client_id": "client123",
-		"cnf":       map[string]any{"jkt": "thumbprint-abc"},
-	}
-	token := s.createToken(claims)
-
-	s.jwtServiceMock.On("GetPublicKey").Return(&s.privateKey.PublicKey).Maybe()
-	s.jwtServiceMock.On("VerifyJWT", mock.Anything, token, "", "").Return(nil)
-
-	response, err := s.introspectService.IntrospectToken(context.Background(), token, "")
-	assert.NoError(s.T(), err)
-	assert.NotNil(s.T(), response)
-	assert.True(s.T(), response.Active)
-	assert.Equal(s.T(), constants.TokenTypeDPoP, response.TokenType)
-	assert.NotNil(s.T(), response.Cnf)
-	assert.Equal(s.T(), "thumbprint-abc", response.Cnf.Jkt)
-}
-
-// Helper methods to create tokens with specific claims
-func (s *TokenIntrospectionServiceTestSuite) createToken(claims map[string]interface{}) string {
-	header := map[string]interface{}{
-		"alg": "RS256",
-		"typ": "JWT",
-	}
-
-	headerBytes, _ := json.Marshal(header)
-	claimsBytes, _ := json.Marshal(claims)
-
-	headerEncoded := base64.RawURLEncoding.EncodeToString(headerBytes)
-	claimsEncoded := base64.RawURLEncoding.EncodeToString(claimsBytes)
-
-	signingInput := headerEncoded + "." + claimsEncoded
-	signature, err := cryptolib.Generate([]byte(signingInput), cryptolib.RSASHA256, s.privateKey)
-	if err != nil {
-		s.T().Fatal("Error signing token:", err)
-	}
-	signatureEncoded := base64.RawURLEncoding.EncodeToString(signature)
-
-	return signingInput + "." + signatureEncoded
-}
-
-func (s *TokenIntrospectionServiceTestSuite) createValidToken() string {
-	claims := map[string]interface{}{
-		"exp":       float64(time.Now().Add(time.Hour).Unix()),
-		"nbf":       float64(time.Now().Add(-time.Minute).Unix()),
-		"iat":       float64(time.Now().Unix()),
 		"jti":       "token-id-123",
 		"scope":     "openid profile",
 		"client_id": "client123",
@@ -436,60 +65,104 @@ func (s *TokenIntrospectionServiceTestSuite) createValidToken() string {
 		"aud":       "api.example.com",
 		"iss":       "https://example.com",
 	}
+	s.tokenValidatorMock.On("ValidateToken", mock.Anything, "valid-token").Return(claims, nil)
 
-	return s.createToken(claims)
+	response, err := s.introspectService.IntrospectToken(context.Background(), "valid-token", "")
+
+	assert.NoError(s.T(), err)
+	assert.NotNil(s.T(), response)
+	assert.True(s.T(), response.Active)
+	assert.Equal(s.T(), constants.TokenTypeBearer, response.TokenType)
+	assert.Equal(s.T(), "openid profile", response.Scope)
+	assert.Equal(s.T(), "client123", response.ClientID)
+	assert.Equal(s.T(), "user@example.com", response.Username)
+	assert.Equal(s.T(), "user123", response.Sub)
+	assert.Equal(s.T(), "api.example.com", response.Aud)
+	assert.Equal(s.T(), "https://example.com", response.Iss)
+	assert.Equal(s.T(), "token-id-123", response.Jti)
 }
 
-func (s *TokenIntrospectionServiceTestSuite) createExpiredToken() string {
+// An array audience claim is surfaced as a string slice.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_ArrayAudience() {
 	claims := map[string]interface{}{
-		"exp":       float64(time.Now().Add(-time.Hour).Unix()), // Expired
-		"nbf":       float64(time.Now().Add(-time.Hour * 2).Unix()),
-		"iat":       float64(time.Now().Add(-time.Hour * 3).Unix()),
-		"jti":       "expired-token-123",
-		"scope":     "openid profile",
-		"client_id": "client123",
-		"username":  "user@example.com",
+		"aud": []interface{}{"api.example.com", "api2.example.com"},
+	}
+	s.tokenValidatorMock.On("ValidateToken", mock.Anything, "array-aud-token").Return(claims, nil)
+
+	response, err := s.introspectService.IntrospectToken(context.Background(), "array-aud-token", "")
+
+	assert.NoError(s.T(), err)
+	assert.True(s.T(), response.Active)
+	assert.Equal(s.T(), []string{"api.example.com", "api2.example.com"}, response.Aud)
+}
+
+// A valid token missing optional claims is still active, with empty optional fields.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_MissingOptionalClaims_Active() {
+	s.tokenValidatorMock.On("ValidateToken", mock.Anything, "sparse-token").
+		Return(map[string]interface{}{}, nil)
+
+	response, err := s.introspectService.IntrospectToken(context.Background(), "sparse-token", "")
+
+	assert.NoError(s.T(), err)
+	assert.True(s.T(), response.Active)
+	assert.Equal(s.T(), constants.TokenTypeBearer, response.TokenType)
+	assert.Empty(s.T(), response.Scope)
+	assert.Empty(s.T(), response.ClientID)
+	assert.Empty(s.T(), response.Sub)
+	assert.Empty(s.T(), response.Jti)
+}
+
+// An invalid token (bad signature, expired, malformed, …) is reported inactive per RFC 7662.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_InvalidToken_IsInactive() {
+	s.tokenValidatorMock.On("ValidateToken", mock.Anything, "invalid-token").
+		Return(nil, errors.New("token verification failed"))
+
+	response, err := s.introspectService.IntrospectToken(context.Background(), "invalid-token", "")
+
+	assert.NoError(s.T(), err)
+	assert.NotNil(s.T(), response)
+	assert.False(s.T(), response.Active)
+}
+
+// A revoked but otherwise valid token is reported inactive (RFC 7009 deny-list enforcement).
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_RevokedToken_IsInactive() {
+	s.tokenValidatorMock.On("ValidateToken", mock.Anything, "revoked-token").
+		Return(nil, revocation.ErrTokenRevoked)
+
+	response, err := s.introspectService.IntrospectToken(context.Background(), "revoked-token", "")
+
+	assert.NoError(s.T(), err)
+	assert.NotNil(s.T(), response)
+	assert.False(s.T(), response.Active)
+}
+
+// When the deny list cannot be consulted, introspection fails closed with a server error rather
+// than asserting the token is active.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_EnforcementUnavailable_FailsClosed() {
+	s.tokenValidatorMock.On("ValidateToken", mock.Anything, "some-token").
+		Return(nil, revocation.ErrEnforcementUnavailable)
+
+	response, err := s.introspectService.IntrospectToken(context.Background(), "some-token", "")
+
+	assert.Error(s.T(), err)
+	assert.Nil(s.T(), response)
+}
+
+// A token carrying cnf.jkt is reported with token_type=DPoP and the cnf claim is surfaced.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_DPoPBoundToken_SurfacesCnfAndDPoPType() {
+	claims := map[string]interface{}{
 		"sub":       "user123",
-		"aud":       "api.example.com",
-		"iss":       "https://example.com",
-	}
-
-	return s.createToken(claims)
-}
-
-func (s *TokenIntrospectionServiceTestSuite) createNotBeforeToken() string {
-	claims := map[string]interface{}{
-		"exp":       float64(time.Now().Add(time.Hour).Unix()),
-		"nbf":       float64(time.Now().Add(time.Hour).Unix()), // Not valid yet
-		"iat":       float64(time.Now().Unix()),
-		"jti":       "future-token-123",
-		"scope":     "openid profile",
 		"client_id": "client123",
-		"username":  "user@example.com",
-		"sub":       "user123",
-		"aud":       "api.example.com",
-		"iss":       "https://example.com",
+		"cnf":       map[string]interface{}{"jkt": "thumbprint-abc"},
 	}
+	s.tokenValidatorMock.On("ValidateToken", mock.Anything, "dpop-token").Return(claims, nil)
 
-	return s.createToken(claims)
-}
+	response, err := s.introspectService.IntrospectToken(context.Background(), "dpop-token", "")
 
-func (s *TokenIntrospectionServiceTestSuite) createMissingClaimsToken() string {
-	claims := map[string]interface{}{
-		"exp": float64(time.Now().Add(time.Hour).Unix()),
-		"nbf": float64(time.Now().Add(-time.Minute).Unix()),
-	}
-
-	return s.createToken(claims)
-}
-
-func (s *TokenIntrospectionServiceTestSuite) createArrayAudToken() string {
-	claims := map[string]interface{}{
-		"exp": float64(time.Now().Add(time.Hour).Unix()),
-		"nbf": float64(time.Now().Add(-time.Minute).Unix()),
-		"iat": float64(time.Now().Unix()),
-		"aud": []string{"api.example.com", "api2.example.com"},
-	}
-
-	return s.createToken(claims)
+	assert.NoError(s.T(), err)
+	assert.NotNil(s.T(), response)
+	assert.True(s.T(), response.Active)
+	assert.Equal(s.T(), constants.TokenTypeDPoP, response.TokenType)
+	assert.NotNil(s.T(), response.Cnf)
+	assert.Equal(s.T(), "thumbprint-abc", response.Cnf.Jkt)
 }

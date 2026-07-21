@@ -1,15 +1,16 @@
 ---
 title: View Profile
+docType: use-case
 description: Display and update a user's profile attributes and password in your own application.
 sidebar_position: 4
 ---
 
 # View Profile
 
-This walkthrough configures <ProductName /> for self-service profile management. Users can view the attributes stored about them, update those attributes, and change their password — all without leaving your application.
+This walkthrough configures <ProductName /> for self-service profile management. Users can view the attributes stored about them, update those attributes, and change their password, all without leaving your application.
 
 :::info Background
-[Add Self-Service Profile Management](../../customer-identity#add-self-service-profile-management) covers the requirements story behind this use case.
+[B2C Identity Overview](../..) covers the requirements story behind this use case.
 :::
 
 :::note Prerequisites
@@ -21,7 +22,7 @@ Complete the [Login](../add-login) walkthrough first. The user type and applicat
 <details open>
   <summary>Redirect-based</summary>
 
-In the redirect-based pattern, your application renders the profile UI itself. Profile attributes are read from the ID token on sign-in. Attribute updates and credential changes go to <ProductName />'s self-service endpoints, which act on the signed-in user's own record — no additional permissions are needed beyond the access token.
+In the redirect-based pattern, your application renders the profile UI itself. Profile attributes are read from the ID token on sign-in. Attribute updates and credential changes go to <ProductName />'s self-service endpoints, which act on the signed-in user's own record: no additional permissions are needed beyond the access token.
 
 ### Configure <ProductName />
 
@@ -29,13 +30,13 @@ In the redirect-based pattern, your application renders the profile UI itself. P
 
 Navigate to **User Types** and open your consumer user type. Add any attributes you want users to view or update (for example, `given_name`, `family_name`). Mark attributes you want users to be able to update as non-credential, non-unique fields.
 
-See [User Types](/docs/next/guides/guides/users/user-types).
+See [User Types](../../../../guides/guides/users/user-types).
 
 **2. Ensure your application allows the required scopes**
 
 Navigate to **Applications** → your app. Under **Allowed Scopes**, confirm that `openid`, `profile`, and `email` are listed. These scopes allow the ID token to include the user's name and email attributes.
 
-See [Manage Applications](/docs/next/guides/guides/applications/manage-applications).
+See [Manage Applications](../../../../guides/guides/applications/manage-applications).
 
 ### Integrate into Your App
 
@@ -43,10 +44,10 @@ Your app reads profile attributes from the ID token and calls the self-service e
 
 | Framework   | Where to integrate                                                                                                                                          |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| React       | [React SDK Overview](/docs/next/sdks/react/overview) — [`<UserProfile />`](/docs/next/sdks/react/apis/components/user-profile) for the full profile UI, [`<User />`](/docs/next/sdks/react/apis/components/user) to read user attributes                               |
-| Next.js     | [Next.js Quickstart](/docs/next/guides/getting-started/connect-your-application/nextjs)                                                                     |
-| Vue         | [Vue Quickstart](/docs/next/guides/getting-started/connect-your-application/vue)                                                                            |
-| Browser SDK | [Browser SDK Overview](/docs/next/sdks/browser/overview)                                                                                                    |
+| React       | [React SDK Overview](../../../../sdks/react/overview), [`<UserProfile />`](../../../../sdks/react/apis/components/user-profile) for the full profile UI, [`<User />`](../../../../sdks/react/apis/components/user) to read user attributes                               |
+| Next.js     | [Next.js Quickstart](../../../../guides/getting-started/connect-your-application/nextjs)                                                                     |
+| Vue         | [Vue Quickstart](../../../../guides/getting-started/connect-your-application/vue)                                                                            |
+| Browser SDK | [Browser SDK Overview](../../../../sdks/browser/overview)                                                                                                    |
 
 For direct API access, profile attributes are read and updated through the self-service endpoints:
 
@@ -56,7 +57,7 @@ For direct API access, profile attributes are read and updated through the self-
 | Update attributes | `/users/me`                          | PATCH  |
 | Change password   | `/users/me/update-credentials`       | POST   |
 
-See the [APIs reference](/docs/next/apis).
+See the [APIs reference](../../../../apis).
 
 ### Try It Out
 
@@ -70,25 +71,25 @@ See the [APIs reference](/docs/next/apis).
 <details>
   <summary>App-native step-by-step</summary>
 
-Coming soon. See the [App-native pattern](../../solution-patterns#app-native) for what to expect.
+Coming soon. See the [App-native pattern](../../integration-patterns#app-native) for what to expect.
 
 </details>
 
 <details>
   <summary>App-native managed</summary>
 
-Coming soon. See the [App-native pattern](../../solution-patterns#app-native) for what to expect.
+Coming soon. See the [App-native pattern](../../integration-patterns#app-native) for what to expect.
 
 </details>
 
 <details>
   <summary>Direct API</summary>
 
-Coming soon. See the [Direct API pattern](../../solution-patterns#direct-api) for what to expect.
+Coming soon. See the [Direct API pattern](../../integration-patterns#direct-api) for what to expect.
 
 </details>
 
 ## Going Deeper
 
 - Want to understand which attributes are stored on a user record? See [User Types](../../identity-concepts#user-types) in Identity Concepts.
-- Want to see this use case running against the Wayfinder sample? See [View Profile — Try It Out](../../try-it-out/profile-section).
+- Want to see this use case running against the Wayfinder sample? See [View Profile: Try It Out](../../try-it-out/profile-section).

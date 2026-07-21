@@ -72,7 +72,7 @@ func (suite *OUExecutorTestSuite) SetupTest() {
 
 	// Mock the CreateExecutor method to return a base executor
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameOUCreation, providers.ExecutorTypeRegistration,
-		defaultInputs, []providers.Input{}).
+		defaultInputs, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor("TestOUExecutor", providers.ExecutorTypeUtility, defaultInputs, []providers.Input{}))
 
 	suite.executor = newOUExecutor(
@@ -135,7 +135,7 @@ func (suite *OUExecutorTestSuite) TestNewOUExecutor() {
 
 	// Mock the CreateExecutor method
 	mockFlowFactory.On("CreateExecutor", ExecutorNameOUCreation, providers.ExecutorTypeRegistration,
-		defaultInputs, []providers.Input{}).
+		defaultInputs, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor("OUExecutor", providers.ExecutorTypeRegistration, defaultInputs, []providers.Input{}))
 
 	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(suite.T())

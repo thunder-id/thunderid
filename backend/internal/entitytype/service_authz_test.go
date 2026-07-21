@@ -32,7 +32,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
-	"github.com/thunder-id/thunderid/tests/mocks/consentmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
@@ -659,14 +658,10 @@ func (s *AuthzTestSuite) TestDeleteEntityType_NilAuthz_NoError() {
 		Return(EntityType{ID: "schema-1", OUID: testOUID1}, nil)
 	storeMock.On("DeleteEntityTypeByID", mock.Anything, mock.Anything, "schema-1").Return(nil)
 
-	consentMock := consentmock.NewConsentServiceInterfaceMock(s.T())
-	consentMock.On("IsEnabled").Return(false)
-
 	svc := &entityTypeService{
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    nil,
-		consentService:  consentMock,
 	}
 
 	svcErr := svc.DeleteEntityType(context.Background(), TypeCategoryUser, "schema-1")

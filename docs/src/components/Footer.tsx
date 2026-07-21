@@ -111,9 +111,9 @@ export default function Footer(): JSX.Element {
           <FooterColumn
             title="Product"
             links={[
-              {label: 'Docs', href: '/docs/next/guides/getting-started/what-is-thunderid'},
+              {label: 'Docs', href: '/docs/next/guides/getting-started/get-thunderid'},
               {label: 'APIs', href: '/docs/next/apis'},
-              {label: 'SDKs', href: '/docs/next/sdks/overview'},
+              {label: 'SDKs', href: '/sdks'},
             ]}
           />
 
@@ -159,39 +159,24 @@ export default function Footer(): JSX.Element {
               fontSize: '0.75rem',
             }}
           >
-            &copy; WSO2 LLC. All rights reserved.
+            &copy; Copyright Linux Foundation Europe.
           </Typography>
           <Typography
-            component={Link}
-            href="/privacy-policy"
             variant="caption"
             sx={{
               color: 'text.disabled',
               fontSize: '0.75rem',
-              textDecoration: 'none',
-              '&:hover': {
-                color: 'text.secondary',
-                textDecoration: 'none',
-              },
             }}
           >
-            Privacy Policy
-          </Typography>
-          <Typography
-            component={Link}
-            href="/cookie-policy"
-            variant="caption"
-            sx={{
-              color: 'text.disabled',
-              fontSize: '0.75rem',
-              textDecoration: 'none',
-              '&:hover': {
-                color: 'text.secondary',
-                textDecoration: 'none',
-              },
-            }}
-          >
-            Cookie Policy
+            For web site terms of use, trademark policy and other project policies please see {''}
+            <Link
+              href="https://linuxfoundation.eu/en/policies"
+              target="_blank"
+              rel="noopener noreferrer"
+              underline="hover"
+            >
+              https://linuxfoundation.eu/en/policies.
+            </Link>
           </Typography>
         </Box>
       </Container>

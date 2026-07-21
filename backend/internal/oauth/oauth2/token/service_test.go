@@ -815,3 +815,61 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_WithRefreshToken_Use
 	assert.NotNil(suite.T(), tokenResp)
 	assert.Equal(suite.T(), "access-token-123", tokenResp.AccessToken)
 }
+
+func (suite *TokenServiceTestSuite) TestProcessTokenRequest_CIBA_RefreshTokenUsesResourceAudience() {
+	// A resource-bound CIBA access token carries its RS identifier as OriginalAudiences; the refresh
+	// token issued for the CIBA grant must inherit that single RS audience for continuity (RFC 8707).
+	req := &model.TokenRequest{
+		ClientID:  "test-client-id",
+		GrantType: string(providers.GrantTypeCIBA),
+		AuthReqID: "auth-req-1",
+	}
+	app := &providers.OAuthClient{
+		ClientID: "test-client-id",
+		GrantTypes: []providers.GrantType{
+			providers.GrantTypeCIBA,
+			providers.GrantTypeRefreshToken,
+		},
+	}
+
+	suite.mockGrantProvider.ExpectedCalls = nil
+	suite.mockGrantProvider.
+		On("GetGrantHandler", providers.GrantTypeCIBA).
+		Return(suite.mockGrantHandler, nil)
+
+	mockRefreshHandler := granthandlersmock.NewRefreshTokenGrantHandlerInterfaceMock(suite.T())
+	suite.mockGrantProvider.
+		On("GetGrantHandler", providers.GrantTypeRefreshToken).
+		Return(mockRefreshHandler, nil)
+
+	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
+	suite.mockScopeValidator.On("ValidateScopes", mock.Anything, "", "test-client-id").Return("", nil)
+
+	tokenRespDTO := &model.TokenResponseDTO{
+		AccessToken: model.TokenDTO{
+			Token:             "access-token-123",
+			TokenType:         "Bearer",
+			ExpiresIn:         3600,
+			Scopes:            []string{"openid", "read"},
+			Subject:           "user-1",
+			Audiences:         []string{"https://api.example.com"},
+			OriginalAudiences: []string{"https://api.example.com"},
+		},
+		RefreshToken: model.TokenDTO{Token: ""},
+		IDToken:      model.TokenDTO{Token: ""},
+	}
+	suite.mockGrantHandler.On("HandleGrant", mock.Anything, mock.Anything, app).Return(tokenRespDTO, nil)
+
+	mockRefreshHandler.
+		On("IssueRefreshToken", mock.Anything, tokenRespDTO, app, "user-1",
+			[]string{"https://api.example.com"},
+			string(providers.GrantTypeCIBA), []string{"openid", "read"}, (*model.ClaimsRequest)(nil), "", "").
+		Return(nil)
+
+	svc := suite.newService()
+	tokenResp, errResp := svc.ProcessTokenRequest(context.Background(), req, app)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), tokenResp)
+	assert.Equal(suite.T(), "access-token-123", tokenResp.AccessToken)
+}

@@ -1,6 +1,7 @@
 ---
 title: Advanced Setup (Manual Mode)
-description: Manually run frontend components without make run commands.
+docType: community
+description: Manually run ThunderID frontend components without the make run commands for granular control.
 sidebar_position: 4
 hide_table_of_contents: false
 ---
@@ -9,7 +10,7 @@ hide_table_of_contents: false
 
 For developers who want to run frontend components separately without using `make run` commands.
 
-### Installing Dependencies
+## Installing Dependencies
 
 1. Navigate to the <ProductName /> frontend directory.
 
@@ -23,7 +24,7 @@ cd frontend
 pnpm install
 ```
 
-### Building the Project
+## Building the Project
 
 Execute the build command to compile the project. This will build all the necessary packages and applications.
 
@@ -31,7 +32,7 @@ Execute the build command to compile the project. This will build all the necess
 pnpm build
 ```
 
-### Seed Data (Optional)
+## Seed Data (Optional)
 
 **Note**: This step is only necessary if you are running the backend server manually and have not yet set up the initial data.
 
@@ -45,7 +46,7 @@ PUBLIC_URL="https://localhost:8090" \
 
 This runs the in-process `bootstrap` subcommand, which creates the default resources (including the `Console` application and the default admin user) directly through the service layer. No temporary server or security bypass is involved, and it is idempotent if re-run.
 
-### Setting up the <ProductName /> Gate Application
+## Setting up the <ProductName /> Gate Application
 
 1. Point the `gate_client` in `deployment.yaml` to the local <ProductName /> Gate application.
 
@@ -73,7 +74,7 @@ cd frontend
 pnpm --filter @thunderid/gate dev
 ```
 
-### Setting up the <ProductName /> Console Application
+## Setting up the <ProductName /> Console Application
 
 **IMPORTANT**: This section assumes that you have already created the `Console` application using the initial data setup script. If not, please refer to the [Seed Data](#seed-data-optional) section above.
 

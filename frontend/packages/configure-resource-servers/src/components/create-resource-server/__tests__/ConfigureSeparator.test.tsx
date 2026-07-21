@@ -22,34 +22,26 @@ import ConfigureSeparator from '../ConfigureSeparator';
 
 describe('ConfigureSeparator', () => {
   it('renders the separator select element', () => {
-    render(<ConfigureSeparator delimiter=":" handle="my-api" onDelimiterChange={vi.fn()} />);
+    render(<ConfigureSeparator delimiter=":" onDelimiterChange={vi.fn()} />);
 
     expect(screen.getByRole('combobox')).toBeInTheDocument();
   });
 
-  it('renders the permission preview using the provided handle', () => {
-    render(<ConfigureSeparator delimiter=":" handle="payments-api" onDelimiterChange={vi.fn()} />);
+  it('renders the permission preview without a resource server prefix', () => {
+    render(<ConfigureSeparator delimiter=":" onDelimiterChange={vi.fn()} />);
 
-    expect(screen.getByText('payments-api:<resource>:<action>')).toBeInTheDocument();
-  });
-
-  it('uses "my-api" as fallback handle in preview when handle is empty', () => {
-    render(<ConfigureSeparator delimiter=":" handle="" onDelimiterChange={vi.fn()} />);
-
-    expect(screen.getByText('my-api:<resource>:<action>')).toBeInTheDocument();
+    expect(screen.getByText('<resource>:<action>')).toBeInTheDocument();
   });
 
   it('renders preview using dot separator', () => {
-    render(<ConfigureSeparator delimiter="." handle="my-api" onDelimiterChange={vi.fn()} />);
+    render(<ConfigureSeparator delimiter="." onDelimiterChange={vi.fn()} />);
 
-    expect(screen.getByText('my-api.<resource>.<action>')).toBeInTheDocument();
+    expect(screen.getByText('<resource>.<action>')).toBeInTheDocument();
   });
 
   it('calls onReadyChange with true when delimiter is valid', () => {
     const onReadyChange = vi.fn();
-    render(
-      <ConfigureSeparator delimiter=":" handle="my-api" onDelimiterChange={vi.fn()} onReadyChange={onReadyChange} />,
-    );
+    render(<ConfigureSeparator delimiter=":" onDelimiterChange={vi.fn()} onReadyChange={onReadyChange} />);
 
     expect(onReadyChange).toHaveBeenCalledWith(true);
   });

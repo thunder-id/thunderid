@@ -22,6 +22,8 @@ package log
 import (
 	"context"
 	"errors"
+	"io"
+	stdlog "log"
 	"log/slog"
 	"os"
 	"strings"
@@ -29,6 +31,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/constants"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
 )
 
 var (
@@ -38,8 +41,24 @@ var (
 
 // Logger is a wrapper around the slog logger.
 type Logger struct {
-	internal *slog.Logger
-	levelVar *slog.LevelVar
+	internal   *slog.Logger
+	levelVar   *slog.LevelVar
+	fileWriter *rollingfile.Writer
+}
+
+// OutputOptions describes where and how the logger writes. It is a log-package
+// local type (rather than config.LogConfig) so this package does not depend on
+// the config package, which already depends on it.
+type OutputOptions struct {
+	// ConsoleEnabled writes formatted records to stdout.
+	ConsoleEnabled bool
+	// FileEnabled writes formatted records to a rotating file.
+	FileEnabled bool
+	// Format selects the record format: "json" or "text" (default).
+	Format string
+	// File configures the rotating file writer (its Path must be resolved to an
+	// absolute path by the caller). Ignored when FileEnabled is false.
+	File rollingfile.Config
 }
 
 // contextHandler decorates a slog.Handler to add the trace ID (correlation ID)
@@ -124,6 +143,64 @@ func (l *Logger) SetLevel(logLevel string) error {
 	return nil
 }
 
+// Configure applies the output configuration, rebuilding the underlying slog
+// handler to write to the console, a rotating file, or both. It preserves the
+// shared level variable so a prior SetLevel keeps taking effect, and keeps the
+// trace ID decoration via contextHandler. It is intended to be called once during
+// startup, right after the configured level is applied.
+func (l *Logger) Configure(opts OutputOptions) error {
+	writers := make([]io.Writer, 0, 2)
+	if opts.ConsoleEnabled {
+		writers = append(writers, os.Stdout)
+	}
+
+	var fileWriter *rollingfile.Writer
+	if opts.FileEnabled {
+		w, err := rollingfile.New(opts.File)
+		if err != nil {
+			return err
+		}
+		fileWriter = w
+		writers = append(writers, w)
+	}
+
+	// Fall back to stdout so a misconfiguration never silences the logger.
+	if len(writers) == 0 {
+		writers = append(writers, os.Stdout)
+	}
+
+	var out io.Writer
+	if len(writers) == 1 {
+		out = writers[0]
+	} else {
+		out = io.MultiWriter(writers...)
+	}
+
+	handlerOptions := &slog.HandlerOptions{Level: l.levelVar}
+	var handler slog.Handler
+	if strings.EqualFold(opts.Format, "json") {
+		handler = slog.NewJSONHandler(out, handlerOptions)
+	} else {
+		handler = slog.NewTextHandler(out, handlerOptions)
+	}
+
+	previous := l.fileWriter
+	l.internal = slog.New(&contextHandler{Handler: handler})
+	l.fileWriter = fileWriter
+	if previous != nil {
+		_ = previous.Close()
+	}
+	return nil
+}
+
+// Close releases the file writer, if any. It should be called during shutdown.
+func (l *Logger) Close() error {
+	if l.fileWriter != nil {
+		return l.fileWriter.Close()
+	}
+	return nil
+}
+
 // With creates a new logger instance with additional fields.
 func (l *Logger) With(fields ...Field) *Logger {
 	return &Logger{
@@ -181,6 +258,27 @@ func (l *Logger) Error(ctx context.Context, msg string, fields ...Field) {
 func (l *Logger) Fatal(ctx context.Context, msg string, fields ...Field) {
 	l.internal.ErrorContext(ctx, msg, convertFields(fields)...)
 	os.Exit(1)
+}
+
+// serverErrorWriter adapts the standard library logger output used by
+// http.Server.ErrorLog into the framework logger. Connection-level errors
+// such as TLS handshake failures are emitted at WARN level so they are
+// routed through the structured logger instead of being written raw to stderr.
+type serverErrorWriter struct {
+	logger *Logger
+}
+
+// Write forwards each http.Server error line to the framework logger at WARN level.
+func (w *serverErrorWriter) Write(p []byte) (int, error) {
+	w.logger.Warn(context.Background(), strings.TrimSpace(string(p)))
+	return len(p), nil
+}
+
+// NewServerErrorLog returns a standard library *log.Logger suitable for
+// http.Server.ErrorLog that routes server connection errors (e.g. TLS
+// handshake errors) through the framework logger at WARN level.
+func NewServerErrorLog(logger *Logger) *stdlog.Logger {
+	return stdlog.New(&serverErrorWriter{logger: logger}, "", 0)
 }
 
 // parseLogLevel parses the log level string and returns the corresponding slog.Level.

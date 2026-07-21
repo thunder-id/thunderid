@@ -521,6 +521,111 @@ describe('OAuth2ConfigSection', () => {
     });
   });
 
+  describe('Allowed Grant Types Limiting', () => {
+    beforeEach(() => {
+      mockUseThunderID.mockReturnValue({
+        discovery: {
+          wellKnown: {
+            grant_types_supported: [
+              'authorization_code',
+              'refresh_token',
+              'client_credentials',
+              'implicit',
+              'password',
+            ],
+            response_types_supported: ['code', 'token'],
+            token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
+          },
+        },
+      });
+    });
+
+    afterEach(() => {
+      mockUseThunderID.mockReturnValue({
+        discovery: {
+          wellKnown: {
+            grant_types_supported: [
+              'authorization_code',
+              'refresh_token',
+              'client_credentials',
+              'urn:openid:params:grant-type:ciba',
+            ],
+            response_types_supported: ['code', 'token'],
+            token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
+          },
+        },
+      });
+    });
+
+    it('should offer only the intersection of allowedGrantTypes and discovery grants when allowedGrantTypes is set', async () => {
+      const user = userEvent.setup();
+      const oauth2Config: OAuth2Config = {
+        grantTypes: ['authorization_code'],
+        responseTypes: ['code'],
+        pkceRequired: true,
+        publicClient: true,
+      };
+
+      render(
+        <OAuth2ConfigSection
+          oauth2Config={oauth2Config}
+          onOAuth2ConfigChange={vi.fn()}
+          allowedGrantTypes={['authorization_code', 'refresh_token', 'client_credentials']}
+        />,
+      );
+
+      const grantTypesSelect = document.getElementById('grant_types')!;
+      await user.click(grantTypesSelect);
+
+      expect(screen.getByText('refresh_token')).toBeInTheDocument();
+      expect(screen.getByText('client_credentials')).toBeInTheDocument();
+      expect(screen.queryByText('implicit')).not.toBeInTheDocument();
+      expect(screen.queryByText('password')).not.toBeInTheDocument();
+    });
+
+    it('should offer all discovery grant types when allowedGrantTypes is not provided', async () => {
+      const user = userEvent.setup();
+      const oauth2Config: OAuth2Config = {
+        grantTypes: ['authorization_code'],
+        responseTypes: ['code'],
+        pkceRequired: false,
+        publicClient: false,
+      };
+
+      render(<OAuth2ConfigSection oauth2Config={oauth2Config} onOAuth2ConfigChange={vi.fn()} />);
+
+      const grantTypesSelect = document.getElementById('grant_types')!;
+      await user.click(grantTypesSelect);
+
+      expect(screen.getByText('refresh_token')).toBeInTheDocument();
+      expect(screen.getByText('client_credentials')).toBeInTheDocument();
+      expect(screen.getByText('implicit')).toBeInTheDocument();
+      expect(screen.getByText('password')).toBeInTheDocument();
+    });
+  });
+
+  describe('Template-Locked PKCE (mcp-client constraints)', () => {
+    it('should render the PKCE switch as locked and disabled when oauth2Constraints marks pkceRequired read-only', () => {
+      const oauth2Config: OAuth2Config = {
+        grantTypes: ['authorization_code', 'refresh_token'],
+        responseTypes: ['code'],
+        pkceRequired: true,
+        publicClient: true,
+      };
+
+      render(
+        <OAuth2ConfigSection
+          oauth2Config={oauth2Config}
+          onOAuth2ConfigChange={vi.fn()}
+          oauth2Constraints={{pkceRequired: {readOnly: true, value: true}}}
+        />,
+      );
+
+      const pkceSwitch = screen.getByLabelText('applications:edit.advanced.labels.pkceRequired');
+      expect(pkceSwitch).toBeDisabled();
+    });
+  });
+
   describe('CIBA Grant Type', () => {
     it('renders the friendly label for the CIBA URN in the grant type picker', async () => {
       const user = userEvent.setup();

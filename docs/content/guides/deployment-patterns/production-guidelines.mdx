@@ -1,5 +1,6 @@
 ---
 title: Production Deployment Guidelines
+docType: guide
 sidebar_position: 4
 persona: iam
 description: Security and reliability guidelines for deploying in production environments.
@@ -22,13 +23,14 @@ Before you begin, ensure you have:
 
 The default configuration uses SQLite, which stores data in local files. SQLite does not support concurrent writes from multiple processes and is not suitable for production use. Use PostgreSQL for production deployments.
 
-<ProductName /> uses three separate databases:
+<ProductName /> uses four separate databases:
 
 | Database | Purpose |
 |----------|---------|
 | `config` | Application configuration, flows, and identity providers |
-| `runtime` | Active sessions, tokens, and OAuth state |
-| `user` | User accounts and credentials |
+| `runtime_transient` | Short-lived OAuth state: authorization codes, requests, and nonces |
+| `entity` | User accounts and credentials |
+| `runtime_persistent` | Long-lived operational state: revoked tokens, SSO sessions, and consents |
 
 Configure each database in `deployment.yaml`:
 
@@ -47,12 +49,12 @@ database:
       max_idle_conns: 100
       conn_max_lifetime: 3600
 
-  runtime:
+  runtime_transient:
     type: "postgres"
     postgres:
       hostname: "your-db-host"
       port: "5432"
-      name: "runtimedb"
+      name: "runtime_transient"
       username: "dbuser"
       password: "dbpassword"
       sslmode: "require"
@@ -60,12 +62,25 @@ database:
       max_idle_conns: 100
       conn_max_lifetime: 3600
 
-  user:
+  entity:
     type: "postgres"
     postgres:
       hostname: "your-db-host"
       port: "5432"
-      name: "userdb"
+      name: "entitydb"
+      username: "dbuser"
+      password: "dbpassword"
+      sslmode: "require"
+      max_open_conns: 500
+      max_idle_conns: 100
+      conn_max_lifetime: 3600
+
+  runtime_persistent:
+    type: "postgres"
+    postgres:
+      hostname: "your-db-host"
+      port: "5432"
+      name: "runtime_persistent"
       username: "dbuser"
       password: "dbpassword"
       sslmode: "require"
@@ -82,7 +97,7 @@ database:
 
 ## Replace TLS Certificates
 
-<ProductName /> ships with a self-signed TLS certificate for local development. Self-signed certificates trigger browser warnings and are not trusted by clients in production. Replace them with certificates issued by a trusted CA.
+For quickstart and development, <ProductName /> generates a self-signed TLS certificate per deployment during setup. Self-signed certificates trigger browser warnings and are not trusted by clients in production. Replace the server certificate with one issued by a trusted CA, or terminate TLS at your ingress or load balancer with a CA-issued certificate.
 
 ### Step 1: Get a TLS Certificate
 
@@ -127,7 +142,7 @@ docker run --rm \
 
 ## Generate a Unique Encryption Key
 
-<ProductName /> uses a symmetric encryption key to protect sensitive data at rest, including credentials and tokens. The default key in the repository is a well-known value that anyone can find. You must replace it before going to production.
+<ProductName /> uses a symmetric encryption key to protect sensitive data at rest, including credentials and tokens, along with separate keys to sign JWTs. During setup, each deployment generates its own unique key material. For production, either keep the generated per-deployment keys (ensuring they are persisted and backed up) or provide and manage your own through a secure process such as a secrets manager. The steps below show how to provide your own encryption key.
 
 ### Step 1: Generate a New Key
 
@@ -169,7 +184,7 @@ crypto:
 
 :::warning
 
-Protect the encryption key with the same level of care as a database password. If the key is lost, encrypted data becomes unrecoverable. If the key is compromised, all protected data is exposed.
+Protect the encryption key with the same level of care as a database password. If the key is lost, encrypted data becomes unrecoverable. If the key is compromised, all protected data is exposed. This key material lives in `config/certs` (the certs PVC on Helm) and must persist across restarts and replicas. If it is lost or changed, previously encrypted data cannot be decrypted and previously issued tokens can no longer be validated.
 
 :::
 

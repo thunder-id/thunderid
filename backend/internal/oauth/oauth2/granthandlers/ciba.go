@@ -28,17 +28,20 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
+	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // cibaGrantHandler handles the OpenID Connect CIBA grant type (poll mode).
 type cibaGrantHandler struct {
-	cibaService    ciba.CIBAServiceInterface
-	tokenBuilder   tokenservice.TokenBuilderInterface
-	attributeCache attributecache.AttributeCacheServiceInterface
-	logger         *log.Logger
+	cibaService     ciba.CIBAServiceInterface
+	tokenBuilder    tokenservice.TokenBuilderInterface
+	attributeCache  attributecache.AttributeCacheServiceInterface
+	resourceService providers.ResourceServerProvider
+	logger          *log.Logger
 }
 
 // newCIBAGrantHandler creates a new instance of cibaGrantHandler.
@@ -46,12 +49,14 @@ func newCIBAGrantHandler(
 	cibaService ciba.CIBAServiceInterface,
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	attributeCache attributecache.AttributeCacheServiceInterface,
+	resourceService providers.ResourceServerProvider,
 ) GrantHandlerInterface {
 	return &cibaGrantHandler{
-		cibaService:    cibaService,
-		tokenBuilder:   tokenBuilder,
-		attributeCache: attributeCache,
-		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIBAGrantHandler")),
+		cibaService:     cibaService,
+		tokenBuilder:    tokenBuilder,
+		attributeCache:  attributeCache,
+		resourceService: resourceService,
+		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIBAGrantHandler")),
 	}
 }
 
@@ -91,6 +96,29 @@ func (h *cibaGrantHandler) ValidateGrant(ctx context.Context, tokenRequest *mode
 		}
 	}
 
+	if errResp := resourceindicators.ValidateResourceURIs(tokenRequest.Resources); errResp != nil {
+		return errResp
+	}
+	if errResp := enforceCIBAPollingResource(tokenRequest.Resources, record.Resources); errResp != nil {
+		return errResp
+	}
+
+	return nil
+}
+
+// enforceCIBAPollingResource allows an absent polling resource (use the stored binding) or a single
+// resource equal to the stored binding. A different resource, more than one, or a resource against an
+// unbound request cannot widen the binding and is rejected with invalid_target.
+func enforceCIBAPollingResource(pollingResources, storedResources []string) *model.ErrorResponse {
+	if len(pollingResources) == 0 {
+		return nil
+	}
+	if len(pollingResources) > 1 || len(storedResources) == 0 || pollingResources[0] != storedResources[0] {
+		return &model.ErrorResponse{
+			Error:            constants.ErrorInvalidTarget,
+			ErrorDescription: "The resource parameter does not match the authorized resource",
+		}
+	}
 	return nil
 }
 
@@ -180,7 +208,12 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 	if scopeStr == "" {
 		scopeStr = record.StandardScopes
 	}
-	scopes := tokenservice.ParseScopes(scopeStr)
+
+	accessTokenAudiences, accessTokenScopes, bindErr := h.resolveIssuedAudiencesAndScopes(
+		ctx, record, oauthApp, scopeStr)
+	if bindErr != nil {
+		return nil, bindErr
+	}
 
 	attrs := make(map[string]interface{})
 	if record.AttributeCacheID != "" {
@@ -196,15 +229,17 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 		attrs = cacheEntry.Attributes
 	}
 
+	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, &tokenservice.AccessTokenBuildContext{
-		Subject:          record.UserID,
-		Audiences:        []string{oauthApp.ClientID},
-		ClientID:         oauthApp.ClientID,
-		Scopes:           scopes,
-		UserAttributes:   attrs,
-		AttributeCacheID: record.AttributeCacheID,
-		GrantType:        string(providers.GrantTypeCIBA),
-		OAuthApp:         oauthApp,
+		Subject:           record.UserID,
+		Audiences:         accessTokenAudiences,
+		ClientID:          oauthApp.ClientID,
+		Scopes:            accessTokenScopes,
+		SubjectAttributes: tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
+		AttributeCacheID:  record.AttributeCacheID,
+		GrantType:         string(providers.GrantTypeCIBA),
+		OAuthApp:          oauthApp,
+		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
 	})
 	if err != nil {
 		h.logger.Error(ctx, "Failed to generate access token", log.Error(err))
@@ -213,16 +248,18 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 			ErrorDescription: "Failed to generate token",
 		}
 	}
+	// The refresh token preserves this single audience for continuity.
+	accessToken.OriginalAudiences = accessTokenAudiences
 
 	tokenResponse := &model.TokenResponseDTO{
 		AccessToken: *accessToken,
 	}
 
-	if slices.Contains(scopes, constants.ScopeOpenID) {
+	if slices.Contains(accessTokenScopes, constants.ScopeOpenID) {
 		idToken, idErr := h.tokenBuilder.BuildIDToken(ctx, &tokenservice.IDTokenBuildContext{
 			Subject:        record.UserID,
 			Audience:       oauthApp.ClientID,
-			Scopes:         scopes,
+			Scopes:         accessTokenScopes,
 			UserAttributes: attrs,
 			AuthTime:       record.AuthTime.Unix(),
 			OAuthApp:       oauthApp,
@@ -256,4 +293,46 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 	}
 
 	return tokenResponse, nil
+}
+
+// resolveIssuedAudiencesAndScopes derives the access-token audiences and scopes for a CIBA record.
+// A resource-bound record yields the RS identifier as the sole audience, with permission scopes
+// refiltered against that RS. An unbound OIDC-only record keeps the client audience; an unbound
+// record that unexpectedly carries permission scopes is rejected with invalid_grant.
+func (h *cibaGrantHandler) resolveIssuedAudiencesAndScopes(ctx context.Context,
+	record *ciba.CIBAAuthRequest, oauthApp *providers.OAuthClient, scopeStr string,
+) ([]string, []string, *model.ErrorResponse) {
+	oidcScopes, permissionScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(scopeStr, oauthApp.ScopeClaims)
+
+	if len(record.Resources) == 0 {
+		if len(permissionScopes) > 0 {
+			return nil, nil, &model.ErrorResponse{
+				Error:            constants.ErrorInvalidGrant,
+				ErrorDescription: "The authentication request is not bound to a resource server",
+			}
+		}
+		return []string{oauthApp.ClientID}, oidcScopes, nil
+	}
+
+	resourceIdentifier := record.Resources[0]
+	rs, svcErr := h.resourceService.GetResourceServerByIdentifier(ctx, resourceIdentifier)
+	if svcErr != nil {
+		h.logger.Error(ctx, "Failed to resolve stored CIBA resource server",
+			log.String("error", svcErr.ErrorDescription.DefaultValue))
+		return nil, nil, &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to process token request",
+		}
+	}
+
+	downscoped, dErr := resourceindicators.DownscopeToResourceServer(
+		ctx, h.resourceService, rs.ID, permissionScopes)
+	if dErr != nil {
+		return nil, nil, dErr
+	}
+
+	scopes := make([]string, 0, len(oidcScopes)+len(downscoped))
+	scopes = append(scopes, oidcScopes...)
+	scopes = append(scopes, downscoped...)
+	return []string{resourceIdentifier}, scopes, nil
 }

@@ -448,6 +448,46 @@ func (_c *ApplicationServiceInterfaceMock_GetResourceDependencies_Call) RunAndRe
 	return _c
 }
 
+// SetDependencyRegistry provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) SetDependencyRegistry(r resourcedependency.Registry) {
+	_mock.Called(r)
+	return
+}
+
+// ApplicationServiceInterfaceMock_SetDependencyRegistry_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetDependencyRegistry'
+type ApplicationServiceInterfaceMock_SetDependencyRegistry_Call struct {
+	*mock.Call
+}
+
+// SetDependencyRegistry is a helper method to define mock.On call
+//   - r resourcedependency.Registry
+func (_e *ApplicationServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call {
+	return &ApplicationServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call) Run(run func(r resourcedependency.Registry)) *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 resourcedependency.Registry
+		if args[0] != nil {
+			arg0 = args[0].(resourcedependency.Registry)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call) Return() *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run func(r resourcedependency.Registry)) *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Run(run)
+	return _c
+}
+
 // UpdateApplication provides a mock function for the type ApplicationServiceInterfaceMock
 func (_mock *ApplicationServiceInterfaceMock) UpdateApplication(ctx context.Context, appID string, app *model.ApplicationDTO) (*model.ApplicationDTO, *common.ServiceError) {
 	ret := _mock.Called(ctx, appID, app)

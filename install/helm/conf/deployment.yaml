@@ -19,32 +19,55 @@ server:
   port: {{ .Values.configuration.server.port }}
   http_only: {{ .Values.configuration.server.httpOnly }}
   public_url: {{ .Values.configuration.server.publicUrl | quote }}
-  {{- if .Values.configuration.server.security }}
+  {{- if or .Values.configuration.server.security .Values.setup.enabled }}
   security:
-    {{- if .Values.configuration.server.security.jwksCacheTtl }}
-    jwks_cache_ttl: {{ .Values.configuration.server.security.jwksCacheTtl }}
+    {{- with .Values.configuration.server.security }}
+    {{- if .jwksCacheTtl }}
+    jwks_cache_ttl: {{ .jwksCacheTtl }}
     {{- end }}
-    {{- if .Values.configuration.server.security.trustedIssuer }}
+    {{- if .trustedIssuer }}
     trusted_issuer:
-      issuer: {{ .Values.configuration.server.security.trustedIssuer.issuer | quote }}
-      jwks_url: {{ .Values.configuration.server.security.trustedIssuer.jwksUrl | quote }}
-      audience: {{ .Values.configuration.server.security.trustedIssuer.audience | quote }}
-      {{- if .Values.configuration.server.security.trustedIssuer.requiredClaims }}
+      issuer: {{ .trustedIssuer.issuer | quote }}
+      jwks_url: {{ .trustedIssuer.jwksUrl | quote }}
+      audience: {{ .trustedIssuer.audience | quote }}
+      {{- if .trustedIssuer.requiredClaims }}
       required_claims:
-        {{- range .Values.configuration.server.security.trustedIssuer.requiredClaims }}
+        {{- range .trustedIssuer.requiredClaims }}
         - claim: {{ .claim | quote }}
           value: {{ .value | quote }}
         {{- end }}
       {{- end }}
     {{- end }}
+    {{- end }}
+    {{- if and .Values.configuration.server.security .Values.configuration.server.security.directAuthSecret }}
+    direct_auth_secret: {{ .Values.configuration.server.security.directAuthSecret | quote }}
+    {{- else if .Values.setup.enabled }}
+    # The setup job generates the secret into config/secrets/direct_auth_secret on a shared volume;
+    # the server reads it from there at load time via this file:// reference.
+    direct_auth_secret: "file://config/secrets/direct_auth_secret"
+    {{- end }}
   {{- end }}
 
 gate_client:
+  # hostname/port/scheme default to the server's public URL. Required only when Gate is hosted separately.
+  {{- if .Values.configuration.gateClient.hostname }}
   hostname: {{ .Values.configuration.gateClient.hostname | quote }}
+  {{- end }}
+  {{- if .Values.configuration.gateClient.port }}
   port: {{ .Values.configuration.gateClient.port }}
+  {{- end }}
+  {{- if .Values.configuration.gateClient.scheme }}
   scheme: {{ .Values.configuration.gateClient.scheme | quote }}
+  {{- end }}
+  {{- if .Values.configuration.gateClient.path }}
+  path: {{ .Values.configuration.gateClient.path | quote }}
+  {{- end }}
+  {{- if .Values.configuration.gateClient.loginPath }}
   login_path: {{ .Values.configuration.gateClient.loginPath | quote }}
+  {{- end }}
+  {{- if .Values.configuration.gateClient.errorPath }}
   error_path: {{ .Values.configuration.gateClient.errorPath | quote }}
+  {{- end }}
 
 tls:
   min_version: {{ .Values.configuration.tls.minVersion | quote }}
@@ -103,66 +126,93 @@ database:
       min_retry_backoff_ms: {{ .Values.configuration.database.config.postgres.min_retry_backoff_ms }}
       max_retry_backoff_ms: {{ .Values.configuration.database.config.postgres.max_retry_backoff_ms }}
     {{- end }}
-  runtime:
-    type: {{ .Values.configuration.database.runtime.type | quote }}
-    {{- if eq .Values.configuration.database.runtime.type "sqlite" }}
+  runtime_transient:
+    type: {{ .Values.configuration.database.runtime_transient.type | quote }}
+    {{- if eq .Values.configuration.database.runtime_transient.type "sqlite" }}
     sqlite:
-      path: {{ .Values.configuration.database.runtime.sqlite.path | quote }}
-      options: {{ .Values.configuration.database.runtime.sqlite.options | quote }}
-      max_open_conns: {{ .Values.configuration.database.runtime.sqlite.max_open_conns }}
-      max_idle_conns: {{ .Values.configuration.database.runtime.sqlite.max_idle_conns }}
-      conn_max_lifetime: {{ .Values.configuration.database.runtime.sqlite.conn_max_lifetime }}
-      max_retries: {{ .Values.configuration.database.runtime.sqlite.max_retries }}
-      min_retry_backoff_ms: {{ .Values.configuration.database.runtime.sqlite.min_retry_backoff_ms }}
-      max_retry_backoff_ms: {{ .Values.configuration.database.runtime.sqlite.max_retry_backoff_ms }}
-    {{- else if eq .Values.configuration.database.runtime.type "redis" }}
+      path: {{ .Values.configuration.database.runtime_transient.sqlite.path | quote }}
+      options: {{ .Values.configuration.database.runtime_transient.sqlite.options | quote }}
+      max_open_conns: {{ .Values.configuration.database.runtime_transient.sqlite.max_open_conns }}
+      max_idle_conns: {{ .Values.configuration.database.runtime_transient.sqlite.max_idle_conns }}
+      conn_max_lifetime: {{ .Values.configuration.database.runtime_transient.sqlite.conn_max_lifetime }}
+      max_retries: {{ .Values.configuration.database.runtime_transient.sqlite.max_retries }}
+      min_retry_backoff_ms: {{ .Values.configuration.database.runtime_transient.sqlite.min_retry_backoff_ms }}
+      max_retry_backoff_ms: {{ .Values.configuration.database.runtime_transient.sqlite.max_retry_backoff_ms }}
+    {{- else if eq .Values.configuration.database.runtime_transient.type "redis" }}
     redis:
-      address: {{ .Values.configuration.database.runtime.redis.address | quote }}
-      username: {{ .Values.configuration.database.runtime.redis.username | quote }}
-      password: {{ "{{.DB_RUNTIME_REDIS_PASSWORD}}" | quote }}
-      db: {{ .Values.configuration.database.runtime.redis.db }}
-      key_prefix: {{ .Values.configuration.database.runtime.redis.key_prefix | quote }}
+      address: {{ .Values.configuration.database.runtime_transient.redis.address | quote }}
+      username: {{ .Values.configuration.database.runtime_transient.redis.username | quote }}
+      password: {{ "{{.DB_RUNTIME_TRANSIENT_REDIS_PASSWORD}}" | quote }}
+      db: {{ .Values.configuration.database.runtime_transient.redis.db }}
+      key_prefix: {{ .Values.configuration.database.runtime_transient.redis.key_prefix | quote }}
     {{- else }}
     postgres:
-      hostname: {{ .Values.configuration.database.runtime.postgres.hostname | quote }}
-      port: {{ .Values.configuration.database.runtime.postgres.port }}
-      name: {{ .Values.configuration.database.runtime.postgres.name | quote }}
-      username: {{ .Values.configuration.database.runtime.postgres.username | quote }}
-      password: {{ "{{.DB_RUNTIME_PASSWORD}}" | quote }}
-      sslmode: {{ .Values.configuration.database.runtime.postgres.sslmode | quote }}
-      max_open_conns: {{ .Values.configuration.database.runtime.postgres.max_open_conns }}
-      max_idle_conns: {{ .Values.configuration.database.runtime.postgres.max_idle_conns }}
-      conn_max_lifetime: {{ .Values.configuration.database.runtime.postgres.conn_max_lifetime }}
-      max_retries: {{ .Values.configuration.database.runtime.postgres.max_retries }}
-      min_retry_backoff_ms: {{ .Values.configuration.database.runtime.postgres.min_retry_backoff_ms }}
-      max_retry_backoff_ms: {{ .Values.configuration.database.runtime.postgres.max_retry_backoff_ms }}
+      hostname: {{ .Values.configuration.database.runtime_transient.postgres.hostname | quote }}
+      port: {{ .Values.configuration.database.runtime_transient.postgres.port }}
+      name: {{ .Values.configuration.database.runtime_transient.postgres.name | quote }}
+      username: {{ .Values.configuration.database.runtime_transient.postgres.username | quote }}
+      password: {{ "{{.DB_RUNTIME_TRANSIENT_PASSWORD}}" | quote }}
+      sslmode: {{ .Values.configuration.database.runtime_transient.postgres.sslmode | quote }}
+      max_open_conns: {{ .Values.configuration.database.runtime_transient.postgres.max_open_conns }}
+      max_idle_conns: {{ .Values.configuration.database.runtime_transient.postgres.max_idle_conns }}
+      conn_max_lifetime: {{ .Values.configuration.database.runtime_transient.postgres.conn_max_lifetime }}
+      max_retries: {{ .Values.configuration.database.runtime_transient.postgres.max_retries }}
+      min_retry_backoff_ms: {{ .Values.configuration.database.runtime_transient.postgres.min_retry_backoff_ms }}
+      max_retry_backoff_ms: {{ .Values.configuration.database.runtime_transient.postgres.max_retry_backoff_ms }}
     {{- end }}
-  user:
-    type: {{ .Values.configuration.database.user.type | quote }}
-    {{- if eq .Values.configuration.database.user.type "sqlite" }}
+  entity:
+    type: {{ .Values.configuration.database.entity.type | quote }}
+    {{- if eq .Values.configuration.database.entity.type "sqlite" }}
     sqlite:
-      path: {{ .Values.configuration.database.user.sqlite.path | quote }}
-      options: {{ .Values.configuration.database.user.sqlite.options | quote }}
-      max_open_conns: {{ .Values.configuration.database.user.sqlite.max_open_conns }}
-      max_idle_conns: {{ .Values.configuration.database.user.sqlite.max_idle_conns }}
-      conn_max_lifetime: {{ .Values.configuration.database.user.sqlite.conn_max_lifetime }}
-      max_retries: {{ .Values.configuration.database.user.sqlite.max_retries }}
-      min_retry_backoff_ms: {{ .Values.configuration.database.user.sqlite.min_retry_backoff_ms }}
-      max_retry_backoff_ms: {{ .Values.configuration.database.user.sqlite.max_retry_backoff_ms }}
+      path: {{ .Values.configuration.database.entity.sqlite.path | quote }}
+      options: {{ .Values.configuration.database.entity.sqlite.options | quote }}
+      max_open_conns: {{ .Values.configuration.database.entity.sqlite.max_open_conns }}
+      max_idle_conns: {{ .Values.configuration.database.entity.sqlite.max_idle_conns }}
+      conn_max_lifetime: {{ .Values.configuration.database.entity.sqlite.conn_max_lifetime }}
+      max_retries: {{ .Values.configuration.database.entity.sqlite.max_retries }}
+      min_retry_backoff_ms: {{ .Values.configuration.database.entity.sqlite.min_retry_backoff_ms }}
+      max_retry_backoff_ms: {{ .Values.configuration.database.entity.sqlite.max_retry_backoff_ms }}
     {{- else }}
     postgres:
-      hostname: {{ .Values.configuration.database.user.postgres.hostname | quote }}
-      port: {{ .Values.configuration.database.user.postgres.port }}
-      name: {{ .Values.configuration.database.user.postgres.name | quote }}
-      username: {{ .Values.configuration.database.user.postgres.username | quote }}
-      password: {{ "{{.DB_USER_PASSWORD}}" | quote }}
-      sslmode: {{ .Values.configuration.database.user.postgres.sslmode | quote }}
-      max_open_conns: {{ .Values.configuration.database.user.postgres.max_open_conns }}
-      max_idle_conns: {{ .Values.configuration.database.user.postgres.max_idle_conns }}
-      conn_max_lifetime: {{ .Values.configuration.database.user.postgres.conn_max_lifetime }}
-      max_retries: {{ .Values.configuration.database.user.postgres.max_retries }}
-      min_retry_backoff_ms: {{ .Values.configuration.database.user.postgres.min_retry_backoff_ms }}
-      max_retry_backoff_ms: {{ .Values.configuration.database.user.postgres.max_retry_backoff_ms }}
+      hostname: {{ .Values.configuration.database.entity.postgres.hostname | quote }}
+      port: {{ .Values.configuration.database.entity.postgres.port }}
+      name: {{ .Values.configuration.database.entity.postgres.name | quote }}
+      username: {{ .Values.configuration.database.entity.postgres.username | quote }}
+      password: {{ "{{.DB_ENTITY_PASSWORD}}" | quote }}
+      sslmode: {{ .Values.configuration.database.entity.postgres.sslmode | quote }}
+      max_open_conns: {{ .Values.configuration.database.entity.postgres.max_open_conns }}
+      max_idle_conns: {{ .Values.configuration.database.entity.postgres.max_idle_conns }}
+      conn_max_lifetime: {{ .Values.configuration.database.entity.postgres.conn_max_lifetime }}
+      max_retries: {{ .Values.configuration.database.entity.postgres.max_retries }}
+      min_retry_backoff_ms: {{ .Values.configuration.database.entity.postgres.min_retry_backoff_ms }}
+      max_retry_backoff_ms: {{ .Values.configuration.database.entity.postgres.max_retry_backoff_ms }}
+    {{- end }}
+  runtime_persistent:
+    type: {{ .Values.configuration.database.runtime_persistent.type | quote }}
+    {{- if eq .Values.configuration.database.runtime_persistent.type "sqlite" }}
+    sqlite:
+      path: {{ .Values.configuration.database.runtime_persistent.sqlite.path | quote }}
+      options: {{ .Values.configuration.database.runtime_persistent.sqlite.options | quote }}
+      max_open_conns: {{ .Values.configuration.database.runtime_persistent.sqlite.max_open_conns }}
+      max_idle_conns: {{ .Values.configuration.database.runtime_persistent.sqlite.max_idle_conns }}
+      conn_max_lifetime: {{ .Values.configuration.database.runtime_persistent.sqlite.conn_max_lifetime }}
+      max_retries: {{ .Values.configuration.database.runtime_persistent.sqlite.max_retries }}
+      min_retry_backoff_ms: {{ .Values.configuration.database.runtime_persistent.sqlite.min_retry_backoff_ms }}
+      max_retry_backoff_ms: {{ .Values.configuration.database.runtime_persistent.sqlite.max_retry_backoff_ms }}
+    {{- else }}
+    postgres:
+      hostname: {{ .Values.configuration.database.runtime_persistent.postgres.hostname | quote }}
+      port: {{ .Values.configuration.database.runtime_persistent.postgres.port }}
+      name: {{ .Values.configuration.database.runtime_persistent.postgres.name | quote }}
+      username: {{ .Values.configuration.database.runtime_persistent.postgres.username | quote }}
+      password: {{ "{{.DB_RUNTIME_PERSISTENT_PASSWORD}}" | quote }}
+      sslmode: {{ .Values.configuration.database.runtime_persistent.postgres.sslmode | quote }}
+      max_open_conns: {{ .Values.configuration.database.runtime_persistent.postgres.max_open_conns }}
+      max_idle_conns: {{ .Values.configuration.database.runtime_persistent.postgres.max_idle_conns }}
+      conn_max_lifetime: {{ .Values.configuration.database.runtime_persistent.postgres.conn_max_lifetime }}
+      max_retries: {{ .Values.configuration.database.runtime_persistent.postgres.max_retries }}
+      min_retry_backoff_ms: {{ .Values.configuration.database.runtime_persistent.postgres.min_retry_backoff_ms }}
+      max_retry_backoff_ms: {{ .Values.configuration.database.runtime_persistent.postgres.max_retry_backoff_ms }}
     {{- end }}
 
 cache:
@@ -190,6 +240,7 @@ jwt:
 oauth:
   refresh_token:
     renew_on_grant: {{ .Values.configuration.oauth.refreshToken.renewOnGrant }}
+    revoke_previous_on_renew: {{ .Values.configuration.oauth.refreshToken.revokePreviousOnRenew }}
     validity_period: {{ .Values.configuration.oauth.refreshToken.validityPeriod }}
   authorization_code:
     validity_period: {{ .Values.configuration.oauth.authorizationCode.validityPeriod }}
@@ -219,14 +270,8 @@ passkey:
     - {{ . | quote }}
   {{- end }}
 
-consent:
-  enabled: {{ .Values.configuration.consent.enabled }}
-  base_url: {{ .Values.configuration.consent.baseUrl | quote }}
-  timeout: {{ .Values.configuration.consent.timeout }}
-  max_retries: {{ .Values.configuration.consent.maxRetries }}
-
 openid4vp:
-  client_id: {{ .Values.configuration.openid4vp.clientId | quote }}
+  client_id_scheme: {{ .Values.configuration.openid4vp.clientIdScheme | quote }}
   signing_key_id: {{ .Values.configuration.openid4vp.signingKeyId | quote }}
   ephemeral_key_id: {{ .Values.configuration.openid4vp.ephemeralKeyId | quote }}
   response_enc_values:

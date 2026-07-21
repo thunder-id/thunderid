@@ -24,27 +24,31 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
-	ccAuthzClientID     = "cc_authz_test_client"
-	ccAuthzClientSecret = "cc_authz_test_secret"
+	ccAuthzClientID                 = "cc_authz_test_client"
+	ccAuthzClientSecret             = "cc_authz_test_secret"
+	ccAuthzResourceServerIdentifier = "https://cc-authz.example.com"
+	ccAuthzSecondaryRSIdentifier    = "https://cc-authz-secondary.example.com"
 )
 
 type CCAppAuthzTestSuite struct {
 	suite.Suite
-	client           *http.Client
-	ouID             string
-	appID            string
-	resourceServerID string
-	roleID           string
-	groupID          string
-	groupRoleID      string
+	client                    *http.Client
+	ouID                      string
+	appID                     string
+	resourceServerID          string
+	secondaryResourceServerID string
+	roleID                    string
+	groupID                   string
+	groupRoleID               string
 }
 
 func TestCCAppAuthzTestSuite(t *testing.T) {
@@ -67,7 +71,7 @@ func (s *CCAppAuthzTestSuite) SetupSuite() {
 	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
 		Name:        "CC Authz API",
 		Description: "Resource server for CC authz testing",
-		Identifier:  "cc-authz-api",
+		Identifier:  ccAuthzResourceServerIdentifier,
 		OUID:        s.ouID,
 	}, []testutils.Action{
 		{Name: "Read", Handle: "read", Description: "Read access"},
@@ -77,6 +81,17 @@ func (s *CCAppAuthzTestSuite) SetupSuite() {
 	})
 	s.Require().NoError(err)
 	s.resourceServerID = rsID
+
+	secondaryRSID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:        "CC Authz Secondary API",
+		Description: "Secondary resource server for CC authz testing",
+		Identifier:  ccAuthzSecondaryRSIdentifier,
+		OUID:        s.ouID,
+	}, []testutils.Action{
+		{Name: "Read", Handle: "read", Description: "Read access"},
+	})
+	s.Require().NoError(err)
+	s.secondaryResourceServerID = secondaryRSID
 
 	// Create OAuth application with client_credentials grant
 	appID, err := s.createOAuthApp()
@@ -143,6 +158,9 @@ func (s *CCAppAuthzTestSuite) TearDownSuite() {
 	if s.appID != "" {
 		_ = testutils.DeleteApplication(s.appID)
 	}
+	if s.secondaryResourceServerID != "" {
+		_ = testutils.DeleteResourceServer(s.secondaryResourceServerID)
+	}
 	if s.resourceServerID != "" {
 		_ = testutils.DeleteResourceServer(s.resourceServerID)
 	}
@@ -201,12 +219,20 @@ func (s *CCAppAuthzTestSuite) createOAuthApp() (string, error) {
 }
 
 func (s *CCAppAuthzTestSuite) requestToken(scopes string) (int, map[string]interface{}) {
-	body := "grant_type=client_credentials"
+	return s.requestTokenWithResource(scopes, ccAuthzResourceServerIdentifier)
+}
+
+func (s *CCAppAuthzTestSuite) requestTokenWithResource(scopes string, resource string) (int, map[string]interface{}) {
+	form := url.Values{}
+	form.Set("grant_type", "client_credentials")
 	if scopes != "" {
-		body += "&scope=" + scopes
+		form.Set("scope", scopes)
+	}
+	if resource != "" {
+		form.Set("resource", resource)
 	}
 
-	req, err := http.NewRequest("POST", testServerURL+"/oauth2/token", strings.NewReader(body))
+	req, err := http.NewRequest("POST", testServerURL+"/oauth2/token", strings.NewReader(form.Encode()))
 	s.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(ccAuthzClientID, ccAuthzClientSecret)
@@ -221,11 +247,21 @@ func (s *CCAppAuthzTestSuite) requestToken(scopes string) (int, map[string]inter
 	return resp.StatusCode, respBody
 }
 
+func (s *CCAppAuthzTestSuite) assertAccessTokenAudience(body map[string]interface{}, expected string) {
+	token, ok := body["access_token"].(string)
+	s.Require().True(ok, "Response should contain access_token")
+
+	claims, err := testutils.DecodeJWT(token)
+	s.Require().NoError(err)
+	s.Equal(expected, claims.Aud)
+}
+
 // TestCCWithAuthorizedScopes requests scopes that are assigned to the app via a role.
 func (s *CCAppAuthzTestSuite) TestCCWithAuthorizedScopes() {
 	status, body := s.requestToken("read write")
 	s.Equal(http.StatusOK, status)
 	s.Contains(body, "access_token")
+	s.assertAccessTokenAudience(body, ccAuthzResourceServerIdentifier)
 
 	scopeStr, ok := body["scope"].(string)
 	s.Require().True(ok, "Response should contain scope")
@@ -238,6 +274,7 @@ func (s *CCAppAuthzTestSuite) TestCCWithPartialAuthorization() {
 	status, body := s.requestToken("read delete")
 	s.Equal(http.StatusOK, status)
 	s.Contains(body, "access_token")
+	s.assertAccessTokenAudience(body, ccAuthzResourceServerIdentifier)
 
 	scopeStr, ok := body["scope"].(string)
 	s.Require().True(ok, "Response should contain scope")
@@ -250,6 +287,7 @@ func (s *CCAppAuthzTestSuite) TestCCWithUnauthorizedScopes() {
 	status, body := s.requestToken("delete")
 	s.Equal(http.StatusOK, status)
 	s.Contains(body, "access_token")
+	s.assertAccessTokenAudience(body, ccAuthzResourceServerIdentifier)
 
 	_, hasScope := body["scope"]
 	s.False(hasScope, "Response should not contain scope when no scopes are authorized")
@@ -260,6 +298,7 @@ func (s *CCAppAuthzTestSuite) TestCCWithNoScopes() {
 	status, body := s.requestToken("")
 	s.Equal(http.StatusOK, status)
 	s.Contains(body, "access_token")
+	s.assertAccessTokenAudience(body, ccAuthzResourceServerIdentifier)
 
 	_, hasScope := body["scope"]
 	s.False(hasScope, "Response should not contain scope when no scopes are requested")
@@ -270,6 +309,7 @@ func (s *CCAppAuthzTestSuite) TestCCWithSingleAuthorizedScope() {
 	status, body := s.requestToken("write")
 	s.Equal(http.StatusOK, status)
 	s.Contains(body, "access_token")
+	s.assertAccessTokenAudience(body, ccAuthzResourceServerIdentifier)
 
 	scopeStr, ok := body["scope"].(string)
 	s.Require().True(ok, "Response should contain scope")
@@ -281,8 +321,30 @@ func (s *CCAppAuthzTestSuite) TestCCWithGroupInheritedScope() {
 	status, body := s.requestToken("approve")
 	s.Equal(http.StatusOK, status)
 	s.Contains(body, "access_token")
+	s.assertAccessTokenAudience(body, ccAuthzResourceServerIdentifier)
 
 	scopeStr, ok := body["scope"].(string)
 	s.Require().True(ok, "Response should contain scope")
 	s.Equal("approve", scopeStr)
+}
+
+func (s *CCAppAuthzTestSuite) TestCCWithExplicitResourceBindsAudience() {
+	status, body := s.requestTokenWithResource("read write", ccAuthzResourceServerIdentifier)
+	s.Equal(http.StatusOK, status)
+	s.Contains(body, "access_token")
+	s.assertAccessTokenAudience(body, ccAuthzResourceServerIdentifier)
+
+	scopeStr, ok := body["scope"].(string)
+	s.Require().True(ok, "Response should contain scope")
+	s.ElementsMatch([]string{"read", "write"}, strings.Fields(scopeStr))
+}
+
+func (s *CCAppAuthzTestSuite) TestCCWithExplicitResourceFiltersPermissionsByTargetRS() {
+	status, body := s.requestTokenWithResource("read", ccAuthzSecondaryRSIdentifier)
+	s.Equal(http.StatusOK, status)
+	s.Contains(body, "access_token")
+	s.assertAccessTokenAudience(body, ccAuthzSecondaryRSIdentifier)
+
+	_, hasScope := body["scope"]
+	s.False(hasScope, "Response should not contain scopes authorized only on another resource server")
 }

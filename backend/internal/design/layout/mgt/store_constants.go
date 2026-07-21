@@ -71,12 +71,6 @@ var (
 		Query: `SELECT COUNT(*) as total FROM "LAYOUT" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
-	// queryGetApplicationsCountByLayoutID retrieves the count of inbound auth profiles using a layout.
-	queryGetApplicationsCountByLayoutID = dbmodel.DBQuery{
-		ID:    "LAQ-LAYOUT_MGT-08",
-		Query: `SELECT COUNT(*) as total FROM "INBOUND_CLIENT" WHERE LAYOUT_ID = $1 AND DEPLOYMENT_ID = $2`,
-	}
-
 	// queryCheckLayoutHandleConflict checks if a layout handle already exists for a deployment (excluding a given ID).
 	queryCheckLayoutHandleConflict = dbmodel.DBQuery{
 		ID:    "LAQ-LAYOUT_MGT-09",

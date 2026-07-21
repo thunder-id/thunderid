@@ -27,7 +27,7 @@ import {
 import {useMemo, useState, type ReactNode, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {CommonResourcePropertiesPropsInterface} from '@/features/flows/components/resource-property-panel/ResourceProperties';
-import useValidationStatus from '@/features/flows/hooks/useValidationStatus';
+import useResourceFieldError from '@/features/flows/hooks/useResourceFieldError';
 import {ElementTypes, type Element} from '@/features/flows/models/elements';
 
 /**
@@ -43,7 +43,6 @@ export type FieldExtendedPropertiesPropsInterface = CommonResourcePropertiesProp
  */
 function FieldExtendedProperties({resource, onChange}: FieldExtendedPropertiesPropsInterface): ReactNode {
   const {t} = useTranslation();
-  const {selectedNotification} = useValidationStatus();
 
   const attributes: string[] = useMemo(() => ['email', 'username', 'given_name'], []);
   const credentialAttributes: string[] = useMemo(() => ['password', 'pin', 'secret'], []);
@@ -64,15 +63,7 @@ function FieldExtendedProperties({resource, onChange}: FieldExtendedPropertiesPr
   /**
    * Get the error message for the ref field.
    */
-  const errorMessage: string = useMemo(() => {
-    const key = `${resource?.id}_ref`;
-
-    if (selectedNotification?.hasResourceFieldNotification(key)) {
-      return selectedNotification?.getResourceFieldNotification(key);
-    }
-
-    return '';
-  }, [resource, selectedNotification]);
+  const errorMessage: string = useResourceFieldError(resource?.id, 'ref');
 
   return (
     <Stack>

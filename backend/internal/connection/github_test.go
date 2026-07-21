@@ -44,7 +44,7 @@ func TestGitHubSuite(t *testing.T) {
 }
 
 func (s *GitHubTestSuite) SetupTest() {
-	s.handler, s.mockIDP = newConnectionTestHandler(s.T())
+	s.handler, s.mockIDP, _ = newConnectionTestHandler(s.T())
 }
 
 func (s *GitHubTestSuite) TestToIDPDTOSetsGitHubType() {

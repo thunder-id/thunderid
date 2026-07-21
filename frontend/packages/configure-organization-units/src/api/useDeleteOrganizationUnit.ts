@@ -88,8 +88,5 @@ export default function useDeleteOrganizationUnit(): UseMutationResult<void, Err
       });
       showToast(t('delete.success'), 'success');
     },
-    onError: () => {
-      showToast(t('delete.error'), 'error');
-    },
   });
 }

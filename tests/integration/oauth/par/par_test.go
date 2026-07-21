@@ -407,11 +407,56 @@ func (ts *PARTestSuite) TestPAREndpointValidation() {
 
 // TestPARAuthorizationFlowWithPKCE tests the full PAR + authorization code flow with PKCE.
 func (ts *PARTestSuite) TestPARAuthorizationFlowWithPKCE() {
-	token, err := testutils.ObtainAccessTokenWithPAR(clientID, redirectURI, "openid",
-		"par_test_user", "testpass123", true, clientSecret)
+	codeVerifier, err := testutils.GenerateCodeVerifier()
+	ts.Require().NoError(err, "should generate code verifier")
+
+	// The resource is included in the pushed authorization parameters so it is recorded on the
+	// resulting auth code and inherited at the token step.
+	parParams := map[string]string{
+		"response_type":         "code",
+		"redirect_uri":          redirectURI,
+		"scope":                 "openid",
+		"state":                 "par-test-state",
+		"resource":              testutils.SystemResourceIdentifier,
+		"code_challenge":        testutils.GenerateCodeChallenge(codeVerifier),
+		"code_challenge_method": "S256",
+	}
+
+	parResult, err := testutils.SubmitPARRequest(clientID, clientSecret, parParams)
+	ts.Require().NoError(err, "PAR request should succeed")
+	ts.Require().Equal(http.StatusCreated, parResult.StatusCode)
+	ts.Require().NotNil(parResult.PAR)
+
+	resp, err := testutils.InitiateAuthorizationFlowWithRequestURI(clientID, parResult.PAR.RequestURI)
+	ts.Require().NoError(err, "authorization flow should initiate")
+	defer resp.Body.Close()
+
+	authID, executionId, err := testutils.ExtractAuthData(resp.Header.Get("Location"))
+	ts.Require().NoError(err, "should extract auth data")
+
+	initialStep, err := testutils.ExecuteAuthenticationFlow(executionId, nil, "")
+	ts.Require().NoError(err, "should execute initial authentication flow")
+
+	flowStep, err := testutils.ExecuteAuthenticationFlow(executionId, map[string]string{
+		"username": "par_test_user",
+		"password": "testpass123",
+	}, "action_001", initialStep.ChallengeToken)
+	ts.Require().NoError(err, "should execute authentication flow")
+	ts.Require().Equal("COMPLETE", flowStep.FlowStatus)
+	ts.Require().NotEmpty(flowStep.Assertion)
+
+	authzResp, err := testutils.CompleteAuthorization(authID, flowStep.Assertion)
+	ts.Require().NoError(err, "should complete authorization")
+
+	code, err := testutils.ExtractAuthorizationCode(authzResp.RedirectURI)
+	ts.Require().NoError(err, "should extract authorization code")
+
+	tokenResult, err := testutils.RequestTokenWithPKCE(clientID, clientSecret, code, redirectURI,
+		"authorization_code", codeVerifier)
 	ts.Require().NoError(err, "PAR authorization flow should succeed")
-	ts.Require().NotNil(token, "Token response should be present")
-	ts.NotEmpty(token.AccessToken)
+	ts.Require().Equal(http.StatusOK, tokenResult.StatusCode)
+	ts.Require().NotNil(tokenResult.Token, "Token response should be present")
+	ts.NotEmpty(tokenResult.Token.AccessToken)
 }
 
 // TestPARRequestURISingleUse tests that a request_uri can only be used once.

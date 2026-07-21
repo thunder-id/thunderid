@@ -436,6 +436,26 @@ func (s *InterceptorRunnerTestSuite) TestRunInterceptors_NilCurrentNodeInputsPas
 	assert.Nil(s.T(), receivedInputs)
 }
 
+// InterceptorRunnerContext consumed inputs
+
+func (s *InterceptorRunnerTestSuite) TestInterceptorRunnerContext_AppendConsumedInputs_Appends() {
+	c := &InterceptorRunnerContext{}
+
+	c.AppendConsumedInputs([]string{"a"})
+	c.AppendConsumedInputs([]string{"b", "c"})
+
+	assert.Equal(s.T(), []string{"a", "b", "c"}, c.GetConsumedInputs())
+}
+
+func (s *InterceptorRunnerTestSuite) TestInterceptorRunnerContext_AppendConsumedInputs_EmptyIsNoop() {
+	c := &InterceptorRunnerContext{}
+
+	c.AppendConsumedInputs(nil)
+	c.AppendConsumedInputs([]string{})
+
+	assert.Empty(s.T(), c.GetConsumedInputs())
+}
+
 // --- Test helpers ---
 
 func newTestInterceptorMock(t interface {

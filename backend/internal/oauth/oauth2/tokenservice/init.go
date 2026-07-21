@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -21,6 +21,7 @@ package tokenservice
 import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jwksresolver"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -34,8 +35,9 @@ func Initialize(
 	jweService jwe.JWEServiceInterface,
 	resolver *jwksresolver.Resolver,
 	idpService providers.IDPProvider,
+	enforcementService revocation.EnforcementServiceInterface,
 ) (TokenBuilderInterface, TokenValidatorInterface) {
 	tokenBuilder := newTokenBuilder(cfg, jwtService, jweService, resolver)
-	tokenValidator := newTokenValidator(cfg, jwtService, idpService)
+	tokenValidator := newTokenValidator(cfg, jwtService, idpService, enforcementService)
 	return tokenBuilder, tokenValidator
 }

@@ -344,6 +344,12 @@ func (c *compositeGroupStore) RemoveGroupMembers(ctx context.Context, groupID st
 	return c.dbStore.RemoveGroupMembers(ctx, groupID, members)
 }
 
+// DeleteMembershipsByMember deletes memberships for the member from the database store only.
+func (c *compositeGroupStore) DeleteMembershipsByMember(
+	ctx context.Context, memberType, memberID string) (int64, error) {
+	return c.dbStore.DeleteMembershipsByMember(ctx, memberType, memberID)
+}
+
 // GetGroupsByIDs returns groups matching the given IDs, merged from both stores.
 func (c *compositeGroupStore) GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]GroupBasicDAO, error) {
 	dbGroups, err := c.dbStore.GetGroupsByIDs(ctx, groupIDs)

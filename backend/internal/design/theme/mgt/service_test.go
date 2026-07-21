@@ -465,7 +465,6 @@ func (suite *ThemeServiceTestSuite) TestUpdateTheme_InvalidJSON() {
 func (suite *ThemeServiceTestSuite) TestDeleteTheme_Success() {
 	suite.mockStore.On("IsThemeDeclarative", "theme-123").Return(false)
 	suite.mockStore.On("IsThemeExist", "theme-123").Return(true, nil)
-	suite.mockStore.On("GetApplicationsCountByThemeID", "theme-123").Return(0, nil)
 	suite.mockStore.On("DeleteTheme", "theme-123").Return(nil)
 
 	err := suite.service.DeleteTheme(context.Background(), "theme-123")
@@ -491,23 +490,10 @@ func (suite *ThemeServiceTestSuite) TestDeleteTheme_NotFound() {
 	assert.Nil(suite.T(), err)
 }
 
-// Test DeleteTheme - Theme In Use
-func (suite *ThemeServiceTestSuite) TestDeleteTheme_InUse() {
-	suite.mockStore.On("IsThemeDeclarative", "theme-123").Return(false)
-	suite.mockStore.On("IsThemeExist", "theme-123").Return(true, nil)
-	suite.mockStore.On("GetApplicationsCountByThemeID", "theme-123").Return(3, nil)
-
-	err := suite.service.DeleteTheme(context.Background(), "theme-123")
-
-	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), "THM-1004", err.Code)
-}
-
 // Test DeleteTheme - Store Error
 func (suite *ThemeServiceTestSuite) TestDeleteTheme_StoreError() {
 	suite.mockStore.On("IsThemeDeclarative", "theme-123").Return(false)
 	suite.mockStore.On("IsThemeExist", "theme-123").Return(true, nil)
-	suite.mockStore.On("GetApplicationsCountByThemeID", "theme-123").Return(0, nil)
 	suite.mockStore.On("DeleteTheme", "theme-123").Return(errors.New("database error"))
 
 	err := suite.service.DeleteTheme(context.Background(), "theme-123")
@@ -580,17 +566,6 @@ func (suite *ThemeServiceTestSuite) TestUpdateTheme_GetThemeError() {
 	assert.NotNil(suite.T(), err)
 }
 
-// Test DeleteTheme - Applications count error
-func (suite *ThemeServiceTestSuite) TestDeleteTheme_ApplicationsCountError() {
-	suite.mockStore.On("IsThemeDeclarative", "theme-123").Return(false)
-	suite.mockStore.On("IsThemeExist", "theme-123").Return(true, nil)
-	suite.mockStore.On("GetApplicationsCountByThemeID", "theme-123").Return(0, errors.New("database error"))
-
-	err := suite.service.DeleteTheme(context.Background(), "theme-123")
-
-	assert.NotNil(suite.T(), err)
-}
-
 // --- GetThemeUsages tests ---
 
 // stubUsageRegistry is a minimal resourcedependency.Registry for tests.
@@ -604,6 +579,10 @@ func (s *stubUsageRegistry) RegisterProvider(resourcedependency.Provider) {}
 func (s *stubUsageRegistry) GetDependencies(
 	_ context.Context, _, _ string) (*resourcedependency.DependenciesResponse, error) {
 	return s.resp, s.err
+}
+
+func (s *stubUsageRegistry) CascadeDelete(_ context.Context, _, _ string) (int, error) {
+	return 0, nil
 }
 
 // Test GetThemeUsages - Empty ID

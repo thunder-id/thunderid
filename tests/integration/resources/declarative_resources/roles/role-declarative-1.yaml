@@ -1,3 +1,4 @@
+resource_type: role
 id: decl-role-1
 name: Declarative Test Role
 description: A declarative test role for integration testing

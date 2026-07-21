@@ -80,7 +80,7 @@ describe('ExportPage', () => {
       expect(mockMutate).toHaveBeenCalledWith(
         expect.objectContaining({
           applications: ['*'],
-          identityProviders: ['*'],
+          connections: ['*'],
           flows: ['*'],
           groups: ['*'],
           agents: ['*'],

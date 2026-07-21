@@ -29,6 +29,7 @@ import type {
   PlatformApplicationTemplate,
   ApplicationTemplate,
 } from '../../models/application-templates';
+import type {McpClientType} from '../../models/mcp-client';
 
 /**
  * Application creation context state interface
@@ -199,6 +200,30 @@ export interface ApplicationCreateContextType {
    * @remark Needed for step 05: Technology Stack.
    */
   setSelectedTemplateConfig: (config: ApplicationTemplate | null) => void;
+
+  /**
+   * The selected MCP client type (user-delegated or machine-to-machine).
+   * @remark Needed for the mcp-client template's Name & Type step.
+   */
+  mcpClientType: McpClientType;
+
+  /**
+   * Sets the selected MCP client type.
+   * @remark Needed for the mcp-client template's Name & Type step.
+   */
+  setMcpClientType: (type: McpClientType) => void;
+
+  /**
+   * The redirect URIs configured for the mcp-client template's user-delegated client.
+   * @remark Needed for the mcp-client template's Connection step.
+   */
+  mcpRedirectUris: string[];
+
+  /**
+   * Sets the redirect URIs for the mcp-client template's user-delegated client.
+   * @remark Needed for the mcp-client template's Connection step.
+   */
+  setMcpRedirectUris: (uris: string[]) => void;
 
   /**
    * The hosting URL for web applications.

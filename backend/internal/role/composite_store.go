@@ -107,6 +107,71 @@ func (c *compositeRoleStore) GetRoleList(ctx context.Context, limit, offset int)
 	return roles, nil
 }
 
+// GetRoleListCountByOUID retrieves the total count of unique roles belonging to the given
+// organization unit across both stores.
+func (c *compositeRoleStore) GetRoleListCountByOUID(ctx context.Context, ouID string) (int, error) {
+	capCount := func(fn func(context.Context, string) (int, error)) func() (int, error) {
+		return func() (int, error) {
+			count, err := fn(ctx, ouID)
+			if err != nil {
+				return 0, err
+			}
+			return min(count, serverconst.MaxCompositeStoreRecords), nil
+		}
+	}
+	roles, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		capCount(c.dbStore.GetRoleListCountByOUID),
+		capCount(c.fileStore.GetRoleListCountByOUID),
+		func(count int) ([]Role, error) { return c.dbStore.GetRoleListByOUID(ctx, ouID, count, 0) },
+		func(count int) ([]Role, error) { return c.fileStore.GetRoleListByOUID(ctx, ouID, count, 0) },
+		mergeRoles,
+		serverconst.MaxCompositeStoreRecords+1,
+		0,
+		serverconst.MaxCompositeStoreRecords,
+	)
+	if err != nil {
+		return 0, err
+	}
+	if limitExceeded {
+		return 0, errResultLimitExceededInCompositeMode
+	}
+
+	return len(roles), nil
+}
+
+// GetRoleListByOUID retrieves roles belonging to the given organization unit from both stores
+// and merges them.
+func (c *compositeRoleStore) GetRoleListByOUID(
+	ctx context.Context, ouID string, limit, offset int,
+) ([]Role, error) {
+	capCount := func(fn func(context.Context, string) (int, error)) func() (int, error) {
+		return func() (int, error) {
+			count, err := fn(ctx, ouID)
+			if err != nil {
+				return 0, err
+			}
+			return min(count, serverconst.MaxCompositeStoreRecords), nil
+		}
+	}
+	roles, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		capCount(c.dbStore.GetRoleListCountByOUID),
+		capCount(c.fileStore.GetRoleListCountByOUID),
+		func(count int) ([]Role, error) { return c.dbStore.GetRoleListByOUID(ctx, ouID, count, 0) },
+		func(count int) ([]Role, error) { return c.fileStore.GetRoleListByOUID(ctx, ouID, count, 0) },
+		mergeRoles,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return roles, nil
+}
+
 // CreateRole creates a new role in the database store only.
 func (c *compositeRoleStore) CreateRole(ctx context.Context, id string, role RoleCreationDetail) error {
 	return c.dbStore.CreateRole(ctx, id, role)
@@ -302,6 +367,12 @@ func (c *compositeRoleStore) DeleteAssignmentsByRoleID(ctx context.Context, id s
 	return c.dbStore.DeleteAssignmentsByRoleID(ctx, id)
 }
 
+// DeleteAssignmentsByAssignee deletes assignments for the assignee from the database store only.
+func (c *compositeRoleStore) DeleteAssignmentsByAssignee(
+	ctx context.Context, assigneeType, assigneeID string) (int64, error) {
+	return c.dbStore.DeleteAssignmentsByAssignee(ctx, assigneeType, assigneeID)
+}
+
 // AddAssignments adds assignments to a role in the database store only.
 func (c *compositeRoleStore) AddAssignments(ctx context.Context, id string, assignments []RoleAssignment) error {
 	return c.dbStore.AddAssignments(ctx, id, assignments)
@@ -333,12 +404,13 @@ func (c *compositeRoleStore) CheckRoleNameExistsExcludingID(
 	)
 }
 
-// GetAuthorizedPermissions retrieves authorized permissions assembled from three sources:
+// GetAuthorizedPermissionsByResourceServer retrieves authorized permissions (scoped to a resource server when
+// provided) assembled from three sources:
 //
 //  1. dbStore — DB-managed roles, where both ROLE_PERMISSION and ROLE_ASSIGNMENT rows exist.
 //     The single SQL INNER JOIN resolves these.
 //  2. fileStore (static) — declarative roles whose YAML carries an explicit `assignments:`
-//     list for the entity/group. Returned by fileStore.GetAuthorizedPermissions.
+//     list for the entity/group. Returned by fileStore.GetAuthorizedPermissionsByResourceServer.
 //  3. Cross-store (file/db) — declarative roles whose definition lives in the file store
 //     but whose assignment was added at runtime via the role assignments API and therefore
 //     lives in the DB. Neither store can answer this alone: dbStore drops the row in its
@@ -346,27 +418,31 @@ func (c *compositeRoleStore) CheckRoleNameExistsExcludingID(
 //     consults the YAML-declared assignments. The composite resolves it by reading the
 //     DB-stored role IDs for the entity, looking each role up in the file store, and
 //     intersecting its permissions with the requested set.
-func (c *compositeRoleStore) GetAuthorizedPermissions(
+func (c *compositeRoleStore) GetAuthorizedPermissionsByResourceServer(
 	ctx context.Context,
 	entityID string,
 	groupIDs []string,
+	resourceServerID string,
 	requestPermissions []string,
 ) ([]string, error) {
 	if len(requestPermissions) == 0 {
 		return []string{}, nil
 	}
 
-	dbPerms, err := c.dbStore.GetAuthorizedPermissions(ctx, entityID, groupIDs, requestPermissions)
+	dbPerms, err := c.dbStore.GetAuthorizedPermissionsByResourceServer(
+		ctx, entityID, groupIDs, resourceServerID, requestPermissions)
 	if err != nil {
 		return nil, err
 	}
 
-	filePerms, err := c.fileStore.GetAuthorizedPermissions(ctx, entityID, groupIDs, requestPermissions)
+	filePerms, err := c.fileStore.GetAuthorizedPermissionsByResourceServer(
+		ctx, entityID, groupIDs, resourceServerID, requestPermissions)
 	if err != nil {
 		return nil, err
 	}
 
-	crossStorePerms, err := c.crossStoreAuthorizedPermissions(ctx, entityID, groupIDs, requestPermissions)
+	crossStorePerms, err := c.crossStoreAuthorizedPermissions(
+		ctx, entityID, groupIDs, resourceServerID, requestPermissions)
 	if err != nil {
 		return nil, err
 	}
@@ -382,6 +458,7 @@ func (c *compositeRoleStore) crossStoreAuthorizedPermissions(
 	ctx context.Context,
 	entityID string,
 	groupIDs []string,
+	resourceServerID string,
 	requestPermissions []string,
 ) ([]string, error) {
 	if entityID == "" && len(groupIDs) == 0 {
@@ -408,7 +485,7 @@ func (c *compositeRoleStore) crossStoreAuthorizedPermissions(
 			return nil, err
 		}
 		if !exists {
-			// Role is DB-only; permissions already covered by dbStore.GetAuthorizedPermissions.
+			// Role is DB-only; permissions already covered by the DB-store scoped permission lookup.
 			continue
 		}
 		role, err := c.fileStore.GetRole(ctx, id)
@@ -428,6 +505,9 @@ func (c *compositeRoleStore) crossStoreAuthorizedPermissions(
 			return nil, fmt.Errorf("composite role store: load declarative role %q: %w", id, err)
 		}
 		for _, rp := range role.Permissions {
+			if resourceServerID != "" && rp.ResourceServerID != resourceServerID {
+				continue
+			}
 			for _, perm := range rp.Permissions {
 				if requestedSet[perm] {
 					granted[perm] = true

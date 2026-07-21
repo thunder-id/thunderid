@@ -20,15 +20,20 @@
 package flowconfig
 
 import (
+	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 // Config holds configuration values required by flow services.
 type Config struct {
-	Flow          engineconfig.FlowConfig
-	DeploymentID  string
-	RuntimeDBType string
+	Flow engineconfig.FlowConfig
+	// SecureCookies marks SSO cookies Secure; it is derived from the deployment's HTTP-only setting.
+	SecureCookies bool
+	// Session holds the SSO session lifetime configuration used for both server-side timeouts and the
+	// cookie lifetime. It is sourced from the server-config "session" section at the composition root,
+	// not the static server runtime, so FromServerRuntime leaves it zero for the caller to populate.
+	Session flowsession.Config
 }
 
 // FromServerRuntime builds flow configuration from the global server runtime.
@@ -36,7 +41,6 @@ func FromServerRuntime() Config {
 	runtime := config.GetServerRuntime()
 	return Config{
 		Flow:          runtime.Config.Flow,
-		DeploymentID:  runtime.Config.Server.Identifier,
-		RuntimeDBType: runtime.Config.Database.Runtime.Type,
+		SecureCookies: !runtime.Config.Server.HTTPOnly,
 	}
 }

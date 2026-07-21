@@ -16,12 +16,12 @@
  * under the License.
  */
 
-import {AUTH_FLOW_GRAPHS} from '../models/auth-flow-graphs';
 import {
   IdentityProviderTypes,
   type IdentityProvider,
   type IdentityProviderType,
-} from '@/features/connections/models/identity-provider';
+} from '@thunderid/configure-connections';
+import {AUTH_FLOW_GRAPHS} from '../models/auth-flow-graphs';
 
 /**
  * Options for resolving authentication flow configuration.

@@ -1,7 +1,8 @@
 ---
 title: User Profile
+docType: reference
 displayed_sidebar: javascriptSdkSidebar
-description: Functions for reading and updating user profile data
+description: API and methods for loading, updating, and managing the authenticated user's profile data.
 ---
 
 # User Profile
@@ -30,7 +31,7 @@ console.log(user.email, user.displayName)
 | Parameter | Type | Required | Description |
 |-----------|------|:--------:|-------------|
 | `config.url` | `string` | ✅ | Full userinfo endpoint URL |
-| `config.headers` | `Record<string, string>` | — | Request headers. Include `Authorization: Bearer <token>` |
+| `config.headers` | `Record<string, string>` | ❌ | Request headers. Include `Authorization: Bearer <token>` |
 
 ### Response: `User`
 

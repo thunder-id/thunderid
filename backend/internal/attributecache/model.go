@@ -27,5 +27,5 @@ type AttributeCache struct {
 	Attributes map[string]interface{} `json:"attributes"`
 
 	// TTLSeconds is the time-to-live in seconds for this cache entry.
-	TTLSeconds int `json:"ttlSeconds"`
+	TTLSeconds int64 `json:"ttlSeconds"`
 }

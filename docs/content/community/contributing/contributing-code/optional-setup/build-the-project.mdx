@@ -1,6 +1,7 @@
 ---
 title: Build the Project
-description: "Build commands and quick reference for developing {{ProductName}}."
+docType: community
+description: Build commands and quick reference for compiling ThunderID from source during development.
 sidebar_position: 1
 hide_table_of_contents: false
 ---
@@ -30,55 +31,3 @@ make build_with_coverage
 ```
 
 This will run unit tests, build with coverage flags, run integration tests, and generate a combined coverage report.
-
-## Building without Consent Server
-
-By default, the build process downloads and packages the default consent server. If you want to skip this step, use the `WITHOUT_CONSENT` flag:
-
-**Using Make (Cross-platform)**
-```bash
-# Build and test bypassing consent
-make build WITHOUT_CONSENT=true
-make test_integration WITHOUT_CONSENT=true
-```
-
-**Using Bash (Linux/macOS)**
-```bash
-./build.sh build --without-consent
-```
-
-**Using PowerShell (Windows)**
-```powershell
-.\build.ps1 build --without-consent
-```
-
-**Using Docker**
-```bash
-docker build --build-arg WITH_CONSENT=false -t thunderid:latest .
-```
-
-:::note
-If you build without the consent server, you must also disable it when running setup and starting the server, as the scripts default to `WITH_CONSENT=true`. Run setup and start with the appropriate flag for your platform:
-
-**Bash (Linux/macOS)**
-```bash
-./setup.sh --without-consent
-./start.sh --without-consent
-```
-
-**PowerShell (Windows)**
-```powershell
-.\setup.ps1 --without-consent
-.\start.ps1 --without-consent
-```
-
-**Make**
-```bash
-make run WITHOUT_CONSENT=true
-```
-
-**Docker (environment variable)**
-```bash
-docker run -e WITH_CONSENT=false thunderid:latest
-```
-:::

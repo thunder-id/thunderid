@@ -27,6 +27,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -48,6 +49,15 @@ func GetFlowSecret(appID string) string {
 
 const (
 	TestServerURL = "https://localhost:8095"
+
+	// SystemResourceIdentifier is the identifier of the bootstrapped System resource server
+	// (backend/cmd/server/bootstrap/01-default-resources.yaml). The CONSOLE app binds its tokens
+	// to this resource server via the RFC 8707 resource parameter, mirroring the console runtime
+	// config (frontend/apps/console/public/config.js).
+	SystemResourceIdentifier = "https://localhost:8090/mcp"
+
+	// FlowSecretHeaderName is the header used to present a Flow Secret to /flow/execute.
+	FlowSecretHeaderName = "Flow-Secret"
 )
 
 // GetHTTPClient returns a configured HTTP client for test requests with automatic auth injection
@@ -420,6 +430,11 @@ func CreateApplication(app Application) (string, error) {
 		appData["assertion"] = app.AssertionConfig
 	}
 
+	// Add client-level attestation config if provided
+	if app.Attestation != nil {
+		appData["attestation"] = app.Attestation
+	}
+
 	appJSON, err := json.Marshal(appData)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal application: %w", err)
@@ -600,14 +615,116 @@ func GetOrganizationUnit(ouID string) (*OrganizationUnit, error) {
 	return &ou, nil
 }
 
-// CreateIDP creates an identity provider via API and returns the IDP ID
+// idpVendorRegistryMu guards idpVendorRegistry.
+var idpVendorRegistryMu sync.RWMutex
+
+// idpVendorRegistry maps an IDP ID (as returned by CreateIDP) to the /connections vendor path
+// it was created under, so DeleteIDP (which only takes an ID) can address the right vendor
+// route. Populated by CreateIDP.
+var idpVendorRegistry = map[string]string{}
+
+// idpVendorPath maps a legacy IDP Type value (e.g. "GOOGLE") to its /connections vendor path
+// (e.g. "google").
+func idpVendorPath(idpType string) (string, error) {
+	switch strings.ToUpper(idpType) {
+	case "GOOGLE":
+		return "google", nil
+	case "GITHUB":
+		return "github", nil
+	case "OIDC":
+		return "oidc", nil
+	case "OAUTH":
+		return "oauth", nil
+	default:
+		return "", fmt.Errorf("unsupported IDP type for /connections: %s", idpType)
+	}
+}
+
+// idpPropertyToConnectionField maps a legacy IDP property name to its /connections typed
+// camelCase field name. Every IdP-backed vendor shares the same property key set; a vendor's
+// request struct simply ignores fields it doesn't declare.
+var idpPropertyToConnectionField = map[string]string{
+	"client_id":              "clientId",
+	"client_secret":          "clientSecret",
+	"redirect_uri":           "redirectUri",
+	"prompt":                 "prompt",
+	"authorization_endpoint": "authorizationEndpoint",
+	"token_endpoint":         "tokenEndpoint",
+	"userinfo_endpoint":      "userInfoEndpoint",
+	"jwks_endpoint":          "jwksEndpoint",
+	"logout_endpoint":        "logoutEndpoint",
+	"issuer":                 "issuer",
+	"trusted_token_audience": "trustedTokenAudience",
+}
+
+// idpToConnectionBody converts a legacy IDP{Properties: [...]} fixture into the typed
+// camelCase body /connections/{vendor} expects. "scopes" and "token_exchange_enabled" get
+// special handling (comma-string -> array, string -> bool); every other recognized property
+// name is copied through as a plain string. Unrecognized properties (not part of any
+// /connections vendor's typed schema) are dropped.
+func idpToConnectionBody(idp IDP) map[string]interface{} {
+	body := map[string]interface{}{
+		"name":        idp.Name,
+		"description": idp.Description,
+	}
+	for _, prop := range idp.Properties {
+		switch prop.Name {
+		case "scopes":
+			body["scopes"] = strings.Split(prop.Value, ",")
+		case "token_exchange_enabled":
+			body["tokenExchangeEnabled"] = prop.Value == "true"
+		default:
+			if field, ok := idpPropertyToConnectionField[prop.Name]; ok {
+				body[field] = prop.Value
+			}
+		}
+	}
+	return body
+}
+
+// connectionBodyToIDP converts a /connections/{vendor} JSON response back into the legacy
+// IDP{Properties: [...]} shape.
+func connectionBodyToIDP(idpType string, resp map[string]interface{}) *IDP {
+	idp := &IDP{Type: strings.ToUpper(idpType)}
+	if id, ok := resp["id"].(string); ok {
+		idp.ID = id
+	}
+	if name, ok := resp["name"].(string); ok {
+		idp.Name = name
+	}
+	if desc, ok := resp["description"].(string); ok {
+		idp.Description = desc
+	}
+	for propName, field := range idpPropertyToConnectionField {
+		if value, ok := resp[field].(string); ok && value != "" {
+			idp.Properties = append(idp.Properties, IDPProperty{Name: propName, Value: value})
+		}
+	}
+	if scopes, ok := resp["scopes"].([]interface{}); ok {
+		parts := make([]string, 0, len(scopes))
+		for _, s := range scopes {
+			if str, ok := s.(string); ok {
+				parts = append(parts, str)
+			}
+		}
+		idp.Properties = append(idp.Properties, IDPProperty{Name: "scopes", Value: strings.Join(parts, ",")})
+	}
+	return idp
+}
+
+// CreateIDP creates an identity provider via /connections/{vendor} and returns its ID.
 func CreateIDP(idp IDP) (string, error) {
-	idpJSON, err := json.Marshal(idp)
+	vendor, err := idpVendorPath(idp.Type)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal IDP: %w", err)
+		return "", err
 	}
 
-	req, err := http.NewRequest("POST", TestServerURL+"/identity-providers", bytes.NewReader(idpJSON))
+	bodyJSON, err := json.Marshal(idpToConnectionBody(idp))
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal connection body: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", TestServerURL+"/connections/"+vendor, bytes.NewReader(bodyJSON))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
@@ -629,22 +746,34 @@ func CreateIDP(idp IDP) (string, error) {
 		return "", fmt.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	var createdIDP map[string]interface{}
-	err = json.Unmarshal(bodyBytes, &createdIDP)
-	if err != nil {
+	var created map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &created); err != nil {
 		return "", fmt.Errorf("failed to parse response body: %w. Response: %s", err, string(bodyBytes))
 	}
 
-	idpID, ok := createdIDP["id"].(string)
+	idpID, ok := created["id"].(string)
 	if !ok {
 		return "", fmt.Errorf("response does not contain id or id is not a string. Response: %s", string(bodyBytes))
 	}
+
+	idpVendorRegistryMu.Lock()
+	idpVendorRegistry[idpID] = vendor
+	idpVendorRegistryMu.Unlock()
+
 	return idpID, nil
 }
 
-// DeleteIDP deletes an identity provider by ID
+// DeleteIDP deletes an identity provider (created via CreateIDP) by ID.
 func DeleteIDP(idpID string) error {
-	req, err := http.NewRequest("DELETE", TestServerURL+"/identity-providers/"+idpID, nil)
+	idpVendorRegistryMu.RLock()
+	vendor, ok := idpVendorRegistry[idpID]
+	idpVendorRegistryMu.RUnlock()
+	if !ok {
+		return fmt.Errorf("no /connections vendor registered for IDP ID %q — "+
+			"it was not created via CreateIDP in this process", idpID)
+	}
+
+	req, err := http.NewRequest("DELETE", TestServerURL+"/connections/"+vendor+"/"+idpID, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create delete request: %w", err)
 	}
@@ -660,20 +789,24 @@ func DeleteIDP(idpID string) error {
 		responseBody, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("expected status 200 or 204, got %d. Response: %s", resp.StatusCode, string(responseBody))
 	}
+
+	idpVendorRegistryMu.Lock()
+	delete(idpVendorRegistry, idpID)
+	idpVendorRegistryMu.Unlock()
 	return nil
 }
 
-// GetIDP retrieves an identity provider by ID
-func GetIDP(idpID string) (*IDP, error) {
-	req, err := http.NewRequest(
-		"GET",
-		fmt.Sprintf("%s/identity-providers/%s", TestServerURL, idpID),
-		nil,
-	)
+// GetIDP retrieves an identity provider by vendor type and ID via /connections/{vendor}/{id}.
+func GetIDP(idpType, idpID string) (*IDP, error) {
+	vendor, err := idpVendorPath(idpType)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/connections/%s/%s", TestServerURL, vendor, idpID), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create get request: %w", err)
 	}
-
 	req.Header.Set("Accept", "application/json")
 
 	client := GetHTTPClient()
@@ -688,30 +821,35 @@ func GetIDP(idpID string) (*IDP, error) {
 		return nil, fmt.Errorf("IDP get failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var idp IDP
-	if err := json.NewDecoder(resp.Body).Decode(&idp); err != nil {
+	var respBody map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
 		return nil, fmt.Errorf("failed to decode IDP response: %w", err)
 	}
 
-	return &idp, nil
+	return connectionBodyToIDP(idpType, respBody), nil
 }
 
-// UpdateIDP updates an existing identity provider
+// UpdateIDP updates an existing identity provider via /connections/{vendor}/{id}. The vendor is
+// derived from idp.Type.
 func UpdateIDP(idpID string, idp IDP) error {
-	idpJSON, err := json.Marshal(idp)
+	vendor, err := idpVendorPath(idp.Type)
 	if err != nil {
-		return fmt.Errorf("failed to marshal IDP: %w", err)
+		return err
+	}
+
+	bodyJSON, err := json.Marshal(idpToConnectionBody(idp))
+	if err != nil {
+		return fmt.Errorf("failed to marshal connection body: %w", err)
 	}
 
 	req, err := http.NewRequest(
 		"PUT",
-		fmt.Sprintf("%s/identity-providers/%s", TestServerURL, idpID),
-		bytes.NewReader(idpJSON),
+		fmt.Sprintf("%s/connections/%s/%s", TestServerURL, vendor, idpID),
+		bytes.NewReader(bodyJSON),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create update request: %w", err)
 	}
-
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
@@ -1241,6 +1379,35 @@ func DeleteResourceServer(rsID string) error {
 	return nil
 }
 
+func PutDefaultResourceServer(resourceServerID string) error {
+	client := GetHTTPClient()
+
+	payload, err := json.Marshal(map[string]string{
+		"resourceServerId": resourceServerID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal default resource server config: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPut, TestServerURL+"/server-config/defaultResourceServer", bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("failed to create default resource server config request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to update default resource server config: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
+	}
+	return nil
+}
+
 // createAction creates an action on a resource server via API and returns the action ID
 func createAction(resourceServerID string, action Action) (string, error) {
 	client := GetHTTPClient()
@@ -1385,15 +1552,72 @@ func GetFlowIDByHandle(handle string, flowType string) (string, error) {
 	return "", fmt.Errorf("flow with handle '%s' not found", handle)
 }
 
-// CreateNotificationSender creates a notification sender via API and returns the sender ID
+// senderVendorRegistryMu guards senderVendorRegistry.
+var senderVendorRegistryMu sync.RWMutex
+
+// senderVendorRegistry maps a notification sender ID (as returned by CreateNotificationSender)
+// to the /connections vendor path it was created under, so DeleteNotificationSender (which only
+// takes an ID) can address the right vendor route. Populated by CreateNotificationSender.
+var senderVendorRegistry = map[string]string{}
+
+// senderVendorPath maps a legacy NotificationSender.Provider value (e.g. "custom") to its
+// /connections vendor path (e.g. "sms-gateway").
+func senderVendorPath(provider string) (string, error) {
+	switch provider {
+	case "twilio":
+		return "twilio", nil
+	case "vonage":
+		return "vonage", nil
+	case "custom":
+		return "sms-gateway", nil
+	default:
+		return "", fmt.Errorf("unsupported notification sender provider for /connections: %s", provider)
+	}
+}
+
+// senderPropertyToConnectionField maps a legacy NotificationSender property name to its
+// /connections typed camelCase field name, across all sender-backed vendors.
+var senderPropertyToConnectionField = map[string]string{
+	"account_sid":  "accountSid",
+	"auth_token":   "authToken",
+	"api_key":      "apiKey",
+	"api_secret":   "apiSecret",
+	"sender_id":    "senderId",
+	"url":          "url",
+	"http_method":  "httpMethod",
+	"http_headers": "httpHeaders",
+	"content_type": "contentType",
+}
+
+// senderToConnectionBody converts a legacy NotificationSender{Properties: [...]} fixture into
+// the typed camelCase body /connections/{vendor} expects for sender-backed vendors.
+func senderToConnectionBody(sender NotificationSender) map[string]interface{} {
+	body := map[string]interface{}{
+		"name":        sender.Name,
+		"description": sender.Description,
+	}
+	for _, prop := range sender.Properties {
+		if field, ok := senderPropertyToConnectionField[prop.Name]; ok {
+			body[field] = prop.Value
+		}
+	}
+	return body
+}
+
+// CreateNotificationSender creates a notification sender via /connections/{vendor} and returns
+// its ID.
 func CreateNotificationSender(sender NotificationSender) (string, error) {
-	senderJSON, err := json.Marshal(sender)
+	vendor, err := senderVendorPath(sender.Provider)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal notification sender: %w", err)
+		return "", err
 	}
 
-	req, err := http.NewRequest("POST", TestServerURL+"/notification-senders/message",
-		bytes.NewReader(senderJSON))
+	bodyJSON, err := json.Marshal(senderToConnectionBody(sender))
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal connection body: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", TestServerURL+"/connections/"+vendor, bytes.NewReader(bodyJSON))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
@@ -1416,8 +1640,7 @@ func CreateNotificationSender(sender NotificationSender) (string, error) {
 	}
 
 	var respBody map[string]interface{}
-	err = json.Unmarshal(bodyBytes, &respBody)
-	if err != nil {
+	if err := json.Unmarshal(bodyBytes, &respBody); err != nil {
 		return "", fmt.Errorf("failed to parse response body: %w. Response: %s", err, string(bodyBytes))
 	}
 
@@ -1426,12 +1649,25 @@ func CreateNotificationSender(sender NotificationSender) (string, error) {
 		return "", fmt.Errorf("response does not contain id or id is not a string. Response: %s", string(bodyBytes))
 	}
 
+	senderVendorRegistryMu.Lock()
+	senderVendorRegistry[id] = vendor
+	senderVendorRegistryMu.Unlock()
+
 	return id, nil
 }
 
-// DeleteNotificationSender deletes a notification sender by ID
+// DeleteNotificationSender deletes a notification sender (created via CreateNotificationSender)
+// by ID.
 func DeleteNotificationSender(senderID string) error {
-	req, err := http.NewRequest("DELETE", TestServerURL+"/notification-senders/message/"+senderID, nil)
+	senderVendorRegistryMu.RLock()
+	vendor, ok := senderVendorRegistry[senderID]
+	senderVendorRegistryMu.RUnlock()
+	if !ok {
+		return fmt.Errorf("no /connections vendor registered for sender ID %q — "+
+			"it was not created via CreateNotificationSender in this process", senderID)
+	}
+
+	req, err := http.NewRequest("DELETE", TestServerURL+"/connections/"+vendor+"/"+senderID, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create delete request: %w", err)
 	}
@@ -1448,6 +1684,9 @@ func DeleteNotificationSender(senderID string) error {
 		return fmt.Errorf("expected status 200 or 204, got %d. Response: %s", resp.StatusCode, string(responseBody))
 	}
 
+	senderVendorRegistryMu.Lock()
+	delete(senderVendorRegistry, senderID)
+	senderVendorRegistryMu.Unlock()
 	return nil
 }
 

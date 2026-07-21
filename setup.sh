@@ -1,6 +1,6 @@
 #!/bin/bash
 # ----------------------------------------------------------------------------
-# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+# Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
 #
 # WSO2 LLC. licenses this file to you under the Apache License,
 # Version 2.0 (the "License"); you may not use this file except
@@ -44,7 +44,6 @@ DEBUG_PORT=${DEBUG_PORT:-2345}
 DEBUG_MODE=${DEBUG_MODE:-false}
 VERBOSE_MODE=${VERBOSE_MODE:-false}
 SILENT_MODE=true
-WITH_CONSENT=${WITH_CONSENT:-true}
 ADMIN_USERNAME_PROVIDED=false
 ADMIN_PASSWORD_PROVIDED=false
 if [[ -n "${ADMIN_USERNAME:-}" ]]; then
@@ -54,7 +53,17 @@ if [[ -n "${ADMIN_PASSWORD:-}" ]]; then
     ADMIN_PASSWORD_PROVIDED=true
 fi
 ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}"
+# Left empty when not supplied: configure_admin_password (below) generates a random
+# password in that case, rather than falling back to a fixed, predictable value.
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
+ADMIN_PASSWORD_GENERATED=false
+# Direct Auth Secret gates the Direct API endpoints (secure by default). When not supplied, one is
+# generated during setup and written to the secret file referenced by deployment.yaml.
+DIRECT_AUTH_SECRET="${DIRECT_AUTH_SECRET:-}"
+DIRECT_AUTH_SECRET_GENERATED=false
+DIRECT_AUTH_SECRET_FILE=""
+# Set when key material is generated this run (controls the one-time notice).
+CERTS_GENERATED=false
 
 # Color codes
 RED='\033[0;31m'
@@ -110,11 +119,12 @@ print_help() {
     echo "  --verbose                Enable detailed setup output"
     echo "  --debug                  Enable debug mode with remote debugging"
     echo "  --debug-port PORT        Set debug port (default: 2345)"
-    echo "  --without-consent        Disable the bundled consent server"
     echo "  --admin-username VALUE   Username for the default admin user (default: admin)"
     echo "                           Falls back to ADMIN_USERNAME env var if flag not set"
-    echo "  --admin-password VALUE   Password for the default admin user (default: admin)"
-    echo "                           Falls back to ADMIN_PASSWORD env var if flag not set"
+    echo "  --admin-password VALUE   Password for the default admin user"
+    echo "                           Falls back to ADMIN_PASSWORD env var; generated if unset"
+    echo "  --direct-auth-secret VALUE Secret gating the Direct API endpoints"
+    echo "                           Falls back to DIRECT_AUTH_SECRET env var; generated if unset"
     echo "  --help                   Show this help message"
     echo ""
     echo "Description:"
@@ -146,10 +156,6 @@ while [[ $# -gt 0 ]]; do
             DEBUG_PORT="$2"
             shift 2
             ;;
-        --without-consent)
-            WITH_CONSENT=false
-            shift
-            ;;
         --admin-username)
             if [[ -z "${2:-}" || "${2:-}" == --* ]]; then
                 echo -e "${RED}--admin-username requires a non-empty value${NC}"
@@ -168,6 +174,14 @@ while [[ $# -gt 0 ]]; do
             ADMIN_PASSWORD_PROVIDED=true
             shift 2
             ;;
+        --direct-auth-secret)
+            if [[ -z "${2:-}" || "${2:-}" == --* ]]; then
+                echo -e "${RED}--direct-auth-secret requires a non-empty value${NC}"
+                exit 1
+            fi
+            DIRECT_AUTH_SECRET="$2"
+            shift 2
+            ;;
         --help)
             print_help
             exit 0
@@ -179,6 +193,30 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# configure_admin_password ensures the default admin account is usable out of the box while staying
+# secure by default: it uses the provided value, or generates a random one. Unlike the Direct Auth
+# Secret, this intentionally regenerates every run where no value is supplied (no persisted value to
+# check), so re-running setup.sh with nothing explicit set is also how an operator resets the password.
+configure_admin_password() {
+    if [ -n "$ADMIN_PASSWORD" ]; then
+        return 0
+    fi
+
+    # Generate a 12-character password mixing letters, digits, and special characters.
+    # The special set is limited to shell- and YAML-safe punctuation, because the value
+    # flows through environment variables, script arguments, and the bundle's YAML
+    # template before it is stored. Regenerate until the result contains at least one
+    # digit and one special character so it reliably looks like a password.
+    charset='A-Za-z0-9@#%+=_.?-'
+    while true; do
+        ADMIN_PASSWORD="$(LC_ALL=C tr -dc "$charset" < /dev/urandom 2>/dev/null | head -c 12 || true)"
+        [ "${#ADMIN_PASSWORD}" -eq 12 ] || continue
+        case "$ADMIN_PASSWORD" in *[0-9]*) ;; *) continue ;; esac
+        case "$ADMIN_PASSWORD" in *[@#%+=_.?-]*) break ;; esac
+    done
+    ADMIN_PASSWORD_GENERATED=true
+}
 
 # ============================================================================
 # Prompt for Admin Credentials (interactive mode only)
@@ -195,9 +233,15 @@ if [ -t 0 ] && [[ "$ADMIN_USERNAME_PROVIDED" == "false" || "$ADMIN_PASSWORD_PROV
         ADMIN_USERNAME="${_input_username:-admin}"
     fi
     if [[ "$ADMIN_PASSWORD_PROVIDED" == "false" ]]; then
-        read -r -s -p "  Admin password [admin]: " _input_password
+        # Generate the password up front so it can be shown as the prompt default (the
+        # value used if the operator presses Enter). A typed value overrides it.
+        configure_admin_password
+        read -r -s -p "  Admin password [$ADMIN_PASSWORD]: " _input_password
         echo ""
-        ADMIN_PASSWORD="${_input_password:-admin}"
+        if [ -n "$_input_password" ]; then
+            ADMIN_PASSWORD="$_input_password"
+            ADMIN_PASSWORD_GENERATED=false
+        fi
     fi
     echo ""
 fi
@@ -262,8 +306,167 @@ read_config() {
     return 0
 }
 
+# resolveConfigFile prints the path to the deployment.yaml in use, or nothing if not found.
+resolve_config_file() {
+    if [ -f "$CONFIG_FILE" ]; then
+        echo "$CONFIG_FILE"
+    elif [ -f "./backend/cmd/server/deployment.yaml" ]; then
+        echo "./backend/cmd/server/deployment.yaml"
+    fi
+}
+
+# print_admin_credentials_notice shows the generated admin password once, so the operator can capture
+# it. Only shown when the password was generated during this run (not for operator-supplied values).
+print_admin_credentials_notice() {
+    if [ "$ADMIN_PASSWORD_GENERATED" != "true" ]; then
+        return 0
+    fi
+    echo "Admin credentials:"
+    echo "  Username: ${ADMIN_USERNAME}"
+    echo "  Password: ${ADMIN_PASSWORD}"
+    echo "  Sign in to the Console with these credentials."
+    echo ""
+}
+
+# configure_direct_auth_secret ensures the Direct API is usable out of the box while staying secure by
+# default. The secret is persisted to config/secrets/direct_auth_secret and the server reads it via the
+# file:// reference in deployment.yaml. This keeps generation working when deployment.yaml is read-only
+# (e.g. a mounted Kubernetes ConfigMap): only the secrets directory needs to be writable. An operator can
+# still set an explicit inline secret in deployment.yaml, which is honored as-is.
+configure_direct_auth_secret() {
+    local config_file existing ref secret_file
+    config_file="$(resolve_config_file)"
+    if [ -z "$config_file" ]; then
+        log_warning "deployment.yaml not found; skipping Direct Auth Secret configuration"
+        return 0
+    fi
+
+    # Inspect the configured secret. A file:// reference points at the secret file this script
+    # maintains; a plain value means the operator set an explicit secret, which is honored as-is.
+    existing=$(grep -E '^[[:space:]]*direct_auth_secret:' "$config_file" | sed 's/#.*//' \
+        | sed -E 's/^[[:space:]]*direct_auth_secret:[[:space:]]*//' | tr -d '"'\''[:space:]' | head -1)
+    ref="${existing#file://}"
+    if [ -n "$existing" ] && [ "$ref" = "$existing" ]; then
+        DIRECT_AUTH_SECRET="$existing"
+        return 0
+    fi
+
+    # Resolve the target secret file. Prefer the path from the file:// reference (relative to the
+    # deployment.yaml directory); otherwise fall back to the default location.
+    if [ -n "$ref" ]; then
+        case "$ref" in
+            /*) secret_file="$ref" ;;
+            *)  secret_file="$(dirname "$config_file")/$ref" ;;
+        esac
+    else
+        secret_file="$(dirname "$config_file")/config/secrets/direct_auth_secret"
+    fi
+    mkdir -p "$(dirname "$secret_file")"
+    # Record the resolved path so the notice can report where the secret was written.
+    DIRECT_AUTH_SECRET_FILE="$secret_file"
+
+    # An explicit provided value is written to the secret file. Otherwise reuse an existing secret,
+    # or generate a random one. Guard openssl with '|| true' so a failure does not abort the script
+    # under 'set -e' before the /dev/urandom fallback runs.
+    if [ -n "$DIRECT_AUTH_SECRET" ]; then
+        printf '%s' "$DIRECT_AUTH_SECRET" >"$secret_file"
+        chmod 600 "$secret_file"
+        return 0
+    fi
+    if [ -s "$secret_file" ]; then
+        chmod 600 "$secret_file"
+        DIRECT_AUTH_SECRET="$(cat "$secret_file")"
+        return 0
+    fi
+    DIRECT_AUTH_SECRET="$(openssl rand -hex 32 2>/dev/null || true)"
+    if [ -z "$DIRECT_AUTH_SECRET" ]; then
+        DIRECT_AUTH_SECRET="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    fi
+    printf '%s' "$DIRECT_AUTH_SECRET" >"$secret_file"
+    chmod 600 "$secret_file"
+    DIRECT_AUTH_SECRET_GENERATED=true
+}
+
+# print_direct_auth_secret_notice shows the generated Direct Auth Secret once, so the operator can capture
+# it. Only shown when the secret was generated during this run (not for operator-supplied values).
+print_direct_auth_secret_notice() {
+    if [ "$DIRECT_AUTH_SECRET_GENERATED" != "true" ]; then
+        return 0
+    fi
+    echo "Direct Auth Secret (Direct API): ${DIRECT_AUTH_SECRET}"
+    echo "  Send it in the 'Direct-Auth-Secret' header when calling the Direct API endpoints."
+    echo "  It has been written to ${DIRECT_AUTH_SECRET_FILE}, which deployment.yaml"
+    echo "  references via server.security.direct_auth_secret."
+    echo ""
+}
+
+# Generate a self-signed cert/key pair if it does not already exist.
+generate_x509_cert() {
+    local cert_file="$1" key_file="$2" algo="$3"
+    if [ -f "$cert_file" ] && [ -f "$key_file" ]; then
+        return 0
+    fi
+    if [ "$algo" = "ecdsa" ]; then
+        openssl ecparam -name prime256v1 -genkey -noout -param_enc named_curve -out "$key_file" >/dev/null 2>&1 || true
+        openssl req -new -x509 -nodes -days 3650 -key "$key_file" -out "$cert_file" \
+            -subj "/O=WSO2/OU=${PRODUCT_NAME}/CN=localhost" \
+            -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" >/dev/null 2>&1 || true
+    else
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout "$key_file" -out "$cert_file" \
+            -subj "/O=WSO2/OU=${PRODUCT_NAME}/CN=localhost" \
+            -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" >/dev/null 2>&1 || true
+    fi
+    if [ ! -f "$cert_file" ] || [ ! -f "$key_file" ]; then
+        log_error "Failed to generate certificate: $cert_file (is openssl installed?)"
+        exit 1
+    fi
+    CERTS_GENERATED=true
+}
+
+# Generate the server TLS, JWT signing, and AES key material if absent (reused on later runs).
+configure_certificates() {
+    local config_file cert_dir
+    config_file="$(resolve_config_file)"
+    if [ -n "$config_file" ]; then
+        cert_dir="$(dirname "$config_file")/config/certs"
+    else
+        cert_dir="./config/certs"
+    fi
+    mkdir -p "$cert_dir"
+
+    generate_x509_cert "$cert_dir/server.cert" "$cert_dir/server.key" rsa
+    generate_x509_cert "$cert_dir/signing.cert" "$cert_dir/signing.key" rsa
+    generate_x509_cert "$cert_dir/ecdsa-signing.cert" "$cert_dir/ecdsa-signing.key" ecdsa
+
+    local crypto_key="$cert_dir/crypto.key"
+    if [ ! -f "$crypto_key" ]; then
+        local key
+        key="$(openssl rand -hex 32 2>/dev/null || true)"
+        if [ -z "$key" ]; then
+            key="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+        fi
+        printf '%s' "$key" > "$crypto_key"
+        CERTS_GENERATED=true
+    fi
+}
+
+# Print a one-time notice when key material was generated this run.
+print_certificates_notice() {
+    if [ "$CERTS_GENERATED" != "true" ]; then
+        return 0
+    fi
+    echo "Generated missing security material in config/certs."
+    echo "  Preserve this directory; if these keys are lost or changed, previously issued tokens and encrypted data can no longer be validated or decrypted."
+    echo ""
+}
+
 # Read configuration
 read_config
+
+# Configure the admin password and Direct Auth Secret before bootstrap so both are ready to use.
+configure_admin_password
+configure_direct_auth_secret
+configure_certificates
 
 # Construct base URL (internal API endpoint)
 BASE_URL="${PROTOCOL}://${HOSTNAME}:${PORT}"
@@ -324,70 +527,13 @@ if [ "$DEBUG_MODE" = "true" ] && ! command -v dlv &> /dev/null; then
 fi
 
 # ============================================================================
-# Start Consent Server (if enabled)
-# ============================================================================
-
-CONSENT_PID=""
-
-# Cleanup function — stops the consent server started below.
-cleanup() {
-    if [ -n "$CONSENT_PID" ]; then
-        if [ "$VERBOSE_MODE" = "true" ]; then
-            echo ""
-            echo -e "${CYAN}🛑 Stopping consent server...${NC}"
-        fi
-        pkill -P $CONSENT_PID 2>/dev/null || true
-        kill $CONSENT_PID 2>/dev/null || true
-        wait $CONSENT_PID 2>/dev/null || true
-    fi
-}
-trap cleanup EXIT INT TERM
-
-CONSENT_SERVER_PORT="${CONSENT_SERVER_PORT:-9090}"
-if [ "$WITH_CONSENT" = "true" ]; then
-    CONSENT_SCRIPT="$(dirname "$0")/consent/start.sh"
-    if [ ! -x "$CONSENT_SCRIPT" ]; then
-        log_error "Consent server is enabled but consent/start.sh is missing or not executable"
-        exit 1
-    fi
-    if [ "$VERBOSE_MODE" = "true" ]; then
-        echo -e "${CYAN}Starting Consent Server...${NC}"
-        (cd "$(dirname "$0")/consent" && ./start.sh) &
-    else
-        (cd "$(dirname "$0")/consent" && ./start.sh >/dev/null 2>&1) &
-    fi
-    CONSENT_PID=$!
-    CONSENT_TIMEOUT=30
-    CONSENT_ELAPSED=0
-    while [ $CONSENT_ELAPSED -lt $CONSENT_TIMEOUT ]; do
-        if ! kill -0 "$CONSENT_PID" 2>/dev/null; then
-            log_error "Consent server process exited unexpectedly"
-            exit 1
-        fi
-        if curl -s -f "http://localhost:${CONSENT_SERVER_PORT}/health/readiness" > /dev/null 2>&1; then
-            if [ "$VERBOSE_MODE" = "true" ]; then
-                echo -e "${GREEN}✓ Consent server is ready${NC}"
-            fi
-            break
-        fi
-        sleep 1
-        CONSENT_ELAPSED=$((CONSENT_ELAPSED + 1))
-    done
-    if [ $CONSENT_ELAPSED -ge $CONSENT_TIMEOUT ]; then
-        log_error "Consent server failed to become ready within ${CONSENT_TIMEOUT}s"
-        exit 1
-    fi
-fi
-
-# ============================================================================
 # Create Default Resources (in-process bootstrap)
 # ============================================================================
 #
 # Delegates to start.sh --bootstrap, which runs the binary's in-process bootstrap
 # one-shot (create the default resources through the service layer, then exit).
-# The consent server, if enabled, was already started above, so --without-consent
-# is passed to avoid starting a second one. Admin credentials and the public URL
-# are exported so the bootstrap subcommand picks them up.
+# Admin credentials and the public URL are exported so the bootstrap subcommand
+# picks them up.
 
 export PUBLIC_URL="${PUBLIC_URL}"
 export ADMIN_USERNAME
@@ -404,7 +550,7 @@ if [ "$VERBOSE_MODE" = "true" ]; then
 fi
 
 BOOTSTRAP_LOG="$(mktemp)"
-if "$START_SCRIPT" --bootstrap --without-consent >"$BOOTSTRAP_LOG" 2>&1; then
+if "$START_SCRIPT" --bootstrap >"$BOOTSTRAP_LOG" 2>&1; then
     [ "$VERBOSE_MODE" = "true" ] && cat "$BOOTSTRAP_LOG"
     rm -f "$BOOTSTRAP_LOG"
     log_success "Default resources created"
@@ -428,6 +574,9 @@ if [ "$SILENT_MODE" = "true" ]; then
     echo ""
     echo "Console URL: ${PUBLIC_URL}/console"
     echo ""
+    print_admin_credentials_notice
+    print_direct_auth_secret_notice
+    print_certificates_notice
     echo "Run ./start.sh to start ${PRODUCT_NAME}."
     echo ""
 else
@@ -435,6 +584,9 @@ else
     echo -e "${GREEN}✅ Setup completed successfully!${NC}"
     echo "========================================="
     echo ""
+    print_admin_credentials_notice
+    print_direct_auth_secret_notice
+    print_certificates_notice
 fi
 
 # Cleanup will be called automatically via trap

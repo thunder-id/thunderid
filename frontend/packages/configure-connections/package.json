@@ -1,0 +1,97 @@
+{
+  "private": true,
+  "name": "@thunderid/configure-connections",
+  "version": "0.0.0",
+  "description": "Connections feature for ⚡️ ThunderID applications",
+  "keywords": [
+    "thunderid",
+    "admin",
+    "connections",
+    "react",
+    "feature",
+    "wso2"
+  ],
+  "homepage": "https://github.com/thunder-id/thunderid/tree/main/frontend/packages/configure-connections#readme",
+  "bugs": {
+    "url": "https://github.com/thunder-id/thunderid/issues"
+  },
+  "author": "WSO2",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/cjs/index.cjs",
+  "module": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/cjs/index.cjs"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thunder-id/thunderid",
+    "directory": "frontend/packages/configure-connections"
+  },
+  "scripts": {
+    "build": "pnpm clean:dist && rolldown -c rolldown.config.js && tsc -p tsconfig.lib.json --emitDeclarationOnly --outDir dist",
+    "clean": "pnpm clean:node_modules && pnpm clean:dist",
+    "clean:dist": "rimraf dist",
+    "clean:node_modules": "rimraf node_modules",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.lib.json"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "@testing-library/jest-dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@thunderid/components": "workspace:^",
+    "@thunderid/configure-user-types": "workspace:^",
+    "@thunderid/contexts": "workspace:^",
+    "@thunderid/eslint-plugin": "workspace:^",
+    "@thunderid/i18n": "workspace:^",
+    "@thunderid/prettier-config": "workspace:^",
+    "@thunderid/test-utils": "workspace:^",
+    "@thunderid/utils": "workspace:^",
+    "@vitest/browser-playwright": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "eslint": "catalog:",
+    "prettier": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "rimraf": "catalog:",
+    "rolldown": "catalog:",
+    "tslib": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@thunderid/react": "catalog:",
+    "@wso2/oxygen-ui": "catalog:",
+    "@wso2/oxygen-ui-icons-react": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@thunderid/components": "workspace:^",
+    "@thunderid/configure-user-types": "workspace:^",
+    "@thunderid/contexts": "workspace:^",
+    "@thunderid/utils": "workspace:^",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-i18next": "catalog:",
+    "react-router": "catalog:"
+  }
+}

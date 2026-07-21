@@ -3,7 +3,7 @@
   "displayName": "Digital Wallet",
   "description": "OpenID4VCI wallet that requests verifiable credentials",
   "creationFlow": {
-    "steps": ["STACK", "NAME", "ORGANIZATION_UNIT", "CONFIGURE", "DESIGN", "OPTIONS", "EXPERIENCE", "COMPLETE"]
+    "steps": ["NAME", "ORGANIZATION_UNIT", "CONFIGURE", "DESIGN", "OPTIONS", "EXPERIENCE", "COMPLETE"]
   },
   "defaults": {
     "name": "Digital Wallet",
@@ -28,5 +28,8 @@
       "pkceRequired": {"readOnly": true, "value": true},
       "tokenEndpointAuthMethod": {"readOnly": true, "value": "none"}
     }
+  },
+  "capabilities": {
+    "attestation": true
   }
 }

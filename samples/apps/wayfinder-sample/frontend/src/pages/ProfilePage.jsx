@@ -18,8 +18,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/useAuth";
-import { KeyRound, RefreshCw, Save } from "lucide-react";
-import { getMyUser, updateMyCredentials, updateMyUser } from "../api/userApi";
+import { KeyRound, RefreshCw, Save, Wallet } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
+import {
+  getMyUser,
+  getSkyPassOffer,
+  updateMyCredentials,
+  updateMyUser
+} from "../api/userApi";
 
 export function ProfilePage() {
   const { isSignedIn, isLoading: authLoading, signIn, getAccessToken } = useAuth();
@@ -193,6 +199,8 @@ function Profile({ getAccessToken }) {
             </dl>
           </section>
 
+          <SkyPassSection user={user} />
+
           <section className="management-panel" aria-label="Profile attributes" style={profilePanelStyle}>
             <h2 style={sectionHeadingStyle}>Profile attributes</h2>
             {rows.length === 0 ? (
@@ -328,6 +336,97 @@ function PasswordSection({ getAccessTokenRef, disabled }) {
   );
 }
 
+function SkyPassSection({ user }) {
+  const [offerUri, setOfferUri] = useState("");
+  const [offerError, setOfferError] = useState("");
+  const [offerLoading, setOfferLoading] = useState(false);
+
+  // The QR is generated on demand — only when the guest chooses to add the pass.
+  const loadOffer = useCallback(async () => {
+    setOfferLoading(true);
+    setOfferError("");
+    try {
+      const offer = await getSkyPassOffer();
+      setOfferUri(offer?.credential_offer_uri || "");
+    } catch (err) {
+      setOfferUri("");
+      setOfferError(formatError(err));
+    } finally {
+      setOfferLoading(false);
+    }
+  }, []);
+
+  const attrs = user?.attributes || {};
+  const tier = attrs.tier || "Member";
+  const name =
+    attrs.full_name ||
+    [attrs.given_name, attrs.family_name].filter(Boolean).join(" ") ||
+    attrs.username ||
+    "";
+  const memberId = attrs.member_id || "";
+  const showQr = Boolean(offerUri) && !offerError;
+
+  return (
+    <section className="management-panel" aria-label="Wayfinder Sky Pass" style={profilePanelStyle}>
+      <h2 style={sectionHeadingStyle}>
+        <Wallet size={18} style={{ verticalAlign: "-3px", marginRight: 6 }} />
+        Wayfinder Sky Pass
+      </h2>
+      <p style={{ marginTop: 0, color: "#64748b" }}>
+        Add your loyalty pass to your digital wallet, then present it at the Skyline Lounge for access.
+      </p>
+      <div style={skyPassLayoutStyle}>
+        <div style={skyPassCardStyle}>
+          <span style={skyPassEyebrowStyle}>Wayfinder Sky Pass</span>
+          <span style={skyPassTierStyle}>{tier}</span>
+          <span style={skyPassNameStyle}>{name}</span>
+          {memberId && <span style={skyPassIdStyle}>{memberId}</span>}
+        </div>
+
+        <div style={skyPassActionStyle}>
+          {!showQr ? (
+            <>
+              <button
+                className="dashboard-action"
+                type="button"
+                onClick={loadOffer}
+                disabled={offerLoading}
+              >
+                <Wallet size={16} /> {offerLoading ? "Preparing pass…" : "Add to Wallet"}
+              </button>
+              {offerError ? (
+                <div className="api-status api-status--error" role="status">
+                  {offerError}
+                </div>
+              ) : (
+                <p style={skyPassHintStyle}>
+                  Generates a one-time QR to scan with your EUDI wallet (Heidi or Lissi).
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <QRCodeSVG value={offerUri} size={168} marginSize={2} />
+              <p style={skyPassHintStyle}>
+                Scan with your wallet and sign in to authorize. Once added, present it at
+                the Skyline Lounge kiosk.
+              </p>
+              <button
+                className="dashboard-action dashboard-action--secondary"
+                type="button"
+                onClick={loadOffer}
+                disabled={offerLoading}
+              >
+                <RefreshCw size={16} /> {offerLoading ? "Refreshing…" : "New QR"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function ReadOnlyRow({ label, value }) {
   return (
     <div style={metaRowStyle}>
@@ -349,6 +448,64 @@ const profilePanelStyle = {
   padding: 24,
   marginTop: 16,
   minHeight: 0
+};
+
+const skyPassLayoutStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 28,
+  alignItems: "flex-start"
+};
+
+const skyPassCardStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 2,
+  padding: "20px 22px",
+  borderRadius: 14,
+  minWidth: 240,
+  color: "#fff",
+  background: "linear-gradient(135deg, #172554 0%, #2563eb 100%)",
+  boxShadow: "0 10px 24px rgba(37, 99, 235, 0.28)"
+};
+
+const skyPassEyebrowStyle = {
+  fontSize: "0.68rem",
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
+  opacity: 0.85
+};
+
+const skyPassTierStyle = {
+  fontSize: "1.6rem",
+  fontWeight: 700,
+  marginTop: 6
+};
+
+const skyPassNameStyle = {
+  fontSize: "1rem",
+  marginTop: 8
+};
+
+const skyPassIdStyle = {
+  fontSize: "0.85rem",
+  opacity: 0.85,
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  marginTop: 2
+};
+
+const skyPassActionStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+  alignItems: "flex-start"
+};
+
+const skyPassHintStyle = {
+  color: "#64748b",
+  fontSize: "0.9rem",
+  maxWidth: 260,
+  margin: 0
 };
 
 const sectionHeadingStyle = {

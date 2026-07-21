@@ -21,7 +21,7 @@ tags:
     description: AuthZEN policy decision point and access evaluation APIs.
 
 security:
-  - OAuth2: [system]
+  - DirectAuthSecret: []
 
 paths:
   /.well-known/authzen-configuration:
@@ -45,7 +45,7 @@ paths:
       description: |
         Evaluates whether a subject can perform an action on a resource.
 
-        The resource `type` maps to a ThunderID resource server handle. The action `name`
+        The resource `type` maps to a ThunderID resource server identifier. The action `name`
         maps to a permission registered under that resource server. If the subject type is
         omitted, subject type validation is skipped. Unknown resources and unregistered actions
         are returned as denied decisions with an error context instead of transport errors.
@@ -65,7 +65,7 @@ paths:
                     type: user
                     id: user1
                   resource:
-                    type: booking
+                    type: https://api.example.com/booking
                     id: booking123
                   action:
                     name: booking:read
@@ -78,6 +78,8 @@ paths:
                 $ref: "#/components/schemas/AccessEvaluationResponse"
         "400":
           $ref: "#/components/responses/AuthZENClientError"
+        "401":
+          $ref: "#/components/responses/DirectAuthError"
         "500":
           $ref: "#/components/responses/AuthZENServerError"
 
@@ -105,7 +107,7 @@ paths:
                         type: user
                         id: user1
                       resource:
-                        type: booking
+                        type: https://api.example.com/booking
                         id: booking123
                       action:
                         name: booking:read
@@ -113,7 +115,7 @@ paths:
                         type: user
                         id: user1
                       resource:
-                        type: booking
+                        type: https://api.example.com/booking
                         id: booking123
                       action:
                         name: booking:delete
@@ -126,6 +128,8 @@ paths:
                 $ref: "#/components/schemas/AccessEvaluationsResponse"
         "400":
           $ref: "#/components/responses/AuthZENClientError"
+        "401":
+          $ref: "#/components/responses/DirectAuthError"
         "500":
           $ref: "#/components/responses/AuthZENServerError"
 
@@ -149,7 +153,7 @@ paths:
                     type: user
                     id: user1
                   resource:
-                    type: booking
+                    type: https://api.example.com/booking
                     id: booking123
       responses:
         "200":
@@ -160,23 +164,18 @@ paths:
                 $ref: "#/components/schemas/AccessSearchResponse"
         "400":
           $ref: "#/components/responses/AuthZENClientError"
+        "401":
+          $ref: "#/components/responses/DirectAuthError"
         "500":
           $ref: "#/components/responses/AuthZENServerError"
 
 components:
   securitySchemes:
-    OAuth2:
-      type: oauth2
-      flows:
-        authorizationCode:
-          authorizationUrl: https://localhost:8090/oauth2/authorize
-          tokenUrl: https://localhost:8090/oauth2/token
-          scopes:
-            system: Access to system management APIs
-        clientCredentials:
-          tokenUrl: https://localhost:8090/oauth2/token
-          scopes:
-            system: Access to system management APIs
+    DirectAuthSecret:
+      type: apiKey
+      in: header
+      name: Direct-Auth-Secret
+      description: Server-level secret required to call AuthZEN access endpoints.
 
   responses:
     AuthZENClientError:
@@ -202,6 +201,22 @@ components:
             internalServerError:
               value:
                 error: Internal server error
+    DirectAuthError:
+      description: Missing or invalid Direct Auth Secret.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SecurityErrorResponse"
+          examples:
+            unauthorized:
+              value:
+                code: AUTH-4010
+                message:
+                  key: error.auth.unauthorized
+                  defaultValue: Unauthorized
+                description:
+                  key: error.auth.unauthorized_description
+                  defaultValue: Authentication is required to access this resource
 
   schemas:
     AuthZENMetadataResponse:
@@ -252,8 +267,8 @@ components:
       properties:
         type:
           type: string
-          description: ThunderID resource server handle.
-          example: booking
+          description: ThunderID resource server identifier.
+          example: https://api.example.com/booking
         id:
           type: string
           description: Resource identifier.
@@ -374,3 +389,32 @@ components:
             - Invalid action
             - Invalid resource
             - Internal server error
+
+    SecurityErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - description
+      properties:
+        code:
+          type: string
+          description: Error code.
+          example: AUTH-4010
+        message:
+          $ref: "#/components/schemas/LocalizedMessage"
+        description:
+          $ref: "#/components/schemas/LocalizedMessage"
+
+    LocalizedMessage:
+      type: object
+      required:
+        - key
+        - defaultValue
+      properties:
+        key:
+          type: string
+          description: Message key.
+        defaultValue:
+          type: string
+          description: Default message.

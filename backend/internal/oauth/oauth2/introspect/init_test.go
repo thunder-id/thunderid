@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -30,12 +30,14 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/discoverymock"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 )
 
 type InitTestSuite struct {
 	suite.Suite
 	mockJWTService       *jwtmock.JWTServiceInterfaceMock
 	mockDiscoveryService *discoverymock.DiscoveryServiceInterfaceMock
+	mockTokenValidator   *tokenservicemock.TokenValidatorInterfaceMock
 }
 
 func TestInitTestSuite(t *testing.T) {
@@ -45,6 +47,7 @@ func TestInitTestSuite(t *testing.T) {
 func (suite *InitTestSuite) SetupTest() {
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	suite.mockDiscoveryService = discoverymock.NewDiscoveryServiceInterfaceMock(suite.T())
+	suite.mockTokenValidator = tokenservicemock.NewTokenValidatorInterfaceMock(suite.T())
 	suite.mockDiscoveryService.On("GetOAuth2AuthorizationServerMetadata", mock.Anything).
 		Return(&discovery.OAuth2AuthorizationServerMetadata{
 			IntrospectionEndpoint: "https://localhost:8090/oauth2/introspect",
@@ -54,7 +57,8 @@ func (suite *InitTestSuite) SetupTest() {
 func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
-	service := Initialize(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService)
+	service := Initialize(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService,
+		suite.mockTokenValidator)
 
 	assert.NotNil(suite.T(), service)
 	assert.Implements(suite.T(), (*TokenIntrospectionServiceInterface)(nil), service)
@@ -63,7 +67,8 @@ func (suite *InitTestSuite) TestInitialize() {
 func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 	mux := http.NewServeMux()
 
-	Initialize(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService)
+	Initialize(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService,
+		suite.mockTokenValidator)
 
 	// Verify that the routes are registered by attempting to get a handler for them.
 	// The pattern includes the method because of CORS middleware wrapping.

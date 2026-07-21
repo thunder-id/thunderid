@@ -36,6 +36,7 @@ const (
 type DCRRegistrationRequest struct {
 	OUID                    string                            `json:"ou_id,omitempty"`
 	RedirectURIs            []string                          `json:"redirect_uris"`
+	PostLogoutRedirectURIs  []string                          `json:"post_logout_redirect_uris,omitempty"`
 	GrantTypes              []providers.GrantType             `json:"grant_types,omitempty"`
 	ResponseTypes           []providers.ResponseType          `json:"response_types,omitempty"`
 	ClientName              string                            `json:"client_name,omitempty"`
@@ -132,6 +133,7 @@ type DCRRegistrationResponse struct {
 	ClientSecret            string                            `json:"client_secret,omitempty"`
 	ClientSecretExpiresAt   int64                             `json:"client_secret_expires_at"`
 	RedirectURIs            []string                          `json:"redirect_uris,omitempty"`
+	PostLogoutRedirectURIs  []string                          `json:"post_logout_redirect_uris,omitempty"`
 	GrantTypes              []providers.GrantType             `json:"grant_types,omitempty"`
 	ResponseTypes           []providers.ResponseType          `json:"response_types,omitempty"`
 	ClientName              string                            `json:"client_name,omitempty"`

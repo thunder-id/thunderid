@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -235,7 +236,7 @@ func (suite *AttributeCacheServiceTestSuite) TestExtendAttributeCacheTTL_Negativ
 
 func (suite *AttributeCacheServiceTestSuite) TestExtendAttributeCacheTTL_NotFound() {
 	suite.mockStore.On("ExtendAttributeCacheTTL", suite.ctx, "non-existent-id", 3600).
-		Return(errAttributeCacheNotFound).Once()
+		Return(providers.ErrRuntimeStoreKeyNotFound).Once()
 
 	err := suite.service.ExtendAttributeCacheTTL(suite.ctx, "non-existent-id", 3600)
 
@@ -276,16 +277,6 @@ func (suite *AttributeCacheServiceTestSuite) TestDeleteAttributeCache_Whitespace
 
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), ErrorMissingCacheID.Code, err.Code)
-}
-
-func (suite *AttributeCacheServiceTestSuite) TestDeleteAttributeCache_NotFound() {
-	suite.mockStore.On("DeleteAttributeCache", suite.ctx, "non-existent-id").
-		Return(errAttributeCacheNotFound).Once()
-
-	err := suite.service.DeleteAttributeCache(suite.ctx, "non-existent-id")
-
-	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), ErrorAttributeCacheNotFound.Code, err.Code)
 }
 
 func (suite *AttributeCacheServiceTestSuite) TestDeleteAttributeCache_StoreError() {

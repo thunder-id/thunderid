@@ -291,7 +291,6 @@ func NuxtSteps(baseURL string) []Step {
 	}
 }
 
-
 // ReactSteps returns the ordered integration steps for adding @thunderid/react
 // to an existing React app. baseURL is the running ThunderID instance URL and
 // is embedded directly into the ThunderIDProvider code snippet.
@@ -315,7 +314,7 @@ func ReactSteps(baseURL string) []Step {
 			Title:    "Add ThunderIDProvider",
 			Body:     []string{"Wrap your root component with ThunderIDProvider in src/main.jsx:"},
 			CodeFile: "src/main.jsx",
-			CodeLang:     "jsx",
+			CodeLang: "jsx",
 			Code: []string{
 				`import { StrictMode } from 'react'`,
 				`import { createRoot } from 'react-dom/client'`,

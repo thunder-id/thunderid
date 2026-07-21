@@ -26,9 +26,7 @@ import (
 	"fmt"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
-	"github.com/thunder-id/thunderid/internal/consent"
 	"github.com/thunder-id/thunderid/internal/entitytype/model"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -94,7 +92,6 @@ type entityTypeService struct {
 	ouService       oupkg.OrganizationUnitServiceInterface
 	transactioner   transaction.Transactioner
 	authzService    sysauthz.SystemAuthorizationServiceInterface
-	consentService  consent.ConsentServiceInterface
 }
 
 // newEntityTypeService creates a new instance of entityTypeService.
@@ -103,14 +100,12 @@ func newEntityTypeService(
 	store entityTypeStoreInterface,
 	transactioner transaction.Transactioner,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
-	consentService consent.ConsentServiceInterface,
 ) EntityTypeServiceInterface {
 	return &entityTypeService{
 		entityTypeStore: store,
 		ouService:       ouService,
 		transactioner:   transactioner,
 		authzService:    authzService,
-		consentService:  consentService,
 	}
 }
 
@@ -288,18 +283,6 @@ func (us *entityTypeService) CreateEntityType(
 		return nil, logAndReturnServerError(ctx, logger, "Failed to create entity type", err)
 	}
 
-	if us.consentService.IsEnabled() {
-		if svcErr := us.syncConsentElementsOnCreate(ctx, category, entityType.Schema, logger); svcErr != nil {
-			if delErr := us.entityTypeStore.DeleteEntityTypeByID(ctx, category,
-				entityType.ID); delErr != nil {
-				logger.Error(ctx, "Failed to compensate schema creation after consent sync failure",
-					log.String("schemaID", entityType.ID), log.Error(delErr))
-			}
-
-			return nil, svcErr
-		}
-	}
-
 	return &entityType, nil
 }
 
@@ -464,19 +447,6 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 		return nil, logAndReturnServerError(ctx, logger, "Failed to update entity type", err)
 	}
 
-	if us.consentService.IsEnabled() {
-		if svcErr := us.syncConsentElementsOnUpdate(ctx, category, existingSchema.Schema,
-			entityType.Schema, logger); svcErr != nil {
-			if revertErr := us.entityTypeStore.UpdateEntityTypeByID(ctx, category, schemaID,
-				existingSchema); revertErr != nil {
-				logger.Error(ctx, "Failed to compensate schema update after consent sync failure",
-					log.String("schemaID", schemaID), log.Error(revertErr))
-			}
-
-			return nil, svcErr
-		}
-	}
-
 	return &entityType, nil
 }
 
@@ -518,34 +488,10 @@ func (us *entityTypeService) DeleteEntityType(ctx context.Context, category Type
 		return &ErrorCannotModifyDeclarativeResource
 	}
 
-	var attributeNames []string
-	if us.consentService.IsEnabled() {
-		attrNames, err := extractAttributeNames(category, existingSchema.Schema)
-		if err != nil {
-			logger.Error(ctx,
-				"Failed to extract attribute names for consent cleanup; proceeding with schema deletion",
-				log.String("schemaID", schemaID), log.Any("error", err))
-			attributeNames = []string{}
-		} else {
-			attributeNames = attrNames
-		}
-	}
-
 	if err := us.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		return us.entityTypeStore.DeleteEntityTypeByID(txCtx, category, schemaID)
 	}); err != nil {
 		return logAndReturnServerError(ctx, logger, "Failed to delete entity type", err)
-	}
-
-	// Sync consent elements for the deleted schema by deleting the associated consent elements
-	// If consent deletion fails, we log the error but do NOT re-create the schema
-	// since orphaned consent elements are safe and won't cause active harm.
-	if us.consentService.IsEnabled() && len(attributeNames) > 0 {
-		if svcErr := us.deleteConsentElements(ctx, attributeNames, logger); svcErr != nil {
-			logger.Error(ctx, "Failed to delete consent elements for removed schema attributes; "+
-				"orphaned consent elements may remain but schema deletion succeeded",
-				log.Any("attributeNames", attributeNames), log.Any("error", svcErr))
-		}
 	}
 
 	return nil
@@ -1038,232 +984,4 @@ func validateDisplayAttribute(
 	default:
 		return nil
 	}
-}
-
-// syncConsentElementsOnCreate creates missing consent elements for a new schema creation.
-func (us *entityTypeService) syncConsentElementsOnCreate(ctx context.Context,
-	category TypeCategory, schema json.RawMessage, logger *log.Logger) *tidcommon.ServiceError {
-	// TODO: Replace "default" with the schema's actual OU when applications are associated with OUs.
-	const ouID = "default"
-
-	logger.Debug(ctx, "Synchronizing consent elements for the new schema", log.String("ouID", ouID))
-
-	names, err := extractAttributeNames(category, schema)
-	if err != nil {
-		return err
-	}
-
-	if len(names) > 0 {
-		logger.Debug(ctx, "Creating missing consent elements for the new schema",
-			log.String("ouID", ouID), log.Int("elementCount", len(names)))
-		if svcErr := us.createMissingConsentElements(ctx, ouID, names, logger); svcErr != nil {
-			return svcErr
-		}
-	}
-
-	return nil
-}
-
-// syncConsentElementsOnUpdate reconciles consent elements when a schema is updated.
-// It creates elements that were added and deletes elements that were removed.
-func (us *entityTypeService) syncConsentElementsOnUpdate(ctx context.Context,
-	category TypeCategory, oldSchema, newSchema json.RawMessage, logger *log.Logger) *tidcommon.ServiceError {
-	// TODO: Replace "default" with the schema's actual OU when applications are associated with OUs.
-	const ouID = "default"
-
-	logger.Debug(ctx, "Synchronizing consent elements for the updated schema", log.String("ouID", ouID))
-
-	oldAttrs, err := extractAttributeNamesAsMap(category, oldSchema)
-	if err != nil {
-		return err
-	}
-
-	newAttrs, err := extractAttributeNamesAsMap(category, newSchema)
-	if err != nil {
-		return err
-	}
-
-	// Create consent elements for new attributes that were added in the updated schema.
-	// createMissingConsentElements method will handle filtering out existing elements, so we can pass all
-	// new attribute names here. This ensures that even consent service was disabled when creating the schema,
-	// the necessary consent elements are created when updating the schema with consent service enabled.
-	requiredNames := make([]string, 0, len(newAttrs))
-	for name := range newAttrs {
-		requiredNames = append(requiredNames, name)
-	}
-
-	if len(requiredNames) > 0 {
-		logger.Debug(ctx, "Ensuring consent elements exist for all requested attributes",
-			log.String("ouID", ouID), log.Int("requiredAttributesCount", len(requiredNames)))
-		if err := us.createMissingConsentElements(ctx, ouID, requiredNames, logger); err != nil {
-			return err
-		}
-	}
-
-	// Delete variables that are no longer part of the current payload
-	var removedNames []string
-	for name := range oldAttrs {
-		if _, exists := newAttrs[name]; !exists {
-			removedNames = append(removedNames, name)
-		}
-	}
-
-	return us.deleteConsentElements(ctx, removedNames, logger)
-}
-
-// createMissingConsentElements validates a list of consent element names and creates only
-// the missing ones.
-// nolint:unparam // ouID is always "default" in current usage but kept for future flexibility
-func (us *entityTypeService) createMissingConsentElements(ctx context.Context,
-	ouID string, names []string, logger *log.Logger) *tidcommon.ServiceError {
-	if len(names) == 0 {
-		logger.Debug(ctx, "No consent elements to create for the schema", log.String("ouID", ouID))
-		return nil
-	}
-
-	logger.Debug(ctx, "Validating consent elements for the schema attributes",
-		log.String("ouID", ouID), log.Int("elementCount", len(names)))
-
-	validNames, err := us.consentService.ValidateConsentElements(ctx, ouID, names)
-	if err != nil {
-		return wrapConsentServiceError(ctx, err, logger)
-	}
-
-	// Create a map of existing elements for fast lookup
-	existingMap := make(map[string]bool, len(validNames))
-	for _, name := range validNames {
-		existingMap[name] = true
-	}
-
-	// Filter out the existing elements
-	var elementsToCreate []consent.ConsentElementInput
-	for _, name := range names {
-		if !existingMap[name] {
-			elementsToCreate = append(elementsToCreate, consent.ConsentElementInput{
-				Name:      name,
-				Namespace: providers.NamespaceAttribute,
-			})
-		}
-	}
-
-	if len(elementsToCreate) > 0 {
-		logger.Debug(ctx, "Creating new consent elements for the schema attributes",
-			log.String("ouID", ouID), log.Int("elementCount", len(elementsToCreate)))
-		if _, err := us.consentService.CreateConsentElements(ctx, ouID, elementsToCreate); err != nil {
-			return wrapConsentServiceError(ctx, err, logger)
-		}
-	}
-
-	return nil
-}
-
-// deleteConsentElements removes a list of consent elements associated with the given attribute names.
-func (us *entityTypeService) deleteConsentElements(ctx context.Context,
-	attributeNames []string, logger *log.Logger) *tidcommon.ServiceError {
-	// TODO: Replace "default" with the schema's actual OU when applications are associated with OUs.
-	const ouID = "default"
-
-	logger.Debug(ctx, "Deleting consent elements for the removed schema attributes",
-		log.String("ouID", ouID), log.Int("elementCount", len(attributeNames)))
-
-	if len(attributeNames) == 0 {
-		logger.Debug(ctx, "No consent elements to delete for the schema", log.String("ouID", ouID))
-		return nil
-	}
-
-	for _, attrName := range attributeNames {
-		// List existing consent elements for the removed attribute to find their IDs for deletion
-		existing, err := us.consentService.ListConsentElements(ctx, ouID, providers.NamespaceAttribute, attrName)
-		if err != nil {
-			return wrapConsentServiceError(ctx, err, logger)
-		}
-
-		// Delete the first element if the list is not empty.
-		// We assume there is only one consent element per attribute name.
-		// TODO: This should be revisited when user type separation is onboarded to consent elements.
-		if len(existing) > 0 {
-			logger.Debug(ctx, "Deleting consent element for the removed schema attribute",
-				log.String("ouID", ouID), log.String("attribute", attrName), log.String("elementID", existing[0].ID))
-			if err := us.consentService.DeleteConsentElement(ctx, ouID, existing[0].ID); err != nil {
-				// Silently ignore the error if it's due to associated purposes, but log a warning.
-				// The same attribute can exist in a different schema and purpose can be associated with that,
-				// so we should not block the schema update in that case.
-				// If it's not associated with a purpose, but exists in a different schema, we still delete it,
-				// as the consent element can be created again when configuring attribute for a application.
-				if err.Code == consent.ErrorDeletingConsentElementWithAssociatedPurpose.Code {
-					logger.Warn(ctx,
-						"Cannot delete consent element for removed attribute due to associated purposes",
-						log.String("attribute", attrName), log.String("elementID", existing[0].ID),
-						log.String("error", err.ErrorDescription.DefaultValue))
-					continue
-				}
-
-				return wrapConsentServiceError(ctx, err, logger)
-			}
-		}
-	}
-
-	return nil
-}
-
-// extractAttributeNames returns the set of attribute names from a schema JSON as a string slice.
-func extractAttributeNames(category TypeCategory, schema json.RawMessage) ([]string, *tidcommon.ServiceError) {
-	if len(schema) == 0 {
-		return nil, nil
-	}
-
-	var schemaMap map[string]json.RawMessage
-	if err := json.Unmarshal(schema, &schemaMap); err != nil {
-		return nil, invalidEntityTypeRequestErr(category, "invalid schema json: "+err.Error())
-	}
-
-	names := make([]string, 0, len(schemaMap))
-	for name := range schemaMap {
-		names = append(names, name)
-	}
-
-	return names, nil
-}
-
-// extractAttributeNamesAsMap returns the set of attribute names from a schema JSON as a map
-// for last lookups.
-func extractAttributeNamesAsMap(
-	category TypeCategory, schema json.RawMessage,
-) (map[string]bool, *tidcommon.ServiceError) {
-	result := make(map[string]bool)
-	if len(schema) == 0 {
-		return result, nil
-	}
-
-	var schemaMap map[string]json.RawMessage
-	if err := json.Unmarshal(schema, &schemaMap); err != nil {
-		return nil, invalidEntityTypeRequestErr(category, "invalid schema json: "+err.Error())
-	}
-
-	for name := range schemaMap {
-		result[name] = true
-	}
-
-	return result, nil
-}
-
-// wrapConsentServiceError converts an ServiceError from the consent service into a ServiceError
-// for the entity type service.
-func wrapConsentServiceError(
-	ctx context.Context, err *tidcommon.ServiceError, logger *log.Logger) *tidcommon.ServiceError {
-	if err == nil {
-		return nil
-	}
-
-	if err.Type == tidcommon.ClientErrorType {
-		logger.Debug(ctx, "Failed to sync consent elements for the schema changes", log.Any("error", err))
-		return tidcommon.CustomServiceError(ErrorConsentSyncFailed, tidcommon.I18nMessage{
-			Key:          "error.entitytypeservice.consent_sync_failed_description",
-			DefaultValue: "Failed to synchronize consent configurations for the entity type : code - {{param(code)}}",
-			Params:       map[string]string{"code": err.Code},
-		})
-	}
-
-	logger.Error(ctx, "Failed to sync consent elements for the schema changes", log.Any("error", err))
-	return &tidcommon.InternalServerError
 }

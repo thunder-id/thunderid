@@ -23,27 +23,18 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+	"github.com/thunder-id/thunderid/internal/runtimestore/inmemory"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
-
-type OpenID4VPStoreTestSuite struct {
-	suite.Suite
-}
-
-func TestOpenID4VPStoreTestSuite(t *testing.T) {
-	suite.Run(t, new(OpenID4VPStoreTestSuite))
-}
 
 // identityCrypto is a no-op ConfigCryptoProvider for tests: it exercises the
 // marshal/encrypt/decrypt/parse path without a real symmetric key.
@@ -52,42 +43,86 @@ type identityCrypto struct{}
 func (identityCrypto) Encrypt(_ context.Context, content []byte) ([]byte, error) { return content, nil }
 func (identityCrypto) Decrypt(_ context.Context, content []byte) ([]byte, error) { return content, nil }
 
-// The runtime store read path reconstructs a RequestState from a result row,
-// decrypting the ephemeral key and decoding the verification result.
-func (suite *OpenID4VPStoreTestSuite) TestOpenID4VPStoreReadPathRoundTrip() {
-	crypto := identityCrypto{}
-	store := &openID4VPStore{deploymentID: "test", crypto: crypto}
+// failingDecryptCrypto encrypts as identity but fails to decrypt, to exercise the read error path.
+type failingDecryptCrypto struct{ identityCrypto }
 
+func (failingDecryptCrypto) Decrypt(_ context.Context, _ []byte) ([]byte, error) {
+	return nil, errors.New("decrypt failed")
+}
+
+// failingEncryptCrypto fails to encrypt, to exercise the write error path.
+type failingEncryptCrypto struct{ identityCrypto }
+
+func (failingEncryptCrypto) Encrypt(_ context.Context, _ []byte) ([]byte, error) {
+	return nil, errors.New("encrypt failed")
+}
+
+// errRuntimeStore is a RuntimeStoreProvider whose reads and writes always fail,
+// to exercise the store-error handling paths.
+type errRuntimeStore struct{}
+
+func (errRuntimeStore) Put(context.Context, providers.RuntimeStoreNamespace, string, []byte, int64) error {
+	return errors.New("store failure")
+}
+
+func (errRuntimeStore) Get(context.Context, providers.RuntimeStoreNamespace, string) ([]byte, error) {
+	return nil, errors.New("store failure")
+}
+
+func (errRuntimeStore) Update(context.Context, providers.RuntimeStoreNamespace, string, []byte) error {
+	return errors.New("store failure")
+}
+
+func (errRuntimeStore) Delete(context.Context, providers.RuntimeStoreNamespace, string) error {
+	return errors.New("store failure")
+}
+
+func (errRuntimeStore) Take(context.Context, providers.RuntimeStoreNamespace, string) ([]byte, error) {
+	return nil, errors.New("store failure")
+}
+
+func (errRuntimeStore) ExtendTTL(context.Context, providers.RuntimeStoreNamespace, string, int64) error {
+	return errors.New("store failure")
+}
+
+// OpenID4VPStoreTestSuite exercises the openID4VPStore adapter against a real in-memory
+// runtime store, verifying the encrypt/marshal/namespace round-trip and not-found semantics.
+type OpenID4VPStoreTestSuite struct {
+	suite.Suite
+	store openID4VPStoreInterface
+	ctx   context.Context
+}
+
+func TestOpenID4VPStoreTestSuite(t *testing.T) {
+	suite.Run(t, new(OpenID4VPStoreTestSuite))
+}
+
+func (suite *OpenID4VPStoreTestSuite) SetupTest() {
+	suite.store = newOpenID4VPStore(identityCrypto{}, inmemory.Initialize("test-deployment"))
+	suite.ctx = context.Background()
+}
+
+func (suite *OpenID4VPStoreTestSuite) TestRoundTripCompleted() {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	suite.Require().NoError(err)
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
-	suite.Require().NoError(err)
-	encKey, err := crypto.Encrypt(context.Background(), pkcs8)
-	suite.Require().NoError(err)
 
-	vp := &VerifiedPresentation{
-		Subject: "sub-1",
-		Claims:  map[string]interface{}{"given_name": "Erika"},
+	expiry := time.Now().Add(time.Minute)
+	st := &RequestState{
+		State:        "state-1",
+		DefinitionID: "eudi-pid",
+		Nonce:        "nonce-1",
+		EphemeralKey: key,
+		ClientID:     "x509_hash:abc",
+		RequestURI:   "https://verifier.example/openid4vp/request?state=state-1",
+		Status:       StatusCompleted,
+		Result:       &VerifiedPresentation{Subject: "sub-1", Claims: map[string]interface{}{"given_name": "Erika"}},
+		ExpiresAt:    expiry,
 	}
-	resultJSON, err := json.Marshal(vp)
-	suite.Require().NoError(err)
+	suite.Require().NoError(suite.store.SaveRequestState(suite.ctx, st))
 
-	expiry := time.Now().Add(time.Minute).UTC()
-	row := map[string]interface{}{
-		"state":          "state-1",
-		"definition_id":  "eudi-pid",
-		"nonce":          "nonce-1",
-		"ephemeral_key":  encKey,
-		"client_id":      "x509_hash:abc",
-		"request_uri":    "https://verifier.example/openid4vp/request?state=state-1",
-		"status":         "COMPLETED",
-		"result":         resultJSON,
-		"failure_reason": "",
-		"expiry_time":    expiry,
-	}
-
-	rs, err := store.buildRequestStateFromRow(context.Background(), row)
-	suite.Require().NoError(err)
+	rs, ok := suite.store.GetRequestState(suite.ctx, "state-1")
+	suite.Require().True(ok)
+	suite.Require().NotNil(rs)
 	suite.Equal("state-1", rs.State)
 	suite.Equal("eudi-pid", rs.DefinitionID)
 	suite.Equal("nonce-1", rs.Nonce)
@@ -99,224 +134,133 @@ func (suite *OpenID4VPStoreTestSuite) TestOpenID4VPStoreReadPathRoundTrip() {
 	suite.WithinDuration(expiry, rs.ExpiresAt, time.Second)
 }
 
-// A row with no ephemeral key and no result yields a state with nil fields.
-func (suite *OpenID4VPStoreTestSuite) TestOpenID4VPStoreReadPathPending() {
-	store := &openID4VPStore{deploymentID: "test", crypto: identityCrypto{}}
-	row := map[string]interface{}{
-		"state":       "state-2",
-		"status":      "PENDING",
-		"expiry_time": time.Now().Add(time.Minute).UTC(),
-	}
-	rs, err := store.buildRequestStateFromRow(context.Background(), row)
-	suite.Require().NoError(err)
+func (suite *OpenID4VPStoreTestSuite) TestRoundTripPending() {
+	st := &RequestState{State: "state-2", Status: StatusPending, ExpiresAt: time.Now().Add(time.Minute)}
+	suite.Require().NoError(suite.store.SaveRequestState(suite.ctx, st))
+
+	rs, ok := suite.store.GetRequestState(suite.ctx, "state-2")
+	suite.Require().True(ok)
 	suite.Equal(StatusPending, rs.Status)
 	suite.Nil(rs.EphemeralKey)
 	suite.Nil(rs.Result)
 }
 
-// parseStateTime handles Postgres time.Time and SQLite datetime strings.
-func (suite *OpenID4VPStoreTestSuite) TestParseStateTime() {
-	now := time.Now().UTC().Truncate(time.Second)
+// SaveRequestState overwrites the existing entry, so status transitions are persisted.
+func (suite *OpenID4VPStoreTestSuite) TestUpsertOverwrites() {
+	st := &RequestState{State: "state-3", Status: StatusPending, ExpiresAt: time.Now().Add(time.Minute)}
+	suite.Require().NoError(suite.store.SaveRequestState(suite.ctx, st))
 
-	got, err := parseStateTime(now)
-	suite.Require().NoError(err)
-	suite.True(now.Equal(got))
+	st.Status = StatusFailed
+	st.FailureReason = "untrusted_issuer"
+	suite.Require().NoError(suite.store.SaveRequestState(suite.ctx, st))
 
-	got, err = parseStateTime(now.Format(time.RFC3339))
-	suite.Require().NoError(err)
-	suite.True(now.Equal(got))
-
-	got, err = parseStateTime(now.Format("2006-01-02 15:04:05"))
-	suite.Require().NoError(err)
-	suite.Equal(now.Format("2006-01-02 15:04:05"), got.Format("2006-01-02 15:04:05"))
-
-	_, err = parseStateTime([]byte(now.Format(time.RFC3339)))
-	suite.Require().NoError(err)
-
-	_, err = parseStateTime(123)
-	suite.Require().Error(err)
-}
-
-// newOpenID4VPStore builds a database-backed store using the deployment ID from
-// the server runtime configuration.
-func (suite *OpenID4VPStoreTestSuite) TestNewOpenID4VPStore() {
-	config.ResetServerRuntime()
-	cfg := &config.Config{}
-	cfg.Server.Identifier = "deployment-xyz"
-	suite.Require().NoError(config.InitializeServerRuntime("", cfg))
-	defer config.ResetServerRuntime()
-
-	st := newOpenID4VPStore(identityCrypto{})
-	suite.Require().NotNil(st)
-	impl, ok := st.(*openID4VPStore)
+	rs, ok := suite.store.GetRequestState(suite.ctx, "state-3")
 	suite.Require().True(ok)
-	suite.Equal("deployment-xyz", impl.deploymentID)
-	suite.NotNil(impl.dbProvider)
+	suite.Equal(StatusFailed, rs.Status)
+	suite.Equal("untrusted_issuer", rs.FailureReason)
 }
 
-func (suite *OpenID4VPStoreTestSuite) newDBMockedStore() (
-	*openID4VPStore, *providermock.DBProviderInterfaceMock, *providermock.DBClientInterfaceMock,
-) {
-	mockProvider := providermock.NewDBProviderInterfaceMock(suite.T())
-	mockClient := providermock.NewDBClientInterfaceMock(suite.T())
-	store := &openID4VPStore{
-		dbProvider:   mockProvider,
-		deploymentID: "test-deployment",
-		crypto:       identityCrypto{},
-		logger:       log.GetLogger(),
-	}
-	return store, mockProvider, mockClient
+func (suite *OpenID4VPStoreTestSuite) TestGetNotFound() {
+	rs, ok := suite.store.GetRequestState(suite.ctx, "missing")
+	suite.False(ok)
+	suite.Nil(rs)
 }
 
-func (suite *OpenID4VPStoreTestSuite) TestSaveRequestState() {
+func (suite *OpenID4VPStoreTestSuite) TestDelete() {
+	st := &RequestState{State: "state-4", Status: StatusPending, ExpiresAt: time.Now().Add(time.Minute)}
+	suite.Require().NoError(suite.store.SaveRequestState(suite.ctx, st))
+	suite.Require().NoError(suite.store.DeleteRequestState(suite.ctx, "state-4"))
+
+	_, ok := suite.store.GetRequestState(suite.ctx, "state-4")
+	suite.False(ok)
+}
+
+// A decrypt failure on read yields not-found rather than a partially built state.
+func (suite *OpenID4VPStoreTestSuite) TestReadDecryptError() {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	suite.Require().NoError(err)
 
-	suite.Run("Success", func() {
-		store, provider, client := suite.newDBMockedStore()
-		provider.On("GetRuntimeDBClient").Return(client, nil)
-		client.On("ExecuteContext", mock.Anything, queryUpsertRequestState,
-			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-			mock.Anything,
-		).Return(int64(1), nil)
+	store := newOpenID4VPStore(failingDecryptCrypto{}, inmemory.Initialize("test-deployment"))
+	st := &RequestState{
+		State: "state-5", EphemeralKey: key, Status: StatusPending, ExpiresAt: time.Now().Add(time.Minute),
+	}
+	suite.Require().NoError(store.SaveRequestState(suite.ctx, st))
 
-		st := &RequestState{
-			State:        "state-1",
-			DefinitionID: "eudi-pid",
-			Nonce:        "nonce-1",
-			EphemeralKey: key,
-			ClientID:     "x509_hash:abc",
-			RequestURI:   "https://verifier.example/request",
-			Status:       StatusCompleted,
-			Result:       &VerifiedPresentation{Subject: "sub-1"},
-			ExpiresAt:    time.Now().Add(time.Minute),
-		}
-		suite.NoError(store.SaveRequestState(context.Background(), st))
-	})
-
-	suite.Run("SuccessNoKeyNoResult", func() {
-		store, provider, client := suite.newDBMockedStore()
-		provider.On("GetRuntimeDBClient").Return(client, nil)
-		client.On("ExecuteContext", mock.Anything, queryUpsertRequestState,
-			"state-2", "test-deployment", "", "", []byte(nil), "", "",
-			string(StatusPending), []byte(nil), "", mock.Anything,
-		).Return(int64(1), nil)
-
-		st := &RequestState{State: "state-2", Status: StatusPending, ExpiresAt: time.Now()}
-		suite.NoError(store.SaveRequestState(context.Background(), st))
-	})
-
-	suite.Run("DBClientError", func() {
-		store, provider, _ := suite.newDBMockedStore()
-		provider.On("GetRuntimeDBClient").Return(nil, errors.New("db error"))
-		err := store.SaveRequestState(context.Background(), &RequestState{State: "s"})
-		suite.Error(err)
-	})
-
-	suite.Run("ExecuteError", func() {
-		store, provider, client := suite.newDBMockedStore()
-		provider.On("GetRuntimeDBClient").Return(client, nil)
-		client.On("ExecuteContext", mock.Anything, queryUpsertRequestState,
-			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-			mock.Anything,
-		).Return(int64(0), errors.New("upsert failed"))
-		err := store.SaveRequestState(context.Background(),
-			&RequestState{State: "s", ExpiresAt: time.Now()})
-		suite.Error(err)
-	})
+	rs, ok := store.GetRequestState(suite.ctx, "state-5")
+	suite.False(ok)
+	suite.Nil(rs)
 }
 
-func (suite *OpenID4VPStoreTestSuite) TestGetRequestState() {
-	suite.Run("Success", func() {
-		store, provider, client := suite.newDBMockedStore()
-		expiry := time.Now().Add(time.Minute).UTC()
-		provider.On("GetRuntimeDBClient").Return(client, nil)
-		client.On("QueryContext", mock.Anything, queryGetRequestState,
-			"state-1", "test-deployment",
-		).Return([]map[string]interface{}{{
-			"state":       "state-1",
-			"status":      "PENDING",
-			"expiry_time": expiry,
-		}}, nil)
-
-		rs, ok := store.GetRequestState(context.Background(), "state-1")
-		suite.True(ok)
-		suite.Require().NotNil(rs)
-		suite.Equal("state-1", rs.State)
-		suite.Equal(StatusPending, rs.Status)
-	})
-
-	suite.Run("NotFound", func() {
-		store, provider, client := suite.newDBMockedStore()
-		provider.On("GetRuntimeDBClient").Return(client, nil)
-		client.On("QueryContext", mock.Anything, queryGetRequestState,
-			"missing", "test-deployment",
-		).Return([]map[string]interface{}{}, nil)
-
-		rs, ok := store.GetRequestState(context.Background(), "missing")
-		suite.False(ok)
-		suite.Nil(rs)
-	})
-
-	suite.Run("DBClientError", func() {
-		store, provider, _ := suite.newDBMockedStore()
-		provider.On("GetRuntimeDBClient").Return(nil, errors.New("db error"))
-		rs, ok := store.GetRequestState(context.Background(), "state-1")
-		suite.False(ok)
-		suite.Nil(rs)
-	})
-
-	suite.Run("QueryError", func() {
-		store, provider, client := suite.newDBMockedStore()
-		provider.On("GetRuntimeDBClient").Return(client, nil)
-		client.On("QueryContext", mock.Anything, queryGetRequestState,
-			"state-1", "test-deployment",
-		).Return(nil, errors.New("query failed"))
-		rs, ok := store.GetRequestState(context.Background(), "state-1")
-		suite.False(ok)
-		suite.Nil(rs)
-	})
-
-	suite.Run("BuildError", func() {
-		store, provider, client := suite.newDBMockedStore()
-		provider.On("GetRuntimeDBClient").Return(client, nil)
-		client.On("QueryContext", mock.Anything, queryGetRequestState,
-			"state-1", "test-deployment",
-		).Return([]map[string]interface{}{{
-			"state":       "state-1",
-			"status":      "PENDING",
-			"expiry_time": "not-a-valid-time",
-		}}, nil)
-		rs, ok := store.GetRequestState(context.Background(), "state-1")
-		suite.False(ok)
-		suite.Nil(rs)
-	})
+// A runtime-store error on write is surfaced as an error.
+func (suite *OpenID4VPStoreTestSuite) TestSaveStoreError() {
+	store := newOpenID4VPStore(identityCrypto{}, errRuntimeStore{})
+	st := &RequestState{State: "s", Status: StatusPending, ExpiresAt: time.Now().Add(time.Minute)}
+	suite.Error(store.SaveRequestState(suite.ctx, st))
 }
 
-func (suite *OpenID4VPStoreTestSuite) TestDeleteRequestState() {
-	suite.Run("Success", func() {
-		store, provider, client := suite.newDBMockedStore()
-		provider.On("GetRuntimeDBClient").Return(client, nil)
-		client.On("ExecuteContext", mock.Anything, queryDeleteRequestState,
-			"state-1", "test-deployment",
-		).Return(int64(1), nil)
-		suite.NoError(store.DeleteRequestState(context.Background(), "state-1"))
-	})
+// An ephemeral-key encryption failure is surfaced as an error.
+func (suite *OpenID4VPStoreTestSuite) TestSaveEncryptError() {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	suite.Require().NoError(err)
+	store := newOpenID4VPStore(failingEncryptCrypto{}, inmemory.Initialize("test-deployment"))
+	st := &RequestState{State: "s", EphemeralKey: key, Status: StatusPending, ExpiresAt: time.Now().Add(time.Minute)}
+	suite.Error(store.SaveRequestState(suite.ctx, st))
+}
 
-	suite.Run("DBClientError", func() {
-		store, provider, _ := suite.newDBMockedStore()
-		provider.On("GetRuntimeDBClient").Return(nil, errors.New("db error"))
-		suite.Error(store.DeleteRequestState(context.Background(), "state-1"))
-	})
+// A state whose result cannot be marshaled is surfaced as an error.
+func (suite *OpenID4VPStoreTestSuite) TestSaveMarshalError() {
+	store := newOpenID4VPStore(identityCrypto{}, inmemory.Initialize("test-deployment"))
+	st := &RequestState{
+		State: "s", Status: StatusPending, ExpiresAt: time.Now().Add(time.Minute),
+		Result: &VerifiedPresentation{Claims: map[string]interface{}{"bad": make(chan int)}},
+	}
+	suite.Error(store.SaveRequestState(suite.ctx, st))
+}
 
-	suite.Run("ExecuteError", func() {
-		store, provider, client := suite.newDBMockedStore()
-		provider.On("GetRuntimeDBClient").Return(client, nil)
-		client.On("ExecuteContext", mock.Anything, queryDeleteRequestState,
-			"state-1", "test-deployment",
-		).Return(int64(0), errors.New("delete failed"))
-		suite.Error(store.DeleteRequestState(context.Background(), "state-1"))
-	})
+// A runtime-store error on read is logged and reported as not-found.
+func (suite *OpenID4VPStoreTestSuite) TestGetStoreError() {
+	store := newOpenID4VPStore(identityCrypto{}, errRuntimeStore{})
+	rs, ok := store.GetRequestState(suite.ctx, "s")
+	suite.False(ok)
+	suite.Nil(rs)
+}
+
+// A malformed stored record is logged and reported as not-found.
+func (suite *OpenID4VPStoreTestSuite) TestGetUnmarshalError() {
+	prov := inmemory.Initialize("test-deployment")
+	suite.Require().NoError(prov.Put(suite.ctx, providers.NamespaceVPState, "bad", []byte("not-json"), 60))
+	rs, ok := newOpenID4VPStore(identityCrypto{}, prov).GetRequestState(suite.ctx, "bad")
+	suite.False(ok)
+	suite.Nil(rs)
+}
+
+// A stored ephemeral key that is not valid PKCS#8 is reported as not-found.
+func (suite *OpenID4VPStoreTestSuite) TestGetBadEphemeralKey() {
+	prov := inmemory.Initialize("test-deployment")
+	blob := []byte(`{"State":"s","EphemeralKey":"bm90LWtleQ==","Status":"PENDING"}`)
+	suite.Require().NoError(prov.Put(suite.ctx, providers.NamespaceVPState, "s", blob, 60))
+	rs, ok := newOpenID4VPStore(identityCrypto{}, prov).GetRequestState(suite.ctx, "s")
+	suite.False(ok)
+	suite.Nil(rs)
+}
+
+// A stored ephemeral key that is valid PKCS#8 but not an EC key is reported as not-found.
+func (suite *OpenID4VPStoreTestSuite) TestGetNonECEphemeralKey() {
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	suite.Require().NoError(err)
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(rsaKey)
+	suite.Require().NoError(err)
+	blob, err := json.Marshal(storedRequestState{State: "s", Status: StatusPending, EphemeralKey: pkcs8})
+	suite.Require().NoError(err)
+
+	prov := inmemory.Initialize("test-deployment")
+	suite.Require().NoError(prov.Put(suite.ctx, providers.NamespaceVPState, "s", blob, 60))
+	rs, ok := newOpenID4VPStore(identityCrypto{}, prov).GetRequestState(suite.ctx, "s")
+	suite.False(ok)
+	suite.Nil(rs)
+}
+
+func (suite *OpenID4VPStoreTestSuite) TestTTLUntil() {
+	suite.Equal(int64(1), ttlUntil(time.Now().Add(-time.Minute)))
+	suite.GreaterOrEqual(ttlUntil(time.Now().Add(90*time.Second)), int64(90))
 }

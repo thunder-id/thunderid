@@ -1,7 +1,8 @@
 ---
 title: PKCE
+docType: reference
 sidebar_position: 1
-description: Proof Key for Code Exchange (RFC 7636) in {{ProductName}} — S256-only, mandatory for public clients, recommended for all.
+description: Proof Key for Code Exchange (RFC 7636) in {{ProductName}}, S256-only, mandatory for public clients, recommended for all.
 ---
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
@@ -22,10 +23,10 @@ OAuth 2.1 makes PKCE mandatory for public clients and recommends it for every au
 
 | Aspect | Behavior |
 |---|---|
-| Supported challenge methods | **`S256` only** — `plain` is rejected with `invalid_request` |
+| Supported challenge methods | **`S256` only**: `plain` is rejected with `invalid_request` |
 | Public clients | PKCE is mandatory for public clients (`token_endpoint_auth_method=none`) |
 | Confidential clients | `pkceRequired` defaults to `false` but can be enabled per application |
-| Verifier rules | 43–128 characters; ASCII unreserved set per RFC 7636 §4.1 |
+| Verifier rules | 43 to 128 characters; ASCII unreserved set per RFC 7636 §4.1 |
 | Challenge encoding | Base64url-encoded SHA-256 of the verifier; 43 characters; no padding |
 | Storage | The challenge is bound to the issued authorization code; the code is single-use |
 | Interaction with PAR | The `code_challenge` is supplied at PAR push time; it cannot be added or changed at the `/oauth2/authorize` redirect |
@@ -84,7 +85,7 @@ const code_challenge = base64url(hash);
 
 Send `code_challenge` on the authorization request:
 
-```
+```text
 GET /oauth2/authorize
   ?response_type=code
   &client_id=$CLIENT_ID
@@ -108,6 +109,6 @@ curl -X POST https://{{productSlug}}.example.com/oauth2/token \
 
 ## Related Guides
 
-- [Authorization Code](../authorization-code) — the flow PKCE protects
-- [Pushed Authorization Requests](../par) — PAR + PKCE together is the recommended high-security pattern
-- [Client Authentication Methods](../client-authentication-methods) — `none` requires PKCE
+- [Authorization Code](../authorization-code), the flow PKCE protects
+- [Pushed Authorization Requests](../par), PAR + PKCE together is the recommended high-security pattern
+- [Client Authentication Methods](../client-authentication-methods), `none` requires PKCE

@@ -25,6 +25,7 @@ import DefaultLayout from './layouts/DefaultLayout';
 
 const AcceptInvitePage = lazy(() => import('./pages/AcceptInvitePage'));
 const ErrorPage = lazy(() => import('./pages/ErrorPage'));
+const SignOutPage = lazy(() => import('./pages/SignOutPage'));
 const RecoveryPage = lazy(() => import('./pages/RecoveryPage'));
 const SignInPage = lazy(() => import('./pages/SignInPage'));
 const SignUpPage = lazy(() => import('./pages/SignUpPage'));
@@ -40,6 +41,7 @@ export default function App(): JSX.Element {
             <Route path={ROUTES.AUTH.SIGN_UP} element={<SignUpPage />} />
             <Route path={ROUTES.AUTH.INVITE} element={<AcceptInvitePage />} />
             <Route path={ROUTES.AUTH.RECOVERY} element={<RecoveryPage />} />
+            <Route path={ROUTES.AUTH.SIGNOUT} element={<SignOutPage />} />
             <Route path={ROUTES.AUTH.CALLBACK} element={<CallbackRoute />} />
             <Route path={ROUTES.AUTH.ERROR} element={<ErrorPage />} />
           </Route>

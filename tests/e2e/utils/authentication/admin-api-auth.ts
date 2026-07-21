@@ -36,7 +36,8 @@ export async function getAdminToken(request: import("@playwright/test").APIReque
   const applicationId = E2E_ADMIN_NATIVE_APP_ID;
 
   const flowResponse = await request.post(`${serverUrl}/flow/execute`, {
-    data: { applicationId, flowSecret: E2E_ADMIN_NATIVE_FLOW_SECRET, flowType: "AUTHENTICATION" },
+    data: { applicationId, flowType: "AUTHENTICATION" },
+    headers: { "Flow-Secret": E2E_ADMIN_NATIVE_FLOW_SECRET },
     ignoreHTTPSErrors: true,
   });
   if (!flowResponse.ok()) throw new Error(`Failed to start authentication flow: ${await flowResponse.text()}`);

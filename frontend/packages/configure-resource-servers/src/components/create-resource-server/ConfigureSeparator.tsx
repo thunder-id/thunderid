@@ -26,14 +26,12 @@ import {isValidPermissionDelimiter} from '../../utils/isValidPermissionDelimiter
 
 interface ConfigureSeparatorProps {
   delimiter: PermissionDelimiter;
-  handle: string;
   onDelimiterChange: (delimiter: PermissionDelimiter) => void;
   onReadyChange?: (isReady: boolean) => void;
 }
 
 export default function ConfigureSeparator({
   delimiter,
-  handle,
   onDelimiterChange,
   onReadyChange = undefined,
 }: ConfigureSeparatorProps): JSX.Element {
@@ -47,8 +45,7 @@ export default function ConfigureSeparator({
     }
   }, [isDelimiterValid, onReadyChange]);
 
-  const exampleHandle = handle.trim() || 'my-api';
-  const permissionPreview = `${exampleHandle}${delimiter}<resource>${delimiter}<action>`;
+  const permissionPreview = `<resource>${delimiter}<action>`;
 
   return (
     <Stack direction="column" spacing={4}>

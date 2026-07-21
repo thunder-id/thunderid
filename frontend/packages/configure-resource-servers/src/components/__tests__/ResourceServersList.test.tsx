@@ -18,7 +18,7 @@
 
 import {renderWithProviders, screen} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import type {ResourceServerListResponse} from '../../models/resource-server';
+import type {DefaultResourceServerConfigResponse, ResourceServerListResponse} from '../../models/resource-server';
 import ResourceServersList from '../ResourceServersList';
 
 vi.mock('@thunderid/react', () => ({
@@ -61,6 +61,12 @@ vi.mock('../../api/useGetResourceServers', () => ({
     },
 }));
 
+const mockUseGetDefaultResourceServer = vi.fn();
+
+vi.mock('../../api/useGetDefaultResourceServer', () => ({
+  default: () => mockUseGetDefaultResourceServer() as {data: DefaultResourceServerConfigResponse | undefined},
+}));
+
 const twoRowsResponse: ResourceServerListResponse = {
   totalResults: 2,
   startIndex: 0,
@@ -69,7 +75,6 @@ const twoRowsResponse: ResourceServerListResponse = {
     {
       id: 'rs-1',
       name: 'Payments API',
-      handle: 'payments-api',
       identifier: 'https://api.example.com',
       ouId: 'ou-1',
       delimiter: ':',
@@ -78,8 +83,7 @@ const twoRowsResponse: ResourceServerListResponse = {
     {
       id: 'rs-2',
       name: 'System MCP',
-      handle: 'system-mcp',
-      identifier: null,
+      identifier: 'https://mcp.example.com',
       ouId: 'ou-1',
       delimiter: '/',
       type: 'MCP',
@@ -95,6 +99,9 @@ describe('ResourceServersList', () => {
       data: twoRowsResponse,
       isLoading: false,
       error: null,
+    });
+    mockUseGetDefaultResourceServer.mockReturnValue({
+      data: {readOnly: {}, writable: {}, merged: {resourceServerId: 'rs-1'}},
     });
   });
 
@@ -128,5 +135,19 @@ describe('ResourceServersList', () => {
 
     const deleteButtons = screen.queryAllByRole('button', {name: 'Delete'});
     expect(deleteButtons).toHaveLength(1);
+  });
+
+  it('shows a Default badge on the current default row', () => {
+    renderWithProviders(<ResourceServersList />);
+
+    expect(screen.getByText('Default')).toBeInTheDocument();
+  });
+
+  it('does not show a Default badge when no default is set', () => {
+    mockUseGetDefaultResourceServer.mockReturnValue({data: {readOnly: {}, writable: {}, merged: {}}});
+
+    renderWithProviders(<ResourceServersList />);
+
+    expect(screen.queryByText('Default')).not.toBeInTheDocument();
   });
 });

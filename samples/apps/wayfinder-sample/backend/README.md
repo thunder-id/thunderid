@@ -1,8 +1,24 @@
 # Wayfinder Travel Backend
 
-Node backend for the Wayfinder Travel app. Hosts the REST API on `/api/*` and the MCP server on `/mcp` in a single process. Verifies Thunder-issued JWTs, enforces scopes per route and per MCP tool, and serves the OAuth protected-resource metadata document for MCP authorization discovery.
+Node backend for the Wayfinder Travel app. Hosts the REST API on `/api/*` and the MCP server on `/mcp` in a single process. Verifies ThunderID-issued JWTs, enforces scopes per route and per MCP tool, and serves the OAuth protected-resource metadata document for MCP authorization discovery.
 
 Configure with `.env.example` in this folder.
+
+## MCP Authorization Modes
+
+`AUTHORIZATION_MODE=scope` is the default and preserves the existing per-tool
+scope checks.
+
+Set `AUTHORIZATION_MODE=authzen` to have the MCP server request each protected
+tool decision from the ThunderID AuthZEN PDP. In this mode, configure
+`THUNDERID_DIRECT_AUTH_SECRET` with the same value stored in
+`backend/cmd/server/config/secrets/direct_auth_secret`. ThunderID reads that file
+through the `file://config/secrets/direct_auth_secret` setting in `deployment.yaml`.
+The backend sends this secret on the PDP call, while the user or agent from the
+incoming MCP token remains the evaluation subject.
+
+This setting applies only to MCP tool authorization. REST endpoint scope checks
+are unchanged.
 
 ## Run
 

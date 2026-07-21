@@ -110,7 +110,7 @@ func initializeGroupStore(
 	case serverconst.StoreModeComposite:
 		fileStoreInterface, _ := newFileBasedGroupStore()
 		fileStore := fileStoreInterface.(*fileBasedGroupStore)
-		transactioner, err := dbProvider.GetUserDBTransactioner()
+		transactioner, err := dbProvider.GetEntityDBTransactioner()
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -124,7 +124,7 @@ func initializeGroupStore(
 		return fileStoreInterface, transactioner, fileStore, nil, nil
 
 	default:
-		transactioner, err := dbProvider.GetUserDBTransactioner()
+		transactioner, err := dbProvider.GetEntityDBTransactioner()
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}

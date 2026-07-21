@@ -138,6 +138,80 @@ func (suite *ServiceTestSuite) TestGetConfig_Unset() {
 	assert.Equal(suite.T(), mergedVal, layers.Merged)
 }
 
+// --- GetReadOnlyConfig / GetWritableConfig ---
+
+func (suite *ServiceTestSuite) TestGetReadOnlyConfig() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
+		Return(storeLayers{ReadOnly: declarative, Writable: corsValue}, nil)
+	// Only the read-only layer is decoded; the absence of a Decode(corsValue) expectation asserts the
+	// writable layer is never touched (mockery fails on the unexpected call).
+	suite.mockHandler.EXPECT().Decode(declarative).Return(readOnlyVal, nil)
+
+	value, svcErr := suite.service.GetReadOnlyConfig(suite.ctx, string(ConfigNameCORS))
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), readOnlyVal, value)
+}
+
+func (suite *ServiceTestSuite) TestGetReadOnlyConfig_UnsupportedName() {
+	value, svcErr := suite.service.GetReadOnlyConfig(suite.ctx, "bogus")
+	assert.Nil(suite.T(), value)
+	assert.Same(suite.T(), &ErrorUnsupportedConfigName, svcErr)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetServerConfig", mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestGetReadOnlyConfig_StoreError() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
+		Return(storeLayers{}, errors.New("db error"))
+	value, svcErr := suite.service.GetReadOnlyConfig(suite.ctx, string(ConfigNameCORS))
+	assert.Nil(suite.T(), value)
+	assert.Same(suite.T(), &common.InternalServerError, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestGetReadOnlyConfig_DecodeError() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
+		Return(storeLayers{ReadOnly: declarative, Writable: corsValue}, nil)
+	suite.mockHandler.EXPECT().Decode(declarative).Return(nil, errors.New("corrupt stored value"))
+	value, svcErr := suite.service.GetReadOnlyConfig(suite.ctx, string(ConfigNameCORS))
+	assert.Nil(suite.T(), value)
+	assert.Same(suite.T(), &common.InternalServerError, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestGetWritableConfig() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
+		Return(storeLayers{ReadOnly: declarative, Writable: corsValue}, nil)
+	// Only the writable layer is decoded; the absence of a Decode(declarative) expectation guards against
+	// a regression to decoding both layers (decodeLayers) on the writable path.
+	suite.mockHandler.EXPECT().Decode(corsValue).Return(writableVal, nil)
+
+	value, svcErr := suite.service.GetWritableConfig(suite.ctx, string(ConfigNameCORS))
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), writableVal, value)
+}
+
+func (suite *ServiceTestSuite) TestGetWritableConfig_UnsupportedName() {
+	value, svcErr := suite.service.GetWritableConfig(suite.ctx, "bogus")
+	assert.Nil(suite.T(), value)
+	assert.Same(suite.T(), &ErrorUnsupportedConfigName, svcErr)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetServerConfig", mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestGetWritableConfig_StoreError() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
+		Return(storeLayers{}, errors.New("db error"))
+	value, svcErr := suite.service.GetWritableConfig(suite.ctx, string(ConfigNameCORS))
+	assert.Nil(suite.T(), value)
+	assert.Same(suite.T(), &common.InternalServerError, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestGetWritableConfig_DecodeError() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
+		Return(storeLayers{ReadOnly: declarative, Writable: corsValue}, nil)
+	suite.mockHandler.EXPECT().Decode(corsValue).Return(nil, errors.New("corrupt stored value"))
+	value, svcErr := suite.service.GetWritableConfig(suite.ctx, string(ConfigNameCORS))
+	assert.Nil(suite.T(), value)
+	assert.Same(suite.T(), &common.InternalServerError, svcErr)
+}
+
 // --- GetMergedConfig ---
 
 func (suite *ServiceTestSuite) TestGetMergedConfig_OK() {
@@ -156,14 +230,6 @@ func (suite *ServiceTestSuite) TestGetMergedConfig_UnsupportedName() {
 	merged, svcErr := suite.service.GetMergedConfig(suite.ctx, "bogus")
 	assert.Nil(suite.T(), merged)
 	assert.Same(suite.T(), &ErrorUnsupportedConfigName, svcErr)
-}
-
-func (suite *ServiceTestSuite) TestGetMergedConfig_StoreError() {
-	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
-		Return(storeLayers{}, errors.New("db error"))
-	merged, svcErr := suite.service.GetMergedConfig(suite.ctx, string(ConfigNameCORS))
-	assert.Nil(suite.T(), merged)
-	assert.Same(suite.T(), &common.InternalServerError, svcErr)
 }
 
 // --- SetConfig ---

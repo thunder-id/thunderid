@@ -14,7 +14,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-{{- $usingSqlite := or (eq .Values.configuration.database.config.type "sqlite") (eq .Values.configuration.database.runtime.type "sqlite") (eq .Values.configuration.database.user.type "sqlite") }}
+{{- $usingSqlite := or (eq .Values.configuration.database.config.type "sqlite") (eq .Values.configuration.database.runtime_transient.type "sqlite") (eq .Values.configuration.database.entity.type "sqlite") (eq .Values.configuration.database.runtime_persistent.type "sqlite") }}
 {{- if or .Values.persistence.enabled $usingSqlite }}
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -43,4 +43,70 @@ spec:
   resources:
     requests:
       storage: {{ .Values.persistence.size }}
+{{- end }}
+{{- if .Values.setup.enabled }}
+---
+# Dedicated PVC for per-deployment cryptographic material (TLS, JWT signing, AES key). The setup
+# job generates these into it; the server Deployment reads them. Kept separate from the database so
+# the key material has its own lifecycle. Created before the setup job (lower hook weight) so it
+# exists when the job mounts it.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "thunderid.fullname" . }}-certs-pvc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "thunderid.labels" . | nindent 4 }}
+    app.kubernetes.io/component: certs
+  annotations:
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-15"
+    {{- with .Values.certs.persistence.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  accessModes:
+    - {{ .Values.certs.persistence.accessMode }}
+  {{- if .Values.certs.persistence.storageClass }}
+  {{- if (eq "-" .Values.certs.persistence.storageClass) }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: {{ .Values.certs.persistence.storageClass }}
+  {{- end }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.certs.persistence.size }}
+---
+# Dedicated PVC for generated runtime secrets (e.g. the Direct Auth Secret). The setup job writes them
+# into it; the server Deployment reads them. Kept separate from the config ConfigMap so the setup job
+# can persist secrets even though deployment.yaml is mounted read-only. Created before the setup job
+# (lower hook weight) so it exists when the job mounts it.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "thunderid.fullname" . }}-secrets-pvc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "thunderid.labels" . | nindent 4 }}
+    app.kubernetes.io/component: secrets
+  annotations:
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-15"
+    {{- with .Values.secrets.persistence.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  accessModes:
+    - {{ .Values.secrets.persistence.accessMode }}
+  {{- if .Values.secrets.persistence.storageClass }}
+  {{- if (eq "-" .Values.secrets.persistence.storageClass) }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: {{ .Values.secrets.persistence.storageClass }}
+  {{- end }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.secrets.persistence.size }}
 {{- end }}

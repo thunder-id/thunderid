@@ -1,5 +1,7 @@
 ---
+toc_progress: quickstart
 title: Vanilla JavaScript Quickstart
+docType: quickstart
 sidebar_position: 4
 persona: app
 description: Add {{ProductName}} authentication to a browser-based application using the @thunderid/browser SDK.
@@ -42,20 +44,31 @@ Use this guide to add <ProductName /> authentication to a browser-based applicat
 
 ## Run <ProductName />
 
-Start a local ThunderID instance. Pick the method that works best for you:
+Start a local <ProductName /> instance. Pick the method that works best for you:
 
 <RunThunderID />
 
-Once it's running, the console is available at [https://localhost:8090](https://localhost:8090).
+Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
 
 ## Create an Application
 
-Open the Console at <ConsoleUrl />, navigate to **Applications**, and click **Add Application**:
+1. Sign in to the Console.
 
-1. Under **Technology**, select **JavaScript**.
-2. Enter a name (e.g. `My JavaScript App`) and create an application. The rest of the settings can stay at their defaults.
-3. Copy the **Client ID** from the **General** tab. You'll need it when configuring the SDK.
-4. Under **General**, add `http://localhost:5173` to the list of **Authorized Redirect URIs**.
+    :::info Test User
+    If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
+    :::
+
+2. Navigate to **Applications**, and click **Add Application**.
+
+3. Under **Technology**, select **JavaScript**.
+4. Enter a name (e.g. `My JavaScript App`) and create an application. The rest of the settings can stay at their defaults.
+5. Copy the **Client ID** from the **General** tab. You'll need it when configuring the SDK.
+6. Under **General**, add `http://localhost:5173` to the list of **Authorized Redirect URIs**.
+7. The Browser SDK calls the <ProductName /> API directly from the browser, so you need to allow your app's origin:
+    1. In the left navigation, navigate to **Settings**.
+    2. Under the **System** section, open the **CORS** tab.
+    3. Enter `http://localhost:5173` (or the relevant URL for your setup).
+    4. Click **Add Origin**.
 
 ## Create a JavaScript App
 

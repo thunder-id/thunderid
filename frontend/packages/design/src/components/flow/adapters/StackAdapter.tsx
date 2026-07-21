@@ -58,7 +58,8 @@ export default function StackAdapter({
 
   return (
     <Stack
-      className={cn('Flow--stack')}
+      id={component.id}
+      className={[cn('Flow--stack'), component.classes].filter(Boolean).join(' ')}
       direction={component.direction ?? 'column'}
       spacing={component.gap ?? 2}
       alignItems={component.align ?? 'center'}

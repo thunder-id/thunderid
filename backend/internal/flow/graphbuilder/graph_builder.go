@@ -369,6 +369,7 @@ func (b *graphBuilder) configureNodeInputs(
 			Identifier: input.Identifier,
 			Type:       input.Type,
 			Required:   input.Required,
+			OneTimeUse: input.OneTimeUse,
 		}
 	}
 	executorNode.SetInputs(inputs)
@@ -462,6 +463,7 @@ func (b *graphBuilder) configureNodePrompts(
 				Identifier: inputDef.Identifier,
 				Type:       inputDef.Type,
 				Required:   inputDef.Required,
+				OneTimeUse: inputDef.OneTimeUse,
 				Validation: validation,
 			}
 		}

@@ -1,6 +1,7 @@
 ---
 title: Identity Concepts
-description: How the Wayfinder sample maps to product concepts — user types, resource servers, permissions, roles, applications, and flows.
+docType: use-case
+description: "How the Wayfinder sample maps to product concepts: user types, resource servers, permissions, roles, applications, and flows."
 sidebar_position: 5
 ---
 
@@ -19,25 +20,25 @@ A user type defines who can exist in the system and what attributes they carry. 
 - `Customer`: a consumer who books travel, with profile attributes required for a traveller.
 - `Staff`: an internal team member who manages the product, with profile attributes required for a staff member.
 
-See [User Types](/docs/next/guides/guides/users/user-types).
+See [User Types](../../../guides/guides/users/user-types).
 
 ## Resources and Permissions
 
 Wayfinder Server protects its API endpoints using permissions issued by <ProductName />.
 
-A **resource server** represents the APIs of a single backend. Each resource server defines one or more **resources**, and each resource defines **actions**. <ProductName /> automatically generates a **permission** of the form `<resource>:<action>` for every action.
+A **resource server** represents the APIs of a single backend. Each resource server defines one or more **resources**, and each resource defines **actions**. <ProductName /> automatically generates a **permission** of the form `<resource>:<action>` for every action, not prefixed by the resource server.
 
-Wayfinder's booking API is one resource server with a single `booking` resource that has three actions: `read`, `create`, and `cancel`. The generated permissions are `booking:read`, `booking:create`, and `booking:cancel`.
+Wayfinder's API is one resource server named `wayfinder`. It includes a `booking` resource that has three actions: `read`, `create`, and `cancel`. The generated permissions are `booking:read`, `booking:create`, and `booking:cancel`.
 
-```
-booking-api                             (Resource Server)
+```text
+wayfinder                               (Resource Server)
 └── booking                             (Resource)
     ├── read     →  booking:read        (Permission)
     ├── create   →  booking:create
     └── cancel   →  booking:cancel
 ```
 
-Permissions are included in access tokens. See [Resource Servers](/docs/next/guides/guides/resource-servers).
+Permissions are included in access tokens. See [Resource Servers](../../../guides/guides/resource-servers).
 
 ## Roles
 
@@ -48,16 +49,16 @@ A role groups permissions for a user category. A user's effective permissions ar
 - `DestinationsAdmin`: staff role for curating featured destinations.
 - `OpsAdmin`: staff role for inviting and managing other staff.
 
-See [Authorization](/docs/next/guides/key-concepts/authorization).
+See [Authorization](../../../guides/key-concepts/authorization).
 
 ## Application
 
 An application is the OAuth2 client that <ProductName /> issues tokens to. Wayfinder Web is registered as `WAYFINDER`.
 
-See [Manage Applications](/docs/next/guides/guides/applications/manage-applications).
+See [Manage Applications](../../../guides/guides/applications/manage-applications).
 
 ## Flows
 
-A flow is the sequence of steps a user moves through when signing in, signing up, or recovering. Wayfinder uses the bundled `default-basic-flow` for sign-in, plus separate registration, recovery, and staff onboarding flows for the other use cases.
+A flow is the sequence of steps a user moves through when signing in, signing up, or recovering. Wayfinder uses the bundled `default-flow` for sign-in, plus separate registration, recovery, and staff onboarding flows for the other use cases.
 
-See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow).
+See [Build a Flow](../../../guides/guides/flows/build-a-flow).

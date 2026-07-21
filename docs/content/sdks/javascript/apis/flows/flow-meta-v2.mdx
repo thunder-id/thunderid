@@ -1,12 +1,13 @@
 ---
 title: Flow Meta (V2)
+docType: reference
 displayed_sidebar: javascriptSdkSidebar
 description: Fetch aggregated application, organization, and theme metadata for V2 flows
 ---
 
 # Flow Meta (V2)
 
-`getFlowMetaV2` fetches aggregated metadata for a V2 flow context — including application branding, organization unit details, theme configuration, and available translations. Use it to pre-load everything needed to render a custom sign-in or sign-up UI.
+`getFlowMetaV2` fetches aggregated metadata for a V2 flow context, including application branding, organization unit details, theme configuration, and available translations. Use it to pre-load everything needed to render a custom sign-in or sign-up UI.
 
 ## `getFlowMetaV2(config)`
 
@@ -31,10 +32,10 @@ console.log(meta.i18n.translations)
 |-----------|------|:--------:|-------------|
 | `config.url` | `string` | ✅ | Full endpoint URL. Mutually exclusive with `baseUrl` |
 | `config.baseUrl` | `string` | ✅ | <ProductName /> base URL |
-| `config.type` | `FlowMetaType` | — | Scope the metadata to an application (`App`) or organization unit (`Ou`) |
-| `config.id` | `string` | — | Application ID or OU ID, depending on `type` |
-| `config.language` | `string` | — | BCP 47 language tag for the i18n metadata (e.g., `'en-US'`) |
-| `config.namespace` | `string` | — | Translation namespace filter |
+| `config.type` | `FlowMetaType` | ❌ | Scope the metadata to an application (`App`) or organization unit (`Ou`) |
+| `config.id` | `string` | ❌ | Application ID or OU ID, depending on `type` |
+| `config.language` | `string` | ❌ | BCP 47 language tag for the i18n metadata (e.g., `'en-US'`) |
+| `config.namespace` | `string` | ❌ | Translation namespace filter |
 
 ## Response: `FlowMetadataResponse`
 

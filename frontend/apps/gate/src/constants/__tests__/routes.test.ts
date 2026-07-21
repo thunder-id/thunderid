@@ -52,6 +52,10 @@ describe('ROUTES', () => {
     expect(ROUTES.AUTH.CALLBACK).toBe('/callback');
   });
 
+  it('has AUTH.SIGNOUT path', () => {
+    expect(ROUTES.AUTH.SIGNOUT).toBe('/signout');
+  });
+
   it('Routes interface has correct structure', () => {
     const routes: Routes = {
       ROOT: '/',
@@ -62,6 +66,7 @@ describe('ROUTES', () => {
         INVITE: '/invite',
         CALLBACK: '/callback',
         RECOVERY: '/recovery',
+        SIGNOUT: '/signout',
       },
     };
     expect(routes.ROOT).toBe('/');

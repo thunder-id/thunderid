@@ -149,20 +149,20 @@ describe('InviteMembersCard', () => {
       expect(screen.getByRole('button', {name: 'Invite User'})).toBeInTheDocument();
     });
 
-    it('navigates to /users/invite when Add User is clicked', () => {
+    it('navigates to /users/add when Add User is clicked', () => {
       render(<InviteMembersCard />);
 
       fireEvent.click(screen.getByRole('button', {name: 'Add User'}));
 
-      expect(mockNavigate).toHaveBeenCalledWith('/users/invite');
+      expect(mockNavigate).toHaveBeenCalledWith('/users/add');
     });
 
-    it('navigates to /users?invite=true when Invite User is clicked', () => {
+    it('navigates to /users/add/invite when Invite User is clicked', () => {
       render(<InviteMembersCard />);
 
       fireEvent.click(screen.getByRole('button', {name: 'Invite User'}));
 
-      expect(mockNavigate).toHaveBeenCalledWith('/users?invite=true');
+      expect(mockNavigate).toHaveBeenCalledWith('/users/add/invite');
     });
   });
 });

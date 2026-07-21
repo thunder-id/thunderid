@@ -34,6 +34,7 @@ import (
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/release"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/setup"
 	"github.com/thunder-id/thunderid/tools/cli/internal/ui/spinner"
+	"github.com/thunder-id/thunderid/tools/cli/internal/utils"
 )
 
 // Options carries use-case-specific configuration collected by the CLI before the sample starts.
@@ -66,19 +67,18 @@ var knownSamples = map[string]struct {
 
 // typeToDir mirrors the awk mapping in start.sh's setup_declarative_resources.
 var typeToDir = map[string]string{
-	"application":         "applications",
-	"flow":                "flows",
-	"group":               "groups",
-	"identity_provider":   "identity_providers",
-	"layout":              "layouts",
-	"notification_sender": "notification_senders",
-	"organization_unit":   "organization_units",
-	"resource_server":     "resource_servers",
-	"role":                "roles",
-	"theme":               "themes",
-	"translation":         "translations",
-	"user":                "users",
-	"user_schema":         "user_schemas",
+	"application":       "applications",
+	"connection":        "connections",
+	"flow":              "flows",
+	"group":             "groups",
+	"layout":            "layouts",
+	"organization_unit": "organization_units",
+	"resource_server":   "resource_servers",
+	"role":              "roles",
+	"theme":             "themes",
+	"translation":       "translations",
+	"user":              "users",
+	"user_schema":       "user_schemas",
 }
 
 // ProgressEvent is a single update from RunAsync's progress channel.
@@ -182,6 +182,10 @@ func runWithResult(
 		return nil, "", "", fmt.Errorf("unknown sample %q — available: %s", sampleName, availableList())
 	}
 
+	if err := checkNodeVersion(); err != nil {
+		return nil, "", "", err
+	}
+
 	// Fetch latest version.
 	version, err := release.FetchLatestVersion()
 	if err != nil {
@@ -217,12 +221,10 @@ func runWithResult(
 		return nil, "", "", fmt.Errorf("could not read env file: %w", err)
 	}
 
-	// Stop the product and the consent server (port 9090).
+	// Stop the product.
 	progress("Stopping " + product.Name + "...")
 	setup.KillPort(health.DefaultPort)
-	setup.KillPort(consentServerPort)
 	setup.WaitForPortFree(health.DefaultPort, 15*time.Second)
-	setup.WaitForPortFree(consentServerPort, 15*time.Second)
 
 	// Find ThunderID root and write resource files.
 	thunderRoot, err := setup.FindThunderRoot(installPath)
@@ -283,6 +285,17 @@ func runWithResult(
 		}
 	}
 
+	// Free ports held by a previous run's sample services before restarting. A
+	// stale frontend still bound to 5173, for example, would otherwise push the
+	// new dev server to another port while the browser keeps hitting the old one.
+	ports := sampleServicePorts(aiEnabled)
+	for _, p := range ports {
+		setup.KillPort(p)
+	}
+	for _, p := range ports {
+		setup.WaitForPortFree(p, 10*time.Second)
+	}
+
 	// Start sample services.
 	progress("Starting " + sampleName + " services...")
 	if err := startSampleServices(sampleDir, aiEnabled); err != nil {
@@ -292,8 +305,16 @@ func runWithResult(
 	return proc, meta.sampleURL, serverURL, nil
 }
 
+// defaultAuthMode is the sample auth mode the CLI provisions. The wayfinder
+// config is organized by auth mode (e.g. "redirect", "app-native"); the
+// redirect flow is the default consumer experience.
+const defaultAuthMode = "redirect"
+
 // findSampleConfig locates the config YAML and env file within dir.
 // The ZIP may extract to a nested subdirectory, so we search one level deep.
+// The config may live under an auth-mode subdirectory such as
+// <slug>-config/redirect (current layout) or directly under <slug>-config
+// (legacy layout); both are checked, in that order.
 func findSampleConfig(dir string) (configYAML, configEnv, sampleDir string, err error) {
 	candidates := []string{dir}
 	entries, _ := os.ReadDir(dir)
@@ -302,15 +323,19 @@ func findSampleConfig(dir string) (configYAML, configEnv, sampleDir string, err 
 			candidates = append(candidates, filepath.Join(dir, e.Name()))
 		}
 	}
+	configDir := product.Slug + "-config"
+	configSubDirs := []string{filepath.Join(configDir, defaultAuthMode), configDir}
 	for _, base := range candidates {
-		configDir := product.Slug + "-config"
-		yaml := filepath.Join(base, configDir, configDir+".yaml")
-		env := filepath.Join(base, configDir, product.Slug+".env")
-		if _, err := os.Stat(yaml); err == nil {
-			return yaml, env, base, nil
+		for _, sub := range configSubDirs {
+			yaml := filepath.Join(base, sub, configDir+".yaml")
+			env := filepath.Join(base, sub, product.Slug+".env")
+			if _, err := os.Stat(yaml); err == nil {
+				return yaml, env, base, nil
+			}
 		}
 	}
-	return "", "", "", fmt.Errorf("%s-config/%s-config.yaml not found in %s", product.Slug, product.Slug, dir)
+	return "", "", "", fmt.Errorf("%s/%s.yaml not found in %s",
+		filepath.Join(configDir, defaultAuthMode), configDir, dir)
 }
 
 // parseEnvFile reads KEY=VALUE lines into a map.
@@ -361,7 +386,8 @@ func ReadServiceEnv(sampleDir, envTarget string) map[string]string {
 }
 
 // writeResources splits the multi-document YAML, substitutes template variables,
-// and writes each document to thunderRoot/repository/resources/<type>/<id>.yaml.
+// and writes each document to thunderRoot/config/resources/<type>/<id>.yaml,
+// the directory the server loads declarative resources from at startup.
 func writeResources(yamlPath string, vars map[string]string, thunderRoot string) error {
 	raw, err := os.ReadFile(yamlPath)
 	if err != nil {
@@ -398,7 +424,7 @@ func writeResources(yamlPath string, vars map[string]string, thunderRoot string)
 			filename = fmt.Sprintf("%s_%04d.yaml", resourceType, i)
 		}
 
-		target := filepath.Join(thunderRoot, "repository", "resources", dir)
+		target := filepath.Join(thunderRoot, "config", "resources", dir)
 		if err := os.MkdirAll(target, 0o755); err != nil {
 			return err
 		}
@@ -442,8 +468,6 @@ func splitYAML(content string) []string {
 	return docs
 }
 
-const consentServerPort = 9090
-
 // writeFrontendEnv writes frontend/.env with Thunder client config and the
 // VITE_AI_FEATURES_ENABLED flag so the React dev server picks up the right mode.
 func writeFrontendEnv(sampleDir, thunderURL string, aiEnabled bool) error {
@@ -482,6 +506,23 @@ func writeServiceEnv(sampleDir, thunderURL string, vars map[string]string, opts 
 		b.WriteString(k + "=" + v + "\n")
 	}
 	return os.WriteFile(filepath.Join(sampleDir, opts.EnvTarget, ".env"), []byte(b.String()), 0o644)
+}
+
+// sampleServicePorts returns the localhost ports the sample's dev services bind,
+// so a previous run's orphaned processes can be freed before restarting. The
+// ai-agent (8790) only runs in AI mode.
+func sampleServicePorts(aiEnabled bool) []int {
+	ports := []int{
+		5173, // frontend (Vite)
+		8787, // backend API
+		8788, // SMTP inbox UI
+		2525, // SMTP server
+		8795, // lounge kiosk
+	}
+	if aiEnabled {
+		ports = append(ports, 8790) // ai-agent
+	}
+	return ports
 }
 
 // startSampleServices launches the sample services in the background via npm.
@@ -578,6 +619,22 @@ func readCachedSampleVersion(dir string) string {
 
 func writeCachedSampleVersion(dir, version string) error {
 	return os.WriteFile(filepath.Join(dir, ".version"), []byte(version+"\n"), 0o644)
+}
+
+// checkNodeVersion returns an error if Node.js is missing or older than
+// utils.MinNodeVersion. Sample apps are installed and run via npm, so an
+// unsupported Node.js version must stop the command before it downloads or
+// touches anything.
+func checkNodeVersion() error {
+	version, err := utils.DetectNodeVersion()
+	if err != nil {
+		return err
+	}
+	if !utils.MeetsMinNodeVersion(version) {
+		return fmt.Errorf("node.js v%s detected — v%s or later is required to run sample apps.\n%s",
+			version, utils.MinNodeVersion, utils.NodeUpgradeHint())
+	}
+	return nil
 }
 
 func availableList() string {

@@ -25,9 +25,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 var (
@@ -360,26 +360,6 @@ func (ts *GithubRegistrationFlowTestSuite) SetupSuite() {
 			{
 				Name:     "scopes",
 				Value:    "user:email,read:user",
-				IsSecret: false,
-			},
-			{
-				Name:     "authorization_endpoint",
-				Value:    ts.mockGithubServer.GetURL() + "/login/oauth/authorize",
-				IsSecret: false,
-			},
-			{
-				Name:     "token_endpoint",
-				Value:    ts.mockGithubServer.GetURL() + "/login/oauth/access_token",
-				IsSecret: false,
-			},
-			{
-				Name:     "userinfo_endpoint",
-				Value:    ts.mockGithubServer.GetURL() + "/user",
-				IsSecret: false,
-			},
-			{
-				Name:     "user_email_endpoint",
-				Value:    ts.mockGithubServer.GetURL() + "/user/emails",
 				IsSecret: false,
 			},
 		},

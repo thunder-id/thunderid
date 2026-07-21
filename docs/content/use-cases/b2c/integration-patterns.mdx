@@ -1,5 +1,6 @@
 ---
 title: Integration Patterns
+docType: use-case
 description: Architectural choices for adding consumer identity to your application.
 sidebar_position: 2
 ---
@@ -18,32 +19,32 @@ You can choose the best fit for your application by answering these questions:
 
 ### Redirect-Based
 
-When a user wants to sign in, the app sends them to ThunderID. ThunderID shows the sign-in, sign-up, and recovery screens, then sends the user back signed in. Because the app never sees the user's password, this is the simplest security posture and the quickest path to a working sign-in.
+When a user wants to sign in, the app sends them to <ProductName />. <ProductName /> shows the sign-in, sign-up, and recovery screens, then sends the user back signed in. Because the app never sees the user's password, this is the simplest security posture and the quickest path to a working sign-in.
 
 The pattern covers sign-in, sign-up, recovery, additional-permission requests with consent screens, hosted-page branding, and signing the user out. It fits web apps, single-page apps, and mobile apps. The main trade-off is that the user has to leave the app for a hosted page. This can feel disruptive inside a native mobile app or a heavily branded web experience, and UI customization is limited to what the hosted pages expose.
 
-This pattern is typically built with a standard sign-in library or an SDK provided by ThunderID. The underlying handshake is well-specified and not worth hand-rolling.
+This pattern is typically built with a standard sign-in library or an SDK provided by <ProductName />. The underlying handshake is well-specified and not worth hand-rolling.
 
 ### App-Native
 
-The app renders every screen itself, but the journey lives on ThunderID. This gives the app full control over what the user sees while keeping step ordering, branching, and policy on the server. The pattern is the best fit for native mobile and any all-in-the-app experience.
+The app renders every screen itself, but the journey lives on <ProductName />. This gives the app full control over what the user sees while keeping step ordering, branching, and policy on the server. The pattern is the best fit for native mobile and any all-in-the-app experience.
 
 The full set of journeys is covered with custom UI: sign-in, sign-up, recovery, profile changes that need re-verification, and invitation acceptance. The pattern handles multi-step prompts, multi-factor authentication, and steps that change based on the user or context. Branding is handled entirely in the app.
 
 App-native has two flavors that trade UI granularity for app-side code:
 
-- **Step-by-step (verbose flow):** the app sees every step the journey defines. After each step, it calls ThunderID for the next step's details, renders the screen the server describes, captures the user's input, and posts it back.
-- **Managed (non-verbose flow):** ThunderID orchestrates the journey internally and only exposes outcomes to the app. The app says "the user wants to sign in" and reacts to whatever the product hands back. The app still decides how to render each screen and capture input.
+- **Step-by-step (verbose flow):** the app sees every step the journey defines. After each step, it calls <ProductName /> for the next step's details, renders the screen the server describes, captures the user's input, and posts it back.
+- **Managed (non-verbose flow):** <ProductName /> orchestrates the journey internally and only exposes outcomes to the app. The app says "the user wants to sign in" and reacts to whatever the product hands back. The app still decides how to render each screen and capture input.
 
-This pattern is typically built using a ThunderID SDK. The SDK handles the per-step (step-by-step) or per-outcome (managed) calls and state so the app can focus on UI.
+This pattern is typically built using a <ProductName /> SDK. The SDK handles the per-step (step-by-step) or per-outcome (managed) calls and state so the app can focus on UI.
 
 ### Direct API
 
-Small, single-purpose API calls — for example, authenticate with username and password, or send an OTP and verify it. The app strings these together itself, with no journey between the app and the primitive.
+Small, single-purpose API calls, for example, authenticate with username and password, or send an OTP and verify it. The app strings these together itself, with no journey between the app and the primitive.
 
-This pattern fits two situations well. First, applications that want the simplest possible sign-in with no application or flow configuration on the ThunderID side. Second, headless or scripted scenarios where a guided journey is not useful, such as server-to-server authentication, internal tools, and automation.
+This pattern fits two situations well. First, applications that want the simplest possible sign-in with no application or flow configuration on the <ProductName /> side. Second, headless or scripted scenarios where a guided journey is not useful, such as server-to-server authentication, internal tools, and automation.
 
-Coverage is typically limited to the primitives ThunderID exposes, often authentication only. Because there is no journey, journey-level policies such as multi-factor and conditional steps are not applied; the app is fully responsible for getting the identity logic right.
+Coverage is typically limited to the primitives <ProductName /> exposes, often authentication only. Because there is no journey, journey-level policies such as multi-factor and conditional steps are not applied; the app is fully responsible for getting the identity logic right.
 
 This pattern is built by calling the APIs directly; an SDK adds little here.
 

@@ -49,7 +49,6 @@ vi.mock('react-i18next', () => ({
       const translations: Record<string, string> = {
         'flows:listing.columns.name': 'Name',
         'flows:listing.columns.flowType': 'Type',
-        'flows:listing.columns.version': 'Version',
         'flows:listing.columns.updatedAt': 'Updated At',
         'flows:listing.columns.actions': 'Actions',
         'flows:listing.error.title': 'Error loading flows',
@@ -194,7 +193,6 @@ vi.mock('@wso2/oxygen-ui', async () => {
                     >
                       <td>{row.name}</td>
                       <td>{row.flowType}</td>
-                      <td>v{row.activeVersion}</td>
                       <td>{row.updatedAt}</td>
                     </tr>
                   );
@@ -246,7 +244,6 @@ describe('FlowsList', () => {
 
       expect(screen.getByText('Name')).toBeInTheDocument();
       expect(screen.getByText('Type')).toBeInTheDocument();
-      expect(screen.getByText('Version')).toBeInTheDocument();
       expect(screen.getByText('Updated At')).toBeInTheDocument();
       // Actions appears multiple times (header + rows), use getAllByText
       expect(screen.getAllByText('Actions').length).toBeGreaterThanOrEqual(1);
@@ -476,20 +473,6 @@ describe('FlowsList', () => {
     });
   });
 
-  describe('Version Display', () => {
-    it('should display version numbers with v prefix', () => {
-      render(
-        <MemoryRouter>
-          <FlowsList />
-        </MemoryRouter>,
-      );
-
-      // All flows are shown
-      expect(screen.getByText('v1')).toBeInTheDocument();
-      expect(screen.getByText('v2')).toBeInTheDocument();
-    });
-  });
-
   describe('Column RenderCell Functions', () => {
     it('should capture column definitions', () => {
       render(
@@ -504,13 +487,11 @@ describe('FlowsList', () => {
       // Verify expected columns exist
       const nameColumn = capturedColumns.value.find((col) => col.field === 'name');
       const flowTypeColumn = capturedColumns.value.find((col) => col.field === 'flowType');
-      const versionColumn = capturedColumns.value.find((col) => col.field === 'activeVersion');
       const updatedAtColumn = capturedColumns.value.find((col) => col.field === 'updatedAt');
       const actionsColumn = capturedColumns.value.find((col) => col.field === 'actions');
 
       expect(nameColumn).toBeDefined();
       expect(flowTypeColumn).toBeDefined();
-      expect(versionColumn).toBeDefined();
       expect(updatedAtColumn).toBeDefined();
       expect(actionsColumn).toBeDefined();
     });
@@ -523,11 +504,9 @@ describe('FlowsList', () => {
       );
 
       const flowTypeColumn = capturedColumns.value.find((col) => col.field === 'flowType');
-      const versionColumn = capturedColumns.value.find((col) => col.field === 'activeVersion');
       const actionsColumn = capturedColumns.value.find((col) => col.field === 'actions');
 
       expect(flowTypeColumn?.renderCell).toBeDefined();
-      expect(versionColumn?.renderCell).toBeDefined();
       expect(actionsColumn?.renderCell).toBeDefined();
     });
 

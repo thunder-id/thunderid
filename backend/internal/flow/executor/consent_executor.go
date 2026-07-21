@@ -31,7 +31,6 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	consentauthn "github.com/thunder-id/thunderid/internal/authn/consent"
-	"github.com/thunder-id/thunderid/internal/consent"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -76,7 +75,11 @@ func newConsentExecutor(
 	}
 
 	base := flowFactory.CreateExecutor(ExecutorNameConsent, providers.ExecutorTypeUtility,
-		defaultInputs, prerequisites)
+		defaultInputs, prerequisites, &providers.ExecutorMeta{
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: "timeout"},
+			},
+		})
 
 	return &consentExecutor{
 		Executor:        base,
@@ -290,9 +293,9 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 	// downstream executors can easily restrict to only consented values without needing to
 	// understand the full consent data structure. Both keys are always set (even if empty) so
 	// auth assert knows that the consent step ran and can apply the appropriate precedence chain.
-	consentedAttrs := collectConsentedAttributes(consentRecord)
+	consentedAttrs := collectApprovedElementsByPurposeName(consentRecord, buildAttributePurposeName(appID))
 	execResp.RuntimeData[common.RuntimeKeyConsentedAttributes] = strings.Join(consentedAttrs, " ")
-	consentedPerms := collectConsentedPermissions(consentRecord)
+	consentedPerms := collectApprovedElementsByPurposeName(consentRecord, buildPermissionsPurposeName(appID))
 	execResp.RuntimeData[common.RuntimeKeyConsentedPermissions] = strings.Join(consentedPerms, " ")
 
 	logger.Debug(ctx.Context, "Consent recorded successfully", log.String("consentID", consentRecord.ID))
@@ -376,31 +379,27 @@ func (e *consentExecutor) buildAugmentedAvailableAttributes(
 	}
 }
 
-// collectConsentedAttributes extracts all approved attribute names from a consent record.
-func collectConsentedAttributes(c *providers.Consent) []string {
-	return collectApprovedByPurposeNamespace(c, providers.NamespaceAttribute)
-}
-
-// collectConsentedPermissions extracts all approved permission names from a consent record.
-func collectConsentedPermissions(c *providers.Consent) []string {
-	return collectApprovedByPurposeNamespace(c, providers.NamespacePermission)
-}
-
-// collectApprovedByPurposeNamespace returns the deduped approved element names across all
-// consent purposes in the given namespace. The upstream consent service does not round-trip the
-// purpose namespace on reads, so it is derived from the purpose name via
-// consent.NamespaceFromPurposeName.
-func collectApprovedByPurposeNamespace(c *providers.Consent, ns providers.Namespace) []string {
-	var out []string
+// collectApprovedElementsByPurposeName returns a list of element names that are approved by the user for a
+// given purpose name in the consent record.
+func collectApprovedElementsByPurposeName(c *providers.Consent, purposeName string) []string {
 	for _, p := range c.Purposes {
-		if consent.NamespaceFromPurposeName(p.Name) != ns {
-			continue
-		}
-		for _, e := range p.Elements {
-			if e.IsUserApproved && !slices.Contains(out, e.Name) {
-				out = append(out, e.Name)
+		if p.Name == purposeName {
+			var out []string
+			for _, e := range p.Elements {
+				if e.IsUserApproved && !slices.Contains(out, e.Name) {
+					out = append(out, e.Name)
+				}
 			}
+			return out
 		}
 	}
-	return out
+	return []string{}
+}
+
+func buildAttributePurposeName(appID string) string {
+	return "attributes:" + appID
+}
+
+func buildPermissionsPurposeName(appID string) string {
+	return "permissions:" + appID
 }

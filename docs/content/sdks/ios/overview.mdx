@@ -1,5 +1,6 @@
 ---
 title: iOS SDK Overview
+docType: concept
 displayed_sidebar: iosSdkSidebar
 sidebar_position: 1
 sidebar_label: Overview
@@ -10,8 +11,8 @@ description: Native iOS SDK for {{ProductName}} authentication in Swift applicat
 
 The <ProductName /> iOS SDK provides two Swift packages for integrating authentication into your iOS and macOS applications:
 
-- **`ThunderID`** — Core authentication client with the full IAM API surface
-- **`ThunderIDSwiftUI`** — Drop-in SwiftUI components built on top of `ThunderID`
+- **`ThunderID`**: Core authentication client with the full IAM API surface
+- **`ThunderIDSwiftUI`**: Drop-in SwiftUI components built on top of `ThunderID`
 
 Both packages target iOS 16+ and macOS 13+.
 
@@ -33,7 +34,7 @@ Both packages target iOS 16+ and macOS 13+.
 
 ## Getting Started
 
-To get started quickly, follow the [iOS Quickstart Guide](/docs/next/guides/getting-started/connect-your-application/ios) for step-by-step setup instructions.
+To get started quickly, follow the [iOS Quickstart Guide](../../../guides/getting-started/connect-your-application/ios) for step-by-step setup instructions.
 
 ## Quick Example
 
@@ -76,7 +77,7 @@ struct ContentView: View {
 
 ## Features
 
-### ThunderID — Core Client
+### <ProductName />: Core Client
 
 | Method | Description |
 |--------|-------------|
@@ -93,7 +94,7 @@ struct ContentView: View {
 | `exchangeToken(config:sessionId:)` | Perform an OAuth 2.0 token exchange (STS) |
 | `decodeJwtToken(_:)` | Decode a JWT string into a `Decodable` type |
 
-### ThunderIDSwiftUI — Components
+### <ProductName />SwiftUI: Components
 
 #### Actions
 

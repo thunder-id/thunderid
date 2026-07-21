@@ -39,7 +39,7 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
 
   const properties = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;
-    return (stepData?.properties ?? {}) as Record<string, unknown>;
+    return stepData?.properties ?? {};
   }, [resource]);
 
   const headers = (properties.headers as Record<string, string>) || {};

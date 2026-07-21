@@ -32,6 +32,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
+	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
@@ -44,9 +45,10 @@ func Initialize(
 	inboundClient inboundclient.InboundClientServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	i18nService i18nmgt.I18nServiceInterface,
+	cryptoSvc kmprovider.RuntimeCryptoProvider,
 ) (ApplicationServiceInterface, declarativeresource.ResourceExporter, error) {
 	appService := newApplicationService(
-		inboundClient, entityProvider, ouService, i18nService,
+		inboundClient, entityProvider, ouService, i18nService, cryptoSvc,
 	)
 
 	if err := entityService.LoadIndexedAttributes(getAppIndexedAttributes()); err != nil {

@@ -36,6 +36,7 @@ import (
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize wires the OpenID4VP verifier engine.
@@ -43,6 +44,7 @@ func Initialize(
 	mux *http.ServeMux, cryptoProvider kmprovider.RuntimeCryptoProvider,
 	configCrypto kmprovider.ConfigCryptoProvider, jwtService jwt.JWTServiceInterface,
 	defSvc presentation.PresentationDefinitionServiceInterface,
+	store providers.RuntimeStoreProvider,
 ) (OpenID4VPServiceInterface, error) {
 	runtime := config.GetServerRuntime()
 	cfg := runtime.Config.OpenID4VP
@@ -111,7 +113,7 @@ func Initialize(
 		ResultTokenValidity:   resultTokenValidity,
 		VerifierInfo:          verifierInfo,
 		EnforceKeyBinding:     cfg.EnforceKeyBinding,
-	}, newOpenID4VPStore(configCrypto), clientID,
+	}, newOpenID4VPStore(configCrypto, store), clientID,
 		cryptoProvider, kmprovider.KeyRef{KeyID: cfg.SigningKeyID}, string(signingKey.Algorithm), x5c,
 		trust, defSvc, jwtService, base)
 	if err != nil {

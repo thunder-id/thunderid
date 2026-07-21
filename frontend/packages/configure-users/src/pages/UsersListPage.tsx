@@ -17,8 +17,8 @@
  */
 
 import {useLogger} from '@thunderid/logger/react';
-import {Stack, TextField, Button, InputAdornment, PageContent, PageTitle} from '@wso2/oxygen-ui';
-import {Plus, Search} from '@wso2/oxygen-ui-icons-react';
+import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
+import {Plus} from '@wso2/oxygen-ui-icons-react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import UsersList from '../components/UsersList';
@@ -40,7 +40,7 @@ export default function UsersListPage() {
             startIcon={<Plus size={20} />}
             onClick={() => {
               (async () => {
-                await navigate('/users/invite');
+                await navigate('/users/add');
               })().catch((error: unknown) => {
                 logger.error('Failed to navigate to add user page', {error});
               });
@@ -51,21 +51,6 @@ export default function UsersListPage() {
         </PageTitle.Actions>
       </PageTitle>
 
-      {/* Search */}
-      <Stack direction="row" spacing={2} mb={4} flexWrap="wrap" useFlexGap>
-        <TextField
-          placeholder={t('users:searchUsers')}
-          size="small"
-          sx={{flexGrow: 1, minWidth: 300}}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Search size={16} />
-              </InputAdornment>
-            ),
-          }}
-        />
-      </Stack>
       <UsersList />
     </PageContent>
   );

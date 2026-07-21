@@ -162,3 +162,14 @@ type AgentGroupListResponse struct {
 	Groups       []AgentGroup `json:"groups"`
 	Links        []utils.Link `json:"links"`
 }
+
+// AgentRoleListResponse is the paginated response for an agent's assigned roles (direct and
+// group-inherited). Roles are represented by name only, matching what the underlying role
+// lookup returns.
+type AgentRoleListResponse struct {
+	TotalResults int          `json:"totalResults"`
+	StartIndex   int          `json:"startIndex"`
+	Count        int          `json:"count"`
+	Roles        []string     `json:"roles"`
+	Links        []utils.Link `json:"links"`
+}

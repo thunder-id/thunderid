@@ -18,9 +18,9 @@
 
 import {render, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {AuthenticatorTypes} from '@thunderid/configure-connections';
 import {LoggerProvider, LogLevel} from '@thunderid/logger';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {AuthenticatorTypes} from '../../../../connections/models/authenticators';
 import ApplicationCreateContext, {
   type ApplicationCreateContextType,
 } from '../../../contexts/ApplicationCreate/ApplicationCreateContext';
@@ -95,6 +95,10 @@ const renderWithContext = (
     setSelectedPlatform: vi.fn(),
     selectedTemplateConfig: null,
     setSelectedTemplateConfig: vi.fn(),
+    mcpClientType: 'userDelegated',
+    setMcpClientType: vi.fn(),
+    mcpRedirectUris: [],
+    setMcpRedirectUris: vi.fn(),
     hostingUrl: '',
     setHostingUrl: vi.fn(),
     callbackUrlFromConfig: '',

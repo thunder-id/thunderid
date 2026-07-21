@@ -66,6 +66,12 @@ func (o *OAuthClient) ValidateRedirectURI(ctx context.Context, redirectURI strin
 	return ValidateRedirectURI(ctx, o.RedirectURIs, redirectURI)
 }
 
+// ValidatePostLogoutRedirectURI validates the given post-logout redirect URI against this client's
+// registered post-logout redirect URIs.
+func (o *OAuthClient) ValidatePostLogoutRedirectURI(ctx context.Context, postLogoutRedirectURI string) error {
+	return ValidatePostLogoutRedirectURI(ctx, o.PostLogoutRedirectURIs, postLogoutRedirectURI)
+}
+
 // RequiresPKCE reports whether PKCE is required for this client.
 func (o *OAuthClient) RequiresPKCE() bool {
 	return o.PKCERequired || o.PublicClient
@@ -81,6 +87,24 @@ func (o *OAuthClient) RequiresPAR() bool {
 func (o *OAuthClient) ShouldAppendActorClaim() bool {
 	return o.EntityCategory == EntityCategoryAgent ||
 		(o.EntityCategory == EntityCategoryApp && o.IncludeActClaim)
+}
+
+// UserAccessTokenConfig returns the access token sub-config for user-subject tokens
+// (authorization_code, refresh_token, token_exchange, ciba), or nil if unset.
+func (o *OAuthClient) UserAccessTokenConfig() *AccessTokenSubConfig {
+	if o == nil || o.Token == nil || o.Token.AccessToken == nil {
+		return nil
+	}
+	return o.Token.AccessToken.UserConfig
+}
+
+// ClientAccessTokenConfig returns the access token sub-config for client-subject tokens
+// (client_credentials only), or nil if unset.
+func (o *OAuthClient) ClientAccessTokenConfig() *AccessTokenSubConfig {
+	if o == nil || o.Token == nil || o.Token.AccessToken == nil {
+		return nil
+	}
+	return o.Token.AccessToken.ClientConfig
 }
 
 // ValidateRedirectURI validates the provided redirect URI against the registered list.
@@ -114,6 +138,24 @@ func ValidateRedirectURI(ctx context.Context, redirectURIs []string, redirectURI
 		return fmt.Errorf("redirect URI must not contain a fragment component")
 	}
 
+	return nil
+}
+
+// ValidatePostLogoutRedirectURI validates a post-logout redirect URI against the registered list.
+// An empty URI is allowed (the logout endpoint then lands the user on a default page); a supplied
+// URI must match one of the registered post-logout redirect URIs.
+func ValidatePostLogoutRedirectURI(ctx context.Context, postLogoutRedirectURIs []string,
+	postLogoutRedirectURI string) error {
+	if postLogoutRedirectURI == "" {
+		return nil
+	}
+	if !matchAnyRedirectURIPattern(postLogoutRedirectURIs, postLogoutRedirectURI) {
+		return fmt.Errorf("post_logout_redirect_uri does not match any registered post-logout redirect URI")
+	}
+	if _, err := utils.ParseURL(postLogoutRedirectURI); err != nil {
+		log.GetLogger().Error(ctx, "Failed to parse post-logout redirect URI", log.Error(err))
+		return fmt.Errorf("invalid post_logout_redirect_uri: %s", err.Error())
+	}
 	return nil
 }
 

@@ -189,4 +189,19 @@ var (
 			DefaultValue: "The identity provider's attribute configuration is invalid",
 		},
 	}
+	// ErrorIDPHasBlockingDependencies is returned when an identity provider cannot be deleted because
+	// other resources depend on it in a way that forbids deletion (e.g. flows that reference it).
+	ErrorIDPHasBlockingDependencies = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "IDP-1013",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.idpservice.idp_has_blocking_dependencies",
+			DefaultValue: "Identity provider cannot be deleted",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.idpservice.idp_has_blocking_dependencies_description",
+			DefaultValue: "The identity provider cannot be deleted because other resources depend on it. " +
+				"Remove or reassign them first.",
+		},
+	}
 )

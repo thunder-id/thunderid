@@ -75,11 +75,19 @@ type AuthenticatorReference struct {
 	Timestamp int64 `json:"timestamp"`
 }
 
+// AuthorizationData holds authorization flow parameters exchanged during federated authentication.
+type AuthorizationData struct {
+	// Code is the authorization code received from the identity provider
+	Code string
+	// Nonce is the nonce parameter received from the identity provider (if applicable)
+	Nonce string
+}
+
 // FederatedAuthCredential carries the credential data for federated authentication.
 type FederatedAuthCredential struct {
-	IDPID   string
-	IDPType providers.IDPType
-	Code    string
+	IDPID             string
+	IDPType           providers.IDPType
+	AuthorizationData AuthorizationData
 }
 
 // OpenID4VPCredential carries the verified presentation result to the authn provider.
@@ -101,7 +109,7 @@ type FederatedAuthResult struct {
 // Authenticate performs the full flow (code exchange, claims extraction, internal user lookup).
 // It returns an error only for actual failures; a missing internal user is NOT an error.
 type FederatedAuthenticator interface {
-	Authenticate(ctx context.Context, idpID, code string) (*AuthnResult, *tidcommon.ServiceError)
+	Authenticate(ctx context.Context, idpID string, authzData AuthorizationData) (*AuthnResult, *tidcommon.ServiceError)
 }
 
 // AuthnResult represents the result of an authentication attempt,

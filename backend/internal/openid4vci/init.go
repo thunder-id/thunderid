@@ -34,6 +34,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize wires the OpenID4VCI issuer engine and the wallet-facing endpoints.
@@ -43,6 +44,7 @@ func Initialize(
 	mux *http.ServeMux, cryptoProvider kmprovider.RuntimeCryptoProvider,
 	jwtService jwt.JWTServiceInterface, userService user.UserServiceInterface,
 	dpopVerifier dpop.VerifierInterface, credSvc credential.CredentialConfigurationServiceInterface,
+	store providers.RuntimeStoreProvider,
 ) (OpenID4VCIServiceInterface, error) {
 	runtime := config.GetServerRuntime()
 	cfg := runtime.Config.OpenID4VCI
@@ -102,7 +104,7 @@ func Initialize(
 		EnforceScope:         cfg.EnforceScope,
 	}, cryptoProvider, kmprovider.KeyRef{KeyID: cfg.SigningKeyID},
 		string(signingKey.Algorithm), signingKey.Thumbprint, x5c,
-		newOpenID4VCIStore(), jwtService, userService, credSvc)
+		newOpenID4VCIStore(store), jwtService, userService, credSvc)
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,123 @@
+---
+title: Managed Identity
+docType: use-case
+description: Register, rotate, revoke, and transfer ownership of AI agents as governed identities with an accountable owner.
+sidebar_position: 3
+---
+
+# Managed Identity
+
+Before an agent authenticates to anything, calls a single API, or acts for a single user, it must exist as a governed identity. Governance covers the administrative lifecycle of an agent: registration, credential management, authorization changes, suspension, transfer, revocation, and the accountability that ties every action back to a human.
+
+An agent without governance is an agent nobody owns, nobody can revoke, and nobody is answerable for. That is the failure mode <ProductName /> is built to prevent. Every agent is a managed identity with an accountable owner from the moment it is created.
+
+## IAM Capabilities Required
+
+**Identity registration** to assign every agent a unique identity, descriptive metadata, an organizational placement, and its own credentials before it executes its first action.
+
+**Lifecycle management** to move an agent through its full lifecycle, from creation and credential rotation to authorization changes, suspension, transfer, and decommissioning, all under policy control.
+
+**Credential rotation** to issue, renew, and retire agent credentials on a schedule or on demand, without downtime and without sharing secrets.
+
+**Revocation cascades** to instantly invalidate an agent's access across every service, and to cascade that revocation to every dependent identity and sub-agent in its delegation chain.
+
+**Liability tracking and ownership transfer** to trace every action an agent takes back to the human accountable for it, and to transfer that accountability cleanly between people and teams.
+
+## Agent Provisioning and Registration
+
+### The Challenge
+
+Agents proliferate quickly. A single team can stand up dozens of agents in a week, each built from a copied credential, a shared API key, or a service account borrowed from an unrelated system. Within a month, no one can answer basic questions: How many agents are running? What can each one access? Who is responsible for this one?
+
+The root cause is that agents are usually created as an afterthought of deployment rather than as a deliberate identity event. There is no registration step, so there is no record, no owner, and no lifecycle. The agent simply appears, holding whatever credential its author had at hand.
+
+### How <ProductName /> Solves It
+
+<ProductName /> makes registration the gate every agent passes through before it can act. Registering an agent creates a managed identity record with a unique **Agent ID**, an accountable **owner**, a placement in the organization unit hierarchy, and its own OAuth 2.0 credentials distinct from any human or service account.
+
+Registration also defines what the agent *is* through a shared **agent schema**: a set of custom attributes (model, environment, risk tier, cost center) that every agent carries. The schema turns an ad-hoc collection of agents into an inventory you can query, filter, and govern by policy.
+
+Because the agent holds its own credentials under its own identity, every downstream authentication and every issued token is attributable to that specific agent. There is no shared secret to trace back to a group and no borrowed account that muddies the audit trail.
+
+### Scenario: Onboarding a New Agent
+
+A platform team builds a "Contract Analyzer" agent. Before it runs, an administrator registers it in <ProductName />: names it, assigns the data-governance lead as its owner, places it in the `Legal` organization unit, and sets its risk-tier attribute to `high`. <ProductName /> generates the Agent ID and issues a client secret shown once. From this point the agent is discoverable in the inventory, its permissions are grantable through group membership, and every token it ever requests carries its identity. No part of its behavior is anonymous.
+
+## Lifecycle Management and Credential Rotation
+
+### The Challenge
+
+Credentials that never change are credentials that eventually leak. A client secret pasted into a config file, baked into a container image, or shared in a chat message has a long tail of exposure. Human accounts are protected by rotation policies, MFA, and session expiry; agents are too often issued a static secret at creation and left with it for the life of the deployment.
+
+Rotation is only half the problem. An agent's authority also changes over time: it takes on new tasks, sheds old ones, moves between environments, or needs to be paused during an investigation. Without lifecycle controls, every one of those changes means editing code or recreating the agent, which breaks the audit trail.
+
+### How <ProductName /> Solves It
+
+<ProductName /> governs the full credential lifecycle. Secrets can be regenerated on demand, invalidating the previous secret immediately while the agent's identity, ID, and authorization remain intact. For higher-security agents, `private_key_jwt` eliminates shared secrets entirely: the agent proves its identity with a signed assertion, and <ProductName /> manages key registration and rotation schedules.
+
+Authorization is managed independently of credentials. An agent's permissions come from its group memberships and role assignments, so granting or removing access is a membership change, not a redeployment. Suspending an agent, moving it between organization units, or decommissioning it are all first-class lifecycle operations that preserve the agent's history.
+
+Because authorization is decoupled from the credential, secret rotation and permission changes are independent operations.
+
+### Scenario: Scheduled Rotation Without Downtime
+
+A finance-reconciliation agent authenticates with `private_key_jwt`. Security policy requires a 90-day key rotation. The owner registers a new key alongside the current one, deploys it, and retires the old key once traffic has cut over. The agent never stops running, its Agent ID and permissions are untouched, and the audit log records the rotation as a governed lifecycle event rather than a mysterious credential change.
+
+## Emergency Revocation
+
+### The Challenge
+
+When an agent misbehaves, whether a prompt injection turns it hostile, a credential leaks, or a bug sends it into a destructive loop, every second of continued access compounds the damage. The response cannot be "open a ticket to rotate a key." It has to be immediate and total.
+
+Revocation is harder for agents than for humans because agents delegate. A compromised primary agent may have handed scoped authority to a dozen worker agents, each holding a live token. Killing the primary agent's credential does nothing to the tokens already in the hands of its delegates. The blast radius is the entire delegation chain, not a single identity.
+
+### How <ProductName /> Solves It
+
+<ProductName /> can instantly invalidate an agent's access across every service. Revoking the agent disables its credentials and refuses any new token request under its identity. Combined with short token lifetimes, the recommended posture for agents, the window of continued access closes quickly even for tokens already issued.
+
+Revocation also cascades. When an agent is revoked, <ProductName /> cascades the action through the agent's dependency graph, invalidating the grants held by every sub-agent it empowered. The delegation chain that made a compromise dangerous is the same structure <ProductName /> walks to contain it. Because every delegated token records the chain it descended from, there is no orphaned authority left behind.
+
+### Scenario: Containing a Compromised Agent
+
+An operations team detects that a research agent has been manipulated into exfiltrating data. They trigger emergency revocation. <ProductName /> immediately blocks the research agent from obtaining new tokens and cascades revocation to the three worker agents it had delegated sub-tasks to, invalidating their grants as well. Within the token-lifetime window, the entire branch of the delegation tree rooted at the compromised agent has lost access. The incident is contained without taking down unrelated agents.
+
+## Liability Tracking and Ownership Transfer
+
+### The Challenge
+
+An autonomous agent that can spend money, move data, or change records raises a question every organization must answer before regulators or auditors do: **who is responsible when the agent acts?** If the answer is "the system" or "the team, generally," accountability has already failed. Responsibility must resolve to a specific, named human.
+
+Ownership is not static. People change roles, leave the company, or hand a project to another team. If accountability is recorded informally, in a wiki or in someone's memory, it decays. An agent outlives the tenure of the person who built it, and the moment that person leaves, the agent becomes unowned.
+
+### How <ProductName /> Solves It
+
+Every agent in <ProductName /> has an owner: the human accountable for its behavior, access, and lifecycle. Ownership is a required, first-class property of the identity, not a comment. An unowned agent is an ungoverned agent, and <ProductName /> treats the owner as the anchor of the agent's audit trail: every action the agent takes traces back through its identity to the human who owns it.
+
+Ownership transfers are structured operations. When a person changes roles or leaves, their agents are reassigned to a new owner through a governed transfer that updates the accountability record without disrupting the agent's operation or breaking its history. Accountability moves cleanly from one human to the next, and the audit trail reflects exactly who was responsible at any point in time.
+
+### Scenario: Transferring Ownership on a Team Change
+
+An engineer who owns four internal agents transfers to a different organization. As part of offboarding, their manager reassigns the four agents to a new owner on the receiving team. <ProductName /> records the transfer, updates each agent's accountability anchor, and preserves the full history: actions taken before the transfer remain attributed to the original owner, and actions after it to the new one. No agent is orphaned, and the chain of responsibility is never broken.
+
+## Key Principles
+
+**Registration is the gate.** An agent becomes a governed identity, with an ID, an owner, and credentials, before it takes its first action, not after something goes wrong.
+
+**Every agent has an accountable owner.** Ownership is a required property of the identity. An unowned agent is an ungoverned agent.
+
+**Credentials and authorization are separate lifecycles.** Rotating a secret never changes what an agent can do; changing what an agent can do never requires touching its secret.
+
+**Revocation is immediate and cascading.** Revoking an agent contains not just that agent but every sub-agent it empowered, following the same delegation chain that created the risk.
+
+**Accountability transfers cleanly.** Ownership moves between humans through governed operations that preserve the audit trail rather than breaking it.
+
+## Guides
+
+- [Manage Agents](../../../guides/guides/agents/manage-agents): Register a governed agent identity with an owner, an organization unit, and OAuth credentials, and manage its lifecycle.
+- [Agent Authentication](../../../guides/guides/agents/agent-authentication): Configure the credentials an agent uses and rotate them without downtime.
+
+## Related Use Cases
+
+- [Invoking the Agent and Authenticating Users](../invoking-the-agent)
+- [Accessing Internal Business Services](../internal-services)
+- [Multi-Agent Interactions](../multi-agent)

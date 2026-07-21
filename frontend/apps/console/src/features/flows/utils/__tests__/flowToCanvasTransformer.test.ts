@@ -583,5 +583,101 @@ describe('flowToCanvasTransformer', () => {
         expect(result.nodes[0].deletable).toBe(true);
       });
     });
+
+    describe('CALL node transformation', () => {
+      it('should transform CALL node with flow ref, resourceType and category', () => {
+        const flowData = createBaseFlowData([
+          {
+            id: 'call-1',
+            type: 'CALL',
+            flow: {ref: 'referenced-flow'},
+            onSuccess: 'next-node',
+            onFailure: 'failure-node',
+            layout: {position: {x: 300, y: 400}, size: {width: 260, height: 120}},
+          },
+        ]);
+
+        const result = transformFlowToCanvas(flowData);
+
+        expect(result.nodes).toHaveLength(1);
+        expect(result.nodes[0]).toMatchObject({
+          id: 'call-1',
+          type: StepTypes.Call,
+          resourceType: 'STEP',
+          category: 'WORKFLOW',
+        });
+        expect(result.nodes[0].data).toMatchObject({
+          flow: {ref: 'referenced-flow'},
+          action: {
+            type: 'CALL',
+            flow: {ref: 'referenced-flow'},
+            onSuccess: 'next-node',
+            onFailure: 'failure-node',
+          },
+        });
+      });
+
+      it('should default flow to {ref: ""} when the API node has no flow field', () => {
+        const flowData = createBaseFlowData([
+          {
+            id: 'call-1',
+            type: 'CALL',
+            layout: {position: {x: 0, y: 0}, size: {width: 260, height: 120}},
+          },
+        ]);
+
+        const result = transformFlowToCanvas(flowData);
+
+        expect(result.nodes[0].data).toMatchObject({
+          flow: {ref: ''},
+          action: {type: 'CALL', flow: {ref: ''}},
+        });
+      });
+
+      it('should generate the onSuccess edge from a CALL node using the _NEXT source handle', () => {
+        const flowData = createBaseFlowData([
+          {id: 'call-1', type: 'CALL', flow: {ref: 'ref'}, onSuccess: 'next-1'},
+          {id: 'next-1', type: 'END'},
+        ]);
+
+        const result = transformFlowToCanvas(flowData);
+
+        const successEdge = result.edges.find((e) => e.id === 'call-1-to-next-1');
+        expect(successEdge).toBeDefined();
+        expect(successEdge).toMatchObject({
+          source: 'call-1',
+          target: 'next-1',
+          sourceHandle: `call-1${VisualFlowConstants.FLOW_BUILDER_NEXT_HANDLE_SUFFIX}`,
+          type: 'smoothstep',
+        });
+      });
+
+      it('should generate the onFailure edge from a CALL node using the "failure" source handle', () => {
+        const flowData = createBaseFlowData([
+          {id: 'call-1', type: 'CALL', flow: {ref: 'ref'}, onFailure: 'fail-1'},
+          {id: 'fail-1', type: 'END'},
+        ]);
+
+        const result = transformFlowToCanvas(flowData);
+
+        const failureEdge = result.edges.find((e) => e.id === 'call-1-failure-to-fail-1');
+        expect(failureEdge).toBeDefined();
+        expect(failureEdge).toMatchObject({
+          source: 'call-1',
+          target: 'fail-1',
+          sourceHandle: 'failure',
+        });
+      });
+
+      it('should not emit edges when CALL onSuccess/onFailure targets are missing from the node list', () => {
+        const flowData = createBaseFlowData([
+          {id: 'call-1', type: 'CALL', flow: {ref: 'ref'}, onSuccess: 'missing-1', onFailure: 'missing-2'},
+        ]);
+
+        const result = transformFlowToCanvas(flowData);
+
+        expect(result.edges).toHaveLength(0);
+      });
+    });
   });
 });

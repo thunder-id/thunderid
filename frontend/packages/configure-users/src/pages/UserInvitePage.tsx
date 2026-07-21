@@ -47,10 +47,10 @@ import {
   Select,
   MenuItem,
   LinearProgress,
-  Breadcrumbs,
+  AppBreadcrumbs,
   CircularProgress,
 } from '@wso2/oxygen-ui';
-import {X, ChevronRight} from '@wso2/oxygen-ui-icons-react';
+import {X} from '@wso2/oxygen-ui-icons-react';
 import {useState, useEffect, useMemo, useCallback, useRef, type JSX} from 'react';
 import {useForm, Controller} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
@@ -151,6 +151,24 @@ function hasActionsOrInputs(comps: EmbeddedFlowComponent[]): boolean {
   return comps.some(
     (c) => c.ref != null || c.eventType != null || (Array.isArray(c.components) && hasActionsOrInputs(c.components)),
   );
+}
+
+const ONBOARDING_MODE_INVITE_ACTION_ID = 'action_invite_user';
+
+/** Recursively finds an ACTION component by id within a flow component tree. */
+function findActionComponentById(
+  comps: EmbeddedFlowComponent[] | undefined,
+  actionId: string,
+): EmbeddedFlowComponent | undefined {
+  if (!comps) return undefined;
+  for (const comp of comps) {
+    if (comp.id === actionId) return comp;
+    if (Array.isArray(comp.components)) {
+      const found = findActionComponentById(comp.components, actionId);
+      if (found) return found;
+    }
+  }
+  return undefined;
 }
 
 const getOptionLabel = (option: unknown): string => {
@@ -660,7 +678,7 @@ function InviteUserStepContent({
                       | 'row-reverse'
                       | 'column'
                       | 'column-reverse';
-                    const justify = subComponent.justify ?? 'center';
+                    const justify = subComponent.justify ?? 'flex-start';
                     return (
                       <Stack
                         key={subComponent.id ?? compIndex}
@@ -779,6 +797,19 @@ function InviteUserFlowBridge({
   const {t} = useTranslation();
   const components = renderProps.components as EmbeddedFlowComponent[] | undefined;
 
+  // This page is only reached via the dedicated "invite" route (the create-vs-invite choice
+  // now happens on AddUserPage), so auto-select the invite path and skip straight past the
+  // onboarding-mode prompt if the flow still starts with it.
+  const autoInviteTriggeredRef = useRef(false);
+  const inviteAction = findActionComponentById(components, ONBOARDING_MODE_INVITE_ACTION_ID);
+
+  useEffect(() => {
+    if (inviteAction && !autoInviteTriggeredRef.current) {
+      autoInviteTriggeredRef.current = true;
+      renderProps.handleSubmit(inviteAction, renderProps.values).catch(() => undefined);
+    }
+  }, [inviteAction, renderProps]);
+
   // Derive current step label from the HEADING_1 component
   const currentStepLabel = components?.length ? deriveStepLabel(components, resolve, t) : '';
 
@@ -796,16 +827,20 @@ function InviteUserFlowBridge({
   }, [currentHasOu, onOuStepDetected]);
 
   useEffect(() => {
-    if (currentStepLabel) {
+    if (currentStepLabel && !inviteAction) {
       onStepLabelChange(currentStepLabel);
     }
-  }, [currentStepLabel, onStepLabelChange]);
+  }, [currentStepLabel, inviteAction, onStepLabelChange]);
 
   useEffect(() => {
     if (isDisplayOnly) {
       onInviteComplete();
     }
   }, [isDisplayOnly, onInviteComplete]);
+
+  if (inviteAction) {
+    return <PageLoadingAnimation />;
+  }
 
   return (
     <InviteUserStepContent
@@ -827,6 +862,7 @@ export default function UserInvitePage(): JSX.Element {
   const [breadcrumbs, setBreadcrumbs] = useState<string[]>([]);
   const prevStepLabelRef = useRef<string>('');
   const [hasOuStep, setHasOuStep] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
 
   const handleClose = useCallback(() => {
     (async () => {
@@ -836,10 +872,18 @@ export default function UserInvitePage(): JSX.Element {
     });
   }, [navigate, logger]);
 
+  const handleBreadcrumbHome = useCallback(() => {
+    (async () => {
+      await navigate('/users/add');
+    })().catch((err: unknown) => {
+      logger.error('Failed to navigate to add user page', {error: err});
+    });
+  }, [navigate, logger]);
+
   const handleManualCreateFallback = useCallback(() => {
     logger.info('Falling back to manual user creation because the onboarding flow is unavailable');
     (async () => {
-      await navigate('/users/create');
+      await navigate('/users/add/create');
     })().catch((err: unknown) => {
       logger.error('Failed to navigate to fallback user creation page', {error: err});
     });
@@ -865,6 +909,7 @@ export default function UserInvitePage(): JSX.Element {
     if (prevStepLabelRef.current !== 'complete') {
       prevStepLabelRef.current = 'complete';
       setBreadcrumbs((prev) => [...prev, t('users:invite.steps.complete', 'Complete')]);
+      setIsComplete(true);
     }
   }, [setBreadcrumbs, t]);
 
@@ -877,6 +922,7 @@ export default function UserInvitePage(): JSX.Element {
     prevStepLabelRef.current = '';
     setHasOuStep(false);
     setFlowError(null);
+    setIsComplete(false);
   }, []);
 
   // Compute progress from breadcrumb trail.
@@ -905,21 +951,13 @@ export default function UserInvitePage(): JSX.Element {
             >
               <X size={24} />
             </IconButton>
-            <Breadcrumbs separator={<ChevronRight size={16} />} aria-label="breadcrumb">
-              {breadcrumbs.map((label, index) => {
-                const isLast = index === breadcrumbs.length - 1;
-                return (
-                  <Typography key={label} variant="h5" color={isLast ? 'text.primary' : 'inherit'}>
-                    {label}
-                  </Typography>
-                );
-              })}
-              {breadcrumbs.length === 0 && (
-                <Typography variant="h5" color="text.primary">
-                  {t('users:addUser', 'Add User')}
-                </Typography>
-              )}
-            </Breadcrumbs>
+            <AppBreadcrumbs
+              items={[
+                {key: 'add-user', label: t('users:addUser', 'Add User'), onClick: handleBreadcrumbHome},
+                {key: 'invite-user', label: t('users:invite.title', 'Invite User')},
+                ...breadcrumbs.map((label) => ({key: label, label})),
+              ]}
+            />
           </Stack>
         </Box>
 
@@ -930,10 +968,12 @@ export default function UserInvitePage(): JSX.Element {
               flex: 1,
               display: 'flex',
               flexDirection: 'column',
-              py: 8,
+              pt: isComplete ? 2 : 8,
+              pb: 8,
               px: 20,
               mx: 'auto',
-              alignItems: 'center',
+              alignItems: isComplete ? 'flex-start' : 'flex-start',
+              justifyContent: 'flex-start',
             }}
           >
             <Box

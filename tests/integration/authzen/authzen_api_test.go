@@ -33,9 +33,10 @@ import (
 const (
 	authzenServerURL = testutils.TestServerURL
 
-	authzenOUHandle       = "authzen-test-ou"
-	authzenUserTypeName   = "authzen-person"
-	authzenResourceHandle = "authzen-booking"
+	authzenOUHandle                = "authzen-test-ou"
+	authzenUserTypeName            = "authzen-person"
+	authzenResourceIdentifier      = "authzen-booking-api"
+	authzenOtherResourceIdentifier = "authzen-invoice-api"
 )
 
 type AuthZENAPITestSuite struct {
@@ -98,8 +99,7 @@ func (ts *AuthZENAPITestSuite) SetupSuite() {
 	resourceServer, err := createResourceServer(testutils.ResourceServer{
 		Name:        "AuthZEN Booking API",
 		Description: "Resource server for AuthZEN integration tests",
-		Handle:      authzenResourceHandle,
-		Identifier:  "authzen-booking-api",
+		Identifier:  authzenResourceIdentifier,
 		OUID:        ts.ouID,
 	})
 	ts.Require().NoError(err, "create AuthZEN resource server")
@@ -108,8 +108,7 @@ func (ts *AuthZENAPITestSuite) SetupSuite() {
 	otherServer, err := createResourceServer(testutils.ResourceServer{
 		Name:        "AuthZEN Invoice API",
 		Description: "Second resource server for AuthZEN integration tests",
-		Handle:      "authzen-invoice",
-		Identifier:  "authzen-invoice-api",
+		Identifier:  authzenOtherResourceIdentifier,
 		OUID:        ts.ouID,
 	})
 	ts.Require().NoError(err, "create second AuthZEN resource server")
@@ -134,7 +133,7 @@ func (ts *AuthZENAPITestSuite) SetupSuite() {
 	otherAction, err := createAction(
 		ts.otherServerID,
 		"",
-		testutils.Action{Name: "Read invoices", Handle: "read", Description: "Read invoices"},
+		testutils.Action{Name: "Read invoices", Handle: "invoice-read", Description: "Read invoices"},
 	)
 	ts.Require().NoError(err, "create invoice read action")
 	ts.otherPermission = otherAction.Permission
@@ -209,11 +208,88 @@ func (ts *AuthZENAPITestSuite) TestMetadataDiscovery() {
 	ts.Equal(authzenServerURL+"/access/v1/search/action", metadata.SearchActionEndpoint)
 }
 
+func (ts *AuthZENAPITestSuite) TestMetadataDiscoveryDoesNotRequireDirectAuthSecret() {
+	resp, body := ts.doUnauthenticatedRequest(http.MethodGet, "/.well-known/authzen-configuration", nil, nil)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(body))
+
+	var metadata metadataResponse
+	ts.Require().NoError(json.Unmarshal(body, &metadata))
+	ts.Equal(authzenServerURL, metadata.PolicyDecisionPoint)
+}
+
+func (ts *AuthZENAPITestSuite) TestAccessEndpointsRequireDirectAuthSecret() {
+	accessEndpoints := []struct {
+		name string
+		path string
+		body []byte
+	}{
+		{
+			name: "single evaluation",
+			path: "/access/v1/evaluation",
+			body: mustJSON(evaluationRequest{
+				Subject:  subject{Type: "user", ID: ts.userID},
+				Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
+				Action:   action{Name: ts.readPermission},
+			}),
+		},
+		{
+			name: "batch evaluations",
+			path: "/access/v1/evaluations",
+			body: mustJSON(evaluationsRequest{
+				Evaluations: []evaluationRequest{
+					{
+						Subject:  subject{Type: "user", ID: ts.userID},
+						Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
+						Action:   action{Name: ts.readPermission},
+					},
+				},
+			}),
+		},
+		{
+			name: "action search",
+			path: "/access/v1/search/action",
+			body: mustJSON(searchActionRequest{
+				Subject:  subject{Type: "user", ID: ts.userID},
+				Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
+			}),
+		},
+	}
+
+	for _, endpoint := range accessEndpoints {
+		ts.Run(endpoint.name+" missing secret", func() {
+			resp, body := ts.doUnauthenticatedRequest(http.MethodPost, endpoint.path, endpoint.body, nil)
+			ts.Require().Equal(http.StatusUnauthorized, resp.StatusCode, string(body))
+
+			var errResp testutils.ErrorResponse
+			ts.Require().NoError(json.Unmarshal(body, &errResp))
+			ts.Equal("AUTH-4010", errResp.Code)
+		})
+
+		ts.Run(endpoint.name+" wrong secret", func() {
+			resp, body := ts.doUnauthenticatedRequest(http.MethodPost, endpoint.path, endpoint.body, map[string]string{
+				testutils.DirectAuthHeaderName: "wrong-secret",
+			})
+			ts.Require().Equal(http.StatusUnauthorized, resp.StatusCode, string(body))
+
+			var errResp testutils.ErrorResponse
+			ts.Require().NoError(json.Unmarshal(body, &errResp))
+			ts.Equal("AUTH-4010", errResp.Code)
+		})
+
+		ts.Run(endpoint.name+" valid secret", func() {
+			resp, body := ts.doUnauthenticatedRequest(http.MethodPost, endpoint.path, endpoint.body, map[string]string{
+				testutils.DirectAuthHeaderName: testutils.DirectAuthHeaderValue,
+			})
+			ts.Require().Equal(http.StatusOK, resp.StatusCode, string(body))
+		})
+	}
+}
+
 func (ts *AuthZENAPITestSuite) TestEvaluateAccessAllowedAndDenied() {
 	allowed := ts.evaluate(evaluationRequest{
 		Subject: subject{Type: "user", ID: ts.userID},
 		Resource: resource{
-			Type: authzenResourceHandle,
+			Type: authzenResourceIdentifier,
 			ID:   ts.resourceID,
 		},
 		Action: action{Name: ts.readPermission},
@@ -224,7 +300,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessAllowedAndDenied() {
 	denied := ts.evaluate(evaluationRequest{
 		Subject: subject{Type: "user", ID: ts.userID},
 		Resource: resource{
-			Type: authzenResourceHandle,
+			Type: authzenResourceIdentifier,
 			ID:   ts.resourceID,
 		},
 		Action: action{Name: ts.writePermission},
@@ -236,7 +312,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessAllowedAndDenied() {
 func (ts *AuthZENAPITestSuite) TestEvaluateAccessDeniedUser() {
 	denied := ts.evaluate(evaluationRequest{
 		Subject:  subject{Type: "user", ID: ts.deniedUserID},
-		Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+		Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 		Action:   action{Name: ts.readPermission},
 	})
 	ts.False(denied.Decision)
@@ -244,12 +320,12 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessDeniedUser() {
 
 	unknownAction := ts.evaluate(evaluationRequest{
 		Subject:  subject{Type: "user", ID: ts.deniedUserID},
-		Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
-		Action:   action{Name: authzenResourceHandle + ":archive"},
+		Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
+		Action:   action{Name: "archive"},
 	})
 	ts.False(unknownAction.Decision)
 	ts.Equal(
-		"Action "+authzenResourceHandle+":archive is not registered on the resource server",
+		"Action archive is not registered on the resource server",
 		errorMessage(unknownAction.Context),
 	)
 }
@@ -281,7 +357,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessResourceIDDoesNotScopeCurrentDe
 		ts.Run(tc.name, func() {
 			result := ts.evaluate(evaluationRequest{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: tc.resourceID},
+				Resource: resource{Type: authzenResourceIdentifier, ID: tc.resourceID},
 				Action:   action{Name: ts.approvePermission},
 			})
 			ts.True(result.Decision)
@@ -297,12 +373,12 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessRejectsCrossResourceServerPermi
 	}{
 		{
 			name:         "invoice permission against booking server",
-			resourceType: authzenResourceHandle,
+			resourceType: authzenResourceIdentifier,
 			permission:   ts.otherPermission,
 		},
 		{
 			name:         "booking permission against invoice server",
-			resourceType: "authzen-invoice",
+			resourceType: authzenOtherResourceIdentifier,
 			permission:   ts.readPermission,
 		},
 	}
@@ -323,7 +399,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessRejectsCrossResourceServerPermi
 func (ts *AuthZENAPITestSuite) TestEvaluateAccessRejectsUnknownSubject() {
 	resp, body := ts.doRequest(http.MethodPost, "/access/v1/evaluation", mustJSON(evaluationRequest{
 		Subject:  subject{Type: "user", ID: "00000000-0000-0000-0000-000000000000"},
-		Resource: resource{Type: authzenResourceHandle, ID: "booking-1"},
+		Resource: resource{Type: authzenResourceIdentifier, ID: "booking-1"},
 		Action:   action{Name: ts.readPermission},
 	}))
 	ts.Require().Equal(http.StatusBadRequest, resp.StatusCode, string(body))
@@ -344,12 +420,12 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessReturnsDecisionForUnknownResour
 
 	unknownAction := ts.evaluate(evaluationRequest{
 		Subject:  subject{Type: "user", ID: ts.userID},
-		Resource: resource{Type: authzenResourceHandle, ID: "booking-1"},
-		Action:   action{Name: authzenResourceHandle + ":archive"},
+		Resource: resource{Type: authzenResourceIdentifier, ID: "booking-1"},
+		Action:   action{Name: "archive"},
 	})
 	ts.False(unknownAction.Decision)
 	ts.Equal(
-		"Action "+authzenResourceHandle+":archive is not registered on the resource server",
+		"Action archive is not registered on the resource server",
 		errorMessage(unknownAction.Context),
 	)
 }
@@ -373,19 +449,19 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessValidationErrors() {
 		{
 			name: "wrong subject data type",
 			body: fmt.Sprintf(`{"subject":"%s","resource":{"type":%q,"id":"booking-1"},"action":{"name":%q}}`,
-				ts.userID, authzenResourceHandle, ts.readPermission),
+				ts.userID, authzenResourceIdentifier, ts.readPermission),
 			error: "Invalid request format",
 		},
 		{
 			name: "empty subject id",
 			body: fmt.Sprintf(`{"subject":{"type":"user","id":""},"resource":{"type":%q,"id":"booking-1"},"action":{"name":%q}}`,
-				authzenResourceHandle, ts.readPermission),
+				authzenResourceIdentifier, ts.readPermission),
 			error: "Missing subject",
 		},
 		{
 			name: "missing subject",
 			body: fmt.Sprintf(`{"resource":{"type":%q,"id":"booking-1"},"action":{"name":%q}}`,
-				authzenResourceHandle, ts.readPermission),
+				authzenResourceIdentifier, ts.readPermission),
 			error: "Missing subject",
 		},
 		{
@@ -403,13 +479,13 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessValidationErrors() {
 		{
 			name: "empty action name",
 			body: fmt.Sprintf(`{"subject":{"type":"user","id":%q},"resource":{"type":%q,"id":"booking-1"},"action":{"name":""}}`,
-				ts.userID, authzenResourceHandle),
+				ts.userID, authzenResourceIdentifier),
 			error: "Missing action",
 		},
 		{
 			name: "missing action",
 			body: fmt.Sprintf(`{"subject":{"type":"user","id":%q},"resource":{"type":%q,"id":"booking-1"}}`,
-				ts.userID, authzenResourceHandle),
+				ts.userID, authzenResourceIdentifier),
 			error: "Missing action",
 		},
 	}
@@ -432,7 +508,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessIgnoresUnknownJSONFields() {
 		"resource": {"type": %q, "id": %q, "owner": "ignored"},
 		"action": {"name": %q, "risk": "ignored"},
 		"unknown": "ignored"
-	}`, ts.userID, authzenResourceHandle, ts.resourceID, ts.readPermission)
+	}`, ts.userID, authzenResourceIdentifier, ts.resourceID, ts.readPermission)
 
 	resp, payload := ts.doRequest(http.MethodPost, "/access/v1/evaluation", []byte(body))
 	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(payload))
@@ -445,7 +521,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessIgnoresUnknownJSONFields() {
 func (ts *AuthZENAPITestSuite) TestEvaluateAccessContentTypeIsNotEnforced() {
 	payload := mustJSON(evaluationRequest{
 		Subject:  subject{Type: "user", ID: ts.userID},
-		Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+		Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 		Action:   action{Name: ts.readPermission},
 	})
 
@@ -486,7 +562,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessFieldCombinations() {
 			name: "subject with type",
 			request: evaluationRequest{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+				Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 				Action:   action{Name: ts.readPermission},
 			},
 			expectedStatus: http.StatusOK,
@@ -496,7 +572,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessFieldCombinations() {
 			name: "subject without type",
 			request: evaluationRequest{
 				Subject:  subject{ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+				Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 				Action:   action{Name: ts.readPermission},
 			},
 			expectedStatus: http.StatusOK,
@@ -506,7 +582,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessFieldCombinations() {
 			name: "subject without id",
 			request: evaluationRequest{
 				Subject:  subject{Type: "user"},
-				Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+				Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 				Action:   action{Name: ts.readPermission},
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -515,7 +591,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessFieldCombinations() {
 		{
 			name: "subject without type or id",
 			request: evaluationRequest{
-				Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+				Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 				Action:   action{Name: ts.readPermission},
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -525,7 +601,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessFieldCombinations() {
 			name: "resource with type and id",
 			request: evaluationRequest{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+				Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 				Action:   action{Name: ts.readPermission},
 			},
 			expectedStatus: http.StatusOK,
@@ -535,7 +611,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessFieldCombinations() {
 			name: "resource without id",
 			request: evaluationRequest{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle},
+				Resource: resource{Type: authzenResourceIdentifier},
 				Action:   action{Name: ts.readPermission},
 			},
 			expectedStatus: http.StatusOK,
@@ -564,7 +640,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessFieldCombinations() {
 			name: "action with name",
 			request: evaluationRequest{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+				Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 				Action:   action{Name: ts.readPermission},
 			},
 			expectedStatus: http.StatusOK,
@@ -574,7 +650,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessFieldCombinations() {
 			name: "action without name",
 			request: evaluationRequest{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+				Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  "Missing action",
@@ -605,22 +681,22 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessBatchPreservesOrderAndItemError
 		Evaluations: []evaluationRequest{
 			{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: "booking-1"},
+				Resource: resource{Type: authzenResourceIdentifier, ID: "booking-1"},
 				Action:   action{Name: ts.readPermission},
 			},
 			{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: "booking-1"},
+				Resource: resource{Type: authzenResourceIdentifier, ID: "booking-1"},
 				Action:   action{Name: ts.writePermission},
 			},
 			{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: "booking-1"},
-				Action:   action{Name: authzenResourceHandle + ":archive"},
+				Resource: resource{Type: authzenResourceIdentifier, ID: "booking-1"},
+				Action:   action{Name: "archive"},
 			},
 			{
 				Subject:  subject{Type: "agent", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: "booking-1"},
+				Resource: resource{Type: authzenResourceIdentifier, ID: "booking-1"},
 				Action:   action{Name: ts.readPermission},
 			},
 		},
@@ -634,7 +710,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessBatchPreservesOrderAndItemError
 	ts.False(result.Evaluations[1].Decision)
 	ts.Equal("Subject is not authorized to perform the requested action", result.Evaluations[1].Context["reason"])
 	ts.False(result.Evaluations[2].Decision)
-	ts.Equal("Action "+authzenResourceHandle+":archive is not registered on the resource server",
+	ts.Equal("Action archive is not registered on the resource server",
 		errorMessage(result.Evaluations[2].Context))
 	ts.False(result.Evaluations[3].Decision)
 	ts.Equal("Invalid subject", errorMessage(result.Evaluations[3].Context))
@@ -652,7 +728,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessBatchCombinations() {
 				Evaluations: []evaluationRequest{
 					{
 						Subject:  subject{Type: "user", ID: ts.userID},
-						Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+						Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 						Action:   action{Name: ts.readPermission},
 					},
 				},
@@ -665,12 +741,12 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessBatchCombinations() {
 				Evaluations: []evaluationRequest{
 					{
 						Subject:  subject{Type: "user", ID: ts.userID},
-						Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+						Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 						Action:   action{Name: ts.readPermission},
 					},
 					{
 						Subject:  subject{Type: "user", ID: ts.userID},
-						Resource: resource{Type: authzenResourceHandle, ID: "booking-2"},
+						Resource: resource{Type: authzenResourceIdentifier, ID: "booking-2"},
 						Action:   action{Name: ts.approvePermission},
 					},
 				},
@@ -683,12 +759,12 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessBatchCombinations() {
 				Evaluations: []evaluationRequest{
 					{
 						Subject:  subject{Type: "user", ID: ts.deniedUserID},
-						Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+						Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 						Action:   action{Name: ts.readPermission},
 					},
 					{
 						Subject:  subject{Type: "user", ID: ts.userID},
-						Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+						Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 						Action:   action{Name: ts.writePermission},
 					},
 				},
@@ -701,12 +777,12 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessBatchCombinations() {
 				Evaluations: []evaluationRequest{
 					{
 						Subject:  subject{Type: "user", ID: ts.userID},
-						Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+						Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 						Action:   action{Name: ts.readPermission},
 					},
 					{
 						Subject:  subject{Type: "user", ID: ts.userID},
-						Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+						Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 						Action:   action{Name: ts.readPermission},
 					},
 				},
@@ -719,17 +795,17 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessBatchCombinations() {
 				Evaluations: []evaluationRequest{
 					{
 						Subject:  subject{Type: "user", ID: ts.userID},
-						Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+						Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 						Action:   action{Name: ts.readPermission},
 					},
 					{
 						Subject:  subject{Type: "user", ID: ts.userID},
-						Resource: resource{Type: authzenResourceHandle, ID: "booking-2"},
+						Resource: resource{Type: authzenResourceIdentifier, ID: "booking-2"},
 						Action:   action{Name: ts.writePermission},
 					},
 					{
 						Subject:  subject{Type: "user", ID: ts.userID},
-						Resource: resource{Type: authzenResourceHandle, ID: "booking-3"},
+						Resource: resource{Type: authzenResourceIdentifier, ID: "booking-3"},
 						Action:   action{Name: ts.approvePermission},
 					},
 				},
@@ -758,15 +834,15 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessBatchReturnsPerItemFieldValidat
 		Evaluations: []evaluationRequest{
 			{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: "booking-1"},
+				Resource: resource{Type: authzenResourceIdentifier, ID: "booking-1"},
 				Action:   action{Name: ts.readPermission},
 			},
 			{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: "booking-1"},
+				Resource: resource{Type: authzenResourceIdentifier, ID: "booking-1"},
 			},
 			{
-				Resource: resource{Type: authzenResourceHandle, ID: "booking-1"},
+				Resource: resource{Type: authzenResourceIdentifier, ID: "booking-1"},
 				Action:   action{Name: ts.readPermission},
 			},
 			{
@@ -794,17 +870,17 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessBatchKeepsDecisionsSeparateForD
 		Evaluations: []evaluationRequest{
 			{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: "booking-1"},
+				Resource: resource{Type: authzenResourceIdentifier, ID: "booking-1"},
 				Action:   action{Name: ts.readPermission},
 			},
 			{
 				Subject:  subject{Type: "user", ID: ts.deniedUserID},
-				Resource: resource{Type: authzenResourceHandle, ID: "booking-1"},
+				Resource: resource{Type: authzenResourceIdentifier, ID: "booking-1"},
 				Action:   action{Name: ts.readPermission},
 			},
 			{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: "booking-1"},
+				Resource: resource{Type: authzenResourceIdentifier, ID: "booking-1"},
 				Action:   action{Name: ts.approvePermission},
 			},
 		},
@@ -831,7 +907,7 @@ func (ts *AuthZENAPITestSuite) TestEvaluateAccessBatchRejectsEmptyEvaluations() 
 func (ts *AuthZENAPITestSuite) TestSearchActionReturnsAllowedActionsOnly() {
 	resp, body := ts.doRequest(http.MethodPost, "/access/v1/search/action", mustJSON(searchActionRequest{
 		Subject:  subject{Type: "user", ID: ts.userID},
-		Resource: resource{Type: authzenResourceHandle, ID: "booking-1"},
+		Resource: resource{Type: authzenResourceIdentifier, ID: "booking-1"},
 	}))
 	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(body))
 
@@ -846,7 +922,7 @@ func (ts *AuthZENAPITestSuite) TestSearchActionReturnsAllowedActionsOnly() {
 func (ts *AuthZENAPITestSuite) TestSearchActionDeniedUserReturnsEmptyResults() {
 	resp, body := ts.doRequest(http.MethodPost, "/access/v1/search/action", mustJSON(searchActionRequest{
 		Subject:  subject{Type: "user", ID: ts.deniedUserID},
-		Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+		Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 	}))
 	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(body))
 
@@ -874,7 +950,7 @@ func (ts *AuthZENAPITestSuite) TestSearchActionResourceIDDoesNotScopeCurrentResu
 		ts.Run(tc.name, func() {
 			resp, body := ts.doRequest(http.MethodPost, "/access/v1/search/action", mustJSON(searchActionRequest{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: tc.resourceID},
+				Resource: resource{Type: authzenResourceIdentifier, ID: tc.resourceID},
 			}))
 			ts.Require().Equal(http.StatusOK, resp.StatusCode, string(body))
 
@@ -902,7 +978,7 @@ func (ts *AuthZENAPITestSuite) TestSearchActionUnknownResourceReturnsBadRequest(
 
 func (ts *AuthZENAPITestSuite) TestSearchActionValidationErrors() {
 	resp, body := ts.doRequest(http.MethodPost, "/access/v1/search/action", mustJSON(searchActionRequest{
-		Resource: resource{Type: authzenResourceHandle, ID: "booking-1"},
+		Resource: resource{Type: authzenResourceIdentifier, ID: "booking-1"},
 	}))
 	ts.Require().Equal(http.StatusBadRequest, resp.StatusCode, string(body))
 
@@ -960,7 +1036,7 @@ func (ts *AuthZENAPITestSuite) TestSearchActionFieldCombinations() {
 			name: "subject with type",
 			request: searchActionRequest{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+				Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -968,7 +1044,7 @@ func (ts *AuthZENAPITestSuite) TestSearchActionFieldCombinations() {
 			name: "subject without type",
 			request: searchActionRequest{
 				Subject:  subject{ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+				Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -976,7 +1052,7 @@ func (ts *AuthZENAPITestSuite) TestSearchActionFieldCombinations() {
 			name: "subject without id",
 			request: searchActionRequest{
 				Subject:  subject{Type: "user"},
-				Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+				Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  "Missing subject",
@@ -985,7 +1061,7 @@ func (ts *AuthZENAPITestSuite) TestSearchActionFieldCombinations() {
 			name: "resource with type and id",
 			request: searchActionRequest{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle, ID: ts.resourceID},
+				Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -993,7 +1069,7 @@ func (ts *AuthZENAPITestSuite) TestSearchActionFieldCombinations() {
 			name: "resource without id",
 			request: searchActionRequest{
 				Subject:  subject{Type: "user", ID: ts.userID},
-				Resource: resource{Type: authzenResourceHandle},
+				Resource: resource{Type: authzenResourceIdentifier},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1116,6 +1192,34 @@ func (ts *AuthZENAPITestSuite) doRequestWithHeaders(
 	}
 
 	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	return resp, respBody
+}
+
+func (ts *AuthZENAPITestSuite) doUnauthenticatedRequest(
+	method string,
+	path string,
+	body []byte,
+	headers map[string]string,
+) (*http.Response, []byte) {
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequest(method, authzenServerURL+path, reader)
+	ts.Require().NoError(err)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	for name, value := range headers {
+		req.Header.Set(name, value)
+	}
+
+	resp, err := testutils.GetRawHTTPClient().Do(req)
 	ts.Require().NoError(err)
 	defer resp.Body.Close()
 

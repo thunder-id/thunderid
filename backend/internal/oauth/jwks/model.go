@@ -29,6 +29,7 @@ type JWKS struct {
 	Crv     string   `json:"crv,omitempty"`
 	X       string   `json:"x,omitempty"`
 	Y       string   `json:"y,omitempty"`
+	Pub     string   `json:"pub,omitempty"`
 	X5c     []string `json:"x5c,omitempty"`
 	X5t     string   `json:"x5t,omitempty"`
 	X5tS256 string   `json:"x5t#S256,omitempty"`

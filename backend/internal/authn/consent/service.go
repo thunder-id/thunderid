@@ -37,7 +37,16 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
-// consentEnforcerService is the default implementation of providers.ConsentProvider.
+// ConsentEnforcerService is the consent enforcer. It exposes SetConsentService so the consent
+// service can be injected after construction, since that service depends on components initialized
+// after the enforcer.
+type ConsentEnforcerService interface {
+	providers.ConsentProvider
+	// SetConsentService injects the consent service.
+	SetConsentService(consentService consent.ConsentServiceInterface)
+}
+
+// consentEnforcerService is the default implementation of ConsentEnforcerService.
 type consentEnforcerService struct {
 	consentService consent.ConsentServiceInterface
 	jwtService     jwt.JWTServiceInterface
@@ -45,13 +54,16 @@ type consentEnforcerService struct {
 }
 
 // newConsentEnforcerService creates a new instance of consentEnforcerService.
-func newConsentEnforcerService(consentSvc consent.ConsentServiceInterface,
-	jwtSvc jwt.JWTServiceInterface) providers.ConsentProvider {
+func newConsentEnforcerService(jwtSvc jwt.JWTServiceInterface) ConsentEnforcerService {
 	return &consentEnforcerService{
-		consentService: consentSvc,
-		jwtService:     jwtSvc,
-		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConsentEnforcerService")),
+		jwtService: jwtSvc,
+		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConsentEnforcerService")),
 	}
+}
+
+// SetConsentService injects the consent service. See ConsentEnforcerService.
+func (s *consentEnforcerService) SetConsentService(consentService consent.ConsentServiceInterface) {
+	s.consentService = consentService
 }
 
 // ResolveConsent implements providers.ConsentProvider.ResolveConsent.
@@ -63,13 +75,13 @@ func (s *consentEnforcerService) ResolveConsent(ctx context.Context, ouID, appID
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID))
 	logger.Debug(ctx, "Resolving consent for user")
 
-	if !s.consentService.IsEnabled() {
-		logger.Debug(ctx, "Consent service is not enabled; skipping consent check")
-		return nil, nil
+	// List consent purposes for this application.
+	purposeFilter := &consent.PurposeFilter{
+		GroupID: appID,
 	}
 
-	// List all consent purposes for this application, then lazily ensure a permission purpose exists.
-	purposes, svcErr := s.consentService.ListConsentPurposes(ctx, ouID, appID)
+	// In current implementation, there will be atmost 1 purpose per app.
+	purposes, svcErr := s.consentService.ListPurposes(ctx, *purposeFilter)
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx, "Client error from consent service when listing purposes",
@@ -79,10 +91,13 @@ func (s *consentEnforcerService) ResolveConsent(ctx context.Context, ouID, appID
 		logger.Error(ctx, "Failed to list consent purposes", log.Any("error", svcErr))
 		return nil, &tidcommon.InternalServerError
 	}
-	purposes, svcErr = s.applyPermissionsPurpose(ctx, purposes, ouID, appID, appName, authorizedPermissions)
-	if svcErr != nil {
-		return nil, svcErr
+
+	// Permissions purpose is dynamically built using runtime data
+	permissionsPurpose := s.buildPermissionsPurpose(appID, appName, authorizedPermissions)
+	if permissionsPurpose != nil {
+		purposes = append(purposes, *permissionsPurpose)
 	}
+
 	if len(purposes) == 0 {
 		logger.Debug(ctx, "No consent purposes configured for application; skipping consent")
 		return nil, nil
@@ -93,12 +108,12 @@ func (s *consentEnforcerService) ResolveConsent(ctx context.Context, ouID, appID
 	var consentedElements map[string]bool
 	if !forceReprompt {
 		// Search for existing consent records for this user and application
-		filter := &consent.ConsentSearchFilter{
-			GroupIDs:        []string{appID},
-			UserIDs:         []string{userID},
-			ConsentStatuses: []providers.ConsentStatus{providers.ConsentStatusActive},
+		filter := consent.ConsentFilter{
+			GroupID:       appID,
+			UserID:        userID,
+			ConsentStatus: consent.ConsentStatusActive,
 		}
-		existingConsents, searchErr := s.consentService.SearchConsents(ctx, ouID, filter)
+		existingConsents, searchErr := s.consentService.SearchConsents(ctx, filter)
 		if searchErr != nil {
 			if searchErr.Type == tidcommon.ClientErrorType {
 				logger.Debug(ctx, "Client error from consent service when searching consents",
@@ -159,21 +174,12 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 	essentialElements := buildEssentialElementSet(sessionData)
 	hasEssentialDenial := hasEssentialDenials(decisions, essentialElements)
 
-	// Convert the user's consent decisions into the format needed for creating a consent record
-	newPurposeItems := buildConsentElementApprovals(sessionData, decisions)
-
-	validityTime := int64(0)
-	if validityPeriod > 0 {
-		validityTime = time.Now().Unix() + validityPeriod
+	filter := consent.ConsentFilter{
+		GroupID:       appID,
+		UserID:        userID,
+		ConsentStatus: consent.ConsentStatusActive,
 	}
-
-	// Search for an existing ACTIVE consent record for this user and application
-	existingConsents, svcErr := s.consentService.SearchConsents(ctx, ouID, &consent.ConsentSearchFilter{
-		GroupIDs:        []string{appID},
-		UserIDs:         []string{userID},
-		ConsentStatuses: []providers.ConsentStatus{providers.ConsentStatusActive},
-		Limit:           1,
-	})
+	existingConsents, svcErr := s.consentService.SearchConsents(ctx, filter)
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx, "Client error from consent service when searching consents for upsert",
@@ -184,28 +190,21 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 		return nil, &tidcommon.InternalServerError
 	}
 
-	// Fetch the current purpose definitions so the persisted decisions can be filtered against
-	// the live definition (purposes may have been re-versioned to remove elements since the
-	// consent session token was issued).
-	currentPurposes, svcErr := s.consentService.ListConsentPurposes(ctx, ouID, appID)
-	if svcErr != nil {
-		if svcErr.Type == tidcommon.ClientErrorType {
-			logger.Debug(ctx, "Client error from consent service when listing purposes for merge",
-				log.Any("error", svcErr))
-			return nil, &ErrorConsentPurposeFetchFailed
-		}
-		logger.Error(ctx, "Failed to list consent purposes for merge", log.Any("error", svcErr))
-		return nil, &tidcommon.InternalServerError
-	}
-	validElements := buildPurposeElementSet(currentPurposes)
+	// Convert the user's consent decisions into the format needed for creating a consent record
+	newPurposeItems := buildConsentElementApprovals(sessionData, decisions)
 
-	var consentRecord *providers.Consent
+	validityTime := int64(0)
+	if validityPeriod > 0 {
+		validityTime = time.Now().Unix() + validityPeriod
+	}
+
+	var consentRecord *consent.Consent
 	if len(existingConsents) > 0 {
-		consentRecord, svcErr = s.updateExistingConsent(ctx, ouID, appID, userID,
-			existingConsents, newPurposeItems, validElements, validityTime)
+		consentRecord, svcErr = s.updateExistingConsent(ctx, appID, userID,
+			existingConsents, newPurposeItems, validityTime)
 	} else {
-		consentRecord, svcErr = s.createNewConsent(ctx, ouID, appID, userID,
-			newPurposeItems, validElements, validityTime)
+		consentRecord, svcErr = s.createNewConsent(ctx, appID, userID,
+			newPurposeItems, validityTime)
 	}
 	if svcErr != nil {
 		return nil, svcErr
@@ -217,40 +216,37 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 		return nil, &ErrorEssentialConsentDenied
 	}
 
-	return consentRecord, nil
+	return convertToProvidersConsent(consentRecord), nil
 }
 
 // updateExistingConsent updates an existing consent record by merging new decisions into it.
 // The existing record's approved elements are preserved, and new decisions override.
 // Returns the updated consent record.
-func (s *consentEnforcerService) updateExistingConsent(ctx context.Context, ouID, appID, userID string,
-	existingConsents []providers.Consent, newPurposeItems []providers.ConsentPurposeItem,
-	validElements map[string]map[string]bool, validityTime int64,
-) (*providers.Consent, *tidcommon.ServiceError) {
+func (s *consentEnforcerService) updateExistingConsent(ctx context.Context, appID, userID string,
+	existingConsents []*consent.Consent, newPurposeItems []providers.ConsentPurposeItem, validityTime int64,
+) (*consent.Consent, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID),
 		log.Int("existingConsentCount", len(existingConsents)))
 	logger.Debug(ctx, "Existing consent record found; updating with new decisions")
 
 	// Build the consent request payload
 	req := &consent.ConsentRequest{
-		Type:         providers.ConsentTypeAuthentication,
 		GroupID:      appID,
 		ValidityTime: validityTime,
 		Authorizations: []consent.ConsentAuthorizationRequest{
 			{
 				UserID: userID,
-				Type:   providers.AuthorizationTypeAuthorization,
-				Status: providers.AuthorizationStatusApproved,
+				Type:   consent.AuthorizationTypeAuthorization,
+				Status: consent.AuthorizationStatusApproved,
 			},
 		},
 	}
 
-	// Merge new decisions into the existing consent record, filtering elements no longer in
-	// their purpose definition.
-	existing := &existingConsents[0]
-	req.Purposes = mergeConsentPurposes(existing.Purposes, newPurposeItems, validElements)
+	// Merge new decisions into the existing consent record.
+	existing := existingConsents[0]
+	req.Purposes = mergeConsentPurposes(existing.Purposes, newPurposeItems)
 
-	updated, svcErr := s.consentService.UpdateConsent(ctx, ouID, existing.ID, req)
+	updated, svcErr := s.consentService.UpdateConsent(ctx, existing.ID, req)
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx, "Client error from consent service when updating consent record",
@@ -266,32 +262,27 @@ func (s *consentEnforcerService) updateExistingConsent(ctx context.Context, ouID
 }
 
 // createNewConsent creates a new consent record with the given purpose items and validity time.
-// Element decisions for purposes or elements no longer in the current purpose definition are
-// dropped before persisting (purposes may have been re-versioned to remove elements since the
-// consent session token was issued).
-func (s *consentEnforcerService) createNewConsent(ctx context.Context, ouID, appID, userID string,
-	newPurposeItems []providers.ConsentPurposeItem,
-	validElements map[string]map[string]bool, validityTime int64) (
-	*providers.Consent, *tidcommon.ServiceError) {
+func (s *consentEnforcerService) createNewConsent(ctx context.Context, appID, userID string,
+	newPurposeItems []providers.ConsentPurposeItem, validityTime int64) (
+	*consent.Consent, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID))
 	logger.Debug(ctx, "Creating new consent record")
 
 	// Build the consent request payload
 	req := &consent.ConsentRequest{
-		Type:         providers.ConsentTypeAuthentication,
 		GroupID:      appID,
 		ValidityTime: validityTime,
 		Authorizations: []consent.ConsentAuthorizationRequest{
 			{
 				UserID: userID,
-				Type:   providers.AuthorizationTypeAuthorization,
-				Status: providers.AuthorizationStatusApproved,
+				Type:   consent.AuthorizationTypeAuthorization,
+				Status: consent.AuthorizationStatusApproved,
 			},
 		},
 	}
-	req.Purposes = mergeConsentPurposes(nil, newPurposeItems, validElements)
+	req.Purposes = mergeConsentPurposes(nil, newPurposeItems)
 
-	created, svcErr := s.consentService.CreateConsent(ctx, ouID, req)
+	created, svcErr := s.consentService.CreateConsent(ctx, req)
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx, "Client error from consent service when creating consent record",
@@ -430,8 +421,50 @@ func hasEssentialDenials(decisions *providers.ConsentDecisions, essentialElement
 	return false
 }
 
-// buildConsentedElementSet returns a set of "purposeName:elementName" keys that have active consent.
-func buildConsentedElementSet(consents []providers.Consent) map[string]bool {
+func convertToProvidersConsent(c *consent.Consent) *providers.Consent {
+	if c == nil {
+		return nil
+	}
+
+	purposes := make([]providers.ConsentPurposeItem, 0, len(c.Purposes))
+	for _, p := range c.Purposes {
+		elements := make([]providers.ConsentElementApproval, 0, len(p.Elements))
+		for _, e := range p.Elements {
+			elements = append(elements, providers.ConsentElementApproval{
+				Name:           e.Name,
+				Namespace:      providers.Namespace(e.Namespace),
+				IsUserApproved: e.IsUserApproved,
+			})
+		}
+		purposes = append(purposes, providers.ConsentPurposeItem{
+			Name:     p.Name,
+			Elements: elements,
+		})
+	}
+
+	auths := make([]providers.ConsentAuthorization, 0, len(c.Authorizations))
+	for _, a := range c.Authorizations {
+		auths = append(auths, providers.ConsentAuthorization{
+			ID:          a.ID,
+			UserID:      a.UserID,
+			Type:        providers.ConsentAuthorizationType(a.Type),
+			Status:      providers.ConsentAuthorizationStatus(a.Status),
+			UpdatedTime: a.UpdatedTime,
+		})
+	}
+
+	return &providers.Consent{
+		ID:             c.ID,
+		Type:           providers.ConsentTypeAuthentication,
+		GroupID:        c.GroupID,
+		Status:         providers.ConsentStatus(c.Status),
+		ValidityTime:   c.ValidityTime,
+		Purposes:       purposes,
+		Authorizations: auths,
+	}
+}
+
+func buildConsentedElementSet(consents []*consent.Consent) map[string]bool {
 	consentedSet := make(map[string]bool)
 	for _, c := range consents {
 		for _, p := range c.Purposes {
@@ -473,13 +506,13 @@ func buildPurposePrompts(purposes []consent.ConsentPurpose, essentialAttributes,
 	authorizedPermissions []string) []providers.ConsentPurposePrompt {
 	promptPurposes := make([]providers.ConsentPurposePrompt, 0, len(purposes))
 	for _, purpose := range purposes {
-		switch purpose.Namespace {
-		case providers.NamespaceAttribute:
+		switch deriveConsentPromptTypeFromPurpose(purpose) {
+		case consentPromptTypeAttributes:
 			if prompt, ok := buildAttributePurposePrompt(purpose, essentialAttributes,
 				optionalAttributes, consentedElements, userAttributeSet); ok {
 				promptPurposes = append(promptPurposes, prompt)
 			}
-		case providers.NamespacePermission:
+		case consentPromptTypePermissions:
 			if prompt, ok := buildPermissionPurposePrompt(purpose, consentedElements,
 				authorizedPermissions); ok {
 				promptPurposes = append(promptPurposes, prompt)
@@ -487,6 +520,16 @@ func buildPurposePrompts(purposes []consent.ConsentPurpose, essentialAttributes,
 		}
 	}
 	return promptPurposes
+}
+
+func deriveConsentPromptTypeFromPurpose(purpose consent.ConsentPurpose) string {
+	if strings.HasPrefix(purpose.Name, consent.PermissionPurposeNamePrefix) {
+		return consentPromptTypePermissions
+	}
+	if strings.HasPrefix(purpose.Name, consent.AttributePurposeNamePrefix) {
+		return consentPromptTypeAttributes
+	}
+	return ""
 }
 
 // buildAttributePurposePrompt builds a ConsentPurposePrompt for an attribute purpose. It applies
@@ -601,104 +644,70 @@ func computePermissionParents(permissions []string) map[string]string {
 	return parents
 }
 
-// mergeConsentPurposes merges existing consent purposes with new decisions, filtered against
-// the current purpose definitions. Element names that are no longer part of their purpose
-// (e.g. dropped in a re-versioned purpose) are removed, and purposes that no longer exist at
-// all are dropped entirely. For surviving purposes, incoming decisions override existing ones
-// by element name; output keeps existing-order first, then any newly added elements.
-func mergeConsentPurposes(existing, incoming []providers.ConsentPurposeItem,
-	validElements map[string]map[string]bool) []providers.ConsentPurposeItem {
-	existingMap := make(map[string]*providers.ConsentPurposeItem, len(existing))
+// mergeConsentPurposes merges existing consent purposes with new decisions.
+func mergeConsentPurposes(
+	existing []consent.ConsentPurposeItem, incoming []providers.ConsentPurposeItem,
+) []consent.ConsentPurposeItem {
+	existingMap := make(map[string]*consent.ConsentPurposeItem, len(existing))
 	for i := range existing {
 		existingMap[existing[i].Name] = &existing[i]
 	}
 	coveredPurposes := make(map[string]bool, len(incoming))
 
-	merged := make([]providers.ConsentPurposeItem, 0, len(existing)+len(incoming))
+	merged := make([]consent.ConsentPurposeItem, 0, len(existing)+len(incoming))
 	for _, newPurpose := range incoming {
 		coveredPurposes[newPurpose.Name] = true
 
-		valid, validOK := validElements[newPurpose.Name]
-		if !validOK {
-			// Purpose no longer exists upstream — drop the decisions for it.
-			continue
-		}
+		existingPurpose, hasExisting := existingMap[newPurpose.Name]
 
-		existPurpose, hasExisting := existingMap[newPurpose.Name]
-
-		mergedElemMap := make(map[string]providers.ConsentElementApproval)
+		mergedElemMap := make(map[string]consent.ConsentElementApproval)
 		order := make([]string, 0, len(newPurpose.Elements))
 
 		if hasExisting {
-			for _, e := range existPurpose.Elements {
-				if !valid[e.Name] {
-					continue
-				}
+			for _, e := range existingPurpose.Elements {
 				mergedElemMap[e.Name] = e
 				order = append(order, e.Name)
 			}
 		}
 		for _, e := range newPurpose.Elements {
-			if !valid[e.Name] {
-				continue
-			}
 			if _, seen := mergedElemMap[e.Name]; !seen {
 				order = append(order, e.Name)
 			}
-			mergedElemMap[e.Name] = e
+			mergedElemMap[e.Name] = consent.ConsentElementApproval{
+				Name:           e.Name,
+				Namespace:      consent.Namespace(e.Namespace),
+				IsUserApproved: e.IsUserApproved,
+			}
 		}
 
 		if len(mergedElemMap) == 0 {
 			continue
 		}
 
-		mergedElements := make([]providers.ConsentElementApproval, 0, len(mergedElemMap))
+		mergedElements := make([]consent.ConsentElementApproval, 0, len(mergedElemMap))
 		for _, name := range order {
 			mergedElements = append(mergedElements, mergedElemMap[name])
 		}
-		merged = append(merged, providers.ConsentPurposeItem{
+		merged = append(merged, consent.ConsentPurposeItem{
 			Name:     newPurpose.Name,
 			Elements: mergedElements,
 		})
 	}
 
-	// Carry forward existing purposes that aren't in the incoming decisions, after filtering
-	// their elements against the current purpose definition.
+	// Carry forward existing purposes that aren't in the incoming decisions.
 	for _, ep := range existing {
 		if coveredPurposes[ep.Name] {
 			continue
 		}
-		valid, validOK := validElements[ep.Name]
-		if !validOK {
-			continue
-		}
-		filtered := make([]providers.ConsentElementApproval, 0, len(ep.Elements))
-		for _, e := range ep.Elements {
-			if valid[e.Name] {
-				filtered = append(filtered, e)
-			}
-		}
+		filtered := make([]consent.ConsentElementApproval, 0, len(ep.Elements))
+		filtered = append(filtered, ep.Elements...)
 		if len(filtered) == 0 {
 			continue
 		}
-		merged = append(merged, providers.ConsentPurposeItem{Name: ep.Name, Elements: filtered})
+		merged = append(merged, consent.ConsentPurposeItem{Name: ep.Name, Elements: filtered})
 	}
 
 	return merged
-}
-
-// buildPurposeElementSet indexes a list of current consent purposes into purposeName →
-// set of valid element names. Used to filter stale element decisions during merge.
-func buildPurposeElementSet(purposes []consent.ConsentPurpose) map[string]map[string]bool {
-	result := make(map[string]map[string]bool, len(purposes))
-	for _, p := range purposes {
-		elems := make(map[string]bool, len(p.Elements))
-		for _, e := range p.Elements {
-			elems[e.Name] = true
-		}
-		result[p.Name] = elems
-	}
-	return result
 }
 
 // buildConsentElementApprovals converts the user's consent decisions into ConsentPurposeItem
@@ -717,7 +726,7 @@ func buildConsentElementApprovals(session *consentSessionData,
 		// Namespace is derived from the purpose name (the consent service does not echo it on
 		// reads), so attribute decisions get NamespaceAttribute and permission decisions get
 		// NamespacePermission.
-		ns := consent.NamespaceFromPurposeName(pd.PurposeName)
+		ns := namespaceFromPurposeName(pd.PurposeName)
 		elementApprovals := make([]providers.ConsentElementApproval, 0, len(pd.Elements))
 		for _, ed := range pd.Elements {
 			if !promptedElements[purposeElementKey(pd.PurposeName, ed.Name)] {
@@ -763,109 +772,48 @@ func buildPromptedElementSet(session *consentSessionData) map[string]bool {
 	return set
 }
 
-// applyPermissionsPurpose lazily ensures the permission consent purpose exists for the application
-// and covers at least the supplied authorized permissions. It returns the input list with the
-// up-to-date permission purpose merged in, so the caller's single ListConsentPurposes round-trip
-// serves both this ensure step and downstream prompt construction.
-func (s *consentEnforcerService) applyPermissionsPurpose(ctx context.Context,
-	allPurposes []consent.ConsentPurpose, ouID, appID, appName string, authorizedPermissions []string,
-) ([]consent.ConsentPurpose, *tidcommon.ServiceError) {
+// namespaceFromPurposeName derives the purpose namespace from the name prefix. Returns empty for
+// names without a recognized prefix; callers filter such purposes out.
+func namespaceFromPurposeName(name string) providers.Namespace {
+	switch {
+	case strings.HasPrefix(name, consent.PermissionPurposeNamePrefix):
+		return providers.NamespacePermission
+	case strings.HasPrefix(name, consent.AttributePurposeNamePrefix):
+		return providers.NamespaceAttribute
+	default:
+		return ""
+	}
+}
+
+func (s *consentEnforcerService) buildPermissionsPurpose(
+	appID, appName string, authorizedPermissions []string,
+) *consent.ConsentPurpose {
 	if len(authorizedPermissions) == 0 {
-		return allPurposes, nil
+		return nil
 	}
 
-	logger := s.logger.With(log.String("ouID", ouID), log.String("appID", appID))
-
-	existing := consent.FilterPermissionPurposes(allPurposes)
 	elements := permissionsToPurposeElements(authorizedPermissions)
-	purposeName := consent.PermissionsPurposeName(appID)
+	purposeName := consent.PermissionPurposeName(appID)
 	purposeDescription := "Permission consent purpose for application " + appName
 
-	if len(existing) == 0 {
-		input := consent.ConsentPurposeInput{
-			Name:        purposeName,
-			Description: purposeDescription,
-			GroupID:     appID,
-			Namespace:   providers.NamespacePermission,
-			Elements:    elements,
-		}
-		created, createErr := s.consentService.CreateConsentPurpose(ctx, ouID, &input)
-		if createErr != nil {
-			if createErr.Type == tidcommon.ClientErrorType {
-				logger.Debug(ctx, "Client error from consent service when creating permission purpose",
-					log.Any("error", createErr))
-				return nil, &ErrorConsentPurposeCreateFailed
-			}
-			logger.Error(ctx, "Failed to create permission consent purpose", log.Any("error", createErr))
-			return nil, &tidcommon.InternalServerError
-		}
-		return append(allPurposes, *created), nil
-	}
-
-	current := existing[0]
-	merged, changed := mergePurposeElements(current.Elements, elements)
-	if !changed {
-		return allPurposes, nil
-	}
-
-	input := consent.ConsentPurposeInput{
+	return &consent.ConsentPurpose{
 		Name:        purposeName,
 		Description: purposeDescription,
 		GroupID:     appID,
-		Namespace:   providers.NamespacePermission,
-		Elements:    merged,
+		Elements:    elements,
 	}
-	updated, updErr := s.consentService.UpdateConsentPurpose(ctx, ouID, current.ID, &input)
-	if updErr != nil {
-		if updErr.Type == tidcommon.ClientErrorType {
-			logger.Debug(ctx, "Client error from consent service when updating permission purpose",
-				log.Any("error", updErr))
-			return nil, &ErrorConsentPurposeUpdateFailed
-		}
-		logger.Error(ctx, "Failed to update permission consent purpose", log.Any("error", updErr))
-		return nil, &tidcommon.InternalServerError
-	}
-	for i := range allPurposes {
-		if allPurposes[i].ID == current.ID {
-			allPurposes[i] = *updated
-			break
-		}
-	}
-	return allPurposes, nil
 }
 
-// permissionsToPurposeElements builds the PurposeElement slice for permission consent. All elements
-// are non-mandatory; denial withholds the permission from the token but does not fail the flow.
 func permissionsToPurposeElements(permissions []string) []consent.PurposeElement {
 	out := make([]consent.PurposeElement, 0, len(permissions))
 	for _, p := range permissions {
 		out = append(out, consent.PurposeElement{
 			Name:        p,
-			Namespace:   providers.NamespacePermission,
+			Namespace:   consent.NamespacePermission,
 			IsMandatory: false,
 		})
 	}
 	return out
-}
-
-// mergePurposeElements unions existing and desired elements (existing order preserved). Returns the
-// merged slice and whether it differs from existing.
-func mergePurposeElements(existing, desired []consent.PurposeElement) ([]consent.PurposeElement, bool) {
-	seen := make(map[string]bool, len(existing))
-	merged := make([]consent.PurposeElement, 0, len(existing)+len(desired))
-	for _, e := range existing {
-		merged = append(merged, e)
-		seen[e.Name] = true
-	}
-	changed := false
-	for _, d := range desired {
-		if !seen[d.Name] {
-			merged = append(merged, d)
-			seen[d.Name] = true
-			changed = true
-		}
-	}
-	return merged, changed
 }
 
 // elementNames extracts the Name field from each PromptElement.

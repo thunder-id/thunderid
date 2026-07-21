@@ -76,8 +76,10 @@ export const InboundAuthTypes = {
  *     scopes: ['openid', 'profile', 'email'],
  *     token: {
  *       accessToken: {
- *         validityPeriod: 3600,
- *         userAttributes: ['email', 'username']
+ *         userConfig: {
+ *           validityPeriod: 3600,
+ *           attributes: ['email', 'username']
+ *         }
  *       },
  *       idToken: {
  *         validityPeriod: 3600,
@@ -106,8 +108,10 @@ export const InboundAuthTypes = {
  *     scopes: ['openid', 'profile', 'email'],
  *     token: {
  *       accessToken: {
- *         validityPeriod: 3600,
- *         userAttributes: ['email']
+ *         userConfig: {
+ *           validityPeriod: 3600,
+ *           attributes: ['email']
+ *         }
  *       },
  *       idToken: {
  *         validityPeriod: 3600,

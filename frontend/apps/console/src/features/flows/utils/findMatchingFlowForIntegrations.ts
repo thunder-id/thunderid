@@ -33,7 +33,7 @@ import type {BasicFlowDefinition} from '../models/responses';
  *
  * const flows = [
  *   { id: '1', handle: 'basic-google-flow', name: 'Basic + Google' },
- *   { id: '2', handle: 'default-basic-flow', name: 'Credentials Auth' }
+ *   { id: '2', handle: 'default-flow', name: 'Credentials Auth' }
  * ];
  * const match = findMatchingFlowForIntegrations(['credentials_auth', 'google'], flows);
  * // Returns the basic-google-flow

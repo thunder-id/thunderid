@@ -54,7 +54,7 @@ func NewResourceLoader(config ResourceConfig, store Storer) *ResourceLoader {
 // LoadResources loads all resources using the following precedence:
 //  1. A file supplied via the --resources startup argument.
 //  2. YAML files found directly in config/resources/ (multi-document format with
-//     "# resource_type: <type>" headers), when present.
+//     "resource_type: <type>" fields), when present.
 //  3. Individual YAML files inside the config/resources/<DirectoryName>/ subdirectory.
 //
 // Returns an error if any step fails.

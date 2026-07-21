@@ -1,3 +1,4 @@
+resource_type: theme
 id: decl-theme-1
 displayName: Declarative Test Theme
 description: A declarative test theme

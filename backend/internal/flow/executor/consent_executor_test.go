@@ -63,7 +63,8 @@ func (suite *ConsentExecutorTestSuite) SetupTest() {
 
 	mockExec := createMockExecutorWithInputs(suite.T())
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameConsent, providers.ExecutorTypeUtility,
-		mock.AnythingOfType("[]providers.Input"), mock.AnythingOfType("[]providers.Input")).Return(mockExec)
+		mock.AnythingOfType("[]providers.Input"), mock.AnythingOfType("[]providers.Input"),
+		mock.Anything).Return(mockExec)
 
 	suite.executor = newConsentExecutor(suite.mockFlowFactory, suite.mockConsentEnforcer, suite.mockAuthnProvider)
 }
@@ -875,7 +876,7 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_PartialElementAppro
 	decisions := providers.ConsentDecisions{
 		Purposes: []providers.PurposeDecision{
 			{
-				PurposeName: "attributes:test-app",
+				PurposeName: "attributes:app-123",
 				Approved:    true,
 				Elements: []providers.ElementDecision{
 					{Name: "email", Approved: true},
@@ -899,7 +900,7 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_PartialElementAppro
 		ID: "consent-005",
 		Purposes: []providers.ConsentPurposeItem{
 			{
-				Name: "attributes:test-app",
+				Name: "attributes:app-123",
 				Elements: []providers.ConsentElementApproval{
 					{Name: "email", IsUserApproved: true},
 					{Name: "phone", IsUserApproved: false},
@@ -923,11 +924,11 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_PartialElementAppro
 	assert.NotContains(suite.T(), consentedAttrs, "phone")
 }
 
-func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_MultiplePurposes_AllApproved() {
+func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_AttributeAndPermissionPurposes_AllApproved() {
 	decisions := providers.ConsentDecisions{
 		Purposes: []providers.PurposeDecision{
-			{PurposeName: "attributes:test-app", Approved: true},
-			{PurposeName: "attributes:test-app-2", Approved: true},
+			{PurposeName: "attributes:app-123", Approved: true},
+			{PurposeName: "permissions:app-123", Approved: true},
 		},
 	}
 	decisionsJSON, _ := json.Marshal(decisions)
@@ -945,16 +946,17 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_MultiplePurposes_Al
 		ID: "consent-006",
 		Purposes: []providers.ConsentPurposeItem{
 			{
-				Name: "attributes:test-app",
+				Name: "attributes:app-123",
 				Elements: []providers.ConsentElementApproval{
 					{Name: "email", IsUserApproved: true},
+					{Name: "name", IsUserApproved: true},
 				},
 			},
 			{
-				Name: "attributes:test-app-2",
+				Name: "permissions:app-123",
 				Elements: []providers.ConsentElementApproval{
-					{Name: "name", IsUserApproved: true},
-					{Name: "phone", IsUserApproved: true},
+					{Name: "read", IsUserApproved: true},
+					{Name: "write", IsUserApproved: true},
 				},
 			},
 		},
@@ -972,7 +974,10 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_MultiplePurposes_Al
 	consentedAttrs := resp.RuntimeData[common.RuntimeKeyConsentedAttributes]
 	assert.Contains(suite.T(), consentedAttrs, "email")
 	assert.Contains(suite.T(), consentedAttrs, "name")
-	assert.Contains(suite.T(), consentedAttrs, "phone")
+
+	consentedPerms := resp.RuntimeData[common.RuntimeKeyConsentedPermissions]
+	assert.Contains(suite.T(), consentedPerms, "read")
+	assert.Contains(suite.T(), consentedPerms, "write")
 }
 
 func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_NoConsentedElements() {
@@ -997,7 +1002,7 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_NoConsentedElements
 		ID: "consent-007",
 		Purposes: []providers.ConsentPurposeItem{
 			{
-				Name: "attributes:test-app",
+				Name: "attributes:app-123",
 				Elements: []providers.ConsentElementApproval{
 					{Name: "email", IsUserApproved: false},
 					{Name: "phone", IsUserApproved: false},
@@ -1150,13 +1155,13 @@ func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_AugmentedAttributes_
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 }
 
-// ----- collectConsentedAttributes Tests -----
+// ----- collectApprovedElementsByPurposeName Tests -----
 
-func (suite *ConsentExecutorTestSuite) TestCollectConsentedAttributes_MixedApprovals() {
+func (suite *ConsentExecutorTestSuite) TestCollectApprovedElementsByPurposeName_MixedApprovals() {
 	c := &providers.Consent{
 		Purposes: []providers.ConsentPurposeItem{
 			{
-				Name: "attributes:test-app",
+				Name: buildAttributePurposeName("test-app"),
 				Elements: []providers.ConsentElementApproval{
 					{Name: "email", IsUserApproved: true},
 					{Name: "phone", IsUserApproved: false},
@@ -1166,7 +1171,7 @@ func (suite *ConsentExecutorTestSuite) TestCollectConsentedAttributes_MixedAppro
 		},
 	}
 
-	attrs := collectConsentedAttributes(c)
+	attrs := collectApprovedElementsByPurposeName(c, buildAttributePurposeName("test-app"))
 
 	assert.Len(suite.T(), attrs, 2)
 	assert.Contains(suite.T(), attrs, "email")
@@ -1174,104 +1179,41 @@ func (suite *ConsentExecutorTestSuite) TestCollectConsentedAttributes_MixedAppro
 	assert.NotContains(suite.T(), attrs, "phone")
 }
 
-func (suite *ConsentExecutorTestSuite) TestCollectConsentedAttributes_NoDuplicates() {
-	// Same attribute name across multiple purposes should not duplicate
+func (suite *ConsentExecutorTestSuite) TestCollectApprovedElementsByPurposeName_DedupsWithinPurpose() {
+	// The same element name repeated within the matched purpose is returned only once.
 	c := &providers.Consent{
 		Purposes: []providers.ConsentPurposeItem{
 			{
-				Name: "attributes:test-app",
+				Name: buildAttributePurposeName("test-app"),
 				Elements: []providers.ConsentElementApproval{
 					{Name: "email", IsUserApproved: true},
-				},
-			},
-			{
-				Name: "attributes:test-app-2",
-				Elements: []providers.ConsentElementApproval{
-					{Name: "email", IsUserApproved: true}, // Duplicate
+					{Name: "email", IsUserApproved: true},
 					{Name: "phone", IsUserApproved: true},
 				},
 			},
 		},
 	}
 
-	attrs := collectConsentedAttributes(c)
+	attrs := collectApprovedElementsByPurposeName(c, buildAttributePurposeName("test-app"))
 
 	assert.Len(suite.T(), attrs, 2)
 	assert.Contains(suite.T(), attrs, "email")
 	assert.Contains(suite.T(), attrs, "phone")
 }
 
-func (suite *ConsentExecutorTestSuite) TestCollectConsentedAttributes_EmptyPurposes() {
-	c := &providers.Consent{
-		Purposes: []providers.ConsentPurposeItem{},
-	}
-
-	attrs := collectConsentedAttributes(c)
-
-	assert.Empty(suite.T(), attrs)
-}
-
-func (suite *ConsentExecutorTestSuite) TestCollectConsentedAttributes_NilPurposes() {
-	c := &providers.Consent{}
-
-	attrs := collectConsentedAttributes(c)
-
-	assert.Empty(suite.T(), attrs)
-}
-
-func (suite *ConsentExecutorTestSuite) TestCollectConsentedAttributes_AllRejected() {
+func (suite *ConsentExecutorTestSuite) TestCollectApprovedElementsByPurposeName_SelectsMatchingPurposeOnly() {
+	// A record carrying both the attribute and permission purposes for an app: each lookup returns
+	// only its own purpose's elements.
 	c := &providers.Consent{
 		Purposes: []providers.ConsentPurposeItem{
 			{
-				Name: "attributes:test-app",
-				Elements: []providers.ConsentElementApproval{
-					{Name: "email", IsUserApproved: false},
-					{Name: "phone", IsUserApproved: false},
-				},
-			},
-		},
-	}
-
-	attrs := collectConsentedAttributes(c)
-
-	assert.Empty(suite.T(), attrs)
-}
-
-func (suite *ConsentExecutorTestSuite) TestCollectConsentedAttributes_AllApproved() {
-	c := &providers.Consent{
-		Purposes: []providers.ConsentPurposeItem{
-			{
-				Name: "attributes:test-app",
-				Elements: []providers.ConsentElementApproval{
-					{Name: "email", IsUserApproved: true},
-					{Name: "phone", IsUserApproved: true},
-					{Name: "name", IsUserApproved: true},
-				},
-			},
-		},
-	}
-
-	attrs := collectConsentedAttributes(c)
-
-	assert.Len(suite.T(), attrs, 3)
-	assert.Contains(suite.T(), attrs, "email")
-	assert.Contains(suite.T(), attrs, "phone")
-	assert.Contains(suite.T(), attrs, "name")
-}
-
-// ----- collectConsentedPermissions / collectApprovedByPurposeNamespace Tests -----
-
-func (suite *ConsentExecutorTestSuite) TestCollectConsentedPermissions_OnlyPermissionPurposes() {
-	c := &providers.Consent{
-		Purposes: []providers.ConsentPurposeItem{
-			{
-				Name: "attributes:test-app",
+				Name: buildAttributePurposeName("test-app"),
 				Elements: []providers.ConsentElementApproval{
 					{Name: "email", IsUserApproved: true},
 				},
 			},
 			{
-				Name: "permissions:test-app",
+				Name: buildPermissionsPurposeName("test-app"),
 				Elements: []providers.ConsentElementApproval{
 					{Name: "read", IsUserApproved: true},
 					{Name: "write", IsUserApproved: false},
@@ -1281,8 +1223,10 @@ func (suite *ConsentExecutorTestSuite) TestCollectConsentedPermissions_OnlyPermi
 		},
 	}
 
-	perms := collectConsentedPermissions(c)
+	attrs := collectApprovedElementsByPurposeName(c, buildAttributePurposeName("test-app"))
+	assert.Equal(suite.T(), []string{"email"}, attrs)
 
+	perms := collectApprovedElementsByPurposeName(c, buildPermissionsPurposeName("test-app"))
 	assert.Len(suite.T(), perms, 2)
 	assert.Contains(suite.T(), perms, "read")
 	assert.Contains(suite.T(), perms, "cancel")
@@ -1290,43 +1234,79 @@ func (suite *ConsentExecutorTestSuite) TestCollectConsentedPermissions_OnlyPermi
 	assert.NotContains(suite.T(), perms, "email", "attribute element must not appear under permissions")
 }
 
-func (suite *ConsentExecutorTestSuite) TestCollectConsentedPermissions_EmptyWhenNoPermissionPurpose() {
+func (suite *ConsentExecutorTestSuite) TestCollectApprovedElementsByPurposeName_PurposeNotFound() {
 	c := &providers.Consent{
 		Purposes: []providers.ConsentPurposeItem{
 			{
-				Name: "attributes:test-app",
+				Name: buildAttributePurposeName("test-app"),
 				Elements: []providers.ConsentElementApproval{
 					{Name: "email", IsUserApproved: true},
 				},
 			},
 		},
 	}
-	assert.Empty(suite.T(), collectConsentedPermissions(c))
+
+	assert.Empty(suite.T(), collectApprovedElementsByPurposeName(c, buildPermissionsPurposeName("test-app")))
+	assert.Empty(suite.T(), collectApprovedElementsByPurposeName(c, buildAttributePurposeName("other-app")))
 }
 
-func (suite *ConsentExecutorTestSuite) TestCollectConsentedPermissions_DedupsAcrossPurposes() {
-	// Hypothetical safety: same permission appearing in two permission purposes is deduped.
+func (suite *ConsentExecutorTestSuite) TestCollectApprovedElementsByPurposeName_EmptyPurposes() {
+	c := &providers.Consent{
+		Purposes: []providers.ConsentPurposeItem{},
+	}
+
+	assert.Empty(suite.T(), collectApprovedElementsByPurposeName(c, buildAttributePurposeName("test-app")))
+}
+
+func (suite *ConsentExecutorTestSuite) TestCollectApprovedElementsByPurposeName_NilPurposes() {
+	c := &providers.Consent{}
+
+	assert.Empty(suite.T(), collectApprovedElementsByPurposeName(c, buildAttributePurposeName("test-app")))
+}
+
+func (suite *ConsentExecutorTestSuite) TestCollectApprovedElementsByPurposeName_AllRejected() {
 	c := &providers.Consent{
 		Purposes: []providers.ConsentPurposeItem{
 			{
-				Name: "permissions:test-app",
+				Name: buildAttributePurposeName("test-app"),
 				Elements: []providers.ConsentElementApproval{
-					{Name: "read", IsUserApproved: true},
-				},
-			},
-			{
-				Name: "permissions:other-app",
-				Elements: []providers.ConsentElementApproval{
-					{Name: "read", IsUserApproved: true},
-					{Name: "write", IsUserApproved: true},
+					{Name: "email", IsUserApproved: false},
+					{Name: "phone", IsUserApproved: false},
 				},
 			},
 		},
 	}
-	perms := collectConsentedPermissions(c)
-	assert.Len(suite.T(), perms, 2)
-	assert.Contains(suite.T(), perms, "read")
-	assert.Contains(suite.T(), perms, "write")
+
+	assert.Empty(suite.T(), collectApprovedElementsByPurposeName(c, buildAttributePurposeName("test-app")))
+}
+
+func (suite *ConsentExecutorTestSuite) TestCollectApprovedElementsByPurposeName_AllApproved() {
+	c := &providers.Consent{
+		Purposes: []providers.ConsentPurposeItem{
+			{
+				Name: buildAttributePurposeName("test-app"),
+				Elements: []providers.ConsentElementApproval{
+					{Name: "email", IsUserApproved: true},
+					{Name: "phone", IsUserApproved: true},
+					{Name: "name", IsUserApproved: true},
+				},
+			},
+		},
+	}
+
+	attrs := collectApprovedElementsByPurposeName(c, buildAttributePurposeName("test-app"))
+
+	assert.Len(suite.T(), attrs, 3)
+	assert.Contains(suite.T(), attrs, "email")
+	assert.Contains(suite.T(), attrs, "phone")
+	assert.Contains(suite.T(), attrs, "name")
+}
+
+// ----- purpose name builder Tests -----
+
+func (suite *ConsentExecutorTestSuite) TestBuildPurposeNames() {
+	assert.Equal(suite.T(), "attributes:test-app", buildAttributePurposeName("test-app"))
+	assert.Equal(suite.T(), "permissions:test-app", buildPermissionsPurposeName("test-app"))
 }
 
 // ----- buildAugmentedAvailableAttributes Tests -----

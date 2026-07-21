@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	mockMultiActionGooglePort = 8099
+	mockMultiActionGooglePort = 8093
 )
 
 var (
@@ -241,10 +241,6 @@ func (ts *MultiActionInputBindingTestSuite) SetupSuite() {
 			{Name: "client_secret", Value: "test_multi_action_google_secret", IsSecret: true},
 			{Name: "redirect_uri", Value: "http://localhost:3000/callback", IsSecret: false},
 			{Name: "scopes", Value: "openid email profile", IsSecret: false},
-			{Name: "authorization_endpoint", Value: ts.mockGoogleServer.GetURL() + "/o/oauth2/v2/auth", IsSecret: false},
-			{Name: "token_endpoint", Value: ts.mockGoogleServer.GetURL() + "/token", IsSecret: false},
-			{Name: "userinfo_endpoint", Value: ts.mockGoogleServer.GetURL() + "/v1/userinfo", IsSecret: false},
-			{Name: "jwks_endpoint", Value: ts.mockGoogleServer.GetURL() + "/oauth2/v3/certs", IsSecret: false},
 		},
 	}
 

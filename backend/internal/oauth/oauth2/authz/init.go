@@ -59,7 +59,7 @@ func Initialize(
 // initializeAuthorizationStores creates the authorization code store, request store, and transactioner.
 func initializeAuthorizationStores(cfg oauthconfig.Config) (
 	AuthorizationCodeStoreInterface, authorizationRequestStoreInterface, transaction.Transactioner, error) {
-	if cfg.RuntimeDBType == provider.DataSourceTypeRedis {
+	if cfg.RuntimeTransientDBType == provider.DataSourceTypeRedis {
 		redisProvider := provider.GetRedisProvider()
 		return newRedisAuthorizationCodeStore(redisProvider, cfg.DeploymentID),
 			newRedisAuthorizationRequestStore(redisProvider, cfg.DeploymentID),
@@ -67,7 +67,7 @@ func initializeAuthorizationStores(cfg oauthconfig.Config) (
 			nil
 	}
 	dbProvider := provider.GetDBProvider()
-	transactioner, err := dbProvider.GetRuntimeDBTransactioner()
+	transactioner, err := dbProvider.GetRuntimeTransientDBTransactioner()
 	if err != nil {
 		return nil, nil, nil, err
 	}

@@ -47,11 +47,6 @@ func newGoogleOIDCAuthExecutor(
 			Type:       "string",
 			Required:   true,
 		},
-		{
-			Identifier: "nonce",
-			Type:       "string",
-			Required:   false,
-		},
 	}
 
 	oidcSvcCast, ok := authService.(authnoidc.OIDCAuthnCoreServiceInterface)

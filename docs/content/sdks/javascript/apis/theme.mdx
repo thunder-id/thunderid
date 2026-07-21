@@ -1,7 +1,8 @@
 ---
 title: Theme
+docType: reference
 displayed_sidebar: javascriptSdkSidebar
-description: Create and customize theme objects for ThunderID UI components
+description: Create and customize theme objects to control colors, fonts, and layout for ThunderID UI components.
 ---
 
 # Theme
@@ -34,7 +35,7 @@ Object.entries(theme.cssVariables).forEach(([key, value]) => {
 
 | Parameter | Type | Required | Description |
 |-----------|------|:--------:|-------------|
-| `config` | `RecursivePartial<ThemeConfig>` | — | Partial theme configuration. Deep-merged with `DEFAULT_THEME` |
+| `config` | `RecursivePartial<ThemeConfig>` | ❌ | Partial theme configuration. Deep-merged with `DEFAULT_THEME` |
 
 ### Response: `Theme`
 
@@ -45,8 +46,6 @@ Object.entries(theme.cssVariables).forEach(([key, value]) => {
 | `vars` | `ThemeVars` | CSS variable references (e.g., `theme.vars.colors.primary.main` → `'var(--thunderid-colors-primary-main)'`) |
 | `cssVariables` | `Record<string, string>` | Flat map of CSS custom property declarations ready to apply to `:root` |
 
----
-
 ## `DEFAULT_THEME`
 
 The default theme object. Import it to inspect the base values or extend them:
@@ -56,8 +55,6 @@ import { DEFAULT_THEME } from '@thunderid/javascript'
 
 console.log(DEFAULT_THEME.colors.primary.main)
 ```
-
----
 
 ## `ThemeConfig`
 

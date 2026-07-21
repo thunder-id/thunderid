@@ -46,7 +46,7 @@ func createTestAuthzExecutor(t *testing.T,
 
 	// Mock the CreateExecutor method to return a base executor
 	mockFlowFactory.On("CreateExecutor", ExecutorNameAuthorization, providers.ExecutorTypeUtility,
-		[]providers.Input{}, []providers.Input{}).
+		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(createMockExecutor(t, "AuthorizationExecutor", providers.ExecutorTypeUtility))
 
 	return newAuthorizationExecutor(mockFlowFactory, mockAuthzService, mockEntityProvider, mockAuthnProvider)
@@ -110,7 +110,7 @@ func TestAuthorizationExecutor_Execute_Success(t *testing.T) {
 				len(req.Evaluations[0].Subject.GroupIDs) == 2 &&
 				req.Evaluations[0].Subject.GroupIDs[0] == "group1" &&
 				req.Evaluations[0].Subject.GroupIDs[1] == "group2" &&
-				req.Evaluations[0].ResourceServer.Handle == "" &&
+				req.Evaluations[0].ResourceServer.ID == "" &&
 				req.Evaluations[0].Permission.Name == "read:documents" &&
 				req.Evaluations[1].Permission.Name == "write:documents" &&
 				req.Evaluations[2].Permission.Name == "delete:documents"

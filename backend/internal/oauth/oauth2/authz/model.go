@@ -83,8 +83,9 @@ type AuthorizationError struct {
 
 // assertionClaims represents the claims extracted from the flow assertion JWT.
 type assertionClaims struct {
-	userID                string
-	authorizedPermissions string
-	attributeCacheID      string
-	completedACR          string
+	userID                 string
+	authorizedPermissions  string
+	attributeCacheID       string
+	completedACR           string
+	authorizationRequestID string
 }

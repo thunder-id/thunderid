@@ -38,10 +38,10 @@ const (
 	dataSourceTypePostgres = "postgres"
 	dataSourceTypeSQLite   = "sqlite"
 
-	dbNameConfig    = "config"
-	dbNameRuntime   = "runtime"
-	dbNameUser      = "user"
-	dbNameOperation = "operation"
+	dbNameConfig            = "config"
+	dbNameRuntimeTransient  = "runtime-transient"
+	dbNameEntity            = "entity"
+	dbNameRuntimePersistent = "runtime-persistent"
 )
 
 // dbConfig represents the local database configuration.
@@ -53,13 +53,13 @@ type dbConfig struct {
 // DBProviderInterface defines the interface for getting database clients and transactioners.
 type DBProviderInterface interface {
 	GetConfigDBClient() (DBClientInterface, error)
-	GetRuntimeDBClient() (DBClientInterface, error)
-	GetUserDBClient() (DBClientInterface, error)
-	GetOperationDBClient() (DBClientInterface, error)
+	GetRuntimeTransientDBClient() (DBClientInterface, error)
+	GetEntityDBClient() (DBClientInterface, error)
+	GetRuntimePersistentDBClient() (DBClientInterface, error)
 	GetConfigDBTransactioner() (transaction.Transactioner, error)
-	GetUserDBTransactioner() (transaction.Transactioner, error)
-	GetRuntimeDBTransactioner() (transaction.Transactioner, error)
-	GetOperationDBTransactioner() (transaction.Transactioner, error)
+	GetEntityDBTransactioner() (transaction.Transactioner, error)
+	GetRuntimeTransientDBTransactioner() (transaction.Transactioner, error)
+	GetRuntimePersistentDBTransactioner() (transaction.Transactioner, error)
 }
 
 // DBProviderCloser is a separate interface for closing the provider.
@@ -70,14 +70,14 @@ type DBProviderCloser interface {
 
 // dbProvider is the implementation of DBProviderInterface.
 type dbProvider struct {
-	configClient    DBClientInterface
-	configMutex     sync.RWMutex
-	runtimeClient   DBClientInterface
-	runtimeMutex    sync.RWMutex
-	userClient      DBClientInterface
-	userMutex       sync.RWMutex
-	operationClient DBClientInterface
-	operationMutex  sync.RWMutex
+	configClient            DBClientInterface
+	configMutex             sync.RWMutex
+	runtimeTransientClient  DBClientInterface
+	runtimeTransientMutex   sync.RWMutex
+	entityClient            DBClientInterface
+	entityMutex             sync.RWMutex
+	runtimePersistentClient DBClientInterface
+	runtimePersistentMutex  sync.RWMutex
 }
 
 var (
@@ -113,25 +113,27 @@ func (d *dbProvider) GetConfigDBClient() (DBClientInterface, error) {
 	return d.getOrInitClient(&d.configClient, &d.configMutex, configDBConfig, dbNameConfig)
 }
 
-// GetRuntimeDBClient returns a database client for runtime datasource.
+// GetRuntimeTransientDBClient returns a database client for the runtime transient datasource.
 // Not required to close the returned client manually since it manages its own connection pool.
-func (d *dbProvider) GetRuntimeDBClient() (DBClientInterface, error) {
-	runtimeDBConfig := config.GetServerRuntime().Config.Database.Runtime
-	return d.getOrInitClient(&d.runtimeClient, &d.runtimeMutex, runtimeDBConfig, dbNameRuntime)
+func (d *dbProvider) GetRuntimeTransientDBClient() (DBClientInterface, error) {
+	runtimeTransientDBConfig := config.GetServerRuntime().Config.Database.RuntimeTransient
+	return d.getOrInitClient(
+		&d.runtimeTransientClient, &d.runtimeTransientMutex, runtimeTransientDBConfig, dbNameRuntimeTransient)
 }
 
-// GetUserDBClient returns a database client for runtime datasource.
+// GetEntityDBClient returns a database client for the entity datasource.
 // Not required to close the returned client manually since it manages its own connection pool.
-func (d *dbProvider) GetUserDBClient() (DBClientInterface, error) {
-	userDBConfig := config.GetServerRuntime().Config.Database.User
-	return d.getOrInitClient(&d.userClient, &d.userMutex, userDBConfig, dbNameUser)
+func (d *dbProvider) GetEntityDBClient() (DBClientInterface, error) {
+	entityDBConfig := config.GetServerRuntime().Config.Database.Entity
+	return d.getOrInitClient(&d.entityClient, &d.entityMutex, entityDBConfig, dbNameEntity)
 }
 
-// GetOperationDBClient returns a database client for the operation datasource.
+// GetRuntimePersistentDBClient returns a database client for the runtime persistent datasource.
 // Not required to close the returned client manually since it manages its own connection pool.
-func (d *dbProvider) GetOperationDBClient() (DBClientInterface, error) {
-	operationDBConfig := config.GetServerRuntime().Config.Database.Operation
-	return d.getOrInitClient(&d.operationClient, &d.operationMutex, operationDBConfig, dbNameOperation)
+func (d *dbProvider) GetRuntimePersistentDBClient() (DBClientInterface, error) {
+	runtimePersistentDBConfig := config.GetServerRuntime().Config.Database.RuntimePersistent
+	return d.getOrInitClient(
+		&d.runtimePersistentClient, &d.runtimePersistentMutex, runtimePersistentDBConfig, dbNameRuntimePersistent)
 }
 
 // GetConfigDBTransactioner returns a transactioner for the config database.
@@ -140,26 +142,26 @@ func (d *dbProvider) GetConfigDBTransactioner() (transaction.Transactioner, erro
 	return d.getTransactioner(d.GetConfigDBClient, dbNameConfig)
 }
 
-// GetUserDBTransactioner returns a transactioner for the user database.
+// GetEntityDBTransactioner returns a transactioner for the entity database.
 // The transactioner manages database transactions with automatic nesting detection.
-func (d *dbProvider) GetUserDBTransactioner() (transaction.Transactioner, error) {
-	return d.getTransactioner(d.GetUserDBClient, dbNameUser)
+func (d *dbProvider) GetEntityDBTransactioner() (transaction.Transactioner, error) {
+	return d.getTransactioner(d.GetEntityDBClient, dbNameEntity)
 }
 
-// GetRuntimeDBTransactioner returns a transactioner for the runtime database.
-func (d *dbProvider) GetRuntimeDBTransactioner() (transaction.Transactioner, error) {
+// GetRuntimeTransientDBTransactioner returns a transactioner for the runtime transient database.
+func (d *dbProvider) GetRuntimeTransientDBTransactioner() (transaction.Transactioner, error) {
 	// When the runtime store is Redis, a no-op transactioner is returned since Redis does
 	// not support SQL-style transactions.
-	if config.GetServerRuntime().Config.Database.Runtime.Type == DataSourceTypeRedis {
+	if config.GetServerRuntime().Config.Database.RuntimeTransient.Type == DataSourceTypeRedis {
 		return transaction.NewNoOpTransactioner(), nil
 	}
-	return d.getTransactioner(d.GetRuntimeDBClient, dbNameRuntime)
+	return d.getTransactioner(d.GetRuntimeTransientDBClient, dbNameRuntimeTransient)
 }
 
-// GetOperationDBTransactioner returns a transactioner for the operation database.
+// GetRuntimePersistentDBTransactioner returns a transactioner for the runtime persistent database.
 // The transactioner manages database transactions with automatic nesting detection.
-func (d *dbProvider) GetOperationDBTransactioner() (transaction.Transactioner, error) {
-	return d.getTransactioner(d.GetOperationDBClient, dbNameOperation)
+func (d *dbProvider) GetRuntimePersistentDBTransactioner() (transaction.Transactioner, error) {
+	return d.getTransactioner(d.GetRuntimePersistentDBClient, dbNameRuntimePersistent)
 }
 
 // getTransactioner is a helper method that creates a transactioner for a given database client.
@@ -175,7 +177,7 @@ func (d *dbProvider) getTransactioner(
 	return client.GetTransactioner()
 }
 
-// initializeAllClients initializes config, runtime, and user database clients at startup.
+// initializeAllClients initializes config, runtime, and entity database clients at startup.
 func (d *dbProvider) initializeAllClients() {
 	// This runs outside any request, so context.Background() is used (no request trace ID).
 	ctx := context.Background()
@@ -187,25 +189,25 @@ func (d *dbProvider) initializeAllClients() {
 		logger.Error(ctx, "Failed to initialize config database client", log.Error(err))
 	}
 
-	runtimeDBConfig := config.GetServerRuntime().Config.Database.Runtime
-	if runtimeDBConfig.Type != DataSourceTypeRedis {
-		err = d.initializeClient(&d.runtimeClient, runtimeDBConfig, dbNameRuntime)
+	runtimeTransientDBConfig := config.GetServerRuntime().Config.Database.RuntimeTransient
+	if runtimeTransientDBConfig.Type != DataSourceTypeRedis {
+		err = d.initializeClient(&d.runtimeTransientClient, runtimeTransientDBConfig, dbNameRuntimeTransient)
 		if err != nil {
-			logger.Error(ctx, "Failed to initialize runtime database client", log.Error(err))
+			logger.Error(ctx, "Failed to initialize runtime transient database client", log.Error(err))
 		}
 	}
 
-	userDBConfig := config.GetServerRuntime().Config.Database.User
-	err = d.initializeClient(&d.userClient, userDBConfig, dbNameUser)
+	entityDBConfig := config.GetServerRuntime().Config.Database.Entity
+	err = d.initializeClient(&d.entityClient, entityDBConfig, dbNameEntity)
 	if err != nil {
-		logger.Error(ctx, "Failed to initialize user database client", log.Error(err))
+		logger.Error(ctx, "Failed to initialize entity database client", log.Error(err))
 	}
 
-	operationDBConfig := config.GetServerRuntime().Config.Database.Operation
-	if operationDBConfig.Type != "" {
-		err = d.initializeClient(&d.operationClient, operationDBConfig, dbNameOperation)
+	runtimePersistentDBConfig := config.GetServerRuntime().Config.Database.RuntimePersistent
+	if runtimePersistentDBConfig.Type != "" {
+		err = d.initializeClient(&d.runtimePersistentClient, runtimePersistentDBConfig, dbNameRuntimePersistent)
 		if err != nil {
-			logger.Error(ctx, "Failed to initialize operation database client", log.Error(err))
+			logger.Error(ctx, "Failed to initialize runtime persistent database client", log.Error(err))
 		}
 	}
 }
@@ -223,7 +225,7 @@ func (d *dbProvider) getOrInitClient(
 	}
 	// Redis runtime stores bypass the SQL client entirely
 	if dataSource.Type == DataSourceTypeRedis {
-		return nil, fmt.Errorf("runtime database is configured as Redis; use RedisProvider instead")
+		return nil, fmt.Errorf("runtime transient database is configured as Redis; use RedisProvider instead")
 	}
 
 	mutex.RLock()
@@ -343,9 +345,9 @@ func (d *dbProvider) Close() error {
 	logger.Debug(context.Background(), "Closing database connections")
 
 	configErr := d.closeClient(&d.configClient, &d.configMutex, "config")
-	runtimeErr := d.closeClient(&d.runtimeClient, &d.runtimeMutex, "runtime")
-	userErr := d.closeClient(&d.userClient, &d.userMutex, "user")
-	operationErr := d.closeClient(&d.operationClient, &d.operationMutex, "operation")
+	runtimeTransientErr := d.closeClient(&d.runtimeTransientClient, &d.runtimeTransientMutex, "runtimeTransient")
+	entityErr := d.closeClient(&d.entityClient, &d.entityMutex, "entity")
+	runtimePersistentErr := d.closeClient(&d.runtimePersistentClient, &d.runtimePersistentMutex, "runtimePersistent")
 
 	// Close the Redis runtime provider if it was initialized.
 	var redisErr error
@@ -353,7 +355,7 @@ func (d *dbProvider) Close() error {
 		redisErr = redisInstance.Close()
 	}
 
-	return errors.Join(configErr, runtimeErr, userErr, operationErr, redisErr)
+	return errors.Join(configErr, runtimeTransientErr, entityErr, runtimePersistentErr, redisErr)
 }
 
 // closeClient is a helper to close a DB client with locking.

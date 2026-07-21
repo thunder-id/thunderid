@@ -1,0 +1,34 @@
+# Pre-existing pages not yet registered in any sidebar.
+# Each line is a doc ID (path relative to docs/content/, no .mdx extension).
+#
+# Rules:
+#   - A page in this file produces a ⚠ warning in CI but does not block merge.
+#   - A page NOT in this file that is also missing from the sidebar produces a ❌ error and blocks merge.
+#   - To clear a warning: add the page to docs/sidebars.ts and remove the line here.
+#   - To intentionally keep a page unlisted (footer link, external nav only): keep the line and add a comment.
+#
+apis
+guides/declarative-configurations/import-resources
+guides/declarative-configurations/templates
+guides/deployment-patterns/docker-production
+guides/deployment-patterns/observability
+guides/getting-started/build-a-flow
+guides/getting-started/connect-your-application/index
+guides/getting-started/register-an-application
+guides/getting-started/what-is-thunderid
+guides/guides/agents/agent-authentication
+guides/guides/applications
+guides/guides/authentication/app-native-authentication
+guides/guides/resource-export
+guides/guides/resource-indicators
+guides/guides/user-types
+guides/guides/users
+guides/guides/users/manage-roles
+guides/key-concepts/authentication/overview
+guides/key-concepts/authentication/passwordless/overview
+guides/key-concepts/events
+guides/key-concepts/passkeys
+sdks/overview   # linked from the SDKs overview nav, not a sidebar page
+use-cases/ai-agents/configure-it-yourself
+use-cases/ai-agents/identity-concepts
+use-cases/ai-agents/mcp-authorization

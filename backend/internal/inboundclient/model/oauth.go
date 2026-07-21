@@ -33,6 +33,7 @@ var (
 		string(jws.RS256), string(jws.RS512), string(jws.PS256),
 		string(jws.ES256), string(jws.ES384), string(jws.ES512),
 		string(jws.EdDSA),
+		string(jws.MLDSA44), string(jws.MLDSA65), string(jws.MLDSA87),
 	}
 	SupportedUserInfoEncryptionAlgs = []string{string(jwe.RSAOAEP), string(jwe.RSAOAEP256)}
 	SupportedUserInfoEncryptionEncs = []string{string(jwe.A128CBCHS256), string(jwe.A256GCM)}
@@ -44,6 +45,7 @@ var (
 type OAuthConfig struct {
 	ClientID                           string                            `json:"clientId,omitempty"                 yaml:"clientId,omitempty"`
 	RedirectURIs                       []string                          `json:"redirectUris,omitempty"             yaml:"redirectUris,omitempty"`
+	PostLogoutRedirectURIs             []string                          `json:"postLogoutRedirectUris,omitempty"   yaml:"postLogoutRedirectUris,omitempty"`
 	GrantTypes                         []providers.GrantType             `json:"grantTypes,omitempty"               yaml:"grantTypes,omitempty"`
 	ResponseTypes                      []providers.ResponseType          `json:"responseTypes,omitempty"            yaml:"responseTypes,omitempty"`
 	TokenEndpointAuthMethod            providers.TokenEndpointAuthMethod `json:"tokenEndpointAuthMethod,omitempty"  yaml:"tokenEndpointAuthMethod,omitempty"`

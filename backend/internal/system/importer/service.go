@@ -30,12 +30,13 @@ import (
 
 	agentmodel "github.com/thunder-id/thunderid/internal/agent/model"
 	appmodel "github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/connection"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	"github.com/thunder-id/thunderid/internal/group"
-	"github.com/thunder-id/thunderid/internal/idp"
+	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -62,6 +63,20 @@ type idpAdapter interface {
 	GetIdentityProviderByName(ctx context.Context, idpName string) (*providers.IDPDTO, *tidcommon.ServiceError)
 	UpdateIdentityProvider(ctx context.Context, idpID string, idpDTO *providers.IDPDTO) (
 		*providers.IDPDTO,
+		*tidcommon.ServiceError,
+	)
+}
+
+// senderAdapter is the subset of notification.NotificationSenderMgtSvcInterface the importer
+// needs to import a connection document that resolves to a message notification sender.
+type senderAdapter interface {
+	CreateSender(ctx context.Context, sender ncommon.NotificationSenderDTO) (
+		*ncommon.NotificationSenderDTO,
+		*tidcommon.ServiceError,
+	)
+	GetSender(ctx context.Context, id string) (*ncommon.NotificationSenderDTO, *tidcommon.ServiceError)
+	UpdateSender(ctx context.Context, id string, sender ncommon.NotificationSenderDTO) (
+		*ncommon.NotificationSenderDTO,
 		*tidcommon.ServiceError,
 	)
 }
@@ -218,6 +233,7 @@ const (
 type importService struct {
 	applicationService             applicationAdapter
 	idpService                     idpAdapter
+	senderService                  senderAdapter
 	flowService                    flowAdapter
 	ouService                      ouAdapter
 	entityTypeService              entityTypeAdapter
@@ -238,6 +254,7 @@ type importService struct {
 func newImportService(
 	applicationService applicationAdapter,
 	idpService idpAdapter,
+	senderService senderAdapter,
 	flowService flowAdapter,
 	ouService ouAdapter,
 	entityTypeService entityTypeAdapter,
@@ -257,6 +274,7 @@ func newImportService(
 	return &importService{
 		applicationService:             applicationService,
 		idpService:                     idpService,
+		senderService:                  senderService,
 		flowService:                    flowService,
 		ouService:                      ouService,
 		entityTypeService:              entityTypeService,
@@ -401,8 +419,8 @@ func (s *importService) importDocument(
 	switch doc.ResourceType {
 	case resourceTypeApplication:
 		return s.importApplication(ctx, doc, options, dryRun, flowIDAliases)
-	case resourceTypeIdentityProvider:
-		return s.importIdentityProvider(ctx, doc, options, dryRun)
+	case resourceTypeConnection:
+		return s.importConnection(ctx, doc, options, dryRun)
 	case resourceTypeFlow:
 		return s.importFlow(ctx, doc, options, dryRun)
 	case resourceTypeOrganizationUnit:
@@ -441,25 +459,36 @@ func (s *importService) importDocument(
 	}
 }
 
-func (s *importService) importIdentityProvider(
+// importConnection imports a "connection" document, dispatching to the identity-provider or
+// notification-sender adapter based on which DTO connection.ParseConnectionFromNode resolves.
+func (s *importService) importConnection(
 	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool,
 ) ImportItemOutcome {
-	if s.idpService == nil {
+	idpDTO, senderDTO, err := connection.ParseConnectionFromNode(doc.Node)
+	if err != nil {
 		return ImportItemOutcome{
-			ResourceType: resourceTypeIdentityProvider,
+			ResourceType: resourceTypeConnection,
 			Status:       statusFailed,
-			Code:         ErrorInvalidImportRequest.Code,
-			Message:      "identity provider adapter is not configured",
+			Code:         ErrorInvalidYAMLContent.Code,
+			Message:      fmt.Sprintf("failed to decode connection document: %v", err),
 		}
 	}
 
-	req, err := idp.ParseIDPDTOFromNode(doc.Node)
-	if err != nil {
+	if idpDTO != nil {
+		return s.importConnectionIDP(ctx, idpDTO, options, dryRun)
+	}
+	return s.importConnectionSender(ctx, senderDTO, options, dryRun)
+}
+
+func (s *importService) importConnectionIDP(
+	ctx context.Context, req *providers.IDPDTO, options *ImportOptions, dryRun bool,
+) ImportItemOutcome {
+	if s.idpService == nil {
 		return ImportItemOutcome{
-			ResourceType: resourceTypeIdentityProvider,
+			ResourceType: resourceTypeConnection,
 			Status:       statusFailed,
-			Code:         ErrorInvalidYAMLContent.Code,
-			Message:      fmt.Sprintf("failed to decode identity provider document: %v", err),
+			Code:         ErrorInvalidImportRequest.Code,
+			Message:      "identity provider adapter is not configured",
 		}
 	}
 
@@ -467,22 +496,22 @@ func (s *importService) importIdentityProvider(
 		if options.IsUpsertEnabled() && req.ID != "" {
 			_, svcErr := s.idpService.GetIdentityProvider(ctx, req.ID)
 			if svcErr == nil {
-				return successOutcome(resourceTypeIdentityProvider, req.ID, req.Name, operationUpdate)
+				return successOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate)
 			}
 
 			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeIdentityProvider, req.ID, req.Name, operationUpdate, svcErr)
+				return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate, svcErr)
 			}
 		}
 
-		return successOutcome(resourceTypeIdentityProvider, req.ID, req.Name, operationCreate)
+		return successOutcome(resourceTypeConnection, req.ID, req.Name, operationCreate)
 	}
 
 	if options.IsUpsertEnabled() && req.ID != "" {
 		updated, svcErr := s.idpService.UpdateIdentityProvider(ctx, req.ID, req)
 		if svcErr == nil {
 			return ImportItemOutcome{
-				ResourceType: resourceTypeIdentityProvider,
+				ResourceType: resourceTypeConnection,
 				ResourceID:   updated.ID,
 				ResourceName: updated.Name,
 				Operation:    operationUpdate,
@@ -492,7 +521,7 @@ func (s *importService) importIdentityProvider(
 
 		if !isNotFoundServiceError(svcErr) {
 			return ImportItemOutcome{
-				ResourceType: resourceTypeIdentityProvider,
+				ResourceType: resourceTypeConnection,
 				ResourceID:   req.ID,
 				ResourceName: req.Name,
 				Operation:    operationUpdate,
@@ -506,7 +535,7 @@ func (s *importService) importIdentityProvider(
 	created, svcErr := s.idpService.CreateIdentityProvider(ctx, req)
 	if svcErr != nil {
 		return ImportItemOutcome{
-			ResourceType: resourceTypeIdentityProvider,
+			ResourceType: resourceTypeConnection,
 			ResourceID:   req.ID,
 			ResourceName: req.Name,
 			Operation:    operationCreate,
@@ -517,7 +546,81 @@ func (s *importService) importIdentityProvider(
 	}
 
 	return ImportItemOutcome{
-		ResourceType: resourceTypeIdentityProvider,
+		ResourceType: resourceTypeConnection,
+		ResourceID:   created.ID,
+		ResourceName: created.Name,
+		Operation:    operationCreate,
+		Status:       statusSuccess,
+	}
+}
+
+func (s *importService) importConnectionSender(
+	ctx context.Context, req *ncommon.NotificationSenderDTO, options *ImportOptions, dryRun bool,
+) ImportItemOutcome {
+	if s.senderService == nil {
+		return ImportItemOutcome{
+			ResourceType: resourceTypeConnection,
+			Status:       statusFailed,
+			Code:         ErrorInvalidImportRequest.Code,
+			Message:      "notification sender adapter is not configured",
+		}
+	}
+
+	if dryRun {
+		if options.IsUpsertEnabled() && req.ID != "" {
+			_, svcErr := s.senderService.GetSender(ctx, req.ID)
+			if svcErr == nil {
+				return successOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate)
+			}
+
+			if !isNotFoundServiceError(svcErr) {
+				return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate, svcErr)
+			}
+		}
+
+		return successOutcome(resourceTypeConnection, req.ID, req.Name, operationCreate)
+	}
+
+	if options.IsUpsertEnabled() && req.ID != "" {
+		updated, svcErr := s.senderService.UpdateSender(ctx, req.ID, *req)
+		if svcErr == nil {
+			return ImportItemOutcome{
+				ResourceType: resourceTypeConnection,
+				ResourceID:   updated.ID,
+				ResourceName: updated.Name,
+				Operation:    operationUpdate,
+				Status:       statusSuccess,
+			}
+		}
+
+		if !isNotFoundServiceError(svcErr) {
+			return ImportItemOutcome{
+				ResourceType: resourceTypeConnection,
+				ResourceID:   req.ID,
+				ResourceName: req.Name,
+				Operation:    operationUpdate,
+				Status:       statusFailed,
+				Code:         svcErr.Code,
+				Message:      svcErr.Error.DefaultValue,
+			}
+		}
+	}
+
+	created, svcErr := s.senderService.CreateSender(ctx, *req)
+	if svcErr != nil {
+		return ImportItemOutcome{
+			ResourceType: resourceTypeConnection,
+			ResourceID:   req.ID,
+			ResourceName: req.Name,
+			Operation:    operationCreate,
+			Status:       statusFailed,
+			Code:         svcErr.Code,
+			Message:      svcErr.Error.DefaultValue,
+		}
+	}
+
+	return ImportItemOutcome{
+		ResourceType: resourceTypeConnection,
 		ResourceID:   created.ID,
 		ResourceName: created.Name,
 		Operation:    operationCreate,
@@ -670,8 +773,7 @@ var resourceDependencyOrder = []string{
 	resourceTypeOrganizationUnit,
 	resourceTypeEntityType,
 	resourceTypeResourceServer,
-	resourceTypeIdentityProvider,
-	resourceTypeNotificationSender,
+	resourceTypeConnection,
 	resourceTypeFlow,
 	resourceTypeTheme,
 	resourceTypeLayout,
@@ -743,6 +845,9 @@ func (s *importService) importApplication(
 	}
 	if mappedFlowID, ok := flowIDAliases[req.RegistrationFlowID]; ok {
 		req.RegistrationFlowID = mappedFlowID
+	}
+	if mappedFlowID, ok := flowIDAliases[req.SignOutFlowID]; ok {
+		req.SignOutFlowID = mappedFlowID
 	}
 
 	appDTO := applicationRequestToDTO(&req)
@@ -858,6 +963,9 @@ func applicationRequestToDTO(req *appmodel.ApplicationRequestWithID) *appmodel.A
 			RecoveryFlowID:            req.RecoveryFlowID,
 			RecoveryFlowHandle:        req.RecoveryFlowHandle,
 			IsRecoveryFlowEnabled:     req.IsRecoveryFlowEnabled,
+			SignOutFlowID:             req.SignOutFlowID,
+			SignOutFlowHandle:         req.SignOutFlowHandle,
+			IsSignOutFlowEnabled:      req.IsSignOutFlowEnabled,
 			ThemeID:                   req.ThemeID,
 			LayoutID:                  req.LayoutID,
 			Assertion:                 req.Assertion,
@@ -887,6 +995,7 @@ func applicationRequestToDTO(req *appmodel.ApplicationRequestWithID) *appmodel.A
 					ClientID:                           config.OAuthConfig.ClientID,
 					ClientSecret:                       config.OAuthConfig.ClientSecret,
 					RedirectURIs:                       config.OAuthConfig.RedirectURIs,
+					PostLogoutRedirectURIs:             config.OAuthConfig.PostLogoutRedirectURIs,
 					GrantTypes:                         config.OAuthConfig.GrantTypes,
 					ResponseTypes:                      config.OAuthConfig.ResponseTypes,
 					TokenEndpointAuthMethod:            config.OAuthConfig.TokenEndpointAuthMethod,

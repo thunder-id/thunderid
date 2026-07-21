@@ -789,3 +789,72 @@ func TestGetTLSMaterial_Success(t *testing.T) {
 	assert.Equal(t, tlsCert, material.Certificate)
 	assert.Equal(t, uint16(tls.VersionTLS12), material.MinVersion)
 }
+
+// TestMLDSA_RuntimeSignVerifyAndGetPublicKeys exercises the full ML-DSA path
+// through the runtime provider: GetPublicKeys derives the public key from the
+// private key (the certificate carries no parseable public key), and a signature
+// produced by Sign verifies through Verify.
+func TestMLDSA_RuntimeSignVerifyAndGetPublicKeys(t *testing.T) {
+	signer, err := cryptolib.GenerateMLDSAKey(cryptolib.AlgorithmMLDSA65)
+	require.NoError(t, err)
+
+	const keyID = "mldsa-key"
+	const thumbprint = "mldsa-thumbprint"
+	cert := &x509.Certificate{Raw: []byte("mldsa-cert-raw")} // PublicKey is nil for ML-DSA.
+
+	pki := pkimock.NewPKIServiceInterfaceMock(t)
+	pki.EXPECT().GetAllX509Certificates(mock.Anything).
+		Return(map[string]*x509.Certificate{keyID: cert}, nil)
+	pki.EXPECT().GetPrivateKey(mock.Anything, keyID).Return(signer, nil)
+	pki.EXPECT().GetCertThumbprint(keyID).Return(thumbprint)
+	pki.EXPECT().GetCertificateChain(keyID).Return([][]byte{cert.Raw})
+
+	svc := &runtimeCryptoService{pkiService: pki, logger: newTestLogger()}
+	ctx := context.Background()
+
+	keys, err := svc.GetPublicKeys(ctx, kmprovider.PublicKeyFilter{})
+	require.NoError(t, err)
+	require.Len(t, keys, 1)
+	assert.Equal(t, cryptolib.AlgorithmMLDSA65, keys[0].Algorithm)
+	assert.Equal(t, thumbprint, keys[0].Thumbprint)
+
+	data := []byte("header.payload")
+	sig, err := svc.Sign(ctx, kmprovider.KeyRef{KeyID: keyID}, string(cryptolib.AlgorithmMLDSA65), data)
+	require.NoError(t, err)
+	assert.NoError(t, svc.Verify(ctx, thumbprint, string(cryptolib.AlgorithmMLDSA65), data, sig))
+}
+
+// TestGetPublicKeys_DerivePublicKeyPrivateKeyError covers the case where the
+// certificate carries no parseable public key (nil, as for ML-DSA) and the
+// configured private key cannot be retrieved either.
+func TestGetPublicKeys_DerivePublicKeyPrivateKeyError(t *testing.T) {
+	const keyID = "mldsa-key"
+	cert := &x509.Certificate{Raw: []byte("mldsa-cert-raw")}
+
+	pki := pkimock.NewPKIServiceInterfaceMock(t)
+	pki.EXPECT().GetAllX509Certificates(mock.Anything).
+		Return(map[string]*x509.Certificate{keyID: cert}, nil)
+	pki.EXPECT().GetPrivateKey(mock.Anything, keyID).Return(nil, newTestSvcErr())
+
+	svc := &runtimeCryptoService{pkiService: pki, logger: newTestLogger()}
+	keys, err := svc.GetPublicKeys(context.Background(), kmprovider.PublicKeyFilter{})
+	require.NoError(t, err)
+	assert.Empty(t, keys)
+}
+
+// TestGetPublicKeys_DerivePublicKeyNonSignerPrivateKey covers the case where the
+// configured private key does not implement crypto.Signer.
+func TestGetPublicKeys_DerivePublicKeyNonSignerPrivateKey(t *testing.T) {
+	const keyID = "mldsa-key"
+	cert := &x509.Certificate{Raw: []byte("mldsa-cert-raw")}
+
+	pki := pkimock.NewPKIServiceInterfaceMock(t)
+	pki.EXPECT().GetAllX509Certificates(mock.Anything).
+		Return(map[string]*x509.Certificate{keyID: cert}, nil)
+	pki.EXPECT().GetPrivateKey(mock.Anything, keyID).Return([]byte("not-a-signer"), nil)
+
+	svc := &runtimeCryptoService{pkiService: pki, logger: newTestLogger()}
+	keys, err := svc.GetPublicKeys(context.Background(), kmprovider.PublicKeyFilter{})
+	require.NoError(t, err)
+	assert.Empty(t, keys)
+}

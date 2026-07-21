@@ -35,11 +35,12 @@ import (
 func getAuthnServiceName(executorName string) string {
 	executorToAuthnServiceMap := map[string]string{
 		ExecutorNameCredentialsAuth: authncm.AuthenticatorCredentials,
-		ExecutorNameSMSAuth:         authncm.AuthenticatorSMSOTP,
+		ExecutorNameOTPExecutor:     authncm.AuthenticatorOTP,
 		ExecutorNameOAuth:           authncm.AuthenticatorOAuth,
 		ExecutorNameOIDCAuth:        authncm.AuthenticatorOIDC,
 		ExecutorNameGitHubAuth:      authncm.AuthenticatorGithub,
 		ExecutorNameGoogleAuth:      authncm.AuthenticatorGoogle,
+		ExecutorNameMagicLink:       authncm.AuthenticatorMagicLink,
 	}
 	return executorToAuthnServiceMap[executorName]
 }
@@ -124,6 +125,15 @@ func isCrossOUProvisioningAllowed(ctx *providers.NodeContext) bool {
 		}
 	}
 	return false
+}
+
+// setFederatedEntityState records whether federated authentication resolved a concrete local user
+// (via account linking) into the entityState runtime key.
+func setFederatedEntityState(execResp *providers.ExecutorResponse) {
+	execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateNotExists
+	if execResp.AuthUser.EntityReference() != nil {
+		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists
+	}
 }
 
 // isAllowAuthenticationWithoutLocalUserRuntimeFlagSet checks if the runtime flag for allowing authentication without

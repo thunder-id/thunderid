@@ -1,5 +1,6 @@
 ---
 title: Tokens & APIs
+docType: use-case
 description: Session strategy, token lifetimes, and API protection patterns for B2C consumer applications.
 sidebar_position: 9
 ---
@@ -16,7 +17,7 @@ Once a user signs in, the application holds a token or session that represents t
 Three patterns cover most consumer scenarios:
 
 - **Stateless tokens:** short-lived access tokens backed by longer refresh tokens, with no server-side session record. Scales easily because no lookup is needed to validate a token. Revocation is best-effort and waits for the token to expire.
-- **Server-backed sessions:** every refresh and session is backed by a server-side record ThunderID can revoke instantly, which gives you true sign-out-everywhere.
+- **Server-backed sessions:** every refresh and session is backed by a server-side record <ProductName /> can revoke instantly, which gives you true sign-out-everywhere.
 - **Sliding-expiry sessions:** sessions extend on each use, so returning users rarely have to sign in again, in return for longer-lived credentials.
 
 Many consumer apps combine the second and third into a long, sliding, revocable session.
@@ -35,9 +36,9 @@ The choice shapes other concerns. A revocable session is needed for sign-out-eve
 
 ## Protect APIs the App Calls
 
-Sign-in is one half of identity; the other is protecting the APIs your app calls after sign-in. ThunderID issues tokens during sign-in, and the same tokens carry the user's permissions to your APIs. The API does not have to know who the user is; it only needs to validate the token and check the permissions inside.
+Sign-in is one half of identity; the other is protecting the APIs your app calls after sign-in. <ProductName /> issues tokens during sign-in, and the same tokens carry the user's permissions to your APIs. The API does not have to know who the user is; it only needs to validate the token and check the permissions inside.
 
-Validation typically happens at the API edge, in a gateway or middleware that verifies JWT signatures or calls ThunderID's introspection endpoint. Permissions are expressed as scopes (what the app may do) and audiences (which API the token is valid for). Grouping related APIs into a resource server lets multiple endpoints share one set of permission rules instead of each endpoint enforcing them ad-hoc.
+Validation typically happens at the API edge, in a gateway or middleware that verifies JWT signatures or calls <ProductName />'s introspection endpoint. Permissions are expressed as scopes (what the app may do) and audiences (which API the token is valid for). Grouping related APIs into a resource server lets multiple endpoints share one set of permission rules instead of each endpoint enforcing them ad-hoc.
 
 **Capabilities:**
 

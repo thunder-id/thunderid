@@ -1,12 +1,13 @@
 ---
 title: JWKS
+docType: reference
 sidebar_position: 2
-description: The JSON Web Key Set endpoint in {{ProductName}} — public keys for verifying JWTs issued by the authorization server.
+description: The JSON Web Key Set endpoint in {{ProductName}}, public keys for verifying JWTs issued by the authorization server.
 ---
 
 # JWKS
 
-A **JSON Web Key Set** ([RFC 7517](https://datatracker.ietf.org/doc/html/rfc7517)) is a JSON document containing the public keys that <ProductName /> uses to sign JWTs — ID tokens, access tokens, and other signed responses. Resource servers and clients fetch the document, find the key whose `kid` matches the JWT's `kid` header, and verify the signature locally.
+A **JSON Web Key Set** ([RFC 7517](https://datatracker.ietf.org/doc/html/rfc7517)) is a JSON document containing the public keys that <ProductName /> uses to sign JWTs, including ID tokens, access tokens, and other signed responses. Resource servers and clients fetch the document, find the key whose `kid` matches the JWT's `kid` header, and verify the signature locally.
 
 ## How It Works
 
@@ -38,7 +39,7 @@ curl https://{{productSlug}}.example.com/oauth2/jwks
 }
 ```
 
-The endpoint is public and idempotent — cache the response in line with your tolerance for key rotation.
+The endpoint is public and idempotent: cache the response in line with your tolerance for key rotation.
 
 <details>
 <summary>How <ProductName /> Implements It</summary>
@@ -49,7 +50,7 @@ The endpoint is public and idempotent — cache the response in line with your t
 | Discovery field | `jwks_uri` in [Server Metadata](../server-metadata) |
 | Supported key types | RSA, EC (P-256, P-384, P-521), OKP (Ed25519 / EdDSA) |
 | Signing algorithms covered | `RS256`, `RS512`, `PS256`, `ES256`, `ES384`, `ES512`, `EdDSA` |
-| Private keys | Never returned — the document contains only public material |
+| Private keys | Never returned: the document contains only public material |
 | Key rotation | New keys appear in the document before they're used for signing; old keys remain published while there are still valid tokens signed by them |
 
 </details>
@@ -77,13 +78,13 @@ const { payload } = await jwtVerify(token, JWKS, {
 
 ### Caching Guidance
 
-- Cache the JWKS response for **minutes**, not hours — long enough to avoid pressure on the endpoint, short enough to absorb a key rotation.
+- Cache the JWKS response for **minutes**, not hours, long enough to avoid pressure on the endpoint, short enough to absorb a key rotation.
 - On signature failure with an unknown `kid`, refresh the cache **once** and retry. Do not loop.
-- Do not embed JWKS into your application — fetch it at runtime so key rotation does not require a redeploy.
+- Do not embed JWKS into your application. Fetch it at runtime so key rotation does not require a redeploy.
 
 ## Related Guides
 
-- [Server Metadata](../server-metadata) — advertises `jwks_uri`
-- [Token Introspection](../token-introspection) — the alternative to local JWT validation
-- [Token Formats](../token-formats) — signed and encrypted ID token / UserInfo formats
-- [Client Authentication Methods](../client-authentication-methods) — `private_key_jwt` clients publish their *own* JWKS, separate from this endpoint
+- [Server Metadata](../server-metadata), advertises `jwks_uri`
+- [Token Introspection](../token-introspection), the alternative to local JWT validation
+- [Token Formats](../token-formats), signed and encrypted ID token / UserInfo formats
+- [Client Authentication Methods](../client-authentication-methods), `private_key_jwt` clients publish their *own* JWKS, separate from this endpoint

@@ -22,7 +22,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -143,17 +142,6 @@ func (f *fileBasedResourceStore) CheckResourceServerNameExists(ctx context.Conte
 	return true, nil
 }
 
-func (f *fileBasedResourceStore) CheckResourceServerHandleExists(
-	ctx context.Context, handle string) (bool, error) {
-	_, err := f.GenericFileBasedStore.GetByField(handle, func(d interface{}) string {
-		return d.(*providers.ResourceServer).Handle
-	})
-	if err != nil {
-		return false, nil
-	}
-	return true, nil
-}
-
 func (f *fileBasedResourceStore) CheckResourceServerIdentifierExists(
 	ctx context.Context, identifier string) (bool, error) {
 	_, err := f.GenericFileBasedStore.GetByField(identifier, func(d interface{}) string {
@@ -163,23 +151,6 @@ func (f *fileBasedResourceStore) CheckResourceServerIdentifierExists(
 		return false, nil
 	}
 	return true, nil
-}
-
-func (f *fileBasedResourceStore) GetResourceServerByHandle(
-	ctx context.Context, handle string) (providers.ResourceServer, error) {
-	data, err := f.GenericFileBasedStore.GetByField(handle, func(d interface{}) string {
-		return d.(*providers.ResourceServer).Handle
-	})
-	if err != nil {
-		return providers.ResourceServer{}, errResourceServerNotFound
-	}
-
-	rs, ok := data.(*providers.ResourceServer)
-	if !ok {
-		return providers.ResourceServer{}, errors.New("data corrupted")
-	}
-
-	return *rs, nil
 }
 
 func (f *fileBasedResourceStore) GetResourceServerByIdentifier(
@@ -655,52 +626,4 @@ func (f *fileBasedResourceStore) ValidatePermissions(
 		}
 	}
 	return invalidList, nil
-}
-
-func (f *fileBasedResourceStore) FindResourceServersByPermissions(
-	ctx context.Context, permissions []string,
-) ([]providers.ResourceServer, error) {
-	if len(permissions) == 0 {
-		return []providers.ResourceServer{}, nil
-	}
-
-	list, err := f.GenericFileBasedStore.List()
-	if err != nil {
-		return nil, err
-	}
-
-	permSet := make(map[string]struct{}, len(permissions))
-	for _, p := range permissions {
-		permSet[p] = struct{}{}
-	}
-
-	matched := make([]providers.ResourceServer, 0)
-	for _, item := range list {
-		rs, ok := item.Data.(*providers.ResourceServer)
-		if !ok || rs.Identifier == "" {
-			continue
-		}
-		if containsAnyPermission(rs, permSet) {
-			matched = append(matched, *rs)
-		}
-	}
-
-	sort.Slice(matched, func(i, j int) bool {
-		return matched[i].Identifier < matched[j].Identifier
-	})
-	return matched, nil
-}
-
-func containsAnyPermission(rs *providers.ResourceServer, permSet map[string]struct{}) bool {
-	for _, res := range rs.Resources {
-		if _, ok := permSet[res.Permission]; ok {
-			return true
-		}
-		for _, action := range res.Actions {
-			if _, ok := permSet[action.Permission]; ok {
-				return true
-			}
-		}
-	}
-	return false
 }

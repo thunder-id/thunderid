@@ -100,6 +100,7 @@ func (h *cibaHandler) HandleBackchannelAuthRequest(w http.ResponseWriter, r *htt
 		LoginHint:       loginHint,
 		IDTokenHint:     idTokenHint,
 		Scope:           r.FormValue(oauth2const.RequestParamScope),
+		Resources:       r.Form[oauth2const.RequestParamResource],
 		BindingMessage:  r.FormValue(oauth2const.RequestParamBindingMessage),
 		RequestedExpiry: r.FormValue(oauth2const.RequestParamRequestedExpiry),
 		ACRValues:       r.FormValue(oauth2const.RequestParamAcrValues),

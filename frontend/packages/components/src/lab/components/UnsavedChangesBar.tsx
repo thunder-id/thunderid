@@ -78,7 +78,8 @@ export default function UnsavedChangesBar({
               height: 20,
               borderRadius: '50%',
               border: '2px solid',
-              borderColor: 'warning.main',
+              borderColor: 'text.secondary',
+              color: 'text.secondary',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -90,7 +91,7 @@ export default function UnsavedChangesBar({
           </Box>
           {message}
         </Typography>
-        <Button variant="outlined" color="error" onClick={onReset}>
+        <Button variant="outlined" color="inherit" onClick={onReset}>
           {resetLabel}
         </Button>
         <Button variant="contained" onClick={onSave} disabled={isSaving || saveDisabled}>

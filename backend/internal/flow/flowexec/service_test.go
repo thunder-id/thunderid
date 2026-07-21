@@ -51,6 +51,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/attestationprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
@@ -60,6 +61,7 @@ import (
 )
 
 const existingExecutionID = "existing-execution-id"
+const testAppID = "test-app-123"
 
 // txMarkerKey is an unexported type used as a context key for the transaction marker in tests.
 type txMarkerKey struct{}
@@ -73,9 +75,11 @@ func (s *stubTransactioner) Transact(ctx context.Context, txFunc func(context.Co
 }
 
 const testUserOnboardingFlowHandle = "onboarding-handle"
+const testDefaultAuthFlowHandle = "default-auth-handle"
 
 var testFlowConfig = engineconfig.FlowConfig{
 	UserOnboardingFlowHandle: testUserOnboardingFlowHandle,
+	DefaultAuthFlowHandle:    testDefaultAuthFlowHandle,
 }
 
 var testFlowExecCfg = flowconfig.Config{
@@ -161,7 +165,7 @@ func TestInitiateFlowInvalidFlowType(t *testing.T) {
 }
 
 func TestInitiateFlowSuccessScenarios(t *testing.T) {
-	appID := "test-app-123"
+	appID := testAppID
 
 	testConfig := &config.Config{}
 	_ = config.InitializeServerRuntime("/tmp/test", testConfig)
@@ -327,7 +331,7 @@ func TestInitiateFlowSuccessScenarios(t *testing.T) {
 }
 
 func TestInitiateFlowErrorScenarios(t *testing.T) {
-	appID := "test-app-123"
+	appID := testAppID
 
 	testConfig := &config.Config{}
 	_ = config.InitializeServerRuntime("/tmp/test", testConfig)
@@ -471,6 +475,140 @@ func TestInitiateFlowErrorScenarios(t *testing.T) {
 			// All mocks automatically verified by mockery
 		})
 	}
+}
+
+func TestInitiateFlowFallsBackToDefaultFlow(t *testing.T) {
+	appID := testAppID
+
+	testConfig := &config.Config{}
+	_ = config.InitializeServerRuntime("/tmp/test", testConfig)
+
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+	defaultGraph := flowFactory.CreateGraph("default-auth-graph", providers.FlowTypeAuthentication, 1)
+
+	flowNotFound := &tidcommon.ServiceError{
+		Type:  tidcommon.ClientErrorType,
+		Code:  "FLM-1003",
+		Error: tidcommon.I18nMessage{DefaultValue: "Flow not found"},
+	}
+
+	t.Run("auth flow deleted - falls back to default", func(t *testing.T) {
+		mockStore := newFlowStoreInterfaceMock(t)
+		mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
+		mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(t)
+		mockFlowProvider := NewFlowProviderMock(t)
+		mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+		mockCrypto := cryptomock.NewRuntimeCryptoProviderMock(t)
+		mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]byte("encrypted-ctx"), nil, nil)
+
+		service := &flowExecService{
+			graphBuilder:  mockGraphBuilder,
+			flowProvider:  mockFlowProvider,
+			flowStore:     mockStore,
+			actorProvider: actorprovider.Initialize(mockInboundClient, mockEntityProvider, noopAuthnMgr()),
+			transactioner: &stubTransactioner{},
+			cryptoSvc:     mockCrypto,
+			cfg:           testFlowExecCfg,
+		}
+
+		mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).
+			Return(&inboundmodel.InboundClient{ID: appID, AuthFlowID: "stale-auth-graph"}, nil)
+		mockEntityProvider.EXPECT().GetEntity(appID).
+			Return(&providers.Entity{ID: appID, Category: providers.EntityCategoryApp},
+				(*entityprovider.EntityProviderError)(nil))
+
+		// The referenced flow was deleted.
+		mockFlowProvider.EXPECT().GetFlow(mock.Anything, "stale-auth-graph").
+			Return(nil, flowNotFound)
+		// Fallback resolves the default authentication flow by handle.
+		mockFlowProvider.EXPECT().
+			GetFlowByHandle(mock.Anything, testDefaultAuthFlowHandle, providers.FlowTypeAuthentication).
+			Return(&providers.CompleteFlowDefinition{
+				ID:       "default-auth-graph",
+				FlowType: providers.FlowTypeAuthentication,
+			}, nil)
+		mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(defaultGraph, nil)
+		mockStore.EXPECT().StoreFlowContext(mock.Anything, mock.MatchedBy(
+			func(encryptedEngineCtx FlowContextDB) bool {
+				return encryptedEngineCtx.ExecutionID != ""
+			}), mock.Anything).Return(nil)
+
+		executionID, svcErr := service.InitiateFlow(context.Background(), &FlowInitContext{
+			ApplicationID: appID,
+			FlowType:      "AUTHENTICATION",
+		})
+
+		assert.Nil(t, svcErr)
+		assert.NotEmpty(t, executionID)
+	})
+
+	t.Run("server error retrieving flow - no fallback", func(t *testing.T) {
+		mockStore := newFlowStoreInterfaceMock(t)
+		mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
+		mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(t)
+		mockFlowProvider := NewFlowProviderMock(t)
+		mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+
+		service := &flowExecService{
+			graphBuilder:  mockGraphBuilder,
+			flowProvider:  mockFlowProvider,
+			flowStore:     mockStore,
+			actorProvider: actorprovider.Initialize(mockInboundClient, mockEntityProvider, noopAuthnMgr()),
+			transactioner: &stubTransactioner{},
+			cfg:           testFlowExecCfg,
+		}
+
+		mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).
+			Return(&inboundmodel.InboundClient{ID: appID, AuthFlowID: "stale-auth-graph"}, nil)
+		mockFlowProvider.EXPECT().GetFlow(mock.Anything, "stale-auth-graph").
+			Return(nil, &tidcommon.InternalServerError)
+
+		executionID, svcErr := service.InitiateFlow(context.Background(), &FlowInitContext{
+			ApplicationID: appID,
+			FlowType:      "AUTHENTICATION",
+		})
+
+		assert.NotNil(t, svcErr)
+		assert.Empty(t, executionID)
+		assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+
+	t.Run("default flow retrieval fails during fallback", func(t *testing.T) {
+		mockStore := newFlowStoreInterfaceMock(t)
+		mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
+		mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(t)
+		mockFlowProvider := NewFlowProviderMock(t)
+		mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+
+		service := &flowExecService{
+			graphBuilder:  mockGraphBuilder,
+			flowProvider:  mockFlowProvider,
+			flowStore:     mockStore,
+			actorProvider: actorprovider.Initialize(mockInboundClient, mockEntityProvider, noopAuthnMgr()),
+			transactioner: &stubTransactioner{},
+			cfg:           testFlowExecCfg,
+		}
+
+		mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).
+			Return(&inboundmodel.InboundClient{ID: appID, AuthFlowID: "stale-auth-graph"}, nil)
+		// The referenced flow was deleted, triggering the fallback.
+		mockFlowProvider.EXPECT().GetFlow(mock.Anything, "stale-auth-graph").
+			Return(nil, flowNotFound)
+		// Resolving the default authentication flow also fails.
+		mockFlowProvider.EXPECT().
+			GetFlowByHandle(mock.Anything, testDefaultAuthFlowHandle, providers.FlowTypeAuthentication).
+			Return(nil, &tidcommon.InternalServerError)
+
+		executionID, svcErr := service.InitiateFlow(context.Background(), &FlowInitContext{
+			ApplicationID: appID,
+			FlowType:      "AUTHENTICATION",
+		})
+
+		assert.NotNil(t, svcErr)
+		assert.Empty(t, executionID)
+		assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+	})
 }
 
 func TestGetFlowExpirySeconds(t *testing.T) {
@@ -640,7 +778,7 @@ func TestDecryptCalledForEncryptedStoredContext(t *testing.T) {
 	}
 
 	flowStep, svcErr := service.Execute(context.Background(), "test-app", existingExecutionID,
-		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "")
+		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "", "")
 
 	assert.Nil(t, svcErr)
 	assert.NotNil(t, flowStep)
@@ -868,7 +1006,7 @@ func TestExecute_ContextDecryptionFailure(t *testing.T) {
 	}
 
 	_, svcErr := service.Execute(context.Background(), "test-app", existingExecutionID,
-		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "")
+		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "", "")
 
 	assert.NotNil(t, svcErr)
 	assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
@@ -936,7 +1074,7 @@ func TestExecute_ContextDecryptionSuccess(t *testing.T) {
 	}
 
 	flowStep, svcErr := service.Execute(context.Background(), "test-app", existingExecutionID,
-		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, challengeToken, "")
+		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, challengeToken, "", "")
 
 	assert.Nil(t, svcErr)
 	assert.NotNil(t, flowStep)
@@ -1005,7 +1143,7 @@ func TestExecute_ExistingFlowWithoutChallengeToken(t *testing.T) {
 
 	// Execute with empty challenge token
 	flowStep, svcErr := service.Execute(context.Background(), "test-app", existingExecutionID,
-		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "")
+		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "", "")
 
 	assert.Nil(t, svcErr)
 	assert.NotNil(t, flowStep)
@@ -1099,7 +1237,8 @@ func TestExecute_ExistingFlowWithDifferentChallengeTokens(t *testing.T) {
 			}
 
 			flowStep, svcErr := service.Execute(context.Background(), "test-app", existingExecutionID,
-				string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, tt.challengeToken, "")
+				string(providers.FlowTypeAuthentication), false, "submit", map[string]string{},
+				tt.challengeToken, "", "")
 
 			assert.Nil(t, svcErr)
 			assert.NotNil(t, flowStep)
@@ -1175,7 +1314,7 @@ func TestExecute_EngineError_InvalidChallengeToken_PreservesContext(t *testing.T
 	}
 
 	flowStep, svcErr := service.Execute(context.Background(), "test-app", existingExecutionID,
-		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "wrong-token", "")
+		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "wrong-token", "", "")
 
 	assert.Nil(t, svcErr)
 	assert.NotNil(t, flowStep)
@@ -1251,7 +1390,7 @@ func TestExecute_EngineError_NonChallengeToken_RemovesContext(t *testing.T) {
 	}
 
 	flowStep, svcErr := service.Execute(context.Background(), "test-app", existingExecutionID,
-		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "valid-token", "")
+		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "valid-token", "", "")
 
 	assert.NotNil(t, svcErr)
 	assert.Equal(t, otherErr.Code, svcErr.Code)
@@ -1314,7 +1453,7 @@ func TestExecute_EngineError_NewFlow_ContextNeverRemoved(t *testing.T) {
 
 	// Pass empty executionID to indicate a new flow
 	flowStep, svcErr := service.Execute(context.Background(), "test-app", "",
-		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "valid-secret")
+		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "valid-secret", "")
 
 	assert.Nil(t, svcErr)
 	assert.NotNil(t, flowStep)
@@ -2032,7 +2171,7 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_IncompleteStoresContext() {
 	}
 
 	flowStep, svcErr := service.Execute(context.Background(), appID, "",
-		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "valid-secret")
+		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "valid-secret", "")
 
 	s.Nil(svcErr)
 	s.NotNil(flowStep)
@@ -2093,7 +2232,7 @@ func (s *ServiceTestSuite) TestExecute_ExistingFlow_CompleteRemovesContext() {
 	}
 
 	flowStep, svcErr := service.Execute(context.Background(), "test-app", "existing-execution-id",
-		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "")
+		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "", "")
 
 	s.Nil(svcErr)
 	s.NotNil(flowStep)
@@ -2104,7 +2243,7 @@ func (s *ServiceTestSuite) TestLoadNewContext_InvalidFlowType() {
 	service := &flowExecService{cfg: testFlowExecCfg}
 
 	engineCtx, svcErr := service.loadNewContext(context.Background(), "test-app", "INVALID_TYPE",
-		false, "submit", map[string]string{}, "", log.GetLogger())
+		false, "submit", map[string]string{}, "", "", log.GetLogger())
 
 	s.Nil(engineCtx)
 	s.NotNil(svcErr)
@@ -2237,15 +2376,21 @@ func (s *ServiceTestSuite) TestSetApplicationToContext_BuildApplicationError() {
 func (s *ServiceTestSuite) TestExecute_NewFlow_GuardRejections() {
 	cases := []struct {
 		name       string
+		flowType   providers.FlowType
 		grantTypes []string
 		flowSecret string
 		wantCode   string
 	}{
-		{"redirect-based app blocked", []string{"authorization_code"}, "",
+		{"redirect-based app blocked", providers.FlowTypeAuthentication, []string{"authorization_code"}, "",
 			ErrorDirectFlowInitiationNotPermitted.Code},
-		{"m2m app blocked", []string{"client_credentials"}, "",
+		{"m2m app blocked", providers.FlowTypeAuthentication, []string{"client_credentials"}, "",
 			ErrorDirectFlowInitiationNotPermitted.Code},
-		{"flow-native app without secret",
+		{"flow-native app without secret", providers.FlowTypeAuthentication,
+			[]string{"client_credentials", "urn:ietf:params:oauth:grant-type:token-exchange"}, "",
+			ErrorFlowSecretRequired.Code},
+		{"sign-out redirect-based app blocked", providers.FlowTypeSignOut, []string{"authorization_code"}, "",
+			ErrorDirectFlowInitiationNotPermitted.Code},
+		{"sign-out flow-native app without secret", providers.FlowTypeSignOut,
 			[]string{"client_credentials", "urn:ietf:params:oauth:grant-type:token-exchange"}, "",
 			ErrorFlowSecretRequired.Code},
 	}
@@ -2259,6 +2404,8 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_GuardRejections() {
 
 			mockActorProvider := actorprovidermock.NewActorProviderMock(t)
 			mockObservability := observabilitymock.NewObservabilityServiceInterfaceMock(t)
+			mockActorProvider.EXPECT().GetInboundClientByID(mock.Anything, "test-app").Return(
+				&providers.InboundClient{ID: "test-app"}, nil)
 			mockActorProvider.EXPECT().GetOAuthProfileByID(mock.Anything, "test-app").Return(
 				&providers.OAuthProfile{GrantTypes: tc.grantTypes}, nil)
 			mockObservability.EXPECT().IsEnabled().Return(false)
@@ -2270,7 +2417,7 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_GuardRejections() {
 			}
 
 			flowStep, svcErr := service.Execute(context.Background(), "test-app", "",
-				string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", tc.flowSecret)
+				string(tc.flowType), false, "submit", map[string]string{}, "", tc.flowSecret, "")
 
 			s.Nil(flowStep)
 			s.NotNil(svcErr)
@@ -2306,7 +2453,7 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_BackendApp_ValidSecret_Allowed() 
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(providers.AuthUser{}, nil, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app").Return(
-		&inboundmodel.InboundClient{ID: "test-app", AuthFlowID: "auth-graph-1"}, nil).Times(2)
+		&inboundmodel.InboundClient{ID: "test-app", AuthFlowID: "auth-graph-1"}, nil).Times(3)
 	mockEntityProvider.EXPECT().GetEntity("test-app").Return(
 		&providers.Entity{ID: "test-app", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
@@ -2328,7 +2475,7 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_BackendApp_ValidSecret_Allowed() 
 	}
 
 	flowStep, svcErr := service.Execute(context.Background(), "test-app", "",
-		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "valid-secret")
+		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "valid-secret", "")
 
 	s.Nil(svcErr)
 	s.NotNil(flowStep)
@@ -2342,6 +2489,8 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_BackendApp_InvalidSecret_Rejected
 
 	mockActorProvider := actorprovidermock.NewActorProviderMock(t)
 	mockObservability := observabilitymock.NewObservabilityServiceInterfaceMock(t)
+	mockActorProvider.EXPECT().GetInboundClientByID(mock.Anything, "test-app").Return(
+		&providers.InboundClient{ID: "test-app"}, nil)
 	mockActorProvider.EXPECT().GetOAuthProfileByID(mock.Anything, "test-app").Return(
 		&providers.OAuthProfile{
 			GrantTypes: []string{"client_credentials", "urn:ietf:params:oauth:grant-type:token-exchange"},
@@ -2359,7 +2508,7 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_BackendApp_InvalidSecret_Rejected
 	}
 
 	flowStep, svcErr := service.Execute(context.Background(), "test-app", "",
-		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "wrong-secret")
+		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "wrong-secret", "")
 
 	s.Nil(flowStep)
 	s.NotNil(svcErr)
@@ -2375,6 +2524,8 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_InitiationModeError_InternalError
 
 	mockActorProvider := actorprovidermock.NewActorProviderMock(t)
 	mockObservability := observabilitymock.NewObservabilityServiceInterfaceMock(t)
+	mockActorProvider.EXPECT().GetInboundClientByID(mock.Anything, "test-app").Return(
+		&providers.InboundClient{ID: "test-app"}, nil)
 	mockActorProvider.EXPECT().GetOAuthProfileByID(mock.Anything, "test-app").Return(
 		(*providers.OAuthProfile)(nil), &tidcommon.InternalServerError)
 	mockObservability.EXPECT().IsEnabled().Return(false)
@@ -2386,7 +2537,7 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_InitiationModeError_InternalError
 	}
 
 	flowStep, svcErr := service.Execute(context.Background(), "test-app", "",
-		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "")
+		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "", "")
 
 	s.Nil(flowStep)
 	s.NotNil(svcErr)
@@ -2440,7 +2591,7 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_EmbeddedApp_ValidSecret_Allowed()
 	}
 
 	flowStep, svcErr := service.Execute(context.Background(), "test-app", "",
-		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "valid-secret")
+		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "valid-secret", "")
 
 	s.Nil(svcErr)
 	s.NotNil(flowStep)
@@ -2469,7 +2620,7 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_EmbeddedApp_MissingSecret_Rejecte
 	}
 
 	flowStep, svcErr := service.Execute(context.Background(), "test-app", "",
-		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "")
+		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "", "", "")
 
 	s.Nil(flowStep)
 	s.NotNil(svcErr)
@@ -2530,7 +2681,7 @@ func (s *ServiceTestSuite) TestExecute_ContinuationFlow_AuthCodeApp_NotBlocked()
 	}
 
 	flowStep, svcErr := service.Execute(context.Background(), "test-app", "existing-execution-id",
-		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "valid-token", "")
+		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "valid-token", "", "")
 
 	s.Nil(svcErr)
 	s.NotNil(flowStep)
@@ -2566,7 +2717,7 @@ func (s *ServiceTestSuite) TestCheckDirectFlowInitiationAllowed_NoProfileRequire
 	}
 
 	svcErr := service.checkDirectFlowInitiationAllowed(context.Background(), "embedded-app",
-		providers.FlowTypeAuthentication, "", log.GetLogger())
+		providers.FlowTypeAuthentication, "", "", log.GetLogger())
 	s.NotNil(svcErr)
 	s.Equal(ErrorFlowSecretRequired.Code, svcErr.Code)
 }
@@ -2576,8 +2727,6 @@ func (s *ServiceTestSuite) TestCheckDirectFlowInitiationAllowed_NoProfileRequire
 func (s *ServiceTestSuite) TestCheckDirectFlowInitiationAllowed_UnknownAppInvalidAppID() {
 	t := s.T()
 	mockActorProvider := actorprovidermock.NewActorProviderMock(t)
-	mockActorProvider.EXPECT().GetOAuthProfileByID(mock.Anything, "app-notfound").Return(
-		(*providers.OAuthProfile)(nil), &actorprovider.ErrorActorNotFound)
 	mockActorProvider.EXPECT().GetInboundClientByID(mock.Anything, "app-notfound").Return(
 		(*providers.InboundClient)(nil), &actorprovider.ErrorActorNotFound)
 
@@ -2587,7 +2736,7 @@ func (s *ServiceTestSuite) TestCheckDirectFlowInitiationAllowed_UnknownAppInvali
 	}
 
 	svcErr := service.checkDirectFlowInitiationAllowed(context.Background(), "app-notfound",
-		providers.FlowTypeAuthentication, "", log.GetLogger())
+		providers.FlowTypeAuthentication, "", "", log.GetLogger())
 	s.NotNil(svcErr)
 	s.Equal(ErrorInvalidAppID.Code, svcErr.Code)
 }
@@ -2596,7 +2745,143 @@ func (s *ServiceTestSuite) TestCheckDirectFlowInitiationAllowed_NonAuthFlowAllow
 	service := &flowExecService{cfg: testFlowExecCfg}
 
 	svcErr := service.checkDirectFlowInitiationAllowed(context.Background(), "test-app",
-		providers.FlowTypeRegistration, "", log.GetLogger())
+		providers.FlowTypeRegistration, "", "", log.GetLogger())
+	s.Nil(svcErr)
+}
+
+// attestationClient returns an inbound client configured with Android attestation, holding an
+// already-encrypted service account credential.
+func attestationClient() *providers.InboundClient {
+	return &providers.InboundClient{
+		ID: "mobile-app",
+		Attestation: &providers.AttestationConfig{
+			Android: &providers.AndroidAttestationConfig{
+				PackageName:               "com.example.app",
+				ServiceAccountCredentials: "encrypted-creds",
+			},
+		},
+	}
+}
+
+// A mobile app with attestation configured but no token presented is rejected before any
+// verification is attempted.
+func (s *ServiceTestSuite) TestCheckDirectFlowInitiationAllowed_AttestationMissingToken() {
+	t := s.T()
+	mockActorProvider := actorprovidermock.NewActorProviderMock(t)
+	mockActorProvider.EXPECT().GetInboundClientByID(mock.Anything, "mobile-app").Return(
+		attestationClient(), nil)
+
+	service := &flowExecService{
+		actorProvider:       mockActorProvider,
+		attestationVerifier: attestationprovidermock.NewAttestationProviderMock(t),
+		cfg:                 testFlowExecCfg,
+	}
+
+	svcErr := service.checkDirectFlowInitiationAllowed(context.Background(), "mobile-app",
+		providers.FlowTypeAuthentication, "", "", log.GetLogger())
+	s.NotNil(svcErr)
+	s.Equal(ErrorAttestationRequired.Code, svcErr.Code)
+}
+
+// A token that is definitively rejected by the provider (identity mismatch, unrecognized app, etc.)
+// surfaces as an invalid attestation error.
+func (s *ServiceTestSuite) TestCheckDirectFlowInitiationAllowed_AttestationInvalid() {
+	t := s.T()
+	mockActorProvider := actorprovidermock.NewActorProviderMock(t)
+	mockActorProvider.EXPECT().GetInboundClientByID(mock.Anything, "mobile-app").Return(
+		attestationClient(), nil)
+	mockProvider := attestationprovidermock.NewAttestationProviderMock(t)
+	mockProvider.EXPECT().Verify(mock.Anything, mock.Anything, "bad-token").
+		Return(false, nil)
+
+	service := &flowExecService{
+		actorProvider:       mockActorProvider,
+		attestationVerifier: mockProvider,
+		cfg:                 testFlowExecCfg,
+	}
+
+	svcErr := service.checkDirectFlowInitiationAllowed(context.Background(), "mobile-app",
+		providers.FlowTypeAuthentication, "", "bad-token", log.GetLogger())
+	s.NotNil(svcErr)
+	s.Equal(ErrorAttestationInvalid.Code, svcErr.Code)
+}
+
+// An operational provider failure (provider outage, decrypt failure, misconfiguration) is surfaced
+// as a retriable server error, not a 401 — the caller should not treat a provider outage as an
+// authentication failure.
+func (s *ServiceTestSuite) TestCheckDirectFlowInitiationAllowed_AttestationVerifierUnavailable() {
+	t := s.T()
+	mockActorProvider := actorprovidermock.NewActorProviderMock(t)
+	mockActorProvider.EXPECT().GetInboundClientByID(mock.Anything, "mobile-app").Return(
+		attestationClient(), nil)
+	mockProvider := attestationprovidermock.NewAttestationProviderMock(t)
+	mockProvider.EXPECT().Verify(mock.Anything, mock.Anything, "some-token").
+		Return(false, &tidcommon.InternalServerError)
+
+	service := &flowExecService{
+		actorProvider:       mockActorProvider,
+		attestationVerifier: mockProvider,
+		cfg:                 testFlowExecCfg,
+	}
+
+	svcErr := service.checkDirectFlowInitiationAllowed(context.Background(), "mobile-app",
+		providers.FlowTypeAuthentication, "", "some-token", log.GetLogger())
+	s.NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// A token verified by the attestation provider permits direct flow initiation.
+func (s *ServiceTestSuite) TestCheckDirectFlowInitiationAllowed_AttestationValid() {
+	t := s.T()
+	mockActorProvider := actorprovidermock.NewActorProviderMock(t)
+	mockActorProvider.EXPECT().GetInboundClientByID(mock.Anything, "mobile-app").Return(
+		attestationClient(), nil)
+	mockProvider := attestationprovidermock.NewAttestationProviderMock(t)
+	mockProvider.EXPECT().Verify(mock.Anything, mock.MatchedBy(func(cfg *providers.AttestationConfig) bool {
+		return cfg != nil && cfg.Android != nil && cfg.Android.ServiceAccountCredentials == "encrypted-creds"
+	}), "good-token").Return(true, nil)
+
+	service := &flowExecService{
+		actorProvider:       mockActorProvider,
+		attestationVerifier: mockProvider,
+		cfg:                 testFlowExecCfg,
+	}
+
+	svcErr := service.checkDirectFlowInitiationAllowed(context.Background(), "mobile-app",
+		providers.FlowTypeAuthentication, "", "good-token", log.GetLogger())
+	s.Nil(svcErr)
+}
+
+// appleAttestationClient returns an inbound client configured with Apple App Attest attestation.
+func appleAttestationClient() *providers.InboundClient {
+	return &providers.InboundClient{
+		ID: "mobile-app",
+		Attestation: &providers.AttestationConfig{
+			Apple: &providers.AppleAttestationConfig{TeamID: "TEAM123", BundleID: "com.example.app"},
+		},
+	}
+}
+
+// An Apple-configured client also resolves to attestation-based flow initiation, and a token verified
+// by the provider permits direct flow initiation.
+func (s *ServiceTestSuite) TestCheckDirectFlowInitiationAllowed_AppleAttestationValid() {
+	t := s.T()
+	mockActorProvider := actorprovidermock.NewActorProviderMock(t)
+	mockActorProvider.EXPECT().GetInboundClientByID(mock.Anything, "mobile-app").Return(
+		appleAttestationClient(), nil)
+	mockProvider := attestationprovidermock.NewAttestationProviderMock(t)
+	mockProvider.EXPECT().Verify(mock.Anything, mock.MatchedBy(func(cfg *providers.AttestationConfig) bool {
+		return cfg != nil && cfg.Apple != nil && cfg.Apple.TeamID == "TEAM123"
+	}), "good-token").Return(true, nil)
+
+	service := &flowExecService{
+		actorProvider:       mockActorProvider,
+		attestationVerifier: mockProvider,
+		cfg:                 testFlowExecCfg,
+	}
+
+	svcErr := service.checkDirectFlowInitiationAllowed(context.Background(), "mobile-app",
+		providers.FlowTypeAuthentication, "", "good-token", log.GetLogger())
 	s.Nil(svcErr)
 }
 

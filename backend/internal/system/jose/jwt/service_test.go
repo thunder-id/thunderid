@@ -369,6 +369,44 @@ func (suite *JWTServiceTestSuite) TestGenerateJWTScenarios() {
 			},
 		},
 		{
+			name:     "DefaultClaimConflictOverwritten",
+			sub:      "test-subject",
+			iss:      testIssuer,
+			validity: 3600,
+			claims: map[string]interface{}{
+				"aud":    testAudience,
+				"sub":    "claim-subject",
+				"iss":    "claim-issuer",
+				"exp":    int64(123),
+				"iat":    int64(123),
+				"nbf":    int64(123),
+				"jti":    "claim-jti",
+				"custom": "value",
+			},
+			setupMock:    func() func() { return func() {} },
+			setupService: func() *jwtService { return suite.jwtService },
+			expectError:  false,
+			validateSuccess: func(t *testing.T, token string, iat int64) {
+				parts := strings.Split(token, ".")
+				payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+				assert.NoError(t, err)
+
+				var payload map[string]interface{}
+				err = json.Unmarshal(payloadBytes, &payload)
+				assert.NoError(t, err)
+
+				assert.Equal(t, "test-subject", payload["sub"])
+				assert.Equal(t, testIssuer, payload["iss"])
+				assert.NotEqual(t, "claim-jti", payload["jti"])
+				assert.NotEmpty(t, payload["jti"])
+				assert.NotEqual(t, float64(123), payload["exp"])
+				assert.NotEqual(t, float64(123), payload["iat"])
+				assert.NotEqual(t, float64(123), payload["nbf"])
+				assert.True(t, payload["exp"].(float64) > float64(time.Now().Unix()))
+				assert.Equal(t, "value", payload["custom"])
+			},
+		},
+		{
 			name:     "MissingAud",
 			sub:      "test-subject",
 			iss:      testIssuer,

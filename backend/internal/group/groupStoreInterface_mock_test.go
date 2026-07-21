@@ -347,6 +347,78 @@ func (_c *groupStoreInterfaceMock_DeleteGroup_Call) RunAndReturn(run func(ctx co
 	return _c
 }
 
+// DeleteMembershipsByMember provides a mock function for the type groupStoreInterfaceMock
+func (_mock *groupStoreInterfaceMock) DeleteMembershipsByMember(ctx context.Context, memberType string, memberID string) (int64, error) {
+	ret := _mock.Called(ctx, memberType, memberID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteMembershipsByMember")
+	}
+
+	var r0 int64
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (int64, error)); ok {
+		return returnFunc(ctx, memberType, memberID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) int64); ok {
+		r0 = returnFunc(ctx, memberType, memberID)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, memberType, memberID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// groupStoreInterfaceMock_DeleteMembershipsByMember_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteMembershipsByMember'
+type groupStoreInterfaceMock_DeleteMembershipsByMember_Call struct {
+	*mock.Call
+}
+
+// DeleteMembershipsByMember is a helper method to define mock.On call
+//   - ctx context.Context
+//   - memberType string
+//   - memberID string
+func (_e *groupStoreInterfaceMock_Expecter) DeleteMembershipsByMember(ctx interface{}, memberType interface{}, memberID interface{}) *groupStoreInterfaceMock_DeleteMembershipsByMember_Call {
+	return &groupStoreInterfaceMock_DeleteMembershipsByMember_Call{Call: _e.mock.On("DeleteMembershipsByMember", ctx, memberType, memberID)}
+}
+
+func (_c *groupStoreInterfaceMock_DeleteMembershipsByMember_Call) Run(run func(ctx context.Context, memberType string, memberID string)) *groupStoreInterfaceMock_DeleteMembershipsByMember_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *groupStoreInterfaceMock_DeleteMembershipsByMember_Call) Return(n int64, err error) *groupStoreInterfaceMock_DeleteMembershipsByMember_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *groupStoreInterfaceMock_DeleteMembershipsByMember_Call) RunAndReturn(run func(ctx context.Context, memberType string, memberID string) (int64, error)) *groupStoreInterfaceMock_DeleteMembershipsByMember_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetGroup provides a mock function for the type groupStoreInterfaceMock
 func (_mock *groupStoreInterfaceMock) GetGroup(ctx context.Context, id string) (GroupDAO, error) {
 	ret := _mock.Called(ctx, id)

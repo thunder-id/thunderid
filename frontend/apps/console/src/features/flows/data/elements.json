@@ -5,6 +5,7 @@
     "type": "BLOCK",
     "display": {
       "label": "Form",
+      "description": "Container that groups inputs and submits them together",
       "image": "assets/images/icons/form.svg"
     }
   },
@@ -14,6 +15,7 @@
     "type": "DYNAMIC_INPUT_PLACEHOLDER",
     "display": {
       "label": "Dynamic Input",
+      "description": "Renders input fields requested by executors at runtime",
       "image": "Layers",
       "showOnResourcePanel": true
     },
@@ -26,6 +28,7 @@
     "type": "TEXT_INPUT",
     "display": {
       "label": "Text Input",
+      "description": "Single-line field for free-form text",
       "image": "assets/images/icons/textbox.svg"
     },
     "inputType": "text",
@@ -40,6 +43,7 @@
     "type": "PASSWORD_INPUT",
     "display": {
       "label": "Password Input",
+      "description": "Masked field for passwords and secrets",
       "image": "assets/images/icons/password-input.svg"
     },
     "ref": "password",
@@ -55,6 +59,7 @@
     "type": "EMAIL_INPUT",
     "display": {
       "label": "Email Input",
+      "description": "Field for entering an email address",
       "image": "assets/images/icons/at.svg"
     },
     "inputType": "email",
@@ -69,6 +74,7 @@
     "type": "PHONE_INPUT",
     "display": {
       "label": "Phone Input",
+      "description": "Field for entering a phone number",
       "image": "assets/images/icons/phone.svg"
     },
     "inputType": "tel",
@@ -83,6 +89,7 @@
     "type": "NUMBER_INPUT",
     "display": {
       "label": "Number Input",
+      "description": "Field for entering a numeric value",
       "image": "assets/images/icons/number-input.svg"
     },
     "inputType": "number",
@@ -97,6 +104,7 @@
     "type": "DATE_INPUT",
     "display": {
       "label": "Date Input",
+      "description": "Field for picking a date",
       "image": "assets/images/icons/date.svg"
     },
     "inputType": "date",
@@ -111,6 +119,7 @@
     "type": "OTP_INPUT",
     "display": {
       "label": "OTP Input",
+      "description": "Segmented field for one-time passcodes",
       "image": "assets/images/icons/transaction-password-otp-verification-code-security.svg"
     },
     "inputType": "text",
@@ -127,6 +136,7 @@
     "variant": "RECAPTCHA_V2",
     "display": {
       "label": "reCAPTCHA",
+      "description": "Protect the form from bots with reCAPTCHA",
       "image": "assets/images/icons/recaptcha.png",
       "showOnResourcePanel": false
     },
@@ -138,6 +148,7 @@
     "type": "CHECKBOX",
     "display": {
       "label": "Checkbox",
+      "description": "Single on/off choice",
       "image": "assets/images/icons/checkbox-check.svg"
     },
     "hint": "",
@@ -150,6 +161,7 @@
     "type": "SELECT",
     "display": {
       "label": "Select",
+      "description": "Pick one option from a list",
       "image": "assets/images/icons/boolean.svg"
     },
     "hint": "",
@@ -164,6 +176,7 @@
     "type": "DROPDOWN",
     "display": {
       "label": "Choice",
+      "description": "Dropdown for choosing one of several options",
       "image": "assets/images/icons/boolean.svg",
       "showOnResourcePanel": false
     },
@@ -195,6 +208,7 @@
     "type": "ACTION",
     "display": {
       "label": "Button",
+      "description": "Trigger an action or submit the form",
       "image": "assets/images/icons/button.svg",
       "defaultVariant": "PRIMARY"
     },
@@ -258,6 +272,7 @@
     "label": "Resend",
     "display": {
       "label": "Resend",
+      "description": "Button to resend a code or message",
       "image": "assets/images/icons/loop.svg"
     }
   },
@@ -267,6 +282,7 @@
     "type": "TEXT",
     "display": {
       "label": "Text",
+      "description": "Static text such as headings or helper copy",
       "image": "assets/images/icons/text-size.svg",
       "defaultVariant": "HEADING_3"
     },
@@ -376,6 +392,7 @@
     "label": "<h3>Rich Text</h3>",
     "display": {
       "label": "Rich Text",
+      "description": "Formatted text with links and styling",
       "image": "assets/images/icons/display-rich-text.svg",
       "showOnResourcePanel": true
     }
@@ -386,6 +403,7 @@
     "type": "DIVIDER",
     "display": {
       "label": "Divider",
+      "description": "Separator between sections",
       "image": "assets/images/icons/divider.svg",
       "defaultVariant": "HORIZONTAL"
     },
@@ -409,6 +427,7 @@
     "type": "IMAGE",
     "display": {
       "label": "Image",
+      "description": "Display a logo or illustration",
       "image": "assets/images/icons/image-square.svg"
     },
     "src": "",
@@ -420,6 +439,7 @@
     "type": "STACK",
     "display": {
       "label": "Stack",
+      "description": "Layout container for arranging components",
       "image": "StretchHorizontal",
       "showOnResourcePanel": true
     },
@@ -435,6 +455,7 @@
     "type": "ICON",
     "display": {
       "label": "Icon",
+      "description": "Display an icon from the icon library",
       "image": "Star",
       "showOnResourcePanel": true
     },
@@ -448,6 +469,7 @@
     "type": "TIMER",
     "display": {
       "label": "Timer",
+      "description": "Countdown timer for time-limited actions",
       "image": "assets/images/icons/clock.svg",
       "showOnResourcePanel": true
     },
@@ -459,6 +481,7 @@
     "type": "CUSTOM",
     "display": {
       "label": "Custom",
+      "description": "Custom component defined by you",
       "image": "Puzzle",
       "showOnResourcePanel": true
     }

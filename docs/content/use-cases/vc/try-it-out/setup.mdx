@@ -1,0 +1,149 @@
+---
+title: Set Up the Sample
+docType: use-case
+description: Run the ThunderID distribution behind a public URL, import the Wayfinder Sky Pass bundle, and run the Wayfinder and Skyline Lounge sample apps.
+sidebar_position: 1
+sidebar_label: Set up the sample
+---
+
+# Set Up the Sample
+
+This page walks you through the quick path: get <ProductName /> running behind a public URL, import a pre-built bundle, and run the apps. Everything the walkthroughs need is created in one step.
+
+:::tip Prefer to build the setup manually?
+Skip the bundle import and follow [Configure It Yourself](../configure-it-yourself) instead.
+:::
+
+## Set Up Your Environment
+
+<Stepper stepNode="h3" as="h3">
+
+### Get <ProductName />
+
+Download and extract the <ProductName /> distribution. Follow [Get <ProductName />](../../../../guides/getting-started/get-thunderid) for the steps.
+
+Don't start the server yet: you need to point it at your public URL first.
+
+### Get a public HTTPS URL for <ProductName />
+
+The wallet scans QR codes that point at <ProductName />, so it must be reachable over public HTTPS. Two options:
+
+**Option A: Tunnel a local instance** (free, no infrastructure needed)
+
+Use [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/do-more-with-tunnels/trycloudflare/) or any HTTPS tunnel:
+
+```bash
+cloudflared tunnel --url https://localhost:8090 --no-tls-verify
+```
+
+The terminal prints a public URL such as `https://<random>.trycloudflare.com`.
+
+**Option B: Deploy to a server**
+
+Deploy <ProductName /> to any cloud or on-premise host where it is reachable over HTTPS. See [Deployment Patterns](../../../../guides/deployment-patterns/production-guidelines) for guidance.
+
+Either way, note your base URL as **`<PUBLIC_URL>`** and the hostname without `https://` as **`<PUBLIC_HOST>`**, used in the steps below.
+
+### Point <ProductName /> at the public URL
+
+In the distribution's `deployment.yaml`, set:
+
+```yaml
+server:
+  public_url: "<PUBLIC_URL>"
+
+gate_client:
+  hostname: "<PUBLIC_HOST>"
+  port: 443
+  scheme: "https"
+  path: "/gate"
+```
+
+Then update the Gate and Console frontend config files so the browser-side apps call the public URL instead of `localhost`. In `apps/gate/config.js` and `apps/console/config.js`, set:
+
+```js
+server: {
+  hostname: '<PUBLIC_HOST>',
+  port: 443,
+  http_only: false,
+},
+```
+
+See [Configuration](../../../../guides/getting-started/configuration) for a full reference.
+
+### Configure the Server
+
+Add the Wayfinder origin to the server-config `cors` section so the browser app can call <ProductName />. Create or update `config/resources/server_configs/cors.yaml`:
+
+```yaml
+name: cors
+value:
+  allowedOrigins:
+    # ...existing entries...
+    - "http://localhost:5173"
+```
+
+### Start <ProductName />
+
+`--bootstrap-and-serve` requires an admin password. Provide one with the
+`--admin-password` flag (or the `ADMIN_PASSWORD` environment variable), or startup
+fails. The `--admin-username` flag is optional and defaults to `admin`.
+
+```bash
+./start.sh --bootstrap-and-serve --admin-password <your-admin-password>
+```
+
+<ProductName /> is now running and reachable at `<PUBLIC_URL>`.
+
+### Get the Wayfinder Sample
+
+Download the latest Wayfinder sample distribution.
+
+<SampleDownload sample="sample-app-wayfinder" />
+
+### Import the Sample Bundle
+
+1. Open the <ProductName /> Console at **`<PUBLIC_URL>/console`**.
+2. On first sign-in, a welcome screen appears with an **Open** button. (Later, reach it from the user profile menu.)
+3. Click **Open** and select `thunderid-config/redirect/thunderid-config.yaml`.
+4. Select `thunderid-config/redirect/thunderid.env` for environment variables.
+5. The Console imports the files and reports the resources created.
+
+### Run the Sample
+
+From the extracted sample directory:
+
+```bash
+npm install
+VITE_THUNDER_BASE_URL=<PUBLIC_URL> npm run dev
+```
+
+Wayfinder opens at `http://localhost:5173` and the Skyline Lounge kiosk at `http://localhost:8795`.
+
+### Install a Wallet
+
+Install **Heidi** or **Lissi** on your phone. Both are pre-registered in the bundle.
+
+</Stepper>
+
+## Walkthroughs
+
+Pick a walkthrough to begin. Each one starts from the setup above.
+
+<NextSteps>
+  <NextStepsCard
+    title="Issue Credential"
+    description="John adds his Wayfinder Sky Pass to a mobile wallet from his profile page."
+    href="../issue-credential"
+  />
+  <NextStepsCard
+    title="Verify Credential"
+    description="John presents the Sky Pass at the Skyline Lounge kiosk, which grants access by tier."
+    href="../verify-at-lounge"
+  />
+</NextSteps>
+
+## Going Deeper
+
+- New to decentralized identity? See the [Decentralized Identity overview](../../overview).
+- Ready for production? See the [Production Deployment Guidelines](../../../../guides/deployment-patterns/production-guidelines).

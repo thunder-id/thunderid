@@ -116,11 +116,6 @@ const sidebars: SidebarsConfig = {
           id: 'guides/working-with-ai/mcp-server',
           label: 'MCP Server',
         },
-        {
-          type: 'doc',
-          id: 'guides/working-with-ai/get-started-with-mcp',
-          label: 'Getting Started with MCP',
-        },
       ],
     },
 
@@ -171,6 +166,7 @@ const sidebars: SidebarsConfig = {
                 {
                   type: 'category',
                   label: 'Walkthroughs',
+                  key: 'b2c-walkthroughs',
                   collapsible: true,
                   collapsed: true,
                   items: [
@@ -245,31 +241,43 @@ const sidebars: SidebarsConfig = {
           items: [
             {
               type: 'category',
-              label: 'Identity for AI Agents',
+              label: 'Agent ID',
               collapsible: true,
               collapsed: true,
+              link: {type: 'doc', id: 'use-cases/ai-agents/overview'},
               items: [
-                {type: 'doc', id: 'use-cases/ai-agents/overview', label: 'Agent Identity'},
-                {
-                  type: 'doc',
-                  id: 'use-cases/ai-agents/solution-patterns',
-                  label: 'Solution Patterns',
-                  key: 'ai-agents-solution-patterns',
-                },
+                {type: 'doc', id: 'use-cases/ai-agents/managed-agent-identity', label: 'Managed Identity'},
+                {type: 'doc', id: 'use-cases/ai-agents/invoking-the-agent', label: 'Invoking the Agent'},
+                {type: 'doc', id: 'use-cases/ai-agents/agent-as-subject', label: 'Agent as Subject'},
+                {type: 'doc', id: 'use-cases/ai-agents/model-interaction', label: 'Model Interaction Controls'},
+                {type: 'doc', id: 'use-cases/ai-agents/internal-services', label: 'Internal Business Services'},
+                {type: 'doc', id: 'use-cases/ai-agents/external-integration', label: 'External Integration'},
+                {type: 'doc', id: 'use-cases/ai-agents/multi-agent', label: 'Multi-Agent Interactions'},
                 {
                   type: 'category',
                   label: 'Try It Out',
                   collapsible: true,
                   collapsed: true,
                   key: 'ai-agents-try-it-out',
-                  link: {type: 'doc', id: 'use-cases/ai-agents/try-it-out'},
+                  link: {type: 'doc', id: 'use-cases/ai-agents/try-it-out/index'},
                   items: [
-                    {type: 'doc', id: 'use-cases/ai-agents/try-it-out/protect-the-agent', label: 'Protect the Agent'},
-                    {type: 'doc', id: 'use-cases/ai-agents/try-it-out/act-on-its-own', label: 'Acting on Its Own'},
+                    {type: 'doc', id: 'use-cases/ai-agents/try-it-out/setup', label: 'Set up sample application', key: 'ai-agents-setup'},
+                    {type: 'doc', id: 'use-cases/ai-agents/configure-it-yourself', label: 'Configure It Yourself', key: 'ai-agents-configure-it-yourself'},
                     {
-                      type: 'doc',
-                      id: 'use-cases/ai-agents/try-it-out/act-on-behalf-of-user',
-                      label: 'Acting on Behalf of a User',
+                      type: 'category',
+                      label: 'Walkthroughs',
+                      key: 'ai-agents-walkthroughs',
+                      collapsible: true,
+                      collapsed: true,
+                      items: [
+                        {type: 'doc', id: 'use-cases/ai-agents/try-it-out/protect-the-agent', label: 'Protect the Agent'},
+                        {type: 'doc', id: 'use-cases/ai-agents/try-it-out/act-on-its-own', label: 'Acting on Its Own'},
+                        {
+                          type: 'doc',
+                          id: 'use-cases/ai-agents/try-it-out/act-on-behalf-of-user',
+                          label: 'Acting on Behalf of a User',
+                        },
+                      ],
                     },
                   ],
                 },
@@ -299,9 +307,23 @@ const sidebars: SidebarsConfig = {
                       key: 'mcp-authorization-walkthroughs',
                       items: [
                         {
-                          type: 'doc',
-                          id: 'use-cases/ai-agents/mcp-authorization/try-it-out/connect-via-inspector',
+                          type: 'category',
                           label: 'MCP Authorization',
+                          collapsible: true,
+                          collapsed: true,
+                          key: 'mcp-authorization-walkthroughs-mcp-authorization',
+                          items: [
+                            {
+                              type: 'doc',
+                              id: 'use-cases/ai-agents/mcp-authorization/try-it-out/connect-via-inspector',
+                              label: 'Scope-Based',
+                            },
+                            {
+                              type: 'doc',
+                              id: 'use-cases/ai-agents/mcp-authorization/try-it-out/authzen-authorization',
+                              label: 'AuthZEN-Based',
+                            },
+                          ],
                         },
                       ],
                     },
@@ -324,12 +346,35 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
-          label: 'Decentralised Identity',
+          label: 'Decentralized Identity',
           collapsible: true,
           collapsed: true,
           key: 'use-cases-vc',
           items: [
             {type: 'doc', id: 'use-cases/vc/overview', label: 'Overview', key: 'vc-overview'},
+            {
+              type: 'category',
+              label: 'Try It Out',
+              collapsible: true,
+              collapsed: true,
+              key: 'vc-try-it-out',
+              link: {type: 'doc', id: 'use-cases/vc/try-it-out/index'},
+              items: [
+                {type: 'doc', id: 'use-cases/vc/try-it-out/setup', label: 'Set up the sample', key: 'vc-setup'},
+                {type: 'doc', id: 'use-cases/vc/try-it-out/configure-it-yourself', label: 'Configure It Yourself', key: 'vc-configure'},
+                {
+                  type: 'category',
+                  label: 'Walkthroughs',
+                  collapsible: true,
+                  collapsed: true,
+                  key: 'vc-walkthroughs',
+                  items: [
+                    {type: 'doc', id: 'use-cases/vc/try-it-out/issue-credential', label: 'Issue Credential', key: 'vc-issue'},
+                    {type: 'doc', id: 'use-cases/vc/try-it-out/verify-at-lounge', label: 'Verify Credential', key: 'vc-verify'},
+                  ],
+                },
+              ],
+            },
           ],
         },
       ],
@@ -385,6 +430,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'guides/guides/users/manage-roles',
+              label: 'Manage Roles',
+            },
+            {
+              type: 'doc',
               id: 'guides/guides/users/user-types',
               label: 'User Types',
             },
@@ -405,6 +455,11 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'guides/guides/agents/manage-agents',
               label: 'Manage Agents',
+            },
+            {
+              type: 'doc',
+              id: 'guides/guides/agents/agent-authentication',
+              label: 'Agent Authentication',
             },
           ],
         },
@@ -522,6 +577,11 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'guides/guides/flows/build-a-flow',
               label: 'Build a Flow',
+            },
+            {
+              type: 'doc',
+              id: 'guides/guides/flows/single-sign-on',
+              label: 'Single Sign-On',
             },
             {
               type: 'doc',
@@ -740,6 +800,11 @@ const sidebars: SidebarsConfig = {
               items: [
                 {
                   type: 'doc',
+                  id: 'guides/guides/protocols/openid4vc/openid4vci',
+                  label: 'OpenID for Verifiable Credential Issuance',
+                },
+                {
+                  type: 'doc',
                   id: 'guides/guides/protocols/openid4vc/openid4vp',
                   label: 'OpenID for Verifiable Presentations',
                 },
@@ -810,6 +875,11 @@ const sidebars: SidebarsConfig = {
               id: 'guides/key-concepts/authentication/integration-models',
               label: 'Integration Models',
             },
+            {
+              type: 'doc',
+              id: 'guides/key-concepts/authentication/sessions',
+              label: 'Sessions and Single Sign-On',
+            },
           ],
         },
         {
@@ -821,6 +891,34 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           id: 'guides/key-concepts/tokens',
           label: 'Tokens',
+        },
+        {
+          type: 'category',
+          label: 'Import and Export',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            {
+              type: 'doc',
+              id: 'guides/declarative-configurations/what-is-import-and-export',
+              label: 'What Is Import and Export?',
+            },
+            {
+              type: 'doc',
+              id: 'guides/declarative-configurations/import-resources',
+              label: 'Import Resources',
+            },
+            {
+              type: 'doc',
+              id: 'guides/guides/resource-export',
+              label: 'Export Resources',
+            },
+            {
+              type: 'doc',
+              id: 'guides/declarative-configurations/templates',
+              label: 'Template Resources',
+            },
+          ],
         },
       ],
     },
@@ -851,9 +949,22 @@ const sidebars: SidebarsConfig = {
           collapsed: true,
           items: [
             {
-              type: 'doc',
-              id: 'guides/deployment-patterns/docker',
+              type: 'category',
               label: 'Docker',
+              collapsible: true,
+              collapsed: false,
+              items: [
+                {
+                  type: 'doc',
+                  id: 'guides/deployment-patterns/docker',
+                  label: 'Deploy with Docker',
+                },
+                {
+                  type: 'doc',
+                  id: 'guides/deployment-patterns/docker-production',
+                  label: 'Production Recommendations',
+                },
+              ],
             },
             {
               type: 'doc',
@@ -876,6 +987,11 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           id: 'guides/deployment-patterns/production-guidelines',
           label: 'Production Guidelines',
+        },
+        {
+          type: 'doc',
+          id: 'guides/deployment-patterns/observability',
+          label: 'Observability',
         },
       ],
     },

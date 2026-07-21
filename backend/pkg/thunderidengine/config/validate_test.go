@@ -145,6 +145,46 @@ func (suite *ValidateTestSuite) TestSecurityConfig_Validate() {
 		}
 		assert.Error(t, c.Validate())
 	})
+
+	suite.T().Run("propagates TokenRevocation error", func(t *testing.T) {
+		c := &SecurityConfig{
+			TokenRevocation: TokenRevocationConfig{Enabled: true, SyncIntervalSeconds: -1},
+		}
+		assert.ErrorContains(t, c.Validate(), "sync_interval_seconds")
+	})
+}
+
+// ----- TokenRevocationConfig -----
+
+func (suite *ValidateTestSuite) TestTokenRevocationConfig_Validate() {
+	suite.T().Run("disabled skips validation", func(t *testing.T) {
+		assert.NoError(t, (&TokenRevocationConfig{Enabled: false, SyncIntervalSeconds: -1}).Validate())
+	})
+
+	suite.T().Run("negative interval fails when enabled", func(t *testing.T) {
+		assert.ErrorContains(t,
+			(&TokenRevocationConfig{Enabled: true, SyncIntervalSeconds: -1}).Validate(),
+			"sync_interval_seconds")
+	})
+
+	suite.T().Run("zero interval passes when enabled", func(t *testing.T) {
+		assert.NoError(t, (&TokenRevocationConfig{Enabled: true, SyncIntervalSeconds: 0}).Validate())
+	})
+
+	suite.T().Run("positive interval passes when enabled", func(t *testing.T) {
+		assert.NoError(t,
+			(&TokenRevocationConfig{Enabled: true, Source: "db", SyncIntervalSeconds: 30}).Validate())
+	})
+
+	suite.T().Run("empty source passes when enabled", func(t *testing.T) {
+		assert.NoError(t, (&TokenRevocationConfig{Enabled: true, SyncIntervalSeconds: 30}).Validate())
+	})
+
+	suite.T().Run("unsupported source fails when enabled", func(t *testing.T) {
+		assert.ErrorContains(t,
+			(&TokenRevocationConfig{Enabled: true, Source: "events", SyncIntervalSeconds: 30}).Validate(),
+			"source")
+	})
 }
 
 // ----- DPoPConfig -----

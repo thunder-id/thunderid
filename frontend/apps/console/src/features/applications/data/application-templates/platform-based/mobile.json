@@ -25,5 +25,8 @@
       "pkceRequired": {"readOnly": true, "value": true},
       "tokenEndpointAuthMethod": {"readOnly": true, "value": "none"}
     }
+  },
+  "capabilities": {
+    "attestation": true
   }
 }

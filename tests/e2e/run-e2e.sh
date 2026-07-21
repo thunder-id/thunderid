@@ -77,7 +77,6 @@ cleanup() {
     echo "Cleaning up..."
     kill_port $SAMPLE_PORT
     kill_port $SERVER_PORT
-    kill_port 9090
     rm -rf "$DIST_HOME"
 }
 trap cleanup EXIT
@@ -113,8 +112,6 @@ ADMIN_PASS="${ADMIN_PASSWORD:-admin}"
 if [ ! -f "$SETUP_DONE_FLAG" ]; then
     echo "Running first-time setup..."
     (cd "$DIST_HOME" && ./setup.sh --admin-username "$ADMIN_USER" --admin-password "$ADMIN_PASS")
-    # Ensure the consent server started by setup.sh has fully released its port before we start a new one.
-    sleep 2
     touch "$SETUP_DONE_FLAG"
 fi
 

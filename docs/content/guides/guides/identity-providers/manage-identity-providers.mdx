@@ -1,5 +1,6 @@
 ---
 title: Manage Identity Providers
+docType: guide
 sidebar_position: 1
 persona: iam
 description: Create, update, and delete identity providers in {{ProductName}} using the REST API.
@@ -27,25 +28,22 @@ For provider-specific setup instructions, see:
 
 ## Create an Identity Provider
 
-Send a `POST` request to `/identity-providers`:
+The vendor is selected by URL path: `/connections/google`, `/connections/github`, `/connections/oidc`, or `/connections/oauth`. Send a `POST` request to `/connections/{vendor}`:
 
 ```bash
-curl -kL -X POST https://localhost:8090/identity-providers \
+curl -kL -X POST https://localhost:8090/connections/google \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <access-token>' \
   -d '{
     "name": "My Provider",
     "description": "Optional description",
-    "type": "GOOGLE",
-    "properties": [
-      { "name": "client_id", "value": "<client-id>", "isSecret": false },
-      { "name": "client_secret", "value": "<client-secret>", "isSecret": true },
-      { "name": "redirect_uri", "value": "https://localhost:8090/oauth2/callback", "isSecret": false }
-    ]
+    "clientId": "<client-id>",
+    "clientSecret": "<client-secret>",
+    "redirectUri": "https://localhost:8090/gate/callback"
   }'
 ```
 
-Valid `type` values: `GOOGLE`, `GITHUB`, `OIDC`, `OAUTH`.
+Each vendor accepts a different set of fields. See [Add a Google Identity Provider](../add-google), [Add a GitHub Identity Provider](../add-github), [Add an OIDC Identity Provider](../add-oidc-provider), and [Add an OAuth 2.0 Identity Provider](../add-oauth-provider) for the full field reference of each.
 
 **Response (201 Created):**
 
@@ -54,23 +52,48 @@ Valid `type` values: `GOOGLE`, `GITHUB`, `OIDC`, `OAUTH`.
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "My Provider",
   "description": "Optional description",
-  "type": "GOOGLE",
-  "properties": [
-    { "name": "client_id", "value": "<client-id>", "isSecret": false },
-    { "name": "client_secret", "value": "******", "isSecret": true },
-    { "name": "redirect_uri", "value": "https://localhost:8090/oauth2/callback", "isSecret": false }
-  ]
+  "type": "google",
+  "clientId": "<client-id>",
+  "clientSecret": "******",
+  "redirectUri": "https://localhost:8090/gate/callback"
 }
 ```
 
-Secret property values are masked (`******`) in all API responses.
+Secret field values are masked (`******`) in all API responses.
 
 ## List Identity Providers
 
-Send a `GET` request to `/identity-providers`:
+To list identity providers across all vendors, send a `GET` request to `/connections?category=identity-provider`:
 
 ```bash
-curl -kL https://localhost:8090/identity-providers \
+curl -kL https://localhost:8090/connections?category=identity-provider \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "totalResults": 1,
+  "startIndex": 1,
+  "count": 1,
+  "connections": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "Google",
+      "description": "Google social login",
+      "type": "google",
+      "categories": ["identity-provider"]
+    }
+  ],
+  "links": []
+}
+```
+
+To list only the identity providers of one vendor, send a `GET` request to `/connections/{vendor}` instead:
+
+```bash
+curl -kL https://localhost:8090/connections/google \
   -H 'Authorization: Bearer <access-token>'
 ```
 
@@ -81,38 +104,32 @@ curl -kL https://localhost:8090/identity-providers \
   {
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "name": "Google",
-    "description": "Google social login",
-    "type": "GOOGLE",
-    "isReadOnly": false
+    "description": "Google social login"
   }
 ]
 ```
 
 ## Get an Identity Provider
 
-Send a `GET` request to `/identity-providers/{id}`:
+Send a `GET` request to `/connections/{vendor}/{id}`:
 
 ```bash
-curl -kL https://localhost:8090/identity-providers/<idp-id> \
+curl -kL https://localhost:8090/connections/google/<idp-id> \
   -H 'Authorization: Bearer <access-token>'
 ```
 
 ## Update an Identity Provider
 
-Send a `PUT` request to `/identity-providers/{id}` with the full updated payload. The request body uses the same structure as the create request:
+Send a `PUT` request to `/connections/{vendor}/{id}` with the full updated payload. The request body uses the same structure as the create request. Omit the secret field (for example `clientSecret`) to keep the value currently stored:
 
 ```bash
-curl -kL -X PUT https://localhost:8090/identity-providers/<idp-id> \
+curl -kL -X PUT https://localhost:8090/connections/google/<idp-id> \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <access-token>' \
   -d '{
     "name": "My Provider",
-    "type": "GOOGLE",
-    "properties": [
-      { "name": "client_id", "value": "<new-client-id>", "isSecret": false },
-      { "name": "client_secret", "value": "<new-client-secret>", "isSecret": true },
-      { "name": "redirect_uri", "value": "https://localhost:8090/oauth2/callback", "isSecret": false }
-    ]
+    "clientId": "<new-client-id>",
+    "redirectUri": "https://localhost:8090/gate/callback"
   }'
 ```
 
@@ -120,17 +137,17 @@ Changes take effect immediately for new authentication requests.
 
 ## Delete an Identity Provider
 
-Send a `DELETE` request to `/identity-providers/{id}`:
+Send a `DELETE` request to `/connections/{vendor}/{id}`:
 
 ```bash
-curl -kL -X DELETE https://localhost:8090/identity-providers/<idp-id> \
+curl -kL -X DELETE https://localhost:8090/connections/google/<idp-id> \
   -H 'Authorization: Bearer <access-token>'
 ```
 
 A successful delete returns `204 No Content`.
 
 :::warning
-Deleting an identity provider removes it permanently. Any authentication flow that references this IdP will fail at the social login step. Update or remove the flow node before deleting the IdP.
+Deleting an identity provider is permanent. If an authentication flow (or another resource) still references this identity provider, the delete request is rejected with `409 Conflict`. Remove or update the referencing resources, for example, the flow node that uses this IdP, before deleting it.
 :::
 
 :::note
@@ -139,4 +156,4 @@ Read-only identity providers created through declarative configuration return an
 
 ## Next Steps
 
-- [Connect an IdP to an Application](../connect-idp-to-application) — Assign a configured IdP to an application's sign-in flow.
+- [Connect an IdP to an Application](../connect-idp-to-application): Assign a configured IdP to an application's sign-in flow.

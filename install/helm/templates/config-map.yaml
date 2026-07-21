@@ -25,6 +25,3 @@ data:
   deployment.yaml: {{ tpl (.Files.Get "conf/deployment.yaml") . | quote }}
   gate-config.js: {{ tpl (.Files.Get "conf/apps/gate/config.js") . | quote }}
   console-config.js: {{ tpl (.Files.Get "conf/apps/console/config.js") . | quote }}
-  {{- if .Values.configuration.consent.enabled }}
-  consent-deployment.yaml: {{ tpl (.Files.Get "conf/consent-deployment.yaml") . | quote }}
-  {{- end }}

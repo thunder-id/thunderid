@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -44,6 +44,7 @@ import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
@@ -128,6 +129,42 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_InvalidTokenSignature() {
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.NotNil(s.T(), svcErr)
 	assert.Equal(s.T(), errorInvalidAccessToken.Code, svcErr.Code)
+	assert.Nil(s.T(), response)
+	s.mockTokenValidator.AssertExpectations(s.T())
+}
+
+// TestGetUserInfo_RevocationUnavailable verifies that when the validator fails closed with
+// revocation.ErrEnforcementUnavailable, GetUserInfo returns a server error rather than serving
+// claims from a token whose revocation status is unknown.
+func (s *UserInfoServiceTestSuite) TestGetUserInfo_RevocationUnavailable() {
+	token := "token.revocation.unavailable"
+	s.mockTokenValidator.On("ValidateAccessToken", mock.Anything, token).Return(
+		nil, revocation.ErrEnforcementUnavailable)
+
+	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
+	assert.NotNil(s.T(), svcErr)
+	assert.Equal(s.T(), errorRevocationUnavailable.Code, svcErr.Code)
+	assert.Nil(s.T(), response)
+	s.mockTokenValidator.AssertExpectations(s.T())
+}
+
+// TestGetUserInfoForDPoP_RevocationUnavailable verifies the same fail-closed behavior on the DPoP
+// path: the request is rejected with a server error before any proof binding checks.
+func (s *UserInfoServiceTestSuite) TestGetUserInfoForDPoP_RevocationUnavailable() {
+	verifier := dpopmock.NewVerifierInterfaceMock(s.T())
+	actorProv := actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider, noopAuthnMgr())
+	s.userInfoService = newUserInfoService(
+		s.mockJWTService, nil, nil, s.mockTokenValidator,
+		actorProv, s.mockAttributeCacheService, verifier, userInfoTestConfig())
+
+	token := "token.revocation.unavailable"
+	s.mockTokenValidator.On("ValidateAccessToken", mock.Anything, token).Return(
+		nil, revocation.ErrEnforcementUnavailable)
+
+	response, svcErr := s.userInfoService.GetUserInfoForDPoP(
+		context.Background(), token, "proof", "GET", "https://example.com/oauth2/userinfo")
+	assert.NotNil(s.T(), svcErr)
+	assert.Equal(s.T(), errorRevocationUnavailable.Code, svcErr.Code)
 	assert.Nil(s.T(), response)
 	s.mockTokenValidator.AssertExpectations(s.T())
 }

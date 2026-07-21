@@ -57,6 +57,8 @@ type BasicApplicationDTO struct {
 	IsRegistrationFlowEnabled bool
 	RecoveryFlowID            string
 	IsRecoveryFlowEnabled     bool
+	SignOutFlowID             string
+	IsSignOutFlowEnabled      bool
 	ThemeID                   string
 	LayoutID                  string
 	Template                  string
@@ -175,6 +177,8 @@ type BasicApplicationResponse struct {
 	IsRegistrationFlowEnabled bool   `json:"isRegistrationFlowEnabled" jsonschema:"Registration enabled status."`
 	RecoveryFlowID            string `json:"recoveryFlowId,omitempty" jsonschema:"Recovery Flow ID."`
 	IsRecoveryFlowEnabled     bool   `json:"isRecoveryFlowEnabled" jsonschema:"Recovery enabled status."`
+	SignOutFlowID             string `json:"signOutFlowId,omitempty" jsonschema:"Sign-out flow ID."`
+	IsSignOutFlowEnabled      bool   `json:"isSignOutFlowEnabled" jsonschema:"Sign-out enabled status."`
 	ThemeID                   string `json:"themeId,omitempty" jsonschema:"Theme ID."`
 	LayoutID                  string `json:"layoutId,omitempty" jsonschema:"Layout ID."`
 	Template                  string `json:"template,omitempty" jsonschema:"Application Template."`

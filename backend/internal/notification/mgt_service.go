@@ -22,12 +22,14 @@ package notification
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -37,18 +39,22 @@ type NotificationSenderMgtSvcInterface interface {
 	CreateSender(ctx context.Context, sender common.NotificationSenderDTO) (*common.NotificationSenderDTO,
 		*tidcommon.ServiceError)
 	ListSenders(ctx context.Context) ([]common.NotificationSenderDTO, *tidcommon.ServiceError)
+	ListSendersByType(ctx context.Context, senderType common.NotificationSenderType) ([]common.NotificationSenderDTO,
+		*tidcommon.ServiceError)
 	GetSender(ctx context.Context, id string) (*common.NotificationSenderDTO, *tidcommon.ServiceError)
 	GetSenderByName(ctx context.Context, name string) (*common.NotificationSenderDTO, *tidcommon.ServiceError)
 	UpdateSender(ctx context.Context, id string, sender common.NotificationSenderDTO) (*common.NotificationSenderDTO,
 		*tidcommon.ServiceError)
 	DeleteSender(ctx context.Context, id string) *tidcommon.ServiceError
+	SetDependencyRegistry(r resourcedependency.Registry)
 }
 
 // notificationSenderMgtService implements the NotificationSenderMgtSvcInterface.
 type notificationSenderMgtService struct {
-	notificationStore notificationStoreInterface
-	transactioner     transaction.Transactioner
-	uuidGenerator     func() (string, error)
+	notificationStore  notificationStoreInterface
+	transactioner      transaction.Transactioner
+	dependencyRegistry resourcedependency.Registry
+	uuidGenerator      func() (string, error)
 }
 
 // newNotificationSenderMgtService returns a new instance of NotificationSenderMgtSvcInterface.
@@ -137,6 +143,23 @@ func (s *notificationSenderMgtService) ListSenders(ctx context.Context) ([]commo
 	senders, err := s.notificationStore.listSenders(ctx)
 	if err != nil {
 		logger.Error(ctx, "Failed to list notification senders", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	return senders, nil
+}
+
+// ListSendersByType retrieves all notification senders of the given type (e.g. only
+// message/SMS senders, excluding email senders).
+func (s *notificationSenderMgtService) ListSendersByType(
+	ctx context.Context, senderType common.NotificationSenderType,
+) ([]common.NotificationSenderDTO, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationSenderMgtService"))
+	logger.Debug(ctx, "Listing notification senders by type", log.String("type", string(senderType)))
+
+	senders, err := s.notificationStore.listSendersByType(ctx, senderType)
+	if err != nil {
+		logger.Error(ctx, "Failed to list notification senders by type", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 
@@ -283,6 +306,11 @@ func (s *notificationSenderMgtService) DeleteSender(ctx context.Context, id stri
 		return &ErrorInvalidSenderID
 	}
 
+	// Refuse deletion while other resources block it (e.g. flows that reference the sender).
+	if svcErr := s.ensureNoBlockingDependencies(ctx, id, logger); svcErr != nil {
+		return svcErr
+	}
+
 	transactErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if err := s.notificationStore.deleteSender(txCtx, id); err != nil {
 			return err
@@ -297,4 +325,50 @@ func (s *notificationSenderMgtService) DeleteSender(ctx context.Context, id stri
 	}
 
 	return nil
+}
+
+// SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
+// provider services are initialized to avoid a cyclic import.
+func (s *notificationSenderMgtService) SetDependencyRegistry(r resourcedependency.Registry) {
+	s.dependencyRegistry = r
+}
+
+// ensureNoBlockingDependencies refuses deletion when other resources depend on the notification
+// sender in a way that forbids it (behaviorOnDelete == restrict), such as flows that reference it.
+// Because deletion is destructive, it fails closed: if dependency data cannot be determined, the
+// deletion is refused rather than allowed.
+func (s *notificationSenderMgtService) ensureNoBlockingDependencies(
+	ctx context.Context, id string, logger *log.Logger) *tidcommon.ServiceError {
+	if s.dependencyRegistry == nil {
+		logger.Error(ctx, "Dependency registry not set; refusing to delete notification sender",
+			log.String("id", id))
+		return &tidcommon.InternalServerError
+	}
+
+	deps, err := s.dependencyRegistry.GetDependencies(ctx, resourcedependency.ResourceTypeNotificationSender, id)
+	if err != nil {
+		logger.Error(ctx, "Failed to evaluate notification sender dependencies",
+			log.Error(err), log.String("id", id))
+		return &tidcommon.InternalServerError
+	}
+	// Fail closed: nil TotalResults means a provider failed to report, so usage is unknown.
+	if deps == nil || deps.TotalResults == nil {
+		logger.Error(ctx, "Notification sender dependency data unavailable; refusing to delete",
+			log.String("id", id))
+		return &tidcommon.InternalServerError
+	}
+
+	blocking := resourcedependency.BlockingUsages(deps)
+	if len(blocking) == 0 {
+		return nil
+	}
+
+	logger.Debug(ctx, "Notification sender has blocking dependencies; deletion refused",
+		log.String("id", id), log.Int("blockingCount", len(blocking)))
+	return tidcommon.CustomServiceError(ErrorSenderHasBlockingDependencies, tidcommon.I18nMessage{
+		Key: "error.notificationservice.sender_has_blocking_dependencies_description",
+		DefaultValue: fmt.Sprintf(
+			"The notification sender cannot be deleted because %s depend on it. Remove or reassign them first.",
+			resourcedependency.SummarizeBlockingUsages(blocking)),
+	})
 }

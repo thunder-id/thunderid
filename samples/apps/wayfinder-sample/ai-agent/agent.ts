@@ -60,7 +60,7 @@ const agentConfig = {
 };
 
 // Separate CIBA-only credentials for the upgrade scheduler.
-// Uses default-ciba-email-flow; kept separate from the main agent because
+// Uses wayfinder-ciba-email-flow; kept separate from the main agent because
 // auth_flow_handle is shared between authorization_code and CIBA — they need
 // different flows (interactive browser login vs backchannel email notification).
 const upgradeAgentConfig = {
@@ -259,7 +259,9 @@ const USER_CONTEXT_TOOLS = new Set<string>([
     "upgrade_booking",
 ]);
 
-const OBO_SCOPES = "openid booking:read booking:create booking:cancel booking:upgrade";
+const OBO_SCOPES =
+  "openid booking:read booking:create " +
+  "booking:cancel booking:upgrade";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -362,6 +364,7 @@ function buildAuthorizeUrl(
     client_id: agentConfig.agentID,
     redirect_uri: AGENT_REDIRECT_URI,
     scope,
+    resource: MCP_SERVER_URL,
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
@@ -380,6 +383,7 @@ async function exchangeCodeForUserToken(
     redirect_uri: AGENT_REDIRECT_URI,
     client_id: agentConfig.agentID,
     code_verifier: codeVerifier,
+    resource: MCP_SERVER_URL,
   });
 
   const basicAuth = Buffer.from(
@@ -452,6 +456,9 @@ async function initiateCiba(
     const body = new URLSearchParams({
         [hintParam]: hint,
         scope: `openid upgrade:process`,
+        // RFC 8707: bind the CIBA request to the MCP resource server so the issued
+        // access token's aud is the MCP server and upgrade:process resolves against it.
+        resource: MCP_SERVER_URL,
         binding_message: bindingMessage,
     });
 
@@ -730,6 +737,7 @@ async function fetchAgentToken(): Promise<TokenState> {
   const body = new URLSearchParams({
     grant_type: "client_credentials",
     scope: "booking:recommend upgrade:search",
+    resource: MCP_SERVER_URL,
   });
   const basicAuth = Buffer.from(
     `${agentConfig.agentID}:${agentConfig.agentSecret}`,
@@ -795,6 +803,7 @@ async function fetchUpgradeAgentToken(): Promise<TokenState> {
   const body = new URLSearchParams({
     grant_type: "client_credentials",
     scope: "upgrade:read upgrade:search",
+    resource: MCP_SERVER_URL,
   });
   const basicAuth = Buffer.from(
     `${upgradeAgentConfig.agentID}:${upgradeAgentConfig.agentSecret}`,
@@ -1165,8 +1174,9 @@ async function handleConsent(
 // ---------------------------------------------------------------------------
 
 async function processOneUpgrade(): Promise<boolean> {
-  // Use the upgrade agent's own M2M token (upgrade:read scope) to call get_pending_upgrade.
-  // This is separate from the main agent's mcpBaseTools which use booking:recommend scope.
+  // Use the upgrade agent's own M2M token (upgrade:read scope) to call
+  // get_pending_upgrade. This is separate from the main agent's mcpBaseTools which use
+  // booking:recommend scope.
   const upgradeM2MToken = await getOrRefreshUpgradeAgentToken();
 
   const upgradeM2MClient = new MultiServerMCPClient({

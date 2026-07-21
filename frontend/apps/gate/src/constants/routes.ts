@@ -52,6 +52,10 @@ export interface Routes {
      * Recovery page route.
      */
     RECOVERY: string;
+    /**
+     * Sign-out page route.
+     */
+    SIGNOUT: string;
   };
 }
 
@@ -78,6 +82,7 @@ const ROUTES: Routes = {
     INVITE: '/invite',
     CALLBACK: '/callback',
     RECOVERY: '/recovery',
+    SIGNOUT: '/signout',
   },
 } as const;
 

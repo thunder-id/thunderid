@@ -71,7 +71,11 @@ func newOUExecutor(
 		log.String(log.LoggerKeyExecutorName, ExecutorNameOUCreation))
 
 	base := flowFactory.CreateExecutor(ExecutorNameOUCreation, providers.ExecutorTypeRegistration,
-		defaultInputs, []providers.Input{})
+		defaultInputs, []providers.Input{}, &providers.ExecutorMeta{
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: "parentOuId"},
+			},
+		})
 
 	return &ouExecutor{
 		Executor:          base,

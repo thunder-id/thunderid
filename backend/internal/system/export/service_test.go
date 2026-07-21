@@ -21,7 +21,6 @@ package export
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -31,11 +30,11 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/application"
 	appmodel "github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/connection"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	"github.com/thunder-id/thunderid/internal/idp"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
-	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -103,8 +102,7 @@ func (suite *ExportServiceTestSuite) SetupTest() {
 	// Create exporters
 	exporters := []declarativeresource.ResourceExporter{
 		application.NewApplicationExporterForTest(suite.appServiceMock),
-		idp.NewIDPExporterForTest(suite.idpServiceMock),
-		notification.NewNotificationSenderExporterForTest(suite.mockNotificationService),
+		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService),
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService),
 		flowmgt.NewFlowGraphExporterForTest(suite.mockFlowService),
 	}
@@ -169,16 +167,16 @@ func (suite *ExportServiceTestSuite) TestExportResources_DefaultOptions() {
 	assert.Nil(suite.T(), result.EnvFile)
 	assert.Equal(suite.T(), 1, result.Summary.TotalFiles)
 	assert.Contains(suite.T(), result.Summary.ResourceTypes, "application")
-	assert.Contains(suite.T(), result.Files[0].Content, "# resource_type: application")
+	assert.Contains(suite.T(), result.Files[0].Content, "resource_type: application")
 }
 
-func (suite *ExportServiceTestSuite) TestAddResourceTypeComment() {
+func (suite *ExportServiceTestSuite) TestAddResourceTypeField() {
 	content := "name: sample\n"
-	annotated := addResourceTypeComment(content, "application")
+	annotated := addResourceTypeField(content, "application")
 
-	assert.Equal(suite.T(), "# resource_type: application\nname: sample\n", annotated)
+	assert.Equal(suite.T(), "resource_type: application\nname: sample\n", annotated)
 
-	annotatedAgain := addResourceTypeComment(annotated, "application")
+	annotatedAgain := addResourceTypeField(annotated, "application")
 	assert.Equal(suite.T(), annotated, annotatedAgain)
 }
 
@@ -231,8 +229,10 @@ func (suite *ExportServiceTestSuite) TestExportResources_CompleteOAuthApplicatio
 		Scopes:                  []string{"openid", "profile"},
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				ValidityPeriod: 3600,
-				UserAttributes: []string{"email", "username"},
+				UserConfig: &providers.AccessTokenSubConfig{
+					ValidityPeriod: 3600,
+					Attributes:     []string{"email", "username"},
+				},
 			},
 			IDToken: &providers.IDTokenConfig{
 				ValidityPeriod: 1800,
@@ -516,19 +516,20 @@ func (suite *ExportServiceTestSuite) TestExportResources_WildcardApplications_Pa
 func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Success() {
 	idpID := testIDPID
 	request := &ExportRequest{
-		IdentityProviders: []string{idpID},
+		Connections: []string{idpID},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
 	}
 
 	mockProperty, _ := cmodels.NewProperty("client_id", "test-client-id", false)
+	mockSecret, _ := cmodels.NewProperty(idp.PropClientSecret, "test-client-secret", true)
 	mockIDP := &providers.IDPDTO{
 		ID:          idpID,
 		Name:        "Test IDP",
 		Description: "Test Identity Provider",
 		Type:        providers.IDPTypeGoogle,
-		Properties:  []cmodels.Property{*mockProperty},
+		Properties:  []cmodels.Property{*mockProperty, *mockSecret},
 	}
 
 	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, idpID).Return(mockIDP, nil)
@@ -540,9 +541,9 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Succes
 	assert.Len(suite.T(), result.Files, 1)
 	assert.NotNil(suite.T(), result.EnvFile)
 	assert.Equal(suite.T(), 2, result.Summary.TotalFiles)
-	assert.Contains(suite.T(), result.Summary.ResourceTypes, "identity_provider")
+	assert.Contains(suite.T(), result.Summary.ResourceTypes, "connection")
 	assert.Equal(suite.T(), "Test_IDP.yaml", result.Files[0].FileName)
-	assert.Equal(suite.T(), "identity_provider", result.Files[0].ResourceType)
+	assert.Equal(suite.T(), "connection", result.Files[0].ResourceType)
 	assert.Contains(suite.T(), result.Files[0].Content, "name: Test IDP")
 }
 
@@ -569,47 +570,50 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Multip
 	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "idp2").Return(mockIDP2, nil)
 
 	request := &ExportRequest{
-		IdentityProviders: []string{"idp1", "idp2"},
-		Options:           &ExportOptions{Format: "yaml"},
+		Connections: []string{"idp1", "idp2"},
+		Options:     &ExportOptions{Format: "yaml"},
 	}
 	result, err := suite.exportService.ExportResources(context.Background(), request)
 
-	suite.assertMultipleResourcesExport(result, err, 2, "identity_provider")
+	suite.assertMultipleResourcesExport(result, err, 2, "connection")
 }
 
 // TestExportResources_IdentityProvider_Wildcard tests exporting all IDPs using wildcard.
 func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Wildcard() {
 	request := &ExportRequest{
-		IdentityProviders: []string{"*"},
+		Connections: []string{"*"},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
 	}
 
 	mockIDPList := []idp.BasicIDPDTO{
-		{ID: "idp1", Name: "Google IDP"},
-		{ID: "idp2", Name: "GitHub IDP"},
+		{ID: "idp1", Name: "Google IDP", Type: providers.IDPTypeGoogle},
+		{ID: "idp2", Name: "GitHub IDP", Type: providers.IDPTypeGitHub},
 	}
 
 	mockProperty1, _ := cmodels.NewProperty("client_id", "client1", false)
+	mockSecret1, _ := cmodels.NewProperty(idp.PropClientSecret, "secret1", true)
 	mockIDP1 := &providers.IDPDTO{
 		ID:         "idp1",
 		Name:       "Google IDP",
 		Type:       providers.IDPTypeGoogle,
-		Properties: []cmodels.Property{*mockProperty1},
+		Properties: []cmodels.Property{*mockProperty1, *mockSecret1},
 	}
 
 	mockProperty2, _ := cmodels.NewProperty("client_id", "client2", false)
+	mockSecret2, _ := cmodels.NewProperty(idp.PropClientSecret, "secret2", true)
 	mockIDP2 := &providers.IDPDTO{
 		ID:         "idp2",
 		Name:       "GitHub IDP",
 		Type:       providers.IDPTypeGitHub,
-		Properties: []cmodels.Property{*mockProperty2},
+		Properties: []cmodels.Property{*mockProperty2, *mockSecret2},
 	}
 
 	suite.idpServiceMock.EXPECT().GetIdentityProviderList(mock.Anything).Return(mockIDPList, nil)
 	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "idp1").Return(mockIDP1, nil)
 	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "idp2").Return(mockIDP2, nil)
+	suite.mockNotificationService.EXPECT().ListSenders(mock.Anything).Return(nil, nil)
 
 	result, err := suite.exportService.ExportResources(context.Background(), request)
 
@@ -623,8 +627,8 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Wildca
 // TestExportResources_Mixed_ApplicationsAndIDPs tests exporting both applications and IDPs.
 func (suite *ExportServiceTestSuite) TestExportResources_Mixed_ApplicationsAndIDPs() {
 	request := &ExportRequest{
-		Applications:      []string{testAppID},
-		IdentityProviders: []string{testIDPID},
+		Applications: []string{testAppID},
+		Connections:  []string{testIDPID},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
@@ -637,11 +641,12 @@ func (suite *ExportServiceTestSuite) TestExportResources_Mixed_ApplicationsAndID
 	}
 
 	mockProperty, _ := cmodels.NewProperty("client_id", "test-client-id", false)
+	mockSecret, _ := cmodels.NewProperty(idp.PropClientSecret, "test-client-secret", true)
 	mockIDP := &providers.IDPDTO{
 		ID:         testIDPID,
 		Name:       "Test IDP",
 		Type:       providers.IDPTypeGoogle,
-		Properties: []cmodels.Property{*mockProperty},
+		Properties: []cmodels.Property{*mockProperty, *mockSecret},
 	}
 
 	suite.appServiceMock.EXPECT().GetApplication(mock.Anything, testAppID).Return(mockApp, nil)
@@ -655,15 +660,15 @@ func (suite *ExportServiceTestSuite) TestExportResources_Mixed_ApplicationsAndID
 	assert.NotNil(suite.T(), result.EnvFile)
 	assert.Equal(suite.T(), 3, result.Summary.TotalFiles)
 	assert.Contains(suite.T(), result.Summary.ResourceTypes, "application")
-	assert.Contains(suite.T(), result.Summary.ResourceTypes, "identity_provider")
+	assert.Contains(suite.T(), result.Summary.ResourceTypes, "connection")
 	assert.Equal(suite.T(), 1, result.Summary.ResourceTypes["application"])
-	assert.Equal(suite.T(), 1, result.Summary.ResourceTypes["identity_provider"])
+	assert.Equal(suite.T(), 1, result.Summary.ResourceTypes["connection"])
 }
 
 // TestExportResources_IdentityProvider_NotFound tests error handling when IDP not found.
 func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_NotFound() {
 	request := &ExportRequest{
-		IdentityProviders: []string{"non-existent-idp"},
+		Connections: []string{"non-existent-idp"},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
@@ -687,32 +692,34 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_NotFou
 // TestExportResources_IdentityProvider_WildcardPartialFailure tests wildcard IDP export with partial failures.
 func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_WildcardPartialFailure() {
 	request := &ExportRequest{
-		IdentityProviders: []string{"*"},
+		Connections: []string{"*"},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
 	}
 
 	mockIDPList := []idp.BasicIDPDTO{
-		{ID: "idp1", Name: "Google IDP"},
-		{ID: "idp2", Name: "GitHub IDP"},
-		{ID: "idp3", Name: "OIDC IDP"},
+		{ID: "idp1", Name: "Google IDP", Type: providers.IDPTypeGoogle},
+		{ID: "idp2", Name: "GitHub IDP", Type: providers.IDPTypeGitHub},
+		{ID: "idp3", Name: "OIDC IDP", Type: providers.IDPTypeOIDC},
 	}
 
 	mockProperty1, _ := cmodels.NewProperty("client_id", "client1", false)
+	mockSecret1, _ := cmodels.NewProperty(idp.PropClientSecret, "secret1", true)
 	mockIDP1 := &providers.IDPDTO{
 		ID:         "idp1",
 		Name:       "Google IDP",
 		Type:       providers.IDPTypeGoogle,
-		Properties: []cmodels.Property{*mockProperty1},
+		Properties: []cmodels.Property{*mockProperty1, *mockSecret1},
 	}
 
 	mockProperty3, _ := cmodels.NewProperty("client_id", "client3", false)
+	mockSecret3, _ := cmodels.NewProperty(idp.PropClientSecret, "secret3", true)
 	mockIDP3 := &providers.IDPDTO{
 		ID:         "idp3",
 		Name:       "OIDC IDP",
 		Type:       providers.IDPTypeOIDC,
-		Properties: []cmodels.Property{*mockProperty3},
+		Properties: []cmodels.Property{*mockProperty3, *mockSecret3},
 	}
 
 	idpError := &tidcommon.ServiceError{
@@ -724,6 +731,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Wildca
 	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "idp1").Return(mockIDP1, nil)
 	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "idp2").Return(nil, idpError)
 	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "idp3").Return(mockIDP3, nil)
+	suite.mockNotificationService.EXPECT().ListSenders(mock.Anything).Return(nil, nil)
 
 	result, err := suite.exportService.ExportResources(context.Background(), request)
 
@@ -732,9 +740,9 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Wildca
 	assert.Len(suite.T(), result.Files, 2) // 2 successful exports
 	assert.NotNil(suite.T(), result.EnvFile)
 	assert.Equal(suite.T(), 3, result.Summary.TotalFiles)
-	assert.Equal(suite.T(), 2, result.Summary.ResourceTypes["identity_provider"])
+	assert.Equal(suite.T(), 2, result.Summary.ResourceTypes["connection"])
 	assert.Len(suite.T(), result.Summary.Errors, 1) // One error recorded
-	assert.Equal(suite.T(), "identity_provider", result.Summary.Errors[0].ResourceType)
+	assert.Equal(suite.T(), "connection", result.Summary.Errors[0].ResourceType)
 	assert.Equal(suite.T(), "idp2", result.Summary.Errors[0].ResourceID)
 }
 
@@ -752,7 +760,7 @@ func (suite *ExportServiceTestSuite) assertExportNoProperties(request *ExportReq
 // TestExportResources_IdentityProvider_NoProperties tests exporting IDP with no properties.
 func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_NoProperties() {
 	request := &ExportRequest{
-		IdentityProviders: []string{"idp-no-props"},
+		Connections: []string{"idp-no-props"},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
@@ -774,7 +782,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_NoProp
 // TestExportResources_IdentityProvider_EmptyName tests validation for IDP with empty name.
 func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_EmptyName() {
 	request := &ExportRequest{
-		IdentityProviders: []string{"idp-no-name"},
+		Connections: []string{"idp-no-name"},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
@@ -798,21 +806,21 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_EmptyN
 	assert.Equal(suite.T(), ErrorNoResourcesFound.Code, err.Code)
 }
 
-// TestExportResources_IdentityProvider_PropertyParameterization verifies that IDP properties
-// are correctly parameterized with context-aware variable names.
+// TestExportResources_IdentityProvider_PropertyParameterization verifies that the IDP's
+// secret field (clientSecret) is parameterized with a context-aware variable name, while
+// non-secret typed fields are exported as plain values.
 func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_PropertyParameterization() {
 	idpID := "test-parameterization-idp"
 	request := &ExportRequest{
-		IdentityProviders: []string{idpID},
+		Connections: []string{idpID},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
 	}
 
-	// Create properties with various names
-	clientIDProp, _ := cmodels.NewProperty("client_id", "test-client-123", true)
-	clientSecretProp, _ := cmodels.NewProperty("client_secret", "super-secret", true)
-	redirectURIProp, _ := cmodels.NewProperty("redirect_uri", "http://localhost:3000", false)
+	clientIDProp, _ := cmodels.NewProperty(idp.PropClientID, "test-client-123", false)
+	clientSecretProp, _ := cmodels.NewProperty(idp.PropClientSecret, "super-secret", true)
+	redirectURIProp, _ := cmodels.NewProperty(idp.PropRedirectURI, "http://localhost:3000", false)
 
 	mockIDP := &providers.IDPDTO{
 		ID:          idpID,
@@ -836,41 +844,35 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Proper
 
 	yamlContent := result.Files[0].Content
 
-	// Verify the YAML contains parameterized property values with context-aware variable names
-	// Variable names should be: IDP_NAME + PROPERTY_NAME in UPPER_SNAKE_CASE
-	assert.Contains(suite.T(), yamlContent, "{{.EXPORT_TEST_IDP_CLIENT_ID}}")
-	assert.Contains(suite.T(), yamlContent, "{{.EXPORT_TEST_IDP_CLIENT_SECRET}}")
-	assert.Contains(suite.T(), yamlContent, "{{.EXPORT_TEST_IDP_REDIRECT_URI}}")
+	// Only the secret field is parameterized, with a context-aware variable name:
+	// IDP_NAME + FIELD_NAME in UPPER_SNAKE_CASE.
+	assert.Contains(suite.T(), yamlContent, "clientSecret: {{.EXPORT_TEST_IDP_CLIENT_SECRET}}")
 
-	// Verify property names are preserved
-	assert.Contains(suite.T(), yamlContent, "name: client_id")
-	assert.Contains(suite.T(), yamlContent, "name: client_secret")
-	assert.Contains(suite.T(), yamlContent, "name: redirect_uri")
+	// Non-secret typed fields are exported as plain values under their camelCase keys.
+	assert.Contains(suite.T(), yamlContent, "clientId: test-client-123")
+	assert.Contains(suite.T(), yamlContent, "redirectUri: http://localhost:3000")
 
-	// Verify secret flags are preserved (YAML uses 'is_secret' field name)
-	assert.Contains(suite.T(), yamlContent, "isSecret: true")
-
-	// Verify basic IDP fields
+	// Verify basic connection fields.
 	assert.Contains(suite.T(), yamlContent, "name: Export Test IDP")
-	assert.Contains(suite.T(), yamlContent, "type: GOOGLE")
+	assert.Contains(suite.T(), yamlContent, "type: google")
+
+	assert.NotNil(suite.T(), result.EnvFile)
+	assert.Contains(suite.T(), result.EnvFile.Content, "EXPORT_TEST_IDP_CLIENT_SECRET=super-secret")
 }
 
-// TestExportResources_IdentityProvider_PropertyStructure verifies that IDP properties
-// are exported with correct YAML structure including name, value, and is_secret fields.
+// TestExportResources_IdentityProvider_PropertyStructure verifies that a connection with
+// only non-secret typed fields is exported without any parameterized variables.
 func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_PropertyStructure() {
 	idpID := "test-property-structure"
 	request := &ExportRequest{
-		IdentityProviders: []string{idpID},
+		Connections: []string{idpID},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
 	}
 
-	// Create properties with various combinations - some secret, some not
-	clientIDProp, _ := cmodels.NewProperty("client_id", "test-client-123", false)
-	clientSecretProp, _ := cmodels.NewProperty("client_secret", "super-secret-value", true)
-	apiKeyProp, _ := cmodels.NewProperty("api_key", "api-key-xyz", true)
-	callbackURLProp, _ := cmodels.NewProperty("callback_url", "https://example.com/callback", false)
+	clientIDProp, _ := cmodels.NewProperty(idp.PropClientID, "test-client-123", false)
+	redirectURIProp, _ := cmodels.NewProperty(idp.PropRedirectURI, "https://example.com/callback", false)
 
 	mockIDP := &providers.IDPDTO{
 		ID:          idpID,
@@ -879,9 +881,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Proper
 		Type:        providers.IDPTypeOIDC,
 		Properties: []cmodels.Property{
 			*clientIDProp,
-			*clientSecretProp,
-			*apiKeyProp,
-			*callbackURLProp,
+			*redirectURIProp,
 		},
 	}
 
@@ -895,30 +895,16 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Proper
 
 	yamlContent := result.Files[0].Content
 
-	// Verify property names are preserved in the YAML
-	assert.Contains(suite.T(), yamlContent, "name: client_id")
-	assert.Contains(suite.T(), yamlContent, "name: client_secret")
-	assert.Contains(suite.T(), yamlContent, "name: api_key")
-	assert.Contains(suite.T(), yamlContent, "name: callback_url")
-
-	// Verify all properties have value fields (template variables due to DynamicPropertyFields)
-	assert.Contains(suite.T(), yamlContent, "value:")
-
-	// Verify secret flags are preserved for secret properties
-	// Count occurrences of "isSecret: true" - should be 2 (client_secret and api_key)
-	secretCount := strings.Count(yamlContent, "isSecret: true")
-	assert.Equal(suite.T(), 2, secretCount, "Should have exactly 2 secret properties")
-
-	// Verify the properties section exists and has proper structure
-	assert.Contains(suite.T(), yamlContent, "properties:")
-
-	// Verify basic IDP fields
+	// Verify basic connection fields and the typed (non-secret) field values.
 	assert.Contains(suite.T(), yamlContent, "name: Property Structure Test")
 	assert.Contains(suite.T(), yamlContent, "description: Test IDP for property YAML structure validation")
-	assert.Contains(suite.T(), yamlContent, "type: OIDC")
+	assert.Contains(suite.T(), yamlContent, "type: oidc")
+	assert.Contains(suite.T(), yamlContent, "clientId: test-client-123")
+	assert.Contains(suite.T(), yamlContent, "redirectUri: https://example.com/callback")
 
-	// Verify proper indentation and YAML list structure for properties
-	assert.Contains(suite.T(), yamlContent, "properties:\n  - name:")
+	// No secret field is set, so no variable is parameterized and no env file is produced.
+	assert.Nil(suite.T(), result.EnvFile)
+	assert.Equal(suite.T(), 1, result.Summary.TotalFiles)
 }
 
 // TestExportResources_PartialFailure_DetailedErrorValidation enhances the existing partial failure test
@@ -971,26 +957,28 @@ func (suite *ExportServiceTestSuite) TestExportResources_PartialFailure_Detailed
 // TestExportResources_IdentityProvider_PartialFailure_DetailedErrorValidation tests IDP partial failure.
 func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_PartialFailure_DetailedErrorValidation() {
 	request := &ExportRequest{
-		IdentityProviders: []string{"idp1", "idp2-not-found", "idp3"},
+		Connections: []string{"idp1", "idp2-not-found", "idp3"},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
 	}
 
 	mockProperty1, _ := cmodels.NewProperty("client_id", "client1", false)
+	mockSecret1, _ := cmodels.NewProperty(idp.PropClientSecret, "secret1", true)
 	mockIDP1 := &providers.IDPDTO{
 		ID:         "idp1",
 		Name:       "Google IDP",
 		Type:       providers.IDPTypeGoogle,
-		Properties: []cmodels.Property{*mockProperty1},
+		Properties: []cmodels.Property{*mockProperty1, *mockSecret1},
 	}
 
 	mockProperty3, _ := cmodels.NewProperty("client_id", "client3", false)
+	mockSecret3, _ := cmodels.NewProperty(idp.PropClientSecret, "secret3", true)
 	mockIDP3 := &providers.IDPDTO{
 		ID:         "idp3",
 		Name:       "GitHub IDP",
 		Type:       providers.IDPTypeGitHub,
-		Properties: []cmodels.Property{*mockProperty3},
+		Properties: []cmodels.Property{*mockProperty3, *mockSecret3},
 	}
 
 	idpError := &tidcommon.ServiceError{
@@ -1014,7 +1002,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Partia
 	// Verify error details
 	assert.Len(suite.T(), result.Summary.Errors, 1)
 	exportError := result.Summary.Errors[0]
-	assert.Equal(suite.T(), "identity_provider", exportError.ResourceType)
+	assert.Equal(suite.T(), "connection", exportError.ResourceType)
 	assert.Equal(suite.T(), "idp2-not-found", exportError.ResourceID)
 	assert.Equal(suite.T(), "IDP_NOT_FOUND", exportError.Code)
 	assert.Equal(suite.T(), "Identity provider not found", exportError.Error)
@@ -1029,8 +1017,8 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Partia
 // TestExportResources_MixedResources_WithErrors tests exporting both apps and IDPs with some failures.
 func (suite *ExportServiceTestSuite) TestExportResources_MixedResources_WithErrors() {
 	request := &ExportRequest{
-		Applications:      []string{"app1", "app2-not-found"},
-		IdentityProviders: []string{"idp1", "idp2-not-found"},
+		Applications: []string{"app1", "app2-not-found"},
+		Connections:  []string{"idp1", "idp2-not-found"},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
@@ -1050,11 +1038,12 @@ func (suite *ExportServiceTestSuite) TestExportResources_MixedResources_WithErro
 
 	// Setup successful IDP
 	mockProperty1, _ := cmodels.NewProperty("client_id", "client1", false)
+	mockSecret1, _ := cmodels.NewProperty(idp.PropClientSecret, "secret1", true)
 	mockIDP1 := &providers.IDPDTO{
 		ID:         "idp1",
 		Name:       "Google IDP",
 		Type:       providers.IDPTypeGoogle,
-		Properties: []cmodels.Property{*mockProperty1},
+		Properties: []cmodels.Property{*mockProperty1, *mockSecret1},
 	}
 
 	// Setup IDP error
@@ -1079,7 +1068,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_MixedResources_WithErro
 
 	// Verify resource type counts
 	assert.Equal(suite.T(), 1, result.Summary.ResourceTypes["application"])
-	assert.Equal(suite.T(), 1, result.Summary.ResourceTypes["identity_provider"])
+	assert.Equal(suite.T(), 1, result.Summary.ResourceTypes["connection"])
 
 	// Verify errors - should have 2 errors (1 app, 1 IDP)
 	assert.Len(suite.T(), result.Summary.Errors, 2)
@@ -1093,7 +1082,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_MixedResources_WithErro
 			assert.Equal(suite.T(), "app2-not-found", e.ResourceID)
 			assert.Equal(suite.T(), "APP_NOT_FOUND", e.Code)
 		}
-		if e.ResourceType == resourceTypeIdentityProvider {
+		if e.ResourceType == resourceTypeConnection {
 			idpErrorFound = true
 			assert.Equal(suite.T(), "idp2-not-found", e.ResourceID)
 			assert.Equal(suite.T(), "IDP_NOT_FOUND", e.Code)
@@ -1194,8 +1183,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_TemplateGenerationError
 	// Create exporters with the test services
 	exporters := []declarativeresource.ResourceExporter{
 		application.NewApplicationExporterForTest(suite.appServiceMock),
-		idp.NewIDPExporterForTest(suite.idpServiceMock),
-		notification.NewNotificationSenderExporterForTest(suite.mockNotificationService),
+		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService),
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService),
 	}
 
@@ -1246,8 +1234,8 @@ func (suite *ExportServiceTestSuite) TestExportResources_WithCustomFolderStructu
 // TestExportResources_WithGroupByTypeStructure tests the GroupByType path in generateFolderPath.
 func (suite *ExportServiceTestSuite) TestExportResources_WithGroupByTypeStructure() {
 	request := &ExportRequest{
-		Applications:      []string{testApp1ID, testApp2ID},
-		IdentityProviders: []string{"idp1"},
+		Applications: []string{testApp1ID, testApp2ID},
+		Connections:  []string{"idp1"},
 		Options: &ExportOptions{
 			Format: "yaml",
 			FolderStructure: &FolderStructureOptions{
@@ -1291,8 +1279,8 @@ func (suite *ExportServiceTestSuite) TestExportResources_WithGroupByTypeStructur
 		if file.ResourceType == "application" {
 			assert.Equal(suite.T(), "applications", file.FolderPath)
 			appFiles++
-		} else if file.ResourceType == "identity_provider" {
-			assert.Equal(suite.T(), "identity_providers", file.FolderPath)
+		} else if file.ResourceType == "connection" {
+			assert.Equal(suite.T(), "connections", file.FolderPath)
 			idpFiles++
 		}
 	}
@@ -1304,7 +1292,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_WithGroupByTypeStructur
 // TestExportNotificationSenders_Success tests successful export of notification senders.
 func (suite *ExportServiceTestSuite) TestExportNotificationSenders_Success() {
 	request := &ExportRequest{
-		NotificationSenders: []string{"sender1"},
+		Connections: []string{"sender1"},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
@@ -1319,6 +1307,7 @@ func (suite *ExportServiceTestSuite) TestExportNotificationSenders_Success() {
 		Properties:  []cmodels.Property{*mockProperty},
 	}
 
+	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "sender1").Return(nil, &idp.ErrorIDPNotFound)
 	suite.mockNotificationService.EXPECT().GetSender(mock.Anything, "sender1").Return(mockSender, nil)
 
 	result, err := suite.exportService.ExportResources(context.Background(), request)
@@ -1328,9 +1317,9 @@ func (suite *ExportServiceTestSuite) TestExportNotificationSenders_Success() {
 	assert.Len(suite.T(), result.Files, 1)
 	assert.NotNil(suite.T(), result.EnvFile)
 	assert.Equal(suite.T(), 2, result.Summary.TotalFiles)
-	assert.Contains(suite.T(), result.Summary.ResourceTypes, "notification_sender")
+	assert.Contains(suite.T(), result.Summary.ResourceTypes, "connection")
 	assert.Equal(suite.T(), "Test_Sender.yaml", result.Files[0].FileName)
-	assert.Equal(suite.T(), "notification_sender", result.Files[0].ResourceType)
+	assert.Equal(suite.T(), "connection", result.Files[0].ResourceType)
 	assert.Contains(suite.T(), result.Files[0].Content, "name: Test Sender")
 }
 
@@ -1353,22 +1342,24 @@ func (suite *ExportServiceTestSuite) TestExportNotificationSenders_Multiple() {
 		Properties: []cmodels.Property{*mockProperty2},
 	}
 
+	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "sender1").Return(nil, &idp.ErrorIDPNotFound)
+	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "sender2").Return(nil, &idp.ErrorIDPNotFound)
 	suite.mockNotificationService.EXPECT().GetSender(mock.Anything, "sender1").Return(mockSender1, nil)
 	suite.mockNotificationService.EXPECT().GetSender(mock.Anything, "sender2").Return(mockSender2, nil)
 
 	request := &ExportRequest{
-		NotificationSenders: []string{"sender1", "sender2"},
-		Options:             &ExportOptions{Format: "yaml"},
+		Connections: []string{"sender1", "sender2"},
+		Options:     &ExportOptions{Format: "yaml"},
 	}
 	result, err := suite.exportService.ExportResources(context.Background(), request)
 
-	suite.assertMultipleResourcesExport(result, err, 2, "notification_sender")
+	suite.assertMultipleResourcesExport(result, err, 2, "connection")
 }
 
 // TestExportNotificationSenders_Wildcard tests exporting all notification senders using wildcard.
 func (suite *ExportServiceTestSuite) TestExportNotificationSenders_Wildcard() {
 	request := &ExportRequest{
-		NotificationSenders: []string{"*"},
+		Connections: []string{"*"},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
@@ -1378,6 +1369,7 @@ func (suite *ExportServiceTestSuite) TestExportNotificationSenders_Wildcard() {
 	mockSender1 := &common.NotificationSenderDTO{
 		ID:         "sender1",
 		Name:       "Twilio Sender",
+		Type:       common.NotificationSenderTypeMessage,
 		Provider:   common.MessageProviderTypeTwilio,
 		Properties: []cmodels.Property{*mockProperty1},
 	}
@@ -1386,12 +1378,16 @@ func (suite *ExportServiceTestSuite) TestExportNotificationSenders_Wildcard() {
 	mockSender2 := &common.NotificationSenderDTO{
 		ID:         "sender2",
 		Name:       "Vonage Sender",
+		Type:       common.NotificationSenderTypeMessage,
 		Provider:   common.MessageProviderTypeVonage,
 		Properties: []cmodels.Property{*mockProperty2},
 	}
 
 	mockSenderList := []common.NotificationSenderDTO{*mockSender1, *mockSender2}
 
+	suite.idpServiceMock.EXPECT().GetIdentityProviderList(mock.Anything).Return(nil, nil)
+	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "sender1").Return(nil, &idp.ErrorIDPNotFound)
+	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "sender2").Return(nil, &idp.ErrorIDPNotFound)
 	suite.mockNotificationService.EXPECT().ListSenders(mock.Anything).Return(mockSenderList, nil)
 	suite.mockNotificationService.EXPECT().GetSender(mock.Anything, "sender1").Return(mockSender1, nil)
 	suite.mockNotificationService.EXPECT().GetSender(mock.Anything, "sender2").Return(mockSender2, nil)
@@ -1408,7 +1404,7 @@ func (suite *ExportServiceTestSuite) TestExportNotificationSenders_Wildcard() {
 // TestExportNotificationSenders_NotFound tests error handling when sender not found.
 func (suite *ExportServiceTestSuite) TestExportNotificationSenders_NotFound() {
 	request := &ExportRequest{
-		NotificationSenders: []string{"non-existent-sender"},
+		Connections: []string{"non-existent-sender"},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
@@ -1419,6 +1415,8 @@ func (suite *ExportServiceTestSuite) TestExportNotificationSenders_NotFound() {
 		Error: tidcommon.I18nMessage{DefaultValue: "Notification sender not found"},
 	}
 
+	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "non-existent-sender").
+		Return(nil, &idp.ErrorIDPNotFound)
 	suite.mockNotificationService.EXPECT().GetSender(mock.Anything, "non-existent-sender").Return(nil, senderError)
 
 	result, err := suite.exportService.ExportResources(context.Background(), request)
@@ -1431,7 +1429,7 @@ func (suite *ExportServiceTestSuite) TestExportNotificationSenders_NotFound() {
 // TestExportNotificationSenders_EmptyName tests validation for sender with empty name.
 func (suite *ExportServiceTestSuite) TestExportNotificationSenders_EmptyName() {
 	request := &ExportRequest{
-		NotificationSenders: []string{"sender-no-name"},
+		Connections: []string{"sender-no-name"},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
@@ -1445,6 +1443,8 @@ func (suite *ExportServiceTestSuite) TestExportNotificationSenders_EmptyName() {
 		Properties: []cmodels.Property{*mockProperty},
 	}
 
+	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "sender-no-name").
+		Return(nil, &idp.ErrorIDPNotFound)
 	suite.mockNotificationService.EXPECT().GetSender(mock.Anything, "sender-no-name").Return(mockSender, nil)
 
 	result, err := suite.exportService.ExportResources(context.Background(), request)
@@ -1457,7 +1457,7 @@ func (suite *ExportServiceTestSuite) TestExportNotificationSenders_EmptyName() {
 // TestExportNotificationSenders_NoProperties tests exporting sender with no properties.
 func (suite *ExportServiceTestSuite) TestExportNotificationSenders_NoProperties() {
 	request := &ExportRequest{
-		NotificationSenders: []string{"sender-no-props"},
+		Connections: []string{"sender-no-props"},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
@@ -1470,15 +1470,25 @@ func (suite *ExportServiceTestSuite) TestExportNotificationSenders_NoProperties(
 		Properties: []cmodels.Property{}, // Empty properties
 	}
 
+	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "sender-no-props").
+		Return(nil, &idp.ErrorIDPNotFound)
 	suite.mockNotificationService.EXPECT().GetSender(mock.Anything, "sender-no-props").Return(mockSender, nil)
 
-	suite.assertExportNoProperties(request, "name: Empty Sender")
+	result, err := suite.exportService.ExportResources(context.Background(), request)
+
+	// Should succeed even with no properties. Unlike IdP-backed vendors, the Twilio secret
+	// rule always externalizes AuthToken, so an (empty-valued) env var is still generated.
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Len(suite.T(), result.Files, 1)
+	assert.Equal(suite.T(), 2, result.Summary.TotalFiles)
+	assert.Contains(suite.T(), result.Files[0].Content, "name: Empty Sender")
 }
 
 // TestExportNotificationSenders_WildcardPartialFailure tests wildcard export with partial failures.
 func (suite *ExportServiceTestSuite) TestExportNotificationSenders_WildcardPartialFailure() {
 	request := &ExportRequest{
-		NotificationSenders: []string{"*"},
+		Connections: []string{"*"},
 		Options: &ExportOptions{
 			Format: "yaml",
 		},
@@ -1488,23 +1498,38 @@ func (suite *ExportServiceTestSuite) TestExportNotificationSenders_WildcardParti
 	mockSender1 := &common.NotificationSenderDTO{
 		ID:         "sender1",
 		Name:       "Twilio Sender",
+		Type:       common.NotificationSenderTypeMessage,
 		Provider:   common.MessageProviderTypeTwilio,
 		Properties: []cmodels.Property{*mockProperty1},
+	}
+
+	mockSender2 := &common.NotificationSenderDTO{
+		ID:       "sender2",
+		Name:     "Failing Sender",
+		Type:     common.NotificationSenderTypeMessage,
+		Provider: common.MessageProviderTypeVonage,
 	}
 
 	mockProperty3, _ := cmodels.NewProperty("api_key", "key3", true)
 	mockSender3 := &common.NotificationSenderDTO{
 		ID:         "sender3",
 		Name:       "Vonage Sender",
+		Type:       common.NotificationSenderTypeMessage,
 		Provider:   common.MessageProviderTypeVonage,
 		Properties: []cmodels.Property{*mockProperty3},
 	}
 
 	// Create list with 3 senders but sender2 will fail to retrieve
-	mockSenderList := []common.NotificationSenderDTO{*mockSender1, *mockSender3}
+	mockSenderList := []common.NotificationSenderDTO{*mockSender1, *mockSender2, *mockSender3}
 
+	suite.idpServiceMock.EXPECT().GetIdentityProviderList(mock.Anything).Return(nil, nil)
+	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "sender1").Return(nil, &idp.ErrorIDPNotFound)
+	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "sender2").Return(nil, &idp.ErrorIDPNotFound)
+	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "sender3").Return(nil, &idp.ErrorIDPNotFound)
 	suite.mockNotificationService.EXPECT().ListSenders(mock.Anything).Return(mockSenderList, nil)
 	suite.mockNotificationService.EXPECT().GetSender(mock.Anything, "sender1").Return(mockSender1, nil)
+	suite.mockNotificationService.EXPECT().GetSender(mock.Anything, "sender2").
+		Return(nil, &tidcommon.InternalServerError)
 	suite.mockNotificationService.EXPECT().GetSender(mock.Anything, "sender3").Return(mockSender3, nil)
 
 	result, err := suite.exportService.ExportResources(context.Background(), request)
@@ -1514,7 +1539,10 @@ func (suite *ExportServiceTestSuite) TestExportNotificationSenders_WildcardParti
 	assert.Len(suite.T(), result.Files, 2)
 	assert.NotNil(suite.T(), result.EnvFile)
 	assert.Equal(suite.T(), 3, result.Summary.TotalFiles)
-	assert.Equal(suite.T(), 2, result.Summary.ResourceTypes["notification_sender"])
+	assert.Equal(suite.T(), 2, result.Summary.ResourceTypes["connection"])
+	if assert.Len(suite.T(), result.Summary.Errors, 1) {
+		assert.Equal(suite.T(), "sender2", result.Summary.Errors[0].ResourceID)
+	}
 }
 
 // TestExportEntityTypes_Success tests successful export of entity types.
@@ -2086,12 +2114,13 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_IdentityPro
 		ID:          idpID,
 		Name:        "Test IDP",
 		Description: "Test IDP Description",
+		Type:        providers.IDPTypeGoogle,
 	}
 
 	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, idpID).Return(mockIDP, nil)
 
-	exporter, exists := suite.exportService.(*exportService).registry.Get(resourceTypeIdentityProvider)
-	assert.True(suite.T(), exists, "IDP exporter should be registered")
+	exporter, exists := suite.exportService.(*exportService).registry.Get(resourceTypeConnection)
+	assert.True(suite.T(), exists, "connection exporter should be registered")
 
 	options := &ExportOptions{Format: formatYAML}
 
@@ -2101,7 +2130,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_IdentityPro
 	assert.Len(suite.T(), files, 1)
 	assert.Len(suite.T(), errors, 0)
 	assert.Equal(suite.T(), "Test_IDP.yaml", files[0].FileName)
-	assert.Equal(suite.T(), resourceTypeIdentityProvider, files[0].ResourceType)
+	assert.Equal(suite.T(), resourceTypeConnection, files[0].ResourceType)
 	assert.Equal(suite.T(), idpID, files[0].ResourceID)
 	assert.Empty(suite.T(), variables)
 }
@@ -2109,7 +2138,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_IdentityPro
 // TestExportResourcesWithExporter_NotificationSender tests export with notification sender exporter.
 func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_NotificationSender() {
 	senderID := "sender-test-id"
-	mockProperty, _ := cmodels.NewProperty("api_key", "key1", true)
+	mockProperty, _ := cmodels.NewProperty(common.TwilioPropKeyAuthToken, "key1", true)
 	mockSender := &common.NotificationSenderDTO{
 		ID:         senderID,
 		Name:       "Test Sender",
@@ -2117,10 +2146,11 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_Notificatio
 		Properties: []cmodels.Property{*mockProperty},
 	}
 
+	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, senderID).Return(nil, &idp.ErrorIDPNotFound)
 	suite.mockNotificationService.EXPECT().GetSender(mock.Anything, senderID).Return(mockSender, nil)
 
-	exporter, exists := suite.exportService.(*exportService).registry.Get(resourceTypeNotificationSender)
-	assert.True(suite.T(), exists, "Notification sender exporter should be registered")
+	exporter, exists := suite.exportService.(*exportService).registry.Get(resourceTypeConnection)
+	assert.True(suite.T(), exists, "connection exporter should be registered")
 
 	options := &ExportOptions{Format: formatYAML}
 
@@ -2130,10 +2160,10 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_Notificatio
 	assert.Len(suite.T(), files, 1)
 	assert.Len(suite.T(), errors, 0)
 	assert.Equal(suite.T(), "Test_Sender.yaml", files[0].FileName)
-	assert.Equal(suite.T(), resourceTypeNotificationSender, files[0].ResourceType)
+	assert.Equal(suite.T(), resourceTypeConnection, files[0].ResourceType)
 	assert.Equal(suite.T(), senderID, files[0].ResourceID)
 	assert.NotEmpty(suite.T(), variables)
-	assert.Equal(suite.T(), "key1", variables["TEST_SENDER_API_KEY"])
+	assert.Equal(suite.T(), "key1", variables["TEST_SENDER_AUTH_TOKEN"])
 }
 
 // TestExportResourcesWithExporter_EntityType tests export with entity type exporter.

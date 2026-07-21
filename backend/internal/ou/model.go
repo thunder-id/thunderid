@@ -21,6 +21,7 @@ package ou
 import (
 	"context"
 
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -65,6 +66,8 @@ type UserListResponse struct {
 type OUUserResolver interface {
 	GetUserCountByOUID(ctx context.Context, ouID string) (int, error)
 	GetUserListByOUID(ctx context.Context, ouID string, limit, offset int, includeDisplay bool) ([]User, error)
+	GetResourceDependencies(
+		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 }
 
 // OUGroupResolver provides access to group data for an organization unit
@@ -72,6 +75,8 @@ type OUUserResolver interface {
 type OUGroupResolver interface {
 	GetGroupCountByOUID(ctx context.Context, ouID string) (int, error)
 	GetGroupListByOUID(ctx context.Context, ouID string, limit, offset int) ([]Group, error)
+	GetResourceDependencies(
+		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 }
 
 // GroupListResponse represents the response for listing groups in an organization unit.
@@ -81,4 +86,28 @@ type GroupListResponse struct {
 	Count        int          `json:"count"`
 	Groups       []Group      `json:"groups"`
 	Links        []utils.Link `json:"links"`
+}
+
+// Role represents a role with basic information for OU endpoints.
+type Role struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	IsReadOnly  bool   `json:"isReadOnly"`
+}
+
+// RoleListResponse represents the response for listing roles in an organization unit.
+type RoleListResponse struct {
+	TotalResults int          `json:"totalResults"`
+	StartIndex   int          `json:"startIndex"`
+	Count        int          `json:"count"`
+	Roles        []Role       `json:"roles"`
+	Links        []utils.Link `json:"links"`
+}
+
+// OURoleResolver provides access to role data for an organization unit
+// without requiring direct import of the role package.
+type OURoleResolver interface {
+	GetRoleCountByOUID(ctx context.Context, ouID string) (int, error)
+	GetRoleListByOUID(ctx context.Context, ouID string, limit, offset int) ([]Role, error)
 }

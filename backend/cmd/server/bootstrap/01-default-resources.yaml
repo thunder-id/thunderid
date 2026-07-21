@@ -1,11 +1,11 @@
-# resource_type: organization_unit
+resource_type: organization_unit
 id: 01900000-0000-7000-8000-000000000001
 handle: default
 name: Default
 description: Default organization unit
 logoUrl: "emoji:🏛️"
 ---
-# resource_type: user_type
+resource_type: user_type
 id: 01900000-0000-7000-8000-000000000010
 category: user
 name: Person
@@ -58,7 +58,7 @@ schema:
     required: false
     credential: true
 ---
-# resource_type: user_type
+resource_type: user_type
 id: 01900000-0000-7000-8000-000000000011
 category: agent
 name: default
@@ -92,7 +92,7 @@ schema:
       - assistant
       - custom
 ---
-# resource_type: resource_server
+resource_type: resource_server
 id: 01900000-0000-7000-8000-000000000020
 name: System
 description: System resource server
@@ -135,15 +135,22 @@ resources:
         handle: view
         description: Read-only access to user types
 ---
-# resource_type: flow
+resource_type: flow
 id: 01900000-0000-7000-8000-000000000061
-name: Default Basic Authentication Flow
-handle: default-basic-flow
+name: Default Authentication Flow
+handle: default-flow
 flowType: AUTHENTICATION
 nodes:
 - id: start
   type: START
   onSuccess: prompt_credentials
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 248
+      y: 711
 - id: prompt_credentials
   type: PROMPT
   meta:
@@ -176,21 +183,25 @@ nodes:
         label: '{{ t(signin:forms.credentials.fields.password.label) }}'
         required: true
         placeholder: '{{ t(signin:forms.credentials.fields.password.placeholder) }}'
-      - category: DISPLAY
-        id: rich_text_forgot_password
-        label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.prefix) }} </span><a href="{{meta(application.forgot_password_url)}}" target="_blank" rel="noopener noreferrer" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.label) }}</span></a></p>
-        resourceType: ELEMENT
-        type: RICH_TEXT
       - type: ACTION
         id: action_001
         label: '{{ t(signin:forms.credentials.actions.submit.label) }}'
         variant: PRIMARY
         eventType: SUBMIT
-      - category: DISPLAY
-        id: rich_text_signup
-        label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.sign_up.prefix) }} </span><a href="{{meta(application.sign_up_url)}}" target="_blank" rel="noopener noreferrer" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.sign_up.label) }}</span></a></p>
-        resourceType: ELEMENT
-        type: RICH_TEXT
+    - category: DISPLAY
+      id: rich_text_forgot_password
+      action:
+        ref: action_forgot_password
+      label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.prefix) }} </span><a href="#" data-action-ref="action_forgot_password" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.label) }}</span></a></p>
+      resourceType: ELEMENT
+      type: RICH_TEXT
+    - category: DISPLAY
+      id: rich_text_signup
+      action:
+        ref: action_signup
+      label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.sign_up.prefix) }} </span><a href="#" data-action-ref="action_signup" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.sign_up.label) }}</span></a></p>
+      resourceType: ELEMENT
+      type: RICH_TEXT
   prompts:
   - inputs:
     - ref: input_001
@@ -204,196 +215,91 @@ nodes:
     action:
       ref: action_001
       nextNode: credentials_auth
+  - action:
+      ref: action_forgot_password
+      nextNode: call_recovery
+  - action:
+      ref: action_signup
+      nextNode: call_registration
+  layout:
+    size:
+      width: 350
+      height: 834
+    position:
+      x: 562
+      y: 312
 - id: credentials_auth
   type: TASK_EXECUTION
   executor:
     name: CredentialsAuthExecutor
   onSuccess: authorization_check
   onIncomplete: prompt_credentials
+  layout:
+    size:
+      width: 217
+      height: 113
+    position:
+      x: 1283
+      y: 470
 - id: authorization_check
   type: TASK_EXECUTION
   executor:
     name: AuthorizationExecutor
   onSuccess: auth_assert
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 1774
+      y: 470
 - id: auth_assert
   type: TASK_EXECUTION
   executor:
     name: AuthAssertExecutor
   onSuccess: end
-- id: end
-  type: END
----
-# resource_type: flow
-id: 01900000-0000-7000-8000-000000000062
-name: Default CIBA Email Notification Flow
-handle: default-ciba-email-flow
-flowType: AUTHENTICATION
-nodes:
-- id: start
-  type: START
-  onSuccess: identify_user
-- id: identify_user
-  type: TASK_EXECUTION
-  properties:
-    loginHintAttribute: username
-  executor:
-    name: IdentifyingExecutor
-    inputs:
-    - identifier: login_hint
-      type: TEXT_INPUT
-      required: true
-  onSuccess: generate_invite
-- id: generate_invite
-  type: TASK_EXECUTION
-  executor:
-    name: InviteExecutor
-    mode: generate
-  onSuccess: send_notification_email
-- id: send_notification_email
-  type: TASK_EXECUTION
-  properties:
-    emailTemplate: CIBA_NOTIFICATION
-  executor:
-    name: EmailExecutor
-    mode: send
-    inputs:
-    - identifier: email
-      type: EMAIL_INPUT
-      required: true
-  onSuccess: notification_sent_status
-  onFailure: notification_error_status
-- id: notification_sent_status
-  type: PROMPT
-  meta:
-    components:
-    - align: center
-      type: TEXT
-      id: notification_icon
-      label: ✉️
-      variant: HEADING_1
-    - align: center
-      type: TEXT
-      id: notification_heading
-      label: '{{ t(signin:forms.ciba.notification_sent.heading) }}'
-      variant: HEADING_1
-    - align: center
-      type: TEXT
-      id: notification_message
-      label: '{{ t(signin:forms.ciba.notification_sent.message) }}'
-      variant: HEADING_6
-  message: Authentication notification sent
-  next: verify_invite
-- id: notification_error_status
-  type: PROMPT
-  meta:
-    components:
-    - align: center
-      type: TEXT
-      id: error_icon
-      label: ❌
-      variant: HEADING_1
-    - align: center
-      type: TEXT
-      id: error_heading
-      label: '{{ t(signin:forms.ciba.notification_error.heading) }}'
-      variant: HEADING_1
-    - align: center
-      type: TEXT
-      id: error_message
-      label: '{{ t(signin:forms.ciba.notification_error.message) }}'
-      variant: HEADING_6
-  message: Authentication notification failed
-  next: end
-- id: verify_invite
-  type: TASK_EXECUTION
-  executor:
-    name: InviteExecutor
-    mode: verify
-    inputs:
-    - identifier: inviteToken
-      type: HIDDEN
-      required: true
-  onSuccess: prompt_credentials
-- id: prompt_credentials
-  type: PROMPT
-  meta:
-    components:
-    - align: center
-      type: TEXT
-      id: credentials_heading
-      label: '{{ t(signin:forms.ciba.credentials.heading) }}'
-      variant: HEADING_1
-    - align: center
-      type: TEXT
-      id: credentials_message
-      label: '{{ t(signin:forms.ciba.credentials.message) }}'
-      variant: HEADING_6
-    - type: BLOCK
-      id: block_credentials
-      components:
-      - id: input_password
-        ref: password
-        type: PASSWORD_INPUT
-        label: '{{ t(signin:forms.credentials.fields.password.label) }}'
-        required: true
-        placeholder: '{{ t(signin:forms.credentials.fields.password.placeholder) }}'
-      - type: ACTION
-        id: action_approve
-        label: '{{ t(signin:forms.ciba.credentials.actions.approve.label) }}'
-        variant: PRIMARY
-        eventType: SUBMIT
-  prompts:
-  - inputs:
-    - ref: input_password
-      identifier: password
-      type: PASSWORD_INPUT
-      required: true
-    action:
-      ref: action_approve
-      nextNode: credentials_auth
-- id: credentials_auth
-  type: TASK_EXECUTION
-  executor:
-    name: CredentialsAuthExecutor
-  onSuccess: authorization_check
-  onIncomplete: prompt_credentials
-- id: authorization_check
-  type: TASK_EXECUTION
-  executor:
-    name: AuthorizationExecutor
+  layout:
+    size:
+      width: 244
+      height: 113
+    position:
+      x: 2168
+      y: 469
+- id: call_recovery
+  type: CALL
+  flow:
+    ref: 01900000-0000-7000-8000-000000000067
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 129
+    position:
+      x: 1255
+      y: 773
+- id: call_registration
+  type: CALL
+  flow:
+    ref: 01900000-0000-7000-8000-000000000064
   onSuccess: auth_assert
-- id: auth_assert
-  type: TASK_EXECUTION
-  properties:
-    callbackType: urn:openid:params:grant-type:ciba
-  executor:
-    name: AuthAssertExecutor
-  onSuccess: auth_success
-- id: auth_success
-  type: PROMPT
-  meta:
-    components:
-    - align: center
-      type: TEXT
-      id: success_icon
-      label: ✅
-      variant: HEADING_1
-    - align: center
-      type: TEXT
-      id: success_heading
-      label: '{{ t(signin:forms.ciba.success.heading) }}'
-      variant: HEADING_1
-    - align: center
-      type: TEXT
-      id: success_message
-      label: '{{ t(signin:forms.ciba.success.message) }}'
-      variant: HEADING_6
-  message: Authentication successful
-  next: end
+  layout:
+    size:
+      width: 260
+      height: 129
+    position:
+      x: 1771
+      y: 934
 - id: end
   type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2527
+      y: 509
 ---
-# resource_type: flow
+resource_type: flow
 id: 01900000-0000-7000-8000-000000000068
 name: Console App Authentication Flow
 handle: console-app-flow
@@ -472,201 +378,10 @@ nodes:
 - id: end
   type: END
 ---
-# resource_type: flow
-id: 01900000-0000-7000-8000-000000000063
-name: Disambiguation Login Flow
-handle: default-disambiguation-login-flow
-flowType: AUTHENTICATION
-nodes:
-- id: start
-  type: START
-  onSuccess: prompt_identifier
-- id: prompt_identifier
-  type: PROMPT
-  meta:
-    components:
-    - alt: '{{ t(signin:images.app_logo.alt) }}'
-      category: DISPLAY
-      height: '60'
-      id: image
-      resourceType: ELEMENT
-      src: '{{ meta(application.logoUrl) }}'
-      type: IMAGE
-      width: ''
-    - align: center
-      type: TEXT
-      id: text_title
-      label: '{{ t(signin:forms.credentials.title) }}'
-      variant: HEADING_1
-    - align: center
-      type: TEXT
-      id: text_subtitle
-      label: Enter your username to get started
-      variant: BODY_2
-    - type: BLOCK
-      id: block_identifier
-      components:
-      - id: input_username
-        ref: username
-        type: TEXT_INPUT
-        label: '{{ t(signin:forms.credentials.fields.username.label) }}'
-        required: true
-        placeholder: '{{ t(signin:forms.credentials.fields.username.placeholder) }}'
-      - type: ACTION
-        id: action_search
-        label: Continue
-        variant: PRIMARY
-        eventType: SUBMIT
-  prompts:
-  - inputs:
-    - ref: input_username
-      identifier: username
-      type: TEXT_INPUT
-      required: true
-    action:
-      ref: action_search
-      nextNode: resolve_user
-- id: resolve_user
-  type: TASK_EXECUTION
-  executor:
-    name: IdentifyingExecutor
-    mode: resolve
-    inputs:
-    - identifier: username
-      type: TEXT_INPUT
-      required: true
-  onSuccess: prompt_password
-  onFailure: prompt_identifier
-  onIncomplete: prompt_disambiguate
-- id: prompt_disambiguate
-  type: PROMPT
-  meta:
-    components:
-    - alt: '{{ t(signin:images.app_logo.alt) }}'
-      category: DISPLAY
-      height: '60'
-      id: image_disambig
-      resourceType: ELEMENT
-      src: '{{ meta(application.logoUrl) }}'
-      type: IMAGE
-      width: ''
-    - align: center
-      type: TEXT
-      id: text_disambig_title
-      label: Select your department
-      variant: HEADING_1
-    - align: center
-      type: TEXT
-      id: text_disambig_subtitle
-      label: Please select your department to continue.
-      variant: BODY_2
-    - type: BLOCK
-      id: block_disambig
-      components:
-      - id: select_ou
-        ref: ouHandle
-        type: SELECT
-        label: Department
-        required: true
-        placeholder: Select your department
-        options: []
-      - type: ACTION
-        id: action_select
-        label: Continue
-        variant: PRIMARY
-        eventType: SUBMIT
-  prompts:
-  - inputs:
-    - ref: select_ou
-      identifier: ouHandle
-      type: SELECT
-      required: true
-    action:
-      ref: action_select
-      nextNode: resolve_with_ou
-- id: resolve_with_ou
-  type: TASK_EXECUTION
-  executor:
-    name: IdentifyingExecutor
-    mode: resolve
-    inputs:
-    - identifier: username
-      type: TEXT_INPUT
-      required: true
-    - identifier: ouHandle
-      type: TEXT_INPUT
-      required: true
-  onSuccess: prompt_password
-  onFailure: prompt_identifier
-  onIncomplete: prompt_disambiguate
-- id: prompt_password
-  type: PROMPT
-  meta:
-    components:
-    - alt: '{{ t(signin:images.app_logo.alt) }}'
-      category: DISPLAY
-      height: '60'
-      id: image_pw
-      resourceType: ELEMENT
-      src: '{{ meta(application.logoUrl) }}'
-      type: IMAGE
-      width: ''
-    - align: center
-      type: TEXT
-      id: text_pw_title
-      label: '{{ t(signin:forms.credentials.title) }}'
-      variant: HEADING_1
-    - align: center
-      type: TEXT
-      id: text_pw_subtitle
-      label: Please enter your password to sign in.
-      variant: BODY_2
-    - type: BLOCK
-      id: block_password
-      components:
-      - id: input_password
-        ref: password
-        type: PASSWORD_INPUT
-        label: '{{ t(signin:forms.credentials.fields.password.label) }}'
-        required: true
-        placeholder: '{{ t(signin:forms.credentials.fields.password.placeholder) }}'
-      - type: ACTION
-        id: action_login
-        label: '{{ t(signin:forms.credentials.actions.submit.label) }}'
-        variant: PRIMARY
-        eventType: SUBMIT
-  prompts:
-  - inputs:
-    - ref: input_password
-      identifier: password
-      type: PASSWORD_INPUT
-      required: true
-    action:
-      ref: action_login
-      nextNode: credentials_auth
-- id: credentials_auth
-  type: TASK_EXECUTION
-  executor:
-    name: CredentialsAuthExecutor
-  onSuccess: authorization_check
-  onIncomplete: prompt_password
-- id: authorization_check
-  type: TASK_EXECUTION
-  executor:
-    name: AuthorizationExecutor
-  onSuccess: auth_assert
-- id: auth_assert
-  type: TASK_EXECUTION
-  executor:
-    name: AuthAssertExecutor
-  onSuccess: end
-- id: end
-  type: END
----
-# resource_type: flow
+resource_type: flow
 id: 01900000-0000-7000-8000-000000000067
-name: Email Link Password Recovery Flow
-handle: email-link-based-password-recovery
+name: Default Recovery Flow
+handle: default-flow
 flowType: RECOVERY
 nodes:
 - id: start
@@ -683,6 +398,14 @@ nodes:
   type: PROMPT
   meta:
     components:
+    - alt: '{{ t(signin:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
     - align: center
       type: TEXT
       id: text_header_username
@@ -706,11 +429,13 @@ nodes:
         label: '{{ t(recovery:forms.username.actions.submit.label) }}'
         variant: PRIMARY
         eventType: SUBMIT
-      - category: DISPLAY
-        id: rich_text_signup
-        label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(recovery:forms.username.links.sign_in.prefix) }} </span><a href="{{meta(application.sign_in_url)}}" target="_blank" rel="noopener noreferrer" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(recovery:forms.username.links.sign_in.label) }}</span></a></p>
-        resourceType: ELEMENT
-        type: RICH_TEXT
+    - category: DISPLAY
+      id: rich_text_signin
+      action:
+        ref: action_signin
+      label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(recovery:forms.username.links.sign_in.prefix) }} </span><a href="#" data-action-ref="action_signin" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(recovery:forms.username.links.sign_in.label) }}</span></a></p>
+      resourceType: ELEMENT
+      type: RICH_TEXT
   prompts:
   - inputs:
     - ref: input_username
@@ -720,6 +445,9 @@ nodes:
     action:
       ref: action_submit_username
       nextNode: identify_user
+  - action:
+      ref: action_signin
+      nextNode: call_authentication
   layout:
     size:
       width: 350
@@ -829,6 +557,14 @@ nodes:
   type: PROMPT
   meta:
     components:
+    - alt: '{{ t(signin:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
     - align: center
       type: TEXT
       id: text_header_password
@@ -908,6 +644,18 @@ nodes:
     position:
       x: 3140
       y: 250
+- id: call_authentication
+  type: CALL
+  flow:
+    ref: 01900000-0000-7000-8000-000000000061
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 130
+    position:
+      x: 800
+      y: 1000
 - id: end
   type: END
   layout:
@@ -918,21 +666,35 @@ nodes:
       x: 3600
       y: 375
 ---
-# resource_type: flow
+resource_type: flow
 id: 01900000-0000-7000-8000-000000000064
-name: Default Basic Registration Flow
-handle: default-basic-flow
+name: Default Registration Flow
+handle: default-flow
 flowType: REGISTRATION
 nodes:
 - id: start
   type: START
   onSuccess: user_type_resolver
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: -2
+      y: 479
 - id: user_type_resolver
   type: TASK_EXECUTION
   executor:
     name: UserTypeResolver
   onSuccess: prompt_credentials
   onIncomplete: prompt_usertype
+  layout:
+    size:
+      width: 244
+      height: 113
+    position:
+      x: 244
+      y: 440
 - id: prompt_usertype
   type: PROMPT
   meta:
@@ -965,6 +727,13 @@ nodes:
         label: '{{ t(signup:forms.user_type.actions.continue.label) }}'
         variant: PRIMARY
         eventType: SUBMIT
+    - category: DISPLAY
+      id: rich_text_signin_usertype
+      action:
+        ref: action_signin_usertype
+      label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signup:forms.credentials.links.sign_in.prefix) }} </span><a href="#" data-action-ref="action_signin_usertype" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signup:forms.credentials.links.sign_in.label) }}</span></a></p>
+      resourceType: ELEMENT
+      type: RICH_TEXT
   prompts:
   - inputs:
     - ref: usertype_input
@@ -974,6 +743,16 @@ nodes:
     action:
       ref: action_usertype
       nextNode: user_type_resolver
+  - action:
+      ref: action_signin_usertype
+      nextNode: call_authentication
+  layout:
+    size:
+      width: 350
+      height: 500
+    position:
+      x: 370
+      y: -319
 - id: prompt_credentials
   type: PROMPT
   meta:
@@ -1011,6 +790,13 @@ nodes:
         label: '{{ t(signup:forms.credentials.actions.continue.label) }}'
         variant: PRIMARY
         eventType: SUBMIT
+    - category: DISPLAY
+      id: rich_text_signin
+      action:
+        ref: action_signin
+      label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signup:forms.credentials.links.sign_in.prefix) }} </span><a href="#" data-action-ref="action_signin" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signup:forms.credentials.links.sign_in.label) }}</span></a></p>
+      resourceType: ELEMENT
+      type: RICH_TEXT
   prompts:
   - inputs:
     - ref: input_username
@@ -1024,26 +810,41 @@ nodes:
     action:
       ref: action_credentials
       nextNode: credentials_auth
+  - action:
+      ref: action_signin
+      nextNode: call_authentication
+  layout:
+    size:
+      width: 350
+      height: 500
+    position:
+      x: 870
+      y: 120
 - id: credentials_auth
   type: TASK_EXECUTION
   executor:
     name: CredentialsAuthExecutor
   onSuccess: provisioning
+  layout:
+    size:
+      width: 244
+      height: 113
+    position:
+      x: 1427
+      y: 589
 - id: provisioning
   type: TASK_EXECUTION
   executor:
     name: ProvisioningExecutor
-    inputs:
-    - ref: input_001
-      identifier: username
-      type: TEXT_INPUT
-      required: true
-    - ref: input_002
-      identifier: password
-      type: PASSWORD_INPUT
-      required: true
-  onSuccess: auth_assert
+  onSuccess: end
   onIncomplete: prompt_schema_attrs
+  layout:
+    size:
+      width: 244
+      height: 113
+    position:
+      x: 1861
+      y: 591
 - id: prompt_schema_attrs
   type: PROMPT
   meta:
@@ -1076,290 +877,36 @@ nodes:
     action:
       ref: action_schema_attrs
       nextNode: provisioning
-- id: auth_assert
-  type: TASK_EXECUTION
-  executor:
-    name: AuthAssertExecutor
+  layout:
+    size:
+      width: 350
+      height: 500
+    position:
+      x: 1986
+      y: -188
+- id: call_authentication
+  type: CALL
+  flow:
+    ref: 01900000-0000-7000-8000-000000000061
   onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 130
+    position:
+      x: 1402
+      y: 828
 - id: end
   type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2451
+      y: 629
 ---
-# resource_type: flow
-id: 01900000-0000-7000-8000-000000000065
-name: Default SMS Self-Invite Registration Flow
-handle: default-self-invite-sms-flow
-flowType: REGISTRATION
-nodes:
-- id: start
-  type: START
-  onSuccess: user_type_resolver
-- id: user_type_resolver
-  type: TASK_EXECUTION
-  executor:
-    name: UserTypeResolver
-  onSuccess: prompt_phone
-  onIncomplete: prompt_usertype
-- id: prompt_usertype
-  type: PROMPT
-  meta:
-    components:
-    - alt: '{{ t(signup:images.app_logo.alt) }}'
-      category: DISPLAY
-      height: '60'
-      id: image
-      resourceType: ELEMENT
-      src: '{{ meta(application.logoUrl) }}'
-      type: IMAGE
-      width: ''
-    - align: center
-      type: TEXT
-      id: heading_usertype
-      label: '{{ t(signup:forms.user_type.title) }}'
-      variant: HEADING_1
-    - type: BLOCK
-      id: block_usertype
-      components:
-      - type: SELECT
-        id: usertype_input
-        ref: userType
-        label: '{{ t(signup:forms.user_type.fields.user_type.label) }}'
-        placeholder: '{{ t(signup:forms.user_type.fields.user_type.placeholder) }}'
-        required: true
-        options: []
-      - type: ACTION
-        id: action_usertype
-        label: '{{ t(signup:forms.user_type.actions.continue.label) }}'
-        variant: PRIMARY
-        eventType: SUBMIT
-  prompts:
-  - inputs:
-    - ref: usertype_input
-      identifier: userType
-      type: SELECT
-      required: true
-    action:
-      ref: action_usertype
-      nextNode: user_type_resolver
-- id: prompt_phone
-  type: PROMPT
-  meta:
-    components:
-    - alt: '{{ t(signup:images.app_logo.alt) }}'
-      category: DISPLAY
-      height: '60'
-      id: image
-      resourceType: ELEMENT
-      src: '{{ meta(application.logoUrl) }}'
-      type: IMAGE
-      width: ''
-    - align: center
-      type: TEXT
-      id: text_header_phone
-      label: '{{ t(signup:forms.phone.title) }}'
-      variant: HEADING_1
-    - type: BLOCK
-      id: block_phone
-      components:
-      - id: input_prompt_phone
-        ref: mobile_number
-        type: PHONE_INPUT
-        label: '{{ t(signup:forms.phone.fields.phone.label) }}'
-        required: true
-        placeholder: '{{ t(signup:forms.phone.fields.phone.placeholder) }}'
-      - type: ACTION
-        id: action_submit_phone
-        label: '{{ t(signup:forms.phone.actions.next.label) }}'
-        variant: PRIMARY
-        eventType: SUBMIT
-  prompts:
-  - inputs:
-    - ref: input_prompt_phone
-      identifier: mobile_number
-      type: PHONE_INPUT
-      required: true
-    action:
-      ref: action_submit_phone
-      nextNode: check_phone_uniqueness
-- id: check_phone_uniqueness
-  type: TASK_EXECUTION
-  executor:
-    name: AttributeUniquenessValidator
-  onSuccess: invite_generate
-  onIncomplete: prompt_phone
-- id: invite_generate
-  type: TASK_EXECUTION
-  executor:
-    name: InviteExecutor
-    mode: generate
-  onSuccess: send_registration_sms
-- id: send_registration_sms
-  type: TASK_EXECUTION
-  properties:
-    senderId: <your-sender-id>
-    smsTemplate: SELF_REGISTRATION
-  executor:
-    name: SMSExecutor
-    mode: send
-  onSuccess: registration_sms_sent
-- id: registration_sms_sent
-  type: PROMPT
-  meta:
-    components:
-    - alt: '{{ t(signup:images.app_logo.alt) }}'
-      category: DISPLAY
-      height: '60'
-      id: image
-      src: '{{ meta(application.logoUrl) }}'
-      type: IMAGE
-      width: ''
-    - align: center
-      type: TEXT
-      id: sms_sent_heading
-      label: '{{ t(signup:forms.sms_sent.title) }}'
-      variant: HEADING_1
-    - type: TEXT
-      id: sms_sent_message
-      label: '{{ t(signup:forms.sms_sent.message) }}'
-      variant: BODY
-  message: Check your phone for a verification link
-  next: invite_verify
-- id: invite_verify
-  type: TASK_EXECUTION
-  inputs:
-  - ref: input_003
-    identifier: inviteToken
-    type: HIDDEN
-    required: true
-  executor:
-    name: InviteExecutor
-    mode: verify
-  onSuccess: prompt_user_details
-- id: prompt_user_details
-  type: PROMPT
-  meta:
-    components:
-    - alt: '{{ t(signup:images.app_logo.alt) }}'
-      category: DISPLAY
-      height: '60'
-      id: image
-      resourceType: ELEMENT
-      src: '{{ meta(application.logoUrl) }}'
-      type: IMAGE
-      width: ''
-    - align: center
-      type: TEXT
-      id: text_header_details
-      label: '{{ t(signup:forms.user_details.title) }}'
-      variant: HEADING_1
-    - type: BLOCK
-      id: block_user_details
-      components:
-      - id: input_prompt_username
-        ref: username
-        type: TEXT_INPUT
-        label: '{{ t(signup:forms.user_details.fields.username.label) }}'
-        required: true
-        placeholder: '{{ t(signup:forms.user_details.fields.username.placeholder) }}'
-      - id: input_prompt_given_name
-        ref: given_name
-        type: TEXT_INPUT
-        label: '{{ t(signup:forms.user_details.fields.first_name.label) }}'
-        required: false
-        placeholder: '{{ t(signup:forms.user_details.fields.first_name.placeholder) }}'
-      - id: input_prompt_family_name
-        ref: family_name
-        type: TEXT_INPUT
-        label: '{{ t(signup:forms.user_details.fields.last_name.label) }}'
-        required: false
-        placeholder: '{{ t(signup:forms.user_details.fields.last_name.placeholder) }}'
-      - id: input_prompt_password
-        ref: password
-        type: PASSWORD_INPUT
-        label: '{{ t(signup:forms.credential.fields.password.label) }}'
-        required: true
-        placeholder: '{{ t(signup:forms.credential.fields.password.placeholder) }}'
-      - type: ACTION
-        id: action_submit_details
-        label: '{{ t(signup:forms.credential.actions.submit.label) }}'
-        variant: PRIMARY
-        eventType: SUBMIT
-  prompts:
-  - inputs:
-    - ref: input_prompt_username
-      identifier: username
-      type: TEXT_INPUT
-      required: true
-    - ref: input_prompt_given_name
-      identifier: given_name
-      type: TEXT_INPUT
-      required: false
-    - ref: input_prompt_family_name
-      identifier: family_name
-      type: TEXT_INPUT
-      required: false
-    - ref: input_prompt_password
-      identifier: password
-      type: PASSWORD_INPUT
-      required: true
-    action:
-      ref: action_submit_details
-      nextNode: check_user_details_uniqueness
-- id: check_user_details_uniqueness
-  type: TASK_EXECUTION
-  executor:
-    name: AttributeUniquenessValidator
-  onSuccess: provisioning
-  onIncomplete: prompt_user_details
-- id: provisioning
-  type: TASK_EXECUTION
-  inputs:
-  - ref: input_mobile_number
-    identifier: mobile_number
-    type: PHONE_INPUT
-    required: true
-  - ref: input_username
-    identifier: username
-    type: TEXT_INPUT
-    required: true
-  - ref: input_password
-    identifier: password
-    type: PASSWORD_INPUT
-    required: true
-  - ref: input_given_name
-    identifier: given_name
-    type: TEXT_INPUT
-    required: false
-  - ref: input_family_name
-    identifier: family_name
-    type: TEXT_INPUT
-    required: false
-  executor:
-    name: ProvisioningExecutor
-  onSuccess: registration_complete
-- id: registration_complete
-  type: PROMPT
-  meta:
-    components:
-    - align: center
-      type: TEXT
-      id: registration_complete_icon
-      label: ✅
-      variant: HEADING_1
-    - align: center
-      type: TEXT
-      id: registration_complete_heading
-      label: '{{ t(invite:complete.title) }}'
-      variant: HEADING_1
-    - align: center
-      type: TEXT
-      id: registration_complete_message
-      label: '{{ t(invite:complete.description) }}'
-  message: Registration complete
-  next: end
-- id: end
-  type: END
----
-# resource_type: flow
+resource_type: flow
 id: 01900000-0000-7000-8000-000000000069
 name: Console App Registration Flow
 handle: console-app-flow
@@ -1517,10 +1064,10 @@ nodes:
 - id: end
   type: END
 ---
-# resource_type: flow
+resource_type: flow
 id: 01900000-0000-7000-8000-000000000066
-name: User Onboarding Flow
-handle: default-user-onboarding
+name: Default User Onboarding Flow
+handle: default-flow
 flowType: USER_ONBOARDING
 nodes:
 - id: start
@@ -1537,7 +1084,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system
+    - system:user
   executor:
     name: PermissionValidator
   onSuccess: user_type_resolver
@@ -1565,7 +1112,7 @@ nodes:
   type: PROMPT
   meta:
     components:
-    - align: center
+    - align: left
       type: TEXT
       id: heading_usertype
       label: '{{ t(onboarding:forms.user_type.title) }}'
@@ -1624,7 +1171,7 @@ nodes:
   type: PROMPT
   meta:
     components:
-    - align: center
+    - align: left
       type: TEXT
       id: heading_ou_selection
       label: '{{ t(onboarding:forms.ou_selection.title) }}'
@@ -1670,19 +1217,19 @@ nodes:
       id: text_header_onboarding_mode
       label: '{{ t(onboarding:forms.onboarding_mode.title) }}'
       variant: HEADING_1
-      align: center
+      align: left
     - type: TEXT
       id: text_subtitle_onboarding_mode
       label: '{{ t(onboarding:forms.onboarding_mode.subtitle) }}'
       variant: HEADING_6
-      align: center
+      align: left
     - type: BLOCK
       id: block_onboarding_mode_actions
       components:
       - type: STACK
         id: stack_onboarding_mode_actions
         direction: row
-        justify: center
+        justify: flex-start
         components:
         - type: ACTION
           id: action_create_user_now
@@ -1728,12 +1275,12 @@ nodes:
   type: PROMPT
   meta:
     components:
-    - align: center
+    - align: left
       type: TEXT
       id: text_header_create_user_details
       label: '{{ t(onboarding:forms.add_user.title) }}'
       variant: HEADING_1
-    - align: center
+    - align: left
       type: TEXT
       id: text_subtitle_create_user_details
       label: '{{ t(onboarding:forms.add_user.subtitle) }}'
@@ -1764,17 +1311,17 @@ nodes:
   type: PROMPT
   meta:
     components:
-    - align: center
+    - align: left
       type: TEXT
       id: admin_registration_complete_icon
       label: ✅
       variant: HEADING_1
-    - align: center
+    - align: left
       type: TEXT
       id: admin_registration_complete_heading
       label: '{{ t(onboarding:forms.add_user_complete.title) }}'
       variant: HEADING_1
-    - align: center
+    - align: left
       type: TEXT
       id: admin_registration_complete_message
       label: '{{ t(onboarding:forms.add_user_complete.description) }}'
@@ -1792,7 +1339,7 @@ nodes:
   type: PROMPT
   meta:
     components:
-    - align: center
+    - align: left
       type: TEXT
       id: text_header_email
       label: '{{ t(onboarding:forms.email.title) }}'
@@ -1848,19 +1395,19 @@ nodes:
       id: text_header_invite_method
       label: '{{ t(onboarding:forms.invite_mode.title) }}'
       variant: HEADING_1
-      align: center
+      align: left
     - type: TEXT
       id: text_subtitle_invite_method
       label: '{{ t(onboarding:forms.invite_mode.subtitle) }}'
       variant: HEADING_6
-      align: center
+      align: left
     - type: BLOCK
       id: block_invite_method_actions
       components:
       - type: STACK
         id: stack_invite_actions
         direction: row
-        justify: center
+        justify: flex-start
         components:
         - type: ACTION
           id: action_send_email_invite
@@ -1923,17 +1470,17 @@ nodes:
   type: PROMPT
   meta:
     components:
-    - align: center
+    - align: left
       type: TEXT
       id: email_status_icon
       label: ✅
       variant: HEADING_1
-    - align: center
+    - align: left
       type: TEXT
       id: email_status_heading
       label: '{{ t(onboarding:forms.invite_email_sent.title) }}'
       variant: HEADING_1
-    - align: center
+    - align: left
       type: TEXT
       id: email_status_message
       label: '{{ t(onboarding:forms.invite_email_sent.message) }}'
@@ -1951,17 +1498,17 @@ nodes:
   type: PROMPT
   meta:
     components:
-    - align: center
+    - align: left
       type: TEXT
       id: email_unavailable_icon
       label: ⚠️
       variant: HEADING_1
-    - align: center
+    - align: left
       type: TEXT
       id: email_unavailable_heading
       label: '{{ t(onboarding:forms.invite_email_unavailable.title) }}'
       variant: HEADING_1
-    - align: center
+    - align: left
       type: TEXT
       id: email_unavailable_message
       label: '{{ t(onboarding:forms.invite_email_unavailable.message) }}'
@@ -1996,17 +1543,17 @@ nodes:
   type: PROMPT
   meta:
     components:
-    - align: center
+    - align: left
       type: TEXT
       id: link_status_icon
       label: ✅
       variant: HEADING_1
-    - align: center
+    - align: left
       type: TEXT
       id: link_status_heading
       label: '{{ t(onboarding:forms.invite_link_status.title) }}'
       variant: HEADING_1
-    - align: center
+    - align: left
       type: TEXT
       id: link_status_message
       label: '{{ t(onboarding:forms.invite_link_status.message) }}'
@@ -2062,12 +1609,12 @@ nodes:
   type: PROMPT
   meta:
     components:
-    - align: center
+    - align: left
       type: TEXT
       id: text_header_user_details
       label: '{{ t(onboarding:forms.complete_registration.title) }}'
       variant: HEADING_1
-    - align: center
+    - align: left
       type: TEXT
       id: text_subtitle_user_details
       label: '{{ t(onboarding:forms.complete_registration.subtitle) }}'
@@ -2098,17 +1645,17 @@ nodes:
   type: PROMPT
   meta:
     components:
-    - align: center
+    - align: left
       type: TEXT
       id: registration_complete_icon
       label: ✅
       variant: HEADING_1
-    - align: center
+    - align: left
       type: TEXT
       id: registration_complete_heading
       label: '{{ t(invite:complete.title) }}'
       variant: HEADING_1
-    - align: center
+    - align: left
       type: TEXT
       id: registration_complete_message
       label: '{{ t(invite:complete.description) }}'
@@ -2132,7 +1679,7 @@ nodes:
       x: 7103
       y: 637
 ---
-# resource_type: theme
+resource_type: theme
 id: 01900000-0000-7000-8000-000000000071
 handle: acrylic-orange
 displayName: Acrylic Orange
@@ -2634,7 +2181,7 @@ theme:
       - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
       - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
 ---
-# resource_type: theme
+resource_type: theme
 id: 01900000-0000-7000-8000-000000000072
 handle: acrylic-purple
 displayName: Acrylic Purple
@@ -3136,7 +2683,7 @@ theme:
       - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
       - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
 ---
-# resource_type: theme
+resource_type: theme
 id: 01900000-0000-7000-8000-000000000073
 handle: classic
 displayName: Classic
@@ -3636,7 +3183,7 @@ theme:
       - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
       - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
 ---
-# resource_type: theme
+resource_type: theme
 id: 01900000-0000-7000-8000-000000000074
 handle: high-contrast
 displayName: High Contrast
@@ -4136,7 +3683,7 @@ theme:
       - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
       - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
 ---
-# resource_type: theme
+resource_type: theme
 id: 01900000-0000-7000-8000-000000000075
 handle: pale-gray
 displayName: Pale Gray
@@ -4638,7 +4185,7 @@ theme:
       - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
       - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
 ---
-# resource_type: theme
+resource_type: theme
 id: 01900000-0000-7000-8000-000000000076
 handle: pale-indigo
 displayName: Pale Indigo
@@ -5140,7 +4687,7 @@ theme:
       - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
       - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
 ---
-# resource_type: application
+resource_type: application
 id: 01900000-0000-7000-8000-000000000060
 name: Console
 description: Management application for ThunderID
@@ -5171,14 +4718,15 @@ inboundAuthConfig:
       publicClient: true
       token:
         accessToken:
-          validityPeriod: 3600
-          userAttributes:
-            - given_name
-            - family_name
-            - email
-            - groups
-            - name
-            - ouId
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - groups
+              - name
+              - ouId
         idToken:
           validityPeriod: 3600
           userAttributes:
@@ -5205,7 +4753,7 @@ inboundAuthConfig:
         ou:
           - ouId
 ---
-# resource_type: user
+resource_type: user
 id: 01900000-0000-7000-8000-000000000030
 type: Person
 ouHandle: default
@@ -5221,7 +4769,7 @@ attributes:
 credentials:
   password: "{{ .ADMIN_PASSWORD }}"
 ---
-# resource_type: group
+resource_type: group
 id: 01900000-0000-7000-8000-000000000040
 name: Administrators
 description: System administrators group
@@ -5230,7 +4778,7 @@ members:
   - id: 01900000-0000-7000-8000-000000000030
     type: user
 ---
-# resource_type: role
+resource_type: role
 id: 01900000-0000-7000-8000-000000000050
 name: Administrator
 description: System administrator role with full permissions
@@ -5243,7 +4791,7 @@ assignments:
   - id: 01900000-0000-7000-8000-000000000040
     type: group
 ---
-# resource_type: translation
+resource_type: translation
 id: 01900000-0000-7000-8000-000000000091
 language: en-US
 translations:
@@ -5373,12 +4921,19 @@ translations:
     forms.phone.description: Enter your mobile number to receive a verification code
     forms.phone.fields.phone.label: Mobile Number
     forms.phone.fields.phone.placeholder: Enter your mobile number
-    forms.phone.actions.submit.label: Send Code
+    forms.phone.actions.submit.label: Continue
     forms.otp.title: Verify Your Identity
     forms.otp.description: Enter the verification code sent to your phone
     forms.otp.fields.otp.label: Verification Code
     forms.otp.fields.otp.placeholder: Enter code
     forms.otp.actions.submit.label: Verify
+    forms.email.title: Sign In with Email
+    forms.email.description: Enter your email address to receive a verification code
+    forms.email.fields.email.label: Email
+    forms.email.fields.email.placeholder: Enter your email address
+    forms.email.actions.submit.label: Continue
+    forms.email_otp.title: Verify Your Email
+    forms.email_otp.description: Enter the verification code sent to your email
     forms.credentials.links.forgot_password.prefix: Forgot password?
     forms.credentials.links.forgot_password.label: Reset
     forms.credentials.links.sign_up.prefix: Don't have an account?
@@ -5405,6 +4960,8 @@ translations:
     forms.credentials.actions.continue.label: Continue
     forms.credentials.actions.submit.label: Sign Up
     forms.credentials.divider.or: OR
+    forms.credentials.links.sign_in.prefix: Already have an account?
+    forms.credentials.links.sign_in.label: Sign in
     forms.passkey.title: Sign Up
     forms.passkey.description: Sign up with a passkey for secure access without a password
     forms.passkey.actions.submit.label: Sign up with Passkey
@@ -5472,6 +5029,7 @@ translations:
     forms.collect_user_info.fields.password.placeholder: Enter your password
     forms.collect_user_info.actions.submit.label: Sign Up
     forms.email.title: Sign Up
+    forms.email.description: Enter your email address to receive a verification code
     forms.email.fields.email.label: Email
     forms.email.fields.email.placeholder: Enter your email
     forms.email.actions.next.label: Next
@@ -5500,6 +5058,8 @@ translations:
     forms.otp.fields.otp.label: Verification Code
     forms.otp.fields.otp.placeholder: Enter code
     forms.otp.actions.submit.label: Verify
+    forms.email_otp.title: Verify Your Email
+    forms.email_otp.description: Enter the verification code sent to your email
     forms.magic_link.email_sent.title: Check Your Email
     forms.magic_link.email_sent.description: We sent you a verification link. Please check your inbox and click the link to continue.
   recovery:

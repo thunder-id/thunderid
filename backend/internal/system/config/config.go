@@ -22,12 +22,17 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	urlpath "path"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
@@ -96,10 +101,10 @@ type RedisDataSource struct {
 
 // DatabaseConfig holds the different database configuration details.
 type DatabaseConfig struct {
-	Config    DataSource `yaml:"config"    json:"config"`
-	Runtime   DataSource `yaml:"runtime"   json:"runtime"`
-	User      DataSource `yaml:"user"      json:"user"`
-	Operation DataSource `yaml:"operation" json:"operation"`
+	Config            DataSource `yaml:"config"             json:"config"`
+	RuntimeTransient  DataSource `yaml:"runtime_transient"  json:"runtime_transient"`
+	Entity            DataSource `yaml:"entity"             json:"entity"`
+	RuntimePersistent DataSource `yaml:"runtime_persistent" json:"runtime_persistent"`
 }
 
 // NotificationConfig holds the notification configuration details.
@@ -181,6 +186,19 @@ type UserConfig struct {
 // PasskeyConfig holds the passkey configuration details.
 type PasskeyConfig struct {
 	AllowedOrigins []string `yaml:"allowed_origins" json:"allowed_origins"`
+}
+
+// AttestationConfig holds engine-level platform attestation configuration shared across
+// applications.
+type AttestationConfig struct {
+	Apple AppleAttestationConfig `yaml:"apple" json:"apple"`
+}
+
+// AppleAttestationConfig holds the engine-level Apple App Attest settings. RootCertificate is the
+// PEM-encoded Apple "App Attestation Root CA" certificate used as the trust anchor when verifying
+// attestation certificate chains.
+type AppleAttestationConfig struct {
+	RootCertificate string `yaml:"root_certificate" json:"root_certificate"`
 }
 
 // OpenID4VPConfig holds the OpenID4VP verifier engine configuration. Engine
@@ -310,6 +328,16 @@ type IdentityProviderConfig struct {
 	//   - If DeclarativeResources.Enabled = true: behaves as "declarative"
 	//   - If DeclarativeResources.Enabled = false: behaves as "mutable"
 	Store string `yaml:"store" json:"store"`
+
+	// GoogleBaseURL overrides the scheme+host of Google's OAuth/OIDC endpoints (path preserved).
+	// Empty (the default) means the real Google endpoints are used. Intended for test
+	// environments that redirect the flow to a local mock server; leave empty in production.
+	GoogleBaseURL string `yaml:"google_base_url" json:"google_base_url"`
+
+	// GitHubBaseURL overrides the scheme+host of GitHub's OAuth endpoints (path preserved).
+	// Empty (the default) means the real GitHub endpoints are used. Intended for test
+	// environments that redirect the flow to a local mock server; leave empty in production.
+	GitHubBaseURL string `yaml:"github_base_url" json:"github_base_url"`
 }
 
 // ApplicationConfig holds the application service configuration.
@@ -404,7 +432,132 @@ type TranslationConfig struct {
 
 // LogConfig holds logging configuration.
 type LogConfig struct {
-	Level string `yaml:"level" json:"level"`
+	Level  string          `yaml:"level"  json:"level"`
+	Output LogOutputConfig `yaml:"output" json:"output"`
+}
+
+// LogOutputConfig holds the log output destinations.
+type LogOutputConfig struct {
+	Console LogConsoleConfig `yaml:"console" json:"console"`
+	File    LogFileConfig    `yaml:"file"    json:"file"`
+}
+
+// LogConsoleConfig holds the console (stdout) output settings.
+//
+// Toggle and value fields in the log configuration use pointers so that a value
+// present in deployment.yaml overrides the default.json default even when it is
+// the zero value (for example console output explicitly disabled with `false`).
+// A nil pointer means "not set", in which case the merged default is kept.
+type LogConsoleConfig struct {
+	Enabled *bool `yaml:"enabled" json:"enabled"`
+}
+
+// BuildOutputOptions resolves the log configuration into the logger's output
+// options: it resolves a relative file path under serverHome and applies the
+// default rotation values when a trigger is enabled without an explicit value.
+// File paths are only resolved when file output is enabled, so a disabled file
+// output performs no path work and never requires a writable filesystem.
+func (c LogConfig) BuildOutputOptions(serverHome string) log.OutputOptions {
+	fileCfg := c.Output.File
+	fileEnabled := derefBool(fileCfg.Enabled)
+
+	filePath := ""
+	if fileEnabled {
+		dir := fileCfg.Path
+		if dir == "" {
+			dir = "logs"
+		}
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(serverHome, dir)
+		}
+		name := fileCfg.FileName
+		if name == "" {
+			name = "thunderid.log"
+		}
+		filePath = filepath.Join(dir, name)
+	}
+
+	var maxSizeMB float64
+	if derefBool(fileCfg.Rotation.Size.Enabled) {
+		maxSizeMB = derefFloat(fileCfg.Rotation.Size.MaxSizeMB, rollingfile.DefaultMaxSizeMB)
+		if maxSizeMB <= 0 {
+			maxSizeMB = rollingfile.DefaultMaxSizeMB
+		}
+	}
+
+	intervalDays := 0
+	if derefBool(fileCfg.Rotation.Time.Enabled) {
+		intervalDays = derefInt(fileCfg.Rotation.Time.IntervalDays, rollingfile.DefaultIntervalDays)
+		if intervalDays <= 0 {
+			intervalDays = rollingfile.DefaultIntervalDays
+		}
+	}
+
+	return log.OutputOptions{
+		ConsoleEnabled: derefBool(c.Output.Console.Enabled),
+		FileEnabled:    fileEnabled,
+		Format:         fileCfg.Format,
+		File: rollingfile.Config{
+			Path:         filePath,
+			MaxSizeMB:    maxSizeMB,
+			IntervalDays: intervalDays,
+			MaxBackups:   derefInt(fileCfg.Rotation.MaxBackups, 0),
+			MaxAgeDays:   derefInt(fileCfg.Rotation.MaxAgeDays, 0),
+			Compress:     derefBool(fileCfg.Rotation.Compress),
+		},
+	}
+}
+
+// derefBool returns *p when p is non-nil, otherwise false (the disabled default
+// for every log toggle; an explicit default lives in default.json).
+func derefBool(p *bool) bool {
+	return p != nil && *p
+}
+
+// derefInt returns *p when p is non-nil, otherwise def.
+func derefInt(p *int, def int) int {
+	if p != nil {
+		return *p
+	}
+	return def
+}
+
+// derefFloat returns *p when p is non-nil, otherwise def.
+func derefFloat(p *float64, def float64) float64 {
+	if p != nil {
+		return *p
+	}
+	return def
+}
+
+// LogFileConfig holds the file output settings.
+type LogFileConfig struct {
+	Enabled  *bool             `yaml:"enabled"   json:"enabled"`
+	Path     string            `yaml:"path"      json:"path"`
+	FileName string            `yaml:"file_name" json:"file_name"`
+	Format   string            `yaml:"format"    json:"format"`
+	Rotation LogRotationConfig `yaml:"rotation"  json:"rotation"`
+}
+
+// LogRotationConfig holds the file rotation and retention settings.
+type LogRotationConfig struct {
+	Size       LogSizeRotationConfig `yaml:"size"         json:"size"`
+	Time       LogTimeRotationConfig `yaml:"time"         json:"time"`
+	MaxBackups *int                  `yaml:"max_backups"  json:"max_backups"`
+	MaxAgeDays *int                  `yaml:"max_age_days" json:"max_age_days"`
+	Compress   *bool                 `yaml:"compress"     json:"compress"`
+}
+
+// LogSizeRotationConfig holds the size-based rotation trigger settings.
+type LogSizeRotationConfig struct {
+	Enabled   *bool    `yaml:"enabled"     json:"enabled"`
+	MaxSizeMB *float64 `yaml:"max_size_mb" json:"max_size_mb"`
+}
+
+// LogTimeRotationConfig holds the time-based rotation trigger settings.
+type LogTimeRotationConfig struct {
+	Enabled      *bool `yaml:"enabled"       json:"enabled"`
+	IntervalDays *int  `yaml:"interval_days" json:"interval_days"`
 }
 
 // Config holds the complete configuration details of the server.
@@ -430,6 +583,7 @@ type Config struct {
 	EntityType           EntityTypeConfig                 `yaml:"user_type"             json:"user_type"`
 	Observability        engineconfig.ObservabilityConfig `yaml:"observability"         json:"observability"`
 	Passkey              PasskeyConfig                    `yaml:"passkey"               json:"passkey"`
+	Attestation          AttestationConfig                `yaml:"attestation"           json:"attestation"`
 	OpenID4VP            OpenID4VPConfig                  `yaml:"openid4vp"             json:"openid4vp"`
 	OpenID4VCI           OpenID4VCIConfig                 `yaml:"openid4vci"            json:"openid4vci"`
 	AuthnProvider        AuthnProviderConfig              `yaml:"authn_provider"        json:"authn_provider"`
@@ -442,7 +596,6 @@ type Config struct {
 	Translation          TranslationConfig                `yaml:"translation"           json:"translation"`
 	Email                EmailConfig                      `yaml:"email"                 json:"email"`
 	Notification         NotificationConfig               `yaml:"notification"          json:"notification"`
-	Consent              engineconfig.ConsentConfig       `yaml:"consent"               json:"consent"`
 }
 
 // LoadConfig loads the configurations from the specified YAML file and applies defaults.
@@ -467,10 +620,50 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 
 	// Merge user configuration with defaults
 	mergeConfigs(&cfg, &userCfg)
+
+	// Default gate_client to the server's own URL when not explicitly configured, so the gate only
+	// needs configuring when it is hosted separately from the server.
+	if cfg.GateClient.Hostname == "" || cfg.GateClient.Port == 0 || cfg.GateClient.Scheme == "" {
+		serverURL, err := url.Parse(engineconfig.GetServerURL(&cfg.Server))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse server URL for gate_client derivation: %w", err)
+		}
+		if cfg.GateClient.Scheme == "" {
+			cfg.GateClient.Scheme = serverURL.Scheme
+		}
+		if cfg.GateClient.Hostname == "" {
+			cfg.GateClient.Hostname = serverURL.Hostname()
+		}
+		if cfg.GateClient.Port == 0 {
+			if portStr := serverURL.Port(); portStr != "" {
+				if port, perr := strconv.Atoi(portStr); perr == nil {
+					cfg.GateClient.Port = port
+				}
+			} else if serverURL.Scheme == "http" {
+				cfg.GateClient.Port = 80
+			} else {
+				cfg.GateClient.Port = 443
+			}
+		}
+	}
+
+	// The resolved gate client host must be reachable by a browser. A bind-all address
+	// (0.0.0.0 or ::) produces broken login/error redirects. This happens when server.hostname
+	// is a bind address and neither server.public_url nor gate_client.hostname is configured,
+	// so fail fast with actionable guidance.
+	if isBindAllHost(cfg.GateClient.Hostname) {
+		return nil, fmt.Errorf("gate client hostname resolved to an unreachable bind-all address %q; "+
+			"set server.public_url (or gate_client.hostname) to a browser-reachable host",
+			cfg.GateClient.Hostname)
+	}
+
 	// Derive login_path and error_path from path if not explicitly set
 	if cfg.GateClient.Path != "" {
 		if cfg.GateClient.LoginPath == "" {
 			cfg.GateClient.LoginPath = urlpath.Join(cfg.GateClient.Path, "signin")
+		}
+		if cfg.GateClient.SignOutPath == "" {
+			cfg.GateClient.SignOutPath = urlpath.Join(cfg.GateClient.Path, "signout")
 		}
 		if cfg.GateClient.ErrorPath == "" {
 			cfg.GateClient.ErrorPath = urlpath.Join(cfg.GateClient.Path, "error")
@@ -602,6 +795,15 @@ func mergeStructs(base, user reflect.Value) {
 			base.Set(user)
 		}
 	}
+}
+
+// isBindAllHost reports whether host is an unspecified/bind-all IP address (0.0.0.0 or ::).
+// Such an address is valid to bind a listener to but can never be reached by a browser, so it
+// is invalid as a redirect target. Empty hosts and hostnames such as "localhost" are not
+// treated as bind-all.
+func isBindAllHost(host string) bool {
+	ip := net.ParseIP(strings.TrimSpace(host))
+	return ip != nil && ip.IsUnspecified()
 }
 
 // isZeroValue checks if a reflect.Value represents the zero value for its type.

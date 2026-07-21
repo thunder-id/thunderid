@@ -206,6 +206,39 @@ func (s *CompositeStoreTestSuite) TestListFlows_MergeAndDeduplicate() {
 	assert.True(s.T(), flow3.IsReadOnly)
 }
 
+// ListActiveFlowsWithNodes tests - merge and deduplicate with DB precedence.
+func (s *CompositeStoreTestSuite) TestListActiveFlowsWithNodes_MergeAndDeduplicate() {
+	dbFlows := []*providers.CompleteFlowDefinition{
+		{ID: "flow-1", Name: "Auth Flow"},
+		{ID: "flow-2", Name: "Signup Flow"},
+	}
+	// File flows: one duplicate ID (flow-1) and one new (flow-3).
+	fileFlows := []*providers.CompleteFlowDefinition{
+		{ID: "flow-1", Name: "Auth Flow Override"},
+		{ID: "flow-3", Name: "Custom Flow"},
+	}
+
+	s.mockDBStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).Return(dbFlows, nil).Once()
+	s.mockFileStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).Return(fileFlows, nil).Once()
+
+	result, err := s.compositeStore.ListActiveFlowsWithNodes(context.Background())
+
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), 3, len(result))
+
+	byID := make(map[string]*providers.CompleteFlowDefinition, len(result))
+	for _, f := range result {
+		byID[f.ID] = f
+	}
+	// flow-1 comes from the DB store (first encountered), not the file override.
+	require.NotNil(s.T(), byID["flow-1"])
+	assert.Equal(s.T(), "Auth Flow", byID["flow-1"].Name)
+	assert.False(s.T(), byID["flow-1"].IsReadOnly)
+	// flow-3 comes from the file store and is marked read-only.
+	require.NotNil(s.T(), byID["flow-3"])
+	assert.True(s.T(), byID["flow-3"].IsReadOnly)
+}
+
 func (s *CompositeStoreTestSuite) TestListFlows_MarkDBAsReadWrite() {
 	dbFlows := []BasicFlowDefinition{
 		s.createBasicTestFlow("flow-1", "auth-flow", "Auth Flow", false),

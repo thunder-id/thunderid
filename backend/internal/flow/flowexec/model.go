@@ -50,6 +50,9 @@ type frame struct {
 }
 
 // EngineContext holds the overall context used by the flow engine during execution.
+//
+// TODO: fields on EngineContext are currently exposed directly. Convert to unexported
+// fields accessed via getters and setters so that mutation can be encapsulated.
 type EngineContext struct {
 	Context context.Context
 
@@ -77,11 +80,26 @@ type EngineContext struct {
 	ExecutionHistory  map[string]*providers.NodeExecutionRecord
 
 	InterceptorSharedData map[string]string
-
+	// consumedInputs accumulates identifiers reported as consumed by executors and
+	// interceptors within the current request
+	consumedInputs []string
 	// frameStack holds saved call frames. Top is the most recent caller.
 	frameStack []*frame
 	// sharedRuntimeData is a cross-frame key-value store available to executors that opt in.
 	sharedRuntimeData map[string]string
+	// SSOHandleIn carries the inbound SSO handle for this request. It is transient: read from
+	// the transport at the start of execution and never persisted with the flow context.
+	SSOHandleIn string
+	// SSOFlowVersion is the current active version of this flow's definition, captured from the
+	// flow fetched when the context is loaded. Transient; used by the SSO-Check node to reject
+	// sessions established at an incompatible flow version.
+	SSOFlowVersion int
+	// SessionFlowID overrides the flow whose SSO session this execution operates on. It is set for
+	// sign-out flows, which run a different flow than the one that owns the session: the login (auth)
+	// flow id is carried here so the inbound cookie, SSO inputs, and cookie clear all resolve under
+	// that flow rather than the running sign-out flow. Empty for all other flows. Transient — re-derived
+	// from the application on each context load, never persisted.
+	SessionFlowID string
 }
 
 // mergeRuntimeData merges the given data into RuntimeData.
@@ -157,6 +175,9 @@ func (e *EngineContext) getSharedRuntimeData(key string) (string, bool) {
 // InterceptorRunnerContext is a self-contained, request-scoped context built by the engine
 // for each RunInterceptors call. It carries everything the interceptor service needs without
 // requiring access to the engine context itself.
+//
+// TODO: fields on EngineContext are currently exposed directly. Convert to unexported
+// fields accessed via getters and setters so that mutation can be encapsulated.
 type InterceptorRunnerContext struct {
 	Ctx                  context.Context
 	ExecutionID          string
@@ -174,6 +195,27 @@ type InterceptorRunnerContext struct {
 	CurrentNodeInputs    []providers.Input
 	ResolvedInterceptors []core.InterceptorUnitInterface
 	SharedData           map[string]string
+	// consumedInputs accumulates identifiers reported as consumed by interceptors
+	// during this RunInterceptors call
+	consumedInputs []string
+}
+
+// AppendConsumedInputs appends the given keys to the accumulator of inputs consumed during
+// this RunInterceptors call.
+func (c *InterceptorRunnerContext) AppendConsumedInputs(keys []string) {
+	if len(keys) == 0 {
+		return
+	}
+	if c.consumedInputs == nil {
+		c.consumedInputs = make([]string, 0, len(keys))
+	}
+	c.consumedInputs = append(c.consumedInputs, keys...)
+}
+
+// GetConsumedInputs returns the keys reported via ConsumeInput by interceptors during this
+// RunInterceptors call.
+func (c *InterceptorRunnerContext) GetConsumedInputs() []string {
+	return c.consumedInputs
 }
 
 // FlowStep represents the outcome of a individual flow step
@@ -186,6 +228,16 @@ type FlowStep struct {
 	Data           FlowData
 	Assertion      string
 	Error          *tidcommon.ServiceError
+
+	// SSOHandleOut / SSOFlowID carry an SSO session handle minted during this step back to the
+	// transport layer (the handler), which sets it as a per-flow cookie. They are not part of
+	// the JSON response body.
+	SSOHandleOut string
+	SSOFlowID    string
+	// SSOClearFlowID carries the flow id whose per-flow SSO cookie the transport layer must clear
+	// after this step terminated the session (sign-out). Empty when nothing was cleared. Not part of
+	// the JSON response body.
+	SSOClearFlowID string
 }
 
 // FlowData holds the data returned by a flow execution step
@@ -213,7 +265,6 @@ type FlowResponse struct {
 // FlowRequest represents the flow execution API request body
 type FlowRequest struct {
 	ApplicationID  string            `json:"applicationId"`
-	FlowSecret     string            `json:"flowSecret,omitempty"`
 	FlowType       string            `json:"flowType"`
 	Verbose        bool              `json:"verbose,omitempty"`
 	ExecutionID    string            `json:"executionId"`

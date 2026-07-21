@@ -45,8 +45,8 @@ func getRequiredOptionalAttributes(scopes []string, app *providers.OAuthClient) 
 
 	optionalAttributes := make(map[string]bool)
 
-	if app.Token != nil && app.Token.AccessToken != nil {
-		for _, attr := range app.Token.AccessToken.UserAttributes {
+	if app.Token != nil && app.Token.AccessToken != nil && app.Token.AccessToken.UserConfig != nil {
+		for _, attr := range app.Token.AccessToken.UserConfig.Attributes {
 			optionalAttributes[attr] = true
 		}
 	}

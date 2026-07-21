@@ -16,8 +16,7 @@
  * under the License.
  */
 
-import type {IdentityProviderType} from '@/features/connections/models/identity-provider';
-import {IdentityProviderTypes} from '@/features/connections/models/identity-provider';
+import {IdentityProviderTypes, type IdentityProviderType} from '@thunderid/configure-connections';
 import {ExecutionTypes} from '@/features/flows/models/steps';
 
 /**

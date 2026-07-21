@@ -457,6 +457,68 @@ func (_c *flowStoreInterfaceMock_IsFlowExistsByHandle_Call) RunAndReturn(run fun
 	return _c
 }
 
+// ListActiveFlowsWithNodes provides a mock function for the type flowStoreInterfaceMock
+func (_mock *flowStoreInterfaceMock) ListActiveFlowsWithNodes(ctx context.Context) ([]*providers.CompleteFlowDefinition, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListActiveFlowsWithNodes")
+	}
+
+	var r0 []*providers.CompleteFlowDefinition
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) ([]*providers.CompleteFlowDefinition, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) []*providers.CompleteFlowDefinition); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*providers.CompleteFlowDefinition)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// flowStoreInterfaceMock_ListActiveFlowsWithNodes_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListActiveFlowsWithNodes'
+type flowStoreInterfaceMock_ListActiveFlowsWithNodes_Call struct {
+	*mock.Call
+}
+
+// ListActiveFlowsWithNodes is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *flowStoreInterfaceMock_Expecter) ListActiveFlowsWithNodes(ctx interface{}) *flowStoreInterfaceMock_ListActiveFlowsWithNodes_Call {
+	return &flowStoreInterfaceMock_ListActiveFlowsWithNodes_Call{Call: _e.mock.On("ListActiveFlowsWithNodes", ctx)}
+}
+
+func (_c *flowStoreInterfaceMock_ListActiveFlowsWithNodes_Call) Run(run func(ctx context.Context)) *flowStoreInterfaceMock_ListActiveFlowsWithNodes_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *flowStoreInterfaceMock_ListActiveFlowsWithNodes_Call) Return(completeFlowDefinitions []*providers.CompleteFlowDefinition, err error) *flowStoreInterfaceMock_ListActiveFlowsWithNodes_Call {
+	_c.Call.Return(completeFlowDefinitions, err)
+	return _c
+}
+
+func (_c *flowStoreInterfaceMock_ListActiveFlowsWithNodes_Call) RunAndReturn(run func(ctx context.Context) ([]*providers.CompleteFlowDefinition, error)) *flowStoreInterfaceMock_ListActiveFlowsWithNodes_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListFlowVersions provides a mock function for the type flowStoreInterfaceMock
 func (_mock *flowStoreInterfaceMock) ListFlowVersions(ctx context.Context, flowID string) ([]BasicFlowVersion, error) {
 	ret := _mock.Called(ctx, flowID)

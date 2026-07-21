@@ -74,6 +74,27 @@ export interface GatePreviewProps {
   inspectorEnabled?: boolean;
   /** Callback when a CSS selector is picked via the inspector. */
   onSelectSelector?: (selector: string) => void;
+  /** Callback for action submissions inside the preview. Defaults to a no-op. */
+  onSubmit?: (component: EmbeddedFlowComponent, data?: Record<string, unknown>) => void;
+  /** Callback fired when the pointer enters (component) or leaves (null) a top-level component. */
+  onComponentHover?: (component: EmbeddedFlowComponent | null) => void;
+  /**
+   * Additional runtime data handed to the flow component renderer, mirroring what
+   * the gate receives during flow execution (e.g. `consentPrompt`).
+   */
+  additionalData?: Record<string, unknown>;
+  /**
+   * When true, hides the built-in browser chrome and insets so the preview fills
+   * its container edge to edge. Useful when the host provides its own window chrome.
+   */
+  frameless?: boolean;
+  /** Base theme the resolved design is merged over. Defaults to Acrylic Orange. */
+  baseTheme?: Theme;
+  /**
+   * When true and no effective theme is configured, mirrors the gate's
+   * design-disabled branding: particle background and the product logo.
+   */
+  themelessBranding?: boolean;
   /** Content rendered to the left of the toolbar (e.g. back button, title). */
   toolbarStart?: ReactNode;
   /** Content rendered inside the toolbar pill on the right (e.g. inspector toggle, theme selector). */
@@ -100,6 +121,12 @@ export default function GatePreview({
   stylesheets = [],
   inspectorEnabled = false,
   onSelectSelector = undefined,
+  onSubmit = undefined,
+  onComponentHover = undefined,
+  additionalData = undefined,
+  frameless = false,
+  baseTheme = undefined,
+  themelessBranding = false,
   toolbarStart = undefined,
   toolbarEnd = undefined,
   toolbarPortal = undefined,
@@ -226,54 +253,63 @@ export default function GatePreview({
 
       {/* Viewport container */}
       <Box
-        sx={{flex: 1, overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', p: 2}}
+        sx={{
+          flex: 1,
+          overflow: 'hidden',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'flex-start',
+          p: frameless ? 0 : 2,
+        }}
       >
         <Box
           sx={{
             backgroundColor: 'background.paper',
-            borderRadius: 1,
-            width: viewport?.width ?? VIEWPORT_WIDTHS[viewportState],
-            height: viewport?.height ?? VIEWPORT_HEIGHTS[viewportState],
+            borderRadius: frameless ? 0 : 1,
+            width: frameless ? '100%' : (viewport?.width ?? VIEWPORT_WIDTHS[viewportState]),
+            height: frameless ? '100%' : (viewport?.height ?? VIEWPORT_HEIGHTS[viewportState]),
             transition: 'width 0.2s ease, height 0.2s ease',
             display: 'flex',
             flexDirection: 'column',
           }}
         >
           {/* Browser chrome */}
-          <Box
-            sx={{
-              px: 3,
-              py: 1.5,
-              borderBottom: '1px solid',
-              borderColor: 'divider',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-              flexShrink: 0,
-            }}
-          >
-            <Box sx={{width: 8, height: 8, borderRadius: '50%', bgcolor: '#fc5c57'}} />
-            <Box sx={{width: 8, height: 8, borderRadius: '50%', bgcolor: '#febc2e'}} />
-            <Box sx={{width: 8, height: 8, borderRadius: '50%', bgcolor: '#29c840'}} />
+          {!frameless && (
             <Box
               sx={{
-                flex: 1,
-                mx: 2,
-                height: 22,
-                bgcolor: 'action.hover',
-                borderRadius: 1,
+                px: 3,
+                py: 1.5,
+                borderBottom: '1px solid',
+                borderColor: 'divider',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
+                gap: 1,
+                flexShrink: 0,
               }}
             >
-              <Typography variant="caption" color="text.disabled" sx={{fontSize: 10}}>
-                {displayName
-                  ? t('themes.builder.preview.title_with_name', '{{name}} — Preview', {name: displayName})
-                  : t('themes.builder.preview.label', 'Preview')}
-              </Typography>
+              <Box sx={{width: 8, height: 8, borderRadius: '50%', bgcolor: '#fc5c57'}} />
+              <Box sx={{width: 8, height: 8, borderRadius: '50%', bgcolor: '#febc2e'}} />
+              <Box sx={{width: 8, height: 8, borderRadius: '50%', bgcolor: '#29c840'}} />
+              <Box
+                sx={{
+                  flex: 1,
+                  mx: 2,
+                  height: 22,
+                  bgcolor: 'action.hover',
+                  borderRadius: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Typography variant="caption" color="text.disabled" sx={{fontSize: 10}}>
+                  {displayName
+                    ? t('themes.builder.preview.title_with_name', '{{name}} — Preview', {name: displayName})
+                    : t('themes.builder.preview.label', 'Preview')}
+                </Typography>
+              </Box>
             </Box>
-          </Box>
+          )}
 
           {/* Canvas — fills the browser chrome frame like a real viewport */}
           <Box
@@ -316,6 +352,11 @@ export default function GatePreview({
                   mock={mock}
                   inspectorEnabled={inspectorEnabled}
                   onSelectSelector={onSelectSelector}
+                  onSubmit={onSubmit}
+                  onComponentHover={onComponentHover}
+                  additionalData={additionalData}
+                  baseTheme={baseTheme}
+                  themelessBranding={themelessBranding}
                 />,
                 iframeDoc.getElementById('root')!,
               )}

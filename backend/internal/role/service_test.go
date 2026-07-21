@@ -1402,14 +1402,15 @@ func (suite *RoleServiceTestSuite) TestGetAuthorizedPermissions() {
 				if normalizedGroups == nil {
 					normalizedGroups = []string{}
 				}
-				suite.mockStore.On("GetAuthorizedPermissions", mock.Anything,
-					tc.userID, normalizedGroups,
+				suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
+					tc.userID, normalizedGroups, "",
 					tc.requestedPermissions).
 					Return(tc.mockReturn, tc.mockError).Once()
 			}
 
-			result, err := suite.service.GetAuthorizedPermissions(
-				context.Background(), tc.userID, tc.groups, tc.requestedPermissions)
+			result, err := suite.service.GetAuthorizedPermissionsByResourceServer(
+				context.Background(), tc.userID, tc.groups, "",
+				tc.requestedPermissions)
 
 			if tc.expectedError != nil {
 				suite.NotNil(err)

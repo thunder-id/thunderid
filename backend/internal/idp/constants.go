@@ -35,6 +35,8 @@ const (
 	PropPrompt                = "prompt"
 	PropIssuer                = "issuer"
 	PropTokenExchangeEnabled  = "token_exchange_enabled"
+	PropTrustedTokenAudience  = "trusted_token_audience"
+	PropIDJagEnabled          = "id_jag_enabled"
 )
 
 // Known endpoints for Google OAuth2/OIDC.
@@ -95,6 +97,8 @@ var idpPropertyConfigs = map[providers.IDPType]idpPropertyConfig{
 			PropPrompt,
 			PropIssuer,
 			PropTokenExchangeEnabled,
+			PropTrustedTokenAudience,
+			PropIDJagEnabled,
 		},
 		Defaults: map[string]string{},
 	},

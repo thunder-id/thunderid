@@ -56,6 +56,16 @@ interface EditTokenSettingsProps {
    * Singular noun used to refer to the entity in user-visible copy (default: 'application').
    */
   entityLabel?: string;
+  /**
+   * Whether to show the "User Info Endpoint" tab (OAuth mode only). Defaults to true;
+   * agents don't expose a userinfo endpoint of their own, so they pass false.
+   */
+  showUserInfoTab?: boolean;
+  /**
+   * Whether the access token preview should include the RFC 8693 `act` (actor) claim.
+   * Defaults to false (applications); agents pass true.
+   */
+  showActorClaim?: boolean;
 }
 
 const createTokenConfigSchema = (t: (key: string) => string) => {
@@ -122,6 +132,8 @@ export default function EditTokenSettings({
   onFieldChange,
   onValidationChange = undefined,
   entityLabel = 'application',
+  showUserInfoTab = true,
+  showActorClaim = false,
 }: EditTokenSettingsProps) {
   const logger = useLogger('EditTokenSettings');
   const {t} = useTranslation();
@@ -171,7 +183,7 @@ export default function EditTokenSettings({
     mode: 'onChange',
     defaultValues: {
       validityPeriod: oauth2Config?.token?.validityPeriod ?? application.assertion?.validityPeriod ?? 3600,
-      accessTokenValidity: oauth2Config?.token?.accessToken?.validityPeriod ?? 3600,
+      accessTokenValidity: oauth2Config?.token?.accessToken?.userConfig?.validityPeriod ?? 3600,
       idTokenValidity: oauth2Config?.token?.idToken?.validityPeriod ?? 3600,
       refreshTokenValidity: oauth2Config?.token?.refreshToken?.validityPeriod ?? 86400,
     },
@@ -216,7 +228,7 @@ export default function EditTokenSettings({
         const config = oauth2ConfigRef.current;
 
         // Check if values have actually changed
-        const currentAccessValidity = config?.token?.accessToken?.validityPeriod;
+        const currentAccessValidity = config?.token?.accessToken?.userConfig?.validityPeriod;
         const currentIdValidity = config?.token?.idToken?.validityPeriod;
         const currentRefreshValidity = config?.token?.refreshToken?.validityPeriod;
 
@@ -234,7 +246,10 @@ export default function EditTokenSettings({
             ...config?.token,
             accessToken: {
               ...config?.token?.accessToken,
-              validityPeriod: accessTokenValidity,
+              userConfig: {
+                ...config?.token?.accessToken?.userConfig,
+                validityPeriod: accessTokenValidity,
+              },
             },
             idToken: {
               ...config?.token?.idToken,
@@ -347,7 +362,7 @@ export default function EditTokenSettings({
   }, [isOAuthMode, oauth2Config, application]);
 
   const currentAccessTokenAttributes = useMemo(
-    () => oauth2Config?.token?.accessToken?.userAttributes ?? [],
+    () => oauth2Config?.token?.accessToken?.userConfig?.attributes ?? [],
     [oauth2Config],
   );
 
@@ -572,7 +587,8 @@ export default function EditTokenSettings({
       let updatedConfig = {...oauth2Config};
 
       const defaultTokenConfig = {validityPeriod: 3600, userAttributes: [] as string[]};
-      const currentAccessToken = updatedConfig.token?.accessToken ?? defaultTokenConfig;
+      const defaultAccessToken = {userConfig: {validityPeriod: 3600, attributes: [] as string[]}};
+      const currentAccessToken = updatedConfig.token?.accessToken ?? defaultAccessToken;
       const currentIdToken = updatedConfig.token?.idToken ?? defaultTokenConfig;
 
       if (scope === 'access') {
@@ -580,7 +596,10 @@ export default function EditTokenSettings({
           ...updatedConfig,
           token: {
             ...updatedConfig.token,
-            accessToken: {...currentAccessToken, userAttributes: nextAttrs},
+            accessToken: {
+              ...currentAccessToken,
+              userConfig: {...currentAccessToken.userConfig, attributes: nextAttrs},
+            },
             idToken: currentIdToken,
           },
         };
@@ -701,6 +720,8 @@ export default function EditTokenSettings({
             highlightedAttributes={visibleHighlightedAttributes}
             onAttributeClick={handleAttributeClick}
             entityLabel={entityLabel}
+            showUserInfoTab={showUserInfoTab}
+            showActorClaim={showActorClaim}
             disabled={application.isReadOnly}
             idTokenResponseType={oauth2Config?.token?.idToken?.responseType}
             idTokenEncryptionAlg={oauth2Config?.token?.idToken?.encryptionAlg}

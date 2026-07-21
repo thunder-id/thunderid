@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -72,9 +72,11 @@ func (e *UnmappedEventTypeError) Error() string {
 // This enables automatic routing of events to appropriate categories.
 var eventTypeToCategory = map[providers.EventType]EventCategory{
 	// Authentication events
-	EventTypeTokenIssuanceStarted: CategoryAuthentication,
-	EventTypeTokenIssued:          CategoryAuthentication,
-	EventTypeTokenIssuanceFailed:  CategoryAuthentication,
+	EventTypeTokenIssuanceStarted:           CategoryAuthentication,
+	EventTypeTokenIssued:                    CategoryAuthentication,
+	EventTypeTokenIssuanceFailed:            CategoryAuthentication,
+	EventTypeTokenRevoked:                   CategoryAuthentication,
+	EventTypeRuntimePersistentDBUnavailable: CategoryAuthentication,
 
 	// Flow events
 	EventTypeFlowStarted:                CategoryFlows,

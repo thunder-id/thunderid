@@ -59,6 +59,7 @@ func newCredentialSetter(
 				Required:   true,
 			},
 		},
+		&providers.ExecutorMeta{},
 	)
 	return &credentialSetter{
 		Executor:       base,

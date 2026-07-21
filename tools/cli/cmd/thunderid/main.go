@@ -21,6 +21,7 @@ package main
 import (
 	"fmt"
 	"os"
+
 	"github.com/thunder-id/thunderid/tools/cli/internal/cli"
 	"github.com/thunder-id/thunderid/tools/cli/internal/commands/sample"
 	"github.com/thunder-id/thunderid/tools/cli/internal/commands/upgrade"

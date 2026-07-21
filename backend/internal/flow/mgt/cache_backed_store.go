@@ -64,6 +64,13 @@ func (s *cacheBackedFlowStore) ListFlows(ctx context.Context, limit, offset int,
 	return s.store.ListFlows(ctx, limit, offset, flowType)
 }
 
+// ListActiveFlowsWithNodes retrieves active flows with their nodes. Like ListFlows, this scan is not
+// cached and is delegated to the underlying store.
+func (s *cacheBackedFlowStore) ListActiveFlowsWithNodes(ctx context.Context) (
+	[]*providers.CompleteFlowDefinition, error) {
+	return s.store.ListActiveFlowsWithNodes(ctx)
+}
+
 // CreateFlow creates a new flow definition and caches it.
 func (s *cacheBackedFlowStore) CreateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (
 	*providers.CompleteFlowDefinition, error) {

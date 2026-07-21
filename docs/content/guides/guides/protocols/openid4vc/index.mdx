@@ -1,15 +1,19 @@
 ---
 title: Verifiable Credentials
+docType: concept
 sidebar_position: 0
 description: Catalogue of verifiable credential specifications implemented by {{ProductName}}, with links to detailed protocol guides.
 ---
 
 # Verifiable Credentials
 
-<ProductName /> implements **OpenID for Verifiable Presentations (OpenID4VP)** — the protocol for requesting and verifying digital identity credentials held in a user's wallet. Verifiable credentials complement the OAuth 2.1 and OpenID Connect stack: instead of prompting for a username and password, the relying party requests cryptographic proof from an existing government- or institution-issued credential.
+<ProductName /> implements the OpenID for Verifiable Credentials family of specifications, both issuance and presentation, allowing you to issue digital identity credentials to wallets and accept cryptographic proof of those credentials at relying parties.
+
+Verifiable credentials complement the OAuth 2.1 and OpenID Connect stack: instead of prompting for a username and password, the relying party requests cryptographic proof from an existing government- or institution-issued credential.
 
 For other identity standards, see the [Protocols & Standards](../) overview.
 
 | Protocol | Spec | Summary |
 |---|---|---|
+| [OpenID for Verifiable Credential Issuance](./openid4vci) | OpenID4VCI draft | Issue SD-JWT VCs to digital wallets via the OAuth 2.1 authorization code grant. |
 | [OpenID for Verifiable Presentations](./openid4vp) | OpenID4VP draft | Request an SD-JWT VC from a wallet and verify the presentation response in-band. |

@@ -394,6 +394,54 @@ func (suite *LogTestSuite) TestGetLoggerUsesContextHandler() {
 	assert.True(suite.T(), ok, "GetLogger should wrap the handler with contextHandler")
 }
 
+func (suite *LogTestSuite) TestServerErrorWriterWrite() {
+	var buf bytes.Buffer
+	log := newContextTestLogger(&buf)
+	w := &serverErrorWriter{logger: log}
+
+	input := []byte("http: TLS handshake error from 127.0.0.1:56960: remote error: tls: unknown certificate\n")
+	n, err := w.Write(input)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), len(input), n)
+
+	output := buf.String()
+	assert.Contains(suite.T(), output, "level=WARN")
+	assert.Contains(suite.T(), output, "http: TLS handshake error from 127.0.0.1:56960")
+	// The trailing newline should be trimmed from the logged message.
+	assert.NotContains(suite.T(), output, "certificate\\n")
+}
+
+func (suite *LogTestSuite) TestServerErrorWriterRespectsLevel() {
+	var buf bytes.Buffer
+	log := newContextTestLogger(&buf)
+	log.levelVar = new(slog.LevelVar)
+	log.levelVar.Set(slog.LevelError)
+	log.internal = slog.New(&contextHandler{Handler: slog.NewTextHandler(&buf,
+		&slog.HandlerOptions{Level: log.levelVar})})
+	w := &serverErrorWriter{logger: log}
+
+	_, err := w.Write([]byte("some server error"))
+
+	assert.NoError(suite.T(), err)
+	// WARN is below the ERROR threshold, so nothing should be emitted.
+	assert.Empty(suite.T(), buf.String())
+}
+
+func (suite *LogTestSuite) TestNewServerErrorLog() {
+	var buf bytes.Buffer
+	log := newContextTestLogger(&buf)
+
+	errorLog := NewServerErrorLog(log)
+	assert.NotNil(suite.T(), errorLog)
+
+	errorLog.Print("connection reset by peer")
+
+	output := buf.String()
+	assert.Contains(suite.T(), output, "level=WARN")
+	assert.Contains(suite.T(), output, "connection reset by peer")
+}
+
 func (suite *LogTestSuite) TestConvertFields() {
 	fields := []Field{
 		{Key: "string", Value: "value"},

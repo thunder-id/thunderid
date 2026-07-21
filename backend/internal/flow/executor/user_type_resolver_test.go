@@ -63,7 +63,7 @@ func (suite *UserTypeResolverTestSuite) SetupTest() {
 
 	// Mock the CreateExecutor method to return a base executor
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameUserTypeResolver, providers.ExecutorTypeRegistration,
-		defaultInputs, []providers.Input{}).
+		defaultInputs, []providers.Input{}, mock.Anything).
 		Return(createMockUserTypeResolverExecutor(suite.T()))
 
 	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
@@ -112,7 +112,7 @@ func (suite *UserTypeResolverTestSuite) TestNewUserTypeResolver() {
 	}
 
 	mockFlowFactory.On("CreateExecutor", ExecutorNameUserTypeResolver, providers.ExecutorTypeRegistration,
-		defaultInputs, []providers.Input{}).
+		defaultInputs, []providers.Input{}, mock.Anything).
 		Return(createMockUserTypeResolverExecutor(suite.T()))
 
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())

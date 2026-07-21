@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -34,9 +34,19 @@ type SecurityServiceInterface interface {
 	Process(r *http.Request) (context.Context, error)
 }
 
+// RevocationEnforcerInterface rejects tokens whose revocation identifier is on the deny list. It is
+// the read-only seam the security layer uses to consult the Resource Server's revocation cache
+// without depending on its implementation.
+type RevocationEnforcerInterface interface {
+	// EnsureNotRevoked returns a non-nil error when the token identified by id has been revoked.
+	// An empty id is a no-op.
+	EnsureNotRevoked(ctx context.Context, id string) error
+}
+
 // securityService orchestrates authentication and authorization for HTTP requests.
 type securityService struct {
 	authenticators         []AuthenticatorInterface
+	revocationEnforcer     RevocationEnforcerInterface
 	logger                 *log.Logger
 	compiledPaths          []*regexp.Regexp
 	compiledAPIPermissions []compiledAPIPermission
@@ -46,14 +56,15 @@ type securityService struct {
 //
 // Parameters:
 //   - authenticators: A slice of AuthenticatorInterface implementations to handle request authentication.
+//   - revocationEnforcer: Consulted after authentication to reject revoked tokens.
 //   - publicPaths: A slice of string patterns representing paths that are exempt from authentication.
 //   - apiPermissions: An ordered slice of API permission entries used for authorization.
 //
 // Returns:
 //   - *securityService: A pointer to the created securityService instance.
 //   - error: An error if any of the provided path patterns are invalid and cannot be compiled.
-func newSecurityService(authenticators []AuthenticatorInterface, publicPaths []string,
-	apiPermissions []apiPermissionEntry) (*securityService, error) {
+func newSecurityService(authenticators []AuthenticatorInterface, revocationEnforcer RevocationEnforcerInterface,
+	publicPaths []string, apiPermissions []apiPermissionEntry) (*securityService, error) {
 	compiledPaths, err := compilePathPatterns(publicPaths)
 	if err != nil {
 		return nil, err
@@ -68,6 +79,7 @@ func newSecurityService(authenticators []AuthenticatorInterface, publicPaths []s
 
 	return &securityService{
 		authenticators:         authenticators,
+		revocationEnforcer:     revocationEnforcer,
 		logger:                 logger,
 		compiledPaths:          compiledPaths,
 		compiledAPIPermissions: compiledPerms,
@@ -108,6 +120,14 @@ func (s *securityService) Process(r *http.Request) (context.Context, error) {
 	ctx := r.Context()
 	if securityCtx != nil {
 		ctx = withSecurityContext(ctx, securityCtx)
+
+		// Reject the request when the presented token has been revoked. This runs after successful
+		// authentication and is format-agnostic: it enforces on the token's revocation identifier. A
+		// revoked token is surfaced as an invalid token (RFC 6750 §3.1) so the response does not
+		// disclose that the token was specifically revoked.
+		if err := s.revocationEnforcer.EnsureNotRevoked(ctx, securityCtx.revocationID); err != nil {
+			return s.handleAuthError(ctx, isPublic, errInvalidToken)
+		}
 	}
 
 	// Authorize the authenticated principal based on the permissions carried in the security context.

@@ -142,12 +142,6 @@ func (c *compositeThemeStore) DeleteTheme(id string) error {
 	)
 }
 
-// GetApplicationsCountByThemeID retrieves the count of applications using a theme.
-// Only queries database store since declarative themes don't track application references.
-func (c *compositeThemeStore) GetApplicationsCountByThemeID(id string) (int, error) {
-	return c.dbStore.GetApplicationsCountByThemeID(id)
-}
-
 // IsThemeDeclarative checks if a theme is immutable (exists in file store).
 func (c *compositeThemeStore) IsThemeDeclarative(id string) bool {
 	exists, err := c.fileStore.IsThemeExist(id)

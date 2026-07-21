@@ -177,6 +177,50 @@ func (suite *FileBasedStoreTestSuite) TestGetIdentityProviderList() {
 	suite.True(idNames["Test IDP 5"])
 }
 
+func (suite *FileBasedStoreTestSuite) TestGetIdentityProviderList_IDJagEnabled() {
+	trustedProp, _ := cmodels.NewProperty(PropIDJagEnabled, "true", false)
+	disabledProp, _ := cmodels.NewProperty(PropIDJagEnabled, "false", false)
+	plainProp, _ := cmodels.NewProperty("client_id", "client1", false)
+
+	trusted := providers.IDPDTO{
+		ID:         "test-idp-trusted",
+		Name:       "Trusted Issuer",
+		Type:       providers.IDPTypeOIDC,
+		Properties: []cmodels.Property{*trustedProp},
+	}
+	disabled := providers.IDPDTO{
+		ID:         "test-idp-disabled",
+		Name:       "Disabled Issuer",
+		Type:       providers.IDPTypeOIDC,
+		Properties: []cmodels.Property{*disabledProp},
+	}
+	plain := providers.IDPDTO{
+		ID:         "test-idp-plain",
+		Name:       "Plain Federation",
+		Type:       providers.IDPTypeOIDC,
+		Properties: []cmodels.Property{*plainProp},
+	}
+
+	suite.NoError(suite.store.CreateIdentityProvider(context.Background(), trusted))
+	suite.NoError(suite.store.CreateIdentityProvider(context.Background(), disabled))
+	suite.NoError(suite.store.CreateIdentityProvider(context.Background(), plain))
+
+	idpList, err := suite.store.GetIdentityProviderList(context.Background())
+	suite.NoError(err)
+	suite.Len(idpList, 3)
+
+	byID := make(map[string]BasicIDPDTO, len(idpList))
+	for _, basicIDP := range idpList {
+		byID[basicIDP.ID] = basicIDP
+	}
+
+	suite.Require().NotNil(byID["test-idp-trusted"].IDJagEnabled)
+	suite.True(*byID["test-idp-trusted"].IDJagEnabled)
+	suite.Require().NotNil(byID["test-idp-disabled"].IDJagEnabled)
+	suite.False(*byID["test-idp-disabled"].IDJagEnabled)
+	suite.Nil(byID["test-idp-plain"].IDJagEnabled)
+}
+
 func (suite *FileBasedStoreTestSuite) TestUpdateIdentityProvider_NotSupported() {
 	// Test that update is not supported in file-based store
 	idp := &providers.IDPDTO{

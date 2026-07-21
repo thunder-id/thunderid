@@ -69,7 +69,7 @@ func (s *InitTestSuite) TestInitializeDisabledWithoutSigningKey() {
 	s.Require().NoError(config.InitializeServerRuntime("", &config.Config{}))
 	defer config.ResetServerRuntime()
 
-	svc, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil)
+	svc, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil)
 	s.Require().NoError(err)
 	s.Nil(svc)
 }

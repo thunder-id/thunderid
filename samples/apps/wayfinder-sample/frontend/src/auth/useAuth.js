@@ -18,6 +18,7 @@
 
 import { useThunderID } from "@thunderid/react";
 import { useNavigate } from "react-router-dom";
+import { clearChatAccessToken } from "./chatTokenService";
 import { AUTH_CONFIG } from "./config";
 import { useNativeAuth } from "./NativeAuthContext";
 
@@ -33,6 +34,7 @@ export function useAuth() {
       user: thunderCtx.user,
       signIn: () => thunderCtx.signIn({ acr_values: "urn:thunder:auth:user" }),
       signOut: async () => {
+        clearChatAccessToken();
         try {
           await thunderCtx.clearSession();
         } catch {
@@ -50,6 +52,7 @@ export function useAuth() {
     user: nativeCtx?.user ?? null,
     signIn: () => navigate("/signin"),
     signOut: () => {
+      clearChatAccessToken();
       nativeCtx?.clearToken();
       window.location.replace("/flights");
     },

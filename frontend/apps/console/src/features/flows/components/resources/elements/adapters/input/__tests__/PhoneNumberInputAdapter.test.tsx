@@ -139,7 +139,7 @@ describe('PhoneNumberInputAdapter', () => {
 
   describe('Custom Styling', () => {
     it('should apply className when provided', () => {
-      const resource = createMockElement({className: 'custom-phone'});
+      const resource = createMockElement({classes: 'custom-phone'});
 
       const {container} = render(<PhoneNumberInputAdapter resource={resource} />);
 

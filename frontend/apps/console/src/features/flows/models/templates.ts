@@ -96,9 +96,13 @@ export const TemplateTypes = {
   Passkey: 'PASSKEY',
   BasicPasskey: 'BASIC_PASSKEY',
   BasicWithPrompt: 'BASIC_WITH_PROMPT',
-  SelfInvite: 'SELF_INVITE',
+  EmailSelfInvite: 'EMAIL_SELF_INVITE',
+  SmsSelfInvite: 'SMS_SELF_INVITE',
   MagicLink: 'MAGIC_LINK',
   BasicMagicLink: 'BASIC_MAGIC_LINK',
+  BasicWithConsent: 'BASIC_WITH_CONSENT',
+  CibaEmailNotification: 'CIBA_EMAIL_NOTIFICATION',
+  DisambiguationLogin: 'DISAMBIGUATION_LOGIN',
 } as const;
 
 export type TemplateTypes = (typeof TemplateTypes)[keyof typeof TemplateTypes];

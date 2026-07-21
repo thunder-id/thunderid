@@ -40,12 +40,13 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 $BACKEND_PORT = if ($env:BACKEND_PORT) { [int]$env:BACKEND_PORT } else { 8090 }
 $DEBUG_PORT = if ($env:DEBUG_PORT) { [int]$env:DEBUG_PORT } else { 2345 }
 $DEBUG_MODE = $false
-$WITH_CONSENT = if ($env:WITH_CONSENT -eq 'false') { $false } else { $true }
 $RESOURCES_FILE = ""
 $ENV_FILE = ""
 $BOOTSTRAP_MODE = $false
 $BOOTSTRAP_AND_SERVE = $false
 $BOOTSTRAP_EXTRA_ARGS = @()
+$ADMIN_USERNAME_FLAG_SET = $false
+$ADMIN_PASSWORD_FLAG_SET = $false
 $script:bootstrapExitCode = 0
 
 # Parse command line arguments
@@ -81,11 +82,6 @@ while ($i -lt $args.Count) {
             }
             break
         }
-        '--without-consent' {
-            $WITH_CONSENT = $false
-            $i++
-            break
-        }
         '--bootstrap' {
             # Run the in-process bootstrap one-shot (create default resources) instead
             # of starting the long-running server, then exit.
@@ -108,6 +104,32 @@ while ($i -lt $args.Count) {
             }
             else {
                 Write-Host "Missing value for --console-redirect-uris" -ForegroundColor Red
+                exit 1
+            }
+            break
+        }
+        '--admin-username' {
+            $i++
+            if ($i -lt $args.Count) {
+                $BOOTSTRAP_EXTRA_ARGS += @('--admin-username', $args[$i])
+                $ADMIN_USERNAME_FLAG_SET = $true
+                $i++
+            }
+            else {
+                Write-Host "Missing value for --admin-username" -ForegroundColor Red
+                exit 1
+            }
+            break
+        }
+        '--admin-password' {
+            $i++
+            if ($i -lt $args.Count) {
+                $BOOTSTRAP_EXTRA_ARGS += @('--admin-password', $args[$i])
+                $ADMIN_PASSWORD_FLAG_SET = $true
+                $i++
+            }
+            else {
+                Write-Host "Missing value for --admin-password" -ForegroundColor Red
                 exit 1
             }
             break
@@ -137,9 +159,12 @@ while ($i -lt $args.Count) {
             Write-Host "  --debug              Enable debug mode with remote debugging"
             Write-Host "  --port PORT          Set application port (default: 8090)"
             Write-Host "  --debug-port PORT    Set debug port (default: 2345)"
-            Write-Host "  --without-consent    Disable the bundled consent server"
             Write-Host "  --bootstrap          Create default resources in-process, then exit (used by setup.ps1)"
             Write-Host "  --bootstrap-and-serve Create default resources in-process, then start the server"
+            Write-Host "  --admin-username VALUE  Username for the default admin user (--bootstrap-and-serve only)"
+            Write-Host "                          Optional; falls back to ADMIN_USERNAME env var, then defaults to 'admin'"
+            Write-Host "  --admin-password VALUE  Password for the default admin user (--bootstrap-and-serve only)"
+            Write-Host "                          Falls back to ADMIN_PASSWORD env var; bootstrap fails if neither is set"
             Write-Host "  --help               Show this help message"
             Write-Host ""
             Write-Host "First-Time Setup:"
@@ -152,7 +177,7 @@ while ($i -lt $args.Count) {
             Write-Host "Examples:"
             Write-Host "  .\start.ps1                                   Start server normally"
             Write-Host "  .\start.ps1 --debug                           Start in debug mode"
-            Write-Host "  .\start.ps1 --port 9090                       Start on custom port"
+            Write-Host "  .\start.ps1 --port 9095                       Start on custom port"
             Write-Host "  .\start.ps1 cloud.yml --env my.env            Start with exported resources and env"
             exit 0
         }
@@ -168,6 +193,14 @@ while ($i -lt $args.Count) {
             }
         }
     }
+}
+
+# --admin-username/--admin-password only make sense when bootstrapping happens in this
+# invocation, and specifically only for --bootstrap-and-serve — --bootstrap is the
+# seed-only mode setup.ps1 drives internally via environment variables, not flags.
+if (($ADMIN_USERNAME_FLAG_SET -or $ADMIN_PASSWORD_FLAG_SET) -and -not $BOOTSTRAP_AND_SERVE) {
+    Write-Host "Error: --admin-username/--admin-password are only valid together with --bootstrap-and-serve" -ForegroundColor Red
+    exit 1
 }
 
 # Resolve relative paths to absolute.
@@ -294,52 +327,8 @@ if (-not $serverExecPath) {
 
 $proc = $null
 try {
-    # Start consent server if enabled
-    $consentProc = $null
-    if ($WITH_CONSENT) {
-        $consentDir = Join-Path $scriptDir "consent"
-        if (-not (Test-Path $consentDir)) {
-            Write-Host "[ERROR] Consent server is enabled but consent directory not found: $consentDir" -ForegroundColor Red
-            exit 1
-        }
-        $consentBinary = @(
-            (Join-Path $consentDir 'consent-server.exe'),
-            (Join-Path $consentDir 'consent-server')
-        ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-        if (-not $consentBinary) {
-            Write-Host "[ERROR] Consent server is enabled but consent-server binary not found in: $consentDir" -ForegroundColor Red
-            exit 1
-        }
-        Write-Host "[INFO] Starting Consent Server..."
-        $consentPort = if ($env:CONSENT_SERVER_PORT) { $env:CONSENT_SERVER_PORT } else { "9090" }
-        $consentProc = Start-Process -FilePath $consentBinary -WorkingDirectory $consentDir -NoNewWindow -PassThru
-        $consentTimeout = 30
-        $consentElapsed = 0
-        while ($consentElapsed -lt $consentTimeout) {
-            if ($consentProc.HasExited) {
-                Write-Host "[ERROR] Consent server process exited unexpectedly (code $($consentProc.ExitCode))" -ForegroundColor Red
-                exit 1
-            }
-            try {
-                $resp = Invoke-WebRequest -Uri "http://localhost:${consentPort}/health/readiness" -UseBasicParsing -ErrorAction Stop
-                if ($resp.StatusCode -eq 200) {
-                    Write-Host "[INFO] Consent server is ready"
-                    break
-                }
-            } catch { }
-            Start-Sleep -Seconds 1
-            $consentElapsed++
-        }
-        if ($consentElapsed -ge $consentTimeout) {
-            Write-Host "[ERROR] Consent server failed to become ready within ${consentTimeout}s" -ForegroundColor Red
-            exit 1
-        }
-    }
-
     # Bootstrap: create the default resources in-process. Runs for both --bootstrap
-    # (seed-only) and --bootstrap-and-serve. The consent server started above (if
-    # enabled) stays up for the bootstrap — and, in bootstrap-and-serve mode, for the
-    # server too. It is stopped by the finally block.
+    # (seed-only) and --bootstrap-and-serve.
     $runServer = (-not $BOOTSTRAP_MODE)
     if ($BOOTSTRAP_MODE -or $BOOTSTRAP_AND_SERVE) {
         Write-Host "[INFO] Running $PRODUCT_NAME bootstrap ..."
@@ -411,14 +400,6 @@ finally {
     Write-Host "`n[STOP] Stopping server..."
     if ($proc -and -not $proc.HasExited) {
         try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch { }
-    }
-    if ($consentProc -and -not $consentProc.HasExited) {
-        try {
-            # Stop child processes first (the consent-server binary started by start.ps1)
-            Get-CimInstance Win32_Process -Filter "ParentProcessId = $($consentProc.Id)" -ErrorAction SilentlyContinue |
-                ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-            Stop-Process -Id $consentProc.Id -Force -ErrorAction SilentlyContinue
-        } catch { }
     }
 }
 

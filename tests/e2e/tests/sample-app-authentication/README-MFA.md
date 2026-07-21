@@ -136,32 +136,17 @@ ADMIN_TOKEN=$(echo $ADMIN_TOKEN_RESPONSE | jq -r '.assertion')
 ### Create the Notification Sender
 
 ```bash
-NOTIFICATION_SENDER_RESPONSE=$(curl -kL -X POST 'https://localhost:8090/notification-senders/message' \
+NOTIFICATION_SENDER_RESPONSE=$(curl -kL -X POST 'https://localhost:8090/connections/sms-gateway' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -d '{
     "name": "E2E Mock SMS Sender",
     "description": "Mock SMS sender for e2e MFA testing",
-    "provider": "custom",
-    "properties": [ 
-      {                                                      
-        "name": "url",                                               
-        "value": "http://localhost:8098/send-sms",
-        "isSecret": false              
-      },                                                                               
-      {                      
-        "name": "http_method",
-        "value": "POST",
-        "isSecret": false                 
-      },                                             
-      {                                         
-        "name": "content_type",      
-        "value": "JSON",      
-        "isSecret": false                      
-      }                       
-    ]             
-  }'                                               
+    "url": "http://localhost:8098/send-sms",
+    "httpMethod": "POST",
+    "contentType": "JSON"
+  }'
 )
 
 NOTIFICATION_SENDER_ID=$(echo $NOTIFICATION_SENDER_RESPONSE | jq -r '.id')

@@ -259,6 +259,12 @@ export interface FlowNode {
     value: string;
     onSkip?: string;
   };
+  /**
+   * Cross-flow reference for CALL nodes. Carries the ID of the flow to invoke.
+   */
+  flow?: {
+    ref: string;
+  };
 }
 
 /**

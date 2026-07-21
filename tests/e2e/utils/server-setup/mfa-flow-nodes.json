@@ -158,10 +158,10 @@
         "executor": {
             "name": "AuthorizationExecutor"
         },
-        "onSuccess": "send_otp"
+        "onSuccess": "generate_otp"
     },
     {
-        "id": "send_otp",
+        "id": "generate_otp",
         "type": "TASK_EXECUTION",
         "layout": {
             "size": {
@@ -173,20 +173,39 @@
                 "y": 62
             }
         },
-        "properties": {
-            "senderId": "{{SENDER_ID}}"
-        },
         "executor": {
-            "name": "SMSOTPAuthExecutor",
-            "mode": "send",
+            "name": "OTPExecutor",
+            "mode": "generate",
             "inputs": [
                 {
-                    "ref": "otp_input_24ux",
-                    "type": "OTP_INPUT",
-                    "identifier": "otp",
-                    "required": false
+                    "ref": "input_mobile",
+                    "type": "PHONE_INPUT",
+                    "identifier": "mobileNumber",
+                    "required": true
                 }
             ]
+        },
+        "onSuccess": "sms_send"
+    },
+    {
+        "id": "sms_send",
+        "type": "TASK_EXECUTION",
+        "layout": {
+            "size": {
+                "width": 200,
+                "height": 113
+            },
+            "position": {
+                "x": 2392,
+                "y": 62
+            }
+        },
+        "properties": {
+            "senderId": "{{SENDER_ID}}",
+            "smsTemplate": "OTP"
+        },
+        "executor": {
+            "name": "SMSExecutor"
         },
         "onSuccess": "view_s2t2"
     },
@@ -203,11 +222,8 @@
                 "y": 62
             }
         },
-        "properties": {
-            "senderId": "{{SENDER_ID}}"
-        },
         "executor": {
-            "name": "SMSOTPAuthExecutor",
+            "name": "OTPExecutor",
             "mode": "verify",
             "inputs": [
                 {
@@ -340,7 +356,7 @@
                 ],
                 "action": {
                     "ref": "resend_6o42",
-                    "nextNode": "send_otp"
+                    "nextNode": "generate_otp"
                 }
             }
         ]

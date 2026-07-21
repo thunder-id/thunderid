@@ -1,5 +1,6 @@
 ---
 title: Magic Link
+docType: concept
 description: Configure and use Magic Links for passwordless sign-in and registration
 ---
 
@@ -17,7 +18,7 @@ The process works as follows:
 
 <ProductName /> supports Magic Links through two primary approaches:
 
-1. **Redirect-Based**: Use <ProductName />'s hosted authentication pages (`gate`) by selecting a Magic Link flow template in your application settings—no custom UI needed.
+1. **Redirect-Based**: Use <ProductName />'s hosted authentication pages (`gate`) by selecting a Magic Link flow template in your application settings, no custom UI needed.
 2. **App-Native**: Integrate Magic Links into your own custom UI by interacting directly with the Flow Execution API.
 
 ## Prerequisites
@@ -54,7 +55,7 @@ Applications configured with the `authorization_code` grant type cannot start fl
 
 ### Starting the Flow
 
-1) **Start the flow** – send an initial flow request.
+1) **Start the flow.** Send an initial flow request.
 
 ```bash
 curl -X POST https://localhost:8090/flow/execute \
@@ -67,7 +68,7 @@ curl -X POST https://localhost:8090/flow/execute \
 
 - If your flow is configured with a Magic Link step, the response will include an `executionId` and a `challengeToken`, along with an action requiring the user's identifier.
 
-2) **Generate the Magic Link** – submit the email address to advance the flow.
+2) **Generate the Magic Link.** Submit the email address to advance the flow.
 
 For example
 ```bash
@@ -90,9 +91,9 @@ curl -X POST https://localhost:8090/flow/execute \
 
 When the user clicks the link in their email, they are redirected to your application's configured callback route.
 
-1) **Extract the token** – grab the `token` from the URL query parameters.
+1) **Extract the token.** Read the `token` from the URL query parameters.
 
-2) **Continue the flow** – submit the token back to the flow engine to verify it.
+2) **Continue the flow.** Submit the token back to the flow engine for verification.
 
 ```bash
 curl -X POST https://localhost:8090/flow/execute \

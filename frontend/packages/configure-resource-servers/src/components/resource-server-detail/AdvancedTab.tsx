@@ -35,10 +35,17 @@ export default function AdvancedTab({resourceServer, identifier, onIdentifierCha
     <Stack spacing={3}>
       <SettingsCard
         title={t('resourceServers:edit.advanced.identifier.title', 'Configurations')}
-        description={t(
-          'resourceServers:edit.advanced.identifier.description',
-          'Configuration settings for this resource server.',
-        )}
+        description={
+          resourceServer.type === 'MCP'
+            ? t(
+                'resourceServers:edit.advanced.identifier.descriptionMcp',
+                'Configuration settings for this MCP server.',
+              )
+            : t(
+                'resourceServers:edit.advanced.identifier.description',
+                'Configuration settings for this resource server.',
+              )
+        }
       >
         <FormControl fullWidth>
           <FormLabel htmlFor="resource-server-identifier">
@@ -50,10 +57,22 @@ export default function AdvancedTab({resourceServer, identifier, onIdentifierCha
             onChange={(e) => onIdentifierChange(e.target.value)}
             fullWidth
             size="small"
-            helperText={t(
-              'resourceServers:edit.advanced.identifier.hint',
-              'A unique value that identifies this resource server. When set as an URI,enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
-            )}
+            placeholder={
+              resourceServer.type === 'MCP'
+                ? t('resourceServers:edit.advanced.identifier.placeholderMcp', 'https://mcp.example.com')
+                : t('resourceServers:edit.advanced.identifier.placeholder', 'https://api.example.com')
+            }
+            helperText={
+              resourceServer.type === 'MCP'
+                ? t(
+                    'resourceServers:edit.advanced.identifier.hintMcp',
+                    'A unique value that identifies this MCP server. When set as an URI, enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
+                  )
+                : t(
+                    'resourceServers:edit.advanced.identifier.hint',
+                    'A unique value that identifies this resource server. When set as an URI, enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
+                  )
+            }
             disabled={resourceServer.isReadOnly}
           />
         </FormControl>

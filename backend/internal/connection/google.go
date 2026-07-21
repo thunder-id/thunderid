@@ -19,6 +19,8 @@
 package connection //nolint:dupl // google mirrors github's identical shape, kept distinct per vendor
 
 import (
+	"strconv"
+
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -35,6 +37,10 @@ type googleConnectionRequest struct {
 	Scopes       []string `json:"scopes,omitempty"`
 	Prompt       string   `json:"prompt,omitempty"`
 
+	JwksEndpoint         string `json:"jwksEndpoint,omitempty"`
+	Issuer               string `json:"issuer,omitempty"`
+	TokenExchangeEnabled *bool  `json:"tokenExchangeEnabled,omitempty"`
+
 	AttributeConfiguration *providers.AttributeConfiguration `json:"attributeConfiguration,omitempty"`
 }
 
@@ -49,6 +55,10 @@ type googleConnectionResponse struct {
 	RedirectURI  string   `json:"redirectUri,omitempty"`
 	Scopes       []string `json:"scopes,omitempty"`
 	Prompt       string   `json:"prompt,omitempty"`
+
+	JwksEndpoint         string `json:"jwksEndpoint,omitempty"`
+	Issuer               string `json:"issuer,omitempty"`
+	TokenExchangeEnabled *bool  `json:"tokenExchangeEnabled,omitempty"`
 
 	AttributeConfiguration *providers.AttributeConfiguration `json:"attributeConfiguration,omitempty"`
 }
@@ -71,6 +81,18 @@ func googleToIDPDTO(req googleConnectionRequest) (*providers.IDPDTO, error) {
 	if props, err = appendProperty(props, idp.PropPrompt, req.Prompt, false); err != nil {
 		return nil, err
 	}
+	if props, err = appendProperty(props, idp.PropJwksEndpoint, req.JwksEndpoint, false); err != nil {
+		return nil, err
+	}
+	if props, err = appendProperty(props, idp.PropIssuer, req.Issuer, false); err != nil {
+		return nil, err
+	}
+	if req.TokenExchangeEnabled != nil {
+		if props, err = appendProperty(props, idp.PropTokenExchangeEnabled,
+			strconv.FormatBool(*req.TokenExchangeEnabled), false); err != nil {
+			return nil, err
+		}
+	}
 	return &providers.IDPDTO{
 		Name:                   req.Name,
 		Description:            req.Description,
@@ -85,7 +107,7 @@ func googleFromIDPDTO(dto providers.IDPDTO) (googleConnectionResponse, error) {
 	if err != nil {
 		return googleConnectionResponse{}, err
 	}
-	return googleConnectionResponse{
+	resp := googleConnectionResponse{
 		ID:                     dto.ID,
 		Name:                   dto.Name,
 		Description:            dto.Description,
@@ -95,6 +117,14 @@ func googleFromIDPDTO(dto providers.IDPDTO) (googleConnectionResponse, error) {
 		RedirectURI:            values[idp.PropRedirectURI],
 		Scopes:                 splitScopes(values[idp.PropScopes]),
 		Prompt:                 values[idp.PropPrompt],
+		JwksEndpoint:           values[idp.PropJwksEndpoint],
+		Issuer:                 values[idp.PropIssuer],
 		AttributeConfiguration: dto.AttributeConfiguration,
-	}, nil
+	}
+	if raw, ok := values[idp.PropTokenExchangeEnabled]; ok {
+		if enabled, parseErr := strconv.ParseBool(raw); parseErr == nil {
+			resp.TokenExchangeEnabled = &enabled
+		}
+	}
+	return resp, nil
 }

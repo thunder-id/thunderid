@@ -70,6 +70,8 @@ type FlowMgtServiceInterface interface {
 	SetDependencyRegistry(r resourcedependency.Registry)
 	GetFlowUsages(ctx context.Context, flowID string) (
 		*resourcedependency.DependenciesResponse, *tidcommon.ServiceError)
+	GetResourceDependencies(
+		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 }
 
 // flowMgtService is the default implementation of the FlowMgtServiceInterface.
@@ -263,6 +265,58 @@ func (s *flowMgtService) GetFlowUsages(
 	}
 
 	return result, nil
+}
+
+// GetResourceDependencies returns the flows that reference the resource identified by
+// (resourceType, id). It implements the resourcedependency.Provider interface: an active flow
+// references an identity provider or notification sender when one of its nodes carries the matching
+// ID in its properties. Such a reference blocks deletion of the target, since the flow would break
+// without it.
+func (s *flowMgtService) GetResourceDependencies(
+	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
+	var propertyKey string
+	switch resourceType {
+	case resourcedependency.ResourceTypeIDP:
+		propertyKey = nodePropertyKeyIDPID
+	case resourcedependency.ResourceTypeNotificationSender:
+		propertyKey = nodePropertyKeyNotificationSenderID
+	default:
+		return []resourcedependency.ResourceDependency{}, nil
+	}
+
+	flows, err := s.store.ListActiveFlowsWithNodes(ctx)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to list flows for dependency lookup", log.Error(err))
+		return nil, err
+	}
+
+	usages := make([]resourcedependency.ResourceDependency, 0)
+	for _, flow := range flows {
+		if flowReferencesResource(flow, propertyKey, id) {
+			usages = append(usages, resourcedependency.ResourceDependency{
+				ResourceType:     resourcedependency.ResourceTypeFlow,
+				ID:               flow.ID,
+				DisplayName:      flow.Name,
+				BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+			})
+		}
+	}
+
+	return usages, nil
+}
+
+// flowReferencesResource reports whether any node in the flow carries the given ID in the named
+// property key.
+func flowReferencesResource(flow *providers.CompleteFlowDefinition, propertyKey, id string) bool {
+	for i := range flow.Nodes {
+		if flow.Nodes[i].Properties == nil {
+			continue
+		}
+		if val, ok := flow.Nodes[i].Properties[propertyKey].(string); ok && val == id {
+			return true
+		}
+	}
+	return false
 }
 
 // GetFlowByHandle retrieves a flow definition by its handle and type.

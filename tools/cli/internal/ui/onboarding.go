@@ -21,9 +21,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/thunder-id/thunderid/tools/cli/internal/commands/sample"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/config"

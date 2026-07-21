@@ -1,10 +1,11 @@
 ---
-title: Resource Export API
+title: Export Resources
+docType: reference
 sidebar_position: 90
 description: Export resources as combined YAML in JSON responses or as ZIP archives with optional environment file output.
 ---
 
-# Resource Export API
+# Export Resources
 
 Use the export API to retrieve <ProductName /> resources in two delivery formats:
 
@@ -61,7 +62,7 @@ The API reference schema also defines an internal `ExportResponse` model (see `E
   "files": [
     {
       "fileName": "google-idp.yaml",
-      "content": "apiVersion: thunder/v1\nkind: IdentityProvider\n...",
+      "content": "resource_type: connection\ntype: google\n...",
       "size": 128
     }
   ],

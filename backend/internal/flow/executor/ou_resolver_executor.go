@@ -70,6 +70,11 @@ func newOUResolverExecutor(
 		providers.ExecutorTypeUtility,
 		defaultInputs,
 		[]providers.Input{},
+		&providers.ExecutorMeta{
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: common.NodePropertyOUResolveFrom},
+			},
+		},
 	)
 	return &ouResolverExecutor{
 		Executor:  base,

@@ -49,7 +49,7 @@ func TestCIBARequestStoreTestSuite(t *testing.T) {
 func (suite *CIBARequestStoreTestSuite) SetupTest() {
 	testConfig := &config.Config{
 		Database: config.DatabaseConfig{
-			Runtime: config.DataSource{
+			RuntimeTransient: config.DataSource{
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: ":memory:"},
 			},
@@ -86,9 +86,9 @@ func (suite *CIBARequestStoreTestSuite) TestNewCIBARequestStore() {
 }
 
 func (suite *CIBARequestStoreTestSuite) TestAdd_Success() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertCIBAAuthRequest,
-		"auth-req-1", "client-1", "openid profile", string(CIBAStatePending),
+		"auth-req-1", "client-1", "openid profile", "", string(CIBAStatePending),
 		mock.AnythingOfType("time.Time"), testDeploymentID).Return(int64(1), nil)
 
 	err := suite.store.Add(context.Background(), suite.sampleRequest())
@@ -98,8 +98,66 @@ func (suite *CIBARequestStoreTestSuite) TestAdd_Success() {
 	suite.mockDBClient.AssertExpectations(suite.T())
 }
 
+func (suite *CIBARequestStoreTestSuite) TestAdd_EncodesResources() {
+	req := suite.sampleRequest()
+	req.Resources = []string{"https://api.example.com"}
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertCIBAAuthRequest,
+		"auth-req-1", "client-1", "openid profile", `["https://api.example.com"]`,
+		string(CIBAStatePending), mock.AnythingOfType("time.Time"), testDeploymentID).Return(int64(1), nil)
+
+	err := suite.store.Add(context.Background(), req)
+	assert.NoError(suite.T(), err)
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestGetByID_DecodesResources() {
+	expiry := time.Now().Add(2 * time.Minute)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetCIBAAuthRequest,
+		"auth-req-1", testDeploymentID).Return([]map[string]interface{}{
+		{
+			dbColumnAuthReqID:      "auth-req-1",
+			dbColumnClientID:       "client-1",
+			dbColumnStandardScopes: "openid",
+			dbColumnResources:      `["https://api.example.com"]`,
+			dbColumnState:          string(CIBAStatePending),
+			dbColumnExpiryTime:     expiry.Format("2006-01-02 15:04:05.999999999"),
+		},
+	}, nil)
+
+	record, err := suite.store.GetByID(context.Background(), "auth-req-1")
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), []string{"https://api.example.com"}, record.Resources)
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestGetByID_EmptyResourcesRoundTrips() {
+	expiry := time.Now().Add(2 * time.Minute)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetCIBAAuthRequest,
+		"auth-req-1", testDeploymentID).Return([]map[string]interface{}{
+		{
+			dbColumnAuthReqID:      "auth-req-1",
+			dbColumnClientID:       "client-1",
+			dbColumnStandardScopes: "openid",
+			dbColumnResources:      nil,
+			dbColumnState:          string(CIBAStatePending),
+			dbColumnExpiryTime:     expiry.Format("2006-01-02 15:04:05.999999999"),
+		},
+	}, nil)
+
+	record, err := suite.store.GetByID(context.Background(), "auth-req-1")
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), record.Resources)
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
 func (suite *CIBARequestStoreTestSuite) TestAdd_DBClientError() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db client error"))
 
 	err := suite.store.Add(context.Background(), suite.sampleRequest())
 	assert.Error(suite.T(), err)
@@ -108,7 +166,7 @@ func (suite *CIBARequestStoreTestSuite) TestAdd_DBClientError() {
 }
 
 func (suite *CIBARequestStoreTestSuite) TestAdd_ExecuteError() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertCIBAAuthRequest,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything).Return(int64(0), errors.New("execute error"))
@@ -121,7 +179,7 @@ func (suite *CIBARequestStoreTestSuite) TestAdd_ExecuteError() {
 
 func (suite *CIBARequestStoreTestSuite) TestGetByID_Success() {
 	expiry := time.Now().Add(2 * time.Minute)
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetCIBAAuthRequest,
 		"auth-req-1", testDeploymentID).Return([]map[string]interface{}{
 		{
@@ -158,7 +216,7 @@ func (suite *CIBARequestStoreTestSuite) TestGetByID_EmptyID() {
 }
 
 func (suite *CIBARequestStoreTestSuite) TestGetByID_NotFound() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetCIBAAuthRequest,
 		"missing", testDeploymentID).Return([]map[string]interface{}{}, nil)
 
@@ -170,7 +228,7 @@ func (suite *CIBARequestStoreTestSuite) TestGetByID_NotFound() {
 }
 
 func (suite *CIBARequestStoreTestSuite) TestGetByID_QueryError() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetCIBAAuthRequest,
 		"auth-req-1", testDeploymentID).Return(nil, errors.New("query error"))
 
@@ -183,7 +241,7 @@ func (suite *CIBARequestStoreTestSuite) TestGetByID_QueryError() {
 
 func (suite *CIBARequestStoreTestSuite) TestMarkAuthenticated_Success() {
 	authTime := time.Now()
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryMarkCIBAAuthRequestAuthenticated,
 		string(CIBAStateAuthenticated), "user-1", "openid customer:update", "cache-1", "urn:acr:pwd",
 		authTime.UTC(), "auth-req-1", string(CIBAStatePending), testDeploymentID).Return(int64(1), nil)
@@ -196,7 +254,7 @@ func (suite *CIBARequestStoreTestSuite) TestMarkAuthenticated_Success() {
 }
 
 func (suite *CIBARequestStoreTestSuite) TestMarkAuthenticated_DBClientError() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db client error"))
 
 	err := suite.store.MarkAuthenticated(context.Background(),
 		"auth-req-1", "user-1", "openid", "cache-1", "acr", time.Now())
@@ -206,7 +264,7 @@ func (suite *CIBARequestStoreTestSuite) TestMarkAuthenticated_DBClientError() {
 }
 
 func (suite *CIBARequestStoreTestSuite) TestMarkAuthenticated_ExecuteError() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryMarkCIBAAuthRequestAuthenticated,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(int64(0), errors.New("execute error"))
@@ -217,7 +275,7 @@ func (suite *CIBARequestStoreTestSuite) TestMarkAuthenticated_ExecuteError() {
 }
 
 func (suite *CIBARequestStoreTestSuite) TestMarkConsumed_DBClientError() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db client error"))
 
 	consumed, err := suite.store.MarkConsumed(context.Background(), "auth-req-1")
 	assert.Error(suite.T(), err)
@@ -227,7 +285,7 @@ func (suite *CIBARequestStoreTestSuite) TestMarkConsumed_DBClientError() {
 }
 
 func (suite *CIBARequestStoreTestSuite) TestMarkConsumed_ExecuteError() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryConsumeCIBAAuthRequest,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(int64(0), errors.New("execute error"))
 
@@ -237,7 +295,7 @@ func (suite *CIBARequestStoreTestSuite) TestMarkConsumed_ExecuteError() {
 }
 
 func (suite *CIBARequestStoreTestSuite) TestUpdateLastPolled_DBClientError() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db client error"))
 
 	err := suite.store.UpdateLastPolled(context.Background(), "auth-req-1", time.Now())
 	assert.Error(suite.T(), err)
@@ -246,7 +304,7 @@ func (suite *CIBARequestStoreTestSuite) TestUpdateLastPolled_DBClientError() {
 }
 
 func (suite *CIBARequestStoreTestSuite) TestUpdateLastPolled_ExecuteError() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateCIBALastPolled,
 		mock.Anything, mock.Anything, mock.Anything).Return(int64(0), errors.New("execute error"))
 
@@ -255,7 +313,7 @@ func (suite *CIBARequestStoreTestSuite) TestUpdateLastPolled_ExecuteError() {
 }
 
 func (suite *CIBARequestStoreTestSuite) TestUpdateState_ExecuteError() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateCIBAAuthRequestState,
 		mock.Anything, mock.Anything, mock.Anything).Return(int64(0), errors.New("execute error"))
 
@@ -264,7 +322,7 @@ func (suite *CIBARequestStoreTestSuite) TestUpdateState_ExecuteError() {
 }
 
 func (suite *CIBARequestStoreTestSuite) TestGetByID_DBClientError() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db client error"))
 
 	record, err := suite.store.GetByID(context.Background(), "auth-req-1")
 	assert.Error(suite.T(), err)
@@ -274,7 +332,7 @@ func (suite *CIBARequestStoreTestSuite) TestGetByID_DBClientError() {
 }
 
 func (suite *CIBARequestStoreTestSuite) TestMarkConsumed_Success() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryConsumeCIBAAuthRequest,
 		string(CIBAStateConsumed), "auth-req-1", string(CIBAStateAuthenticated), testDeploymentID).
 		Return(int64(1), nil)
@@ -287,7 +345,7 @@ func (suite *CIBARequestStoreTestSuite) TestMarkConsumed_Success() {
 }
 
 func (suite *CIBARequestStoreTestSuite) TestMarkConsumed_NoRowsAffected() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryConsumeCIBAAuthRequest,
 		string(CIBAStateConsumed), "auth-req-1", string(CIBAStateAuthenticated), testDeploymentID).
 		Return(int64(0), nil)
@@ -301,7 +359,7 @@ func (suite *CIBARequestStoreTestSuite) TestMarkConsumed_NoRowsAffected() {
 
 func (suite *CIBARequestStoreTestSuite) TestUpdateLastPolled_Success() {
 	polledAt := time.Now()
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateCIBALastPolled,
 		polledAt.UTC(), "auth-req-1", testDeploymentID).Return(int64(1), nil)
 
@@ -312,7 +370,7 @@ func (suite *CIBARequestStoreTestSuite) TestUpdateLastPolled_Success() {
 }
 
 func (suite *CIBARequestStoreTestSuite) TestUpdateState_Success() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateCIBAAuthRequestState,
 		string(CIBAStateExpired), "auth-req-1", testDeploymentID).Return(int64(1), nil)
 
@@ -323,7 +381,7 @@ func (suite *CIBARequestStoreTestSuite) TestUpdateState_Success() {
 }
 
 func (suite *CIBARequestStoreTestSuite) TestUpdateState_DBClientError() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db client error"))
 
 	err := suite.store.UpdateState(context.Background(), "auth-req-1", CIBAStateExpired)
 	assert.Error(suite.T(), err)
@@ -401,7 +459,7 @@ func (suite *CIBARequestStoreTestSuite) TestGetByID_UTCStoredTimestampRoundTrip(
 	lastPolled := time.Now().UTC().Add(-30 * time.Second)
 	authTime := time.Now().UTC().Add(-1 * time.Minute)
 
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetCIBAAuthRequest,
 		"auth-req-1", testDeploymentID).Return([]map[string]interface{}{
 		{

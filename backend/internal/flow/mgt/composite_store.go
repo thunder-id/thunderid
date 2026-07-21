@@ -82,6 +82,39 @@ func (c *compositeFlowStore) ListFlows(ctx context.Context, limit, offset int, f
 	return paginatedResult, total, nil
 }
 
+// ListActiveFlowsWithNodes retrieves active flows with their nodes from both stores, deduplicating
+// by ID with the database store taking precedence (mirroring ListFlows).
+func (c *compositeFlowStore) ListActiveFlowsWithNodes(ctx context.Context) (
+	[]*providers.CompleteFlowDefinition, error) {
+	dbFlows, err := c.dbStore.ListActiveFlowsWithNodes(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	fileFlows, err := c.fileStore.ListActiveFlowsWithNodes(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]bool, len(dbFlows)+len(fileFlows))
+	result := make([]*providers.CompleteFlowDefinition, 0, len(dbFlows)+len(fileFlows))
+	for _, flow := range dbFlows {
+		if !seen[flow.ID] {
+			seen[flow.ID] = true
+			result = append(result, flow)
+		}
+	}
+	for _, flow := range fileFlows {
+		if !seen[flow.ID] {
+			seen[flow.ID] = true
+			flow.IsReadOnly = true
+			result = append(result, flow)
+		}
+	}
+
+	return result, nil
+}
+
 // CreateFlow creates a new flow in the database store only.
 func (c *compositeFlowStore) CreateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (
 	*providers.CompleteFlowDefinition, error) {

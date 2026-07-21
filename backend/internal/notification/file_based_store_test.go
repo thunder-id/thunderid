@@ -203,6 +203,35 @@ func (suite *FileBasedStoreTestSuite) TestListSenders_MultipleSenders() {
 	suite.True(senderNames["Sender Three"])
 }
 
+func (suite *FileBasedStoreTestSuite) TestListSendersByType_FiltersByType() {
+	// Arrange
+	messageSender := suite.createTestSender("sender-007", "Message Sender")
+	emailSender := suite.createTestSender("sender-008", "Email Sender")
+	emailSender.Type = common.NotificationSenderTypeEmail
+
+	_ = suite.store.createSender(context.Background(), *messageSender)
+	_ = suite.store.createSender(context.Background(), *emailSender)
+
+	// Act
+	senders, err := suite.store.listSendersByType(context.Background(), common.NotificationSenderTypeMessage)
+
+	// Assert
+	suite.NoError(err)
+	suite.Require().Len(senders, 1)
+	suite.Equal("Message Sender", senders[0].Name)
+	suite.Equal(common.NotificationSenderTypeMessage, senders[0].Type)
+}
+
+func (suite *FileBasedStoreTestSuite) TestListSendersByType_Empty() {
+	// Act
+	senders, err := suite.store.listSendersByType(context.Background(), common.NotificationSenderTypeMessage)
+
+	// Assert
+	suite.NoError(err)
+	suite.NotNil(senders)
+	suite.Empty(senders)
+}
+
 func (suite *FileBasedStoreTestSuite) TestUpdateSender_ReturnsError() {
 	// Act
 	err := suite.store.updateSender(context.Background(), "any-id", common.NotificationSenderDTO{})

@@ -1,9 +1,10 @@
 ---
-title: Import Declarative Resources
+title: Import Resources
+docType: reference
 description: Import declarative YAML resources into runtime stores and control mutability with declarative read-only mode.
 ---
 
-# Import Declarative Resources
+# Import Resources
 
 <ProductName /> provides the `POST /import` API to import declarative YAML content into runtime stores.
 
@@ -79,7 +80,7 @@ A successful import returns summary metrics and per-document outcomes.
   },
   "results": [
     {
-      "resourceType": "identity_provider",
+      "resourceType": "connection",
       "resourceId": "550e8400-e29b-41d4-a716-446655440000",
       "resourceName": "Google",
       "operation": "create",
@@ -103,7 +104,7 @@ curl -X POST "https://localhost:8090/import" \
   -H "Authorization: Bearer <access_token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "content": "# resource_type: application\nname: Console\nauthFlowId: {{.AUTH_FLOW_ID}}\n",
+    "content": "resource_type: application\nname: Console\nauthFlowId: {{.AUTH_FLOW_ID}}\n",
     "variables": {
       "AUTH_FLOW_ID": "edc013d0-e893-4dc0-990c-3e1d203e005b"
     },
@@ -132,12 +133,12 @@ The following handle fields are supported:
 
 If you provide both a handle field and the corresponding ID field, the ID takes precedence and the handle is ignored.
 
-If a handle cannot be resolved — because the target resource does not exist or the required adapter is not configured — the import item fails with a descriptive error message. When `continueOnError` is `true`, the importer continues processing the remaining documents.
+If a handle cannot be resolved (because the target resource does not exist or the required adapter is not configured), the import item fails with a descriptive error message. When `continueOnError` is `true`, the importer continues processing the remaining documents.
 
 ### Example: Application with Handle References
 
 ```yaml
-# resource_type: application
+resource_type: application
 name: My App
 ouHandle: default
 authFlowHandle: default-basic-flow

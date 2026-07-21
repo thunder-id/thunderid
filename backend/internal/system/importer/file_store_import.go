@@ -34,7 +34,7 @@ import (
 
 var fileStoreDirectoryByResourceType = map[string]string{
 	resourceTypeApplication:      "applications",
-	resourceTypeIdentityProvider: "identity_providers",
+	resourceTypeConnection:       "connections",
 	resourceTypeFlow:             "flows",
 	resourceTypeOrganizationUnit: "organization_units",
 	resourceTypeEntityType:       "user_types",

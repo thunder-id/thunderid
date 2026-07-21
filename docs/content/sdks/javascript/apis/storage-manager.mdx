@@ -1,7 +1,8 @@
 ---
 title: StorageManager
+docType: reference
 displayed_sidebar: javascriptSdkSidebar
-description: Typed storage abstraction for auth config, session, and OIDC metadata
+description: Typed storage abstraction for auth config, session data, and OIDC metadata in the JavaScript SDK.
 ---
 
 # `StorageManager`
@@ -77,8 +78,6 @@ Delete the entire stored configuration.
 
 Delete a single config field.
 
----
-
 ### OIDC Provider Metadata
 
 #### `setOIDCProviderMetaData(data)`
@@ -118,8 +117,6 @@ Delete the cached OIDC metadata.
 #### `removeOIDCProviderMetaDataParameter(key)`
 
 Delete a single field from the OIDC metadata.
-
----
 
 ### Session Data
 
@@ -165,8 +162,6 @@ Remove a single session field.
 
 Manage a plain-string session status flag (e.g., for tracking sign-in progress).
 
----
-
 ### Temporary Data
 
 Temporary data stores short-lived values like PKCE code verifiers and state parameters. It is keyed per user session.
@@ -201,8 +196,6 @@ Delete all temporary data for a user.
 
 Delete a single temporary value.
 
----
-
 ### Persisted Data
 
 Persisted data survives session clearing. Use it for values that must outlive individual sessions (e.g., `applicationId`).
@@ -216,8 +209,6 @@ Write persisted data.
 Read persisted data.
 
 **Returns:** `Promise<TemporaryStore>`
-
----
 
 ### Custom Data
 

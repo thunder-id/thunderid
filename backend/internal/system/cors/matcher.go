@@ -58,6 +58,38 @@ func newMatcher(rules []originRule) *Matcher {
 	return m
 }
 
+// combine returns a new matcher that accepts an origin if either input does, folding the once-compiled
+// read-only matcher with the writable one. Neither input is mutated — the literal map and regex slice are
+// freshly allocated — so the shared read-only matcher stays safe for concurrent use. combine(a, nil) == a
+// and combine(nil, b) == b. Literals are de-duplicated via the map; regexes are concatenated as-is (a
+// cross-layer duplicate is just evaluated twice on a miss, which is harmless).
+func combine(a, b *Matcher) *Matcher {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	out := &Matcher{
+		literals:    make(map[string]struct{}, len(a.literals)+len(b.literals)),
+		regexes:     make([]*regexp.Regexp, 0, len(a.regexes)+len(b.regexes)),
+		nullAllowed: a.nullAllowed || b.nullAllowed,
+	}
+	for k := range a.literals {
+		out.literals[k] = struct{}{}
+	}
+	for k := range b.literals {
+		out.literals[k] = struct{}{}
+	}
+	out.regexes = append(out.regexes, a.regexes...)
+	out.regexes = append(out.regexes, b.regexes...)
+	out.size = len(out.literals) + len(out.regexes)
+	if out.nullAllowed {
+		out.size++
+	}
+	return out
+}
+
 // Match evaluates the parsed origin against the configured rules and returns
 // the verbatim raw origin as the echo target on a hit. Literal lookup runs
 // first against the canonical-key map; if it misses, regex rules are tested

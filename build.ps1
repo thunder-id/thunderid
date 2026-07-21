@@ -33,29 +33,8 @@ param(
     [string]$TestRun,
     
     [Parameter(Position = 4)]
-    [string]$TestPackage,
-
-    [switch]$WithoutConsent
+    [string]$TestPackage
 )
-
-# Accept --without-consent anywhere in positional arguments.
-$positionalArgs = @($Command, $GO_OS, $GO_ARCH, $TestRun, $TestPackage)
-$withoutConsentFromArgs = $false
-
-for ($i = 0; $i -lt $positionalArgs.Count; $i++) {
-    if ($positionalArgs[$i] -ceq "--without-consent") {
-        $withoutConsentFromArgs = $true
-        $positionalArgs[$i] = $null
-    }
-}
-
-$Command = $positionalArgs[0]
-$GO_OS = $positionalArgs[1]
-$GO_ARCH = $positionalArgs[2]
-$TestRun = $positionalArgs[3]
-$TestPackage = $positionalArgs[4]
-
-$skipConsent = $WithoutConsent.IsPresent -or $withoutConsentFromArgs -or ($env:WITHOUT_CONSENT -eq "true")
 
 $PRODUCT_NAME = "ThunderID"
 $PRODUCT_NAME_LOWERCASE = $PRODUCT_NAME.ToLower()
@@ -224,7 +203,6 @@ function Read-Config {
         $script:PORT = 8090
         $script:HTTP_ONLY = "false"
         $script:PUBLIC_HOSTNAME = ""
-        $script:CONSENT_ENABLED = $true
     }
     else {
         # Try yq first (YAML parser)
@@ -233,8 +211,6 @@ function Read-Config {
             $script:PORT = & yq eval '.server.port // 8090' $CONFIG_FILE 2>$null
             $script:HTTP_ONLY = & yq eval '.server.http_only // false' $CONFIG_FILE 2>$null
             $script:PUBLIC_HOSTNAME = & yq eval '.server.public_hostname // ""' $CONFIG_FILE 2>$null
-            $consentEnabled = & yq eval '.consent.enabled // true' $CONFIG_FILE 2>$null
-            $script:CONSENT_ENABLED = ($consentEnabled -eq "true")
         }
         else {
             # Fallback: basic parsing with regex
@@ -271,15 +247,6 @@ function Read-Config {
             else {
                 $script:PUBLIC_HOSTNAME = ""
             }
-
-            # Try to extract consent.enabled
-            if ($content -match 'consent:[\s\S]*?enabled:\s*(true|false)') {
-                $script:CONSENT_ENABLED = ($matches[1] -eq "true")
-            }
-            else {
-                $script:CONSENT_ENABLED = $true
-            }
-
         }
     }
     
@@ -345,6 +312,11 @@ function Clean {
     Write-Host "Removing certificates in $BACKEND_DIR/$SECURITY_DIR"
     if (Test-Path (Join-Path $BACKEND_DIR $SECURITY_DIR)) {
         Remove-Item -Path (Join-Path $BACKEND_DIR $SECURITY_DIR) -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    Write-Host "Removing runtime secrets in $BACKEND_DIR/config/secrets"
+    if (Test-Path (Join-Path $BACKEND_DIR "config/secrets")) {
+        Remove-Item -Path (Join-Path $BACKEND_DIR "config/secrets") -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     Write-Host "Removing certificates in $VANILLA_SAMPLE_APP_DIR"
@@ -608,8 +580,8 @@ function Initialize-Databases {
 
     New-Item -Path $REPOSITORY_DB_DIR -ItemType Directory -Force | Out-Null
 
-    $db_files = @("configdb.db", "runtimedb.db", "userdb.db", "operationdb.db")
-    $script_paths = @("configdb/sqlite.sql", "runtimedb/sqlite.sql", "userdb/sqlite.sql", "operationdb/sqlite.sql")
+    $db_files = @("configdb.db", "runtime-transient.db", "entitydb.db", "runtime-persistent.db")
+    $script_paths = @("configdb/sqlite.sql", "runtime-transient/sqlite.sql", "entitydb/sqlite.sql", "runtime-persistent/sqlite.sql")
 
     for ($i = 0; $i -lt $db_files.Length; $i++) {
         $db_file = $db_files[$i]
@@ -673,6 +645,12 @@ function Prepare-Backend-For-Packaging {
     
     $security_dir = Join-Path $package_folder $SECURITY_DIR
     New-Item -Path $security_dir -ItemType Directory -Force | Out-Null
+    # Never ship key material: strip any dev certs/keys that copying config above may have brought in.
+    Remove-Item -Path (Join-Path $security_dir "*.cert") -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path (Join-Path $security_dir "*.key") -Force -ErrorAction SilentlyContinue
+    # Never ship runtime secrets: strip the dev Direct Auth Secret that copying config may have brought in.
+    # setup.ps1 generates a fresh per-deployment secret.
+    Remove-Item -Path (Join-Path $package_folder "config/secrets") -Recurse -Force -ErrorAction SilentlyContinue
 
     # Copy bootstrap directory
     Write-Host "Copying bootstrap scripts..."
@@ -680,15 +658,7 @@ function Prepare-Backend-For-Packaging {
     # Never ship the dev-only CORS seed that Run stages into the source bootstrap dir.
     Remove-Item -Path (Join-Path $package_folder "bootstrap/02-server-configurations.yaml") -Force -ErrorAction SilentlyContinue
 
-    Write-Host "=== Ensuring server certificates exist in the distribution ==="
-    Ensure-Certificates -cert_dir $security_dir -cert_name_prefix "server"
-    Ensure-Certificates -cert_dir $security_dir -cert_name_prefix "signing"
-    Ensure-Certificates -cert_dir $security_dir -cert_name_prefix "ecdsa-signing" -Algorithm "ECDSA"
-    Write-Host "================================================================"
-
-    Write-Host "=== Ensuring crypto file exists in the distribution ==="
-    Ensure-Crypto-File -key_dir (Join-Path $package_folder "config/certs")
-    Write-Host "================================================================"
+    # Key material is not generated into the distribution; setup.ps1 generates it per deployment.
 }
 
 function Prepare-Frontend-For-Packaging {
@@ -759,56 +729,6 @@ function Package {
         Write-Host "Including Unix scripts (start.sh, setup.sh)..."
         Copy-Item -Path "start.sh" -Destination $package_folder -Force
         Copy-Item -Path "setup.sh" -Destination $package_folder -Force
-    }
-
-    if (-not $skipConsent) {
-        Write-Host "Packaging consent server..."
-        $packageFolderAbs = (Resolve-Path -Path $package_folder).Path
-        & (Join-Path $SCRIPT_DIR "scripts/package-consent-server.ps1") `
-            -GoOS $GO_OS -GoArch $GO_ARCH -DistOutputPath $packageFolderAbs
-        if ($LASTEXITCODE -ne 0) {
-            throw "Consent server packaging failed with exit code $LASTEXITCODE"
-        }
-    } else {
-        Write-Host "Skipping consent server packaging (--without-consent)..."
-        $targetYaml = Join-Path $package_folder "deployment.yaml"
-        $yqPatched = $false
-        if (Get-Command yq -ErrorAction SilentlyContinue) {
-            & yq eval '.consent.enabled = false' -i $targetYaml
-            if ($LASTEXITCODE -eq 0) {
-                $yqPatched = $true
-            }
-        }
-        if (-not $yqPatched) {
-            $content = Get-Content $targetYaml
-            $inConsent = $false
-            for ($i = 0; $i -lt $content.Length; $i++) {
-                if ($content[$i] -match '^consent:') {
-                    $inConsent = $true
-                } elseif ($inConsent -and $content[$i] -match '^\s*enabled:\s*true') {
-                    $content[$i] = $content[$i] -replace 'enabled:\s*true', 'enabled: false'
-                    $inConsent = $false
-                } elseif ($inConsent -and $content[$i] -match '^\S') {
-                    $inConsent = $false
-                }
-            }
-            $content | Set-Content $targetYaml
-        }
-        $consentDisabled = $false
-        $inConsentBlock = $false
-        foreach ($line in (Get-Content $targetYaml)) {
-            if ($line -match '^consent:') {
-                $inConsentBlock = $true
-            } elseif ($inConsentBlock -and $line -match '^\s+enabled:\s*false') {
-                $consentDisabled = $true
-                break
-            } elseif ($inConsentBlock -and $line -match '^\S') {
-                break
-            }
-        }
-        if (-not $consentDisabled) {
-            throw "Failed to disable consent in '$targetYaml' - packaging cannot continue with consent still enabled."
-        }
     }
 
     Write-Host "Creating zip file..."
@@ -1327,7 +1247,8 @@ function Ensure-Certificates {
                     & openssl req -x509 -nodes -days 365 -newkey rsa:2048 `
                         -keyout $local_key_file `
                         -out $local_cert_file `
-                        -subj "/O=WSO2/OU=$PRODUCT_NAME/CN=localhost" 2>$null
+                        -subj "/O=WSO2/OU=$PRODUCT_NAME/CN=localhost" `
+                        -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" 2>$null
                 }
                 if ($LASTEXITCODE -ne 0) {
                     throw "Error generating certificates: OpenSSL failed with exit code $LASTEXITCODE"
@@ -1539,6 +1460,60 @@ function Ensure-Crypto-File {
     Write-Host "================================================================"
 }
 
+function Ensure-DirectAuthSecret-File {
+    param(
+        [string]$secret_dir
+    )
+
+    # Path referenced by server.security.direct_auth_secret (file://config/secrets/direct_auth_secret)
+    # in deployment.yaml. The server reads the secret from here at load time.
+    $SECRET_FILE = Join-Path $secret_dir "direct_auth_secret"
+
+    Write-Host "================================================================"
+    Write-Host "Ensuring Direct Auth Secret file exists..."
+
+    if (Test-Path $SECRET_FILE) {
+        Write-Host "Direct Auth Secret file already present in $SECRET_FILE. Skipping generation."
+    }
+    else {
+        Write-Host "Direct Auth Secret file not found. Generating new secret at $SECRET_FILE..."
+        $NEW_SECRET = $null
+
+        # Prefer OpenSSL; fall back to .NET cryptography (always available in PowerShell).
+        $openssl = Get-Command openssl -ErrorAction SilentlyContinue
+        if ($openssl) {
+            try {
+                $NEW_SECRET = (openssl rand -hex 32 | Out-String).Trim()
+                if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($NEW_SECRET) -or $NEW_SECRET.Length -ne 64) {
+                    throw "OpenSSL rand command failed or returned empty/incorrect length."
+                }
+            }
+            catch {
+                Write-Host " - OpenSSL failed: $_. Falling back to .NET cryptography."
+                $NEW_SECRET = $null
+            }
+        }
+
+        if ([string]::IsNullOrEmpty($NEW_SECRET)) {
+            $bytes = New-Object byte[] 32
+            $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+            $rng.GetBytes($bytes)
+            $rng.Dispose()
+            $NEW_SECRET = ([System.BitConverter]::ToString($bytes) -replace '-', '').ToLower()
+        }
+
+        # Ensure the target directory exists.
+        New-Item -Path $secret_dir -ItemType Directory -Force | Out-Null
+
+        # Write the secret without a trailing newline so it is used verbatim.
+        Set-Content -Path $SECRET_FILE -Value $NEW_SECRET -NoNewline -Encoding Ascii
+
+        Write-Host "Successfully generated and added new Direct Auth Secret to $SECRET_FILE."
+    }
+
+    Write-Host "================================================================"
+}
+
 function Run {
     function Cleanup-Servers {
         Write-Host ""
@@ -1548,11 +1523,8 @@ function Run {
         }
         Get-Process -Name "*pnpm*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
         Get-Process -Name "node" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like "*vite*" } | Stop-Process -Force -ErrorAction SilentlyContinue
-        if ($script:BACKEND_PID) { 
+        if ($script:BACKEND_PID) {
             Stop-Process -Id $script:BACKEND_PID -Force -ErrorAction SilentlyContinue
-        }
-        if ($script:CONSENT_PROCESS -and -not $script:CONSENT_PROCESS.HasExited) {
-            Stop-Process -Id $script:CONSENT_PROCESS.Id -Force -ErrorAction SilentlyContinue
         }
         Start-Sleep -Seconds 1
         Write-Host "✅ All servers stopped successfully."
@@ -1560,11 +1532,6 @@ function Run {
 
     Write-Host "Running frontend apps..."
     Run-Frontend
-
-    if ($script:CONSENT_ENABLED -and -not $skipConsent) {
-        Write-Host "Running consent server..."
-        Run-Consent
-    }
 
     # Ensure runtime prerequisites (certificates, crypto material, databases) so the
     # in-process bootstrap can create the default resources before the server starts.
@@ -1574,6 +1541,7 @@ function Run {
     Ensure-Certificates -cert_dir (Join-Path $BACKEND_DIR $SECURITY_DIR) -cert_name_prefix "ecdsa-signing" -Algorithm "ECDSA"
     Ensure-Certificates -cert_dir $VANILLA_SAMPLE_APP_DIR -cert_name_prefix "server"
     Ensure-Crypto-File -key_dir (Join-Path $BACKEND_DIR "config/certs")
+    Ensure-DirectAuthSecret-File -secret_dir (Join-Path $BACKEND_DIR "config/secrets")
     Write-Host "Initializing databases..."
     Initialize-Databases
 
@@ -1655,14 +1623,10 @@ function Run-Backend {
 
     Write-Host "=== Ensuring crypto file exists for run ==="
     Ensure-Crypto-File -key_dir (Join-Path $BACKEND_DIR "config/certs")
+    Ensure-DirectAuthSecret-File -secret_dir (Join-Path $BACKEND_DIR "config/secrets")
 
     Write-Host "Initializing databases..."
     Initialize-Databases
-
-    if ($script:CONSENT_ENABLED -and -not $skipConsent -and -not $script:CONSENT_PROCESS) {
-        Write-Host "Running consent server..."
-        Run-Consent
-    }
 
     Start-Backend -ShowFinalOutput $ShowFinalOutput
 }
@@ -1709,11 +1673,8 @@ function Start-Backend {
         catch [System.Management.Automation.PipelineStoppedException] {
             Write-Host ""
             Write-Host "🛑 Shutting down servers..."
-            if ($script:BACKEND_PID) { 
+            if ($script:BACKEND_PID) {
                 Stop-Process -Id $script:BACKEND_PID -Force -ErrorAction SilentlyContinue
-            }
-            if ($script:CONSENT_PROCESS -and -not $script:CONSENT_PROCESS.HasExited) {
-                Stop-Process -Id $script:CONSENT_PROCESS.Id -Force -ErrorAction SilentlyContinue
             }
             Write-Host "✅ Servers stopped successfully."
             exit 0
@@ -1739,7 +1700,9 @@ function Run-Frontend {
         & pnpm build:frontend
         
         Write-Host "Starting frontend applications in the background..."
-        # Start frontend processes in background
+        # In dev the apps are served on their own origins, so point them at the backend via
+        # THUNDERID_DEV_SERVER_URL (injected into __DEV_SERVER_URL__; applied only in dev builds).
+        $env:THUNDERID_DEV_SERVER_URL = $PUBLIC_URL
         $frontendProcess = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "pnpm", "-r", "--parallel", "--filter", "@thunderid/console", "--filter", "@thunderid/gate", "dev" -PassThru -NoNewWindow
         $script:FRONTEND_PID = $frontendProcess.Id
     }
@@ -1777,53 +1740,6 @@ function Run-Docs {
     }
     
     Write-Host "================================================================"
-}
-
-function Run-Consent {
-    $consentDir = Join-Path $TARGET_DIR "consent"
-    $consentBinary = Join-Path $consentDir "consent-server.exe"
-    if ($GO_OS -ne "windows") {
-        $consentBinary = Join-Path $consentDir "consent-server"
-    }
-
-    if (-not (Test-Path $consentBinary)) {
-        Write-Host "=== Downloading consent server ==="
-        & .\scripts\package-consent-server.ps1 -GoOS $GO_OS -GoArch $GO_ARCH -DistOutputPath $TARGET_DIR
-        if ($LASTEXITCODE -ne 0) { throw "Failed to package consent server" }
-    }
-
-    if (-not (Test-Path $consentBinary)) {
-        Write-Host "Error: Consent server binary not found at $consentBinary"
-        exit 1
-    }
-
-    Write-Host "=== Starting consent server ==="
-    $consentPort = if ($env:CONSENT_SERVER_PORT) { $env:CONSENT_SERVER_PORT } else { "9090" }
-    
-    $script:CONSENT_PROCESS = Start-Process -FilePath $consentBinary -WorkingDirectory $consentDir -PassThru -NoNewWindow
-    $consentTimeout = 30
-    $consentElapsed = 0
-    while ($consentElapsed -lt $consentTimeout) {
-        if ($script:CONSENT_PROCESS.HasExited) {
-            Write-Host "Error: Consent server process exited unexpectedly"
-            exit 1
-        }
-        try {
-            $resp = Invoke-WebRequest -Uri "http://localhost:${consentPort}/health/readiness" -UseBasicParsing -ErrorAction Stop
-            if ($resp.StatusCode -eq 200) {
-                Write-Host "Consent server is ready"
-                break
-            }
-        } catch { }
-        Start-Sleep -Seconds 1
-        $consentElapsed++
-    }
-    if ($consentElapsed -ge $consentTimeout) {
-        Write-Host "Error: Consent server failed to become ready within ${consentTimeout}s"
-        exit 1
-    }
-
-    Write-Host "Consent server started (PID: $($script:CONSENT_PROCESS.Id))"
 }
 
 # Main script logic

@@ -90,6 +90,11 @@ export default function AccessSection({
   const [redirectUris, setRedirectUris] = useState<string[]>(() => oauth2Config?.redirectUris ?? []);
   const [uriErrors, setUriErrors] = useState<Record<number, string>>({});
 
+  const [postLogoutRedirectUris, setPostLogoutRedirectUris] = useState<string[]>(
+    () => oauth2Config?.postLogoutRedirectUris ?? [],
+  );
+  const [postLogoutUriErrors, setPostLogoutUriErrors] = useState<Record<number, string>>({});
+
   const userTypeOptions = userTypesData?.types.map((schema) => schema.name) ?? [];
 
   const generalSettingsSchema = z.object({
@@ -109,11 +114,8 @@ export default function AccessSection({
     },
   });
 
-  const validateUri = (uri: string, index: number): boolean => {
-    if (!uri || uri.trim() === '') {
-      setUriErrors((prev) => ({...prev, [index]: t('applications:edit.general.redirectUris.error.empty')}));
-      return false;
-    }
+  // Pure URI-format check shared by the redirect and post-logout redirect URI fields.
+  const isValidUriFormat = (uri: string): boolean => {
     try {
       // Replace wildcards in the host portion with a placeholder so new URL() can parse it.
       // Path wildcards (e.g., /callback/*, /**) parse fine natively.
@@ -131,20 +133,87 @@ export default function AccessSection({
       }
       // eslint-disable-next-line no-new
       new URL(uriForValidation);
-
-      setUriErrors((prev) => {
-        const newErrors = {...prev};
-        delete newErrors[index];
-
-        return newErrors;
-      });
-
       return true;
     } catch {
-      setUriErrors((prev) => ({...prev, [index]: t('applications:edit.general.redirectUris.error.invalid')}));
-
       return false;
     }
+  };
+
+  const validateUri = (uri: string, index: number): boolean => {
+    if (!uri || uri.trim() === '') {
+      setUriErrors((prev) => ({...prev, [index]: t('applications:edit.general.redirectUris.error.empty')}));
+      return false;
+    }
+    if (!isValidUriFormat(uri)) {
+      setUriErrors((prev) => ({...prev, [index]: t('applications:edit.general.redirectUris.error.invalid')}));
+      return false;
+    }
+    setUriErrors((prev) => {
+      const newErrors = {...prev};
+      delete newErrors[index];
+      return newErrors;
+    });
+    return true;
+  };
+
+  // Post-signout redirect URIs are optional: an empty row is allowed (filtered out on save), only a
+  // non-empty malformed value is an error.
+  const validatePostLogoutUri = (uri: string, index: number): boolean => {
+    if (!uri || uri.trim() === '') {
+      setPostLogoutUriErrors((prev) => {
+        const newErrors = {...prev};
+        delete newErrors[index];
+        return newErrors;
+      });
+      return false;
+    }
+    if (!isValidUriFormat(uri)) {
+      setPostLogoutUriErrors((prev) => ({
+        ...prev,
+        [index]: t('applications:edit.general.postLogoutRedirectUris.error.invalid', 'Enter a valid URI'),
+      }));
+      return false;
+    }
+    setPostLogoutUriErrors((prev) => {
+      const newErrors = {...prev};
+      delete newErrors[index];
+      return newErrors;
+    });
+    return true;
+  };
+
+  // Drop the error for a removed row and shift higher-indexed errors down by one.
+  const reindexErrors = (errors: Record<number, string>, removedIndex: number): Record<number, string> => {
+    const next = {...errors};
+    delete next[removedIndex];
+    const reindexed: Record<number, string> = {};
+    Object.entries(next).forEach(([key, value]) => {
+      const oldIndex = parseInt(key, 10);
+      if (oldIndex > removedIndex) {
+        reindexed[oldIndex - 1] = value;
+      } else if (oldIndex < removedIndex) {
+        reindexed[oldIndex] = value;
+      }
+    });
+    return reindexed;
+  };
+
+  // Writes both URI lists (from the given arrays) into the oauth2 inbound config in a single update,
+  // so editing one list never clobbers the other.
+  const commitUris = (nextRedirect: string[], nextPostLogout: string[]) => {
+    if (!oauth2Config) return;
+    const updatedConfig = {
+      ...oauth2Config,
+      redirectUris: nextRedirect.filter((uri) => uri.trim() !== ''),
+      postLogoutRedirectUris: nextPostLogout.filter((uri) => uri.trim() !== ''),
+    };
+    const updatedInboundAuth = application.inboundAuthConfig?.map((config) => {
+      if (config.type === 'oauth2') {
+        return {...config, config: updatedConfig};
+      }
+      return config;
+    });
+    onFieldChange('inboundAuthConfig', updatedInboundAuth);
   };
 
   const handleAddUri = () => {
@@ -154,37 +223,8 @@ export default function AccessSection({
   const handleRemoveUri = (index: number) => {
     const newUris = redirectUris.filter((_, i) => i !== index);
     setRedirectUris(newUris);
-    setUriErrors((prev) => {
-      const newErrors = {...prev};
-      delete newErrors[index];
-
-      const reindexed: Record<number, string> = {};
-      Object.entries(newErrors).forEach(([key, value]) => {
-        const oldIndex = parseInt(key, 10);
-
-        if (oldIndex > index) {
-          reindexed[oldIndex - 1] = value;
-        } else if (oldIndex < index) {
-          reindexed[oldIndex] = value;
-        }
-      });
-
-      return reindexed;
-    });
-
-    if (!oauth2Config) return;
-    const validUris = newUris.filter((uri) => uri.trim() !== '');
-    const updatedConfig = {
-      ...oauth2Config,
-      redirectUris: validUris,
-    };
-    const updatedInboundAuth = application.inboundAuthConfig?.map((config) => {
-      if (config.type === 'oauth2') {
-        return {...config, config: updatedConfig};
-      }
-      return config;
-    });
-    onFieldChange('inboundAuthConfig', updatedInboundAuth);
+    setUriErrors((prev) => reindexErrors(prev, index));
+    commitUris(newUris, postLogoutRedirectUris);
   };
 
   const handleUriChange = (index: number, value: string) => {
@@ -205,27 +245,46 @@ export default function AccessSection({
     }
   };
 
-  const updateRedirectUris = () => {
-    const validUris = redirectUris.filter((uri) => uri.trim() !== '');
-    if (!oauth2Config) return;
-
-    const updatedConfig = {
-      ...oauth2Config,
-      redirectUris: validUris,
-    };
-    const updatedInboundAuth = application.inboundAuthConfig?.map((config) => {
-      if (config.type === 'oauth2') {
-        return {...config, config: updatedConfig};
-      }
-      return config;
-    });
-    onFieldChange('inboundAuthConfig', updatedInboundAuth);
-  };
-
   const handleUriBlur = (index: number) => {
     const uri = redirectUris[index];
     if (validateUri(uri, index) && uri.trim() !== '') {
-      updateRedirectUris();
+      commitUris(redirectUris, postLogoutRedirectUris);
+    }
+  };
+
+  const handleAddPostLogoutUri = () => {
+    setPostLogoutRedirectUris((prev) => [...prev, '']);
+  };
+
+  const handleRemovePostLogoutUri = (index: number) => {
+    const newUris = postLogoutRedirectUris.filter((_, i) => i !== index);
+    setPostLogoutRedirectUris(newUris);
+    setPostLogoutUriErrors((prev) => reindexErrors(prev, index));
+    commitUris(redirectUris, newUris);
+  };
+
+  const handlePostLogoutUriChange = (index: number, value: string) => {
+    setPostLogoutRedirectUris((prev) => {
+      const newUris = [...prev];
+      newUris[index] = value;
+
+      return newUris;
+    });
+
+    if (value.trim() !== '') {
+      setPostLogoutUriErrors((prev) => {
+        const newErrors = {...prev};
+        delete newErrors[index];
+
+        return newErrors;
+      });
+    }
+  };
+
+  const handlePostLogoutUriBlur = (index: number) => {
+    const uri = postLogoutRedirectUris[index];
+    if (validatePostLogoutUri(uri, index) && uri.trim() !== '') {
+      commitUris(redirectUris, postLogoutRedirectUris);
     }
   };
 
@@ -342,6 +401,64 @@ export default function AccessSection({
                   disabled={application.isReadOnly}
                 >
                   {t('applications:edit.general.redirectUris.addUri')}
+                </Button>
+              </Box>
+            </Stack>
+          </FormControl>
+        )}
+
+        {oauth2Config && (
+          <FormControl fullWidth>
+            <FormLabel htmlFor="post-logout-redirect-uris-section">
+              {t('applications:edit.general.postLogoutRedirectUris.title', 'Post-Logout Redirect URIs')}
+            </FormLabel>
+            <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 2}}>
+              {t(
+                'applications:edit.general.postLogoutRedirectUris.description',
+                'Allowed URIs to redirect to after signout. A post_logout_redirect_uri passed to the signout endpoint must match one of these.',
+              )}
+            </Typography>
+
+            <Stack spacing={2} id="post-logout-redirect-uris-section">
+              {postLogoutRedirectUris.map((uri, index) => (
+                // IMPORTANT: Do not remove the suppression since it affects functionality.
+                // eslint-disable-next-line react/no-array-index-key
+                <Stack key={index} direction="row" spacing={1} alignItems="flex-start">
+                  <FormControl fullWidth sx={{flex: 1}}>
+                    <TextField
+                      fullWidth
+                      id={`post-logout-redirect-uri-${index}-input`}
+                      value={uri}
+                      onChange={(e) => handlePostLogoutUriChange(index, e.target.value)}
+                      onBlur={() => handlePostLogoutUriBlur(index)}
+                      error={!!postLogoutUriErrors[index]}
+                      helperText={postLogoutUriErrors[index]}
+                      placeholder="https://example.com/logged-out"
+                      disabled={application.isReadOnly}
+                    />
+                  </FormControl>
+                  <Tooltip title={t('common:actions.delete')}>
+                    <IconButton
+                      onClick={() => handleRemovePostLogoutUri(index)}
+                      color="error"
+                      sx={{mt: 1}}
+                      disabled={application.isReadOnly}
+                    >
+                      <Trash size={20} />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+              ))}
+
+              <Box>
+                <Button
+                  variant="outlined"
+                  startIcon={<Plus />}
+                  onClick={handleAddPostLogoutUri}
+                  size="small"
+                  disabled={application.isReadOnly}
+                >
+                  {t('applications:edit.general.postLogoutRedirectUris.addUri', 'Add URI')}
                 </Button>
               </Box>
             </Stack>

@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
 )
@@ -112,6 +112,24 @@ func BannerString() string {
 // PrintBanner writes the styled banner to stdout.
 func PrintBanner() {
 	fmt.Println(BannerString())
+}
+
+// StatusBoxString returns a bordered box showing the backend and console URLs
+// for a running server, styled to match the rest of the intro/banner chrome.
+func StatusBoxString(baseURL string) string {
+	dot := greenStyle.Render("●")
+	label := lipgloss.NewStyle().Foreground(lipgloss.Color(colorGrey)).Width(9)
+
+	rows := lipgloss.JoinVertical(lipgloss.Left,
+		dot+" "+label.Render("Backend")+CyanStyle.Render(baseURL),
+		dot+" "+label.Render("Console")+CyanStyle.Render(baseURL+"/console"),
+	)
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(colorGreen)).
+		Padding(0, 1).
+		Render(rows)
 }
 
 // Note prints a bordered note box with title and body.

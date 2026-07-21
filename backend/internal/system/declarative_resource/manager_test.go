@@ -563,7 +563,7 @@ func (suite *FileBasedRuntimeManagerTestSuite) removeRootResourceFile(filename s
 }
 
 func (suite *FileBasedRuntimeManagerTestSuite) TestGetConfigsFromRootDir_MatchingDocument() {
-	content := `# resource_type: widget
+	content := `resource_type: widget
 id: w1
 name: Widget One
 `
@@ -578,7 +578,7 @@ name: Widget One
 }
 
 func (suite *FileBasedRuntimeManagerTestSuite) TestGetConfigsFromRootDir_NoMatchingDocument() {
-	content := `# resource_type: other
+	content := `resource_type: other
 id: o1
 name: Other Resource
 `
@@ -592,15 +592,15 @@ name: Other Resource
 }
 
 func (suite *FileBasedRuntimeManagerTestSuite) TestGetConfigsFromRootDir_MultipleFilesAndDocuments() {
-	file1 := `# resource_type: widget
+	file1 := `resource_type: widget
 id: w1
 name: Widget One
 ---
-# resource_type: gadget
+resource_type: gadget
 id: g1
 name: Gadget One
 `
-	file2 := `# resource_type: widget
+	file2 := `resource_type: widget
 id: w2
 name: Widget Two
 `
@@ -616,7 +616,7 @@ name: Widget Two
 }
 
 func (suite *FileBasedRuntimeManagerTestSuite) TestGetConfigsFromRootDir_IgnoresSubdirectories() {
-	content := `# resource_type: widget
+	content := `resource_type: widget
 id: w1
 name: In Subdir
 `
@@ -634,7 +634,7 @@ func (suite *FileBasedRuntimeManagerTestSuite) TestGetConfigsFromRootDir_Ignores
 	err := os.MkdirAll(rootDir, 0750)
 	suite.Require().NoError(err)
 	txtPath := filepath.Join(rootDir, "root-ignored.txt")
-	err = os.WriteFile(txtPath, []byte("# resource_type: widget\nid: w1\n"), 0600)
+	err = os.WriteFile(txtPath, []byte("resource_type: widget\nid: w1\n"), 0600)
 	suite.Require().NoError(err)
 	defer func() { _ = os.Remove(txtPath) }()
 
@@ -652,7 +652,7 @@ func (suite *FileBasedRuntimeManagerTestSuite) TestGetConfigsFromRootDir_EmptyOn
 }
 
 func (suite *FileBasedRuntimeManagerTestSuite) TestGetConfigsFromRootDir_YmlExtension() {
-	content := `# resource_type: thing
+	content := `resource_type: thing
 id: t1
 name: Thing One
 `

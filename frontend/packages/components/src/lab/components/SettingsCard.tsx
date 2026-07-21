@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {Box, Paper, Stack, Switch, Typography} from '@wso2/oxygen-ui';
+import {Box, Divider, Paper, Stack, Switch, Typography} from '@wso2/oxygen-ui';
 import type {BoxProps, PaperProps, TypographyProps} from '@wso2/oxygen-ui';
 import type {ReactNode} from 'react';
 
@@ -49,9 +49,10 @@ interface SettingsCardProps {
    */
   title: string;
   /**
-   * Optional description text shown below the title
+   * Optional description shown below the title. Accepts a plain string or, for descriptions
+   * that need an inline link, a ReactNode.
    */
-  description?: string;
+  description?: ReactNode;
   /**
    * Content of the card
    */
@@ -147,12 +148,13 @@ export default function SettingsCard({
           <Typography
             variant="body2"
             {...descriptionProps}
-            sx={{mt: 0.5, color: 'text.disabled', ...(descriptionSx as object)}}
+            sx={{mt: 0.5, color: 'text.secondary', ...(descriptionSx as object)}}
           >
             {description}
           </Typography>
         )}
       </Box>
+      <Divider />
       {(!hasToggle || enabled) && children && (
         <Paper {...contentProps} sx={{p: 3, ...(contentSx as object)}}>
           {children}

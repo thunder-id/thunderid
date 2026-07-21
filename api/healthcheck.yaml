@@ -51,9 +51,9 @@ paths:
                 serviceStatus:
                   - serviceName: "ConfigDB"
                     status: "UP"
-                  - serviceName: "RuntimeDB"
+                  - serviceName: "RuntimeTransientDB"
                     status: "UP"
-                  - serviceName: "UserDB"
+                  - serviceName: "EntityDB"
                     status: "UP"
         '503':
           description: Service is not ready
@@ -66,9 +66,9 @@ paths:
                 serviceStatus:
                   - serviceName: "ConfigDB"
                     status: "DOWN"
-                  - serviceName: "RuntimeDB"
+                  - serviceName: "RuntimeTransientDB"
                     status: "UP"
-                  - serviceName: "UserDB"
+                  - serviceName: "EntityDB"
                     status: "UP"
 
 components:
@@ -93,8 +93,8 @@ components:
           type: string
           enum:
             - ConfigDB
-            - RuntimeDB
-            - UserDB
+            - RuntimeTransientDB
+            - EntityDB
         status:
           type: string
           enum:

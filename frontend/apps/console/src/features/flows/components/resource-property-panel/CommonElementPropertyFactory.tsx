@@ -31,6 +31,7 @@ import startCase from 'lodash-es/startCase';
 import {type ComponentType, type ReactElement, useState, useCallback} from 'react';
 import {useTranslation} from 'react-i18next';
 import CheckboxPropertyField from './CheckboxPropertyField';
+import RichTextActionFields from './rich-text/RichTextActionFields';
 import RichTextWithTranslation from './rich-text/RichTextWithTranslation';
 import TextPropertyField from './TextPropertyField';
 import FlowBuilderElementConstants from '../../constants/FlowBuilderElementConstants';
@@ -197,11 +198,14 @@ function CommonElementPropertyFactory({
   if (propertyKey === 'label') {
     if (resource.type === ElementTypes.RichText) {
       return (
-        <RichTextWithTranslation
-          onChange={(html: string) => onChange(propertyKey, html, resource, true)}
-          resource={resource}
-          {...rest}
-        />
+        <>
+          <RichTextWithTranslation
+            onChange={(html: string) => onChange(propertyKey, html, resource, true)}
+            resource={resource}
+            {...rest}
+          />
+          <RichTextActionFields resource={resource} onChange={onChange} />
+        </>
       );
     }
   }

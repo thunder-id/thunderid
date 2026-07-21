@@ -59,7 +59,7 @@ func newPARRequestStore(deploymentID string) parStoreInterface {
 func (s *parRequestStore) Store(
 	ctx context.Context, request pushedAuthorizationRequest, expirySeconds int64,
 ) (string, error) {
-	dbClient, err := s.dbProvider.GetRuntimeDBClient()
+	dbClient, err := s.dbProvider.GetRuntimeTransientDBClient()
 	if err != nil {
 		return "", fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -89,7 +89,7 @@ func (s *parRequestStore) Store(
 func (s *parRequestStore) Consume(
 	ctx context.Context, randomKey string,
 ) (pushedAuthorizationRequest, bool, error) {
-	dbClient, err := s.dbProvider.GetRuntimeDBClient()
+	dbClient, err := s.dbProvider.GetRuntimeTransientDBClient()
 	if err != nil {
 		return pushedAuthorizationRequest{}, false, fmt.Errorf("failed to get database client: %w", err)
 	}

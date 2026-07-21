@@ -27,7 +27,7 @@ import (
 // Initialize initializes the WebAuthn authentication service.
 func Initialize(entitySvc entity.EntityServiceInterface) PasskeyServiceInterface {
 	var store sessionStoreInterface
-	if config.GetServerRuntime().Config.Database.Runtime.Type == provider.DataSourceTypeRedis {
+	if config.GetServerRuntime().Config.Database.RuntimeTransient.Type == provider.DataSourceTypeRedis {
 		store = newRedisSessionStore(provider.GetRedisProvider())
 	} else {
 		store = newSessionStore()

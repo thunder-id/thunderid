@@ -58,6 +58,7 @@ class VisualFlowConstants {
     StepTypes.View,
     StepTypes.Rule,
     StepTypes.Execution,
+    StepTypes.Call,
     TemplateTypes.Basic,
     TemplateTypes.BasicFederated,
     TemplateTypes.Blank,
@@ -77,11 +78,15 @@ class VisualFlowConstants {
     WidgetTypes.GoogleFederation,
     WidgetTypes.IdentifierPassword,
     WidgetTypes.SMSOTP,
+    WidgetTypes.EmailOTP,
     WidgetTypes.GithubFederation,
     WidgetTypes.EUDIWallet,
     WidgetTypes.PasskeyAuthentication,
     WidgetTypes.Provisioning,
+    WidgetTypes.MagicLink,
     WidgetTypes.SelfSignUpLink,
+    WidgetTypes.SignInLink,
+    WidgetTypes.RecoveryLink,
     ElementTypes.Timer,
   ];
 
@@ -109,10 +114,14 @@ class VisualFlowConstants {
     WidgetTypes.GoogleFederation,
     WidgetTypes.IdentifierPassword,
     WidgetTypes.SMSOTP,
+    WidgetTypes.EmailOTP,
     WidgetTypes.GithubFederation,
     WidgetTypes.EUDIWallet,
     WidgetTypes.PasskeyAuthentication,
+    WidgetTypes.MagicLink,
     WidgetTypes.SelfSignUpLink,
+    WidgetTypes.SignInLink,
+    WidgetTypes.RecoveryLink,
     ElementTypes.Timer,
   ];
 

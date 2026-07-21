@@ -20,7 +20,6 @@ import {useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, Button, Chip, ColorSchemeSVG, IconButton, Paper, Stack, Typography} from '@wso2/oxygen-ui';
 import {
-  Bell,
   Bot,
   Building,
   Copy,
@@ -100,9 +99,8 @@ export default function ConfigureExport({
   const [expandedFlows, setExpandedFlows] = useState(false);
   const [expandedThemes, setExpandedThemes] = useState(false);
   const [expandedUsers, setExpandedUsers] = useState(false);
-  const [expandedIdps, setExpandedIdps] = useState(false);
+  const [expandedConnections, setExpandedConnections] = useState(false);
   const [expandedOrgUnits, setExpandedOrgUnits] = useState(false);
-  const [expandedSenders, setExpandedSenders] = useState(false);
   const [expandedSchemas, setExpandedSchemas] = useState(false);
   const [expandedTranslations, setExpandedTranslations] = useState(false);
   const [expandedLayouts, setExpandedLayouts] = useState(false);
@@ -181,22 +179,15 @@ export default function ConfigureExport({
         if (!trimmedSection) return;
 
         const lines = trimmedSection.split(/\r?\n|\r/);
-        let resourceType = 'unknown';
         let fileName = 'unknown';
 
-        // Extract resource type and file name from comments
+        // Extract file name from comments
         for (const line of lines) {
           if (line.startsWith('#')) {
             const fileNameRegex = /File:\s*(.+\.ya?ml)/i;
             const fileNameMatch = fileNameRegex.exec(line);
             if (fileNameMatch) {
               fileName = fileNameMatch[1];
-            }
-
-            const resourceTypeRegex = /resource_type:\s*(\w+)/;
-            const resourceTypeMatch = resourceTypeRegex.exec(line);
-            if (resourceTypeMatch) {
-              resourceType = resourceTypeMatch[1];
             }
           }
         }
@@ -236,6 +227,7 @@ export default function ConfigureExport({
         try {
           const resource = yaml.parse(yamlContent) as unknown;
           if (resource && typeof resource === 'object') {
+            const resourceType = (resource as Record<string, unknown>).resource_type?.toString() ?? 'unknown';
             if (!resourcesByType[resourceType]) {
               resourcesByType[resourceType] = [];
             }
@@ -244,7 +236,6 @@ export default function ConfigureExport({
         } catch (error) {
           logger.warn('Failed to parse YAML section', {
             fileName,
-            resourceType,
             sectionIndex: idx,
             error: error instanceof Error ? error.message : String(error),
             yamlPreview: yamlContent.substring(0, 200),
@@ -267,15 +258,11 @@ export default function ConfigureExport({
   const usersCount = resourceCounts?.user ?? (Array.isArray(configData?.user) ? configData.user.length : 0);
   const flowsCount = resourceCounts?.flow ?? (Array.isArray(configData?.flow) ? configData.flow.length : 0);
   const themesCount = resourceCounts?.theme ?? (Array.isArray(configData?.theme) ? configData.theme.length : 0);
-  const identityProvidersCount =
-    resourceCounts?.identity_provider ??
-    (Array.isArray(configData?.identity_provider) ? configData.identity_provider.length : 0);
+  const connectionsCount =
+    resourceCounts?.connection ?? (Array.isArray(configData?.connection) ? configData.connection.length : 0);
   const orgUnitsCount =
     resourceCounts?.organization_unit ??
     (Array.isArray(configData?.organization_unit) ? configData.organization_unit.length : 0);
-  const notificationSendersCount =
-    resourceCounts?.notification_sender ??
-    (Array.isArray(configData?.notification_sender) ? configData.notification_sender.length : 0);
   const userTypesCount =
     resourceCounts?.user_type ?? (Array.isArray(configData?.user_type) ? configData.user_type.length : 0);
   const translationsCount =
@@ -311,7 +298,7 @@ export default function ConfigureExport({
       icon: <LayoutGrid size={16} />,
       value: applicationsCount,
       status: 'ready',
-      dependencyCount: flowsCount + themesCount + identityProvidersCount,
+      dependencyCount: flowsCount + themesCount + connectionsCount,
       content: (
         <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
           <Stack spacing={2}>
@@ -371,31 +358,33 @@ export default function ConfigureExport({
     });
   }
 
-  // Add identity providers if present
-  if (identityProvidersCount > 0) {
-    const idps = (configData?.identity_provider as {name?: string; handle?: string; type?: string}[]) ?? [];
-    const displayedIdps = expandedIdps ? idps : idps.slice(0, 5);
-    const remainingCount = idps.length - 5;
+  // Add connections (identity providers and notification senders) if present
+  if (connectionsCount > 0) {
+    const connections = (configData?.connection as {name?: string; handle?: string; type?: string}[]) ?? [];
+    const displayedConnections = expandedConnections ? connections : connections.slice(0, 5);
+    const remainingCount = connections.length - 5;
 
     items.push({
-      id: 'integrations',
-      label: t('export.table.integrations'),
+      id: 'connections',
+      label: t('importExport:configureExport.labels.connections'),
       icon: <Layers size={16} />,
-      value: identityProvidersCount,
+      value: connectionsCount,
       status: 'ready',
       dependencyCount: 0,
       content: (
         <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
           <Stack spacing={2}>
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
-              {displayedIdps.map((idp, idx) => (
-                <Stack key={idp.handle ?? idp.name ?? `idp-${idx}`} spacing={0.5}>
+              {displayedConnections.map((connection, idx) => (
+                <Stack key={connection.handle ?? connection.name ?? `connection-${idx}`} spacing={0.5}>
                   <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <Layers size={14} />
                     <Typography variant="body2" fontWeight={600}>
-                      {idp.name ?? t('importExport:configureExport.fallback.unnamedProvider')}
+                      {connection.name ?? t('importExport:configureExport.fallback.unnamedProvider')}
                     </Typography>
-                    {idp.type && <Chip label={idp.type} size="small" sx={{height: 18, fontSize: '0.65rem'}} />}
+                    {connection.type && (
+                      <Chip label={connection.type} size="small" sx={{height: 18, fontSize: '0.65rem'}} />
+                    )}
                   </Stack>
                 </Stack>
               ))}
@@ -404,13 +393,13 @@ export default function ConfigureExport({
               <Box sx={{pt: 1, textAlign: 'center'}}>
                 <Chip
                   label={
-                    expandedIdps
+                    expandedConnections
                       ? t('importExport:configureExport.actions.showLess')
                       : t('importExport:configureExport.actions.more', {count: remainingCount})
                   }
                   size="small"
                   variant="outlined"
-                  onClick={() => setExpandedIdps(!expandedIdps)}
+                  onClick={() => setExpandedConnections(!expandedConnections)}
                   sx={{cursor: 'pointer'}}
                 />
               </Box>
@@ -433,7 +422,7 @@ export default function ConfigureExport({
       icon: <Workflow size={16} />,
       value: flowsCount,
       status: 'ready',
-      dependencyCount: identityProvidersCount,
+      dependencyCount: connectionsCount,
       content: (
         <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
           <Stack spacing={2}>
@@ -650,56 +639,6 @@ export default function ConfigureExport({
                   size="small"
                   variant="outlined"
                   onClick={() => setExpandedOrgUnits(!expandedOrgUnits)}
-                  sx={{cursor: 'pointer'}}
-                />
-              </Box>
-            )}
-          </Stack>
-        </Box>
-      ),
-    });
-  }
-
-  // Add notification senders if present
-  if (notificationSendersCount > 0) {
-    const senders = (configData?.notification_sender as {name?: string; handle?: string; type?: string}[]) ?? [];
-    const displayedSenders = expandedSenders ? senders : senders.slice(0, 5);
-    const remainingCount = senders.length - 5;
-
-    items.push({
-      id: 'notification-senders',
-      label: t('importExport:configureExport.labels.notificationSenders'),
-      icon: <Bell size={16} />,
-      value: notificationSendersCount,
-      status: 'ready',
-      dependencyCount: 0,
-      content: (
-        <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
-          <Stack spacing={2}>
-            <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
-              {displayedSenders.map((sender, idx) => (
-                <Stack key={sender.handle ?? sender.name ?? `sender-${idx}`} spacing={0.5}>
-                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
-                    <Bell size={14} />
-                    <Typography variant="body2" fontWeight={600}>
-                      {sender.name ?? t('importExport:configureExport.fallback.unnamedSender')}
-                    </Typography>
-                    {sender.type && <Chip label={sender.type} size="small" sx={{height: 18, fontSize: '0.65rem'}} />}
-                  </Stack>
-                </Stack>
-              ))}
-            </Stack>
-            {remainingCount > 0 && (
-              <Box sx={{pt: 1, textAlign: 'center'}}>
-                <Chip
-                  label={
-                    expandedSenders
-                      ? t('importExport:configureExport.actions.showLess')
-                      : t('importExport:configureExport.actions.more', {count: remainingCount})
-                  }
-                  size="small"
-                  variant="outlined"
-                  onClick={() => setExpandedSenders(!expandedSenders)}
                   sx={{cursor: 'pointer'}}
                 />
               </Box>

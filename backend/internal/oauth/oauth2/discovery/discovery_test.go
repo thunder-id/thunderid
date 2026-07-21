@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -120,9 +120,7 @@ func (suite *DiscoveryTestSuite) TestOAuth2AuthorizationServerMetadata() {
 	assert.NotEmpty(suite.T(), metadata.RegistrationEndpoint)
 	assert.NotEmpty(suite.T(), metadata.IntrospectionEndpoint)
 	assert.NotEmpty(suite.T(), metadata.UserInfoEndpoint)
-
-	// Verify only implemented endpoints are present
-	assert.Empty(suite.T(), metadata.RevocationEndpoint) // Not implemented
+	assert.NotEmpty(suite.T(), metadata.RevocationEndpoint)
 
 	// Verify only implemented grant types are present
 	assert.Contains(suite.T(), metadata.GrantTypesSupported, "authorization_code")
@@ -276,12 +274,13 @@ func TestGetSupportedGrantTypes(t *testing.T) {
 	supported := constants.GetSupportedGrantTypes()
 
 	assert.NotNil(t, supported)
-	assert.Equal(t, 5, len(supported))
+	assert.Equal(t, 6, len(supported))
 	assert.Contains(t, supported, "authorization_code")
 	assert.Contains(t, supported, "client_credentials")
 	assert.Contains(t, supported, "refresh_token")
 	assert.Contains(t, supported, "urn:ietf:params:oauth:grant-type:token-exchange")
 	assert.Contains(t, supported, "urn:openid:params:grant-type:ciba")
+	assert.Contains(t, supported, "urn:ietf:params:oauth:grant-type:jwt-bearer")
 	assert.NotContains(t, supported, "password")
 	assert.NotContains(t, supported, "implicit")
 }

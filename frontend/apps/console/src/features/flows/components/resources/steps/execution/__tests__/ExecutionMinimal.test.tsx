@@ -130,11 +130,11 @@ describe('ExecutionMinimal', () => {
   });
 
   describe('Rendering', () => {
-    it('should render the execution minimal step', () => {
+    it('should render the step id in the header', () => {
       const resource = createMockResource();
       render(<ExecutionMinimal resource={resource} />);
 
-      expect(screen.getByText('Test Executor')).toBeInTheDocument();
+      expect(screen.getByText('execution-node-id')).toBeInTheDocument();
     });
 
     it('should render ExecutionFactory component', () => {
@@ -142,6 +142,48 @@ describe('ExecutionMinimal', () => {
       render(<ExecutionMinimal resource={resource} />);
 
       expect(screen.getByTestId('execution-factory')).toBeInTheDocument();
+    });
+
+    it('should show a description hint icon in the header instead of the description text', () => {
+      const resource = createMockResource({
+        display: {
+          label: 'Check SSO Session',
+          description: 'Can the following authentication be skipped by reusing the existing session?',
+          image: '',
+          showOnResourcePanel: true,
+        },
+      });
+      render(<ExecutionMinimal resource={resource} />);
+
+      expect(screen.getByTestId('execution-description-hint')).toBeInTheDocument();
+      expect(
+        screen.queryByText('Can the following authentication be skipped by reusing the existing session?'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('should reveal the description in a tooltip when the header hint icon is hovered', async () => {
+      const resource = createMockResource({
+        display: {
+          label: 'Check SSO Session',
+          description: 'Can the following authentication be skipped by reusing the existing session?',
+          image: '',
+          showOnResourcePanel: true,
+        },
+      });
+      render(<ExecutionMinimal resource={resource} />);
+
+      fireEvent.mouseOver(screen.getByTestId('execution-description-hint'));
+
+      expect(
+        await screen.findByText('Can the following authentication be skipped by reusing the existing session?'),
+      ).toBeInTheDocument();
+    });
+
+    it('should not render a description hint icon when there is no description', () => {
+      const resource = createMockResource();
+      render(<ExecutionMinimal resource={resource} />);
+
+      expect(screen.queryByTestId('execution-description-hint')).not.toBeInTheDocument();
     });
 
     it('should render target handle on the left', () => {
@@ -213,6 +255,28 @@ describe('ExecutionMinimal', () => {
       // Both handles should be present
       expect(screen.getByTestId('handle-source-execution-handle-success')).toBeInTheDocument();
       expect(screen.getByTestId('handle-source-execution-handle-failure')).toBeInTheDocument();
+    });
+
+    it('should use custom outcome labels from display.outcomes', () => {
+      const resource = createMockResource({
+        display: {
+          label: 'SSO Check',
+          image: '',
+          showOnResourcePanel: true,
+          outcomes: {success: 'Available', failure: 'Unavailable'},
+        },
+        data: {
+          action: {
+            executor: {name: 'SSOCheckExecutor'},
+            onSuccess: '',
+            onFailure: '',
+          },
+        },
+      });
+      render(<ExecutionMinimal resource={resource} />);
+
+      expect(screen.getByLabelText('Available')).toBeInTheDocument();
+      expect(screen.getByLabelText('Unavailable')).toBeInTheDocument();
     });
 
     it('should wrap handles in tooltips when both handles are present', () => {
@@ -311,7 +375,11 @@ describe('ExecutionMinimal', () => {
     });
   });
 
-  describe('Display Label', () => {
+  describe('Display Label (header fallback without node context)', () => {
+    beforeEach(() => {
+      mockUseNodeId.mockReturnValue(null);
+    });
+
     it('should display label from resource.display.label', () => {
       const resource = createMockResource({
         display: {label: 'Custom Label', image: 'test.svg', showOnResourcePanel: true},

@@ -4,9 +4,10 @@ info:
   title: Connections API
   description: >-
     Configure the external services ThunderID connects to. This is a thin layer over the
-    identity-provider service: each connection type has a strict, vendor-specific schema and
-    is delegated to the underlying provider, so a configured connection is a real identity
-    provider. Multiple instances per type are supported.
+    identity-provider and notification-sender services: each connection type has a strict,
+    vendor-specific schema and is delegated to the underlying provider, so a configured
+    connection is a real identity provider or message sender. Multiple instances per type
+    are supported.
   version: "1.0"
   license:
     name: Apache 2.0
@@ -31,23 +32,48 @@ paths:
   /connections:
     get:
       tags: [Connections]
-      summary: List available connection types
-      description: Returns every connection type with its configured status and instance count.
+      summary: List configured connection instances
+      description: >-
+        Returns a paginated list of the configured connection instances across the
+        identity-provider and notification-sender backed connection types, optionally
+        filtered by functional category. Omit the category parameter to return all instances.
+      parameters:
+        - name: category
+          in: query
+          required: false
+          description: Filter instances by functional category. Omit to return all instances.
+          schema:
+            type: string
+            enum: [identity-provider, sms-provider]
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
       responses:
         "200":
-          description: The available connection types
+          description: A page of the configured connection instances
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConnectionListResponse'
               example:
+                totalResults: 3
+                startIndex: 1
+                count: 3
                 connections:
-                  - type: "google"
-                    configured: true
-                    instanceCount: 1
-                  - type: "github"
-                    configured: false
-                    instanceCount: 0
+                  - id: "a1b2c3d4-0000-0000-0000-000000000001"
+                    name: "My Google"
+                    type: "google"
+                    categories: ["identity-provider"]
+                  - id: "a1b2c3d4-0000-0000-0000-000000000002"
+                    name: "Corp OIDC"
+                    description: "Corporate login"
+                    type: "oidc"
+                    categories: ["identity-provider"]
+                  - id: "a1b2c3d4-0000-0000-0000-000000000003"
+                    name: "Twilio SMS"
+                    type: "twilio"
+                    categories: ["sms-provider"]
+                links: []
+        "400": { $ref: '#/components/responses/BadRequest' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
@@ -123,6 +149,33 @@ paths:
       responses:
         "204": { description: Connection deleted }
         "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/google/{id}/usages:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get Google connection usages
+      description: |
+        Returns the resources that reference this connection, aggregated across all resource
+        types (for example, flows that use it). Informational only — it drives the pre-delete
+        confirmation dialog in the UI and does not gate deletion on the server.
+
+        Each usage entry includes a `behaviorOnDelete` field describing what happens to the
+        referencing resource if the connection is deleted:
+        - `fallback`: the reference is kept as-is.
+        - `cascade`: the resource is permanently deleted along with the connection.
+        - `restrict`: the resource blocks deletion of the connection.
+
+        When usage data is unavailable (e.g. the server has not fully initialised),
+        `totalResults` and `summary` are `null` rather than `0`/empty. Consumers must treat
+        `null` as "unknown" and `0` as "confirmed empty".
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionUsages' }
+        "404": { $ref: '#/components/responses/NotFound' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
@@ -196,6 +249,33 @@ paths:
       summary: Delete a GitHub connection
       responses:
         "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/github/{id}/usages:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get GitHub connection usages
+      description: |
+        Returns the resources that reference this connection, aggregated across all resource
+        types (for example, flows that use it). Informational only — it drives the pre-delete
+        confirmation dialog in the UI and does not gate deletion on the server.
+
+        Each usage entry includes a `behaviorOnDelete` field describing what happens to the
+        referencing resource if the connection is deleted:
+        - `fallback`: the reference is kept as-is.
+        - `cascade`: the resource is permanently deleted along with the connection.
+        - `restrict`: the resource blocks deletion of the connection.
+
+        When usage data is unavailable (e.g. the server has not fully initialised),
+        `totalResults` and `summary` are `null` rather than `0`/empty. Consumers must treat
+        `null` as "unknown" and `0` as "confirmed empty".
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionUsages' }
         "404": { $ref: '#/components/responses/NotFound' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
@@ -271,6 +351,364 @@ paths:
       responses:
         "204": { description: Connection deleted }
         "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/oidc/{id}/usages:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get OIDC connection usages
+      description: |
+        Returns the resources that reference this connection, aggregated across all resource
+        types (for example, flows that use it). Informational only — it drives the pre-delete
+        confirmation dialog in the UI and does not gate deletion on the server.
+
+        Each usage entry includes a `behaviorOnDelete` field describing what happens to the
+        referencing resource if the connection is deleted:
+        - `fallback`: the reference is kept as-is.
+        - `cascade`: the resource is permanently deleted along with the connection.
+        - `restrict`: the resource blocks deletion of the connection.
+
+        When usage data is unavailable (e.g. the server has not fully initialised),
+        `totalResults` and `summary` are `null` rather than `0`/empty. Consumers must treat
+        `null` as "unknown" and `0` as "confirmed empty".
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionUsages' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/twilio:
+    get:
+      tags: [Connections]
+      summary: List configured Twilio connections
+      responses:
+        "200": { $ref: '#/components/responses/InstanceList' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create a Twilio connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TwilioConnectionCreateRequest' }
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TwilioConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/twilio/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get a Twilio connection
+      responses:
+        "200":
+          description: Connection details (secrets masked)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TwilioConnectionResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update a Twilio connection
+      description: Omit authToken to keep the stored value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TwilioConnectionUpdateRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TwilioConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete a Twilio connection
+      responses:
+        "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/vonage:
+    get:
+      tags: [Connections]
+      summary: List configured Vonage connections
+      responses:
+        "200": { $ref: '#/components/responses/InstanceList' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create a Vonage connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VonageConnectionCreateRequest' }
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VonageConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/vonage/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get a Vonage connection
+      responses:
+        "200":
+          description: Connection details (secrets masked)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VonageConnectionResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update a Vonage connection
+      description: Omit apiSecret to keep the stored value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VonageConnectionUpdateRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VonageConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete a Vonage connection
+      responses:
+        "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/sms-gateway:
+    get:
+      tags: [Connections]
+      summary: List configured SMS gateway connections
+      description: >-
+        The SMS gateway connection is a generic HTTP webhook sender, for SMS providers without
+        a dedicated vendor integration.
+      responses:
+        "200": { $ref: '#/components/responses/InstanceList' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create an SMS gateway connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SMSGatewayConnectionCreateRequest' }
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SMSGatewayConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/sms-gateway/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get an SMS gateway connection
+      responses:
+        "200":
+          description: Connection details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SMSGatewayConnectionResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update an SMS gateway connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SMSGatewayConnectionUpdateRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SMSGatewayConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete an SMS gateway connection
+      responses:
+        "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/oauth:
+    get:
+      tags: [Connections]
+      summary: List configured OAuth 2.0 connections
+      responses:
+        "200": { $ref: '#/components/responses/InstanceList' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create an OAuth 2.0 connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OAuthConnectionCreateRequest' }
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/oauth/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get an OAuth 2.0 connection
+      responses:
+        "200":
+          description: Connection details (secrets masked)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthConnectionResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update an OAuth 2.0 connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OAuthConnectionUpdateRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete an OAuth 2.0 connection
+      responses:
+        "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/oauth/{id}/usages:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get OAuth 2.0 connection usages
+      description: |
+        Returns the resources that reference this connection, aggregated across all resource
+        types (for example, flows that use it). Informational only — it drives the pre-delete
+        confirmation dialog in the UI and does not gate deletion on the server.
+
+        Each usage entry includes a `behaviorOnDelete` field describing what happens to the
+        referencing resource if the connection is deleted:
+        - `fallback`: the reference is kept as-is.
+        - `cascade`: the resource is permanently deleted along with the connection.
+        - `restrict`: the resource blocks deletion of the connection.
+
+        When usage data is unavailable (e.g. the server has not fully initialised),
+        `totalResults` and `summary` are `null` rather than `0`/empty. Consumers must treat
+        `null` as "unknown" and `0` as "confirmed empty".
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionUsages' }
+        "404": { $ref: '#/components/responses/NotFound' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
@@ -299,6 +737,27 @@ components:
         type: string
         format: uuid
 
+    limitQueryParam:
+      in: query
+      name: limit
+      required: false
+      description: Maximum number of records to return.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 30
+
+    offsetQueryParam:
+      in: query
+      name: offset
+      required: false
+      description: Number of records to skip for pagination.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
   responses:
     InstanceList:
       description: Configured connection instances
@@ -308,6 +767,21 @@ components:
             type: array
             items:
               $ref: '#/components/schemas/ConnectionInstanceSummary'
+    ConnectionUsages:
+      description: Resources that reference this connection
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ConnectionUsagesResponse' }
+          example:
+            totalResults: 1
+            count: 1
+            summary:
+              flow: 1
+            usages:
+              - resourceType: flow
+                id: "f1b2c3d4-0000-0000-0000-000000000001"
+                displayName: "Login Flow"
+                behaviorOnDelete: restrict
     BadRequest:
       description: Bad request
       content:
@@ -339,26 +813,53 @@ components:
   schemas:
     ConnectionListResponse:
       type: object
-      required: [connections]
+      required: [totalResults, startIndex, count, connections, links]
       properties:
+        totalResults:
+          type: integer
+          description: Number of instances that match the listing operation.
+          example: 3
+        startIndex:
+          type: integer
+          description: Index of the first element of the page, which is equal to offset + 1.
+          example: 1
+        count:
+          type: integer
+          description: Number of elements in the returned page.
+          example: 3
         connections:
           type: array
-          items: { $ref: '#/components/schemas/ConnectionTypeSummary' }
+          items: { $ref: '#/components/schemas/ConnectionInstance' }
+        links:
+          type: array
+          items: { $ref: '#/components/schemas/Link' }
 
-    ConnectionTypeSummary:
+    Link:
       type: object
-      required: [type, configured, instanceCount]
       properties:
+        href: { type: string, example: "/connections?offset=30&limit=30" }
+        rel: { type: string, example: "next" }
+
+    ConnectionInstance:
+      type: object
+      required: [id, name, type, categories]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, example: "My Google" }
+        description: { type: string }
         type:
           type: string
-          enum: [google, github, oidc]
+          description: >-
+            Lowercase vendor identifier. `sms-gateway` denotes a generic HTTP webhook SMS sender.
+          enum: [google, github, oidc, oauth, twilio, vonage, sms-gateway]
           example: "google"
-        configured:
-          type: boolean
-          example: true
-        instanceCount:
-          type: integer
-          example: 1
+        categories:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [identity-provider, sms-provider]
+          example: ["identity-provider"]
 
     ConnectionInstanceSummary:
       type: object
@@ -367,6 +868,74 @@ components:
         id: { type: string, format: uuid }
         name: { type: string, example: "My Google" }
         description: { type: string }
+
+    ConnectionUsage:
+      type: object
+      description: A single resource that references the connection.
+      required:
+        - resourceType
+        - id
+        - displayName
+        - behaviorOnDelete
+      properties:
+        resourceType:
+          type: string
+          description: Type of the referencing resource.
+          enum: [flow]
+          example: flow
+        id:
+          type: string
+          format: uuid
+          description: Identifier of the referencing resource.
+          example: "f1b2c3d4-0000-0000-0000-000000000001"
+        displayName:
+          type: string
+          description: Human-readable name of the referencing resource.
+          example: "Login Flow"
+        behaviorOnDelete:
+          type: string
+          description: |
+            What happens to this resource when the connection is deleted.
+            - `fallback`: the reference is kept as-is.
+            - `cascade`: the resource is permanently deleted.
+            - `restrict`: the resource blocks deletion of the connection.
+          enum: [fallback, cascade, restrict]
+          example: restrict
+
+    ConnectionUsagesSummary:
+      type: object
+      nullable: true
+      description: |
+        Per-resource-type count of usages, keyed by resource type
+        (e.g. `flow`). Null when the counts could not be determined.
+      additionalProperties:
+        type: integer
+      example:
+        flow: 1
+
+    ConnectionUsagesResponse:
+      type: object
+      description: |
+        Resources that reference a connection, aggregated across all resource types.
+        Drives pre-delete confirmation dialogs; informational only.
+      properties:
+        totalResults:
+          type: integer
+          nullable: true
+          description: |
+            Total number of resources that reference the connection.
+            Null when usage data is unavailable; 0 means confirmed empty.
+          example: 1
+        count:
+          type: integer
+          description: Number of results returned.
+          example: 1
+        summary:
+          $ref: '#/components/schemas/ConnectionUsagesSummary'
+        usages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectionUsage'
 
     GoogleConnectionUpdateRequest:
       type: object
@@ -379,6 +948,9 @@ components:
         redirectUri: { type: string }
         scopes: { type: array, items: { type: string } }
         prompt: { type: string }
+        jwksEndpoint: { type: string }
+        issuer: { type: string }
+        tokenExchangeEnabled: { type: boolean }
         attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
     GoogleConnectionCreateRequest:
       allOf:
@@ -397,6 +969,9 @@ components:
         redirectUri: { type: string }
         scopes: { type: array, items: { type: string } }
         prompt: { type: string }
+        jwksEndpoint: { type: string }
+        issuer: { type: string }
+        tokenExchangeEnabled: { type: boolean }
         attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
 
     GitHubConnectionUpdateRequest:
@@ -448,6 +1023,8 @@ components:
         scopes: { type: array, items: { type: string } }
         prompt: { type: string }
         tokenExchangeEnabled: { type: boolean }
+        idJagEnabled: { type: boolean, description: "Enable ID-JAG issuance for this identity provider (draft-ietf-oauth-identity-assertion-authz-grant), so that self-issued ID tokens naming it as issuer can be trusted for the jwt-bearer grant. Requires issuer and jwksEndpoint to be set." }
+        trustedTokenAudience: { type: string }
         attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
     OIDCConnectionCreateRequest:
       allOf:
@@ -473,7 +1050,125 @@ components:
         scopes: { type: array, items: { type: string } }
         prompt: { type: string }
         tokenExchangeEnabled: { type: boolean }
+        idJagEnabled: { type: boolean, description: "Enable ID-JAG issuance for this identity provider (draft-ietf-oauth-identity-assertion-authz-grant), so that self-issued ID tokens naming it as issuer can be trusted for the jwt-bearer grant. Requires issuer and jwksEndpoint to be set." }
+        trustedTokenAudience: { type: string }
         attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+
+    OAuthConnectionUpdateRequest:
+      type: object
+      description: |
+        Generic OAuth 2.0 connection (no OpenID Connect discovery, no id_token). The user
+        profile is always fetched from userInfoEndpoint, so it is required here — unlike OIDC.
+      required: [name, clientId, redirectUri, authorizationEndpoint, tokenEndpoint, userInfoEndpoint]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        clientId: { type: string }
+        clientSecret: { type: string, description: "Write-only. Omit to keep the stored value on update." }
+        redirectUri: { type: string }
+        authorizationEndpoint: { type: string }
+        tokenEndpoint: { type: string }
+        userInfoEndpoint: { type: string }
+        logoutEndpoint: { type: string }
+        scopes: { type: array, items: { type: string } }
+        prompt: { type: string }
+        attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+    OAuthConnectionCreateRequest:
+      allOf:
+        - $ref: '#/components/schemas/OAuthConnectionUpdateRequest'
+        - type: object
+          required: [clientSecret]
+    OAuthConnectionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        type: { type: string, example: "oauth" }
+        clientId: { type: string }
+        clientSecret: { type: string, example: "******" }
+        redirectUri: { type: string }
+        authorizationEndpoint: { type: string }
+        tokenEndpoint: { type: string }
+        userInfoEndpoint: { type: string }
+        logoutEndpoint: { type: string }
+        scopes: { type: array, items: { type: string } }
+        prompt: { type: string }
+        attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+
+    TwilioConnectionUpdateRequest:
+      type: object
+      required: [name, accountSid, senderId]
+      properties:
+        name: { type: string, example: "My Twilio" }
+        description: { type: string }
+        accountSid: { type: string, description: "Twilio Account SID (AC followed by 32 hex characters).", example: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
+        authToken: { type: string, description: "Write-only. Omit to keep the stored value on update." }
+        senderId: { type: string, description: "Sender phone number or alphanumeric sender ID.", example: "+15005550006" }
+    TwilioConnectionCreateRequest:
+      allOf:
+        - $ref: '#/components/schemas/TwilioConnectionUpdateRequest'
+        - type: object
+          required: [authToken]
+    TwilioConnectionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        type: { type: string, example: "twilio" }
+        accountSid: { type: string }
+        authToken: { type: string, description: "Masked as \"******\".", example: "******" }
+        senderId: { type: string }
+
+    VonageConnectionUpdateRequest:
+      type: object
+      required: [name, apiKey, senderId]
+      properties:
+        name: { type: string, example: "My Vonage" }
+        description: { type: string }
+        apiKey: { type: string, description: "Vonage API key." }
+        apiSecret: { type: string, description: "Write-only. Omit to keep the stored value on update." }
+        senderId: { type: string, description: "Sender phone number or alphanumeric sender ID.", example: "ThunderID" }
+    VonageConnectionCreateRequest:
+      allOf:
+        - $ref: '#/components/schemas/VonageConnectionUpdateRequest'
+        - type: object
+          required: [apiSecret]
+    VonageConnectionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        type: { type: string, example: "vonage" }
+        apiKey: { type: string }
+        apiSecret: { type: string, description: "Masked as \"******\".", example: "******" }
+        senderId: { type: string }
+
+    SMSGatewayConnectionUpdateRequest:
+      type: object
+      required: [name, url]
+      properties:
+        name: { type: string, example: "Prod SMS Gateway" }
+        description: { type: string }
+        url: { type: string, description: "The HTTP endpoint to call to send an SMS.", example: "https://sms.example.com/send" }
+        httpMethod: { type: string, enum: [GET, POST], example: "POST" }
+        httpHeaders: { type: string, description: "Comma-separated \"Key: value\" pairs.", example: "Authorization: Bearer abc123" }
+        contentType: { type: string, enum: [JSON, FORM], example: "JSON" }
+    SMSGatewayConnectionCreateRequest:
+      $ref: '#/components/schemas/SMSGatewayConnectionUpdateRequest'
+    SMSGatewayConnectionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        type: { type: string, example: "sms-gateway" }
+        url: { type: string }
+        httpMethod: { type: string }
+        httpHeaders: { type: string }
+        contentType: { type: string }
 
     AttributeConfiguration:
       type: object
@@ -488,6 +1183,23 @@ components:
           description: Per-user-type attribute mapping profiles.
           items:
             $ref: '#/components/schemas/UserTypeAttributeMapping'
+        accountLinking:
+          $ref: '#/components/schemas/AccountLinking'
+
+    AccountLinking:
+      type: object
+      description: >
+        Configures how an incoming federated identity is resolved to an existing local user when the
+        subject identifier does not resolve one. All configured attributes that have a value are
+        combined into a single lookup filter.
+      properties:
+        attributes:
+          type: array
+          description: External attribute names used together to resolve the local user.
+          items:
+            type: string
+          example:
+            - "email"
 
     UserTypeResolution:
       type: object
@@ -497,8 +1209,21 @@ components:
       properties:
         default:
           type: string
-          description: Default local user type for federated just-in-time provisioning.
+          description: >
+            Fallback local user type, used when claim-driven resolution is not configured or the
+            external attribute's value does not match a mapping.
           example: "Person"
+        externalAttribute:
+          type: string
+          description: External claim whose value selects the local user type.
+          example: "user_type"
+        valueMapping:
+          type: object
+          description: Maps an external attribute value to a local user type.
+          additionalProperties:
+            type: string
+          example:
+            staff: "Employee"
 
     UserTypeAttributeMapping:
       type: object

@@ -29,3 +29,7 @@ var errAuthorizationCodeAlreadyConsumed = errors.New("authorization code already
 
 // errAuthRequestNotFound is returned when an authorization request context is not found in the store.
 var errAuthRequestNotFound = errors.New("authorization request context not found")
+
+// errAssertionClaimInvalid is returned when a claim in the flow assertion has an unexpected shape
+// (e.g. wrong JSON type). It distinguishes client-facing input errors from genuine internal decode failures.
+var errAssertionClaimInvalid = errors.New("assertion claim is invalid")

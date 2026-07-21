@@ -91,7 +91,7 @@ func (ts *CallToAuthenticationFlowTestSuite) SetupSuite() {
 	ts.Require().NoError(err)
 	ts.config.CreatedUserIDs = userIDs
 
-	// Create the AUTHENTICATION callee flow: START → prompt_credentials → credentials_auth → END.
+	// Create the AUTHENTICATION callee flow: START → prompt_credentials → credentials_auth → auth_assert → END.
 	authFlow := testutils.Flow{
 		Name:     "Call-Auth: Authentication Callee Flow",
 		FlowType: "AUTHENTICATION",
@@ -148,6 +148,14 @@ func (ts *CallToAuthenticationFlowTestSuite) SetupSuite() {
 						},
 					},
 				},
+				"onSuccess": "auth_assert",
+			},
+			{
+				"id":   "auth_assert",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "AuthAssertExecutor",
+				},
 				"onSuccess": "end",
 			},
 			{
@@ -161,9 +169,9 @@ func (ts *CallToAuthenticationFlowTestSuite) SetupSuite() {
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, authFlowID)
 
 	// Create the REGISTRATION caller flow:
-	//   START → prompt_initial (action_login → call_auth)
-	//         → call_auth CALL (onSuccess: end, onFailure: end)
-	//         → end
+	//   START → user_type_resolver → prompt_initial (action_login → call_auth)
+	//         → call_auth CALL (onSuccess: end, onFailure: provisioning → end)
+	// ProvisioningExecutor is on the failure path so the happy path completes after CALL.
 	regFlow := testutils.Flow{
 		Name:     "Call-Auth: Registration Caller Flow",
 		FlowType: "REGISTRATION",
@@ -184,6 +192,12 @@ func (ts *CallToAuthenticationFlowTestSuite) SetupSuite() {
 							"nextNode": "call_auth",
 						},
 					},
+					{
+						"action": map[string]interface{}{
+							"ref":      "action_register",
+							"nextNode": "user_type_resolver",
+						},
+					},
 				},
 			},
 			{
@@ -192,6 +206,56 @@ func (ts *CallToAuthenticationFlowTestSuite) SetupSuite() {
 				"flow":      map[string]interface{}{"ref": authFlowID},
 				"onSuccess": "end",
 				"onFailure": "end",
+			},
+			{
+				"id":   "user_type_resolver",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "UserTypeResolver",
+				},
+				"onSuccess":    "prompt_credentials",
+			},
+			{
+				"id":   "prompt_credentials",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": []map[string]interface{}{
+							{
+								"ref":        "input_username",
+								"identifier": "username",
+								"type":       "TEXT_INPUT",
+								"required":   true,
+							},
+							{
+								"ref":        "input_password",
+								"identifier": "password",
+								"type":       "PASSWORD_INPUT",
+								"required":   true,
+							},
+						},
+						"action": map[string]interface{}{
+							"ref":      "action_submit_credentials",
+							"nextNode": "credentials_auth",
+						},
+					},
+				},
+			},
+			{
+				"id":   "credentials_auth",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "CredentialsAuthExecutor",
+				},
+				"onSuccess": "provisioning",
+			},
+			{
+				"id":   "provisioning",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "ProvisioningExecutor",
+				},
+				"onSuccess": "end",
 			},
 			{
 				"id":   "end",

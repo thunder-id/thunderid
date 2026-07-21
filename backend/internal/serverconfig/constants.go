@@ -25,11 +25,17 @@ type ConfigName string
 const (
 	// ConfigNameCORS is the configuration key for runtime-mutable CORS allowed origins.
 	ConfigNameCORS ConfigName = "cors"
+	// ConfigNameDefaultResourceServer is the configuration key for the default resource server.
+	ConfigNameDefaultResourceServer ConfigName = "defaultResourceServer"
+	// ConfigNameSession is the configuration key for the SSO session lifetime timeouts.
+	ConfigNameSession ConfigName = "session"
 )
 
 // supportedConfigNames lists all the supported server configuration names.
 var supportedConfigNames = []ConfigName{
 	ConfigNameCORS,
+	ConfigNameDefaultResourceServer,
+	ConfigNameSession,
 }
 
 // IsValid reports whether the config name is one of the supported values.

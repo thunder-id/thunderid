@@ -37,9 +37,10 @@ type rbacEngine struct {
 
 // evaluationGroup groups access evaluations that can be checked in one role service call.
 type evaluationGroup struct {
-	subject     Subject
-	permissions []string
-	indexes     []int
+	subject          Subject
+	resourceServerID string
+	permissions      []string
+	indexes          []int
 }
 
 // NewRBACEngine creates a new RBAC authorization engine.
@@ -77,8 +78,8 @@ func (e *rbacEngine) EvaluateAccessBatch(
 
 	evaluations := make([]AccessEvaluationResponse, len(request.Evaluations))
 	for _, group := range groupEvaluations(request.Evaluations) {
-		authorizedPerms, svcErr := e.roleService.GetAuthorizedPermissions(
-			ctx, group.subject.ID, group.subject.GroupIDs, group.permissions)
+		authorizedPerms, svcErr := e.roleService.GetAuthorizedPermissionsByResourceServer(
+			ctx, group.subject.ID, group.subject.GroupIDs, group.resourceServerID, group.permissions)
 		if svcErr != nil {
 			return nil, fmt.Errorf("role service error: %s", svcErr.Error)
 		}
@@ -97,9 +98,12 @@ func (e *rbacEngine) EvaluateAccessBatch(
 func groupEvaluations(evaluations []AccessEvaluationRequest) []evaluationGroup {
 	groups := make([]evaluationGroup, 0, len(evaluations))
 	for index, evaluation := range evaluations {
-		groupIndex := findEvaluationGroup(groups, evaluation.Subject)
+		groupIndex := findEvaluationGroup(groups, evaluation.Subject, evaluation.ResourceServer.ID)
 		if groupIndex == -1 {
-			groups = append(groups, evaluationGroup{subject: evaluation.Subject})
+			groups = append(groups, evaluationGroup{
+				subject:          evaluation.Subject,
+				resourceServerID: evaluation.ResourceServer.ID,
+			})
 			groupIndex = len(groups) - 1
 		}
 
@@ -113,11 +117,12 @@ func groupEvaluations(evaluations []AccessEvaluationRequest) []evaluationGroup {
 }
 
 // findEvaluationGroup returns the index of the group matching the subject.
-func findEvaluationGroup(groups []evaluationGroup, subject Subject) int {
+func findEvaluationGroup(groups []evaluationGroup, subject Subject, resourceServerID string) int {
 	for i, group := range groups {
 		if group.subject.Type == subject.Type &&
 			group.subject.ID == subject.ID &&
-			slices.Equal(group.subject.GroupIDs, subject.GroupIDs) {
+			slices.Equal(group.subject.GroupIDs, subject.GroupIDs) &&
+			group.resourceServerID == resourceServerID {
 			return i
 		}
 	}

@@ -43,6 +43,7 @@ type OAuthParameters struct {
 	ClaimsLocales       string
 	Nonce               string
 	AcrValues           string
+	MaxAge              string
 	DPoPJkt             string
 	Prompt              string
 }

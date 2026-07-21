@@ -101,7 +101,7 @@ func (ah *authorizeHandler) HandleAuthCallbackPostRequest(w http.ResponseWriter,
 	switch oAuthMessage.RequestType {
 	case oauth2const.TypeAuthorizationResponseFromEngine:
 		authID := oAuthMessage.AuthID
-		assertion := oAuthMessage.RequestBodyParams[oauth2const.Assertion]
+		assertion := oAuthMessage.RequestBodyParams[oauth2const.RequestParamAssertion]
 
 		redirectURI, authErr := ah.authZService.HandleAuthorizationCallback(ctx, authID, assertion)
 		if authErr != nil {
@@ -200,7 +200,7 @@ func (ah *authorizeHandler) getOAuthMessageForPostRequest(r *http.Request) (*OAu
 
 	// TODO: Require to handle other types such as user consent, etc.
 	bodyParams := map[string]string{
-		oauth2const.Assertion: authZReq.Assertion,
+		oauth2const.RequestParamAssertion: authZReq.Assertion,
 	}
 
 	return &OAuthMessage{

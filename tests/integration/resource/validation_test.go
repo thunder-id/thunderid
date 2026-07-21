@@ -26,8 +26,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 type ValidationTestSuite struct {
@@ -54,10 +54,9 @@ func (suite *ValidationTestSuite) SetupSuite() {
 
 	// Create test resource server
 	rsReq := CreateResourceServerRequest{
-		Name:               "validation-test-server",
-		Description:        "Resource server for validation testing",
-		Handle:            "validation-test",
-		OUID: ouID,
+		Name:        "validation-test-server",
+		Description: "Resource server for validation testing",
+		OUID:        ouID,
 	}
 	rsID, err := createResourceServer(rsReq)
 	suite.Require().NoError(err, "Failed to create test resource server")
@@ -77,7 +76,7 @@ func (suite *ValidationTestSuite) TearDownSuite() {
 
 func (suite *ValidationTestSuite) TestCreateResourceServerMissingName() {
 	req := CreateResourceServerRequest{
-		Name:               "",
+		Name: "",
 		OUID: suite.ouID,
 	}
 
@@ -88,7 +87,7 @@ func (suite *ValidationTestSuite) TestCreateResourceServerMissingName() {
 
 func (suite *ValidationTestSuite) TestCreateResourceServerMissingOrgUnit() {
 	req := CreateResourceServerRequest{
-		Name:               "missing-ou-server",
+		Name: "missing-ou-server",
 		OUID: "",
 	}
 
@@ -97,11 +96,33 @@ func (suite *ValidationTestSuite) TestCreateResourceServerMissingOrgUnit() {
 	suite.Contains(err.Error(), "400")
 }
 
+func (suite *ValidationTestSuite) TestCreateResourceServerMissingIdentifier() {
+	// Identifier is mandatory on create. Post a raw request without the identifier field
+	// (the createResourceServer helper auto-fills one, so it cannot exercise this path).
+	body, _ := json.Marshal(map[string]interface{}{
+		"name": "missing-identifier-server",
+		"ouId": suite.ouID,
+	})
+
+	client := testutils.GetHTTPClient()
+	req, err := http.NewRequest("POST", testServerURL+"/resource-servers", bytes.NewReader(body))
+	suite.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+
+	suite.Equal(http.StatusBadRequest, resp.StatusCode,
+		"creating a resource server without an identifier must be rejected. Response: %s", string(respBody))
+	suite.Contains(string(respBody), "identifier", "rejection should reference the missing identifier field")
+}
+
 func (suite *ValidationTestSuite) TestUpdateResourceServerMissingName() {
 	// Create a resource server first
 	createReq := CreateResourceServerRequest{
-		Name:               "update-validation-server",
-		Handle:            "update-validation",
+		Name: "update-validation-server",
 		OUID: suite.ouID,
 	}
 	rsID, err := createResourceServer(createReq)
@@ -110,7 +131,7 @@ func (suite *ValidationTestSuite) TestUpdateResourceServerMissingName() {
 
 	// Try to update with empty name
 	updateReq := UpdateResourceServerRequest{
-		Name:               "",
+		Name: "",
 		OUID: suite.ouID,
 	}
 
@@ -122,8 +143,7 @@ func (suite *ValidationTestSuite) TestUpdateResourceServerMissingName() {
 func (suite *ValidationTestSuite) TestDeleteResourceServerWithDependencies() {
 	// Create resource server
 	rsReq := CreateResourceServerRequest{
-		Name:               "server-with-dependencies",
-		Handle:            "server-with-deps",
+		Name: "server-with-dependencies",
 		OUID: suite.ouID,
 	}
 	rsID, err := createResourceServer(rsReq)
@@ -149,8 +169,7 @@ func (suite *ValidationTestSuite) TestDeleteResourceServerWithDependencies() {
 func (suite *ValidationTestSuite) TestDeleteResourceServerWithActions() {
 	// Create resource server
 	rsReq := CreateResourceServerRequest{
-		Name:               "server-with-actions",
-		Handle:            "server-with-actions",
+		Name: "server-with-actions",
 		OUID: suite.ouID,
 	}
 	rsID, err := createResourceServer(rsReq)
@@ -313,8 +332,7 @@ func (suite *ValidationTestSuite) TestListResourceServersExceedMaxLimit() {
 func (suite *ValidationTestSuite) TestCreateResourceInDifferentResourceServer() {
 	// Create second resource server
 	rsReq := CreateResourceServerRequest{
-		Name:               "second-server",
-		Handle:            "second-server",
+		Name: "second-server",
 		OUID: suite.ouID,
 	}
 	rs2ID, err := createResourceServer(rsReq)
@@ -345,8 +363,7 @@ func (suite *ValidationTestSuite) TestCreateResourceInDifferentResourceServer() 
 func (suite *ValidationTestSuite) TestGetResourceFromWrongResourceServer() {
 	// Create second resource server
 	rsReq := CreateResourceServerRequest{
-		Name:               "wrong-server",
-		Handle:            "wrong-server",
+		Name: "wrong-server",
 		OUID: suite.ouID,
 	}
 	rs2ID, err := createResourceServer(rsReq)
@@ -391,8 +408,7 @@ func (suite *ValidationTestSuite) TestInvalidContentType() {
 	client := testutils.GetHTTPClient()
 
 	req := CreateResourceServerRequest{
-		Name:               "test-server",
-		Handle:            "test-server",
+		Name: "test-server",
 		OUID: suite.ouID,
 	}
 	body, _ := json.Marshal(req)
@@ -418,8 +434,7 @@ func (suite *ValidationTestSuite) TestInvalidContentType() {
 func (suite *ValidationTestSuite) TestCreateResourceHandleContainsDelimiter() {
 	// First create a resource server to get its delimiter
 	rsReq := CreateResourceServerRequest{
-		Name:               "delimiter-test-server",
-		Handle:            "delimiter-test",
+		Name: "delimiter-test-server",
 		OUID: suite.ouID,
 	}
 	rsID, err := createResourceServer(rsReq)
@@ -445,8 +460,7 @@ func (suite *ValidationTestSuite) TestCreateResourceHandleContainsDelimiter() {
 func (suite *ValidationTestSuite) TestCreateActionHandleContainsDelimiter() {
 	// First create a resource server to get its delimiter
 	rsReq := CreateResourceServerRequest{
-		Name:               "action-delimiter-test-server",
-		Handle:            "action-delim-test",
+		Name: "action-delimiter-test-server",
 		OUID: suite.ouID,
 	}
 	rsID, err := createResourceServer(rsReq)

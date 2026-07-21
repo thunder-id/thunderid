@@ -13,10 +13,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres-init/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - ../../backend/dbscripts/runtimedb/postgres.sql:/docker-entrypoint-initdb.d/runtime-postgres.sql
+      - ../../backend/dbscripts/runtime-transient/postgres.sql:/docker-entrypoint-initdb.d/runtime-transient-postgres.sql
       - ../../backend/dbscripts/configdb/postgres.sql:/docker-entrypoint-initdb.d/config-postgres.sql
-      - ../../backend/dbscripts/userdb/postgres.sql:/docker-entrypoint-initdb.d/user-postgres.sql
-      - ../../backend/dbscripts/operationdb/postgres.sql:/docker-entrypoint-initdb.d/operation-postgres.sql
+      - ../../backend/dbscripts/entitydb/postgres.sql:/docker-entrypoint-initdb.d/entity-postgres.sql
+      - ../../backend/dbscripts/runtime-persistent/postgres.sql:/docker-entrypoint-initdb.d/runtime-persistent-postgres.sql
 
 volumes:
   postgres_data:

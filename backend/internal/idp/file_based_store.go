@@ -84,10 +84,11 @@ func (f *idpFileBasedStore) GetIdentityProviderList(ctx context.Context) ([]Basi
 	for _, item := range list {
 		if idp, ok := item.Data.(*providers.IDPDTO); ok {
 			basicIDP := BasicIDPDTO{
-				ID:          idp.ID,
-				Name:        idp.Name,
-				Description: idp.Description,
-				Type:        idp.Type,
+				ID:           idp.ID,
+				Name:         idp.Name,
+				Description:  idp.Description,
+				Type:         idp.Type,
+				IDJagEnabled: idJagEnabledFromProperties(idp.Properties),
 			}
 			idpList = append(idpList, basicIDP)
 		}

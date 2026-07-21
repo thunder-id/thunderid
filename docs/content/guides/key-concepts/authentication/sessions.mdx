@@ -1,0 +1,42 @@
+---
+title: Sessions and Single Sign-On
+sidebar_position: 2
+description: Understand how {{ProductName}} sessions work and how flow Single Sign-On (SSO) lets users reuse authentication across applications.
+---
+
+# Sessions and Single Sign-On
+
+A session records that a user authenticated, so <ProductName /> can trust that authentication again later without prompting the user to repeat it. Single Sign-On (SSO) builds on sessions: when a user has a valid session, <ProductName /> reuses it and skips the steps the session already covers.
+
+This page explains the session model and how SSO applies to authentication flows. To add SSO to a flow, see [Single Sign-On for Flows](../../guides/flows/single-sign-on.mdx).
+
+## Flow-Centric Sessions
+
+<ProductName /> ties each SSO session to a single flow. The flow is the grouping key: every application that authenticates through the same flow shares that flow's session, and two different flows never share a session.
+
+Because the flow is the grouping key, you can group sessions by the security category of the applications. Assign applications that share a security category to the same flow so they reuse one authentication. Put applications in a more sensitive category on a separate flow, so a session established for a lower-category application never signs the user in to a higher-category one.
+
+## Checkpoints
+
+A **checkpoint** is the authentication that SSO can skip and reuse. You define it with a pair of nodes: a **Check SSO Session** node marks where the reusable authentication begins, and a **Save / Load Session** node marks where it ends. The checkpoint covers the authentication steps between them.
+
+On a fresh sign-in, the flow runs those steps and saves the checkpoint under the session. On a later sign-in, the flow reuses the checkpoint and skips the steps it covers. If the checkpoint has expired, the user completes the steps again.
+
+## Session Lifetime
+
+Two independent timeouts bound every session:
+
+| Timeout | Behavior | Default |
+|---|---|---|
+| Idle | Moves forward on each use of the session, so an active session stays alive. The session expires after this much inactivity. | 30 minutes |
+| Absolute | Fixed when the session is created and never extended. The session expires this long after creation regardless of activity. | 8 hours |
+
+A session expires when it passes either deadline. After expiry, the next sign-in through the flow authenticates the user again. An administrator configures both timeouts in the server configuration. See [Configure Session Lifetime](../../guides/flows/single-sign-on.mdx#configure-session-lifetime).
+
+## Browser Scope
+
+Flow SSO applies to browser-based authentication. <ProductName /> references each session with a per-flow cookie that carries only an opaque handle, never user data. Because the cookie is the reference, SSO reuse happens within a browser: a user who authenticates in one browser does not gain a session in another.
+
+## Related
+
+- [Single Sign-On for Flows](../../guides/flows/single-sign-on.mdx) shows how to add the SSO nodes to a flow in the Console Flow Builder.

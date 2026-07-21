@@ -37,13 +37,13 @@ runs:
       shell: bash
       run: |
         PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d postgredb -c "CREATE DATABASE configdb;"
-        PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d postgredb -c "CREATE DATABASE runtimedb;"
-        PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d postgredb -c "CREATE DATABASE userdb;"
-        PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d postgredb -c "CREATE DATABASE operationdb;"
+        PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d postgredb -c "CREATE DATABASE runtime_transient;"
+        PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d postgredb -c "CREATE DATABASE entitydb;"
+        PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d postgredb -c "CREATE DATABASE runtime_persistent;"
         PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d configdb < backend/dbscripts/configdb/postgres.sql
-        PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d runtimedb < backend/dbscripts/runtimedb/postgres.sql
-        PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d userdb < backend/dbscripts/userdb/postgres.sql
-        PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d operationdb < backend/dbscripts/operationdb/postgres.sql
+        PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d runtime_transient < backend/dbscripts/runtime-transient/postgres.sql
+        PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d entitydb < backend/dbscripts/entitydb/postgres.sql
+        PGPASSWORD=dbpassword psql -h localhost -p 5432 -U dbuser -d runtime_persistent < backend/dbscripts/runtime-persistent/postgres.sql
 
     - name: 📝 Configure Test Database
       shell: bash

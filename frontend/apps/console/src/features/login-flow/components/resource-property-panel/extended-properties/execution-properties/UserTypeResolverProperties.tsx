@@ -28,7 +28,7 @@ function UserTypeResolverProperties({resource, onChange}: CommonResourceProperti
 
   const properties = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;
-    return (stepData?.properties ?? {}) as Record<string, unknown>;
+    return stepData?.properties ?? {};
   }, [resource]);
 
   const allowedUserTypes = (properties.allowedUserTypes as string[]) || [];

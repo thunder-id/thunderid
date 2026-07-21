@@ -49,7 +49,8 @@ jobs:
           openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
             -keyout target/out/.cert/server.key \
             -out target/out/.cert/server.cert \
-            -subj "/O=WSO2/OU=${PRODUCT_NAME}/CN=localhost"
+            -subj "/O=WSO2/OU=${PRODUCT_NAME}/CN=localhost" \
+            -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
 
           echo "✅ Shared certificates generated:"
           ls -la target/out/.cert/

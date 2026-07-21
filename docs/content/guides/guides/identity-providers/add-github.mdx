@@ -1,5 +1,6 @@
 ---
 title: Add a GitHub Identity Provider
+docType: guide
 sidebar_position: 3
 persona: iam
 description: Configure a GitHub identity provider to enable Sign in with GitHub for your applications.
@@ -20,12 +21,12 @@ This guide walks you through registering a GitHub identity provider (IdP) in <Pr
 1. Sign in to [GitHub](https://github.com) and go to **Settings** → **Developer settings** → **OAuth Apps**.
 2. Click **New OAuth App**.
 3. Fill in the required fields:
-   - **Application name** — A name for your OAuth app.
-   - **Homepage URL** — The URL of your application.
-   - **Authorization callback URL** — The callback URL for your <ProductName /> deployment:
+   - **Application name**: A name for your OAuth app.
+   - **Homepage URL**: The URL of your application.
+   - **Authorization callback URL**: The callback URL for your <ProductName /> deployment:
 
-     ```
-     https://<your-thunderid-host>/oauth2/callback
+     ```text
+     https://<your-thunderid-host>/gate/callback
      ```
 
 4. Click **Register application**.
@@ -34,21 +35,18 @@ This guide walks you through registering a GitHub identity provider (IdP) in <Pr
 
 ## Step 2: Create the GitHub IdP
 
-Send a `POST` request to `/identity-providers` with your GitHub credentials:
+Send a `POST` request to `/connections/github` with your GitHub credentials:
 
 ```bash
-curl -kL -X POST https://localhost:8090/identity-providers \
+curl -kL -X POST https://localhost:8090/connections/github \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <access-token>' \
   -d '{
     "name": "GitHub",
     "description": "GitHub social login",
-    "type": "GITHUB",
-    "properties": [
-      { "name": "client_id", "value": "<github-client-id>", "isSecret": false },
-      { "name": "client_secret", "value": "<github-client-secret>", "isSecret": true },
-      { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false }
-    ]
+    "clientId": "<github-client-id>",
+    "clientSecret": "<github-client-secret>",
+    "redirectUri": "https://<your-thunderid-host>/gate/callback"
   }'
 ```
 
@@ -59,51 +57,42 @@ curl -kL -X POST https://localhost:8090/identity-providers \
   "id": "660e8400-e29b-41d4-a716-446655440001",
   "name": "GitHub",
   "description": "GitHub social login",
-  "type": "GITHUB",
-  "properties": [
-    { "name": "client_id", "value": "<github-client-id>", "isSecret": false },
-    { "name": "client_secret", "value": "******", "isSecret": true },
-    { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false },
-    { "name": "authorization_endpoint", "value": "https://github.com/login/oauth/authorize", "isSecret": false },
-    { "name": "token_endpoint", "value": "https://github.com/login/oauth/access_token", "isSecret": false },
-    { "name": "userinfo_endpoint", "value": "https://api.github.com/user", "isSecret": false },
-    { "name": "user_email_endpoint", "value": "https://api.github.com/user/emails", "isSecret": false }
-  ]
+  "type": "github",
+  "clientId": "<github-client-id>",
+  "clientSecret": "******",
+  "redirectUri": "https://<your-thunderid-host>/gate/callback"
 }
 ```
 
-<ProductName /> automatically populates the GitHub authorization, token, userinfo, and user email endpoints. You do not need to supply them.
+<ProductName /> automatically uses the GitHub authorization, token, and userinfo endpoints. You do not need to supply them.
 
-## Optional Properties
+## Optional Fields
 
-You can include the following optional properties in the request `properties` array:
+You can include the following optional fields in the request body:
 
-| Property | Description |
+| Field | Description |
 |----------|-------------|
-| `scopes` | Space-separated list of OAuth scopes to request. Include `user:email` to ensure the user's email address is accessible. |
+| `scopes` | Array of OAuth scopes to request. Include `user:email` to ensure the user's email address is accessible. |
 | `prompt` | Controls GitHub's consent screen behavior. |
 
-To map GitHub's profile fields (e.g. `login`, `avatar_url`) to local user attributes, set the top-level `attributeConfiguration` field — see [Attribute Configuration](../add-oidc-provider#attribute-configuration).
+To map GitHub's profile fields (e.g. `login`, `avatar_url`) to local user attributes, set the top-level `attributeConfiguration` field. See [Attribute Configuration](../add-oidc-provider#attribute-configuration).
 
-Example with optional properties:
+Example with optional fields:
 
 ```bash
-curl -kL -X POST https://localhost:8090/identity-providers \
+curl -kL -X POST https://localhost:8090/connections/github \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <access-token>' \
   -d '{
     "name": "GitHub",
-    "type": "GITHUB",
-    "properties": [
-      { "name": "client_id", "value": "<github-client-id>", "isSecret": false },
-      { "name": "client_secret", "value": "<github-client-secret>", "isSecret": true },
-      { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false },
-      { "name": "scopes", "value": "user:email", "isSecret": false }
-    ]
+    "clientId": "<github-client-id>",
+    "clientSecret": "<github-client-secret>",
+    "redirectUri": "https://<your-thunderid-host>/gate/callback",
+    "scopes": ["user:email"]
   }'
 ```
 
 ## Next Steps
 
-- [Connect an IdP to an Application](../connect-idp-to-application) — Add this GitHub IdP to an application's authentication flow.
-- [Manage Identity Providers](../manage-identity-providers) — Update or delete identity providers.
+- [Connect an IdP to an Application](../connect-idp-to-application): Add this GitHub IdP to an application's authentication flow.
+- [Manage Identity Providers](../manage-identity-providers): Update or delete identity providers.

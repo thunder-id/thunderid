@@ -20,6 +20,7 @@ package tokenservice
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -55,7 +56,12 @@ func JoinScopes(scopes []string) string {
 }
 
 // ResolveTokenConfig resolves the token configuration from the OAuth app or falls back to global config.
-func ResolveTokenConfig(cfg oauthconfig.Config, oauthApp *providers.OAuthClient, tokenType TokenType) *TokenConfig {
+// accessValidityPeriod is the token subject's configured access-token validity (0 to use the
+// global default); it is only consulted for TokenTypeAccess.
+func ResolveTokenConfig(
+	cfg oauthconfig.Config, oauthApp *providers.OAuthClient, tokenType TokenType,
+	accessValidityPeriod int64,
+) *TokenConfig {
 	tokenConfig := &TokenConfig{
 		Issuer:         cfg.JWT.Issuer,
 		ValidityPeriod: cfg.JWT.ValidityPeriod,
@@ -64,10 +70,8 @@ func ResolveTokenConfig(cfg oauthconfig.Config, oauthApp *providers.OAuthClient,
 	// Override with token-type specific configuration if available
 	switch tokenType {
 	case TokenTypeAccess:
-		if oauthApp != nil && oauthApp.Token != nil && oauthApp.Token.AccessToken != nil {
-			if oauthApp.Token.AccessToken.ValidityPeriod > 0 {
-				tokenConfig.ValidityPeriod = oauthApp.Token.AccessToken.ValidityPeriod
-			}
+		if accessValidityPeriod > 0 {
+			tokenConfig.ValidityPeriod = accessValidityPeriod
 		}
 	case TokenTypeID:
 		if oauthApp != nil && oauthApp.Token != nil && oauthApp.Token.IDToken != nil {
@@ -418,12 +422,46 @@ func buildClaimsFromRequest(
 	return result
 }
 
+// ReservedAccessTokenClaimNames returns the claim names set by the token builder itself.
+// Configured attribute allow-lists (userAttributes, clientAttributes) must not be allowed to use these.
+func ReservedAccessTokenClaimNames() map[string]bool {
+	reserved := getStandardJWTClaims()
+	reserved["grant_type"] = true
+	reserved["aci"] = true
+	reserved["cnf"] = true
+	reserved[constants.ClaimOUID] = true
+	reserved[constants.ClaimOUName] = true
+	reserved[constants.ClaimOUHandle] = true
+	reserved[constants.ClaimClaimsRequest] = true
+	reserved[constants.ClaimClaimsLocales] = true
+	return reserved
+}
+
+// FilterAttributesByAllowList returns the subset of attrs whose keys are listed in the given
+// sub-config's Attributes allow-list. Returns an empty map when the sub-config or its allow-list
+// is empty. Used by grant handlers to resolve a user subject's access token attributes.
+func FilterAttributesByAllowList(
+	attrs map[string]interface{}, subConfig *providers.AccessTokenSubConfig,
+) map[string]interface{} {
+	filtered := make(map[string]interface{})
+	if subConfig == nil || len(subConfig.Attributes) == 0 {
+		return filtered
+	}
+	for _, attr := range subConfig.Attributes {
+		if val, ok := attrs[attr]; ok {
+			filtered[attr] = val
+		}
+	}
+	return filtered
+}
+
 // BuildClientAttributes gathers all OAuth client/application-scoped attributes that should be added
 // to an access token for the given OAuth application.
 func BuildClientAttributes(
 	ctx context.Context,
 	oauthApp *providers.OAuthClient,
 	ouService providers.OrganizationUnitProvider,
+	actorProvider providers.ActorProvider,
 ) (map[string]interface{}, error) {
 	claims := make(map[string]interface{})
 
@@ -432,6 +470,14 @@ func BuildClientAttributes(
 		return nil, err
 	}
 	for k, v := range ouClaims {
+		claims[k] = v
+	}
+
+	entityClaims, err := resolveClientEntityAttributes(oauthApp, actorProvider)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range entityClaims {
 		claims[k] = v
 	}
 
@@ -466,4 +512,53 @@ func resolveClientOUAttributes(
 		constants.ClaimOUName:   orgUnit.Name,
 		constants.ClaimOUHandle: orgUnit.Handle,
 	}, nil
+}
+
+// resolveClientEntityAttributes returns the subset of the OAuth client's own entity attributes
+// selected by ClientConfig.Attributes. Resolves generically off Entity.Attributes regardless of
+// EntityCategory — populated today only for Agent entities (the only category with a schema and
+// stored attributes); a no-op for plain Application clients, which have neither.
+func resolveClientEntityAttributes(
+	oauthApp *providers.OAuthClient,
+	actorProvider providers.ActorProvider,
+) (map[string]interface{}, error) {
+	if oauthApp == nil || actorProvider == nil {
+		return nil, nil
+	}
+	if oauthApp.Token == nil || oauthApp.Token.AccessToken == nil ||
+		oauthApp.Token.AccessToken.ClientConfig == nil {
+		return nil, nil
+	}
+	attrNames := oauthApp.Token.AccessToken.ClientConfig.Attributes
+	if len(attrNames) == 0 {
+		return nil, nil
+	}
+
+	entity, svcErr := actorProvider.GetActor(oauthApp.ID)
+	if svcErr != nil {
+		return nil, fmt.Errorf("failed to fetch entity %s for client attributes: %s", oauthApp.ID, svcErr.Error)
+	}
+	if entity == nil || len(entity.Attributes) == 0 {
+		return nil, nil
+	}
+
+	var allAttrs map[string]interface{}
+	if err := json.Unmarshal(entity.Attributes, &allAttrs); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal entity attributes for %s: %w", oauthApp.ID, err)
+	}
+
+	reserved := ReservedAccessTokenClaimNames()
+	filtered := make(map[string]interface{})
+	for _, name := range attrNames {
+		if reserved[name] {
+			continue
+		}
+		if val, ok := allAttrs[name]; ok {
+			filtered[name] = val
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, nil
+	}
+	return filtered, nil
 }

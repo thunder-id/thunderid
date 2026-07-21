@@ -55,7 +55,7 @@ describe('useCreateAgent', () => {
           tokenEndpointAuthMethod: 'client_secret_basic',
           responseTypes: [],
           token: {
-            accessToken: {validityPeriod: 3600, userAttributes: []},
+            accessToken: {userConfig: {validityPeriod: 3600, attributes: []}},
             idToken: {validityPeriod: 3600, userAttributes: []},
           },
         },
@@ -76,7 +76,7 @@ describe('useCreateAgent', () => {
           tokenEndpointAuthMethod: 'client_secret_basic',
           responseTypes: [],
           token: {
-            accessToken: {validityPeriod: 3600, userAttributes: []},
+            accessToken: {userConfig: {validityPeriod: 3600, attributes: []}},
             idToken: {validityPeriod: 3600, userAttributes: []},
           },
         },

@@ -26,6 +26,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"net/http"
 	"strings"
 	"sync"
@@ -177,8 +178,7 @@ func (js *jwtService) GenerateJWT(
 		return "", 0, &tidcommon.InternalServerError
 	}
 
-	// Create the JWT payload.
-	payload := map[string]interface{}{
+	defaultClaims := map[string]interface{}{
 		"sub": sub,
 		"iss": tokenIssuer,
 		"exp": expirationTime,
@@ -187,11 +187,15 @@ func (js *jwtService) GenerateJWT(
 		"jti": jti,
 	}
 
-	// Add custom claims if provided.
-	if len(claims) > 0 {
-		for key, value := range claims {
-			payload[key] = value
+	payload := make(map[string]interface{}, len(claims)+len(defaultClaims))
+	maps.Copy(payload, claims)
+
+	for key, value := range defaultClaims {
+		if _, exists := payload[key]; exists {
+			js.logger.Warn(ctx, "GenerateJWT called with default JWT claim in custom claims",
+				log.String("claim", key))
 		}
+		payload[key] = value
 	}
 
 	payloadJSON, err := json.Marshal(payload)

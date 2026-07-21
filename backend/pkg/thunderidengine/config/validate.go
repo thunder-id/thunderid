@@ -34,7 +34,30 @@ func (c *SecurityConfig) Validate() error {
 	if c.JWKSCacheTTL < 0 {
 		return fmt.Errorf("server.security.jwks_cache_ttl must be non-negative (got %d)", c.JWKSCacheTTL)
 	}
+	if err := c.TokenRevocation.Validate(); err != nil {
+		return err
+	}
 	return c.TrustedIssuer.Validate()
+}
+
+// Validate checks the token-revocation configuration. It runs only when the feature is enabled: an
+// unsupported source is rejected, a negative sync interval is rejected, and a non-positive interval
+// otherwise falls back to the default.
+func (c *TokenRevocationConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if c.SyncIntervalSeconds < 0 {
+		return fmt.Errorf(
+			"server.security.token_revocation.sync_interval_seconds must be non-negative (got %d)",
+			c.SyncIntervalSeconds)
+	}
+	if c.Source != "" && c.Source != tokenRevocationSourceDB {
+		return fmt.Errorf(
+			"server.security.token_revocation.source %q is not supported (supported: %q)",
+			c.Source, tokenRevocationSourceDB)
+	}
+	return nil
 }
 
 // IsConfigured reports whether any DPoP field has been set. When false, callers should

@@ -46,7 +46,6 @@ export class ApplicationsPage extends BasePage {
   readonly configureDesignStep: Locator;
   readonly configureSignInStep: Locator;
   readonly configureExperienceStep: Locator;
-  readonly configureStackStep: Locator;
   readonly configureDetailsStep: Locator;
   readonly inbuiltExperienceCard: Locator;
   readonly embeddedExperienceCard: Locator;
@@ -95,7 +94,6 @@ export class ApplicationsPage extends BasePage {
     this.configureDesignStep = page.locator('[data-testid="application-configure-design"]');
     this.configureSignInStep = page.locator('[data-testid="application-configure-sign-in"]');
     this.configureExperienceStep = page.locator('[data-testid="application-configure-experience"]');
-    this.configureStackStep = page.locator('[data-testid="application-configure-stack"]');
     this.configureDetailsStep = page.locator('[data-testid="application-configure-details"]');
     this.inbuiltExperienceCard = page.locator('div:has(input[value="INBUILT"])');
     this.embeddedExperienceCard = page.locator('div:has(input[value="EMBEDDED"])');
@@ -141,7 +139,7 @@ export class ApplicationsPage extends BasePage {
     await this.page.waitForLoadState("networkidle");
   }
 
-  /** Click the Add Application button to open the create wizard */
+  /** Click the Add Application button to open the template gallery */
   async clickAddApplication(): Promise<void> {
     await this.addApplicationButton.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
     await this.addApplicationButton.first().scrollIntoViewIfNeeded();
@@ -207,12 +205,12 @@ export class ApplicationsPage extends BasePage {
     await this.clickNext();
   }
 
-  /** Select a stack/technology card on the stack step by its visible title (e.g. "React", "Next.js"). */
-  async selectStack(title: string): Promise<void> {
-    const card = this.configureStackStep
-      .locator('[role="button"]')
-      .filter({ has: this.page.getByText(title, { exact: true }) })
-      .first();
+  /**
+   * Select a template card on the template gallery page (e.g. "REACT", "NEXTJS") to launch the
+   * create wizard. The gallery is a standalone page reached before the wizard mounts.
+   */
+  async selectTemplate(templateValue: string): Promise<void> {
+    const card = this.page.locator(`[data-testid="template-card-${templateValue}"]`);
     await card.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
     await card.click();
   }

@@ -155,7 +155,7 @@ func (s *GroupInitTestSuite) TestInitializeGroupStore_MutableMode() {
 	})
 
 	mockProvider := &providermock.DBProviderInterfaceMock{}
-	mockProvider.On("GetUserDBTransactioner").Return(transaction.NewNoOpTransactioner(), nil)
+	mockProvider.On("GetEntityDBTransactioner").Return(transaction.NewNoOpTransactioner(), nil)
 
 	store, txer, fileStore, dbStore, err := initializeGroupStore(mockProvider)
 
@@ -192,7 +192,7 @@ func (s *GroupInitTestSuite) TestInitializeGroupStore_CompositeMode() {
 	})
 
 	mockProvider := &providermock.DBProviderInterfaceMock{}
-	mockProvider.On("GetUserDBTransactioner").Return(transaction.NewNoOpTransactioner(), nil)
+	mockProvider.On("GetEntityDBTransactioner").Return(transaction.NewNoOpTransactioner(), nil)
 
 	store, txer, fileStore, dbStore, err := initializeGroupStore(mockProvider)
 
@@ -211,7 +211,7 @@ func (s *GroupInitTestSuite) TestInitializeGroupStore_MutableMode_TransactionerE
 	})
 
 	mockProvider := &providermock.DBProviderInterfaceMock{}
-	mockProvider.On("GetUserDBTransactioner").Return(nil, errors.New("db transactioner error"))
+	mockProvider.On("GetEntityDBTransactioner").Return(nil, errors.New("db transactioner error"))
 
 	store, txer, fileStore, dbStore, err := initializeGroupStore(mockProvider)
 
@@ -231,7 +231,7 @@ func (s *GroupInitTestSuite) TestInitializeGroupStore_CompositeMode_Transactione
 	})
 
 	mockProvider := &providermock.DBProviderInterfaceMock{}
-	mockProvider.On("GetUserDBTransactioner").Return(nil, errors.New("db transactioner error"))
+	mockProvider.On("GetEntityDBTransactioner").Return(nil, errors.New("db transactioner error"))
 
 	store, txer, fileStore, dbStore, err := initializeGroupStore(mockProvider)
 

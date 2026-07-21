@@ -34,8 +34,36 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
+
+// stubDependencyRegistry is a minimal resourcedependency.Registry for tests.
+type stubDependencyRegistry struct {
+	resp *resourcedependency.DependenciesResponse
+	err  error
+}
+
+func (r *stubDependencyRegistry) RegisterProvider(resourcedependency.Provider) {}
+
+func (r *stubDependencyRegistry) GetDependencies(
+	context.Context, string, string) (*resourcedependency.DependenciesResponse, error) {
+	return r.resp, r.err
+}
+
+func (r *stubDependencyRegistry) CascadeDelete(context.Context, string, string) (int, error) {
+	return 0, nil
+}
+
+// newNoBlockingDepsRegistry returns a registry reporting confirmed-empty dependencies, so that
+// deletion is permitted by the blocking guard.
+func newNoBlockingDepsRegistry() *stubDependencyRegistry {
+	total := 0
+	return &stubDependencyRegistry{resp: &resourcedependency.DependenciesResponse{
+		TotalResults: &total,
+		Usages:       []resourcedependency.ResourceDependency{},
+	}}
+}
 
 const (
 	testSenderID          = "test-id"
@@ -75,9 +103,10 @@ func (suite *NotificationSenderMgtServiceTestSuite) TearDownSuite() {
 func (suite *NotificationSenderMgtServiceTestSuite) SetupTest() {
 	suite.mockStore = newNotificationStoreInterfaceMock(suite.T())
 	suite.service = &notificationSenderMgtService{
-		notificationStore: suite.mockStore,
-		transactioner:     &fakeTransactioner{},
-		uuidGenerator:     sysutils.GenerateUUIDv7,
+		notificationStore:  suite.mockStore,
+		transactioner:      &fakeTransactioner{},
+		dependencyRegistry: newNoBlockingDepsRegistry(),
+		uuidGenerator:      sysutils.GenerateUUIDv7,
 	}
 }
 
@@ -244,6 +273,29 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestListSenders_StoreError()
 	suite.mockStore.EXPECT().listSenders(mock.Anything).Return(nil, errors.New("database error")).Once()
 
 	result, err := suite.service.ListSenders(context.Background())
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (suite *NotificationSenderMgtServiceTestSuite) TestListSendersByType() {
+	senders := []common.NotificationSenderDTO{suite.getValidTwilioSender()}
+	senders[0].ID = "id1"
+
+	suite.mockStore.EXPECT().listSendersByType(mock.Anything, common.NotificationSenderTypeMessage).
+		Return(senders, nil).Once()
+
+	result, err := suite.service.ListSendersByType(context.Background(), common.NotificationSenderTypeMessage)
+	suite.Nil(err)
+	suite.NotNil(result)
+	suite.Len(result, 1)
+}
+
+func (suite *NotificationSenderMgtServiceTestSuite) TestListSendersByType_StoreError() {
+	suite.mockStore.EXPECT().listSendersByType(mock.Anything, common.NotificationSenderTypeMessage).
+		Return(nil, errors.New("database error")).Once()
+
+	result, err := suite.service.ListSendersByType(context.Background(), common.NotificationSenderTypeMessage)
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
@@ -606,6 +658,52 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender_EmptyID() {
 	err := suite.service.DeleteSender(context.Background(), "")
 	suite.NotNil(err)
 	suite.Equal(ErrorInvalidSenderID.Code, err.Code)
+}
+
+// TestDeleteSender_BlockedByFlow verifies deletion is refused when a flow references the sender.
+func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender_BlockedByFlow() {
+	total := 1
+	suite.service.dependencyRegistry = &stubDependencyRegistry{resp: &resourcedependency.DependenciesResponse{
+		TotalResults: &total,
+		Count:        1,
+		Usages: []resourcedependency.ResourceDependency{
+			{ResourceType: resourcedependency.ResourceTypeFlow, ID: "flow-1",
+				DisplayName: "SMS OTP", BehaviorOnDelete: resourcedependency.BehaviorRestrict},
+		},
+	}}
+
+	err := suite.service.DeleteSender(context.Background(), testSenderID)
+
+	suite.NotNil(err)
+	suite.Equal(ErrorSenderHasBlockingDependencies.Code, err.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "deleteSender", mock.Anything, mock.Anything)
+}
+
+// TestDeleteSender_RefusedWhenDependenciesUnknown verifies deletion fails closed when a provider
+// fails to report dependency data.
+func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender_RefusedWhenDependenciesUnknown() {
+	suite.service.dependencyRegistry = &stubDependencyRegistry{resp: &resourcedependency.DependenciesResponse{
+		TotalResults: nil,
+		Usages:       []resourcedependency.ResourceDependency{},
+	}}
+
+	err := suite.service.DeleteSender(context.Background(), testSenderID)
+
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "deleteSender", mock.Anything, mock.Anything)
+}
+
+// TestDeleteSender_RefusedWhenRegistryUnset verifies deletion fails closed when the dependency
+// registry was never wired in.
+func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender_RefusedWhenRegistryUnset() {
+	suite.service.dependencyRegistry = nil
+
+	err := suite.service.DeleteSender(context.Background(), testSenderID)
+
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "deleteSender", mock.Anything, mock.Anything)
 }
 
 func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender_StoreError() {

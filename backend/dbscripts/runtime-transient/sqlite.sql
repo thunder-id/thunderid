@@ -1,0 +1,103 @@
+-- Table to store OAuth2 authorization codes.
+CREATE TABLE "AUTHORIZATION_CODE" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    CODE_ID VARCHAR(36) PRIMARY KEY,
+    AUTHORIZATION_CODE VARCHAR(500) NOT NULL,
+    CLIENT_ID VARCHAR(255) NOT NULL,
+    STATE VARCHAR(50) NOT NULL,
+    AUTHZ_DATA TEXT NOT NULL,
+    TIME_CREATED DATETIME NOT NULL,
+    EXPIRY_TIME DATETIME NOT NULL
+);
+
+-- Composite index for authorization code lookup by code + deployment (hot login-path query)
+CREATE INDEX idx_authorization_code_code_deployment ON "AUTHORIZATION_CODE" (AUTHORIZATION_CODE, DEPLOYMENT_ID);
+
+-- Table to store OAuth2 authorization request context
+CREATE TABLE "AUTHORIZATION_REQUEST" (
+    AUTH_ID VARCHAR(36) NOT NULL,
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    REQUEST_DATA TEXT NOT NULL,
+    EXPIRY_TIME DATETIME NOT NULL,
+    CREATED_AT TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (AUTH_ID, DEPLOYMENT_ID)
+);
+
+-- Index for expiry time on AUTHORIZATION_REQUEST (supports cleanup and expiry checks)
+CREATE INDEX idx_authorization_request_expiry_time ON "AUTHORIZATION_REQUEST" (EXPIRY_TIME);
+
+-- Table to store OAuth2 CIBA (Client-Initiated Backchannel Authentication) requests.
+CREATE TABLE "CIBA_AUTH_REQUEST" (
+    AUTH_REQ_ID        VARCHAR(36)  NOT NULL,
+    DEPLOYMENT_ID      VARCHAR(255) NOT NULL,
+    CLIENT_ID          VARCHAR(255) NOT NULL,
+    USER_ID            VARCHAR(36),
+    STANDARD_SCOPES    TEXT         NOT NULL,
+    AUTHORIZED_SCOPES  TEXT,
+    RESOURCES          TEXT,
+    STATE              VARCHAR(50)  NOT NULL,
+    ATTRIBUTE_CACHE_ID VARCHAR(36),
+    COMPLETED_ACR      VARCHAR(255),
+    AUTH_TIME          DATETIME,
+    LAST_POLLED_AT     DATETIME,
+    EXPIRY_TIME        DATETIME     NOT NULL,
+    CREATED_AT         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (AUTH_REQ_ID, DEPLOYMENT_ID)
+);
+
+-- Index for expiry time on CIBA_AUTH_REQUEST (supports cleanup and expiry checks)
+CREATE INDEX idx_ciba_auth_request_expiry_time ON "CIBA_AUTH_REQUEST" (EXPIRY_TIME);
+
+-- Index for expiry time on AUTHORIZATION_CODE (supports cleanup and expiry checks)
+CREATE INDEX idx_authz_code_expiry_time ON "AUTHORIZATION_CODE" (EXPIRY_TIME);
+
+-- Table to store WebAuthn session data
+CREATE TABLE "WEBAUTHN_SESSION" (
+    SESSION_KEY VARCHAR(255) NOT NULL,
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    SESSION_DATA TEXT NOT NULL,
+    CREATED_AT TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    EXPIRY_TIME DATETIME NOT NULL,
+    PRIMARY KEY (SESSION_KEY, DEPLOYMENT_ID)
+);
+
+-- Index for expiry time on WEBAUTHN_SESSION
+CREATE INDEX idx_webauthn_session_expiry_time ON "WEBAUTHN_SESSION" (EXPIRY_TIME);
+
+-- Table to store pushed authorization requests (PAR)
+CREATE TABLE "PAR_REQUEST" (
+    REQUEST_URI VARCHAR(43) PRIMARY KEY,
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    REQUEST_PARAMS TEXT NOT NULL,
+    EXPIRY_TIME DATETIME NOT NULL
+);
+
+-- Index for expiry time on PAR_REQUEST (supports cleanup and expiry checks)
+CREATE INDEX idx_par_request_expiry_time ON "PAR_REQUEST" (EXPIRY_TIME);
+
+-- Table to store JWT jti values for replay protection across consumers. Rows are isolated by NAMESPACE.
+CREATE TABLE "JTI_RECORD" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    NAMESPACE VARCHAR(64) NOT NULL,
+    JTI VARCHAR(256) NOT NULL,
+    EXPIRY_TIME DATETIME NOT NULL,
+    PRIMARY KEY (DEPLOYMENT_ID, NAMESPACE, JTI)
+);
+
+-- Index for expiry time on JTI_RECORD (supports cleanup and expiry checks)
+CREATE INDEX idx_jti_record_expiry_time ON "JTI_RECORD" (EXPIRY_TIME);
+
+-- Table to store generic runtime key-value entries, isolated by NAMESPACE.
+CREATE TABLE "RUNTIME_STORE" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    NAMESPACE     VARCHAR(64)  NOT NULL,
+    KEY           VARCHAR(512) NOT NULL,
+    VALUE         TEXT         NOT NULL,
+    EXPIRY_TIME   DATETIME,
+    CREATED_AT    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UPDATED_AT    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (DEPLOYMENT_ID, NAMESPACE, KEY)
+);
+
+-- Index for expiry time on RUNTIME_STORE (supports cleanup and expiry checks)
+CREATE INDEX idx_runtime_store_expiry_time ON "RUNTIME_STORE" (EXPIRY_TIME);

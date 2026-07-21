@@ -1,7 +1,8 @@
 ---
 title: Embedded Recovery Flow (V2)
+docType: reference
 displayed_sidebar: javascriptSdkSidebar
-description: V2 function for app-native account and password recovery flows
+description: Embedded account recovery flow component (version 2) for password reset and account unlock.
 ---
 
 # Embedded Recovery Flow (V2)
@@ -59,12 +60,12 @@ if (step3.flowStatus === EmbeddedRecoveryFlowStatusV2.Complete) {
 | `config.url` | `string` | ✅ | Full endpoint URL. Mutually exclusive with `baseUrl` |
 | `config.baseUrl` | `string` | ✅ | <ProductName /> base URL |
 | `config.payload` | `EmbeddedRecoveryFlowRequestV2` | ✅ | Flow request body |
-| `config.payload.applicationId` | `string` | — | Application ID. Required for the first step |
-| `config.payload.flowType` | `string` | — | Recovery flow type (e.g., `'PASSWORD_RECOVERY'`). Required for first step |
-| `config.payload.executionId` | `string` | — | Execution ID from a prior response |
-| `config.payload.action` | `string` | — | Action to take at the current step |
-| `config.payload.inputs` | `Record<string, string>` | — | Step input fields |
-| `config.payload.challengeToken` | `string` | — | Challenge token from a prior step |
+| `config.payload.applicationId` | `string` | No | Application ID. Required for the first step |
+| `config.payload.flowType` | `string` | No | Recovery flow type (e.g., `'PASSWORD_RECOVERY'`). Required for first step |
+| `config.payload.executionId` | `string` | No | Execution ID from a prior response |
+| `config.payload.action` | `string` | No | Action to take at the current step |
+| `config.payload.inputs` | `Record<string, string>` | No | Step input fields |
+| `config.payload.challengeToken` | `string` | No | Challenge token from a prior step |
 
 ## Response: `EmbeddedRecoveryFlowResponseV2`
 

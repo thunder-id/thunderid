@@ -18,12 +18,12 @@
 
 import {Box, FormHelperText, IconButton, Tooltip} from '@wso2/oxygen-ui';
 import {SquareFunction} from '@wso2/oxygen-ui-icons-react';
-import {useMemo, useState, type ReactElement} from 'react';
+import {useState, type ReactElement} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {ToolbarPluginProps} from './helper-plugins/ToolbarPlugin';
 import RichText from './RichText';
 import DynamicValuePopover from '../DynamicValuePopover';
-import useValidationStatus from '@/features/flows/hooks/useValidationStatus';
+import useResourceFieldError from '@/features/flows/hooks/useResourceFieldError';
 import type {Resource} from '@/features/flows/models/resources';
 
 /**
@@ -62,20 +62,11 @@ function RichTextWithTranslation({
   const {t} = useTranslation();
   const [isDynamicValuePopoverOpen, setIsDynamicValuePopoverOpen] = useState<boolean>(false);
   const [buttonEl, setButtonEl] = useState<HTMLButtonElement | null>(null);
-  const {selectedNotification} = useValidationStatus();
 
   /**
    * Get the error message for the rich text field.
    */
-  const errorMessage: string = useMemo(() => {
-    const key = `${resource?.id}_text`;
-
-    if (selectedNotification?.hasResourceFieldNotification(key)) {
-      return selectedNotification?.getResourceFieldNotification(key);
-    }
-
-    return '';
-  }, [resource, selectedNotification]);
+  const errorMessage: string = useResourceFieldError(resource?.id, 'text');
 
   return (
     <Box sx={{position: 'relative'}}>

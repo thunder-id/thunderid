@@ -1,11 +1,12 @@
 ---
 title: CookieOptions
-description: Interface for session cookie configuration options
+docType: reference
+description: Type definition for session cookie configuration options in the Node.js SDK.
 ---
 
 # `CookieOptions`
 
-`CookieOptions` defines the shape of cookie configuration options used in the <ProductName /> Node.js SDK. Pass a `CookieOptions` object to [`getSessionCookieOptions`](/docs/next/sdks/node/apis/utilities/get-session-cookie-options) to override the default cookie settings.
+`CookieOptions` defines the shape of cookie configuration options used in the <ProductName /> Node.js SDK. Pass a `CookieOptions` object to [`getSessionCookieOptions`](../get-session-cookie-options) to override the default cookie settings.
 
 ## Interface
 
@@ -44,5 +45,5 @@ const cookieOptions = getSessionCookieOptions(options)
 
 ## Related
 
-- [`CookieConfig`](/docs/next/sdks/node/apis/utilities/cookie-config) — Default values for cookie properties
-- [`getSessionCookieOptions()`](/docs/next/sdks/node/apis/utilities/get-session-cookie-options) — Merges provided options with defaults
+- [`CookieConfig`](../cookie-config): Default values for cookie properties
+- [`getSessionCookieOptions()`](../get-session-cookie-options): Merges provided options with defaults

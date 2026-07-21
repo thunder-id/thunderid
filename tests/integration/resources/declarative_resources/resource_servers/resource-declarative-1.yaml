@@ -1,7 +1,8 @@
+resource_type: resource_server
 id: decl-rs-1
 name: Declarative Resource Server
 description: A declarative test resource server
-handle: decl-rs-1
+identifier: https://localhost:8090/decl-rs-1
 ouId: decl-ou-1
 delimiter: ":"
 resources:

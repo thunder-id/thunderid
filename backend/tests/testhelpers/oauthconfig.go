@@ -27,9 +27,9 @@ import (
 // OAuthConfig returns a minimal OAuth configuration for unit tests.
 func OAuthConfig() oauthconfig.Config {
 	return oauthconfig.Config{
-		DeploymentID:  "test-deployment",
-		RuntimeDBType: "sqlite",
-		BaseURL:       "https://thunder.io",
+		DeploymentID:           "test-deployment",
+		RuntimeTransientDBType: "sqlite",
+		BaseURL:                "https://thunder.io",
 		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,

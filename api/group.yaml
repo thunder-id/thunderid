@@ -385,6 +385,10 @@ paths:
       tags:
         - Groups
       summary: Delete a group by id
+      description: |
+        Deletes a group using its ID. Its role assignments and its memberships in other groups are
+        automatically removed by cascade. The delete is fail-closed and retriable: if dependency
+        cleanup fails, the group is left intact and the operation can be retried.
       parameters:
         - in: path
           name: id

@@ -31,6 +31,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -77,6 +79,10 @@ func (r *stubDependencyRegistry) GetDependencies(
 	return r.resp, r.err
 }
 
+func (r *stubDependencyRegistry) CascadeDelete(context.Context, string, string) (int, error) {
+	return 0, nil
+}
+
 func (s *FlowMgtServiceTestSuite) SetupTest() {
 	s.mockStore = newFlowStoreInterfaceMock(s.T())
 	s.mockInference = newFlowInferenceServiceInterfaceMock(s.T())
@@ -104,6 +110,19 @@ func validFlowNodes() []providers.NodeDefinition {
 	return []providers.NodeDefinition{
 		{ID: "start", Type: "START", OnSuccess: "prompt"},
 		{ID: "prompt", Type: "PROMPT", Next: "end"},
+		{ID: "end", Type: "END"},
+	}
+}
+
+// authCapableNodes returns nodes that satisfy the Authentication flow's required executor constraint.
+func authCapableNodes() []providers.NodeDefinition {
+	return []providers.NodeDefinition{
+		{ID: "start", Type: "START", OnSuccess: "assert"},
+		{
+			ID: "assert", Type: string(common.NodeTypeTaskExecution),
+			Executor:  &providers.ExecutorDefinition{Name: executor.ExecutorNameAuthAssert},
+			OnSuccess: "end",
+		},
 		{ID: "end", Type: "END"},
 	}
 }
@@ -795,11 +814,12 @@ func (s *FlowMgtServiceTestSuite) TestCreateFlow_WithAutoInference() {
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test", testConfig)
 
+	authNodes := authCapableNodes()
 	flowDef := &FlowDefinition{
 		Handle:   "test-handle",
 		Name:     "Auth Flow",
 		FlowType: providers.FlowTypeAuthentication,
-		Nodes:    validFlowNodes(),
+		Nodes:    authNodes,
 	}
 	expectedFlow := &providers.CompleteFlowDefinition{
 		Handle:        "test-handle",
@@ -838,11 +858,12 @@ func (s *FlowMgtServiceTestSuite) TestCreateFlow_AutoInferenceFailure() {
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test", testConfig)
 
+	authNodes := authCapableNodes()
 	flowDef := &FlowDefinition{
 		Handle:   "test-handle",
 		Name:     "Auth Flow",
 		FlowType: providers.FlowTypeAuthentication,
-		Nodes:    validFlowNodes(),
+		Nodes:    authNodes,
 	}
 	expectedFlow := &providers.CompleteFlowDefinition{
 		Handle:        "test-handle",
@@ -851,7 +872,6 @@ func (s *FlowMgtServiceTestSuite) TestCreateFlow_AutoInferenceFailure() {
 		ActiveVersion: 1,
 	}
 
-	// Mock expectations in the correct order of execution
 	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
 	s.mockStore.EXPECT().IsFlowExistsByHandle(mock.Anything, "test-handle",
 		providers.FlowTypeAuthentication).Return(false, nil)
@@ -1909,4 +1929,88 @@ func (s *FlowMgtServiceTestSuite) TestDeleteFlow_MutableFlowAllowed() {
 	s.Nil(err)
 	s.mockStore.AssertExpectations(s.T())
 	s.mockGraphBuilder.AssertExpectations(s.T())
+}
+
+// GetResourceDependencies tests
+
+func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_UnrelatedResourceTypeReturnsEmpty() {
+	usages, err := s.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeUser, "user-1")
+
+	s.NoError(err)
+	s.Empty(usages)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_FlowReferencesIDP() {
+	idpID := "idp-1"
+	s.mockStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).Return([]*providers.CompleteFlowDefinition{
+		{
+			ID:   "flow1",
+			Name: "Google Login",
+			Nodes: []providers.NodeDefinition{
+				{ID: "start", Type: "START"},
+				{ID: "oidc", Type: "TASK_EXECUTION", Properties: map[string]interface{}{"idpId": idpID}},
+			},
+		},
+		{
+			ID:   "flow2",
+			Name: "Basic Login",
+			Nodes: []providers.NodeDefinition{
+				{ID: "start", Type: "START"},
+				{ID: "pw", Type: "TASK_EXECUTION", Properties: map[string]interface{}{"idpId": "other-idp"}},
+			},
+		},
+	}, nil)
+
+	usages, err := s.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeIDP, idpID)
+
+	s.NoError(err)
+	s.Len(usages, 1)
+	s.Equal("flow1", usages[0].ID)
+	s.Equal(resourcedependency.ResourceTypeFlow, usages[0].ResourceType)
+	s.Equal("Google Login", usages[0].DisplayName)
+	s.Equal(resourcedependency.BehaviorRestrict, usages[0].BehaviorOnDelete)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_FlowReferencesNotificationSender() {
+	senderID := "sender-1"
+	s.mockStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).Return([]*providers.CompleteFlowDefinition{
+		{
+			ID:   "flow1",
+			Name: "SMS OTP",
+			Nodes: []providers.NodeDefinition{
+				{ID: "sms", Type: "TASK_EXECUTION", Properties: map[string]interface{}{"senderId": senderID}},
+			},
+		},
+	}, nil)
+
+	usages, err := s.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeNotificationSender, senderID)
+
+	s.NoError(err)
+	s.Len(usages, 1)
+	s.Equal("flow1", usages[0].ID)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_NoReferencingFlows() {
+	s.mockStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).Return([]*providers.CompleteFlowDefinition{
+		{ID: "flow1", Nodes: []providers.NodeDefinition{{ID: "start", Type: "START"}}},
+	}, nil)
+
+	usages, err := s.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeIDP, "idp-1")
+
+	s.NoError(err)
+	s.Empty(usages)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_ListError() {
+	s.mockStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).Return(nil, errors.New("db error"))
+
+	usages, err := s.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeIDP, "idp-1")
+
+	s.Error(err)
+	s.Nil(usages)
 }

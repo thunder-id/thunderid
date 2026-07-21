@@ -25,9 +25,8 @@ import (
 	"testing"
 
 	"github.com/thunder-id/thunderid/internal/application"
+	"github.com/thunder-id/thunderid/internal/connection"
 	"github.com/thunder-id/thunderid/internal/entitytype"
-	"github.com/thunder-id/thunderid/internal/idp"
-	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/cors/corstest"
@@ -94,8 +93,7 @@ func createTestExporters(
 ) []declarativeresource.ResourceExporter {
 	return []declarativeresource.ResourceExporter{
 		application.NewApplicationExporterForTest(appService),
-		idp.NewIDPExporterForTest(idpService),
-		notification.NewNotificationSenderExporterForTest(notificationService),
+		connection.NewConnectionExporterForTest(idpService, notificationService),
 		entitytype.NewEntityTypeExporterForTest(entityTypeService),
 	}
 }

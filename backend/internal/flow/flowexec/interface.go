@@ -28,7 +28,7 @@ import (
 // entry point for flow execution.
 type FlowExecServiceInterface interface {
 	Execute(ctx context.Context, appID, executionID, flowType string, verbose bool,
-		action string, inputs map[string]string, challengeToken, flowSecret string) (
+		action string, inputs map[string]string, challengeToken, flowSecret, attestationToken string) (
 		*FlowStep, *tidcommon.ServiceError)
 	InitiateFlow(ctx context.Context, initContext *FlowInitContext) (string, *tidcommon.ServiceError)
 	InitiateAndExecute(ctx context.Context, initContext *FlowInitContext) (*FlowStep, *tidcommon.ServiceError)

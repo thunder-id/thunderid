@@ -49,6 +49,7 @@ func ValidateAuthorizationRequestParams(
 	params map[string]string, oauthApp *providers.OAuthClient, dpopHeaderJkt string,
 ) (string, string) {
 	responseType := params[constants.RequestParamResponseType]
+	responseMode := params[constants.RequestParamResponseMode]
 
 	// Validate the prompt parameter if present.
 	prompt, promptExists := params[constants.RequestParamPrompt]
@@ -70,6 +71,9 @@ func ValidateAuthorizationRequestParams(
 	}
 	if !oauthApp.IsAllowedResponseType(responseType) {
 		return constants.ErrorUnsupportedResponseType, "Unsupported response type"
+	}
+	if !constants.IsSupportedResponseMode(responseMode) {
+		return constants.ErrorInvalidRequest, "Unsupported response_mode parameter"
 	}
 
 	// Validate PKCE parameters.

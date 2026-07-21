@@ -53,6 +53,8 @@ export interface Agent {
   authFlowId?: string;
   registrationFlowId?: string;
   isRegistrationFlowEnabled?: boolean;
+  recoveryFlowId?: string;
+  isRecoveryFlowEnabled?: boolean;
   assertion?: AssertionConfig;
   loginConsent?: AgentLoginConsentConfig;
   isReadOnly?: boolean;
@@ -91,7 +93,33 @@ export interface UpdateAgentRequest {
   type?: string;
   name?: string;
   description?: string;
+  owner?: string;
   attributes?: Record<string, unknown>;
   allowedUserTypes?: string[];
   inboundAuthConfig?: AgentInboundAuthConfig[];
+  authFlowId?: string;
+  registrationFlowId?: string;
+  isRegistrationFlowEnabled?: boolean;
+  recoveryFlowId?: string;
+  isRecoveryFlowEnabled?: boolean;
+}
+
+export interface AgentGroup {
+  id: string;
+  name: string;
+  ouId: string;
+}
+
+export interface AgentGroupListResponse {
+  totalResults: number;
+  startIndex: number;
+  count: number;
+  groups: AgentGroup[];
+}
+
+export interface AgentRoleListResponse {
+  totalResults: number;
+  startIndex: number;
+  count: number;
+  roles: string[];
 }

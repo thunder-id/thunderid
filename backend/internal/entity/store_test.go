@@ -60,11 +60,11 @@ func (s *DBStoreTestSuite) SetupTest() {
 }
 
 func (s *DBStoreTestSuite) expectClient() {
-	s.provider.On("GetUserDBClient").Return(s.client, nil).Once()
+	s.provider.On("GetEntityDBClient").Return(s.client, nil).Once()
 }
 
 func (s *DBStoreTestSuite) expectClientError() {
-	s.provider.On("GetUserDBClient").Return(nil, s.testErr).Once()
+	s.provider.On("GetEntityDBClient").Return(nil, s.testErr).Once()
 }
 
 // onExecAny registers an ExecuteContext expectation that matches any args (up to 14).

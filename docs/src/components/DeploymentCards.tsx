@@ -42,18 +42,18 @@ interface Station {
 const LOGO_STYLE: React.CSSProperties = {display: 'block', height: '26px', objectFit: 'contain', width: '26px'};
 
 function DockerLogo() {
-  return <img src="/img/docker-logo.svg" alt="Docker" style={LOGO_STYLE} />;
+  return <img src="/assets/images/docker-logo.svg" alt="Docker" style={LOGO_STYLE} />;
 }
 
 function KubernetesLogo() {
-  return <img src="/img/kubernetes-logo.svg" alt="Kubernetes" style={LOGO_STYLE} />;
+  return <img src="/assets/images/kubernetes-logo.svg" alt="Kubernetes" style={LOGO_STYLE} />;
 }
 
 function OpenChoreoLogo() {
   return (
     <>
       <Box component="span" sx={{'[data-theme="dark"] &': {display: 'none'}}}>
-        <img src="/img/openchoreo-logo.svg" alt="OpenChoreo" style={LOGO_STYLE} />
+        <img src="/assets/images/openchoreo-logo.svg" alt="OpenChoreo" style={LOGO_STYLE} />
       </Box>
       <Box component="span" sx={{display: 'none', '[data-theme="dark"] &': {display: 'inline'}}}>
         <img src="https://openchoreo.dev/img/openchoreo-logo-dark.svg" alt="OpenChoreo" style={LOGO_STYLE} />
@@ -86,7 +86,7 @@ function buildStations(): Station[] {
     iconBackground: 'rgba(14,165,233,0.12)',
     title: 'Docker',
     chooseIf: 'You want a portable, self-contained deployment with full configuration control and no cluster infrastructure required.',
-    cta: 'Deploy with Docker →',
+    cta: 'Continue →',
     icon: <DockerLogo />,
     features: [
       {text: 'Quick setup with pre-built images', available: true},
@@ -101,7 +101,7 @@ function buildStations(): Station[] {
     iconBackground: 'rgba(50,108,229,0.12)',
     title: 'Kubernetes',
     chooseIf: 'You want production control while running ThunderID on infrastructure your team manages.',
-    cta: 'Deploy on Kubernetes →',
+    cta: 'Continue →',
     icon: <KubernetesLogo />,
     features: [
       {text: 'Helm chart deployment', available: true},
@@ -118,7 +118,7 @@ function buildStations(): Station[] {
     iconBackground: 'rgba(139,92,246,0.12)',
     title: 'OpenChoreo',
     chooseIf: 'You want a platform-managed deployment model with environment separation and promotion workflows.',
-    cta: 'Deploy on OpenChoreo →',
+    cta: 'Continue →',
     icon: <OpenChoreoLogo />,
     features: [
       {text: 'Cell-based deployment model', available: true},
@@ -158,7 +158,7 @@ export default function DeploymentCards(): React.ReactElement {
           alignItems: 'stretch',
           display: 'grid',
           gap: '1rem',
-          gridTemplateColumns: {xs: '1fr', md: 'repeat(3, 1fr)'},
+          gridTemplateColumns: {xs: '1fr', xl: 'repeat(3, 1fr)'},
           marginLeft: 0,
           marginRight: {md: '-2rem'},
         }}
@@ -170,6 +170,9 @@ export default function DeploymentCards(): React.ReactElement {
             to={s.href}
             sx={{
               animation: `dpFadeUp 700ms cubic-bezier(0.16,1,0.3,1) ${s.animDelay}ms both`,
+              justifySelf: {xs: 'center', xl: 'stretch'},
+              maxWidth: {xs: '540px', xl: 'none'},
+              width: '100%',
               background: 'var(--ifm-background-surface-color)',
               '[data-theme="dark"] &': {background: 'rgba(255,255,255,0.04)'},
               border: '1px solid',
@@ -222,7 +225,7 @@ export default function DeploymentCards(): React.ReactElement {
             </Box>
 
             {/* Title */}
-            <Typography sx={{color: 'var(--ifm-font-color-base)', fontSize: '1.9rem', fontWeight: 800, letterSpacing: '-0.035em', lineHeight: 1.05, marginBottom: '0.5rem'}}>
+            <Typography sx={{color: 'var(--ifm-font-color-base)', fontSize: '1.9rem', fontWeight: 800, letterSpacing: '-0.035em', lineHeight: 1.05, marginBottom: '0.5rem', textAlign: 'center'}}>
               {s.title}
             </Typography>
 

@@ -23,7 +23,6 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/thunder-id/thunderid/internal/consent"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -40,7 +39,6 @@ func Initialize(
 	cacheManager cache.CacheManagerInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
-	consentService consent.ConsentServiceInterface,
 ) (EntityTypeServiceInterface, declarativeresource.ResourceExporter, error) {
 	// Step 1: Determine store mode and initialize store and transactioner
 	storeMode := getEntityTypeStoreMode()
@@ -51,7 +49,7 @@ func Initialize(
 
 	// Step 2: Create service with store
 	entityTypeService := newEntityTypeService(ouService, entityTypeStore, transactioner,
-		authzService, consentService)
+		authzService)
 
 	// Step 3: Load declarative resources into store (if applicable)
 	if storeMode == serverconst.StoreModeComposite || storeMode == serverconst.StoreModeDeclarative {

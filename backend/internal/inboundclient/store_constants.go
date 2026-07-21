@@ -26,8 +26,9 @@ var (
 		ID: "ASQ-INBC_MGT-01",
 		Query: `INSERT INTO "INBOUND_CLIENT" (ENTITY_ID, AUTH_FLOW_ID, REGISTRATION_FLOW_ID, ` +
 			`IS_REGISTRATION_FLOW_ENABLED, RECOVERY_FLOW_ID, IS_RECOVERY_FLOW_ENABLED, ` +
+			`SIGNOUT_FLOW_ID, IS_SIGNOUT_FLOW_ENABLED, ` +
 			`THEME_ID, LAYOUT_ID, PROPERTIES, DEPLOYMENT_ID) ` +
-			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
 	}
 	// queryCreateOAuthProfile creates a new OAuth inbound profile entry keyed by entity ID.
 	queryCreateOAuthProfile = dbmodel.DBQuery{
@@ -39,6 +40,7 @@ var (
 		ID: "ASQ-INBC_MGT-03",
 		Query: `SELECT app.ENTITY_ID, app.AUTH_FLOW_ID, app.REGISTRATION_FLOW_ID, ` +
 			`app.IS_REGISTRATION_FLOW_ENABLED, app.RECOVERY_FLOW_ID, app.IS_RECOVERY_FLOW_ENABLED, ` +
+			`app.SIGNOUT_FLOW_ID, app.IS_SIGNOUT_FLOW_ENABLED, ` +
 			`app.THEME_ID, app.LAYOUT_ID, app.PROPERTIES ` +
 			`FROM "INBOUND_CLIENT" app WHERE app.ENTITY_ID = $1 AND app.DEPLOYMENT_ID = $2`,
 	}
@@ -53,6 +55,7 @@ var (
 		ID: "ASQ-INBC_MGT-06",
 		Query: `SELECT app.ENTITY_ID, app.AUTH_FLOW_ID, app.REGISTRATION_FLOW_ID, ` +
 			`app.IS_REGISTRATION_FLOW_ENABLED, app.RECOVERY_FLOW_ID, app.IS_RECOVERY_FLOW_ENABLED, ` +
+			`app.SIGNOUT_FLOW_ID, app.IS_SIGNOUT_FLOW_ENABLED, ` +
 			`app.THEME_ID, app.LAYOUT_ID, app.PROPERTIES ` +
 			`FROM "INBOUND_CLIENT" app WHERE app.DEPLOYMENT_ID = $1 LIMIT $2`,
 	}
@@ -61,8 +64,9 @@ var (
 		ID: "ASQ-INBC_MGT-07",
 		Query: `UPDATE "INBOUND_CLIENT" SET AUTH_FLOW_ID=$2, REGISTRATION_FLOW_ID=$3, ` +
 			`IS_REGISTRATION_FLOW_ENABLED=$4, RECOVERY_FLOW_ID=$5, IS_RECOVERY_FLOW_ENABLED=$6, ` +
-			`THEME_ID=$7, LAYOUT_ID=$8, PROPERTIES=$9 ` +
-			`WHERE ENTITY_ID = $1 AND DEPLOYMENT_ID = $10`,
+			`SIGNOUT_FLOW_ID=$7, IS_SIGNOUT_FLOW_ENABLED=$8, ` +
+			`THEME_ID=$9, LAYOUT_ID=$10, PROPERTIES=$11 ` +
+			`WHERE ENTITY_ID = $1 AND DEPLOYMENT_ID = $12`,
 	}
 	// queryUpdateOAuthProfileByEntityID updates an OAuth inbound profile by entity ID.
 	queryUpdateOAuthProfileByEntityID = dbmodel.DBQuery{
@@ -103,19 +107,33 @@ var (
 		Query: `SELECT COUNT(*) as total FROM "INBOUND_CLIENT" WHERE THEME_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
+	// queryGetEntityIDsByLayoutID retrieves paginated entity IDs for inbound clients using a specific layout.
+	queryGetEntityIDsByLayoutID = dbmodel.DBQuery{
+		ID: "ASQ-INBC_MGT-17",
+		Query: `SELECT ENTITY_ID FROM "INBOUND_CLIENT" WHERE LAYOUT_ID = $1 AND DEPLOYMENT_ID = $2 ` +
+			`ORDER BY ENTITY_ID ASC LIMIT $3 OFFSET $4`,
+	}
+
+	// queryGetEntityIDsByLayoutIDCount retrieves the total count of inbound clients using a specific layout.
+	queryGetEntityIDsByLayoutIDCount = dbmodel.DBQuery{
+		ID:    "ASQ-INBC_MGT-18",
+		Query: `SELECT COUNT(*) as total FROM "INBOUND_CLIENT" WHERE LAYOUT_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+
 	// queryGetEntityIDsByFlowID retrieves paginated entity IDs for inbound clients referencing a specific
-	// flow through any of the authentication, registration, or recovery flow slots.
+	// flow through any of the authentication, registration, recovery, or sign-out flow slots.
 	queryGetEntityIDsByFlowID = dbmodel.DBQuery{
 		ID: "ASQ-INBC_MGT-15",
 		Query: `SELECT ENTITY_ID FROM "INBOUND_CLIENT" WHERE ` +
-			`(AUTH_FLOW_ID = $1 OR REGISTRATION_FLOW_ID = $2 OR RECOVERY_FLOW_ID = $3) AND DEPLOYMENT_ID = $4 ` +
-			`ORDER BY ENTITY_ID ASC LIMIT $5 OFFSET $6`,
+			`(AUTH_FLOW_ID = $1 OR REGISTRATION_FLOW_ID = $2 OR RECOVERY_FLOW_ID = $3 OR SIGNOUT_FLOW_ID = $4) ` +
+			`AND DEPLOYMENT_ID = $5 ORDER BY ENTITY_ID ASC LIMIT $6 OFFSET $7`,
 	}
 
 	// queryGetEntityIDsByFlowIDCount retrieves the total count of inbound clients referencing a specific flow.
 	queryGetEntityIDsByFlowIDCount = dbmodel.DBQuery{
 		ID: "ASQ-INBC_MGT-16",
 		Query: `SELECT COUNT(*) as total FROM "INBOUND_CLIENT" WHERE ` +
-			`(AUTH_FLOW_ID = $1 OR REGISTRATION_FLOW_ID = $2 OR RECOVERY_FLOW_ID = $3) AND DEPLOYMENT_ID = $4`,
+			`(AUTH_FLOW_ID = $1 OR REGISTRATION_FLOW_ID = $2 OR RECOVERY_FLOW_ID = $3 OR SIGNOUT_FLOW_ID = $4) ` +
+			`AND DEPLOYMENT_ID = $5`,
 	}
 )

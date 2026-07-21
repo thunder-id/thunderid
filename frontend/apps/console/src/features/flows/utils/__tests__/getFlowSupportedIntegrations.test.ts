@@ -16,8 +16,8 @@
  * under the License.
  */
 
+import {AuthenticatorTypes} from '@thunderid/configure-connections';
 import {describe, it, expect} from 'vitest';
-import {AuthenticatorTypes} from '../../../connections/models/authenticators';
 import getFlowSupportedIntegrations from '../getFlowSupportedIntegrations';
 
 describe('getFlowSupportedIntegrations', () => {

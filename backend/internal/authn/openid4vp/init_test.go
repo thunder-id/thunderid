@@ -241,7 +241,7 @@ func (suite *OpenID4VPInitTestSuite) TestInitializeRequiresClientID() {
 	suite.Require().NoError(config.InitializeServerRuntime("", cfg))
 	defer config.ResetServerRuntime()
 
-	svc, err := Initialize(http.NewServeMux(), nil, nil, nil, nil)
+	svc, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil)
 	suite.Require().Error(err)
 	suite.ErrorIs(err, ErrPolicy)
 	suite.Nil(svc)

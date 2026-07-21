@@ -220,4 +220,19 @@ var (
 			DefaultValue: "An error occurred while retrieving the message client",
 		},
 	}
+	// ErrorSenderHasBlockingDependencies is returned when a notification sender cannot be deleted
+	// because other resources depend on it in a way that forbids deletion (e.g. flows that reference it).
+	ErrorSenderHasBlockingDependencies = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "MNS-1016",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationservice.sender_has_blocking_dependencies",
+			DefaultValue: "Notification sender cannot be deleted",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.notificationservice.sender_has_blocking_dependencies_description",
+			DefaultValue: "The notification sender cannot be deleted because other resources depend on it. " +
+				"Remove or reassign them first.",
+		},
+	}
 )

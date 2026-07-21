@@ -1,4 +1,4 @@
-# resource_type: user_type
+resource_type: user_type
 id: 019e3a5c-04ea-7d18-8ae6-f828b1f3d60f
 category: user
 name: Customer
@@ -49,7 +49,7 @@ schema: {
   }
 
 ---
-# resource_type: application
+resource_type: application
 id: 019e3a5c-0500-7f3e-a66e-66fc7918c3a7
 ouHandle: default
 name: Sample App
@@ -61,8 +61,8 @@ policyUri: https://localhost:3000/privacy
 contacts:
   - admin@example.com
   - support@example.com
-authFlowHandle: default-basic-flow
-registrationFlowHandle: default-basic-flow
+authFlowHandle: default-flow
+registrationFlowHandle: default-flow
 isRegistrationFlowEnabled: true
 isRecoveryFlowEnabled: false
 assertion:
@@ -89,12 +89,13 @@ inboundAuthConfig:
       requirePushedAuthorizationRequests: false
       token:
         accessToken:
-          validityPeriod: 3600
-          userAttributes:
-            - given_name
-            - family_name
-            - email
-            - groups
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - groups
         idToken:
           validityPeriod: 3600
           userAttributes:

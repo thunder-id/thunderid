@@ -24,9 +24,9 @@ import (
 )
 
 // Initialize returns a JTI replay-cache backend (Redis or relational DB, selected
-// by the runtime datasource configuration).
+// by the runtime transient datasource configuration).
 func Initialize(cfg oauthconfig.Config) JTIStoreInterface {
-	if cfg.RuntimeDBType == provider.DataSourceTypeRedis {
+	if cfg.RuntimeTransientDBType == provider.DataSourceTypeRedis {
 		return newRedisStore(provider.GetRedisProvider(), cfg.DeploymentID)
 	}
 	return newDBStore(cfg.DeploymentID)

@@ -36,8 +36,6 @@ import {
   ChevronRight,
   Copy,
   Database,
-  Folder,
-  FolderOpen,
   Layers,
   Plus,
   Trash2,
@@ -47,7 +45,7 @@ import {
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {AddNodeMode} from './AddNodeDialog';
-import type {KindFilter, SelectedNode} from './ResourceTree';
+import type {SelectedNode} from './ResourceTree';
 import useDeleteAction from '../../api/useDeleteAction';
 import useDeleteResource from '../../api/useDeleteResource';
 import useGetResourceActions from '../../api/useGetResourceActions';
@@ -63,12 +61,6 @@ interface ResourceTreeNodeProps {
   selectedNodeId: string | null;
   onSelect: (node: SelectedNode) => void;
   onAddChild: (mode: AddNodeMode, parentResourceId: string, parentPermission: string) => void;
-  /** When true, renders MCP-flavored namespace node with add menu (Add Tool / Add Resource / Add Namespace). */
-  isMcp?: boolean;
-  /** MCP only: which kind of children to show when rendering inline in a filtered pass. */
-  kindFilter?: KindFilter;
-  /** Ancestor namespace names for the breadcrumb in the detail panel. */
-  breadcrumb?: string[];
 }
 
 export function ResourceNode({
@@ -79,9 +71,6 @@ export function ResourceNode({
   selectedNodeId,
   onSelect,
   onAddChild,
-  isMcp = false,
-  kindFilter = 'all',
-  breadcrumb = [],
 }: ResourceTreeNodeProps): JSX.Element {
   const {t} = useTranslation();
   const {showToast} = useToast();
@@ -115,37 +104,19 @@ export function ResourceNode({
     e.stopPropagation();
     deleteResource.mutate(node.id, {
       onSuccess: () => {
-        const successMsg = isMcp
-          ? t('resourceServers:mcp.deleteNamespace.success', 'Namespace deleted.')
-          : t('resourceServers:tree.deleteResource.success', 'Resource deleted.');
-        showToast(successMsg, 'success');
+        showToast(t('resourceServers:tree.deleteResource.success', 'Resource deleted.'), 'success');
       },
       onError: (err: Error) => {
         logger.error('Failed to delete resource', {error: err});
-        const errorMsg = isMcp
-          ? t(
-              'resourceServers:mcp.deleteNamespace.error',
-              "Cannot delete — remove the namespace's tools and resources first.",
-            )
-          : t('resourceServers:tree.deleteResource.error', 'Cannot delete — remove child resources and actions first.');
-        showToast(errorMsg, 'error');
+        showToast(
+          t('resourceServers:tree.deleteResource.error', 'Cannot delete — remove child resources and actions first.'),
+          'error',
+        );
       },
     });
   };
 
-  const nodeIcon = isMcp ? (
-    expanded ? (
-      <FolderOpen size={16} style={{flexShrink: 0, opacity: 0.7}} />
-    ) : (
-      <Folder size={16} style={{flexShrink: 0, opacity: 0.7}} />
-    )
-  ) : (
-    <Layers size={16} style={{flexShrink: 0, opacity: 0.7}} />
-  );
-
-  const namespaceLabel = t('resourceServers:mcp.types.namespace', 'Namespace');
-
-  const childBreadcrumb = [...breadcrumb, node.name];
+  const nodeIcon = <Layers size={16} style={{flexShrink: 0, opacity: 0.7}} />;
 
   return (
     <Box>
@@ -157,13 +128,11 @@ export function ResourceNode({
             type: 'resource',
             id: node.id,
             data: node,
-            breadcrumb,
           })
         }
         role="treeitem"
-        aria-expanded={isMcp ? expanded : undefined}
         aria-level={depth + 1}
-        aria-label={isMcp ? `${namespaceLabel}: ${node.name}` : node.name}
+        aria-label={node.name}
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -247,216 +216,58 @@ export function ResourceNode({
         onClose={() => setAddMenuAnchor(null)}
         slotProps={{paper: {sx: {minWidth: 160}}}}
       >
-        {isMcp
-          ? [
-              <MenuItem
-                key="add-tool"
-                onClick={() => {
-                  onAddChild('mcp-namespace-tool', node.id, node.permission);
-                  setAddMenuAnchor(null);
-                }}
-              >
-                <ListItemIcon>
-                  <Wrench size={16} />
-                </ListItemIcon>
-                <ListItemText>{t('resourceServers:mcp.addTool', 'Add tool')}</ListItemText>
-              </MenuItem>,
-              <MenuItem
-                key="add-resource"
-                onClick={() => {
-                  onAddChild('mcp-namespace-resource', node.id, node.permission);
-                  setAddMenuAnchor(null);
-                }}
-              >
-                <ListItemIcon>
-                  <Database size={16} />
-                </ListItemIcon>
-                <ListItemText>{t('resourceServers:mcp.addResource', 'Add resource')}</ListItemText>
-              </MenuItem>,
-              <MenuItem
-                key="add-sub-namespace"
-                onClick={() => {
-                  onAddChild('mcp-sub-namespace', node.id, node.permission);
-                  setAddMenuAnchor(null);
-                }}
-              >
-                <ListItemIcon>
-                  <Folder size={16} />
-                </ListItemIcon>
-                <ListItemText>{t('resourceServers:mcp.addNamespace', 'Add namespace')}</ListItemText>
-              </MenuItem>,
-            ]
-          : [
-              <MenuItem
-                key="sub-resource"
-                onClick={() => {
-                  onAddChild('sub-resource', node.id, node.permission);
-                  setAddMenuAnchor(null);
-                }}
-              >
-                <ListItemIcon>
-                  <Layers size={16} />
-                </ListItemIcon>
-                <ListItemText>{t('resourceServers:tree.addSubResource', 'Add sub-resource')}</ListItemText>
-              </MenuItem>,
-              <MenuItem
-                key="resource-action"
-                onClick={() => {
-                  onAddChild('resource-action', node.id, node.permission);
-                  setAddMenuAnchor(null);
-                }}
-              >
-                <ListItemIcon>
-                  <Zap size={16} />
-                </ListItemIcon>
-                <ListItemText>{t('resourceServers:tree.addAction', 'Add action')}</ListItemText>
-              </MenuItem>,
-            ]}
+        <MenuItem
+          key="sub-resource"
+          onClick={() => {
+            onAddChild('sub-resource', node.id, node.permission);
+            setAddMenuAnchor(null);
+          }}
+        >
+          <ListItemIcon>
+            <Layers size={16} />
+          </ListItemIcon>
+          <ListItemText>{t('resourceServers:tree.addSubResource', 'Add sub-resource')}</ListItemText>
+        </MenuItem>
+        <MenuItem
+          key="resource-action"
+          onClick={() => {
+            onAddChild('resource-action', node.id, node.permission);
+            setAddMenuAnchor(null);
+          }}
+        >
+          <ListItemIcon>
+            <Zap size={16} />
+          </ListItemIcon>
+          <ListItemText>{t('resourceServers:tree.addAction', 'Add action')}</ListItemText>
+        </MenuItem>
       </Menu>
 
       <Collapse in={expanded}>
-        {isMcp ? (
-          renderMcpNamespaceChildren({
-            actions,
-            children,
-            resourceServerId,
-            delimiter,
-            node,
-            depth,
-            selectedNodeId,
-            onSelect,
-            onAddChild,
-            kindFilter,
-            breadcrumb: childBreadcrumb,
-            t,
-          })
-        ) : (
-          <>
-            {actions.map((action) => (
-              <ActionNode
-                key={action.id}
-                resourceServerId={resourceServerId}
-                action={action}
-                depth={depth + 1}
-                parentResourceId={node.id}
-                selectedNodeId={selectedNodeId}
-                onSelect={onSelect}
-              />
-            ))}
-            {children.map((child) => (
-              <ResourceNode
-                key={child.id}
-                resourceServerId={resourceServerId}
-                delimiter={delimiter}
-                node={child}
-                depth={depth + 1}
-                selectedNodeId={selectedNodeId}
-                onSelect={onSelect}
-                onAddChild={onAddChild}
-              />
-            ))}
-          </>
-        )}
+        {actions.map((action) => (
+          <ActionNode
+            key={action.id}
+            resourceServerId={resourceServerId}
+            action={action}
+            depth={depth + 1}
+            parentResourceId={node.id}
+            selectedNodeId={selectedNodeId}
+            onSelect={onSelect}
+          />
+        ))}
+        {children.map((child) => (
+          <ResourceNode
+            key={child.id}
+            resourceServerId={resourceServerId}
+            delimiter={delimiter}
+            node={child}
+            depth={depth + 1}
+            selectedNodeId={selectedNodeId}
+            onSelect={onSelect}
+            onAddChild={onAddChild}
+          />
+        ))}
       </Collapse>
     </Box>
-  );
-}
-
-interface RenderMcpNamespaceChildrenParams {
-  actions: Action[];
-  children: Resource[];
-  resourceServerId: string;
-  delimiter: string;
-  node: Resource;
-  depth: number;
-  selectedNodeId: string | null;
-  onSelect: (node: SelectedNode) => void;
-  onAddChild: (mode: AddNodeMode, parentResourceId: string, parentPermission: string) => void;
-  kindFilter: KindFilter;
-  breadcrumb: string[];
-  t: (key: string, fallback: string) => string;
-}
-
-function renderMcpNamespaceChildren({
-  actions,
-  children,
-  resourceServerId,
-  delimiter,
-  node,
-  depth,
-  selectedNodeId,
-  onSelect,
-  onAddChild,
-  kindFilter,
-  breadcrumb,
-  t,
-}: RenderMcpNamespaceChildrenParams): JSX.Element {
-  const filteredTools = actions.filter((a) => {
-    if (kindFilter !== 'all' && kindFilter !== 'tool') return false;
-    return a.kind === 'tool';
-  });
-
-  const filteredResources = actions.filter((a) => {
-    if (kindFilter !== 'all' && kindFilter !== 'resource') return false;
-    return a.kind === 'resource';
-  });
-
-  const hasContent = filteredTools.length > 0 || filteredResources.length > 0 || children.length > 0;
-
-  if (!hasContent) {
-    const emptyMsg =
-      kindFilter !== 'all'
-        ? t('resourceServers:mcp.namespace.emptyForFilter', 'Nothing here matches the current filter.')
-        : t('resourceServers:mcp.namespace.empty', 'This namespace has no tools or resources yet.');
-    return (
-      <Typography variant="body2" color="text.disabled" sx={{pl: (depth + 2) * 2 + 0.5, py: 0.5}}>
-        {emptyMsg}
-      </Typography>
-    );
-  }
-
-  return (
-    <>
-      {filteredTools.map((action) => (
-        <ActionNode
-          key={action.id}
-          resourceServerId={resourceServerId}
-          action={action}
-          depth={depth + 1}
-          parentResourceId={node.id}
-          selectedNodeId={selectedNodeId}
-          onSelect={onSelect}
-          breadcrumb={breadcrumb}
-        />
-      ))}
-      {filteredResources.map((action) => (
-        <ActionNode
-          key={action.id}
-          resourceServerId={resourceServerId}
-          action={action}
-          depth={depth + 1}
-          parentResourceId={node.id}
-          selectedNodeId={selectedNodeId}
-          onSelect={onSelect}
-          breadcrumb={breadcrumb}
-        />
-      ))}
-      {children.map((child) => (
-        <ResourceNode
-          key={child.id}
-          resourceServerId={resourceServerId}
-          delimiter={delimiter}
-          node={child}
-          depth={depth + 1}
-          selectedNodeId={selectedNodeId}
-          onSelect={onSelect}
-          onAddChild={onAddChild}
-          isMcp
-          kindFilter={kindFilter}
-          breadcrumb={breadcrumb}
-        />
-      ))}
-    </>
   );
 }
 

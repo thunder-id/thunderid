@@ -267,6 +267,7 @@ func (g *graph) ToJSON() (string, error) {
 		Identifier string   `json:"identifier"`
 		Type       string   `json:"type"`
 		Required   bool     `json:"required"`
+		OneTimeUse bool     `json:"oneTimeUse,omitempty"`
 		Options    []string `json:"options,omitempty"`
 	}
 
@@ -328,6 +329,7 @@ func (g *graph) ToJSON() (string, error) {
 						Identifier: input.Identifier,
 						Type:       input.Type,
 						Required:   input.Required,
+						OneTimeUse: input.OneTimeUse,
 						Options:    input.Options,
 					}
 				}

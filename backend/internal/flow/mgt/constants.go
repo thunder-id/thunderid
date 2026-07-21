@@ -48,6 +48,14 @@ const (
 	defaultNodeYPos = 0
 )
 
+const (
+	// nodePropertyKeyIDPID is the node property key that references an identity provider by its ID.
+	nodePropertyKeyIDPID = "idpId"
+	// nodePropertyKeyNotificationSenderID is the node property key that references a notification
+	// sender by its ID.
+	nodePropertyKeyNotificationSenderID = "senderId"
+)
+
 // authToRegLabelTerms maps authentication UI label terms to their registration equivalents.
 // Ordered by specificity (longest/most-specific first) to avoid partial matches.
 var authToRegLabelTerms = []struct{ auth, reg string }{

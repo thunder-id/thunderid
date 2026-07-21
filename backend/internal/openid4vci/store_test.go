@@ -24,371 +24,143 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+	"github.com/thunder-id/thunderid/internal/runtimestore/inmemory"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-const testStoreDeploymentID = "test-deployment-id"
+// errRuntimeStore is a RuntimeStoreProvider whose reads and writes always fail,
+// to exercise the store-error handling paths.
+type errRuntimeStore struct{}
 
+func (errRuntimeStore) Put(context.Context, providers.RuntimeStoreNamespace, string, []byte, int64) error {
+	return errors.New("store failure")
+}
+
+func (errRuntimeStore) Get(context.Context, providers.RuntimeStoreNamespace, string) ([]byte, error) {
+	return nil, errors.New("store failure")
+}
+
+func (errRuntimeStore) Update(context.Context, providers.RuntimeStoreNamespace, string, []byte) error {
+	return errors.New("store failure")
+}
+
+func (errRuntimeStore) Delete(context.Context, providers.RuntimeStoreNamespace, string) error {
+	return errors.New("store failure")
+}
+
+func (errRuntimeStore) Take(context.Context, providers.RuntimeStoreNamespace, string) ([]byte, error) {
+	return nil, errors.New("store failure")
+}
+
+func (errRuntimeStore) ExtendTTL(context.Context, providers.RuntimeStoreNamespace, string, int64) error {
+	return errors.New("store failure")
+}
+
+// OpenID4VCIStoreTestSuite exercises the openID4VCIStore adapter against a real in-memory
+// runtime store, verifying the marshal/namespace/key round-trip and not-found semantics.
 type OpenID4VCIStoreTestSuite struct {
 	suite.Suite
-	mockDBProvider *providermock.DBProviderInterfaceMock
-	mockDBClient   *providermock.DBClientInterfaceMock
-	store          *openID4VCIStore
+	store openID4VCIStoreInterface
+	ctx   context.Context
 }
 
 func TestOpenID4VCIStoreTestSuite(t *testing.T) {
 	suite.Run(t, new(OpenID4VCIStoreTestSuite))
 }
 
-func (suite *OpenID4VCIStoreTestSuite) refreshMocks() {
-	suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
-	suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
-	suite.store = &openID4VCIStore{
-		dbProvider:   suite.mockDBProvider,
-		deploymentID: testStoreDeploymentID,
-	}
-}
-
 func (suite *OpenID4VCIStoreTestSuite) SetupTest() {
-	suite.refreshMocks()
+	suite.store = newOpenID4VCIStore(inmemory.Initialize("test-deployment"))
+	suite.ctx = context.Background()
 }
 
-func (suite *OpenID4VCIStoreTestSuite) TestSaveNonce() {
+func (suite *OpenID4VCIStoreTestSuite) TestNonceRoundTrip() {
 	expiry := time.Now().Add(time.Minute)
-	testCases := []struct {
-		name       string
-		setupMocks func()
-		shouldErr  bool
-	}{
-		{
-			name: "Success",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertNonce,
-					"n1", testStoreDeploymentID, expiry.UTC()).Return(int64(1), nil)
-			},
-		},
-		{
-			name: "ExecuteError",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertNonce,
-					mock.Anything, mock.Anything, mock.Anything).Return(int64(0), errors.New("insert failed"))
-			},
-			shouldErr: true,
-		},
-		{
-			name: "DBClientError",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db error"))
-			},
-			shouldErr: true,
-		},
-	}
+	suite.Require().NoError(suite.store.SaveNonce(suite.ctx, "n1", &nonceRecord{ExpiresAt: expiry}))
 
-	for _, tc := range testCases {
-		suite.Run(tc.name, func() {
-			suite.refreshMocks()
-			tc.setupMocks()
-			err := suite.store.SaveNonce(context.Background(), "n1", &nonceRecord{ExpiresAt: expiry})
-			if tc.shouldErr {
-				suite.Error(err)
-			} else {
-				suite.NoError(err)
-			}
-		})
-	}
+	rec, ok := suite.store.GetNonce(suite.ctx, "n1")
+	suite.Require().True(ok)
+	suite.Require().NotNil(rec)
+	suite.WithinDuration(expiry, rec.ExpiresAt, time.Second)
 }
 
-func (suite *OpenID4VCIStoreTestSuite) TestGetNonce() {
-	expiry := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
-	testCases := []struct {
-		name       string
-		setupMocks func()
-		wantOK     bool
-	}{
-		{
-			name: "Success",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("QueryContext", mock.Anything, queryGetNonce, "n1", testStoreDeploymentID).
-					Return([]map[string]interface{}{
-						{"nonce": "n1", "expiry_time": expiry},
-					}, nil)
-			},
-			wantOK: true,
-		},
-		{
-			name: "NotFound",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("QueryContext", mock.Anything, queryGetNonce, "n1", testStoreDeploymentID).
-					Return([]map[string]interface{}{}, nil)
-			},
-		},
-		{
-			name: "BadExpiry",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("QueryContext", mock.Anything, queryGetNonce, "n1", testStoreDeploymentID).
-					Return([]map[string]interface{}{
-						{"nonce": "n1", "expiry_time": 12345},
-					}, nil)
-			},
-		},
-		{
-			name: "QueryError",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("QueryContext", mock.Anything, queryGetNonce, "n1", testStoreDeploymentID).
-					Return(nil, errors.New("query failed"))
-			},
-		},
-		{
-			name: "DBClientError",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db error"))
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		suite.Run(tc.name, func() {
-			suite.refreshMocks()
-			tc.setupMocks()
-			rec, ok := suite.store.GetNonce(context.Background(), "n1")
-			suite.Equal(tc.wantOK, ok)
-			if tc.wantOK {
-				suite.Require().NotNil(rec)
-				suite.True(rec.ExpiresAt.Equal(expiry))
-			} else {
-				suite.Nil(rec)
-			}
-		})
-	}
+func (suite *OpenID4VCIStoreTestSuite) TestGetNonceNotFound() {
+	rec, ok := suite.store.GetNonce(suite.ctx, "missing")
+	suite.False(ok)
+	suite.Nil(rec)
 }
 
 func (suite *OpenID4VCIStoreTestSuite) TestDeleteNonce() {
-	testCases := []struct {
-		name       string
-		setupMocks func()
-		shouldErr  bool
-	}{
-		{
-			name: "Success",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteNonce, "n1", testStoreDeploymentID).
-					Return(int64(1), nil)
-			},
-		},
-		{
-			name: "ExecuteError",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteNonce, "n1", testStoreDeploymentID).
-					Return(int64(0), errors.New("delete failed"))
-			},
-			shouldErr: true,
-		},
-		{
-			name: "DBClientError",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db error"))
-			},
-			shouldErr: true,
-		},
-	}
+	suite.Require().NoError(
+		suite.store.SaveNonce(suite.ctx, "n1", &nonceRecord{ExpiresAt: time.Now().Add(time.Minute)}))
+	suite.Require().NoError(suite.store.DeleteNonce(suite.ctx, "n1"))
 
-	for _, tc := range testCases {
-		suite.Run(tc.name, func() {
-			suite.refreshMocks()
-			tc.setupMocks()
-			err := suite.store.DeleteNonce(context.Background(), "n1")
-			if tc.shouldErr {
-				suite.Error(err)
-			} else {
-				suite.NoError(err)
-			}
-		})
-	}
+	_, ok := suite.store.GetNonce(suite.ctx, "n1")
+	suite.False(ok)
+}
+
+func (suite *OpenID4VCIStoreTestSuite) TestDeleteNonceIdempotent() {
+	suite.NoError(suite.store.DeleteNonce(suite.ctx, "missing"))
+}
+
+func (suite *OpenID4VCIStoreTestSuite) TestOfferRoundTrip() {
+	expiry := time.Now().Add(time.Minute)
+	rec := &offerRecord{Offer: map[string]interface{}{"k": "v"}, ExpiresAt: expiry}
+	suite.Require().NoError(suite.store.SaveOffer(suite.ctx, "o1", rec))
+
+	got, ok := suite.store.GetOffer(suite.ctx, "o1")
+	suite.Require().True(ok)
+	suite.Require().NotNil(got)
+	suite.Equal("v", got.Offer["k"])
+	suite.WithinDuration(expiry, got.ExpiresAt, time.Second)
+}
+
+func (suite *OpenID4VCIStoreTestSuite) TestGetOfferNotFound() {
+	got, ok := suite.store.GetOffer(suite.ctx, "missing")
+	suite.False(ok)
+	suite.Nil(got)
 }
 
 func (suite *OpenID4VCIStoreTestSuite) TestSaveOfferMarshalError() {
-	suite.refreshMocks()
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
 	rec := &offerRecord{
 		Offer:     map[string]interface{}{"bad": make(chan int)},
 		ExpiresAt: time.Now().Add(time.Minute),
 	}
-	err := suite.store.SaveOffer(context.Background(), "o1", rec)
-	suite.Error(err)
+	suite.Error(suite.store.SaveOffer(suite.ctx, "o1", rec))
 }
 
-func (suite *OpenID4VCIStoreTestSuite) TestSaveOffer() {
-	expiry := time.Now().Add(time.Minute)
-	rec := &offerRecord{Offer: map[string]interface{}{"k": "v"}, ExpiresAt: expiry}
-	testCases := []struct {
-		name       string
-		setupMocks func()
-		shouldErr  bool
-	}{
-		{
-			name: "Success",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertOffer,
-					"o1", testStoreDeploymentID, `{"k":"v"}`, expiry.UTC()).Return(int64(1), nil)
-			},
-		},
-		{
-			name: "ExecuteError",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertOffer,
-					mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return(int64(0), errors.New("insert failed"))
-			},
-			shouldErr: true,
-		},
-		{
-			name: "DBClientError",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db error"))
-			},
-			shouldErr: true,
-		},
-	}
-
-	for _, tc := range testCases {
-		suite.Run(tc.name, func() {
-			suite.refreshMocks()
-			tc.setupMocks()
-			err := suite.store.SaveOffer(context.Background(), "o1", rec)
-			if tc.shouldErr {
-				suite.Error(err)
-			} else {
-				suite.NoError(err)
-			}
-		})
-	}
+func (suite *OpenID4VCIStoreTestSuite) TestTTLUntil() {
+	suite.Equal(int64(1), ttlUntil(time.Now().Add(-time.Minute)))
+	suite.GreaterOrEqual(ttlUntil(time.Now().Add(90*time.Second)), int64(90))
 }
 
-func (suite *OpenID4VCIStoreTestSuite) TestGetOffer() {
-	expiry := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
-	testCases := []struct {
-		name       string
-		setupMocks func()
-		wantOK     bool
-	}{
-		{
-			name: "Success",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("QueryContext", mock.Anything, queryGetOffer, "o1", testStoreDeploymentID).
-					Return([]map[string]interface{}{
-						{"id": "o1", "offer": `{"k":"v"}`, "expiry_time": expiry},
-					}, nil)
-			},
-			wantOK: true,
-		},
-		{
-			name: "NotFound",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("QueryContext", mock.Anything, queryGetOffer, "o1", testStoreDeploymentID).
-					Return([]map[string]interface{}{}, nil)
-			},
-		},
-		{
-			name: "BadJSON",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("QueryContext", mock.Anything, queryGetOffer, "o1", testStoreDeploymentID).
-					Return([]map[string]interface{}{
-						{"id": "o1", "offer": `not-json`, "expiry_time": expiry},
-					}, nil)
-			},
-		},
-		{
-			name: "BadExpiry",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("QueryContext", mock.Anything, queryGetOffer, "o1", testStoreDeploymentID).
-					Return([]map[string]interface{}{
-						{"id": "o1", "offer": `{"k":"v"}`, "expiry_time": 999},
-					}, nil)
-			},
-		},
-		{
-			name: "QueryError",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("QueryContext", mock.Anything, queryGetOffer, "o1", testStoreDeploymentID).
-					Return(nil, errors.New("query failed"))
-			},
-		},
-		{
-			name: "DBClientError",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db error"))
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		suite.Run(tc.name, func() {
-			suite.refreshMocks()
-			tc.setupMocks()
-			rec, ok := suite.store.GetOffer(context.Background(), "o1")
-			suite.Equal(tc.wantOK, ok)
-			if tc.wantOK {
-				suite.Require().NotNil(rec)
-				suite.Equal("v", rec.Offer["k"])
-			} else {
-				suite.Nil(rec)
-			}
-		})
-	}
+// A runtime-store error on read is logged and reported as not-found.
+func (suite *OpenID4VCIStoreTestSuite) TestGetNonceStoreError() {
+	rec, ok := newOpenID4VCIStore(errRuntimeStore{}).GetNonce(suite.ctx, "n1")
+	suite.False(ok)
+	suite.Nil(rec)
 }
 
-func (suite *OpenID4VCIStoreTestSuite) TestVCIColumnString() {
-	suite.Equal("hello", vciColumnString("hello"))
-	suite.Equal("bytes", vciColumnString([]byte("bytes")))
-	suite.Equal("", vciColumnString(123))
+// A malformed stored record is logged and reported as not-found.
+func (suite *OpenID4VCIStoreTestSuite) TestGetNonceUnmarshalError() {
+	prov := inmemory.Initialize("test-deployment")
+	suite.Require().NoError(prov.Put(suite.ctx, providers.NamespaceVCINonce, "bad", []byte("not-json"), 60))
+	rec, ok := newOpenID4VCIStore(prov).GetNonce(suite.ctx, "bad")
+	suite.False(ok)
+	suite.Nil(rec)
 }
 
-func (suite *OpenID4VCIStoreTestSuite) TestVCIColumnBytes() {
-	suite.Equal([]byte("hello"), vciColumnBytes([]byte("hello")))
-	suite.Equal([]byte("str"), vciColumnBytes("str"))
-	suite.Nil(vciColumnBytes(123))
+func (suite *OpenID4VCIStoreTestSuite) TestGetOfferStoreError() {
+	rec, ok := newOpenID4VCIStore(errRuntimeStore{}).GetOffer(suite.ctx, "o1")
+	suite.False(ok)
+	suite.Nil(rec)
 }
 
-func (suite *OpenID4VCIStoreTestSuite) TestParseVCITime() {
-	now := time.Date(2030, 6, 1, 12, 0, 0, 0, time.UTC)
-
-	got, err := parseVCITime(now)
-	suite.Require().NoError(err)
-	suite.True(got.Equal(now))
-
-	got, err = parseVCITime("2030-06-01 12:00:00.000000000")
-	suite.Require().NoError(err)
-	suite.Equal(2030, got.Year())
-
-	got, err = parseVCITime([]byte("2030-06-01 12:00:00 +0000 UTC"))
-	suite.Require().NoError(err)
-	suite.Equal(2030, got.Year())
-
-	got, err = parseVCITime("2030-06-01T12:00:00Z")
-	suite.Require().NoError(err)
-	suite.Equal(2030, got.Year())
-
-	_, err = parseVCITime("not-a-time")
-	suite.Error(err)
-
-	_, err = parseVCITime(42)
-	suite.Error(err)
+func (suite *OpenID4VCIStoreTestSuite) TestGetOfferUnmarshalError() {
+	prov := inmemory.Initialize("test-deployment")
+	suite.Require().NoError(prov.Put(suite.ctx, providers.NamespaceVCIOffer, "bad", []byte("not-json"), 60))
+	rec, ok := newOpenID4VCIStore(prov).GetOffer(suite.ctx, "bad")
+	suite.False(ok)
+	suite.Nil(rec)
 }

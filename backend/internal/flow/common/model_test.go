@@ -102,6 +102,40 @@ func (s *ModelTestSuite) TestInput_DisplayName_ExcludedFromJSON() {
 	s.Equal("email", decoded.Identifier)
 }
 
+func (s *ModelTestSuite) TestInput_OneTimeUse_IncludedInJSON() {
+	input := providers.Input{
+		Identifier: "challenge",
+		Type:       providers.InputTypeText,
+		Required:   true,
+		OneTimeUse: true,
+	}
+
+	data, err := json.Marshal(input)
+	s.Require().NoError(err)
+
+	jsonStr := string(data)
+	s.Contains(jsonStr, `"oneTimeUse":true`, "OneTimeUse must be serialized in JSON")
+
+	var decoded providers.Input
+	s.Require().NoError(json.Unmarshal(data, &decoded))
+	s.True(decoded.OneTimeUse, "OneTimeUse must be preserved after unmarshalling")
+}
+
+func (s *ModelTestSuite) TestInput_OneTimeUse_OmittedWhenFalse() {
+	input := providers.Input{
+		Identifier: "username",
+		Type:       providers.InputTypeText,
+		Required:   true,
+		OneTimeUse: false,
+	}
+
+	data, err := json.Marshal(input)
+	s.Require().NoError(err)
+
+	jsonStr := string(data)
+	s.NotContains(jsonStr, "oneTimeUse", "OneTimeUse must be omitted from JSON when false")
+}
+
 func (s *ModelTestSuite) TestExecutionAttempt_GetDuration() {
 	tests := []struct {
 		name      string

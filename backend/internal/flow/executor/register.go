@@ -38,6 +38,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
@@ -55,6 +56,7 @@ type ExecutorRegistryInterface interface {
 	GetExecutor(name string) (providers.Executor, error)
 	RegisterExecutor(name string, ex providers.Executor)
 	IsRegistered(name string) bool
+	GetExecutorMeta(name string) (*providers.ExecutorMeta, error)
 }
 
 // executorRegistry is the default implementation of ExecutorRegistryInterface.
@@ -116,6 +118,15 @@ func (r *executorRegistry) IsRegistered(name string) bool {
 	return ok
 }
 
+// GetExecutorMeta retrieves the ExecutorMeta for the named executor.
+func (r *executorRegistry) GetExecutorMeta(name string) (*providers.ExecutorMeta, error) {
+	exec, err := r.GetExecutor(name)
+	if err != nil {
+		return nil, err
+	}
+	return exec.GetMeta(), nil
+}
+
 // ExecutorDependencies holds service dependencies required to construct built-in executors.
 type ExecutorDependencies struct {
 	FlowFactory           core.FlowFactoryInterface
@@ -143,6 +154,7 @@ type ExecutorDependencies struct {
 	GithubSvc             github.GithubOAuthAuthnServiceInterface
 	GoogleSvc             google.GoogleOIDCAuthnServiceInterface
 	OpenID4VPVerifierSvc  openid4vp.OpenID4VPServiceInterface
+	SessionService        session.Service
 }
 
 type builtInExecutorRegistrar func(ExecutorRegistryInterface, ExecutorDependencies)
@@ -153,10 +165,6 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameCredentialsAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameCredentialsAuth, newCredentialsAuthExecutor(
 				deps.FlowFactory, deps.EntityProvider, deps.AuthnProvider))
-		},
-		ExecutorNameSMSAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameSMSAuth, newSMSOTPAuthExecutor(
-				deps.FlowFactory, deps.OTPService, deps.AuthnProvider, deps.EntityProvider))
 		},
 		ExecutorNamePasskeyAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePasskeyAuth, newPasskeyAuthExecutor(
@@ -257,6 +265,21 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameOpenID4VPVerify: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOpenID4VPVerify, newOpenID4VPVerifier(
 				deps.FlowFactory, deps.OpenID4VPVerifierSvc, deps.AuthnProvider))
+		},
+		ExecutorNameSSOCheck: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameSSOCheck, newSSOCheckExecutor(deps.FlowFactory, deps.SessionService))
+		},
+		ExecutorNameSession: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameSession, newSessionExecutor(
+				deps.FlowFactory, deps.SessionService, deps.AuthnProvider))
+		},
+		ExecutorNameSessionSignOut: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameSessionSignOut, newSessionSignOutExecutor(
+				deps.FlowFactory, deps.SessionService))
+		},
+		ExecutorNameOTPExecutor: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameOTPExecutor, newOTPExecutor(
+				deps.FlowFactory, deps.OTPService, deps.AuthnProvider, deps.EntityProvider))
 		},
 	}
 }

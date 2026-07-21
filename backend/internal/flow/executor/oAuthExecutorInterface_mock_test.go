@@ -37,20 +37,31 @@ func (_m *oAuthExecutorInterfaceMock) EXPECT() *oAuthExecutorInterfaceMock_Expec
 }
 
 // BuildAuthorizeFlow provides a mock function for the type oAuthExecutorInterfaceMock
-func (_mock *oAuthExecutorInterfaceMock) BuildAuthorizeFlow(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) error {
+func (_mock *oAuthExecutorInterfaceMock) BuildAuthorizeFlow(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) (map[string]string, error) {
 	ret := _mock.Called(ctx, execResp)
 
 	if len(ret) == 0 {
 		panic("no return value specified for BuildAuthorizeFlow")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(*providers.NodeContext, *providers.ExecutorResponse) error); ok {
+	var r0 map[string]string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(*providers.NodeContext, *providers.ExecutorResponse) (map[string]string, error)); ok {
+		return returnFunc(ctx, execResp)
+	}
+	if returnFunc, ok := ret.Get(0).(func(*providers.NodeContext, *providers.ExecutorResponse) map[string]string); ok {
 		r0 = returnFunc(ctx, execResp)
 	} else {
-		r0 = ret.Error(0)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]string)
+		}
 	}
-	return r0
+	if returnFunc, ok := ret.Get(1).(func(*providers.NodeContext, *providers.ExecutorResponse) error); ok {
+		r1 = returnFunc(ctx, execResp)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
 }
 
 // oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BuildAuthorizeFlow'
@@ -83,12 +94,12 @@ func (_c *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call) Run(run func(ctx *
 	return _c
 }
 
-func (_c *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call) Return(err error) *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call {
-	_c.Call.Return(err)
+func (_c *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call) Return(stringToString map[string]string, err error) *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call {
+	_c.Call.Return(stringToString, err)
 	return _c
 }
 
-func (_c *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call) RunAndReturn(run func(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) error) *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call {
+func (_c *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call) RunAndReturn(run func(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) (map[string]string, error)) *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -310,6 +321,52 @@ func (_c *oAuthExecutorInterfaceMock_GetIdpID_Call) Return(s string, err error) 
 }
 
 func (_c *oAuthExecutorInterfaceMock_GetIdpID_Call) RunAndReturn(run func(ctx *providers.NodeContext) (string, error)) *oAuthExecutorInterfaceMock_GetIdpID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetMeta provides a mock function for the type oAuthExecutorInterfaceMock
+func (_mock *oAuthExecutorInterfaceMock) GetMeta() *providers.ExecutorMeta {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetMeta")
+	}
+
+	var r0 *providers.ExecutorMeta
+	if returnFunc, ok := ret.Get(0).(func() *providers.ExecutorMeta); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.ExecutorMeta)
+		}
+	}
+	return r0
+}
+
+// oAuthExecutorInterfaceMock_GetMeta_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetMeta'
+type oAuthExecutorInterfaceMock_GetMeta_Call struct {
+	*mock.Call
+}
+
+// GetMeta is a helper method to define mock.On call
+func (_e *oAuthExecutorInterfaceMock_Expecter) GetMeta() *oAuthExecutorInterfaceMock_GetMeta_Call {
+	return &oAuthExecutorInterfaceMock_GetMeta_Call{Call: _e.mock.On("GetMeta")}
+}
+
+func (_c *oAuthExecutorInterfaceMock_GetMeta_Call) Run(run func()) *oAuthExecutorInterfaceMock_GetMeta_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *oAuthExecutorInterfaceMock_GetMeta_Call) Return(executorMeta *providers.ExecutorMeta) *oAuthExecutorInterfaceMock_GetMeta_Call {
+	_c.Call.Return(executorMeta)
+	return _c
+}
+
+func (_c *oAuthExecutorInterfaceMock_GetMeta_Call) RunAndReturn(run func() *providers.ExecutorMeta) *oAuthExecutorInterfaceMock_GetMeta_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -136,12 +136,6 @@ func (f *layoutFileBasedStore) UpdateLayout(id string, layout UpdateLayoutReques
 	return errors.New("updateLayout is not supported in file-based store")
 }
 
-// GetApplicationsCountByLayoutID implements layoutMgtStoreInterface.
-func (f *layoutFileBasedStore) GetApplicationsCountByLayoutID(id string) (int, error) {
-	// In declarative mode, we don't track application references in the file-based store
-	return 0, nil
-}
-
 // IsLayoutDeclarative checks if a layout is immutable (in file-based store, all layouts are immutable).
 func (f *layoutFileBasedStore) IsLayoutDeclarative(id string) bool {
 	return true

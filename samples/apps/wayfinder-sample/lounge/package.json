@@ -1,0 +1,11 @@
+{
+  "name": "skyline-lounge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenID4VP verifier kiosk that grants lounge access from a Wayfinder Sky Pass. Part of the Wayfinder sample; runs on its own port.",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  }
+}

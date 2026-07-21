@@ -73,7 +73,8 @@ func (suite *CompositeModeSuite) TearDownSuite() {
 			case "organization_unit":
 				suite.deleteResource(fmt.Sprintf("%s/organization-units/%s", testutils.TestServerURL, id))
 			case "identity_provider":
-				suite.deleteResource(fmt.Sprintf("%s/identity-providers/%s", testutils.TestServerURL, id))
+				// This suite only creates OAUTH-type runtime IDPs (see TestIdentityProviderCreate).
+				suite.deleteResource(fmt.Sprintf("%s/connections/oauth/%s", testutils.TestServerURL, id))
 			case "resource_server":
 				suite.deleteResource(fmt.Sprintf("%s/resource-servers/%s", testutils.TestServerURL, id))
 			case "flow":
@@ -286,12 +287,15 @@ func (suite *CompositeModeSuite) TestOrganizationUnitDeclarativeVisibility() {
 
 func (suite *CompositeModeSuite) TestIdentityProviderDeclarativeVisibility() {
 	client := testutils.GetHTTPClient()
-	resp, err := client.Get(fmt.Sprintf("%s/identity-providers/decl-idp-1", testutils.TestServerURL))
+	// decl-idp-1 (tests/integration/resources/declarative_resources/connections/
+	// idp-declarative-1.yaml) is type google.
+	resp, err := client.Get(fmt.Sprintf("%s/connections/google/decl-idp-1", testutils.TestServerURL))
 	suite.Require().NoError(err)
 	suite.Equal(http.StatusOK, resp.StatusCode, "declarative identity provider should be visible")
 	resp.Body.Close()
 
-	suite.assertMergedCollectionContainsIDs("/identity-providers", "", "decl-idp-1", "identity_provider")
+	suite.assertMergedCollectionContainsIDs(
+		"/connections?category=identity-provider", "connections", "decl-idp-1", "identity_provider")
 }
 
 func (suite *CompositeModeSuite) TestResourceServerDeclarativeVisibility() {
@@ -526,45 +530,14 @@ func (suite *CompositeModeSuite) TestOrganizationUnitCreate() {
 
 func (suite *CompositeModeSuite) TestIdentityProviderCreate() {
 	idp := map[string]interface{}{
-		"name": "Test Runtime IDP",
-		"type": "OAUTH",
-		"properties": []map[string]interface{}{
-			{
-				"name":      "client_id",
-				"value":     "test-client-id",
-				"is_secret": false,
-			},
-			{
-				"name":      "client_secret",
-				"value":     "test-client-secret",
-				"is_secret": true,
-			},
-			{
-				"name":      "redirect_uri",
-				"value":     "https://localhost:3000/oidc/callback",
-				"is_secret": false,
-			},
-			{
-				"name":      "authorization_endpoint",
-				"value":     "https://example.com/oauth2/authorize",
-				"is_secret": false,
-			},
-			{
-				"name":      "token_endpoint",
-				"value":     "https://example.com/oauth2/token",
-				"is_secret": false,
-			},
-			{
-				"name":      "userinfo_endpoint",
-				"value":     "https://example.com/oauth2/userinfo",
-				"is_secret": false,
-			},
-			{
-				"name":      "scopes",
-				"value":     "openid,email,profile",
-				"is_secret": false,
-			},
-		},
+		"name":                  "Test Runtime IDP",
+		"clientId":              "test-client-id",
+		"clientSecret":          "test-client-secret",
+		"redirectUri":           "https://localhost:3000/oidc/callback",
+		"authorizationEndpoint": "https://example.com/oauth2/authorize",
+		"tokenEndpoint":         "https://example.com/oauth2/token",
+		"userInfoEndpoint":      "https://example.com/oauth2/userinfo",
+		"scopes":                []string{"openid", "email", "profile"},
 	}
 
 	payload, _ := json.Marshal(idp)
@@ -572,7 +545,7 @@ func (suite *CompositeModeSuite) TestIdentityProviderCreate() {
 
 	req, err := http.NewRequest(
 		"POST",
-		fmt.Sprintf("%s/identity-providers", testutils.TestServerURL),
+		fmt.Sprintf("%s/connections/oauth", testutils.TestServerURL),
 		strings.NewReader(string(payload)),
 	)
 	suite.Require().NoError(err)
@@ -591,7 +564,7 @@ func (suite *CompositeModeSuite) TestIdentityProviderCreate() {
 	suite.Require().NotEmpty(idpID, "identity provider ID should not be empty")
 
 	// Verify retrieval
-	getReq, _ := http.NewRequest("GET", fmt.Sprintf("%s/identity-providers/%s", testutils.TestServerURL, idpID), nil)
+	getReq, _ := http.NewRequest("GET", fmt.Sprintf("%s/connections/oauth/%s", testutils.TestServerURL, idpID), nil)
 	resp, err = client.Do(getReq)
 	suite.Require().NoError(err)
 	suite.Equal(http.StatusOK, resp.StatusCode, "created identity provider should be retrievable")
@@ -675,9 +648,17 @@ func (suite *CompositeModeSuite) TestFlowCreate() {
 							{"identifier": "username", "type": "TEXT_INPUT", "required": true},
 							{"identifier": "password", "type": "PASSWORD_INPUT", "required": true},
 						},
-						"action": map[string]interface{}{"ref": "action_001", "nextNode": "end"},
+						"action": map[string]interface{}{"ref": "action_001", "nextNode": "auth_assert"},
 					},
 				},
+			},
+			{
+				"id":   "auth_assert",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "AuthAssertExecutor",
+				},
+				"onSuccess": "end",
 			},
 			{"id": "end", "type": "END"},
 		},
@@ -1015,22 +996,16 @@ func (suite *CompositeModeSuite) TestOrganizationUnitDeclarativeDeleteReject() {
 
 func (suite *CompositeModeSuite) TestIdentityProviderDeclarativeUpdateReject() {
 	client := testutils.GetHTTPClient()
+	// decl-idp-1 is type GOOGLE (see TestIdentityProviderDeclarativeVisibility).
 	payload := map[string]interface{}{
-		"name": "Updated",
-		"type": "OAUTH",
-		"properties": []map[string]interface{}{
-			{"name": "client_id", "value": "test-client-id", "is_secret": false},
-			{"name": "client_secret", "value": "test-client-secret", "is_secret": true},
-			{"name": "redirect_uri", "value": "https://localhost:3000/oidc/callback", "is_secret": false},
-			{"name": "authorization_endpoint", "value": "https://example.com/oauth2/authorize", "is_secret": false},
-			{"name": "token_endpoint", "value": "https://example.com/oauth2/token", "is_secret": false},
-			{"name": "userinfo_endpoint", "value": "https://example.com/oauth2/userinfo", "is_secret": false},
-			{"name": "scopes", "value": "openid,email,profile", "is_secret": false},
-		},
+		"name":         "Updated",
+		"clientId":     "test-client-id",
+		"clientSecret": "test-client-secret",
+		"redirectUri":  "https://localhost:3000/oidc/callback",
 	}
 	jsonPayload, _ := json.Marshal(payload)
 
-	req, _ := http.NewRequest("PUT", fmt.Sprintf("%s/identity-providers/decl-idp-1", testutils.TestServerURL), strings.NewReader(string(jsonPayload)))
+	req, _ := http.NewRequest("PUT", fmt.Sprintf("%s/connections/google/decl-idp-1", testutils.TestServerURL), strings.NewReader(string(jsonPayload)))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
@@ -1043,7 +1018,7 @@ func (suite *CompositeModeSuite) TestIdentityProviderDeclarativeUpdateReject() {
 
 func (suite *CompositeModeSuite) TestIdentityProviderDeclarativeDeleteReject() {
 	client := testutils.GetHTTPClient()
-	req, _ := http.NewRequest("DELETE", fmt.Sprintf("%s/identity-providers/decl-idp-1", testutils.TestServerURL), nil)
+	req, _ := http.NewRequest("DELETE", fmt.Sprintf("%s/connections/google/decl-idp-1", testutils.TestServerURL), nil)
 
 	resp, err := client.Do(req)
 	suite.Require().NoError(err)
@@ -1098,9 +1073,17 @@ func (suite *CompositeModeSuite) TestFlowDeclarativeUpdateReject() {
 							{"identifier": "username", "type": "TEXT_INPUT", "required": true},
 							{"identifier": "password", "type": "PASSWORD_INPUT", "required": true},
 						},
-						"action": map[string]interface{}{"ref": "action_001", "nextNode": "end"},
+						"action": map[string]interface{}{"ref": "action_001", "nextNode": "auth_assert"},
 					},
 				},
+			},
+			{
+				"id":   "auth_assert",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "AuthAssertExecutor",
+				},
+				"onSuccess": "end",
 			},
 			{"id": "end", "type": "END"},
 		},

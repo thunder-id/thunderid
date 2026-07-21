@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -20,20 +20,15 @@ package security
 
 import "strings"
 
-const (
-	// maxPublicPathLength defines the maximum allowed length for a public path.
-	// This prevents potential DoS attacks via excessively long paths (even with safe regex).
-	maxPublicPathLength = 4096
-)
-
 // publicPaths defines the list of public paths using glob patterns.
 // - "*": Matches a single path segment (e.g., /a/*/b).
 // - "**": Matches zero or more path segments (subpaths) at the end of the path (e.g., /a/**).
 // Not allowed in the middle of the path (e.g., /a/**/b is invalid).
+//
+// The Direct API paths (/auth/**, /register/passkey/**, /access/**) are public here; their Direct
+// Auth Secret gating is owned by the authn service (internal/authn).
 var publicPaths = []string{
 	"/health/**",
-	"/auth/**",
-	"/register/passkey/**",
 	"/flow/execute/**",
 	"/flow/meta",
 	"/oauth2/**",
@@ -62,6 +57,9 @@ var publicPaths = []string{
 	"/i18n/languages/*/translations/resolve",
 	"/i18n/languages/*/translations/ns/*/keys/*/resolve",
 	"/mcp/**", // MCP authorization is handled at MCP server handler.
+	"/auth/**",
+	"/register/passkey/**",
+	"/access/**",
 	// SCIM discovery endpoints exposed without authentication
 	// (ServiceProviderConfig, ResourceTypes).
 	"/scim/v2/ServiceProviderConfig",

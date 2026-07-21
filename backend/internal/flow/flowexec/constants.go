@@ -43,4 +43,9 @@ const (
 	// in by redirect, or an embedded app with no protocol profile at all — that may initiate a flow
 	// directly by presenting a valid Flow Secret.
 	flowInitiationFlowSecret
+	// flowInitiationAttestation indicates a mobile application that may initiate a flow directly by
+	// presenting a valid platform attestation (e.g. a Google Play Integrity token) proving its binary
+	// identity. This takes precedence over the redirect-based classification for apps that configure
+	// attestation.
+	flowInitiationAttestation
 )

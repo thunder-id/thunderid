@@ -208,20 +208,37 @@ var (
 						},
 						"action": map[string]interface{}{
 							"ref":      "action_001",
-							"nextNode": "send_sms",
+							"nextNode": "generate_otp",
 						},
 					},
 				},
 			},
 			{
-				"id":   "send_sms",
+				"id":   "generate_otp",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "OTPExecutor",
+					"mode": "generate",
+					"inputs": []map[string]interface{}{
+						{
+							"ref":        "input_001",
+							"identifier": "mobile_number",
+							"type":       "PHONE_INPUT",
+							"required":   true,
+						},
+					},
+				},
+				"onSuccess": "sms_send",
+			},
+			{
+				"id":   "sms_send",
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
-					"senderId": "placeholder-sender-id",
+					"senderId":    "placeholder-sender-id",
+					"smsTemplate": "OTP",
 				},
 				"executor": map[string]interface{}{
-					"name": "SMSOTPAuthExecutor",
-					"mode": "send",
+					"name": "SMSExecutor",
 				},
 				"onSuccess": "prompt_otp",
 			},
@@ -240,16 +257,16 @@ var (
 						},
 						"action": map[string]interface{}{
 							"ref":      "action_002",
-							"nextNode": "verify_sms",
+							"nextNode": "verify_otp",
 						},
 					},
 				},
 			},
 			{
-				"id":   "verify_sms",
+				"id":   "verify_otp",
 				"type": "TASK_EXECUTION",
 				"executor": map[string]interface{}{
-					"name": "SMSOTPAuthExecutor",
+					"name": "OTPExecutor",
 					"mode": "verify",
 				},
 				"onSuccess": "ou_creation",
@@ -483,7 +500,7 @@ func (ts *OURegistrationFlowTestSuite) SetupSuite() {
 
 	// Update SMS flow definition with created sender ID
 	smsNodes := smsRegistrationFlowWithOU.Nodes.([]map[string]interface{})
-	smsNodes[3]["properties"].(map[string]interface{})["senderId"] = senderID
+	smsNodes[4]["properties"].(map[string]interface{})["senderId"] = senderID
 	smsRegistrationFlowWithOU.Nodes = smsNodes
 
 	// Create SMS registration flow with OU

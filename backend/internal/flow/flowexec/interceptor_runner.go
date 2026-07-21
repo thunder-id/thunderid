@@ -204,6 +204,8 @@ func (s *interceptorRunner) executeInterceptor(
 		return nil, &tidcommon.InternalServerError
 	}
 
+	execCtx.AppendConsumedInputs(ctx.GetConsumedInputs())
+
 	return result, nil
 }
 

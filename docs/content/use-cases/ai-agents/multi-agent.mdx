@@ -1,0 +1,93 @@
+---
+title: Multi-Agent Interactions
+docType: use-case
+description: Delegate work between AI agents with downscoped tokens, a preserved delegation chain, and backchannel approval for headless agents.
+sidebar_position: 8
+---
+
+# Multi-Agent Interactions (Agent → Agent)
+
+Complex tasks decompose. A primary agent receives a goal, breaks it into sub-tasks, and hands each to a specialized worker agent: one to search, one to summarize, one to write to a system of record. Each hand-off is a delegation, and each delegation is an identity event. The question at every hop is the same: does the receiving agent have exactly the authority it needs for its sub-task, and no more, and can the whole chain be traced back to the human who started it?
+
+Get this wrong and delegation becomes privilege escalation by convenience: the primary agent shares its full token with every worker, each worker can do everything the primary could, and when something goes wrong there is no way to tell which agent in the chain did it. <ProductName /> makes delegation narrow and traceable by construction.
+
+## IAM Capabilities Required
+
+**Nested delegation** to let a primary agent delegate to worker agents, and those workers to delegate further, while preserving the identity of every principal in the chain.
+
+**Token downscoping** to issue each sub-agent a token restricted to its specific sub-task, so authority shrinks at every hop and never grows.
+
+**Delegation-chain preservation** to record the full path, from the originating user through every intermediate agent to the final actor, in the tokens themselves.
+
+**Ambient (headless) authorization** to obtain a user's approval out-of-band when an agent in the chain needs it but no interactive session is available.
+
+## Delegation and Downscoping
+
+### The Challenge
+
+The path of least resistance in a multi-agent system is credential sharing. The primary agent has a capable token, so it passes that token to each worker. Now every worker holds the primary's full authority (a summarizer agent can write to the database, a search agent can cancel bookings) because they all carry the same over-broad credential. A single compromised worker exposes everything the primary could reach.
+
+The problem is that the token was scoped for the primary's whole job, not for any individual worker's sub-task. Sharing it hands each worker far more than it needs, and there is no mechanism to say "this worker gets only the search scope."
+
+### How <ProductName /> Solves It
+
+<ProductName /> uses token exchange ([RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693)) to issue each worker a *new* token, downscoped to its sub-task. When the primary agent delegates search to a worker, <ProductName /> mints a token carrying only the search scope, not the primary's full authority. Authority shrinks at every hop: a delegated token can only ever be a subset of the token it descended from. Downscoping is enforced by <ProductName />, not left to the honesty of the calling agent.
+
+Each worker therefore operates within a strict scope. The summarizer cannot write to the database because its token never carried a write scope; the search agent cannot cancel a booking because that scope was never delegated to it. A compromised worker is contained to its own narrow grant, and the primary's broader authority is never in the worker's hands to begin with.
+
+### Scenario: A Primary Agent Delegating Sub-Tasks
+
+A travel-planning agent holds a token scoped to search flights, read the user's profile, and book travel. It delegates the search sub-task to a flight-search worker. <ProductName /> exchanges the primary's token for a worker token carrying only the flight-search scope: no profile read, no booking. The worker does its job within that scope. When it is time to book, the primary handles that step itself under its own booking scope. No worker ever holds more authority than its sub-task requires.
+
+## Multi-Hop Token Exchange
+
+### The Challenge
+
+When a task passes through several agents, attribution collapses. If each hop simply issues a fresh token with no record of what came before, the final service sees only "some agent called me" and has no way to reconstruct who actually initiated the request or which agents it passed through. Auditors asking "who authorized this database write, and through what path?" get no answer. In a world of autonomous agents acting for users, a broken chain of attribution is a broken chain of accountability.
+
+### How <ProductName /> Solves It
+
+<ProductName /> preserves the delegation chain inside the tokens. Each token exchange records the actor, and when the token being exchanged already carries an `act` (actor) claim, that claim nests inside the new one, so the token accumulates the full path rather than overwriting it. Agents always include the actor claim, so the chain is preserved by default, not by opt-in.
+
+The result is a token whose `sub` identifies the originating user and whose nested `act` claims record every agent hop from the user to the final actor. A downstream service can enforce the user's permissions while seeing exactly which agent executed the request and which chain of delegates it came through. Attribution survives every hop, and the audit trail reads end to end: user → primary agent → worker agent → service.
+
+### Scenario: Tracing a Chain to Its Origin
+
+A user asks an orchestrator agent to reconcile an invoice. The orchestrator delegates to a data-fetch agent, which calls the finance API. The token the finance API receives identifies the user as the subject and carries nested actor claims for both the orchestrator and the data-fetch agent. When the finance team later audits the write, they follow the chain in the token itself: the user authorized it, the orchestrator delegated it, and the data-fetch agent executed it. No hop is anonymous.
+
+## Ambient Agent Authorization
+
+### The Challenge
+
+Some agents run headless: a monitoring agent, a scheduled reconciliation job, an event-triggered workflow. When such an agent reaches a step that needs a specific human's approval, there is no browser session to redirect to and no user actively present to click "allow." The classic interactive consent flow assumes a front-channel and a live user; a background agent has neither. Without an out-of-band path, the agent either blocks indefinitely or, worse, proceeds without the approval it should have obtained.
+
+### How <ProductName /> Solves It
+
+<ProductName /> supports backchannel (ambient) authorization through OpenID Connect CIBA. When a headless agent needs a user's approval, it initiates a backchannel authorization request identifying the user. The user authenticates and approves on their own device, while the agent polls <ProductName /> for the result. The moment the user approves, the poll returns the scoped authorization, with no interactive session and no browser redirect on the agent's side.
+
+This enables just-in-time human-in-the-loop decisions for autonomous agents. The agent can pause at a sensitive step, request approval through the backchannel, and proceed only once the specific user has granted it, turning "the agent acted without anyone's say-so" into "the agent acted the instant the right person approved."
+
+### Scenario: Approval for a Headless Agent
+
+A nightly spend-reconciliation agent finds a payment that exceeds its autonomous threshold and requires the finance owner's sign-off. No one is at a browser at 2 a.m. The agent initiates a backchannel authorization request identifying the finance owner and polls for the outcome. In the morning the owner authenticates and approves on their device, the agent's next poll returns the scoped authorization, and the agent completes the payment step, with the approval recorded against the specific human who granted it.
+
+## Key Principles
+
+**Delegation narrows; it never escalates.** Every hop issues a downscoped token that is a strict subset of the one it descended from. A worker can never hold more than its sub-task requires.
+
+**No credential sharing between agents.** Each agent receives its own downscoped token through token exchange, never a copy of another agent's credential.
+
+**The chain lives in the token.** Nested actor claims record the full path from originating user to final actor, so attribution survives every hop by default.
+
+**Headless does not mean unauthorized.** Backchannel (CIBA) authorization lets background agents obtain a specific human's approval out-of-band by polling for the result, without an interactive session.
+
+## Guides
+
+- [Agent Authentication](../../../guides/guides/agents/agent-authentication): Exchange a token to downscope it for a worker agent and inspect nested `act` claims.
+- [Backchannel Authentication (CIBA)](../../../guides/guides/protocols/oauth-oidc/backchannel-authentication): Initiate out-of-band approval for a headless agent.
+
+## Related Use Cases
+
+- [Managed Identity](../managed-agent-identity): Emergency revocation cascades through the delegation chain described here.
+- [Accessing Internal Business Services](../internal-services)
+- [Invoking the Agent and Authenticating Users](../invoking-the-agent)

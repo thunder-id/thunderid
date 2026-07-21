@@ -51,6 +51,8 @@ var (
 	ErrFKInvalidRegistrationFlow = errors.New("invalid registration flow ID")
 	// ErrFKInvalidRecoveryFlow is returned when the recovery flow ID does not exist.
 	ErrFKInvalidRecoveryFlow = errors.New("invalid recovery flow ID")
+	// ErrFKInvalidSignOutFlow is returned when the sign-out flow ID does not exist.
+	ErrFKInvalidSignOutFlow = errors.New("invalid sign-out flow ID")
 	// ErrFKFlowDefinitionRetrievalFailed is returned when a flow definition cannot be retrieved.
 	ErrFKFlowDefinitionRetrievalFailed = errors.New("error retrieving flow definition")
 	// ErrFKFlowServerError is returned when a server error occurs while resolving a flow.
@@ -104,6 +106,12 @@ var (
 	ErrOAuthNoneAuthCannotHaveCertOrSecret = errors.New("none auth method cannot have certificate or secret")
 	// ErrOAuthClientCredentialsCannotUseNoneAuth is returned when client_credentials uses none auth method.
 	ErrOAuthClientCredentialsCannotUseNoneAuth = errors.New("client_credentials cannot use none auth method")
+	// ErrOAuthClientJWTBearerCannotUseNoneAuth is returned when the jwt-bearer grant uses none auth method.
+	// The jwt-bearer (ID-JAG) grant relies on client_id binding and requires a confidential client.
+	ErrOAuthClientJWTBearerCannotUseNoneAuth = errors.New("jwt-bearer grant cannot use none auth method")
+	// ErrOAuthClientIDJAGCannotUseNoneAuth is returned when an ID-JAG configuration uses none auth method.
+	// Requesting ID-JAGs requires a confidential client.
+	ErrOAuthClientIDJAGCannotUseNoneAuth = errors.New("ID-JAG configuration cannot use none auth method")
 	// ErrOAuthPublicClientMustUseNoneAuth is returned when a public client uses an auth method other than none.
 	ErrOAuthPublicClientMustUseNoneAuth = errors.New("public client must use none auth method")
 	// ErrOAuthPublicClientMustHavePKCE is returned when a public client does not have PKCE required.
@@ -197,30 +205,5 @@ func (e *CertOperationError) Error() string {
 
 // IsClientError reports whether the underlying cert service error is a client error.
 func (e *CertOperationError) IsClientError() bool {
-	return e.Underlying != nil && e.Underlying.Type == tidcommon.ClientErrorType
-}
-
-// ConsentSyncError wraps an underlying ServiceError from the consent service, allowing callers
-// to translate it into their own error vocabulary.
-type ConsentSyncError struct {
-	Underlying *tidcommon.ServiceError
-}
-
-// Error implements the error interface. Falls back through (description → code → generic) so
-// the returned string is never empty even when the underlying error has no description.
-func (e *ConsentSyncError) Error() string {
-	if e.Underlying != nil {
-		if msg := e.Underlying.ErrorDescription.DefaultValue; msg != "" {
-			return msg
-		}
-		if e.Underlying.Code != "" {
-			return "consent sync failed (code " + e.Underlying.Code + ")"
-		}
-	}
-	return "consent sync failed"
-}
-
-// IsClientError reports whether the underlying error is a client error.
-func (e *ConsentSyncError) IsClientError() bool {
 	return e.Underlying != nil && e.Underlying.Type == tidcommon.ClientErrorType
 }

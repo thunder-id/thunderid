@@ -24,8 +24,9 @@ import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import ResourceServerDeleteDialog from './ResourceServerDeleteDialog';
+import useGetDefaultResourceServer from '../api/useGetDefaultResourceServer';
 import useGetResourceServers from '../api/useGetResourceServers';
-import {getResourceServerTypeIcon, getResourceServerTypeLabel} from '../config/resource-server-types';
+import {getResourceServerTypeLabel} from '../config/resource-server-types';
 import type {ResourceServer} from '../models/resource-server';
 
 export default function ResourceServersList(): JSX.Element {
@@ -41,6 +42,8 @@ export default function ResourceServersList(): JSX.Element {
     limit: paginationModel.pageSize,
     offset: paginationModel.page * paginationModel.pageSize,
   });
+  const {data: defaultConfig} = useGetDefaultResourceServer();
+  const defaultId = defaultConfig?.merged?.resourceServerId;
 
   const columns: DataGrid.GridColDef<ResourceServer>[] = useMemo(
     () => [
@@ -51,9 +54,20 @@ export default function ResourceServersList(): JSX.Element {
         minWidth: 200,
         renderCell: (params: DataGrid.GridRenderCellParams<ResourceServer>) => (
           <Box sx={{display: 'flex', flexDirection: 'column', justifyContent: 'center'}}>
-            <Typography variant="body2" fontWeight={500}>
-              {params.row.name}
-            </Typography>
+            <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+              <Typography variant="body2" fontWeight={500}>
+                {params.row.name}
+              </Typography>
+              {params.row.id === defaultId && (
+                <Chip
+                  label={t('resourceServers:listing.default', 'Default')}
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                  sx={{height: 20, fontSize: '0.65rem'}}
+                />
+              )}
+            </Box>
             {params.row.isReadOnly && (
               <Chip
                 label={t('resourceServers:listing.systemResourceServer', 'System resource server')}
@@ -71,15 +85,11 @@ export default function ResourceServersList(): JSX.Element {
         minWidth: 120,
         renderCell: (params: DataGrid.GridRenderCellParams<ResourceServer>) => (
           <Chip
-            icon={
-              <Box sx={{display: 'flex', alignItems: 'center', '& > *': {width: 16, height: 16}}}>
-                {getResourceServerTypeIcon(params.row.type)}
-              </Box>
-            }
             label={getResourceServerTypeLabel(params.row.type, t)}
             size="small"
+            color="primary"
             variant="outlined"
-            sx={{px: 0.5, fontSize: '0.75rem'}}
+            sx={{fontSize: '0.7rem'}}
           />
         ),
       },
@@ -95,25 +105,7 @@ export default function ResourceServersList(): JSX.Element {
             </Typography>
           ) : (
             <Typography variant="body2" color="text.disabled">
-              —
-            </Typography>
-          ),
-      },
-      {
-        field: 'handle',
-        headerName: t('resourceServers:listing.columns.handle', 'Handle'),
-        width: 160,
-        renderCell: (params: DataGrid.GridRenderCellParams<ResourceServer>) =>
-          params.row.handle ? (
-            <Chip
-              label={params.row.handle}
-              size="small"
-              variant="outlined"
-              sx={{fontFamily: 'monospace', fontSize: '0.75rem'}}
-            />
-          ) : (
-            <Typography variant="body2" color="text.disabled">
-              —
+              -
             </Typography>
           ),
       },
@@ -169,7 +161,7 @@ export default function ResourceServersList(): JSX.Element {
         ),
       },
     ],
-    [t, navigate, logger],
+    [t, navigate, logger, defaultId],
   );
 
   if (error) {

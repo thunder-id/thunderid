@@ -1,5 +1,6 @@
 ---
 title: Report a Bug
+docType: community
 sidebar_position: 1
 description: "Found a bug in {{ProductName}}? Here's how to report it effectively so the team can track and fix it."
 hide_table_of_contents: false
@@ -10,29 +11,29 @@ hide_table_of_contents: false
 Found something broken? Bug reports are one of the most valuable contributions you can make.
 
 :::tip Search first
-Before opening a new report, search <RepoLink path="/issues">existing issues</RepoLink> — the bug may already be tracked.
+Before opening a new report, search <RepoLink path="/issues">existing issues</RepoLink>: the bug may already be tracked.
 :::
 
 <RepoLink path="/issues/new?template=bug.yml" className="button button--primary" style={{display: 'inline-block', marginBottom: '2rem'}}>Open Bug Report →</RepoLink>
 
 ## Report Fields
 
-The bug report template includes the following fields. Fields marked **\*** are required — do not leave them blank. Use `N/A` only for optional fields when a field genuinely does not apply.
+The bug report template includes the following fields. Fields marked **\*** are required. Do not leave them blank. Use `N/A` only for optional fields when a field genuinely does not apply.
 
 | Field | Required | What to include |
 |---|---|---|
-| **Title** | Yes\* | Specific and searchable — e.g. "OAuth2 token refresh fails with 401 after 30 minutes" |
+| **Title** | Yes\* | Specific and searchable, e.g. "OAuth2 token refresh fails with 401 after 30 minutes" |
 | **Description** | No | A clear, concise summary of what is not working as expected |
 | **Steps to Reproduce** | Yes\* | Minimal numbered steps that reliably trigger the bug |
 | **Version** | Yes\* | <ProductName /> version number or commit SHA |
-| **Environment Details** | No | OS, database, browser, or SDK versions — anything relevant to reproducing the issue |
+| **Environment Details** | No | OS, database, browser, or SDK versions, anything relevant to reproducing the issue |
 
 ## Writing a Helpful Report
 
 A few things that help maintainers act fast:
 
-- **Actual vs expected** — state what happened and what you expected instead; don't make the reader guess.
-- **Logs and errors** — paste error messages and stack traces in full; sanitize secrets before posting.
-- **Minimal reproduction** — the fewer steps to reproduce, the sooner the fix lands.
+- **Actual vs expected**: state what happened and what you expected instead; don't make the reader guess.
+- **Logs and errors**: paste error messages and stack traces in full; sanitize secrets before posting.
+- **Minimal reproduction**: the fewer steps to reproduce, the sooner the fix lands.
 
 A report that lets a maintainer reproduce the bug in under 5 minutes will get fixed much faster than a vague description.

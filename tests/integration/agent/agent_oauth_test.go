@@ -28,8 +28,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 // ============================================================================
@@ -48,6 +48,10 @@ const (
 	agentTEClientSecret = "agent_token_exchange_secret"
 	agentTEUsername     = "agent_te_test_user"
 	agentTEPassword     = "AgentTE_Pass1!"
+
+	agentOAuthDefaultRSIdentifier = "https://agent-oauth-default.example.com"
+	ccAgentAuthzRSIdentifier      = "https://cc-agent-authz.example.com"
+	agentTEDefaultRSIdentifier    = "https://agent-te-default.example.com"
 )
 
 // ============================================================================
@@ -59,11 +63,12 @@ const (
 // duplicate clientID, and transitioning an entity-only agent to OAuth on update.
 type AgentOAuthFlowsTestSuite struct {
 	suite.Suite
-	ouID         string
-	schemaID     string
-	entityTypeID string
-	userID       string
-	authFlowID   string
+	ouID             string
+	schemaID         string
+	entityTypeID     string
+	userID           string
+	authFlowID       string
+	resourceServerID string
 }
 
 func TestAgentOAuthFlowsTestSuite(t *testing.T) {
@@ -78,6 +83,15 @@ func (ts *AgentOAuthFlowsTestSuite) SetupSuite() {
 	})
 	ts.Require().NoError(err, "Failed to create OU")
 	ts.ouID = ouID
+
+	resourceServerID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:        "Agent OAuth Default Resource Server",
+		Description: "Resource server for agent OAuth flow tests",
+		Identifier:  agentOAuthDefaultRSIdentifier,
+		OUID:        ts.ouID,
+	}, []testutils.Action{})
+	ts.Require().NoError(err, "Failed to create resource server")
+	ts.resourceServerID = resourceServerID
 
 	schemaID, err := testutils.CreateAgentType(testutils.UserType{
 		Name: "default",
@@ -113,7 +127,7 @@ func (ts *AgentOAuthFlowsTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create test user")
 	ts.userID = userID
 
-	flowID, err := testutils.GetFlowIDByHandle("default-basic-flow", "AUTHENTICATION")
+	flowID, err := testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
 	ts.Require().NoError(err, "Failed to get default auth flow ID")
 	ts.authFlowID = flowID
 }
@@ -127,6 +141,9 @@ func (ts *AgentOAuthFlowsTestSuite) TearDownSuite() {
 	}
 	if ts.schemaID != "" {
 		_ = testutils.DeleteAgentType(ts.schemaID)
+	}
+	if ts.resourceServerID != "" {
+		_ = testutils.DeleteResourceServer(ts.resourceServerID)
 	}
 	if ts.ouID != "" {
 		_ = testutils.DeleteOrganizationUnit(ts.ouID)
@@ -157,9 +174,10 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentCC_TokenIssuance() {
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(agentID) }()
 
-	tokenResult, err := testutils.RequestToken(
+	tokenResult, err := testutils.RequestTokenWithResource(
 		"cc_token_agent_client", "cc_token_agent_secret",
 		"", "", "client_credentials",
+		agentOAuthDefaultRSIdentifier,
 	)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, tokenResult.StatusCode,
@@ -192,7 +210,12 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentCC_ClientSecretPost() {
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(agentID) }()
 
-	body := "grant_type=client_credentials&client_id=cc_post_agent_client&client_secret=cc_post_agent_secret"
+	form := url.Values{}
+	form.Set("grant_type", "client_credentials")
+	form.Set("client_id", "cc_post_agent_client")
+	form.Set("client_secret", "cc_post_agent_secret")
+	form.Set("resource", agentOAuthDefaultRSIdentifier)
+	body := form.Encode()
 	result, statusCode, err := agentTokenRequest(body, "", "", true)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, statusCode, "CC with client_secret_post must succeed")
@@ -221,9 +244,10 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentCC_InvalidCredentials() {
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(agentID) }()
 
-	tokenResult, err := testutils.RequestToken(
+	tokenResult, err := testutils.RequestTokenWithResource(
 		"cc_invalid_agent_client", "wrong_secret",
 		"", "", "client_credentials",
+		agentOAuthDefaultRSIdentifier,
 	)
 	ts.Require().NoError(err)
 	ts.Assert().Equal(http.StatusUnauthorized, tokenResult.StatusCode,
@@ -257,10 +281,10 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentAuthCode_FullRoundTrip() {
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(agentID) }()
 
-	token, err := testutils.ObtainAccessTokenWithPassword(
+	token, err := obtainAgentAccessTokenWithResource(
 		"authcode_agent_client", oauthFlowsRedirectURI, "openid",
 		oauthFlowsTestUsername, oauthFlowsTestPassword,
-		false, "authcode_agent_secret",
+		false, "authcode_agent_secret", agentOAuthDefaultRSIdentifier,
 	)
 	ts.Require().NoError(err, "Auth code full round trip must succeed")
 	ts.Assert().NotEmpty(token.AccessToken)
@@ -292,10 +316,10 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentAuthCode_WithPKCE() {
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(agentID) }()
 
-	token, err := testutils.ObtainAccessTokenWithPassword(
+	token, err := obtainAgentAccessTokenWithResource(
 		"authcode_pkce_agent_client", oauthFlowsRedirectURI, "openid",
 		oauthFlowsTestUsername, oauthFlowsTestPassword,
-		true, "authcode_pkce_agent_secret",
+		true, "authcode_pkce_agent_secret", agentOAuthDefaultRSIdentifier,
 	)
 	ts.Require().NoError(err, "Auth code with PKCE must succeed")
 	ts.Assert().NotEmpty(token.AccessToken)
@@ -327,10 +351,10 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentAuthCode_RefreshToken() {
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(agentID) }()
 
-	token, err := testutils.ObtainAccessTokenWithPassword(
+	token, err := obtainAgentAccessTokenWithResource(
 		"authcode_refresh_agent_client", oauthFlowsRedirectURI, "openid",
 		oauthFlowsTestUsername, oauthFlowsTestPassword,
-		false, "authcode_refresh_agent_secret",
+		false, "authcode_refresh_agent_secret", agentOAuthDefaultRSIdentifier,
 	)
 	ts.Require().NoError(err, "Initial auth code flow must succeed")
 	ts.Require().NotEmpty(token.RefreshToken, "Refresh token must be returned")
@@ -509,9 +533,10 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentUpdate_AddOAuthProfile() {
 	defer putResp.Body.Close()
 	ts.Require().Equal(http.StatusOK, putResp.StatusCode, readBody(putResp))
 
-	tokenResult, err := testutils.RequestToken(
+	tokenResult, err := testutils.RequestTokenWithResource(
 		"promoted_agent_client", "promoted_agent_secret",
 		"", "", "client_credentials",
+		agentOAuthDefaultRSIdentifier,
 	)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, tokenResult.StatusCode,
@@ -565,7 +590,7 @@ func (s *CCAgentAuthzTestSuite) SetupSuite() {
 	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
 		Name:        "CC Agent Authz API",
 		Description: "Resource server for CC agent authz testing",
-		Identifier:  "cc-agent-authz-api",
+		Identifier:  ccAgentAuthzRSIdentifier,
 		OUID:        s.ouID,
 	}, []testutils.Action{
 		{Name: "Read", Handle: "read", Description: "Read access"},
@@ -695,12 +720,14 @@ func (s *CCAgentAuthzTestSuite) createOAuthAgent() (string, error) {
 }
 
 func (s *CCAgentAuthzTestSuite) requestToken(scopes string) (int, map[string]interface{}) {
-	body := "grant_type=client_credentials"
+	form := url.Values{}
+	form.Set("grant_type", "client_credentials")
+	form.Set("resource", ccAgentAuthzRSIdentifier)
 	if scopes != "" {
-		body += "&scope=" + scopes
+		form.Set("scope", scopes)
 	}
 
-	req, err := http.NewRequest("POST", testServerURL+"/oauth2/token", strings.NewReader(body))
+	req, err := http.NewRequest("POST", testServerURL+"/oauth2/token", strings.NewReader(form.Encode()))
 	s.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(ccAgentClientID, ccAgentClientSecret)
@@ -787,13 +814,14 @@ func (s *CCAgentAuthzTestSuite) TestAgentCC_AllScopes() {
 // is a user assertion.
 type AgentTokenExchangeTestSuite struct {
 	suite.Suite
-	client         *http.Client
-	ouID           string
-	entityTypeID   string
-	agentSchemaID  string
-	agentID        string
-	userID         string
-	assertionToken string
+	client           *http.Client
+	ouID             string
+	entityTypeID     string
+	agentSchemaID    string
+	agentID          string
+	userID           string
+	resourceServerID string
+	assertionToken   string
 }
 
 func TestAgentTokenExchangeTestSuite(t *testing.T) {
@@ -810,6 +838,15 @@ func (s *AgentTokenExchangeTestSuite) SetupSuite() {
 	})
 	s.Require().NoError(err)
 	s.ouID = ouID
+
+	resourceServerID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:        "Agent Token Exchange Default Resource Server",
+		Description: "Resource server for agent token exchange tests",
+		Identifier:  agentTEDefaultRSIdentifier,
+		OUID:        s.ouID,
+	}, []testutils.Action{})
+	s.Require().NoError(err)
+	s.resourceServerID = resourceServerID
 
 	agentSchemaID, err := testutils.CreateAgentType(testutils.UserType{
 		Name: "default",
@@ -863,6 +900,9 @@ func (s *AgentTokenExchangeTestSuite) TearDownSuite() {
 	}
 	if s.agentSchemaID != "" {
 		_ = testutils.DeleteAgentType(s.agentSchemaID)
+	}
+	if s.resourceServerID != "" {
+		_ = testutils.DeleteResourceServer(s.resourceServerID)
 	}
 	if s.ouID != "" {
 		_ = testutils.DeleteOrganizationUnit(s.ouID)
@@ -984,6 +1024,7 @@ func (s *AgentTokenExchangeTestSuite) TestAgentTE_BasicSuccess() {
 	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
 	formData.Set("subject_token", s.assertionToken)
 	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt")
+	formData.Set("resource", agentTEDefaultRSIdentifier)
 
 	resp, statusCode, err := s.doTokenExchange(formData)
 	s.Require().NoError(err)
@@ -996,15 +1037,17 @@ func (s *AgentTokenExchangeTestSuite) TestAgentTE_BasicSuccess() {
 	claims, err := testutils.DecodeJWT(resp.AccessToken)
 	s.Require().NoError(err, "Access token must be a valid JWT")
 	s.Equal(s.userID, claims.Sub, "Subject must match the authenticated user")
+	s.Equal(agentTEDefaultRSIdentifier, claims.Aud, "Audience must match the requested resource server")
 }
 
-// TestAgentTE_WithAudience verifies that the audience parameter is reflected in the issued token.
+// TestAgentTE_WithAudience verifies that the audience parameter does not drive the issued access-token audience.
 func (s *AgentTokenExchangeTestSuite) TestAgentTE_WithAudience() {
 	formData := url.Values{}
 	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
 	formData.Set("subject_token", s.assertionToken)
 	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt")
 	formData.Set("audience", "https://agent-api.example.com")
+	formData.Set("resource", agentTEDefaultRSIdentifier)
 
 	resp, statusCode, err := s.doTokenExchange(formData)
 	s.Require().NoError(err)
@@ -1013,24 +1056,7 @@ func (s *AgentTokenExchangeTestSuite) TestAgentTE_WithAudience() {
 
 	claims, err := testutils.DecodeJWT(resp.AccessToken)
 	s.Require().NoError(err)
-
-	rawAud, ok := claims.Additional["aud"]
-	s.Require().True(ok, "JWT must contain an aud claim")
-	switch aud := rawAud.(type) {
-	case string:
-		s.Equal("https://agent-api.example.com", aud)
-	case []interface{}:
-		found := false
-		for _, v := range aud {
-			if str, ok := v.(string); ok && str == "https://agent-api.example.com" {
-				found = true
-				break
-			}
-		}
-		s.True(found, "Audience array must contain requested audience")
-	default:
-		s.Failf("unexpected aud type", "%T", rawAud)
-	}
+	s.Equal(agentTEDefaultRSIdentifier, claims.Aud, "Audience must match the requested resource server")
 }
 
 // TestAgentTE_InvalidSubjectToken verifies that a malformed subject_token is rejected.
@@ -1081,6 +1107,93 @@ func (s *AgentTokenExchangeTestSuite) TestAgentTE_MissingSubjectToken() {
 // ============================================================================
 // Shared helpers
 // ============================================================================
+
+// obtainAgentAccessTokenWithResource performs the full authorization code flow (optionally with PKCE)
+// for an agent OAuth client, binding the token to the given RFC 8707 resource server.
+func obtainAgentAccessTokenWithResource(clientID, redirectURI, scope, username, password string,
+	usePKCE bool, clientSecret, resource string) (*testutils.TokenResponse, error) {
+	var codeVerifier, codeChallenge string
+	if usePKCE {
+		var err error
+		codeVerifier, err = testutils.GenerateCodeVerifier()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate code verifier: %w", err)
+		}
+		codeChallenge = testutils.GenerateCodeChallenge(codeVerifier)
+	}
+
+	resp, err := testutils.InitiateAuthorizationFlowWithPKCE(clientID, redirectURI, "code", scope,
+		"test-state", resource, codeChallenge, "S256")
+	if err != nil {
+		return nil, fmt.Errorf("failed to initiate authorization: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusFound && resp.StatusCode != http.StatusSeeOther &&
+		resp.StatusCode != http.StatusTemporaryRedirect {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("expected redirect response, got status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	location := resp.Header.Get("Location")
+	if location == "" {
+		return nil, fmt.Errorf("no Location header in authorization response")
+	}
+
+	authID, executionId, err := testutils.ExtractAuthData(location)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract auth ID: %w", err)
+	}
+
+	initialStep, err := testutils.ExecuteAuthenticationFlow(executionId, nil, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute initial authentication flow: %w", err)
+	}
+
+	flowStep, err := testutils.ExecuteAuthenticationFlow(executionId, map[string]string{
+		"username": username,
+		"password": password,
+	}, "action_001", initialStep.ChallengeToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute authentication flow: %w", err)
+	}
+	if flowStep.FlowStatus != "COMPLETE" {
+		return nil, fmt.Errorf("authentication flow not complete: status=%s", flowStep.FlowStatus)
+	}
+	if flowStep.Assertion == "" {
+		return nil, fmt.Errorf("no assertion returned from authentication flow")
+	}
+
+	authzResp, err := testutils.CompleteAuthorization(authID, flowStep.Assertion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to complete authorization: %w", err)
+	}
+
+	code, err := testutils.ExtractAuthorizationCode(authzResp.RedirectURI)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract authorization code: %w", err)
+	}
+
+	var tokenResult *testutils.TokenHTTPResult
+	if usePKCE {
+		tokenResult, err = testutils.RequestTokenWithPKCEAndResourceAndClientCredentialsInBody(
+			clientID, clientSecret, code, redirectURI, "authorization_code", codeVerifier, resource)
+	} else {
+		tokenResult, err = testutils.RequestTokenWithResourceAndClientCredentialsInBody(
+			clientID, clientSecret, code, redirectURI, "authorization_code", resource)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to request token: %w", err)
+	}
+	if tokenResult.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("token request failed with status %d: %s", tokenResult.StatusCode,
+			string(tokenResult.Body))
+	}
+	if tokenResult.Token == nil {
+		return nil, fmt.Errorf("no token in response")
+	}
+	return tokenResult.Token, nil
+}
 
 // agentTokenRequest sends a token request to the server and returns the response body and status.
 func agentTokenRequest(body string, clientID, clientSecret string, inBody bool) (map[string]interface{}, int, error) {

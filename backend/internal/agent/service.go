@@ -35,6 +35,7 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/role"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -55,10 +56,13 @@ type AgentServiceInterface interface {
 	DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError
 	GetAgentGroups(ctx context.Context, agentID string, limit, offset int) (
 		*model.AgentGroupListResponse, *tidcommon.ServiceError)
+	GetAgentRoles(ctx context.Context, agentID string, limit, offset int) (
+		*model.AgentRoleListResponse, *tidcommon.ServiceError)
 	ValidateAgent(ctx context.Context, agent *model.Agent, excludeID string) (
 		clientID, clientSecret string, client inboundmodel.InboundClient, svcErr *tidcommon.ServiceError)
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
+	SetDependencyRegistry(r resourcedependency.Registry)
 }
 
 type agentService struct {
@@ -66,18 +70,22 @@ type agentService struct {
 	entityService        entity.EntityServiceInterface
 	inboundClientService inboundclient.InboundClientServiceInterface
 	ouService            oupkg.OrganizationUnitServiceInterface
+	dependencyRegistry   resourcedependency.Registry
+	roleService          role.RoleServiceInterface
 }
 
 func newAgentService(
 	entityService entity.EntityServiceInterface,
 	inboundClientService inboundclient.InboundClientServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
+	roleService role.RoleServiceInterface,
 ) AgentServiceInterface {
 	return &agentService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentService")),
 		entityService:        entityService,
 		inboundClientService: inboundClientService,
 		ouService:            ouService,
+		roleService:          roleService,
 	}
 }
 
@@ -283,7 +291,7 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 	}
 
 	resolvedClient, resolvedOAuth, svcErr := s.reconcileInboundForUpdate(
-		ctx, agentID, req, clientID, clientSecret, currentName, req.Name)
+		ctx, agentID, req, clientID, clientSecret)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -350,6 +358,12 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 }
 
 // DeleteAgent removes the agent and its associated inbound client.
+// SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
+// provider services are initialized to avoid a cyclic import.
+func (s *agentService) SetDependencyRegistry(r resourcedependency.Registry) {
+	s.dependencyRegistry = r
+}
+
 func (s *agentService) DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError {
 	if agentID == "" {
 		return &ErrorMissingAgentID
@@ -369,6 +383,20 @@ func (s *agentService) DeleteAgent(ctx context.Context, agentID string) *tidcomm
 	}
 	if existing.IsReadOnly {
 		return &ErrorCannotModifyDeclarativeResource
+	}
+
+	// Remove dependents that must be deleted with the agent (e.g. its role assignments and group
+	// memberships). Run before the deletes so a cleanup failure aborts and leaves the agent
+	// retriable. Fails closed when the registry is unavailable.
+	if s.dependencyRegistry == nil {
+		s.logger.Error(ctx, "Dependency registry not set; refusing to delete agent",
+			log.String("agentID", agentID))
+		return &tidcommon.InternalServerError
+	}
+	if _, err := s.dependencyRegistry.CascadeDelete(ctx, resourcedependency.ResourceTypeAgent, agentID); err != nil {
+		s.logger.Error(ctx, "Failed to cascade-delete agent dependencies",
+			log.String("agentID", agentID), log.Error(err))
+		return &tidcommon.InternalServerError
 	}
 
 	if err := s.inboundClientService.DeleteInboundClient(ctx, agentID); err != nil &&
@@ -459,11 +487,12 @@ func (s *agentService) getAgentsByOwner(
 		if owner != ownerID {
 			continue
 		}
+		// An agent cannot exist without its owner, so ownership blocks the owner's deletion.
 		usages = append(usages, resourcedependency.ResourceDependency{
 			ResourceType:     resourcedependency.ResourceTypeAgent,
 			ID:               e.ID,
 			DisplayName:      name,
-			BehaviorOnDelete: resourcedependency.BehaviorFallback,
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
 		})
 	}
 	return usages, nil
@@ -520,6 +549,80 @@ func (s *agentService) GetAgentGroups(ctx context.Context, agentID string, limit
 		Groups:       out,
 		Links: sysutils.BuildPaginationLinks(
 			fmt.Sprintf("%s/%s/groups", agentBasePath, agentID), limit, offset, totalCount, ""),
+	}
+	return resp, nil
+}
+
+// GetAgentRoles returns the roles assigned to the agent, either directly or through its
+// group memberships.
+func (s *agentService) GetAgentRoles(ctx context.Context, agentID string, limit, offset int) (
+	*model.AgentRoleListResponse, *tidcommon.ServiceError) {
+	if agentID == "" {
+		return nil, &ErrorMissingAgentID
+	}
+	if svcErr := validatePaginationParams(limit, offset); svcErr != nil {
+		return nil, svcErr
+	}
+	if limit == 0 {
+		limit = 30
+	}
+
+	existing, err := s.entityService.GetEntity(ctx, agentID)
+	if err != nil {
+		if errors.Is(err, entity.ErrEntityNotFound) {
+			return nil, &ErrorAgentNotFound
+		}
+		s.logger.Error(ctx, "Failed to retrieve agent for roles",
+			log.String("agentID", agentID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if existing.Category != providers.EntityCategoryAgent {
+		return nil, &ErrorAgentNotFound
+	}
+
+	groupCount, err := s.entityService.GetGroupCountForEntity(ctx, agentID)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to get agent group count",
+			log.String("agentID", agentID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	groupIDs := make([]string, 0, groupCount)
+	if groupCount > 0 {
+		groups, groupErr := s.entityService.GetEntityGroups(ctx, agentID, groupCount, 0)
+		if groupErr != nil {
+			s.logger.Error(ctx, "Failed to get agent groups for role lookup",
+				log.String("agentID", agentID), log.Error(groupErr))
+			return nil, &tidcommon.InternalServerError
+		}
+		for _, g := range groups {
+			groupIDs = append(groupIDs, g.ID)
+		}
+	}
+
+	roles, svcErr := s.roleService.GetUserRoles(ctx, agentID, groupIDs)
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to get agent roles", log.String("agentID", agentID))
+		return nil, svcErr
+	}
+
+	totalCount := len(roles)
+	end := offset + limit
+	if offset > totalCount {
+		offset = totalCount
+	}
+	if end > totalCount {
+		end = totalCount
+	}
+	page := roles[offset:end]
+
+	resp := &model.AgentRoleListResponse{
+		TotalResults: totalCount,
+		StartIndex:   offset + 1,
+		Count:        len(page),
+		Roles:        page,
+		Links: sysutils.BuildPaginationLinks(
+			fmt.Sprintf("%s/%s/roles", agentBasePath, agentID), limit, offset, totalCount, ""),
 	}
 	return resp, nil
 }
@@ -813,7 +916,7 @@ func (s *agentService) createInboundForAgent(ctx context.Context, agentID string
 
 	hasSecret := clientSecret != ""
 	if err := s.inboundClientService.CreateInboundClient(
-		ctx, &client, oauthProfile, hasSecret, agent.Name,
+		ctx, &client, oauthProfile, hasSecret,
 	); err != nil {
 		if svcErr := s.translateInboundClientError(ctx, err); svcErr != nil {
 			return inboundmodel.InboundClient{}, nil, svcErr
@@ -827,7 +930,7 @@ func (s *agentService) createInboundForAgent(ctx context.Context, agentID string
 
 // reconcileInboundForUpdate creates, updates, or removes the inbound client row and returns the mutated structs.
 func (s *agentService) reconcileInboundForUpdate(ctx context.Context, agentID string,
-	req *model.UpdateAgentRequest, clientID, clientSecret, oldName, newName string,
+	req *model.UpdateAgentRequest, clientID, clientSecret string,
 ) (inboundmodel.InboundClient, *providers.OAuthProfile, *tidcommon.ServiceError) {
 	wantsInbound := updateNeedsInboundClient(req)
 
@@ -856,12 +959,8 @@ func (s *agentService) reconcileInboundForUpdate(ctx context.Context, agentID st
 	hasSecret := clientSecret != ""
 
 	if hasExisting {
-		entityName := newName
-		if entityName == "" {
-			entityName = oldName
-		}
 		if err := s.inboundClientService.UpdateInboundClient(ctx, &client,
-			oauthProfile, hasSecret, clientID, entityName); err != nil {
+			oauthProfile, hasSecret, clientID); err != nil {
 			if svcErr := s.translateInboundClientError(ctx, err); svcErr != nil {
 				return inboundmodel.InboundClient{}, nil, svcErr
 			}
@@ -872,7 +971,7 @@ func (s *agentService) reconcileInboundForUpdate(ctx context.Context, agentID st
 		return client, oauthProfile, nil
 	}
 
-	if err := s.inboundClientService.CreateInboundClient(ctx, &client, oauthProfile, hasSecret, newName); err != nil {
+	if err := s.inboundClientService.CreateInboundClient(ctx, &client, oauthProfile, hasSecret); err != nil {
 		if svcErr := s.translateInboundClientError(ctx, err); svcErr != nil {
 			return inboundmodel.InboundClient{}, nil, svcErr
 		}
@@ -1262,6 +1361,7 @@ func buildOAuthProfile(configs []providers.InboundAuthConfigWithSecret) *provide
 	}
 	return &providers.OAuthProfile{
 		RedirectURIs:                       cfg.RedirectURIs,
+		PostLogoutRedirectURIs:             cfg.PostLogoutRedirectURIs,
 		GrantTypes:                         grantTypes,
 		ResponseTypes:                      sysutils.ConvertToStringSlice(cfg.ResponseTypes),
 		TokenEndpointAuthMethod:            string(authMethod),
@@ -1287,6 +1387,7 @@ func oauthProfileToComplete(clientID string, p *providers.OAuthProfile) *provide
 	return &providers.OAuthConfigWithSecret{
 		ClientID:                           clientID,
 		RedirectURIs:                       p.RedirectURIs,
+		PostLogoutRedirectURIs:             p.PostLogoutRedirectURIs,
 		GrantTypes:                         grants,
 		ResponseTypes:                      respTypes,
 		TokenEndpointAuthMethod:            providers.TokenEndpointAuthMethod(p.TokenEndpointAuthMethod),
@@ -1413,10 +1514,6 @@ func (s *agentService) translateInboundClientError(ctx context.Context, err erro
 	var opErr *inboundclient.CertOperationError
 	if errors.As(err, &opErr) {
 		return s.translateCertOperationError(ctx, opErr)
-	}
-	var consentErr *inboundclient.ConsentSyncError
-	if errors.As(err, &consentErr) {
-		return translateConsentSyncError(consentErr)
 	}
 	return nil
 }
@@ -1713,12 +1810,4 @@ func (s *agentService) translateCertOperationError(
 		Key:          key,
 		DefaultValue: prefix + err.Underlying.ErrorDescription.DefaultValue,
 	})
-}
-
-// translateConsentSyncError maps a typed ConsentSyncError to an agent-service error.
-func translateConsentSyncError(err *inboundclient.ConsentSyncError) *tidcommon.ServiceError {
-	if err.IsClientError() {
-		return ErrorConsentSyncFailed.WithParams(map[string]string{"code": err.Underlying.Code})
-	}
-	return &tidcommon.InternalServerError
 }

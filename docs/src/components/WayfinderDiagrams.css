@@ -598,3 +598,51 @@
   font-size: 13px !important;
 }
 
+/* ── VC Architecture — boundary box and delegation edge ────────────────── */
+
+.uc-vc-arch__boundary rect {
+  fill: transparent;
+  stroke: color-mix(in srgb, var(--ifm-color-primary) 28%, var(--ifm-color-emphasis-300));
+  stroke-width: 1.5;
+  stroke-dasharray: 6 3;
+}
+
+[data-theme='dark'] .uc-vc-arch__boundary rect {
+  stroke: color-mix(in srgb, var(--ifm-color-primary) 35%, rgba(255, 255, 255, 0.15));
+}
+
+.uc-vc-arch__boundary-label {
+  font-weight: 700;
+  font-size: 10px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  fill: color-mix(in srgb, var(--ifm-color-primary) 65%, var(--ifm-color-emphasis-700)) !important;
+}
+
+.uc-vc-arch__delegate line {
+  stroke: color-mix(in srgb, var(--ifm-color-primary) 45%, var(--ifm-color-emphasis-400));
+  stroke-width: 1.2;
+}
+
+.uc-vc-arch__delegate-label {
+  font-size: 10.5px !important;
+  fill: color-mix(in srgb, var(--ifm-font-color-base) 55%, transparent) !important;
+  font-style: italic;
+}
+
+.uc-vc-arch__icon-circle {
+  fill: color-mix(in srgb, var(--ifm-color-primary) 10%, var(--ifm-color-emphasis-100));
+}
+
+[data-theme='dark'] .uc-vc-arch__icon-circle {
+  fill: color-mix(in srgb, var(--ifm-color-primary) 15%, rgba(255, 255, 255, 0.08));
+}
+
+.uc-vc-arch__icon {
+  fill: none;
+  stroke: color-mix(in srgb, var(--ifm-color-primary) 55%, var(--ifm-color-emphasis-600));
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+

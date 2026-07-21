@@ -46,7 +46,7 @@ func (suite *InitTestSuite) SetupTest() {
 			Enabled: false,
 		},
 		Database: config.DatabaseConfig{
-			User: config.DataSource{
+			Entity: config.DataSource{
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: "test.db"},
 			},

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -94,6 +94,11 @@ type UpdateUserRequest struct {
 // UpdateSelfUserRequest represents the request body for updating the authenticated user.
 type UpdateSelfUserRequest struct {
 	Attributes json.RawMessage `json:"attributes,omitempty"`
+}
+
+// UpdateUserCredentialsRequest represents the request body for updating user credentials by an admin.
+type UpdateUserCredentialsRequest struct {
+	Credentials json.RawMessage `json:"credentials,omitempty"`
 }
 
 // CreateUserByPathRequest represents the request body for creating a user under a handle path.

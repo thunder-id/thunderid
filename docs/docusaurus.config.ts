@@ -216,7 +216,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   ],
 
   themeConfig: {
-    image: 'assets/images/social-card.png',
+    image: 'assets/images/og-image.png',
     colorMode: {
       respectPrefersColorScheme: true,
     },
@@ -245,10 +245,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           label: 'APIs',
         },
         {
-          type: 'doc',
-          docId: 'sdks/overview',
+          to: '/sdks',
           position: 'right',
-          label: 'SDKs',
+          label: 'SDKs & Tools',
         },
         {
           to: '/blog',

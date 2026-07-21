@@ -1,14 +1,15 @@
 ---
 title: Token Formats
+docType: reference
 sidebar_position: 4
-description: ID Token and UserInfo response formats in {{ProductName}} — JWS, JWE, and NESTED_JWT — with supported signing and encryption algorithms.
+description: ID Token and UserInfo response formats in {{ProductName}}, JWS, JWE, and NESTED_JWT, with supported signing and encryption algorithms.
 ---
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 # Token Formats
 
-OpenID Connect lets you control the **cryptographic shape** of two outputs: the **ID Token** and the **UserInfo response**. <ProductName /> supports four formats and a curated set of algorithms — picked from the JOSE standards ([RFC 7515](https://datatracker.ietf.org/doc/html/rfc7515) JWS, [RFC 7516](https://datatracker.ietf.org/doc/html/rfc7516) JWE, [RFC 7518](https://datatracker.ietf.org/doc/html/rfc7518) JWA).
+OpenID Connect lets you control the **cryptographic shape** of two outputs: the **ID Token** and the **UserInfo response**. <ProductName /> supports four formats and a curated set of algorithms, picked from the JOSE standards ([RFC 7515](https://datatracker.ietf.org/doc/html/rfc7515) JWS, [RFC 7516](https://datatracker.ietf.org/doc/html/rfc7516) JWE, [RFC 7518](https://datatracker.ietf.org/doc/html/rfc7518) JWA).
 
 The choice trades operational simplicity against confidentiality. JWS gives you integrity. JWE gives you confidentiality. NESTED_JWT gives you both.
 
@@ -68,7 +69,7 @@ Access token and ID token lifetimes are configured per application. Both default
 | `token.accessToken.validityPeriod` | `3600` | Access token lifetime in seconds |
 | `token.idToken.validityPeriod` | `3600` | ID token lifetime in seconds |
 
-Refresh tokens are governed separately — see [Refresh Token](../refresh-token).
+Refresh tokens are governed separately. See [Refresh Token](../refresh-token).
 
 ## Embedded User Attributes
 
@@ -77,11 +78,11 @@ The `userAttributes` array on each token type controls which user attributes are
 | Setting | Description |
 |---|---|
 | `token.accessToken.userAttributes` | Attributes embedded in the access token payload. Standard claims (`sub`, `iss`, `exp`, …) are always included and cannot be removed. |
-| `token.idToken.userAttributes` | Attributes embedded in the ID token. Only attributes covered by the requested scopes are returned — see [Claims & Scopes](../claims-and-scopes). |
+| `token.idToken.userAttributes` | Attributes embedded in the ID token. Only attributes covered by the requested scopes are returned. See [Claims & Scopes](../claims-and-scopes). |
 
 ## Certificate Prerequisites
 
-Encrypted responses (`JWE`, `NESTED_JWT`) and `private_key_jwt` client authentication require an OAuth client certificate — either an inline `JWKS` or a `JWKS_URI` <ProductName /> can fetch. See [OAuth client certificate](../client-authentication-methods#oauth-client-certificate) for the full rules.
+Encrypted responses (`JWE`, `NESTED_JWT`) and `private_key_jwt` client authentication require an OAuth client certificate: either an inline `JWKS` or a `JWKS_URI` <ProductName /> can fetch. See [OAuth client certificate](../client-authentication-methods#oauth-client-certificate) for the full rules.
 
 | Use case | Certificate required? | Reason |
 |---|---|---|
@@ -135,11 +136,11 @@ Content-Type: application/json
 
 ### Inspect What a Deployment Advertises
 
-The supported algorithms are listed in the [Server Metadata](../server-metadata) document — for example, `id_token_signing_alg_values_supported` and `userinfo_encryption_enc_values_supported`.
+The supported algorithms are listed in the [Server Metadata](../server-metadata) document, for example, `id_token_signing_alg_values_supported` and `userinfo_encryption_enc_values_supported`.
 
 ## Related Guides
 
-- [OpenID Connect](../openid-connect) — the spec that defines ID Token shape
-- [UserInfo](../userinfo) — the endpoint whose response format is selected here
-- [JWKS](../jwks) — <ProductName />'s signing keys
-- [Client Authentication Methods — OAuth client certificate](../client-authentication-methods#oauth-client-certificate) — attaching the client's public key
+- [OpenID Connect](../openid-connect), the spec that defines ID Token shape
+- [UserInfo](../userinfo), the endpoint whose response format is selected here
+- [JWKS](../jwks), <ProductName />'s signing keys
+- [Client Authentication Methods: OAuth client certificate](../client-authentication-methods#oauth-client-certificate), attaching the client's public key

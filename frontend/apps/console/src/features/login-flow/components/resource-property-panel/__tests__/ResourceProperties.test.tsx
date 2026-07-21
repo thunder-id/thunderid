@@ -76,6 +76,14 @@ vi.mock('../extended-properties/ButtonExtendedProperties', () => ({
   ),
 }));
 
+vi.mock('../extended-properties/CallProperties', () => ({
+  default: ({resource}: {resource: Resource}) => (
+    <div data-testid="call-properties" data-resource-id={resource.id}>
+      Call Properties
+    </div>
+  ),
+}));
+
 vi.mock('../extended-properties/ExecutionExtendedProperties', () => ({
   default: ({resource}: {resource: Resource}) => (
     <div data-testid="execution-extended-properties" data-resource-id={resource.id}>
@@ -319,6 +327,48 @@ describe('ResourceProperties', () => {
       );
 
       expect(container.firstChild).toBeNull();
+    });
+  });
+
+  describe('Workflow Category - Call Type', () => {
+    it('should render CallProperties for Call type', () => {
+      const resource = createMockResource({
+        id: 'call-1',
+        category: StepCategories.Workflow,
+        type: StepTypes.Call,
+      } as Partial<Resource>);
+
+      render(
+        <ResourceProperties
+          resource={resource}
+          properties={{}}
+          onChange={mockOnChange}
+          onVariantChange={mockOnVariantChange}
+        />,
+      );
+
+      expect(screen.getByTestId('call-properties')).toBeInTheDocument();
+      expect(screen.getByTestId('call-properties')).toHaveAttribute('data-resource-id', 'call-1');
+      expect(screen.queryByTestId('execution-extended-properties')).not.toBeInTheDocument();
+    });
+
+    it('should render element ID for Call type', () => {
+      const resource = createMockResource({
+        id: 'call-42',
+        category: StepCategories.Workflow,
+        type: StepTypes.Call,
+      } as Partial<Resource>);
+
+      render(
+        <ResourceProperties
+          resource={resource}
+          properties={{}}
+          onChange={mockOnChange}
+          onVariantChange={mockOnVariantChange}
+        />,
+      );
+
+      expect(screen.getByTestId('resource-property-factory-id')).toHaveAttribute('data-property-value', 'call-42');
     });
   });
 

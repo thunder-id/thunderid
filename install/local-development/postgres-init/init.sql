@@ -1,21 +1,21 @@
 -- Create databases
-CREATE DATABASE runtimedb;
+CREATE DATABASE runtime_transient;
 CREATE DATABASE configdb;
-CREATE DATABASE userdb;
-CREATE DATABASE operationdb;
+CREATE DATABASE entitydb;
+CREATE DATABASE runtime_persistent;
 
 -- Run db1 initialization
-\connect runtimedb
-\i /docker-entrypoint-initdb.d/runtime-postgres.sql
+\connect runtime_transient
+\i /docker-entrypoint-initdb.d/runtime-transient-postgres.sql
 
 -- Run db2 initialization
 \connect configdb
 \i /docker-entrypoint-initdb.d/config-postgres.sql
 
 -- Run db3 initialization
-\connect userdb
-\i /docker-entrypoint-initdb.d/user-postgres.sql
+\connect entitydb
+\i /docker-entrypoint-initdb.d/entity-postgres.sql
 
 -- Run db4 initialization
-\connect operationdb
-\i /docker-entrypoint-initdb.d/operation-postgres.sql
+\connect runtime_persistent
+\i /docker-entrypoint-initdb.d/runtime-persistent-postgres.sql

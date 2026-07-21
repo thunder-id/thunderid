@@ -101,7 +101,7 @@ func toEngineAccessEvaluationsRequest(request providers.AccessEvaluationsRequest
 				Properties: evaluation.Subject.Properties,
 			},
 			ResourceServer: engine.ResourceServer{
-				Handle:     evaluation.ResourceServer.Handle,
+				ID:         evaluation.ResourceServer.ID,
 				Properties: evaluation.ResourceServer.Properties,
 			},
 			Permission: engine.Permission{

@@ -58,6 +58,9 @@ type Application struct {
 	Certificate               map[string]interface{}   `json:"certificate,omitempty"`
 	InboundAuthConfig         []map[string]interface{} `json:"inboundAuthConfig,omitempty"`
 	AssertionConfig           map[string]interface{}   `json:"assertion,omitempty"`
+	// Attestation is the client-level platform attestation config, set at the top level of the
+	// application independent of any OAuth profile.
+	Attestation map[string]interface{} `json:"attestation,omitempty"`
 	// Embedded creates a native app with no inbound OAuth profile — the canonical flow-native app
 	// that authenticates flow initiation with a Flow Secret. When set, no default OAuth config is
 	// synthesized.
@@ -217,7 +220,6 @@ type ResourceServer struct {
 	ID          string  `json:"id,omitempty"`
 	Name        string  `json:"name"`
 	Description string  `json:"description,omitempty"`
-	Handle      string  `json:"handle,omitempty"`
 	Identifier  string  `json:"identifier,omitempty"`
 	OUID        string  `json:"ouId"`
 	Delimiter   *string `json:"delimiter,omitempty"`

@@ -17,6 +17,7 @@
  */
 
 import {zodResolver} from '@hookform/resolvers/zod';
+import {AuthenticatorTypes} from '@thunderid/configure-connections';
 import {useLogger} from '@thunderid/logger/react';
 import {
   Box,
@@ -40,7 +41,6 @@ import {useEffect, useState} from 'react';
 import {useForm, Controller, useWatch} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import {z} from 'zod';
-import {AuthenticatorTypes} from '../../../connections/models/authenticators';
 import {CUSTOM_WALLET_VENDOR, WALLET_VENDORS} from '../../constants/wallet-vendors';
 import useApplicationCreate from '../../contexts/ApplicationCreate/useApplicationCreate';
 import {ApplicationCreateFlowConfiguration} from '../../models/application-create-flow';

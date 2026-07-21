@@ -110,12 +110,14 @@ func (r *interceptorRegistry) IsRegistered(name string) bool {
 
 // InterceptorDependencies holds the dependencies required for interceptor initialization.
 type InterceptorDependencies struct {
-	FlowFactory core.FlowFactoryInterface
+	FlowFactory    core.FlowFactoryInterface
+	CaptchaService providers.CaptchaValidationProvider
 }
 
 // builtinRegistrars maps each built-in interceptor name to its registration function.
 var builtinRegistrars = map[string]func(InterceptorDependencies, InterceptorRegistryInterface) error{
 	ChallengeTokenInterceptor: registerChallengeTokenInterceptor,
+	CaptchaInterceptor:        registerCaptchaInterceptor,
 }
 
 // registerInterceptors registers the given interceptors in the registry. If the list is empty,
@@ -143,10 +145,6 @@ func registerInterceptors(deps InterceptorDependencies, registry InterceptorRegi
 		registrar := builtinRegistrars[name]
 		if err := registrar(deps, registry); err != nil {
 			return fmt.Errorf("failed to register interceptor %s: %w", name, err)
-		}
-
-		if !registry.IsRegistered(name) {
-			return fmt.Errorf("interceptor %s was not registered successfully", name)
 		}
 	}
 	return nil
@@ -183,6 +181,19 @@ func registerChallengeTokenInterceptor(deps InterceptorDependencies, registry In
 		return fmt.Errorf("FlowFactory dependency is required for %s", ChallengeTokenInterceptor)
 	}
 	registry.RegisterInterceptor(ChallengeTokenInterceptor, newChallengeTokenInterceptor(deps.FlowFactory))
+	return nil
+}
+
+// registerCaptchaInterceptor registers the captcha interceptor in the registry.
+//
+//nolint:unparam // error return kept for signature consistency with other register* functions
+func registerCaptchaInterceptor(deps InterceptorDependencies, registry InterceptorRegistryInterface) error {
+	if deps.FlowFactory == nil || deps.CaptchaService == nil {
+		log.GetLogger().Debug(context.Background(), "Skipping captcha interceptor registration: missing dependencies",
+			log.String("interceptorName", CaptchaInterceptor))
+		return nil
+	}
+	registry.RegisterInterceptor(CaptchaInterceptor, newCaptchaInterceptor(deps.FlowFactory, deps.CaptchaService))
 	return nil
 }
 

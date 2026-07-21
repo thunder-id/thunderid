@@ -1,6 +1,7 @@
 ---
 title: useUser()
-description: Access the authenticated user object
+docType: reference
+description: Access the authenticated user object from any Nuxt component or page using the useUser() composable.
 ---
 
 # `useUser()`
@@ -42,4 +43,4 @@ const user = useUser()
 
 - This composable is re-exported from `@thunderid/vue` and behaves identically in Nuxt.
 - On an SSR-rendered page, the user value is hydrated from the server session and available on first render without a client-side fetch.
-- Use [`useThunderID()`](/docs/next/sdks/nuxt/apis/composables/use-thunderid) if you also need access to auth methods (`signIn`, `signOut`, etc.).
+- Use [`useThunderID()`](../use-thunderid) if you also need access to auth methods (`signIn`, `signOut`, etc.).

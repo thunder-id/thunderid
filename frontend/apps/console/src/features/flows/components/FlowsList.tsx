@@ -83,22 +83,6 @@ export default function FlowsList(): JSX.Element {
         ),
       },
       {
-        field: 'activeVersion',
-        headerName: t('flows:listing.columns.version'),
-        width: 100,
-        renderCell: (params: DataGrid.GridRenderCellParams<BasicFlowDefinition>): JSX.Element => (
-          <Chip
-            label={`v${params.row.activeVersion}`}
-            size="small"
-            variant="outlined"
-            sx={{
-              fontFamily: 'monospace',
-              fontSize: '0.7rem',
-            }}
-          />
-        ),
-      },
-      {
         field: 'updatedAt',
         headerName: t('flows:listing.columns.updatedAt'),
         width: 180,
@@ -187,6 +171,9 @@ export default function FlowsList(): JSX.Element {
             rows={data?.flows ?? []}
             columns={columns}
             getRowId={(row): string => (row as BasicFlowDefinition).id}
+            getRowClassName={(params) =>
+              (params.row as BasicFlowDefinition).isReadOnly ? 'row-not-clickable' : 'row-clickable'
+            }
             onRowClick={(params) => {
               if (!(params.row as BasicFlowDefinition).isReadOnly) {
                 handleEditClick(params.row as BasicFlowDefinition);

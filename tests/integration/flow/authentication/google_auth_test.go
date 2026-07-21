@@ -236,26 +236,6 @@ func (ts *GoogleAuthFlowTestSuite) SetupSuite() {
 				Value:    "openid email profile",
 				IsSecret: false,
 			},
-			{
-				Name:     "authorization_endpoint",
-				Value:    ts.mockGoogleServer.GetURL() + "/o/oauth2/v2/auth",
-				IsSecret: false,
-			},
-			{
-				Name:     "token_endpoint",
-				Value:    ts.mockGoogleServer.GetURL() + "/token",
-				IsSecret: false,
-			},
-			{
-				Name:     "userinfo_endpoint",
-				Value:    ts.mockGoogleServer.GetURL() + "/v1/userinfo",
-				IsSecret: false,
-			},
-			{
-				Name:     "jwks_endpoint",
-				Value:    ts.mockGoogleServer.GetURL() + "/oauth2/v3/certs",
-				IsSecret: false,
-			},
 		},
 	}
 

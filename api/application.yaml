@@ -143,8 +143,9 @@ paths:
                       - "email"
                     token:
                       accessToken:
-                        validityPeriod: 3600
-                        userAttributes: ["email", "username"]
+                        userConfig:
+                          validityPeriod: 3600
+                          attributes: ["email", "username"]
                       idToken:
                         validityPeriod: 3600
                         userAttributes: ["email", "name", "given_name", "family_name"]
@@ -219,8 +220,9 @@ paths:
                         - "email"
                       token:
                         accessToken:
-                          validityPeriod: 3600
-                          userAttributes: ["email", "username"]
+                          userConfig:
+                            validityPeriod: 3600
+                            attributes: ["email", "username"]
                         idToken:
                           validityPeriod: 1800
                           userAttributes: ["email", "email_verified", "name", "given_name", "family_name"]
@@ -361,8 +363,9 @@ paths:
                         - "email"
                       token:
                         accessToken:
-                          validityPeriod: 3600
-                          userAttributes: ["email", "username"]
+                          userConfig:
+                            validityPeriod: 3600
+                            attributes: ["email", "username"]
                         idToken:
                           validityPeriod: 1800
                           userAttributes: ["email", "email_verified", "name", "given_name", "family_name"]
@@ -491,8 +494,9 @@ paths:
                       - "email"
                     token:
                       accessToken:
-                        validityPeriod: 3600
-                        userAttributes: ["email", "username"]
+                        userConfig:
+                          validityPeriod: 3600
+                          attributes: ["email", "username"]
                       idToken:
                         validityPeriod: 1800
                         userAttributes: ["email", "email_verified", "name", "given_name", "family_name"]
@@ -569,8 +573,9 @@ paths:
                         - "email"
                       token:
                         accessToken:
-                          validityPeriod: 3600
-                          userAttributes: ["email", "username"]
+                          userConfig:
+                            validityPeriod: 3600
+                            attributes: ["email", "username"]
                         idToken:
                           validityPeriod: 1800
                           userAttributes: ["email", "email_verified", "name", "given_name", "family_name"]
@@ -657,7 +662,10 @@ paths:
       tags:
         - Applications
       summary: Delete an application
-      description: Delete an application using its ID.
+      description: |
+        Deletes an application using its ID. Its group memberships and role assignments are
+        automatically removed by cascade. The delete is fail-closed and retriable: if dependency
+        cleanup fails, the application is left intact and the operation can be retried.
       parameters:
         - in: path
           name: id
@@ -804,6 +812,8 @@ components:
           example: "https://myapp.example.com/logo.png"
         assertion:
           $ref: '#/components/schemas/AssertionConfig'
+        attestation:
+          $ref: '#/components/schemas/Attestation'
         inboundAuthConfig:
           type: array
           items:
@@ -932,6 +942,8 @@ components:
           example: "https://myapp.example.com/logo.png"
         assertion:
           $ref: '#/components/schemas/AssertionConfig'
+        attestation:
+          $ref: '#/components/schemas/Attestation'
         inboundAuthConfig:
           type: array
           items:
@@ -1044,6 +1056,8 @@ components:
           example: "https://myapp.example.com/logo.png"
         assertion:
           $ref: '#/components/schemas/AssertionConfig'
+        attestation:
+          $ref: '#/components/schemas/Attestation'
         inboundAuthConfig:
           type: array
           items:
@@ -1185,17 +1199,33 @@ components:
     AccessTokenConfig:
       type: object
       description: |
-        Access token configuration for OAuth applications.
+        Access token configuration for OAuth applications, split by token subject.
+      properties:
+        userConfig:
+          allOf:
+            - $ref: '#/components/schemas/AccessTokenSubConfig'
+          description: Configuration applied when the access token's subject is an end user.
+        clientConfig:
+          allOf:
+            - $ref: '#/components/schemas/AccessTokenSubConfig'
+          description: >
+            Configuration applied when the access token's subject is the OAuth client itself,
+            issued only via the client_credentials grant.
+
+    AccessTokenSubConfig:
+      type: object
+      description: |
+        Validity period and attribute selection for one access token subject type.
       properties:
         validityPeriod:
           type: integer
           description: The validity period of the access token in seconds. If not specified, falls back to application-level or deployment default.
           example: 3600
-        userAttributes:
+        attributes:
           type: array
           items:
             type: string
-          description: The user attributes to include in the access token.
+          description: The attributes to include in the access token.
           example: ["email", "username"]
 
     IDTokenConfig:
@@ -1243,6 +1273,37 @@ components:
           description: The validity period of the refresh token in seconds. If not specified, falls back to application-level or deployment default.
           example: 86400
 
+    IDJAGConfig:
+      type: object
+      description: |
+        Identity Assertion Authorization Grant (ID-JAG) configuration for OAuth applications
+        (draft-ietf-oauth-identity-assertion-authz-grant). Governs whether this application may
+        exchange a self-issued ID token for an ID-JAG targeted at an external resource
+        authorization server, via the token endpoint's token-exchange grant with
+        requested_token_type=urn:ietf:params:oauth:token-type:id-jag.
+      properties:
+        enabled:
+          type: boolean
+          description: >-
+            Enable ID-JAG issuance for this application. Requires a confidential client
+            (tokenEndpointAuthMethod other than "none") and at least one entry in
+            allowedAudiences.
+          example: true
+          default: false
+        allowedAudiences:
+          type: array
+          items:
+            type: string
+          description: |
+            Resource authorization server identifiers this application may request ID-JAGs for.
+            The audience parameter on the token-exchange request must exactly match one of
+            these values.
+          example: ["https://api.partner.example.com"]
+        validityPeriod:
+          type: integer
+          description: The validity period of an issued ID-JAG in seconds. Defaults to 300 if not specified.
+          example: 300
+          default: 300
 
     UserInfoConfig:
       type: object
@@ -1307,6 +1368,59 @@ components:
           description: The value of the certificate.
           example: "https://myapp.example.com/.well-known/jwks"
 
+    Attestation:
+      type: object
+      description: >
+        Platform attestation configuration used to verify the binary identity of a mobile client
+        when it initiates a flow directly over HTTP. Configure exactly one platform.
+      oneOf:
+        - required: [android]
+        - required: [apple]
+      properties:
+        android:
+          $ref: '#/components/schemas/AndroidAttestation'
+        apple:
+          $ref: '#/components/schemas/AppleAttestation'
+
+    AndroidAttestation:
+      type: object
+      description: Google Play Integrity attestation configuration for Android clients.
+      properties:
+        packageName:
+          type: string
+          description: Android application package name that must match the attested app.
+          example: "com.example.myapp"
+        certificateSha256Digests:
+          type: array
+          items:
+            type: string
+          description: >
+            Allowed SHA-256 digests of the app signing certificate, in the URL-safe base64 form
+            reported by the Play Integrity API. The attested app must match one of these.
+          example: ["9VvjU4Gu7dg1234examplebase64digest"]
+        serviceAccountCredentials:
+          type: string
+          writeOnly: true
+          description: >
+            Google Cloud service account credentials (JSON) used to call the Play Integrity API.
+            Write-only: never returned in responses. Omit on update to preserve the stored value.
+
+    AppleAttestation:
+      type: object
+      description: Apple App Attest attestation configuration for iOS clients.
+      required: [teamId, bundleId]
+      properties:
+        teamId:
+          type: string
+          minLength: 1
+          description: Apple Developer Team ID.
+          example: "ABCDE12345"
+        bundleId:
+          type: string
+          minLength: 1
+          description: iOS application bundle identifier that must match the attested app.
+          example: "com.example.myapp"
+
     InboundAuthConfig:
       type: object
       properties:
@@ -1349,8 +1463,13 @@ components:
           type: array
           items:
             type: string
-            enum: ["authorization_code", "client_credentials", "refresh_token", "implicit", "password", "urn:ietf:params:oauth:grant-type:token-exchange"]
-          description: A list of grant types supported by the OAuth application. Defaults to ["authorization_code"] if not specified.
+            enum: ["authorization_code", "client_credentials", "refresh_token", "implicit", "password", "urn:ietf:params:oauth:grant-type:token-exchange", "urn:ietf:params:oauth:grant-type:jwt-bearer"]
+          description: >-
+            A list of grant types supported by the OAuth application. Defaults to
+            ["authorization_code"] if not specified. The
+            urn:ietf:params:oauth:grant-type:jwt-bearer grant, used to present an ID-JAG assertion
+            issued by a trusted external IdP (draft-ietf-oauth-identity-assertion-authz-grant),
+            requires a confidential client (tokenEndpointAuthMethod other than "none").
           example: ["authorization_code", "refresh_token"]
         responseTypes:
           type: array
@@ -1406,6 +1525,8 @@ components:
               $ref: '#/components/schemas/IDTokenConfig'
             refreshToken:
               $ref: '#/components/schemas/RefreshTokenConfig'
+            idJag:
+              $ref: '#/components/schemas/IDJAGConfig'
         userInfo:
           $ref: '#/components/schemas/UserInfoConfig'
         scopeClaims:
@@ -1455,8 +1576,13 @@ components:
           type: array
           items:
             type: string
-            enum: ["authorization_code", "client_credentials", "refresh_token", "implicit", "password", "urn:ietf:params:oauth:grant-type:token-exchange"]
-          description: A list of grant types supported by the OAuth application. Defaults to ["authorization_code"] if not specified.
+            enum: ["authorization_code", "client_credentials", "refresh_token", "implicit", "password", "urn:ietf:params:oauth:grant-type:token-exchange", "urn:ietf:params:oauth:grant-type:jwt-bearer"]
+          description: >-
+            A list of grant types supported by the OAuth application. Defaults to
+            ["authorization_code"] if not specified. The
+            urn:ietf:params:oauth:grant-type:jwt-bearer grant, used to present an ID-JAG assertion
+            issued by a trusted external IdP (draft-ietf-oauth-identity-assertion-authz-grant),
+            requires a confidential client (tokenEndpointAuthMethod other than "none").
           example: ["authorization_code", "refresh_token"]
         responseTypes:
           type: array
@@ -1512,6 +1638,8 @@ components:
               $ref: '#/components/schemas/IDTokenConfig'
             refreshToken:
               $ref: '#/components/schemas/RefreshTokenConfig'
+            idJag:
+              $ref: '#/components/schemas/IDJAGConfig'
         userInfo:
           $ref: '#/components/schemas/UserInfoConfig'
         scopeClaims:

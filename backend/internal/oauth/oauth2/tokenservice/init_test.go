@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -42,7 +42,7 @@ func (suite *InitTestSuite) SetupTest() {
 }
 
 func (suite *InitTestSuite) TestInitialize() {
-	tokenBuilder, tokenValidator := Initialize(testhelpers.OAuthConfig(), suite.mockJWTService, nil, nil, nil)
+	tokenBuilder, tokenValidator := Initialize(testhelpers.OAuthConfig(), suite.mockJWTService, nil, nil, nil, nil)
 
 	assert.NotNil(suite.T(), tokenBuilder)
 	assert.Implements(suite.T(), (*TokenBuilderInterface)(nil), tokenBuilder)

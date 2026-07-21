@@ -31,6 +31,10 @@ export interface Element<T = unknown> extends Base<T> {
     onSuccess?: string;
     [key: string]: unknown;
   };
+  /**
+   * Space-separated list of CSS class names to apply to the rendered element.
+   */
+  classes?: string;
 }
 
 export const ElementCategories = {
@@ -64,6 +68,7 @@ export const ElementTypes = {
   Resend: 'RESEND',
   Timer: 'TIMER',
   Consent: 'CONSENT',
+  ConsentInput: 'CONSENT_INPUT',
   Custom: 'CUSTOM',
 } as const;
 

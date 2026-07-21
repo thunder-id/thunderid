@@ -154,12 +154,15 @@ helm upgrade --install thunderid install/openchoreo/helm/ \
      --set thunderid-component.database.config.database="$DB_NAME" \
      --set thunderid-component.database.config.username="$DB_USER" \
      --set thunderid-component.database.config.password="$DB_PASS" \
-     --set thunderid-component.database.runtime.database="$DB_NAME" \
-     --set thunderid-component.database.runtime.username="$DB_USER" \
-     --set thunderid-component.database.runtime.password="$DB_PASS" \
-     --set thunderid-component.database.user.database="$DB_NAME" \
-     --set thunderid-component.database.user.username="$DB_USER" \
-     --set thunderid-component.database.user.password="$DB_PASS" \
+     --set thunderid-component.database.runtime_transient.database="$DB_NAME" \
+     --set thunderid-component.database.runtime_transient.username="$DB_USER" \
+     --set thunderid-component.database.runtime_transient.password="$DB_PASS" \
+     --set thunderid-component.database.entity.database="$DB_NAME" \
+     --set thunderid-component.database.entity.username="$DB_USER" \
+     --set thunderid-component.database.entity.password="$DB_PASS" \
+     --set thunderid-component.database.runtime_persistent.database="$DB_NAME" \
+     --set thunderid-component.database.runtime_persistent.username="$DB_USER" \
+     --set thunderid-component.database.runtime_persistent.password="$DB_PASS" \
      --set thunderid-component.serverPublicUrl="$SERVER_PUBLIC_URL" \
      --set thunderid-component.gate.hostname="$GATE_HOSTNAME"
    ```
@@ -219,16 +222,18 @@ To promote ThunderID to `staging` or `production`:
 | `thunderid-component.database.type` | Database engine: `sqlite` or `postgres` | `sqlite` |
 | `thunderid-component.database.storageSize` | PVC size for SQLite files | `1Gi` |
 | `thunderid-component.database.config.path` | SQLite config DB path (relative to ThunderID working directory) | `database/configdb.db` |
-| `thunderid-component.database.runtime.path` | SQLite runtime DB path | `database/runtimedb.db` |
-| `thunderid-component.database.user.path` | SQLite user DB path | `database/userdb.db` |
+| `thunderid-component.database.runtime_transient.path` | SQLite runtime-transient DB path | `database/runtime-transient.db` |
+| `thunderid-component.database.entity.path` | SQLite entity DB path | `database/entitydb.db` |
+| `thunderid-component.database.runtime_persistent.path` | SQLite runtime-persistent DB path | `database/runtime-persistent.db` |
 | `thunderid-component.database.host` | PostgreSQL hostname (`postgres` only) | — |
 | `thunderid-component.database.port` | PostgreSQL port — rendered as an integer in the ConfigMap (`postgres` only) | `5432` |
 | `thunderid-component.database.config.database` | Config DB name (`postgres` only) | `postgredb` |
 | `thunderid-component.database.config.username` | Config DB username (`postgres` only) | — |
 | `thunderid-component.database.config.password` | Config DB password (`postgres` only) | — |
 | `thunderid-component.database.config.sslmode` | Config DB SSL mode (`postgres` only) | `disable` |
-| `thunderid-component.database.runtime.*` | Runtime DB settings — same fields as `config` | — |
-| `thunderid-component.database.user.*` | User DB settings — same fields as `config` | — |
+| `thunderid-component.database.runtime_transient.*` | Runtime-transient DB settings — same fields as `config` | — |
+| `thunderid-component.database.entity.*` | Entity DB settings — same fields as `config` | — |
+| `thunderid-component.database.runtime_persistent.*` | Runtime-persistent DB settings — same fields as `config` | — |
 
 ### Gate and Console
 
@@ -252,14 +257,12 @@ To promote ThunderID to `staging` or `production`:
 | `thunderid-component.oauth.refresh_token_validity` | Refresh token validity in seconds | `86400` |
 | `thunderid-component.crypto.encryption.key` | Crypto encryption key (path or raw value) | `file://config/certs/crypto.key` |
 
-### Cache and Consent
+### Cache
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `thunderid-component.cache.size` | Maximum number of cache entries | `10000` |
 | `thunderid-component.cache.ttl` | Cache entry TTL in seconds | `3600` |
-| `thunderid-component.consent.enabled` | Enable consent server integration | `false` |
-| `thunderid-component.consent.baseUrl` | Consent server base URL | `http://localhost:9090/api/v1` |
 
 ### Resource Controls
 
@@ -342,20 +345,14 @@ Use this to derive the following values when configuring the Component via the U
 | `CONSOLE_CLIENT_ID` | OAuth client ID registered for the Console |
 | `CONSOLE_SCOPES` | JSON array of OAuth scopes the Console requests |
 
-### Consent
-
-| Environment Variable | How to get |
-|---------|------------|
-| `CONSENT_ENABLED` | Set `true` to enable consent server integration |
-| `CONSENT_BASE_URL` | Base URL of the consent server |
-
 ### Database — SQLite (`dbType: sqlite`)
 
 | Environment Variable | How to get |
 |---------|------------|
 | `DB_CONFIG_PATH` | Path relative to ThunderID working directory inside the container |
-| `DB_RUNTIME_PATH` | Path relative to ThunderID working directory inside the container |
-| `DB_USER_PATH` | Path relative to ThunderID working directory inside the container |
+| `DB_RUNTIME_TRANSIENT_PATH` | Path relative to ThunderID working directory inside the container |
+| `DB_ENTITY_PATH` | Path relative to ThunderID working directory inside the container |
+| `DB_RUNTIME_PERSISTENT_PATH` | Path relative to ThunderID working directory inside the container |
 
 ### Database — PostgreSQL (`dbType: postgres`)
 
@@ -374,16 +371,21 @@ GRANT ALL PRIVILEGES ON DATABASE postgredb TO dbuser;
 | `DB_CONFIG_USERNAME` | PostgreSQL application user e.g. `dbuser` |
 | `DB_CONFIG_PASSWORD` | Password for the application user |
 | `DB_CONFIG_SSLMODE` | `disable`, `require`, or `verify-full` (recommended for production) |
-| `DB_RUNTIME_HOSTNAME` | Same as `DB_CONFIG_HOSTNAME` unless using separate DB hosts |
-| `DB_RUNTIME_NAME` | Same as `DB_CONFIG_NAME` unless using separate databases |
-| `DB_RUNTIME_USERNAME` | Same as `DB_CONFIG_USERNAME` unless using separate users |
-| `DB_RUNTIME_PASSWORD` | Same as `DB_CONFIG_PASSWORD` unless using separate users |
-| `DB_RUNTIME_SSLMODE` | Same as `DB_CONFIG_SSLMODE` |
-| `DB_USER_HOSTNAME` | Same as `DB_CONFIG_HOSTNAME` unless using separate DB hosts |
-| `DB_USER_NAME` | Same as `DB_CONFIG_NAME` unless using separate databases |
-| `DB_USER_USERNAME` | Same as `DB_CONFIG_USERNAME` unless using separate users |
-| `DB_USER_PASSWORD` | Same as `DB_CONFIG_PASSWORD` unless using separate users |
-| `DB_USER_SSLMODE` | Same as `DB_CONFIG_SSLMODE` |
+| `DB_RUNTIME_TRANSIENT_HOSTNAME` | Same as `DB_CONFIG_HOSTNAME` unless using separate DB hosts |
+| `DB_RUNTIME_TRANSIENT_NAME` | Same as `DB_CONFIG_NAME` unless using separate databases |
+| `DB_RUNTIME_TRANSIENT_USERNAME` | Same as `DB_CONFIG_USERNAME` unless using separate users |
+| `DB_RUNTIME_TRANSIENT_PASSWORD` | Same as `DB_CONFIG_PASSWORD` unless using separate users |
+| `DB_RUNTIME_TRANSIENT_SSLMODE` | Same as `DB_CONFIG_SSLMODE` |
+| `DB_ENTITY_HOSTNAME` | Same as `DB_CONFIG_HOSTNAME` unless using separate DB hosts |
+| `DB_ENTITY_NAME` | Same as `DB_CONFIG_NAME` unless using separate databases |
+| `DB_ENTITY_USERNAME` | Same as `DB_CONFIG_USERNAME` unless using separate users |
+| `DB_ENTITY_PASSWORD` | Same as `DB_CONFIG_PASSWORD` unless using separate users |
+| `DB_ENTITY_SSLMODE` | Same as `DB_CONFIG_SSLMODE` |
+| `DB_RUNTIME_PERSISTENT_HOSTNAME` | Same as `DB_CONFIG_HOSTNAME` unless using separate DB hosts |
+| `DB_RUNTIME_PERSISTENT_NAME` | Same as `DB_CONFIG_NAME` unless using separate databases |
+| `DB_RUNTIME_PERSISTENT_USERNAME` | Same as `DB_CONFIG_USERNAME` unless using separate users |
+| `DB_RUNTIME_PERSISTENT_PASSWORD` | Same as `DB_CONFIG_PASSWORD` unless using separate users |
+| `DB_RUNTIME_PERSISTENT_SSLMODE` | Same as `DB_CONFIG_SSLMODE` |
 
 ## Chart Structure
 

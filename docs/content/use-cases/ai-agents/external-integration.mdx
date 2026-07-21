@@ -1,0 +1,72 @@
+---
+title: External Integration
+docType: use-case
+description: Let AI agents act across third-party SaaS platforms with just-in-time tokens from a managed vault, never holding long-lived secrets.
+sidebar_position: 7
+---
+
+# Agents Invoking External Tools (Agent → Third-Party SaaS)
+
+Much of an agent's usefulness comes from reaching outside the organization: sending mail through Gmail, posting to Slack, updating records in Salesforce, opening pull requests on GitHub. Each of these platforms has its own OAuth flow, its own tokens, and its own refresh mechanics. The identity challenge is not *whether* the agent can hold those tokens, but whether it should ever handle the long-lived secrets behind them.
+
+An agent that stores a user's Google refresh token has become a high-value target. If the agent is compromised, so is the user's mailbox, permanently, until the user notices and revokes it manually. <ProductName /> never gives an agent a long-lived secret.
+
+## IAM Capabilities Required
+
+**Managed token vault** to securely store third-party access and refresh tokens on the user's or agent's behalf, so the agent never holds a long-lived secret.
+
+**Just-in-time credential issuance** to hand the agent a short-lived external access token at the moment it needs one, and no sooner.
+
+**Automatic token refresh** to renew expiring external tokens using stored refresh tokens, transparently, without exposing the refresh token to the agent.
+
+**Cross-platform credential management** to maintain separate, independent credential chains for each external platform an agent touches within a single workflow.
+
+## Managed External Token Access
+
+### The Challenge
+
+Third-party OAuth was designed for applications, not autonomous agents. An application obtains a refresh token and stores it, expecting to guard it behind server-side protections and a limited blast radius. An agent is a different risk profile: it is more autonomous, more numerous, and more exposed to manipulation through its inputs. Handing each agent the raw refresh tokens for every user it serves multiplies the number of places a long-lived credential can leak.
+
+The naive alternative, asking the user to re-authorize the SaaS platform every time the agent needs it, destroys the automation the agent exists to provide. Organizations need the convenience of stored credentials without the risk of stored credentials living inside the agent.
+
+### How <ProductName /> Solves It
+
+<ProductName /> operates a managed token vault. When a user connects an external platform, the resulting refresh token and long-lived secrets are stored in the vault, never in the agent. When the agent needs to act on that platform, it asks <ProductName />, which issues a short-lived external access token just-in-time. The agent uses the token, and it expires quickly.
+
+The refresh token never leaves the vault. <ProductName /> performs the refresh on the agent's behalf and returns only the freshly minted, short-lived access token. If an agent is compromised, the attacker captures at most a short-lived token for a single platform, not a permanent key to the user's account. Revoking the agent's access to the vault severs its reach to every connected platform at once, without the user re-authorizing anything.
+
+### Scenario: Sending Mail Without Holding the Key
+
+A personal-assistant agent drafts and sends email on a user's behalf through Gmail. The user connected their Google account once; <ProductName /> holds the resulting refresh token in the vault. Each time the agent sends a message, it requests a Gmail access token from <ProductName />, receives a short-lived token, and calls the Gmail API. The agent never sees the refresh token. When the user later revokes the agent, <ProductName /> stops issuing Gmail tokens to it immediately, and the connected Google account itself is untouched and available to the user's other tools.
+
+## Cross-Platform Credential Management
+
+### The Challenge
+
+Real workflows span platforms. An agent might read a Salesforce opportunity, summarize it, post the summary to a Slack channel, and file a follow-up task in Jira: four platforms, four independent OAuth relationships, four token lifecycles, each expiring on its own schedule. Managing these as a tangle of secrets inside the agent is fragile: one expired token or one leaked secret compromises the whole chain, and there is no clean way to revoke access to one platform without disturbing the others.
+
+### How <ProductName /> Solves It
+
+<ProductName /> manages each external platform's credential chain independently within the vault. An agent operating across Salesforce, Slack, and Jira in one workflow holds no long-lived secret for any of them; it requests a short-lived token per platform, just-in-time, as each step of the workflow reaches it. Each platform's refresh and expiry are handled separately, so a problem with one connection never cascades to the others.
+
+Because the chains are isolated, access is revocable per platform. Cutting the agent's Slack access leaves its Salesforce and Jira connections intact. The agent's reach across external services becomes a set of independently governed grants rather than an all-or-nothing bundle of secrets.
+
+### Scenario: A Multi-Platform Workflow
+
+A sales-operations agent runs a nightly routine: pull closed opportunities from Salesforce, post a digest to a Slack channel, and create renewal tasks in Jira. For each platform, the agent requests a short-lived token from <ProductName /> at the moment that step runs. <ProductName /> refreshes each platform's credential independently from the vault. When the Slack workspace rotates its app credentials, only the Slack chain is affected; the Salesforce and Jira steps continue unchanged, and the agent never handled a long-lived secret for any of the three.
+
+## Key Principles
+
+**Agents never hold long-lived secrets.** Refresh tokens and long-lived credentials live in the vault, not in the agent. The agent receives short-lived access tokens just-in-time.
+
+**Compromise is bounded.** A compromised agent leaks, at most, a short-lived token for a single platform, not permanent access to a user's account.
+
+**Credential chains are isolated per platform.** A problem with one connection never cascades to the others, and access is revocable one platform at a time.
+
+**Revocation is instant and central.** Cutting an agent's vault access severs its reach to every connected platform at once, without the user re-authorizing anything.
+
+## Related Use Cases
+
+- [Accessing Internal Business Services](../internal-services)
+- [Invoking the Agent and Authenticating Users](../invoking-the-agent)
+- [Multi-Agent Interactions](../multi-agent)

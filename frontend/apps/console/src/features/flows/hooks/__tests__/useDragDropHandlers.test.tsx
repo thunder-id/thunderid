@@ -834,6 +834,63 @@ describe('useDragDropHandlers', () => {
       expect(form?.components?.length).toBeGreaterThan(1);
     });
 
+    it('should add element to a stack nested inside a form', () => {
+      let capturedCallback: ((node: Node) => {components: Element[]}) | null = null;
+      mockUpdateNodeData.mockImplementation((_id: string, callback: (node: Node) => {components: Element[]}) => {
+        capturedCallback = callback;
+      });
+
+      const {result} = renderHook(() => useDragDropHandlers(defaultProps), {
+        wrapper: createWrapper(),
+      });
+
+      const targetStackResource = createMockResource({id: 'stack-1', type: 'STACK'});
+      const sourceData: DragSourceData = {
+        dragged: createMockResource({resourceType: ResourceTypes.Element, type: 'IMAGE'}),
+      };
+      const targetData: DragTargetData = {
+        stepId: 'step-1',
+        droppedOn: targetStackResource,
+      };
+      const event = createMockDragEvent(100, 200);
+
+      act(() => {
+        result.current.addToForm(
+          event as unknown as Parameters<typeof result.current.addToForm>[0],
+          sourceData,
+          targetData,
+        );
+      });
+
+      expect(capturedCallback).not.toBeNull();
+
+      // Form contains a nested Stack - the Stack is not a top-level component of the view.
+      const mockNode: Node = {
+        id: 'step-1',
+        type: 'VIEW',
+        position: {x: 0, y: 0},
+        data: {
+          components: [
+            {
+              id: 'form-1',
+              type: 'FORM',
+              components: [{id: 'stack-1', type: 'STACK', components: [{id: 'button-1', type: 'BUTTON'}]}],
+            },
+          ],
+        },
+      };
+
+      const callbackResult = capturedCallback!(mockNode);
+      const form = callbackResult.components.find((c: Element) => c.id === 'form-1') as Element & {
+        components?: Element[];
+      };
+      const stack = form?.components?.find((c: Element) => c.id === 'stack-1') as Element & {
+        components?: Element[];
+      };
+      // The nested stack should receive the new element.
+      expect(stack?.components?.length).toBe(2);
+    });
+
     it('should handle node with no existing components', () => {
       let capturedCallback: ((node: Node) => {components: Element[]}) | null = null;
       mockUpdateNodeData.mockImplementation((_id: string, callback: (node: Node) => {components: Element[]}) => {
@@ -1168,6 +1225,60 @@ describe('useDragDropHandlers', () => {
         components?: Element[];
       };
       expect(otherComponent?.components?.length).toBe(0);
+    });
+
+    it('should insert element at target index in a stack nested inside a form', () => {
+      let capturedCallback: ((node: Node) => {components: Element[]}) | null = null;
+      mockUpdateNodeData.mockImplementation((_id: string, callback: (node: Node) => {components: Element[]}) => {
+        capturedCallback = callback;
+      });
+
+      const {result} = renderHook(() => useDragDropHandlers(defaultProps), {
+        wrapper: createWrapper(),
+      });
+
+      const sourceData: DragSourceData = {
+        dragged: createMockResource({resourceType: ResourceTypes.Element, type: 'IMAGE'}),
+      };
+
+      act(() => {
+        result.current.addToFormAtIndex(sourceData, 'step-1', 'stack-1', 'button-2');
+      });
+
+      const mockNode: Node = {
+        id: 'step-1',
+        type: 'VIEW',
+        position: {x: 0, y: 0},
+        data: {
+          components: [
+            {
+              id: 'form-1',
+              type: 'FORM',
+              components: [
+                {
+                  id: 'stack-1',
+                  type: 'STACK',
+                  components: [
+                    {id: 'button-1', type: 'BUTTON'},
+                    {id: 'button-2', type: 'BUTTON'},
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      const callbackResult = capturedCallback!(mockNode);
+      const form = callbackResult.components.find((c: Element) => c.id === 'form-1') as Element & {
+        components?: Element[];
+      };
+      const stack = form?.components?.find((c: Element) => c.id === 'stack-1') as Element & {
+        components?: Element[];
+      };
+      // The new element should be inserted before button-2 within the nested stack.
+      expect(stack?.components?.length).toBe(3);
+      expect(stack?.components?.[2].id).toBe('button-2');
     });
   });
 

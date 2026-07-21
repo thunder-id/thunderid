@@ -69,6 +69,7 @@ const NODE_TO_STEP_TYPE_MAP: Record<string, string> = {
   TASK_EXECUTION: StepTypes.Execution,
   DECISION: StepTypes.Rule,
   END: StepTypes.End,
+  CALL: StepTypes.Call,
   START: StaticStepTypes.Start,
 };
 
@@ -131,6 +132,33 @@ function restoreButtonAction(
   }
 
   return component;
+}
+
+/**
+ * Walks a component tree looking for a RICH_TEXT whose author-defined `action.ref` matches
+ * the given ref. Used at edge-generation time so the resulting edge attaches to the
+ * component-scoped source handle (`${component.id}${NEXT_HANDLE_SUFFIX}`) rather than an
+ * `action.ref`-scoped one that doesn't exist for rich text.
+ */
+function findRichTextComponentByActionRef(components: Element[] | undefined, actionRef: string): Element | undefined {
+  if (!components || components.length === 0) {
+    return undefined;
+  }
+
+  for (const component of components) {
+    const richAction = (component as Element & {action?: {ref?: string}}).action;
+    if (component.type === ElementTypes.RichText && richAction?.ref === actionRef) {
+      return component;
+    }
+    if (component.components) {
+      const found = findRichTextComponentByActionRef(component.components, actionRef);
+      if (found) {
+        return found;
+      }
+    }
+  }
+
+  return undefined;
 }
 
 /**
@@ -244,7 +272,10 @@ function transformNodeToCanvas(apiNode: FlowNode): CanvasNode {
         type: 'EXECUTOR',
         executor: apiNode.executor,
         onSuccess: apiNode.onSuccess,
-        onFailure: apiNode.onFailure,
+        // Only carry the branching outcomes the node actually declares. Their presence drives
+        // the failure/incomplete output handles, so a node without them stays single-outcome
+        // rather than showing a dangling handle.
+        ...(apiNode.onFailure !== undefined ? {onFailure: apiNode.onFailure} : {}),
         ...(apiNode.onIncomplete !== undefined ? {onIncomplete: apiNode.onIncomplete} : {}),
       },
     };
@@ -253,6 +284,21 @@ function transformNodeToCanvas(apiNode: FlowNode): CanvasNode {
       canvasNode.data.properties = apiNode.properties;
     }
 
+    canvasNode.resourceType = 'STEP';
+    canvasNode.category = 'WORKFLOW';
+  }
+
+  // Handle CALL nodes (cross-flow invocation)
+  if (stepType === StepTypes.Call) {
+    canvasNode.data = {
+      flow: apiNode.flow ?? {ref: ''},
+      action: {
+        type: 'CALL',
+        flow: apiNode.flow ?? {ref: ''},
+        onSuccess: apiNode.onSuccess,
+        onFailure: apiNode.onFailure,
+      },
+    };
     canvasNode.resourceType = 'STEP';
     canvasNode.category = 'WORKFLOW';
   }
@@ -318,10 +364,18 @@ function generateEdgesFromNodes(apiNodes: FlowNode[]): Edge[] {
       if (nodeActions) {
         nodeActions.forEach((action) => {
           if (action.nextNode && nodeIds.has(action.nextNode)) {
+            // For RICH_TEXT the source handle is scoped by component.id (matches the
+            // widget-drop convention). For ACTION buttons, action.ref already equals
+            // component.id so the same lookup naturally works.
+            const richTextSource = findRichTextComponentByActionRef(
+              node.meta?.components as Element[] | undefined,
+              action.ref,
+            );
+            const handleBase = richTextSource ? richTextSource.id : action.ref;
             edges.push({
               id: action.ref,
               source: node.id,
-              sourceHandle: `${action.ref}${VisualFlowConstants.FLOW_BUILDER_NEXT_HANDLE_SUFFIX}`,
+              sourceHandle: `${handleBase}${VisualFlowConstants.FLOW_BUILDER_NEXT_HANDLE_SUFFIX}`,
               target: action.nextNode,
               type: 'smoothstep',
               animated: false,
@@ -407,6 +461,37 @@ function generateEdgesFromNodes(apiNodes: FlowNode[]): Edge[] {
       });
 
       // Handle onFailure for decision nodes
+      if (node.onFailure && nodeIds.has(node.onFailure)) {
+        edges.push({
+          id: `${node.id}-failure-to-${node.onFailure}`,
+          source: node.id,
+          sourceHandle: 'failure',
+          target: node.onFailure,
+          type: 'smoothstep',
+          animated: false,
+          markerEnd: {
+            type: MarkerType.Arrow,
+          },
+        });
+      }
+    }
+
+    // Handle CALL node connections
+    if (stepType === StepTypes.Call) {
+      if (node.onSuccess && nodeIds.has(node.onSuccess)) {
+        edges.push({
+          id: `${node.id}-to-${node.onSuccess}`,
+          source: node.id,
+          sourceHandle: `${node.id}${VisualFlowConstants.FLOW_BUILDER_NEXT_HANDLE_SUFFIX}`,
+          target: node.onSuccess,
+          type: 'smoothstep',
+          animated: false,
+          markerEnd: {
+            type: MarkerType.Arrow,
+          },
+        });
+      }
+
       if (node.onFailure && nodeIds.has(node.onFailure)) {
         edges.push({
           id: `${node.id}-failure-to-${node.onFailure}`,

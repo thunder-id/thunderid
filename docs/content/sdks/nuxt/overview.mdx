@@ -1,13 +1,14 @@
 ---
 title: Nuxt SDK Overview
+docType: concept
 sidebar_position: 1
 sidebar_label: Overview
-description: Nuxt SDK for seamless authentication integration with SSR support
+description: Nuxt SDK for full-stack authentication with SSR support, server utilities, and built-in session management.
 ---
 
 # Nuxt SDK
 
-The <ProductName /> Nuxt SDK (`@thunderid/nuxt`) is a Nuxt module that integrates <ProductName /> authentication into Nuxt 3 applications. It provides composables, auto-registered components, route middleware, server utilities, and a set of built-in API routes — all with full SSR hydration support.
+The <ProductName /> Nuxt SDK (`@thunderid/nuxt`) is a Nuxt module that integrates <ProductName /> authentication into Nuxt 3 applications. It provides composables, auto-registered components, route middleware, server utilities, and a set of built-in API routes, all with full SSR hydration support.
 
 ## Installation
 
@@ -56,7 +57,7 @@ Then wrap your root layout with `<ThunderIDRoot />`:
 </template>
 ```
 
-For full setup instructions, see the [Nuxt quickstart guide](/docs/next/guides/getting-started/connect-your-application/nuxt).
+For full setup instructions, see the [Nuxt quickstart guide](../../../guides/getting-started/connect-your-application/nuxt).
 
 ## Features
 
@@ -64,58 +65,58 @@ For full setup instructions, see the [Nuxt quickstart guide](/docs/next/guides/g
 
 The SDK is configured via the `thunderid` key in `nuxt.config.ts`.
 
-- **[`Module Configuration`](/docs/next/sdks/nuxt/apis/configuration/module-configuration)** — Full reference for all configuration options
+- **[`Module Configuration`](../apis/configuration/module-configuration)**: Full reference for all configuration options
 
 ### Composables
 
 Auto-imported composables available in every component and page without explicit imports.
 
-- **[`useThunderID()`](/docs/next/sdks/nuxt/apis/composables/use-thunderid)** — Access auth state and trigger sign-in, sign-out, and sign-up flows
-- **[`useUser()`](/docs/next/sdks/nuxt/apis/composables/use-user)** — Access the authenticated user object
+- **[`useThunderID()`](../apis/composables/use-thunderid)**: Access auth state and trigger sign-in, sign-out, and sign-up flows
+- **[`useUser()`](../apis/composables/use-user)**: Access the authenticated user object
 
 ### Components
 
 All components are auto-registered with the `ThunderID` prefix and do not require explicit imports.
 
 #### Provider
-- **[`<ThunderIDRoot />`](/docs/next/sdks/nuxt/apis/components/thunderid-root)** — Root provider that mounts all authentication context providers
+- **[`<ThunderIDRoot />`](../apis/components/thunderid-root)**: Root provider that mounts all authentication context providers
 
 #### Control Components
-- **[`<ThunderIDSignedIn />`](/docs/next/sdks/nuxt/apis/components/signed-in)** — Render content only when the user is authenticated
-- **[`<ThunderIDSignedOut />`](/docs/next/sdks/nuxt/apis/components/signed-out)** — Render content only when the user is not authenticated
-- **[`<ThunderIDLoading />`](/docs/next/sdks/nuxt/apis/components/loading)** — Render content during authentication loading state
+- **[`<ThunderIDSignedIn />`](../apis/components/signed-in)**: Render content only when the user is authenticated
+- **[`<ThunderIDSignedOut />`](../apis/components/signed-out)**: Render content only when the user is not authenticated
+- **[`<ThunderIDLoading />`](../apis/components/loading)**: Render content during authentication loading state
 
 #### Action Components
-- **[`<ThunderIDSignInButton />`](/docs/next/sdks/nuxt/apis/components/sign-in-button)** — Trigger the sign-in flow
-- **[`<ThunderIDSignOutButton />`](/docs/next/sdks/nuxt/apis/components/sign-out-button)** — Sign out the current user
-- **[`<ThunderIDSignUpButton />`](/docs/next/sdks/nuxt/apis/components/sign-up-button)** — Trigger the sign-up flow
+- **[`<ThunderIDSignInButton />`](../apis/components/sign-in-button)**: Trigger the sign-in flow
+- **[`<ThunderIDSignOutButton />`](../apis/components/sign-out-button)**: Sign out the current user
+- **[`<ThunderIDSignUpButton />`](../apis/components/sign-up-button)**: Trigger the sign-up flow
 
 #### User Self-care Components
-- **[`<ThunderIDUser />`](/docs/next/sdks/nuxt/apis/components/user)** — Access authenticated user data via slot props
-- **[`<ThunderIDUserProfile />`](/docs/next/sdks/nuxt/apis/components/user-profile)** — Full profile management interface
-- **[`<ThunderIDUserDropdown />`](/docs/next/sdks/nuxt/apis/components/user-dropdown)** — User menu with profile and sign-out options
+- **[`<ThunderIDUser />`](../apis/components/user)**: Access authenticated user data via slot props
+- **[`<ThunderIDUserProfile />`](../apis/components/user-profile)**: Full profile management interface
+- **[`<ThunderIDUserDropdown />`](../apis/components/user-dropdown)**: User menu with profile and sign-out options
 
 ### Middleware
 
-- **[`defineThunderIDMiddleware()`](/docs/next/sdks/nuxt/apis/middleware/define-thunderid-middleware)** — Factory for creating route middleware that gates pages by auth state, organization, or required scopes
-- Named **`'auth'`** middleware — pre-built middleware that redirects unauthenticated users to sign-in
+- **[`defineThunderIDMiddleware()`](../apis/middleware/define-thunderid-middleware)**: Factory for creating route middleware that gates pages by auth state, organization, or required scopes
+- Named **`'auth'`** middleware: pre-built middleware that redirects unauthenticated users to sign-in
 
 ### Server Utilities
 
 Server-only utilities imported from `@thunderid/nuxt/server` for use in API routes, server routes, and server middleware.
 
-- **[`useServerSession()`](/docs/next/sdks/nuxt/apis/server/use-server-session)** — Read the session payload from the current request, or `null`
-- **[`requireServerSession()`](/docs/next/sdks/nuxt/apis/server/require-server-session)** — Read the session or throw a `401` error
-- **[`getValidAccessToken()`](/docs/next/sdks/nuxt/apis/server/get-valid-access-token)** — Get a valid access token, refreshing it automatically if expired
-- **[`getThunderIDContext()`](/docs/next/sdks/nuxt/apis/server/get-thunderid-context)** — Read the typed ThunderID context attached to an H3 event
+- **[`useServerSession()`](../apis/server/use-server-session)**: Read the session payload from the current request, or `null`
+- **[`requireServerSession()`](../apis/server/require-server-session)**: Read the session or throw a `401` error
+- **[`getValidAccessToken()`](../apis/server/get-valid-access-token)**: Get a valid access token, refreshing it automatically if expired
+- **[`get<ProductName />Context()`](../apis/server/get-thunderid-context)**: Read the typed <ProductName /> context attached to an H3 event
 
 ### Utilities
 
-- **[`createRouteMatcher()`](/docs/next/sdks/nuxt/apis/utils/create-route-matcher)** — Build a route-matching function from glob patterns for use in middleware
+- **[`createRouteMatcher()`](../apis/utils/create-route-matcher)**: Build a route-matching function from glob patterns for use in middleware
 
 ### Error Handling
 
-- **[`ThunderIDError`](/docs/next/sdks/nuxt/apis/errors/thunderid-error)** — Structured error class thrown by the SDK with typed `ErrorCode` values
+- **[`ThunderIDError`](../apis/errors/thunderid-error)**: Structured error class thrown by the SDK with typed `ErrorCode` values
 
 ## Built-in API Routes
 

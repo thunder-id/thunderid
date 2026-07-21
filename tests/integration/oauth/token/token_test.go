@@ -25,18 +25,20 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
-	testServerURL = "https://localhost:8095"
-	clientId      = "token_test_client_123"
-	clientSecret  = "token_test_secret_123"
-	appName       = "TokenTestApp"
+	testServerURL                        = "https://localhost:8095"
+	clientId                             = "token_test_client_123"
+	clientSecret                         = "token_test_secret_123"
+	appName                              = "TokenTestApp"
+	tokenDefaultResourceServerIdentifier = "https://token-default.example.com"
 )
 
 type TokenTestSuite struct {
@@ -44,6 +46,7 @@ type TokenTestSuite struct {
 	applicationIDBasic string
 	applicationIDPost  string
 	ouID               string
+	resourceServerID   string
 	client             *http.Client
 }
 
@@ -65,6 +68,17 @@ func (ts *TokenTestSuite) SetupSuite() {
 		ts.T().Fatalf("Failed to create test organization unit: %v", err)
 	}
 	ts.ouID = ouID
+
+	resourceServerID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:        "Token Default Resource Server",
+		Description: "Resource server for token integration tests",
+		Identifier:  tokenDefaultResourceServerIdentifier,
+		OUID:        ts.ouID,
+	}, []testutils.Action{})
+	if err != nil {
+		ts.T().Fatalf("Failed to create resource server: %v", err)
+	}
+	ts.resourceServerID = resourceServerID
 
 	// Create applications for different authentication methods
 	ts.applicationIDBasic = ts.createTestApplication("client_secret_basic")
@@ -142,11 +156,26 @@ func (ts *TokenTestSuite) TearDownSuite() {
 	if ts.applicationIDPost != "" {
 		ts.deleteApplication(ts.applicationIDPost)
 	}
+	if ts.resourceServerID != "" {
+		if err := testutils.DeleteResourceServer(ts.resourceServerID); err != nil {
+			ts.T().Logf("Failed to delete resource server: %v", err)
+		}
+	}
 	if ts.ouID != "" {
 		if err := testutils.DeleteOrganizationUnit(ts.ouID); err != nil {
 			ts.T().Logf("Failed to delete test organization unit: %v", err)
 		}
 	}
+}
+
+func tokenTestClientCredentialsForm(scopes string) string {
+	form := url.Values{}
+	form.Set("grant_type", "client_credentials")
+	form.Set("resource", tokenDefaultResourceServerIdentifier)
+	if scopes != "" {
+		form.Set("scope", scopes)
+	}
+	return form.Encode()
 }
 
 func (ts *TokenTestSuite) deleteApplication(appId string) {
@@ -196,7 +225,8 @@ func (ts *TokenTestSuite) runClientCredentialsTestCase(request *http.Request,
 
 	// Validate the response content.
 	if expectedStatus == http.StatusOK {
-		if _, ok := respBody["access_token"]; !ok {
+		accessToken, ok := respBody["access_token"].(string)
+		if !ok {
 			ts.T().Fatalf("Response does not contain access_token")
 		}
 		if _, ok := respBody["token_type"]; !ok {
@@ -204,6 +234,13 @@ func (ts *TokenTestSuite) runClientCredentialsTestCase(request *http.Request,
 		}
 		if _, ok := respBody["expires_in"]; !ok {
 			ts.T().Fatalf("Response does not contain expires_in")
+		}
+		claims, err := testutils.DecodeJWT(accessToken)
+		if err != nil {
+			ts.T().Fatalf("Failed to decode access token: %v", err)
+		}
+		if claims.Aud != tokenDefaultResourceServerIdentifier {
+			ts.T().Fatalf("Expected audience %s, got %s", tokenDefaultResourceServerIdentifier, claims.Aud)
 		}
 		if len(expectedScopes) > 0 {
 			if _, ok := respBody["scope"]; !ok {
@@ -275,7 +312,7 @@ func (ts *TokenTestSuite) TestClientCredentialsGrantWithHeaderCredentials() {
 	for _, tc := range testCases {
 		ts.Run(tc.testName, func() {
 			// Prepare the request.
-			reqBody := strings.NewReader("grant_type=client_credentials&scope=" + tc.requestedScopes)
+			reqBody := strings.NewReader(tokenTestClientCredentialsForm(tc.requestedScopes))
 			request, err := http.NewRequest("POST", testServerURL+"/oauth2/token", reqBody)
 			if err != nil {
 				ts.T().Fatalf("Failed to create request: %v", err)
@@ -290,7 +327,7 @@ func (ts *TokenTestSuite) TestClientCredentialsGrantWithHeaderCredentials() {
 
 	// Verify that client OU claims are included in the access token.
 	ts.Run("WithClientOUClaims", func() {
-		reqBody := strings.NewReader("grant_type=client_credentials")
+		reqBody := strings.NewReader(tokenTestClientCredentialsForm(""))
 		request, err := http.NewRequest("POST", testServerURL+"/oauth2/token", reqBody)
 		ts.Require().NoError(err)
 		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -309,6 +346,7 @@ func (ts *TokenTestSuite) TestClientCredentialsGrantWithHeaderCredentials() {
 
 		claims, err := testutils.DecodeJWT(accessToken)
 		ts.Require().NoError(err)
+		ts.Assert().Equal(tokenDefaultResourceServerIdentifier, claims.Aud)
 
 		ou, err := testutils.GetOrganizationUnit(ts.ouID)
 		ts.Require().NoError(err)
@@ -343,8 +381,15 @@ func (ts *TokenTestSuite) TestClientCredentialsGrantWithBodyCredentials() {
 
 	for _, tc := range testCases {
 		ts.Run(tc.testName, func() {
-			reqBody := strings.NewReader("grant_type=client_credentials&scope=" + tc.requestedScopes +
-				"&client_id=" + clientId + "_client_secret_post" + "&client_secret=" + clientSecret)
+			form := url.Values{}
+			form.Set("grant_type", "client_credentials")
+			form.Set("resource", tokenDefaultResourceServerIdentifier)
+			if tc.requestedScopes != "" {
+				form.Set("scope", tc.requestedScopes)
+			}
+			form.Set("client_id", clientId+"_client_secret_post")
+			form.Set("client_secret", clientSecret)
+			reqBody := strings.NewReader(form.Encode())
 			request, err := http.NewRequest("POST", testServerURL+"/oauth2/token", reqBody)
 			if err != nil {
 				ts.T().Fatalf("Failed to create request: %v", err)
@@ -481,7 +526,7 @@ func (ts *TokenTestSuite) TestClientCredentialsGrantEntityIdentificationByClient
 
 	// Use the clientId to authenticate and obtain an access token.
 	// This triggers IdentifyEntity({"clientId": identClientID}) inside the token endpoint.
-	reqBody := strings.NewReader("grant_type=client_credentials")
+	reqBody := strings.NewReader(tokenTestClientCredentialsForm(""))
 	tokenReq, err := http.NewRequest("POST", testServerURL+"/oauth2/token", reqBody)
 	ts.Require().NoError(err)
 	tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -496,6 +541,11 @@ func (ts *TokenTestSuite) TestClientCredentialsGrantEntityIdentificationByClient
 	var tokenBody map[string]interface{}
 	ts.Require().NoError(json.NewDecoder(tokenResp.Body).Decode(&tokenBody))
 	ts.Assert().NotEmpty(tokenBody["access_token"])
+	accessToken, ok := tokenBody["access_token"].(string)
+	ts.Require().True(ok, "access_token not found in response")
+	claims, err := testutils.DecodeJWT(accessToken)
+	ts.Require().NoError(err)
+	ts.Assert().Equal(tokenDefaultResourceServerIdentifier, claims.Aud)
 }
 
 func basicAuth(username, password string) string {

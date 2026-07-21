@@ -63,7 +63,7 @@ func newSessionStore() sessionStoreInterface {
 // storeSession stores a WebAuthn session in the database.
 func (s *sessionStore) storeSession(
 	ctx context.Context, sessionKey string, session *sessionData, expirySeconds int64) error {
-	dbClient, err := s.dbProvider.GetRuntimeDBClient()
+	dbClient, err := s.dbProvider.GetRuntimeTransientDBClient()
 	if err != nil {
 		s.logger.Error(ctx, "Failed to get database client", log.Error(err))
 		return err
@@ -101,7 +101,7 @@ func (s *sessionStore) retrieveSession(ctx context.Context, sessionKey string) (
 		return nil, nil
 	}
 
-	dbClient, err := s.dbProvider.GetRuntimeDBClient()
+	dbClient, err := s.dbProvider.GetRuntimeTransientDBClient()
 	if err != nil {
 		s.logger.Error(ctx, "Failed to get database client", log.Error(err))
 		return nil, err
@@ -147,7 +147,7 @@ func (s *sessionStore) deleteSession(ctx context.Context, sessionKey string) err
 		return nil
 	}
 
-	dbClient, err := s.dbProvider.GetRuntimeDBClient()
+	dbClient, err := s.dbProvider.GetRuntimeTransientDBClient()
 	if err != nil {
 		s.logger.Error(ctx, "Failed to get database client", log.Error(err))
 		return err

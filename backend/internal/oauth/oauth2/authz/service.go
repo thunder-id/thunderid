@@ -214,6 +214,14 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 	codeChallengeMethod := msg.RequestQueryParams[oauth2const.RequestParamCodeChallengeMethod]
 
 	resources := msg.Resources
+	// A token is bound to exactly one resource server, so an authorization request may target at
+	// most one resource (RFC 8707 allows repetition, but multi-resource codes are not supported).
+	if len(resources) > 1 {
+		return nil, &AuthorizationError{
+			Code:    oauth2const.ErrorInvalidTarget,
+			Message: "Only a single resource parameter is supported",
+		}
+	}
 
 	// Extract claims parameter.
 	claimsParam := msg.RequestQueryParams[oauth2const.RequestParamClaims]
@@ -223,6 +231,7 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 
 	nonce := msg.RequestQueryParams[oauth2const.RequestParamNonce]
 	acrValues := msg.RequestQueryParams[oauth2const.RequestParamAcrValues]
+	maxAge := msg.RequestQueryParams[oauth2const.RequestParamMaxAge]
 	dpopJkt := msg.RequestQueryParams[oauth2const.RequestParamDPoPJkt]
 	prompt := msg.RequestQueryParams[oauth2const.RequestParamPrompt]
 
@@ -256,6 +265,7 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 	}
 
 	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(scope, app.ScopeClaims)
+	oidcScopes = oauth2utils.FilterOIDCScopesByAllowedScopes(oidcScopes, app.Scopes)
 
 	// Resolve resource identifiers to Resource Servers and downscope non-OIDC scopes against
 	// the union of permissions defined on those Resource Servers. Unknown identifiers cause
@@ -288,6 +298,7 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 		ClaimsLocales:       claimsLocales,
 		Nonce:               nonce,
 		AcrValues:           acrValues,
+		MaxAge:              maxAge,
 		DPoPJkt:             dpopJkt,
 		Prompt:              prompt,
 	}
@@ -350,6 +361,9 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	}
 	if slices.Contains(strings.Fields(oauthParams.Prompt), oauth2const.PromptConsent) {
 		runtimeData[flowcm.RuntimeKeyForceConsentReprompt] = "true"
+	}
+	if oauthParams.MaxAge != "" {
+		runtimeData[flowcm.RuntimeKeyMaxAge] = oauthParams.MaxAge
 	}
 	flowInitCtx := &flowexec.FlowInitContext{
 		ApplicationID: app.ID,
@@ -449,6 +463,17 @@ func (as *authorizeService) HandleAuthorizationCallback(ctx context.Context, aut
 		// Decode user attributes from the assertion.
 		claims, authTime, err := decodeAttributesFromAssertion(assertion)
 		if err != nil {
+			if errors.Is(err, errAssertionClaimInvalid) {
+				as.logger.Debug(ctx, "Assertion contains a malformed claim", log.Error(err))
+				authErr = &AuthorizationError{
+					Code:              oauth2const.ErrorInvalidRequest,
+					Message:           "Assertion contains a malformed claim",
+					SendErrorToClient: true,
+					ClientRedirectURI: authRequestCtx.OAuthParameters.RedirectURI,
+					State:             authRequestCtx.OAuthParameters.State,
+				}
+				return err
+			}
 			authErr = &AuthorizationError{
 				Code:              oauth2const.ErrorServerError,
 				Message:           "Failed to process authorization request",
@@ -457,6 +482,19 @@ func (as *authorizeService) HandleAuthorizationCallback(ctx context.Context, aut
 				State:             authRequestCtx.OAuthParameters.State,
 			}
 			return err
+		}
+
+		// Bind the assertion to the specific authorization request
+		if claims.authorizationRequestID == "" || claims.authorizationRequestID != authID {
+			as.logger.Debug(ctx, "Assertion is not bound to the authorization request")
+			authErr = &AuthorizationError{
+				Code:              oauth2const.ErrorAccessDenied,
+				Message:           "Assertion does not match the authorization request",
+				SendErrorToClient: true,
+				ClientRedirectURI: authRequestCtx.OAuthParameters.RedirectURI,
+				State:             authRequestCtx.OAuthParameters.State,
+			}
+			return errors.New("assertion not bound to authorization request")
 		}
 
 		if claims.userID == "" {
@@ -607,8 +645,17 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 		completedACR:     base.CompletedACR,
 	}
 
-	if v, ok := payload["authorized_permissions"].(string); ok {
+	if v, ok := payload[oauth2const.ClaimAuthorizedPermissions].(string); ok {
 		claims.authorizedPermissions = v
+	}
+
+	if v, ok := payload[oauth2const.ClaimAuthorizationRequestID]; ok {
+		strValue, ok := v.(string)
+		if !ok {
+			return assertionClaims{}, time.Time{}, fmt.Errorf(
+				"%w: 'authorization_request_id' claim is not a string", errAssertionClaimInvalid)
+		}
+		claims.authorizationRequestID = strValue
 	}
 
 	return claims, base.AuthTime, nil
@@ -719,10 +766,11 @@ func getRequiredAttributes(oidcScopes []string, claimsRequest *oauth2model.Claim
 
 // appendAccessTokenAttributes appends access token attributes from app configuration.
 func appendAccessTokenAttributes(app *providers.OAuthClient, attributesMap map[string]bool) {
-	if app.Token.AccessToken != nil && len(app.Token.AccessToken.UserAttributes) > 0 {
-		for _, attr := range app.Token.AccessToken.UserAttributes {
-			attributesMap[attr] = true
-		}
+	if app.Token.AccessToken == nil || app.Token.AccessToken.UserConfig == nil {
+		return
+	}
+	for _, attr := range app.Token.AccessToken.UserConfig.Attributes {
+		attributesMap[attr] = true
 	}
 }
 
@@ -880,9 +928,10 @@ func validateSubClaimConstraint(claimsRequest *oauth2model.ClaimsRequest, actual
 // A fixed buffer of attributeCacheTTLBufferSeconds is added to cover the window between
 // authentication completion and token issuance.
 func (as *authorizeService) resolveUserAttributesCacheTTL(app *providers.OAuthClient) int64 {
-	maxTTL := tokenservice.ResolveTokenConfig(as.cfg, app, tokenservice.TokenTypeAccess).ValidityPeriod
+	maxTTL := tokenservice.ResolveTokenConfig(
+		as.cfg, app, tokenservice.TokenTypeAccess, app.UserAccessTokenConfig().ValidityPeriodOrZero()).ValidityPeriod
 	if app.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
-		refreshTTL := tokenservice.ResolveTokenConfig(as.cfg, app, tokenservice.TokenTypeRefresh).ValidityPeriod
+		refreshTTL := tokenservice.ResolveTokenConfig(as.cfg, app, tokenservice.TokenTypeRefresh, 0).ValidityPeriod
 		if refreshTTL > maxTTL {
 			maxTTL = refreshTTL
 		}

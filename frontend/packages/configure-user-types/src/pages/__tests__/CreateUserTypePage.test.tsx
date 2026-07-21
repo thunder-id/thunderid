@@ -21,6 +21,7 @@ import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type useCreateUserTypeHook from '../../api/useCreateUserType';
 import UserTypeCreateProvider from '../../contexts/UserTypeCreate/UserTypeCreateProvider';
+import type {LibraryAttribute} from '../../types/user-types';
 import CreateUserTypePage from '../CreateUserTypePage';
 
 const mockNavigate = vi.fn();
@@ -53,6 +54,77 @@ const mockUseCreateUserType = vi.fn<() => ReturnType<typeof useCreateUserTypeHoo
 vi.mock('../../api/useCreateUserType', () => ({
   default: () => mockUseCreateUserType(),
 }));
+
+// Mock the static attribute library (powers the attribute library panel).
+// The library attributes have no displayName, so the left-panel button label and
+// the property row header both show the attribute name, and the serialized schema
+// omits displayName. Names are chosen so none is a substring of another.
+const {mockAttributes} = vi.hoisted(() => ({
+  mockAttributes: [
+    {
+      name: 'email',
+      displayName: '',
+      type: 'string',
+      required: false,
+      unique: false,
+      credential: false,
+      enum: [],
+      regex: '',
+    },
+    {
+      name: 'username',
+      displayName: '',
+      type: 'string',
+      required: true,
+      unique: true,
+      credential: false,
+      enum: [],
+      regex: '',
+    },
+    {
+      name: 'age',
+      displayName: '',
+      type: 'number',
+      required: false,
+      unique: false,
+      credential: false,
+      enum: [],
+      regex: '',
+    },
+    {
+      name: 'code',
+      displayName: '',
+      type: 'string',
+      required: false,
+      unique: false,
+      credential: false,
+      enum: [],
+      regex: '',
+    },
+    {
+      name: 'password',
+      displayName: '',
+      type: 'string',
+      required: false,
+      unique: false,
+      credential: true,
+      enum: [],
+      regex: '',
+    },
+    {
+      name: 'employeeId',
+      displayName: '',
+      type: 'number',
+      required: false,
+      unique: false,
+      credential: false,
+      enum: [],
+      regex: '',
+    },
+  ] as LibraryAttribute[],
+}));
+
+vi.mock('../../constants/attributes', () => ({default: mockAttributes}));
 
 // Mock useHasMultipleOUs (used by ConfigureGeneral to decide whether to show the OU picker)
 vi.mock('@thunderid/configure-organization-units', () => ({
@@ -121,7 +193,22 @@ async function goToPropertiesStep(user: ReturnType<typeof userEvent.setup>, name
   });
 }
 
-const getPropertyTypeSelect = (index = 0) => screen.getAllByRole('combobox')[index];
+/**
+ * Helper to add a basic attribute to the schema by clicking its button in the
+ * left-hand attribute library panel. The button's accessible name is the
+ * attribute display name, which falls back to the id for our library.
+ */
+async function addAttribute(user: ReturnType<typeof userEvent.setup>, id: string) {
+  const panel = within(screen.getByRole('region', {name: /available properties/i}));
+  await user.click(panel.getByRole('button', {name: new RegExp(`^${id}$`, 'i')}));
+  // The added attribute is removed from the library panel.
+  await waitFor(() => {
+    expect(panel.queryByRole('button', {name: new RegExp(`^${id}$`, 'i')})).not.toBeInTheDocument();
+  });
+}
+
+/** The property-name inputs (one per expanded property card). */
+const getPropertyNameInputs = () => screen.queryAllByPlaceholderText(/e\.g\., email, age, address/i);
 
 describe('CreateUserTypePage', () => {
   beforeEach(() => {
@@ -272,81 +359,126 @@ describe('CreateUserTypePage', () => {
     expect(screen.getByTestId('configure-properties')).toBeInTheDocument();
   });
 
-  it('allows adding a new property', async () => {
+  it('starts the Properties step with no property cards', async () => {
     const user = userEvent.setup();
     renderPage();
 
     await goToPropertiesStep(user);
 
-    const addButton = screen.getByRole('button', {name: /Add Property/i});
-    await user.click(addButton);
-
-    const propertyInputs = screen.getAllByPlaceholderText(/e\.g\., email, age, address/i);
-    expect(propertyInputs.length).toBeGreaterThan(1);
+    // No properties until an attribute is added via the library panel.
+    expect(getPropertyNameInputs()).toHaveLength(0);
+    expect(screen.getByRole('button', {name: /^email$/i})).toBeInTheDocument();
   });
 
-  it('allows removing a property', async () => {
+  it('adds a property by clicking an attribute in the library panel', async () => {
     const user = userEvent.setup();
     renderPage();
 
     await goToPropertiesStep(user);
 
-    // Add a second property first
-    const addButton = screen.getByRole('button', {name: /Add Property/i});
-    await user.click(addButton);
+    await addAttribute(user, 'email');
 
-    let propertyInputs = screen.getAllByPlaceholderText(/e\.g\., email, age, address/i);
-    const initialCount = propertyInputs.length;
+    const nameInputs = getPropertyNameInputs();
+    expect(nameInputs).toHaveLength(1);
+    expect(nameInputs[0]).toHaveValue('email');
+    expect(nameInputs[0]).not.toBeDisabled();
+  });
 
-    // Now remove the second property
-    const removeButtons = screen
-      .getAllByRole('button')
-      .filter((btn) => btn.classList.contains('MuiIconButton-colorError'));
+  it('removes a property when the delete icon is clicked', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await goToPropertiesStep(user);
+
+    await addAttribute(user, 'email');
+    await addAttribute(user, 'age');
+
+    const removeButtons = screen.getAllByRole('button', {name: /remove property/i});
+    expect(removeButtons).toHaveLength(2);
 
     await user.click(removeButtons[removeButtons.length - 1]);
 
     await waitFor(() => {
-      propertyInputs = screen.getAllByPlaceholderText(/e\.g\., email, age, address/i);
-      expect(propertyInputs.length).toBe(initialCount - 1);
+      expect(screen.getAllByRole('button', {name: /remove property/i})).toHaveLength(1);
     });
   });
 
-  it('allows changing property name', async () => {
+  it('removes an added attribute from the library panel', async () => {
     const user = userEvent.setup();
     renderPage();
 
     await goToPropertiesStep(user);
 
-    const propertyNameInput = screen.getByPlaceholderText(/e\.g\., email, age, address/i);
-    await user.type(propertyNameInput, 'email');
+    const panel = within(screen.getByRole('region', {name: /available properties/i}));
+    expect(panel.getByRole('button', {name: /^email$/i})).toBeInTheDocument();
 
-    expect(propertyNameInput).toHaveValue('email');
-  });
-
-  it('allows changing property type', async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await goToPropertiesStep(user);
-
-    const typeSelect = getPropertyTypeSelect();
-    await user.click(typeSelect);
-
-    const numberOption = await screen.findByText('Number');
-    await user.click(numberOption);
+    await addAttribute(user, 'email');
 
     await waitFor(() => {
-      expect(typeSelect).toHaveTextContent('Number');
+      expect(panel.queryByRole('button', {name: /^email$/i})).not.toBeInTheDocument();
     });
+    // Other attributes remain available.
+    expect(panel.getByRole('button', {name: /^age$/i})).toBeInTheDocument();
   });
 
-  it('allows toggling required checkbox', async () => {
+  it('allows editing the name and type of a library attribute', async () => {
     const user = userEvent.setup();
     renderPage();
 
     await goToPropertiesStep(user);
 
-    const requiredCheckbox = screen.getByRole('checkbox', {name: /Users must provide a value/i});
+    await addAttribute(user, 'email');
+
+    await waitFor(() => {
+      expect(getPropertyNameInputs()).toHaveLength(1);
+    });
+    const [nameInput] = getPropertyNameInputs();
+    expect(nameInput).toHaveValue('email');
+    // The name is editable even for a library-seeded attribute.
+    expect(nameInput).not.toBeDisabled();
+
+    // The property type select is editable too.
+    const lockedSelect = screen.getAllByRole('combobox').find((c) => c.getAttribute('aria-disabled') === 'true');
+    expect(lockedSelect).toBeUndefined();
+  });
+
+  it('renders unique and credential checkboxes as editable', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await goToPropertiesStep(user);
+
+    await addAttribute(user, 'email');
+
+    await screen.findByLabelText(/required/i);
+    expect(screen.getByLabelText(/unique/i)).not.toBeDisabled();
+    expect(screen.getByLabelText(/credential/i)).not.toBeDisabled();
+    expect(screen.getByLabelText(/required/i)).not.toBeDisabled();
+  });
+
+  it('seeds default flags from the picked attribute definition', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await goToPropertiesStep(user);
+
+    // username is defined as required + unique in the library.
+    await addAttribute(user, 'username');
+
+    await screen.findByLabelText(/required/i);
+    expect(screen.getByLabelText(/required/i)).toBeChecked();
+    expect(screen.getByLabelText(/unique/i)).toBeChecked();
+  });
+
+  it('allows toggling the required checkbox', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await goToPropertiesStep(user);
+
+    await addAttribute(user, 'email');
+
+    const requiredCheckbox = await screen.findByLabelText(/required/i);
     expect(requiredCheckbox).not.toBeChecked();
 
     await user.click(requiredCheckbox);
@@ -356,180 +488,56 @@ describe('CreateUserTypePage', () => {
     expect(requiredCheckbox).not.toBeChecked();
   });
 
-  it('allows toggling unique checkbox for string type', async () => {
+  it('allows editing the display name', async () => {
     const user = userEvent.setup();
     renderPage();
 
     await goToPropertiesStep(user);
 
-    const uniqueCheckbox = screen.getByRole('checkbox', {name: /Each user must have a distinct value/i});
-    expect(uniqueCheckbox).not.toBeChecked();
+    await addAttribute(user, 'email');
 
-    await user.click(uniqueCheckbox);
-    expect(uniqueCheckbox).toBeChecked();
+    const displayNameInput = await screen.findByPlaceholderText(/e.g., First Name/i);
+    await user.type(displayNameInput, 'Email Address');
+
+    expect(displayNameInput).toHaveValue('Email Address');
   });
 
-  it('hides unique checkbox for boolean type', async () => {
+  it('allows adding a regex pattern for a string property', async () => {
     const user = userEvent.setup();
     renderPage();
 
     await goToPropertiesStep(user);
 
-    expect(screen.getByRole('checkbox', {name: /Each user must have a distinct value/i})).toBeInTheDocument();
+    await addAttribute(user, 'email');
 
-    const typeSelect = getPropertyTypeSelect();
-    await user.click(typeSelect);
-
-    const booleanOption = await screen.findByText('Boolean');
-    await user.click(booleanOption);
-
-    await waitFor(() => {
-      expect(screen.queryByRole('checkbox', {name: /Each user must have a distinct value/i})).not.toBeInTheDocument();
-    });
-  });
-
-  it('allows adding regex pattern for string type', async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await goToPropertiesStep(user);
-
-    const regexInput = screen.getByPlaceholderText('e.g., ^[a-zA-Z0-9]+$');
+    const regexInput = await screen.findByPlaceholderText('e.g., ^[a-zA-Z0-9]+$');
     await user.click(regexInput);
     await user.paste('^[a-z]+$');
 
     expect(regexInput).toHaveValue('^[a-z]+$');
   });
 
-  it('allows adding enum values for enum type', async () => {
+  it('allows selecting a display attribute', async () => {
     const user = userEvent.setup();
     renderPage();
 
     await goToPropertiesStep(user);
 
-    const typeSelect = getPropertyTypeSelect();
-    await user.click(typeSelect);
-    const enumOption = await screen.findByText('Enum');
-    await user.click(enumOption);
+    await addAttribute(user, 'email');
+    await addAttribute(user, 'code');
 
-    const enumInput = screen.getByPlaceholderText(/Add value and press Enter/i);
-    await user.type(enumInput, 'admin');
+    // Added rows auto-expand, so each contributes its own Type combobox; the
+    // display attribute select is rendered last, in the footer.
+    const comboboxes = screen.getAllByRole('combobox');
+    const displayAttributeSelect = comboboxes[comboboxes.length - 1];
+    await user.click(displayAttributeSelect);
 
-    const addEnumButton = screen.getByRole('button', {name: /^Add$/i});
-    await user.click(addEnumButton);
-
-    await waitFor(() => {
-      expect(screen.getByText('admin')).toBeInTheDocument();
-    });
-
-    expect(enumInput).toHaveValue('');
-  }, 15_000);
-
-  it('allows adding enum value by pressing Enter', async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await goToPropertiesStep(user);
-
-    const typeSelect = getPropertyTypeSelect();
-    await user.click(typeSelect);
-    const enumOption = await screen.findByText('Enum');
-    await user.click(enumOption);
-
-    const enumInput = screen.getByPlaceholderText(/Add value and press Enter/i);
-    await user.type(enumInput, 'user{Enter}');
+    const listbox = await screen.findByRole('listbox');
+    await user.click(within(listbox).getByRole('option', {name: 'code'}));
 
     await waitFor(() => {
-      expect(screen.getByText('user')).toBeInTheDocument();
+      expect(displayAttributeSelect).toHaveTextContent('code');
     });
-
-    expect(enumInput).toHaveValue('');
-  });
-
-  it('does not add enum value when input is empty or whitespace', async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await goToPropertiesStep(user);
-
-    const typeSelect = getPropertyTypeSelect();
-    await user.click(typeSelect);
-    const enumOption = await screen.findByText('Enum');
-    await user.click(enumOption);
-
-    const enumInput = screen.getByPlaceholderText(/Add value and press Enter/i);
-
-    const addEnumButton = screen.getByRole('button', {name: /^Add$/i});
-    await user.click(addEnumButton);
-
-    const enumContainer = enumInput.closest('div')?.querySelector('.MuiBox-root');
-    expect(enumContainer).not.toBeInTheDocument();
-
-    await user.type(enumInput, '   ');
-    await user.click(addEnumButton);
-
-    expect(enumContainer).not.toBeInTheDocument();
-  });
-
-  it('allows removing enum values', async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await goToPropertiesStep(user);
-
-    const typeSelect = getPropertyTypeSelect();
-    await user.click(typeSelect);
-    const enumOption = await screen.findByText('Enum');
-    await user.click(enumOption);
-
-    const enumInput = screen.getByPlaceholderText(/Add value and press Enter/i);
-    await user.type(enumInput, 'admin{Enter}');
-
-    await waitFor(() => {
-      expect(screen.getByText('admin')).toBeInTheDocument();
-    });
-
-    // The Chip component renders a delete icon as an SVG sibling to the label
-    const chipElement = screen.getByText('admin').closest('.MuiChip-root');
-    const deleteIcon = chipElement?.querySelector('.MuiChip-deleteIcon');
-    if (deleteIcon) {
-      await user.click(deleteIcon);
-    }
-
-    await waitFor(() => {
-      expect(screen.queryByText('admin')).not.toBeInTheDocument();
-    });
-  });
-
-  it('resets type-specific fields when type changes', async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await goToPropertiesStep(user);
-
-    const typeSelect = getPropertyTypeSelect();
-    await user.click(typeSelect);
-    const enumTypeOption = await screen.findByText('Enum');
-    await user.click(enumTypeOption);
-
-    const enumInput = screen.getByPlaceholderText(/Add value and press Enter/i);
-    await user.type(enumInput, 'test{Enter}');
-
-    await waitFor(() => {
-      expect(screen.getByText('test')).toBeInTheDocument();
-    });
-
-    await user.click(typeSelect);
-
-    const numberOption = await screen.findByText('Number');
-    await user.click(numberOption);
-
-    await waitFor(() => {
-      expect(screen.queryByText('test')).not.toBeInTheDocument();
-    });
-
-    expect(screen.queryByPlaceholderText(/Add value and press Enter/i)).not.toBeInTheDocument();
-    expect(screen.queryByPlaceholderText(/\^\[a-zA-Z0-9\]\+\$/)).not.toBeInTheDocument();
   });
 
   it('navigates back to General step when Back is clicked on Properties step', async () => {
@@ -572,10 +580,9 @@ describe('CreateUserTypePage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('configure-properties')).toBeInTheDocument();
     });
-    const propertyNameInput = screen.getByPlaceholderText(/e.g., email, age, address/i);
-    await user.type(propertyNameInput, 'email');
+    await addAttribute(user, 'email');
 
-    const requiredCheckbox = screen.getByRole('checkbox', {name: /Users must provide a value/i});
+    const requiredCheckbox = await screen.findByLabelText(/required/i);
     await user.click(requiredCheckbox);
 
     // Submit
@@ -623,8 +630,7 @@ describe('CreateUserTypePage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('configure-properties')).toBeInTheDocument();
     });
-    const propertyNameInput = screen.getByPlaceholderText(/e\.g\., email, age, address/i);
-    await user.type(propertyNameInput, 'email');
+    await addAttribute(user, 'email');
 
     await user.click(screen.getByRole('button', {name: /Create User Type/i}));
 
@@ -644,70 +650,15 @@ describe('CreateUserTypePage', () => {
     });
   });
 
-  it('shows validation error when submitting without property name', async () => {
+  it('disables submit when no attributes have been added', async () => {
     const user = userEvent.setup();
     renderPage();
 
     await goToPropertiesStep(user);
 
-    // The Create User Type button should be disabled when no property name is entered
+    // The Create User Type button should be disabled when no attribute has been added.
     const submitButton = screen.getByRole('button', {name: /Create User Type/i});
     expect(submitButton).toBeDisabled();
-
-    expect(mockMutateAsync).not.toHaveBeenCalled();
-  });
-
-  it('closes snackbar when close button is clicked', async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await goToPropertiesStep(user);
-
-    // Add two properties with the same name to trigger the validation snackbar
-    await user.type(screen.getByPlaceholderText(/e\.g\., email, age, address/i), 'email');
-    await user.click(screen.getByRole('button', {name: /Add Property/i}));
-    const propertyInputs = screen.getAllByPlaceholderText(/e\.g\., email, age, address/i);
-    await user.type(propertyInputs[1], 'email');
-
-    await user.click(screen.getByRole('button', {name: /Create User Type/i}));
-
-    await waitFor(() => {
-      expect(screen.getByText(/Duplicate property names found/i)).toBeInTheDocument();
-    });
-
-    // Close the snackbar via its Alert close button
-    const closeButtons = screen.getAllByRole('button', {name: /close/i});
-    await user.click(closeButtons[closeButtons.length - 1]);
-
-    await waitFor(() => {
-      expect(screen.queryByText(/Duplicate property names found/i)).not.toBeInTheDocument();
-    });
-  });
-
-  it('shows validation error for duplicate property names', async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await goToPropertiesStep(user);
-
-    // Add first property
-    const firstPropertyInput = screen.getByPlaceholderText(/e\.g\., email, age, address/i);
-    await user.type(firstPropertyInput, 'email');
-
-    // Add second property
-    const addButton = screen.getByRole('button', {name: /Add Property/i});
-    await user.click(addButton);
-
-    // Set same name for second property
-    const propertyInputs = screen.getAllByPlaceholderText(/e\.g\., email, age, address/i);
-    await user.type(propertyInputs[1], 'email');
-
-    const submitButton = screen.getByRole('button', {name: /Create User Type/i});
-    await user.click(submitButton);
-
-    await waitFor(() => {
-      expect(screen.getByText(/Duplicate property names found/i)).toBeInTheDocument();
-    });
 
     expect(mockMutateAsync).not.toHaveBeenCalled();
   });
@@ -735,8 +686,9 @@ describe('CreateUserTypePage', () => {
     // Navigate to properties step with loading=false (default from beforeEach)
     await goToPropertiesStep(user);
 
-    // Type a property name so the step is "ready"
-    await user.type(screen.getByPlaceholderText(/e\.g\., email, age, address/i), 'email');
+    // Add an attribute so the step is "ready"
+    await addAttribute(user, 'email');
+    await screen.findByLabelText(/required/i);
 
     // Now switch to loading state
     mockUseCreateUserType.mockReturnValue({
@@ -747,62 +699,13 @@ describe('CreateUserTypePage', () => {
       reset: vi.fn(),
     } as unknown as ReturnType<typeof useCreateUserTypeHook>);
 
-    // Trigger a re-render by typing (the hook return value will update)
-    await user.type(screen.getByPlaceholderText(/e\.g\., email, age, address/i), '2');
+    // Trigger a re-render by toggling a checkbox (the hook return value will update)
+    await user.click(screen.getByLabelText(/required/i));
 
     await waitFor(() => {
       expect(screen.getByText('Saving...')).toBeInTheDocument();
     });
     expect(screen.getByRole('button', {name: /Saving/i})).toBeDisabled();
-  });
-
-  it('creates schema with enum property correctly', {timeout: 15_000}, async () => {
-    const user = userEvent.setup();
-    mockMutateAsync.mockResolvedValue(undefined);
-
-    renderPage();
-
-    await goToPropertiesStep(user, 'Complex Type');
-
-    // Change type to enum
-    const typeSelect = getPropertyTypeSelect();
-    await user.click(typeSelect);
-    const enumOption = await screen.findByText('Enum');
-    await user.click(enumOption);
-
-    // Add enum property with all features
-    const firstPropertyInput = screen.getByPlaceholderText(/e.g., email, age, address/i);
-    await user.type(firstPropertyInput, 'status');
-
-    const requiredCheckbox = screen.getByRole('checkbox', {name: /Users must provide a value/i});
-    await user.click(requiredCheckbox);
-
-    const uniqueCheckbox = screen.getByRole('checkbox', {name: /Each user must have a distinct value/i});
-    await user.click(uniqueCheckbox);
-
-    const enumInput = screen.getByPlaceholderText(/Add value and press Enter/i);
-    await user.type(enumInput, 'ACTIVE{Enter}');
-    await user.type(enumInput, 'INACTIVE{Enter}');
-
-    // Submit
-    const submitButton = screen.getByRole('button', {name: /Create User Type/i});
-    await user.click(submitButton);
-
-    await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalledWith({
-        name: 'Complex Type',
-        ouId: 'root-ou',
-        schema: {
-          status: {
-            type: 'string',
-            required: true,
-            unique: true,
-            enum: ['ACTIVE', 'INACTIVE'],
-          },
-        },
-        systemAttributes: {display: 'status'},
-      });
-    });
   });
 
   it('creates schema with string property containing regex pattern', async () => {
@@ -813,12 +716,10 @@ describe('CreateUserTypePage', () => {
 
     await goToPropertiesStep(user, 'RegexTest');
 
-    // Add property name
-    const propertyNameInput = screen.getByPlaceholderText(/e.g., email, age, address/i);
-    await user.type(propertyNameInput, 'code');
+    await addAttribute(user, 'code');
 
     // Add regex pattern
-    const regexInput = screen.getByPlaceholderText('e.g., ^[a-zA-Z0-9]+$');
+    const regexInput = await screen.findByPlaceholderText('e.g., ^[a-zA-Z0-9]+$');
     await user.click(regexInput);
     await user.paste('^[A-Z]{3}$');
 
@@ -842,7 +743,7 @@ describe('CreateUserTypePage', () => {
     });
   });
 
-  it('creates schema with number property that is unique', async () => {
+  it('creates schema with a number property seeded from the attribute', async () => {
     const user = userEvent.setup();
     mockMutateAsync.mockResolvedValue(undefined);
 
@@ -850,19 +751,13 @@ describe('CreateUserTypePage', () => {
 
     await goToPropertiesStep(user, 'NumberTest');
 
-    // Add property name
-    const propertyNameInput = screen.getByPlaceholderText(/e.g., email, age, address/i);
-    await user.type(propertyNameInput, 'employeeId');
+    await addAttribute(user, 'employeeId');
 
-    // Change type to number
-    const typeSelect = getPropertyTypeSelect();
-    await user.click(typeSelect);
-    const numberOption = await screen.findByText('Number');
-    await user.click(numberOption);
-
-    // Mark as unique
-    const uniqueCheckbox = screen.getByRole('checkbox', {name: /Each user must have a distinct value/i});
-    await user.click(uniqueCheckbox);
+    // employeeId is a number type from the library; the type select reflects it.
+    await waitFor(() => {
+      const typeSelect = screen.getAllByRole('combobox').find((c) => c.textContent?.includes('Number'));
+      expect(typeSelect).toBeDefined();
+    });
 
     // Submit
     const submitButton = screen.getByRole('button', {name: /Create User Type/i});
@@ -876,7 +771,6 @@ describe('CreateUserTypePage', () => {
           employeeId: {
             type: 'number',
             required: false,
-            unique: true,
           },
         },
         systemAttributes: {display: 'employeeId'},
@@ -892,7 +786,7 @@ describe('CreateUserTypePage', () => {
 
     await goToPropertiesStep(user);
 
-    await user.type(screen.getByPlaceholderText(/e\.g\., email, age, address/i), 'email');
+    await addAttribute(user, 'email');
 
     const submitButton = screen.getByRole('button', {name: /Create User Type/i});
     await user.click(submitButton);

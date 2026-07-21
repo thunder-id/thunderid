@@ -35,6 +35,14 @@ const ContentTypeHeaderName = "Content-Type"
 // the request's trace ID across service boundaries.
 const CorrelationIDHeaderName = "X-Correlation-ID"
 
+// FlowSecretHeaderName is the name of the header used to present a Flow Secret when initiating
+// a flow directly over HTTP.
+const FlowSecretHeaderName = "Flow-Secret"
+
+// AttestationTokenHeaderName is the name of the header used to present a platform attestation token
+// (e.g. a Google Play Integrity token) when a mobile application initiates a flow directly over HTTP.
+const AttestationTokenHeaderName = "Attestation-Token"
+
 // TokenTypeBearer is the token type used in bearer authentication.
 const TokenTypeBearer = "Bearer"
 

@@ -225,36 +225,8 @@ h5 {
   overflow: visible;
 }
 
-/* Copy page button wrapper — positioned at top-right of content area */
-.theme-doc-markdown.markdown .copy-page-btn-wrapper {
-  position: absolute;
-  top: -45px;
-  right: -2rem;
-  margin: 0;
-  display: inline-flex;
-  z-index: 10;
-}
-
-@media (max-width: 996px) {
-  .theme-doc-markdown.markdown .copy-page-btn-wrapper {
-    position: static;
-    top: auto;
-    right: auto;
-    margin: 0.4rem 0 0.8rem;
-    display: flex;
-    justify-content: flex-end;
-    width: 100%;
-    z-index: 4;
-  }
-}
 .docs-doc-id-index .theme-doc-markdown.markdown {
   max-width: none;
-}
-
-.docs-doc-id-sdks\/overview .theme-doc-markdown.markdown {
-  max-width: 1100px;
-  margin-left: auto;
-  margin-right: auto;
 }
 
 /* Constrain paragraph/list text for long-prose pages, let rich content break out */
@@ -803,15 +775,6 @@ html[data-page='home'][data-theme='dark'] .dropdown>.navbar__link:after {
 /* Docs landing page: constrained width column */
 .col:has(.docs-home-page) {
   --ifm-col-width: 82%;
-}
-
-/* SDK overview page: constrained and centered column */
-.col:has(.sdks-overview-page) {
-  max-width: 1100px;
-  width: 100%;
-  margin-left: auto;
-  margin-right: auto;
-  float: none;
 }
 
 /* Widen the right-side TOC panel and pull it inward */
@@ -1384,116 +1347,6 @@ aside.theme-doc-sidebar-container {
   }
 }
 
-/* ------------------------------ Copy Page Button ---------------------- */
-
-/* Button — translucent, glassmorphism */
-[class*='copyPageButton'] {
-  background: rgba(255, 255, 255, 0.08) !important;
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
-  border-radius: 10px !important;
-  color: #ffffff !important;
-  font-size: 0.88rem !important;
-  font-weight: 600 !important;
-  padding: 9px 18px !important;
-  margin-bottom: 0 !important;
-  gap: 8px !important;
-  backdrop-filter: blur(10px) !important;
-  -webkit-backdrop-filter: blur(10px) !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
-  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease, border-color 0.15s ease !important;
-}
-[class*='copyPageButton']:hover {
-  background: rgba(255, 255, 255, 0.14) !important;
-  border-color: rgba(255, 255, 255, 0.28) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
-  transform: translateY(-1px) !important;
-}
-[class*='copyPageButton']:active {
-  transform: translateY(0) !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15) !important;
-}
-[class*='copyPageButton'] svg {
-  width: 15px !important;
-  height: 15px !important;
-  opacity: 0.85 !important;
-}
-[data-theme='light'] [class*='copyPageButton'] {
-  background: color-mix(in srgb, var(--ifm-color-primary) 10%, transparent) !important;
-  border-color: color-mix(in srgb, var(--ifm-color-primary) 30%, transparent) !important;
-  color: var(--ifm-color-primary-dark) !important;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--ifm-color-primary) 12%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
-}
-[data-theme='light'] [class*='copyPageButton']:hover {
-  background: color-mix(in srgb, var(--ifm-color-primary) 18%, transparent) !important;
-  border-color: color-mix(in srgb, var(--ifm-color-primary) 50%, transparent) !important;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--ifm-color-primary) 20%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
-}
-
-/* Dropdown panel — override fixed positioning to be relative to the button wrapper */
-[class*='copyPageDropdown'] {
-  min-width: 260px !important;
-  border: 1px solid var(--ifm-color-emphasis-200) !important;
-  border-radius: 10px !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2) !important;
-  overflow: hidden !important;
-}
-[data-theme='dark'] [class*='copyPageDropdown'] {
-  background: #0e1929 !important;
-  border-color: rgba(255, 255, 255, 0.08) !important;
-}
-[data-theme='light'] [class*='copyPageDropdown'] {
-  background: #ffffff !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1) !important;
-}
-
-/* Dropdown items */
-[class*='dropdownItem'] {
-  padding: 10px 14px !important;
-  gap: 12px !important;
-  border-bottom: none !important;
-  align-items: flex-start !important;
-}
-/* Divider between "View as Markdown" and "Open in ChatGPT" */
-[class*='dropdownItem']:nth-child(3) {
-  margin-top: 4px !important;
-  padding-top: 14px !important;
-  position: relative !important;
-}
-[class*='dropdownItem']:nth-child(3)::before {
-  content: '' !important;
-  position: absolute !important;
-  top: 0 !important;
-  left: 14px !important;
-  right: 14px !important;
-  height: 1px !important;
-  background: var(--ifm-color-emphasis-300) !important;
-}
-[data-theme='dark'] [class*='dropdownItem']:nth-child(3)::before {
-  background: rgba(255, 255, 255, 0.12) !important;
-}
-[class*='dropdownItem']:hover {
-  background: color-mix(in srgb, var(--ifm-color-primary) 8%, transparent) !important;
-}
-[class*='dropdownItem'] svg {
-  width: 16px !important;
-  height: 16px !important;
-  opacity: 0.65 !important;
-  margin-top: 2px !important;
-  flex-shrink: 0 !important;
-}
-[class*='itemTitle'] {
-  font-size: 0.82rem !important;
-  font-weight: 600 !important;
-  margin-bottom: 2px !important;
-  line-height: 1.3 !important;
-}
-[class*='itemDescription'] {
-  font-size: 0.73rem !important;
-  opacity: 0.65 !important;
-  line-height: 1.4 !important;
-  white-space: normal !important;
-}
-
 /* Hidden sidebar items — registered for sidebar association but not shown */
 .sidebar-hidden-item {
   display: none !important;
@@ -1605,23 +1458,8 @@ html[data-connect-type='mcp'] .connect-section--agent {
   padding: 15px;
 }
 
-/* Prevent breadcrumb text from running under the button */
-nav.theme-doc-breadcrumbs {
-  padding-right: 175px;
-}
-
-/* Ensure copy dropdown positions against its trigger container */
-.theme-doc-markdown.markdown [class*='copyPageContainer'] {
-  position: relative;
-  display: inline-block;
-}
-
 @media (max-width: 996px) {
   /* Let breadcrumbs use full width and wrap on smaller screens */
-  nav.theme-doc-breadcrumbs {
-    padding-right: 0;
-  }
-
   nav.theme-doc-breadcrumbs .breadcrumbs {
     display: flex;
     flex-wrap: wrap;
@@ -1647,27 +1485,6 @@ nav.theme-doc-breadcrumbs {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  /* Reflow copy page action below breadcrumb row to avoid overlap */
-  .theme-doc-markdown.markdown .copy-page-btn-wrapper {
-    position: static;
-    top: auto;
-    right: auto;
-    margin: 0.4rem 0 0.8rem;
-    display: flex;
-    justify-content: flex-end;
-    width: 100%;
-    z-index: 4;
-  }
-
-  /* Keep dropdown within viewport on mobile */
-  [class*='copyPageDropdown'] {
-    min-width: min(320px, calc(100vw - 1.5rem)) !important;
-    max-width: calc(100vw - 1.5rem) !important;
-    max-height: min(60vh, 420px) !important;
-    overflow: auto !important;
-    -webkit-overflow-scrolling: touch !important;
   }
 }
 
@@ -1695,475 +1512,6 @@ li:has(> .table-of-contents__link[href="#prerequisites"]) {
   padding-top: 0.08em;
   padding-bottom: 0.08em;
 }
-/* ------------------------------ Releases Page ---------------------- */
-
-.releases-page main {
-  background-attachment: var(--site-background-attachment);
-  background-image: var(--site-background);
-  background-blend-mode: var(--site-background-blend-mode);
-  min-width: 0;
-  overflow-x: hidden;
-}
-
-.releases-shell {
-  width: 100%;
-  max-width: 1200px;
-  min-width: 0;
-  margin: 0 auto;
-  padding: 4rem 1.5rem 5rem;
-}
-
-.releases-hero {
-  display: grid;
-  gap: 1.5rem;
-  margin-bottom: 4rem;
-}
-
-.releases-hero h1 {
-  margin: 0;
-  font-size: clamp(3rem, 7vw, 5.3rem);
-  line-height: 0.95;
-}
-
-.releases-hero p,
-.releases-status,
-.releases-release-header p,
-.releases-footer-note p {
-  color: var(--ifm-color-emphasis-700);
-}
-
-.releases-hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.releases-status {
-  margin: 0 0 2rem;
-}
-
-.releases-latest {
-  margin-bottom: 3rem;
-}
-
-.releases-release-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.releases-version-picker {
-  display: grid;
-  gap: 0.45rem;
-  min-width: min(100%, 260px);
-}
-
-.releases-version-picker span {
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ifm-color-emphasis-600);
-}
-
-.releases-version-picker select {
-  width: 100%;
-  min-height: 2.9rem;
-  padding: 0.75rem 0.95rem;
-  border: 1px solid var(--ifm-color-emphasis-300);
-  border-radius: 0.95rem;
-  background: var(--oxygen-palette-background-paper);
-  color: var(--ifm-font-color-base);
-  font: inherit;
-}
-
-.releases-release-card {
-  width: 100%;
-  min-width: 0;
-  padding: 2rem;
-  border-radius: 1.8rem;
-  border: 1px solid var(--ifm-color-emphasis-200);
-  background: var(--oxygen-palette-background-paper);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
-}
-
-.releases-release-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.releases-release-title-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-
-.releases-release-header h2 {
-  margin: 0;
-  font-size: 2.2rem;
-  line-height: 1.1;
-}
-
-.releases-release-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.28rem 0.65rem;
-  border-radius: 999px;
-  background: var(--ifm-hover-overlay);
-  color: var(--ifm-breadcrumb-color-active);
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.releases-section-block {
-  margin-top: 2rem;
-}
-
-.releases-download-feature {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 1.25rem;
-  align-items: center;
-  margin-bottom: 1rem;
-  padding: 1.35rem;
-  border-radius: 1.25rem;
-  border: 1px solid var(--ifm-color-emphasis-200);
-  background: var(--oxygen-palette-background-paper);
-}
-
-.releases-download-feature-copy {
-  display: grid;
-  gap: 0.65rem;
-  min-width: 0;
-}
-
-.releases-download-feature-kicker {
-  color: var(--ifm-color-primary);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.releases-download-feature h3 {
-  margin: 0;
-  font-size: 1.5rem;
-}
-
-.releases-download-feature-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem 1rem;
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: var(--ifm-color-emphasis-600);
-  font-size: 0.9rem;
-}
-
-.releases-page .releases-download-primary,
-.download-card .releases-download-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  min-height: 2.9rem;
-  padding: 0.65rem 1rem;
-  border-radius: 999px;
-  background: var(--ifm-color-primary);
-  color: #fff !important;
-  font-size: 0.92rem;
-  font-weight: 700;
-  text-decoration: none !important;
-}
-
-.releases-page .releases-download-primary:hover,
-.download-card .releases-download-primary:hover {
-  background: var(--ifm-color-primary-dark);
-  color: #fff !important;
-  text-decoration: none !important;
-  transform: translateY(-2px);
-  box-shadow: 0 14px 30px rgb(var(--oxygen-palette-primary-mainChannel) / 0.35);
-}
-
-.download-card.download-card--compact .releases-download-feature {
-  padding: 1rem 1.1rem;
-  gap: 1rem;
-  border-radius: 1rem;
-}
-
-.download-card.download-card--compact .releases-download-feature h3 {
-  font-size: 1.15rem;
-}
-
-.download-card.download-card--compact .releases-download-feature-meta {
-  font-size: 0.82rem;
-  gap: 0.4rem 0.85rem;
-}
-
-.download-card.download-card--compact .releases-download-feature-kicker {
-  font-size: 0.7rem;
-}
-
-.download-card.download-card--compact .releases-download-primary {
-  min-height: 2.4rem;
-  padding: 0.45rem 0.85rem;
-  font-size: 0.82rem;
-}
-
-.download-card.download-card--compact .releases-download-icon {
-  width: 1.45rem;
-  height: 1.45rem;
-}
-
-.download-card.download-card--compact .releases-other-downloads-grid {
-  gap: 0.75rem;
-}
-
-.download-card.download-card--compact .releases-other-downloads-card {
-  padding: 0.75rem 0.85rem;
-  border-radius: 0.95rem;
-}
-
-.download-card.download-card--compact .releases-other-downloads-header h4 {
-  font-size: 1rem;
-}
-
-.download-card.download-card--compact .releases-other-downloads-architecture {
-  min-height: 2.85rem;
-  padding: 0.5rem 0.7rem;
-}
-
-.download-card.download-card--compact .releases-other-downloads-architecture-title {
-  font-size: 0.85rem;
-}
-
-.download-card__other {
-  margin-top: 1rem;
-}
-
-.download-card__other > summary {
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--ifm-color-emphasis-700);
-  padding: 0.4rem 0;
-}
-
-.download-card__other[open] > summary {
-  margin-bottom: 0.75rem;
-}
-
-.releases-download-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.8rem;
-  height: 1.8rem;
-  border-radius: 999px;
-  background: rgb(var(--oxygen-palette-primary-mainChannel) / 0.1);
-  color: var(--ifm-color-primary);
-}
-
-.releases-other-downloads-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1rem;
-}
-
-.releases-other-downloads-card {
-  padding: 0.95rem 1rem;
-  border-radius: 1.15rem;
-  border: 1px solid var(--ifm-color-emphasis-200);
-  background: var(--oxygen-palette-background-paper);
-}
-
-.releases-other-downloads-header {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  margin-bottom: 0.75rem;
-}
-
-.releases-other-downloads-header h4 {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--ifm-color-emphasis-800);
-}
-
-.releases-other-downloads-os-icon {
-  display: inline-flex;
-  width: 1.3rem;
-  height: 1.3rem;
-  color: var(--ifm-color-emphasis-700);
-}
-
-.releases-other-downloads-architectures {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.releases-other-downloads-architecture {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.25rem 0.5rem;
-  align-items: center;
-  min-height: 3.7rem;
-  padding: 0.65rem 0.8rem;
-  border-radius: 0.85rem;
-  border: 1px solid var(--ifm-color-emphasis-200);
-  background: var(--oxygen-palette-background-acrylic);
-  color: inherit !important;
-  text-decoration: none !important;
-}
-
-.releases-other-downloads-architecture-title {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: var(--ifm-color-emphasis-800);
-  font-size: 0.98rem;
-  font-weight: 600;
-}
-
-.releases-other-downloads-architecture-meta,
-.releases-other-downloads-architecture em {
-  color: var(--ifm-color-emphasis-600);
-  font-size: 0.82rem;
-}
-
-.releases-other-downloads-architecture em {
-  grid-column: 2 / 3;
-  grid-row: 1 / 3;
-  font-style: normal;
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.releases-change-grid {
-  display: grid;
-  gap: 1.4rem;
-  margin-top: 2rem;
-}
-
-.releases-change-group h3 {
-  margin: 0 0 0.7rem;
-  font-size: 1.2rem;
-}
-
-.releases-change-group ul {
-  margin: 0;
-  border-left: 2px solid var(--ifm-color-primary);
-  padding-left: 1.35rem;
-}
-
-.releases-change-group li + li {
-  margin-top: 0.55rem;
-}
-
-.releases-change-group li {
-  font-size: 1rem;
-  font-weight: 400;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
-}
-
-.releases-contributors-avatar-group {
-  display: flex;
-  justify-content: flex-end;
-  width: 100%;
-}
-
-.releases-contributors-avatar-group .MuiAvatar-root {
-  width: 2.75rem;
-  height: 2.75rem;
-  font-size: 1rem;
-  border: 2px solid #fff;
-  background: var(--ifm-color-primary);
-}
-
-.releases-contributor-avatar-link {
-  display: inline-flex;
-  border-radius: 999px;
-  line-height: 0;
-}
-
-.releases-contributor-avatar-link:hover {
-  transform: translateY(-2px);
-}
-
-.releases-footer-note {
-  padding-top: 1rem;
-}
-
-.releases-page .button--primary {
-  background-color: var(--ifm-color-primary);
-}
-
-.releases-page .button--primary:hover {
-  background-color: var(--ifm-color-primary-dark);
-}
-
-.releases-page .button--secondary {
-  background: var(--oxygen-palette-background-paper);
-  border-color: var(--ifm-color-emphasis-300);
-  color: var(--ifm-font-color-base);
-}
-
-.releases-page .button--secondary:hover {
-  background: var(--ifm-hover-overlay);
-  border-color: var(--ifm-color-emphasis-400);
-  color: var(--ifm-font-color-base);
-}
-
-[data-theme='dark'] .releases-release-card {
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
-}
-
-[data-theme='dark'] .releases-contributors-avatar-group .MuiAvatar-root {
-  border-color: var(--ifm-background-surface-color);
-}
-
-
-@media (max-width: 996px) {
-  .releases-shell {
-    padding: 3rem 1rem 4rem;
-  }
-
-  .releases-change-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .releases-download-feature {
-    grid-template-columns: 1fr;
-  }
-
-  .releases-release-toolbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .releases-page .releases-download-primary,
-  .download-card .releases-download-primary {
-    width: 100%;
-  }
-
-  .releases-release-header {
-    flex-direction: column;
-  }
-
-  .releases-release-header h2 {
-    font-size: 1.8rem;
-  }
-}
-
 /* ─── GettingStartedJourney component ──────────────────────────────────── */
 
 .gsj {
@@ -3925,4 +3273,434 @@ a.connect-card {
 .DocSearch-Sidepanel-Container.inline.is-open {
   opacity: 1;
   transform: none !important;
+}
+
+/* ------------------------------ OneTrust Cookie Consent ---------------------- */
+/* OneTrust (CookiePro) injects its banner and preference-center modal outside the
+   React tree with inline styles, so we override it here rather than via sx/styled(). */
+
+/* Note: --oxygen-palette-background-paper is intentionally translucent
+   (used for frosted-glass panels with backdrop-filter elsewhere on the site).
+   OneTrust's own markup has no backdrop-filter, so using it here makes the
+   card see-through — use the opaque background-default instead. */
+#onetrust-consent-sdk #onetrust-banner-sdk,
+#onetrust-consent-sdk #onetrust-pc-sdk,
+#onetrust-consent-sdk #ot-sdk-cookie-policy {
+  background-color: var(--oxygen-palette-background-default) !important;
+  color: var(--oxygen-palette-text-primary) !important;
+  border-color: var(--oxygen-palette-divider) !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.16) !important;
+  opacity: 1 !important;
+}
+
+/* Match the rounded-card language used elsewhere on the site (admonitions,
+   code blocks, cards) instead of OneTrust's sharp default corners. */
+#onetrust-consent-sdk #onetrust-pc-sdk {
+  border-radius: 16px !important;
+  overflow: hidden;
+}
+
+#onetrust-consent-sdk .ot-pc-header {
+  border-radius: 16px 16px 0 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+#onetrust-consent-sdk .ot-pc-footer {
+  border-radius: 0 0 16px 16px !important;
+}
+
+/* Headings inject real h2/h3 tags, but OneTrust's own ID-scoped font-family
+   rule outranks the site's global h1-h5 selector — restate it here. Category
+   row labels (.ot-cat-header, an h4) are body copy, not a heading, and keep
+   the base font — see the dedicated rule further down. */
+#onetrust-consent-sdk #ot-pc-title,
+#onetrust-consent-sdk #ot-category-title {
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif !important;
+  font-weight: 700 !important;
+}
+
+#onetrust-consent-sdk .ot-pc-footer,
+#onetrust-consent-sdk .ot-pc-footer-logo {
+  background-color: var(--oxygen-palette-background-default) !important;
+}
+
+/* "Powered by OneTrust" is a fixed-color CDN image, not text — mute it in
+   line with the design's low-emphasis footer branding, and invert it in dark
+   mode so it stays legible instead of showing dark-on-dark. */
+#onetrust-consent-sdk .ot-pc-footer-logo img {
+  opacity: 0.5;
+}
+
+[data-theme='dark'] #onetrust-consent-sdk .ot-pc-footer-logo img {
+  filter: invert(1);
+}
+
+/* ---- Bottom cookie banner: a frosted glass bar with a glowing accent line,
+   rather than the flat opaque strip used for the modal. ---- */
+#onetrust-consent-sdk #onetrust-banner-sdk {
+  padding: 1.5rem 2rem !important;
+  background-color: color-mix(in srgb, var(--oxygen-palette-background-default) 94%, transparent) !important;
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  border-top: none !important;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.12) !important;
+}
+
+[data-theme='dark'] #onetrust-consent-sdk #onetrust-banner-sdk {
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.4) !important;
+}
+
+#onetrust-consent-sdk #onetrust-banner-sdk::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--oxygen-palette-primary-main) 50%, transparent) 30%,
+    color-mix(in srgb, var(--oxygen-palette-primary-main) 50%, transparent) 70%,
+    transparent
+  );
+}
+
+#onetrust-consent-sdk #onetrust-policy-text {
+  line-height: 1.6;
+}
+
+#onetrust-consent-sdk #onetrust-button-group-parent {
+  display: flex;
+  align-items: center;
+}
+
+#onetrust-consent-sdk #onetrust-button-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+/* OneTrust's banner uses a 12-column float grid (.ot-sdk-eight / .ot-sdk-three)
+   that doesn't reflow at narrow widths, leaving text and buttons squeezed
+   side-by-side. Below tablet, drop the button group to its own row; below
+   mobile, stack each button full-width. */
+@media (max-width: 1024px) {
+  #onetrust-consent-sdk #onetrust-banner-sdk {
+    padding: 1.25rem 1.25rem !important;
+  }
+
+  #onetrust-consent-sdk #onetrust-banner-sdk .ot-sdk-row {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  #onetrust-consent-sdk #onetrust-group-container,
+  #onetrust-consent-sdk #onetrust-button-group-parent {
+    width: 100% !important;
+    max-width: 100% !important;
+    float: none !important;
+  }
+
+  #onetrust-consent-sdk #onetrust-policy {
+    margin-bottom: 1rem;
+  }
+
+  #onetrust-consent-sdk #onetrust-button-group-parent {
+    justify-content: center !important;
+  }
+
+  #onetrust-consent-sdk #onetrust-button-group {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 600px) {
+  #onetrust-consent-sdk #onetrust-button-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #onetrust-consent-sdk .cookie-setting-link,
+  #onetrust-consent-sdk #onetrust-reject-all-handler,
+  #onetrust-consent-sdk #onetrust-accept-btn-handler {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* Pill-shaped, matching the site's actual CTA buttons (e.g. hero "Get Started").
+   Scoped to the named action buttons only — the accordion header buttons are
+   invisible full-row hit targets and must not get padding/radius applied. */
+#onetrust-consent-sdk #onetrust-banner-sdk button,
+#onetrust-consent-sdk #onetrust-accept-btn-handler,
+#onetrust-consent-sdk #accept-recommended-btn-handler,
+#onetrust-consent-sdk #onetrust-reject-all-handler,
+#onetrust-consent-sdk .ot-pc-refuse-all-handler,
+#onetrust-consent-sdk .save-preference-btn-handler,
+#onetrust-consent-sdk .cookie-setting-link {
+  border-radius: 999px !important;
+  padding: 0.6rem 1.5rem !important;
+  font-weight: 600 !important;
+  font-size: 0.85rem !important;
+  text-transform: none !important;
+  text-decoration: none !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease, filter 0.15s ease, opacity 0.15s ease, color 0.15s ease;
+}
+
+/* In the banner, "Cookie settings" and "Necessary cookies only" are both
+   plain text links (matching the hero's "Learn More →" treatment) — only
+   "Accept all cookies" is a filled pill. The modal's footer buttons keep
+   their bordered-pill/solid treatment (handled separately below). */
+#onetrust-consent-sdk .cookie-setting-link,
+#onetrust-consent-sdk #onetrust-reject-all-handler {
+  border-radius: 999px !important;
+  background-color: transparent !important;
+  border: none !important;
+  font-weight: 500 !important;
+  color: var(--oxygen-palette-text-secondary) !important;
+}
+
+/* Hover just darkens the text, matching the hero "Learn More" link — no
+   background. The filled pill only appears on keyboard focus (selected). */
+#onetrust-consent-sdk .cookie-setting-link:hover,
+#onetrust-consent-sdk #onetrust-reject-all-handler:hover {
+  background-color: transparent !important;
+  color: var(--oxygen-palette-text-primary) !important;
+}
+
+#onetrust-consent-sdk .cookie-setting-link:focus-visible,
+#onetrust-consent-sdk #onetrust-reject-all-handler:focus-visible {
+  outline: none !important;
+  background-color: color-mix(in srgb, var(--oxygen-palette-text-primary) 8%, transparent) !important;
+  color: var(--oxygen-palette-text-primary) !important;
+}
+
+/* The banner's primary CTA gets the design's gradient + glow treatment; the
+   modal's flat "Allow All" / "Confirm My Choices" buttons stay solid. */
+#onetrust-consent-sdk #onetrust-accept-btn-handler {
+  background: linear-gradient(135deg, var(--oxygen-palette-primary-main), var(--oxygen-palette-primary-dark)) !important;
+  border-color: transparent !important;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--oxygen-palette-primary-main) 35%, transparent) !important;
+}
+
+#onetrust-consent-sdk #onetrust-accept-btn-handler:hover,
+#onetrust-consent-sdk #accept-recommended-btn-handler:hover,
+#onetrust-consent-sdk .save-preference-btn-handler:hover {
+  filter: brightness(0.92);
+}
+
+/* Replace the default browser focus rectangle with a themed ring. */
+#onetrust-consent-sdk #onetrust-banner-sdk button:focus-visible,
+#onetrust-consent-sdk .cookie-setting-link:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px var(--oxygen-palette-primary-main) !important;
+}
+
+/* The CDN-hosted logo image isn't legible on a dark background. Swap it for
+   the site's own logo assets, which already have a dark-theme variant. */
+#onetrust-consent-sdk .ot-pc-logo img {
+  display: none !important;
+}
+
+#onetrust-consent-sdk .ot-pc-logo {
+  background-image: url('/assets/images/logo.svg');
+  background-repeat: no-repeat;
+  background-position: left center;
+  background-size: contain;
+  min-height: 32px;
+}
+
+[data-theme='dark'] #onetrust-consent-sdk .ot-pc-logo {
+  background-image: url('/assets/images/logo-inverted.svg');
+}
+
+#onetrust-consent-sdk #ot-pc-desc,
+#onetrust-consent-sdk .ot-cat-item h3,
+#onetrust-consent-sdk #ot-pc-title,
+#onetrust-consent-sdk #ot-lst-title h3,
+#onetrust-consent-sdk #ot-category-title {
+  color: var(--oxygen-palette-text-primary) !important;
+}
+
+/* Category row labels use the base body font, weighted by whether the
+   category is user-toggleable ("Strictly Necessary" is emphasized full-
+   color/weight; the others sit a tier down until interacted with). */
+#onetrust-consent-sdk .ot-cat-header {
+  color: var(--oxygen-palette-text-secondary) !important;
+  font-weight: 500 !important;
+}
+
+#onetrust-consent-sdk .ot-always-active-group .ot-cat-header {
+  color: var(--oxygen-palette-text-primary) !important;
+  font-weight: 600 !important;
+}
+
+#onetrust-consent-sdk .ot-always-active {
+  color: var(--oxygen-palette-primary-main) !important;
+}
+
+/* Category descriptions sit a tier below the main policy copy. */
+#onetrust-consent-sdk .ot-acc-grpdesc {
+  color: var(--oxygen-palette-text-disabled) !important;
+}
+
+/* Match the site's secondary-body-copy style (MuiTypography secondary
+   variant: text-secondary color, 0.875rem, 1.7 line-height). */
+#onetrust-consent-sdk #onetrust-policy-text,
+#onetrust-consent-sdk #onetrust-policy-text * {
+  color: var(--oxygen-palette-text-secondary) !important;
+  font: var(--oxygen-font-body1) !important;
+}
+
+#onetrust-consent-sdk .ot-cookie-policy-link,
+#onetrust-consent-sdk .privacy-notice-link {
+  color: var(--oxygen-palette-primary-main) !important;
+}
+
+#onetrust-consent-sdk #onetrust-accept-btn-handler,
+#onetrust-consent-sdk #accept-recommended-btn-handler {
+  background-color: var(--oxygen-palette-primary-main) !important;
+  border-color: var(--oxygen-palette-primary-main) !important;
+  color: var(--oxygen-palette-primary-contrastText, #fff) !important;
+}
+
+/* Note: #onetrust-pc-btn-handler ("Cookie settings") and the banner's
+   #onetrust-reject-all-handler are deliberately excluded here — both are
+   styled as plain text links further up. This rule is for the MODAL's
+   footer "Necessary Cookies Only" button only, which keeps a bordered pill. */
+#onetrust-consent-sdk .ot-pc-refuse-all-handler {
+  background-color: transparent !important;
+  border: 1px solid var(--oxygen-palette-divider) !important;
+  color: var(--oxygen-palette-text-primary) !important;
+}
+
+/* #ot-pc-content carries tabindex="-1" purely for programmatic scroll focus
+   management, not as a real interactive target — suppress the resulting
+   visible focus ring. */
+#onetrust-consent-sdk #ot-pc-content:focus,
+#onetrust-consent-sdk #ot-pc-content:focus-visible {
+  outline: none !important;
+}
+
+#onetrust-consent-sdk .save-preference-btn-handler {
+  background-color: var(--oxygen-palette-primary-main) !important;
+  border-color: var(--oxygen-palette-primary-main) !important;
+  color: var(--oxygen-palette-primary-contrastText, #fff) !important;
+}
+
+#onetrust-consent-sdk .ot-acc-hdr,
+#onetrust-consent-sdk #ot-pc-content,
+#onetrust-consent-sdk .ot-pc-footer,
+#onetrust-consent-sdk .ot-pc-header {
+  border-color: var(--oxygen-palette-divider) !important;
+}
+
+/* Each cookie category is its own rounded, bordered card (header + expanded
+   description together), per the design — rather than flat rows separated
+   only by a divider line. */
+#onetrust-consent-sdk .ot-accordion-layout {
+  border: 1px solid var(--oxygen-palette-divider) !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+  margin-bottom: 0.75rem !important;
+  background-color: color-mix(in srgb, var(--oxygen-palette-divider) 6%, transparent) !important;
+}
+
+#onetrust-consent-sdk .ot-accordion-layout:last-child {
+  margin-bottom: 0 !important;
+}
+
+/* The accordion detail panel (cookie category description) keeps its own
+   opaque white background by default, which OneTrust never themes. Make it
+   transparent so it shares the parent .ot-accordion-layout card's tinted
+   background instead of showing a separate block underneath. */
+#onetrust-consent-sdk .ot-acc-grpcntr,
+#onetrust-consent-sdk .ot-acc-txt {
+  background-color: transparent !important;
+}
+
+
+/* The visible pill fill is .ot-switch-nob (it covers the whole track); its
+   :before pseudo is the small white knob. .ot-switch itself sits underneath
+   and isn't visible, so it must be themed here instead. OneTrust's own
+   checked-state rule on .ot-switch-nob also carries !important at equal
+   specificity and loads after ours, so the redundant class/attribute
+   selectors below are there purely to outrank it. */
+#onetrust-consent-sdk .ot-tgl .ot-switch .ot-switch-nob {
+  background-color: var(--oxygen-palette-divider) !important;
+}
+
+#onetrust-consent-sdk .ot-tgl input.category-switch-handler[type='checkbox']:checked ~ .ot-switch .ot-switch-nob {
+  background-color: var(--oxygen-palette-primary-main) !important;
+}
+
+/* The checkbox driving the switch is visually hidden but still sized to match
+   it, so the browser's default focus outline renders as a rectangle around
+   the switch. Suppress it there and show a themed ring on the switch instead. */
+#onetrust-consent-sdk .ot-tgl input {
+  outline: none !important;
+}
+
+#onetrust-consent-sdk .ot-tgl input:focus-visible ~ .ot-switch {
+  box-shadow: 0 0 0 2px var(--oxygen-palette-primary-main) !important;
+}
+
+#onetrust-consent-sdk #ot-search-cntr input,
+#onetrust-consent-sdk #vendor-search-handler {
+  background-color: var(--oxygen-palette-background-default) !important;
+  color: var(--oxygen-palette-text-primary) !important;
+  border-color: var(--oxygen-palette-divider) !important;
+}
+
+/* Replace the CDN close icon (a fixed-color image needing a dark-mode invert
+   hack) with a self-contained masked icon button matching the design. */
+#onetrust-consent-sdk #close-pc-btn-handler {
+  background-image: none !important;
+  width: 28px !important;
+  height: 28px !important;
+  margin-top: 0.5rem;
+  margin-right: 0.75rem;
+  border-radius: 8px !important;
+  border: none !important;
+  background-color: color-mix(in srgb, var(--oxygen-palette-divider) 20%, transparent) !important;
+  position: relative;
+  outline: none !important;
+  transition: background-color 0.15s ease;
+}
+
+#onetrust-consent-sdk #close-pc-btn-handler:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px var(--oxygen-palette-primary-main) !important;
+}
+
+#onetrust-consent-sdk #close-pc-btn-handler::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 14px;
+  height: 14px;
+  background-color: var(--oxygen-palette-text-secondary);
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M18 6L6 18M6 6l12 12'/%3E%3C/svg%3E");
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M18 6L6 18M6 6l12 12'/%3E%3C/svg%3E");
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+
+#onetrust-consent-sdk #close-pc-btn-handler:hover {
+  background-color: color-mix(in srgb, var(--oxygen-palette-divider) 40%, transparent) !important;
+}
+
+#onetrust-consent-sdk #close-pc-btn-handler:hover::before {
+  background-color: var(--oxygen-palette-text-primary);
 }

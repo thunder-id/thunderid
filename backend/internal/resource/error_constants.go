@@ -314,46 +314,6 @@ var (
 			DefaultValue: "A resource server with the specified ID already exists",
 		},
 	}
-	// ErrorDelimiterInResourceServerHandle is returned when the resource server handle contains the delimiter.
-	ErrorDelimiterInResourceServerHandle = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "RES-1022",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.resourceservice.delimiter_conflict_in_resource_server_handle",
-			DefaultValue: "Delimiter conflict in handle",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.resourceservice.delimiter_conflict_in_resource_server_handle_description",
-			DefaultValue: "Resource server handle cannot contain the delimiter character",
-		},
-	}
-	// ErrorConsentSyncFailed is returned when resource permission changes fail to sync with the consent service.
-	ErrorConsentSyncFailed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "RES-1024",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.resourceservice.consent_sync_failed",
-			DefaultValue: "Consent sync failed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key: "error.resourceservice.consent_sync_failed_description",
-			DefaultValue: "Failed to sync resource permission changes with the consent " +
-				"service : code - {{param(code)}}",
-		},
-	}
-	// ErrorImmutableHandle is returned when attempting to change a resource server's handle.
-	ErrorImmutableHandle = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "RES-1025",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.resourceservice.immutable_handle",
-			DefaultValue: "Handle is immutable",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.resourceservice.immutable_handle_description",
-			DefaultValue: "Resource server handle cannot be changed after creation",
-		},
-	}
 )
 
 // Internal error constants.
@@ -369,29 +329,15 @@ var (
 
 	// errResultLimitExceededInCompositeMode is the internal sentinel error for composite mode limit exceeded.
 	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
+
+	// errUnknownDefaultResourceServer is returned when the configured resource server does not exist.
+	errUnknownDefaultResourceServer = errors.New(
+		"default resource server does not resolve to an existing resource server")
+
+	// errDeclarativeDefaultLocked is returned when attempting to override a declarative default.
+	errDeclarativeDefaultLocked = errors.New(
+		"default resource server is set declaratively and cannot be overridden")
+
+	// errDefaultResourceServerLookupFailed is returned when resource server lookup fails.
+	errDefaultResourceServerLookupFailed = errors.New("failed to resolve default resource server")
 )
-
-// consentSyncError wraps an underlying ServiceError from the consent service, allowing callers
-// to translate consent-service failures encountered during resource CRUD into their own error vocabulary.
-type consentSyncError struct {
-	Underlying *tidcommon.ServiceError
-}
-
-// Error implements the error interface. Falls back through (description → code → generic) so
-// the returned string is never empty even when the underlying error has no description.
-func (e *consentSyncError) Error() string {
-	if e.Underlying != nil {
-		if msg := e.Underlying.ErrorDescription.DefaultValue; msg != "" {
-			return msg
-		}
-		if e.Underlying.Code != "" {
-			return "consent sync failed (code " + e.Underlying.Code + ")"
-		}
-	}
-	return "consent sync failed"
-}
-
-// IsClientError reports whether the underlying error is a client error.
-func (e *consentSyncError) IsClientError() bool {
-	return e.Underlying != nil && e.Underlying.Type == tidcommon.ClientErrorType
-}

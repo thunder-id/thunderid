@@ -1,5 +1,6 @@
 ---
 title: Kubernetes
+docType: guide
 sidebar_position: 2
 persona: iam
 description: Deploy to a Kubernetes cluster using Helm, with PostgreSQL for production and SQLite for single-node setups.
@@ -98,9 +99,9 @@ helm install thunderid oci://ghcr.io/thunder-id/helm-charts/thunderid \
   --namespace thunderid \
   --create-namespace \
   --set configuration.database.config.type=sqlite \
-  --set configuration.database.runtime.type=sqlite \
-  --set configuration.database.user.type=sqlite \
-  --set configuration.consent.database.type=sqlite \
+  --set configuration.database.runtime_transient.type=sqlite \
+  --set configuration.database.entity.type=sqlite \
+  --set configuration.database.runtime_persistent.type=sqlite \
   --set deployment.securityContext.readOnlyRootFilesystem=false
 ```
 
@@ -109,7 +110,7 @@ SQLite on Kubernetes stores database files inside the pod. Without a PersistentV
 :::
 
 :::note
-`--set` values are not saved anywhere. Running `helm get values thunderid` will only show them if you pass `--all`. For anything beyond a quick throwaway install, prefer a values file — it is auditable, version-controllable, and reusable across upgrades. See [Option 2](#option-2-custom-values-file) for the values-file approach.
+`--set` values are not saved anywhere. Running `helm get values thunderid` will only show them if you pass `--all`. For anything beyond a quick throwaway install, prefer a values file: it is auditable, version-controllable, and reusable across upgrades. See [Option 2](#option-2-custom-values-file) for the values-file approach.
 :::
 
 ### Option 2: Custom Values File
@@ -142,30 +143,29 @@ For production deployments, use a values file to manage configuration:
           username: thunderid_user
           password: <config-db-password>
           sslmode: require
-        runtime:
+        runtime_transient:
           type: postgres
           host: postgres.default.svc.cluster.local
           port: 5432
-          name: runtimedb
+          name: runtime_transient
           username: thunderid_user
-          password: <runtime-db-password>
+          password: <runtime-transient-db-password>
           sslmode: require
-        user:
+        entity:
           type: postgres
           host: postgres.default.svc.cluster.local
           port: 5432
-          name: userdb
+          name: entitydb
           username: thunderid_user
-          password: <user-db-password>
+          password: <entity-db-password>
           sslmode: require
-      consent:
-        database:
+        runtime_persistent:
           type: postgres
           host: postgres.default.svc.cluster.local
           port: 5432
-          name: consentdb
+          name: runtime_persistent
           username: thunderid_user
-          password: <consent-db-password>
+          password: <runtime-persistent-db-password>
           sslmode: require
     ```
 
@@ -194,9 +194,9 @@ Before deploying <ProductName />, prepare the PostgreSQL instance:
 
     ```sql
     CREATE DATABASE configdb;
-    CREATE DATABASE runtimedb;
-    CREATE DATABASE userdb;
-    CREATE DATABASE consentdb;
+    CREATE DATABASE runtime_transient;
+    CREATE DATABASE entitydb;
+    CREATE DATABASE runtime_persistent;
     ```
 
 2. Create a dedicated user:
@@ -208,7 +208,7 @@ Before deploying <ProductName />, prepare the PostgreSQL instance:
 3. Grant the required privileges in each database. Connect to each database and run both statements. Using `psql`:
 
     ```bash
-    for db in configdb runtimedb userdb consentdb; do
+    for db in configdb runtime_transient entitydb runtime_persistent; do
       psql -h <db-host> -U postgres -d "$db" <<'SQL'
         GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO thunderid_user;
         ALTER DEFAULT PRIVILEGES IN SCHEMA public
@@ -220,7 +220,7 @@ Before deploying <ProductName />, prepare the PostgreSQL instance:
     `GRANT ON ALL TABLES` covers tables that already exist. `ALTER DEFAULT PRIVILEGES` ensures tables created by future migrations are also accessible.
 
 4. Run the initialization scripts to create the schema:
-    - Apply the database scripts for <RepoLink path="/blob/main/backend/dbscripts/configdb/postgres.sql">configdb</RepoLink>, <RepoLink path="/blob/main/backend/dbscripts/runtimedb/postgres.sql">runtimedb</RepoLink>, <RepoLink path="/blob/main/backend/dbscripts/userdb/postgres.sql">userdb</RepoLink>, and [consentdb](https://github.com/wso2/openfgc/blob/main/consent-server/dbscripts/db_schema_postgres.sql).
+    - Apply the database scripts for <RepoLink path="/blob/main/backend/dbscripts/configdb/postgres.sql">configdb</RepoLink>, <RepoLink path="/blob/main/backend/dbscripts/runtime-transient/postgres.sql">runtime_transient</RepoLink>, <RepoLink path="/blob/main/backend/dbscripts/entitydb/postgres.sql">entitydb</RepoLink>, and <RepoLink path="/blob/main/backend/dbscripts/runtime-persistent/postgres.sql">runtime_persistent</RepoLink>.
 
 For a PostgreSQL setup using Helm, refer to the [Bitnami PostgreSQL Helm Chart](https://bitnami.com/stacks/postgresql).
 
@@ -237,30 +237,29 @@ configuration:
       username: thunderid_user
       password: <config-db-password>
       sslmode: require
-    runtime:
+    runtime_transient:
       type: postgres
       host: postgres.example.com
       port: 5432
-      name: runtimedb
+      name: runtime_transient
       username: thunderid_user
-      password: <runtime-db-password>
+      password: <runtime-transient-db-password>
       sslmode: require
-    user:
+    entity:
       type: postgres
       host: postgres.example.com
       port: 5432
-      name: userdb
+      name: entitydb
       username: thunderid_user
-      password: <user-db-password>
+      password: <entity-db-password>
       sslmode: require
-  consent:
-    database:
+    runtime_persistent:
       type: postgres
       host: postgres.example.com
       port: 5432
-      name: consentdb
+      name: runtime_persistent
       username: thunderid_user
-      password: <consent-db-password>
+      password: <runtime-persistent-db-password>
       sslmode: require
 ```
 
@@ -275,18 +274,17 @@ configuration:
       type: sqlite
       sqlitePath: database/configdb.db
       sqliteOptions: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
-    runtime:
+    runtime_transient:
       type: sqlite
-      sqlitePath: database/runtimedb.db
+      sqlitePath: database/runtime-transient.db
       sqliteOptions: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
-    user:
+    entity:
       type: sqlite
-      sqlitePath: database/userdb.db
+      sqlitePath: database/entitydb.db
       sqliteOptions: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
-  consent:
-    database:
+    runtime_persistent:
       type: sqlite
-      sqlitePath: repository/database/consentdb.db
+      sqlitePath: database/runtime-persistent.db
       sqliteOptions: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
 ```
 
@@ -300,9 +298,17 @@ persistence:
   size: 1Gi
 ```
 
-Also set `deployment.securityContext.readOnlyRootFilesystem: false` when using SQLite — the chart sets this to `true` by default, which prevents SQLite from writing its database files.
+Also set `deployment.securityContext.readOnlyRootFilesystem: false` when using SQLite: the chart sets this to `true` by default, which prevents SQLite from writing its database files.
 
-Set `replicaCount: 1` when using SQLite — multiple replicas writing to the same SQLite files will corrupt the database.
+Set `replicaCount: 1` when using SQLite: multiple replicas writing to the same SQLite files will corrupt the database.
+
+## Cryptographic Material
+
+When `setup.enabled` is `true` (the default), the setup job generates per-install TLS, JWT signing, and AES encryption keys into a dedicated certs PersistentVolumeClaim, and the server reads them from it. This PVC must persist for the life of the deployment: if it is lost, previously encrypted data cannot be decrypted and previously issued tokens can no longer be validated. Configure its size and storage class under `certs.persistence`.
+
+The certs PVC defaults to `ReadWriteOnce`, which fits a single-node or single-replica install. If you run more than one replica and the pods can land on different nodes, set `certs.persistence.accessMode` to `ReadWriteMany` with a storage class that supports it, so every replica can read the material. Alternatively, provide your own key material and set `setup.enabled` to `false`.
+
+For production TLS, terminate HTTPS at your ingress or gateway with a CA-issued certificate (`ingress.tlsSecretsName` / `gateway.tls`); the certificate the setup job generates for the server is self-signed.
 
 ## Health Checks
 
@@ -338,7 +344,7 @@ hpa:
   averageUtilizationMemory: 75
 ```
 
-HPA requires the [Kubernetes Metrics Server](https://github.com/kubernetes-sigs/metrics-server) to be installed in your cluster. HPA is only compatible with PostgreSQL — do not enable it when using SQLite.
+HPA requires the [Kubernetes Metrics Server](https://github.com/kubernetes-sigs/metrics-server) to be installed in your cluster. HPA is only compatible with PostgreSQL. Do not enable it when using SQLite.
 
 ## Image Pull Secrets
 

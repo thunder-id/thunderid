@@ -53,7 +53,7 @@ func (suite *DBStoreTestSuite) SetupTest() {
 
 func (suite *DBStoreTestSuite) TestRecordJTI_Inserted() {
 	expiry := time.Now().Add(time.Minute).UTC()
-	suite.dbProvider.On("GetRuntimeDBClient").Return(suite.dbClient, nil)
+	suite.dbProvider.On("GetRuntimeTransientDBClient").Return(suite.dbClient, nil)
 	suite.dbClient.On("ExecuteContext", mock.Anything, queryInsertJTI,
 		"dpop", "jti-1",
 		mock.MatchedBy(func(t time.Time) bool { return !t.IsZero() }),
@@ -66,7 +66,7 @@ func (suite *DBStoreTestSuite) TestRecordJTI_Inserted() {
 }
 
 func (suite *DBStoreTestSuite) TestRecordJTI_Replay() {
-	suite.dbProvider.On("GetRuntimeDBClient").Return(suite.dbClient, nil)
+	suite.dbProvider.On("GetRuntimeTransientDBClient").Return(suite.dbClient, nil)
 	suite.dbClient.On("ExecuteContext", mock.Anything, queryInsertJTI,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 	).Return(int64(0), nil)
@@ -77,7 +77,7 @@ func (suite *DBStoreTestSuite) TestRecordJTI_Replay() {
 }
 
 func (suite *DBStoreTestSuite) TestRecordJTI_DBClientError() {
-	suite.dbProvider.On("GetRuntimeDBClient").Return(nil, errors.New("conn failed"))
+	suite.dbProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("conn failed"))
 
 	inserted, err := suite.store.RecordJTI(context.Background(), "dpop", "jti-1", time.Now().Add(time.Minute))
 	require.Error(suite.T(), err)
@@ -86,7 +86,7 @@ func (suite *DBStoreTestSuite) TestRecordJTI_DBClientError() {
 }
 
 func (suite *DBStoreTestSuite) TestRecordJTI_ExecuteError() {
-	suite.dbProvider.On("GetRuntimeDBClient").Return(suite.dbClient, nil)
+	suite.dbProvider.On("GetRuntimeTransientDBClient").Return(suite.dbClient, nil)
 	suite.dbClient.On("ExecuteContext", mock.Anything, queryInsertJTI,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 	).Return(int64(0), errors.New("insert failed"))
@@ -103,7 +103,7 @@ func (suite *DBStoreTestSuite) TestRecordJTI_PassesUTCExpiry() {
 	require.NoError(suite.T(), err)
 	local := time.Now().In(loc)
 
-	suite.dbProvider.On("GetRuntimeDBClient").Return(suite.dbClient, nil)
+	suite.dbProvider.On("GetRuntimeTransientDBClient").Return(suite.dbClient, nil)
 	suite.dbClient.On("ExecuteContext", mock.Anything, queryInsertJTI,
 		"dpop", "jti-utc",
 		mock.MatchedBy(func(t time.Time) bool { return t.Location() == time.UTC }),
@@ -118,7 +118,7 @@ func (suite *DBStoreTestSuite) TestRecordJTI_PassesUTCExpiry() {
 // namespaces can carry the same jti without colliding — i.e. namespace participates
 // in the primary key.
 func (suite *DBStoreTestSuite) TestRecordJTI_NamespaceIsolation() {
-	suite.dbProvider.On("GetRuntimeDBClient").Return(suite.dbClient, nil)
+	suite.dbProvider.On("GetRuntimeTransientDBClient").Return(suite.dbClient, nil)
 	suite.dbClient.On("ExecuteContext", mock.Anything, queryInsertJTI,
 		"dpop", "j", mock.Anything, testDeploymentID,
 	).Return(int64(1), nil).Once()

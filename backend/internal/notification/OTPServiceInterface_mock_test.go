@@ -8,8 +8,8 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/notification/common"
-	common0 "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	common0 "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // NewOTPServiceInterfaceMock creates a new instance of OTPServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -39,101 +39,117 @@ func (_m *OTPServiceInterfaceMock) EXPECT() *OTPServiceInterfaceMock_Expecter {
 	return &OTPServiceInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
-// SendOTP provides a mock function for the type OTPServiceInterfaceMock
-func (_mock *OTPServiceInterfaceMock) SendOTP(ctx context.Context, request common.SendOTPDTO) (*common.SendOTPResultDTO, *common0.ServiceError) {
-	ret := _mock.Called(ctx, request)
+// GenerateOTP provides a mock function for the type OTPServiceInterfaceMock
+func (_mock *OTPServiceInterfaceMock) GenerateOTP(ctx context.Context, recipient string, recipientAttr string) (string, string, int64, *common.ServiceError) {
+	ret := _mock.Called(ctx, recipient, recipientAttr)
 
 	if len(ret) == 0 {
-		panic("no return value specified for SendOTP")
+		panic("no return value specified for GenerateOTP")
 	}
 
-	var r0 *common.SendOTPResultDTO
-	var r1 *common0.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, common.SendOTPDTO) (*common.SendOTPResultDTO, *common0.ServiceError)); ok {
-		return returnFunc(ctx, request)
+	var r0 string
+	var r1 string
+	var r2 int64
+	var r3 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (string, string, int64, *common.ServiceError)); ok {
+		return returnFunc(ctx, recipient, recipientAttr)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, common.SendOTPDTO) *common.SendOTPResultDTO); ok {
-		r0 = returnFunc(ctx, request)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) string); ok {
+		r0 = returnFunc(ctx, recipient, recipientAttr)
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*common.SendOTPResultDTO)
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) string); ok {
+		r1 = returnFunc(ctx, recipient, recipientAttr)
+	} else {
+		r1 = ret.Get(1).(string)
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string, string) int64); ok {
+		r2 = returnFunc(ctx, recipient, recipientAttr)
+	} else {
+		r2 = ret.Get(2).(int64)
+	}
+	if returnFunc, ok := ret.Get(3).(func(context.Context, string, string) *common.ServiceError); ok {
+		r3 = returnFunc(ctx, recipient, recipientAttr)
+	} else {
+		if ret.Get(3) != nil {
+			r3 = ret.Get(3).(*common.ServiceError)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, common.SendOTPDTO) *common0.ServiceError); ok {
-		r1 = returnFunc(ctx, request)
-	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*common0.ServiceError)
-		}
-	}
-	return r0, r1
+	return r0, r1, r2, r3
 }
 
-// OTPServiceInterfaceMock_SendOTP_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SendOTP'
-type OTPServiceInterfaceMock_SendOTP_Call struct {
+// OTPServiceInterfaceMock_GenerateOTP_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GenerateOTP'
+type OTPServiceInterfaceMock_GenerateOTP_Call struct {
 	*mock.Call
 }
 
-// SendOTP is a helper method to define mock.On call
+// GenerateOTP is a helper method to define mock.On call
 //   - ctx context.Context
-//   - request common.SendOTPDTO
-func (_e *OTPServiceInterfaceMock_Expecter) SendOTP(ctx interface{}, request interface{}) *OTPServiceInterfaceMock_SendOTP_Call {
-	return &OTPServiceInterfaceMock_SendOTP_Call{Call: _e.mock.On("SendOTP", ctx, request)}
+//   - recipient string
+//   - recipientAttr string
+func (_e *OTPServiceInterfaceMock_Expecter) GenerateOTP(ctx interface{}, recipient interface{}, recipientAttr interface{}) *OTPServiceInterfaceMock_GenerateOTP_Call {
+	return &OTPServiceInterfaceMock_GenerateOTP_Call{Call: _e.mock.On("GenerateOTP", ctx, recipient, recipientAttr)}
 }
 
-func (_c *OTPServiceInterfaceMock_SendOTP_Call) Run(run func(ctx context.Context, request common.SendOTPDTO)) *OTPServiceInterfaceMock_SendOTP_Call {
+func (_c *OTPServiceInterfaceMock_GenerateOTP_Call) Run(run func(ctx context.Context, recipient string, recipientAttr string)) *OTPServiceInterfaceMock_GenerateOTP_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 common.SendOTPDTO
+		var arg1 string
 		if args[1] != nil {
-			arg1 = args[1].(common.SendOTPDTO)
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
 }
 
-func (_c *OTPServiceInterfaceMock_SendOTP_Call) Return(sendOTPResultDTO *common.SendOTPResultDTO, serviceError *common0.ServiceError) *OTPServiceInterfaceMock_SendOTP_Call {
-	_c.Call.Return(sendOTPResultDTO, serviceError)
+func (_c *OTPServiceInterfaceMock_GenerateOTP_Call) Return(sessionToken string, otpValue string, expirySeconds int64, svcErr *common.ServiceError) *OTPServiceInterfaceMock_GenerateOTP_Call {
+	_c.Call.Return(sessionToken, otpValue, expirySeconds, svcErr)
 	return _c
 }
 
-func (_c *OTPServiceInterfaceMock_SendOTP_Call) RunAndReturn(run func(ctx context.Context, request common.SendOTPDTO) (*common.SendOTPResultDTO, *common0.ServiceError)) *OTPServiceInterfaceMock_SendOTP_Call {
+func (_c *OTPServiceInterfaceMock_GenerateOTP_Call) RunAndReturn(run func(ctx context.Context, recipient string, recipientAttr string) (string, string, int64, *common.ServiceError)) *OTPServiceInterfaceMock_GenerateOTP_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // VerifyOTP provides a mock function for the type OTPServiceInterfaceMock
-func (_mock *OTPServiceInterfaceMock) VerifyOTP(ctx context.Context, request common.VerifyOTPDTO) (*common.VerifyOTPResultDTO, *common0.ServiceError) {
+func (_mock *OTPServiceInterfaceMock) VerifyOTP(ctx context.Context, request common0.VerifyOTPDTO) (*common0.VerifyOTPResultDTO, *common.ServiceError) {
 	ret := _mock.Called(ctx, request)
 
 	if len(ret) == 0 {
 		panic("no return value specified for VerifyOTP")
 	}
 
-	var r0 *common.VerifyOTPResultDTO
-	var r1 *common0.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, common.VerifyOTPDTO) (*common.VerifyOTPResultDTO, *common0.ServiceError)); ok {
+	var r0 *common0.VerifyOTPResultDTO
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, common0.VerifyOTPDTO) (*common0.VerifyOTPResultDTO, *common.ServiceError)); ok {
 		return returnFunc(ctx, request)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, common.VerifyOTPDTO) *common.VerifyOTPResultDTO); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, common0.VerifyOTPDTO) *common0.VerifyOTPResultDTO); ok {
 		r0 = returnFunc(ctx, request)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*common.VerifyOTPResultDTO)
+			r0 = ret.Get(0).(*common0.VerifyOTPResultDTO)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, common.VerifyOTPDTO) *common0.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, common0.VerifyOTPDTO) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, request)
 	} else {
 		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*common0.ServiceError)
+			r1 = ret.Get(1).(*common.ServiceError)
 		}
 	}
 	return r0, r1
@@ -146,20 +162,20 @@ type OTPServiceInterfaceMock_VerifyOTP_Call struct {
 
 // VerifyOTP is a helper method to define mock.On call
 //   - ctx context.Context
-//   - request common.VerifyOTPDTO
+//   - request common0.VerifyOTPDTO
 func (_e *OTPServiceInterfaceMock_Expecter) VerifyOTP(ctx interface{}, request interface{}) *OTPServiceInterfaceMock_VerifyOTP_Call {
 	return &OTPServiceInterfaceMock_VerifyOTP_Call{Call: _e.mock.On("VerifyOTP", ctx, request)}
 }
 
-func (_c *OTPServiceInterfaceMock_VerifyOTP_Call) Run(run func(ctx context.Context, request common.VerifyOTPDTO)) *OTPServiceInterfaceMock_VerifyOTP_Call {
+func (_c *OTPServiceInterfaceMock_VerifyOTP_Call) Run(run func(ctx context.Context, request common0.VerifyOTPDTO)) *OTPServiceInterfaceMock_VerifyOTP_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 common.VerifyOTPDTO
+		var arg1 common0.VerifyOTPDTO
 		if args[1] != nil {
-			arg1 = args[1].(common.VerifyOTPDTO)
+			arg1 = args[1].(common0.VerifyOTPDTO)
 		}
 		run(
 			arg0,
@@ -169,12 +185,12 @@ func (_c *OTPServiceInterfaceMock_VerifyOTP_Call) Run(run func(ctx context.Conte
 	return _c
 }
 
-func (_c *OTPServiceInterfaceMock_VerifyOTP_Call) Return(verifyOTPResultDTO *common.VerifyOTPResultDTO, serviceError *common0.ServiceError) *OTPServiceInterfaceMock_VerifyOTP_Call {
+func (_c *OTPServiceInterfaceMock_VerifyOTP_Call) Return(verifyOTPResultDTO *common0.VerifyOTPResultDTO, serviceError *common.ServiceError) *OTPServiceInterfaceMock_VerifyOTP_Call {
 	_c.Call.Return(verifyOTPResultDTO, serviceError)
 	return _c
 }
 
-func (_c *OTPServiceInterfaceMock_VerifyOTP_Call) RunAndReturn(run func(ctx context.Context, request common.VerifyOTPDTO) (*common.VerifyOTPResultDTO, *common0.ServiceError)) *OTPServiceInterfaceMock_VerifyOTP_Call {
+func (_c *OTPServiceInterfaceMock_VerifyOTP_Call) RunAndReturn(run func(ctx context.Context, request common0.VerifyOTPDTO) (*common0.VerifyOTPResultDTO, *common.ServiceError)) *OTPServiceInterfaceMock_VerifyOTP_Call {
 	_c.Call.Return(run)
 	return _c
 }

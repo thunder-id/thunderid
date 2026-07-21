@@ -140,7 +140,7 @@ func (suite *SessionStoreTestSuite) TestStoreSession_Success() {
 		UserVerification: "preferred",
 	}
 
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.On("Execute", mock.AnythingOfType("model.DBQuery"),
 		testSessionKey, mock.Anything, mock.Anything, "test-deployment-id").
 		Return(int64(1), nil).Once()
@@ -157,7 +157,7 @@ func (suite *SessionStoreTestSuite) TestStoreSession_DBClientError() {
 		Challenge: "challenge123",
 	}
 
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, assert.AnError).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(nil, assert.AnError).Once()
 
 	err := suite.store.storeSession(context.Background(), testSessionKey, sessionData, int64(300))
 
@@ -170,7 +170,7 @@ func (suite *SessionStoreTestSuite) TestStoreSession_ExecuteError() {
 		Challenge: "challenge123",
 	}
 
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.On("Execute", mock.AnythingOfType("model.DBQuery"),
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(int64(0), assert.AnError).Once()
@@ -194,7 +194,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_Success() {
 		},
 	}
 
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.On("Query", mock.AnythingOfType("model.DBQuery"),
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return(results, nil).Once()
@@ -216,7 +216,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_EmptyKey() {
 }
 
 func (suite *SessionStoreTestSuite) TestRetrieveSession_NotFound() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.On("Query", mock.AnythingOfType("model.DBQuery"),
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return([]map[string]interface{}{}, nil).Once()
@@ -228,7 +228,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_NotFound() {
 }
 
 func (suite *SessionStoreTestSuite) TestRetrieveSession_DBClientError() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, assert.AnError).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(nil, assert.AnError).Once()
 
 	sd, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 
@@ -237,7 +237,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_DBClientError() {
 }
 
 func (suite *SessionStoreTestSuite) TestRetrieveSession_QueryError() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.On("Query", mock.AnythingOfType("model.DBQuery"),
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return(nil, assert.AnError).Once()
@@ -261,7 +261,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_SessionDataAsBytes() {
 		},
 	}
 
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.On("Query", mock.AnythingOfType("model.DBQuery"),
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return(results, nil).Once()
@@ -274,7 +274,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_SessionDataAsBytes() {
 }
 
 func (suite *SessionStoreTestSuite) TestDeleteSession_Success() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.On("Execute", mock.AnythingOfType("model.DBQuery"),
 		testSessionKey, "test-deployment-id").
 		Return(int64(1), nil).Once()
@@ -291,7 +291,7 @@ func (suite *SessionStoreTestSuite) TestDeleteSession_EmptyKey() {
 }
 
 func (suite *SessionStoreTestSuite) TestDeleteSession_DBClientError() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, assert.AnError).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(nil, assert.AnError).Once()
 
 	err := suite.store.deleteSession(context.Background(), testSessionKey)
 
@@ -299,7 +299,7 @@ func (suite *SessionStoreTestSuite) TestDeleteSession_DBClientError() {
 }
 
 func (suite *SessionStoreTestSuite) TestDeleteSession_ExecuteError() {
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.On("Execute", mock.AnythingOfType("model.DBQuery"),
 		testSessionKey, "test-deployment-id").
 		Return(int64(0), assert.AnError).Once()
@@ -474,7 +474,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_BuildSessionDataError_In
 		dbColumnSessionData: "not-valid-json{{",
 	}
 
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.On("Query", mock.AnythingOfType("model.DBQuery"),
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return([]map[string]interface{}{row}, nil).Once()
@@ -491,7 +491,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_BuildSessionDataError_Mi
 		// Missing dbColumnSessionData
 	}
 
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.On("Query", mock.AnythingOfType("model.DBQuery"),
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return([]map[string]interface{}{row}, nil).Once()
@@ -515,7 +515,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_BuildSessionDataError_In
 		dbColumnSessionData: string(jsonBytes),
 	}
 
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.On("Query", mock.AnythingOfType("model.DBQuery"),
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return([]map[string]interface{}{row}, nil).Once()
@@ -540,7 +540,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_BuildSessionDataError_In
 		dbColumnSessionData: string(jsonBytes),
 	}
 
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.On("Query", mock.AnythingOfType("model.DBQuery"),
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return([]map[string]interface{}{row}, nil).Once()
@@ -557,7 +557,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_BuildSessionDataError_Wr
 		dbColumnSessionData: 12345, // Invalid type: int instead of string or []byte
 	}
 
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.On("Query", mock.AnythingOfType("model.DBQuery"),
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return([]map[string]interface{}{row}, nil).Once()
@@ -574,7 +574,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_BuildSessionDataError_Em
 		dbColumnSessionData: "", // Empty string
 	}
 
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.On("Query", mock.AnythingOfType("model.DBQuery"),
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return([]map[string]interface{}{row}, nil).Once()
@@ -591,7 +591,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_BuildSessionDataError_Em
 		dbColumnSessionData: []byte{}, // Empty byte array
 	}
 
-	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.On("Query", mock.AnythingOfType("model.DBQuery"),
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return([]map[string]interface{}{row}, nil).Once()

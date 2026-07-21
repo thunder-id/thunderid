@@ -34,6 +34,12 @@ type (
 	Certificate = providers.Certificate
 )
 
+// InboundClientAttributes is the flattened view of one inbound client's configured user attributes.
+type InboundClientAttributes struct {
+	InboundClientID string
+	Attributes      []string
+}
+
 // DeclarativeLoaderConfig describes how to load inbound clients from a YAML resource directory.
 type DeclarativeLoaderConfig struct {
 	ResourceType  string

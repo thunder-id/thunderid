@@ -28,7 +28,6 @@ import type {Element as FlowElement} from '@/features/flows/models/elements';
  * Input element type with properties at top level.
  */
 export type InputElement = FlowElement & {
-  className?: string;
   defaultValue?: string;
   hint?: string;
   maxLength?: number;
@@ -73,7 +72,8 @@ function DefaultInputAdapter({resource}: DefaultInputAdapterPropsInterface): Rea
   return (
     <TextField
       fullWidth
-      className={inputElement?.className}
+      id={inputElement?.id}
+      className={inputElement?.classes}
       defaultValue={inputElement?.defaultValue}
       helperText={inputElement?.hint && <Hint hint={inputElement?.hint} />}
       inputProps={{

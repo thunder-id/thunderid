@@ -29,11 +29,13 @@ import useVisualFlowHandlers from '../useVisualFlowHandlers';
 // Mock @xyflow/react
 const mockGetNodes = vi.fn();
 const mockGetEdges = vi.fn();
+const mockUpdateNodeData = vi.fn();
 
 vi.mock('@xyflow/react', () => ({
   useReactFlow: () => ({
     getNodes: mockGetNodes,
     getEdges: mockGetEdges,
+    updateNodeData: mockUpdateNodeData,
   }),
   MarkerType: {
     ArrowClosed: 'arrowclosed',
@@ -214,6 +216,208 @@ describe('useVisualFlowHandlers', () => {
       });
 
       expect(onEdgeResolve).toHaveBeenCalledWith(connection, [{id: 'node-1'}, {id: 'node-2'}]);
+    });
+
+    describe('RichText action ref auto-population', () => {
+      const richTextComponentId = 'rt-1';
+      const nextSuffix = '_NEXT';
+
+      const buildRichTextNode = (actionRef: string | undefined = '') => ({
+        id: 'view-1',
+        data: {
+          components: [
+            {
+              id: richTextComponentId,
+              type: 'RICH_TEXT',
+              action: actionRef === undefined ? undefined : {ref: actionRef},
+            },
+          ],
+        },
+      });
+
+      it('should populate RichText action.ref when edge is drawn from its next handle', () => {
+        mockGetNodes.mockReturnValue([buildRichTextNode(''), {id: 'target-1', data: {}}]);
+
+        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+          wrapper: createWrapper(),
+        });
+
+        const connection: Connection = {
+          source: 'view-1',
+          target: 'target-1',
+          sourceHandle: `${richTextComponentId}${nextSuffix}`,
+          targetHandle: null,
+        };
+
+        act(() => {
+          result.current.handleConnect(connection);
+        });
+
+        expect(mockUpdateNodeData).toHaveBeenCalledTimes(1);
+        const [nodeId, updater] = mockUpdateNodeData.mock.calls[0];
+        expect(nodeId).toBe('view-1');
+        // Invoke the updater with the current node to inspect the produced data
+        const updated = updater({data: buildRichTextNode('').data});
+        expect(updated.components[0]).toEqual({
+          id: richTextComponentId,
+          type: 'RICH_TEXT',
+          action: {ref: 'target-1'},
+        });
+      });
+
+      it('should update RichText action.ref nested inside a container component', () => {
+        const nested = {
+          id: 'view-1',
+          data: {
+            components: [
+              {
+                id: 'block-1',
+                type: 'BLOCK',
+                components: [
+                  {
+                    id: richTextComponentId,
+                    type: 'RICH_TEXT',
+                    action: {ref: ''},
+                  },
+                ],
+              },
+            ],
+          },
+        };
+        mockGetNodes.mockReturnValue([nested, {id: 'target-2'}]);
+
+        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+          wrapper: createWrapper(),
+        });
+
+        act(() => {
+          result.current.handleConnect({
+            source: 'view-1',
+            target: 'target-2',
+            sourceHandle: `${richTextComponentId}${nextSuffix}`,
+            targetHandle: null,
+          });
+        });
+
+        expect(mockUpdateNodeData).toHaveBeenCalledTimes(1);
+        const [, updater] = mockUpdateNodeData.mock.calls[0];
+        const updated = updater({data: nested.data});
+        expect(updated.components[0].components[0].action).toEqual({ref: 'target-2'});
+      });
+
+      it('should not call updateNodeData when RichText already has the target ref', () => {
+        mockGetNodes.mockReturnValue([buildRichTextNode('target-1'), {id: 'target-1'}]);
+
+        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+          wrapper: createWrapper(),
+        });
+
+        act(() => {
+          result.current.handleConnect({
+            source: 'view-1',
+            target: 'target-1',
+            sourceHandle: `${richTextComponentId}${nextSuffix}`,
+            targetHandle: null,
+          });
+        });
+
+        expect(mockUpdateNodeData).not.toHaveBeenCalled();
+      });
+
+      it('should not touch RichText when the component has no action defined', () => {
+        // action === undefined means the rich-text is display-only; the hook should skip it
+        mockGetNodes.mockReturnValue([
+          {
+            id: 'view-1',
+            data: {components: [{id: richTextComponentId, type: 'RICH_TEXT'}]},
+          },
+          {id: 'target-1'},
+        ]);
+
+        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+          wrapper: createWrapper(),
+        });
+
+        act(() => {
+          result.current.handleConnect({
+            source: 'view-1',
+            target: 'target-1',
+            sourceHandle: `${richTextComponentId}${nextSuffix}`,
+            targetHandle: null,
+          });
+        });
+
+        expect(mockUpdateNodeData).not.toHaveBeenCalled();
+      });
+
+      it('should ignore connections whose sourceHandle does not end with _NEXT', () => {
+        mockGetNodes.mockReturnValue([buildRichTextNode(''), {id: 'target-1'}]);
+
+        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+          wrapper: createWrapper(),
+        });
+
+        act(() => {
+          result.current.handleConnect({
+            source: 'view-1',
+            target: 'target-1',
+            sourceHandle: `${richTextComponentId}_OTHER`,
+            targetHandle: null,
+          });
+        });
+
+        expect(mockUpdateNodeData).not.toHaveBeenCalled();
+      });
+
+      it('should skip auto-population when source node has no components (non-step data)', () => {
+        mockGetNodes.mockReturnValue([{id: 'view-1', data: {}}, {id: 'target-1'}]);
+
+        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+          wrapper: createWrapper(),
+        });
+
+        act(() => {
+          result.current.handleConnect({
+            source: 'view-1',
+            target: 'target-1',
+            sourceHandle: `${richTextComponentId}${nextSuffix}`,
+            targetHandle: null,
+          });
+        });
+
+        expect(mockUpdateNodeData).not.toHaveBeenCalled();
+      });
+
+      it('should leave non-matching components untouched when updating', () => {
+        const sourceNode = {
+          id: 'view-1',
+          data: {
+            components: [
+              {id: 'other', type: 'RICH_TEXT', action: {ref: 'existing'}},
+              {id: richTextComponentId, type: 'RICH_TEXT', action: {ref: ''}},
+            ],
+          },
+        };
+        mockGetNodes.mockReturnValue([sourceNode, {id: 'target-1'}]);
+
+        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+          wrapper: createWrapper(),
+        });
+
+        act(() => {
+          result.current.handleConnect({
+            source: 'view-1',
+            target: 'target-1',
+            sourceHandle: `${richTextComponentId}${nextSuffix}`,
+            targetHandle: null,
+          });
+        });
+
+        const [, updater] = mockUpdateNodeData.mock.calls[0];
+        const updated = updater({data: sourceNode.data});
+        expect(updated.components[0].action).toEqual({ref: 'existing'});
+        expect(updated.components[1].action).toEqual({ref: 'target-1'});
+      });
     });
 
     it('should use current edgeStyle from context', () => {

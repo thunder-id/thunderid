@@ -31,7 +31,7 @@ export default function HomeBreadcrumbItem(): ReactNode {
   const {metadata} = useDoc();
   // version.path is the docs version root (e.g. /thunder/docs/next)
   const docsHomeHref = activeVersion?.path ?? '/docs';
-  const homeHref = SDK_SIDEBARS.has(metadata.sidebar ?? '') ? `${docsHomeHref}/sdks/overview` : docsHomeHref;
+  const homeHref = SDK_SIDEBARS.has(metadata.sidebar ?? '') ? '/sdks' : docsHomeHref;
 
   return (
     <li className="breadcrumbs__item">

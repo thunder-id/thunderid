@@ -33,16 +33,18 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // authorizationCodeGrantHandler handles the authorization code grant type.
 type authorizationCodeGrantHandler struct {
-	authzService    authz.AuthorizeServiceInterface
-	tokenBuilder    tokenservice.TokenBuilderInterface
-	attributeCache  attributecache.AttributeCacheServiceInterface
-	resourceService providers.ResourceServerProvider
+	authzService        authz.AuthorizeServiceInterface
+	tokenBuilder        tokenservice.TokenBuilderInterface
+	attributeCache      attributecache.AttributeCacheServiceInterface
+	resourceService     providers.ResourceServerProvider
+	serverConfigService serverconfig.ServerConfigService
 }
 
 // newAuthorizationCodeGrantHandler creates a new instance of AuthorizationCodeGrantHandler.
@@ -51,12 +53,14 @@ func newAuthorizationCodeGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	attributeCache attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
+	serverConfigService serverconfig.ServerConfigService,
 ) GrantHandlerInterface {
 	return &authorizationCodeGrantHandler{
-		authzService:    authzService,
-		tokenBuilder:    tokenBuilder,
-		attributeCache:  attributeCache,
-		resourceService: resourceService,
+		authzService:        authzService,
+		tokenBuilder:        tokenBuilder,
+		attributeCache:      attributeCache,
+		resourceService:     resourceService,
+		serverConfigService: serverConfigService,
 	}
 }
 
@@ -129,69 +133,56 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		attrs = userAttributes.Attributes
 	}
 
-	// Always resolve the full set of resources authorized by the authz code. This is used to
-	// compute the full audiences for the refresh token (RFC 8707 §5).
-	fullRSes, errResp := resourceindicators.ResolveResourceServers(ctx, h.resourceService, authCode.Resources)
+	// Bind the token to a single target resource server. Prefer the token request's resource
+	// (validated as a subset of the code's resources); otherwise use the resource recorded on the
+	// authorization code; otherwise fall back to the configured default resource server.
+	effectiveResources := tokenRequest.Resources
+	if len(effectiveResources) == 0 {
+		effectiveResources = authCode.Resources
+	}
+
+	// Retain OIDC scopes unchanged; downscope non-OIDC scopes to permissions defined on the target RS.
+	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(
+		strings.Join(authorizedScopes, " "), oauthApp.ScopeClaims)
+	targetRS, errResp := resourceindicators.ResolveAudienceBinding(
+		ctx, h.resourceService, h.serverConfigService, effectiveResources, nonOidcScopes)
 	if errResp != nil {
 		return nil, errResp
 	}
-	fullAudiences, errResp := resourceindicators.ComposeAudiences(ctx, h.resourceService, authCode.ClientID,
-		fullRSes, authorizedScopes)
-	if errResp != nil {
-		return nil, errResp
-	}
 
-	// Default: access token carries the full audiences and all authorized scopes.
-	accessTokenAudiences := fullAudiences
-	accessTokenScopes := authorizedScopes
-
-	// Per RFC 8707 §2.1, the token request MAY narrow the resource set. When narrowing occurs,
-	// audiences and scopes are downscoped to the requested subset.
-	if len(tokenRequest.Resources) > 0 {
-		// When the auth code had explicit resources, narrow by filtering the already-resolved full set.
-		// When the auth code had no explicit resources, resolve the token-request resources directly.
-		var narrowedRSes []*providers.ResourceServer
-		if len(authCode.Resources) > 0 {
-			narrowedRSes = resourceindicators.FilterByIdentifiers(fullRSes, tokenRequest.Resources)
-		} else {
-			narrowedRSes, errResp = resourceindicators.ResolveResourceServers(
-				ctx, h.resourceService, tokenRequest.Resources)
-			if errResp != nil {
-				return nil, errResp
-			}
-		}
-		accessTokenAudiences, errResp = resourceindicators.ComposeAudiences(ctx, h.resourceService,
-			authCode.ClientID, narrowedRSes, authorizedScopes)
-		if errResp != nil {
-			return nil, errResp
-		}
-
-		// Downscope: retain OIDC scopes unchanged; filter non-OIDC scopes to only those valid on
-		// the narrowed RS set.
-		oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(
-			strings.Join(authorizedScopes, " "), oauthApp.ScopeClaims)
-		rsValidScopes, rsErr := resourceindicators.ComputeRSValidScopes(
-			ctx, h.resourceService, narrowedRSes, nonOidcScopes)
-		if rsErr != nil {
-			return nil, rsErr
-		}
-		oidcScopes = append(oidcScopes, resourceindicators.UnionScopes(rsValidScopes)...)
+	var accessTokenAudiences, accessTokenScopes []string
+	if targetRS == nil {
+		// OIDC-only (or scopeless) request with no resource: the token is not bound to a resource
+		// server, so its audience is the client_id and it carries only the OIDC scopes.
+		accessTokenAudiences = []string{tokenRequest.ClientID}
 		accessTokenScopes = oidcScopes
+	} else {
+		downscopedNonOidc, dErr := resourceindicators.DownscopeToResourceServer(
+			ctx, h.resourceService, targetRS.ID, nonOidcScopes)
+		if dErr != nil {
+			return nil, dErr
+		}
+		accessTokenAudiences = []string{targetRS.Identifier}
+		accessTokenScopes = make([]string, 0, len(oidcScopes)+len(downscopedNonOidc))
+		accessTokenScopes = append(accessTokenScopes, oidcScopes...)
+		accessTokenScopes = append(accessTokenScopes, downscopedNonOidc...)
 	}
 
 	// Generate access token using tokenBuilder (attributes will be filtered in BuildAccessToken)
+	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessTokenCtx := &tokenservice.AccessTokenBuildContext{
-		Subject:          authCode.AuthorizedUserID,
-		Audiences:        accessTokenAudiences,
-		ClientID:         tokenRequest.ClientID,
-		Scopes:           accessTokenScopes,
-		UserAttributes:   attrs,
-		AttributeCacheID: authCode.AttributeCacheID,
-		GrantType:        string(providers.GrantTypeAuthorizationCode),
-		OAuthApp:         oauthApp,
-		ClaimsRequest:    authCode.ClaimsRequest,
-		ClaimsLocales:    authCode.ClaimsLocales,
-		DPoPJkt:          dpop.GetJkt(ctx),
+		Subject:           authCode.AuthorizedUserID,
+		Audiences:         accessTokenAudiences,
+		ClientID:          tokenRequest.ClientID,
+		Scopes:            accessTokenScopes,
+		SubjectAttributes: tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
+		AttributeCacheID:  authCode.AttributeCacheID,
+		GrantType:         string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:          oauthApp,
+		ClaimsRequest:     authCode.ClaimsRequest,
+		ClaimsLocales:     authCode.ClaimsLocales,
+		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
+		DPoPJkt:           dpop.GetJkt(ctx),
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}
@@ -204,9 +195,8 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		}
 	}
 
-	// Carry the full (un-narrowed) audiences in OriginalAudiences so the token service can
-	// pass them to IssueRefreshToken (RFC 8707 §5 — refresh token preserves original audience).
-	accessToken.OriginalAudiences = fullAudiences
+	// The refresh token preserves this single audience for continuity.
+	accessToken.OriginalAudiences = accessTokenAudiences
 
 	// Build token response
 	tokenResponse := &model.TokenResponseDTO{

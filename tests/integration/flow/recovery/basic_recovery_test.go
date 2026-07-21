@@ -23,9 +23,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 // emailPatchRemove removes the email config to restore the original state.
@@ -59,7 +59,7 @@ var (
 )
 
 // EmailLinkPasswordRecoveryTestSuite tests the email-link password recovery flow.
-// Refer to the email-link recovery flow (handle: email-link-based-password-recovery)
+// Refer to the email-link recovery flow (handle: default-flow)
 // in @backend/cmd/server/bootstrap/01-default-resources.yaml for the flow configuration.
 type EmailLinkPasswordRecoveryTestSuite struct {
 	suite.Suite
@@ -136,7 +136,7 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) SetupSuite() {
 	ts.recoveryFlowID = recoveryFlowID
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, recoveryFlowID)
 
-	authFlowID, err := testutils.GetFlowIDByHandle("default-basic-flow", "AUTHENTICATION")
+	authFlowID, err := testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
 	ts.Require().NoError(err, "Failed to get default auth flow ID")
 	ts.authFlowID = authFlowID
 

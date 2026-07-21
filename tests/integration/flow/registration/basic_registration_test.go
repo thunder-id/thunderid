@@ -35,6 +35,101 @@ var (
 		Parent:      nil,
 	}
 
+	testRegFlow = testutils.Flow{
+		Name:     "Basic Registration Flow With Auth Assert",
+		Handle:   "basic-reg-suite-flow",
+		FlowType: "REGISTRATION",
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "user_type_resolver"},
+			{
+				"id":   "user_type_resolver",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "UserTypeResolver",
+				},
+				"onSuccess":    "prompt_credentials",
+				"onIncomplete": "prompt_usertype",
+			},
+			{
+				"id":   "prompt_usertype",
+				"type": "PROMPT",
+				"meta": map[string]interface{}{
+					"components": []map[string]interface{}{
+						{"type": "BLOCK", "id": "block_usertype", "components": []map[string]interface{}{
+							{"type": "SELECT", "id": "usertype_input", "ref": "userType", "label": "User Type", "required": true, "options": []string{}},
+							{"type": "ACTION", "id": "action_usertype", "label": "Continue", "variant": "PRIMARY", "eventType": "SUBMIT"},
+						}},
+					},
+				},
+				"prompts": []map[string]interface{}{
+					{"inputs": []map[string]interface{}{{"ref": "usertype_input", "identifier": "userType", "type": "SELECT", "required": true}},
+						"action": map[string]interface{}{"ref": "action_usertype", "nextNode": "user_type_resolver"}},
+				},
+			},
+			{
+				"id":   "prompt_credentials",
+				"type": "PROMPT",
+				"meta": map[string]interface{}{
+					"components": []map[string]interface{}{
+						{"type": "BLOCK", "id": "block_creds", "components": []map[string]interface{}{
+							{"type": "TEXT_INPUT", "id": "input_username", "ref": "username", "label": "Username", "required": true},
+							{"type": "PASSWORD_INPUT", "id": "input_password", "ref": "password", "label": "Password", "required": true},
+							{"type": "ACTION", "id": "action_credentials", "label": "Continue", "variant": "PRIMARY", "eventType": "SUBMIT"},
+						}},
+					},
+				},
+				"prompts": []map[string]interface{}{
+					{"inputs": []map[string]interface{}{
+						{"ref": "input_username", "identifier": "username", "type": "TEXT_INPUT", "required": true},
+						{"ref": "input_password", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
+					}, "action": map[string]interface{}{"ref": "action_credentials", "nextNode": "credentials_auth"}},
+				},
+			},
+			{
+				"id":   "credentials_auth",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "CredentialsAuthExecutor",
+				},
+				"onSuccess": "provisioning",
+			},
+			{
+				"id":   "provisioning",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "ProvisioningExecutor",
+				},
+				"onSuccess":    "auth_assert",
+				"onIncomplete": "prompt_schema_attrs",
+			},
+			{
+				"id":   "prompt_schema_attrs",
+				"type": "PROMPT",
+				"meta": map[string]interface{}{
+					"components": []map[string]interface{}{
+						{"align": "center", "type": "TEXT", "id": "heading_schema_attrs", "label": "Complete Your Profile", "variant": "HEADING_1"},
+						{"type": "BLOCK", "id": "block_dynamic_user_inputs", "components": []map[string]interface{}{
+							{"type": "DYNAMIC_INPUT_PLACEHOLDER", "id": "dynamic_inputs"},
+							{"type": "ACTION", "id": "action_schema_attrs", "label": "Continue", "variant": "PRIMARY", "eventType": "SUBMIT"},
+						}},
+					},
+				},
+				"prompts": []map[string]interface{}{
+					{"inputs": []map[string]interface{}{}, "action": map[string]interface{}{"ref": "action_schema_attrs", "nextNode": "provisioning"}},
+				},
+			},
+			{
+				"id":   "auth_assert",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "AuthAssertExecutor",
+				},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
+
 	testUserType = testutils.UserType{
 		Name: "test-user-type",
 		Schema: map[string]interface{}{
@@ -72,6 +167,7 @@ type BasicRegistrationFlowTestSuite struct {
 	testAppID        string
 	testOUID         string
 	testUserTypeName string
+	testFlowID       string
 }
 
 func TestBasicRegistrationFlowTestSuite(t *testing.T) {
@@ -98,11 +194,12 @@ func (ts *BasicRegistrationFlowTestSuite) SetupSuite() {
 	ts.entityTypeID = schemaID
 	ts.testUserTypeName = testUserType.Name
 
-	// Look up the default registration flow ID
-	regFlowID, err := testutils.GetFlowIDByHandle("default-basic-flow", "REGISTRATION")
+	// Create the registration flow
+	flowID, err := testutils.CreateFlow(testRegFlow)
 	if err != nil {
-		ts.T().Fatalf("Failed to get default registration flow ID: %v", err)
+		ts.T().Fatalf("Failed to create suite registration flow: %v", err)
 	}
+	ts.testFlowID = flowID
 
 	// Create test application with allowed user types
 	testApp := testutils.Application{
@@ -110,7 +207,7 @@ func (ts *BasicRegistrationFlowTestSuite) SetupSuite() {
 		Name:                      "Registration Flow Test Application",
 		Description:               "Application for testing registration flows",
 		IsRegistrationFlowEnabled: true,
-		RegistrationFlowID:        regFlowID,
+		RegistrationFlowID:        ts.testFlowID,
 		ClientID:                  "reg_flow_test_client",
 		ClientSecret:              "reg_flow_test_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
@@ -137,6 +234,13 @@ func (ts *BasicRegistrationFlowTestSuite) TearDownSuite() {
 	if ts.testAppID != "" {
 		if err := testutils.DeleteApplication(ts.testAppID); err != nil {
 			ts.T().Logf("Failed to delete test application during teardown: %v", err)
+		}
+	}
+
+	// Delete registration flow
+	if ts.testFlowID != "" {
+		if err := testutils.DeleteFlow(ts.testFlowID); err != nil {
+			ts.T().Logf("Failed to delete registration flow during teardown: %v", err)
 		}
 	}
 
@@ -419,17 +523,13 @@ func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlowSingleRequest
 // TestBasicRegistrationFlow_WithoutTokenConfig tests that userType and OU attributes are NOT included
 // in JWT assertion when TokenConfig is not specified.
 func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlow_WithoutTokenConfig() {
-	// Look up the default registration flow
-	regFlowID, err := testutils.GetFlowIDByHandle("default-basic-flow", "REGISTRATION")
-	ts.Require().NoError(err, "Failed to get default registration flow ID")
-
 	// Create a new application without TokenConfig
 	appWithoutTokenConfig := testutils.Application{
 		Name:                      "Registration Flow Test Application Without Token Config",
 		OUID:                      ts.testOUID,
 		Description:               "Application for testing default behavior without token config",
 		IsRegistrationFlowEnabled: true,
-		RegistrationFlowID:        regFlowID,
+		RegistrationFlowID:        ts.testFlowID,
 		ClientID:                  "reg_flow_test_client_no_token_config",
 		ClientSecret:              "reg_flow_test_secret_no_token_config",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
@@ -491,17 +591,13 @@ func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlow_WithoutToken
 // TestBasicRegistrationFlow_WithEmptyUserAttributes tests that userType and OU attributes are NOT included
 // in JWT assertion when user_attributes is an empty array.
 func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlow_WithEmptyUserAttributes() {
-	// Look up the default registration flow
-	regFlowID, err := testutils.GetFlowIDByHandle("default-basic-flow", "REGISTRATION")
-	ts.Require().NoError(err, "Failed to get default registration flow ID")
-
 	// Create a new application with empty user_attributes
 	appWithEmptyAttrs := testutils.Application{
 		Name:                      "Registration Flow Test Application With Empty User Attributes",
 		OUID:                      ts.testOUID,
 		Description:               "Application for testing behavior with empty user_attributes",
 		IsRegistrationFlowEnabled: true,
-		RegistrationFlowID:        regFlowID,
+		RegistrationFlowID:        ts.testFlowID,
 		ClientID:                  "reg_flow_test_client_empty_attrs",
 		ClientSecret:              "reg_flow_test_secret_empty_attrs",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
@@ -919,7 +1015,7 @@ func (ts *BasicRegistrationFlowTestSuite) TestSchemaDriverInputs_DisplayNameUsed
 		}
 	}()
 
-	regFlowID, err := testutils.GetFlowIDByHandle("default-basic-flow", "REGISTRATION")
+	regFlowID, err := testutils.GetFlowIDByHandle("default-flow", "REGISTRATION")
 	ts.Require().NoError(err, "Failed to get default registration flow ID")
 
 	appID, err := testutils.CreateApplication(testutils.Application{

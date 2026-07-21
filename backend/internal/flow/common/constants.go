@@ -120,8 +120,13 @@ const (
 	NodePropertyAuthMethodMapping = "authMethodMapping"
 	// NodePropertySkipInterceptors indicates whether to skip interceptor execution for the current node.
 	NodePropertySkipInterceptors = "skipInterceptors"
+	// NodePropertyCheckpointRef is set on an SSO-Check node to name the Session (join) node id whose
+	// checkpoint it guards. The checkpoint id is that join node's id, so the skip and join of one
+	// checkpoint pair by it. Absent/empty means the node is not part of a checkpoint pair.
+	NodePropertyCheckpointRef = "checkpointRef"
 )
 
+// RuntimeData keys.
 const (
 	// RuntimeKeyUserAutoProvisioned indicates whether the user was auto-provisioned
 	RuntimeKeyUserAutoProvisioned = "userAutoProvisioned"
@@ -172,36 +177,70 @@ const (
 	// RuntimeKeyPresentedOptionalInputs holds a space-separated list of optional input identifiers
 	// that have already been prompted to the user, even if the user left them empty.
 	RuntimeKeyPresentedOptionalInputs = "presentedOptionalInputs"
-	// RuntimeKeySMSOTPMobileNumber holds the resolved mobile number for SMS OTP verification.
-	// TODO: Revisit when the generic OTP executor is implemented.
-	RuntimeKeySMSOTPMobileNumber = "smsOTPMobileNumber"
-	// RuntimeKeySMSOTPPhoneAttr holds the schema attribute name used to look up the mobile number.
-	// TODO: Revisit when the generic OTP executor is implemented.
-	RuntimeKeySMSOTPPhoneAttr = "smsOTPPhoneAttr"
+	// RuntimeKeyOTPSessionToken holds the OTP session JWT produced by OTPExecutor in generate mode
+	// and consumed by OTPExecutor in verify mode.
+	RuntimeKeyOTPSessionToken = "otpSessionToken"
+	// RuntimeKeyOTPAttemptCount holds the number of OTP generation attempts for the current flow execution.
+	RuntimeKeyOTPAttemptCount = "attemptCount"
 	// RuntimeKeyMagicLinkUsedJti is the JWT ID claim value of a magic link token that has already been used.
 	RuntimeKeyMagicLinkUsedJti = "magicLinkUsedJti"
 	// RuntimeKeyOAuthState holds the generated OAuth state parameter for CSRF validation.
 	RuntimeKeyOAuthState = "oauthState"
+	// RuntimeKeyOIDCNonce holds the server-generated nonce for OIDC ID token replay protection.
+	RuntimeKeyOIDCNonce = "oidcNonce"
 	// RuntimeKeyOpenID4VPState holds the OpenID4VP request state across poll steps.
 	RuntimeKeyOpenID4VPState = "openid4vpVerificationState"
 	// RuntimeKeyRequestedAuthClasses holds the space-separated ACR values from acr_values.
 	RuntimeKeyRequestedAuthClasses = "requested_auth_classes"
+	// RuntimeKeyMaxAge holds the OIDC max_age request parameter (maximum allowed elapsed seconds
+	// since the subject last authenticated).
+	RuntimeKeyMaxAge = "max_age"
 	// RuntimeKeySelectedAuthClass holds the ACR value of the chosen authentication method.
 	RuntimeKeySelectedAuthClass = "selected_auth_class"
 	// RuntimeKeyAllowedLoginOptions holds the space-separated action refs allowed on a LOGIN_OPTIONS node.
 	RuntimeKeyAllowedLoginOptions = "allowed_login_options"
 	// RuntimeKeyAllowRegistrationWithExistingUser indicates whether registration is allowed with an existing user
 	RuntimeKeyAllowRegistrationWithExistingUser = "allowRegistrationWithExistingUser"
-	// RuntimeKeyAuthReqID holds the auth request ID bound to the current flow execution, if applicable.
-	RuntimeKeyAuthReqID = "authReqId"
 	// RuntimeKeyBindingMessage holds the human-readable binding message displayed to the user
 	// on both the consumption device and the authentication device to correlate the CIBA request.
 	RuntimeKeyBindingMessage = "bindingMessage"
-	// RuntimeKeyEntityState holds the entity existence state set by the IdentifyingExecutor in check_state mode.
+	// RuntimeKeyEntityState holds the entity existence state, set by the IdentifyingExecutor in
+	// check_state mode or by the federated auth executors from their account-linking result.
 	RuntimeKeyEntityState = "entityState"
-	// RuntimeKeyAuthorizationRequestID holds the identifier of the authorization request.
+	// RuntimeKeyAuthorizationRequestID holds the auth request identifier bound to the current flow
+	// execution (the OAuth authorize authId or the CIBA auth_req_id), if applicable.
 	RuntimeKeyAuthorizationRequestID = "authorizationRequestId"
+	// RuntimeKeySSOSessionPresent is the prefix of the per-checkpoint flag recording whether the
+	// SSO-Check node found a live session that already has this checkpoint's snapshot ("true") or not.
+	// It is scoped per checkpoint via SSOCheckpointKey; the paired Session node reads it to choose
+	// load vs save. "true" commits the join to loading (fail closed if the snapshot is gone).
+	RuntimeKeySSOSessionPresent = "ssoSessionPresent"
+	// RuntimeKeySSOSessionSaved is the prefix of the per-checkpoint guard holding the handle under
+	// which a checkpoint's context was saved, making the save idempotent if the join re-executes. It
+	// is scoped per checkpoint via SSOCheckpointKey.
+	RuntimeKeySSOSessionSaved = "ssoSessionSaved"
+	// RuntimeKeyAuthTime holds the Unix timestamp (seconds) at which the subject authenticated
+	// for the current session, carried across the SSO path for downstream assurance checks.
+	RuntimeKeyAuthTime = "ssoAuthTime"
+	// RuntimeKeySSOSessionHandle is the SSO session handle key. It is used both as the RuntimeData key
+	// that carries the run's session handle across nodes (resolved on reuse, minted on a fresh login)
+	// and as the ExecutorResponse EngineData key the Session node uses to hand a freshly minted handle
+	// to the transport layer for the per-flow cookie. Using the generic EngineData channel keeps SSO
+	// concepts out of the reusable engine contract.
+	RuntimeKeySSOSessionHandle = "ssoSessionHandle"
+	// RuntimeKeySSOSessionCleared is the ExecutorResponse EngineData signal the session sign-out node
+	// raises once it has terminated the session, telling the transport layer to clear the per-flow
+	// cookie. Like RuntimeKeySSOSessionHandle it rides the engine-only EngineData channel, keeping SSO
+	// concepts off the reusable engine contract.
+	RuntimeKeySSOSessionCleared = "ssoSessionCleared"
 )
+
+// SSOCheckpointKey scopes a per-checkpoint SSO control key (RuntimeKeySSOSessionPresent,
+// RuntimeKeySSOSessionSaved) to a checkpoint id, so multiple skip/join checkpoints in one flow keep
+// independent control state within the shared RuntimeData map.
+func SSOCheckpointKey(base, checkpointID string) string {
+	return base + ":" + checkpointID
+}
 
 // MetaComponentType constants define known component types used in flow meta definitions.
 const (
@@ -245,6 +284,12 @@ const (
 	ForwardedDataKeyActionType = "actionType"
 	// ForwardedDataKeyTemplateData holds template parameters for notification executors
 	ForwardedDataKeyTemplateData = "templateData"
+	// ForwardedDataKeyOTPCode is the key for the plaintext OTP value inside the
+	// ForwardedData[ForwardedDataKeyTemplateData] map forwarded by OTPExecutor to sender executors.
+	ForwardedDataKeyOTPCode = "otpCode"
+	// ForwardedDataKeyExpiryMinutes is the key for the OTP expiry duration (in minutes) inside the
+	// ForwardedData[ForwardedDataKeyTemplateData] map forwarded by OTPExecutor to sender executors.
+	ForwardedDataKeyExpiryMinutes = "expiryMinutes"
 )
 
 // InterceptorStatus represents the outcome of an interceptor execution.

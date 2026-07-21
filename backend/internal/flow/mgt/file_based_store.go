@@ -108,6 +108,25 @@ func (f *fileBasedStore) ListFlows(_ context.Context, limit, offset int, flowTyp
 	return flows[offset:endIndex], totalCount, nil
 }
 
+// ListActiveFlowsWithNodes implements flowStoreInterface. File-based flows already carry their node
+// definitions, so it returns every stored flow.
+func (f *fileBasedStore) ListActiveFlowsWithNodes(_ context.Context) (
+	[]*providers.CompleteFlowDefinition, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	flows := make([]*providers.CompleteFlowDefinition, 0, len(list))
+	for _, item := range list {
+		if flow, ok := item.Data.(*providers.CompleteFlowDefinition); ok {
+			flows = append(flows, flow)
+		}
+	}
+
+	return flows, nil
+}
+
 // GetFlowByID implements flowStoreInterface.
 func (f *fileBasedStore) GetFlowByID(_ context.Context, flowID string) (*providers.CompleteFlowDefinition, error) {
 	data, err := f.GenericFileBasedStore.Get(flowID)

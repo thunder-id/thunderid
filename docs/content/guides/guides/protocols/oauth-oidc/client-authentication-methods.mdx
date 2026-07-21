@@ -1,14 +1,15 @@
 ---
 title: Client Authentication Methods
+docType: reference
 sidebar_position: 1
-description: How a registered OAuth 2.1 client proves its identity to {{ProductName}} — the four supported client authentication methods.
+description: How a registered OAuth 2.1 client proves its identity to {{ProductName}}, covering the four supported client authentication methods.
 ---
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 # Client Authentication Methods
 
-Whenever a client calls a protected endpoint at <ProductName /> — token, introspection, PAR, DCR (when secured) — it must prove which client it is. The `token_endpoint_auth_method` setting on the application picks **how**. The choice is fixed per application and applies uniformly to every protected endpoint.
+Whenever a client calls a protected endpoint at <ProductName />, such as token, introspection, PAR, or DCR (when secured), it must prove which client it is. The `token_endpoint_auth_method` setting on the application picks **how**. The choice is fixed per application and applies uniformly to every protected endpoint.
 
 <ProductName /> supports four methods, three for confidential clients and one (`none`) for public clients. The relevant specs are [RFC 6749 §2.3](https://datatracker.ietf.org/doc/html/rfc6749#section-2.3), [RFC 6749 §2.1](https://datatracker.ietf.org/doc/html/rfc6749#section-2.1) (public clients), and [RFC 7523](https://datatracker.ietf.org/doc/html/rfc7523) (JWT bearer client authentication).
 
@@ -19,7 +20,7 @@ Whenever a client calls a protected endpoint at <ProductName /> — token, intro
 | `client_secret_basic` | Shared secret | `Authorization: Basic` header | TLS-protected | Server-side apps that can store a secret. **Default.** |
 | `client_secret_post` | Shared secret | POST body parameters | TLS-protected | Clients that can't set custom headers |
 | `private_key_jwt` | Asymmetric key | Signed JWT in POST body | No secret on the wire | High-security deployments; FAPI; rotating credentials without redeployment |
-| `none` | — | No credentials | — | Public clients (browser apps, mobile apps) that can't store a secret |
+| `none` | None | No credentials | None | Public clients (browser apps, mobile apps) that can't store a secret |
 
 ## `client_secret_basic`
 
@@ -34,7 +35,7 @@ Content-Type: application/x-www-form-urlencoded
 grant_type=client_credentials&scope=api:read
 ```
 
-The Base64 payload is the literal string `client_id:client_secret`. <ProductName /> URL-decodes neither the client ID nor the secret — pass them verbatim.
+The Base64 payload is the literal string `client_id:client_secret`. <ProductName /> URL-decodes neither the client ID nor the secret. Pass them verbatim.
 
 ## `client_secret_post`
 
@@ -93,7 +94,7 @@ The `client_assertion_type` value is fixed: `urn:ietf:params:oauth:client-assert
 
 ## `none`
 
-Reserved for public clients — applications that cannot keep a secret, like single-page apps and native mobile apps. No credentials travel in the request; client identity is asserted by the `client_id` parameter alone.
+Reserved for public clients, applications that cannot keep a secret, like single-page apps and native mobile apps. No credentials travel in the request; client identity is asserted by the `client_id` parameter alone.
 
 Public clients **must** use PKCE on the authorization code flow. <ProductName /> sets `pkceRequired` automatically when `token_endpoint_auth_method` is `none`.
 
@@ -118,7 +119,7 @@ The chosen method applies uniformly to every endpoint that requires client authe
 | `POST /oauth2/token` | Yes |
 | `POST /oauth2/par` | Yes |
 | `POST /oauth2/introspect` | Yes |
-| `POST /oauth2/dcr/register` | Optional — DCR can be configured to require authentication |
+| `POST /oauth2/dcr/register` | Optional: DCR can be configured to require authentication |
 
 ## OAuth Client Certificate
 
@@ -136,7 +137,7 @@ The OAuth client `certificate` field has three possible types:
 | `JWKS` | Inline JSON Web Key Set provided as a JSON object in the OAuth client configuration. |
 | `JWKS_URI` | HTTPS URL of the application's JWKS endpoint. <ProductName /> fetches the public keys from this URL. The URL must use HTTPS. |
 
-`JWKS` and `JWKS_URI` are mutually exclusive — setting both on the same application returns an error.
+`JWKS` and `JWKS_URI` are mutually exclusive: setting both on the same application returns an error.
 
 This certificate is **separate** from <ProductName />'s own signing keys (see [JWKS](../jwks)), which is the public-key endpoint resource servers use to verify <ProductName />-issued tokens.
 
@@ -171,7 +172,7 @@ Content-Type: application/json
 
 ## Related Guides
 
-- [Dynamic Client Registration](../dynamic-client-registration) — register a client and pick its auth method programmatically
-- [Pushed Authorization Requests](../par) — uses the same client authentication method
-- [Token Introspection](../token-introspection) — uses the same client authentication method
-- [Token Formats](../token-formats) — the OAuth client certificate is also used to encrypt ID tokens and UserInfo responses
+- [Dynamic Client Registration](../dynamic-client-registration), register a client and pick its auth method programmatically
+- [Pushed Authorization Requests](../par), uses the same client authentication method
+- [Token Introspection](../token-introspection), uses the same client authentication method
+- [Token Formats](../token-formats), the OAuth client certificate is also used to encrypt ID tokens and UserInfo responses

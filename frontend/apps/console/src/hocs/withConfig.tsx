@@ -30,17 +30,22 @@ export default function withConfig<P extends object>(WrappedComponent: Component
       getClientUrl,
       getTrustedIssuerScopes,
       getServerUrl,
+      getResourceIdentifier,
       isTrustedIssuerGenericOidc,
       config,
     } = useConfig();
 
     const genericOidc = isTrustedIssuerGenericOidc();
+    // Bind the client's tokens to a resource server via the RFC 8707 `resource` indicator.
+    // In the trusted-issuer (federated) model, target the resource server URL; otherwise use the
+    // configured resource identifier.
+    const resourceIdentifier = config.trusted_issuer ? getServerUrl() : getResourceIdentifier();
 
     // Behavioral defaults derived from app config and runtime heuristics.
     // config.sdk values are deep-merged on top, so operators can override any of these.
     const sdkDefaults: Partial<ThunderIDProviderProps> = {
       discovery: {wellKnown: {enabled: true}},
-      ...(config.trusted_issuer ? {signInOptions: {resource: getServerUrl()}} : {}),
+      ...(resourceIdentifier ? {signInOptions: {resource: resourceIdentifier}} : {}),
       // When the trusted issuer is a generic OIDC provider, suppress the SDK's
       // product-specific bootstrap calls that would otherwise 404 / be CORS-blocked
       // at the external authorization server: flow metadata (`{baseUrl}/flow/meta`).

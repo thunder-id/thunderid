@@ -91,6 +91,23 @@ func (f *notificationFileBasedStore) listSenders(ctx context.Context) ([]common.
 	return senderList, nil
 }
 
+// listSendersByType implements notificationStoreInterface.
+func (f *notificationFileBasedStore) listSendersByType(
+	ctx context.Context, senderType common.NotificationSenderType) ([]common.NotificationSenderDTO, error) {
+	all, err := f.listSenders(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	senderList := make([]common.NotificationSenderDTO, 0)
+	for _, sender := range all {
+		if sender.Type == senderType {
+			senderList = append(senderList, sender)
+		}
+	}
+	return senderList, nil
+}
+
 // updateSender implements notificationStoreInterface.
 func (f *notificationFileBasedStore) updateSender(
 	ctx context.Context, id string, sender common.NotificationSenderDTO) error {

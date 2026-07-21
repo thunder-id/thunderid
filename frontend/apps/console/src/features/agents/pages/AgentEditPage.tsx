@@ -35,15 +35,15 @@ import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
 import {useState, useCallback, useMemo, type SyntheticEvent, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useNavigate, useParams} from 'react-router';
-import EditFlowsSettings from '../../applications/components/edit-application/flows-settings/EditFlowsSettings';
-import EditTokenSettings from '../../applications/components/edit-application/token-settings/EditTokenSettings';
-import type {Application} from '../../applications/models/application';
 import useGetAgent from '../api/useGetAgent';
 import useUpdateAgent from '../api/useUpdateAgent';
+import EditAccessSettings from '../components/edit-agent/access/EditAccessSettings';
 import EditAdvancedSettings from '../components/edit-agent/advanced-settings/EditAdvancedSettings';
 import EditAgentAttributes from '../components/edit-agent/attributes/EditAgentAttributes';
-import AllowedUserTypesSection from '../components/edit-agent/flows-settings/AllowedUserTypesSection';
-import EditGeneralSettings from '../components/edit-agent/general-settings/EditGeneralSettings';
+import EditCredentialsSettings from '../components/edit-agent/credentials/EditCredentialsSettings';
+import EditFlowsSettings from '../components/edit-agent/flows/EditFlowsSettings';
+import EditGeneralSettings from '../components/edit-agent/general/EditGeneralSettings';
+import EditTokensSettings from '../components/edit-agent/tokens/EditTokensSettings';
 import type {Agent, OAuthAgentConfig} from '../models/agent';
 
 interface TabPanelProps {
@@ -77,6 +77,9 @@ export default function AgentEditPage(): JSX.Element {
 
   const [activeTab, setActiveTab] = useState(0);
   const [editedAgent, setEditedAgent] = useState<Partial<Agent>>({});
+  // Bumped on Save/Reset to force EditAgentAttributes to remount with a clean form — it keeps
+  // its own react-hook-form state locally, which a `setEditedAgent({})` alone wouldn't reset.
+  const [attributesResetKey, setAttributesResetKey] = useState(0);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -93,7 +96,7 @@ export default function AgentEditPage(): JSX.Element {
       },
     [],
   );
-  const hasAnyValidationError = Object.values(validationErrorSources).some(Boolean);
+  const hasAnyOtherValidationError = Object.values(validationErrorSources).some(Boolean);
 
   const handleBack = async () => {
     await navigate('/agents');
@@ -129,6 +132,7 @@ export default function AgentEditPage(): JSX.Element {
     try {
       await updateAgent.mutateAsync({agentId, data: updatedData});
       setEditedAgent({});
+      setAttributesResetKey((key) => key + 1);
       await refetch();
     } catch {
       logger.error('Failed to update agent');
@@ -173,6 +177,57 @@ export default function AgentEditPage(): JSX.Element {
 
   const hasOAuth = Boolean(oauth2Config);
 
+  // Computed directly from state rather than reported by the Advanced/Access tab content, since
+  // that content unmounts when its tab isn't active — a callback-based report would be stale or
+  // never fire if the user never visits the tab before saving.
+  const hasAuthorizationCodeGrant = oauth2Config?.grantTypes?.includes('authorization_code') ?? false;
+  const hasValidRedirectUri = (oauth2Config?.redirectUris ?? []).some((uri) => {
+    if (!uri.trim()) return false;
+    try {
+      return Boolean(new URL(uri));
+    } catch {
+      return false;
+    }
+  });
+  const isMissingRedirectUri = hasAuthorizationCodeGrant && !hasValidRedirectUri;
+  const allowedUserTypes = editedAgent.allowedUserTypes ?? agent.allowedUserTypes ?? [];
+  const isMissingAllowedUserType = hasAuthorizationCodeGrant && allowedUserTypes.length === 0;
+  const isMissingCertificate =
+    oauth2Config?.tokenEndpointAuthMethod === 'private_key_jwt' && !oauth2Config?.certificate?.value;
+  const hasAnyValidationError =
+    hasAnyOtherValidationError || isMissingRedirectUri || isMissingAllowedUserType || isMissingCertificate;
+
+  // List every failing check by name rather than a single generic message, so the user knows
+  // exactly what to fix instead of guessing which tab has the problem.
+  const validationIssues: string[] = [];
+  if (isMissingRedirectUri) {
+    validationIssues.push(t('agents:edit.page.validation.missingRedirectUri', 'add a redirect URI'));
+  }
+  if (isMissingAllowedUserType) {
+    validationIssues.push(
+      t('agents:edit.page.validation.missingAllowedUserType', 'select at least one allowed user type'),
+    );
+  }
+  if (isMissingCertificate) {
+    validationIssues.push(t('agents:edit.page.validation.missingCertificate', 'add a certificate'));
+  }
+  if (hasAnyOtherValidationError) {
+    validationIssues.push(t('agents:edit.page.validation.tokenSettings', 'fix the token settings'));
+  }
+
+  const formatIssueList = (issues: string[]): string => {
+    if (issues.length <= 1) return issues[0] ?? '';
+    if (issues.length === 2) return `${issues[0]} and ${issues[1]}`;
+    return `${issues.slice(0, -1).join(', ')}, and ${issues[issues.length - 1]}`;
+  };
+
+  const unsavedChangesMessage =
+    validationIssues.length > 0
+      ? t('agents:edit.page.unsavedChangesInvalid', 'Before saving, {{issues}}.', {
+          issues: formatIssueList(validationIssues),
+        })
+      : t('agents:edit.page.unsavedChanges', 'You have unsaved changes');
+
   interface TabConfig {
     key: string;
     label: string;
@@ -182,11 +237,10 @@ export default function AgentEditPage(): JSX.Element {
   const tabs: TabConfig[] = [
     {
       key: 'general',
-      label: t('applications:edit.page.tabs.general', 'General'),
+      label: t('agents:edit.page.tabs.general', 'General'),
       render: () => (
         <EditGeneralSettings
           agent={agent}
-          oauth2Config={oauth2Config}
           copiedField={copiedField}
           onCopyToClipboard={handleCopyToClipboard}
           onDeleteSuccess={() => {
@@ -200,65 +254,78 @@ export default function AgentEditPage(): JSX.Element {
       label: t('agents:edit.page.tabs.attributes', 'Attributes'),
       render: () => (
         <EditAgentAttributes
+          key={attributesResetKey}
           agent={agent}
-          onSaved={() => {
-            refetch().catch(() => null);
-          }}
+          editedAgent={editedAgent}
+          onFieldChange={handleFieldChange}
         />
       ),
     },
   ];
 
   if (hasOAuth) {
-    // Reuse the application sections — agents share the same inbound-client shape (auth_flow_id,
-    // assertion, login_consent, token config, scopes, etc.).
-    const appLikeAgent = agent as unknown as Application;
-    const appLikeEditedAgent = editedAgent as unknown as Partial<Application>;
-    const appHandleFieldChange = handleFieldChange as unknown as (field: keyof Application, value: unknown) => void;
+    tabs.push({
+      key: 'credentials',
+      label: t('agents:edit.page.tabs.credentials', 'Credentials'),
+      render: () => (
+        <EditCredentialsSettings
+          agent={agent}
+          editedAgent={editedAgent}
+          oauth2Config={oauth2Config}
+          copiedField={copiedField}
+          onCopyToClipboard={handleCopyToClipboard}
+          onFieldChange={handleFieldChange}
+        />
+      ),
+    });
+  }
 
-    tabs.push(
-      {
-        key: 'flows',
-        label: t('applications:edit.page.tabs.flows', 'Flows'),
-        render: () => (
-          <Stack spacing={3}>
-            <EditFlowsSettings
-              application={appLikeAgent}
-              editedApp={appLikeEditedAgent}
-              onFieldChange={appHandleFieldChange}
-              entityLabel="agent"
-            />
-            <AllowedUserTypesSection agent={agent} editedAgent={editedAgent} onFieldChange={handleFieldChange} />
-          </Stack>
-        ),
-      },
-      {
-        key: 'token',
-        label: t('applications:edit.page.tabs.token', 'Token'),
-        render: () => (
-          <EditTokenSettings
-            application={appLikeAgent}
-            oauth2Config={oauth2Config}
-            onFieldChange={appHandleFieldChange}
-            onValidationChange={handleValidationChange('token')}
-            entityLabel="agent"
-          />
-        ),
-      },
-      {
-        key: 'advanced',
-        label: t('applications:edit.page.tabs.advanced', 'Advanced'),
-        render: () => (
-          <EditAdvancedSettings
-            agent={agent}
-            editedAgent={editedAgent}
-            oauth2Config={oauth2Config}
-            onFieldChange={handleFieldChange}
-            onValidationChange={handleValidationChange('redirectUri')}
-          />
-        ),
-      },
-    );
+  tabs.push({
+    key: 'access',
+    label: t('agents:edit.page.tabs.access', 'Access'),
+    render: () => <EditAccessSettings agent={agent} />,
+  });
+
+  if (hasOAuth) {
+    tabs.push({
+      key: 'flows',
+      label: t('agents:edit.page.tabs.flows', 'Flows'),
+      render: () => (
+        <EditFlowsSettings
+          agent={agent}
+          editedAgent={editedAgent}
+          oauth2Config={oauth2Config}
+          onFieldChange={handleFieldChange}
+        />
+      ),
+    });
+
+    tabs.push({
+      key: 'tokens',
+      label: t('agents:edit.page.tabs.tokens', 'Tokens'),
+      render: () => (
+        <EditTokensSettings
+          agent={agent}
+          editedAgent={editedAgent}
+          oauth2Config={oauth2Config}
+          onFieldChange={handleFieldChange}
+          onValidationChange={handleValidationChange('token')}
+        />
+      ),
+    });
+
+    tabs.push({
+      key: 'advanced',
+      label: t('agents:edit.page.tabs.advanced', 'Advanced'),
+      render: () => (
+        <EditAdvancedSettings
+          agent={agent}
+          editedAgent={editedAgent}
+          oauth2Config={oauth2Config}
+          onFieldChange={handleFieldChange}
+        />
+      ),
+    });
   }
 
   const safeActiveTab = activeTab >= tabs.length ? 0 : activeTab;
@@ -385,7 +452,7 @@ export default function AgentEditPage(): JSX.Element {
             label={tab.label}
             id={`agent-tab-${idx}`}
             aria-controls={`agent-tabpanel-${idx}`}
-            sx={{textTransform: 'none'}}
+            sx={{textTransform: 'none', minHeight: 48}}
           />
         ))}
       </Tabs>
@@ -398,13 +465,16 @@ export default function AgentEditPage(): JSX.Element {
 
       {hasChanges && (
         <UnsavedChangesBar
-          message={t('agents:edit.page.unsavedChanges', 'You have unsaved changes')}
-          resetLabel={t('agents:edit.page.reset', 'Discard')}
+          message={unsavedChangesMessage}
+          resetLabel={t('agents:edit.page.reset', 'Reset')}
           saveLabel={t('agents:edit.page.save', 'Save')}
           savingLabel={t('agents:edit.page.saving', 'Saving…')}
           isSaving={updateAgent.isPending}
           saveDisabled={hasAnyValidationError || agent.isReadOnly === true}
-          onReset={() => setEditedAgent({})}
+          onReset={() => {
+            setEditedAgent({});
+            setAttributesResetKey((key) => key + 1);
+          }}
           onSave={() => {
             void handleSave();
           }}

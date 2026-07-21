@@ -27,7 +27,7 @@ function EmailProperties({resource, onChange}: CommonResourcePropertiesPropsInte
 
   const properties = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;
-    return (stepData?.properties ?? {}) as Record<string, unknown>;
+    return stepData?.properties ?? {};
   }, [resource]);
 
   return (

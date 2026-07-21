@@ -59,7 +59,7 @@ func (s *GraphBuilderSubsetRegistryTestSuite) subsetExecutorRegistry() executor.
 	mockBase := coremock.NewExecutorInterfaceMock(s.T())
 	mockBase.On("GetName").Return("").Maybe()
 	mockBase.On("GetType").Return(providers.ExecutorTypeUtility).Maybe()
-	mockFactory.On("CreateExecutor", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	mockFactory.On("CreateExecutor", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(mockBase).Maybe()
 
 	reg, err := executor.Initialize(executor.ExecutorDependencies{

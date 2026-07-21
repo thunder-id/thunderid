@@ -20,23 +20,21 @@ package notification
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/notification/client"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/middleware"
-	"github.com/thunder-id/thunderid/internal/system/template"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 )
 
-// Initialize creates and configures the notification service components.
-func Initialize(mux *http.ServeMux, jwtService jwt.JWTServiceInterface,
-	templateService template.TemplateServiceInterface) (
-	NotificationSenderMgtSvcInterface, OTPServiceInterface, NotificationSenderServiceInterface,
-	declarativeresource.ResourceExporter, error) {
+// Initialize creates and configures the notification service components. Declarative resource
+// loading and sender-CRUD HTTP routing now happen in the connection package
+// (/connections/{vendor}), which is the sole owner of the "connection" declarative resource
+// type. This package no longer registers any HTTP routes; its services are consumed internally
+// by authn, flow executors, and the connection/importer packages.
+func Initialize(jwtService jwt.JWTServiceInterface) (
+	NotificationSenderMgtSvcInterface, OTPServiceInterface, NotificationSenderServiceInterface, error) {
 	var notificationStore notificationStoreInterface
 	var tx transaction.Transactioner
 
@@ -49,79 +47,15 @@ func Initialize(mux *http.ServeMux, jwtService jwt.JWTServiceInterface,
 			// Service initialization runs during application startup, outside any request.
 			log.GetLogger().Error(context.Background(),
 				"Failed to initialize notification store", log.Error(err))
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 
 	mgtService := newNotificationSenderMgtService(notificationStore, tx)
 
-	if config.GetServerRuntime().Config.DeclarativeResources.Enabled {
-		if err := loadDeclarativeResources(notificationStore); err != nil {
-			return nil, nil, nil, nil, err
-		}
-	}
-
 	clientFactory := client.Initialize()
-	otpService := newOTPService(mgtService, jwtService, templateService, clientFactory)
+	otpService := newOTPService(jwtService)
 	notificationSenderService := newNotificationSenderService(mgtService, clientFactory)
-	handler := newMessageNotificationSenderHandler(mgtService, otpService)
-	registerRoutes(mux, handler)
 
-	// Create and return exporter
-	exporter := newNotificationSenderExporter(mgtService)
-	return mgtService, otpService, notificationSenderService, exporter, nil
-}
-
-// registerRoutes registers the HTTP routes for notification services.
-func registerRoutes(mux *http.ServeMux, handler *messageNotificationSenderHandler) {
-	opts1 := middleware.CORSOptions{
-		AllowedMethods:   []string{"GET", "POST"},
-		AllowedHeaders:   middleware.DefaultAllowedHeaders,
-		AllowCredentials: true,
-		MaxAge:           600,
-	}
-	mux.HandleFunc(middleware.WithCORS("GET /notification-senders/message",
-		handler.HandleSenderListRequest, opts1))
-	mux.HandleFunc(middleware.WithCORS("POST /notification-senders/message",
-		handler.HandleSenderCreateRequest, opts1))
-	mux.HandleFunc(middleware.WithCORS("OPTIONS /notification-senders/message",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}, opts1))
-
-	opts2 := middleware.CORSOptions{
-		AllowedMethods:   []string{"GET", "PUT", "DELETE"},
-		AllowedHeaders:   middleware.DefaultAllowedHeaders,
-		AllowCredentials: true,
-		MaxAge:           600,
-	}
-	mux.HandleFunc(middleware.WithCORS("GET /notification-senders/message/{id}",
-		handler.HandleSenderGetRequest, opts2))
-	mux.HandleFunc(middleware.WithCORS("PUT /notification-senders/message/{id}",
-		handler.HandleSenderUpdateRequest, opts2))
-	mux.HandleFunc(middleware.WithCORS("DELETE /notification-senders/message/{id}",
-		handler.HandleSenderDeleteRequest, opts2))
-	mux.HandleFunc(middleware.WithCORS("OPTIONS /notification-senders/message/{id}",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}, opts2))
-
-	opts3 := middleware.CORSOptions{
-		AllowedMethods:   []string{"POST"},
-		AllowedHeaders:   middleware.DefaultAllowedHeaders,
-		AllowCredentials: true,
-		MaxAge:           600,
-	}
-	mux.HandleFunc(middleware.WithCORS("POST /notification-senders/otp/send",
-		handler.HandleOTPSendRequest, opts3))
-	mux.HandleFunc(middleware.WithCORS("OPTIONS /notification-senders/otp/send",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}, opts3))
-	mux.HandleFunc(middleware.WithCORS("POST /notification-senders/otp/verify",
-		handler.HandleOTPVerifyRequest, opts3))
-	mux.HandleFunc(middleware.WithCORS("OPTIONS /notification-senders/otp/verify",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}, opts3))
+	return mgtService, otpService, notificationSenderService, nil
 }

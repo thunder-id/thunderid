@@ -156,6 +156,7 @@ func toProviderOAuthClient(c *providers.OAuthClient) *providers.OAuthClient {
 		OUID:                               c.OUID,
 		ClientID:                           c.ClientID,
 		RedirectURIs:                       c.RedirectURIs,
+		PostLogoutRedirectURIs:             c.PostLogoutRedirectURIs,
 		TokenEndpointAuthMethod:            c.TokenEndpointAuthMethod,
 		PKCERequired:                       c.PKCERequired,
 		PublicClient:                       c.PublicClient,

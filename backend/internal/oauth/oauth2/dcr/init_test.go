@@ -48,9 +48,9 @@ func (suite *InitTestSuite) SetupTest() {
 	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	testConfig := &config.Config{
 		Database: config.DatabaseConfig{
-			Config:  config.DataSource{Type: "sqlite", SQLite: config.SQLiteDataSource{Path: "test.db"}},
-			Runtime: config.DataSource{Type: "sqlite", SQLite: config.SQLiteDataSource{Path: "test.db"}},
-			User:    config.DataSource{Type: "sqlite", SQLite: config.SQLiteDataSource{Path: "test.db"}},
+			Config:           config.DataSource{Type: "sqlite", SQLite: config.SQLiteDataSource{Path: "test.db"}},
+			RuntimeTransient: config.DataSource{Type: "sqlite", SQLite: config.SQLiteDataSource{Path: "test.db"}},
+			Entity:           config.DataSource{Type: "sqlite", SQLite: config.SQLiteDataSource{Path: "test.db"}},
 		},
 	}
 	_ = config.InitializeServerRuntime("", testConfig)
@@ -87,9 +87,9 @@ func (suite *InitTestSuite) TestInitialize_ReturnsError_WhenRuntimeTransactioner
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
 		Database: config.DatabaseConfig{
-			Config:  config.DataSource{Type: "sqlite", SQLite: config.SQLiteDataSource{Path: "test.db"}},
-			Runtime: config.DataSource{},
-			User:    config.DataSource{Type: "sqlite", SQLite: config.SQLiteDataSource{Path: "test.db"}},
+			Config:           config.DataSource{Type: "sqlite", SQLite: config.SQLiteDataSource{Path: "test.db"}},
+			RuntimeTransient: config.DataSource{},
+			Entity:           config.DataSource{Type: "sqlite", SQLite: config.SQLiteDataSource{Path: "test.db"}},
 		},
 	}
 	_ = config.InitializeServerRuntime("", testConfig)
@@ -98,5 +98,5 @@ func (suite *InitTestSuite) TestInitialize_ReturnsError_WhenRuntimeTransactioner
 	err := Initialize(mux, suite.mockAppService, suite.mockOUService, nil, testhelpers.OAuthConfig())
 
 	assert.Error(suite.T(), err)
-	assert.Contains(suite.T(), err.Error(), "failed to get runtime DB transactioner for DCR")
+	assert.Contains(suite.T(), err.Error(), "failed to get runtime transient DB transactioner for DCR")
 }

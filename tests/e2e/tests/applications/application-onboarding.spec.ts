@@ -84,54 +84,48 @@ test.describe("Application Onboarding", () => {
       const appData = TestDataFactory.createApplication({ name: `TestApp_INBUILT_${Date.now()}` });
       let createdAppUrl: string;
 
-      await test.step("Navigate to Applications page and open wizard", async () => {
+      await test.step("Navigate to Applications page, select a template and open wizard", async () => {
         console.log("Navigating to applications list...");
         await applicationsPage.goto();
         await applicationsPage.verifyPageLoaded();
         await applicationsPage.clickAddApplication();
+        await applicationsPage.selectTemplate("NEXTJS");
         console.log("Opened create application wizard");
         await applicationsPage.screenshot("tc002-wizard-opened");
       });
 
-      await test.step("Step 1 [configure-stack]: Skip and click Next", async () => {
-        await applicationsPage.waitForStep("application-configure-stack");
-        console.log("Step 1 (configure-stack) visible - skipping");
-        await applicationsPage.clickNext();
-        await applicationsPage.screenshot("tc002-step1-done");
-      });
-
-      await test.step("Step 2 [configure-name]: Fill app name and click Next", async () => {
+      await test.step("Step 1 [configure-name]: Fill app name and click Next", async () => {
         await applicationsPage.waitForStep("application-configure-name");
-        console.log("Step 2 visible - filling app name:", appData.name);
+        console.log("Step 1 visible - filling app name:", appData.name);
         await applicationsPage.fillAppName(appData.name);
         await applicationsPage.clickNext();
-        console.log("Clicked Next on Step 2");
-        await applicationsPage.screenshot("tc002-step2-done");
+        console.log("Clicked Next on Step 1");
+        await applicationsPage.screenshot("tc002-step1-done");
         await applicationsPage.handleOptionalOuStep();
       });
 
-      await test.step("Step 4 [configure-design]: Skip and click Next", async () => {
+      await test.step("Step 2 [configure-design]: Skip and click Next", async () => {
         await applicationsPage.waitForStep("application-configure-design");
-        console.log("Step 4 (configure-design) visible - skipping");
+        console.log("Step 2 (configure-design) visible - skipping");
+        await applicationsPage.clickNext();
+        await applicationsPage.screenshot("tc002-step2-done");
+      });
+
+      await test.step("Step 3 [configure-sign-in]: Skip and click Next", async () => {
+        await applicationsPage.waitForStep("application-configure-sign-in");
+        console.log("Step 3 (configure-sign-in) visible - skipping");
+        await applicationsPage.clickNext();
+        await applicationsPage.screenshot("tc002-step3-done");
+      });
+
+      await test.step("Step 4 [configure-experience]: Verify INBUILT is default and click Next", async () => {
+        await applicationsPage.waitForStep("application-configure-experience");
+        console.log("Step 4 (configure-experience) visible - INBUILT is default, clicking Next");
         await applicationsPage.clickNext();
         await applicationsPage.screenshot("tc002-step4-done");
       });
 
-      await test.step("Step 5 [configure-sign-in]: Skip and click Next", async () => {
-        await applicationsPage.waitForStep("application-configure-sign-in");
-        console.log("Step 5 (configure-sign-in) visible - skipping");
-        await applicationsPage.clickNext();
-        await applicationsPage.screenshot("tc002-step5-done");
-      });
-
-      await test.step("Step 6 [configure-experience]: Verify INBUILT is default and click Next", async () => {
-        await applicationsPage.waitForStep("application-configure-experience");
-        console.log("Step 6 (configure-experience) visible - INBUILT is default, clicking Next");
-        await applicationsPage.clickNext();
-        await applicationsPage.screenshot("tc002-step6-done");
-      });
-
-      await test.step("Step 7: Wait for wizard completion (secret screen or edit page)", async () => {
+      await test.step("Step 5: Wait for wizard completion (secret screen or edit page)", async () => {
         createdAppUrl = await applicationsPage.completeWizardCreation();
         createdAppIds.push(createdAppUrl.split("/").pop()!);
         await applicationsPage.screenshot("tc002-wizard-done");
@@ -152,10 +146,9 @@ test.describe("Application Onboarding", () => {
         await applicationsPage.goto();
         await applicationsPage.verifyPageLoaded();
         await applicationsPage.clickAddApplication();
-        await applicationsPage.waitForStep("application-configure-stack");
-        await applicationsPage.clickNext();
+        await applicationsPage.selectTemplate("NEXTJS");
         await applicationsPage.waitForStep("application-configure-name");
-        console.log("Step 2 visible with empty name input");
+        console.log("Name step visible with empty name input");
         await applicationsPage.screenshot("tc003-empty-name");
       });
 
@@ -174,33 +167,28 @@ test.describe("Application Onboarding", () => {
 
     /** TC004: SPA (public client) hides the EMBEDDED experience option */
     test("TC004: Create application - SPA stack hides EMBEDDED experience", async ({ applicationsPage }) => {
-      await test.step("Navigate and open wizard", async () => {
+      await test.step("Navigate and select the React (SPA) template", async () => {
         await applicationsPage.goto();
         await applicationsPage.verifyPageLoaded();
         await applicationsPage.clickAddApplication();
+        await applicationsPage.selectTemplate("REACT");
       });
 
-      await test.step("Step 1: Select the React (SPA) stack and advance", async () => {
-        await applicationsPage.waitForStep("application-configure-stack");
-        await applicationsPage.selectStack("React");
-        await applicationsPage.clickNext();
-      });
-
-      await test.step("Step 2: Fill name and advance", async () => {
+      await test.step("Step 1: Fill name and advance", async () => {
         await applicationsPage.waitForStep("application-configure-name");
         await applicationsPage.fillAppName(`TestApp_SPA_${Date.now()}`);
         await applicationsPage.clickNext();
         await applicationsPage.handleOptionalOuStep();
       });
 
-      await test.step("Steps 4 & 5: Skip design and sign-in", async () => {
+      await test.step("Steps 2 & 3: Skip design and sign-in", async () => {
         await applicationsPage.waitForStep("application-configure-design");
         await applicationsPage.clickNext();
         await applicationsPage.waitForStep("application-configure-sign-in");
         await applicationsPage.clickNext();
       });
 
-      await test.step("Step 6: Verify only the redirect-based option is offered", async () => {
+      await test.step("Step 4: Verify only the redirect-based option is offered", async () => {
         await applicationsPage.waitForStep("application-configure-experience");
         await expect(applicationsPage.inbuiltExperienceCard.first()).toBeVisible();
         await expect(applicationsPage.embeddedExperienceCard).toHaveCount(0);
@@ -218,9 +206,7 @@ test.describe("Application Onboarding", () => {
         await applicationsPage.goto();
         await applicationsPage.verifyPageLoaded();
         await applicationsPage.clickAddApplication();
-
-        await applicationsPage.waitForStep("application-configure-stack");
-        await applicationsPage.clickNext();
+        await applicationsPage.selectTemplate("NEXTJS");
 
         await applicationsPage.waitForStep("application-configure-name");
         await applicationsPage.fillAppName(appData.name);

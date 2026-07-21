@@ -49,7 +49,16 @@ function Execution({data, resources}: ExecutionPropsInterface): ReactElement | n
 
   const executorName = (data?.action as StepAction | undefined)?.executor?.name ?? 'Executor';
   // Get display metadata from data (set by resolveStepMetadata)
-  const displayFromData = data?.display as {label?: string; image?: string; showOnResourcePanel?: boolean} | undefined;
+  const displayFromData = data?.display as
+    | {
+        label?: string;
+        image?: string;
+        preserveImageColor?: boolean;
+        description?: string;
+        showOnResourcePanel?: boolean;
+        outcomes?: {success?: string; failure?: string; incomplete?: string};
+      }
+    | undefined;
 
   const hasComponents = useMemo(() => {
     const components = (data?.components as Element[]) ?? [];
@@ -67,13 +76,19 @@ function Execution({data, resources}: ExecutionPropsInterface): ReactElement | n
         display: {
           label: displayFromData?.label ?? executorName,
           image: displayFromData?.image ?? '',
+          preserveImageColor: displayFromData?.preserveImageColor,
+          description: displayFromData?.description,
           showOnResourcePanel: displayFromData?.showOnResourcePanel ?? false,
+          outcomes: displayFromData?.outcomes,
         },
       }) as Step,
     [stepId, data, executorName, displayFromData],
   );
 
-  const handleActionPanelDoubleClick = useMemo(
+  // Selecting the executor surfaces its properties panel (the provider opens the
+  // panel for EXECUTION resources). Reachable from both the header itself and its
+  // Cog button, mirroring ExecutionMinimal.
+  const handleSelect = useMemo(
     () => () => {
       if (stepId) {
         setLastInteractedStepId(stepId);
@@ -94,7 +109,8 @@ function Execution({data, resources}: ExecutionPropsInterface): ReactElement | n
           deletable={false}
           configurable
           droppableAllowedTypes={VisualFlowConstants.FLOW_BUILDER_STATIC_CONTENT_ALLOWED_RESOURCE_TYPES}
-          onActionPanelDoubleClick={handleActionPanelDoubleClick}
+          onActionPanelClick={handleSelect}
+          onConfigure={handleSelect}
         />
       ) : (
         <ExecutionMinimal resource={resource} />

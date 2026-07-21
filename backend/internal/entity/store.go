@@ -94,7 +94,7 @@ func newEntityDBStore() (entityStoreInterface, transaction.Transactioner, error)
 	runtime := config.GetServerRuntime()
 
 	dbProvider := getDBProvider()
-	client, err := dbProvider.GetUserDBClient()
+	client, err := dbProvider.GetEntityDBClient()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -135,7 +135,7 @@ func (es *entityDBStore) LoadIndexedAttributes(attributes []string) error {
 // CreateEntity creates a new entity in the database.
 func (es *entityDBStore) CreateEntity(ctx context.Context, entity providers.Entity,
 	credentials json.RawMessage, systemCredentials json.RawMessage) error {
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -191,7 +191,7 @@ func (es *entityDBStore) CreateEntity(ctx context.Context, entity providers.Enti
 
 // GetEntity retrieves an entity by ID (without credentials).
 func (es *entityDBStore) GetEntity(ctx context.Context, id string) (providers.Entity, error) {
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return providers.Entity{}, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -215,7 +215,7 @@ func (es *entityDBStore) GetEntity(ctx context.Context, id string) (providers.En
 // GetEntityWithCredentials retrieves an entity with all credential columns.
 func (es *entityDBStore) GetEntityWithCredentials(ctx context.Context, id string) (
 	*entityWithCredentials, error) {
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -248,7 +248,7 @@ func (es *entityDBStore) GetEntityWithCredentials(ctx context.Context, id string
 
 // UpdateEntity fully updates an entity including system attributes, and re-syncs all identifiers.
 func (es *entityDBStore) UpdateEntity(ctx context.Context, entity *providers.Entity) error {
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -300,7 +300,7 @@ func (es *entityDBStore) UpdateEntity(ctx context.Context, entity *providers.Ent
 
 // UpdateAttributes updates only the schema attributes of an entity and re-syncs attribute-sourced identifiers.
 func (es *entityDBStore) UpdateAttributes(ctx context.Context, entityID string, attributes json.RawMessage) error {
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -330,7 +330,7 @@ func (es *entityDBStore) UpdateAttributes(ctx context.Context, entityID string, 
 // UpdateSystemAttributes updates the system attributes of an entity and re-syncs system-sourced identifiers.
 func (es *entityDBStore) UpdateSystemAttributes(ctx context.Context, entityID string,
 	attrs json.RawMessage) error {
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -360,7 +360,7 @@ func (es *entityDBStore) UpdateSystemAttributes(ctx context.Context, entityID st
 // UpdateCredentials updates the credentials of an entity.
 func (es *entityDBStore) UpdateCredentials(ctx context.Context, entityID string,
 	creds json.RawMessage) error {
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -381,7 +381,7 @@ func (es *entityDBStore) UpdateCredentials(ctx context.Context, entityID string,
 // UpdateSystemCredentials updates the system credentials of an entity.
 func (es *entityDBStore) UpdateSystemCredentials(ctx context.Context, entityID string,
 	creds json.RawMessage) error {
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -401,7 +401,7 @@ func (es *entityDBStore) UpdateSystemCredentials(ctx context.Context, entityID s
 
 // DeleteEntity deletes an entity and its indexed identifiers from the database.
 func (es *entityDBStore) DeleteEntity(ctx context.Context, id string) error {
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -435,7 +435,7 @@ func (es *entityDBStore) syncAttributeIdentifiers(ctx context.Context, entityID 
 		return nil
 	}
 
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -451,7 +451,7 @@ func (es *entityDBStore) syncAttributeIdentifiers(ctx context.Context, entityID 
 // IdentifyEntity identifies an entity with the given filters.
 func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 	filters map[string]interface{}) (*string, error) {
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -538,7 +538,7 @@ func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 // Column-level filters (category, ouId) should be handled at the service layer.
 func (es *entityDBStore) SearchEntities(ctx context.Context,
 	filters map[string]interface{}) ([]providers.Entity, error) {
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -569,7 +569,7 @@ func (es *entityDBStore) GetIndexedAttributes() map[string]bool {
 // GetEntityListCount retrieves the total count of entities by category.
 func (es *entityDBStore) GetEntityListCount(ctx context.Context, category string,
 	filters map[string]interface{}) (int, error) {
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -585,7 +585,7 @@ func (es *entityDBStore) GetEntityListCount(ctx context.Context, category string
 // GetEntityList retrieves a list of entities by category.
 func (es *entityDBStore) GetEntityList(ctx context.Context, category string,
 	limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -609,7 +609,7 @@ func (es *entityDBStore) GetEntityListCountByOUIDs(ctx context.Context, category
 	if len(ouIDs) == 0 {
 		return 0, nil
 	}
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -625,7 +625,7 @@ func (es *entityDBStore) GetEntityListCountByOUIDs(ctx context.Context, category
 // GetEntityListByOUIDs retrieves a list of entities scoped to OU IDs.
 func (es *entityDBStore) GetEntityListByOUIDs(ctx context.Context, category string,
 	ouIDs []string, limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -649,7 +649,7 @@ func (es *entityDBStore) ValidateEntityIDs(ctx context.Context, entityIDs []stri
 		return []string{}, nil
 	}
 
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -689,7 +689,7 @@ func (es *entityDBStore) GetEntitiesByIDs(ctx context.Context, entityIDs []strin
 		return []providers.Entity{}, nil
 	}
 
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -734,7 +734,7 @@ func (es *entityDBStore) ValidateEntityIDsInOUs(
 		return append([]string{}, entityIDs...), nil
 	}
 
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -767,7 +767,7 @@ func (es *entityDBStore) ValidateEntityIDsInOUs(
 
 // GetGroupCountForEntity retrieves the total count of groups an entity belongs to.
 func (es *entityDBStore) GetGroupCountForEntity(ctx context.Context, entityID string) (int, error) {
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -790,7 +790,7 @@ func (es *entityDBStore) GetGroupCountForEntity(ctx context.Context, entityID st
 // GetEntityGroups retrieves groups that an entity belongs to with pagination.
 func (es *entityDBStore) GetEntityGroups(
 	ctx context.Context, entityID string, limit, offset int) ([]providers.EntityGroup, error) {
-	dbClient, err := es.dbProvider.GetUserDBClient()
+	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}

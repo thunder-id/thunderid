@@ -19,6 +19,8 @@
 // Package providers provides constants for the providers module.
 package providers
 
+import "errors"
+
 // IDPType represents the type of an identity provider.
 type IDPType string
 
@@ -53,6 +55,8 @@ const (
 	FlowTypeUserOnboarding FlowType = "USER_ONBOARDING"
 	// FlowTypeRecovery represents a flow execution for account recovery (e.g., password reset).
 	FlowTypeRecovery FlowType = "RECOVERY"
+	// FlowTypeSignOut represents a flow execution for terminating an SSO session.
+	FlowTypeSignOut FlowType = "SIGNOUT"
 )
 
 // ValidFlowTypes is the set of supported flow types.
@@ -61,6 +65,7 @@ var ValidFlowTypes = []FlowType{
 	FlowTypeRegistration,
 	FlowTypeUserOnboarding,
 	FlowTypeRecovery,
+	FlowTypeSignOut,
 }
 
 // NodeVariant identifies a PROMPT node sub-type that activates a variant-specific code path.
@@ -135,7 +140,14 @@ const (
 	GrantTypeTokenExchange GrantType = "urn:ietf:params:oauth:grant-type:token-exchange" //nolint:gosec
 	// GrantTypeCIBA represents the OpenID Connect CIBA (Client-Initiated Backchannel Authentication) grant type.
 	GrantTypeCIBA GrantType = "urn:openid:params:grant-type:ciba"
+	// GrantTypeJWTBearer represents the JWT bearer grant type used to present an ID-JAG assertion
+	// (draft-ietf-oauth-identity-assertion-authz-grant) issued by a trusted external IdP.
+	GrantTypeJWTBearer GrantType = "urn:ietf:params:oauth:grant-type:jwt-bearer" //nolint:gosec
 )
+
+// DefaultIDJAGValidityPeriod is the default validity period, in seconds, of an issued ID-JAG when the
+// application does not configure one.
+const DefaultIDJAGValidityPeriod int64 = 300
 
 // ResponseType defines a type for OAuth2 response types.
 type ResponseType string
@@ -169,6 +181,7 @@ var SupportedGrantTypes = []GrantType{
 	GrantTypeRefreshToken,
 	GrantTypeTokenExchange,
 	GrantTypeCIBA,
+	GrantTypeJWTBearer,
 }
 
 // IsValid checks if the GrantType is valid.
@@ -474,4 +487,28 @@ const (
 	StatusFailure    = "failure"
 	StatusInProgress = "in_progress"
 	StatusPending    = "pending"
+)
+
+// RuntimeStoreNamespace identifies the category of data stored in the runtime store.
+type RuntimeStoreNamespace string
+
+// Namespace constants for the runtime store. All namespaces follow the <category>:<type> format.
+const (
+	NamespaceAttributeCache RuntimeStoreNamespace = "attribute:cache"
+	NamespaceFlow           RuntimeStoreNamespace = "flow:state"
+	NamespaceAuthzCode      RuntimeStoreNamespace = "authz:code"
+	NamespaceAuthzReq       RuntimeStoreNamespace = "authz:req"
+	NamespaceLogoutReq      RuntimeStoreNamespace = "logout:req"
+	NamespacePAR            RuntimeStoreNamespace = "par:req"
+	NamespaceCIBA           RuntimeStoreNamespace = "ciba:req"
+	NamespaceJTI            RuntimeStoreNamespace = "jti:token"
+	NamespaceVCINonce       RuntimeStoreNamespace = "vci:nonce"
+	NamespaceVCIOffer       RuntimeStoreNamespace = "vci:offer"
+	NamespaceVPState        RuntimeStoreNamespace = "vp:state"
+)
+
+// Error constants
+var (
+	// ErrRuntimeStoreKeyNotFound to identify key not found error in the runtime store providers
+	ErrRuntimeStoreKeyNotFound = errors.New("RuntimeStore key not found")
 )

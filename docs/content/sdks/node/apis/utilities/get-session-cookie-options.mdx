@@ -1,11 +1,12 @@
 ---
 title: getSessionCookieOptions()
-description: Build cookie options with SDK defaults applied
+docType: reference
+description: Build secure cookie options for session management with configurable SameSite, Secure, and Path settings.
 ---
 
 # `getSessionCookieOptions()`
 
-`getSessionCookieOptions` merges the provided partial [`CookieOptions`](/docs/next/sdks/node/apis/utilities/cookie-options) with the default values from [`CookieConfig`](/docs/next/sdks/node/apis/utilities/cookie-config). Any property you omit falls back to its default.
+`getSessionCookieOptions` merges the provided partial [`CookieOptions`](../cookie-options) with the default values from [`CookieConfig`](../cookie-config). Any property you omit falls back to its default.
 
 ## Signature
 
@@ -21,7 +22,7 @@ getSessionCookieOptions(options: Partial<CookieOptions>): CookieOptions
 
 ## Returns
 
-`CookieOptions` — A complete cookie options object with all required fields populated.
+`CookieOptions`: A complete cookie options object with all required fields populated.
 
 ## Default Values
 
@@ -83,5 +84,5 @@ app.get('/callback', async (req, res) => {
 
 ## Related
 
-- [`CookieOptions`](/docs/next/sdks/node/apis/utilities/cookie-options) — Interface for cookie configuration
-- [`CookieConfig`](/docs/next/sdks/node/apis/utilities/cookie-config) — Default constant values
+- [`CookieOptions`](../cookie-options): Interface for cookie configuration
+- [`CookieConfig`](../cookie-config): Default constant values

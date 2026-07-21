@@ -25,9 +25,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 var (
@@ -335,26 +335,6 @@ func (ts *GoogleRegistrationFlowTestSuite) SetupSuite() {
 			{
 				Name:     "scopes",
 				Value:    "openid email profile",
-				IsSecret: false,
-			},
-			{
-				Name:     "authorization_endpoint",
-				Value:    ts.mockGoogleServer.GetURL() + "/o/oauth2/v2/auth",
-				IsSecret: false,
-			},
-			{
-				Name:     "token_endpoint",
-				Value:    ts.mockGoogleServer.GetURL() + "/token",
-				IsSecret: false,
-			},
-			{
-				Name:     "userinfo_endpoint",
-				Value:    ts.mockGoogleServer.GetURL() + "/v1/userinfo",
-				IsSecret: false,
-			},
-			{
-				Name:     "jwks_endpoint",
-				Value:    ts.mockGoogleServer.GetURL() + "/oauth2/v3/certs",
 				IsSecret: false,
 			},
 		},

@@ -72,30 +72,6 @@ describe('UsersListPage', () => {
     expect(createButton).toBeInTheDocument();
   });
 
-  it('renders search input', () => {
-    render(<UsersListPage />);
-
-    const searchInput = screen.getByPlaceholderText('Search users...');
-    expect(searchInput).toBeInTheDocument();
-  });
-
-  it('renders search icon', () => {
-    const {container} = render(<UsersListPage />);
-
-    const searchIcon = container.querySelector('svg');
-    expect(searchIcon).toBeInTheDocument();
-  });
-
-  it('allows typing in search input', async () => {
-    const user = userEvent.setup();
-    render(<UsersListPage />);
-
-    const searchInput = screen.getByPlaceholderText('Search users...');
-    await user.type(searchInput, 'john doe');
-
-    expect(searchInput).toHaveValue('john doe');
-  });
-
   it('navigates to add user flow when create button is clicked', async () => {
     const user = userEvent.setup();
     render(<UsersListPage />);
@@ -103,7 +79,9 @@ describe('UsersListPage', () => {
     const createButton = screen.getByRole('button', {name: /add user/i});
     await user.click(createButton);
 
-    expect(mockNavigate).toHaveBeenCalledWith('/users/invite');
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/users/add');
+    });
   });
 
   it('renders UsersList component', () => {
@@ -144,7 +122,9 @@ describe('UsersListPage', () => {
     const createButton = screen.getByRole('button', {name: /add user/i});
     await user.click(createButton);
 
-    expect(mockNavigate).toHaveBeenCalledWith('/users/invite');
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/users/add');
+    });
 
     await waitFor(() => {
       expect(mockLoggerError).toHaveBeenCalledWith(

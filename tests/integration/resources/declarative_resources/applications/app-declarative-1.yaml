@@ -1,3 +1,4 @@
+resource_type: application
 id: decl-app-1
 name: Declarative Test Application
 description: A declarative test application for integration testing

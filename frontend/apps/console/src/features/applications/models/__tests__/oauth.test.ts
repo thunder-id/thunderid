@@ -46,6 +46,14 @@ describe('OAuth Models', () => {
       expect(OAuth2GrantTypes.CIBA).toBe('urn:openid:params:grant-type:ciba');
     });
 
+    it('should have TOKEN_EXCHANGE grant type', () => {
+      expect(OAuth2GrantTypes.TOKEN_EXCHANGE).toBe('urn:ietf:params:oauth:grant-type:token-exchange');
+    });
+
+    it('should have JWT_BEARER grant type', () => {
+      expect(OAuth2GrantTypes.JWT_BEARER).toBe('urn:ietf:params:oauth:grant-type:jwt-bearer');
+    });
+
     it('should have all expected grant types', () => {
       const expectedKeys = [
         'AUTHORIZATION_CODE',
@@ -54,6 +62,8 @@ describe('OAuth Models', () => {
         'PASSWORD',
         'IMPLICIT',
         'CIBA',
+        'TOKEN_EXCHANGE',
+        'JWT_BEARER',
       ];
 
       expect(Object.keys(OAuth2GrantTypes)).toEqual(expectedKeys);

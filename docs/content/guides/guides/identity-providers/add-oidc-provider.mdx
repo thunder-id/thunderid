@@ -1,5 +1,6 @@
 ---
 title: Add an OIDC Identity Provider
+docType: guide
 sidebar_position: 4
 persona: iam
 description: Configure a generic OpenID Connect identity provider for federated authentication.
@@ -18,7 +19,7 @@ This guide explains how to register a generic OpenID Connect (OIDC) identity pro
 :::tip Finding endpoint URLs
 Most OIDC providers publish their endpoint URLs in a discovery document at:
 
-```
+```text
 https://<provider-domain>/.well-known/openid-configuration
 ```
 
@@ -27,23 +28,20 @@ Open this URL in a browser to find the `authorization_endpoint`, `token_endpoint
 
 ## Create the OIDC IdP
 
-Send a `POST` request to `/identity-providers` with your OIDC provider credentials and endpoints:
+Send a `POST` request to `/connections/oidc` with your OIDC provider credentials and endpoints:
 
 ```bash
-curl -kL -X POST https://localhost:8090/identity-providers \
+curl -kL -X POST https://localhost:8090/connections/oidc \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <access-token>' \
   -d '{
     "name": "My OIDC Provider",
     "description": "Corporate OIDC provider",
-    "type": "OIDC",
-    "properties": [
-      { "name": "client_id", "value": "<client-id>", "isSecret": false },
-      { "name": "client_secret", "value": "<client-secret>", "isSecret": true },
-      { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false },
-      { "name": "authorization_endpoint", "value": "https://<provider>/oauth2/authorize", "isSecret": false },
-      { "name": "token_endpoint", "value": "https://<provider>/oauth2/token", "isSecret": false }
-    ]
+    "clientId": "<client-id>",
+    "clientSecret": "<client-secret>",
+    "redirectUri": "https://<your-thunderid-host>/gate/callback",
+    "authorizationEndpoint": "https://<provider>/oauth2/authorize",
+    "tokenEndpoint": "https://<provider>/oauth2/token"
   }'
 ```
 
@@ -53,38 +51,36 @@ curl -kL -X POST https://localhost:8090/identity-providers \
 {
   "id": "770e8400-e29b-41d4-a716-446655440002",
   "name": "My OIDC Provider",
-  "type": "OIDC",
-  "properties": [
-    { "name": "client_id", "value": "<client-id>", "isSecret": false },
-    { "name": "client_secret", "value": "******", "isSecret": true },
-    { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false },
-    { "name": "authorization_endpoint", "value": "https://<provider>/oauth2/authorize", "isSecret": false },
-    { "name": "token_endpoint", "value": "https://<provider>/oauth2/token", "isSecret": false }
-  ]
+  "type": "oidc",
+  "clientId": "<client-id>",
+  "clientSecret": "******",
+  "redirectUri": "https://<your-thunderid-host>/gate/callback",
+  "authorizationEndpoint": "https://<provider>/oauth2/authorize",
+  "tokenEndpoint": "https://<provider>/oauth2/token"
 }
 ```
 
-## Required Properties
+## Required Fields
 
-| Property | Description |
+| Field | Description |
 |----------|-------------|
-| `client_id` | The client ID issued by the OIDC provider. |
-| `client_secret` | The client secret issued by the OIDC provider. |
-| `redirect_uri` | The callback URL registered in the OIDC provider. |
-| `authorization_endpoint` | The provider's authorization endpoint URL. |
-| `token_endpoint` | The provider's token endpoint URL. |
+| `clientId` | The client ID issued by the OIDC provider. |
+| `clientSecret` | The client secret issued by the OIDC provider. |
+| `redirectUri` | The callback URL registered in the OIDC provider. |
+| `authorizationEndpoint` | The provider's authorization endpoint URL. |
+| `tokenEndpoint` | The provider's token endpoint URL. |
 
-## Optional Properties
+## Optional Fields
 
-| Property | Description |
+| Field | Description |
 |----------|-------------|
-| `userinfo_endpoint` | The provider's userinfo endpoint URL. Used to fetch user profile claims. |
-| `jwks_endpoint` | The URL of the provider's JSON Web Key Set. Required when `token_exchange_enabled` is `true`. |
-| `issuer` | The provider's issuer identifier. Required when `token_exchange_enabled` is `true`. |
-| `scopes` | Space-separated list of OIDC scopes to request (for example, `openid email profile`). |
-| `logout_endpoint` | The provider's end-session endpoint. |
+| `userInfoEndpoint` | The provider's userinfo endpoint URL. Used to fetch user profile claims. |
+| `jwksEndpoint` | The URL of the provider's JSON Web Key Set. Required when `tokenExchangeEnabled` is `true`. |
+| `issuer` | The provider's issuer identifier. Required when `tokenExchangeEnabled` is `true`. |
+| `scopes` | Array of OIDC scopes to request (for example, `["openid", "email", "profile"]`). |
+| `logoutEndpoint` | The provider's end-session endpoint. |
 | `prompt` | The `prompt` parameter to send in authorization requests (for example, `login`, `consent`). |
-| `token_exchange_enabled` | Set to `true` to enable token exchange with this provider. Requires `issuer` and `jwks_endpoint`. |
+| `tokenExchangeEnabled` | Set to `true` to enable token exchange with this provider. Requires `issuer` and `jwksEndpoint`. |
 
 ## Attribute Configuration
 
@@ -93,8 +89,11 @@ External providers emit attributes under their own names, which may differ from 
 ```json
 {
   "name": "My OIDC Provider",
-  "type": "OIDC",
-  "properties": [ /* ... */ ],
+  "clientId": "<client-id>",
+  "clientSecret": "<client-secret>",
+  "redirectUri": "https://<your-thunderid-host>/gate/callback",
+  "authorizationEndpoint": "https://<provider>/oauth2/authorize",
+  "tokenEndpoint": "https://<provider>/oauth2/token",
   "attributeConfiguration": {
     "userTypeResolution": {
       "default": "Person"
@@ -114,7 +113,7 @@ External providers emit attributes under their own names, which may differ from 
 
 | Field | Description |
 |-------|-------------|
-| `userTypeResolution` | **Required.** Resolves the local user type for an incoming identity. |
+| `userTypeResolution` | Resolves the local user type for an incoming identity. **Required** when `userTypeAttributeMappings` is configured (it selects which mapping profile applies); otherwise optional. Can be a static `default` or derived from a claim. See [Claim-driven user type resolution](#claim-driven-user-type-resolution). |
 | `userTypeAttributeMappings` | An array where each entry holds the attribute mappings for one user type. |
 
 Each entry has a `userType` (the user type whose schema defines the valid local targets) and an `attributes` array. Each item in `attributes` has the following fields:
@@ -126,37 +125,86 @@ Each entry has a `userType` (the user type whose schema defines the valid local 
 
 Behavior:
 
-- The `externalAttribute` (source) supports attributes in complex forms. We can use **dot notation** to read a value nested inside another attribute — for example, `email.work` reads the `work` field from an `email` object.
+- The `externalAttribute` (source) supports attributes in complex forms. Use **dot notation** to read a value nested inside another attribute. For example, `email.work` reads the `work` field from an `email` object.
 - The `localAttribute` (target) must be an attribute defined in the profile's `userType` schema; this is validated when the IdP is created or updated.
 - An attribute whose name is mapped is renamed to its local attribute; attributes without a mapping pass through unchanged.
 
 The mapping applies both when a user signs in through this IdP in an authentication flow and when a token from this IdP is exchanged (see [Trusted Issuer](../../trusted-issuer#attribute-configuration)). The resulting local attributes flow into the issued access and ID tokens, subject to the application's `userAttributes` configuration.
 
+### Claim-driven user type resolution
+
+By default, every federated identity resolves to the `default` user type. To derive the user type from an incoming claim instead, set `externalAttribute` (the claim to read) and `valueMapping` (external value to local user type):
+
+```json
+{
+  "attributeConfiguration": {
+    "userTypeResolution": {
+      "default": "Person",
+      "externalAttribute": "user_type",
+      "valueMapping": {
+        "staff": "Employee",
+        "partner": "Contractor"
+      }
+    }
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `default` | **Required.** Fallback user type, used when the claim is missing or its value is not mapped. |
+| `externalAttribute` | External claim whose value selects the local user type. Supports dot notation for nested claims (for example, `profile.role`). |
+| `valueMapping` | Maps an external claim value to a local user type. Requires `externalAttribute`. |
+
+The resolved user type selects which `userTypeAttributeMappings` profile applies.
+
 Example with token exchange enabled:
 
 ```bash
-curl -kL -X POST https://localhost:8090/identity-providers \
+curl -kL -X POST https://localhost:8090/connections/oidc \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <access-token>' \
   -d '{
     "name": "My OIDC Provider",
-    "type": "OIDC",
-    "properties": [
-      { "name": "client_id", "value": "<client-id>", "isSecret": false },
-      { "name": "client_secret", "value": "<client-secret>", "isSecret": true },
-      { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false },
-      { "name": "authorization_endpoint", "value": "https://<provider>/oauth2/authorize", "isSecret": false },
-      { "name": "token_endpoint", "value": "https://<provider>/oauth2/token", "isSecret": false },
-      { "name": "userinfo_endpoint", "value": "https://<provider>/userinfo", "isSecret": false },
-      { "name": "jwks_endpoint", "value": "https://<provider>/oauth2/v1/keys", "isSecret": false },
-      { "name": "issuer", "value": "https://<provider>", "isSecret": false },
-      { "name": "scopes", "value": "openid email profile", "isSecret": false },
-      { "name": "token_exchange_enabled", "value": "true", "isSecret": false }
-    ]
+    "clientId": "<client-id>",
+    "clientSecret": "<client-secret>",
+    "redirectUri": "https://<your-thunderid-host>/gate/callback",
+    "authorizationEndpoint": "https://<provider>/oauth2/authorize",
+    "tokenEndpoint": "https://<provider>/oauth2/token",
+    "userInfoEndpoint": "https://<provider>/userinfo",
+    "jwksEndpoint": "https://<provider>/oauth2/v1/keys",
+    "issuer": "https://<provider>",
+    "scopes": ["openid", "email", "profile"],
+    "tokenExchangeEnabled": true
   }'
 ```
 
+## Account Linking
+
+To resolve an incoming federated identity to an existing local user by attributes when the subject identifier (`sub`) does not match, configure `accountLinking` under `attributeConfiguration`:
+
+```json
+{
+  "attributeConfiguration": {
+    "accountLinking": {
+      "attributes": ["email"]
+    }
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `accountLinking.attributes` | External attribute names matched together to resolve a unique local user when `sub` does not. |
+
+Behavior:
+
+- Resolution tries the subject identifier (`sub`) first. If it resolves an existing user, that user is used.
+- Otherwise, all configured attributes that have a value are matched together (as a single query) to resolve a unique local user.
+- Each attribute is an external claim name; if it's mapped via `userTypeAttributeMappings` (e.g. `email` → `work_email`), the mapped local attribute is used for the lookup instead.
+- If neither `sub` nor the configured attributes resolve a user, the user is treated as new (subject to the flow's provisioning configuration).
+
 ## Next Steps
 
-- [Connect an IdP to an Application](../connect-idp-to-application) — Add this OIDC IdP to an application's authentication flow.
-- [Manage Identity Providers](../manage-identity-providers) — Update or delete identity providers.
+- [Connect an IdP to an Application](../connect-idp-to-application): Add this OIDC IdP to an application's authentication flow.
+- [Manage Identity Providers](../manage-identity-providers): Update or delete identity providers.

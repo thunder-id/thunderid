@@ -29,6 +29,7 @@ import (
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -45,6 +46,7 @@ func Initialize(
 	mux *http.ServeMux,
 	applicationService application.ApplicationServiceInterface,
 	idpService idp.IDPServiceInterface,
+	senderService notification.NotificationSenderMgtSvcInterface,
 	flowService flowmgt.FlowMgtServiceInterface,
 	ouService ou.OrganizationUnitServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
@@ -64,6 +66,7 @@ func Initialize(
 	importService := newImportService(
 		applicationService,
 		idpService,
+		senderService,
 		flowService,
 		ouService,
 		entityTypeService,

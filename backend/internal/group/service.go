@@ -34,6 +34,7 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
@@ -63,16 +64,21 @@ type GroupServiceInterface interface {
 	RemoveGroupMembers(ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError)
 	AddMembersToGroups(ctx context.Context, members []Member,
 		groupIDs []string) *tidcommon.ServiceError
+	GetResourceDependencies(
+		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
+	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
+	SetDependencyRegistry(r resourcedependency.Registry)
 }
 
 // groupService is the default implementation of the GroupServiceInterface.
 type groupService struct {
-	groupStore        groupStoreInterface
-	ouService         oupkg.OrganizationUnitServiceInterface
-	entityService     entity.EntityServiceInterface
-	entityTypeService entitytype.EntityTypeServiceInterface
-	transactioner     transaction.Transactioner
-	authzService      sysauthz.SystemAuthorizationServiceInterface
+	groupStore         groupStoreInterface
+	ouService          oupkg.OrganizationUnitServiceInterface
+	entityService      entity.EntityServiceInterface
+	entityTypeService  entitytype.EntityTypeServiceInterface
+	transactioner      transaction.Transactioner
+	authzService       sysauthz.SystemAuthorizationServiceInterface
+	dependencyRegistry resourcedependency.Registry
 }
 
 // newGroupServiceWithStore creates a new instance of GroupService with an externally provided store.
@@ -569,6 +575,12 @@ func (gs *groupService) UpdateGroup(
 }
 
 // DeleteGroup delete the specified group by its id.
+// SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
+// provider services are initialized to avoid a cyclic import.
+func (gs *groupService) SetDependencyRegistry(r resourcedependency.Registry) {
+	gs.dependencyRegistry = r
+}
+
 func (gs *groupService) DeleteGroup(ctx context.Context, groupID string) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Deleting group", log.String("id", groupID))
@@ -586,40 +598,44 @@ func (gs *groupService) DeleteGroup(ctx context.Context, groupID string) *tidcom
 		return &ErrorImmutableGroup
 	}
 
-	var capturedSvcErr *tidcommon.ServiceError
-
-	err := gs.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		existingGroupDAO, err := gs.groupStore.GetGroup(txCtx, groupID)
-		if err != nil {
-			if errors.Is(err, ErrGroupNotFound) {
-				logger.Debug(ctx, "Group not found", log.String("id", groupID))
-				capturedSvcErr = &ErrorGroupNotFound
-				return errors.New("rollback for group not found")
-			}
-			return err
-		}
-
-		if err := gs.checkGroupAccess(
-			txCtx,
-			security.ActionDeleteGroup,
-			existingGroupDAO.OUID,
-			groupID,
-		); err != nil {
-			capturedSvcErr = err
-			return errors.New("rollback for unauthorized access")
-		}
-
-		if err := gs.groupStore.DeleteGroup(txCtx, groupID); err != nil {
-			return err
-		}
-		return nil
-	})
-
-	if capturedSvcErr != nil {
-		return capturedSvcErr
+	if gs.dependencyRegistry == nil {
+		logger.Error(ctx, "Dependency registry not set; refusing to delete group", log.String("id", groupID))
+		return &tidcommon.InternalServerError
 	}
 
+	existingGroupDAO, err := gs.groupStore.GetGroup(ctx, groupID)
 	if err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			logger.Debug(ctx, "Group not found", log.String("id", groupID))
+			return &ErrorGroupNotFound
+		}
+		logger.Error(ctx, "Failed to delete group", log.Error(err), log.String("groupID", groupID))
+		return &tidcommon.InternalServerError
+	}
+
+	if svcErr := gs.checkGroupAccess(
+		ctx,
+		security.ActionDeleteGroup,
+		existingGroupDAO.OUID,
+		groupID,
+	); svcErr != nil {
+		return svcErr
+	}
+
+	// Remove dependents that must be deleted with the group (its role assignments and its
+	// memberships in other groups). This spans other databases, so run it before (and outside) the
+	// group-delete transaction: a failure aborts and leaves the group retriable, and the
+	// cross-store cleanup does not hold the group transaction open.
+	if _, cascadeErr := gs.dependencyRegistry.CascadeDelete(
+		ctx, resourcedependency.ResourceTypeGroup, groupID); cascadeErr != nil {
+		logger.Error(ctx, "Failed to cascade-delete group dependencies",
+			log.String("id", groupID), log.Error(cascadeErr))
+		return &tidcommon.InternalServerError
+	}
+
+	if err := gs.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		return gs.groupStore.DeleteGroup(txCtx, groupID)
+	}); err != nil {
 		logger.Error(ctx, "Failed to delete group", log.Error(err), log.String("groupID", groupID))
 		return &tidcommon.InternalServerError
 	}
@@ -1336,4 +1352,35 @@ func (gs *groupService) validateAndProcessHandlePath(handlePath string) *tidcomm
 		}
 	}
 	return nil
+}
+
+// GetResourceDependencies implements resourcedependency.Provider. Group memberships are cleaned up
+// via cascade rather than surfaced as blocking usages, so no dependencies are reported here.
+func (gs *groupService) GetResourceDependencies(
+	_ context.Context, _, _ string) ([]resourcedependency.ResourceDependency, error) {
+	return []resourcedependency.ResourceDependency{}, nil
+}
+
+// CascadeDeleteDependencies implements resourcedependency.CascadeDeleter. It removes the group
+// memberships held by the given principal when that principal is deleted. Only user, app and agent
+// principals (stored as entity members) are handled; other resource types have no memberships.
+func (gs *groupService) CascadeDeleteDependencies(
+	ctx context.Context, resourceType, id string) (int, error) {
+	var memberType MemberType
+	switch resourceType {
+	case resourcedependency.ResourceTypeUser,
+		resourcedependency.ResourceTypeApplication,
+		resourcedependency.ResourceTypeAgent:
+		memberType = memberTypeEntity
+	case resourcedependency.ResourceTypeGroup:
+		memberType = MemberTypeGroup
+	default:
+		return 0, nil
+	}
+
+	deleted, err := gs.groupStore.DeleteMembershipsByMember(ctx, string(memberType), id)
+	if err != nil {
+		return 0, err
+	}
+	return int(deleted), nil
 }

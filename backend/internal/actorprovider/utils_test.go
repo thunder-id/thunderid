@@ -138,6 +138,21 @@ func (s *UtilsTestSuite) TestAssembleApplication_NoClientID() {
 	s.Empty(app.InboundAuthConfig)
 }
 
+func (s *UtilsTestSuite) TestAssembleApplication_CarriesFlowIDs() {
+	client := &providers.InboundClient{
+		ID:                   "app-1",
+		AuthFlowID:           "auth-flow",
+		SignOutFlowID:        "signout-flow",
+		IsSignOutFlowEnabled: true,
+	}
+
+	app := assembleApplication(client, nil)
+
+	s.Equal("auth-flow", app.AuthFlowID)
+	s.Equal("signout-flow", app.SignOutFlowID)
+	s.True(app.IsSignOutFlowEnabled)
+}
+
 func (s *UtilsTestSuite) TestBuildApplication_NotFound() {
 	s.mockInbound.On("GetInboundClientByEntityID", mock.Anything, "missing").
 		Return((*inboundmodel.InboundClient)(nil), inboundclient.ErrInboundClientNotFound)

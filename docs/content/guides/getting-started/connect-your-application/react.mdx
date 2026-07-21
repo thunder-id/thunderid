@@ -1,5 +1,7 @@
 ---
+toc_progress: quickstart
 title: React Quickstart
+docType: quickstart
 sidebar_position: 1
 persona: app
 description: Add {{ProductName}} authentication to a React application using the @thunderid/react SDK.
@@ -26,7 +28,7 @@ Use this guide to add <ProductName /> authentication to a React application usin
 
 <TutorialHeroItem icon={<Boxes />}>Create a new React app using Vite</TutorialHeroItem>
 <TutorialHeroItem icon={<Package />}>Install the <code>@thunderid/react</code> package</TutorialHeroItem>
-<TutorialHeroItem icon={<LogIn />}>Build with ThunderID prebuilt components</TutorialHeroItem>
+<TutorialHeroItem icon={<LogIn />}>Build with <ProductName /> prebuilt components</TutorialHeroItem>
 
 ## Prerequisites
 
@@ -41,20 +43,31 @@ Use this guide to add <ProductName /> authentication to a React application usin
 
 ## Run <ProductName />
 
-Start a local ThunderID instance. Pick the method that works best for you:
+Start a local <ProductName /> instance. Pick the method that works best for you:
 
 <RunThunderID />
 
-Once it's running, the console is available at [https://localhost:8090](https://localhost:8090).
+Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
 
 ## Create an Application
 
-Open the Console at <ConsoleUrl />, navigate to **Applications**, and click **Add Application**:
+1. Sign in to the Console.
 
-1. Under **Technology**, select **React**.
-2. Enter a name (e.g. `My React App`) and create an application. The rest of the settings can stay at their defaults.
-3. Copy the **Client ID** from the **General** tab. You'll need it when configuring the SDK.
-4. Under **General**, add `http://localhost:5173` to the list of **Authorized Redirect URIs**.
+    :::info Test User
+    If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
+    :::
+
+2. Navigate to **Applications**, and click **Add Application**.
+
+3. Under **Technology**, select **React**.
+4. Enter a name (e.g. `My React App`) and create an application. The rest of the settings can stay at their defaults.
+5. Copy the **Client ID** from the **General** tab. You'll need it when configuring the SDK.
+6. Under **General**, add `http://localhost:5173` to the list of **Authorized Redirect URIs**.
+7. The React SDK calls the <ProductName /> API directly from the browser, so you need to allow your app's origin:
+    1. In the left navigation, navigate to **Settings**.
+    2. Under the **System** section, open the **CORS** tab.
+    3. Enter `http://localhost:5173` (or the relevant URL for your setup).
+    4. Click **Add Origin**.
 
 ## Create a React App
 
@@ -102,7 +115,7 @@ Install the <ProductName /> React SDK in your project:
   </CodeBlock>
 </CodeGroup>
 
-## Add ThunderIDProvider to Your App
+## Add <ProductName />Provider to Your App
 
 The `<ThunderIDProvider />` serves as a context provider for the SDK. Integrate it by wrapping your root component.
 
@@ -138,7 +151,7 @@ createRoot(document.getElementById('root')).render(
 | `clientId` | The Client ID from your <ProductName /> application |
 | `baseUrl` | Your <ProductName /> instance URL (e.g., `https://localhost:8090`) |
 
-## Build with ThunderID Components
+## Build with <ProductName /> Components
 
 You can control which content signed-in and signed-out users can see with the prebuilt control components. Replace the content of `App.jsx` with the following, which uses these components:
 

@@ -68,6 +68,7 @@ fileGroupNames:
   application.yaml: Applications
   authzen.yaml: Access Control
   authentication.yaml: ~         # all tags claimed by Authentication
+  connections.yaml: Connections
   design.yaml: ~                 # all tags claimed by Branding & Localization
   discovery.yaml: ~              # all tags claimed by OAuth2 / OIDC
   export.yaml: ~                 # Export claimed by System
@@ -77,9 +78,7 @@ fileGroupNames:
   group.yaml: ~                  # Groups claimed by Identities
   healthcheck.yaml: ~            # Health claimed by System
   i18n.yaml: ~                   # Languages claimed by Branding & Localization
-  idp.yaml: Identity Providers
   import.yaml: ~                 # Import claimed by System
-  notification-sender.yaml: ~    # all tags claimed by Notification Senders
   oauth2.yaml: ~                 # all tags claimed by OAuth2 / OIDC
   ou.yaml: ~                     # Organization Units claimed by Identities
   registration.yaml: ~           # Passkeys (registration) claimed by Authentication
@@ -137,12 +136,6 @@ explicitSubGroups:
       - Layouts
       - Languages
 
-  # ── OTP delivery channels ─────────────────────────────────────────────────────
-  - name: Notification Senders
-    tags:
-      - Message Senders
-      - One Time Password (OTP)
-
   # ── OAuth2 / OIDC protocol ────────────────────────────────────────────────────
   - name: OAuth2 / OIDC
     tags:
@@ -173,14 +166,13 @@ explicitSubGroups:
 # add its display name at the desired position.
 groupOrder:
   - Applications
-  - Identity Providers
+  - Connections
   - Identities
   - Access Control
   - Authentication
   - Login Flows
   - OAuth2 / OIDC
   - Branding & Localization
-  - Notification Senders
-  - SCIM Provisioning
   - System
+  - SCIM Provisioning
   - Other

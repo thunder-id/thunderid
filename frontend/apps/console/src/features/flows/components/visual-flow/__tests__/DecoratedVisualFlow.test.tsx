@@ -30,6 +30,8 @@ vi.mock('../../../hooks/useUIPanelState', () => ({
   default: () => ({
     isResourcePanelOpen: true,
     isResourcePropertiesPanelOpen: false,
+    setIsResourcePanelOpen: vi.fn(),
+    setIsOpenResourcePropertiesPanel: vi.fn(),
   }),
 }));
 
@@ -94,13 +96,18 @@ vi.mock('../../../hooks/useVisualFlowHandlers', () => ({
   }),
 }));
 
+const {mockAddToViewAtIndex, mockAddToFormAtIndex} = vi.hoisted(() => ({
+  mockAddToViewAtIndex: vi.fn(),
+  mockAddToFormAtIndex: vi.fn(),
+}));
+
 vi.mock('../../../hooks/useDragDropHandlers', () => ({
   default: () => ({
     addCanvasNode: vi.fn(),
     addToView: vi.fn(),
     addToForm: vi.fn(),
-    addToViewAtIndex: vi.fn(),
-    addToFormAtIndex: vi.fn(),
+    addToViewAtIndex: mockAddToViewAtIndex,
+    addToFormAtIndex: mockAddToFormAtIndex,
   }),
 }));
 
@@ -125,12 +132,10 @@ vi.mock('../../../utils/computeExecutorConnections', () => ({
   default: vi.fn(() => []),
 }));
 
-vi.mock('@/features/connections/api/useIdentityProviders', () => ({
-  default: () => ({data: []}),
-}));
-
-vi.mock('@/features/notification-senders/api/useNotificationSenders', () => ({
-  default: () => ({data: []}),
+vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
+  useIdentityProviders: () => ({data: []}),
+  useSMSProviders: () => ({data: []}),
 }));
 
 // Use vi.hoisted for mocks that need to be referenced in vi.mock
@@ -241,7 +246,7 @@ vi.mock('classnames', () => ({
 
 // Mock child components
 vi.mock('../VisualFlow', () => ({
-  default: ({nodes, edges, onNodeDragStop}: any) => (
+  default: ({nodes, edges, onNodeDragStop, onNodeClick}: any) => (
     <div
       data-testid="visual-flow"
       data-nodes={JSON.stringify(nodes)}
@@ -250,6 +255,17 @@ vi.mock('../VisualFlow', () => ({
     >
       <button data-testid="node-drag-stop-trigger" onClick={onNodeDragStop}>
         Node Drag Stop
+      </button>
+      <button
+        data-testid="node-click-trigger"
+        onClick={(event) =>
+          (onNodeClick as ((e: unknown, n: unknown) => void) | undefined)?.(event, {
+            id: 'clicked-node',
+            position: {x: 0, y: 0},
+          })
+        }
+      >
+        Node Click
       </button>
     </div>
   ),
@@ -397,6 +413,36 @@ describe('DecoratedVisualFlow', () => {
       renderComponent(<DecoratedVisualFlow {...defaultProps} />);
 
       expect(screen.getByTestId('visual-flow')).toBeInTheDocument();
+    });
+
+    it('should render a prominent simulate button in the top bar', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      expect(screen.getByTestId('simulate-flow-button')).toBeInTheDocument();
+    });
+
+    it('should disable save while previewing so the zoomed viewport is not persisted', () => {
+      const nodes = [{id: 'node-1', position: {x: 0, y: 0}, data: {}}] as Node[];
+      renderComponent(<DecoratedVisualFlow {...defaultProps} nodes={nodes} onSave={vi.fn()} />);
+
+      expect(screen.getByTestId('save-flow-button')).toBeEnabled();
+
+      fireEvent.click(screen.getByTestId('simulate-flow-button'));
+
+      expect(screen.getByTestId('save-flow-button')).toBeDisabled();
+    });
+
+    it('should focus the clicked node via fitView', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      fireEvent.click(screen.getByTestId('node-click-trigger'));
+
+      expect(mockFitView).toHaveBeenCalledWith({
+        nodes: [{id: 'clicked-node'}],
+        padding: 0.3,
+        maxZoom: 1.2,
+        duration: 500,
+      });
     });
 
     it('should render ValidationPanel', () => {
@@ -628,7 +674,7 @@ describe('DecoratedVisualFlow', () => {
 
       renderComponent(<DecoratedVisualFlow {...defaultProps} />);
 
-      expect(mockCompute).toHaveBeenCalledWith({identityProviders: [], notificationSenders: []});
+      expect(mockCompute).toHaveBeenCalledWith({identityProviders: [], smsProviders: []});
     });
   });
 
@@ -1199,6 +1245,55 @@ describe('DecoratedVisualFlow', () => {
       });
 
       expect(screen.getByTestId('visual-flow')).toBeInTheDocument();
+    });
+
+    it('should handle drop on element inside a stack nested inside a form', () => {
+      // Form contains a Stack, and the Stack contains the drop target element.
+      const targetNode: Node = {
+        id: 'step-1',
+        position: {x: 0, y: 0},
+        data: {
+          components: [
+            {
+              id: 'form-1',
+              type: 'BLOCK',
+              components: [
+                {
+                  id: 'stack-1',
+                  type: 'STACK',
+                  components: [{id: 'button-1', type: 'BUTTON'}],
+                },
+              ],
+            },
+          ],
+        },
+      };
+      mockGetNodes.mockReturnValue([targetNode]);
+
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      // Simulate drop on button-1, which lives inside stack-1, which lives inside form-1.
+      triggerCapturedDragEnd({
+        operation: {
+          source: {
+            data: {
+              dragged: {type: 'IMAGE'},
+            },
+          },
+          target: {
+            id: 'button-1',
+            data: {
+              isReordering: true,
+              stepId: 'step-1',
+            },
+          },
+        },
+        canceled: false,
+      });
+
+      // The nested stack (not the form, and not a view-level fallback) should be the target container.
+      expect(mockAddToFormAtIndex).toHaveBeenCalledWith(expect.anything(), 'step-1', 'stack-1', 'button-1');
+      expect(mockAddToViewAtIndex).not.toHaveBeenCalled();
     });
 
     it('should call confirm handler from useContainerDialogConfirm', () => {

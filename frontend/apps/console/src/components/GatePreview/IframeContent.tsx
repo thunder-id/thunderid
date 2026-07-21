@@ -31,7 +31,7 @@ import {
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
 import type {EmbeddedFlowComponent} from '@thunderid/react';
 import {TemplateLiteralType} from '@thunderid/utils';
-import {Box} from '@wso2/oxygen-ui';
+import {Box, ParticleBackground, useTheme} from '@wso2/oxygen-ui';
 import {useEffect, useMemo, type JSX} from 'react';
 import PreviewThemeProvider from './PreviewThemeProvider';
 import ElementInspector from '../../features/design/components/layouts/ElementInspector';
@@ -48,6 +48,55 @@ function sanitizeThemeForMui(theme: Theme): Theme {
     return copy as unknown as Theme;
   }
   return theme;
+}
+
+/**
+ * Applies the merged theme's default background to the iframe body — the same
+ * effect the gate gets from its global CssBaseline. Uses the theme's CSS-var
+ * reference so the background tracks the preview's light/dark scheme.
+ */
+function IframeBodyBackground({iframeDoc}: {iframeDoc: Document}): null {
+  const muiTheme = useTheme();
+
+  useEffect(() => {
+    // Prefer the CSS-var reference (like MUI's CssBaseline does) so the
+    // background resolves against the iframe's active light/dark scheme.
+    const themed = muiTheme as {
+      vars?: {palette?: {background?: {default?: string}}};
+      palette?: {background?: {default?: string}};
+    };
+    const background = themed.vars?.palette?.background?.default ?? themed.palette?.background?.default;
+    const {body} = iframeDoc;
+    body.style.setProperty('background', background ?? '');
+  }, [iframeDoc, muiTheme]);
+
+  return null;
+}
+
+function findComponentById(root: EmbeddedFlowComponent, id: string): EmbeddedFlowComponent | null {
+  if (root.id === id) {
+    return root;
+  }
+  for (const child of root.components ?? []) {
+    const found = findComponentById(child, id);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * Resolves the most specific component for a hover/focus event: the gate's
+ * button adapters carry their component id in the DOM, so a block with several
+ * actions can be previewed per button instead of as one unit.
+ */
+function resolveHoverTarget(component: EmbeddedFlowComponent, target: EventTarget | null): EmbeddedFlowComponent {
+  const buttonId = (target as HTMLElement | null)?.closest?.('button')?.id;
+  if (!buttonId) {
+    return component;
+  }
+  return findComponentById(component, buttonId) ?? component;
 }
 
 /** No-op handlers for preview mode — the form is purely visual. */
@@ -67,6 +116,22 @@ export interface IframeContentProps {
   mock: EmbeddedFlowComponent[];
   inspectorEnabled: boolean;
   onSelectSelector?: (selector: string) => void;
+  /** Callback for action submissions. Defaults to a no-op (purely visual preview). */
+  onSubmit?: (component: EmbeddedFlowComponent, data?: Record<string, unknown>) => void;
+  /** Callback fired when the pointer enters (component) or leaves (null) a top-level component. */
+  onComponentHover?: (component: EmbeddedFlowComponent | null) => void;
+  /**
+   * Additional runtime data handed to the flow component renderer, mirroring what
+   * the gate receives during flow execution (e.g. `consentPrompt`).
+   */
+  additionalData?: Record<string, unknown>;
+  /** Base theme the resolved design is merged over. Defaults to Acrylic Orange. */
+  baseTheme?: Theme;
+  /**
+   * When true and no effective theme is configured, mirrors the gate's
+   * design-disabled branding: particle background and the product logo.
+   */
+  themelessBranding?: boolean;
 }
 
 /**
@@ -82,6 +147,11 @@ export default function IframeContent({
   mock,
   inspectorEnabled,
   onSelectSelector = undefined,
+  onSubmit = undefined,
+  onComponentHover = undefined,
+  additionalData = undefined,
+  baseTheme = undefined,
+  themelessBranding = false,
 }: IframeContentProps): JSX.Element {
   // Strip {{t(key)}} wrappers, returning the bare i18n key so the shared
   // adapters' own t() call performs the actual translation (avoids double-translation).
@@ -96,7 +166,12 @@ export default function IframeContent({
   // Create an emotion cache that injects styles into the iframe's <head>.
   const cache = useMemo(() => createCache({key: 'preview', container: iframeDoc.head}), [iframeDoc]);
 
-  const themeTypography = theme?.typography as {fontFamily?: string} | undefined;
+  // Whether an actual theme is configured — mirrors the gate's isDesignEnabled
+  // check, where an empty theme object counts as "no design".
+  const hasTheme = Boolean(theme && Object.keys(theme).length > 0);
+  const showThemelessBranding = themelessBranding && !hasTheme;
+
+  const themeTypography = (hasTheme ? theme : baseTheme)?.typography as {fontFamily?: string} | undefined;
   const fontFamily = themeTypography?.fontFamily;
 
   // Inject custom stylesheets into the iframe document (not the parent).
@@ -143,25 +218,71 @@ export default function IframeContent({
       <GoogleFontLoader fontFamily={fontFamily} targetDocument={iframeDoc} />
       <DesignProvider
         shouldResolveDesignInternally={false}
-        design={theme ? ({theme: sanitizeThemeForMui(theme)} as DesignResolveResponse) : undefined}
+        design={hasTheme ? ({theme: sanitizeThemeForMui(theme!)} as DesignResolveResponse) : undefined}
       >
-        <PreviewThemeProvider colorScheme={colorScheme} colorSchemeNode={iframeDoc.documentElement}>
+        <PreviewThemeProvider
+          colorScheme={colorScheme}
+          colorSchemeNode={iframeDoc.documentElement}
+          baseTheme={baseTheme}
+        >
+          <IframeBodyBackground iframeDoc={iframeDoc} />
           <ElementInspector enabled={inspectorEnabled} onSelectSelector={onSelectSelector}>
             <AuthPageLayout isLoading={false} variant="SignIn" background={pageBackground}>
-              <AuthCardLayout variant="SignInBox" showLogo={false}>
-                <Box sx={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2}}>
-                  {mock.map((component, index) => (
-                    <FlowComponentRenderer
-                      key={component.id ?? index}
-                      component={component}
-                      index={index}
-                      values={{}}
-                      isLoading={false}
-                      resolve={previewResolve}
-                      onInputChange={noopInputChange}
-                      onSubmit={noopSubmit}
-                    />
-                  ))}
+              {showThemelessBranding && <ParticleBackground opacity={0.5} />}
+              <AuthCardLayout
+                variant="SignInBox"
+                showLogo={showThemelessBranding}
+                logo={
+                  showThemelessBranding
+                    ? {
+                        src: {
+                          light: `${import.meta.env.BASE_URL}/assets/images/logo.svg`,
+                          dark: `${import.meta.env.BASE_URL}/assets/images/logo-inverted.svg`,
+                        },
+                        alt: {light: '', dark: ''},
+                      }
+                    : undefined
+                }
+                logoDisplay={{xs: 'flex'}}
+              >
+                {/* Matches the gate's component container exactly (no centering) so
+                    previews lay out pixel-identical to the real sign-in box. */}
+                <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
+                  {mock.map((component, index) => {
+                    const renderer = (
+                      <FlowComponentRenderer
+                        key={component.id ?? index}
+                        component={component}
+                        index={index}
+                        values={{}}
+                        isLoading={false}
+                        resolve={previewResolve}
+                        onInputChange={noopInputChange}
+                        onSubmit={onSubmit ?? noopSubmit}
+                        additionalData={additionalData}
+                      />
+                    );
+
+                    // Only wrap when a hover listener is provided so the default
+                    // preview layout is untouched. mouseover/focus bubble from the
+                    // component's controls, so the hover target resolves to the
+                    // exact button under the pointer (or keyboard focus) when a
+                    // block contains several actions.
+                    return onComponentHover ? (
+                      <Box
+                        key={component.id ?? index}
+                        sx={{display: 'contents'}}
+                        onMouseOver={(event) => onComponentHover(resolveHoverTarget(component, event.target))}
+                        onMouseLeave={() => onComponentHover(null)}
+                        onFocus={(event) => onComponentHover(resolveHoverTarget(component, event.target))}
+                        onBlur={() => onComponentHover(null)}
+                      >
+                        {renderer}
+                      </Box>
+                    ) : (
+                      renderer
+                    );
+                  })}
                 </Box>
               </AuthCardLayout>
             </AuthPageLayout>

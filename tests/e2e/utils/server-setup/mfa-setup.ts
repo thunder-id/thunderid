@@ -189,9 +189,9 @@ export class MFASetup {
     const flowResponse = await this.request.post(`${this.config.serverUrl}/flow/execute`, {
       data: {
         applicationId: adminAppId,
-        flowSecret: adminFlowSecret,
         flowType: "AUTHENTICATION",
       },
+      headers: { "Flow-Secret": adminFlowSecret },
       ignoreHTTPSErrors: true,
     });
 
@@ -233,28 +233,13 @@ export class MFASetup {
     const senderName = "E2E Mock SMS Sender";
 
     // Try to create the notification sender
-    const response = await this.request.post(`${this.config.serverUrl}/notification-senders/message`, {
+    const response = await this.request.post(`${this.config.serverUrl}/connections/sms-gateway`, {
       data: {
         name: senderName,
         description: "Mock SMS sender for e2e MFA testing",
-        provider: "custom",
-        properties: [
-          {
-            name: "url",
-            value: this.config.mockSmsUrl,
-            isSecret: false,
-          },
-          {
-            name: "http_method",
-            value: "POST",
-            isSecret: false,
-          },
-          {
-            name: "content_type",
-            value: "JSON",
-            isSecret: false,
-          },
-        ],
+        url: this.config.mockSmsUrl,
+        httpMethod: "POST",
+        contentType: "JSON",
       },
       headers: {
         Authorization: `Bearer ${adminToken}`,
@@ -283,7 +268,7 @@ export class MFASetup {
    * Get existing notification sender by name
    */
   private async getExistingNotificationSender(adminToken: string, name: string): Promise<string> {
-    const response = await this.request.get(`${this.config.serverUrl}/notification-senders/message`, {
+    const response = await this.request.get(`${this.config.serverUrl}/connections/sms-gateway`, {
       headers: {
         Authorization: `Bearer ${adminToken}`,
       },
@@ -579,7 +564,7 @@ export class MFASetup {
       });
 
       const response = await requestContext.delete(
-        `${this.config.serverUrl}/notification-senders/message/${senderId}`,
+        `${this.config.serverUrl}/connections/sms-gateway/${senderId}`,
         {
           headers: {
             Authorization: `Bearer ${adminToken}`,

@@ -29,12 +29,12 @@ import InviteProperties from './execution-properties/InviteProperties';
 import MagicLinkProperties from './execution-properties/MagicLinkProperties';
 import NoConfigProperties from './execution-properties/NoConfigProperties';
 import OpenID4VPProperties from './execution-properties/OpenID4VPProperties';
+import OtpProperties from './execution-properties/OtpProperties';
 import OUExecutorProperties from './execution-properties/OUExecutorProperties';
 import OUResolverProperties from './execution-properties/OUResolverProperties';
 import PasskeyProperties from './execution-properties/PasskeyProperties';
 import PermissionValidatorProperties from './execution-properties/PermissionValidatorProperties';
 import ProvisioningProperties from './execution-properties/ProvisioningProperties';
-import SmsOtpProperties from './execution-properties/SmsOtpProperties';
 import SmsProperties from './execution-properties/SmsProperties';
 import UserTypeResolverProperties from './execution-properties/UserTypeResolverProperties';
 import type {CommonResourcePropertiesPropsInterface} from '@/features/flows/components/resource-property-panel/ResourceProperties';
@@ -81,9 +81,6 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
   let executorSpecificProperties: ReactNode = null;
 
   switch (executorName) {
-    case ExecutionTypes.SMSOTPAuth:
-      executorSpecificProperties = <SmsOtpProperties resource={resource} onChange={onChange} />;
-      break;
     case ExecutionTypes.ConsentExecutor:
       executorSpecificProperties = <ConsentProperties resource={resource} onChange={onChange} />;
       break;
@@ -104,6 +101,9 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
       break;
     case ExecutionTypes.SMSExecutor:
       executorSpecificProperties = <SmsProperties resource={resource} onChange={onChange} />;
+      break;
+    case ExecutionTypes.OTPExecutor:
+      executorSpecificProperties = <OtpProperties resource={resource} onChange={onChange} />;
       break;
     case ExecutionTypes.PermissionValidator:
       executorSpecificProperties = <PermissionValidatorProperties resource={resource} onChange={onChange} />;

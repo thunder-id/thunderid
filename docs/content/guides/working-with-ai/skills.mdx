@@ -1,87 +1,105 @@
 ---
 title: Skills
+docType: reference
 sidebar_position: 2
 description: Use ThunderID agent skills to set up the server and integrate authentication into any framework with a single prompt.
 ---
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-import {Box, Card, CardContent, Grid, Typography, Chip} from '@wso2/oxygen-ui';
+import {Box, Card, CardContent, Grid, Typography, Chip, Tooltip} from '@wso2/oxygen-ui';
+import {Check, Copy} from '@wso2/oxygen-ui-icons-react';
+import {useState} from 'react';
 import ProductName from '@site/src/components/ProductName';
 import ReactLogo from '@site/src/components/icons/ReactLogo';
 import NextLogo from '@site/src/components/icons/NextLogo';
 import NuxtLogo from '@site/src/components/icons/NuxtLogo';
 import VueLogo from '@site/src/components/icons/VueLogo';
 import ExpressLogo from '@site/src/components/icons/ExpressLogo';
-import NodeLogo from '@site/src/components/icons/NodeLogo';
 import Html5Logo from '@site/src/components/icons/Html5Logo';
-import JavaScriptLogo from '@site/src/components/icons/JavaScriptLogo';
-import AngularLogo from '@site/src/components/icons/AngularLogo';
-import ReactRouterLogo from '@site/src/components/icons/ReactRouterLogo';
-import TanStackLogo from '@site/src/components/icons/TanStackLogo';
 import SkillsLogo from '@site/src/components/icons/SkillsLogo';
-import ClaudeLogo from '@site/src/components/icons/ClaudeLogo';
-import CodexLogo from '@site/src/components/icons/CodexLogo';
-import CliLogo from '@site/src/components/icons/CliLogo';
 
-export const SkillCard = ({icon, title, skillCommand, pkg, description}) => (
-  <Card sx={{border: '1px solid', borderColor: 'divider'}}>
-    <CardContent sx={{p: 2, '&:last-child': {pb: 2}}}>
-      <Box sx={{display: 'flex', alignItems: 'center', gap: 2}}>
-        <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flexShrink: 0}}>
-          {icon}
-        </Box>
-        <Box sx={{flex: 1, minWidth: 0}}>
-          <Box sx={{display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap'}}>
-            <Typography variant="subtitle2" sx={{fontWeight: 600}}>
-              {title}
-            </Typography>
-            {pkg && (
-              <Typography
-                component="span"
-                sx={{
-                  fontFamily: 'monospace',
-                  fontSize: '0.7rem',
-                  color: 'text.secondary',
-                  bgcolor: 'action.hover',
-                  px: 0.75,
-                  py: 0.2,
-                  borderRadius: 0.5,
-                }}
-              >
-                {pkg}
-              </Typography>
-            )}
+export const SkillCard = ({icon, title, skillCommand, pkg, description}) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(skillCommand);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API unavailable or denied, silently ignore.
+    }
+  };
+
+  return (
+    <Card sx={{border: '1px solid', borderColor: 'divider'}}>
+      <CardContent sx={{p: 2, '&:last-child': {pb: 2}}}>
+        <Box sx={{display: 'flex', alignItems: 'center', gap: 2}}>
+          <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flexShrink: 0}}>
+            {icon}
           </Box>
-          <Typography variant="body2" sx={{color: 'text.secondary', mt: 0.25, lineHeight: 1.5}}>
-            {description}
-          </Typography>
+          <Box sx={{flex: 1, minWidth: 0}}>
+            <Box sx={{display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap'}}>
+              <Typography variant="subtitle2" sx={{fontWeight: 600}}>
+                {title}
+              </Typography>
+              {pkg && (
+                <Typography
+                  component="span"
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.7rem',
+                    color: 'text.secondary',
+                    bgcolor: 'action.hover',
+                    px: 0.75,
+                    py: 0.2,
+                    borderRadius: 0.5,
+                  }}
+                >
+                  {pkg}
+                </Typography>
+              )}
+            </Box>
+            <Typography variant="body2" sx={{color: 'text.secondary', mt: 0.25, lineHeight: 1.5}}>
+              {description}
+            </Typography>
+          </Box>
+          <Tooltip title={copied ? 'Copied!' : 'Copy command'} placement="top">
+            <Box
+              component="button"
+              type="button"
+              onClick={() => void handleCopy()}
+              sx={{
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5,
+                bgcolor: 'action.selected',
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                px: 1,
+                py: 0.5,
+                fontFamily: 'monospace',
+                fontSize: '0.72rem',
+                color: 'text.primary',
+                whiteSpace: 'nowrap',
+                cursor: 'pointer',
+                '&:hover': {
+                  bgcolor: 'action.hover',
+                  borderColor: 'text.secondary',
+                },
+              }}
+            >
+              {copied ? <Check size={11} /> : <SkillsLogo size={11} />}
+              {skillCommand}
+              <Copy size={11} style={{opacity: 0.5}} />
+            </Box>
+          </Tooltip>
         </Box>
-        <Box
-          sx={{
-            flexShrink: 0,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 0.5,
-            bgcolor: 'action.selected',
-            border: '1px solid',
-            borderColor: 'divider',
-            borderRadius: 1,
-            px: 1,
-            py: 0.5,
-            fontFamily: 'monospace',
-            fontSize: '0.72rem',
-            color: 'text.primary',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <SkillsLogo size={11} />
-          {skillCommand}
-        </Box>
-      </Box>
-    </CardContent>
-  </Card>
-);
+      </CardContent>
+    </Card>
+  );
+};
 
 # Skills
 
@@ -93,101 +111,94 @@ Skills are available for [Claude Code](https://claude.ai/code), [Codex](https://
 
 Add the <ProductName /> skill pack to your AI coding assistant once. All skills in the pack become immediately available.
 
-<Tabs groupId="install-method">
-  <TabItem
-    value="oasci"
-    label={
-      <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
-        <CliLogo size={16} />
-        Open Agent Skills CLI
-      </Box>
-    }
-    default
-  >
-
-Run the following command in your terminal:
-
-```bash
-npx skills add thunder-id/skills
-```
-
-  </TabItem>
-  <TabItem
-    value="claude"
-    label={
-      <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
-        <ClaudeLogo size={16} />
-        Claude Code
-      </Box>
-    }
-  >
-
-Run the following slash command in Claude Code:
-
-```
-/plugin marketplace add thunder-id/skills
-```
-
-{/* Screenshot placeholder: Claude Code terminal showing /plugin marketplace add thunder-id/skills command and confirmation output */}
-
-  </TabItem>
-  <TabItem
-    value="codex"
-    label={
-      <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
-        <CodexLogo size={16} />
-        Codex
-      </Box>
-    }
-  >
-
-Run the following command in your terminal, then restart Codex:
-
-```bash
-codex plugin marketplace add thunder-id/skills
-```
-
-After restarting, open **`/plugins`**, select **ThunderID Skills**, install and enable `thunder-id-skills`, then start a new thread.
-
-{/* Screenshot placeholder: Codex /plugins panel showing ThunderID Skills installed and enabled */}
-
-  </TabItem>
-</Tabs>
+<RunThunderID tabs={['skills', 'claude', 'codex']} defaultTab="skills" />
 
 ## Core Skills
+
+Skills for installing and running the <ProductName /> server.
 
 <Grid container spacing={2} sx={{mt: 1, mb: 4}}>
   <Grid size={{xs: 12}}>
     <SkillCard
       icon={<SkillsLogo size={28} />}
-      title="Setup ThunderID"
-      skillCommand="/setup-thunderid"
-      description="Download, configure, and start the ThunderID server. Supports npx (recommended) and Docker Compose. Outputs the Sample App Client ID you need for SDK integration."
+      title="Install <ProductName />"
+      skillCommand="/thunderid-install"
+      description="Download, configure, and start the <ProductName /> server. Outputs the Sample App Client ID you need for SDK integration."
+    />
+  </Grid>
+</Grid>
+
+## Tryout Skills
+
+Skills for launching demos of <ProductName /> features in action.
+
+### Use Case Samples
+
+Product usecase samples that are ready to run in your local environment. These demos showcase how <ProductName /> features work in practice.
+
+<Grid container spacing={2} sx={{mt: 1, mb: 4}}>
+  <Grid size={{xs: 12}}>
+    <SkillCard
+      icon={<SkillsLogo size={28} />}
+      title="Try the Consumer Demo"
+      skillCommand="/thunderid-try-consumer"
+      description="Launch the Wayfinder B2C consumer login demo to see social login and passkey sign-in in action."
+    />
+  </Grid>
+  <Grid size={{xs: 12}}>
+    <SkillCard
+      icon={<SkillsLogo size={28} />}
+      title="Try the AgentID Demo"
+      skillCommand="/thunderid-try-agentid"
+      description="Launch the AgentID demo to see AI agent authentication in action."
     />
   </Grid>
 </Grid>
 
 ## Integration Skills
 
-Choose the skill that matches your framework. Each skill registers an application in the ThunderID Console, installs the correct SDK, and wires up authentication in your project.
+Choose the skill that matches your framework. Each skill registers an application in the <ProductName /> Console, installs the correct SDK, and wires up authentication in your project.
 
-### Frontend
+### SPA
 
 <Grid container spacing={2} sx={{mt: 1, mb: 3}}>
   <Grid size={{xs: 12}}>
     <SkillCard
       icon={<ReactLogo size={36} />}
       title="React"
-      skillCommand="/integrate-react"
+      skillCommand="/thunderid-integrate-react"
       pkg="@thunderid/react"
-      description="Add authentication to a React + Vite app. For React Router or TanStack Router projects, use the dedicated router skills instead."
+      description="Add authentication to a React application."
     />
   </Grid>
   <Grid size={{xs: 12}}>
     <SkillCard
+      icon={<VueLogo size={36} />}
+      title="Vue"
+      skillCommand="/thunderid-integrate-vue"
+      pkg="@thunderid/vue"
+      description="Integrate authentication into a Vue 3 application with composables for session access and route guards."
+    />
+  </Grid>
+  <Grid size={{xs: 12}}>
+    <SkillCard
+      icon={<Html5Logo size={36} />}
+      title="Browser / Vanilla JS"
+      skillCommand="/thunderid-integrate-browser"
+      pkg="@thunderid/browser"
+      description="Add authentication to a plain HTML and JavaScript app with no framework, ideal for simple SPAs or prototype projects."
+    />
+  </Grid>
+</Grid>
+
+### Fullstack
+
+<Grid container spacing={2} sx={{mt: 1, mb: 3}}>
+  <Grid size={{xs: 12}}>
+    <SkillCard
       icon={<NextLogo size={36} />}
       title="Next.js"
-      skillCommand="/integrate-nextjs"
+      skillCommand="/thunderid-integrate-nextjs"
       pkg="@thunderid/nextjs"
       description="Integrate authentication into a Next.js App Router application with server-side session management and route protection middleware."
     />
@@ -196,90 +207,23 @@ Choose the skill that matches your framework. Each skill registers an applicatio
     <SkillCard
       icon={<NuxtLogo size={36} />}
       title="Nuxt"
-      skillCommand="/integrate-nuxt"
+      skillCommand="/thunderid-integrate-nuxt"
       pkg="@thunderid/nuxt"
-      description="Add authentication to a Nuxt 3 application using the official ThunderID Nuxt module."
-    />
-  </Grid>
-  <Grid size={{xs: 12}}>
-    <SkillCard
-      icon={<VueLogo size={36} />}
-      title="Vue"
-      skillCommand="/integrate-vue"
-      pkg="@thunderid/vue"
-      description="Integrate authentication into a Vue 3 application with composables for session access and route guards."
-    />
-  </Grid>
-  <Grid size={{xs: 12}}>
-    <SkillCard
-      icon={<ReactRouterLogo size={36} />}
-      title="React + React Router"
-      skillCommand="/integrate-react-router"
-      pkg="@thunderid/react-router"
-      description="Protect routes and handle OAuth callbacks in a React Router v6 application."
-    />
-  </Grid>
-  <Grid size={{xs: 12}}>
-    <SkillCard
-      icon={<TanStackLogo size={36} />}
-      title="React + TanStack Router"
-      skillCommand="/integrate-tanstack-router"
-      pkg="@thunderid/tanstack-router"
-      description="Protect routes and handle OAuth callbacks in a TanStack Router application."
-    />
-  </Grid>
-  <Grid size={{xs: 12}}>
-    <SkillCard
-      icon={<Html5Logo size={36} />}
-      title="Browser / Vanilla JS"
-      skillCommand="/integrate-browser"
-      pkg="@thunderid/browser"
-      description="Add authentication to a plain HTML and JavaScript app with no framework — ideal for simple SPAs or prototype projects."
+      description="Add authentication to a Nuxt 3 application using the official <ProductName /> Nuxt module."
     />
   </Grid>
 </Grid>
 
 ### Backend
 
-<Grid container spacing={2} sx={{mt: 1, mb: 3}}>
+<Grid container spacing={2} sx={{mt: 1, mb: 4}}>
   <Grid size={{xs: 12}}>
     <SkillCard
       icon={<ExpressLogo size={36} />}
       title="Express"
-      skillCommand="/integrate-express"
+      skillCommand="/thunderid-integrate-express"
       pkg="@thunderid/express"
       description="Protect routes in an Express application with session-based authentication middleware and callback handling."
-    />
-  </Grid>
-  <Grid size={{xs: 12}}>
-    <SkillCard
-      icon={<NodeLogo size={36} />}
-      title="Node.js"
-      skillCommand="/integrate-node"
-      pkg="@thunderid/node"
-      description="Add authentication to a Node.js server built with Fastify, Hono, Koa, or the built-in HTTP module. For Express, use the Express skill."
-    />
-  </Grid>
-  <Grid size={{xs: 12}}>
-    <SkillCard
-      icon={<JavaScriptLogo size={36} />}
-      title="Universal JavaScript"
-      skillCommand="/integrate-javascript"
-      pkg="@thunderid/javascript"
-      description="Use the core JavaScript SDK directly for custom integrations, edge runtimes, or any environment without a dedicated ThunderID SDK."
-    />
-  </Grid>
-</Grid>
-
-### Other Frameworks and Languages
-
-<Grid container spacing={2} sx={{mt: 1, mb: 4}}>
-  <Grid size={{xs: 12}}>
-    <SkillCard
-      icon={<AngularLogo size={36} />}
-      title="Generic OIDC"
-      skillCommand="/integrate-oidc"
-      description="Integrate ThunderID via a standard OIDC library for any framework or language without an official SDK — Angular, SvelteKit, Python, Go, .NET, and more."
     />
   </Grid>
 </Grid>
@@ -290,23 +234,20 @@ Type a plain-language request in your AI assistant's chat. The assistant detects
 
 | You Say | Skill |
 |---|---|
-| "Set up ThunderID on my machine" | `/setup-thunderid` |
-| "Add ThunderID to my Next.js app" | `/integrate-nextjs` |
-| "Add ThunderID to my Nuxt app" | `/integrate-nuxt` |
-| "Integrate ThunderID into my React app" | `/integrate-react` |
-| "Add ThunderID to my React Router app" | `/integrate-react-router` |
-| "Add ThunderID to my TanStack Router app" | `/integrate-tanstack-router` |
-| "Add ThunderID to my Vue app" | `/integrate-vue` |
-| "Protect routes in my Express app" | `/integrate-express` |
-| "Add ThunderID to my Fastify / Hono app" | `/integrate-node` |
-| "Add ThunderID to my vanilla JS app" | `/integrate-browser` |
-| "Integrate ThunderID without a framework" | `/integrate-javascript` |
-| "Add ThunderID to my Angular / SvelteKit / Python / Go app" | `/integrate-oidc` |
+| "Set up <ProductName /> on my machine" | `/thunderid-install` |
+| "Try <ProductName />" | `/thunderid-try-consumer` |
+| "Demo AI agent auth" | `/thunderid-try-agentid` |
+| "Add <ProductName /> to my Next.js app" | `/thunderid-integrate-nextjs` |
+| "Add <ProductName /> to my Nuxt app" | `/thunderid-integrate-nuxt` |
+| "Integrate <ProductName /> into my React app" | `/thunderid-integrate-react` |
+| "Add <ProductName /> to my Vue app" | `/thunderid-integrate-vue` |
+| "Protect routes in my Express app" | `/thunderid-integrate-express` |
+| "Add <ProductName /> to my vanilla JS app" | `/thunderid-integrate-browser` |
 
-You can also invoke skills directly by name. In Claude Code, type `/integrate-nextjs`. In Codex, type `/integrate-nextjs` in a thread. Both assistants run the skill immediately without further prompting.
+You can also invoke skills directly by name. In Claude Code, type `/thunderid-integrate-nextjs`. In Codex, type `/thunderid-integrate-nextjs` in a thread. Both assistants run the skill immediately without further prompting.
 
-{/* Screenshot placeholder: Split view showing the same "Add ThunderID to my Next.js app" prompt in Claude Code (left) and Codex (right), each running the integrate-nextjs skill */}
+{/* Screenshot placeholder: Split view showing the same "Add <ProductName /> to my Next.js app" prompt in Claude Code (left) and Codex (right), each running the integrate-nextjs skill */}
 
 :::tip Run Setup First
-If ThunderID is not running yet, ask your assistant to "set up ThunderID" before running an integration skill. The setup skill outputs the Sample App **Client ID** that the integration skills need to configure your application.
+If <ProductName /> is not running yet, ask your assistant to "set up <ProductName />" before running an integration skill. The setup skill outputs the Sample App **Client ID** that the integration skills need to configure your application.
 :::

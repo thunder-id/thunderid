@@ -40,6 +40,7 @@ type inboundClientJSONBlob struct {
 	Assertion        *inboundmodel.AssertionConfig    `json:"assertion,omitempty"`
 	LoginConsent     *inboundmodel.LoginConsentConfig `json:"loginConsent,omitempty"`
 	AllowedUserTypes []string                         `json:"allowedUserTypes,omitempty"`
+	Attestation      *providers.AttestationConfig     `json:"attestation,omitempty"`
 	Properties       map[string]interface{}           `json:"properties,omitempty"`
 }
 
@@ -106,25 +107,31 @@ func marshalInboundClient(c inboundmodel.InboundClient) (
 	propertiesBytes interface{},
 	isRegistrationEnabledStr string,
 	isRecoveryEnabledStr string,
-	recoveryFlowID, registrationFlowID, themeID, layoutID interface{},
+	isSignOutEnabledStr string,
+	recoveryFlowID, signOutFlowID, registrationFlowID, themeID, layoutID interface{},
 	err error,
 ) {
 	blob := inboundClientJSONBlob{
 		Assertion:        c.Assertion,
 		LoginConsent:     c.LoginConsent,
 		AllowedUserTypes: c.AllowedUserTypes,
+		Attestation:      c.Attestation,
 		Properties:       c.Properties,
 	}
 	propertiesBytes, err = marshalNullableJSON(blob)
 	if err != nil {
-		return nil, "", "", nil, nil, nil, nil, fmt.Errorf("failed to marshal properties: %w", err)
+		return nil, "", "", "", nil, nil, nil, nil, nil, fmt.Errorf("failed to marshal properties: %w", err)
 	}
 
 	isRegistrationEnabledStr = utils.BoolToNumString(c.IsRegistrationFlowEnabled)
 	isRecoveryEnabledStr = utils.BoolToNumString(c.IsRecoveryFlowEnabled)
+	isSignOutEnabledStr = utils.BoolToNumString(c.IsSignOutFlowEnabled)
 
 	if c.RecoveryFlowID != "" {
 		recoveryFlowID = c.RecoveryFlowID
+	}
+	if c.SignOutFlowID != "" {
+		signOutFlowID = c.SignOutFlowID
 	}
 	if c.RegistrationFlowID != "" {
 		registrationFlowID = c.RegistrationFlowID
@@ -136,8 +143,8 @@ func marshalInboundClient(c inboundmodel.InboundClient) (
 		layoutID = c.LayoutID
 	}
 
-	return propertiesBytes, isRegistrationEnabledStr, isRecoveryEnabledStr, recoveryFlowID,
-		registrationFlowID, themeID, layoutID, nil
+	return propertiesBytes, isRegistrationEnabledStr, isRecoveryEnabledStr, isSignOutEnabledStr,
+		recoveryFlowID, signOutFlowID, registrationFlowID, themeID, layoutID, nil
 }
 
 // CreateInboundClient creates a new inbound client entry.
@@ -147,15 +154,16 @@ func (st *store) CreateInboundClient(ctx context.Context, client inboundmodel.In
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	propsBytes, isRegEnabledStr, isRecoveryEnabledStr, recoveryFlowID,
-		registrationFlowID, themeID, layoutID, marshalErr := marshalInboundClient(client)
+	propsBytes, isRegEnabledStr, isRecoveryEnabledStr, isSignOutEnabledStr, recoveryFlowID,
+		signOutFlowID, registrationFlowID, themeID, layoutID, marshalErr := marshalInboundClient(client)
 	if marshalErr != nil {
 		return marshalErr
 	}
 
 	_, err = dbClient.ExecuteContext(ctx, queryCreateInboundClient,
 		client.ID, client.AuthFlowID, registrationFlowID, isRegEnabledStr,
-		recoveryFlowID, isRecoveryEnabledStr, themeID, layoutID, propsBytes, st.deploymentID)
+		recoveryFlowID, isRecoveryEnabledStr, signOutFlowID, isSignOutEnabledStr,
+		themeID, layoutID, propsBytes, st.deploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to insert inbound client: %w", err)
 	}
@@ -291,9 +299,12 @@ func referenceQueries(refType, refID, deploymentID string) (
 	case resourcedependency.ResourceTypeTheme:
 		return queryGetEntityIDsByThemeIDCount, queryGetEntityIDsByThemeID,
 			[]interface{}{refID, deploymentID}, true
+	case resourcedependency.ResourceTypeLayout:
+		return queryGetEntityIDsByLayoutIDCount, queryGetEntityIDsByLayoutID,
+			[]interface{}{refID, deploymentID}, true
 	case resourcedependency.ResourceTypeFlow:
 		return queryGetEntityIDsByFlowIDCount, queryGetEntityIDsByFlowID,
-			[]interface{}{refID, refID, refID, deploymentID}, true
+			[]interface{}{refID, refID, refID, refID, deploymentID}, true
 	default:
 		return dbmodel.DBQuery{}, dbmodel.DBQuery{}, nil, false
 	}
@@ -305,8 +316,11 @@ func clientReferences(c *inboundmodel.InboundClient, refType, refID string) bool
 	switch refType {
 	case resourcedependency.ResourceTypeTheme:
 		return c.ThemeID == refID
+	case resourcedependency.ResourceTypeLayout:
+		return c.LayoutID == refID
 	case resourcedependency.ResourceTypeFlow:
-		return c.AuthFlowID == refID || c.RegistrationFlowID == refID || c.RecoveryFlowID == refID
+		return c.AuthFlowID == refID || c.RegistrationFlowID == refID || c.RecoveryFlowID == refID ||
+			c.SignOutFlowID == refID
 	default:
 		return false
 	}
@@ -340,15 +354,16 @@ func (st *store) UpdateInboundClient(ctx context.Context, client inboundmodel.In
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	propsBytes, isRegEnabledStr, isRecoveryEnabledStr, recoveryFlowID,
-		registrationFlowID, themeID, layoutID, marshalErr := marshalInboundClient(client)
+	propsBytes, isRegEnabledStr, isRecoveryEnabledStr, isSignOutEnabledStr, recoveryFlowID,
+		signOutFlowID, registrationFlowID, themeID, layoutID, marshalErr := marshalInboundClient(client)
 	if marshalErr != nil {
 		return marshalErr
 	}
 
 	rowsAffected, err := dbClient.ExecuteContext(ctx, queryUpdateInboundClientByEntityID,
 		client.ID, client.AuthFlowID, registrationFlowID, isRegEnabledStr,
-		recoveryFlowID, isRecoveryEnabledStr, themeID, layoutID, propsBytes, st.deploymentID)
+		recoveryFlowID, isRecoveryEnabledStr, signOutFlowID, isSignOutEnabledStr,
+		themeID, layoutID, propsBytes, st.deploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to update inbound client: %w", err)
 	}
@@ -456,6 +471,7 @@ func buildInboundClientFromRow(ctx context.Context, row map[string]interface{}) 
 	authFlowID := parseStringColumn(row, "auth_flow_id")
 	regFlowID := parseStringColumn(row, "registration_flow_id")
 	recoveryFlowID := parseStringColumn(row, "recovery_flow_id")
+	signOutFlowID := parseStringColumn(row, "signout_flow_id")
 	themeID := parseStringColumn(row, "theme_id")
 	layoutID := parseStringColumn(row, "layout_id")
 
@@ -469,6 +485,11 @@ func buildInboundClientFromRow(ctx context.Context, row map[string]interface{}) 
 		isRecoveryFlowEnabled = utils.NumStringToBool(val)
 	}
 
+	isSignOutFlowEnabled := false
+	if val := parseStringOrBytesColumn(row, "is_signout_flow_enabled"); val != "" {
+		isSignOutFlowEnabled = utils.NumStringToBool(val)
+	}
+
 	client := &inboundmodel.InboundClient{
 		ID:                        entityID,
 		AuthFlowID:                authFlowID,
@@ -476,6 +497,8 @@ func buildInboundClientFromRow(ctx context.Context, row map[string]interface{}) 
 		IsRegistrationFlowEnabled: isRegistrationFlowEnabled,
 		RecoveryFlowID:            recoveryFlowID,
 		IsRecoveryFlowEnabled:     isRecoveryFlowEnabled,
+		SignOutFlowID:             signOutFlowID,
+		IsSignOutFlowEnabled:      isSignOutFlowEnabled,
 		ThemeID:                   themeID,
 		LayoutID:                  layoutID,
 	}
@@ -488,6 +511,7 @@ func buildInboundClientFromRow(ctx context.Context, row map[string]interface{}) 
 			client.Assertion = blob.Assertion
 			client.LoginConsent = blob.LoginConsent
 			client.AllowedUserTypes = blob.AllowedUserTypes
+			client.Attestation = blob.Attestation
 			client.Properties = blob.Properties
 		}
 	}

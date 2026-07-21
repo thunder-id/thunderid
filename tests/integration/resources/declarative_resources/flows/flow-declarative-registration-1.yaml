@@ -1,3 +1,4 @@
+resource_type: flow
 id: decl-reg-flow-1
 handle: decl-reg-flow-1
 name: Declarative Test Registration Flow
@@ -6,7 +7,13 @@ activeVersion: 1
 nodes:
   - id: start
     type: START
+    onSuccess: user_type_resolver
+  - id: user_type_resolver
+    type: TASK_EXECUTION
+    executor:
+      name: UserTypeResolver
     onSuccess: prompt_registration
+    onIncomplete: prompt_registration
   - id: prompt_registration
     type: PROMPT
     prompts:

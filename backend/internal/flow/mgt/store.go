@@ -52,6 +52,7 @@ var getDBProvider = provider.GetDBProvider
 // flowStoreInterface defines the interface for flow store operations.
 type flowStoreInterface interface {
 	ListFlows(ctx context.Context, limit, offset int, flowType string) ([]BasicFlowDefinition, int, error)
+	ListActiveFlowsWithNodes(ctx context.Context) ([]*providers.CompleteFlowDefinition, error)
 	CreateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (*providers.CompleteFlowDefinition, error)
 	GetFlowByID(ctx context.Context, flowID string) (*providers.CompleteFlowDefinition, error)
 	GetFlowByHandle(
@@ -144,6 +145,36 @@ func (s *flowStore) ListFlows(ctx context.Context, limit, offset int, flowType s
 	}
 
 	return flows, totalCount, nil
+}
+
+// ListActiveFlowsWithNodes retrieves every flow's active version, including its node definitions, in
+// a single query. It is used by dependency lookups that must scan node definitions across all flows.
+func (s *flowStore) ListActiveFlowsWithNodes(ctx context.Context) ([]*providers.CompleteFlowDefinition, error) {
+	var flows []*providers.CompleteFlowDefinition
+
+	err := s.withDBClientContext(ctx, func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(ctx, queryListActiveFlowsWithNodes, s.deploymentID)
+		if err != nil {
+			return fmt.Errorf("failed to list flows with nodes: %w", err)
+		}
+
+		flows = make([]*providers.CompleteFlowDefinition, 0, len(results))
+		for _, row := range results {
+			flow, err := s.buildCompleteFlowDefinitionFromRow(row)
+			if err != nil {
+				return fmt.Errorf("failed to build flow: %w", err)
+			}
+			flows = append(flows, flow)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return flows, nil
 }
 
 // CreateFlow creates a new flow definition with version 1.

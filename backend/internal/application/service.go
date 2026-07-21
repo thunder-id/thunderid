@@ -38,7 +38,9 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
+	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -60,6 +62,7 @@ type ApplicationServiceInterface interface {
 	DeleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
+	SetDependencyRegistry(r resourcedependency.Registry)
 }
 
 // ApplicationService is the default implementation of the ApplicationServiceInterface.
@@ -69,6 +72,8 @@ type applicationService struct {
 	entityProvider       entityprovider.EntityProviderInterface
 	ouService            oupkg.OrganizationUnitServiceInterface
 	i18nService          i18nmgt.I18nServiceInterface
+	cryptoSvc            kmprovider.RuntimeCryptoProvider
+	dependencyRegistry   resourcedependency.Registry
 }
 
 // newApplicationService creates a new instance of ApplicationService.
@@ -77,6 +82,7 @@ func newApplicationService(
 	entityProvider entityprovider.EntityProviderInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	i18nService i18nmgt.I18nServiceInterface,
+	cryptoSvc kmprovider.RuntimeCryptoProvider,
 ) ApplicationServiceInterface {
 	return &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
@@ -84,6 +90,7 @@ func newApplicationService(
 		entityProvider:       entityProvider,
 		ouService:            ouService,
 		i18nService:          i18nService,
+		cryptoSvc:            cryptoSvc,
 	}
 }
 
@@ -119,6 +126,9 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 
 	inboundClient := toInboundClient(processedDTO)
 	oauthProfile := toOAuthProfile(processedDTO)
+	if svcErr := as.resolveAttestationCredentialsForPersist(ctx, appID, &inboundClient); svcErr != nil {
+		return nil, svcErr
+	}
 
 	// Create entity.
 	var clientID string
@@ -165,7 +175,7 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 
 	// Create config (with compensation if it fails).
 	if err := as.inboundClientService.CreateInboundClient(ctx, &inboundClient, oauthProfile,
-		clientSecret != "", app.Name); err != nil {
+		clientSecret != ""); err != nil {
 		// Compensate: delete entity since config creation failed.
 		as.deleteEntityCompensation(ctx, appID)
 		if svcErr := as.translateInboundClientError(ctx, err); svcErr != nil {
@@ -179,6 +189,7 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 	appForReturn.AuthFlowID = inboundClient.AuthFlowID
 	appForReturn.RegistrationFlowID = inboundClient.RegistrationFlowID
 	appForReturn.RecoveryFlowID = inboundClient.RecoveryFlowID
+	appForReturn.SignOutFlowID = inboundClient.SignOutFlowID
 	var oauthToken *providers.OAuthTokenConfig
 	var userInfo *providers.UserInfoConfig
 	var scopeClaims map[string][]string
@@ -261,6 +272,7 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 	processedDTO.AuthFlowID = inboundClient.AuthFlowID
 	processedDTO.RegistrationFlowID = inboundClient.RegistrationFlowID
 	processedDTO.RecoveryFlowID = inboundClient.RecoveryFlowID
+	processedDTO.SignOutFlowID = inboundClient.SignOutFlowID
 
 	return processedDTO, inboundAuthConfig, nil
 }
@@ -390,6 +402,9 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 
 	inboundClient := toInboundClient(processedDTO)
 	oauthProfile := toOAuthProfile(processedDTO)
+	if svcErr := as.resolveAttestationCredentialsForPersist(ctx, appID, &inboundClient); svcErr != nil {
+		return nil, svcErr
+	}
 
 	var newOAuthClientID string
 	if inboundAuthConfig != nil && inboundAuthConfig.OAuthConfig != nil {
@@ -401,7 +416,7 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 	// Update config first, while entity attributes still hold the previous client_id so the
 	// inbound client service can clean up the old OAuth-app cert.
 	if err := as.inboundClientService.UpdateInboundClient(
-		ctx, &inboundClient, oauthProfile, oauthSecretSupplied, newOAuthClientID, app.Name,
+		ctx, &inboundClient, oauthProfile, oauthSecretSupplied, newOAuthClientID,
 	); err != nil {
 		if svcErr := as.translateInboundClientError(ctx, err); svcErr != nil {
 			return nil, svcErr
@@ -422,6 +437,7 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 	appForReturn.AuthFlowID = inboundClient.AuthFlowID
 	appForReturn.RegistrationFlowID = inboundClient.RegistrationFlowID
 	appForReturn.RecoveryFlowID = inboundClient.RecoveryFlowID
+	appForReturn.SignOutFlowID = inboundClient.SignOutFlowID
 	var oauthToken *providers.OAuthTokenConfig
 	var userInfo *providers.UserInfoConfig
 	var scopeClaims map[string][]string
@@ -565,6 +581,12 @@ func appRequiresClientSecret(cfg *providers.OAuthConfigWithSecret) bool {
 }
 
 // DeleteApplication delete the application for given app id.
+// SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
+// provider services are initialized to avoid a cyclic import.
+func (as *applicationService) SetDependencyRegistry(r resourcedependency.Registry) {
+	as.dependencyRegistry = r
+}
+
 func (as *applicationService) DeleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError {
 	if appID == "" {
 		return &ErrorInvalidApplicationID
@@ -580,11 +602,25 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 		return &ErrorApplicationNotFound
 	}
 
-	// Delete config.
-	if appErr := as.inboundClientService.DeleteInboundClient(ctx, appID); appErr != nil {
-		if errors.Is(appErr, inboundclient.ErrInboundClientNotFound) {
-			return nil
-		}
+	// Remove dependents that must be deleted with the application (e.g. its role assignments and
+	// group memberships). Run before the deletes so a cleanup failure aborts and leaves the
+	// application retriable. Fails closed when the registry is unavailable.
+	if as.dependencyRegistry == nil {
+		as.logger.Error(ctx, "Dependency registry not set; refusing to delete application",
+			log.String("appID", appID))
+		return &tidcommon.InternalServerError
+	}
+	if _, err := as.dependencyRegistry.CascadeDelete(
+		ctx, resourcedependency.ResourceTypeApplication, appID); err != nil {
+		as.logger.Error(ctx, "Failed to cascade-delete application dependencies",
+			log.String("appID", appID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+
+	// Delete config. A missing inbound client is non-fatal (e.g. on a retry after a partial
+	// delete) so the remaining delete steps still run.
+	if appErr := as.inboundClientService.DeleteInboundClient(ctx, appID); appErr != nil &&
+		!errors.Is(appErr, inboundclient.ErrInboundClientNotFound) {
 		if svcErr := as.translateInboundClientError(ctx, appErr); svcErr != nil {
 			return svcErr
 		}
@@ -737,11 +773,14 @@ func toInboundClient(dto *model.ApplicationProcessedDTO) inboundmodel.InboundCli
 		IsRegistrationFlowEnabled: dto.IsRegistrationFlowEnabled,
 		RecoveryFlowID:            dto.RecoveryFlowID,
 		IsRecoveryFlowEnabled:     dto.IsRecoveryFlowEnabled,
+		SignOutFlowID:             dto.SignOutFlowID,
+		IsSignOutFlowEnabled:      dto.IsSignOutFlowEnabled,
 		ThemeID:                   dto.ThemeID,
 		LayoutID:                  dto.LayoutID,
 		Assertion:                 dto.Assertion,
 		LoginConsent:              dto.LoginConsent,
 		AllowedUserTypes:          dto.AllowedUserTypes,
+		Attestation:               dto.Attestation,
 	}
 
 	// Pack remaining fields into Properties.
@@ -787,11 +826,14 @@ func toProcessedDTO(
 			IsRegistrationFlowEnabled: dao.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            dao.RecoveryFlowID,
 			IsRecoveryFlowEnabled:     dao.IsRecoveryFlowEnabled,
+			SignOutFlowID:             dao.SignOutFlowID,
+			IsSignOutFlowEnabled:      dao.IsSignOutFlowEnabled,
 			ThemeID:                   dao.ThemeID,
 			LayoutID:                  dao.LayoutID,
 			Assertion:                 dao.Assertion,
 			LoginConsent:              dao.LoginConsent,
 			AllowedUserTypes:          dao.AllowedUserTypes,
+			Attestation:               dao.Attestation.WithoutCredentials(),
 		},
 	}
 
@@ -892,6 +934,7 @@ func buildOAuthProfileFromProcessed(inboundAuth inboundmodel.InboundAuthConfigPr
 	oa := inboundAuth.OAuthConfig
 	return &providers.OAuthProfile{
 		RedirectURIs:                       oa.RedirectURIs,
+		PostLogoutRedirectURIs:             oa.PostLogoutRedirectURIs,
 		GrantTypes:                         sysutils.ConvertToStringSlice(oa.GrantTypes),
 		ResponseTypes:                      sysutils.ConvertToStringSlice(oa.ResponseTypes),
 		TokenEndpointAuthMethod:            string(oa.TokenEndpointAuthMethod),
@@ -1080,6 +1123,13 @@ func (as *applicationService) validateApplicationFields(
 		isOAuthConfig = true
 	}
 	as.validateConsentConfig(app)
+
+	// An attestation config identifies exactly one platform build of the app; the verifier dispatch
+	// cannot pick between two simultaneously.
+	if attestation := app.Attestation; attestation != nil &&
+		attestation.Android != nil && attestation.Apple != nil {
+		return &ErrorAmbiguousAttestationConfig
+	}
 	return nil
 }
 
@@ -1193,10 +1243,6 @@ func (as *applicationService) translateInboundClientError(ctx context.Context, e
 	var opErr *inboundclient.CertOperationError
 	if errors.As(err, &opErr) {
 		return as.translateCertOperationError(ctx, opErr)
-	}
-	var consentErr *inboundclient.ConsentSyncError
-	if errors.As(err, &consentErr) {
-		return translateConsentSyncError(consentErr)
 	}
 	return nil
 }
@@ -1504,20 +1550,6 @@ func (as *applicationService) translateCertOperationError(ctx context.Context,
 	})
 }
 
-// translateConsentSyncError maps a typed consent sync error from the inbound-client layer into
-// an application-service ServiceError. Client-side failures are wrapped in ErrorConsentSyncFailed;
-// server-side failures collapse to InternalServerError.
-func translateConsentSyncError(err *inboundclient.ConsentSyncError) *tidcommon.ServiceError {
-	if err.IsClientError() {
-		return tidcommon.CustomServiceError(ErrorConsentSyncFailed, tidcommon.I18nMessage{
-			Key:          "error.applicationservice.consent_sync_failed_description",
-			DefaultValue: "Failed to synchronize consent configurations for the application : code - {{param(code)}}",
-			Params:       map[string]string{"code": err.Underlying.Code},
-		})
-	}
-	return &tidcommon.InternalServerError
-}
-
 func (as *applicationService) processInboundAuthConfig(ctx context.Context, app *model.ApplicationDTO,
 	existingApp *model.ApplicationProcessedDTO) (
 	*providers.InboundAuthConfigWithSecret, *tidcommon.ServiceError) {
@@ -1621,6 +1653,56 @@ func resolveClientSecret(
 	return nil
 }
 
+// resolveAttestationCredentialsForPersist prepares the write-only Play Integrity service account
+// credentials on the inbound client for persistence: newly supplied credentials are encrypted so
+// they are never stored in plaintext, while an omitted value on an update falls back to the
+// previously stored (encrypted) credentials. The client's Attestation is replaced with a fresh copy
+// so the caller's input is not mutated.
+func (as *applicationService) resolveAttestationCredentialsForPersist(
+	ctx context.Context, appID string, inboundClient *inboundmodel.InboundClient,
+) *tidcommon.ServiceError {
+	if inboundClient == nil || inboundClient.Attestation == nil ||
+		inboundClient.Attestation.Android == nil {
+		return nil
+	}
+
+	android := *inboundClient.Attestation.Android
+	android.CertificateSha256Digests = append([]string(nil),
+		inboundClient.Attestation.Android.CertificateSha256Digests...)
+
+	if android.ServiceAccountCredentials != "" {
+		params := cryptolib.AlgorithmParams{Algorithm: cryptolib.AlgorithmAESGCM}
+		ciphertext, _, err := as.cryptoSvc.Encrypt(ctx, nil, params,
+			[]byte(android.ServiceAccountCredentials))
+		if err != nil {
+			as.logger.Error(ctx, "Failed to encrypt attestation credentials",
+				log.String("appID", appID), log.Error(err))
+			return &tidcommon.InternalServerError
+		}
+		android.ServiceAccountCredentials = string(ciphertext)
+	} else {
+		// No new credentials supplied: preserve the existing stored (encrypted) value. Distinguish a
+		// missing record (nothing to preserve, e.g. on create) from a genuine lookup failure — the
+		// latter must not silently overwrite stored credentials with an empty value.
+		existing, err := as.inboundClientService.GetInboundClientByEntityID(ctx, appID)
+		switch {
+		case err == nil:
+			if existing != nil && existing.Attestation != nil && existing.Attestation.Android != nil {
+				android.ServiceAccountCredentials = existing.Attestation.Android.ServiceAccountCredentials
+			}
+		case errors.Is(err, inboundclient.ErrInboundClientNotFound):
+			// No existing record; there is no stored credential to preserve.
+		default:
+			as.logger.Error(ctx, "Failed to load existing attestation credentials for preservation",
+				log.String("appID", appID), log.Error(err))
+			return &tidcommon.InternalServerError
+		}
+	}
+
+	inboundClient.Attestation = &providers.AttestationConfig{Android: &android, Apple: inboundClient.Attestation.Apple}
+	return nil
+}
+
 // enrichApplicationWithCertificate retrieves and adds OAuth certificates to the application.
 func (as *applicationService) enrichApplicationWithCertificate(
 	ctx context.Context, application *providers.Application,
@@ -1656,11 +1738,14 @@ func buildApplicationResponse(dto *model.ApplicationProcessedDTO) *providers.App
 			IsRegistrationFlowEnabled: dto.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            dto.RecoveryFlowID,
 			IsRecoveryFlowEnabled:     dto.IsRecoveryFlowEnabled,
+			SignOutFlowID:             dto.SignOutFlowID,
+			IsSignOutFlowEnabled:      dto.IsSignOutFlowEnabled,
 			ThemeID:                   dto.ThemeID,
 			LayoutID:                  dto.LayoutID,
 			Assertion:                 dto.Assertion,
 			AllowedUserTypes:          dto.AllowedUserTypes,
 			LoginConsent:              dto.LoginConsent,
+			Attestation:               dto.Attestation,
 		},
 		Template:  dto.Template,
 		URL:       dto.URL,
@@ -1679,6 +1764,7 @@ func buildApplicationResponse(dto *model.ApplicationProcessedDTO) *providers.App
 				OAuthConfig: &providers.OAuthConfigWithSecret{
 					ClientID:                           oauthAppConfig.ClientID,
 					RedirectURIs:                       oauthAppConfig.RedirectURIs,
+					PostLogoutRedirectURIs:             oauthAppConfig.PostLogoutRedirectURIs,
 					GrantTypes:                         oauthAppConfig.GrantTypes,
 					ResponseTypes:                      oauthAppConfig.ResponseTypes,
 					TokenEndpointAuthMethod:            oauthAppConfig.TokenEndpointAuthMethod,
@@ -1711,6 +1797,8 @@ func buildBasicApplicationResponse(
 		IsRegistrationFlowEnabled: cfg.IsRegistrationFlowEnabled,
 		RecoveryFlowID:            cfg.RecoveryFlowID,
 		IsRecoveryFlowEnabled:     cfg.IsRecoveryFlowEnabled,
+		SignOutFlowID:             cfg.SignOutFlowID,
+		IsSignOutFlowEnabled:      cfg.IsSignOutFlowEnabled,
 		ThemeID:                   cfg.ThemeID,
 		LayoutID:                  cfg.LayoutID,
 		IsReadOnly:                cfg.IsReadOnly,
@@ -1759,11 +1847,14 @@ func buildBaseApplicationProcessedDTO(appID string, app *model.ApplicationDTO,
 			IsRegistrationFlowEnabled: app.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            app.RecoveryFlowID,
 			IsRecoveryFlowEnabled:     app.IsRecoveryFlowEnabled,
+			SignOutFlowID:             app.SignOutFlowID,
+			IsSignOutFlowEnabled:      app.IsSignOutFlowEnabled,
 			ThemeID:                   app.ThemeID,
 			LayoutID:                  app.LayoutID,
 			Assertion:                 assertion,
 			AllowedUserTypes:          app.AllowedUserTypes,
 			LoginConsent:              app.LoginConsent,
+			Attestation:               app.Attestation,
 		},
 		Template:  app.Template,
 		URL:       app.URL,
@@ -1804,6 +1895,7 @@ func buildOAuthInboundAuthConfigProcessedDTO(
 			ID:                                 appID,
 			ClientID:                           inboundAuthConfig.OAuthConfig.ClientID,
 			RedirectURIs:                       inboundAuthConfig.OAuthConfig.RedirectURIs,
+			PostLogoutRedirectURIs:             inboundAuthConfig.OAuthConfig.PostLogoutRedirectURIs,
 			GrantTypes:                         inboundAuthConfig.OAuthConfig.GrantTypes,
 			ResponseTypes:                      inboundAuthConfig.OAuthConfig.ResponseTypes,
 			TokenEndpointAuthMethod:            inboundAuthConfig.OAuthConfig.TokenEndpointAuthMethod,
@@ -1839,11 +1931,14 @@ func buildReturnApplicationDTO(
 			IsRegistrationFlowEnabled: app.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            app.RecoveryFlowID,
 			IsRecoveryFlowEnabled:     app.IsRecoveryFlowEnabled,
+			SignOutFlowID:             app.SignOutFlowID,
+			IsSignOutFlowEnabled:      app.IsSignOutFlowEnabled,
 			ThemeID:                   app.ThemeID,
 			LayoutID:                  app.LayoutID,
 			Assertion:                 assertion,
 			AllowedUserTypes:          app.AllowedUserTypes,
 			LoginConsent:              app.LoginConsent,
+			Attestation:               app.Attestation.WithoutCredentials(),
 		},
 		Template:  app.Template,
 		URL:       app.URL,
@@ -1864,6 +1959,7 @@ func buildReturnApplicationDTO(
 				ClientID:                           inboundAuthConfig.OAuthConfig.ClientID,
 				ClientSecret:                       inboundAuthConfig.OAuthConfig.ClientSecret,
 				RedirectURIs:                       inboundAuthConfig.OAuthConfig.RedirectURIs,
+				PostLogoutRedirectURIs:             inboundAuthConfig.OAuthConfig.PostLogoutRedirectURIs,
 				GrantTypes:                         inboundAuthConfig.OAuthConfig.GrantTypes,
 				ResponseTypes:                      inboundAuthConfig.OAuthConfig.ResponseTypes,
 				TokenEndpointAuthMethod:            inboundAuthConfig.OAuthConfig.TokenEndpointAuthMethod,

@@ -31,18 +31,21 @@ import {
   Tab,
   Tabs,
   TextField,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useNavigate, useParams, useSearchParams} from 'react-router';
+import useGetDefaultResourceServer from '../api/useGetDefaultResourceServer';
 import useGetResourceServer from '../api/useGetResourceServer';
 import useUpdateResourceServer from '../api/useUpdateResourceServer';
 import AdvancedTab from '../components/resource-server-detail/AdvancedTab';
 import ResourceTree from '../components/resource-tree/ResourceTree';
 import ResourceServerDeleteDialog from '../components/ResourceServerDeleteDialog';
-import {getResourceServerTypeIcon, getResourceServerTypeLabel} from '../config/resource-server-types';
+import SetDefaultResourceServerDialog from '../components/SetDefaultResourceServerDialog';
+import {getResourceServerTypeLabel} from '../config/resource-server-types';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -74,6 +77,7 @@ export default function ResourceServerEditPage(): JSX.Element {
   const logger = useLogger('ResourceServerEditPage');
 
   const {data: resourceServer, isLoading, error, refetch} = useGetResourceServer(resourceServerId ?? '');
+  const {data: defaultConfig, isLoading: isDefaultLoading, error: defaultError} = useGetDefaultResourceServer();
   const updateRs = useUpdateResourceServer();
 
   const initialTab = searchParams.get('tab') === 'advanced' ? TAB_ADVANCED : TAB_RESOURCES;
@@ -87,6 +91,7 @@ export default function ResourceServerEditPage(): JSX.Element {
   const [tempName, setTempName] = useState('');
   const [tempDescription, setTempDescription] = useState('');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [defaultDialogOpen, setDefaultDialogOpen] = useState(false);
 
   const handleTabChange = (_e: SyntheticEvent, newValue: number): void => {
     setActiveTab(newValue);
@@ -115,6 +120,14 @@ export default function ResourceServerEditPage(): JSX.Element {
 
   const handleSave = (): void => {
     if (!resourceServer) return;
+
+    const nextIdentifier =
+      'identifier' in editedFields ? (editedFields.identifier ?? '').trim() : (resourceServer.identifier ?? '').trim();
+    if (!nextIdentifier) {
+      showToast(t('resourceServers:edit.identifierRequired', 'Identifier is required.'), 'error');
+      return;
+    }
+
     updateRs.mutate(
       {
         id: resourceServer.id,
@@ -126,12 +139,7 @@ export default function ResourceServerEditPage(): JSX.Element {
                 ? editedFields.description
                 : null
               : (resourceServer.description ?? null),
-          identifier:
-            'identifier' in editedFields
-              ? editedFields.identifier?.trim()
-                ? editedFields.identifier
-                : null
-              : (resourceServer.identifier ?? null),
+          identifier: 'identifier' in editedFields ? nextIdentifier : resourceServer.identifier,
           ouId: resourceServer.ouId,
         },
       },
@@ -175,6 +183,14 @@ export default function ResourceServerEditPage(): JSX.Element {
       </PageContent>
     );
   }
+
+  // Only trust the default config once it has resolved; otherwise the page would
+  // briefly render "Set as default" for the actual default before the config loads.
+  const isDefaultReady = !isDefaultLoading && !defaultError;
+  const isDefault = isDefaultReady && resourceServer.id === defaultConfig?.merged?.resourceServerId;
+  // A declarative (read-only) default is locked; the backend rejects any write, so the
+  // action can never succeed and must not be offered.
+  const isDefaultLocked = isDefaultReady && Boolean(defaultConfig?.readOnly?.resourceServerId);
 
   return (
     <PageContent>
@@ -228,6 +244,27 @@ export default function ResourceServerEditPage(): JSX.Element {
                   </IconButton>
                 )}
               </>
+            )}
+            {isDefaultReady && isDefault && (
+              <Tooltip
+                title={
+                  isDefaultLocked
+                    ? t('resourceServers:edit.defaultBadgeManaged', 'Managed by server configuration.')
+                    : ''
+                }
+              >
+                <Chip
+                  label={t('resourceServers:edit.defaultBadge', 'Default resource server')}
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                />
+              </Tooltip>
+            )}
+            {isDefaultReady && !isDefault && !isDefaultLocked && (
+              <Button variant="contained" size="small" onClick={() => setDefaultDialogOpen(true)}>
+                {t('resourceServers:actions.setAsDefault', 'Set as default')}
+              </Button>
             )}
           </Stack>
         </PageTitle.Header>
@@ -290,16 +327,10 @@ export default function ResourceServerEditPage(): JSX.Element {
             <Chip
               label={getResourceServerTypeLabel(resourceServer.type, t)}
               size="small"
+              color="primary"
               variant="outlined"
-              icon={
-                <Box sx={{display: 'flex', alignItems: 'center', '& > *': {width: 16, height: 16}}}>
-                  {getResourceServerTypeIcon(resourceServer.type)}
-                </Box>
-              }
+              sx={{fontSize: '0.7rem'}}
             />
-            {resourceServer.handle && (
-              <Chip label={resourceServer.handle} size="small" sx={{fontFamily: 'monospace'}} />
-            )}
             {resourceServer.isReadOnly && (
               <Chip label={t('resourceServers:edit.systemResourceServer', 'System')} size="small" color="default" />
             )}
@@ -343,23 +374,33 @@ export default function ResourceServerEditPage(): JSX.Element {
         {!resourceServer.isReadOnly && (
           <SettingsCard
             title={t('resourceServers:edit.dangerZone.title', 'Danger Zone')}
-            description={t(
-              'resourceServers:edit.dangerZone.description',
-              'Actions in this section are irreversible. Proceed with caution.',
-            )}
+            description={
+              resourceServer.type === 'MCP'
+                ? t('resourceServers:edit.dangerZone.descriptionMcp', 'Irreversible actions for this MCP server.')
+                : t('resourceServers:edit.dangerZone.description', 'Irreversible actions for this resource server.')
+            }
             slotProps={{root: {sx: {mt: 3}}}}
           >
             <Typography variant="h6" gutterBottom color="error">
-              {t('resourceServers:edit.dangerZone.deleteServer.title', 'Delete resource server')}
+              {resourceServer.type === 'MCP'
+                ? t('resourceServers:edit.dangerZone.deleteServer.titleMcp', 'Delete MCP server')
+                : t('resourceServers:edit.dangerZone.deleteServer.title', 'Delete resource server')}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
-              {t(
-                'resourceServers:edit.dangerZone.deleteServer.description',
-                'Permanently delete this resource server and all associated data. This action cannot be undone.',
-              )}
+              {resourceServer.type === 'MCP'
+                ? t(
+                    'resourceServers:edit.dangerZone.deleteServer.descriptionMcp',
+                    'Permanently delete this MCP server and all associated data. This action cannot be undone.',
+                  )
+                : t(
+                    'resourceServers:edit.dangerZone.deleteServer.description',
+                    'Permanently delete this resource server and all associated data. This action cannot be undone.',
+                  )}
             </Typography>
             <Button variant="contained" color="error" onClick={() => setDeleteDialogOpen(true)}>
-              {t('resourceServers:edit.dangerZone.deleteServer', 'Delete resource server')}
+              {resourceServer.type === 'MCP'
+                ? t('resourceServers:edit.dangerZone.deleteServerMcp', 'Delete MCP server')
+                : t('resourceServers:edit.dangerZone.deleteServer', 'Delete resource server')}
             </Button>
           </SettingsCard>
         )}
@@ -399,6 +440,12 @@ export default function ResourceServerEditPage(): JSX.Element {
           onSave={handleSave}
         />
       )}
+
+      <SetDefaultResourceServerDialog
+        open={defaultDialogOpen}
+        resourceServer={resourceServer}
+        onClose={() => setDefaultDialogOpen(false)}
+      />
     </PageContent>
   );
 }

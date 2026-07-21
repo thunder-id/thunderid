@@ -36,6 +36,12 @@ const (
 	ES512 Algorithm = "ES512"
 	// EdDSA represents ED25519 signature algorithm for JWS
 	EdDSA Algorithm = "EdDSA"
+	// MLDSA44 represents the ML-DSA-44 post-quantum signature algorithm for JWS (RFC 9964)
+	MLDSA44 Algorithm = "ML-DSA-44"
+	// MLDSA65 represents the ML-DSA-65 post-quantum signature algorithm for JWS (RFC 9964)
+	MLDSA65 Algorithm = "ML-DSA-65"
+	// MLDSA87 represents the ML-DSA-87 post-quantum signature algorithm for JWS (RFC 9964)
+	MLDSA87 Algorithm = "ML-DSA-87"
 
 	// P256 represents the NIST P-256 curve
 	P256 string = "P-256"

@@ -337,7 +337,13 @@ export default function ImportConfigurationUploadPage(): JSX.Element {
             items={[
               ...(isWelcomeFlow
                 ? [{key: 'welcome', label: t('common:welcome.header'), onClick: () => void navigate('/welcome')}]
-                : []),
+                : [
+                    {
+                      key: 'import-export',
+                      label: t('landing.title', 'Import / Export'),
+                      onClick: () => void navigate('/import-export'),
+                    },
+                  ]),
               {key: 'import-configuration', label: t('upload.breadcrumb.openProject')},
             ]}
           />

@@ -36,6 +36,7 @@ export const TechnologyApplicationTemplate = {
   NUXT: 'NUXT',
   NODEJS: 'NODEJS',
   OTHER: 'OTHER',
+  MCP_CLIENT: 'MCP_CLIENT',
 } as const;
 
 /**
@@ -202,6 +203,16 @@ export interface ApplicationTemplate {
     };
   };
   /**
+   * Optional per-template capability flags that gate optional configuration surfaces in the edit UI.
+   */
+  capabilities?: {
+    /**
+     * Whether this template supports platform attestation (e.g. Google Play Integrity). When true,
+     * the attestation configuration section is shown in the application's advanced settings.
+     */
+    attestation?: boolean;
+  };
+  /**
    * Optional integration guides for this template
    */
   integrationGuides?: IntegrationGuides;
@@ -212,7 +223,7 @@ export interface ApplicationTemplate {
  *
  * @public
  */
-export type TemplateCategory = 'web' | 'backend' | 'mobile';
+export type TemplateCategory = 'web' | 'backend' | 'mobile' | 'ai';
 
 export interface ApplicationTemplateMetadata<T = TechnologyApplicationTemplate | PlatformApplicationTemplate> {
   value: T;

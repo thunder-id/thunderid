@@ -518,6 +518,7 @@ func (ts *DPoPTestSuite) TestPAR_DPoPHeaderPlusDPoPJkt_Match() {
 		"code_challenge":        challenge,
 		"code_challenge_method": "S256",
 		"dpop_jkt":              key.JKT,
+		"resource":              testutils.SystemResourceIdentifier,
 	})
 	ts.Require().NoError(err)
 	ts.Require().Equalf(http.StatusCreated, parResult.StatusCode, "body: %s", string(parResult.Body))

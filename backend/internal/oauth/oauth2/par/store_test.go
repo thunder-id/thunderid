@@ -82,7 +82,7 @@ func (s *StoreTestSuite) SetupTest() {
 func (s *StoreTestSuite) TestStore_Success() {
 	const expirySeconds int64 = 60
 	before := time.Now().UTC()
-	s.mockDBProvider.On("GetRuntimeDBClient").Return(s.mockDBClient, nil)
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertPARRequest,
 		mock.MatchedBy(func(key string) bool { return key != "" }),
 		testDeploymentID,
@@ -103,7 +103,7 @@ func (s *StoreTestSuite) TestStore_Success() {
 }
 
 func (s *StoreTestSuite) TestStore_DBClientError() {
-	s.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db client error"))
 
 	randomKey, err := s.store.Store(s.ctx, s.testRequest, int64(60))
 
@@ -112,7 +112,7 @@ func (s *StoreTestSuite) TestStore_DBClientError() {
 }
 
 func (s *StoreTestSuite) TestStore_ExecuteError() {
-	s.mockDBProvider.On("GetRuntimeDBClient").Return(s.mockDBClient, nil)
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertPARRequest,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 	).Return(int64(0), errors.New("insert failed"))
@@ -125,7 +125,7 @@ func (s *StoreTestSuite) TestStore_ExecuteError() {
 }
 
 func (s *StoreTestSuite) TestStore_GeneratesUniqueURIs() {
-	s.mockDBProvider.On("GetRuntimeDBClient").Return(s.mockDBClient, nil)
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertPARRequest,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 	).Return(int64(1), nil)
@@ -144,7 +144,7 @@ func (s *StoreTestSuite) TestConsume_Success() {
 	data, _ := json.Marshal(s.testRequest)
 	randomKey := "abc123"
 
-	s.mockDBProvider.On("GetRuntimeDBClient").Return(s.mockDBClient, nil)
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("QueryContext", mock.Anything, queryGetPARRequest,
 		randomKey, mock.Anything, testDeploymentID,
 	).Return([]map[string]any{
@@ -169,7 +169,7 @@ func (s *StoreTestSuite) TestConsume_Success() {
 
 func (s *StoreTestSuite) TestConsume_NotFound() {
 	randomKey := "missing"
-	s.mockDBProvider.On("GetRuntimeDBClient").Return(s.mockDBClient, nil)
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("QueryContext", mock.Anything, queryGetPARRequest,
 		randomKey, mock.Anything, testDeploymentID,
 	).Return([]map[string]any{}, nil)
@@ -182,7 +182,7 @@ func (s *StoreTestSuite) TestConsume_NotFound() {
 }
 
 func (s *StoreTestSuite) TestConsume_DBClientError() {
-	s.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db error"))
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db error"))
 
 	_, found, err := s.store.Consume(s.ctx, testRandomKey)
 
@@ -192,7 +192,7 @@ func (s *StoreTestSuite) TestConsume_DBClientError() {
 
 func (s *StoreTestSuite) TestConsume_QueryError() {
 	randomKey := testRandomKey
-	s.mockDBProvider.On("GetRuntimeDBClient").Return(s.mockDBClient, nil)
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("QueryContext", mock.Anything, queryGetPARRequest,
 		randomKey, mock.Anything, testDeploymentID,
 	).Return(nil, errors.New("query error"))
@@ -208,7 +208,7 @@ func (s *StoreTestSuite) TestConsume_DeleteError() {
 	randomKey := testRandomKey
 	data, _ := json.Marshal(s.testRequest)
 
-	s.mockDBProvider.On("GetRuntimeDBClient").Return(s.mockDBClient, nil)
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("QueryContext", mock.Anything, queryGetPARRequest,
 		randomKey, mock.Anything, testDeploymentID,
 	).Return([]map[string]any{
@@ -230,7 +230,7 @@ func (s *StoreTestSuite) TestConsume_RaceLost_DeleteReturnsZero() {
 	randomKey := testRandomKey
 	data, _ := json.Marshal(s.testRequest)
 
-	s.mockDBProvider.On("GetRuntimeDBClient").Return(s.mockDBClient, nil)
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("QueryContext", mock.Anything, queryGetPARRequest,
 		randomKey, mock.Anything, testDeploymentID,
 	).Return([]map[string]any{
@@ -250,7 +250,7 @@ func (s *StoreTestSuite) TestConsume_RequestParamsAsBytes() {
 	randomKey := testRandomKey
 	data, _ := json.Marshal(s.testRequest)
 
-	s.mockDBProvider.On("GetRuntimeDBClient").Return(s.mockDBClient, nil)
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("QueryContext", mock.Anything, queryGetPARRequest,
 		randomKey, mock.Anything, testDeploymentID,
 	).Return([]map[string]any{
@@ -270,7 +270,7 @@ func (s *StoreTestSuite) TestConsume_RequestParamsAsBytes() {
 func (s *StoreTestSuite) TestConsume_InvalidJSON() {
 	randomKey := testRandomKey
 
-	s.mockDBProvider.On("GetRuntimeDBClient").Return(s.mockDBClient, nil)
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("QueryContext", mock.Anything, queryGetPARRequest,
 		randomKey, mock.Anything, testDeploymentID,
 	).Return([]map[string]any{
@@ -289,7 +289,7 @@ func (s *StoreTestSuite) TestConsume_InvalidJSON() {
 func (s *StoreTestSuite) TestConsume_MissingRequestParams() {
 	randomKey := testRandomKey
 
-	s.mockDBProvider.On("GetRuntimeDBClient").Return(s.mockDBClient, nil)
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("QueryContext", mock.Anything, queryGetPARRequest,
 		randomKey, mock.Anything, testDeploymentID,
 	).Return([]map[string]any{

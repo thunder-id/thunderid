@@ -36,6 +36,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -65,13 +66,14 @@ type CIBAServiceInterface interface {
 
 // cibaService implements the CIBAServiceInterface.
 type cibaService struct {
-	cfg             oauthconfig.Config
-	store           CIBARequestStoreInterface
-	flowExecService flowexec.FlowExecServiceInterface
-	jwtService      jwt.JWTServiceInterface
-	inboundClient   providers.ActorProvider
-	resourceService providers.ResourceServerProvider
-	logger          *log.Logger
+	cfg                 oauthconfig.Config
+	store               CIBARequestStoreInterface
+	flowExecService     flowexec.FlowExecServiceInterface
+	jwtService          jwt.JWTServiceInterface
+	inboundClient       providers.ActorProvider
+	resourceService     providers.ResourceServerProvider
+	serverConfigService serverconfig.ServerConfigService
+	logger              *log.Logger
 }
 
 // newCIBAService creates a new instance of cibaService with injected dependencies.
@@ -81,16 +83,18 @@ func newCIBAService(
 	jwtService jwt.JWTServiceInterface,
 	actorProvider providers.ActorProvider,
 	resourceService providers.ResourceServerProvider,
+	serverConfigService serverconfig.ServerConfigService,
 	cfg oauthconfig.Config,
 ) CIBAServiceInterface {
 	return &cibaService{
-		cfg:             cfg,
-		store:           store,
-		flowExecService: flowExecService,
-		jwtService:      jwtService,
-		inboundClient:   actorProvider,
-		resourceService: resourceService,
-		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIBAService")),
+		cfg:                 cfg,
+		store:               store,
+		flowExecService:     flowExecService,
+		jwtService:          jwtService,
+		inboundClient:       actorProvider,
+		resourceService:     resourceService,
+		serverConfigService: serverConfigService,
+		logger:              log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIBAService")),
 	}
 }
 
@@ -126,17 +130,29 @@ func (s *cibaService) InitiateBackchannelAuth(
 	// auth code uses SeparateOIDCAndNonOIDCScopes + ResolveAndDownscope; no scopeValidator needed.
 	oidcScopes, permissionScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(request.Scope, oauthApp.ScopeClaims)
 
-	// Validate permission scopes against resource server definitions
-	// Unknown permission scopes are silently dropped; unknown resource servers cause invalid_target.
-	_, permissionScopes, rsErr := resourceindicators.ResolveAndDownscope(
-		ctx, s.resourceService, []string{}, permissionScopes)
+	// Bind the request to a single target resource server before consent, mirroring authorization_code.
+	// OIDC-only (no resource, no permission scopes) stays unbound; a permission-bearing request resolves
+	// an explicit resource or the configured default, rejecting with invalid_target when none applies.
+	targetRS, rsErr := resourceindicators.ResolveAudienceBinding(
+		ctx, s.resourceService, s.serverConfigService, request.Resources, permissionScopes)
 	if rsErr != nil {
 		return nil, &CIBAError{Code: rsErr.Error, Message: rsErr.ErrorDescription}
+	}
+
+	var effectiveResources []string
+	if targetRS != nil {
+		downscoped, dErr := resourceindicators.DownscopeToResourceServer(
+			ctx, s.resourceService, targetRS.ID, permissionScopes)
+		if dErr != nil {
+			return nil, &CIBAError{Code: dErr.Error, Message: dErr.ErrorDescription}
+		}
+		permissionScopes = downscoped
+		effectiveResources = []string{targetRS.Identifier}
 	}
 	cacheTTL := strconv.FormatInt(s.resolveUserAttributesCacheTTL(oauthApp), 10)
 
 	// authReqID is injected into runtime data for two reasons:
-	//   a) auth_assert_executor binds it as the ciba_auth_req_id claim in the assertion JWT,
+	//   a) auth_assert_executor binds it as the authorization_request_id claim in the assertion JWT,
 	//      enabling the callback to verify this assertion authorizes this specific request.
 	//   b) invite_executor includes it in the notification link URL so Gate UI can pass it
 	//      back in the CIBA callback call on flow completion.
@@ -146,7 +162,7 @@ func (s *cibaService) InitiateBackchannelAuth(
 	}
 
 	runtimeData := map[string]string{
-		flowcm.RuntimeKeyAuthReqID:                   authReqID,
+		flowcm.RuntimeKeyAuthorizationRequestID:      authReqID,
 		flowcm.RuntimeKeyClientID:                    oauthApp.ClientID,
 		flowcm.RuntimeKeyRequestedPermissions:        utils.StringifyStringArray(permissionScopes, " "),
 		flowcm.RuntimeKeyRequiredEssentialAttributes: "",
@@ -196,6 +212,7 @@ func (s *cibaService) InitiateBackchannelAuth(
 		AuthReqID:      authReqID,
 		ClientID:       oauthApp.ClientID,
 		StandardScopes: utils.StringifyStringArray(oidcScopes, " "),
+		Resources:      effectiveResources,
 		State:          CIBAStatePending,
 		ExpiryTime:     now.Add(time.Duration(expiresIn) * time.Second),
 	}
@@ -274,10 +291,10 @@ func (s *cibaService) HandleCallback(ctx context.Context, authReqID, assertion s
 	}
 
 	// Bind the assertion to this specific CIBA request. The auth_req_id is threaded through the
-	// flow runtime data into the assertion as the ciba_auth_req_id claim; requiring it to match the
-	// record prevents an assertion minted for one CIBA request from authorizing another (e.g. a
-	// narrow-scope authentication being replayed against a broader-scope request for the same user).
-	if claims.cibaAuthReqID == "" || claims.cibaAuthReqID != record.AuthReqID {
+	// flow runtime data into the assertion as the authorization_request_id claim; requiring it to
+	// match the record prevents an assertion minted for one CIBA request from authorizing another
+	// (e.g. a narrow-scope authentication being replayed against a broader-scope request for the same user).
+	if claims.authReqID == "" || claims.authReqID != record.AuthReqID {
 		s.logger.Debug(ctx, "Assertion is not bound to the backchannel authentication request",
 			log.MaskedString("auth_req_id", authReqID))
 		return &CIBAError{
@@ -325,7 +342,7 @@ func (s *cibaService) HandleCallback(ctx context.Context, authReqID, assertion s
 
 // resolveExpectedAudience resolves the app entity ID for the given client ID, which the flow uses
 // as the assertion `aud`. It returns an empty string (skipping the audience check) on lookup
-// failure; the ciba_auth_req_id binding remains the primary protection in that case.
+// failure; the authorization_request_id binding remains the primary protection in that case.
 func (s *cibaService) resolveExpectedAudience(ctx context.Context, clientID string) string {
 	app, svcErr := s.inboundClient.GetOAuthClientByClientID(ctx, clientID)
 	if svcErr != nil {
@@ -491,9 +508,10 @@ func defaultBindingMessage(authReqID string) string {
 // fixed buffer. Setting this in the flow runtime data is what makes the auth assertion cache the
 // resolved attributes and emit the aci claim (consumed by the CIBA callback).
 func (s *cibaService) resolveUserAttributesCacheTTL(app *providers.OAuthClient) int64 {
-	maxTTL := tokenservice.ResolveTokenConfig(s.cfg, app, tokenservice.TokenTypeAccess).ValidityPeriod
+	maxTTL := tokenservice.ResolveTokenConfig(
+		s.cfg, app, tokenservice.TokenTypeAccess, app.UserAccessTokenConfig().ValidityPeriodOrZero()).ValidityPeriod
 	if app.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
-		refreshTTL := tokenservice.ResolveTokenConfig(s.cfg, app, tokenservice.TokenTypeRefresh).ValidityPeriod
+		refreshTTL := tokenservice.ResolveTokenConfig(s.cfg, app, tokenservice.TokenTypeRefresh, 0).ValidityPeriod
 		if refreshTTL > maxTTL {
 			maxTTL = refreshTTL
 		}
@@ -536,12 +554,12 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 		completedACR:     base.CompletedACR,
 	}
 
-	if cibaValue, ok := payload[oauth2const.ClaimCIBAAuthReqID]; ok {
-		strValue, ok := cibaValue.(string)
+	if v, ok := payload[oauth2const.ClaimAuthorizationRequestID]; ok {
+		strValue, ok := v.(string)
 		if !ok {
-			return assertionClaims{}, time.Time{}, errors.New("JWT 'ciba_auth_req_id' claim is not a string")
+			return assertionClaims{}, time.Time{}, errors.New("JWT 'authorization_request_id' claim is not a string")
 		}
-		claims.cibaAuthReqID = strValue
+		claims.authReqID = strValue
 	}
 
 	if v, ok := payload["authorized_permissions"].(string); ok {

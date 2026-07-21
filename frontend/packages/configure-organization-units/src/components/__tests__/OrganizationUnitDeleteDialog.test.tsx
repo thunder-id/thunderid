@@ -123,6 +123,62 @@ describe('OrganizationUnitDeleteDialog', () => {
     });
   });
 
+  it('should resolve object-shaped description to its defaultValue', async () => {
+    const onError = vi.fn();
+    mockMutate.mockImplementation((_id: string, options: {onError: (err: Error) => void}) => {
+      options.onError(
+        Object.assign(new Error('Organization unit has children'), {
+          response: {
+            data: {
+              code: 'OU-1006',
+              message: {
+                key: 'error.ouservice.organization_unit_has_children',
+                defaultValue: 'Organization unit has children',
+              },
+              description: {
+                key: 'error.ouservice.organization_unit_has_children_description',
+                defaultValue: 'Cannot delete organization unit with children or users/groups',
+              },
+            },
+          },
+        }),
+      );
+    });
+
+    renderWithProviders(<OrganizationUnitDeleteDialog {...defaultProps} onError={onError} />);
+
+    fireEvent.click(screen.getByText(t('common:actions.delete')));
+
+    await waitFor(() => {
+      expect(onError).toHaveBeenCalledWith('Cannot delete organization unit with children or users/groups');
+    });
+  });
+
+  it('should fall back to error message when object-shaped description has empty defaultValue', async () => {
+    const onError = vi.fn();
+    mockMutate.mockImplementation((_id: string, options: {onError: (err: Error) => void}) => {
+      options.onError(
+        Object.assign(new Error('Something went wrong'), {
+          response: {
+            data: {
+              code: 'OU-1006',
+              message: {key: 'k', defaultValue: 'm'},
+              description: {key: 'k', defaultValue: '   '},
+            },
+          },
+        }),
+      );
+    });
+
+    renderWithProviders(<OrganizationUnitDeleteDialog {...defaultProps} onError={onError} />);
+
+    fireEvent.click(screen.getByText(t('common:actions.delete')));
+
+    await waitFor(() => {
+      expect(onError).toHaveBeenCalledWith('Something went wrong');
+    });
+  });
+
   it('should use fallback error message when error has no response data', async () => {
     const onError = vi.fn();
     mockMutate.mockImplementation((_id: string, options: {onError: (err: Error) => void}) => {

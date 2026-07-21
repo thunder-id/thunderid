@@ -17,10 +17,10 @@ database:
       password: postgres
       sslmode: disable
 
-  runtime:
+  runtime_transient:
     type: sqlite
     sqlite:
-      path: "/data/runtime.db"
+      path: "/data/runtime-transient.db"
       options: "cache=shared"
 
 oauth:

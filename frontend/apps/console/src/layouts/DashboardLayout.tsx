@@ -35,7 +35,6 @@ import {
 import {
   Bot,
   Building,
-  FileOutput,
   Group,
   Home,
   IdCard,
@@ -106,25 +105,30 @@ function SidebarFooterButtons(): ReactNode {
     >
       <Button
         variant="outlined"
-        aria-label={t('navigation:pages.openProject')}
+        aria-label={t('navigation:pages.importExport', 'Import / Export')}
         startIcon={<SquareArrowRightEnter size={18} />}
-        onClick={() => void navigate('/import-configuration')}
-        sx={ICON_BUTTON_SX}
-      />
-      <Button
-        variant="outlined"
-        startIcon={<FileOutput size={18} />}
-        onClick={() => void navigate('/export')}
+        onClick={() => void navigate('/import-export')}
         sx={buttonSx}
       >
-        {!collapsed && t('navigation:pages.export', 'Export Config')}
+        {!collapsed && t('navigation:pages.importExport', 'Import / Export')}
       </Button>
     </Box>
   );
 }
 
-export default function DashboardLayout(): ReactNode {
-  const {signIn, clearSession, discovery} = useThunderID();
+/**
+ * Props interface of {@link DashboardLayout}
+ */
+export interface DashboardLayoutProps {
+  /**
+   * Collapses the navigation sidebar to icon-only mode. Set by routes whose
+   * pages need the full screen width (e.g. the flow builder canvas).
+   */
+  collapseSidebar?: boolean;
+}
+
+export default function DashboardLayout({collapseSidebar = false}: DashboardLayoutProps): ReactNode {
+  const {clearSession, discovery} = useThunderID();
   const {isTrustedIssuerGenericOidc, getTrustedIssuerClientId, getClientUrl} = useConfig();
   const {t} = useTranslation();
   const logger = useLogger();
@@ -154,11 +158,9 @@ export default function DashboardLayout(): ReactNode {
       return;
     }
 
-    signOut()
-      .then(() => signIn())
-      .catch((error: unknown) => {
-        logger.error('Sign out/in failed', {error});
-      });
+    signOut().catch((error: unknown) => {
+      logger.error('Sign out failed', {error});
+    });
   };
 
   const appRoutes: NavCategory[] = useMemo(
@@ -381,7 +383,12 @@ export default function DashboardLayout(): ReactNode {
       </AppShell.Navbar>
 
       <AppShell.Sidebar>
-        <Sidebar activeItem={activeItem} expandedMenus={expandedMenus} onToggleExpand={handleToggleExpand}>
+        <Sidebar
+          activeItem={activeItem}
+          expandedMenus={expandedMenus}
+          onToggleExpand={handleToggleExpand}
+          collapsed={collapseSidebar}
+        >
           <Sidebar.Nav>
             {appRoutes.map((categoryGroup) => (
               <Sidebar.Category key={categoryGroup.category}>

@@ -20,7 +20,6 @@
 package idp
 
 import (
-	"net/http"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
@@ -28,30 +27,25 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// Initialize initializes the IDP service and registers its routes.
+// Initialize initializes the IDP service. Declarative resource loading and HTTP routing for
+// identity providers now happen in the connection package (/connections/{vendor}), which is the
+// sole owner of the "connection" declarative resource type.
 func Initialize(
-	cacheManager cache.CacheManagerInterface, mux *http.ServeMux,
+	cacheManager cache.CacheManagerInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
-) (IDPServiceInterface, declarativeresource.ResourceExporter, error) {
+) (IDPServiceInterface, error) {
 	// Create store and transactioner based on store mode
 	idpStore, transactioner, err := initializeStore(cacheManager)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	idpService := newIDPService(idpStore, entityTypeService, transactioner)
-
-	idpHandler := newIDPHandler(idpService)
-	registerRoutes(mux, idpHandler)
-
-	// Create and return exporter
-	exporter := newIDPExporter(idpService)
-	return idpService, exporter, nil
+	return idpService, nil
 }
 
 // Store Selection (based on identity_provider.store configuration):
@@ -81,6 +75,10 @@ func Initialize(
 // - If identity_provider.store is not specified, falls back to global declarative_resources.enabled:
 //   - If declarative_resources.enabled = true: behaves as IMMUTABLE mode
 //   - If declarative_resources.enabled = false: behaves as MUTABLE mode
+//
+// Note: the file-based store here is populated by the connection package's declarative loader
+// (backend/internal/connection/declarative_resource.go), not by this package — see
+// ShouldLoadDeclarativeIDPResources.
 func initializeStore(cacheManager cache.CacheManagerInterface) (idpStoreInterface, transaction.Transactioner, error) {
 	storeMode := getIdentityProviderStoreMode()
 
@@ -95,16 +93,10 @@ func initializeStore(cacheManager cache.CacheManagerInterface) (idpStoreInterfac
 			return nil, nil, err
 		}
 		idpStore := newCompositeIDPStore(fileStore, dbStore)
-		if err := loadDeclarativeResources(fileStore); err != nil {
-			return nil, nil, err
-		}
 		return newCacheBackedIDPStore(idpByIDCache, idpByPropertyCache, idpStore), transactioner, nil
 
 	case serverconst.StoreModeDeclarative:
 		fileStore, transactioner := newIDPFileBasedStore()
-		if err := loadDeclarativeResources(fileStore); err != nil {
-			return nil, nil, err
-		}
 		return newCacheBackedIDPStore(idpByIDCache, idpByPropertyCache, fileStore), transactioner, nil
 
 	default:
@@ -160,35 +152,13 @@ func isDeclarativeModeEnabled() bool {
 	return getIdentityProviderStoreMode() == serverconst.StoreModeDeclarative
 }
 
-// RegisterRoutes registers the routes for identity provider operations.
-func registerRoutes(mux *http.ServeMux, idpHandler *idpHandler) {
-	opts1 := middleware.CORSOptions{
-		AllowedMethods:   []string{"GET", "POST"},
-		AllowedHeaders:   middleware.DefaultAllowedHeaders,
-		AllowCredentials: true,
-		MaxAge:           600,
-	}
-	mux.HandleFunc(middleware.WithCORS("POST /identity-providers", idpHandler.HandleIDPPostRequest, opts1))
-	mux.HandleFunc(middleware.WithCORS("GET /identity-providers", idpHandler.HandleIDPListRequest, opts1))
-	mux.HandleFunc(middleware.WithCORS("OPTIONS /identity-providers",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}, opts1))
-
-	opts2 := middleware.CORSOptions{
-		AllowedMethods:   []string{"GET", "PUT", "DELETE"},
-		AllowedHeaders:   middleware.DefaultAllowedHeaders,
-		AllowCredentials: true,
-		MaxAge:           600,
-	}
-	mux.HandleFunc(middleware.WithCORS("GET /identity-providers/{id}",
-		idpHandler.HandleIDPGetRequest, opts2))
-	mux.HandleFunc(middleware.WithCORS("PUT /identity-providers/{id}",
-		idpHandler.HandleIDPPutRequest, opts2))
-	mux.HandleFunc(middleware.WithCORS("DELETE /identity-providers/{id}",
-		idpHandler.HandleIDPDeleteRequest, opts2))
-	mux.HandleFunc(middleware.WithCORS("OPTIONS /identity-providers/{id}",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}, opts2))
+// ShouldLoadDeclarativeIDPResources reports whether the identity-provider file-based store
+// should be populated from declarative files — true when the resolved store mode (per
+// getIdentityProviderStoreMode, honoring the identity_provider.store override) is composite or
+// declarative. Called by the connection package's declarative loader, which is the sole owner of
+// reading connection declarative files but must still respect this package's per-service store
+// mode configuration.
+func ShouldLoadDeclarativeIDPResources() bool {
+	mode := getIdentityProviderStoreMode()
+	return mode == serverconst.StoreModeComposite || mode == serverconst.StoreModeDeclarative
 }

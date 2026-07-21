@@ -20,6 +20,7 @@ package core
 
 import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // InterceptorInterface defines the contract for flow interceptors.
@@ -35,6 +36,9 @@ type InterceptorInterface interface {
 
 	// GetPriority returns the execution order within the same mode (lower runs first).
 	GetPriority() int
+
+	// GetInputs returns the inputs declared by the interceptor.
+	GetInputs() []providers.Input
 }
 
 // interceptor represents the basic implementation of an interceptor.
@@ -42,6 +46,7 @@ type interceptor struct {
 	Name      string
 	isDefault bool
 	Priority  int
+	Inputs    []providers.Input
 }
 
 var _ InterceptorInterface = (*interceptor)(nil)
@@ -68,6 +73,11 @@ func (i *interceptor) IsDefault() bool {
 // GetPriority returns the execution order within the same mode (lower runs first).
 func (i *interceptor) GetPriority() int {
 	return i.Priority
+}
+
+// GetInputs returns the inputs declared by the interceptor.
+func (i *interceptor) GetInputs() []providers.Input {
+	return i.Inputs
 }
 
 // Execute runs the interceptor logic and returns a result.

@@ -53,6 +53,12 @@ func newInviteExecutor(flowFactory core.FlowFactoryInterface) *inviteExecutor {
 		providers.ExecutorTypeUtility,
 		defaultInputs,
 		[]providers.Input{},
+		&providers.ExecutorMeta{
+			SupportedModes: []string{ExecutorModeGenerate, ExecutorModeVerify},
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: propertyKeyInviteBaseURL},
+			},
+		},
 	)
 	return &inviteExecutor{
 		Executor: base,
@@ -181,7 +187,7 @@ func (e *inviteExecutor) generateInviteLink(ctx *providers.NodeContext, inviteTo
 	if ctx.EntityID != "" {
 		queryParams.Set(oauth2const.AppID, ctx.EntityID)
 	}
-	if authReqID, ok := ctx.RuntimeData[common.RuntimeKeyAuthReqID]; ok && authReqID != "" {
+	if authReqID, ok := ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID]; ok && authReqID != "" {
 		queryParams.Set(oauth2const.RequestParamAuthReqID, authReqID)
 	}
 

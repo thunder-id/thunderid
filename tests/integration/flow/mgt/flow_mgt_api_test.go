@@ -54,6 +54,14 @@ var (
 				Executor: &ExecutorDefinition{
 					Name: "CredentialsAuthExecutor",
 				},
+				OnSuccess: "auth_assert",
+			},
+			{
+				ID:   "auth_assert",
+				Type: "TASK_EXECUTION",
+				Executor: &ExecutorDefinition{
+					Name: "AuthAssertExecutor",
+				},
 				OnSuccess: "END",
 			},
 			{
@@ -90,7 +98,15 @@ var (
 				Condition: &ConditionDefinition{
 					Key:    "{{ctx(userEligibleForProvisioning)}}",
 					Value:  "true",
-					OnSkip: "END",
+					OnSkip: "auth_assert",
+				},
+				OnSuccess: "auth_assert",
+			},
+			{
+				ID:   "auth_assert",
+				Type: "TASK_EXECUTION",
+				Executor: &ExecutorDefinition{
+					Name: "AuthAssertExecutor",
 				},
 				OnSuccess: "END",
 			},
@@ -204,7 +220,7 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_Success() {
 				suite.NotEmpty(response.Handle)
 				suite.Equal(conditionalAuthFlow.FlowType, response.FlowType)
 				suite.Equal(1, response.ActiveVersion)
-				suite.Len(response.Nodes, 4)
+				suite.Len(response.Nodes, 5)
 				suite.trackFlow(response.ID)
 			},
 		},
@@ -269,6 +285,24 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_WithLayout() {
 				Executor: &ExecutorDefinition{
 					Name: "CredentialsAuthExecutor",
 				},
+				OnSuccess: "auth_assert",
+			},
+			{
+				ID:   "auth_assert",
+				Type: "TASK_EXECUTION",
+				Layout: &NodeLayout{
+					Size: &NodeSize{
+						Width:  200,
+						Height: 120,
+					},
+					Position: &NodePosition{
+						X: 550,
+						Y: 50,
+					},
+				},
+				Executor: &ExecutorDefinition{
+					Name: "AuthAssertExecutor",
+				},
 				OnSuccess: "END",
 			},
 			{
@@ -280,7 +314,7 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_WithLayout() {
 						Height: 80,
 					},
 					Position: &NodePosition{
-						X: 550,
+						X: 800,
 						Y: 50,
 					},
 				},
@@ -295,7 +329,7 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_WithLayout() {
 	// Verify layout is preserved in the response
 	suite.NotEmpty(response.ID)
 	suite.Equal(flowWithLayout.Name, response.Name)
-	suite.Len(response.Nodes, 3)
+	suite.Len(response.Nodes, 4)
 
 	// Verify START node layout
 	startNode := response.Nodes[0]
@@ -320,19 +354,19 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_WithLayout() {
 	suite.Equal(50.0, authNode.Layout.Position.Y)
 
 	// Verify END node layout
-	endNode := response.Nodes[2]
+	endNode := response.Nodes[3]
 	suite.Equal("END", endNode.ID)
 	suite.NotNil(endNode.Layout)
 	suite.NotNil(endNode.Layout.Size)
 	suite.Equal(180.0, endNode.Layout.Size.Width)
 	suite.Equal(80.0, endNode.Layout.Size.Height)
 	suite.NotNil(endNode.Layout.Position)
-	suite.Equal(550.0, endNode.Layout.Position.X)
+	suite.Equal(800.0, endNode.Layout.Position.X)
 	suite.Equal(50.0, endNode.Layout.Position.Y)
 
 	// Retrieve the flow by ID and verify layout is persisted
 	retrievedFlow := suite.getFlow(response.ID)
-	suite.Len(retrievedFlow.Nodes, 3)
+	suite.Len(retrievedFlow.Nodes, 4)
 
 	// Verify layout is preserved after retrieval
 	suite.NotNil(retrievedFlow.Nodes[0].Layout)
@@ -626,6 +660,14 @@ func (suite *FlowMgtAPITestSuite) TestUpdateFlow_Success() {
 				Executor: &ExecutorDefinition{
 					Name: "CredentialsAuthExecutor",
 				},
+				OnSuccess: "auth_assert",
+			},
+			{
+				ID:   "auth_assert",
+				Type: "TASK_EXECUTION",
+				Executor: &ExecutorDefinition{
+					Name: "AuthAssertExecutor",
+				},
 				OnSuccess: "END",
 			},
 			{
@@ -652,7 +694,7 @@ func (suite *FlowMgtAPITestSuite) TestUpdateFlow_ChangeFlowType() {
 		Name:     "Updated Flow",
 		Handle:   createdFlow.Handle,
 		FlowType: "REGISTRATION",
-		Nodes:    testAuthFlow.Nodes,
+		Nodes:    testRegistrationFlow.Nodes,
 	}
 
 	suite.updateFlowExpectError(createdFlow.ID, updatedFlow, http.StatusBadRequest, "FLM-1012")

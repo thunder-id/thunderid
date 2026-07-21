@@ -193,8 +193,14 @@ func isZeroValue(v reflect.Value) bool {
 func WriteJSONError(ctx context.Context, w http.ResponseWriter, code, desc string, statusCode int,
 	respHeaders []map[string]string) {
 	logger := log.GetLogger()
-	logger.Error(ctx, "Error in HTTP response",
-		log.String("error", code), log.String("description", desc))
+	// Log 5xx as errors (server faults) and 4xx as debug (client errors).
+	if statusCode >= http.StatusInternalServerError {
+		logger.Error(ctx, "Error in HTTP response",
+			log.String("error", code), log.String("description", desc))
+	} else {
+		logger.Debug(ctx, "Error in HTTP response",
+			log.String("error", code), log.String("description", desc))
+	}
 
 	// Set the response headers.
 	for _, header := range respHeaders {

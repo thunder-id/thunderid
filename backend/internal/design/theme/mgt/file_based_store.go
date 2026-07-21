@@ -136,12 +136,6 @@ func (f *themeFileBasedStore) UpdateTheme(id string, theme UpdateThemeRequest) e
 	return errors.New("updateTheme is not supported in file-based store")
 }
 
-// GetApplicationsCountByThemeID implements themeMgtStoreInterface.
-func (f *themeFileBasedStore) GetApplicationsCountByThemeID(id string) (int, error) {
-	// In declarative mode, we don't track application references in the file-based store
-	return 0, nil
-}
-
 // IsThemeDeclarative checks if a theme is immutable (in file-based store, all themes are immutable).
 func (f *themeFileBasedStore) IsThemeDeclarative(id string) bool {
 	return true

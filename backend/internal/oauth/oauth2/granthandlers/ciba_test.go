@@ -38,6 +38,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/cibamock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
 
 type CIBAGrantHandlerTestSuite struct {
@@ -46,6 +47,7 @@ type CIBAGrantHandlerTestSuite struct {
 	mockCIBAService      *cibamock.CIBAServiceInterfaceMock
 	mockTokenBuilder     *tokenservicemock.TokenBuilderInterfaceMock
 	mockAttrCacheService *attributecachemock.AttributeCacheServiceInterfaceMock
+	mockResource         *resourcemock.ResourceServiceInterfaceMock
 	oauthApp             *providers.OAuthClient
 	tokenReq             *model.TokenRequest
 }
@@ -58,8 +60,9 @@ func (suite *CIBAGrantHandlerTestSuite) SetupTest() {
 	suite.mockCIBAService = cibamock.NewCIBAServiceInterfaceMock(suite.T())
 	suite.mockTokenBuilder = tokenservicemock.NewTokenBuilderInterfaceMock(suite.T())
 	suite.mockAttrCacheService = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
+	suite.mockResource = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	suite.handler = newCIBAGrantHandler(suite.mockCIBAService, suite.mockTokenBuilder,
-		suite.mockAttrCacheService)
+		suite.mockAttrCacheService, suite.mockResource)
 	suite.oauthApp = &providers.OAuthClient{ClientID: "client-1"}
 	suite.tokenReq = &model.TokenRequest{
 		GrantType: string(providers.GrantTypeCIBA),
@@ -77,6 +80,25 @@ func (suite *CIBAGrantHandlerTestSuite) pendingRecord() *ciba.CIBAAuthRequest {
 		State:            ciba.CIBAStatePending,
 		ExpiryTime:       time.Now().Add(2 * time.Minute),
 	}
+}
+
+const testCIBAResourceURL = "https://api.example.com"
+
+// boundAuthenticatedRecord returns an authenticated record bound to testCIBAResourceURL.
+func (suite *CIBAGrantHandlerTestSuite) boundAuthenticatedRecord(scopes string) *ciba.CIBAAuthRequest {
+	record := suite.pendingRecord()
+	record.State = ciba.CIBAStateAuthenticated
+	record.AuthorizedScopes = scopes
+	record.Resources = []string{testCIBAResourceURL}
+	return record
+}
+
+// expectResourceServer stubs the stored-resource resolution for a bound record, with all permissions valid.
+func (suite *CIBAGrantHandlerTestSuite) expectResourceServer() {
+	suite.mockResource.EXPECT().GetResourceServerByIdentifier(mock.Anything, testCIBAResourceURL).
+		Return(&providers.ResourceServer{ID: "rs-1", Identifier: testCIBAResourceURL}, nil)
+	suite.mockResource.EXPECT().ValidatePermissions(mock.Anything, "rs-1", mock.Anything).
+		Return([]string{}, nil)
 }
 
 func (suite *CIBAGrantHandlerTestSuite) TestValidateGrant_Success() {
@@ -227,10 +249,9 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_IssuesToke
 }
 
 func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_NoOpenIDSkipsIDToken() {
-	record := suite.pendingRecord()
-	record.State = ciba.CIBAStateAuthenticated
-	record.AuthorizedScopes = testScopeRead
+	record := suite.boundAuthenticatedRecord(testScopeRead)
 	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	suite.expectResourceServer()
 	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).Return(
 		&model.TokenDTO{Token: "access-token", TokenType: "Bearer"}, nil)
 	suite.mockCIBAService.EXPECT().MarkConsumed(mock.Anything, "auth-req-1").Return(true, nil)
@@ -243,10 +264,9 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_NoOpenIDSk
 }
 
 func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_OneTimeUseRace() {
-	record := suite.pendingRecord()
-	record.State = ciba.CIBAStateAuthenticated
-	record.AuthorizedScopes = testScopeRead
+	record := suite.boundAuthenticatedRecord(testScopeRead)
 	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	suite.expectResourceServer()
 	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).Return(
 		&model.TokenDTO{Token: "access-token", TokenType: "Bearer"}, nil)
 	suite.mockCIBAService.EXPECT().MarkConsumed(mock.Anything, "auth-req-1").Return(false, nil)
@@ -272,10 +292,9 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_AttributeC
 }
 
 func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_AccessTokenError() {
-	record := suite.pendingRecord()
-	record.State = ciba.CIBAStateAuthenticated
-	record.AuthorizedScopes = testScopeRead
+	record := suite.boundAuthenticatedRecord(testScopeRead)
 	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	suite.expectResourceServer()
 	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).Return(nil,
 		errors.New("build error"))
 
@@ -301,10 +320,9 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_IDTokenErr
 }
 
 func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_MarkConsumedError() {
-	record := suite.pendingRecord()
-	record.State = ciba.CIBAStateAuthenticated
-	record.AuthorizedScopes = testScopeRead
+	record := suite.boundAuthenticatedRecord(testScopeRead)
 	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	suite.expectResourceServer()
 	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).Return(
 		&model.TokenDTO{Token: "access-token"}, nil)
 	suite.mockCIBAService.EXPECT().MarkConsumed(mock.Anything, "auth-req-1").Return(false,
@@ -344,4 +362,146 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Pending_UpdateLastPolled
 	suite.Nil(resp)
 	suite.NotNil(errResp)
 	suite.Equal(constants.ErrorAuthorizationPending, errResp.Error)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_BoundTokenHasResourceAudience() {
+	record := suite.boundAuthenticatedRecord(testScopeRead)
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	suite.expectResourceServer()
+	var capturedCtx *tokenservice.AccessTokenBuildContext
+	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			capturedCtx = ctx
+			return true
+		})).Return(&model.TokenDTO{Token: "access-token", TokenType: "Bearer"}, nil)
+	suite.mockCIBAService.EXPECT().MarkConsumed(mock.Anything, "auth-req-1").Return(true, nil)
+
+	resp, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenReq, suite.oauthApp)
+	suite.Nil(errResp)
+	suite.NotNil(resp)
+	suite.Equal([]string{testCIBAResourceURL}, capturedCtx.Audiences)
+	suite.Equal([]string{"read"}, capturedCtx.Scopes)
+	suite.Equal([]string{testCIBAResourceURL}, resp.AccessToken.OriginalAudiences)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_UnboundOIDCOnlyKeepsClientAudience() {
+	record := suite.pendingRecord()
+	record.State = ciba.CIBAStateAuthenticated
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	var capturedCtx *tokenservice.AccessTokenBuildContext
+	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			capturedCtx = ctx
+			return true
+		})).Return(&model.TokenDTO{Token: "access-token", TokenType: "Bearer"}, nil)
+	suite.mockTokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.Anything).Return(
+		&model.TokenDTO{Token: "id-token"}, nil)
+	suite.mockCIBAService.EXPECT().MarkConsumed(mock.Anything, "auth-req-1").Return(true, nil)
+
+	resp, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenReq, suite.oauthApp)
+	suite.Nil(errResp)
+	suite.NotNil(resp)
+	suite.Equal([]string{"client-1"}, capturedCtx.Audiences)
+	suite.Equal([]string{"client-1"}, resp.AccessToken.OriginalAudiences)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_UnboundWithPermissionScopesRejected() {
+	record := suite.pendingRecord()
+	record.State = ciba.CIBAStateAuthenticated
+	record.AuthorizedScopes = "openid read"
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+
+	resp, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenReq, suite.oauthApp)
+	suite.Nil(resp)
+	suite.NotNil(errResp)
+	suite.Equal(constants.ErrorInvalidGrant, errResp.Error)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_PermissionScopesOutsideRSOmitted() {
+	record := suite.boundAuthenticatedRecord("read write")
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	suite.mockResource.EXPECT().GetResourceServerByIdentifier(mock.Anything, testCIBAResourceURL).
+		Return(&providers.ResourceServer{ID: "rs-1", Identifier: testCIBAResourceURL}, nil)
+	suite.mockResource.EXPECT().ValidatePermissions(mock.Anything, "rs-1", mock.Anything).
+		Return([]string{"write"}, nil)
+	var capturedCtx *tokenservice.AccessTokenBuildContext
+	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			capturedCtx = ctx
+			return true
+		})).Return(&model.TokenDTO{Token: "access-token"}, nil)
+	suite.mockCIBAService.EXPECT().MarkConsumed(mock.Anything, "auth-req-1").Return(true, nil)
+
+	resp, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenReq, suite.oauthApp)
+	suite.Nil(errResp)
+	suite.NotNil(resp)
+	suite.Equal([]string{"read"}, capturedCtx.Scopes)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_StoredResourceLookupFails() {
+	record := suite.boundAuthenticatedRecord(testScopeRead)
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	suite.mockResource.EXPECT().GetResourceServerByIdentifier(mock.Anything, testCIBAResourceURL).
+		Return(nil, &tidcommon.ServiceError{Code: "RS-5000", Type: tidcommon.ServerErrorType})
+
+	resp, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenReq, suite.oauthApp)
+	suite.Nil(resp)
+	suite.NotNil(errResp)
+	suite.Equal(constants.ErrorServerError, errResp.Error)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestValidateGrant_MatchingPollingResource() {
+	record := suite.pendingRecord()
+	record.Resources = []string{testCIBAResourceURL}
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	req := &model.TokenRequest{GrantType: string(providers.GrantTypeCIBA), ClientID: "client-1",
+		AuthReqID: "auth-req-1", Resources: []string{testCIBAResourceURL}}
+
+	suite.Nil(suite.handler.ValidateGrant(context.Background(), req, suite.oauthApp))
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestValidateGrant_MismatchedPollingResource() {
+	record := suite.pendingRecord()
+	record.Resources = []string{testCIBAResourceURL}
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	req := &model.TokenRequest{GrantType: string(providers.GrantTypeCIBA), ClientID: "client-1",
+		AuthReqID: "auth-req-1", Resources: []string{"https://other.example.com"}}
+
+	errResp := suite.handler.ValidateGrant(context.Background(), req, suite.oauthApp)
+	suite.NotNil(errResp)
+	suite.Equal(constants.ErrorInvalidTarget, errResp.Error)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestValidateGrant_PollingResourceOnUnbound() {
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(suite.pendingRecord(), nil)
+	req := &model.TokenRequest{GrantType: string(providers.GrantTypeCIBA), ClientID: "client-1",
+		AuthReqID: "auth-req-1", Resources: []string{testCIBAResourceURL}}
+
+	errResp := suite.handler.ValidateGrant(context.Background(), req, suite.oauthApp)
+	suite.NotNil(errResp)
+	suite.Equal(constants.ErrorInvalidTarget, errResp.Error)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestValidateGrant_DuplicatePollingResource() {
+	record := suite.pendingRecord()
+	record.Resources = []string{testCIBAResourceURL}
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	req := &model.TokenRequest{GrantType: string(providers.GrantTypeCIBA), ClientID: "client-1",
+		AuthReqID: "auth-req-1", Resources: []string{testCIBAResourceURL, testCIBAResourceURL}}
+
+	errResp := suite.handler.ValidateGrant(context.Background(), req, suite.oauthApp)
+	suite.NotNil(errResp)
+	suite.Equal(constants.ErrorInvalidTarget, errResp.Error)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestValidateGrant_InvalidPollingResourceURI() {
+	record := suite.pendingRecord()
+	record.Resources = []string{testCIBAResourceURL}
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	req := &model.TokenRequest{GrantType: string(providers.GrantTypeCIBA), ClientID: "client-1",
+		AuthReqID: "auth-req-1", Resources: []string{"/relative-path"}}
+
+	errResp := suite.handler.ValidateGrant(context.Background(), req, suite.oauthApp)
+	suite.NotNil(errResp)
+	suite.Equal(constants.ErrorInvalidTarget, errResp.Error)
 }

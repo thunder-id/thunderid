@@ -24,12 +24,13 @@ BINARY_NAME="${PRODUCT_NAME_LOWERCASE}"
 BACKEND_PORT=${BACKEND_PORT:-8090}
 DEBUG_PORT=${DEBUG_PORT:-2345}
 DEBUG_MODE=${DEBUG_MODE:-false}
-WITH_CONSENT=${WITH_CONSENT:-true}
 RESOURCES_FILE=""
 ENV_FILE=""
 BOOTSTRAP_MODE=false
 BOOTSTRAP_AND_SERVE=false
 BOOTSTRAP_EXTRA_ARGS=()
+ADMIN_USERNAME_FLAG_SET=false
+ADMIN_PASSWORD_FLAG_SET=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -45,10 +46,6 @@ while [[ $# -gt 0 ]]; do
         --port)
             BACKEND_PORT="$2"
             shift 2
-            ;;
-        --without-consent)
-            WITH_CONSENT=false
-            shift
             ;;
         --bootstrap)
             # Run the in-process bootstrap one-shot (create default resources) instead
@@ -70,6 +67,24 @@ while [[ $# -gt 0 ]]; do
             BOOTSTRAP_EXTRA_ARGS+=(--console-redirect-uris "$2")
             shift 2
             ;;
+        --admin-username)
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                echo "Error: --admin-username requires a value"
+                exit 1
+            fi
+            BOOTSTRAP_EXTRA_ARGS+=(--admin-username "$2")
+            ADMIN_USERNAME_FLAG_SET=true
+            shift 2
+            ;;
+        --admin-password)
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                echo "Error: --admin-password requires a value"
+                exit 1
+            fi
+            BOOTSTRAP_EXTRA_ARGS+=(--admin-password "$2")
+            ADMIN_PASSWORD_FLAG_SET=true
+            shift 2
+            ;;
         --env)
             ENV_FILE="$2"
             shift 2
@@ -87,9 +102,12 @@ while [[ $# -gt 0 ]]; do
             echo "  --debug              Enable debug mode with remote debugging"
             echo "  --port PORT          Set application port (default: 8090)"
             echo "  --debug-port PORT    Set debug port (default: 2345)"
-            echo "  --without-consent    Disable the bundled consent server"
             echo "  --bootstrap          Create default resources in-process, then exit (used by setup.sh)"
             echo "  --bootstrap-and-serve Create default resources in-process, then start the server"
+            echo "  --admin-username VALUE  Username for the default admin user (--bootstrap-and-serve only)"
+            echo "                          Optional; falls back to ADMIN_USERNAME env var, then defaults to 'admin'"
+            echo "  --admin-password VALUE  Password for the default admin user (--bootstrap-and-serve only)"
+            echo "                          Falls back to ADMIN_PASSWORD env var; bootstrap fails if neither is set"
             echo "  --help               Show this help message"
             echo ""
             echo "First-Time Setup:"
@@ -102,7 +120,7 @@ while [[ $# -gt 0 ]]; do
             echo "Examples:"
             echo "  $0                                    Start server normally"
             echo "  $0 --debug                            Start in debug mode"
-            echo "  $0 --port 9090                        Start on custom port"
+            echo "  $0 --port 9095                        Start on custom port"
             echo "  $0 cloud.yml --env my.env             Start with exported resources and env"
             exit 0
             ;;
@@ -123,6 +141,14 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# --admin-username/--admin-password only make sense when bootstrapping happens in this
+# invocation, and specifically only for --bootstrap-and-serve — --bootstrap is the
+# seed-only mode setup.sh drives internally via environment variables, not flags.
+if [[ "$ADMIN_USERNAME_FLAG_SET" == "true" || "$ADMIN_PASSWORD_FLAG_SET" == "true" ]] && [ "$BOOTSTRAP_AND_SERVE" != "true" ]; then
+    echo "Error: --admin-username/--admin-password are only valid together with --bootstrap-and-serve"
+    exit 1
+fi
 
 # Resolve relative paths to absolute before the working directory potentially changes.
 if [[ -n "$RESOURCES_FILE" && "$RESOURCES_FILE" != /* ]]; then
@@ -221,56 +247,18 @@ if [[ -n "$ENV_FILE" ]]; then
 fi
 
 # Cleanup function
-CONSENT_PID=""
 SERVER_PID=""
 cleanup() {
     echo -e "\n🛑 Stopping server..."
     if [ -n "$SERVER_PID" ]; then
         kill $SERVER_PID 2>/dev/null || true
     fi
-    if [ -n "$CONSENT_PID" ]; then
-        pkill -P $CONSENT_PID 2>/dev/null || true
-        kill $CONSENT_PID 2>/dev/null || true
-    fi
 }
 trap cleanup SIGINT SIGTERM EXIT
 
-# Start consent server if enabled
-CONSENT_SERVER_PORT="${CONSENT_SERVER_PORT:-9090}"
-if [ "$WITH_CONSENT" = "true" ]; then
-    CONSENT_SCRIPT="$(dirname "$0")/consent/start.sh"
-    if [ ! -x "$CONSENT_SCRIPT" ]; then
-        echo "Error: Consent server is enabled but consent/start.sh is missing or not executable"
-        exit 1
-    fi
-    echo "Starting Consent Server..."
-    (cd "$(dirname "$0")/consent" && ./start.sh) &
-    CONSENT_PID=$!
-    CONSENT_TIMEOUT=30
-    CONSENT_ELAPSED=0
-    while [ $CONSENT_ELAPSED -lt $CONSENT_TIMEOUT ]; do
-        if ! kill -0 "$CONSENT_PID" 2>/dev/null; then
-            echo "Error: Consent server process exited unexpectedly"
-            exit 1
-        fi
-        if curl -s -f "http://localhost:${CONSENT_SERVER_PORT}/health/readiness" > /dev/null 2>&1; then
-            echo "Consent server is ready"
-            break
-        fi
-        sleep 1
-        CONSENT_ELAPSED=$((CONSENT_ELAPSED + 1))
-    done
-    if [ $CONSENT_ELAPSED -ge $CONSENT_TIMEOUT ]; then
-        echo "Error: Consent server failed to become ready within ${CONSENT_TIMEOUT}s"
-        exit 1
-    fi
-fi
-
 # Bootstrap: create the default resources in-process. In --bootstrap mode this is the
 # only action (exit afterwards). In --bootstrap-and-serve mode it runs first and then
-# the long-running server is started below. The consent server started above stays up
-# for the bootstrap (entity-type creation depends on it) — and, in bootstrap-and-serve
-# mode, for the server too.
+# the long-running server is started below.
 if [ "$BOOTSTRAP_MODE" = "true" ] || [ "$BOOTSTRAP_AND_SERVE" = "true" ]; then
     echo "⚡ Running ${PRODUCT_NAME} bootstrap ..."
     if BACKEND_PORT=$BACKEND_PORT "./${BINARY_NAME}" bootstrap "${BOOTSTRAP_EXTRA_ARGS[@]}"; then

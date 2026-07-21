@@ -177,6 +177,146 @@ func (_c *ServerConfigServiceMock_GetMergedConfig_Call) RunAndReturn(run func(ct
 	return _c
 }
 
+// GetReadOnlyConfig provides a mock function for the type ServerConfigServiceMock
+func (_mock *ServerConfigServiceMock) GetReadOnlyConfig(ctx context.Context, name string) (any, *common.ServiceError) {
+	ret := _mock.Called(ctx, name)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetReadOnlyConfig")
+	}
+
+	var r0 any
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (any, *common.ServiceError)); ok {
+		return returnFunc(ctx, name)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) any); ok {
+		r0 = returnFunc(ctx, name)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(any)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, name)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ServerConfigServiceMock_GetReadOnlyConfig_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetReadOnlyConfig'
+type ServerConfigServiceMock_GetReadOnlyConfig_Call struct {
+	*mock.Call
+}
+
+// GetReadOnlyConfig is a helper method to define mock.On call
+//   - ctx context.Context
+//   - name string
+func (_e *ServerConfigServiceMock_Expecter) GetReadOnlyConfig(ctx interface{}, name interface{}) *ServerConfigServiceMock_GetReadOnlyConfig_Call {
+	return &ServerConfigServiceMock_GetReadOnlyConfig_Call{Call: _e.mock.On("GetReadOnlyConfig", ctx, name)}
+}
+
+func (_c *ServerConfigServiceMock_GetReadOnlyConfig_Call) Run(run func(ctx context.Context, name string)) *ServerConfigServiceMock_GetReadOnlyConfig_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ServerConfigServiceMock_GetReadOnlyConfig_Call) Return(v any, serviceError *common.ServiceError) *ServerConfigServiceMock_GetReadOnlyConfig_Call {
+	_c.Call.Return(v, serviceError)
+	return _c
+}
+
+func (_c *ServerConfigServiceMock_GetReadOnlyConfig_Call) RunAndReturn(run func(ctx context.Context, name string) (any, *common.ServiceError)) *ServerConfigServiceMock_GetReadOnlyConfig_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetWritableConfig provides a mock function for the type ServerConfigServiceMock
+func (_mock *ServerConfigServiceMock) GetWritableConfig(ctx context.Context, name string) (any, *common.ServiceError) {
+	ret := _mock.Called(ctx, name)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetWritableConfig")
+	}
+
+	var r0 any
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (any, *common.ServiceError)); ok {
+		return returnFunc(ctx, name)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) any); ok {
+		r0 = returnFunc(ctx, name)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(any)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, name)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ServerConfigServiceMock_GetWritableConfig_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetWritableConfig'
+type ServerConfigServiceMock_GetWritableConfig_Call struct {
+	*mock.Call
+}
+
+// GetWritableConfig is a helper method to define mock.On call
+//   - ctx context.Context
+//   - name string
+func (_e *ServerConfigServiceMock_Expecter) GetWritableConfig(ctx interface{}, name interface{}) *ServerConfigServiceMock_GetWritableConfig_Call {
+	return &ServerConfigServiceMock_GetWritableConfig_Call{Call: _e.mock.On("GetWritableConfig", ctx, name)}
+}
+
+func (_c *ServerConfigServiceMock_GetWritableConfig_Call) Run(run func(ctx context.Context, name string)) *ServerConfigServiceMock_GetWritableConfig_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ServerConfigServiceMock_GetWritableConfig_Call) Return(v any, serviceError *common.ServiceError) *ServerConfigServiceMock_GetWritableConfig_Call {
+	_c.Call.Return(v, serviceError)
+	return _c
+}
+
+func (_c *ServerConfigServiceMock_GetWritableConfig_Call) RunAndReturn(run func(ctx context.Context, name string) (any, *common.ServiceError)) *ServerConfigServiceMock_GetWritableConfig_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListConfigNames provides a mock function for the type ServerConfigServiceMock
 func (_mock *ServerConfigServiceMock) ListConfigNames(ctx context.Context) ([]ConfigName, *common.ServiceError) {
 	ret := _mock.Called(ctx)

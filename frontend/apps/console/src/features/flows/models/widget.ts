@@ -42,12 +42,16 @@ export type WidgetCategories = (typeof WidgetCategories)[keyof typeof WidgetCate
 export const WidgetTypes = {
   IdentifierPassword: 'IDENTIFIER_PASSWORD',
   SMSOTP: 'SMS_OTP',
+  EmailOTP: 'EMAIL_OTP',
   GoogleFederation: 'GOOGLE_FEDERATION',
   GithubFederation: 'GITHUB_FEDERATION',
   EUDIWallet: 'EUDI_WALLET',
   PasskeyAuthentication: 'PASSKEY_AUTHENTICATION',
   Provisioning: 'PROVISIONING',
+  MagicLink: 'MAGIC_LINK',
   SelfSignUpLink: 'SELF_SIGN_UP_LINK',
+  SignInLink: 'SIGN_IN_LINK',
+  RecoveryLink: 'RECOVERY_LINK',
 } as const;
 
 export type WidgetTypes = (typeof WidgetTypes)[keyof typeof WidgetTypes];

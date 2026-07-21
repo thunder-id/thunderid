@@ -16,15 +16,12 @@
  * under the License.
  */
 
+// Package consent provides the consent persistence and service layer.
 package consent
 
-import (
-	httpservice "github.com/thunder-id/thunderid/internal/system/http"
-)
-
-// Initialize initializes the consent service and returns an instance of ConsentServiceInterface.
-func Initialize() ConsentServiceInterface {
-	return newConsentService(
-		newDefaultClient(httpservice.NewHTTPClient()),
-	)
+// Initialize constructs the consent service.
+func Initialize(
+	inboundClientProvider InboundClientProvider,
+) (ConsentServiceInterface, error) {
+	return newConsentService(inboundClientProvider)
 }

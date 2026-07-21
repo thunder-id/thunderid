@@ -27,7 +27,7 @@ export const ALLOWED_RESOURCE_TYPES = [
   'theme',
   'layout',
   'translation',
-  'identity_provider',
+  'connection',
   'organization_unit',
   'user_type',
   'resource_server',

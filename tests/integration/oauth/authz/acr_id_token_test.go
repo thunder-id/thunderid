@@ -24,14 +24,15 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
-	acrE2EClientID     = "acr_e2e_test_client"
-	acrE2EClientSecret = "acr_e2e_test_secret"
-	acrE2ERedirectURI  = "https://localhost:3000/acr-e2e-callback"
+	acrE2EClientID       = "acr_e2e_test_client"
+	acrE2EClientSecret   = "acr_e2e_test_secret"
+	acrE2ERedirectURI    = "https://localhost:3000/acr-e2e-callback"
+	acrE2EResourceServer = "https://acr-e2e.example.com"
 )
 
 var acrE2EFlow = testutils.Flow{
@@ -169,12 +170,13 @@ var acrE2ETestUser = testutils.User{
 
 type AcrIDTokenTestSuite struct {
 	suite.Suite
-	client        *http.Client
-	applicationID string
-	authFlowID    string
-	ouID          string
-	userSchemaID  string
-	userIDs       []string
+	client           *http.Client
+	applicationID    string
+	authFlowID       string
+	ouID             string
+	userSchemaID     string
+	resourceServerID string
+	userIDs          []string
 }
 
 func TestAcrIDTokenTestSuite(t *testing.T) {
@@ -203,6 +205,15 @@ func (ts *AcrIDTokenTestSuite) SetupSuite() {
 	flowID, err := testutils.CreateFlow(acrE2EFlow)
 	ts.Require().NoError(err, "failed to create ACR E2E flow")
 	ts.authFlowID = flowID
+
+	resourceServerID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:        "ACR E2E Resource Server",
+		Description: "Resource server for ACR ID token integration tests",
+		Identifier:  acrE2EResourceServer,
+		OUID:        ts.ouID,
+	}, []testutils.Action{})
+	ts.Require().NoError(err, "failed to create ACR E2E resource server")
+	ts.resourceServerID = resourceServerID
 
 	app := testutils.Application{
 		Name:                      "ACR E2E ID Token Test App",
@@ -252,6 +263,11 @@ func (ts *AcrIDTokenTestSuite) TearDownSuite() {
 			ts.T().Logf("failed to delete flow: %v", err)
 		}
 	}
+	if ts.resourceServerID != "" {
+		if err := testutils.DeleteResourceServer(ts.resourceServerID); err != nil {
+			ts.T().Logf("failed to delete resource server: %v", err)
+		}
+	}
 	if ts.userSchemaID != "" {
 		if err := testutils.DeleteUserType(ts.userSchemaID); err != nil {
 			ts.T().Logf("failed to delete user schema: %v", err)
@@ -299,8 +315,9 @@ func (ts *AcrIDTokenTestSuite) TestAcrClaimInIDToken() {
 	ts.Require().NoError(err, "authorization code must be in the redirect")
 	ts.Require().NotEmpty(code)
 
-	tokenResult, err := testutils.RequestToken(
-		acrE2EClientID, acrE2EClientSecret, code, acrE2ERedirectURI, "authorization_code")
+	tokenResult, err := testutils.RequestTokenWithResource(
+		acrE2EClientID, acrE2EClientSecret, code, acrE2ERedirectURI, "authorization_code",
+		acrE2EResourceServer)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, tokenResult.StatusCode, "token exchange should succeed")
 	ts.Require().NotNil(tokenResult.Token)
@@ -351,8 +368,9 @@ func (ts *AcrIDTokenTestSuite) TestAcrClaimInIDToken_WithManualSelection() {
 	code, err := testutils.ExtractAuthorizationCode(authzResp.RedirectURI)
 	ts.Require().NoError(err)
 
-	tokenResult, err := testutils.RequestToken(
-		acrE2EClientID, acrE2EClientSecret, code, acrE2ERedirectURI, "authorization_code")
+	tokenResult, err := testutils.RequestTokenWithResource(
+		acrE2EClientID, acrE2EClientSecret, code, acrE2ERedirectURI, "authorization_code",
+		acrE2EResourceServer)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, tokenResult.StatusCode)
 	ts.Require().NotNil(tokenResult.Token)
@@ -402,8 +420,9 @@ func (ts *AcrIDTokenTestSuite) TestAcrClaimPresentWithAcrValues() {
 	code, err := testutils.ExtractAuthorizationCode(authzResp.RedirectURI)
 	ts.Require().NoError(err)
 
-	tokenResult, err := testutils.RequestToken(
-		acrE2EClientID, acrE2EClientSecret, code, acrE2ERedirectURI, "authorization_code")
+	tokenResult, err := testutils.RequestTokenWithResource(
+		acrE2EClientID, acrE2EClientSecret, code, acrE2ERedirectURI, "authorization_code",
+		acrE2EResourceServer)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, tokenResult.StatusCode)
 	ts.Require().NotNil(tokenResult.Token)

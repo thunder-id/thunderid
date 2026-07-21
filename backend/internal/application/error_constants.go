@@ -419,34 +419,6 @@ var (
 			DefaultValue: "The application is declarative and cannot be modified or deleted",
 		},
 	}
-	// ErrorConsentSyncFailed is the error returned when an application's attributes changes failed to sync
-	// with the consent service.
-	ErrorConsentSyncFailed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "APP-1031",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.applicationservice.consent_synchronization_failed",
-			DefaultValue: "Consent synchronization failed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.applicationservice.consent_synchronization_failed_description",
-			DefaultValue: "Failed to synchronize consent configurations for the application",
-		},
-	}
-	// ErrorConsentServiceNotEnabled is the error returned when enabling consent for application while
-	// the consent service is not enabled.
-	ErrorConsentServiceNotEnabled = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "APP-1032",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.applicationservice.consent_service_not_enabled",
-			DefaultValue: "Consent service not enabled",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.applicationservice.consent_service_not_enabled_description",
-			DefaultValue: "Cannot enable consent for the application as the consent service is not enabled",
-		},
-	}
 	// ErrorInvalidAcrValues is the error returned when an unrecognized ACR value is provided in acrValues.
 	ErrorInvalidAcrValues = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -514,6 +486,21 @@ var (
 			DefaultValue: "Single-page applications (public clients) must use the authorization_code grant type " +
 				"with PKCE for redirect-based flows. Direct (native) flow execution is not supported for " +
 				"browser-based single-page applications.",
+		},
+	}
+	// ErrorAmbiguousAttestationConfig is returned when an application's attestation configuration
+	// sets more than one platform, which the flow-initiation verifier cannot unambiguously dispatch.
+	ErrorAmbiguousAttestationConfig = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1038",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.ambiguous_attestation_config",
+			DefaultValue: "Attestation configuration must set exactly one platform",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.applicationservice.ambiguous_attestation_config_description",
+			DefaultValue: "An application's attestation configuration may configure only one platform " +
+				"(android or apple) at a time",
 		},
 	}
 )

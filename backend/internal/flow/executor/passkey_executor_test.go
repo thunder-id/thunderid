@@ -73,12 +73,12 @@ func (suite *PasskeyAuthExecutorTestSuite) SetupTest() {
 	// Create mock identifying executor
 	identifyingMock := createMockIdentifyingExecutor(suite.T())
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameIdentifying, providers.ExecutorTypeUtility,
-		mock.Anything, mock.Anything).Return(identifyingMock).Maybe()
+		mock.Anything, mock.Anything, mock.Anything).Return(identifyingMock).Maybe()
 
 	// Create mock passkey executor base
 	mockExec := createMockPasskeyAuthExecutor(suite.T())
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNamePasskeyAuth, providers.ExecutorTypeAuthentication,
-		mock.Anything, mock.Anything).Return(mockExec)
+		mock.Anything, mock.Anything, mock.Anything).Return(mockExec)
 
 	suite.executor = newPasskeyAuthExecutor(suite.mockFlowFactory,
 		suite.mockPasskeyService, suite.mockAuthnProvider, suite.mockEntityProvider)

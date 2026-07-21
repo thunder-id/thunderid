@@ -114,26 +114,29 @@ describe('UserDeleteDialog', () => {
       expect(screen.getByRole('button', {name: 'Delete'})).toBeDisabled();
     });
 
-    it('should list the agents that own the user', () => {
+    it('should list blocking agents and disable delete when the user owns agents', () => {
       const usages: UserUsagesResponse = {
         totalResults: 2,
         count: 2,
         summary: {agent: 2},
         usages: [
-          {resourceType: 'agent', id: 'agent-1', displayName: 'Support Agent', behaviorOnDelete: 'fallback'},
-          {resourceType: 'agent', id: 'agent-2', displayName: 'Billing Agent', behaviorOnDelete: 'fallback'},
+          {resourceType: 'agent', id: 'agent-1', displayName: 'Support Agent', behaviorOnDelete: 'restrict'},
+          {resourceType: 'agent', id: 'agent-2', displayName: 'Billing Agent', behaviorOnDelete: 'restrict'},
         ],
       };
       getUsagesMock.mockReturnValue({data: usages, isLoading: false});
 
       render(<UserDeleteDialog open userId="user-123" onClose={mockOnClose} />);
 
-      expect(screen.getByText('The following agents list this user as their owner:')).toBeInTheDocument();
+      expect(
+        screen.getByText('This user cannot be deleted until the following agents are reassigned or removed:'),
+      ).toBeInTheDocument();
       expect(screen.getByText('Support Agent')).toBeInTheDocument();
       expect(screen.getByText('Billing Agent')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Delete'})).toBeDisabled();
     });
 
-    it('should show a "+N more" row when usages exceed the visible limit', () => {
+    it('should show a "+N more" row when blocking usages exceed the visible limit', () => {
       const usages: UserUsagesResponse = {
         totalResults: 7,
         count: 7,
@@ -142,7 +145,7 @@ describe('UserDeleteDialog', () => {
           resourceType: 'agent',
           id: `agent-${i}`,
           displayName: `Agent ${i}`,
-          behaviorOnDelete: 'fallback' as const,
+          behaviorOnDelete: 'restrict' as const,
         })),
       };
       getUsagesMock.mockReturnValue({data: usages, isLoading: false});

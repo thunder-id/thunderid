@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {AuthenticatorTypes} from '../../connections/models/authenticators';
+import {AuthenticatorTypes} from '@thunderid/configure-connections';
 
 /**
  * Determines which integrations are supported by a given flow

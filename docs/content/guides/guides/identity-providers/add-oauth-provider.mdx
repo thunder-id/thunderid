@@ -1,5 +1,6 @@
 ---
 title: Add an OAuth 2.0 Identity Provider
+docType: guide
 sidebar_position: 5
 persona: iam
 description: Configure a generic OAuth 2.0 identity provider for federated authentication.
@@ -18,24 +19,21 @@ This guide explains how to register a generic OAuth 2.0 identity provider (IdP) 
 
 ## Create the OAuth 2.0 IdP
 
-Send a `POST` request to `/identity-providers` with your OAuth 2.0 provider credentials and endpoints:
+Send a `POST` request to `/connections/oauth` with your OAuth 2.0 provider credentials and endpoints:
 
 ```bash
-curl -kL -X POST https://localhost:8090/identity-providers \
+curl -kL -X POST https://localhost:8090/connections/oauth \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <access-token>' \
   -d '{
     "name": "My OAuth Provider",
     "description": "Custom OAuth 2.0 provider",
-    "type": "OAUTH",
-    "properties": [
-      { "name": "client_id", "value": "<client-id>", "isSecret": false },
-      { "name": "client_secret", "value": "<client-secret>", "isSecret": true },
-      { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false },
-      { "name": "authorization_endpoint", "value": "https://<provider>/oauth/authorize", "isSecret": false },
-      { "name": "token_endpoint", "value": "https://<provider>/oauth/token", "isSecret": false },
-      { "name": "userinfo_endpoint", "value": "https://<provider>/api/userinfo", "isSecret": false }
-    ]
+    "clientId": "<client-id>",
+    "clientSecret": "<client-secret>",
+    "redirectUri": "https://<your-thunderid-host>/gate/callback",
+    "authorizationEndpoint": "https://<provider>/oauth/authorize",
+    "tokenEndpoint": "https://<provider>/oauth/token",
+    "userInfoEndpoint": "https://<provider>/api/userinfo"
   }'
 ```
 
@@ -45,62 +43,57 @@ curl -kL -X POST https://localhost:8090/identity-providers \
 {
   "id": "880e8400-e29b-41d4-a716-446655440003",
   "name": "My OAuth Provider",
-  "type": "OAUTH",
-  "properties": [
-    { "name": "client_id", "value": "<client-id>", "isSecret": false },
-    { "name": "client_secret", "value": "******", "isSecret": true },
-    { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false },
-    { "name": "authorization_endpoint", "value": "https://<provider>/oauth/authorize", "isSecret": false },
-    { "name": "token_endpoint", "value": "https://<provider>/oauth/token", "isSecret": false },
-    { "name": "userinfo_endpoint", "value": "https://<provider>/api/userinfo", "isSecret": false }
-  ]
+  "type": "oauth",
+  "clientId": "<client-id>",
+  "clientSecret": "******",
+  "redirectUri": "https://<your-thunderid-host>/gate/callback",
+  "authorizationEndpoint": "https://<provider>/oauth/authorize",
+  "tokenEndpoint": "https://<provider>/oauth/token",
+  "userInfoEndpoint": "https://<provider>/api/userinfo"
 }
 ```
 
-## Required Properties
+## Required Fields
 
-| Property | Description |
+| Field | Description |
 |----------|-------------|
-| `client_id` | The client ID issued by the OAuth 2.0 provider. |
-| `client_secret` | The client secret issued by the OAuth 2.0 provider. |
-| `redirect_uri` | The callback URL registered in the provider. |
-| `authorization_endpoint` | The provider's authorization endpoint URL. |
-| `token_endpoint` | The provider's token endpoint URL. |
-| `userinfo_endpoint` | The provider's userinfo endpoint URL. <ProductName /> calls this endpoint to fetch the authenticated user's profile. |
+| `clientId` | The client ID issued by the OAuth 2.0 provider. |
+| `clientSecret` | The client secret issued by the OAuth 2.0 provider. |
+| `redirectUri` | The callback URL registered in the provider. |
+| `authorizationEndpoint` | The provider's authorization endpoint URL. |
+| `tokenEndpoint` | The provider's token endpoint URL. |
+| `userInfoEndpoint` | The provider's userinfo endpoint URL. <ProductName /> calls this endpoint to fetch the authenticated user's profile. |
 
-## Optional Properties
+## Optional Fields
 
-| Property | Description |
+| Field | Description |
 |----------|-------------|
-| `scopes` | Space-separated list of OAuth scopes to request. |
-| `logout_endpoint` | The provider's logout endpoint URL. |
+| `scopes` | Array of OAuth scopes to request. |
+| `logoutEndpoint` | The provider's logout endpoint URL. |
 | `prompt` | The `prompt` parameter to send in authorization requests. |
 
-To map this provider's claims to local user attributes, set the top-level `attributeConfiguration` field — see [Attribute Configuration](../add-oidc-provider#attribute-configuration).
+To map this provider's claims to local user attributes, set the top-level `attributeConfiguration` field. See [Attribute Configuration](../add-oidc-provider#attribute-configuration).
 
-Example with optional properties:
+Example with optional fields:
 
 ```bash
-curl -kL -X POST https://localhost:8090/identity-providers \
+curl -kL -X POST https://localhost:8090/connections/oauth \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <access-token>' \
   -d '{
     "name": "My OAuth Provider",
-    "type": "OAUTH",
-    "properties": [
-      { "name": "client_id", "value": "<client-id>", "isSecret": false },
-      { "name": "client_secret", "value": "<client-secret>", "isSecret": true },
-      { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false },
-      { "name": "authorization_endpoint", "value": "https://<provider>/oauth/authorize", "isSecret": false },
-      { "name": "token_endpoint", "value": "https://<provider>/oauth/token", "isSecret": false },
-      { "name": "userinfo_endpoint", "value": "https://<provider>/api/userinfo", "isSecret": false },
-      { "name": "scopes", "value": "profile email", "isSecret": false },
-      { "name": "logout_endpoint", "value": "https://<provider>/oauth/logout", "isSecret": false }
-    ]
+    "clientId": "<client-id>",
+    "clientSecret": "<client-secret>",
+    "redirectUri": "https://<your-thunderid-host>/gate/callback",
+    "authorizationEndpoint": "https://<provider>/oauth/authorize",
+    "tokenEndpoint": "https://<provider>/oauth/token",
+    "userInfoEndpoint": "https://<provider>/api/userinfo",
+    "scopes": ["profile", "email"],
+    "logoutEndpoint": "https://<provider>/oauth/logout"
   }'
 ```
 
 ## Next Steps
 
-- [Connect an IdP to an Application](../connect-idp-to-application) — Add this OAuth 2.0 IdP to an application's authentication flow.
-- [Manage Identity Providers](../manage-identity-providers) — Update or delete identity providers.
+- [Connect an IdP to an Application](../connect-idp-to-application): Add this OAuth 2.0 IdP to an application's authentication flow.
+- [Manage Identity Providers](../manage-identity-providers): Update or delete identity providers.

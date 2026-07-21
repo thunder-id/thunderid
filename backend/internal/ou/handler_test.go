@@ -1652,6 +1652,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUUsersListBy
 		})
 }
 
+//nolint:dupl // Same structure as the roles-by-path test below but exercises the groups resource
 func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUGroupsListByPathRequest() {
 	testCases := []ouHandlerTestCase{
 		{
@@ -1945,6 +1946,138 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUGroupsListR
 	suite.runHandlerTestCases(testCases,
 		func(handler *organizationUnitHandler, writer http.ResponseWriter, req *http.Request) {
 			handler.HandleOUGroupsListRequest(writer, req)
+		})
+}
+
+func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOURolesListRequest() {
+	testCases := []ouHandlerTestCase{
+		{
+			name: "missing id",
+			url:  "/organization-units/" + defaultOURequestID + "/roles",
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusBadRequest, recorder.Code)
+				var resp apierror.ErrorResponse
+				suite.NoError(json.Unmarshal(recorder.Body.Bytes(), &resp))
+				suite.Equal(ErrorMissingOUID.Code, resp.Code)
+			},
+			assertService: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.AssertNotCalled(
+					suite.T(),
+					"GetOrganizationUnitRoles",
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				)
+			},
+		},
+		{
+			name:           "service error",
+			url:            "/organization-units/" + defaultOURequestID + "/roles",
+			pathParamKey:   "id",
+			pathParamValue: defaultOURequestID,
+			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.
+					On("GetOrganizationUnitRoles",
+						mock.Anything, defaultOURequestID,
+						serverconst.DefaultPageSize, 0).
+					Return((*RoleListResponse)(nil), &tidcommon.InternalServerError).
+					Once()
+			},
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusInternalServerError, recorder.Code)
+			},
+		},
+		{
+			name:           "success",
+			url:            "/organization-units/" + defaultOURequestID + "/roles?limit=2&offset=1",
+			pathParamKey:   "id",
+			pathParamValue: defaultOURequestID,
+			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.
+					On("GetOrganizationUnitRoles", mock.Anything, defaultOURequestID, 2, 1).
+					Return(&RoleListResponse{TotalResults: 5}, nil).
+					Once()
+			},
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusOK, recorder.Code)
+				var resp RoleListResponse
+				suite.NoError(json.Unmarshal(recorder.Body.Bytes(), &resp))
+				suite.Equal(5, resp.TotalResults)
+			},
+		},
+	}
+
+	suite.runHandlerTestCases(testCases,
+		func(handler *organizationUnitHandler, writer http.ResponseWriter, req *http.Request) {
+			handler.HandleOURolesListRequest(writer, req)
+		})
+}
+
+//nolint:dupl // Same structure as the groups-by-path test above but exercises the roles resource
+func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOURolesListByPathRequest() {
+	testCases := []ouHandlerTestCase{
+		{
+			name: "roles missing path",
+			url:  "/organization-units/tree/" + defaultOUPath + "/roles",
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusBadRequest, recorder.Code)
+				var resp apierror.ErrorResponse
+				suite.NoError(json.Unmarshal(recorder.Body.Bytes(), &resp))
+				suite.Equal(ErrorInvalidHandlePath.Code, resp.Code)
+			},
+			assertService: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				suite.NotNil(serviceMock) // Avoid AST duplication
+				serviceMock.AssertNotCalled(
+					suite.T(),
+					"GetOrganizationUnitRolesByPath",
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				)
+			},
+		},
+		{
+			name:           "roles service error",
+			url:            "/organization-units/tree/" + defaultOUPath + "/roles",
+			pathParamKey:   "path",
+			pathParamValue: defaultOUPath,
+			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.
+					On("GetOrganizationUnitRolesByPath",
+						mock.Anything, defaultOUPath,
+						serverconst.DefaultPageSize, 0).
+					Return((*RoleListResponse)(nil), &tidcommon.InternalServerError).
+					Once()
+			},
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusInternalServerError, recorder.Code)
+			},
+		},
+		{
+			name:           "roles success",
+			url:            "/organization-units/tree/" + defaultOUPath + "/roles?limit=2&offset=1",
+			pathParamKey:   "path",
+			pathParamValue: defaultOUPath,
+			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.
+					On("GetOrganizationUnitRolesByPath", mock.Anything, defaultOUPath, 2, 1).
+					Return(&RoleListResponse{TotalResults: 1}, nil).
+					Once()
+			},
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusOK, recorder.Code)
+				var resp RoleListResponse
+				suite.NoError(json.Unmarshal(recorder.Body.Bytes(), &resp))
+				suite.Equal(1, resp.TotalResults)
+			},
+		},
+	}
+
+	suite.runHandlerTestCases(testCases,
+		func(handler *organizationUnitHandler, writer http.ResponseWriter, req *http.Request) {
+			handler.HandleOURolesListByPathRequest(writer, req)
 		})
 }
 

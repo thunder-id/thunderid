@@ -1,5 +1,6 @@
 ---
 title: Docker Production Recommendations
+docType: guide
 sidebar_position: 2
 persona: iam
 description: Production-specific recommendations for running reliably and securely with Docker.
@@ -157,7 +158,7 @@ services:
 
 ## Manage Secrets Securely
 
-Never pass secrets as inline environment variables or in `docker run` commands — they appear in `docker inspect` output and shell history.
+Never pass secrets as inline environment variables or in `docker run` commands: they appear in `docker inspect` output and shell history.
 
 **Use an environment file:**
 

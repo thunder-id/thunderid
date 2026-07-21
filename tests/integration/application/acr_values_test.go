@@ -24,8 +24,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 var acrValuesTestOU = testutils.OrganizationUnit{
@@ -51,7 +51,7 @@ func (ts *AcrValuesAPITestSuite) SetupSuite() {
 	acrValuesTestOUID = ouID
 
 	if defaultAuthFlowID == "" {
-		defaultAuthFlowID, err = testutils.GetFlowIDByHandle("default-basic-flow", "AUTHENTICATION")
+		defaultAuthFlowID, err = testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
 		ts.Require().NoError(err, "failed to get default auth flow ID")
 	}
 }
@@ -128,7 +128,7 @@ func (ts *AcrValuesAPITestSuite) TestCreateApplicationWithInvalidAcrValues() {
 					GrantTypes:              []string{"authorization_code"},
 					ResponseTypes:           []string{"code"},
 					TokenEndpointAuthMethod: "client_secret_basic",
-					AcrValues:        []string{"urn:unknown:acr:value"},
+					AcrValues:               []string{"urn:unknown:acr:value"},
 				},
 			},
 		},
@@ -190,7 +190,7 @@ func (ts *AcrValuesAPITestSuite) TestUpdateApplicationAcrValues() {
 				GrantTypes:              []string{"authorization_code"},
 				ResponseTypes:           []string{"code"},
 				TokenEndpointAuthMethod: "client_secret_basic",
-				AcrValues:        []string{"urn:thunder:acr:biometrics"},
+				AcrValues:               []string{"urn:thunder:acr:biometrics"},
 			},
 		},
 	}
@@ -226,7 +226,7 @@ func (ts *AcrValuesAPITestSuite) TestClearApplicationAcrValues() {
 					GrantTypes:              []string{"authorization_code"},
 					ResponseTypes:           []string{"code"},
 					TokenEndpointAuthMethod: "client_secret_basic",
-					AcrValues:        []string{"urn:thunder:acr:password"},
+					AcrValues:               []string{"urn:thunder:acr:password"},
 				},
 			},
 		},

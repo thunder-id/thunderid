@@ -23,13 +23,14 @@ package resourceindicators
 import (
 	"context"
 	"net/url"
-	"sort"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 )
 
 // ValidateResourceURIs returns an error response when any resource URI is not absolute
@@ -51,6 +52,106 @@ func ValidateResourceURIs(resources []string) *model.ErrorResponse {
 		}
 	}
 	return nil
+}
+
+// ResolveTargetResourceServer resolves the single target Resource Server for a token request.
+// At most one resource is allowed; more than one is invalid_target. When exactly one resource is
+// supplied it is resolved by identifier. When none is supplied the deployment's configured
+// defaultResourceServer is used; if no default is configured the request is rejected
+// (invalid_target) — token issuance is bound to exactly one resource server.
+func ResolveTargetResourceServer(
+	ctx context.Context,
+	resourceService providers.ResourceServerProvider,
+	serverConfigService serverconfig.ServerConfigService,
+	resources []string,
+) (*providers.ResourceServer, *model.ErrorResponse) {
+	if errResp := ValidateResourceURIs(resources); errResp != nil {
+		return nil, errResp
+	}
+	if len(resources) > 1 {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidTarget,
+			ErrorDescription: "Only a single resource parameter is supported",
+		}
+	}
+
+	if len(resources) == 1 {
+		rs, svcErr := resourceService.GetResourceServerByIdentifier(ctx, resources[0])
+		if svcErr != nil {
+			return nil, resolveTargetError(svcErr,
+				"The resource parameter does not match any registered resource server")
+		}
+		return rs, nil
+	}
+
+	return resolveDefaultResourceServer(ctx, resourceService, serverConfigService)
+}
+
+// ResolveAudienceBinding decides the single resource server an access token binds to. It returns
+// (nil, nil) when the request carries neither a resource nor any permission scope, for example an
+// OIDC-only or scopeless request: such a token is not bound to a resource server, and the caller
+// sets its audience to the client_id. Otherwise it resolves the single target resource server via
+// ResolveTargetResourceServer (rejecting with invalid_target when none can be determined).
+func ResolveAudienceBinding(
+	ctx context.Context,
+	resourceService providers.ResourceServerProvider,
+	serverConfigService serverconfig.ServerConfigService,
+	resources []string,
+	permissionScopes []string,
+) (*providers.ResourceServer, *model.ErrorResponse) {
+	if len(resources) == 0 && len(permissionScopes) == 0 {
+		return nil, nil
+	}
+	return ResolveTargetResourceServer(ctx, resourceService, serverConfigService, resources)
+}
+
+// resolveDefaultResourceServer resolves the deployment's configured default resource server.
+func resolveDefaultResourceServer(
+	ctx context.Context,
+	resourceService providers.ResourceServerProvider,
+	serverConfigService serverconfig.ServerConfigService,
+) (*providers.ResourceServer, *model.ErrorResponse) {
+	// No server-config service (e.g. the embedded engine) means no default can be configured, so an
+	// implicit (no-resource) request cannot be bound to a resource server.
+	if serverConfigService == nil {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidTarget,
+			ErrorDescription: "No resource parameter supplied and no default resource server is configured",
+		}
+	}
+	merged, svcErr := serverConfigService.GetMergedConfig(ctx, string(serverconfig.ConfigNameDefaultResourceServer))
+	if svcErr != nil {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to resolve default resource server",
+		}
+	}
+	cfg, _ := merged.(resource.DefaultResourceServerConfig)
+	if cfg.ResourceServerID == "" {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidTarget,
+			ErrorDescription: "No resource parameter supplied and no default resource server is configured",
+		}
+	}
+	rs, svcErr := resourceService.GetResourceServer(ctx, cfg.ResourceServerID)
+	if svcErr != nil {
+		return nil, resolveTargetError(svcErr, "The configured default resource server does not exist")
+	}
+	return rs, nil
+}
+
+// resolveTargetError maps a resource-service error to invalid_target (client) or server_error.
+func resolveTargetError(svcErr *tidcommon.ServiceError, invalidTargetDescription string) *model.ErrorResponse {
+	if svcErr.Type == tidcommon.ServerErrorType {
+		return &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to resolve resource server",
+		}
+	}
+	return &model.ErrorResponse{
+		Error:            constants.ErrorInvalidTarget,
+		ErrorDescription: invalidTargetDescription,
+	}
 }
 
 // ResolveResourceServers resolves each resource identifier to its registered Resource Server.
@@ -159,109 +260,34 @@ func ComputeRSValidScopes(
 	return rsValidScopes, nil
 }
 
-// UnionScopes returns the union of all per-RS valid scope slices in deterministic order.
-func UnionScopes(rsValidScopes map[string][]string) []string {
-	keys := make([]string, 0, len(rsValidScopes))
-	for k := range rsValidScopes {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	seen := make(map[string]struct{})
-	union := []string{}
-	for _, k := range keys {
-		for _, s := range rsValidScopes[k] {
-			if _, ok := seen[s]; ok {
-				continue
-			}
-			seen[s] = struct{}{}
-			union = append(union, s)
-		}
-	}
-	return union
-}
-
-// ComposeAudiences builds the aud claim from the resolved Resource Servers. When resolvedRSes is
-// non-nil (explicit resource parameter), all resolved RS identifiers are included. When
-// resolvedRSes is nil and granted scopes are present, contributors are discovered via the resource
-// service (implicit audience). If no RS contributes, clientID is returned as the sole fallback
-// audience. If clientID is also empty, an empty slice is returned.
-func ComposeAudiences(
+// DownscopeToResourceServer returns the subset of scopes that are defined as permissions on the
+// given resource server (RFC 6749 §3.3). Scopes not defined on the RS are dropped. Order of the
+// input scopes is preserved. When scopes is empty it is returned unchanged.
+func DownscopeToResourceServer(
 	ctx context.Context,
 	resourceService providers.ResourceServerProvider,
-	clientID string,
-	resolvedRSes []*providers.ResourceServer,
-	grantedScopes []string,
+	resourceServerID string,
+	scopes []string,
 ) ([]string, *model.ErrorResponse) {
-	var rsIdentifiers []string
-	if resolvedRSes != nil {
-		rsIdentifiers = ContributingAudiences(resolvedRSes)
-	} else if len(grantedScopes) > 0 {
-		implicit, svcErr := resourceService.FindResourceServersByPermissions(ctx, grantedScopes)
-		if svcErr != nil {
-			return nil, &model.ErrorResponse{
-				Error:            constants.ErrorServerError,
-				ErrorDescription: "Failed to resolve resource servers for granted scopes",
-			}
-		}
-		rsIdentifiers = make([]string, 0, len(implicit))
-		for _, rs := range implicit {
-			if rs.Identifier != "" {
-				rsIdentifiers = append(rsIdentifiers, rs.Identifier)
-			}
-		}
-		sort.Strings(rsIdentifiers)
+	if len(scopes) == 0 {
+		return scopes, nil
 	}
-
-	if len(rsIdentifiers) > 0 {
-		seen := make(map[string]struct{}, len(rsIdentifiers))
-		deduped := make([]string, 0, len(rsIdentifiers))
-		for _, id := range rsIdentifiers {
-			if _, ok := seen[id]; ok {
-				continue
-			}
-			seen[id] = struct{}{}
-			deduped = append(deduped, id)
-		}
-		return deduped, nil
-	}
-
-	if clientID != "" {
-		return []string{clientID}, nil
-	}
-	return []string{}, nil
-}
-
-// FilterByIdentifiers returns the subset of resolvedRSes whose Identifier is in identifiers.
-// Preserves the order of resolvedRSes.
-func FilterByIdentifiers(resolvedRSes []*providers.ResourceServer, identifiers []string) []*providers.ResourceServer {
-	idSet := make(map[string]struct{}, len(identifiers))
-	for _, id := range identifiers {
-		idSet[id] = struct{}{}
-	}
-	filtered := make([]*providers.ResourceServer, 0, len(identifiers))
-	for _, rs := range resolvedRSes {
-		if _, ok := idSet[rs.Identifier]; ok {
-			filtered = append(filtered, rs)
+	invalid, svcErr := resourceService.ValidatePermissions(ctx, resourceServerID, scopes)
+	if svcErr != nil {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to validate permissions",
 		}
 	}
-	return filtered
-}
-
-// ContributingAudiences returns the identifiers of all explicitly resolved Resource Servers.
-// When the client explicitly requests resource targets, those targets form the token audience.
-// Preserves the order of resolvedRSes.
-func ContributingAudiences(
-	resolvedRSes []*providers.ResourceServer,
-) []string {
-	if len(resolvedRSes) == 0 {
-		return nil
+	invalidSet := make(map[string]struct{}, len(invalid))
+	for _, p := range invalid {
+		invalidSet[p] = struct{}{}
 	}
-	auds := make([]string, 0, len(resolvedRSes))
-	for _, rs := range resolvedRSes {
-		if rs.Identifier != "" {
-			auds = append(auds, rs.Identifier)
+	valid := make([]string, 0, len(scopes))
+	for _, s := range scopes {
+		if _, isInvalid := invalidSet[s]; !isInvalid {
+			valid = append(valid, s)
 		}
 	}
-	return auds
+	return valid, nil
 }

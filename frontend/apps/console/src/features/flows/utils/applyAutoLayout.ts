@@ -17,17 +17,12 @@
  */
 
 import type {Edge, Node} from '@xyflow/react';
-import ELK from 'elkjs/lib/elk.bundled.js';
+import type {ELK} from 'elkjs/lib/elk-api';
 
 /**
  * Configuration options for auto-layout.
  */
 export interface AutoLayoutOptions {
-  /**
-   * Direction of the layout.
-   * @default 'RIGHT' (left to right)
-   */
-  direction?: 'RIGHT' | 'LEFT' | 'DOWN' | 'UP';
   /**
    * Spacing between nodes (perpendicular to flow direction).
    * @default 100
@@ -35,7 +30,7 @@ export interface AutoLayoutOptions {
   nodeSpacing?: number;
   /**
    * Spacing between ranks/layers (parallel to flow direction).
-   * @default 200
+   * @default 160
    */
   rankSpacing?: number;
   /**
@@ -50,12 +45,94 @@ export interface AutoLayoutOptions {
   offsetY?: number;
 }
 
-const elk = new ELK();
+// ELK (the layout engine) is ~1.5MB. It is only needed when a layout is actually
+// requested (toolbar button, or opening a flow with no stored positions), so it is
+// dynamically imported and cached rather than bundled into the builder's entry chunk.
+let elkPromise: Promise<ELK> | undefined;
+
+const getElk = async (): Promise<ELK> => {
+  elkPromise ??= import('elkjs/lib/elk.bundled.js').then((module) => new module.default());
+  try {
+    return await elkPromise;
+  } catch (error) {
+    // A failed chunk load (e.g. a transient network error) must not stay
+    // cached, or every later layout attempt would fail until a full reload.
+    elkPromise = undefined;
+    throw error;
+  }
+};
+
+const FAILURE_HANDLE = 'failure';
+const INCOMPLETE_HANDLE_SUFFIX = '_INCOMPLETE';
+const PREVIOUS_HANDLE_SUFFIX = '_PREVIOUS';
+
+/**
+ * Which side of the node an edge leaves from, derived from the canvas handle
+ * conventions: success/next handles sit on the right, failure on the bottom,
+ * incomplete on the top, previous on the left.
+ */
+const sourcePortSide = (sourceHandle: string | null | undefined): 'EAST' | 'SOUTH' | 'NORTH' | 'WEST' => {
+  if (sourceHandle === FAILURE_HANDLE) {
+    return 'SOUTH';
+  }
+  if (sourceHandle?.endsWith(INCOMPLETE_HANDLE_SUFFIX)) {
+    return 'NORTH';
+  }
+  if (sourceHandle?.endsWith(PREVIOUS_HANDLE_SUFFIX)) {
+    return 'WEST';
+  }
+  return 'EAST';
+};
+
+interface ElkPort {
+  id: string;
+  layoutOptions: Record<string, string>;
+}
+
+/**
+ * The happy path is the success chain from the start node to the end node.
+ * Its edges get a straightening priority so ELK aligns the main flow on one
+ * row; failure and incomplete branches hang off it.
+ */
+const collectHappyPathEdgeIds = (nodes: Node[], edges: Edge[]): Set<string> => {
+  const startNode = nodes.find((node) => node.type?.toUpperCase() === 'START');
+  const happyEdgeIds = new Set<string>();
+  if (!startNode) {
+    return happyEdgeIds;
+  }
+
+  const visited = new Set<string>([startNode.id]);
+  let current: string | undefined = startNode.id;
+
+  while (current) {
+    const nextEdge: Edge | undefined = edges.find(
+      (edge) => edge.source === current && sourcePortSide(edge.sourceHandle) === 'EAST' && !visited.has(edge.target),
+    );
+    if (!nextEdge) {
+      break;
+    }
+    happyEdgeIds.add(nextEdge.id);
+    visited.add(nextEdge.target);
+    current = nextEdge.target;
+  }
+
+  return happyEdgeIds;
+};
 
 /**
  * Applies automatic layout to nodes using ELK (Eclipse Layout Kernel).
- * ELK provides sophisticated graph layout algorithms that position nodes
- * to minimize edge crossings.
+ *
+ * The graph handed to ELK carries the canvas semantics so the result matches
+ * how edges actually attach on screen:
+ * - Handles are modeled as fixed-side ports (success → right, failure →
+ *   bottom, incomplete → top), so branch targets land on the matching side.
+ * - The success chain from START to END gets a straightening priority, so the
+ *   main flow reads as one left-to-right row with branches hanging off it.
+ * - START and END are constrained to the first and last layer.
+ *
+ * ELK's positions are used as-is for every node type; there is deliberately no
+ * per-type post-processing (repositioning some node types but not others tears
+ * the layout apart).
  *
  * @param nodes - Array of nodes to layout.
  * @param edges - Array of edges connecting the nodes (used for layout calculation).
@@ -67,35 +144,70 @@ export default async function applyAutoLayout(
   edges: Edge[],
   options: AutoLayoutOptions = {},
 ): Promise<Node[]> {
-  const {direction = 'RIGHT', nodeSpacing = 150, rankSpacing = 300, offsetX = 50, offsetY = 50} = options;
+  const {nodeSpacing = 100, rankSpacing = 160, offsetX = 50, offsetY = 50} = options;
 
   if (nodes.length === 0) {
     return nodes;
   }
 
-  // Node type constants
-  const NODE_TYPES = {
-    START: 'START',
-    VIEW: 'VIEW',
-    EXECUTION: 'EXECUTION',
-    END: 'END',
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const happyPathEdgeIds = collectHappyPathEdgeIds(nodes, edges);
+
+  // Deduplicate edges, register a fixed-side port per distinct handle, and
+  // build the ELK edge list referencing those ports.
+  const portsByNode = new Map<string, Map<string, ElkPort>>();
+  const registerPort = (nodeId: string, handleKey: string, side: string): string => {
+    const portId = `${nodeId}__${handleKey}`;
+    const ports = portsByNode.get(nodeId) ?? new Map<string, ElkPort>();
+    if (!ports.has(portId)) {
+      ports.set(portId, {id: portId, layoutOptions: {'elk.port.side': side}});
+    }
+    portsByNode.set(nodeId, ports);
+    return portId;
   };
 
-  // Build ELK graph structure with layer constraints based on node type
+  const addedEdges = new Set<string>();
+  const elkEdges: {id: string; sources: string[]; targets: string[]; layoutOptions?: Record<string, string>}[] = [];
+
+  edges.forEach((edge) => {
+    const edgeKey = `${edge.source}#${edge.sourceHandle ?? ''}->${edge.target}`;
+
+    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target) || addedEdges.has(edgeKey)) {
+      return;
+    }
+    addedEdges.add(edgeKey);
+
+    const side = sourcePortSide(edge.sourceHandle);
+    const sourcePortId = registerPort(edge.source, edge.sourceHandle ?? 'out', side);
+    const targetPortId = registerPort(edge.target, 'in', 'WEST');
+
+    elkEdges.push({
+      id: edge.id,
+      sources: [sourcePortId],
+      targets: [targetPortId],
+      // Straighten the happy path so the main flow forms a single row.
+      ...(happyPathEdgeIds.has(edge.id) && {layoutOptions: {'elk.layered.priority.straightness': '10'}}),
+    });
+  });
+
   const elkNodes = nodes.map((node) => {
     const width = node.measured?.width ?? node.width ?? 200;
     const height = node.measured?.height ?? node.height ?? 100;
     const nodeType = node.type?.toUpperCase() ?? '';
 
-    // Assign layer constraints for START and END nodes only
     const layoutOptions: Record<string, string> = {};
 
-    if (nodeType === NODE_TYPES.START) {
+    if (nodeType === 'START') {
       // START nodes go first (leftmost)
       layoutOptions['elk.layered.layering.layerConstraint'] = 'FIRST';
-    } else if (nodeType === NODE_TYPES.END) {
+    } else if (nodeType === 'END') {
       // END nodes go last (rightmost)
       layoutOptions['elk.layered.layering.layerConstraint'] = 'LAST';
+    }
+
+    const ports = portsByNode.get(node.id);
+    if (ports) {
+      layoutOptions['elk.portConstraints'] = 'FIXED_SIDE';
     }
 
     return {
@@ -103,67 +215,43 @@ export default async function applyAutoLayout(
       width,
       height,
       layoutOptions,
+      ...(ports && {ports: [...ports.values()]}),
     };
   });
 
-  // Deduplicate edges and build ELK edge structure
-  const addedEdges = new Set<string>();
-  const elkEdges: {id: string; sources: string[]; targets: string[]}[] = [];
-  const nodeIds = new Set(nodes.map((n) => n.id));
-
-  edges.forEach((edge) => {
-    const edgeKey = `${edge.source}->${edge.target}`;
-
-    // Only add edges where both source and target exist
-    if (nodeIds.has(edge.source) && nodeIds.has(edge.target) && !addedEdges.has(edgeKey)) {
-      elkEdges.push({
-        id: edge.id,
-        sources: [edge.source],
-        targets: [edge.target],
-      });
-      addedEdges.add(edgeKey);
-    }
-  });
-
-  // ELK graph with layout options optimized to reduce edge-node collisions
   const elkGraph = {
     id: 'root',
     layoutOptions: {
       // Use layered algorithm - best for directed graphs
       'elk.algorithm': 'layered',
-      // Direction of the layout
-      'elk.direction': direction,
-      // Spacing between nodes in the same layer - increased significantly
+      // The layout direction is fixed: the port sides mirror the canvas's
+      // physical handle geometry (success right, failure bottom, incomplete
+      // top), which only composes with a left-to-right flow.
+      'elk.direction': 'RIGHT',
+      // Spacing between nodes in the same layer
       'elk.spacing.nodeNode': String(nodeSpacing),
-      // Spacing between layers - increased for better horizontal separation
+      // Spacing between layers
       'elk.layered.spacing.nodeNodeBetweenLayers': String(rankSpacing),
-      // Edge routing strategy - POLYLINE gives more flexibility for routing
       'elk.edgeRouting': 'POLYLINE',
-      // Large spacing between edges and nodes to prevent overlaps
-      'elk.spacing.edgeNode': '200',
-      'elk.spacing.edgeEdge': '80',
-      // Additional edge-node spacing in layered layout
-      'elk.layered.spacing.edgeNodeBetweenLayers': '150',
-      'elk.layered.spacing.edgeEdgeBetweenLayers': '80',
-      // Node placement strategy - NETWORK_SIMPLEX gives better vertical distribution
+      // Moderate edge clearances: the canvas draws its own smart edges, so
+      // ELK's routing only needs to influence placement, not look good itself.
+      // Oversized clearances inflate the layout's footprint.
+      'elk.spacing.edgeNode': '60',
+      'elk.spacing.edgeEdge': '40',
+      'elk.layered.spacing.edgeNodeBetweenLayers': '60',
+      'elk.layered.spacing.edgeEdgeBetweenLayers': '40',
+      // NETWORK_SIMPLEX honors the per-edge straightness priorities set on the
+      // happy path, keeping the main flow on one row.
       'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
-      // Crossing minimization - more thorough strategy
       'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
       'elk.layered.crossingMinimization.greedySwitch.type': 'TWO_SIDED',
-      // Cycle breaking strategy
       'elk.layered.cycleBreaking.strategy': 'DEPTH_FIRST',
-      // Don't merge edges - keep them separate for cleaner routing
       'elk.layered.mergeEdges': 'false',
-      // Higher thoroughness for better layout quality
       'elk.layered.thoroughness': '50',
-      // Consider node labels for spacing
+      // Keep the authored node/edge order as a tiebreaker so equivalent
+      // layouts stay stable across runs.
       'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
-      // Wrapping strategy for long edges
-      'elk.layered.wrapping.strategy': 'OFF',
-      // Spacing for ports (connection points)
       'elk.spacing.portPort': '20',
-      // Edge label placement
-      'elk.layered.edgeLabels.sideSelection': 'SMART_UP',
     },
     children: elkNodes,
     edges: elkEdges,
@@ -171,10 +259,11 @@ export default async function applyAutoLayout(
 
   try {
     // Run ELK layout algorithm
+    const elk = await getElk();
     const layoutedGraph = await elk.layout(elkGraph);
 
     // Map the calculated positions back to React Flow nodes
-    let layoutedNodes = nodes.map((node) => {
+    return nodes.map((node) => {
       const elkNode = layoutedGraph.children?.find((n) => n.id === node.id);
 
       if (elkNode?.x === undefined || elkNode.y === undefined) {
@@ -189,198 +278,6 @@ export default async function applyAutoLayout(
         },
       };
     });
-
-    // Post-process: Align all VIEW nodes to the same Y position (horizontal row)
-    const viewNodes = layoutedNodes.filter((n) => n.type?.toUpperCase() === NODE_TYPES.VIEW);
-    if (viewNodes.length > 0) {
-      // First, collect ALL node types and calculate their center positions
-      const startNodes = layoutedNodes.filter((n) => n.type?.toUpperCase() === NODE_TYPES.START);
-      const endNodes = layoutedNodes.filter((n) => n.type?.toUpperCase() === NODE_TYPES.END);
-
-      // Calculate the overall bounding box center Y for all nodes (START, END, VIEWs)
-      const allRelevantNodes = [...startNodes, ...endNodes, ...viewNodes];
-
-      let minCenterY = Infinity;
-      let maxCenterY = -Infinity;
-
-      allRelevantNodes.forEach((node) => {
-        const nodeHeight = node.measured?.height ?? node.height ?? 100;
-        const centerY = node.position.y + nodeHeight / 2;
-        minCenterY = Math.min(minCenterY, centerY);
-        maxCenterY = Math.max(maxCenterY, centerY);
-      });
-
-      // Use the middle point as the target center Y
-      const targetCenterY = (minCenterY + maxCenterY) / 2;
-
-      // Align all VIEW nodes so their centers align with targetCenterY
-      // Each view may have different height, so calculate Y individually
-      layoutedNodes = layoutedNodes.map((node) => {
-        if (node.type?.toUpperCase() === NODE_TYPES.VIEW) {
-          const nodeHeight = node.measured?.height ?? node.height ?? 100;
-          const nodeY = targetCenterY - nodeHeight / 2;
-          return {
-            ...node,
-            position: {
-              ...node.position,
-              y: nodeY,
-            },
-          };
-        }
-        return node;
-      });
-
-      const viewCenterY = targetCenterY;
-
-      // Align START and END nodes to the same horizontal level (centered with Views)
-      layoutedNodes = layoutedNodes.map((node) => {
-        const nodeType = node.type?.toUpperCase() ?? '';
-        if (nodeType === NODE_TYPES.START || nodeType === NODE_TYPES.END) {
-          const nodeHeight = node.measured?.height ?? node.height ?? 50;
-          return {
-            ...node,
-            position: {
-              ...node.position,
-              y: viewCenterY - nodeHeight / 2,
-            },
-          };
-        }
-        return node;
-      });
-
-      // Position EXECUTION nodes - try to keep them on the same horizontal line as views
-      // Only move them below if they would overlap with other nodes
-      const executionNodes = layoutedNodes.filter((n) => n.type?.toUpperCase() === NODE_TYPES.EXECUTION);
-
-      if (executionNodes.length > 0) {
-        // Sort execution nodes by their X position to maintain left-to-right order
-        const sortedExecutionNodes = [...executionNodes].sort((a, b) => a.position.x - b.position.x);
-
-        // Try to center execution nodes vertically with the views first
-        layoutedNodes = layoutedNodes.map((node) => {
-          if (node.type?.toUpperCase() === NODE_TYPES.EXECUTION) {
-            const nodeHeight = node.measured?.height ?? node.height ?? 100;
-            return {
-              ...node,
-              position: {
-                ...node.position,
-                y: viewCenterY - nodeHeight / 2,
-              },
-            };
-          }
-          return node;
-        });
-
-        // Track placed execution nodes with their final positions for overlap detection
-        const placedExecutionNodes: {
-          id: string;
-          x: number;
-          y: number;
-          width: number;
-          height: number;
-        }[] = [];
-
-        // Now check for overlaps and move conflicting execution nodes below
-        // Find the maximum bottom Y of all view nodes
-        const viewBottoms = layoutedNodes
-          .filter((n) => n.type?.toUpperCase() === NODE_TYPES.VIEW)
-          .map((n) => {
-            const height = n.measured?.height ?? n.height ?? 100;
-            return n.position.y + height;
-          });
-        const maxViewBottom = viewBottoms.length > 0 ? Math.max(...viewBottoms) : 0;
-        const viewBottomY = maxViewBottom + nodeSpacing;
-        const horizontalPadding = 50;
-        const verticalPadding = 30;
-
-        // Check each execution node for overlap with views AND other execution nodes
-        sortedExecutionNodes.forEach((execNode) => {
-          const execX = execNode.position.x;
-          const execWidth = execNode.measured?.width ?? execNode.width ?? 200;
-          const execHeight = execNode.measured?.height ?? execNode.height ?? 100;
-          const execRight = execX + execWidth;
-          let execY = viewCenterY - execHeight / 2; // Start at view center
-
-          // Check if this execution node overlaps horizontally with any view
-          const overlapsWithView = viewNodes.some((viewNode) => {
-            const viewX = viewNode.position.x;
-            const viewWidth = viewNode.measured?.width ?? viewNode.width ?? 350;
-            const viewRight = viewX + viewWidth;
-
-            // Check horizontal overlap (with some padding)
-            return execRight + horizontalPadding > viewX && execX - horizontalPadding < viewRight;
-          });
-
-          if (overlapsWithView) {
-            // Need to move below views
-            execY = viewBottomY;
-          }
-
-          // Check for overlap with already placed execution nodes
-          // Keep moving down until no overlap
-          // Helper to check if a Y position overlaps with any placed node
-          const checkOverlapAtY = (testY: number): {overlaps: boolean; nextY: number} => {
-            let result = {overlaps: false, nextY: testY};
-
-            placedExecutionNodes.forEach((placed) => {
-              if (result.overlaps) return; // Already found overlap
-
-              // Check if rectangles overlap (with padding)
-              const horizontalOverlap =
-                execRight + horizontalPadding > placed.x && execX - horizontalPadding < placed.x + placed.width;
-
-              const verticalOverlap =
-                testY + execHeight + verticalPadding > placed.y && testY - verticalPadding < placed.y + placed.height;
-
-              if (horizontalOverlap && verticalOverlap) {
-                result = {
-                  overlaps: true,
-                  nextY: placed.y + placed.height + verticalPadding + nodeSpacing,
-                };
-              }
-            });
-
-            return result;
-          };
-
-          // Find non-overlapping Y position
-          let iterations = 0;
-          const maxIterations = 20;
-          let overlapCheck = checkOverlapAtY(execY);
-
-          while (overlapCheck.overlaps && iterations < maxIterations) {
-            iterations += 1;
-            execY = overlapCheck.nextY;
-            overlapCheck = checkOverlapAtY(execY);
-          }
-
-          // Update the node position
-          layoutedNodes = layoutedNodes.map((node) => {
-            if (node.id === execNode.id) {
-              return {
-                ...node,
-                position: {
-                  ...node.position,
-                  y: execY,
-                },
-              };
-            }
-            return node;
-          });
-
-          // Add to placed nodes
-          placedExecutionNodes.push({
-            id: execNode.id,
-            x: execX,
-            y: execY,
-            width: execWidth,
-            height: execHeight,
-          });
-        });
-      }
-    }
-
-    return layoutedNodes;
   } catch {
     // Return original nodes if layout fails
     return nodes;

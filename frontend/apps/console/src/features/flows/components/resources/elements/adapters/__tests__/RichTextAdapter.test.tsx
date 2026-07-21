@@ -25,6 +25,22 @@ import type {Element as FlowElement} from '@/features/flows/models/elements';
 // Mock dependencies
 vi.mock('../RichTextAdapter.scss', () => ({}));
 
+const mockUpdateNodeInternals = vi.fn();
+const mockUseNodeId = vi.fn<() => string | null>(() => 'node-1');
+
+vi.mock('@xyflow/react', () => ({
+  Handle: () => null,
+  Position: {Left: 'left', Right: 'right', Top: 'top', Bottom: 'bottom'},
+  useNodeId: () => mockUseNodeId(),
+  useUpdateNodeInternals: () => mockUpdateNodeInternals,
+}));
+
+vi.mock('../NodeHandle', () => ({
+  default: ({id, type, position}: {id: string; type: string; position: string}) => (
+    <div data-testid="node-handle" data-handle-id={id} data-handle-type={type} data-position={position} />
+  ),
+}));
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => key,
@@ -45,6 +61,7 @@ describe('RichTextAdapter', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseNodeId.mockReturnValue('node-1');
   });
 
   describe('Rendering', () => {
@@ -119,6 +136,57 @@ describe('RichTextAdapter', () => {
 
       expect(container1.querySelector('.rich-text-content')).toBeInTheDocument();
       expect(container2.querySelector('.rich-text-content')).toBeInTheDocument();
+    });
+  });
+
+  describe('Action-enabled source handle', () => {
+    it('should render a source NodeHandle when the element has an action defined', () => {
+      const resource = createMockElement({action: {ref: 'target-1'}} as Record<string, unknown>);
+
+      const {getByTestId} = render(<RichTextAdapter resource={resource} />);
+
+      const handle = getByTestId('node-handle');
+      expect(handle).toHaveAttribute('data-handle-id', 'richtext-1_NEXT');
+      expect(handle).toHaveAttribute('data-handle-type', 'source');
+      expect(handle).toHaveAttribute('data-position', 'right');
+    });
+
+    it('should not render the source NodeHandle when the element has no action', () => {
+      const resource = createMockElement();
+
+      const {queryByTestId} = render(<RichTextAdapter resource={resource} />);
+
+      expect(queryByTestId('node-handle')).toBeNull();
+    });
+
+    it('should call updateNodeInternals when isActionEnabled transitions from false to true', () => {
+      const {rerender} = render(<RichTextAdapter resource={createMockElement()} />);
+      // Initial render: prev=current, effect runs but returns early
+      expect(mockUpdateNodeInternals).not.toHaveBeenCalled();
+
+      rerender(<RichTextAdapter resource={createMockElement({action: {ref: 'x'}} as Record<string, unknown>)} />);
+
+      expect(mockUpdateNodeInternals).toHaveBeenCalledWith('node-1');
+    });
+
+    it('should call updateNodeInternals when isActionEnabled transitions from true to false', () => {
+      const {rerender} = render(
+        <RichTextAdapter resource={createMockElement({action: {ref: 'x'}} as Record<string, unknown>)} />,
+      );
+      expect(mockUpdateNodeInternals).not.toHaveBeenCalled();
+
+      rerender(<RichTextAdapter resource={createMockElement()} />);
+
+      expect(mockUpdateNodeInternals).toHaveBeenCalledWith('node-1');
+    });
+
+    it('should skip updateNodeInternals when parentNodeId is null even after a transition', () => {
+      mockUseNodeId.mockReturnValue(null);
+      const {rerender} = render(<RichTextAdapter resource={createMockElement()} />);
+
+      rerender(<RichTextAdapter resource={createMockElement({action: {ref: 'x'}} as Record<string, unknown>)} />);
+
+      expect(mockUpdateNodeInternals).not.toHaveBeenCalled();
     });
   });
 

@@ -1,6 +1,7 @@
 ---
 title: <UserProfile />
-description: Complete user profile management interface
+docType: reference
+description: Complete user profile management interface for viewing and editing account details in Vue apps.
 ---
 
 # `<UserProfile />`
@@ -26,7 +27,7 @@ import { UserProfile } from '@thunderid/vue'
 
 ### Compact Variant without Card
 
-Render the profile inline (no card wrapper) with tighter spacing — useful when embedding in a modal or dropdown:
+Render the profile inline (no card wrapper) with tighter spacing, useful when embedding in a modal or dropdown:
 
 ```vue title="src/ProfilePage.vue" showLineNumbers
 <script setup>
@@ -63,7 +64,7 @@ import { UserProfile } from '@thunderid/vue'
 | `title` | `string` | ❌ | Card header title. Defaults to `'Profile'`. |
 | `cardLayout` | `boolean` | ❌ | Whether to render inside a Card wrapper. Defaults to `true`. |
 | `cardVariant` | `'elevated' \| 'outlined' \| 'flat'` | ❌ | Shadow/border style of the card wrapper. Defaults to `'elevated'`. |
-| `compact` | `boolean` | ❌ | Tighter spacing — useful inside modals or dropdowns. Defaults to `false`. |
+| `compact` | `boolean` | ❌ | Tighter spacing, useful inside modals or dropdowns. Defaults to `false`. |
 | `editable` | `boolean` | ❌ | Whether fields can be edited inline. Defaults to `true`. |
 | `showAvatar` | `boolean` | ❌ | Whether to render the avatar hero section. Defaults to `true`. |
 | `avatarSize` | `'sm' \| 'md' \| 'lg'` | ❌ | Avatar circle size. Defaults to `'lg'`. |

@@ -17,7 +17,7 @@
  */
 
 import {Box, Card, CardActionArea, CardContent, Stack, Typography} from '@wso2/oxygen-ui';
-import {KeyRound, Lock, UserPlus} from '@wso2/oxygen-ui-icons-react';
+import {KeyRound, Lock, LogOut, UserPlus} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {FlowType} from '../../models/flows';
@@ -65,6 +65,14 @@ export default function SelectFlowType({selectedType, onTypeChange, onReadyChang
       descriptionDefault: 'Let users recover their password or account',
       icon: <Lock size={28} />,
     },
+    {
+      type: FlowType.SIGNOUT,
+      labelKey: 'flows:create.type.signout.label',
+      labelDefault: 'Sign Out',
+      descriptionKey: 'flows:create.type.signout.description',
+      descriptionDefault: 'Confirm and terminate an established SSO session',
+      icon: <LogOut size={28} />,
+    },
   ];
 
   const handleSelect = (type: string): void => {
@@ -80,8 +88,8 @@ export default function SelectFlowType({selectedType, onTypeChange, onReadyChang
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          maxWidth: 780,
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          maxWidth: 1040,
           gap: 2,
           mt: 3,
         }}

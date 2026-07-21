@@ -1,7 +1,8 @@
 ---
 title: <ProtectedRoute />
+docType: reference
 displayed_sidebar: reactRouterSdkSidebar
-description: Guard routes in React Router v6 applications with authentication
+description: Guard routes in React Router v6 by redirecting unauthenticated users or rendering a fallback element.
 ---
 
 # `<ProtectedRoute />`
@@ -9,7 +10,7 @@ description: Guard routes in React Router v6 applications with authentication
 The `ProtectedRoute` component wraps a route's element and enforces authentication. When the user is not signed in it either redirects to a specified URL or renders a fallback element. While authentication state is being resolved it shows a loading state.
 
 :::note
-`ProtectedRoute` must be rendered inside a `ThunderIDProvider`. It also requires React Router's router context — place it within a `BrowserRouter`, `HashRouter`, or similar.
+`ProtectedRoute` must be rendered inside a `ThunderIDProvider`. It also requires React Router's router context: place it within a `BrowserRouter`, `HashRouter`, or similar.
 :::
 
 ## Usage
@@ -144,7 +145,7 @@ You must provide either `redirectTo` or `fallback`. If neither is provided, a `T
 
 `ProtectedRoute` throws a `ThunderIDRuntimeError` if neither `redirectTo` nor `fallback` is provided.
 
-```tsx
+```jsx
 // This will throw — one of redirectTo or fallback is required
 <ProtectedRoute>
   <Dashboard />

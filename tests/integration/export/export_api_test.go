@@ -25,6 +25,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -198,7 +199,7 @@ func (ts *ExportAPITestSuite) TestIdentityProviderExportYAML() {
 
 	// Test YAML export functionality
 	exportRequest := ExportRequest{
-		IdentityProviders: []string{idpID},
+		Connections: []string{idpID},
 	}
 
 	yamlContent, err := ts.exportResourcesYAML(exportRequest)
@@ -208,13 +209,9 @@ func (ts *ExportAPITestSuite) TestIdentityProviderExportYAML() {
 	// Verify the exported YAML content
 	ts.Assert().Contains(yamlContent, "name: Export Test IDP")
 	ts.Assert().Contains(yamlContent, "description: Test identity provider for export functionality")
-	ts.Assert().Contains(yamlContent, "type: OAUTH")
-	ts.Assert().Contains(yamlContent, "properties:")
-	ts.Assert().Contains(yamlContent, "name: client_id")
-	ts.Assert().Contains(yamlContent, "value: {{.EXPORT_TEST_IDP_CLIENT_ID}}")
-	ts.Assert().Contains(yamlContent, "name: client_secret")
-	ts.Assert().Contains(yamlContent, "value: {{.EXPORT_TEST_IDP_CLIENT_SECRET}}")
-	ts.Assert().Contains(yamlContent, "isSecret: true")
+	ts.Assert().Contains(yamlContent, "type: oauth")
+	ts.Assert().Contains(yamlContent, "clientId: export_test_oauth_client")
+	ts.Assert().Contains(yamlContent, "clientSecret: {{.EXPORT_TEST_IDP_CLIENT_SECRET}}")
 	ts.Assert().Contains(yamlContent, "# File: Export_Test_IDP.yaml")
 }
 
@@ -303,7 +300,7 @@ func (ts *ExportAPITestSuite) TestMultipleIdentityProvidersExportYAML() {
 
 	// Test exporting multiple IDPs
 	exportRequest := ExportRequest{
-		IdentityProviders: []string{idpID1, idpID2},
+		Connections: []string{idpID1, idpID2},
 	}
 
 	yamlContent, err := ts.exportResourcesYAML(exportRequest)
@@ -313,8 +310,8 @@ func (ts *ExportAPITestSuite) TestMultipleIdentityProvidersExportYAML() {
 	// Verify both IDPs are in the export
 	ts.Assert().Contains(yamlContent, "name: GitHub IDP Export")
 	ts.Assert().Contains(yamlContent, "name: Google IDP Export")
-	ts.Assert().Contains(yamlContent, "type: OAUTH")
-	ts.Assert().Contains(yamlContent, "type: OIDC")
+	ts.Assert().Contains(yamlContent, "type: oauth")
+	ts.Assert().Contains(yamlContent, "type: oidc")
 	ts.Assert().Contains(yamlContent, "# File: GitHub_IDP_Export.yaml")
 	ts.Assert().Contains(yamlContent, "# File: Google_IDP_Export.yaml")
 }
@@ -393,8 +390,8 @@ func (ts *ExportAPITestSuite) TestMixedResourcesExportYAML() {
 
 	// Test exporting both application and IDP
 	exportRequest := ExportRequest{
-		Applications:      []string{appID},
-		IdentityProviders: []string{idpID},
+		Applications: []string{appID},
+		Connections:  []string{idpID},
 	}
 
 	yamlContent, err := ts.exportResourcesYAML(exportRequest)
@@ -455,7 +452,7 @@ func (ts *ExportAPITestSuite) TestIdentityProviderExportWithWildcard() {
 
 	// Test wildcard export
 	exportRequest := ExportRequest{
-		IdentityProviders: []string{"*"},
+		Connections: []string{"*"},
 	}
 
 	yamlContent, err := ts.exportResourcesYAML(exportRequest)
@@ -513,31 +510,27 @@ func (ts *ExportAPITestSuite) TestIdentityProviderExportWithProperties() {
 
 	// Export the IDP
 	exportRequest := ExportRequest{
-		IdentityProviders: []string{idpID},
+		Connections: []string{idpID},
 	}
 
 	yamlContent, err := ts.exportResourcesYAML(exportRequest)
 	ts.Require().NoError(err)
 	ts.Require().NotEmpty(yamlContent)
 
-	// Verify all properties are properly parameterized
-	ts.Assert().Contains(yamlContent, "name: client_id")
-	ts.Assert().Contains(yamlContent, "value: {{.PROPERTIES_TEST_IDP_CLIENT_ID}}")
-	ts.Assert().Contains(yamlContent, "name: client_secret")
-	ts.Assert().Contains(yamlContent, "value: {{.PROPERTIES_TEST_IDP_CLIENT_SECRET}}")
-	ts.Assert().Contains(yamlContent, "name: redirect_uri")
-	ts.Assert().Contains(yamlContent, "value: {{.PROPERTIES_TEST_IDP_REDIRECT_URI}}")
-	ts.Assert().Contains(yamlContent, "name: scopes")
-	ts.Assert().Contains(yamlContent, "value: {{.PROPERTIES_TEST_IDP_SCOPES}}")
-	// Verify is_secret flag is preserved
-	ts.Assert().Contains(yamlContent, "isSecret: true")
+	// Verify typed fields: only the secret field (clientSecret) is parameterized.
+	ts.Assert().Contains(yamlContent, "clientId: props_test_client")
+	ts.Assert().Contains(yamlContent, "clientSecret: {{.PROPERTIES_TEST_IDP_CLIENT_SECRET}}")
+	ts.Assert().Contains(yamlContent, "redirectUri: https://localhost:3000/callback")
+	ts.Assert().Contains(yamlContent, "- openid")
+	ts.Assert().Contains(yamlContent, "- email")
+	ts.Assert().Contains(yamlContent, "- profile")
 }
 
 // TestExportWithInvalidIdentityProviderID tests export with invalid IDP ID.
 func (ts *ExportAPITestSuite) TestExportWithInvalidIdentityProviderID() {
 	// Test export with invalid IDP ID
 	invalidExportRequest := ExportRequest{
-		IdentityProviders: []string{"invalid-uuid"},
+		Connections: []string{"invalid-uuid"},
 	}
 
 	_, err := ts.exportResourcesYAML(invalidExportRequest)
@@ -721,14 +714,70 @@ func parseResourcesIntoExportResponse(resources string) *ExportResponse {
 	return &ExportResponse{Files: files}
 }
 
+// idpVendorRegistryMu guards idpVendorRegistry.
+var idpVendorRegistryMu sync.RWMutex
+
+// idpVendorRegistry maps an IDP ID (as returned by createIDP) to the /connections vendor path
+// it was created under, so deleteIDP (which only takes an ID) can address the right vendor route.
+var idpVendorRegistry = map[string]string{}
+
+// idpVendorPath maps a legacy IDP Type value (e.g. "OAUTH") to its /connections vendor path.
+func idpVendorPath(idpType string) (string, error) {
+	switch strings.ToUpper(idpType) {
+	case "GOOGLE":
+		return "google", nil
+	case "GITHUB":
+		return "github", nil
+	case "OIDC":
+		return "oidc", nil
+	case "OAUTH":
+		return "oauth", nil
+	default:
+		return "", fmt.Errorf("unsupported IDP type for /connections: %s", idpType)
+	}
+}
+
+// idpToConnectionBody converts a legacy IDP{Properties: [...]} fixture into the typed camelCase
+// body /connections/{vendor} expects. Every IdP-backed vendor shares the same property key set;
+// a vendor's request struct simply ignores fields it doesn't declare.
+func idpToConnectionBody(idp IDP) map[string]interface{} {
+	fieldByProp := map[string]string{
+		"client_id":              "clientId",
+		"client_secret":          "clientSecret",
+		"redirect_uri":           "redirectUri",
+		"authorization_endpoint": "authorizationEndpoint",
+		"token_endpoint":         "tokenEndpoint",
+		"userinfo_endpoint":      "userInfoEndpoint",
+		"jwks_endpoint":          "jwksEndpoint",
+		"logout_endpoint":        "logoutEndpoint",
+		"issuer":                 "issuer",
+	}
+	body := map[string]interface{}{"name": idp.Name, "description": idp.Description}
+	for _, prop := range idp.Properties {
+		if prop.Name == "scopes" {
+			body["scopes"] = strings.Split(prop.Value, ",")
+			continue
+		}
+		if field, ok := fieldByProp[prop.Name]; ok {
+			body[field] = prop.Value
+		}
+	}
+	return body
+}
+
 func (ts *ExportAPITestSuite) createIDP(idp IDP) (string, error) {
-	idpJSON, err := json.Marshal(idp)
+	vendor, err := idpVendorPath(idp.Type)
+	if err != nil {
+		return "", err
+	}
+
+	idpJSON, err := json.Marshal(idpToConnectionBody(idp))
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal IDP: %w", err)
 	}
 
 	reqBody := bytes.NewReader(idpJSON)
-	req, err := http.NewRequest("POST", testServerURL+"/identity-providers", reqBody)
+	req, err := http.NewRequest("POST", testServerURL+"/connections/"+vendor, reqBody)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
@@ -757,11 +806,23 @@ func (ts *ExportAPITestSuite) createIDP(idp IDP) (string, error) {
 	if id == "" {
 		return "", fmt.Errorf("response does not contain id")
 	}
+
+	idpVendorRegistryMu.Lock()
+	idpVendorRegistry[id] = vendor
+	idpVendorRegistryMu.Unlock()
+
 	return id, nil
 }
 
 func (ts *ExportAPITestSuite) deleteIDP(idpID string) error {
-	req, err := http.NewRequest("DELETE", testServerURL+"/identity-providers/"+idpID, nil)
+	idpVendorRegistryMu.RLock()
+	vendor, ok := idpVendorRegistry[idpID]
+	idpVendorRegistryMu.RUnlock()
+	if !ok {
+		return fmt.Errorf("no /connections vendor registered for IDP ID %q", idpID)
+	}
+
+	req, err := http.NewRequest("DELETE", testServerURL+"/connections/"+vendor+"/"+idpID, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create delete request: %w", err)
 	}
@@ -778,5 +839,9 @@ func (ts *ExportAPITestSuite) deleteIDP(idpID string) error {
 		responseBody, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("expected status 204, got %d. Response: %s", resp.StatusCode, string(responseBody))
 	}
+
+	idpVendorRegistryMu.Lock()
+	delete(idpVendorRegistry, idpID)
+	idpVendorRegistryMu.Unlock()
 	return nil
 }

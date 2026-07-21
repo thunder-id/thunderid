@@ -1,7 +1,8 @@
 ---
 title: <ThunderIDProvider />
+docType: reference
 displayed_sidebar: nextjsSdkSidebar
-description: Server-side provider component for Next.js authentication
+description: Server-side provider component that initializes authentication context for Next.js App Router pages.
 ---
 
 # `<ThunderIDProvider />`
@@ -40,7 +41,7 @@ Import from `@thunderid/nextjs/server`, not from `@thunderid/nextjs`. The provid
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `children` | `ReactNode` | — | **Required.** Your application tree |
+| `children` | `ReactNode` | - | **Required.** Your application tree |
 | `sessionCookieExpiryTime` | `number` | `86400` | Session cookie lifetime in seconds. Also configurable via the `THUNDERID_SESSION_COOKIE_EXPIRY_TIME` environment variable |
 
 ## How It Works

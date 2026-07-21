@@ -180,6 +180,185 @@ notification:
 	assert.Equal(suite.T(), "mysql", config.Database.Config.SQLite.Path)
 }
 
+func (suite *ConfigTestSuite) TestLoadConfigGateClientDefaultsToServer() {
+	tempDir := suite.T().TempDir()
+
+	// gate_client omitted entirely: hostname/port/scheme derive from the server config.
+	userContent := `
+server:
+  hostname: "user-host"
+  port: 8095
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	userFile := suite.createTempFile(tempDir, "user*.yaml", userContent)
+
+	config, err := LoadConfig(userFile, "", tempDir)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), config)
+
+	assert.Equal(suite.T(), "user-host", config.GateClient.Hostname)
+	assert.Equal(suite.T(), 8095, config.GateClient.Port)
+	assert.Equal(suite.T(), "https", config.GateClient.Scheme)
+}
+
+func (suite *ConfigTestSuite) TestLoadConfigGateClientDefaultsToServerPublicURL() {
+	tempDir := suite.T().TempDir()
+
+	// gate_client omitted and server exposes a public_url: gate_client derives from the public_url.
+	userContent := `
+server:
+  hostname: "0.0.0.0"
+  port: 8090
+  public_url: "https://thunderid.local:9443"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	userFile := suite.createTempFile(tempDir, "user*.yaml", userContent)
+
+	config, err := LoadConfig(userFile, "", tempDir)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), config)
+
+	assert.Equal(suite.T(), "thunderid.local", config.GateClient.Hostname)
+	assert.Equal(suite.T(), 9443, config.GateClient.Port)
+	assert.Equal(suite.T(), "https", config.GateClient.Scheme)
+}
+
+func (suite *ConfigTestSuite) TestLoadConfigGateClientDefaultsToServerPublicURLWithoutPort() {
+	tempDir := suite.T().TempDir()
+
+	// public_url without an explicit port: gate_client falls back to the scheme's default port.
+	userContent := `
+server:
+  hostname: "0.0.0.0"
+  port: 8090
+  public_url: "https://thunderid.local"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	userFile := suite.createTempFile(tempDir, "user*.yaml", userContent)
+
+	config, err := LoadConfig(userFile, "", tempDir)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), config)
+
+	assert.Equal(suite.T(), "thunderid.local", config.GateClient.Hostname)
+	assert.Equal(suite.T(), 443, config.GateClient.Port)
+	assert.Equal(suite.T(), "https", config.GateClient.Scheme)
+}
+
+func (suite *ConfigTestSuite) TestLoadConfigGateClientPartialOverride() {
+	tempDir := suite.T().TempDir()
+
+	// Only gate_client.path is set: host/port/scheme still inherit from the server config.
+	userContent := `
+server:
+  hostname: "user-host"
+  port: 8095
+  http_only: true
+gate_client:
+  path: "/login"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	userFile := suite.createTempFile(tempDir, "user*.yaml", userContent)
+
+	config, err := LoadConfig(userFile, "", tempDir)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), config)
+
+	assert.Equal(suite.T(), "user-host", config.GateClient.Hostname)
+	assert.Equal(suite.T(), 8095, config.GateClient.Port)
+	assert.Equal(suite.T(), "http", config.GateClient.Scheme)
+	assert.Equal(suite.T(), "/login", config.GateClient.Path)
+}
+
+func (suite *ConfigTestSuite) TestLoadConfigGateClientDefaultsToServerHTTPPublicURLWithoutPort() {
+	tempDir := suite.T().TempDir()
+
+	// http public_url without an explicit port: gate_client falls back to port 80.
+	userContent := `
+server:
+  hostname: "0.0.0.0"
+  port: 8090
+  public_url: "http://thunderid.local"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	userFile := suite.createTempFile(tempDir, "user*.yaml", userContent)
+
+	config, err := LoadConfig(userFile, "", tempDir)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), config)
+
+	assert.Equal(suite.T(), "thunderid.local", config.GateClient.Hostname)
+	assert.Equal(suite.T(), 80, config.GateClient.Port)
+	assert.Equal(suite.T(), "http", config.GateClient.Scheme)
+}
+
+func (suite *ConfigTestSuite) TestLoadConfigGateClientUnspecifiedHostFails() {
+	tempDir := suite.T().TempDir()
+
+	// server binds to 0.0.0.0 with no public_url and no explicit gate_client host: the gate
+	// client would resolve to the unreachable bind address, so loading must fail.
+	userContent := `
+server:
+  hostname: "0.0.0.0"
+  port: 8090
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	userFile := suite.createTempFile(tempDir, "user*.yaml", userContent)
+
+	config, err := LoadConfig(userFile, "", tempDir)
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), config)
+	assert.Contains(suite.T(), err.Error(), "unreachable")
+}
+
+func (suite *ConfigTestSuite) TestLoadConfigGateClientMalformedPublicURLFails() {
+	tempDir := suite.T().TempDir()
+
+	// gate_client derives from a malformed public_url (non-numeric port): parsing must fail loudly
+	// rather than silently leaving gate_client empty.
+	userContent := `
+server:
+  hostname: "0.0.0.0"
+  port: 8090
+  public_url: "https://thunderid.local:notaport"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	userFile := suite.createTempFile(tempDir, "user*.yaml", userContent)
+
+	config, err := LoadConfig(userFile, "", tempDir)
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), config)
+	assert.Contains(suite.T(), err.Error(), "failed to parse server URL")
+}
+
 func (suite *ConfigTestSuite) TestLoadConfigLogLevel() {
 	tempDir := suite.T().TempDir()
 
@@ -204,6 +383,94 @@ notification:
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), config)
 	assert.Equal(suite.T(), "", config.Log.Level)
+}
+
+func (suite *ConfigTestSuite) TestLoadConfigLogOutput() {
+	tempDir := suite.T().TempDir()
+
+	notification := `
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+
+	logOutput := `
+log:
+  level: "info"
+  output:
+    console:
+      enabled: true
+    file:
+      enabled: true
+      path: "logs"
+      file_name: "thunderid.log"
+      format: "json"
+      rotation:
+        size:
+          enabled: true
+          max_size_mb: 0.5
+        time:
+          enabled: true
+          interval_days: 2
+        max_backups: 7
+        max_age_days: 14
+        compress: true
+`
+
+	userFile := suite.createTempFile(tempDir, "user*.yaml", logOutput+notification)
+	config, err := LoadConfig(userFile, "", tempDir)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), config)
+
+	file := config.Log.Output.File
+	assert.Equal(suite.T(), boolPtr(true), config.Log.Output.Console.Enabled)
+	assert.Equal(suite.T(), boolPtr(true), file.Enabled)
+	assert.Equal(suite.T(), "logs", file.Path)
+	assert.Equal(suite.T(), "thunderid.log", file.FileName)
+	assert.Equal(suite.T(), "json", file.Format)
+	assert.Equal(suite.T(), boolPtr(true), file.Rotation.Size.Enabled)
+	assert.Equal(suite.T(), floatPtr(0.5), file.Rotation.Size.MaxSizeMB)
+	assert.Equal(suite.T(), boolPtr(true), file.Rotation.Time.Enabled)
+	assert.Equal(suite.T(), intPtr(2), file.Rotation.Time.IntervalDays)
+	assert.Equal(suite.T(), intPtr(7), file.Rotation.MaxBackups)
+	assert.Equal(suite.T(), intPtr(14), file.Rotation.MaxAgeDays)
+	assert.Equal(suite.T(), boolPtr(true), file.Rotation.Compress)
+
+	// Omitting the output block leaves the file toggle unset (nil), so the default
+	// from default.json is preserved on merge.
+	withoutOutput := suite.createTempFile(tempDir, "user*.yaml", "log:\n  level: \"info\"\n"+notification)
+	config, err = LoadConfig(withoutOutput, "", tempDir)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), config)
+	assert.Nil(suite.T(), config.Log.Output.File.Enabled)
+}
+
+// TestLogConfigOverrideToZeroValues verifies the presence-based (pointer) merge:
+// a deployment.yaml value overrides a default.json default even when it is the
+// zero value (false / 0), while an omitted (nil) value keeps the default.
+func (suite *ConfigTestSuite) TestLogConfigOverrideToZeroValues() {
+	base := &Config{}
+	base.Log.Level = "info"
+	base.Log.Output.Console.Enabled = boolPtr(true)
+	base.Log.Output.File.Rotation.MaxBackups = intPtr(20)
+
+	user := &Config{}
+	user.Log.Output.Console.Enabled = boolPtr(false) // explicitly disable console
+	user.Log.Output.File.Rotation.MaxBackups = intPtr(0)
+
+	mergeConfigs(base, user)
+
+	assert.Equal(suite.T(), "info", base.Log.Level, "untouched default preserved")
+	assert.Equal(suite.T(), boolPtr(false), base.Log.Output.Console.Enabled, "false must override the true default")
+	assert.Equal(suite.T(), intPtr(0), base.Log.Output.File.Rotation.MaxBackups, "0 must override the non-zero default")
+
+	// An omitted (nil) user value keeps the base default.
+	base2 := &Config{}
+	base2.Log.Output.Console.Enabled = boolPtr(true)
+	mergeConfigs(base2, &Config{})
+	assert.Equal(suite.T(), boolPtr(true), base2.Log.Output.Console.Enabled, "nil override keeps the default")
 }
 
 func (suite *ConfigTestSuite) TestLoadConfigWithDefaults_ErrorCases() {
@@ -266,7 +533,7 @@ func (suite *ConfigTestSuite) TestMergeStructs() {
 					Port:     5432,
 				},
 			},
-			Runtime: DataSource{
+			RuntimeTransient: DataSource{
 				Type: "postgres",
 				Postgres: PostgresDataSource{
 					Hostname: "base-runtime-host",

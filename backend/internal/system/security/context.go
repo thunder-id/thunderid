@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -34,11 +34,12 @@ const (
 
 // SecurityContext holds immutable authenticated subject information.
 type SecurityContext struct {
-	subject     string
-	ouID        string
-	token       string
-	permissions []string
-	attributes  map[string]interface{}
+	subject      string
+	ouID         string
+	token        string
+	revocationID string
+	permissions  []string
+	attributes   map[string]interface{}
 }
 
 // newSecurityContext creates a new immutable SecurityContext.

@@ -27,15 +27,15 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
 	testServerURL    = testutils.TestServerURL
 	googleAuthStart  = "/auth/oauth/google/start"
 	googleAuthFinish = "/auth/oauth/google/finish"
-	mockGooglePort   = 8090
+	mockGooglePort   = 8093
 )
 
 var googleAuthTestOU = testutils.OrganizationUnit{
@@ -148,26 +148,6 @@ func (suite *GoogleAuthTestSuite) SetupSuite() {
 				Name:     "client_secret",
 				Value:    "test-google-secret",
 				IsSecret: true,
-			},
-			{
-				Name:     "authorization_endpoint",
-				Value:    suite.mockGoogleServer.GetURL() + "/o/oauth2/v2/auth",
-				IsSecret: false,
-			},
-			{
-				Name:     "token_endpoint",
-				Value:    suite.mockGoogleServer.GetURL() + "/token",
-				IsSecret: false,
-			},
-			{
-				Name:     "userinfo_endpoint",
-				Value:    suite.mockGoogleServer.GetURL() + "/v1/userinfo",
-				IsSecret: false,
-			},
-			{
-				Name:     "jwks_endpoint",
-				Value:    suite.mockGoogleServer.GetURL() + "/oauth2/v3/certs",
-				IsSecret: false,
 			},
 			{
 				Name:     "scopes",
@@ -506,13 +486,15 @@ func (suite *GoogleAuthTestSuite) simulateGoogleAuthorization(redirectURL string
 	state := query.Get("state")
 	redirectURI := query.Get("redirect_uri")
 	scope := query.Get("scope")
+	nonce := query.Get("nonce")
 
-	authURL := fmt.Sprintf("%s/o/oauth2/v2/auth?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&state=%s",
+	authURL := fmt.Sprintf("%s/o/oauth2/v2/auth?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&state=%s&nonce=%s",
 		suite.mockGoogleServer.GetURL(),
 		url.QueryEscape(clientID),
 		url.QueryEscape(redirectURI),
 		url.QueryEscape(scope),
-		url.QueryEscape(state))
+		url.QueryEscape(state),
+		url.QueryEscape(nonce))
 
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {

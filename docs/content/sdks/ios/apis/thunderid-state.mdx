@@ -1,6 +1,7 @@
 ---
 title: ThunderIDState
-description: Reactive authentication state for SwiftUI applications
+docType: reference
+description: Reactive authentication state for SwiftUI applications, providing current user and session status.
 ---
 
 # `ThunderIDState`
@@ -77,8 +78,6 @@ Task {
 :::note
 `SignOutButton` and `SignIn` call `refresh()` automatically. You only need to call it directly when driving auth operations through `state.client` yourself.
 :::
-
----
 
 ### `setLocale(_:)`
 

@@ -178,6 +178,76 @@ func (suite *MatcherTestSuite) TestTrailingDotMatchesBareHost() {
 	assert.True(suite.T(), allow)
 }
 
+func (suite *MatcherTestSuite) TestCombineUnionsLayers() {
+	readOnly := suite.buildMatcher(
+		literalEntry{Value: "https://static.example.com"},
+		regexEntry{Pattern: `^https://[a-z]+\.static\.example\.com$`},
+	)
+	writable := suite.buildMatcher(
+		literalEntry{Value: "https://app.example.com"},
+		literalEntry{Value: "null"},
+	)
+
+	m := combine(readOnly, writable)
+
+	assert.True(suite.T(), mustMatch(suite.T(), m, "https://static.example.com"))   // read-only literal
+	assert.True(suite.T(), mustMatch(suite.T(), m, "https://app.example.com"))      // writable literal
+	assert.True(suite.T(), mustMatch(suite.T(), m, "https://x.static.example.com")) // read-only regex
+	assert.False(suite.T(), mustMatch(suite.T(), m, "https://other.example.com"))
+
+	// null-allowed is OR'd across layers.
+	allow, _ := m.Match(ParseResult{Raw: "null", IsNull: true})
+	assert.True(suite.T(), allow)
+
+	// size counts the de-duplicated rules: 2 literals + 1 regex + null.
+	assert.Equal(suite.T(), 4, m.Size())
+	assert.Equal(suite.T(), 3, m.LiteralCount())
+	assert.Equal(suite.T(), 1, m.RegexCount())
+}
+
+func (suite *MatcherTestSuite) TestCombineDeduplicatesSharedLiterals() {
+	a := suite.buildMatcher(literalEntry{Value: "https://shared.example.com"})
+	b := suite.buildMatcher(literalEntry{Value: "https://shared.example.com"})
+
+	m := combine(a, b)
+	assert.True(suite.T(), mustMatch(suite.T(), m, "https://shared.example.com"))
+	// A literal present in both layers collapses to a single rule.
+	assert.Equal(suite.T(), 1, m.Size())
+	assert.Equal(suite.T(), 1, m.LiteralCount())
+}
+
+func (suite *MatcherTestSuite) TestCombineConcatenatesRegexesWithoutDedup() {
+	pattern := `^https://[a-z]+\.example\.com$`
+	a := suite.buildMatcher(regexEntry{Pattern: pattern})
+	b := suite.buildMatcher(regexEntry{Pattern: pattern})
+
+	m := combine(a, b)
+	// Regexes are concatenated, not de-duplicated by pattern (documented behavior); matching is unaffected.
+	assert.Equal(suite.T(), 2, m.RegexCount())
+	assert.True(suite.T(), mustMatch(suite.T(), m, "https://tenant.example.com"))
+}
+
+func (suite *MatcherTestSuite) TestCombineNilOperandsReturnOther() {
+	a := suite.buildMatcher(literalEntry{Value: "https://a.com"})
+	assert.Same(suite.T(), a, combine(a, nil))
+	assert.Same(suite.T(), a, combine(nil, a))
+	assert.Nil(suite.T(), combine(nil, nil))
+}
+
+func (suite *MatcherTestSuite) TestCombineDoesNotMutateInputs() {
+	a := suite.buildMatcher(literalEntry{Value: "https://a.com"}, regexEntry{Pattern: `^https://a$`})
+	b := suite.buildMatcher(literalEntry{Value: "https://b.com"}, regexEntry{Pattern: `^https://b$`})
+
+	_ = combine(a, b)
+
+	// Inputs are untouched: no cross-contamination of literals or regexes.
+	assert.Equal(suite.T(), 2, a.Size())
+	assert.Equal(suite.T(), 1, a.RegexCount())
+	assert.False(suite.T(), mustMatch(suite.T(), a, "https://b.com"))
+	assert.Equal(suite.T(), 2, b.Size())
+	assert.Equal(suite.T(), 1, b.RegexCount())
+}
+
 // BenchmarkMatchLiteralHitMap measures the cost of a literal hit through the
 // O(1) map path so we can compare it against the legacy O(n) scan if needed
 // while sizing rule-set growth budgets.

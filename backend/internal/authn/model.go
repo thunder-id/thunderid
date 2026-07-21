@@ -30,6 +30,7 @@ type IDPAuthInitData struct {
 type AuthSessionData struct {
 	IDPID   string            `json:"idpId"`
 	IDPType providers.IDPType `json:"idpType"`
+	Nonce   string            `json:"nonce,omitempty"`
 }
 
 // AuthenticationResponseDTO represents the data transfer object for the authentication response.

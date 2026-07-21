@@ -1,7 +1,8 @@
 ---
 title: Get started
+docType: guide
 sidebar_position: 2
-description: Download and run using the release artifact, Docker Compose, or Helm
+description: Download and run ThunderID using the release artifact, Docker Compose, or Helm on Kubernetes.
 ---
 
 import Tabs from '@theme/Tabs';
@@ -25,7 +26,7 @@ Get the latest release of <ProductName /> and run it locally on your machine.
 - Your operating system and architecture (macOS, Linux, or Windows)
 - Terminal or command prompt access
 
-<Stepper stepNode="h2" as="h3">
+<Stepper stepNode="h2" as="h2">
 
 ## Download the Distribution
 
@@ -66,6 +67,8 @@ Initialize <ProductName /> with the default configurations and data before start
 </TabItem>
 </Tabs>
 
+Setup generates this deployment's own TLS, JWT signing, and encryption keys, in addition to seeding the default data, so every deployment uses unique key material. The keys are reused on later runs, and the server does not start without them.
+
 ## Start <ProductName />
 
 Launch the <ProductName /> server:
@@ -90,20 +93,26 @@ Launch the <ProductName /> server:
 :::tip Seed and start in one step
 For local and development setups, you can combine both steps with the
 `--bootstrap-and-serve` flag. It creates or updates the default resources as
-needed (idempotent, so it's safe to re-run), then starts the server:
+needed (idempotent, so it's safe to re-run), then starts the server.
+
+Unlike `setup`, this mode does not generate an admin password for you. You must
+provide one, either with the `--admin-password` flag or the `ADMIN_PASSWORD`
+environment variable. If neither is set, startup fails. The `--admin-username`
+flag is optional and defaults to `admin`, so passing just `--admin-password` is
+enough.
 
 <Tabs groupId="os">
 <TabItem value="unix" label="Linux / macOS">
 
 ```bash
-./start.sh --bootstrap-and-serve
+./start.sh --bootstrap-and-serve --admin-password <your-admin-password>
 ```
 
 </TabItem>
 <TabItem value="windows" label="Windows">
 
 ```powershell
-.\start.ps1 --bootstrap-and-serve
+.\start.ps1 --bootstrap-and-serve --admin-password <your-admin-password>
 ```
 
 </TabItem>
@@ -131,7 +140,7 @@ The quickest way to get <ProductName /> up and running with all dependencies con
 - Docker and Docker Compose installed on your machine
 - Terminal or command prompt access
 
-<Stepper stepNode="h2" as="h3">
+<Stepper stepNode="h2" as="h2">
 
 ## Start <ProductName />
 
@@ -167,7 +176,7 @@ Deploy <ProductName /> on Kubernetes with PostgreSQL using Helm charts.
 - [Helm](https://helm.sh/docs/intro/install/) and [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) installed
 - Terminal or command prompt access
 
-<Stepper stepNode="h2" as="h3">
+<Stepper stepNode="h2" as="h2">
 
 ## Set Up the Database
 
@@ -180,13 +189,13 @@ helm install postgresql oci://registry-1.docker.io/bitnamicharts/postgresql \
   --set auth.postgresPassword=dbpassword \
   --set-file primary.initdb.scripts.setup\\.sql=<(cat <<'SQL'
 CREATE DATABASE configdb;
-CREATE DATABASE runtimedb;
-CREATE DATABASE userdb;
-CREATE DATABASE consentdb;
+CREATE DATABASE runtime_transient;
+CREATE DATABASE entitydb;
+CREATE DATABASE runtime_persistent;
 GRANT ALL PRIVILEGES ON DATABASE configdb TO dbuser;
-GRANT ALL PRIVILEGES ON DATABASE runtimedb TO dbuser;
-GRANT ALL PRIVILEGES ON DATABASE userdb TO dbuser;
-GRANT ALL PRIVILEGES ON DATABASE consentdb TO dbuser;
+GRANT ALL PRIVILEGES ON DATABASE runtime_transient TO dbuser;
+GRANT ALL PRIVILEGES ON DATABASE entitydb TO dbuser;
+GRANT ALL PRIVILEGES ON DATABASE runtime_persistent TO dbuser;
 SQL
 )
 ```
@@ -202,12 +211,10 @@ Apply the database schemas:
 ```bash
 kubectl run {{productSlug}}-dbinit --image=ghcr.io/thunder-id/{{productSlug}}:latest --restart=Never --command -- sleep 300
 kubectl wait --for=condition=ready pod/{{productSlug}}-dbinit --timeout=60s
-for db in configdb runtimedb userdb; do
+for db in configdb runtime_transient entitydb runtime_persistent; do
   kubectl exec {{productSlug}}-dbinit -- cat /opt/{{productSlug}}/dbscripts/$db/postgres.sql | \
     kubectl exec -i postgresql-0 -- env PGPASSWORD=dbpassword psql -U dbuser -d $db
 done
-kubectl exec {{productSlug}}-dbinit -- cat /opt/{{productSlug}}/consent/dbscripts/db_schema_postgres.sql | \
-  kubectl exec -i postgresql-0 -- env PGPASSWORD=dbpassword psql -U dbuser -d consentdb
 kubectl delete pod {{productSlug}}-dbinit
 ```
 
@@ -219,12 +226,12 @@ Install <ProductName /> using the [<ProductName /> Helm chart](https://github.co
 helm install {{productSlug}} oci://ghcr.io/thunder-id/helm-charts/{{productSlug}} \
   --set configuration.database.config.postgres.hostname=postgresql \
   --set configuration.database.config.postgres.sslmode=disable \
-  --set configuration.database.runtime.postgres.hostname=postgresql \
-  --set configuration.database.runtime.postgres.sslmode=disable \
-  --set configuration.database.user.postgres.hostname=postgresql \
-  --set configuration.database.user.postgres.sslmode=disable \
-  --set configuration.consent.database.host=postgresql \
-  --set configuration.consent.database.sslmode=disable \
+  --set configuration.database.runtime_transient.postgres.hostname=postgresql \
+  --set configuration.database.runtime_transient.postgres.sslmode=disable \
+  --set configuration.database.entity.postgres.hostname=postgresql \
+  --set configuration.database.entity.postgres.sslmode=disable \
+  --set configuration.database.runtime_persistent.postgres.hostname=postgresql \
+  --set configuration.database.runtime_persistent.postgres.sslmode=disable \
   --set configuration.server.publicUrl=https://localhost:8090 \
   --set configuration.gateClient.hostname=localhost \
   --set configuration.gateClient.port=8090
@@ -258,20 +265,20 @@ Access <ProductName /> on **https://localhost:8090/console**
 <NextSteps>
   <NextStepsCard
     title="Explore Use Cases"
-    description="See how the platform fits B2C apps, B2B organizations, and AI agents — with architecture patterns and ready-to-run samples."
-    href="/docs/next/use-cases/overview"
+    description="See how the platform fits B2C apps, B2B organizations, and AI agents, with architecture patterns and ready-to-run samples."
+    href="../../../use-cases/overview"
     cta="Browse use cases"
   />
   <NextStepsCard
     title="Manage Applications"
     description="Register applications, configure OAuth settings, manage redirect URIs, and control access policies from the Console."
-    href="/docs/next/guides/guides/applications/manage-applications"
+    href="../../guides/applications/manage-applications"
     cta="Manage applications"
   />
   <NextStepsCard
     title="Build a Sign-In Flow"
-    description="Use the visual flow designer to configure authentication — add MFA, passkeys, or social login without changing app code."
-    href="/docs/next/guides/guides/flows/build-a-flow"
+    description="Use the visual flow designer to configure authentication: add MFA, passkeys, or social login without changing app code."
+    href="../../guides/flows/build-a-flow"
     cta="Open flow designer"
   />
 </NextSteps>

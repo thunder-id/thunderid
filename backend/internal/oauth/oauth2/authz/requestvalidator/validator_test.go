@@ -88,6 +88,30 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_UnsupportedResponseTyp
 	assert.Equal(suite.T(), constants.ErrorUnsupportedResponseType, errCode)
 }
 
+func (suite *AuthzValidationTestSuite) TestValidateParams_QueryResponseMode() {
+	params := suite.validParams()
+	params[constants.RequestParamResponseMode] = constants.ResponseModeQuery
+
+	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
+
+	assert.Empty(suite.T(), errCode)
+	assert.Empty(suite.T(), errMsg)
+}
+
+func (suite *AuthzValidationTestSuite) TestValidateParams_UnsupportedResponseMode() {
+	for _, responseMode := range []string{"fragment", "form_post"} {
+		suite.T().Run(responseMode, func(t *testing.T) {
+			params := suite.validParams()
+			params[constants.RequestParamResponseMode] = responseMode
+
+			errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
+
+			assert.Equal(t, constants.ErrorInvalidRequest, errCode)
+			assert.Equal(t, "Unsupported response_mode parameter", errMsg)
+		})
+	}
+}
+
 func (suite *AuthzValidationTestSuite) TestValidateParams_GrantTypeNotAllowed() {
 	app := &providers.OAuthClient{
 		ClientID:                "test-client-id",

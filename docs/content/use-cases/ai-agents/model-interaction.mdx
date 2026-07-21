@@ -1,0 +1,78 @@
+---
+title: Model Interaction Controls
+docType: use-case
+description: Give an AI gateway a verifiable agent identity so model access, quotas, and guardrails can be enforced per agent and per delegated user.
+sidebar_position: 5
+---
+
+# Model Interaction Controls (Agent → Model)
+
+Agents reach foundation models through an AI gateway: a control point that sits between the agent and one or more model providers. The gateway is where cost, safety, and access policy are enforced. But a gateway can only enforce policy if it knows *who* is calling. Identity is the input that turns a shared model endpoint into a governed one.
+
+When an agent authenticates to the gateway with its own identity, the gateway can decide which models it may use, what quotas apply, and which guardrails to enforce, applying them per agent rather than as a single blanket policy for all traffic, and per delegated user where a user is involved.
+
+## IAM Capabilities Required
+
+**Agent-specific gateway authentication** so the AI gateway can identify the calling agent and evaluate policy against its identity rather than treating all model traffic as anonymous.
+
+**Identity-based access control for models** to determine which models, model tiers, and quotas each agent may reach based on the agent's identity profile.
+
+**Delegated identity inspection** so the gateway can see not only which agent is calling but, when the agent acts for a user, who that user is, and shape controls accordingly.
+
+**Identity-aware guardrails** to apply safety and content policy based on the combination of the agent's role and the delegated user's attributes.
+
+## Agent-Specific Model Access
+
+### The Challenge
+
+Not every agent should reach every model. A frontier vision model is expensive and highly capable; a customer-facing chatbot has no business calling it, while an internal engineering agent might legitimately need it. Without identity at the gateway, the only controls available are coarse: one API key for everyone, or a separate key per model that teams copy and share until the mapping between key and caller is meaningless.
+
+The result is uncontrolled cost and uncontrolled capability. A misconfigured or compromised agent can burn through a premium-model budget or reach a model far more capable than its task warrants, and there is no per-agent record of who called what.
+
+### How <ProductName /> Solves It
+
+<ProductName /> authenticates each agent to the AI gateway with credentials tied to its own identity profile: typically `private_key_jwt` for high-security agents, or client credentials. The gateway evaluates the agent's identity and applies model-access policy accordingly: which models the agent may reach, which tiers, and what quota it holds.
+
+Because the policy keys off the agent's identity profile rather than a shared secret, model access becomes a property of *who the agent is*, not of which key happened to be in its config. Changing an agent's model access is an authorization change on its identity, not a key swap. Every model call is attributable to a specific agent, so cost and usage roll up per identity.
+
+### Scenario: Tiered Model Access
+
+An engineering agent needs a high-quota vision model to analyze diagrams, while a support chatbot is restricted to standard text models. <ProductName /> authenticates each agent to the gateway using credentials tied to its respective identity profile. The gateway reads the engineering agent's identity, confirms its policy grants vision-model access, and allows the call. When the support chatbot attempts the same model, the gateway reads its identity, finds no such grant, and restricts it to text-only models. Both agents share the same gateway; neither shares the other's access.
+
+## Identity-Based Guardrails
+
+### The Challenge
+
+Safety controls that ignore identity are either too loose or too tight. A single content policy strict enough for a public consumer chatbot will block a legitimate internal agent doing sensitive but authorized work; a policy permissive enough for the internal agent will expose the consumer bot. Worse, when an agent acts on behalf of a user, the safety decision should depend on *that user*: their clearance, region, and entitlements, not just on the agent.
+
+A gateway that sees only "an API call arrived" cannot make these distinctions. It has no notion of the agent's role and no notion of the human the agent is acting for, so it falls back to one policy for all traffic.
+
+### How <ProductName /> Solves It
+
+<ProductName /> gives the gateway both identities in the call: the agent's, and, when the agent operates in the actor posture, the delegated user's. Guardrails then adapt to the combination. The gateway can apply one content policy for an agent acting autonomously and a stricter or looser one when the same agent acts for a specific user, based on that user's attributes.
+
+This means safety controls follow the principal, not just the pipe. An agent acting for a user in a regulated region inherits that region's constraints; the same agent acting for an unrestricted user does not. The guardrail decision is a function of *who the agent is* and *who it is acting for*, both of which <ProductName /> carries into the request as verifiable identity.
+
+### Scenario: Guardrails That Follow the User
+
+A research agent summarizes internal documents for employees. When a general employee invokes it, the gateway applies the standard content policy. When an employee with elevated clearance invokes the same agent to summarize restricted filings, the gateway reads the delegated user's clearance attribute from the agent's actor context and relaxes the redaction guardrail accordingly, while still enforcing the agent's own role limits. The agent is identical in both calls; the guardrail differs because the delegated identity differs.
+
+## Key Principles
+
+**The gateway enforces what it can identify.** Model access and guardrails are only as good as the identity the gateway sees. <ProductName /> makes every model call carry a verifiable agent identity.
+
+**Model access is a property of the agent, not the key.** Which models an agent may reach follows its identity profile, so access changes are authorization changes, not shared-secret swaps.
+
+**Guardrails follow the principal.** When an agent acts for a user, safety controls adapt to that user's attributes, not only to the agent's role.
+
+**Every model call is attributable.** Cost, quota, and content decisions roll up to a specific agent identity, and to the delegated user when one is present.
+
+## Guides
+
+- [Agent Authentication](../../../guides/guides/agents/agent-authentication): Authenticate an agent to an AI gateway with `private_key_jwt` or client credentials.
+
+## Related Use Cases
+
+- [Agent as Subject](../agent-as-subject)
+- [Accessing Internal Business Services](../internal-services)
+- [Invoking the Agent and Authenticating Users](../invoking-the-agent)

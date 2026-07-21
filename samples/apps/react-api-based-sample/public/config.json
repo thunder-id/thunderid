@@ -1,4 +1,5 @@
 {
   "baseUrl": "https://localhost:8090",
-  "notificationSenderId": "YOUR_NOTIFICATION_SENDER_ID_HERE"
+  "notificationSenderId": "YOUR_NOTIFICATION_SENDER_ID_HERE",
+  "directAuthSecret": "YOUR_DIRECT_AUTH_SECRET_HERE"
 }

@@ -98,3 +98,53 @@ func TestGetDependenciesNoProvidersReturnsEmpty(t *testing.T) {
 	assert.Empty(t, resp.Usages)
 	assert.Empty(t, resp.Summary)
 }
+
+// cascadeStubProvider is a provider that also implements CascadeDeleter.
+type cascadeStubProvider struct {
+	usages  []ResourceDependency
+	deleted int
+	err     error
+}
+
+func (s *cascadeStubProvider) GetResourceDependencies(
+	_ context.Context, _, _ string) ([]ResourceDependency, error) {
+	return s.usages, nil
+}
+
+func (s *cascadeStubProvider) CascadeDeleteDependencies(_ context.Context, _, _ string) (int, error) {
+	return s.deleted, s.err
+}
+
+func TestCascadeDeleteSumsAcrossProvidersAndSkipsNonCascaders(t *testing.T) {
+	reg := newRegistry()
+	// A plain provider (no CascadeDeleter) must be skipped, not fail.
+	reg.RegisterProvider(&stubProvider{usages: []ResourceDependency{}})
+	reg.RegisterProvider(&cascadeStubProvider{deleted: 2})
+	reg.RegisterProvider(&cascadeStubProvider{deleted: 3})
+
+	deleted, err := reg.CascadeDelete(context.Background(), "user", "u1")
+
+	assert.NoError(t, err)
+	assert.Equal(t, 5, deleted)
+}
+
+func TestCascadeDeleteStopsOnProviderError(t *testing.T) {
+	reg := newRegistry()
+	reg.RegisterProvider(&cascadeStubProvider{deleted: 1})
+	reg.RegisterProvider(&cascadeStubProvider{err: errors.New("delete failed")})
+
+	deleted, err := reg.CascadeDelete(context.Background(), "user", "u1")
+
+	assert.Error(t, err)
+	assert.Equal(t, 1, deleted)
+}
+
+func TestCascadeDeleteNoProvidersReturnsZero(t *testing.T) {
+	reg := newRegistry()
+	reg.RegisterProvider(&stubProvider{usages: []ResourceDependency{}})
+
+	deleted, err := reg.CascadeDelete(context.Background(), "user", "u1")
+
+	assert.NoError(t, err)
+	assert.Equal(t, 0, deleted)
+}

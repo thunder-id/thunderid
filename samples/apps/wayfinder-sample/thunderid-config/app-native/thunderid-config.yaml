@@ -1,4 +1,4 @@
-# resource_type: user_type
+resource_type: user_type
 id: wayfinder-customer-type
 category: user
 name: Customer
@@ -44,7 +44,7 @@ schema: {
   }
 
 ---
-# resource_type: user_type
+resource_type: user_type
 id: wayfinder-staff-type
 category: user
 name: Staff
@@ -80,11 +80,11 @@ schema: {
   }
 
 ---
-# resource_type: resource_server
+resource_type: resource_server
 id: wayfinder-agent-rs
 name: Wayfinder Agent
 description: Controls access to the Wayfinder Concierge agent
-identifier: wayfinder-agent
+identifier: http://localhost:8790/chat
 ouHandle: default
 delimiter: ":"
 resources:
@@ -96,7 +96,7 @@ resources:
         description: Grants access to the Wayfinder Concierge agent
 
 ---
-# resource_type: resource_server
+resource_type: resource_server
 id: wayfinder-booking-rs
 name: Wayfinder Booking
 description: Protects the Wayfinder booking domain — same scopes guard the REST API on /api/* and the MCP tools on /mcp.
@@ -137,7 +137,7 @@ resources:
         description: Allows the upgrade scheduler agent to execute a pending upgrade via CIBA user token
 
 ---
-# resource_type: flow
+resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000001
 name: Wayfinder Registration Flow
 handle: wayfinder-registration-flow
@@ -314,7 +314,7 @@ nodes:
     type: END
 
 ---
-# resource_type: flow
+resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000002
 name: Wayfinder Password Recovery Flow
 handle: wayfinder-recovery-flow
@@ -482,7 +482,7 @@ nodes:
     type: END
 
 ---
-# resource_type: flow
+resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000005
 name: Wayfinder Staff Onboarding Flow
 handle: wayfinder-onboarding-flow
@@ -842,7 +842,7 @@ nodes:
     type: END
 
 ---
-# resource_type: flow
+resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000008
 name: Wayfinder Registration with Auto Sign-In Flow
 handle: wayfinder-registration-autosignin-flow
@@ -993,7 +993,7 @@ nodes:
     type: END
 
 ---
-# resource_type: application
+resource_type: application
 id: wayfinder-app
 name: Wayfinder
 description: Wayfinder Travel sample application
@@ -1020,6 +1020,7 @@ inboundAuthConfig:
       clientId: "{{.WAYFINDER_CLIENT_ID}}"
       redirectUris:
         - http://localhost:5173
+        - http://localhost:5173/chat-token-callback
       grantTypes:
         - authorization_code
         - urn:ietf:params:oauth:grant-type:token-exchange
@@ -1030,12 +1031,13 @@ inboundAuthConfig:
       publicClient: true
       token:
         accessToken:
-          validityPeriod: 3600
-          userAttributes:
-            - given_name
-            - family_name
-            - email
-            - groups
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - groups
         idToken:
           validityPeriod: 3600
           userAttributes:
@@ -1054,7 +1056,7 @@ inboundAuthConfig:
           - groups
 
 ---
-# resource_type: flow
+resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000006
 name: Default Wayfinder CIBA Email Notification Flow
 handle: wayfinder-ciba-email-flow
@@ -1196,7 +1198,7 @@ nodes:
           components:
             - id: consent_input
               ref: consent_decisions
-              type: CONSENT
+              type: CONSENT_INPUT
               required: true
             - type: ACTION
               id: consent_action_deny
@@ -1212,7 +1214,7 @@ nodes:
       - inputs:
           - ref: consent_input
             identifier: consent_decisions
-            type: CONSENT
+            type: CONSENT_INPUT
             required: true
         action:
           ref: consent_action_allow
@@ -1220,7 +1222,7 @@ nodes:
       - inputs:
           - ref: consent_input
             identifier: consent_decisions
-            type: CONSENT
+            type: CONSENT_INPUT
             required: true
         action:
           ref: consent_action_deny
@@ -1258,7 +1260,7 @@ nodes:
 
 
 ---
-# resource_type: flow
+resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000007
 name: Default Wayfinder CIBA SMS Notification Flow
 handle: wayfinder-ciba-sms-flow
@@ -1401,7 +1403,7 @@ nodes:
           components:
             - id: consent_input
               ref: consent_decisions
-              type: CONSENT
+              type: CONSENT_INPUT
               required: true
             - type: ACTION
               id: consent_action_deny
@@ -1417,7 +1419,7 @@ nodes:
       - inputs:
           - ref: consent_input
             identifier: consent_decisions
-            type: CONSENT
+            type: CONSENT_INPUT
             required: true
         action:
           ref: consent_action_allow
@@ -1425,7 +1427,7 @@ nodes:
       - inputs:
           - ref: consent_input
             identifier: consent_decisions
-            type: CONSENT
+            type: CONSENT_INPUT
             required: true
         action:
           ref: consent_action_deny
@@ -1462,7 +1464,7 @@ nodes:
     type: END
 
 ---
-# resource_type: flow
+resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000004
 name: Wayfinder Agent Authentication Flow
 handle: wayfinder-agent-auth-flow
@@ -1598,7 +1600,7 @@ nodes:
     type: END
 
 ---
-# resource_type: agent
+resource_type: agent
 id: wayfinder-concierge
 name: WAYFINDER-CONCIERGE
 description: Wayfinder Concierge AI agent for the Wayfinder Travel sample
@@ -1623,15 +1625,16 @@ inboundAuthConfig:
       publicClient: false
       token:
         accessToken:
-          validityPeriod: 3600
-          userAttributes:
-            - email
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - email
 
 ---
-# resource_type: agent
+resource_type: agent
 # CIBA-only client used by the upgrade scheduler to initiate backchannel
 # authentication for users who have a pending upgrade request.
-# Uses default-ciba-email-flow so Thunder sends an email notification to the
+# Uses wayfinder-ciba-email-flow so ThunderID sends an email notification to the
 # user's registered address. Kept separate from wayfinder-concierge because
 # auth_flow_handle is shared between authorization_code and CIBA — they need
 # different flows (interactive vs backchannel notification).
@@ -1656,18 +1659,19 @@ inboundAuthConfig:
       publicClient: false
       token:
         accessToken:
-          validityPeriod: 3600
-          userAttributes:
-            - given_name
-            - family_name
-            - email
-            - username
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - username
 
 ---
-# resource_type: application
+resource_type: application
 # Public OAuth client used by external MCP clients (e.g. MCP Inspector)
 # to call the Wayfinder MCP server on /mcp.
-# Used by the MCP Authorization tryout to demonstrate Thunder-secured MCP
+# Used by the MCP Authorization tryout to demonstrate ThunderID-secured MCP
 # access from clients that are not part of the Wayfinder product itself.
 id: external-mcp-client
 name: External MCP Client
@@ -1676,7 +1680,7 @@ ouHandle: default
 url: http://localhost:8787/mcp
 # Reuse the Concierge's auth flow so the OAuth consent screen surfaces the
 # requested booking:* scopes during the MCP Authorization tryout. Without
-# this, Thunder falls back to the default sign-in-only flow and no consent
+# this, ThunderID falls back to the default sign-in-only flow and no consent
 # step is shown.
 authFlowHandle: wayfinder-agent-auth-flow
 allowedUserTypes:
@@ -1698,10 +1702,11 @@ inboundAuthConfig:
       publicClient: true
       token:
         accessToken:
-          validityPeriod: 3600
+          userConfig:
+            validityPeriod: 3600
 
 ---
-# resource_type: role
+resource_type: role
 id: wayfinder-traveler-role
 name: Traveler
 description: Consumer role with full booking permissions
@@ -1719,21 +1724,21 @@ assignments:
     type: user
 
 ---
-# resource_type: role
+resource_type: role
 id: wayfinder-support-role
 name: Support
 description: Staff role for consumer support workflows
 ouHandle: default
 
 ---
-# resource_type: role
+resource_type: role
 id: wayfinder-destinations-admin-role
 name: DestinationsAdmin
 description: Staff role for curating featured destinations
 ouHandle: default
 
 ---
-# resource_type: role
+resource_type: role
 id: wayfinder-ops-admin-role
 name: OpsAdmin
 description: Staff role for inviting and managing other staff
@@ -1743,7 +1748,7 @@ assignments:
     type: user
 
 ---
-# resource_type: role
+resource_type: role
 id: chat-user-role
 name: Chat User
 description: Grants access to use the Wayfinder Concierge agent and request flight upgrades through it
@@ -1761,7 +1766,7 @@ assignments:
     type: user
 
 ---
-# resource_type: role
+resource_type: role
 id: booking-user-role
 name: Booking User
 description: Grants booking permissions for the Wayfinder sample
@@ -1779,7 +1784,7 @@ assignments:
     type: user
 
 ---
-# resource_type: role
+resource_type: role
 id: recommender-role
 name: Recommender
 description: Grants access to booking:recommend and upgrade:search permissions, assigned to the Wayfinder Concierge agent
@@ -1794,7 +1799,7 @@ assignments:
     type: agent
 
 ---
-# resource_type: role
+resource_type: role
 id: upgrade-scheduler-role
 name: Upgrade Scheduler
 description: Grants upgrade:read to the upgrade scheduler agent so its M2M token can list pending upgrade requests
@@ -1809,7 +1814,7 @@ assignments:
     type: agent
 
 ---
-# resource_type: user
+resource_type: user
 id: wayfinder-john-doe
 type: Customer
 ouHandle: default
@@ -1823,7 +1828,7 @@ credentials:
   password: "{{.JOHN_DOE_PASSWORD}}"
 
 ---
-# resource_type: user
+resource_type: user
 id: wayfinder-jane-smith
 type: Customer
 ouHandle: default
@@ -1837,7 +1842,7 @@ credentials:
   password: "{{.JANE_SMITH_PASSWORD}}"
 
 ---
-# resource_type: user
+resource_type: user
 id: wayfinder-alex-carter
 type: Staff
 ouHandle: default
@@ -1847,3 +1852,19 @@ attributes:
   displayName: Alex Carter
 credentials:
   password: "{{.ALEX_CARTER_PASSWORD}}"
+
+---
+resource_type: server_config
+# Binds the web app's no-resource sign-in token to the booking resource server.
+# The chat widget requests agent:access separately with resource=http://localhost:8790/chat.
+name: defaultResourceServer
+value:
+  resourceServerId: wayfinder-booking-rs
+
+---
+resource_type: server_config
+# Allows the Wayfinder web app's browser origin to call the server
+name: cors
+value:
+  allowedOrigins:
+    - "http://localhost:5173"

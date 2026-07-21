@@ -105,6 +105,13 @@ func GetServerRuntime() *ServerRuntime {
 	return runtimeConfig
 }
 
+// IsServerRuntimeInitialized reports whether the server runtime has been initialized, without
+// panicking. Useful for callers that have a sensible fallback when config isn't loaded yet
+// (e.g. in unit tests that don't call InitializeServerRuntime).
+func IsServerRuntimeInitialized() bool {
+	return runtimeConfig != nil
+}
+
 // ResetServerRuntime resets the server runtime.
 // This should only be used in tests to reset the singleton state.
 func ResetServerRuntime() {

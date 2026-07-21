@@ -8,6 +8,7 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -164,6 +165,76 @@ func (_c *IDPServiceInterfaceMock_DeleteIdentityProvider_Call) Return(serviceErr
 }
 
 func (_c *IDPServiceInterfaceMock_DeleteIdentityProvider_Call) RunAndReturn(run func(ctx context.Context, idpID string) *common.ServiceError) *IDPServiceInterfaceMock_DeleteIdentityProvider_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetIDPUsages provides a mock function for the type IDPServiceInterfaceMock
+func (_mock *IDPServiceInterfaceMock) GetIDPUsages(ctx context.Context, idpID string) (*resourcedependency.DependenciesResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, idpID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetIDPUsages")
+	}
+
+	var r0 *resourcedependency.DependenciesResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*resourcedependency.DependenciesResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, idpID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *resourcedependency.DependenciesResponse); ok {
+		r0 = returnFunc(ctx, idpID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*resourcedependency.DependenciesResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, idpID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// IDPServiceInterfaceMock_GetIDPUsages_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetIDPUsages'
+type IDPServiceInterfaceMock_GetIDPUsages_Call struct {
+	*mock.Call
+}
+
+// GetIDPUsages is a helper method to define mock.On call
+//   - ctx context.Context
+//   - idpID string
+func (_e *IDPServiceInterfaceMock_Expecter) GetIDPUsages(ctx interface{}, idpID interface{}) *IDPServiceInterfaceMock_GetIDPUsages_Call {
+	return &IDPServiceInterfaceMock_GetIDPUsages_Call{Call: _e.mock.On("GetIDPUsages", ctx, idpID)}
+}
+
+func (_c *IDPServiceInterfaceMock_GetIDPUsages_Call) Run(run func(ctx context.Context, idpID string)) *IDPServiceInterfaceMock_GetIDPUsages_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *IDPServiceInterfaceMock_GetIDPUsages_Call) Return(dependenciesResponse *resourcedependency.DependenciesResponse, serviceError *common.ServiceError) *IDPServiceInterfaceMock_GetIDPUsages_Call {
+	_c.Call.Return(dependenciesResponse, serviceError)
+	return _c
+}
+
+func (_c *IDPServiceInterfaceMock_GetIDPUsages_Call) RunAndReturn(run func(ctx context.Context, idpID string) (*resourcedependency.DependenciesResponse, *common.ServiceError)) *IDPServiceInterfaceMock_GetIDPUsages_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -445,6 +516,46 @@ func (_c *IDPServiceInterfaceMock_GetIdentityProvidersByProperty_Call) Return(iD
 
 func (_c *IDPServiceInterfaceMock_GetIdentityProvidersByProperty_Call) RunAndReturn(run func(ctx context.Context, propertyKey string, propertyValue string) ([]providers.IDPDTO, *common.ServiceError)) *IDPServiceInterfaceMock_GetIdentityProvidersByProperty_Call {
 	_c.Call.Return(run)
+	return _c
+}
+
+// SetDependencyRegistry provides a mock function for the type IDPServiceInterfaceMock
+func (_mock *IDPServiceInterfaceMock) SetDependencyRegistry(r resourcedependency.Registry) {
+	_mock.Called(r)
+	return
+}
+
+// IDPServiceInterfaceMock_SetDependencyRegistry_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetDependencyRegistry'
+type IDPServiceInterfaceMock_SetDependencyRegistry_Call struct {
+	*mock.Call
+}
+
+// SetDependencyRegistry is a helper method to define mock.On call
+//   - r resourcedependency.Registry
+func (_e *IDPServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *IDPServiceInterfaceMock_SetDependencyRegistry_Call {
+	return &IDPServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
+}
+
+func (_c *IDPServiceInterfaceMock_SetDependencyRegistry_Call) Run(run func(r resourcedependency.Registry)) *IDPServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 resourcedependency.Registry
+		if args[0] != nil {
+			arg0 = args[0].(resourcedependency.Registry)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *IDPServiceInterfaceMock_SetDependencyRegistry_Call) Return() *IDPServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *IDPServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run func(r resourcedependency.Registry)) *IDPServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Run(run)
 	return _c
 }
 

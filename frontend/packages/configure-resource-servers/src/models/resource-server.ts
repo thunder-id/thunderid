@@ -24,8 +24,7 @@ export interface ResourceServer {
   id: string;
   name: string;
   description?: string | null;
-  handle: string;
-  identifier?: string | null;
+  identifier: string;
   ouId: string;
   delimiter: string;
   isReadOnly?: boolean;
@@ -78,9 +77,8 @@ export interface ActionListResponse {
 
 export interface CreateResourceServerRequest {
   name: string;
-  handle?: string;
   description?: string;
-  identifier?: string;
+  identifier: string;
   delimiter?: PermissionDelimiter;
   ouId: string;
   type?: ResourceServerType;
@@ -89,7 +87,7 @@ export interface CreateResourceServerRequest {
 export interface UpdateResourceServerRequest {
   name: string;
   description?: string | null;
-  identifier?: string | null;
+  identifier: string;
   ouId: string;
 }
 
@@ -121,3 +119,15 @@ export interface ResourcePermissions {
   resourceServerId: string;
   permissions: string[];
 }
+
+export interface DefaultResourceServerValue {
+  resourceServerId?: string;
+}
+
+export interface ServerConfigLayers<T> {
+  readOnly: T;
+  writable: T;
+  merged: T;
+}
+
+export type DefaultResourceServerConfigResponse = ServerConfigLayers<DefaultResourceServerValue>;

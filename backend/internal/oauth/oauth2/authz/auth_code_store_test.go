@@ -56,7 +56,7 @@ func (suite *AuthorizationCodeStoreTestSuite) SetupTest() {
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: ":memory:"},
 			},
-			Runtime: config.DataSource{
+			RuntimeTransient: config.DataSource{
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: ":memory:"},
 			},
@@ -98,7 +98,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestNewAuthorizationCodeStore() {
 }
 
 func (suite *AuthorizationCodeStoreTestSuite) TestInsertAuthorizationCode_Success() {
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertAuthorizationCode,
 		suite.testAuthzCode.CodeID, suite.testAuthzCode.Code, suite.testAuthzCode.ClientID,
@@ -114,7 +114,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestInsertAuthorizationCode_Succes
 }
 
 func (suite *AuthorizationCodeStoreTestSuite) TestInsertAuthorizationCode_DBClientError() {
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db client error"))
 
 	err := suite.store.InsertAuthorizationCode(context.Background(), suite.testAuthzCode)
 	assert.Error(suite.T(), err)
@@ -124,7 +124,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestInsertAuthorizationCode_DBClie
 }
 
 func (suite *AuthorizationCodeStoreTestSuite) TestInsertAuthorizationCode_ExecError() {
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertAuthorizationCode,
 		suite.testAuthzCode.CodeID, suite.testAuthzCode.Code, suite.testAuthzCode.ClientID,
@@ -141,7 +141,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestInsertAuthorizationCode_ExecEr
 }
 
 func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_Success() {
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 
 	authzData := map[string]interface{}{
 		"redirect_uri":          "https://client.example.com/callback",
@@ -190,7 +190,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_Success()
 }
 
 func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_DBClientError() {
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db client error"))
 
 	result, err := suite.store.GetAuthorizationCode(context.Background(), "test-code")
 	assert.Error(suite.T(), err)
@@ -200,7 +200,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_DBClientE
 }
 
 func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_QueryError() {
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(nil, errors.New("query error"))
@@ -217,7 +217,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_QueryErro
 func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_NoResults() {
 	queryResults := []map[string]interface{}{}
 
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(queryResults, nil)
@@ -238,7 +238,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_EmptyCode
 		},
 	}
 
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(queryResults, nil)
@@ -253,7 +253,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_EmptyCode
 }
 
 func (suite *AuthorizationCodeStoreTestSuite) TestConsumeAuthorizationCode_Success() {
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryConsumeAuthorizationCode,
 		AuthCodeStateInactive, "test-code", AuthCodeStateActive, testDeploymentID).
 		Return(int64(1), nil)
@@ -267,7 +267,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestConsumeAuthorizationCode_Succe
 }
 
 func (suite *AuthorizationCodeStoreTestSuite) TestConsumeAuthorizationCode_AlreadyConsumed() {
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryConsumeAuthorizationCode,
 		AuthCodeStateInactive, "test-code", AuthCodeStateActive, testDeploymentID).
 		Return(int64(0), nil)
@@ -281,7 +281,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestConsumeAuthorizationCode_Alrea
 }
 
 func (suite *AuthorizationCodeStoreTestSuite) TestConsumeAuthorizationCode_DBClientError() {
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db client error"))
 
 	consumed, err := suite.store.ConsumeAuthorizationCode(context.Background(), "test-code")
 	assert.Error(suite.T(), err)
@@ -291,7 +291,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestConsumeAuthorizationCode_DBCli
 }
 
 func (suite *AuthorizationCodeStoreTestSuite) TestConsumeAuthorizationCode_ExecuteError() {
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryConsumeAuthorizationCode,
 		AuthCodeStateInactive, "test-code", AuthCodeStateActive, testDeploymentID).
 		Return(int64(0), errors.New("execute error"))
@@ -331,7 +331,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_InvalidCo
 		},
 	}
 
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(queryResults, nil)
@@ -353,7 +353,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_InvalidAu
 		},
 	}
 
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(queryResults, nil)
@@ -375,7 +375,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_EmptyAuth
 		},
 	}
 
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(queryResults, nil)
@@ -398,7 +398,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_InvalidCl
 		},
 	}
 
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(queryResults, nil)
@@ -421,7 +421,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_EmptyClie
 		},
 	}
 
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(queryResults, nil)
@@ -445,7 +445,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_InvalidSt
 		},
 	}
 
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(queryResults, nil)
@@ -469,7 +469,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_EmptyStat
 		},
 	}
 
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(queryResults, nil)
@@ -494,7 +494,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_InvalidTi
 		},
 	}
 
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(queryResults, nil)
@@ -520,7 +520,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_InvalidEx
 		},
 	}
 
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(queryResults, nil)
@@ -547,7 +547,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_MissingAu
 		},
 	}
 
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(queryResults, nil)
@@ -574,7 +574,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_EmptyAuth
 		},
 	}
 
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(queryResults, nil)
@@ -601,7 +601,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_EmptyAuth
 		},
 	}
 
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(queryResults, nil)
@@ -628,7 +628,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_InvalidAu
 		},
 	}
 
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(queryResults, nil)
@@ -662,7 +662,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_AuthzData
 		},
 	}
 
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthorizationCode,
 		"test-code", testDeploymentID).
 		Return(queryResults, nil)
@@ -686,7 +686,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestParseTimeField_InvalidStringFo
 }
 
 func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_WithDPoPJkt() {
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 
 	authzData := map[string]any{
 		"redirect_uri":       "https://client.example.com/callback",
@@ -724,7 +724,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_WithDPoPJ
 }
 
 func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_WithNonce() {
-	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 
 	authzData := map[string]interface{}{
 		"redirect_uri":       "https://client.example.com/callback",

@@ -1,6 +1,7 @@
 ---
 title: Best Practices
-description: Frontend best practices for the React applications.
+docType: community
+description: Frontend best practices for the ThunderID React applications, covering state, testing, and performance.
 sidebar_position: 3
 ---
 
@@ -24,7 +25,7 @@ Do **not** import it through an app-local wrapper module. Importing the package 
 
 `@monaco-editor/react` loads Monaco from the CDN until `loader.config({monaco})` is called. The host app configures this once in `src/lib/monaco-setup.ts`: it points `self.MonacoEnvironment` at locally bundled Vite `?worker` workers and calls `loader.config({monaco})` so the loader uses the bundled `monaco-editor`.
 
-`monaco-setup` must run **before** the first editor mounts. Run it by chaining it into the lazy import of every page that renders a Monaco editor — in the app router (`App.tsx`):
+`monaco-setup` must run **before** the first editor mounts. Run it by chaining it into the lazy import of every page that renders a Monaco editor, in the app router (`App.tsx`):
 
 ```tsx
 const ApplicationEditPage = lazy(() =>
@@ -32,7 +33,7 @@ const ApplicationEditPage = lazy(() =>
 );
 ```
 
-Do not simplify these into a plain `lazy(() => import('...Page'))` — that skips setup and silently falls back to the CDN. Gate per page (rather than importing `monaco-setup` eagerly at app start) so `monaco-editor` stays out of the initial bundle.
+Do not simplify these into a plain `lazy(() => import('...Page'))`: that skips setup and silently falls back to the CDN. Gate per page (rather than importing `monaco-setup` eagerly at app start) so `monaco-editor` stays out of the initial bundle.
 
 ### Setting Up Monaco in a New App
 

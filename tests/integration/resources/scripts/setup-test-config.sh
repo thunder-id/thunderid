@@ -27,32 +27,32 @@ if [ "$DB_TYPE" = "postgres" ]; then
       password: dbpassword
       sslmode: disable
 
-  runtime:
+  runtime_transient:
     type: postgres
     postgres:
       hostname: localhost
       port: 5432
-      name: runtimedb
+      name: runtime_transient
       username: dbuser
       password: dbpassword
       sslmode: disable
 
-  user:
+  entity:
     type: postgres
     postgres:
       hostname: localhost
       port: 5432
-      name: userdb
+      name: entitydb
       username: dbuser
       password: dbpassword
       sslmode: disable
 
-  operation:
+  runtime_persistent:
     type: postgres
     postgres:
       hostname: localhost
       port: 5432
-      name: operationdb
+      name: runtime_persistent
       username: dbuser
       password: dbpassword
       sslmode: disable
@@ -65,23 +65,23 @@ elif [ "$DB_TYPE" = "redis" ]; then
       path: "database/configdb.db"
       options: "cache=shared"
 
-  runtime:
+  runtime_transient:
     type: redis
     redis:
       address: "localhost:6379"
       db: 0
       key_prefix: "thunderid"
 
-  user:
+  entity:
     type: sqlite
     sqlite:
-      path: "database/userdb.db"
+      path: "database/entitydb.db"
       options: "cache=shared"
 
-  operation:
+  runtime_persistent:
     type: sqlite
     sqlite:
-      path: "database/operationdb.db"
+      path: "database/runtime-persistent.db"
       options: "cache=shared"
 EOF
 else
@@ -92,22 +92,22 @@ else
       path: "database/configdb.db"
       options: "cache=shared"
 
-  runtime:
+  runtime_transient:
     type: sqlite
     sqlite:
-      path: "database/runtimedb.db"
+      path: "database/runtime-transient.db"
       options: "cache=shared"
 
-  user:
+  entity:
     type: sqlite
     sqlite:
-      path: "database/userdb.db"
+      path: "database/entitydb.db"
       options: "cache=shared"
 
-  operation:
+  runtime_persistent:
     type: sqlite
     sqlite:
-      path: "database/operationdb.db"
+      path: "database/runtime-persistent.db"
       options: "cache=shared"
 EOF
 fi

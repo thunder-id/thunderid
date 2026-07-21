@@ -28,6 +28,7 @@ import (
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -43,6 +44,7 @@ import (
 var notFoundErrorCodes = map[string]struct{}{
 	application.ErrorApplicationNotFound.Code:  {},
 	idp.ErrorIDPNotFound.Code:                  {},
+	notification.ErrorSenderNotFound.Code:      {},
 	flowmgt.ErrorFlowNotFound.Code:             {},
 	ou.ErrorOrganizationUnitNotFound.Code:      {},
 	entitytype.ErrorEntityTypeNotFound.Code:    {},

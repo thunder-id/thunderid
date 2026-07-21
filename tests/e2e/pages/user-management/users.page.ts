@@ -137,6 +137,16 @@ export class UsersPage extends BasePage {
     });
   }
 
+  /** Navigate directly to create user wizard (bypassing selection page) */
+  async gotoCreateUserWizard() {
+    await this.page.goto(`${this.baseUrl}${ConsoleRoutes.users}/add/create`, {
+      waitUntil: "networkidle",
+      timeout: Timeouts.PAGE_LOAD,
+    });
+    // Wait for the wizard to fully load
+    await this.waitForUserForm();
+  }
+
   /** Check if currently on users page */
   async isOnUsersPage(): Promise<boolean> {
     const url = this.page.url();
@@ -159,6 +169,16 @@ export class UsersPage extends BasePage {
     await this.addUserButton.first().click();
   }
 
+  /** Click the Create User option card on the Add User selection page */
+  async clickCreateUserOption() {
+    const createUserCard = this.page
+      .locator('[data-testid="add-user-type-select"]')
+      .locator(':has-text("Create User")');
+
+    await createUserCard.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await createUserCard.first().click();
+  }
+
   /** Wait for the wizard to load (Step 1: Select User Type) */
   async waitForUserForm() {
     await this.waitForAnyVisibleLocator(
@@ -169,24 +189,33 @@ export class UsersPage extends BasePage {
 
   /** Select the first available user type and advance to Step 2 */
   async selectUserTypeAndContinue() {
-    if (await this.isLocatorVisible(this.userTypeSelect)) {
-      await this.userTypeSelect.first().click();
+    // Wait for user type select to be visible
+    await this.userTypeSelect.first().waitFor({ state: "visible", timeout: Timeouts.FORM_LOAD });
 
-      const firstOption = this.page.locator('[role="option"]:not([aria-disabled="true"])').first();
-      await firstOption.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
-      await firstOption.click();
-    }
+    // Click the user type select dropdown
+    await this.userTypeSelect.first().click();
 
+    // Select the first available option
+    const firstOption = this.page.locator('[role="option"]:not([aria-disabled="true"])').first();
+    await firstOption.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await firstOption.click();
+
+    // Click Continue button
+    await this.continueButton.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
     await this.clickContinueButton();
 
+    // Handle Organization Unit step if it appears
     if (await this.isLocatorVisible(this.organizationUnitHeading)) {
+      await this.continueButton.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
       await this.clickContinueButton();
     }
 
+    // Handle Create User action button if it appears
     if (await this.isLocatorVisible(this.createUserActionButton)) {
       await this.createUserActionButton.first().click();
     }
 
+    // Wait for details step to load
     await this.waitForDetailsStep();
   }
 

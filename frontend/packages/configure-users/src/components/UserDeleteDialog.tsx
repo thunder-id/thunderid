@@ -60,8 +60,10 @@ export default function UserDeleteDialog({
   const {data: usagesData, isLoading: isLoadingUsages} = useGetUserUsages(userId, open);
 
   const usagesKnown = usagesData !== undefined && usagesData.totalResults !== null;
-  const visibleUsages = usagesData?.usages.slice(0, MAX_VISIBLE_USAGES) ?? [];
-  const hiddenCount = (usagesData?.totalResults ?? 0) - visibleUsages.length;
+  const blockingUsages = usagesData?.usages.filter((usage) => usage.behaviorOnDelete === 'restrict') ?? [];
+  const hasBlockingUsages = usagesKnown && blockingUsages.length > 0;
+  const visibleBlocking = blockingUsages.slice(0, MAX_VISIBLE_USAGES);
+  const hiddenBlockingCount = blockingUsages.length - visibleBlocking.length;
 
   const handleCancel = (): void => {
     if (deleteUser.isPending) return;
@@ -101,23 +103,26 @@ export default function UserDeleteDialog({
           <Alert severity="warning" sx={{mb: 2}}>
             {t('users:delete.disclaimer', 'All associated data will be permanently removed.')}
           </Alert>
-        ) : (usagesData?.totalResults ?? 0) > 0 ? (
-          <Alert severity="warning" sx={{mb: 2}}>
+        ) : hasBlockingUsages ? (
+          <Alert severity="error" sx={{mb: 2}}>
             <Typography variant="body2" sx={{mb: 1}}>
-              {t('users:delete.usages.title', 'The following agents list this user as their owner:')}
+              {t(
+                'users:delete.blocking.title',
+                'This user cannot be deleted until the following agents are reassigned or removed:',
+              )}
             </Typography>
             <List dense disablePadding>
-              {visibleUsages.map((usage) => (
+              {visibleBlocking.map((usage) => (
                 <ListItem key={usage.id} disableGutters sx={{py: 0}}>
                   <ListItemText primary={<Typography variant="body2">{usage.displayName}</Typography>} />
                 </ListItem>
               ))}
-              {hiddenCount > 0 && (
+              {hiddenBlockingCount > 0 && (
                 <ListItem disableGutters sx={{py: 0}}>
                   <ListItemText
                     primary={
                       <Typography variant="body2" color="text.secondary">
-                        {t('users:delete.usages.more', {count: hiddenCount, defaultValue: '+{{count}} more'})}
+                        {t('users:delete.usages.more', {count: hiddenBlockingCount, defaultValue: '+{{count}} more'})}
                       </Typography>
                     }
                   />
@@ -145,7 +150,7 @@ export default function UserDeleteDialog({
           onClick={handleConfirm}
           color="error"
           variant="contained"
-          disabled={deleteUser.isPending || !userId || isLoadingUsages}
+          disabled={deleteUser.isPending || !userId || isLoadingUsages || hasBlockingUsages}
         >
           {deleteUser.isPending ? t('common:status.deleting', 'Deleting...') : t('common:actions.delete', 'Delete')}
         </Button>

@@ -1,5 +1,6 @@
 ---
 title: Integration Models
+docType: concept
 sidebar_position: 1
 description: Understand how {{ProductName}} authenticates users and the three integration models available for your application.
 ---
@@ -38,7 +39,7 @@ Choose this approach when <ProductName /> should own the entire authentication s
 
 <RedirectBasedDiagram />
 
-See the [API Reference](/docs/next/apis/#tag/authorization) for endpoint specifications.
+See the [API Reference](../../../../apis#tag/authorization) for endpoint specifications.
 
 
 ## App-Native
@@ -51,11 +52,13 @@ The core principle is **shared responsibility**: <ProductName /> enforces authen
 Choose this approach when your application must render its own authentication screens (no redirects to hosted pages) while <ProductName /> enforces authentication logic, MFA, and policies server-side. This model suits native mobile and desktop apps, or confidential server-side applications, where the client can be trusted to drive the flow directly.
 
 :::warning
-App-native flow execution is **not supported for browser-based single-page applications (SPAs)** such as React, Angular, or Vue apps. SPAs are public clients that cannot be verified when calling the Flow Execution API directly, so they must use the [Redirect-Based](#redirect-based) model with the OAuth 2.0 Authorization Code grant and PKCE.
+App-native **sign-in** is **not supported for browser-based single-page applications (SPAs)** such as React, Angular, or Vue apps. SPAs are public clients that cannot be verified when calling the Flow Execution API directly, so they must sign users in through the [Redirect-Based](#redirect-based) model with the OAuth 2.0 Authorization Code grant and PKCE. Registration and recovery have no redirect-based equivalent today, so SPAs continue to drive those flows through the Flow Execution API.
 :::
 
 :::note[Grant Type Requirement]
-The Flow Execution API only accepts new flow initiation requests from applications that do **not** have the `authorization_code` grant type configured. Applications registered with `authorization_code` must initiate authentication through the [Authorization endpoint](/docs/next/apis/#tag/authorization) (`GET /oauth2/authorize`), which then drives the flow internally. Continuation requests that carry a valid `executionId` are always accepted regardless of grant type.
+This restriction applies to **authentication** flows only. The Flow Execution API rejects a new authentication-flow initiation request (`flowType: AUTHENTICATION` with no `executionId`) from an application configured with the `authorization_code` grant type. Such applications must initiate authentication through the [Authorization endpoint](../../../../apis#tag/authorization) (`GET /oauth2/authorize`), which then drives the flow internally.
+
+Registration, recovery, and user onboarding flows are **not** restricted because they have no redirect-based equivalent and can still be initiated directly through the Flow Execution API regardless of grant type. Continuation requests that carry a valid `executionId` are also always accepted.
 :::
 
 ### Key Features
@@ -75,7 +78,28 @@ The Flow Execution API only accepts new flow initiation requests from applicatio
 
 <AppNativeDiagram />
 
-See the [API Reference](/docs/next/apis/#tag/flow-execution) for endpoint specifications.
+See the [API Reference](../../../../apis#tag/flow-execution) for endpoint specifications.
+
+### Attestation
+
+A confidential server-side application authenticates at flow initiation with a Flow Secret, but a mobile application cannot safely hold one. Instead, a mobile client proves its identity through platform attestation. <ProductName /> supports Google [Play Integrity](https://developer.android.com/google/play/integrity) for Android clients and Apple [App Attest](https://developer.apple.com/documentation/devicecheck/validating-apps-that-connect-to-your-server) for iOS clients. When an application configures attestation, it may initiate a sign-in flow directly by presenting a platform attestation token, which <ProductName /> verifies against the registered identity before starting the flow.
+
+Attestation is a client-level setting configured at the application level, independent of the OAuth 2.0 protocol, so it applies to any application type, including embedded apps with no OAuth 2.0 configuration. When attestation is configured, it takes precedence: the application must present a valid attestation token to initiate a flow, and any Flow Secret is ignored. Attestation is optional; when enabled, an application configures exactly one platform. See [Configure Platform Attestation](../../guides/applications/application-settings.mdx#configure-platform-attestation) for how to configure it.
+
+To initiate a new flow, the mobile client obtains a platform attestation token and presents it in the `Attestation-Token` request header of the Flow Execution request:
+
+```http
+POST /flow/execute
+Content-Type: application/json
+Attestation-Token: <attestation-token>
+
+{
+  "applicationId": "<application-id>",
+  "flowType": "AUTHENTICATION"
+}
+```
+
+An attested mobile app that omits the token is rejected with `401 Unauthorized`, and an invalid or malformed token is also rejected with `401 Unauthorized`. Flow **continuation** requests (those carrying an `executionId`) do not require an attestation token.
 
 ### Integration Modes
 
@@ -287,7 +311,27 @@ Choose this approach when your application needs direct control over individual 
 
 <DirectAPIDiagram />
 
-See the [API Reference](/docs/next/apis/#tag/credentials) for endpoint specifications.
+See the [API Reference](../../../../apis#tag/credentials) for endpoint specifications.
+
+### Direct Auth Secret
+
+Because Direct API endpoints take no application identifier and require no application registration, <ProductName /> gates them with a server-level secret. These endpoints are **secure by default**: they are blocked until you set `server.security.direct_auth_secret` in the deployment configuration. Once set, every call to a Direct API endpoint (`/auth/**` and `/register/passkey/**`) must include that value in the `Direct-Auth-Secret` header. Protected AuthZEN PDP endpoints also use this header for PEP and adapter calls. A request with a missing or incorrect value, or any request while no secret is configured, is rejected with `401`.
+
+On a fresh setup, the `setup.sh` / `setup.ps1` script generates a secret, writes it to `deployment.yaml`, and prints it once. Use that value, override it with `--direct-auth-secret`, or set your own in the configuration.
+
+This suits the intended Direct API callers, such as CLI tools, automation scripts, and server-to-server integrations, which can hold a configured secret. Browser and mobile applications, which cannot safely store a static secret, should use the [Redirect-Based](#redirect-based) or [App-Native](#app-native) model instead.
+
+```bash
+curl -X POST https://localhost:8090/auth/credentials/authenticate \
+  -H 'Content-Type: application/json' \
+  -H 'Direct-Auth-Secret: <direct-auth-secret>' \
+  -d '{
+    "identifiers": { "username": "thor" },
+    "credentials": { "password": "<password>" }
+  }'
+```
+
+See [Security Configuration](../../../getting-started/configuration#security-configuration) for details.
 
 ### Step-Up Authentication
 
@@ -419,5 +463,5 @@ To obtain OAuth 2.0 access tokens, exchange the assertion token at the token end
 
 ## Related Reference
 
-- [Tokens](/docs/next/guides/key-concepts/tokens): Access tokens, ID tokens, and refresh tokens
-- [Authorization](/docs/next/guides/key-concepts/authorization): How <ProductName /> controls access to resources after authentication
+- [Tokens](../../tokens): Access tokens, ID tokens, and refresh tokens
+- [Authorization](../../authorization): How <ProductName /> controls access to resources after authentication

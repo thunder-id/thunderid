@@ -95,7 +95,7 @@ func (ts *CallToRegistrationFlowTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to pre-create existing user")
 	ts.config.CreatedUserIDs = userIDs
 
-	// Create the REGISTRATION callee flow: START → prompt_user_data → provision_user → END
+	// Create the REGISTRATION callee flow: START → user_type_resolver → prompt_user_data → provision_user → END
 	regFlow := testutils.Flow{
 		Name:     "Call-To-Reg: Registration Callee Flow",
 		FlowType: "REGISTRATION",
@@ -104,7 +104,16 @@ func (ts *CallToRegistrationFlowTestSuite) SetupSuite() {
 			{
 				"id":        "start",
 				"type":      "START",
-				"onSuccess": "prompt_user_data",
+				"onSuccess": "user_type_resolver",
+			},
+			{
+				"id":   "user_type_resolver",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "UserTypeResolver",
+				},
+				"onSuccess":    "prompt_user_data",
+				"onIncomplete": "prompt_user_data",
 			},
 			{
 				"id":   "prompt_user_data",

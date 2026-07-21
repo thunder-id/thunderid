@@ -27,14 +27,14 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
 	githubAuthStart  = "/auth/oauth/github/start"
 	githubAuthFinish = "/auth/oauth/github/finish"
-	mockGithubPort   = 8091
+	mockGithubPort   = 8092
 )
 
 var githubAuthTestOU = testutils.OrganizationUnit{
@@ -153,21 +153,6 @@ func (suite *GithubAuthTestSuite) SetupSuite() {
 				Name:     "client_secret",
 				Value:    "test-github-secret",
 				IsSecret: true,
-			},
-			{
-				Name:     "authorization_endpoint",
-				Value:    suite.mockGithubServer.GetURL() + "/login/oauth/authorize",
-				IsSecret: false,
-			},
-			{
-				Name:     "token_endpoint",
-				Value:    suite.mockGithubServer.GetURL() + "/login/oauth/access_token",
-				IsSecret: false,
-			},
-			{
-				Name:     "userinfo_endpoint",
-				Value:    suite.mockGithubServer.GetURL() + "/user",
-				IsSecret: false,
 			},
 			{
 				Name:     "scopes",

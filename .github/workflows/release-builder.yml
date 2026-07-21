@@ -163,6 +163,7 @@ jobs:
           sed -i -E "s/^appVersion: .*/appVersion: \"${SEMVER_VERSION}\"/" install/openchoreo/helm/Chart.yaml
           sed -i -E "s/^version: .*/version: ${SEMVER_VERSION}/" install/openchoreo/helm/charts/${PRODUCT_NAME_LOWER}-oc-componenttype/Chart.yaml
           sed -i -E "s/^version: .*/version: ${SEMVER_VERSION}/" install/openchoreo/helm/charts/${PRODUCT_NAME_LOWER}-component/Chart.yaml
+          sed -i -E "s/^version: .*/version: ${SEMVER_VERSION}/" install/openchoreo/${PRODUCT_NAME_LOWER}-oc-resourcetype/Chart.yaml
           # Update sub-chart dependency versions in the umbrella chart (indented version: entries)
           sed -i -E "s/(^[[:space:]]+version: \")[^\"]*/\1${SEMVER_VERSION}/" install/openchoreo/helm/Chart.yaml
 
@@ -200,6 +201,7 @@ jobs:
             install/openchoreo/helm/Chart.yaml \
             install/openchoreo/helm/charts/${PRODUCT_NAME_LOWER}-oc-componenttype/Chart.yaml \
             install/openchoreo/helm/charts/${PRODUCT_NAME_LOWER}-component/Chart.yaml \
+            install/openchoreo/${PRODUCT_NAME_LOWER}-oc-resourcetype/Chart.yaml \
             samples/apps/react-api-based-sample/package.json \
             samples/apps/react-sdk-sample/package.json \
             samples/apps/react-vanilla-sample/package.json \
@@ -358,12 +360,6 @@ jobs:
           cd ../tests/integration
           go mod download
 
-      - name: 🔐 Generate and Upload Certificates
-        uses: ./.github/actions/generate-certificates
-        with:
-          show-cert-info: 'true'
-          product-name: ${{ env.PRODUCT_NAME }}
-
       - name: 📦 Install pnpm for Frontend Build
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
@@ -371,11 +367,9 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
 
       - name: ⚙️ Set up Node.js for Frontend Build
-        uses: ./.github/actions/setup-node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          package-manager: 'pnpm'
-          dependency-path: '.'
 
       - name: 🔨 Build Release Artifacts
         uses: ./.github/actions/build-multiplatform
@@ -415,20 +409,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 📥 Download Shared Certificates for Docker
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: ssl-certificates
-          path: target/out/.cert/
-
-      - name: 📋 Prepare Docker Build Context
-        run: |
-          # Copy certificates into the Docker build context
-          mkdir -p docker-certs
-          cp target/out/.cert/server.cert docker-certs/
-          cp target/out/.cert/server.key docker-certs/
-          echo "✅ Certificates prepared for Docker build context"
-
       - name: 🐳 Build and Push Multi-Arch Docker Image
         run: |
           # Build image under the repository owner with the product name
@@ -443,14 +423,12 @@ jobs:
           
           echo "🐳 Building and pushing Docker image: ${IMAGE_NAME}:${DOCKER_VERSION}"
           
-          # Build and push multi-arch image with version and latest tags
-          # Pass shared certificates as build context with paths relative to build context
+          # Build and push multi-arch image with version and latest tags.
+          # No key material is baked into the image; each deployment generates its own via setup.sh.
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
             --tag "${IMAGE_NAME}:${DOCKER_VERSION}" \
             --tag "${IMAGE_NAME}:latest" \
-            --build-arg CERT_FILE=docker-certs/server.cert \
-            --build-arg KEY_FILE=docker-certs/server.key \
             --push \
             .
           
@@ -578,6 +556,14 @@ jobs:
           helm push "target/dist/openchoreo/${PRODUCT_NAME_LOWER}-oc-componenttype-${CHART_VERSION}.tgz" "oci://${HELM_REGISTRY}"
           echo "✅ ${PRODUCT_NAME_LOWER}-oc-componenttype pushed to oci://${HELM_REGISTRY}"
 
+          # Package and push oc-resourcetype
+          echo "📦 Packaging ${PRODUCT_NAME_LOWER}-oc-resourcetype ${CHART_VERSION}"
+          helm package install/openchoreo/${PRODUCT_NAME_LOWER}-oc-resourcetype \
+            --version "${CHART_VERSION}" --app-version "${CHART_VERSION}" \
+            --destination target/dist/openchoreo/
+          helm push "target/dist/openchoreo/${PRODUCT_NAME_LOWER}-oc-resourcetype-${CHART_VERSION}.tgz" "oci://${HELM_REGISTRY}"
+          echo "✅ ${PRODUCT_NAME_LOWER}-oc-resourcetype pushed to oci://${HELM_REGISTRY}"
+
       - name: 📝 Calculate Next Version
         id: next_version
         run: |
@@ -623,11 +609,9 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
 
       - name: ⚙️ Set up Node.js for Version Update
-        uses: ./.github/actions/setup-node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          package-manager: 'pnpm'
-          dependency-path: '.'
 
       - name: 🏷️ Update Sample Apps Version
         run: |
@@ -659,6 +643,8 @@ jobs:
 
       - name: ⚙️ Setup Samples Environment
         uses: ./.github/actions/setup-samples-environment
+        with:
+          download-certificates: 'false'
 
       - name: 📝 Update Sample Apps Version
         uses: ./.github/actions/update-sample-versions

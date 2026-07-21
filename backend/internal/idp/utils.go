@@ -20,12 +20,16 @@ package idp
 
 import (
 	"context"
+	"errors"
+	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
+	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -49,23 +53,62 @@ func GetPropertyValue(properties []cmodels.Property, name string) string {
 	return ""
 }
 
-// GetMappedUserType returns the resolved local user type for the IDP's attribute mapping,
-// or an empty string when no mapping is configured. This iteration resolves to the configured
-// default user type.
-func GetMappedUserType(idp *providers.IDPDTO) string {
+// idJagEnabledFromProperties returns a pointer to the parsed id_jag_enabled property value, or nil
+// when the property is absent (or its value cannot be parsed as a boolean). This lets basic IDP
+// listings distinguish trusted-issuer OIDC connections from plain federation ones without
+// exposing full property details.
+func idJagEnabledFromProperties(properties []cmodels.Property) *bool {
+	for i := range properties {
+		if properties[i].GetName() != PropIDJagEnabled {
+			continue
+		}
+		val, err := properties[i].GetValue()
+		if err != nil {
+			return nil
+		}
+		enabled, err := strconv.ParseBool(val)
+		if err != nil {
+			return nil
+		}
+		return &enabled
+	}
+	return nil
+}
+
+// GetMappedUserType returns the resolved local user type for the IDP's attribute mapping, or an
+// empty string when no mapping is configured. When claim-driven resolution is configured with a
+// value mapping (ExternalAttribute + ValueMapping), the user type is derived by mapping the external
+// claim value. When an external attribute is configured without a value mapping, the external claim
+// value is used directly as the user type. In either case, when the claim is missing or its value is
+// unmapped, the configured default user type is returned.
+func GetMappedUserType(idp *providers.IDPDTO, claims map[string]interface{}) string {
 	if idp == nil || idp.AttributeConfiguration == nil || idp.AttributeConfiguration.UserTypeResolution == nil {
 		return ""
 	}
-	return idp.AttributeConfiguration.UserTypeResolution.Default
+	resolution := idp.AttributeConfiguration.UserTypeResolution
+	externalAttribute := strings.TrimSpace(resolution.ExternalAttribute)
+	if externalAttribute != "" {
+		if value, ok := getNestedValue(claims, externalAttribute); ok {
+			key := sysutils.ConvertInterfaceValueToString(value)
+			if len(resolution.ValueMapping) > 0 {
+				if userType, ok := resolution.ValueMapping[key]; ok {
+					return userType
+				}
+			} else if trimmed := strings.TrimSpace(key); trimmed != "" {
+				return trimmed
+			}
+		}
+	}
+	return resolution.Default
 }
 
 // GetAttributeMappings returns the external→local attribute mappings for the resolved user type's
 // attributes entry, or nil when no mapping is configured.
-func GetAttributeMappings(idp *providers.IDPDTO) []providers.AttributeMapping {
+func GetAttributeMappings(idp *providers.IDPDTO, claims map[string]interface{}) []providers.AttributeMapping {
 	if idp == nil || idp.AttributeConfiguration == nil {
 		return nil
 	}
-	userType := GetMappedUserType(idp)
+	userType := GetMappedUserType(idp, claims)
 	if userType == "" {
 		return nil
 	}
@@ -191,6 +234,61 @@ func validateIDP(ctx context.Context, idp *providers.IDPDTO, logger *log.Logger)
 	return nil
 }
 
+// ValidateIDP validates and normalizes dto in place (required properties, type defaults, openid
+// scope), mirroring the checks the live /connections create and update APIs run. For use by the
+// declarative connection loader, which otherwise writes straight to the file store without
+// running this validation.
+func ValidateIDP(dto *providers.IDPDTO) error {
+	if svcErr := validateIDP(context.Background(), dto, log.GetLogger()); svcErr != nil {
+		return errors.New(svcErr.Error.DefaultValue)
+	}
+	return nil
+}
+
+// endpointBaseURLOverride returns the configured mock base URL for the given IDP type
+// (google/github only), or "" when no override is configured or the runtime is uninitialized.
+// Production config leaves this empty, so the real Google/GitHub endpoints are used unchanged.
+func endpointBaseURLOverride(idpType providers.IDPType) string {
+	if !sysconfig.IsServerRuntimeInitialized() {
+		return ""
+	}
+	runtime := sysconfig.GetServerRuntime()
+	switch idpType {
+	case providers.IDPTypeGoogle:
+		return runtime.Config.IdentityProvider.GoogleBaseURL
+	case providers.IDPTypeGitHub:
+		return runtime.Config.IdentityProvider.GitHubBaseURL
+	default:
+		return ""
+	}
+}
+
+// resolveEndpointDefaults returns a new map in which each endpoint value's scheme and host are
+// replaced by those of base (path and query preserved). When base is empty, isn't a valid http(s)
+// URL with a host, or a value fails to parse as a URL, that value is kept unchanged. The input map
+// is never mutated.
+func resolveEndpointDefaults(defaults map[string]string, base string) map[string]string {
+	if base == "" {
+		return defaults
+	}
+	baseURL, err := url.Parse(base)
+	if err != nil || baseURL.Host == "" || (baseURL.Scheme != "http" && baseURL.Scheme != "https") {
+		return defaults
+	}
+	resolved := make(map[string]string, len(defaults))
+	for propName, value := range defaults {
+		valueURL, err := url.Parse(value)
+		if err != nil {
+			resolved[propName] = value
+			continue
+		}
+		valueURL.Scheme = baseURL.Scheme
+		valueURL.Host = baseURL.Host
+		resolved[propName] = valueURL.String()
+	}
+	return resolved
+}
+
 // validateIDPProperties validates the properties of the identity provider based on its type.
 func validateIDPProperties(ctx context.Context, idpType providers.IDPType, properties []cmodels.Property,
 	logger *log.Logger) ([]cmodels.Property, *tidcommon.ServiceError) {
@@ -239,18 +337,35 @@ func validateIDPProperties(ctx context.Context, idpType providers.IDPType, prope
 				Params:       map[string]string{"property": propName},
 			})
 		}
+		if propName == PropIDJagEnabled || propName == PropTokenExchangeEnabled {
+			if propertyValue != "true" && propertyValue != "false" {
+				return nil, tidcommon.CustomServiceError(ErrorInvalidIDPProperty, tidcommon.I18nMessage{
+					Key: "error.idpservice.property_value_not_boolean_description",
+					DefaultValue: "value for property '{{param(property)}}' must be either " +
+						"'true' or 'false'",
+					Params: map[string]string{"property": propName},
+				})
+			}
+		}
 
 		filteredPropsMap[propName] = prop
 		filteredPropKeys = append(filteredPropKeys, propName)
 	}
 
 	// Check for required properties, using the token-exchange override when applicable.
+	// The reduced required set also applies when id_jag_enabled is present, since that property
+	// is only ever sent for trust-only connections which carry no OAuth client credentials.
 	requiredProps := config.Required
 	if teProps, ok := tokenExchangeRequiredProps[idpType]; ok {
+		_, idJagEnabledPresent := filteredPropsMap[PropIDJagEnabled]
+		tokenExchangeEnabled := false
 		if prop, exists := filteredPropsMap[PropTokenExchangeEnabled]; exists {
 			if val, err := prop.GetValue(); err == nil && val == "true" {
-				requiredProps = teProps
+				tokenExchangeEnabled = true
 			}
+		}
+		if tokenExchangeEnabled || idJagEnabledPresent {
+			requiredProps = teProps
 		}
 	}
 	for _, requiredProp := range requiredProps {
@@ -265,7 +380,8 @@ func validateIDPProperties(ctx context.Context, idpType providers.IDPType, prope
 	}
 
 	// Apply default properties
-	for propName, defaultValue := range config.Defaults {
+	effectiveDefaults := resolveEndpointDefaults(config.Defaults, endpointBaseURLOverride(idpType))
+	for propName, defaultValue := range effectiveDefaults {
 		if _, exists := filteredPropsMap[propName]; !exists {
 			err := createAndAppendProperty(ctx, filteredPropsMap, propName, defaultValue, false, logger)
 			if err != nil {

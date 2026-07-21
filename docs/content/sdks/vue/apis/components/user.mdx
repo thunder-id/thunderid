@@ -1,6 +1,7 @@
 ---
 title: <User />
-description: Display user information
+docType: reference
+description: Display authenticated user information such as name, email, and profile picture in Vue templates.
 ---
 
 # `<User />`
@@ -44,7 +45,7 @@ The `#fallback` slot is rendered when no user is signed in. If no `#fallback` sl
 | Slot | Slot Props | Description |
 | :--- | :--- | :--- |
 | `default` | `{ user }` | Rendered when a user is signed in. Receives the user object as a scoped slot prop. |
-| `fallback` | – | Rendered when no user is signed in. |
+| `fallback` | - | Rendered when no user is signed in. |
 
 ## Slot Props
 

@@ -42,21 +42,20 @@ const (
 	formatYAML = "yaml"
 	formatJSON = "json"
 
-	resourceTypeApplication        = "application"
-	resourceTypeIdentityProvider   = "identity_provider"
-	resourceTypeNotificationSender = "notification_sender"
-	resourceTypeUserType           = "user_type"
-	resourceTypeOU                 = "organization_unit"
-	resourceTypeUser               = "user"
-	resourceTypeGroup              = "group"
-	resourceTypeResourceServer     = "resource_server"
-	resourceTypeRole               = "role"
-	resourceTypeFlow               = "flow"
-	resourceTypeTranslation        = "translation"
-	resourceTypeLayout             = "layout"
-	resourceTypeTheme              = "theme"
-	resourceTypeAgent              = "agent"
-	resourceTypeServerConfig       = "server_config"
+	resourceTypeApplication    = "application"
+	resourceTypeConnection     = "connection"
+	resourceTypeUserType       = "user_type"
+	resourceTypeOU             = "organization_unit"
+	resourceTypeUser           = "user"
+	resourceTypeGroup          = "group"
+	resourceTypeResourceServer = "resource_server"
+	resourceTypeRole           = "role"
+	resourceTypeFlow           = "flow"
+	resourceTypeTranslation    = "translation"
+	resourceTypeLayout         = "layout"
+	resourceTypeTheme          = "theme"
+	resourceTypeAgent          = "agent"
+	resourceTypeServerConfig   = "server_config"
 )
 
 // parameterizerInterface defines the interface for template parameterization.
@@ -122,21 +121,20 @@ func (es *exportService) ExportResources(
 
 	// Map resource types to their IDs from the request
 	resourceMap := map[string][]string{
-		resourceTypeApplication:        request.Applications,
-		resourceTypeIdentityProvider:   request.IdentityProviders,
-		resourceTypeNotificationSender: request.NotificationSenders,
-		resourceTypeUserType:           request.UserTypes,
-		resourceTypeOU:                 request.OrganizationUnits,
-		resourceTypeUser:               request.Users,
-		resourceTypeGroup:              request.Groups,
-		resourceTypeResourceServer:     request.ResourceServers,
-		resourceTypeRole:               request.Roles,
-		resourceTypeFlow:               request.Flows,
-		resourceTypeTranslation:        request.Translations,
-		resourceTypeLayout:             request.Layouts,
-		resourceTypeTheme:              request.Themes,
-		resourceTypeAgent:              request.Agents,
-		resourceTypeServerConfig:       request.ServerConfigs,
+		resourceTypeApplication:    request.Applications,
+		resourceTypeConnection:     request.Connections,
+		resourceTypeUserType:       request.UserTypes,
+		resourceTypeOU:             request.OrganizationUnits,
+		resourceTypeUser:           request.Users,
+		resourceTypeGroup:          request.Groups,
+		resourceTypeResourceServer: request.ResourceServers,
+		resourceTypeRole:           request.Roles,
+		resourceTypeFlow:           request.Flows,
+		resourceTypeTranslation:    request.Translations,
+		resourceTypeLayout:         request.Layouts,
+		resourceTypeTheme:          request.Themes,
+		resourceTypeAgent:          request.Agents,
+		resourceTypeServerConfig:   request.ServerConfigs,
 	}
 
 	// Export resources using the registry
@@ -326,7 +324,7 @@ func (es *exportService) exportResourcesWithExporter(
 		for k, v := range vars {
 			variableValues[k] = v
 		}
-		content = addResourceTypeComment(templateContent, resourceType)
+		content = addResourceTypeField(templateContent, resourceType)
 
 		// Determine file name and folder path based on options
 		fileName = es.generateFileName(validatedName, resourceType, resourceID, options)
@@ -363,12 +361,12 @@ func (es *exportService) generateTemplateFromStruct(ctx context.Context, data in
 	return template, vars, nil
 }
 
-func addResourceTypeComment(content, resourceType string) string {
-	commentLine := "# resource_type: " + resourceType
-	if strings.HasPrefix(content, commentLine+"\n") || content == commentLine {
+func addResourceTypeField(content, resourceType string) string {
+	fieldLine := "resource_type: " + resourceType
+	if strings.HasPrefix(content, fieldLine+"\n") || content == fieldLine {
 		return content
 	}
-	return commentLine + "\n" + content
+	return fieldLine + "\n" + content
 }
 
 // sanitizeFileName sanitizes a filename by removing invalid characters.

@@ -24,7 +24,7 @@ import {UserCreateProvider} from '@thunderid/configure-users';
 import {ToastProvider} from '@thunderid/contexts';
 import {ProtectedRoute} from '@thunderid/react-router';
 import {lazy, Suspense, type JSX} from 'react';
-import {BrowserRouter, Route, Routes} from 'react-router';
+import {BrowserRouter, Navigate, Outlet, Route, Routes} from 'react-router';
 import AgentCreateProvider from './features/agents/contexts/AgentCreate/AgentCreateProvider';
 import ApplicationCreateProvider from './features/applications/contexts/ApplicationCreate/ApplicationCreateProvider';
 import LayoutBuilderProvider from './features/design/contexts/LayoutBuilder/LayoutBuilderProvider';
@@ -62,6 +62,7 @@ const TranslationsEditPage = lazy(() =>
 const TranslationsListPage = lazy(() =>
   import('@thunderid/configure-translations').then((m) => ({default: m.TranslationsListPage})),
 );
+const UserAddPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserAddPage})));
 const UserCreatePage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserCreatePage})));
 const UserEditPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserEditPage})));
 const UserInvitePage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserInvitePage})));
@@ -84,6 +85,7 @@ const ApplicationEditPage = lazy(() =>
   import('./lib/monaco-setup').then(() => import('./features/applications/pages/ApplicationEditPage')),
 );
 const ApplicationsListPage = lazy(() => import('./features/applications/pages/ApplicationsListPage'));
+const ApplicationTemplateSelectPage = lazy(() => import('./features/applications/pages/ApplicationTemplateSelectPage'));
 const DesignPage = lazy(() => import('./features/design/pages/DesignPage'));
 const LayoutBuilderPage = lazy(() =>
   import('./lib/monaco-setup').then(() => import('./features/design/pages/LayoutBuilderPage')),
@@ -108,15 +110,23 @@ const ImportConfigurationUploadPage = lazy(
 const ImportConfigurationValidatePage = lazy(
   () => import('./features/import-export/pages/ImportConfigurationValidatePage'),
 );
-const ConnectionsListPage = lazy(() => import('./features/connections/pages/ConnectionsListPage'));
-const ConnectionDetailPage = lazy(() => import('./features/connections/pages/ConnectionDetailPage'));
-const ConnectionConfigureWizardPage = lazy(() => import('./features/connections/pages/ConnectionConfigureWizardPage'));
-const ConnectionCreateWizardPage = lazy(() => import('./features/connections/pages/ConnectionCreateWizardPage'));
+const ImportExportPage = lazy(() => import('./features/import-export/pages/ImportExportPage'));
+const ConnectionsListPage = lazy(() =>
+  import('@thunderid/configure-connections').then((m) => ({default: m.ConnectionsListPage})),
+);
+const ConnectionDetailPage = lazy(() =>
+  import('@thunderid/configure-connections').then((m) => ({default: m.ConnectionDetailPage})),
+);
+const ConnectionConfigureWizardPage = lazy(() =>
+  import('@thunderid/configure-connections').then((m) => ({default: m.ConnectionConfigureWizardPage})),
+);
+const ConnectionCreateWizardRoute = lazy(() => import('./features/connections/pages/ConnectionCreateWizardRoute'));
 const LoginFlowBuilderPage = lazy(() => import('./features/login-flow/pages/LoginFlowPage'));
 const CreateRolePage = lazy(() => import('./features/roles/pages/CreateRolePage'));
 const RoleEditPage = lazy(() => import('./features/roles/pages/RoleEditPage'));
 const RolesListPage = lazy(() => import('./features/roles/pages/RolesListPage'));
 const SettingsPage = lazy(() => import('./features/settings/pages/SettingsPage'));
+const TrustedIssuerDetailPage = lazy(() => import('./features/trusted-issuers/pages/TrustedIssuerDetailPage'));
 const VerifiablePresentationsListPage = lazy(
   () => import('./features/verifiable-presentations/pages/VerifiablePresentationsListPage'),
 );
@@ -172,6 +182,8 @@ export default function App(): JSX.Element {
               <Route path="connections" element={<ConnectionsListPage />} />
               <Route path="connections/:type" element={<ConnectionDetailPage />} />
               <Route path="connections/:type/:id" element={<ConnectionDetailPage />} />
+              <Route path="trusted-issuers" element={<Navigate to="/connections" replace />} />
+              <Route path="trusted-issuers/:id" element={<TrustedIssuerDetailPage />} />
               <Route path="groups" element={<GroupsListPage />} />
               <Route path="groups/:groupId" element={<GroupEditPage />} />
               <Route path="roles" element={<RolesListPage />} />
@@ -231,7 +243,17 @@ export default function App(): JSX.Element {
               <Route index element={<CreateRolePage />} />
             </Route>
             <Route
-              path="/users/create"
+              path="/users/add"
+              element={
+                <ProtectedRoute>
+                  <FullScreenLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<UserAddPage />} />
+            </Route>
+            <Route
+              path="/users/add/create"
               element={
                 <ProtectedRoute>
                   <UserCreateProvider>
@@ -243,7 +265,7 @@ export default function App(): JSX.Element {
               <Route index element={<UserCreatePage />} />
             </Route>
             <Route
-              path="/users/invite"
+              path="/users/add/invite"
               element={
                 <ProtectedRoute>
                   <FullScreenLayout />
@@ -285,16 +307,20 @@ export default function App(): JSX.Element {
               <Route index element={<VerifiableCredentialCreatePage />} />
             </Route>
             <Route
-              path="/applications/create"
               element={
                 <ProtectedRoute>
                   <ApplicationCreateProvider>
-                    <FullScreenLayout />
+                    <Outlet />
                   </ApplicationCreateProvider>
                 </ProtectedRoute>
               }
             >
-              <Route index element={<ApplicationCreatePage />} />
+              <Route path="/applications/types" element={<DashboardLayout />}>
+                <Route index element={<ApplicationTemplateSelectPage />} />
+              </Route>
+              <Route path="/applications/create" element={<FullScreenLayout />}>
+                <Route index element={<ApplicationCreatePage />} />
+              </Route>
             </Route>
             <Route
               path="/agents/create"
@@ -336,7 +362,7 @@ export default function App(): JSX.Element {
                 </ProtectedRoute>
               }
             >
-              <Route index element={<ConnectionCreateWizardPage />} />
+              <Route index element={<ConnectionCreateWizardRoute />} />
             </Route>
             <Route
               path="/connections/:type/configure"
@@ -352,7 +378,7 @@ export default function App(): JSX.Element {
               path="/flows/signin"
               element={
                 <ProtectedRoute>
-                  <DashboardLayout />
+                  <DashboardLayout collapseSidebar />
                 </ProtectedRoute>
               }
             >
@@ -362,7 +388,7 @@ export default function App(): JSX.Element {
               path="/flows/signin/:flowId"
               element={
                 <ProtectedRoute>
-                  <DashboardLayout />
+                  <DashboardLayout collapseSidebar />
                 </ProtectedRoute>
               }
             >
@@ -372,7 +398,7 @@ export default function App(): JSX.Element {
               path="/flows/registration"
               element={
                 <ProtectedRoute>
-                  <DashboardLayout />
+                  <DashboardLayout collapseSidebar />
                 </ProtectedRoute>
               }
             >
@@ -382,7 +408,7 @@ export default function App(): JSX.Element {
               path="/flows/registration/:flowId"
               element={
                 <ProtectedRoute>
-                  <DashboardLayout />
+                  <DashboardLayout collapseSidebar />
                 </ProtectedRoute>
               }
             >
@@ -392,7 +418,7 @@ export default function App(): JSX.Element {
               path="/flows/recovery"
               element={
                 <ProtectedRoute>
-                  <DashboardLayout />
+                  <DashboardLayout collapseSidebar />
                 </ProtectedRoute>
               }
             >
@@ -400,6 +426,36 @@ export default function App(): JSX.Element {
             </Route>
             <Route
               path="/flows/recovery/:flowId"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout collapseSidebar />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<LoginFlowBuilderPage />} />
+            </Route>
+            <Route
+              path="/import-export"
+              element={
+                <ProtectedRoute>
+                  <FullScreenLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<ImportExportPage />} />
+            </Route>
+            <Route
+              path="/flows/signout"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<LoginFlowBuilderPage />} />
+            </Route>
+            <Route
+              path="/flows/signout/:flowId"
               element={
                 <ProtectedRoute>
                   <DashboardLayout />
@@ -445,13 +501,15 @@ export default function App(): JSX.Element {
               <Route path="import-configuration/summary" element={<ImportConfigurationSummaryPage />} />
               <Route path="get-started" element={<GetStartedPage />} />
               <Route
-                path="get-started/applications/create"
                 element={
                   <ApplicationCreateProvider>
-                    <ApplicationCreatePage />
+                    <Outlet />
                   </ApplicationCreateProvider>
                 }
-              />
+              >
+                <Route path="get-started/applications/types" element={<ApplicationTemplateSelectPage />} />
+                <Route path="get-started/applications/create" element={<ApplicationCreatePage />} />
+              </Route>
               <Route path="tryout/securing-application" element={<TryoutSecuringApplicationPage />} />
               <Route path="tryout/ai-agents" element={<TryoutSecuringAIAgentsPage />} />
               <Route path="tryout/mcp" element={<TryoutSecuringMCPPage />} />

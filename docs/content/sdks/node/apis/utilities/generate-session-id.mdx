@@ -1,6 +1,7 @@
 ---
 title: generateSessionId()
-description: Generate a unique session identifier for user session management
+docType: reference
+description: Generate a cryptographically random session identifier for use with server-side session stores.
 ---
 
 # `generateSessionId()`
@@ -15,7 +16,7 @@ generateSessionId(): string
 
 ## Returns
 
-`string` — A unique session identifier composed of a timestamp-based prefix and a random suffix, encoded in base-36.
+`string`: A unique session identifier composed of a timestamp-based prefix and a random suffix, encoded in base-36.
 
 ## Usage
 
@@ -40,5 +41,5 @@ app.get('/sign-in', (req, res) => {
 
 ## Related
 
-- [`CookieConfig`](/docs/next/sdks/node/apis/utilities/cookie-config) — Cookie name constants
-- [`getSessionCookieOptions()`](/docs/next/sdks/node/apis/utilities/get-session-cookie-options) — Build cookie options with defaults applied
+- [`CookieConfig`](../cookie-config): Cookie name constants
+- [`getSessionCookieOptions()`](../get-session-cookie-options): Build cookie options with defaults applied

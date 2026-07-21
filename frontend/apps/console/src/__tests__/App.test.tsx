@@ -56,17 +56,16 @@ vi.mock('@thunderid/configure-user-types', () => ({
   ViewUserTypePage: () => <div data-testid="view-user-type-page">View User Type Page</div>,
 }));
 
-vi.mock('../features/connections/pages/ConnectionsListPage', () => ({
-  default: () => <div data-testid="connections-list-page">Connections List Page</div>,
-}));
-vi.mock('../features/connections/pages/ConnectionDetailPage', () => ({
-  default: () => <div data-testid="connection-detail-page">Connection Detail Page</div>,
-}));
-vi.mock('../features/connections/pages/ConnectionConfigureWizardPage', () => ({
-  default: () => <div data-testid="connection-configure-wizard-page">Connection Configure Wizard Page</div>,
-}));
-vi.mock('../features/connections/pages/ConnectionCreateWizardPage', () => ({
-  default: () => <div data-testid="connection-create-wizard-page">Connection Create Wizard Page</div>,
+vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
+  ConnectionsListPage: () => <div data-testid="connections-list-page">Connections List Page</div>,
+  ConnectionDetailPage: () => <div data-testid="connection-detail-page">Connection Detail Page</div>,
+  ConnectionConfigureWizardPage: () => (
+    <div data-testid="connection-configure-wizard-page">Connection Configure Wizard Page</div>
+  ),
+  ConnectionCreateWizardPage: () => (
+    <div data-testid="connection-create-wizard-page">Connection Create Wizard Page</div>
+  ),
 }));
 
 vi.mock('../features/applications/pages/ApplicationsListPage', () => ({
@@ -212,6 +211,38 @@ describe('App', () => {
     render(<App />);
     await waitFor(() => {
       expect(screen.getByTestId('create-user-type-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads ConnectionsListPage lazily at /connections', async () => {
+    window.history.pushState({}, '', '/connections');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('connections-list-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads ConnectionDetailPage lazily at /connections/:type', async () => {
+    window.history.pushState({}, '', '/connections/google');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('connection-detail-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads ConnectionCreateWizardPage lazily at /connections/create', async () => {
+    window.history.pushState({}, '', '/connections/create');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('connection-create-wizard-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads ConnectionConfigureWizardPage lazily at /connections/:type/configure', async () => {
+    window.history.pushState({}, '', '/connections/google/configure');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('connection-configure-wizard-page')).toBeInTheDocument();
     });
   });
 });

@@ -33,6 +33,10 @@ import {
 import {useRef} from 'react';
 import useFlowConfig from './useFlowConfig';
 import useFlowPlugins from './useFlowPlugins';
+import VisualFlowConstants from '../constants/VisualFlowConstants';
+import type {Element} from '../models/elements';
+import {ElementTypes} from '../models/elements';
+import type {StepData} from '../models/steps';
 
 /**
  * Props interface for useVisualFlowHandlers hook
@@ -90,9 +94,66 @@ const useVisualFlowHandlers = (props: UseVisualFlowHandlersProps): UseVisualFlow
     handleConnect: (connection: Connection): void => {
       const {props: currentProps, reactFlowInstance: rf, edgeStyle: currentEdgeStyle} = depsRef.current;
       const {onEdgeResolve, setEdges} = currentProps;
-      const {getNodes} = rf;
+      const {getNodes, updateNodeData} = rf;
 
       const currentNodes = getNodes();
+
+      // If the edge originates from a rich-text action handle, copy the target node's id
+      // into the rich-text component's `action.ref`. Author-facing UX: they draw the edge
+      // and the "Connected step" field auto-populates.
+      const nextSuffix = VisualFlowConstants.FLOW_BUILDER_NEXT_HANDLE_SUFFIX;
+      if (
+        connection.sourceHandle &&
+        connection.sourceHandle.endsWith(nextSuffix) &&
+        connection.source &&
+        connection.target
+      ) {
+        const componentId = connection.sourceHandle.slice(0, -nextSuffix.length);
+        const sourceNode = currentNodes.find((n) => n.id === connection.source);
+        const components = (sourceNode?.data as StepData | undefined)?.components;
+        if (components) {
+          const targetId: string = connection.target;
+          let changed = false;
+
+          const updateRichTextRef = (elements: Element[]): Element[] => {
+            let localChanged = false;
+            const next = elements.map((el) => {
+              if (el.id === componentId && el.type === ElementTypes.RichText) {
+                const withAction = el as Element & {action?: {ref?: string}};
+                if (withAction.action !== undefined && withAction.action.ref !== targetId) {
+                  localChanged = true;
+                  return {...el, action: {...withAction.action, ref: targetId}} as Element;
+                }
+              }
+
+              if (el.components) {
+                const nestedNext = updateRichTextRef(el.components);
+                if (nestedNext !== el.components) {
+                  localChanged = true;
+                  return {...el, components: nestedNext};
+                }
+              }
+
+              return el;
+            });
+
+            if (localChanged) {
+              changed = true;
+              return next;
+            }
+
+            return elements;
+          };
+
+          const nextComponents = updateRichTextRef(components);
+          if (changed) {
+            updateNodeData(connection.source, (node) => ({
+              ...(node.data as StepData),
+              components: nextComponents,
+            }));
+          }
+        }
+      }
 
       if (onEdgeResolve) {
         const newEdge: Edge = onEdgeResolve(connection, currentNodes);

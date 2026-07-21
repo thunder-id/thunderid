@@ -30,16 +30,17 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
     base: {{ .Values.configuration.consoleClient.path | quote }},
     client_id: {{ .Values.configuration.consoleClient.clientId | quote }},
     scopes: {{ .Values.configuration.consoleClient.scopes }},
-  },
-  server: {
-    // Not used when public_url is set
-    hostname: "0.0.0.0",
-    port: {{ .Values.configuration.server.port }},
-    http_only: {{ .Values.configuration.server.httpOnly }},
-    {{- if .Values.configuration.server.publicUrl }}
-    public_url: {{ .Values.configuration.server.publicUrl | quote }},
+    {{- if .Values.configuration.consoleClient.resourceIdentifier }}
+    resource_identifier: {{ .Values.configuration.consoleClient.resourceIdentifier | quote }},
     {{- end }}
   },
+  {{- if .Values.configuration.server.publicUrl }}
+  // Defaults to the origin this app is served from. Required only when the server's
+  // external URL differs.
+  server: {
+    public_url: {{ .Values.configuration.server.publicUrl | quote }},
+  },
+  {{- end }}
   {{- if .Values.configuration.consoleClient.trustedIssuer }}
   trusted_issuer: {
     hostname: {{ .Values.configuration.consoleClient.trustedIssuer.hostname | quote }},
@@ -56,6 +57,19 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
     {{- end }}
     {{- if .Values.configuration.consoleClient.trustedIssuer.type }}
     type: {{ .Values.configuration.consoleClient.trustedIssuer.type | quote }},
+    {{- end }}
+  },
+  {{- end }}
+  {{- if .Values.configuration.gateClient.hostname }}
+  // Location of the login gate, used to build the OAuth redirect URI shown when configuring
+  // social/OIDC connections. Omit to default to `${server public_url}/gate/callback`.
+  gate_client: {
+    hostname: {{ .Values.configuration.gateClient.hostname | quote }},
+    {{- if .Values.configuration.gateClient.port }}
+    port: {{ .Values.configuration.gateClient.port }},
+    {{- end }}
+    {{- if .Values.configuration.gateClient.scheme }}
+    scheme: {{ .Values.configuration.gateClient.scheme | quote }},
     {{- end }}
   },
   {{- end }}

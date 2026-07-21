@@ -32,6 +32,8 @@ const loggerComponentName = "ServerConfigService"
 type ServerConfigService interface {
 	ListConfigNames(ctx context.Context) ([]ConfigName, *common.ServiceError)
 	GetConfig(ctx context.Context, name ConfigName) (ServerConfigLayers, *common.ServiceError)
+	GetReadOnlyConfig(ctx context.Context, name string) (any, *common.ServiceError)
+	GetWritableConfig(ctx context.Context, name string) (any, *common.ServiceError)
 	GetMergedConfig(ctx context.Context, name string) (any, *common.ServiceError)
 	SetConfig(ctx context.Context, name ConfigName, value json.RawMessage) *common.ServiceError
 }
@@ -88,18 +90,48 @@ func (s *serverConfigService) GetConfig(ctx context.Context,
 	}, nil
 }
 
-// GetMergedConfig returns the effective value of a section.
-func (s *serverConfigService) GetMergedConfig(ctx context.Context,
-	name string) (any, *common.ServiceError) {
-	configName := ConfigName(name)
-	if !configName.IsValid() {
-		return nil, &ErrorUnsupportedConfigName
-	}
-	layers, svcErr := s.GetConfig(ctx, configName)
+// GetReadOnlyConfig returns the decoded read-only (declarative) layer of a section.
+func (s *serverConfigService) GetReadOnlyConfig(ctx context.Context, name string) (any, *common.ServiceError) {
+	return s.getConfigLayer(ctx, name, "read-only")
+}
+
+// GetWritableConfig returns the decoded writable (db) layer of a section.
+func (s *serverConfigService) GetWritableConfig(ctx context.Context, name string) (any, *common.ServiceError) {
+	return s.getConfigLayer(ctx, name, "writable")
+}
+
+// GetMergedConfig returns the merged (effective) value of a section, combining its read-only and writable
+// layers.
+func (s *serverConfigService) GetMergedConfig(ctx context.Context, name string) (any, *common.ServiceError) {
+	layers, svcErr := s.GetConfig(ctx, ConfigName(name))
 	if svcErr != nil {
 		return nil, svcErr
 	}
 	return layers.Merged, nil
+}
+
+// getConfigLayer decodes a single stored layer of a section, selected by layer. A store or decode failure
+// is an internal error; the name is validated via handlerFor.
+func (s *serverConfigService) getConfigLayer(ctx context.Context, name string,
+	layer string) (any, *common.ServiceError) {
+	configName := ConfigName(name)
+	handler, svcErr := s.handlerFor(ctx, configName)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	rawLayers, err := s.store.GetServerConfig(ctx, configName)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to get server config from store", log.Error(err))
+		return nil, &common.InternalServerError
+	}
+	var raw json.RawMessage
+	switch layer {
+	case "read-only":
+		raw = rawLayers.ReadOnly
+	case "writable":
+		raw = rawLayers.Writable
+	}
+	return s.decodeLayer(ctx, configName, handler, raw, layer)
 }
 
 // SetConfig decodes and validates an incoming value against the current layers and persists the raw
@@ -156,6 +188,19 @@ func (s *serverConfigService) decodeLayers(ctx context.Context, name ConfigName,
 		return nil, nil, &common.InternalServerError
 	}
 	return readOnly, writable, nil
+}
+
+// decodeLayer decodes a single stored layer into its typed value. A failure here is an internal invariant
+// violation — stored values were validated at write or load time — not a client error.
+func (s *serverConfigService) decodeLayer(ctx context.Context, name ConfigName,
+	handler ServerConfigHandlerInterface, raw json.RawMessage, layer string) (any, *common.ServiceError) {
+	decoded, err := handler.Decode(raw)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to decode server config layer",
+			log.String("name", string(name)), log.String("layer", layer), log.Error(err))
+		return nil, &common.InternalServerError
+	}
+	return decoded, nil
 }
 
 // handlerFor returns the registered handler for a section. An unsupported name is a client error; a

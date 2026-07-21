@@ -1,5 +1,6 @@
 ---
 title: Connect an IdP to an Application
+docType: guide
 sidebar_position: 6
 persona: iam
 description: Wire a configured identity provider into an application's authentication flow to enable social login.
@@ -26,6 +27,10 @@ Applications in <ProductName /> do not reference IdPs directly. The connection r
   - [Add an OAuth 2.0 Identity Provider](../add-oauth-provider)
 - You have created an application. See [Manage Applications](../../applications/manage-applications).
 
+:::note Federated sign-in requires a local user
+By default, federated sign-in maps the external identity to a local user, which must already exist in the user store or the sign-in step fails. To sign in a first-time federated user, enable **Allow Authentication Without Local User** (`allowAuthenticationWithoutLocalUser`) on the social login executor and add a **Provisioning** executor to create the local account. See [Federated Authentication](../../flows/advanced-configurations#federated-authentication).
+:::
+
 <Stepper stepNode="h2" as="h2">
 
 ## Step 1: Open the Flow Designer
@@ -37,10 +42,10 @@ Applications in <ProductName /> do not reference IdPs directly. The connection r
 ## Step 2: Add a Social Login Executor
 
 1. In the left panel under **Widgets**, locate the social login executor for your provider:
-   - **Continue with Google** — for Google IdPs
-   - **Continue with GitHub** — for GitHub IdPs
-   - **OAuth** executor — for OAuth 2.0 IdPs
-   - **OIDC** executor — for OIDC IdPs
+   - **Continue with Google**: for Google IdPs
+   - **Continue with GitHub**: for GitHub IdPs
+   - **OAuth** executor: for OAuth 2.0 IdPs
+   - **OIDC** executor: for OIDC IdPs
 2. Click **+** next to the executor to add it to the canvas.
 3. Click the executor node to open its configuration panel.
 4. In the **Connection** dropdown, select the identity provider by the name you gave it when creating it (for example, `Google` or `My OIDC Provider`).
@@ -82,6 +87,6 @@ Click **Save** in the top-right corner.
 
 ## Next Steps
 
-- [Application Settings](../../applications/application-settings) — Configure tokens, flows, and consent for your application.
-- [Build a Sign-In Flow](../../flows/build-a-flow) — Learn more about customizing authentication flows.
-- [Manage Identity Providers](../manage-identity-providers) — Update or remove identity providers.
+- [Application Settings](../../applications/application-settings): Configure tokens, flows, and consent for your application.
+- [Build a Sign-In Flow](../../flows/build-a-flow): Learn more about customizing authentication flows.
+- [Manage Identity Providers](../manage-identity-providers): Update or remove identity providers.

@@ -255,7 +255,20 @@ func CompleteAuthorization(authID, assertion string) (*AuthorizationResponse, er
 // grantType, code, and redirectURI are sent in the form body, while client credentials are sent via HTTP
 // Basic Auth header.
 func RequestToken(clientID, clientSecret, code, redirectURI, grantType string) (*TokenHTTPResult, error) {
-	return requestToken(clientID, clientSecret, code, redirectURI, grantType, false, "")
+	return requestToken(clientID, clientSecret, code, redirectURI, grantType, false, "", "")
+}
+
+// RequestTokenWithResource performs an authorization-code token request with an RFC 8707 resource parameter.
+func RequestTokenWithResource(clientID, clientSecret, code, redirectURI, grantType, resource string) (
+	*TokenHTTPResult, error) {
+	return requestToken(clientID, clientSecret, code, redirectURI, grantType, false, "", resource)
+}
+
+// RequestTokenWithResourceAndClientCredentialsInBody performs an authorization-code token request with an
+// RFC 8707 resource parameter and client credentials in the request body.
+func RequestTokenWithResourceAndClientCredentialsInBody(clientID, clientSecret, code, redirectURI, grantType,
+	resource string) (*TokenHTTPResult, error) {
+	return requestToken(clientID, clientSecret, code, redirectURI, grantType, true, "", resource)
 }
 
 // RequestTokenWithPKCE performs a token request with PKCE and returns raw HTTP result for both success and
@@ -264,7 +277,14 @@ func RequestToken(clientID, clientSecret, code, redirectURI, grantType string) (
 // sent via HTTP Basic Auth header.
 func RequestTokenWithPKCE(clientID, clientSecret, code, redirectURI, grantType, codeVerifier string) (
 	*TokenHTTPResult, error) {
-	return requestToken(clientID, clientSecret, code, redirectURI, grantType, true, codeVerifier)
+	return requestToken(clientID, clientSecret, code, redirectURI, grantType, true, codeVerifier, "")
+}
+
+// RequestTokenWithPKCEAndResourceAndClientCredentialsInBody performs a PKCE token request with an RFC 8707
+// resource parameter and client credentials in the request body.
+func RequestTokenWithPKCEAndResourceAndClientCredentialsInBody(clientID, clientSecret, code, redirectURI,
+	grantType, codeVerifier, resource string) (*TokenHTTPResult, error) {
+	return requestToken(clientID, clientSecret, code, redirectURI, grantType, true, codeVerifier, resource)
 }
 
 // requestToken performs a token request and returns raw HTTP result for both success and failure scenarios.
@@ -272,7 +292,7 @@ func RequestTokenWithPKCE(clientID, clientSecret, code, redirectURI, grantType, 
 // If tokenAuthInBody is true, client credentials are sent in the request body; otherwise, HTTP Basic Auth
 // is used. codeVerifier is required for PKCE token requests.
 func requestToken(clientID, clientSecret, code, redirectURI, grantType string, tokenAuthInBody bool,
-	codeVerifier string) (*TokenHTTPResult, error) {
+	codeVerifier string, resource string) (*TokenHTTPResult, error) {
 	tokenURL := TestServerURL + "/oauth2/token"
 	tokenData := url.Values{}
 
@@ -281,6 +301,9 @@ func requestToken(clientID, clientSecret, code, redirectURI, grantType string, t
 	tokenData.Set("redirect_uri", redirectURI)
 	if codeVerifier != "" {
 		tokenData.Set("code_verifier", codeVerifier)
+	}
+	if resource != "" {
+		tokenData.Set("resource", resource)
 	}
 	if tokenAuthInBody {
 		tokenData.Set("client_id", clientID)
@@ -442,8 +465,15 @@ func ObtainAccessTokenWithPassword(clientID, redirectURI, scope, username, passw
 		log.Printf("Generated PKCE - Verifier length: %d, Challenge: %s", len(codeVerifier), codeChallenge)
 	}
 
+	// Bind the token to a resource server via the RFC 8707 resource parameter, mirroring the
+	// console runtime config. The CONSOLE app targets the bootstrapped System resource server.
+	resource := ""
+	if clientID == "CONSOLE" {
+		resource = SystemResourceIdentifier
+	}
+
 	// Step 1: Initiate authorization flow with PKCE
-	resp, err := InitiateAuthorizationFlowWithPKCE(clientID, redirectURI, "code", scope, "test-state", "",
+	resp, err := InitiateAuthorizationFlowWithPKCE(clientID, redirectURI, "code", scope, "test-state", resource,
 		codeChallenge, "S256")
 	if err != nil {
 		return nil, fmt.Errorf("failed to initiate authorization: %w", err)

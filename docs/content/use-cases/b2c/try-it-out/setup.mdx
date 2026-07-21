@@ -1,5 +1,6 @@
 ---
 title: Set Up Sample Application
+docType: use-case
 description: Run the B2C use cases against the Wayfinder sample, a fictional consumer travel-booking app.
 sidebar_position: 1
 sidebar_label: Set up sample application
@@ -15,11 +16,11 @@ Skip the bundle import and follow [Configure It Yourself](../configure-it-yourse
 
 ## Set Up Your Environment
 
-<Stepper stepNode="h3" as="h4">
+<Stepper stepNode="h3" as="h3">
 
 ### Run <ProductName />
 
-Get <ProductName /> running locally. Follow [Get <ProductName />](/docs/next/guides/getting-started/get-thunderid) for download, setup, and start commands.
+Get <ProductName /> running locally. Follow [Get <ProductName />](../../../../guides/getting-started/get-thunderid) for download, setup, and start commands.
 
 ### Configure the Server
 
@@ -51,8 +52,8 @@ Apply the bundle through the <ProductName /> Console. It creates everything the 
 
 1. Sign in to the <ProductName /> Console at <ConsoleUrl />.
 2. On first sign-in, a welcome screen appears with an **Open** button. (Later, reach the same screen from the user profile menu in the top-right corner of the Console.)
-3. Click **Open** and select your `thunderid-config/thunderid-config.yaml` file from the sample distribution.
-4. Select your `thunderid-config/thunderid.env` file to provide the environment variables referenced in the YAML.
+3. Click **Open** and select your `thunderid-config/redirect/thunderid-config.yaml` file from the sample distribution.
+4. Select your `thunderid-config/redirect/thunderid.env` file to provide the environment variables referenced in the YAML.
 5. The Console imports the files and reports the resources it created when the import completes.
 
 ### Run the Sample

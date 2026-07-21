@@ -72,11 +72,11 @@ func (suite *HealthCheckHandlerTestSuite) TestHandleReadinessRequest_AllUp() {
 			Status:      model.StatusUp,
 		},
 		{
-			ServiceName: "RuntimeDB",
+			ServiceName: "RuntimeTransientDB",
 			Status:      model.StatusUp,
 		},
 		{
-			ServiceName: "UserDB",
+			ServiceName: "EntityDB",
 			Status:      model.StatusUp,
 		},
 	}
@@ -114,11 +114,11 @@ func (suite *HealthCheckHandlerTestSuite) TestHandleReadinessRequest_Down() {
 			Status:      model.StatusUp,
 		},
 		{
-			ServiceName: "RuntimeDB",
+			ServiceName: "RuntimeTransientDB",
 			Status:      model.StatusDown,
 		},
 		{
-			ServiceName: "UserDB",
+			ServiceName: "EntityDB",
 			Status:      model.StatusDown,
 		},
 	}

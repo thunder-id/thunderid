@@ -54,10 +54,11 @@ paths:
                 value:
                   content: |
                     apiVersion: v1
-                    kind: IdentityProvider
+                    kind: Connection
                     metadata:
                       name: Google IDP
                     spec:
+                      type: google
                       clientId: "{{.GOOGLE_CLIENT_ID}}"
                       clientSecret: "{{.GOOGLE_CLIENT_SECRET}}"
                   variables:
@@ -93,7 +94,7 @@ paths:
                     resourceName: "my-app"
                     operation: "create"
                     status: "success"
-                  - resourceType: "IdentityProvider"
+                  - resourceType: "Connection"
                     resourceId: "660e8400-e29b-41d4-a716-446655440001"
                     resourceName: "google-idp"
                     operation: "update"
@@ -399,7 +400,7 @@ components:
         resourceType:
           type: string
           description: >
-            Type of the resource to delete (e.g., Application, IdentityProvider, Flow, etc.).
+            Type of the resource to delete (e.g., Application, Connection, Flow, etc.).
           example: "Application"
         resourceKey:
           type: string

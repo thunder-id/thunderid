@@ -1,5 +1,7 @@
 ---
+toc_progress: quickstart
 title: Flutter Quickstart
+docType: quickstart
 sidebar_position: 9
 persona: app
 description: Add {{ProductName}} authentication to a Flutter application using the thunderid_flutter package.
@@ -45,19 +47,25 @@ Check out the complete <RepoLink path="/tree/main/sdks/flutter/samples/quickstar
 
 ## Run <ProductName />
 
-Start a local ThunderID instance. Pick the method that works best for you:
+Start a local <ProductName /> instance. Pick the method that works best for you:
 
 <RunThunderID />
 
-Once it's running, the console is available at [https://localhost:8090](https://localhost:8090).
+Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
 
 ## Create an Application
 
-Open the Console at <ConsoleUrl />, navigate to **Applications**, and click **Add Application**:
+1. Sign in to the Console.
 
-1. Under **Application Type**, select **Mobile App**.
-2. Enter a name (e.g. `My Flutter App`) and create an application. The rest of the settings can stay at their defaults.
-3. Copy the **Client ID** from the **General** tab. You'll add the redirect URI in the next step after configuring your URL scheme.
+    :::info Test User
+    If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
+    :::
+
+2. Navigate to **Applications**, and click **Add Application**.
+
+3. Under **Application Type**, select **Mobile App**.
+4. Enter a name (e.g. `My Flutter App`) and create an application. The rest of the settings can stay at their defaults.
+5. Copy the **Client ID** from the **General** tab. You'll add the redirect URI in the next step after configuring your URL scheme.
 
 ## Create a Flutter App
 
@@ -126,13 +134,13 @@ Open `android/app/src/main/AndroidManifest.xml` and add an intent filter inside 
 
 In the <ProductName /> console, open your registered application and add the following as an **Allowed Redirect URI**:
 
-```
+```text
 dev.thunderid.app://callback
 ```
 
 Add the same value as an **Allowed Post-Logout Redirect URI**:
 
-```
+```text
 dev.thunderid.app://logout
 ```
 

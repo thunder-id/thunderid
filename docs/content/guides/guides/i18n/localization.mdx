@@ -1,5 +1,6 @@
 ---
 title: Localization
+docType: concept
 sidebar_position: 1
 description: Localize the text displayed on authentication screens into the languages your users need.
 ---
@@ -43,7 +44,7 @@ Create a dedicated namespace for translations specific to your custom flows. Thi
 
 Each key uses dot-notation within a namespace and maps to a translated string. The namespace and key combination uniquely identifies a piece of text:
 
-```
+```yaml
 signin:forms.credentials.title          → "Sign In"
 signup:forms.credentials.title          → "Sign Up"
 recovery:forms.username.title           → "Password Recovery"
@@ -52,7 +53,7 @@ invite:complete.title                   → "Welcome Aboard!"
 
 Keys may include `{{placeholder}}` interpolation tokens that <ProductName /> replaces at render time with dynamic values:
 
-```
+```text
 invite:complete.description.withApp     → "Your account has been successfully set up for {{appName}}."
 ```
 
@@ -73,7 +74,7 @@ For system-level translations (error messages, internal labels), <ProductName />
 
 ## Relationship with Design
 
-Localization and [design](/docs/next/guides/guides/design/overview) are independent systems that work together at runtime:
+Localization and [design](../../design/overview) are independent systems that work together at runtime:
 
 - **Design** (themes and layouts) controls visual appearance: colors, fonts, spacing, and structure.
 - **Localization** controls text content: labels, messages, and error strings.

@@ -71,6 +71,14 @@ vi.mock('../end/End', () => ({
   ),
 }));
 
+vi.mock('../call/Call', () => ({
+  default: ({resources, data}: {resources: Step[]; data: unknown}) => (
+    <div data-testid="call-step" data-resource-count={resources.length} data-has-data={!!data}>
+      Call Step
+    </div>
+  ),
+}));
+
 describe('CommonStepFactory', () => {
   const createWrapper = () => {
     function Wrapper({children}: {children: ReactNode}) {
@@ -315,6 +323,35 @@ describe('CommonStepFactory', () => {
       );
 
       expect(screen.getByTestId('end-step')).toHaveAttribute('data-has-data', 'true');
+    });
+  });
+
+  describe('Call Step', () => {
+    it('should render Call component for CALL step type', () => {
+      const callStep = createMockStep({type: StepTypes.Call});
+
+      render(<CommonStepFactory {...defaultNodeProps} resourceId="resource-1" resources={[callStep]} />, {
+        wrapper: createWrapper(),
+      });
+
+      expect(screen.getByTestId('call-step')).toBeInTheDocument();
+      expect(screen.getByTestId('call-step')).toHaveAttribute('data-resource-count', '1');
+    });
+
+    it('should pass data to Call component', () => {
+      const callStep = createMockStep({type: StepTypes.Call});
+
+      render(
+        <CommonStepFactory
+          {...defaultNodeProps}
+          resourceId="resource-1"
+          resources={[callStep]}
+          data={{flow: {ref: 'flow-x'}}}
+        />,
+        {wrapper: createWrapper()},
+      );
+
+      expect(screen.getByTestId('call-step')).toHaveAttribute('data-has-data', 'true');
     });
   });
 

@@ -373,7 +373,7 @@ function ServerSection({server, selected, readOnly, onChange}: ServerSectionProp
   return (
     <Box sx={{borderBottom: '1px solid', borderColor: 'divider'}}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{py: 0.5}}>
-        <IconButton size="small" onClick={handleToggleExpand} aria-label={server.handle}>
+        <IconButton size="small" onClick={handleToggleExpand} aria-label={server.name}>
           {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </IconButton>
         {cascading ? (

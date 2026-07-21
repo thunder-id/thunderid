@@ -19,15 +19,20 @@
 package consent
 
 import (
+	"errors"
+
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
-// Client-facing service errors.
+// errConsentNotFound is the sentinel error returned by the store when a consent record does not exist.
+var errConsentNotFound = errors.New("consent not found")
+
+// Client errors for consent operations.
 var (
-	// ErrorInvalidRequestFormat is returned when the request format is invalid.
+	// ErrorInvalidRequestFormat is the error returned when the request format is invalid.
 	ErrorInvalidRequestFormat = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1001",
+		Code: "CNS-1001",
 		Error: tidcommon.I18nMessage{
 			Key:          "error.consentservice.invalid_request_format",
 			DefaultValue: "Invalid request format",
@@ -37,230 +42,82 @@ var (
 			DefaultValue: "The request body is malformed or contains invalid data",
 		},
 	}
-
-	// ErrorConsentServiceReturnedUnauthorized is returned when the consent service returns a unauthorized response.
-	ErrorConsentServiceReturnedUnauthorized = tidcommon.ServiceError{
+	// ErrorMissingConsentID is the error returned when the consent ID is missing.
+	ErrorMissingConsentID = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1002",
+		Code: "CNS-1002",
 		Error: tidcommon.I18nMessage{
-			Key:          "error.consentservice.unauthorized",
-			DefaultValue: "Unauthorized to access consent service",
+			Key:          "error.consentservice.missing_consent_id",
+			DefaultValue: "Missing consent ID",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.consentservice.unauthorized_description",
-			DefaultValue: "The consent service returned an unauthorized response",
+			Key:          "error.consentservice.missing_consent_id_description",
+			DefaultValue: "Consent ID is required",
 		},
 	}
-
-	// ErrorConsentServiceReturnedForbidden is returned when the consent service returns a forbidden response.
-	ErrorConsentServiceReturnedForbidden = tidcommon.ServiceError{
+	// ErrorConsentNotFound is the error returned when a consent record is not found.
+	ErrorConsentNotFound = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1003",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.consentservice.forbidden",
-			DefaultValue: "Forbidden to access consent service",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.consentservice.forbidden_description",
-			DefaultValue: "The consent service returned a forbidden response",
-		},
-	}
-
-	// ErrorInvalidConsentRequest is returned when the consent backend rejects a request as invalid (400).
-	ErrorInvalidConsentRequest = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1004",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.consentservice.invalid_request",
-			DefaultValue: "Invalid consent request",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.consentservice.invalid_request_description",
-			DefaultValue: "The request sent to the consent service was invalid",
-		},
-	}
-
-	// ErrorInvalidConsentElementRequest is returned when the consent service rejects a consent element request.
-	ErrorInvalidConsentElementRequest = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1005",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.consentservice.invalid_element_request",
-			DefaultValue: "Invalid consent element request",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.consentservice.invalid_element_request_description",
-			DefaultValue: "The consent element request was rejected by the consent service as invalid",
-		},
-	}
-
-	// ErrorConsentElementAlreadyExists is returned when a consent element with the same name already exists.
-	ErrorConsentElementAlreadyExists = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1006",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.consentservice.element_already_exists",
-			DefaultValue: "Consent element already exists",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.consentservice.element_already_exists_description",
-			DefaultValue: "A consent element with the same name already exists",
-		},
-	}
-
-	// ErrorConsentElementNotFound is returned when a consent element is not found.
-	ErrorConsentElementNotFound = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1007",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.consentservice.element_not_found",
-			DefaultValue: "Consent element not found",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.consentservice.element_not_found_description",
-			DefaultValue: "The consent element with the specified ID does not exist",
-		},
-	}
-
-	// ErrorDeletingConsentElementWithAssociatedPurpose is returned when attempting to delete a consent element
-	// that is still associated with a purpose.
-	ErrorDeletingConsentElementWithAssociatedPurpose = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1008",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.consentservice.cannot_delete_element",
-			DefaultValue: "Cannot delete consent element",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key: "error.consentservice.delete_element_with_associated_purpose_description",
-			DefaultValue: "The consent element cannot be deleted because it is still associated with " +
-				"one or more consent purposes.",
-		},
-	}
-
-	// ErrorInvalidConsentPurposeRequest is returned when the consent service rejects a consent purpose request.
-	ErrorInvalidConsentPurposeRequest = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1009",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.consentservice.invalid_purpose_request",
-			DefaultValue: "Invalid consent purpose request",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.consentservice.invalid_purpose_request_description",
-			DefaultValue: "The consent purpose request was rejected by the consent service as invalid",
-		},
-	}
-
-	// ErrorConsentPurposeAlreadyExists is returned when a consent purpose with the same name already exists.
-	ErrorConsentPurposeAlreadyExists = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1010",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.consentservice.purpose_already_exists",
-			DefaultValue: "Consent purpose already exists",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.consentservice.purpose_already_exists_description",
-			DefaultValue: "A consent purpose with the same name already exists for this resource",
-		},
-	}
-
-	// ErrorConsentPurposeNotFound is returned when a consent purpose is not found.
-	ErrorConsentPurposeNotFound = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1011",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.consentservice.purpose_not_found",
-			DefaultValue: "Consent purpose not found",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.consentservice.purpose_not_found_description",
-			DefaultValue: "The consent purpose with the specified ID does not exist",
-		},
-	}
-
-	// ErrorInvalidConsentRecordRequest is returned when the consent service rejects a consent request.
-	ErrorInvalidConsentRecordRequest = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1013",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.consentservice.invalid_consent_request",
-			DefaultValue: "Invalid consent request",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.consentservice.invalid_consent_request_description",
-			DefaultValue: "The consent request was rejected by the consent service as invalid",
-		},
-	}
-
-	// ErrorConsentRecordNotFound is returned when a consent record is not found.
-	ErrorConsentRecordNotFound = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1014",
+		Code: "CNS-1003",
 		Error: tidcommon.I18nMessage{
 			Key:          "error.consentservice.consent_not_found",
 			DefaultValue: "Consent not found",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.consentservice.consent_not_found_description",
-			DefaultValue: "The consent record with the specified ID does not exist",
+			DefaultValue: "The consent with the specified id does not exist",
 		},
 	}
-
-	// ErrorInvalidConsentSearchFilter is returned when the consent service rejects a consent search filter.
-	ErrorInvalidConsentSearchFilter = tidcommon.ServiceError{
+	// ErrorInvalidConsentStatus is the error returned when the consent status filter is not recognized.
+	ErrorInvalidConsentStatus = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1015",
+		Code: "CNS-1004",
 		Error: tidcommon.I18nMessage{
-			Key:          "error.consentservice.invalid_search_filter",
-			DefaultValue: "Invalid consent search filter",
+			Key:          "error.consentservice.invalid_consent_status",
+			DefaultValue: "Invalid consent status",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.consentservice.invalid_search_filter_description",
-			DefaultValue: "The consent search filter was rejected by the consent service as invalid",
+			Key:          "error.consentservice.invalid_consent_status_description",
+			DefaultValue: "The provided consent status is not a recognized value",
 		},
 	}
-
-	// ErrorInvalidConsentValidationRequest is returned when the consent service rejects a consent validation request.
-	ErrorInvalidConsentValidationRequest = tidcommon.ServiceError{
+	// ErrorInvalidAuthorizationType is the error returned when an authorization type is not recognized.
+	ErrorInvalidAuthorizationType = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1016",
+		Code: "CNS-1005",
 		Error: tidcommon.I18nMessage{
-			Key:          "error.consentservice.invalid_validation_request",
-			DefaultValue: "Invalid consent validation request",
+			Key:          "error.consentservice.invalid_authorization_type",
+			DefaultValue: "Invalid authorization type",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.consentservice.invalid_validation_request_description",
-			DefaultValue: "The consent validation request was rejected by the consent service as invalid",
+			Key:          "error.consentservice.invalid_authorization_type_description",
+			DefaultValue: "The provided consent authorization type is not a recognized value",
 		},
 	}
-
-	// ErrorInvalidConsentRevokeRequest is returned when the consent service rejects a consent revoke request.
-	ErrorInvalidConsentRevokeRequest = tidcommon.ServiceError{
+	// ErrorInvalidAuthorizationStatus is the error returned when an authorization status is not recognized.
+	ErrorInvalidAuthorizationStatus = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1017",
+		Code: "CNS-1006",
 		Error: tidcommon.I18nMessage{
-			Key:          "error.consentservice.invalid_revoke_request",
-			DefaultValue: "Invalid consent revoke request",
+			Key:          "error.consentservice.invalid_authorization_status",
+			DefaultValue: "Invalid authorization status",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.consentservice.invalid_revoke_request_description",
-			DefaultValue: "The consent revoke request was rejected by the consent service as invalid",
+			Key:          "error.consentservice.invalid_authorization_status_description",
+			DefaultValue: "The provided consent authorization status is not a recognized value",
 		},
 	}
-
-	// ErrorInvalidConsentUpdateRequest is returned when the consent service rejects a consent update request.
-	ErrorInvalidConsentUpdateRequest = tidcommon.ServiceError{
+	// ErrorInvalidNamespace is the error returned when a consent element namespace is not recognized.
+	ErrorInvalidNamespace = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1018",
+		Code: "CNS-1007",
 		Error: tidcommon.I18nMessage{
-			Key:          "error.consentservice.invalid_update_request",
-			DefaultValue: "Invalid consent update request",
+			Key:          "error.consentservice.invalid_namespace",
+			DefaultValue: "Invalid namespace",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.consentservice.invalid_update_request_description",
-			DefaultValue: "The consent update request was rejected by the consent service as invalid",
+			Key:          "error.consentservice.invalid_namespace_description",
+			DefaultValue: "The provided consent namespace is not a recognized value",
 		},
 	}
 )

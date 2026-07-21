@@ -46,7 +46,7 @@ type jtiStore struct {
 	deploymentID string
 }
 
-// newDBStore returns a JTIStoreInterface backed by the runtime database.
+// newDBStore returns a JTIStoreInterface backed by the runtime transient database.
 func newDBStore(deploymentID string) JTIStoreInterface {
 	return &jtiStore{
 		dbProvider:   provider.GetDBProvider(),
@@ -58,7 +58,7 @@ func newDBStore(deploymentID string) JTIStoreInterface {
 func (s *jtiStore) RecordJTI(
 	ctx context.Context, namespace, jti string, expiry time.Time,
 ) (bool, error) {
-	dbClient, err := s.dbProvider.GetRuntimeDBClient()
+	dbClient, err := s.dbProvider.GetRuntimeTransientDBClient()
 	if err != nil {
 		return false, fmt.Errorf("failed to get database client: %w", err)
 	}

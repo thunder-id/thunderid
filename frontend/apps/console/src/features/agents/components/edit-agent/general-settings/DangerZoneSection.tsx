@@ -17,55 +17,32 @@
  */
 
 import {SettingsCard} from '@thunderid/components';
-import {Typography, Button, Divider} from '@wso2/oxygen-ui';
+import {Typography, Button} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 
 interface DangerZoneSectionProps {
-  onRegenerateClick?: () => void;
-  showRegenerateSecret?: boolean;
   onDeleteClick: () => void;
 }
 
-export default function DangerZoneSection({
-  onRegenerateClick = undefined,
-  showRegenerateSecret = false,
-  onDeleteClick,
-}: DangerZoneSectionProps): JSX.Element {
+export default function DangerZoneSection({onDeleteClick}: DangerZoneSectionProps): JSX.Element {
   const {t} = useTranslation();
 
   return (
     <SettingsCard
-      title={t('applications:edit.general.sections.dangerZone.title', 'Danger Zone')}
+      title={t('agents:edit.general.sections.dangerZone.title', 'Danger Zone')}
       description={t(
-        'applications:edit.general.sections.dangerZone.description',
-        'Actions in this section are irreversible. Proceed with caution.',
+        'agents:edit.general.sections.dangerZone.description',
+        'Actions here are permanent. Make sure before you proceed.',
       )}
     >
-      {showRegenerateSecret && (
-        <>
-          <Typography variant="h6" gutterBottom color="error">
-            {t('applications:edit.general.sections.dangerZone.regenerateSecret.title', 'Regenerate Client Secret')}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
-            {t(
-              'applications:edit.general.sections.dangerZone.regenerateSecret.description',
-              'Regenerating the client secret will immediately invalidate the current client secret and cannot be undone.',
-            )}
-          </Typography>
-          <Button variant="contained" color="error" onClick={onRegenerateClick}>
-            {t('applications:edit.general.sections.dangerZone.regenerateSecret.button', 'Regenerate Client Secret')}
-          </Button>
-          <Divider sx={{my: 3}} />
-        </>
-      )}
       <Typography variant="h6" gutterBottom color="error">
         {t('agents:edit.general.dangerZone.deleteAgent.title', 'Delete Agent')}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
         {t(
           'agents:edit.general.dangerZone.deleteAgent.description',
-          'Permanently delete this agent and all associated data. This action cannot be undone.',
+          'Permanently deletes this agent and immediately invalidates any tokens it has issued. This action cannot be undone.',
         )}
       </Typography>
       <Button data-testid="delete-agent-button" variant="contained" color="error" onClick={onDeleteClick}>

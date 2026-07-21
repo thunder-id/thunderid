@@ -1,7 +1,8 @@
 ---
 title: <CallbackRoute />
+docType: reference
 displayed_sidebar: tanstackRouterSdkSidebar
-description: Handle OAuth 2.0 callback redirects in TanStack Router applications
+description: Handle OAuth 2.0 authorization code callbacks in TanStack Router to complete the sign-in exchange.
 ---
 
 # `<CallbackRoute />`
@@ -81,7 +82,7 @@ const callbackRoute = createRoute({
 
 ### Router Basepath
 
-`CallbackRoute` automatically accounts for TanStack Router's `basepath` when resolving the post-callback navigation path — no extra configuration needed.
+`CallbackRoute` automatically accounts for TanStack Router's `basepath` when resolving the post-callback navigation path, no extra configuration needed.
 
 ```tsx title="src/main.tsx"
 const router = createRouter({ routeTree, basepath: '/app' })
@@ -103,4 +104,4 @@ When the authorization server redirects back to your application, `CallbackRoute
 3. Exchanges the authorization code for tokens via the configured token endpoint
 4. Navigates the user to their original pre-authentication path using `router.navigate()`
 
-It renders nothing visible — it completes silently and redirects immediately on success.
+It renders nothing visible. It completes silently and redirects immediately on success.

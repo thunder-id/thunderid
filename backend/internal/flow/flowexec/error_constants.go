@@ -194,3 +194,62 @@ var ErrorFlowSecretInvalid = tidcommon.ServiceError{
 		DefaultValue: "The provided flow secret is invalid",
 	},
 }
+
+// ErrorMaxCallDepthExceeded defines the error when the maximum allowed call depth is exceeded
+// during flow execution.
+var ErrorMaxCallDepthExceeded = tidcommon.ServiceError{
+	Code: "FES-1013",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.max_call_depth_exceeded",
+		DefaultValue: "Maximum call depth exceeded",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.max_call_depth_exceeded_description",
+		DefaultValue: "The maximum allowed call depth has been exceeded during flow execution",
+	},
+}
+
+// ErrorAttestationRequired defines the error when a mobile application initiates a new flow without
+// presenting a platform attestation token.
+var ErrorAttestationRequired = tidcommon.ServiceError{
+	Code: "FES-1014",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.attestation_required",
+		DefaultValue: "Authentication required",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.attestation_required_description",
+		DefaultValue: "Mobile applications must present a valid attestation token to initiate a new flow",
+	},
+}
+
+// ErrorAttestationInvalid defines the error when a mobile application presents an attestation token
+// that fails verification.
+var ErrorAttestationInvalid = tidcommon.ServiceError{
+	Code: "FES-1015",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.attestation_invalid",
+		DefaultValue: "Authentication failed",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.attestation_invalid_description",
+		DefaultValue: "The provided attestation token is invalid",
+	},
+}
+
+// ErrorSignOutFlowDisabled defines the error response for sign-out flow disabled errors.
+var ErrorSignOutFlowDisabled = tidcommon.ServiceError{
+	Code: "FES-1016",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.signout_not_allowed",
+		DefaultValue: "Sign out not allowed",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.signout_not_allowed_description",
+		DefaultValue: "Sign out flow is disabled for the application",
+	},
+}

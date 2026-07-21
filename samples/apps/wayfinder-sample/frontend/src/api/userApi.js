@@ -66,3 +66,13 @@ export async function updateMyCredentials(accessToken, attributes) {
     body: JSON.stringify({ attributes })
   });
 }
+
+// Issuer-initiated OpenID4VCI credential offer for the Wayfinder Sky Pass. The
+// endpoint is public (the wallet authenticates during the flow), so no token is
+// sent. Returns { credential_offer, credential_offer_uri } — render the
+// credential_offer_uri as a QR for the wallet to scan.
+export async function getSkyPassOffer() {
+  return thunderRequest(
+    `/openid4vci/offer?credential_configuration_id=wayfinder-skypass`
+  );
+}

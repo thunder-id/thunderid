@@ -69,12 +69,28 @@ func (s *stubTransactioner) Transact(ctx context.Context, txFunc func(context.Co
 	return txFunc(ctx)
 }
 
-// JWT constants used in service tests.
+// JWT constants used in service tests. All happy-path assertions are bound to testAuthID via
+// the authorization_request_id claim so they pass the assertion<->authorization request binding check.
 const (
-	// Header: {"alg":"none","typ":"JWT"}   Payload: {"sub":"test-user","iat":1701421200}
-	svcJWTWithIat = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ0ZXN0LXVzZXIiLCJpYXQiOjE3MDE0MjEyMDB9."
-	// Header: {"alg":"none","typ":"JWT"}   Payload: {"sub":"test-user"}
-	svcJWTMinimal = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ0ZXN0LXVzZXIifQ."
+	// Header: {"alg":"none","typ":"JWT"}
+	// Payload: {"sub":"test-user","iat":1701421200,"authorization_request_id":"test-auth-id"}
+	svcJWTWithIat = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0." +
+		"eyJzdWIiOiJ0ZXN0LXVzZXIiLCJpYXQiOjE3MDE0MjEyMDAsImF1dGhvcml6YXRpb25fcmVxdWVzdF9pZCI6InRlc3QtYXV0aC1pZCJ9."
+	// Header: {"alg":"none","typ":"JWT"}
+	// Payload: {"sub":"test-user","authorization_request_id":"test-auth-id"}
+	svcJWTMinimal = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0." +
+		"eyJzdWIiOiJ0ZXN0LXVzZXIiLCJhdXRob3JpemF0aW9uX3JlcXVlc3RfaWQiOiJ0ZXN0LWF1dGgtaWQifQ."
+	// Header: {"alg":"none","typ":"JWT"}
+	// Payload: {"sub":"test-user","iat":1701421200} — no authorization_request_id claim (unbound).
+	svcJWTUnbound = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ0ZXN0LXVzZXIiLCJpYXQiOjE3MDE0MjEyMDB9."
+	// Header: {"alg":"none","typ":"JWT"}
+	// Payload: {"sub":"test-user","iat":1701421200,"authorization_request_id":"other-auth-id"}
+	svcJWTMismatched = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0." +
+		"eyJzdWIiOiJ0ZXN0LXVzZXIiLCJpYXQiOjE3MDE0MjEyMDAsImF1dGhvcml6YXRpb25fcmVxdWVzdF9pZCI6Im90aGVyLWF1dGgtaWQifQ."
+	// Header: {"alg":"none","typ":"JWT"}
+	// Payload: {"sub":"test-user","iat":1701421200,"authorization_request_id":42}
+	svcJWTNonStringAuthReqID = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0." +
+		"eyJzdWIiOiJ0ZXN0LXVzZXIiLCJpYXQiOjE3MDE0MjEyMDAsImF1dGhvcml6YXRpb25fcmVxdWVzdF9pZCI6NDJ9."
 )
 
 type AuthorizeServiceTestSuite struct {
@@ -103,8 +119,8 @@ func (suite *AuthorizeServiceTestSuite) BeforeTest(suiteName, testName string) {
 			ErrorPath: "/error",
 		},
 		Database: config.DatabaseConfig{
-			Config:  config.DataSource{Type: "sqlite", SQLite: config.SQLiteDataSource{Path: ":memory:"}},
-			Runtime: config.DataSource{Type: "sqlite", SQLite: config.SQLiteDataSource{Path: ":memory:"}},
+			Config:           config.DataSource{Type: "sqlite", SQLite: config.SQLiteDataSource{Path: ":memory:"}},
+			RuntimeTransient: config.DataSource{Type: "sqlite", SQLite: config.SQLiteDataSource{Path: ":memory:"}},
 		},
 		JWT: engineconfig.JWTConfig{
 			Issuer: "https://localhost:8090",
@@ -149,6 +165,7 @@ func (suite *AuthorizeServiceTestSuite) testApp() *providers.OAuthClient {
 		RedirectURIs: []string{"https://client.example.com/callback"},
 		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		PKCERequired: false,
+		Scopes:       []string{"openid", "profile", "email"},
 	}
 }
 
@@ -321,6 +338,39 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Su
 	assert.Equal(suite.T(), "test-flow-id", result.QueryParams[oauth2const.ExecutionID])
 }
 
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_FiltersOIDCScopesByAppScopes() {
+	app := suite.testApp()
+	app.Scopes = []string{"profile"}
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, app).
+		Return(false, "", "")
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).Return("test-flow-id", nil)
+
+	var captured authRequestContext
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, value authRequestContext) {
+			captured = value
+		}).Return(testAuthID, nil)
+
+	msg := &OAuthMessage{
+		RequestType: oauth2const.TypeInitialAuthorizationRequest,
+		RequestQueryParams: map[string]string{
+			"client_id":     "test-client-id",
+			"redirect_uri":  "https://client.example.com/callback",
+			"response_type": "code",
+			"scope":         "openid email profile",
+			"state":         "test-state",
+		},
+	}
+
+	svc := suite.newService()
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
+
+	assert.Nil(suite.T(), authErr)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), []string{"profile"}, captured.OAuthParameters.StandardScopes)
+}
+
 func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_InsecureRedirectURI() {
 	app := suite.testApp()
 	app.RedirectURIs = []string{"http://client.example.com/callback"}
@@ -403,7 +453,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Se
 	app := suite.testApp()
 	app.Token = &providers.OAuthTokenConfig{
 		AccessToken: &providers.AccessTokenConfig{
-			UserAttributes: []string{"user_id"},
+			UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id"}},
 		},
 		IDToken: &providers.IDTokenConfig{
 			UserAttributes: []string{"email"},
@@ -544,6 +594,78 @@ func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_FailedTo
 	assert.Equal(suite.T(), "https://client.example.com/callback", authErr.ClientRedirectURI)
 }
 
+func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_UnboundAssertion() {
+	// Assertion has no auth_req_id claim → binding check must reject it.
+	authCtx := authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{
+			ClientID:    "test-client",
+			RedirectURI: "https://client.example.com/callback",
+			State:       "test-state",
+		},
+	}
+	suite.mockAuthReqStore.EXPECT().GetRequest(mock.Anything, testAuthID).Return(true, authCtx, nil)
+	suite.mockAuthReqStore.EXPECT().ClearRequest(mock.Anything, testAuthID).Return(nil)
+	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, svcJWTUnbound, "", "").Return(nil)
+
+	svc := suite.newService()
+	redirectURI, authErr := svc.HandleAuthorizationCallback(context.Background(), testAuthID, svcJWTUnbound)
+
+	assert.Empty(suite.T(), redirectURI)
+	assert.NotNil(suite.T(), authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorAccessDenied, authErr.Code)
+	assert.Equal(suite.T(), "Assertion does not match the authorization request", authErr.Message)
+	assert.Equal(suite.T(), "test-state", authErr.State)
+	assert.True(suite.T(), authErr.SendErrorToClient)
+	assert.Equal(suite.T(), "https://client.example.com/callback", authErr.ClientRedirectURI)
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_MismatchedAssertion() {
+	// Assertion's auth_req_id claim identifies a different authorization request → must reject.
+	authCtx := authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{
+			ClientID:    "test-client",
+			RedirectURI: "https://client.example.com/callback",
+			State:       "test-state",
+		},
+	}
+	suite.mockAuthReqStore.EXPECT().GetRequest(mock.Anything, testAuthID).Return(true, authCtx, nil)
+	suite.mockAuthReqStore.EXPECT().ClearRequest(mock.Anything, testAuthID).Return(nil)
+	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, svcJWTMismatched, "", "").Return(nil)
+
+	svc := suite.newService()
+	redirectURI, authErr := svc.HandleAuthorizationCallback(context.Background(), testAuthID, svcJWTMismatched)
+
+	assert.Empty(suite.T(), redirectURI)
+	assert.NotNil(suite.T(), authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorAccessDenied, authErr.Code)
+	assert.Equal(suite.T(), "Assertion does not match the authorization request", authErr.Message)
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_NonStringAuthReqID() {
+	// Assertion's authorization_request_id claim is not a string → malformed client input,
+	// mapped to invalid_request rather than server_error.
+	authCtx := authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{
+			ClientID:    "test-client",
+			RedirectURI: "https://client.example.com/callback",
+			State:       "test-state",
+		},
+	}
+	suite.mockAuthReqStore.EXPECT().GetRequest(mock.Anything, testAuthID).Return(true, authCtx, nil)
+	suite.mockAuthReqStore.EXPECT().ClearRequest(mock.Anything, testAuthID).Return(nil)
+	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, svcJWTNonStringAuthReqID, "", "").Return(nil)
+
+	svc := suite.newService()
+	redirectURI, authErr := svc.HandleAuthorizationCallback(context.Background(), testAuthID, svcJWTNonStringAuthReqID)
+
+	assert.Empty(suite.T(), redirectURI)
+	assert.NotNil(suite.T(), authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorInvalidRequest, authErr.Code)
+	assert.True(suite.T(), authErr.SendErrorToClient)
+	assert.Equal(suite.T(), "https://client.example.com/callback", authErr.ClientRedirectURI)
+	assert.Equal(suite.T(), "test-state", authErr.State)
+}
+
 func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_PersistAuthCodeError() {
 	authCtx := authRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
@@ -615,7 +737,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_WithStat
 }
 
 func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_EmptyAuthorizedPermissions() {
-	// svcJWTWithIat has only "sub" and "iat" — no authorized_permissions.
+	// svcJWTWithIat has no authorized_permissions claim.
 	// Permission scopes in the auth context should be cleared.
 	authCtx := authRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
@@ -796,7 +918,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_AccessToken
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id", "org_id", "role"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id", "org_id", "role"}},
 			},
 		},
 	}
@@ -822,7 +944,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_NoOpenIDSco
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id"}},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "name"},
@@ -1075,7 +1197,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_MultipleSco
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id"}},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "email_verified", "name", "picture"},
@@ -1124,7 +1246,7 @@ func (suite *AuthorizeServiceTestSuite) TestDetermineClaimsForTokens_CompleteSce
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id", "role"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id", "role"}},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "email_verified", "name"},
@@ -1222,7 +1344,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_AccessTokenOnl
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id", "role"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id", "role"}},
 			},
 		},
 	}
@@ -1249,7 +1371,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_CodeFlowWithSc
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id"}},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "email_verified", "name"},
@@ -1321,7 +1443,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_WithClaimsPara
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id"}},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "name"},
@@ -1366,7 +1488,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_ClaimsParamete
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"email", "role"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"email", "role"}},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "name"},
@@ -1406,7 +1528,9 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_DeduplicatesCl
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"email"}, // Same claim in access token too
+				UserConfig: &providers.AccessTokenSubConfig{
+					Attributes: []string{"email"}, // Same claim in access token too
+				},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email"},
@@ -1477,7 +1601,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_ComplexScenari
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id", "role"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id", "role"}},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "email_verified", "name"},
@@ -1521,7 +1645,7 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_NoOpenIDScope(
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			AccessToken: &providers.AccessTokenConfig{
-				UserAttributes: []string{"user_id"},
+				UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"user_id"}},
 			},
 			IDToken: &providers.IDTokenConfig{
 				UserAttributes: []string{"email", "name"},
@@ -1565,7 +1689,9 @@ func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_RefreshAllowed_U
 			providers.GrantTypeRefreshToken,
 		},
 		Token: &providers.OAuthTokenConfig{
-			AccessToken: &providers.AccessTokenConfig{ValidityPeriod: 3600},
+			AccessToken: &providers.AccessTokenConfig{
+				UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 3600},
+			},
 		},
 	}
 
@@ -1589,7 +1715,9 @@ func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_RefreshTokenAllo
 			providers.GrantTypeRefreshToken,
 		},
 		Token: &providers.OAuthTokenConfig{
-			AccessToken: &providers.AccessTokenConfig{ValidityPeriod: 7200},
+			AccessToken: &providers.AccessTokenConfig{
+				UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 7200},
+			},
 		},
 	}
 
@@ -1623,7 +1751,9 @@ func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_RefreshTokenNotA
 	app := &providers.OAuthClient{
 		GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		Token: &providers.OAuthTokenConfig{
-			AccessToken: &providers.AccessTokenConfig{ValidityPeriod: 3600},
+			AccessToken: &providers.AccessTokenConfig{
+				UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 3600},
+			},
 		},
 	}
 
@@ -1644,7 +1774,9 @@ func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_NoRefreshToken_Z
 		GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode},
 		Token: &providers.OAuthTokenConfig{
 			// ValidityPeriod 0 is treated as unset by ResolveTokenConfig → falls back to global JWT validity.
-			AccessToken: &providers.AccessTokenConfig{ValidityPeriod: 0},
+			AccessToken: &providers.AccessTokenConfig{
+				UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 0},
+			},
 		},
 	}
 
@@ -1701,8 +1833,8 @@ func determineClaimsForTokens(oidcScopes []string, claimsRequest *oauth2model.Cl
 		return accessTokenClaims, idTokenClaims, userInfoClaims
 	}
 
-	if app.Token.AccessToken != nil {
-		for _, claim := range app.Token.AccessToken.UserAttributes {
+	if app.Token.AccessToken != nil && app.Token.AccessToken.UserConfig != nil {
+		for _, claim := range app.Token.AccessToken.UserConfig.Attributes {
 			accessTokenClaims[claim] = true
 		}
 	}
@@ -1952,4 +2084,20 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Ac
 // build a real actor provider but never exercise actor authentication.
 func noopAuthnMgr() *managermock.AuthnProviderManagerMock {
 	return &managermock.AuthnProviderManagerMock{}
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_MultipleResources_InvalidTarget() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	// The single-resource guard runs before request validation, so no validator call is expected.
+
+	msg := suite.testMsg()
+	msg.Resources = []string{"https://a.example.com", "https://b.example.com"}
+
+	svc := suite.newService()
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorInvalidTarget, authErr.Code)
 }

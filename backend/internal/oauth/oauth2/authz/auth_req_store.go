@@ -61,7 +61,7 @@ func newAuthorizationRequestStore(deploymentID string) authorizationRequestStore
 
 // AddRequest adds an authorization request context entry to the store.
 func (authzRS *authorizationRequestStore) AddRequest(ctx context.Context, value authRequestContext) (string, error) {
-	dbClient, err := authzRS.dbProvider.GetRuntimeDBClient()
+	dbClient, err := authzRS.dbProvider.GetRuntimeTransientDBClient()
 	if err != nil {
 		return "", fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -95,7 +95,7 @@ func (authzRS *authorizationRequestStore) GetRequest(
 		return false, authRequestContext{}, nil
 	}
 
-	dbClient, err := authzRS.dbProvider.GetRuntimeDBClient()
+	dbClient, err := authzRS.dbProvider.GetRuntimeTransientDBClient()
 	if err != nil {
 		return false, authRequestContext{}, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -126,7 +126,7 @@ func (authzRS *authorizationRequestStore) ClearRequest(ctx context.Context, key 
 		return nil
 	}
 
-	dbClient, err := authzRS.dbProvider.GetRuntimeDBClient()
+	dbClient, err := authzRS.dbProvider.GetRuntimeTransientDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}

@@ -787,6 +787,33 @@ func (suite *OAuth2UtilsTestSuite) TestSeparateOIDCAndNonOIDCScopes_WithCustomSc
 	}
 }
 
+func (suite *OAuth2UtilsTestSuite) TestFilterOIDCScopesByAllowedScopes() {
+	result := FilterOIDCScopesByAllowedScopes(
+		[]string{"openid", "email", "profile"},
+		[]string{"profile"},
+	)
+
+	assert.Equal(suite.T(), []string{"profile"}, result)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestFilterOIDCScopesByAllowedScopes_NilAllowedScopes() {
+	result := FilterOIDCScopesByAllowedScopes(
+		[]string{"openid", "email", "profile"},
+		nil,
+	)
+
+	assert.Equal(suite.T(), []string{"openid", "email", "profile"}, result)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestFilterOIDCScopesByAllowedScopes_EmptyAllowedScopes() {
+	result := FilterOIDCScopesByAllowedScopes(
+		[]string{"openid", "email", "profile"},
+		[]string{},
+	)
+
+	assert.Empty(suite.T(), result)
+}
+
 // Claims parameter parsing tests
 
 func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_ValidJSON() {

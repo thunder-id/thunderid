@@ -58,6 +58,17 @@ var (
 			`FROM "FLOW" WHERE DEPLOYMENT_ID = $1 ORDER BY CREATED_AT DESC LIMIT $2 OFFSET $3`,
 	}
 
+	// queryListActiveFlowsWithNodes retrieves every flow's active version including its nodes, in a
+	// single query, for dependency lookups that must scan node definitions across all flows.
+	queryListActiveFlowsWithNodes = model.DBQuery{
+		ID: "FLQ-FLOW_MGT-19",
+		Query: `SELECT f.ID, f.HANDLE, f.NAME, f.FLOW_TYPE, f.ACTIVE_VERSION, ` +
+			`fv.NODES, fv.INTERCEPTORS, f.CREATED_AT, f.UPDATED_AT ` +
+			`FROM "FLOW" f INNER JOIN "FLOW_VERSION" fv ON f.ID = fv.FLOW_ID ` +
+			`AND f.DEPLOYMENT_ID = fv.DEPLOYMENT_ID AND f.ACTIVE_VERSION = fv.VERSION ` +
+			`WHERE f.DEPLOYMENT_ID = $1`,
+	}
+
 	// queryListFlowsWithType is the query to retrieves a list of flow definitions filtered by type.
 	queryListFlowsWithType = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-06",

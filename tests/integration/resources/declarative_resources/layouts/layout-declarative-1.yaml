@@ -1,3 +1,4 @@
+resource_type: layout
 id: decl-layout-1
 displayName: Declarative Test Layout
 description: A declarative test layout

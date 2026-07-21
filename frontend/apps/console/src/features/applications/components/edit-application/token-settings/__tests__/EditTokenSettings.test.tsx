@@ -213,8 +213,10 @@ describe('EditTokenSettings', () => {
     const mockOAuth2Config: OAuth2Config = {
       token: {
         accessToken: {
-          validityPeriod: 1800,
-          userAttributes: ['sub', 'email'],
+          userConfig: {
+            validityPeriod: 1800,
+            attributes: ['sub', 'email'],
+          },
         },
         idToken: {
           validityPeriod: 3600,
@@ -339,7 +341,7 @@ describe('EditTokenSettings', () => {
     it('should render all sections for OAuth mode', () => {
       const mockOAuth2Config: OAuth2Config = {
         token: {
-          accessToken: {validityPeriod: 1800, userAttributes: []},
+          accessToken: {userConfig: {validityPeriod: 1800, attributes: []}},
           idToken: {validityPeriod: 3600, userAttributes: []},
           refreshToken: {validityPeriod: 86400},
         },

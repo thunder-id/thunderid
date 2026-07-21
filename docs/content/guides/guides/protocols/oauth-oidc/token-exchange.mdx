@@ -1,7 +1,8 @@
 ---
 title: Token Exchange
+docType: reference
 sidebar_position: 4
-description: RFC 8693 Token Exchange in {{ProductName}} — swap one token for another to delegate, impersonate, or downscope across services.
+description: RFC 8693 Token Exchange in {{ProductName}}, swap one token for another to delegate, impersonate, or downscope across services.
 ---
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
@@ -9,12 +10,12 @@ import { TokenExchangeDiagram } from '../../../../../src/components/OAuthFlowDia
 
 # Token Exchange
 
-**Token Exchange** ([RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693)) lets a client present an existing token to <ProductName /> and request a different token in return. The exchanged token can target a different audience, carry narrower scopes, or represent an "on-behalf-of" act in a service-to-service call chain.
+**Token Exchange** ([RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693)) lets a client present an existing token to <ProductName /> and request a different token in return. The exchanged token can be bound to a target resource server, carry narrower scopes, or represent an "on-behalf-of" act in a service-to-service call chain.
 
 Typical uses:
 
 - A frontend exchanges a user's access token for a downscoped token before passing it to a third-party API.
-- A gateway exchanges an inbound token for a service-mesh token whose `aud` matches a downstream microservice.
+- A gateway exchanges an inbound token for a service-mesh token whose `aud` matches a downstream resource server.
 - A backend acts on behalf of a user it received an `id_token` for, asking <ProductName /> to mint an access token for that user against a specific resource server.
 
 ## How It Works
@@ -31,10 +32,10 @@ Typical uses:
 | `subject_token_type` (input) | `urn:ietf:params:oauth:token-type:access_token` · `:refresh_token` · `:id_token` · `:jwt` |
 | `actor_token_type` (input) | Same set as `subject_token_type`; used for delegation chains |
 | `requested_token_type` (output) | `urn:ietf:params:oauth:token-type:access_token` · `:jwt` only. **`id_token` and `refresh_token` outputs are not supported.** |
-| `audience` parameter | Narrows the `aud` claim on the issued token |
-| `resource` parameter | RFC 8707 resource indicator — combined with `audience` when present |
-| `scope` parameter | Requested scopes; downscoping is allowed, widening is rejected with `invalid_scope` |
-| Client authentication | Required — same methods as the token endpoint |
+| `audience` parameter | Accepted for RFC 8693 compatibility but does not determine the issued access token's `aud` claim |
+| `resource` parameter | RFC 8707 resource indicator. The issued access token is bound to exactly this resource server. Permission-bearing requests use `defaultResourceServer` when it is omitted. OIDC-only or scopeless requests use `client_id` |
+| `scope` parameter | Requested scopes; downscoping is allowed, widening is rejected with `invalid_scope`. Final scopes must also be permissions on the target resource server and authorized for the issuing app or agent. |
+| Client authentication | Required, same methods as the token endpoint |
 | Issued token shape | `issued_token_type` is echoed in the response so the caller knows what it received |
 
 ### Request Fields
@@ -47,9 +48,9 @@ Typical uses:
 | `requested_token_type` | No | Defaults to `:access_token` |
 | `actor_token` | No | Token of the acting party in delegation |
 | `actor_token_type` | No | Required when `actor_token` is supplied |
-| `audience` | No | Logical name(s) of the target service |
-| `resource` | No | Absolute URI of the target resource server (see [Resource Indicators](../resource-indicators)) |
-| `scope` | No | Requested scopes — must be a subset of the subject token's grant |
+| `audience` | No | Logical audience value from RFC 8693. It is ignored for the access-token `aud`; use `resource` to select the token audience. |
+| `resource` | No | Absolute URI of the target resource server (see [Resource Indicators](../resource-indicators)). If omitted, permission-bearing requests use the configured default resource server, while OIDC-only or scopeless requests use `client_id`. |
+| `scope` | No | Requested scopes must be a subset of the subject token's grant |
 
 </details>
 
@@ -107,6 +108,6 @@ Response:
 
 ## Related Guides
 
-- [Resource Indicators](../resource-indicators) — target the new token at a specific resource server
-- [Client Credentials](../client-credentials) — for service tokens that don't require a subject token
-- [Refresh Token](../refresh-token) — for renewing access tokens without exchange semantics
+- [Resource Indicators](../resource-indicators), target the new token at a specific resource server
+- [Client Credentials](../client-credentials), for service tokens that don't require a subject token
+- [Refresh Token](../refresh-token), for renewing access tokens without exchange semantics

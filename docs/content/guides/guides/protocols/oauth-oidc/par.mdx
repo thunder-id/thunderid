@@ -1,7 +1,8 @@
 ---
 title: Pushed Authorization Requests (PAR)
+docType: reference
 sidebar_position: 2
-description: RFC 9126 Pushed Authorization Requests in {{ProductName}} — push authorization parameters to the server over a back-channel before the redirect.
+description: RFC 9126 Pushed Authorization Requests in {{ProductName}}, to push authorization parameters to the server over a back-channel before the redirect.
 ---
 import { PARDiagram } from '../../../../../src/components/OAuthFlowDiagrams';
 
@@ -9,7 +10,7 @@ import { PARDiagram } from '../../../../../src/components/OAuthFlowDiagrams';
 
 **Pushed Authorization Requests** ([RFC 9126](https://datatracker.ietf.org/doc/html/rfc9126)) let a client send authorization parameters to <ProductName /> over a direct, authenticated back-channel **before** redirecting the user's browser to `/oauth2/authorize`. <ProductName /> stores the parameters and returns an opaque `request_uri` that the client uses in the redirect.
 
-PAR removes sensitive parameters (`scope`, `redirect_uri`, `state`, `claims`, `resource`, `code_challenge`) from the browser URL and from any intermediate logs. It also lets <ProductName /> reject tampered authorization requests at the source — once a request is pushed, the only thing that can travel through the front-channel is the opaque `request_uri`.
+PAR removes sensitive parameters (`scope`, `redirect_uri`, `state`, `claims`, `resource`, `code_challenge`) from the browser URL and from any intermediate logs. It also lets <ProductName /> reject tampered authorization requests at the source: once a request is pushed, the only thing that can travel through the front-channel is the opaque `request_uri`.
 
 ## How It Works
 
@@ -21,7 +22,7 @@ PAR removes sensitive parameters (`scope`, `redirect_uri`, `state`, `claims`, `r
 | Aspect | Behavior |
 |---|---|
 | Endpoint | `POST /oauth2/par` |
-| Client authentication | Required — same method as `/oauth2/token` (see [Client Authentication Methods](../client-authentication-methods)) |
+| Client authentication | Required, same method as `/oauth2/token` (see [Client Authentication Methods](../client-authentication-methods)) |
 | Request lifetime | The returned `request_uri` is single-use and expires after a short TTL |
 | `request_uri` format | `urn:ietf:params:oauth:request_uri:<opaque>` |
 | Per-application enforcement | `requirePushedAuthorizationRequests: true` on the application requires PAR for every authorization request |
@@ -29,7 +30,7 @@ PAR removes sensitive parameters (`scope`, `redirect_uri`, `state`, `claims`, `r
 | DPoP interaction | When DPoP is in use, a DPoP proof on the PAR request binds the resulting authorization code to the proof's public key |
 | Failure mode | Direct `GET /oauth2/authorize` requests without a `request_uri` are rejected with `invalid_request` when PAR is required |
 
-When both the global flag and the per-application flag are set, the per-application flag adds enforcement on top — there is no way to opt **out** of a globally required PAR.
+When both the global flag and the per-application flag are set, the per-application flag adds enforcement on top: there is no way to opt **out** of a globally required PAR.
 
 </details>
 
@@ -98,7 +99,7 @@ GET /oauth2/authorize
 
 ## Related Guides
 
-- [Authorization Code](../authorization-code) — the flow PAR fronts
-- [PKCE](../pkce) — `code_challenge` is pushed inside the PAR request
-- [DPoP](../dpop) — pushing the PAR request with a DPoP proof binds the auth code
-- [Client Authentication Methods](../client-authentication-methods) — required on the PAR endpoint
+- [Authorization Code](../authorization-code), the flow PAR fronts
+- [PKCE](../pkce), `code_challenge` is pushed inside the PAR request
+- [DPoP](../dpop), pushing the PAR request with a DPoP proof binds the auth code
+- [Client Authentication Methods](../client-authentication-methods), required on the PAR endpoint

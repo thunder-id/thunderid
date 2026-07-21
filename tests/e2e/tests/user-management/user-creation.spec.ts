@@ -56,24 +56,11 @@ test.describe("User Management - CRUD Operations", () => {
     test("TC001: Create new user with all required fields", async ({ usersPage }) => {
       const testData = generateTestData("001");
 
-      await test.step("Navigate to Users Management page", async () => {
-        console.log("Navigating to users management page...");
-        await usersPage.goto();
-        await usersPage.verifyPageLoaded();
-        console.log("Successfully accessed users management page");
-        await usersPage.screenshot("debug-users-page-success");
-      });
-
-      await test.step("Find and click Add User button", async () => {
-        console.log("Looking for Add User button...");
-        await usersPage.clickAddUser();
-        console.log("Clicked Add User button");
-      });
-
-      await test.step("Verify user creation wizard appears", async () => {
-        await usersPage.waitForUserForm();
-        console.log("User creation wizard appeared");
-        await usersPage.screenshot("debug-create-user-wizard");
+      await test.step("Navigate to Create User Wizard", async () => {
+        console.log("Navigating directly to create user wizard...");
+        await usersPage.gotoCreateUserWizard();
+        console.log("Successfully accessed create user wizard");
+        await usersPage.screenshot("debug-create-user-wizard-loaded");
       });
 
       await test.step("Select user type and continue", async () => {

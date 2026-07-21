@@ -133,7 +133,7 @@ describe('CheckboxAdapter', () => {
 
   describe('Custom Styling', () => {
     it('should apply className when provided', () => {
-      const resource = createMockElement({className: 'custom-checkbox'});
+      const resource = createMockElement({classes: 'custom-checkbox'});
 
       const {container} = render(<CheckboxAdapter resource={resource} />);
 

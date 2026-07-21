@@ -58,11 +58,11 @@ func (suite *InitTestSuite) SetupTest() {
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: ":memory:"},
 			},
-			Runtime: config.DataSource{
+			RuntimeTransient: config.DataSource{
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: ":memory:"},
 			},
-			User: config.DataSource{
+			Entity: config.DataSource{
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: ":memory:"},
 			},
@@ -91,7 +91,7 @@ func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, exporter, err := Initialize(mux, suite.mockOUService, newDisabledConsentServiceMock(suite.T()))
+	service, exporter, err := Initialize(mux, suite.mockOUService)
 
 	// Assert
 	suite.NoError(err)
@@ -320,7 +320,7 @@ func (suite *InitTestSuite) TestNewResourceService() {
 	// Execute
 	mockTransactioner := &fakeTransactioner{}
 	service, err := newResourceService(
-		suite.mockOUService, newDisabledConsentServiceMock(suite.T()), mockStore, mockTransactioner,
+		suite.mockOUService, mockStore, mockTransactioner,
 	)
 
 	// Assert
@@ -391,7 +391,7 @@ func (suite *InitTestSuite) TestInitialize_IntegrationFlow() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, _, err := Initialize(mux, suite.mockOUService, newDisabledConsentServiceMock(suite.T()))
+	service, _, err := Initialize(mux, suite.mockOUService)
 
 	// Assert service is created
 	suite.NoError(err)

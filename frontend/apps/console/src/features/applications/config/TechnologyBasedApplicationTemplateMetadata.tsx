@@ -16,7 +16,9 @@
  * under the License.
  */
 
+import {MCP} from '@wso2/oxygen-ui-icons-react';
 import ExpressTemplate from '../data/application-templates/technology-based/express.json';
+import MCPClientTemplate from '../data/application-templates/technology-based/mcp-client.json';
 import NextJSTemplate from '../data/application-templates/technology-based/nextjs.json';
 import NodeTemplate from '../data/application-templates/technology-based/node.json';
 import NuxtTemplate from '../data/application-templates/technology-based/nuxt.json';
@@ -162,6 +164,14 @@ const TechnologyBasedApplicationTemplateMetadata: ApplicationTemplateMetadata<Te
     descriptionKey: 'applications:onboarding.configure.stack.technology.nodejs.description',
     template: NodeTemplate as ApplicationTemplate,
     categories: ['backend'],
+  },
+  {
+    value: TechnologyApplicationTemplate.MCP_CLIENT,
+    icon: <MCP size={40} />,
+    titleKey: 'applications:onboarding.configure.stack.technology.mcpClient.title',
+    descriptionKey: 'applications:onboarding.configure.stack.technology.mcpClient.description',
+    template: MCPClientTemplate as ApplicationTemplate,
+    categories: ['ai'],
   },
 ];
 

@@ -43,6 +43,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/i18n/mgtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
@@ -165,8 +166,39 @@ func (suite *ServiceTestSuite) setupTestService() (
 		inboundClientService: mockStore,
 		entityProvider:       mockEntityProvider,
 		ouService:            mockOUService,
+		dependencyRegistry:   noopDepRegistry{},
 	}
 	return service, mockStore
+}
+
+// noopDepRegistry is a no-op resourcedependency.Registry for tests that don't exercise cascade.
+type noopDepRegistry struct{ cascadeErr error }
+
+func (noopDepRegistry) RegisterProvider(resourcedependency.Provider) {}
+
+func (noopDepRegistry) GetDependencies(
+	context.Context, string, string) (*resourcedependency.DependenciesResponse, error) {
+	return &resourcedependency.DependenciesResponse{}, nil
+}
+
+func (r noopDepRegistry) CascadeDelete(context.Context, string, string) (int, error) {
+	return 0, r.cascadeErr
+}
+
+// recordingDepRegistry is a resourcedependency.Registry that records CascadeDelete invocations so
+// tests can assert dependents were removed. cascadeCalls is incremented on each CascadeDelete.
+type recordingDepRegistry struct{ cascadeCalls *int }
+
+func (recordingDepRegistry) RegisterProvider(resourcedependency.Provider) {}
+
+func (recordingDepRegistry) GetDependencies(
+	context.Context, string, string) (*resourcedependency.DependenciesResponse, error) {
+	return &resourcedependency.DependenciesResponse{}, nil
+}
+
+func (r recordingDepRegistry) CascadeDelete(context.Context, string, string) (int, error) {
+	*r.cascadeCalls++
+	return 1, nil
 }
 
 // resetIdentifyEntity removes broad IdentifyEntity expectations from the entity provider mock
@@ -1333,6 +1365,35 @@ func (suite *ServiceTestSuite) TestValidateApplication_InvalidURL() {
 	assert.Equal(suite.T(), &ErrorInvalidApplicationURL, svcErr)
 }
 
+func (suite *ServiceTestSuite) TestValidateApplication_AmbiguousAttestationConfig() {
+	testConfig := &config.Config{}
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	require.NoError(suite.T(), err)
+	defer config.ResetServerRuntime()
+
+	service, _ := suite.setupTestService()
+
+	app := &model.ApplicationDTO{
+		Name: "Test App",
+		OUID: testOUID,
+		InboundAuthProfile: providers.InboundAuthProfile{
+			AuthFlowID: "edc013d0-e893-4dc0-990c-3e1d203e005b",
+			Attestation: &providers.AttestationConfig{
+				Android: &providers.AndroidAttestationConfig{PackageName: "com.example.app"},
+				Apple:   &providers.AppleAttestationConfig{TeamID: "TEAM123", BundleID: "com.example.app"},
+			},
+		},
+	}
+
+	result, inboundAuth, svcErr := service.ValidateApplication(context.Background(), app)
+
+	assert.Nil(suite.T(), result)
+	assert.Nil(suite.T(), inboundAuth)
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), &ErrorAmbiguousAttestationConfig, svcErr)
+}
+
 //nolint:dupl // Testing different URL validation scenarios
 func (suite *ServiceTestSuite) TestValidateApplication_InvalidLogoURL() {
 	testConfig := &config.Config{}
@@ -1392,8 +1453,7 @@ func (suite *ServiceTestSuite) runCreateApplicationStoreErrorTest() {
 	}
 
 	mockStore.On("CreateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).Return(errors.New("internal server error"))
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("internal server error"))
 
 	result, svcErr := service.CreateApplication(context.Background(), app)
 
@@ -1562,8 +1622,7 @@ func (suite *ServiceTestSuite) TestUpdateApplication_StoreErrorWithRollback() {
 	mockStore.On("IsDeclarative", mock.Anything, testServiceAppID).Maybe().Return(false)
 	mockLoadFullApplication(mockStore, service, existingApp)
 	mockStore.On("UpdateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("internal server error"))
 
 	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, app)
@@ -1571,6 +1630,127 @@ func (suite *ServiceTestSuite) TestUpdateApplication_StoreErrorWithRollback() {
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
+}
+
+// A mobile application configured with Play Integrity attestation must have its service account
+// credentials encrypted before persistence and stripped from the response.
+func (suite *ServiceTestSuite) TestCreateApplication_WithAttestation_EncryptsAndStripsCredentials() {
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: false},
+	}
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	require.NoError(suite.T(), err)
+	defer config.ResetServerRuntime()
+
+	service, mockStore := suite.setupTestService()
+	mockCrypto := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
+	service.cryptoSvc = mockCrypto
+
+	const rawCreds = `{"type":"service_account"}`
+	mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, []byte(rawCreds)).
+		Return([]byte("encrypted-creds"), nil, nil)
+
+	var persistedClient *inboundmodel.InboundClient
+	mockStore.On("CreateInboundClient",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			persistedClient, _ = args.Get(1).(*inboundmodel.InboundClient)
+		}).Return(nil)
+
+	app := &model.ApplicationDTO{
+		Name: "Mobile App",
+		OUID: testOUID,
+		InboundAuthProfile: providers.InboundAuthProfile{
+			AuthFlowID: "auth-flow-id",
+			// Attestation is a client-level setting, configured at the top level of the application
+			// regardless of protocol.
+			Attestation: &providers.AttestationConfig{
+				Android: &providers.AndroidAttestationConfig{
+					PackageName:               "com.example.app",
+					CertificateSha256Digests:  []string{"AA:BB"},
+					ServiceAccountCredentials: rawCreds,
+				},
+			},
+		},
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
+					ClientID:                testClientID,
+					RedirectURIs:            []string{"myapp://callback"},
+					GrantTypes:              []providers.GrantType{providers.GrantTypeAuthorizationCode},
+					ResponseTypes:           []providers.ResponseType{providers.ResponseTypeCode},
+					TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodNone,
+					PublicClient:            true,
+					PKCERequired:            true,
+				},
+			},
+		},
+	}
+
+	result, svcErr := service.CreateApplication(context.Background(), app)
+	require.Nil(suite.T(), svcErr)
+	require.NotNil(suite.T(), result)
+
+	// The persisted inbound client carries the encrypted credentials, never the plaintext.
+	require.NotNil(suite.T(), persistedClient)
+	require.NotNil(suite.T(), persistedClient.Attestation)
+	require.NotNil(suite.T(), persistedClient.Attestation.Android)
+	assert.Equal(suite.T(), "encrypted-creds", persistedClient.Attestation.Android.ServiceAccountCredentials)
+	assert.Equal(suite.T(), "com.example.app", persistedClient.Attestation.Android.PackageName)
+
+	// The response echoes package name and digests at the top level but never the credentials.
+	require.NotNil(suite.T(), result.Attestation)
+	require.NotNil(suite.T(), result.Attestation.Android)
+	assert.Equal(suite.T(), "com.example.app", result.Attestation.Android.PackageName)
+	assert.Empty(suite.T(), result.Attestation.Android.ServiceAccountCredentials)
+}
+
+// When credentials are omitted (as on an update that does not change them), the previously stored
+// encrypted value is preserved rather than overwritten with an empty value.
+func (suite *ServiceTestSuite) TestResolveAttestationCredentials_PreservesExistingWhenOmitted() {
+	service, mockStore := suite.setupTestService()
+
+	const appID = "app-1"
+	mockStore.On("GetInboundClientByEntityID", mock.Anything, appID).Return(
+		&inboundmodel.InboundClient{
+			Attestation: &providers.AttestationConfig{
+				Android: &providers.AndroidAttestationConfig{ServiceAccountCredentials: "stored-encrypted"},
+			},
+		}, nil)
+
+	inboundClient := &inboundmodel.InboundClient{
+		Attestation: &providers.AttestationConfig{
+			Android: &providers.AndroidAttestationConfig{PackageName: "com.example.app"},
+		},
+	}
+
+	svcErr := service.resolveAttestationCredentialsForPersist(context.Background(), appID, inboundClient)
+	require.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), "stored-encrypted", inboundClient.Attestation.Android.ServiceAccountCredentials)
+	assert.Equal(suite.T(), "com.example.app", inboundClient.Attestation.Android.PackageName)
+}
+
+// A non-"not found" lookup failure while preserving omitted credentials is propagated as an internal
+// error, so a transient store failure cannot silently overwrite stored credentials with an empty
+// value.
+func (suite *ServiceTestSuite) TestResolveAttestationCredentials_LookupErrorPropagates() {
+	service, mockStore := suite.setupTestService()
+
+	const appID = "app-1"
+	mockStore.On("GetInboundClientByEntityID", mock.Anything, appID).Return(
+		(*inboundmodel.InboundClient)(nil), errors.New("database unavailable"))
+
+	inboundClient := &inboundmodel.InboundClient{
+		Attestation: &providers.AttestationConfig{
+			Android: &providers.AndroidAttestationConfig{PackageName: "com.example.app"},
+		},
+	}
+
+	svcErr := service.resolveAttestationCredentialsForPersist(context.Background(), appID, inboundClient)
+	require.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *ServiceTestSuite) TestCreateApplication_ValidateApplicationError() {
@@ -1637,8 +1817,7 @@ func (suite *ServiceTestSuite) TestCreateApplication_WithOAuthCertificate_Succes
 	}
 
 	mockStore.On("CreateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).Return(nil)
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	result, svcErr := service.CreateApplication(context.Background(), app)
 
@@ -1678,8 +1857,7 @@ func (suite *ServiceTestSuite) TestCreateApplication_IssuesFlowSecretForEmbedded
 		}).
 		Return(&providers.Entity{}, (*entityprovider.EntityProviderError)(nil))
 	mockStore.On("CreateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	result, svcErr := service.CreateApplication(context.Background(), app)
 
@@ -1729,8 +1907,7 @@ func (suite *ServiceTestSuite) TestCreateApplication_NoFlowSecretForM2MClient() 
 		}).
 		Return(&providers.Entity{}, (*entityprovider.EntityProviderError)(nil))
 	mockStore.On("CreateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	result, svcErr := service.CreateApplication(context.Background(), app)
 
@@ -1787,8 +1964,7 @@ func (suite *ServiceTestSuite) TestCreateApplication_NoFlowSecretForRedirectClie
 		}).
 		Return(&providers.Entity{}, (*entityprovider.EntityProviderError)(nil))
 	mockStore.On("CreateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	result, svcErr := service.CreateApplication(context.Background(), app)
 
@@ -1844,8 +2020,7 @@ func (suite *ServiceTestSuite) TestCreateApplication_NoFlowSecretForPublicClient
 		}).
 		Return(&providers.Entity{}, (*entityprovider.EntityProviderError)(nil))
 	mockStore.On("CreateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	result, svcErr := service.CreateApplication(context.Background(), app)
 
@@ -1901,8 +2076,7 @@ func (suite *ServiceTestSuite) TestCreateApplication_StoreErrorWithOAuthCertRoll
 
 	// Store creation fails
 	mockStore.On("CreateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).Return(errors.New("internal server error"))
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("internal server error"))
 
 	result, svcErr := service.CreateApplication(context.Background(), app)
 
@@ -2020,8 +2194,7 @@ func (suite *ServiceTestSuite) TestUpdateApplication_MetadataUpdate() {
 	mockStore.On("IsDeclarative", mock.Anything, testServiceAppID).Maybe().Return(false)
 	mockLoadFullApplication(mockStore, service, existingApp)
 	mockStore.On("UpdateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, updatedApp)
 
@@ -2062,8 +2235,7 @@ func (suite *ServiceTestSuite) TestUpdateApplication_AppCertificateUpdateError()
 	mockStore.On("IsDeclarative", mock.Anything, testServiceAppID).Maybe().Return(false)
 	mockLoadFullApplication(mockStore, service, existingApp)
 	mockStore.On("UpdateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("internal server error"))
 
 	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, app)
@@ -2228,8 +2400,7 @@ func (suite *ServiceTestSuite) TestUpdateApplication_StoreFails_RollbackCertFail
 	mockStore.On("IsDeclarative", mock.Anything, "app123").Maybe().Return(false)
 	mockLoadFullApplication(mockStore, service, existingApp)
 	mockStore.On("UpdateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("internal server error"))
 
 	result, svcErr := service.UpdateApplication(context.Background(), "app123", app)
@@ -2304,8 +2475,7 @@ func (suite *ServiceTestSuite) TestUpdateApplication_WithOAuthConfig_Success() {
 	mockLoadFullApplication(mockStore, service, existingApp)
 
 	mockStore.On("UpdateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, updatedApp)
 
@@ -2371,8 +2541,7 @@ func (suite *ServiceTestSuite) TestUpdateApplication_AddOAuthConfig_Success() {
 	mockLoadFullApplication(mockStore, service, existingApp)
 
 	mockStore.On("UpdateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, updatedApp)
 
@@ -2447,8 +2616,7 @@ func (suite *ServiceTestSuite) TestUpdateApplication_UpdateOAuthClientID_Success
 	mockLoadFullApplication(mockStore, service, existingApp)
 
 	mockStore.On("UpdateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, updatedApp)
 
@@ -2526,8 +2694,7 @@ func (suite *ServiceTestSuite) runUpdateApplicationWithJWKSCert(jwksValue string
 	mockLoadFullApplication(mockStore, service, existingApp)
 
 	mockStore.On("UpdateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, updatedApp)
 
@@ -2696,8 +2863,7 @@ func (suite *ServiceTestSuite) TestUpdateApplication_OAuthStoreErrorWithRollback
 
 	// Mock store update failure
 	mockStore.On("UpdateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("internal server error"))
 
 	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, updatedApp)
@@ -2764,8 +2930,10 @@ func (suite *ServiceTestSuite) TestUpdateApplication_OAuthTokenConfigUpdate() {
 					TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
 					Token: &providers.OAuthTokenConfig{
 						AccessToken: &providers.AccessTokenConfig{
-							ValidityPeriod: 7200,
-							UserAttributes: []string{"email", "name"},
+							UserConfig: &providers.AccessTokenSubConfig{
+								ValidityPeriod: 7200,
+								Attributes:     []string{"email", "name"},
+							},
 						},
 						IDToken: &providers.IDTokenConfig{
 							ValidityPeriod: 3600,
@@ -2781,8 +2949,7 @@ func (suite *ServiceTestSuite) TestUpdateApplication_OAuthTokenConfigUpdate() {
 	mockLoadFullApplication(mockStore, service, existingApp)
 
 	mockStore.On("UpdateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, updatedApp)
 
@@ -2790,7 +2957,8 @@ func (suite *ServiceTestSuite) TestUpdateApplication_OAuthTokenConfigUpdate() {
 	assert.Nil(suite.T(), svcErr)
 	require.Len(suite.T(), result.InboundAuthConfig, 1)
 	assert.NotNil(suite.T(), result.InboundAuthConfig[0].OAuthConfig.Token)
-	assert.Equal(suite.T(), int64(7200), result.InboundAuthConfig[0].OAuthConfig.Token.AccessToken.ValidityPeriod)
+	assert.Equal(suite.T(), int64(7200),
+		result.InboundAuthConfig[0].OAuthConfig.Token.AccessToken.UserConfig.ValidityPeriod)
 	assert.Equal(suite.T(), int64(3600), result.InboundAuthConfig[0].OAuthConfig.Token.IDToken.ValidityPeriod)
 	mockStore.AssertExpectations(suite.T())
 }
@@ -3400,22 +3568,6 @@ func (suite *ServiceTestSuite) TestTranslateCertValidationError() {
 	suite.Nil(translateCertValidationError(errors.New("unknown")))
 }
 
-func (suite *ServiceTestSuite) TestTranslateConsentSyncError() {
-	clientErr := &inboundclient.ConsentSyncError{
-		Underlying: &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "CONSENT-1234"},
-	}
-	svcErr := translateConsentSyncError(clientErr)
-	suite.Require().NotNil(svcErr)
-	suite.Equal(ErrorConsentSyncFailed.Code, svcErr.Code)
-	suite.Equal("error.applicationservice.consent_sync_failed_description", svcErr.ErrorDescription.Key)
-	suite.Contains(svcErr.ErrorDescription.String(), "CONSENT-1234")
-
-	serverErr := &inboundclient.ConsentSyncError{
-		Underlying: &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "CONSENT-9000"},
-	}
-	suite.Equal(tidcommon.InternalServerError.Code, translateConsentSyncError(serverErr).Code)
-}
-
 // ----- validateApplicationFields handle resolution -----
 
 func (suite *ServiceTestSuite) TestValidateApplicationFields_OUHandleResolved() {
@@ -3699,8 +3851,7 @@ func (suite *ServiceTestSuite) TestCreateApplication_CreateInboundClientFailsAnd
 	}
 
 	mockStore.On("CreateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).Return(errors.New("internal server error"))
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("internal server error"))
 
 	ep := resetEntityProviderMethod(service, "DeleteEntity")
 	ep.On("DeleteEntity", mock.Anything).
@@ -3944,4 +4095,37 @@ func (suite *ServiceTestSuite) TestCleanupStaleI18nKeys_DeleteError() {
 	svcErr := service.cleanupStaleI18nKeys(context.Background(), testServiceAppID, existing, updated)
 
 	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestDeleteApplication_AbortedWhenCascadeFails() {
+	service, mockStore := suite.setupTestService()
+	service.SetDependencyRegistry(noopDepRegistry{cascadeErr: errors.New("cascade failed")})
+
+	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
+
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+	mockStore.AssertNotCalled(suite.T(), "DeleteInboundClient", mock.Anything, mock.Anything)
+}
+
+// TestDeleteApplication_EntityDeleteFailsAfterCascade verifies that when dependency cleanup
+// succeeds but the later entity delete fails, the service surfaces an error while the dependents
+// have already been removed (partial-state, retriable).
+func (suite *ServiceTestSuite) TestDeleteApplication_EntityDeleteFailsAfterCascade() {
+	service, mockStore := suite.setupTestService()
+	cascadeCalls := 0
+	service.SetDependencyRegistry(recordingDepRegistry{cascadeCalls: &cascadeCalls})
+
+	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(nil)
+	ep := resetEntityProviderMethod(service, "DeleteEntity")
+	ep.On("DeleteEntity", mock.Anything).Return(
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "delete failed", ""))
+
+	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
+
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+	// Dependents were removed even though the application delete did not complete.
+	assert.Equal(suite.T(), 1, cascadeCalls)
+	ep.AssertCalled(suite.T(), "DeleteEntity", mock.Anything)
 }

@@ -40,21 +40,21 @@ export interface ConfigContextType {
 
   /**
    * Gets the server hostname from the configuration
-   * @returns The server hostname (e.g., "localhost")
+   * @returns The server hostname (e.g., "localhost"), or undefined when not configured
    */
-  getServerHostname: () => string;
+  getServerHostname: () => string | undefined;
 
   /**
    * Gets the server port from the configuration
-   * @returns The server port number (e.g., 8090)
+   * @returns The server port number (e.g., 8090), or undefined when not configured
    */
-  getServerPort: () => number;
+  getServerPort: () => number | undefined;
 
   /**
    * Checks if HTTP-only mode is enabled in the configuration
-   * @returns True if HTTP-only mode is enabled, false if HTTPS is used
+   * @returns True if HTTP-only mode is enabled, false if HTTPS is used, or undefined when not configured
    */
-  isHttpOnly: () => boolean;
+  isHttpOnly: () => boolean | undefined;
 
   /**
    * Gets the client ID from the configuration
@@ -67,6 +67,12 @@ export interface ConfigContextType {
    * @returns The scopes array (e.g., ["openid", "profile", "email", "system"])
    */
   getScopes: () => string[];
+
+  /**
+   * Gets the resource server identifier from the configuration
+   * @returns The identifier string, or undefined if not configured
+   */
+  getResourceIdentifier: () => string | undefined;
 
   /**
    * Gets the complete client URL including protocol, hostname, port, and base path
@@ -86,6 +92,14 @@ export interface ConfigContextType {
    * @returns The trusted issuer URL (e.g., "https://auth.example.com:8090")
    */
   getTrustedIssuerUrl: () => string;
+
+  /**
+   * Gets the OAuth redirect/callback URL for the login gate app. When gate_client is
+   * configured, builds the URL from it. Otherwise falls back to
+   * `${getServerUrl()}/gate/callback`.
+   * @returns The gate callback URL (e.g., "https://localhost:5190/gate/callback")
+   */
+  getGateCallbackUrl: () => string;
 
   /**
    * Gets the OAuth client ID for the trusted issuer. When trusted_issuer.client_id is

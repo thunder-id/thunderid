@@ -74,18 +74,6 @@ Visit [Get ThunderID](https://thunderid.dev/docs/next/guides/getting-started/get
     * Immutable runtime
 
 
-## Star History
-
-<div align="center">
-  <a href="https://www.star-history.com/?repos=thunder-id%2Fthunderid&type=date&legend=top-left">
-   <picture>
-     <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=thunder-id/thunderid&type=date&theme=dark&legend=top-left" width="500" />
-     <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=thunder-id/thunderid&type=date&legend=top-left" width="500" />
-     <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=thunder-id/thunderid&type=date&legend=top-left" width="500" />
-   </picture>
-  </a>
-</div>
-
 ## Contributing
 
 Please refer to the [Contributing Guide](https://thunderid.dev/docs/next/community/overview) for the different ways to contribute to this project and the relevant guidelines.

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -20,6 +20,7 @@ package granthandlers
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"time"
@@ -33,20 +34,24 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 // refreshTokenGrantHandler handles the refresh token grant type.
 type refreshTokenGrantHandler struct {
-	cfg              oauthconfig.Config
-	jwtService       jwt.JWTServiceInterface
-	tokenBuilder     tokenservice.TokenBuilderInterface
-	tokenValidator   tokenservice.TokenValidatorInterface
-	attrCacheService attributecache.AttributeCacheServiceInterface
-	resourceService  providers.ResourceServerProvider
+	cfg                 oauthconfig.Config
+	jwtService          jwt.JWTServiceInterface
+	tokenBuilder        tokenservice.TokenBuilderInterface
+	tokenValidator      tokenservice.TokenValidatorInterface
+	attrCacheService    attributecache.AttributeCacheServiceInterface
+	resourceService     providers.ResourceServerProvider
+	serverConfigService serverconfig.ServerConfigService
+	refreshRevoker      revocation.RefreshTokenRevokerInterface
 }
 
 // newRefreshTokenGrantHandler creates a new instance of RefreshTokenGrantHandler.
@@ -56,15 +61,19 @@ func newRefreshTokenGrantHandler(
 	tokenValidator tokenservice.TokenValidatorInterface,
 	attrCacheService attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
+	serverConfigService serverconfig.ServerConfigService,
+	refreshRevoker revocation.RefreshTokenRevokerInterface,
 	cfg oauthconfig.Config,
 ) RefreshTokenGrantHandlerInterface {
 	return &refreshTokenGrantHandler{
-		cfg:              cfg,
-		jwtService:       jwtService,
-		tokenBuilder:     tokenBuilder,
-		tokenValidator:   tokenValidator,
-		attrCacheService: attrCacheService,
-		resourceService:  resourceService,
+		cfg:                 cfg,
+		jwtService:          jwtService,
+		tokenBuilder:        tokenBuilder,
+		tokenValidator:      tokenValidator,
+		attrCacheService:    attrCacheService,
+		resourceService:     resourceService,
+		serverConfigService: serverConfigService,
+		refreshRevoker:      refreshRevoker,
 	}
 }
 
@@ -104,10 +113,19 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RefreshTokenGrantHandler"))
 
 	// Validate refresh token using token validator
+	// ValidateRefreshToken verifies the token and enforces the RFC 7009 deny list. A revoked token is
+	// rejected as invalid_grant like any other invalid token; an unavailable deny list fails closed
+	// with a server_error.
 	refreshTokenClaims, err := h.tokenValidator.ValidateRefreshToken(
 		ctx, tokenRequest.RefreshToken, tokenRequest.ClientID)
 	if err != nil {
 		logger.Debug(ctx, "Failed to validate refresh token", log.Error(err))
+		if errors.Is(err, revocation.ErrEnforcementUnavailable) {
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Token revocation status could not be verified",
+			}
+		}
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorInvalidGrant,
 			ErrorDescription: "Invalid refresh token",
@@ -123,44 +141,58 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 		return nil, scopeErr
 	}
 
-	// Compute narrowed audiences per RFC 8707 §2.1. When the client supplies resource parameters,
-	// narrow the audience to the intersection with the original refresh-token audiences.
-	// An empty intersection is a client error (invalid_target).
-	audiences := refreshTokenClaims.Audiences
-	if len(tokenRequest.Resources) > 0 {
-		original := make(map[string]struct{}, len(refreshTokenClaims.Audiences))
-		for _, a := range refreshTokenClaims.Audiences {
-			original[a] = struct{}{}
+	// The refresh token is bound to exactly one resource server audience. When the request supplies
+	// a resource it must match that audience; when omitted, the bound audience is reused.
+	if len(refreshTokenClaims.Audiences) != 1 {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidGrant,
+			ErrorDescription: "Refresh token is not bound to a single resource server",
 		}
-		narrowed := make([]string, 0, len(tokenRequest.Resources))
-		for _, r := range tokenRequest.Resources {
-			if _, ok := original[r]; ok {
-				narrowed = append(narrowed, r)
+	}
+	audience := refreshTokenClaims.Audiences[0]
+	if len(tokenRequest.Resources) > 1 {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidTarget,
+			ErrorDescription: "Only a single resource parameter is supported",
+		}
+	}
+	if len(tokenRequest.Resources) == 1 && tokenRequest.Resources[0] != audience {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidTarget,
+			ErrorDescription: "Requested resource does not match the refresh token audience",
+		}
+	}
+	audiences := []string{audience}
+
+	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(
+		strings.Join(newTokenScopes, " "), oauthApp.ScopeClaims)
+	if audience == tokenRequest.ClientID {
+		// The original token was not bound to a resource server (OIDC-only): its audience is the
+		// client_id, which is not a resource server, so there are no permissions to downscope against.
+		newTokenScopes = oidcScopes
+	} else {
+		// Resolve the bound resource server to downscope scopes to its currently defined permissions.
+		targetRS, rsErr := h.resourceService.GetResourceServerByIdentifier(ctx, audience)
+		if rsErr != nil {
+			if rsErr.Type == tidcommon.ServerErrorType {
+				return nil, &model.ErrorResponse{
+					Error:            constants.ErrorServerError,
+					ErrorDescription: "Failed to resolve resource server",
+				}
 			}
-		}
-		if len(narrowed) == 0 {
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorInvalidTarget,
-				ErrorDescription: "Requested resources do not match any audience in the original grant",
+				ErrorDescription: "The resource server bound to the refresh token no longer exists",
 			}
 		}
-		audiences = narrowed
-
-		// Downscope: resolve the narrowed RSes and filter scopes to only those valid on them.
-		resolvedRSes, rsErr := resourceindicators.ResolveResourceServers(ctx, h.resourceService, narrowed)
-		if rsErr != nil {
-			return nil, rsErr
-		}
-		narrowedRSes := resourceindicators.FilterByIdentifiers(resolvedRSes, narrowed)
-		oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(
-			strings.Join(newTokenScopes, " "), oauthApp.ScopeClaims)
-		rsValidScopes, scopeErr := resourceindicators.ComputeRSValidScopes(
-			ctx, h.resourceService, narrowedRSes, nonOidcScopes)
+		downscopedNonOidc, scopeErr := resourceindicators.DownscopeToResourceServer(
+			ctx, h.resourceService, targetRS.ID, nonOidcScopes)
 		if scopeErr != nil {
 			return nil, scopeErr
 		}
-		oidcScopes = append(oidcScopes, resourceindicators.UnionScopes(rsValidScopes)...)
-		newTokenScopes = oidcScopes
+		newTokenScopes = make([]string, 0, len(oidcScopes)+len(downscopedNonOidc))
+		newTokenScopes = append(newTokenScopes, oidcScopes...)
+		newTokenScopes = append(newTokenScopes, downscopedNonOidc...)
 	}
 
 	// Get user attributes from attribute cache.
@@ -189,18 +221,20 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 		attrs = cacheEntry.Attributes
 	}
 
+	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessTokenCtx := &tokenservice.AccessTokenBuildContext{
-		Subject:          refreshTokenClaims.Sub,
-		Audiences:        audiences,
-		ClientID:         tokenRequest.ClientID,
-		Scopes:           newTokenScopes,
-		UserAttributes:   attrs,
-		AttributeCacheID: refreshTokenClaims.AttributeCacheID,
-		GrantType:        refreshTokenClaims.GrantType,
-		OAuthApp:         oauthApp,
-		ClaimsRequest:    refreshTokenClaims.ClaimsRequest,
-		ClaimsLocales:    refreshTokenClaims.ClaimsLocales,
-		DPoPJkt:          dpop.GetJkt(ctx),
+		Subject:           refreshTokenClaims.Sub,
+		Audiences:         audiences,
+		ClientID:          tokenRequest.ClientID,
+		Scopes:            newTokenScopes,
+		SubjectAttributes: tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
+		AttributeCacheID:  refreshTokenClaims.AttributeCacheID,
+		GrantType:         refreshTokenClaims.GrantType,
+		OAuthApp:          oauthApp,
+		ClaimsRequest:     refreshTokenClaims.ClaimsRequest,
+		ClaimsLocales:     refreshTokenClaims.ClaimsLocales,
+		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
+		DPoPJkt:           dpop.GetJkt(ctx),
 	}
 	// Replay the on-behalf-of decision frozen at issuance, sourced from the stored marker
 	// rather than the client's current setting.
@@ -244,17 +278,32 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	renewRefreshToken := h.cfg.OAuth.RefreshToken.RenewOnGrant
 
 	// Issue a new refresh token if renew_on_grant is enabled; otherwise reuse the existing one.
-	// RFC 8707 §5: the refresh token preserves the full original audience, not the narrowed one.
+	// The new refresh token carries the same single resource server audience.
 	if renewRefreshToken {
 		logger.Debug(ctx, "Renewing refresh token", log.String("client_id", tokenRequest.ClientID))
 		errResp := h.IssueRefreshToken(ctx, tokenResponse, oauthApp,
-			refreshTokenClaims.Sub, refreshTokenClaims.Audiences,
+			refreshTokenClaims.Sub, audiences,
 			refreshTokenClaims.GrantType, newTokenScopes,
 			refreshTokenClaims.ClaimsRequest, refreshTokenClaims.ClaimsLocales,
 			refreshTokenClaims.AttributeCacheID)
 		if errResp != nil && errResp.Error != "" {
 			logger.Error(ctx, "Failed to issue refresh token", log.String("error", errResp.Error))
 			return nil, errResp
+		}
+
+		// Single-use: revoke the consumed refresh token so it cannot be replayed (RFC 9700 §4.14.2).
+		// Fail closed — if the revocation cannot be recorded, the old token would remain usable, so the
+		// rotation is rejected and the client retries with the still-valid old token.
+		if h.cfg.OAuth.RefreshToken.RevokePreviousOnRenew {
+			expiryTime := time.Unix(refreshTokenClaims.Exp, 0).UTC()
+			if err := h.refreshRevoker.RevokeRefreshToken(
+				ctx, refreshTokenClaims.JTI, expiryTime); err != nil {
+				logger.Error(ctx, "Failed to revoke rotated refresh token", log.Error(err))
+				return nil, &model.ErrorResponse{
+					Error:            constants.ErrorServerError,
+					ErrorDescription: "Failed to rotate refresh token",
+				}
+			}
 		}
 	} else {
 		tokenResponse.RefreshToken = model.TokenDTO{
@@ -266,7 +315,8 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	}
 
 	if errResp := h.extendCacheTTL(ctx, cacheEntry, oauthApp, refreshTokenClaims.Iat,
-		accessToken.ExpiresIn, renewRefreshToken, refreshTokenClaims.AttributeCacheID, logger); errResp != nil {
+		accessToken.ExpiresIn, renewRefreshToken, refreshTokenClaims.AttributeCacheID,
+		logger); errResp != nil {
 		return nil, errResp
 	}
 
@@ -345,7 +395,8 @@ func (h *refreshTokenGrantHandler) extendCacheTTL(
 		return nil
 	}
 	now := time.Now().Unix()
-	refreshValidity := tokenservice.ResolveTokenConfig(h.cfg, oauthApp, tokenservice.TokenTypeRefresh).ValidityPeriod
+	refreshValidity := tokenservice.ResolveTokenConfig(
+		h.cfg, oauthApp, tokenservice.TokenTypeRefresh, 0).ValidityPeriod
 	if renewRefreshToken {
 		refreshIat = now // newly issued token starts from now
 	}
@@ -355,16 +406,15 @@ func (h *refreshTokenGrantHandler) extendCacheTTL(
 	if accessExpiry > maxExpiry {
 		maxExpiry = accessExpiry
 	}
-	desiredTTL := int(maxExpiry-now) + constants.AttributeCacheTTLBufferSeconds
-	if desiredTTL > cacheEntry.TTLSeconds {
-		if extErr := h.attrCacheService.ExtendAttributeCacheTTL(ctx, cacheID, desiredTTL); extErr != nil {
-			logger.Error(ctx, "Failed to extend attribute cache TTL",
-				log.String("cache_id", cacheID),
-				log.String("error", extErr.Error.String()))
-			return &model.ErrorResponse{
-				Error:            constants.ErrorServerError,
-				ErrorDescription: "Failed to extend attribute cache TTL",
-			}
+	desiredTTL := maxExpiry - now + constants.AttributeCacheTTLBufferSeconds
+	extErr := h.attrCacheService.ExtendAttributeCacheTTL(ctx, cacheID, int(desiredTTL))
+	if extErr != nil {
+		logger.Error(ctx, "Failed to extend attribute cache TTL",
+			log.String("cache_id", cacheID),
+			log.String("error", extErr.Error.String()))
+		return &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to extend attribute cache TTL",
 		}
 	}
 	return nil

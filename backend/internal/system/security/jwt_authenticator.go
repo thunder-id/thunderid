@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -28,6 +28,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
+
+// claimJTI is the JWT ID claim (RFC 7519 §4.1.7); its value is recorded as the token's revocation
+// identifier for the enforcement step.
+const claimJTI = "jti"
 
 // jwtAuthenticator handles authentication and authorization using JWT Bearer tokens.
 type jwtAuthenticator struct {
@@ -86,8 +90,11 @@ func (h *jwtAuthenticator) Authenticate(r *http.Request) (*SecurityContext, erro
 	// Step 5: Extract scopes from JWT claims
 	scopes := extractScopes(attributes)
 
-	// Create immutable SecurityContext
-	return newSecurityContext(subject, ouID, token, scopes, attributes), nil
+	// Create immutable SecurityContext. The jti claim is recorded as the revocation identifier for
+	// the enforcement step; it may be empty.
+	securityCtx := newSecurityContext(subject, ouID, token, scopes, attributes)
+	securityCtx.revocationID = extractAttribute(attributes, claimJTI)
+	return securityCtx, nil
 }
 
 // verifyToken verifies the bearer token by routing on its iss claim against

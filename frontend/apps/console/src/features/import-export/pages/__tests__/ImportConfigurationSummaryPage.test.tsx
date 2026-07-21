@@ -609,9 +609,9 @@ describe('ImportConfigurationSummaryPage', () => {
       expect(screen.queryByText(/configureExport\.labels\.agents/i)).not.toBeInTheDocument();
     });
 
-    it('displays notification senders when notification_sender data is present', () => {
+    it('displays connections when connection data is present', () => {
       mockLocationState.configData = {
-        notification_sender: [
+        connection: [
           {name: 'Email Sender', type: 'SMTP'},
           {name: 'SMS Sender', type: 'TWILIO'},
         ],
@@ -619,7 +619,7 @@ describe('ImportConfigurationSummaryPage', () => {
 
       render(<ImportConfigurationSummaryPage />);
 
-      expect(screen.getByText(/configureExport\.labels\.notificationSenders.*2/i)).toBeInTheDocument();
+      expect(screen.getByText(/configureExport\.labels\.connections.*2/i)).toBeInTheDocument();
     });
 
     it('displays resource servers when resource_server data is present', () => {
@@ -681,8 +681,10 @@ describe('ImportConfigurationSummaryPage', () => {
           },
         ],
         flow: [{name: 'My Flow', flowType: 'LOGIN', handle: 'login-flow'}],
-        identity_provider: [{name: 'Google', type: 'OIDC', handle: 'google-idp'}],
-        notification_sender: [{name: 'Email Sender', type: 'SMTP', handle: 'email-sender'}],
+        connection: [
+          {name: 'Google', type: 'OIDC', handle: 'google-idp'},
+          {name: 'Email Sender', type: 'SMTP', handle: 'email-sender'},
+        ],
         layout: [{name: 'My Layout', handle: 'layout-1', description: 'Layout description'}],
         organization_unit: [{name: 'Engineering OU', handle: 'eng-ou', description: 'Org description'}],
         theme: [{name: 'Dark Theme', handle: 'dark-theme', description: 'Theme description'}],

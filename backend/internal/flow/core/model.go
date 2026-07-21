@@ -43,6 +43,9 @@ type Segment struct {
 // InterceptorContext is the per-invocation context built by the InterceptorService for each
 // interceptor call. It is assembled from the EngineContext plus the matched interceptor
 // definition's properties and the cross-request SharedData.
+//
+// TODO: fields on InterceptorContext are currently exposed directly. Convert to unexported
+// fields accessed via getters and setters so that mutation can be encapsulated.
 type InterceptorContext struct {
 	Context context.Context
 
@@ -64,10 +67,41 @@ type InterceptorContext struct {
 	CurrentNodeInputs   []providers.Input
 	ForwardedData       map[string]interface{}
 	AdditionalData      map[string]string
-
+	// consumedInputs accumulates identifiers of inputs the interceptor has used
+	// up during this call
+	consumedInputs []string
 	// SharedData is interceptor-layer state shared across interceptors and preserved across
 	// the requests of a single flow instance. Interceptors may read and write this map directly.
 	// Each interceptor is responsible for reading any information it needs from SharedData and
 	// populating relevant values into EngineOutputs.
 	SharedData map[string]string
+}
+
+// ConsumeInput returns the value for key from UserInputs and records key on the consumed
+// inputs list. Interceptors should prefer this over direct UserInputs access so the engine
+// has a full audit trail of what was used.
+func (ic *InterceptorContext) ConsumeInput(key string) (string, bool) {
+	v, ok := ic.UserInputs[key]
+	if ok {
+		ic.consumedInputs = append(ic.consumedInputs, key)
+	}
+	return v, ok
+}
+
+// AppendConsumedInputs records the given keys on the consumed inputs list without
+// reading from UserInputs.
+func (ic *InterceptorContext) AppendConsumedInputs(keys []string) {
+	if len(keys) == 0 {
+		return
+	}
+	if ic.consumedInputs == nil {
+		ic.consumedInputs = make([]string, 0, len(keys))
+	}
+	ic.consumedInputs = append(ic.consumedInputs, keys...)
+}
+
+// GetConsumedInputs returns the list of input keys that have been consumed by the interceptor
+// during this call.
+func (ic *InterceptorContext) GetConsumedInputs() []string {
+	return ic.consumedInputs
 }

@@ -19,6 +19,7 @@
 export interface AppConfig {
   baseUrl: string;
   notificationSenderId?: string;
+  directAuthSecret?: string;
 }
 
 let config: AppConfig | null = null;
@@ -42,4 +43,12 @@ export function getConfig(): AppConfig {
     throw new Error("Config not loaded. Call loadConfig() first.");
   }
   return config;
+}
+
+// getDirectAuthHeaders returns the header carrying the Direct Auth Secret required by the direct
+// authentication APIs (/auth/**). The server is secure by default, so these endpoints reject
+// requests without a matching Direct-Auth-Secret header.
+export function getDirectAuthHeaders(): Record<string, string> {
+  const { directAuthSecret } = getConfig();
+  return directAuthSecret ? { "Direct-Auth-Secret": directAuthSecret } : {};
 }

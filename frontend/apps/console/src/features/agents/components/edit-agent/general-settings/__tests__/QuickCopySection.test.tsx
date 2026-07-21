@@ -19,7 +19,7 @@
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import type {Agent, OAuthAgentConfig} from '../../../../models/agent';
+import type {Agent} from '../../../../models/agent';
 import QuickCopySection from '../QuickCopySection';
 
 // Mock the SettingsCard wrapper so DOM is easy to query.
@@ -44,10 +44,6 @@ describe('QuickCopySection (agent)', () => {
     owner: 'user-1',
   };
 
-  const mockOAuth2Config: OAuthAgentConfig = {
-    clientId: 'client-123',
-  } as OAuthAgentConfig;
-
   beforeEach(() => {
     vi.clearAllMocks();
     mockOnCopyToClipboard.mockResolvedValue(undefined);
@@ -66,43 +62,6 @@ describe('QuickCopySection (agent)', () => {
 
       expect(screen.getByDisplayValue('agent-123')).toBeInTheDocument();
     });
-
-    it('renders the client ID field when oauth2Config is provided', () => {
-      render(
-        <QuickCopySection
-          agent={mockAgent}
-          oauth2Config={mockOAuth2Config}
-          copiedField={null}
-          onCopyToClipboard={mockOnCopyToClipboard}
-        />,
-      );
-
-      expect(screen.getByDisplayValue('client-123')).toBeInTheDocument();
-    });
-
-    it('does not render the client ID field when oauth2Config is missing', () => {
-      render(<QuickCopySection agent={mockAgent} copiedField={null} onCopyToClipboard={mockOnCopyToClipboard} />);
-
-      expect(screen.queryByDisplayValue('client-123')).not.toBeInTheDocument();
-    });
-
-    it('renders the owner ID field when agent has an owner', () => {
-      render(<QuickCopySection agent={mockAgent} copiedField={null} onCopyToClipboard={mockOnCopyToClipboard} />);
-
-      expect(screen.getByDisplayValue('user-1')).toBeInTheDocument();
-    });
-
-    it('does not render the owner ID field when agent has no owner', () => {
-      render(
-        <QuickCopySection
-          agent={{...mockAgent, owner: undefined}}
-          copiedField={null}
-          onCopyToClipboard={mockOnCopyToClipboard}
-        />,
-      );
-
-      expect(screen.queryByDisplayValue('user-1')).not.toBeInTheDocument();
-    });
   });
 
   describe('Copy Functionality', () => {
@@ -114,37 +73,6 @@ describe('QuickCopySection (agent)', () => {
       await user.click(buttons[0]);
 
       expect(mockOnCopyToClipboard).toHaveBeenCalledWith('agent-123', 'agent_id');
-    });
-
-    it('copies the client ID', async () => {
-      const user = userEvent.setup();
-      render(
-        <QuickCopySection
-          agent={mockAgent}
-          oauth2Config={mockOAuth2Config}
-          copiedField={null}
-          onCopyToClipboard={mockOnCopyToClipboard}
-        />,
-      );
-
-      // Find the button next to the client ID input
-      const clientIdInput = screen.getByDisplayValue('client-123');
-      const button = clientIdInput.closest('.MuiInputBase-root')?.querySelector('button');
-      expect(button).toBeTruthy();
-      await user.click(button as HTMLElement);
-
-      expect(mockOnCopyToClipboard).toHaveBeenCalledWith('client-123', 'clientId');
-    });
-
-    it('copies the owner ID', async () => {
-      const user = userEvent.setup();
-      render(<QuickCopySection agent={mockAgent} copiedField={null} onCopyToClipboard={mockOnCopyToClipboard} />);
-
-      const ownerInput = screen.getByDisplayValue('user-1');
-      const button = ownerInput.closest('.MuiInputBase-root')?.querySelector('button');
-      await user.click(button as HTMLElement);
-
-      expect(mockOnCopyToClipboard).toHaveBeenCalledWith('user-1', 'owner');
     });
 
     it('handles copy errors gracefully', async () => {
@@ -165,19 +93,6 @@ describe('QuickCopySection (agent)', () => {
       render(<QuickCopySection agent={mockAgent} copiedField="agent_id" onCopyToClipboard={mockOnCopyToClipboard} />);
 
       // Copy buttons render different icons; check via tooltip text
-      expect(screen.getByLabelText(/copied/i)).toBeInTheDocument();
-    });
-
-    it('shows the copied state for client ID when copiedField === "clientId"', () => {
-      render(
-        <QuickCopySection
-          agent={mockAgent}
-          oauth2Config={mockOAuth2Config}
-          copiedField="clientId"
-          onCopyToClipboard={mockOnCopyToClipboard}
-        />,
-      );
-
       expect(screen.getByLabelText(/copied/i)).toBeInTheDocument();
     });
   });

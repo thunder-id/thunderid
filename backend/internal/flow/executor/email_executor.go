@@ -53,6 +53,12 @@ func newEmailExecutor(flowFactory core.FlowFactoryInterface, emailClient email.E
 			{Identifier: userAttributeEmail, Type: providers.InputTypeEmail, Required: true},
 		},
 		[]providers.Input{},
+		&providers.ExecutorMeta{
+			SupportedModes: []string{ExecutorModeSend},
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: propertyKeyEmailTemplate, IsRequired: true},
+			},
+		},
 	)
 	return &emailExecutor{
 		Executor:        base,
@@ -124,6 +130,7 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 			return nil, fmt.Errorf("email template property is empty in node configuration")
 		}
 		scenario = template.ScenarioType(tmplStr)
+		logger.Debug(ctx.Context, "EmailExecutor: resolved email template", log.String("scenario", tmplStr))
 	} else {
 		return nil, fmt.Errorf("missing required property: %s", propertyKeyEmailTemplate)
 	}

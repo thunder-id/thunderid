@@ -83,12 +83,17 @@ describe('elements models', () => {
       expect(ElementTypes.Timer).toBe('TIMER');
     });
 
+    it('should have consent types', () => {
+      expect(ElementTypes.Consent).toBe('CONSENT');
+      expect(ElementTypes.ConsentInput).toBe('CONSENT_INPUT');
+    });
+
     it('should have Custom type', () => {
       expect(ElementTypes.Custom).toBe('CUSTOM');
     });
 
-    it('should have exactly 23 element types', () => {
-      expect(Object.keys(ElementTypes)).toHaveLength(23);
+    it('should have exactly 24 element types', () => {
+      expect(Object.keys(ElementTypes)).toHaveLength(24);
     });
   });
 

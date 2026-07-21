@@ -46,7 +46,7 @@ func TestGoogleSuite(t *testing.T) {
 }
 
 func (s *GoogleTestSuite) SetupTest() {
-	s.handler, s.mockIDP = newConnectionTestHandler(s.T())
+	s.handler, s.mockIDP, _ = newConnectionTestHandler(s.T())
 }
 
 func (s *GoogleTestSuite) TestToIDPDTOMapsFields() {
@@ -63,6 +63,50 @@ func (s *GoogleTestSuite) TestToIDPDTOMapsFields() {
 	s.Equal("c", values[idp.PropClientID])
 	s.Equal(maskedSecretValue, values[idp.PropClientSecret]) // secret is encrypted/masked
 	s.Equal("openid,email", values[idp.PropScopes])
+}
+
+func (s *GoogleTestSuite) TestToIDPDTOMapsTokenExchange() {
+	dto, err := googleToIDPDTO(googleConnectionRequest{
+		Name: "Google", ClientID: "c", ClientSecret: "s", RedirectURI: "https://app/cb",
+		Issuer: "https://accounts.google.com", JwksEndpoint: "https://www.googleapis.com/oauth2/v3/certs",
+		TokenExchangeEnabled: boolPtr(true),
+	})
+	s.Require().NoError(err)
+
+	values, err := propertyValues(dto.Properties)
+	s.Require().NoError(err)
+	s.Equal("https://accounts.google.com", values[idp.PropIssuer])
+	s.Equal("https://www.googleapis.com/oauth2/v3/certs", values[idp.PropJwksEndpoint])
+	s.Equal("true", values[idp.PropTokenExchangeEnabled])
+}
+
+func (s *GoogleTestSuite) TestGetParsesTokenExchange() {
+	s.mockIDP.On("GetIdentityProvider", mock.Anything, "g-1").
+		Return(&providers.IDPDTO{
+			ID:   "g-1",
+			Name: "Google",
+			Type: providers.IDPTypeGoogle,
+			Properties: []cmodels.Property{
+				mustProperty(s.T(), idp.PropClientSecret, "s3cret", true),
+				mustProperty(s.T(), idp.PropIssuer, "https://accounts.google.com", false),
+				mustProperty(s.T(), idp.PropJwksEndpoint, "https://www.googleapis.com/oauth2/v3/certs", false),
+				mustProperty(s.T(), idp.PropTokenExchangeEnabled, "true", false),
+			},
+		}, (*tidcommon.ServiceError)(nil))
+
+	req := httptest.NewRequest(http.MethodGet, "/connections/google/g-1", nil)
+	req.SetPathValue("id", "g-1")
+	rr := httptest.NewRecorder()
+	getHandler(s.handler, providers.IDPTypeGoogle, googleFromIDPDTO)(rr, req)
+
+	s.Equal(http.StatusOK, rr.Code)
+	var resp googleConnectionResponse
+	s.Require().NoError(json.NewDecoder(rr.Body).Decode(&resp))
+	s.Equal(maskedSecretValue, resp.ClientSecret)
+	s.Equal("https://accounts.google.com", resp.Issuer)
+	s.Equal("https://www.googleapis.com/oauth2/v3/certs", resp.JwksEndpoint)
+	s.Require().NotNil(resp.TokenExchangeEnabled)
+	s.True(*resp.TokenExchangeEnabled)
 }
 
 func (s *GoogleTestSuite) TestAttributeConfigurationRoundTrips() {

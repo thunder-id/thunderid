@@ -88,7 +88,7 @@ function HomePage() {
             }}
           >
             This sample demonstrates ThunderID&apos;s API-based authentication
-            flow and Atomic APIs, allowing direct integration with sign-in and
+            flow and Direct API endpoints, allowing direct integration with sign-in and
             sign-up APIs without browser redirects.
           </Typography>
 

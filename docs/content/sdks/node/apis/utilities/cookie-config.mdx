@@ -1,11 +1,12 @@
 ---
 title: CookieConfig
-description: Default cookie configuration constants for the Node.js SDK
+docType: reference
+description: Session cookie name constants and defaults for the Node.js SDK's cookie-based session management.
 ---
 
 # `CookieConfig`
 
-`CookieConfig` is a constants class that exposes the default values used for session cookie configuration in the <ProductName /> Node.js SDK. Use these constants when setting cookies for session management or when passing options to [`getSessionCookieOptions`](/docs/next/sdks/node/apis/utilities/get-session-cookie-options).
+`CookieConfig` is a constants class that exposes the default values used for session cookie configuration in the <ProductName /> Node.js SDK. Use these constants when setting cookies for session management or when passing options to [`getSessionCookieOptions`](../get-session-cookie-options).
 
 ## Usage
 
@@ -34,5 +35,5 @@ res.cookie(CookieConfig.SESSION_COOKIE_NAME, sessionId, {
 
 ## Related
 
-- [`CookieOptions`](/docs/next/sdks/node/apis/utilities/cookie-options) — Interface describing cookie option fields
-- [`getSessionCookieOptions()`](/docs/next/sdks/node/apis/utilities/get-session-cookie-options) — Helper to build cookie options using these defaults
+- [`CookieOptions`](../cookie-options): Interface describing cookie option fields
+- [`getSessionCookieOptions()`](../get-session-cookie-options): Helper to build cookie options using these defaults

@@ -106,7 +106,7 @@ jobs:
     name: 🧹 Lint Code
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -656,6 +656,11 @@ jobs:
           chmod +x setup.sh start.sh
 
       - name: 🚀 Start the Server
+        env:
+          # Pin the admin credentials so setup.sh seeds a known password instead of
+          # generating a random one. The token step and Playwright below expect admin/admin.
+          ADMIN_USERNAME: admin
+          ADMIN_PASSWORD: admin
         run: |
           cd tests/e2e/server
           ./setup.sh
@@ -689,6 +694,9 @@ jobs:
           # authenticating the bootstrapped admin user.
           SERVER_URL="https://localhost:8090"
           CONSOLE_REDIRECT_URI="https://localhost:8090/console"
+          # Tokens are bound to a single resource server (RFC 8707), so the CONSOLE app targets the
+          # bootstrapped System resource server, mirroring the console runtime config.
+          CONSOLE_RESOURCE="https://localhost:8090/mcp"
           CODE_VERIFIER=$(openssl rand -hex 32 | cut -c1-43)
           CODE_CHALLENGE=$(printf '%s' "$CODE_VERIFIER" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
 
@@ -697,6 +705,7 @@ jobs:
             --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
             --data-urlencode "scope=system" \
             --data-urlencode "response_type=code" \
+            --data-urlencode "resource=$CONSOLE_RESOURCE" \
             --data-urlencode "code_challenge=$CODE_CHALLENGE" \
             --data-urlencode "code_challenge_method=S256"
 

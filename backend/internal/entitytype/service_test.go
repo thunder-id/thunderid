@@ -37,7 +37,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-	"github.com/thunder-id/thunderid/tests/mocks/consentmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
@@ -59,26 +58,6 @@ func newAllowAllAuthz(t interface {
 	authzMock.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
 		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
 	return authzMock
-}
-
-// newConsentServiceMockEnabled creates a new consent service mock with IsEnabled returning true.
-func newConsentServiceMockEnabled(t interface {
-	mock.TestingT
-	Cleanup(func())
-}) *consentmock.ConsentServiceInterfaceMock {
-	consentMock := consentmock.NewConsentServiceInterfaceMock(t)
-	consentMock.On("IsEnabled").Return(true)
-	return consentMock
-}
-
-// newConsentServiceMockDisabled creates a new consent service mock with IsEnabled returning false.
-func newConsentServiceMockDisabled(t interface {
-	mock.TestingT
-	Cleanup(func())
-}) *consentmock.ConsentServiceInterfaceMock {
-	consentMock := consentmock.NewConsentServiceInterfaceMock(t)
-	consentMock.On("IsEnabled").Return(false)
-	return consentMock
 }
 
 func TestCreateEntityTypeReturnsErrorWhenOrganizationUnitMissing(t *testing.T) {
@@ -220,13 +199,10 @@ func TestCreateEntityTypeResolvesOUHandleToID(t *testing.T) {
 		Return(EntityType{}, ErrEntityTypeNotFound).Once()
 	storeMock.On("CreateEntityType", mock.Anything, mock.Anything).Return(nil).Once()
 
-	consentMock := newConsentServiceMockDisabled(t)
-
 	service := &entityTypeService{
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
-		consentService:  consentMock,
 	}
 
 	result, svcErr := service.CreateEntityType(context.Background(), TypeCategoryUser, CreateEntityTypeRequestWithID{
@@ -291,13 +267,10 @@ func TestUpdateEntityTypeResolvesOUHandleToID(t *testing.T) {
 		Return(EntityType{ID: "schema-id", Name: "test-schema", OUID: testOUID1}, nil).Once()
 	storeMock.On("UpdateEntityTypeByID", mock.Anything, TypeCategoryUser, "schema-id", mock.Anything).Return(nil).Once()
 
-	consentMock := newConsentServiceMockDisabled(t)
-
 	service := &entityTypeService{
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
-		consentService:  consentMock,
 	}
 
 	req := UpdateEntityTypeRequest{
@@ -366,13 +339,10 @@ func TestCreateEntityTypeOUIDWinsWhenBothOUIDAndOUHandleProvided(t *testing.T) {
 		Return(EntityType{}, ErrEntityTypeNotFound).Once()
 	storeMock.On("CreateEntityType", mock.Anything, mock.Anything).Return(nil).Once()
 
-	consentMock := newConsentServiceMockDisabled(t)
-
 	service := &entityTypeService{
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
-		consentService:  consentMock,
 	}
 
 	result, svcErr := service.CreateEntityType(context.Background(), TypeCategoryUser, CreateEntityTypeRequestWithID{
@@ -410,13 +380,10 @@ func TestUpdateEntityTypeOUIDWinsWhenBothOUIDAndOUHandleProvided(t *testing.T) {
 	storeMock.On("UpdateEntityTypeByID", mock.Anything, TypeCategoryUser, "schema-id", mock.Anything).
 		Return(nil).Once()
 
-	consentMock := newConsentServiceMockDisabled(t)
-
 	service := &entityTypeService{
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
-		consentService:  consentMock,
 	}
 
 	req := UpdateEntityTypeRequest{
@@ -533,13 +500,10 @@ func TestCreateEntityType_OUHandleLookupUsesCallerContext(t *testing.T) {
 		Return(EntityType{}, ErrEntityTypeNotFound).Once()
 	storeMock.On("CreateEntityType", mock.Anything, mock.Anything).Return(nil).Once()
 
-	consentMock := newConsentServiceMockDisabled(t)
-
 	service := &entityTypeService{
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
-		consentService:  consentMock,
 	}
 
 	result, svcErr := service.CreateEntityType(context.Background(), TypeCategoryUser, CreateEntityTypeRequestWithID{
@@ -582,13 +546,10 @@ func TestUpdateEntityType_OUHandleLookupUsesCallerContext(t *testing.T) {
 	storeMock.On("UpdateEntityTypeByID", mock.Anything, TypeCategoryUser, "schema-id", mock.Anything).
 		Return(nil).Once()
 
-	consentMock := newConsentServiceMockDisabled(t)
-
 	service := &entityTypeService{
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
-		consentService:  consentMock,
 	}
 
 	req := UpdateEntityTypeRequest{
@@ -1435,61 +1396,37 @@ func (s *EntityTypeServiceTestSuite) TestGetUniqueAttributes_TestEmptyUserType_R
 // ----- DeleteEntityType Tests -----
 
 func TestDeleteEntityType(t *testing.T) {
-	tests := []struct {
-		name           string
-		schemaID       string
-		schema         json.RawMessage
-		consentService *consentmock.ConsentServiceInterfaceMock
-	}{
-		{
-			name:     "succeeds when attribute extraction fails but consent is enabled",
-			schemaID: "schema-123",
-			// Use invalid JSON to cause extractAttributeNames to fail
-			schema:         json.RawMessage(`{invalid json}`),
-			consentService: newConsentServiceMockEnabled(t),
-		},
-		{
-			name:           "succeeds when consent is disabled",
-			schemaID:       "schema-456",
-			schema:         json.RawMessage(`{"email":{"type":"string"}}`),
-			consentService: newConsentServiceMockDisabled(t),
+	const schemaID = "schema-456"
+
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{
+			Enabled: false,
 		},
 	}
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	require.NoError(t, err)
+	defer config.ResetServerRuntime()
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			testConfig := &config.Config{
-				DeclarativeResources: config.DeclarativeResources{
-					Enabled: false,
-				},
-			}
-			config.ResetServerRuntime()
-			err := config.InitializeServerRuntime("/tmp/test", testConfig)
-			require.NoError(t, err)
-			defer config.ResetServerRuntime()
+	storeMock := newEntityTypeStoreInterfaceMock(t)
+	storeMock.On("GetEntityTypeByID", mock.Anything, mock.Anything, schemaID).Return(EntityType{
+		ID:     schemaID,
+		OUID:   testOUID1,
+		Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+	}, nil).Once()
+	storeMock.On("IsEntityTypeDeclarative", TypeCategoryUser, schemaID).Return(false).Once()
+	storeMock.On("DeleteEntityTypeByID", mock.Anything, mock.Anything, schemaID).Return(nil).Once()
 
-			storeMock := newEntityTypeStoreInterfaceMock(t)
-			storeMock.On("GetEntityTypeByID", mock.Anything, mock.Anything, tc.schemaID).Return(EntityType{
-				ID:     tc.schemaID,
-				OUID:   testOUID1,
-				Schema: tc.schema,
-			}, nil).Once()
-			storeMock.On("IsEntityTypeDeclarative", TypeCategoryUser, tc.schemaID).Return(false).Once()
-			storeMock.On("DeleteEntityTypeByID", mock.Anything, mock.Anything, tc.schemaID).Return(nil).Once()
-
-			service := &entityTypeService{
-				entityTypeStore: storeMock,
-				transactioner:   &mockTransactioner{},
-				consentService:  tc.consentService,
-				authzService:    newAllowAllAuthz(t),
-			}
-
-			svcErr := service.DeleteEntityType(context.Background(), TypeCategoryUser, tc.schemaID)
-
-			require.Nil(t, svcErr)
-			storeMock.AssertExpectations(t)
-		})
+	service := &entityTypeService{
+		entityTypeStore: storeMock,
+		transactioner:   &mockTransactioner{},
+		authzService:    newAllowAllAuthz(t),
 	}
+
+	svcErr := service.DeleteEntityType(context.Background(), TypeCategoryUser, schemaID)
+
+	require.Nil(t, svcErr)
+	storeMock.AssertExpectations(t)
 }
 
 func TestCreateEntityType_AgentTypeRejectsNonDefaultName(t *testing.T) {

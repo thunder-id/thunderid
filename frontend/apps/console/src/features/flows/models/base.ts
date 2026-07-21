@@ -95,6 +95,11 @@ export interface BaseDisplay {
    */
   image: string;
   /**
+   * Set for full-color brand logos (e.g. Google) that must not be inverted in
+   * dark mode.
+   */
+  preserveImageColor?: boolean;
+  /**
    * The default variant of the component or the primitive.
    */
   defaultVariant?: string;
@@ -106,6 +111,15 @@ export interface BaseDisplay {
    * Should the component be shown on the resource panel.
    */
   showOnResourcePanel: boolean;
+  /**
+   * Optional custom labels for an execution node's outcome handles (success / failure /
+   * incomplete). When omitted, generic outcome labels are used.
+   */
+  outcomes?: {
+    success?: string;
+    failure?: string;
+    incomplete?: string;
+  };
 }
 
 /**

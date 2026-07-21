@@ -89,41 +89,41 @@ This is used to trigger pod restarts when auto-generated Secrets change.
 {{- $configuration := default dict .Values.configuration -}}
 {{- $database := default dict $configuration.database -}}
 {{- $config := default dict $database.config -}}
-{{- $runtime := default dict $database.runtime -}}
-{{- $user := default dict $database.user -}}
+{{- $runtimeTransient := default dict $database.runtime_transient -}}
+{{- $entity := default dict $database.entity -}}
 {{- $configPostgres := default dict $config.postgres -}}
-{{- $runtimePostgres := default dict $runtime.postgres -}}
-{{- $runtimeRedis := default dict $runtime.redis -}}
-{{- $userPostgres := default dict $user.postgres -}}
-{{- $consent := default dict $configuration.consent -}}
-{{- $consentDb := default dict $consent.database -}}
+{{- $runtimeTransientPostgres := default dict $runtimeTransient.postgres -}}
+{{- $runtimeTransientRedis := default dict $runtimeTransient.redis -}}
+{{- $entityPostgres := default dict $entity.postgres -}}
+{{- $runtimePersistent := default dict $database.runtime_persistent -}}
+{{- $runtimePersistentPostgres := default dict $runtimePersistent.postgres -}}
 {{- $cache := default dict $configuration.cache -}}
 {{- $redis := default dict $cache.redis -}}
-{{- if or (and $configPostgres.password (not (default dict $configPostgres.passwordRef).key)) (and $runtimePostgres.password (not (default dict $runtimePostgres.passwordRef).key)) (and $runtimeRedis.password (not (default dict $runtimeRedis.passwordRef).key)) (and $userPostgres.password (not (default dict $userPostgres.passwordRef).key)) (and $consent.enabled $consentDb.password (not (default dict $consentDb.passwordRef).key)) (and $redis.password (eq $cache.type "redis") (not (default dict $redis.passwordRef).key)) }}true{{- end }}
+{{- if or (and $configPostgres.password (not (default dict $configPostgres.passwordRef).key)) (and $runtimeTransientPostgres.password (not (default dict $runtimeTransientPostgres.passwordRef).key)) (and $runtimeTransientRedis.password (not (default dict $runtimeTransientRedis.passwordRef).key)) (and $entityPostgres.password (not (default dict $entityPostgres.passwordRef).key)) (and $runtimePersistentPostgres.password (not (default dict $runtimePersistentPostgres.passwordRef).key)) (and $redis.password (eq $cache.type "redis") (not (default dict $redis.passwordRef).key)) }}true{{- end }}
 {{- end }}
 
 {{/*
 Generate database password environment variable definitions for both deployment and setup job.
-Injects DB_CONFIG_PASSWORD, DB_RUNTIME_PASSWORD, and DB_USER_PASSWORD from either auto-generated or external Secrets.
+Injects DB_CONFIG_PASSWORD, DB_RUNTIME_TRANSIENT_PASSWORD, DB_ENTITY_PASSWORD, and DB_RUNTIME_PERSISTENT_PASSWORD from either auto-generated or external Secrets.
 */}}
 {{- define "thunderid.databasePasswordEnvVars" -}}
 {{- $defaultDbSecretName := printf "%s-db-credentials" (include "thunderid.fullname" .) -}}
 {{- $configuration := default dict .Values.configuration -}}
 {{- $database := default dict $configuration.database -}}
 {{- $config := default dict $database.config -}}
-{{- $runtime := default dict $database.runtime -}}
-{{- $user := default dict $database.user -}}
+{{- $runtimeTransient := default dict $database.runtime_transient -}}
+{{- $entity := default dict $database.entity -}}
+{{- $runtimePersistent := default dict $database.runtime_persistent -}}
 {{- $configPostgres := default dict $config.postgres -}}
-{{- $runtimePostgres := default dict $runtime.postgres -}}
-{{- $runtimeRedis := default dict $runtime.redis -}}
-{{- $userPostgres := default dict $user.postgres -}}
-{{- $consent := default dict $configuration.consent -}}
-{{- $consentDb := default dict $consent.database -}}
+{{- $runtimeTransientPostgres := default dict $runtimeTransient.postgres -}}
+{{- $runtimeTransientRedis := default dict $runtimeTransient.redis -}}
+{{- $entityPostgres := default dict $entity.postgres -}}
+{{- $runtimePersistentPostgres := default dict $runtimePersistent.postgres -}}
 {{- $configPasswordRef := default dict $configPostgres.passwordRef -}}
-{{- $runtimePasswordRef := default dict $runtimePostgres.passwordRef -}}
-{{- $runtimeRedisPasswordRef := default dict $runtimeRedis.passwordRef -}}
-{{- $userPasswordRef := default dict $userPostgres.passwordRef -}}
-{{- $consentPasswordRef := default dict $consentDb.passwordRef -}}
+{{- $runtimeTransientPasswordRef := default dict $runtimeTransientPostgres.passwordRef -}}
+{{- $runtimeTransientRedisPasswordRef := default dict $runtimeTransientRedis.passwordRef -}}
+{{- $entityPasswordRef := default dict $entityPostgres.passwordRef -}}
+{{- $runtimePersistentPasswordRef := default dict $runtimePersistentPostgres.passwordRef -}}
 {{- if or $configPostgres.password $configPasswordRef.key }}
 - name: DB_CONFIG_PASSWORD
   valueFrom:
@@ -131,33 +131,33 @@ Injects DB_CONFIG_PASSWORD, DB_RUNTIME_PASSWORD, and DB_USER_PASSWORD from eithe
       name: {{ if $configPasswordRef.key }}{{ $configPasswordRef.name | default $defaultDbSecretName }}{{ else }}{{ $defaultDbSecretName }}{{ end }}
       key: {{ $configPasswordRef.key | default "config-db-password" }}
 {{- end }}
-{{- if or $runtimePostgres.password $runtimePasswordRef.key }}
-- name: DB_RUNTIME_PASSWORD
+{{- if or $runtimeTransientPostgres.password $runtimeTransientPasswordRef.key }}
+- name: DB_RUNTIME_TRANSIENT_PASSWORD
   valueFrom:
     secretKeyRef:
-      name: {{ if $runtimePasswordRef.key }}{{ $runtimePasswordRef.name | default $defaultDbSecretName }}{{ else }}{{ $defaultDbSecretName }}{{ end }}
-      key: {{ $runtimePasswordRef.key | default "runtime-db-password" }}
+      name: {{ if $runtimeTransientPasswordRef.key }}{{ $runtimeTransientPasswordRef.name | default $defaultDbSecretName }}{{ else }}{{ $defaultDbSecretName }}{{ end }}
+      key: {{ $runtimeTransientPasswordRef.key | default "runtime-transient-db-password" }}
 {{- end }}
-{{- if or $runtimeRedis.password $runtimeRedisPasswordRef.key }}
-- name: DB_RUNTIME_REDIS_PASSWORD
+{{- if or $runtimeTransientRedis.password $runtimeTransientRedisPasswordRef.key }}
+- name: DB_RUNTIME_TRANSIENT_REDIS_PASSWORD
   valueFrom:
     secretKeyRef:
-      name: {{ if $runtimeRedisPasswordRef.key }}{{ $runtimeRedisPasswordRef.name | default $defaultDbSecretName }}{{ else }}{{ $defaultDbSecretName }}{{ end }}
-      key: {{ $runtimeRedisPasswordRef.key | default "runtime-redis-password" }}
+      name: {{ if $runtimeTransientRedisPasswordRef.key }}{{ $runtimeTransientRedisPasswordRef.name | default $defaultDbSecretName }}{{ else }}{{ $defaultDbSecretName }}{{ end }}
+      key: {{ $runtimeTransientRedisPasswordRef.key | default "runtime-transient-redis-password" }}
 {{- end }}
-{{- if or $userPostgres.password $userPasswordRef.key }}
-- name: DB_USER_PASSWORD
+{{- if or $entityPostgres.password $entityPasswordRef.key }}
+- name: DB_ENTITY_PASSWORD
   valueFrom:
     secretKeyRef:
-      name: {{ if $userPasswordRef.key }}{{ $userPasswordRef.name | default $defaultDbSecretName }}{{ else }}{{ $defaultDbSecretName }}{{ end }}
-      key: {{ $userPasswordRef.key | default "user-db-password" }}
+      name: {{ if $entityPasswordRef.key }}{{ $entityPasswordRef.name | default $defaultDbSecretName }}{{ else }}{{ $defaultDbSecretName }}{{ end }}
+      key: {{ $entityPasswordRef.key | default "entity-db-password" }}
 {{- end }}
-{{- if and $consent.enabled (or $consentDb.password $consentPasswordRef.key) }}
-- name: DB_CONSENT_PASSWORD
+{{- if or $runtimePersistentPostgres.password $runtimePersistentPasswordRef.key }}
+- name: DB_RUNTIME_PERSISTENT_PASSWORD
   valueFrom:
     secretKeyRef:
-      name: {{ if $consentPasswordRef.key }}{{ $consentPasswordRef.name | default $defaultDbSecretName }}{{ else }}{{ $defaultDbSecretName }}{{ end }}
-      key: {{ $consentPasswordRef.key | default "consent-db-password" }}
+      name: {{ if $runtimePersistentPasswordRef.key }}{{ $runtimePersistentPasswordRef.name | default $defaultDbSecretName }}{{ else }}{{ $defaultDbSecretName }}{{ end }}
+      key: {{ $runtimePersistentPasswordRef.key | default "runtime-persistent-db-password" }}
 {{- end }}
 {{- end }}
 

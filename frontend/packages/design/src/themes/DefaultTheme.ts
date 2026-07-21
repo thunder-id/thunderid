@@ -27,73 +27,100 @@ export const DefaultThemeConfig = {
   colorSchemes: {
     light: {
       palette: {
+        // Explicit transparency channels: Oxygen freezes these at its own palette during the theme merge.
         primary: {
           main: '#3688FF',
+          mainChannel: '54 136 255',
           dark: '#2d78e0',
+          darkChannel: '45 120 224',
           light: '#6ba8f5',
+          lightChannel: '107 168 245',
           contrastText: '#ffffff',
         },
         secondary: {
           main: '#5498b4',
+          mainChannel: '84 152 180',
           dark: '#2d8eac',
+          darkChannel: '45 142 172',
           light: '#85cde3',
+          lightChannel: '133 205 227',
           contrastText: '#ffffff',
         },
         warning: {
           main: '#f59e0b',
+          mainChannel: '245 158 11',
           contrastText: '#ffffff',
         },
         error: {
           main: '#ef4444',
+          mainChannel: '239 68 68',
           contrastText: '#ffffff',
         },
         info: {
           main: '#8bf9fa',
+          mainChannel: '139 249 250',
           contrastText: '#0a1628',
         },
         success: {
           main: '#10b981',
+          mainChannel: '16 185 129',
           contrastText: '#ffffff',
         },
         background: {
-          default: '#ffffff',
-          paper: '#bfc6cf33',
-          acrylic: '#c8d1dc1f',
+          default: '#ffffff5c',
+          paper: '#ffffff7f',
+          acrylic: '#ffffff36',
         },
         text: {
           primary: '#181818',
-          secondary: 'rgba(24, 24, 24, 0.6)',
+          secondary: 'rgba(24, 24, 24, 0.72)',
+        },
+        // Explicit disabled Switch shades.
+        Switch: {
+          primaryDisabledColor: '#b2d1ff',
+          secondaryDisabledColor: '#bed7e2',
         },
       },
     },
     dark: {
       palette: {
+        // Explicit transparency channels: Oxygen freezes these at its own palette during the theme merge.
         primary: {
           main: '#3688FF',
+          mainChannel: '54 136 255',
           dark: '#2d78e0',
+          darkChannel: '45 120 224',
           light: '#6ba8f5',
+          lightChannel: '107 168 245',
           contrastText: '#ffffff',
         },
         secondary: {
           main: '#5498b4',
+          mainChannel: '84 152 180',
           dark: '#2d8eac',
+          darkChannel: '45 142 172',
           light: '#85cde3',
+          lightChannel: '133 205 227',
           contrastText: '#0a2230',
         },
         warning: {
           main: '#f59e0b',
+          mainChannel: '245 158 11',
           contrastText: '#ffffff',
         },
         error: {
           main: '#ef4444',
+          mainChannel: '239 68 68',
           contrastText: '#ffffff',
         },
         info: {
           main: '#8bf9fa',
+          mainChannel: '139 249 250',
           contrastText: '#0a1628',
         },
         success: {
           main: '#10b981',
+          mainChannel: '16 185 129',
           contrastText: '#ffffff',
         },
         background: {
@@ -104,6 +131,11 @@ export const DefaultThemeConfig = {
         text: {
           primary: '#FFFFFF',
           secondary: 'rgba(255, 255, 255, 0.7)',
+        },
+        // Explicit disabled Switch shades.
+        Switch: {
+          primaryDisabledColor: '#183d72',
+          secondaryDisabledColor: '#254450',
         },
       },
     },
@@ -135,9 +167,16 @@ export const DefaultThemeConfig = {
         "html[data-color-scheme='light'] body": {
           backgroundAttachment: 'fixed',
           backgroundImage:
-            'radial-gradient(circle at 65% 30%, rgb(0 127 242 / 8%) 10%, rgba(0, 0, 0, 0) 60% 40%), ' +
-            'radial-gradient(circle at 15% 50%, rgb(0 213 255 / 12%) 1%, rgb(0 0 0 / 0%) 40% 70%), ' +
+            'radial-gradient(circle at 65% 30%, rgb(0 127 242 / 18%) 10%, rgba(0, 0, 0, 0) 60% 40%), ' +
+            'radial-gradient(circle at 15% 50%, rgb(0 213 255 / 26%) 1%, rgb(0 0 0 / 0%) 40% 70%), ' +
             'radial-gradient(circle at center, rgba(255, 255, 255, 0.6) 0%, var(--oxygen-palette-background-default) 100%)',
+        },
+      },
+    },
+    MuiTypography: {
+      styleOverrides: {
+        h5: {
+          fontWeight: 500,
         },
       },
     },
@@ -148,6 +187,16 @@ export const DefaultThemeConfig = {
           WebkitBackdropFilter: theme.blur.medium,
           backdropFilter: theme.blur.medium,
           backgroundImage: 'none',
+          // In light mode, a Paper nested inside another Paper compounds the translucent
+          // grey tint into a muddy double-tinted box, so nested surfaces get a lighter,
+          // near-white tint instead of re-applying the same grey. Dark mode already reads
+          // well when the tint stacks, so it's left untouched.
+          "html[data-color-scheme='light'] .MuiPaper-root &:not(.MuiAlert-root)": {
+            backgroundColor: 'rgba(255, 255, 255, 0.22)',
+            WebkitBackdropFilter: 'none',
+            backdropFilter: 'none',
+            border: 'none',
+          },
         }),
       },
     },
@@ -219,6 +268,35 @@ export const DefaultThemeConfig = {
         },
       },
     },
+    MuiAlert: {
+      styleOverrides: {
+        standardError: {
+          "html[data-color-scheme='light'] &": {
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+          },
+        },
+        standardWarning: {
+          "html[data-color-scheme='light'] &": {
+            border: '1px solid rgba(245, 158, 11, 0.3)',
+          },
+        },
+        standardSuccess: {
+          "html[data-color-scheme='light'] &": {
+            border: '1px solid rgba(16, 185, 129, 0.3)',
+          },
+        },
+        standardInfo: {
+          "html[data-color-scheme='light'] &": {
+            backgroundColor: '#e3f2fd',
+            color: '#0d3b66',
+            border: '1px solid rgba(45, 120, 224, 0.3)',
+            '& .MuiAlert-icon': {
+              color: '#2d78e0',
+            },
+          },
+        },
+      },
+    },
     MuiLinearProgress: {
       defaultProps: {
         color: 'primary',
@@ -247,6 +325,65 @@ export const DefaultThemeConfig = {
     MuiTextField: {
       defaultProps: {
         size: 'small',
+      },
+    },
+    MuiFormHelperText: {
+      styleOverrides: {
+        root: {
+          fontStyle: 'italic',
+          margin: '4px 2px 0',
+        },
+      },
+    },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: ({theme}: {theme: OxygenThemeType}) => ({
+          // Read-only fields aren't editable, so their border should stay a plain neutral
+          // divider color at all times — idle, hovered, or focused (readOnly, unlike
+          // disabled, can still receive focus) — instead of MUI's default accent-colored
+          // highlight. Applies in both color schemes.
+          '&.MuiInputBase-readOnly .MuiOutlinedInput-notchedOutline, &.MuiInputBase-readOnly:hover .MuiOutlinedInput-notchedOutline, &.MuiInputBase-readOnly.Mui-focused .MuiOutlinedInput-notchedOutline':
+            {
+              borderColor: theme.vars.palette.divider,
+              borderWidth: '1px',
+            },
+          // In light mode, a transparent input blends into the tinted card behind it and
+          // reads as disabled. Give it a solid near-white fill and a firmer border so it's
+          // clearly a distinct, interactive surface. Dark mode already has enough contrast
+          // and is left untouched.
+          "html[data-color-scheme='light'] &": {
+            backgroundColor: 'rgba(255, 255, 255, 0.7)',
+            '& .MuiOutlinedInput-notchedOutline': {
+              borderColor: 'rgba(54, 136, 255, 0.35)',
+            },
+            '&:hover:not(.Mui-disabled):not(.MuiInputBase-readOnly) .MuiOutlinedInput-notchedOutline': {
+              borderColor: 'rgba(54, 136, 255, 0.6)',
+            },
+            // Disabled and read-only are both non-editable, so they share the same muted
+            // treatment: no blue tint, just a plain neutral border that doesn't invite input.
+            '&.Mui-disabled, &.MuiInputBase-readOnly': {
+              backgroundColor: 'rgba(255, 255, 255, 0.3)',
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: 'rgba(24, 24, 24, 0.15)',
+              },
+            },
+          },
+          // Mirror of the light-mode treatment above: give editable fields a translucent
+          // black fill (instead of white) so they read as distinct surfaces against dark
+          // backgrounds too, with the same disabled/read-only muting.
+          "html[data-color-scheme='dark'] &": {
+            backgroundColor: 'rgba(0, 0, 0, 0.25)',
+            '& .MuiOutlinedInput-notchedOutline': {
+              borderColor: 'rgba(54, 136, 255, 0.35)',
+            },
+            '&:hover:not(.Mui-disabled):not(.MuiInputBase-readOnly) .MuiOutlinedInput-notchedOutline': {
+              borderColor: 'rgba(54, 136, 255, 0.6)',
+            },
+            '&.Mui-disabled, &.MuiInputBase-readOnly': {
+              backgroundColor: 'rgba(0, 0, 0, 0.15)',
+            },
+          },
+        }),
       },
     },
     MuiSelect: {

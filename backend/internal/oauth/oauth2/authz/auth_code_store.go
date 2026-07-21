@@ -77,7 +77,7 @@ func newAuthorizationCodeStore(deploymentID string) AuthorizationCodeStoreInterf
 // InsertAuthorizationCode inserts a new authorization code into the database.
 func (acs *authorizationCodeStore) InsertAuthorizationCode(
 	ctx context.Context, authzCode AuthorizationCode) error {
-	dbClient, err := acs.dbProvider.GetRuntimeDBClient()
+	dbClient, err := acs.dbProvider.GetRuntimeTransientDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -101,7 +101,7 @@ func (acs *authorizationCodeStore) InsertAuthorizationCode(
 // Returns true if the code was successfully consumed, false if the code was already consumed,
 // and false if a database error occurs.
 func (acs *authorizationCodeStore) ConsumeAuthorizationCode(ctx context.Context, authCode string) (bool, error) {
-	dbClient, err := acs.dbProvider.GetRuntimeDBClient()
+	dbClient, err := acs.dbProvider.GetRuntimeTransientDBClient()
 	if err != nil {
 		return false, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -118,7 +118,7 @@ func (acs *authorizationCodeStore) ConsumeAuthorizationCode(ctx context.Context,
 func (acs *authorizationCodeStore) GetAuthorizationCode(
 	ctx context.Context, authCode string,
 ) (*AuthorizationCode, error) {
-	dbClient, err := acs.dbProvider.GetRuntimeDBClient()
+	dbClient, err := acs.dbProvider.GetRuntimeTransientDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}

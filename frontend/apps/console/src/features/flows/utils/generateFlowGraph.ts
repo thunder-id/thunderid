@@ -75,14 +75,21 @@ export default function generateFlowGraph(options: FlowGeneratorOptions): Create
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const metaComponents: any[] = [];
 
-  // Self Sign Up Link component — shared across auth blocks
+  // Self Sign Up Link component — shared across auth blocks. The anchor is sentinel-marked
+  // with `data-action-ref="action_signup"`, and the component carries a matching `action`
+  // wiring so the SDK's RICH_TEXT renderer dispatches the action instead of navigating.
   const selfSignUpLink = {
     category: 'DISPLAY',
     type: 'RICH_TEXT',
     id: 'self_sign_up_link',
+    action: {
+      ref: 'action_signup',
+      eventType: 'SUBMIT',
+    },
     label:
       '<p class="rich-text-paragraph"><span class="rich-text-pre-wrap">Don\'t have an account? </span>' +
-      '<a href="{{meta(application.sign_up_url)}}" target="_blank" rel="noopener noreferrer" class="rich-text-link">' +
+      '<a href="{{meta(application.sign_up_url)}}" data-action-ref="action_signup" target="_blank" ' +
+      'rel="noopener noreferrer" class="rich-text-link">' +
       '<span class="rich-text-pre-wrap">Sign up</span></a></p>',
   };
 

@@ -1,0 +1,8 @@
+resource_type: connection
+id: decl-idp-1
+name: Declarative Test IDP
+description: A declarative test identity provider
+type: google
+clientId: test-client-id
+clientSecret: test-client-secret
+redirectUri: https://localhost:8095/callback

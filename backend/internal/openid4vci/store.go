@@ -22,11 +22,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // openID4VCIStoreInterface persists the OpenID4VCI issuer's short-lived runtime
@@ -40,150 +39,88 @@ type openID4VCIStoreInterface interface {
 }
 
 // openID4VCIStore persists the issuer's runtime state (c_nonces and credential
-// offers) in the runtime database so it is visible across replicas — the replica
-// that issues a nonce/offer may differ from the one that consumes it.
+// offers) in the runtime store so it is visible across replicas — the replica
+// that issues a nonce/offer may differ from the one that consumes it. Each record
+// is stored as a JSON value under its namespace with a TTL derived from its expiry.
 type openID4VCIStore struct {
-	dbProvider   provider.DBProviderInterface
-	deploymentID string
+	store  providers.RuntimeStoreProvider
+	logger *log.Logger
 }
 
-// newOpenID4VCIStore creates a new openID4VCIStore backed by the runtime database provider.
-func newOpenID4VCIStore() openID4VCIStoreInterface {
+// newOpenID4VCIStore creates a new openID4VCIStore backed by the runtime store provider.
+func newOpenID4VCIStore(store providers.RuntimeStoreProvider) openID4VCIStoreInterface {
 	return &openID4VCIStore{
-		dbProvider:   provider.GetDBProvider(),
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
+		store:  store,
+		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OpenID4VCIStateStore")),
 	}
 }
 
-// SaveNonce persists a nonce record to the runtime database.
+// SaveNonce persists a nonce record to the runtime store.
 func (s *openID4VCIStore) SaveNonce(ctx context.Context, nonce string, rec *nonceRecord) error {
-	dbClient, err := s.dbProvider.GetRuntimeDBClient()
+	data, err := json.Marshal(rec)
 	if err != nil {
-		return fmt.Errorf("failed to get runtime database client: %w", err)
+		return fmt.Errorf("failed to marshal nonce record: %w", err)
 	}
-	if _, err = dbClient.ExecuteContext(ctx, queryInsertNonce,
-		nonce, s.deploymentID, rec.ExpiresAt.UTC()); err != nil {
-		return fmt.Errorf("failed to insert nonce: %w", err)
-	}
-	return nil
+	return s.store.Put(ctx, providers.NamespaceVCINonce, nonce, data, ttlUntil(rec.ExpiresAt))
 }
 
-// GetNonce retrieves a stored nonce record, returning false if it is not found.
+// GetNonce retrieves a stored nonce record, returning false if it is not found or expired.
 func (s *openID4VCIStore) GetNonce(ctx context.Context, nonce string) (*nonceRecord, bool) {
-	dbClient, err := s.dbProvider.GetRuntimeDBClient()
+	data, err := s.store.Get(ctx, providers.NamespaceVCINonce, nonce)
 	if err != nil {
+		s.logger.Error(ctx, "Failed to get nonce from runtime store", log.Error(err))
 		return nil, false
 	}
-	results, err := dbClient.QueryContext(ctx, queryGetNonce, nonce, s.deploymentID)
-	if err != nil || len(results) == 0 {
+	if data == nil {
 		return nil, false
 	}
-	row := results[0]
-	expiry, err := parseVCITime(row["expiry_time"])
-	if err != nil {
+	var rec nonceRecord
+	if err := json.Unmarshal(data, &rec); err != nil {
+		s.logger.Error(ctx, "Failed to unmarshal nonce record", log.Error(err))
 		return nil, false
 	}
-	return &nonceRecord{ExpiresAt: expiry}, true
+	return &rec, true
 }
 
-// DeleteNonce removes a nonce record from the runtime database.
+// DeleteNonce removes a nonce record from the runtime store.
 func (s *openID4VCIStore) DeleteNonce(ctx context.Context, nonce string) error {
-	dbClient, err := s.dbProvider.GetRuntimeDBClient()
-	if err != nil {
-		return fmt.Errorf("failed to get runtime database client: %w", err)
-	}
-	if _, err = dbClient.ExecuteContext(ctx, queryDeleteNonce, nonce, s.deploymentID); err != nil {
-		return fmt.Errorf("failed to delete nonce: %w", err)
-	}
-	return nil
+	return s.store.Delete(ctx, providers.NamespaceVCINonce, nonce)
 }
 
-// SaveOffer persists a credential offer record to the runtime database.
+// SaveOffer persists a credential offer record to the runtime store.
 func (s *openID4VCIStore) SaveOffer(ctx context.Context, id string, rec *offerRecord) error {
-	dbClient, err := s.dbProvider.GetRuntimeDBClient()
-	if err != nil {
-		return fmt.Errorf("failed to get runtime database client: %w", err)
-	}
-	offerJSON, err := json.Marshal(rec.Offer)
+	data, err := json.Marshal(rec)
 	if err != nil {
 		return fmt.Errorf("failed to marshal credential offer: %w", err)
 	}
-	if _, err = dbClient.ExecuteContext(ctx, queryInsertOffer,
-		id, s.deploymentID, string(offerJSON), rec.ExpiresAt.UTC()); err != nil {
-		return fmt.Errorf("failed to insert credential offer: %w", err)
-	}
-	return nil
+	return s.store.Put(ctx, providers.NamespaceVCIOffer, id, data, ttlUntil(rec.ExpiresAt))
 }
 
-// GetOffer retrieves a stored credential offer by ID, returning false if it is not found.
+// GetOffer retrieves a stored credential offer by ID, returning false if it is not found or expired.
 func (s *openID4VCIStore) GetOffer(ctx context.Context, id string) (*offerRecord, bool) {
-	dbClient, err := s.dbProvider.GetRuntimeDBClient()
+	data, err := s.store.Get(ctx, providers.NamespaceVCIOffer, id)
 	if err != nil {
+		s.logger.Error(ctx, "Failed to get credential offer from runtime store", log.Error(err))
 		return nil, false
 	}
-	results, err := dbClient.QueryContext(ctx, queryGetOffer, id, s.deploymentID)
-	if err != nil || len(results) == 0 {
+	if data == nil {
 		return nil, false
 	}
-	row := results[0]
-	offerBytes := vciColumnBytes(row["offer"])
-	var offerMap map[string]interface{}
-	if err = json.Unmarshal(offerBytes, &offerMap); err != nil {
+	var rec offerRecord
+	if err := json.Unmarshal(data, &rec); err != nil {
+		s.logger.Error(ctx, "Failed to unmarshal credential offer", log.Error(err))
 		return nil, false
 	}
-	expiry, err := parseVCITime(row["expiry_time"])
-	if err != nil {
-		return nil, false
-	}
-	return &offerRecord{Offer: offerMap, ExpiresAt: expiry}, true
+	return &rec, true
 }
 
-// vciColumnString coerces a result-row value to a string, tolerating string/[]byte.
-func vciColumnString(v interface{}) string {
-	switch t := v.(type) {
-	case string:
-		return t
-	case []byte:
-		return string(t)
-	default:
-		return ""
+// ttlUntil returns the whole seconds remaining until expiresAt, rounded up, with a
+// floor of one second so the runtime store always applies a positive TTL (a
+// non-positive TTL would otherwise persist the entry without expiry).
+func ttlUntil(expiresAt time.Time) int64 {
+	remaining := time.Until(expiresAt)
+	if remaining <= 0 {
+		return 1
 	}
-}
-
-// vciColumnBytes coerces a result-row value to bytes, tolerating []byte/string.
-func vciColumnBytes(v interface{}) []byte {
-	switch t := v.(type) {
-	case []byte:
-		return t
-	case string:
-		return []byte(t)
-	default:
-		return nil
-	}
-}
-
-// parseVCITime parses an EXPIRY_TIME column across Postgres (time.Time) and
-// SQLite (datetime string) drivers.
-func parseVCITime(field interface{}) (time.Time, error) {
-	const layout = "2006-01-02 15:04:05.999999999"
-	switch v := field.(type) {
-	case time.Time:
-		return v, nil
-	case []byte:
-		return parseVCITime(string(v))
-	case string:
-		trimmed := v
-		if parts := strings.SplitN(v, " ", 3); len(parts) >= 2 {
-			trimmed = parts[0] + " " + parts[1]
-		}
-		if t, err := time.Parse(layout, trimmed); err == nil {
-			return t, nil
-		}
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			return t, nil
-		}
-		return time.Time{}, fmt.Errorf("error parsing expiry_time: %q", v)
-	default:
-		return time.Time{}, fmt.Errorf("unexpected type for expiry_time")
-	}
+	return int64((remaining + time.Second - 1) / time.Second)
 }

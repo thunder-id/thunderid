@@ -209,7 +209,7 @@ export interface UserUsage {
   resourceType: string;
   id: string;
   displayName: string;
-  behaviorOnDelete: 'fallback' | 'cascade';
+  behaviorOnDelete: 'fallback' | 'cascade' | 'restrict';
 }
 
 /**

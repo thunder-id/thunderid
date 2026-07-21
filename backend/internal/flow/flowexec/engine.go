@@ -33,13 +33,14 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
+	"github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // maxCallDepth is the maximum number of nested call frames allowed
-const maxCallDepth = 5
+const maxCallDepth = 10
 
 // flowEngineInterface defines the interface for the flow engine.
 type flowEngineInterface interface {
@@ -120,136 +121,21 @@ func (fe *flowEngine) Execute(ctx *EngineContext) (FlowStep, *tidcommon.ServiceE
 
 	// Execute the graph nodes until a terminal condition is met or currentNode is nil
 	for currentNode != nil {
-		logger.Debug(ctx.Context, "Executing node", log.String("nodeID", currentNode.GetID()),
-			log.String("nodeType", string(currentNode.GetType())))
+		nodeForCleanup := currentNode
+		nextNode, exitFlow, svcErr := fe.executeNodePackage(ctx, currentNode, &flowStep, flowStartTime)
 
-		nodeCtx := &providers.NodeContext{
-			Context:          ctx.Context,
-			ExecutionID:      ctx.ExecutionID,
-			FlowType:         ctx.FlowType,
-			EntityID:         ctx.AppID,
-			CurrentAction:    ctx.CurrentAction,
-			Verbose:          ctx.Verbose,
-			NodeInputs:       getNodeInputs(ctx.CurrentNode),
-			UserInputs:       ctx.UserInputs,
-			CurrentNodeID:    ctx.CurrentNode.GetID(),
-			RuntimeData:      ctx.RuntimeData,
-			ForwardedData:    ctx.ForwardedData,
-			Application:      ctx.Application,
-			AuthUser:         ctx.AuthUser,
-			ExecutionHistory: ctx.ExecutionHistory,
-		}
-		if nodeCtx.NodeInputs == nil {
-			nodeCtx.NodeInputs = make([]providers.Input, 0)
-		}
-		if nodeCtx.UserInputs == nil {
-			nodeCtx.UserInputs = make(map[string]string)
-		}
-		if nodeCtx.RuntimeData == nil {
-			nodeCtx.RuntimeData = make(map[string]string)
-		}
-		if nodeCtx.ForwardedData == nil {
-			nodeCtx.ForwardedData = make(map[string]interface{})
-		}
-
-		// Clear ForwardedData from engine context after passing to node context
-		// This ensures ForwardedData is only available to the immediate next node
-		ctx.ForwardedData = nil
-
-		// Check if the node should be executed based on its condition
-		if !currentNode.ShouldExecute(nodeCtx) {
-			logger.Debug(ctx.Context, "Skipping node due to unmet condition",
-				log.String("nodeID", currentNode.GetID()))
-			nextNode, svcErr := fe.skipToNextNode(ctx, currentNode, logger)
-			if svcErr != nil {
-				return flowStep, svcErr
-			}
-			currentNode = nextNode
-			continue
-		}
-
-		svcErr := fe.setNodeExecutor(ctx.Context, currentNode, logger)
+		fe.clearNodePackageOneTimeUseInputs(ctx, nodeForCleanup)
 		if svcErr != nil {
 			return flowStep, svcErr
 		}
 
-		// Run PRE_NODE interceptors before the node executes.
-		isSuccess, svcErr := fe.runInterceptors(providers.InterceptorModePreNode, ctx, currentNode, &flowStep)
-		if svcErr != nil {
-			publishFlowFailedEvent(ctx, svcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
-			return flowStep, svcErr
-		}
-		if !isSuccess {
-			if _, svcErr := fe.runPostRequestInterceptorsOnExit(ctx, &flowStep, flowStartTime); svcErr != nil {
-				// Ignore POST_REQUEST interceptor failures or continuation conditions,
-				// since this is already a flow exit scenario.
-				return flowStep, svcErr
-			}
-			return flowStep, nil
-		}
-
-		executionStartTime := time.Now().UnixMilli()
-
-		// Publish node execution started event
-		publishNodeExecutionStartedEvent(ctx, currentNode, fe.observabilitySvc)
-
-		nodeResp, nodeErr := currentNode.Execute(nodeCtx)
-		executionEndTime := time.Now().UnixMilli()
-
-		// Clear sensitive inputs from context after executor has consumed them.
-		fe.clearSensitiveInputs(ctx, currentNode)
-
-		recordNodeExecution(ctx, currentNode, nodeResp, nodeErr, executionStartTime, executionEndTime)
-
-		// Publish node execution completed or failed event
-		publishNodeExecutionCompletedEvent(
-			ctx, currentNode, nodeResp, nodeErr,
-			executionStartTime, executionEndTime, fe.observabilitySvc,
-		)
-
-		if nodeErr != nil {
-			// Publish flow failed event before returning error
-			publishFlowFailedEvent(ctx, nodeErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
-			return flowStep, nodeErr
-		}
-
-		fe.trackPresentedOptionalInputs(ctx, nodeResp)
-		fe.updateContextWithNodeResponse(ctx, nodeResp)
-
-		nextNode, continueExecution, svcErr := fe.processNodeResponse(ctx, nodeResp, &flowStep, logger)
-		if svcErr != nil {
-			// Publish flow failed event before returning error
-			publishFlowFailedEvent(ctx, svcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
-			return flowStep, svcErr
-		}
-		if !continueExecution {
-			// Run POST_REQUEST interceptors for incomplete flows to allow cleanup.
-			if _, svcErr := fe.runPostRequestInterceptorsOnExit(ctx, &flowStep, flowStartTime); svcErr != nil {
-				// Ignore POST_REQUEST interceptor failures or continuation conditions,
-				// since this is already a flow exit scenario.
-				return flowStep, svcErr
-			}
-			return flowStep, nil
-		}
-
-		// Run POST_NODE interceptors after the node executes.
-		isSuccess, svcErr = fe.runInterceptors(providers.InterceptorModePostNode, ctx, currentNode, &flowStep)
-		if svcErr != nil {
-			publishFlowFailedEvent(ctx, svcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
-			return flowStep, svcErr
-		}
-		if !isSuccess {
-			if _, svcErr := fe.runPostRequestInterceptorsOnExit(ctx, &flowStep, flowStartTime); svcErr != nil {
-				// Ignore POST_REQUEST interceptor failures or continuation conditions,
-				// since this is already a flow exit scenario.
-				return flowStep, svcErr
-			}
+		if exitFlow {
 			return flowStep, nil
 		}
 		currentNode = nextNode
 	}
 
-	// If we reach here, it means the all flow nodes has been executed successfully.
+	// If we reach here, it means the all flow nodes has been executed successfully
 	flowStep.Status = providers.FlowStatusComplete
 	if ctx.Assertion != "" {
 		flowStep.Assertion = ctx.Assertion
@@ -258,7 +144,7 @@ func (fe *flowEngine) Execute(ctx *EngineContext) (FlowStep, *tidcommon.ServiceE
 		flowStep.Data.AdditionalData = ctx.AdditionalData
 	}
 
-	// Run POST_REQUEST interceptors after all nodes have been processed.
+	// Run POST_REQUEST interceptors after all nodes have been processed
 	isSuccess, svcErr = fe.runPostRequestInterceptorsOnExit(ctx, &flowStep, flowStartTime)
 	if svcErr != nil {
 		return flowStep, svcErr
@@ -272,6 +158,160 @@ func (fe *flowEngine) Execute(ctx *EngineContext) (FlowStep, *tidcommon.ServiceE
 	publishFlowCompletedEvent(ctx, flowStartTime, flowEndTime, fe.observabilitySvc)
 
 	return flowStep, nil
+}
+
+// executeNodePackage runs the PRE_NODE interceptors, the node, and the POST_NODE
+// interceptors as a single package. It returns the next node to execute, whether the outer
+// flow loop should exit (in which case the caller should return without treating it as an
+// error), and any service error.
+func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
+	currentNode core.NodeInterface, flowStep *FlowStep, flowStartTime int64) (
+	core.NodeInterface, bool, *tidcommon.ServiceError) {
+	logger := fe.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID),
+		log.String("nodeID", currentNode.GetID()), log.String("nodeType", string(currentNode.GetType())))
+
+	logger.Debug(ctx.Context, "Executing node")
+
+	// SSO inputs ride on the context (transient, never persisted, and off the engine contract);
+	// only the SSO-Check and Session nodes read them.
+	ssoCtx := session.WithSSOInputs(ctx.Context, session.SSOInputs{
+		Handle:      ctx.SSOHandleIn,
+		FlowID:      ssoFlowID(ctx),
+		FlowVersion: ctx.SSOFlowVersion,
+	})
+	nodeCtx := &providers.NodeContext{
+		Context:          ssoCtx,
+		ExecutionID:      ctx.ExecutionID,
+		FlowType:         ctx.FlowType,
+		EntityID:         ctx.AppID,
+		CurrentAction:    ctx.CurrentAction,
+		Verbose:          ctx.Verbose,
+		NodeInputs:       getNodeInputs(ctx.CurrentNode),
+		UserInputs:       ctx.UserInputs,
+		CurrentNodeID:    ctx.CurrentNode.GetID(),
+		RuntimeData:      ctx.RuntimeData,
+		ForwardedData:    ctx.ForwardedData,
+		Application:      ctx.Application,
+		AuthUser:         ctx.AuthUser,
+		ExecutionHistory: ctx.ExecutionHistory,
+	}
+	if nodeCtx.NodeInputs == nil {
+		nodeCtx.NodeInputs = make([]providers.Input, 0)
+	}
+	if nodeCtx.UserInputs == nil {
+		nodeCtx.UserInputs = make(map[string]string)
+	}
+	if nodeCtx.RuntimeData == nil {
+		nodeCtx.RuntimeData = make(map[string]string)
+	}
+	if nodeCtx.ForwardedData == nil {
+		nodeCtx.ForwardedData = make(map[string]interface{})
+	}
+
+	// Clear ForwardedData from engine context after passing to node context
+	// This ensures ForwardedData is only available to the immediate next node
+	ctx.ForwardedData = nil
+
+	// Check if the node should be executed based on its condition
+	if !currentNode.ShouldExecute(nodeCtx) {
+		logger.Debug(ctx.Context, "Skipping node due to unmet condition",
+			log.String("nodeID", currentNode.GetID()))
+		nextNode, svcErr := fe.skipToNextNode(ctx, currentNode, logger)
+		if svcErr != nil {
+			return nil, false, svcErr
+		}
+		return nextNode, false, nil
+	}
+
+	if svcErr := fe.setNodeExecutor(ctx.Context, currentNode, logger); svcErr != nil {
+		return nil, false, svcErr
+	}
+
+	// Run PRE_NODE interceptors before the node executes
+	isSuccess, svcErr := fe.runInterceptors(providers.InterceptorModePreNode, ctx, currentNode, flowStep)
+	if svcErr != nil {
+		publishFlowFailedEvent(ctx, svcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
+		return nil, false, svcErr
+	}
+	if !isSuccess {
+		// Drain node-scope consumed inputs before the request-scope cleanup wipes the list
+		fe.clearNodePackageOneTimeUseInputs(ctx, currentNode)
+		if _, svcErr := fe.runPostRequestInterceptorsOnExit(ctx, flowStep, flowStartTime); svcErr != nil {
+			// Ignore POST_REQUEST interceptor failures or continuation conditions,
+			// since this is already a flow exit scenario.
+			return nil, false, svcErr
+		}
+		return nil, true, nil
+	}
+
+	executionStartTime := time.Now().UnixMilli()
+
+	// Publish node execution started event
+	publishNodeExecutionStartedEvent(ctx, currentNode, fe.observabilitySvc)
+
+	nodeResp, nodeErr := currentNode.Execute(nodeCtx)
+	executionEndTime := time.Now().UnixMilli()
+
+	if consumed := nodeCtx.GetConsumedInputs(); len(consumed) > 0 {
+		ctx.consumedInputs = append(ctx.consumedInputs, consumed...)
+	}
+
+	// Clear sensitive inputs from context after executor has consumed them
+	fe.clearSensitiveInputs(ctx, currentNode)
+
+	recordNodeExecution(ctx, currentNode, nodeResp, nodeErr, executionStartTime, executionEndTime)
+
+	// Publish node execution completed or failed event
+	publishNodeExecutionCompletedEvent(
+		ctx, currentNode, nodeResp, nodeErr,
+		executionStartTime, executionEndTime, fe.observabilitySvc,
+	)
+
+	if nodeErr != nil {
+		// Publish flow failed event before returning error
+		publishFlowFailedEvent(ctx, nodeErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
+		return nil, false, nodeErr
+	}
+
+	fe.trackPresentedOptionalInputs(ctx, nodeResp)
+	fe.updateContextWithNodeResponse(ctx, nodeResp)
+
+	nextNode, continueExecution, svcErr := fe.processNodeResponse(ctx, nodeResp, flowStep, logger)
+	if svcErr != nil {
+		// Publish flow failed event before returning error
+		publishFlowFailedEvent(ctx, svcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
+		return nil, false, svcErr
+	}
+	if !continueExecution {
+		// Drain node-scope consumed inputs before the request-scope cleanup wipes the list
+		fe.clearNodePackageOneTimeUseInputs(ctx, currentNode)
+		// Run POST_REQUEST interceptors for incomplete flows to allow cleanup
+		if _, svcErr := fe.runPostRequestInterceptorsOnExit(ctx, flowStep, flowStartTime); svcErr != nil {
+			// Ignore POST_REQUEST interceptor failures or continuation conditions,
+			// since this is already a flow exit scenario
+			return nil, false, svcErr
+		}
+		return nil, true, nil
+	}
+
+	// Run POST_NODE interceptors after the node executes
+	isSuccess, svcErr = fe.runInterceptors(providers.InterceptorModePostNode, ctx, currentNode, flowStep)
+	if svcErr != nil {
+		publishFlowFailedEvent(ctx, svcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
+		return nil, false, svcErr
+	}
+	if !isSuccess {
+		// Drain node-scope consumed inputs before the request-scope cleanup wipes the list
+		fe.clearNodePackageOneTimeUseInputs(ctx, currentNode)
+		if _, svcErr := fe.runPostRequestInterceptorsOnExit(ctx, flowStep, flowStartTime); svcErr != nil {
+			// Ignore POST_REQUEST interceptor failures or continuation conditions,
+			// since this is already a flow exit scenario
+			return nil, false, svcErr
+		}
+		return nil, true, nil
+	}
+
+	return nextNode, false, nil
 }
 
 // runInterceptors builds an InterceptorRunnerContext from the engine context, delegates to the
@@ -332,6 +372,9 @@ func (fe *flowEngine) runInterceptors(
 		return false, svcErr
 	}
 
+	if consumed := execCtx.GetConsumedInputs(); len(consumed) > 0 {
+		ctx.consumedInputs = append(ctx.consumedInputs, consumed...)
+	}
 	fe.updateContextWithInterceptorResponse(ctx, resp)
 
 	continueExecution := fe.processInterceptorResponse(resp, flowStep)
@@ -363,13 +406,18 @@ func extractSkipInterceptors(node core.NodeInterface) []string {
 }
 
 // runPostRequestInterceptorsOnExit runs POST_REQUEST interceptors when the flow is about to return.
-// It handles error publishing for interceptor failures and flow error statuses.
+// It handles error publishing for interceptor failures and flow error statuses. Consumed
+// one-time-use inputs declared by request-scoped interceptors are cleared after the
+// POST_REQUEST stage completes.
 // Returns (true, nil) if execution should continue, (false, nil) if the flow should stop,
 // or (false, svcErr) on interceptor failure.
 func (fe *flowEngine) runPostRequestInterceptorsOnExit(
 	ctx *EngineContext, flowStep *FlowStep, flowStartTime int64) (bool, *tidcommon.ServiceError) {
 	interceptorExecSuccess, svcErr := fe.runInterceptors(
 		providers.InterceptorModePostRequest, ctx, nil, flowStep)
+
+	fe.clearRequestPackageOneTimeUseInputs(ctx)
+
 	if svcErr != nil {
 		publishFlowFailedEvent(ctx, svcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
 		return false, svcErr
@@ -380,6 +428,7 @@ func (fe *flowEngine) runPostRequestInterceptorsOnExit(
 		}
 		return false, nil
 	}
+
 	return true, nil
 }
 
@@ -535,6 +584,109 @@ func (fe *flowEngine) clearSensitiveInputs(ctx *EngineContext, node core.NodeInt
 	}
 }
 
+// collectOneTimeUseIdentifiers appends identifiers declared as OneTimeUse from inputs into set.
+func (fe *flowEngine) collectOneTimeUseIdentifiers(inputs []providers.Input, set map[string]struct{}) {
+	for _, input := range inputs {
+		if input.OneTimeUse {
+			set[input.Identifier] = struct{}{}
+		}
+	}
+}
+
+// clearOneTimeUseInputsScope removes identifiers from ctx.consumedInputs that are declared
+// OneTimeUse in scoped, deleting each matched identifier from ctx.UserInputs. Unmatched
+// entries are preserved in ctx.consumedInputs for a later scope to handle.
+func (fe *flowEngine) clearOneTimeUseInputsScope(ctx *EngineContext,
+	scoped map[string]struct{}) {
+	if len(ctx.consumedInputs) == 0 || len(scoped) == 0 {
+		return
+	}
+
+	remaining := ctx.consumedInputs[:0]
+	for _, id := range ctx.consumedInputs {
+		if _, ok := scoped[id]; ok {
+			delete(ctx.UserInputs, id)
+			continue
+		}
+		remaining = append(remaining, id)
+	}
+	ctx.consumedInputs = remaining
+}
+
+// clearNodePackageOneTimeUseInputs removes any consumed identifier declared OneTimeUse on the
+// node or on an applicable PRE_NODE/POST_NODE interceptor from ctx.UserInputs, and drops it
+// from the shared consumed list.
+func (fe *flowEngine) clearNodePackageOneTimeUseInputs(ctx *EngineContext, node core.NodeInterface) {
+	if len(ctx.consumedInputs) == 0 || node == nil {
+		return
+	}
+
+	scoped := make(map[string]struct{})
+	if execNode, ok := node.(core.ExecutorBackedNodeInterface); ok {
+		// Use the node's declared inputs when present, falling back to the executor's default
+		// inputs otherwise.
+		inputs := execNode.GetInputs()
+		if len(inputs) == 0 {
+			if executor := execNode.GetExecutor(); executor != nil {
+				inputs = executor.GetDefaultInputs()
+			}
+		}
+		fe.collectOneTimeUseIdentifiers(inputs, scoped)
+	}
+
+	if ctx.Graph != nil {
+		nodeID := node.GetID()
+		skipInterceptors := extractSkipInterceptors(node)
+		for _, mode := range []providers.InterceptorMode{
+			providers.InterceptorModePreNode,
+			providers.InterceptorModePostNode,
+		} {
+			for _, unit := range ctx.Graph.GetInterceptors(mode) {
+				if !shouldApplyToNode(unit, nodeID, skipInterceptors) {
+					continue
+				}
+				ic := unit.GetInterceptor()
+				if ic == nil {
+					continue
+				}
+				fe.collectOneTimeUseIdentifiers(ic.GetInputs(), scoped)
+			}
+		}
+	}
+
+	fe.clearOneTimeUseInputsScope(ctx, scoped)
+}
+
+// clearRequestPackageOneTimeUseInputs removes any remaining consumed identifier declared
+// OneTimeUse on a PRE_REQUEST/POST_REQUEST interceptor from ctx.UserInputs, then drains the
+// consumed list.
+func (fe *flowEngine) clearRequestPackageOneTimeUseInputs(ctx *EngineContext) {
+	if len(ctx.consumedInputs) == 0 {
+		return
+	}
+
+	if ctx.Graph != nil {
+		scoped := make(map[string]struct{})
+		for _, mode := range []providers.InterceptorMode{
+			providers.InterceptorModePreRequest,
+			providers.InterceptorModePostRequest,
+		} {
+			for _, unit := range ctx.Graph.GetInterceptors(mode) {
+				ic := unit.GetInterceptor()
+				if ic == nil {
+					continue
+				}
+				fe.collectOneTimeUseIdentifiers(ic.GetInputs(), scoped)
+			}
+		}
+		fe.clearOneTimeUseInputsScope(ctx, scoped)
+	}
+
+	// Drop anything left over. Non-OneTimeUse signals are ignored by design; leftover entries
+	// have no declared scope in this graph and would otherwise leak across requests.
+	ctx.consumedInputs = nil
+}
+
 // updateContextWithNodeResponse updates the engine context with the node response and authenticated user.
 func (fe *flowEngine) updateContextWithNodeResponse(engineCtx *EngineContext, nodeResp *common.NodeResponse) {
 	engineCtx.CurrentNodeResponse = nodeResp
@@ -642,6 +794,22 @@ func (fe *flowEngine) processNodeResponse(ctx *EngineContext, nodeResp *common.N
 	if nodeResp.Status == "" {
 		logger.Error(ctx.Context, "Node response status not found in the flow graph")
 		return nil, false, &tidcommon.InternalServerError
+	}
+
+	// Carry any SSO handle minted by this node onto the flow step so the transport layer can emit
+	// it. The Session node emits the handle on the engine-only EngineData channel (never returned to
+	// the client and off the engine contract). Stamped here (not only at completion) so it survives
+	// an immediately following prompt step that returns the flow as incomplete.
+	if handle := nodeResp.EngineData[common.RuntimeKeySSOSessionHandle]; handle != "" {
+		flowStep.SSOHandleOut = handle
+		flowStep.SSOFlowID = ssoFlowID(ctx)
+	}
+
+	// Carry a session-termination signal onto the flow step so the transport layer clears the
+	// per-flow cookie. The session sign-out node raises it on the engine-only EngineData channel once
+	// it has ended the session.
+	if cleared := nodeResp.EngineData[common.RuntimeKeySSOSessionCleared]; cleared != "" {
+		flowStep.SSOClearFlowID = ssoFlowID(ctx)
 	}
 
 	switch nodeResp.Status {
@@ -822,10 +990,9 @@ func (fe *flowEngine) handleCallResponse(ctx *EngineContext,
 	nodeResp *common.NodeResponse, logger *log.Logger) (
 	core.NodeInterface, *tidcommon.ServiceError) {
 	if ctx.frameDepth() >= maxCallDepth {
-		logger.Error(ctx.Context, "Maximum call depth exceeded",
-			log.String("callNodeID", ctx.CurrentNode.GetID()),
-			log.String("targetFlowID", nodeResp.CallTargetFlowID))
-		return nil, &tidcommon.InternalServerError
+		logger.Debug(ctx.Context, "Maximum call depth exceeded", log.Int("frameDepth", ctx.frameDepth()),
+			log.Int("maxCallDepth", maxCallDepth))
+		return nil, &ErrorMaxCallDepthExceeded
 	}
 
 	flow, svcErr := fe.flowProvider.GetFlow(ctx.Context, nodeResp.CallTargetFlowID)
@@ -1462,4 +1629,22 @@ func processNodeResponseErrorForEventPublish(nodeResp *common.NodeResponse) map[
 			"defaultValue": nodeResp.Error.ErrorDescription.DefaultValue,
 		},
 	}
+}
+
+// ssoFlowID returns the current flow's ID (used as the SSO group key), or "" if no graph
+// is set on the context.
+func ssoFlowID(ctx *EngineContext) string {
+	if ctx == nil {
+		return ""
+	}
+	// A sign-out flow operates on a different flow's session than the one it runs; SessionFlowID
+	// carries that flow (the login flow) so the inbound cookie, SSO inputs, and cookie clear all
+	// resolve under it. Other flows fall back to the running flow's own id.
+	if ctx.SessionFlowID != "" {
+		return ctx.SessionFlowID
+	}
+	if ctx.Graph == nil {
+		return ""
+	}
+	return ctx.Graph.GetID()
 }

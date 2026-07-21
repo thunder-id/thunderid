@@ -53,7 +53,7 @@ func (s *OAuthConfigTestSuite) TestFromServerRuntime() {
 			PublicURL:  "https://thunder.io",
 		},
 		Database: config.DatabaseConfig{
-			Runtime: config.DataSource{Type: "sqlite"},
+			RuntimeTransient: config.DataSource{Type: "sqlite"},
 		},
 		JWT: engineconfig.JWTConfig{
 			Issuer:         "https://thunder.io",
@@ -74,7 +74,7 @@ func (s *OAuthConfigTestSuite) TestFromServerRuntime() {
 	result := FromServerRuntime()
 
 	s.Equal("dep-1", result.DeploymentID)
-	s.Equal("sqlite", result.RuntimeDBType)
+	s.Equal("sqlite", result.RuntimeTransientDBType)
 	s.Equal("https://thunder.io", result.BaseURL)
 	s.Equal("https://thunder.io", result.JWT.Issuer)
 	s.Equal(int64(600), result.OAuth.PAR.ExpiresIn)

@@ -1,5 +1,6 @@
 ---
 title: APIM Gateways
+docType: concept
 sidebar_position: 0
 description: Protect your APIs at the gateway layer by validating JWTs issued by {{ProductName}}, enforcing scope-based authorization, or calling the AuthZEN policy decision point.
 ---
@@ -27,10 +28,10 @@ The JWT and scope-based authorization integrations follow the same pattern acros
 
 <STSIntegrationDiagram gatewayName="API Gateway" />
 
-- **Application obtains a token** — A client application authenticates with <ProductName /> using the [client credentials grant](/docs/next/guides/guides/protocols/oauth-oidc/client-credentials) and receives a signed JWT.
-- **Application calls the gateway** — The client sends the JWT as a `Bearer` token in the `Authorization` header.
-- **Gateway validates the token and enforces authorization** — The gateway fetches <ProductName />'s JWKS (cached after the first request) and cryptographically verifies the token's signature, issuer, and expiry. Optionally, the gateway checks that the token carries the required permission scopes. Tokens missing required scopes are rejected with `403 Forbidden`.
-- **Gateway forwards the request** — Valid, authorized requests are forwarded to the upstream service.
+- **Application obtains a token:** A client application authenticates with <ProductName /> using the [client credentials grant](../../../protocols/oauth-oidc/client-credentials) and receives a signed JWT.
+- **Application calls the gateway:** The client sends the JWT as a `Bearer` token in the `Authorization` header.
+- **Gateway validates the token and enforces authorization:** The gateway fetches <ProductName />'s JWKS (cached after the first request) and cryptographically verifies the token's signature, issuer, and expiry. Optionally, the gateway checks that the token carries the required permission scopes. Tokens missing required scopes are rejected with `403 Forbidden`.
+- **Gateway forwards the request:** Valid, authorized requests are forwarded to the upstream service.
 
 For AuthZEN PDP integrations, the gateway validates the token and requests an authorization decision from <ProductName />. The authorization request includes the subject, resource, action, and request context. <ProductName /> returns an allow or deny response before the upstream service receives the request.
 

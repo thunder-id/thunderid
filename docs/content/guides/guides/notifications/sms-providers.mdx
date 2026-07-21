@@ -1,17 +1,18 @@
 ---
 title: Configure an SMS Provider
+docType: guide
 description: Set up an SMS notification sender to deliver One-Time Passwords and other SMS messages in {{ProductName}}.
 ---
 
 # Configure an SMS Provider
 
-<ProductName /> sends SMS messages — such as One-Time Passwords (OTPs) — through a notification sender. A notification sender connects <ProductName /> to a messaging provider that delivers SMS to end users.
+<ProductName /> sends SMS messages, such as One-Time Passwords (OTPs), through a notification sender. A notification sender connects <ProductName /> to a messaging provider that delivers SMS to end users.
 
 Three messaging providers are supported:
 
-- **Twilio** — requires an Account SID, Auth Token, and Sender ID
-- **Vonage** — requires an API Key, API Secret, and Sender ID
-- **Custom** — connects to any SMS gateway via an HTTP webhook
+- **Twilio**: requires an Account SID, Auth Token, and Sender ID
+- **Vonage**: requires an API Key, API Secret, and Sender ID
+- **Custom**: connects to any SMS gateway via an HTTP webhook
 
 ## Prerequisites
 
@@ -24,128 +25,105 @@ Three messaging providers are supported:
 
 1. Log in to [Twilio](https://www.twilio.com) and retrieve your **Account SID**, **Auth Token**, and the phone number or messaging service SID to use as the sender.
 
-2. Send a `POST` request to the notification sender API:
+2. Send a `POST` request to the Twilio connection API:
 
 ```bash
-curl -X POST https://localhost:8090/notification-senders/message \
+curl -X POST https://localhost:8090/connections/twilio \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <access_token>" \
   -d '{
     "name": "TwilioSMSSender",
-    "provider": "twilio",
     "description": "Twilio SMS provider for OTP delivery",
-    "properties": [
-      { "name": "account_sid", "value": "<your-account-sid>",  "isSecret": false },
-      { "name": "auth_token",  "value": "<your-auth-token>",   "isSecret": true  },
-      { "name": "sender_id",   "value": "<your-phone-number>", "isSecret": false },
-      { "name": "supported_channels", "value": "sms",          "isSecret": false }
-    ]
+    "accountSid": "<your-account-sid>",
+    "authToken": "<your-auth-token>",
+    "senderId": "<your-phone-number>"
   }'
 ```
 
-#### Twilio Properties
+#### Twilio Fields
 
-| Property | Required | Secret | Description |
+| Field | Required | Secret | Description |
 | :--- | :---: | :---: | :--- |
-| `account_sid` | ✅ | ❌ | Twilio Account SID. Must start with `AC`. |
-| `auth_token` | ✅ | ✅ | Twilio Auth Token used to authenticate API requests. |
-| `sender_id` | ✅ | ❌ | The Twilio phone number or messaging service SID used as the sender. |
-| `supported_channels` | ❌ | ❌ | The communication channels supported by this sender. Defaults to `sms`. |
-
----
+| `accountSid` | ✅ | ❌ | Twilio Account SID. Must start with `AC`. |
+| `authToken` | ✅ | ✅ | Twilio Auth Token used to authenticate API requests. |
+| `senderId` | ✅ | ❌ | The Twilio phone number or messaging service SID used as the sender. |
 
 ### Vonage
 
 1. Log in to the [Vonage API Dashboard](https://dashboard.nexmo.com) and retrieve your **API Key**, **API Secret**, and sender name or virtual number.
 
-2. Send a `POST` request to the notification sender API:
+2. Send a `POST` request to the Vonage connection API:
 
 ```bash
-curl -X POST https://localhost:8090/notification-senders/message \
+curl -X POST https://localhost:8090/connections/vonage \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <access_token>" \
   -d '{
     "name": "VonageSMSSender",
-    "provider": "vonage",
     "description": "Vonage SMS provider for OTP delivery",
-    "properties": [
-      { "name": "api_key",    "value": "<your-api-key>",    "isSecret": false },
-      { "name": "api_secret", "value": "<your-api-secret>", "isSecret": true  },
-      { "name": "sender_id",  "value": "<your-sender-name>","isSecret": false },
-      { "name": "supported_channels", "value": "sms",       "isSecret": false }
-    ]
+    "apiKey": "<your-api-key>",
+    "apiSecret": "<your-api-secret>",
+    "senderId": "<your-sender-name>"
   }'
 ```
 
-#### Vonage Properties
+#### Vonage Fields
 
-| Property | Required | Secret | Description |
+| Field | Required | Secret | Description |
 | :--- | :---: | :---: | :--- |
-| `api_key` | ✅ | ❌ | Vonage API Key from the API Dashboard. |
-| `api_secret` | ✅ | ✅ | Vonage API Secret used to authenticate API requests. |
-| `sender_id` | ✅ | ❌ | Sender name or virtual number displayed to recipients. |
-| `supported_channels` | ❌ | ❌ | The communication channels supported by this sender. Defaults to `sms`. |
+| `apiKey` | ✅ | ❌ | Vonage API Key from the API Dashboard. |
+| `apiSecret` | ✅ | ✅ | Vonage API Secret used to authenticate API requests. |
+| `senderId` | ✅ | ❌ | Sender name or virtual number displayed to recipients. |
 
 :::note
 Vonage requires the recipient phone number in E.164 format without a leading `+` or `00`. <ProductName /> strips these prefixes automatically before sending.
 :::
 
----
-
 ### Custom Provider
 
-Use the custom provider to connect <ProductName /> to any SMS gateway that accepts HTTP requests.
+Use the `sms-gateway` connection to connect <ProductName /> to any SMS gateway that accepts HTTP requests.
 
 ```bash
-curl -X POST https://localhost:8090/notification-senders/message \
+curl -X POST https://localhost:8090/connections/sms-gateway \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <access_token>" \
   -d '{
     "name": "CustomSMSSender",
-    "provider": "custom",
     "description": "Custom HTTP webhook for SMS delivery",
-    "properties": [
-      { "name": "url",          "value": "https://sms.example.com/send", "isSecret": false },
-      { "name": "http_method",  "value": "POST",                          "isSecret": false },
-      { "name": "content_type", "value": "JSON",                          "isSecret": false },
-      { "name": "http_headers", "value": "X-API-Key: <key>",              "isSecret": true  },
-      { "name": "supported_channels", "value": "sms",                     "isSecret": false }
-    ]
+    "url": "https://sms.example.com/send",
+    "httpMethod": "POST",
+    "contentType": "JSON",
+    "httpHeaders": "X-API-Key: <key>"
   }'
 ```
 
-#### Custom Provider Properties
+#### SMS Gateway Fields
 
-| Property | Required | Secret | Description |
+| Field | Required | Secret | Description |
 | :--- | :---: | :---: | :--- |
 | `url` | ✅ | ❌ | Full URL of the SMS gateway endpoint. |
-| `http_method` | ✅ | ❌ | HTTP method to use. Supported values: `POST`, `PUT`. |
-| `content_type` | ✅ | ❌ | Request body format. Supported values: `JSON`, `FORM`. |
-| `http_headers` | ❌ | ✅ | Comma-separated list of additional HTTP headers in `Key: Value` format. |
-| `supported_channels` | ❌ | ❌ | The communication channels supported by this sender. Defaults to `sms`. |
+| `httpMethod` | ❌ | ❌ | HTTP method to use. Supported values: `GET`, `POST`. |
+| `contentType` | ❌ | ❌ | Request body format. Supported values: `JSON`, `FORM`. |
+| `httpHeaders` | ❌ | ❌ | Comma-separated list of additional HTTP headers in `Key: Value` format. |
 
 ## Update an SMS Provider
 
-To update an existing sender, send a `PUT` request with the sender's ID:
+To update an existing sender, send a `PUT` request to `/connections/{vendor}/{id}` with the sender's ID:
 
 ```bash
-curl -X PUT https://localhost:8090/notification-senders/message/<sender-id> \
+curl -X PUT https://localhost:8090/connections/twilio/<sender-id> \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <access_token>" \
   -d '{
     "name": "TwilioSMSSender",
-    "provider": "twilio",
-    "properties": [
-      { "name": "account_sid", "value": "<your-account-sid>",  "isSecret": false },
-      { "name": "auth_token",  "value": "<new-auth-token>",    "isSecret": true  },
-      { "name": "sender_id",   "value": "<your-phone-number>", "isSecret": false },
-      { "name": "supported_channels", "value": "sms",          "isSecret": false }
-    ]
+    "accountSid": "<your-account-sid>",
+    "authToken": "<new-auth-token>",
+    "senderId": "<your-phone-number>"
   }'
 ```
 
 :::note
-A notification sender's `provider` cannot be changed after creation. To switch providers, delete the existing sender and create a new one.
+A connection's vendor cannot be changed after creation. To switch providers, delete the existing connection and create a new one under the new vendor's path.
 :::
 
 ## List and Remove SMS Providers
@@ -153,17 +131,17 @@ A notification sender's `provider` cannot be changed after creation. To switch p
 **List all SMS providers:**
 
 ```bash
-curl https://localhost:8090/notification-senders/message \
+curl https://localhost:8090/connections?category=sms-provider \
   -H "Authorization: Bearer <access_token>"
 ```
 
 **Delete an SMS provider:**
 
 ```bash
-curl -X DELETE https://localhost:8090/notification-senders/message/<sender-id> \
+curl -X DELETE https://localhost:8090/connections/twilio/<sender-id> \
   -H "Authorization: Bearer <access_token>"
 ```
 
 ## Next Steps
 
-- [Build a Flow](../../flows/build-a-flow) — Add an SMS OTP step to a sign-in or registration flow
+- [Build a Flow](../../flows/build-a-flow): Add an SMS OTP step to a sign-in or registration flow

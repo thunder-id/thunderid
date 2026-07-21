@@ -48,7 +48,7 @@ vi.mock('@wso2/oxygen-ui', () => ({
 }));
 
 vi.mock('@wso2/oxygen-ui-icons-react', () => ({
-  Settings: () => <span data-testid="settings-icon" />,
+  CogIcon: () => <span data-testid="settings-icon" />,
 }));
 
 const mockCloseValidationCallback = vi.fn();

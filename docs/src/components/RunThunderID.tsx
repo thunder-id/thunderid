@@ -86,8 +86,14 @@ function CopyButton({text}: {text: string}): React.ReactElement {
   );
 }
 
-export default function RunThunderID(): React.ReactElement {
-  const [activeTab, setActiveTab] = useState<TabId>('cli');
+interface RunThunderIDProps {
+  tabs?: TabId[];
+  defaultTab?: TabId;
+}
+
+export default function RunThunderID({tabs, defaultTab}: RunThunderIDProps = {}): React.ReactElement {
+  const visibleTabs = tabs ? TABS.filter(({id}) => tabs.includes(id)) : TABS;
+  const [activeTab, setActiveTab] = useState<TabId>(defaultTab ?? visibleTabs[0]?.id ?? 'cli');
   const theme = useTheme();
   const {command, hint, shell} = CONTENT[activeTab];
 
@@ -119,7 +125,7 @@ export default function RunThunderID(): React.ReactElement {
           '[data-theme="light"] &': {bgcolor: 'rgba(0,0,0,0.02)'},
         }}
       >
-        {TABS.map(({id, label, icon}) => {
+        {visibleTabs.map(({id, label, icon}) => {
           const isActive = activeTab === id;
           return (
             <Box

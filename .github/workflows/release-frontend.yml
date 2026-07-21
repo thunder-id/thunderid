@@ -53,7 +53,7 @@ env:
 jobs:
   validate:
     name: ✅ Validate Inputs
-    if: github.event_name == 'workflow_dispatch'
+    if: github.repository == 'thunder-id/thunderid' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Guard against accidental major bump
@@ -69,6 +69,7 @@ jobs:
     needs: [validate]
     if: |
       always() &&
+      github.repository == 'thunder-id/thunderid' &&
       (needs.validate.result == 'success' || needs.validate.result == 'skipped') &&
       ((github.event_name == 'workflow_dispatch' && github.event.inputs.prettier_config == 'true') ||
        (github.event_name == 'push' && github.event.head_commit.author.name != 'thunderid-automation-bot'))
@@ -97,6 +98,7 @@ jobs:
     needs: [validate, release-prettier-config]
     if: |
       always() &&
+      github.repository == 'thunder-id/thunderid' &&
       (needs.validate.result == 'success' || needs.validate.result == 'skipped') &&
       (needs.release-prettier-config.result == 'success' || needs.release-prettier-config.result == 'skipped') &&
       ((github.event_name == 'workflow_dispatch' && github.event.inputs.eslint_plugin == 'true') ||

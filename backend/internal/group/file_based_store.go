@@ -425,6 +425,13 @@ func (f *fileBasedGroupStore) RemoveGroupMembers(ctx context.Context, groupID st
 	return errors.New("RemoveGroupMembers is not supported in file-based store")
 }
 
+// DeleteMembershipsByMember is a no-op for the file-based store: declarative groups hold no mutable
+// runtime memberships to cascade-delete, so there is nothing to remove.
+func (f *fileBasedGroupStore) DeleteMembershipsByMember(
+	_ context.Context, _, _ string) (int64, error) {
+	return 0, nil
+}
+
 // GetGroupsByIDs returns groups matching any of the given IDs.
 func (f *fileBasedGroupStore) GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]GroupBasicDAO, error) {
 	if len(groupIDs) == 0 {

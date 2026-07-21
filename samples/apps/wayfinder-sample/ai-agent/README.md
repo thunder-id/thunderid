@@ -8,7 +8,7 @@ See the parent README for end-to-end setup. Configure with `.env.example` in thi
 
 ```bash
 npm install
-npm start
+npm run dev
 ```
 
 Endpoints:

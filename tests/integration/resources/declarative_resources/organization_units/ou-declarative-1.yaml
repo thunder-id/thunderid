@@ -1,3 +1,4 @@
+resource_type: organization_unit
 id: decl-ou-1
 handle: decl-ou-1
 name: Declarative Test OU

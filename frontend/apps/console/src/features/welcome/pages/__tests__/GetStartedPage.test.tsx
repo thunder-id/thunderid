@@ -145,14 +145,14 @@ describe('GetStartedPage', () => {
     expect(screen.getByText('common:welcome.getStarted.actions.skipToConsole')).toBeInTheDocument();
   });
 
-  it('navigates to /welcome/get-started/applications/create on onboard app click', async () => {
+  it('navigates to /welcome/get-started/applications/types on onboard app click', async () => {
     const user = userEvent.setup();
     render(<GetStartedPage />);
 
     const actionButton = screen.getByText('common:welcome.getStarted.options.onboardApp.action');
     await user.click(actionButton);
 
-    expect(mockNavigate).toHaveBeenCalledWith('/welcome/get-started/applications/create');
+    expect(mockNavigate).toHaveBeenCalledWith('/welcome/get-started/applications/types');
   });
 
   it('navigates to /home and sets session storage on skip', async () => {

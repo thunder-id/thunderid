@@ -32,17 +32,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
-	testServerURL = "https://localhost:8095"
-	clientID      = "userinfo_test_client_123"
-	clientSecret  = "userinfo_test_secret_123"
-	appName       = "UserInfoTestApp"
-	redirectURI   = "https://localhost:3000"
+	testServerURL                           = "https://localhost:8095"
+	clientID                                = "userinfo_test_client_123"
+	clientSecret                            = "userinfo_test_secret_123"
+	appName                                 = "UserInfoTestApp"
+	redirectURI                             = "https://localhost:3000"
+	userInfoDefaultResourceServerIdentifier = "https://userinfo-default.example.com"
 )
 
 var (
@@ -71,12 +72,13 @@ var (
 
 type UserInfoTestSuite struct {
 	suite.Suite
-	flowID        string
-	applicationID string
-	entityTypeID  string
-	userID        string
-	client        *http.Client
-	ouID          string
+	flowID           string
+	applicationID    string
+	entityTypeID     string
+	userID           string
+	client           *http.Client
+	ouID             string
+	resourceServerID string
 }
 
 func TestUserInfoTestSuite(t *testing.T) {
@@ -106,6 +108,15 @@ func (ts *UserInfoTestSuite) SetupSuite() {
 	// Create test user
 	ts.userID = ts.createTestUser()
 
+	resourceServerID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:        "UserInfo Default Resource Server",
+		Description: "Resource server for userinfo integration tests",
+		Identifier:  userInfoDefaultResourceServerIdentifier,
+		OUID:        ts.ouID,
+	}, []testutils.Action{})
+	ts.Require().NoError(err, "Failed to create resource server")
+	ts.resourceServerID = resourceServerID
+
 	// Create authentication flow
 	ts.flowID = ts.createTestAuthenticationFlow()
 
@@ -117,6 +128,11 @@ func (ts *UserInfoTestSuite) TearDownSuite() {
 	// Clean up application
 	if ts.applicationID != "" {
 		ts.deleteApplication(ts.applicationID)
+	}
+	if ts.resourceServerID != "" {
+		if err := testutils.DeleteResourceServer(ts.resourceServerID); err != nil {
+			ts.T().Logf("Failed to delete resource server: %v", err)
+		}
 	}
 
 	// Clean up authentication flow
@@ -334,7 +350,13 @@ func (ts *UserInfoTestSuite) deleteApplication(appID string) {
 
 // getClientCredentialsToken gets an access token using client_credentials grant
 func (ts *UserInfoTestSuite) getClientCredentialsToken(scope string) (string, error) {
-	reqBody := strings.NewReader(fmt.Sprintf("grant_type=client_credentials&scope=%s", scope))
+	tokenData := url.Values{}
+	tokenData.Set("grant_type", "client_credentials")
+	tokenData.Set("resource", userInfoDefaultResourceServerIdentifier)
+	if scope != "" {
+		tokenData.Set("scope", scope)
+	}
+	reqBody := strings.NewReader(tokenData.Encode())
 	req, err := http.NewRequest("POST", testServerURL+"/oauth2/token", reqBody)
 	if err != nil {
 		return "", err
@@ -419,7 +441,8 @@ func (ts *UserInfoTestSuite) getAuthorizationCodeToken(scope string) (string, er
 	}
 
 	// Step 7: Exchange code for token
-	tokenResult, err := testutils.RequestToken(clientID, clientSecret, code, redirectURI, "authorization_code")
+	tokenResult, err := testutils.RequestTokenWithResource(clientID, clientSecret, code, redirectURI,
+		"authorization_code", userInfoDefaultResourceServerIdentifier)
 	if err != nil {
 		return "", fmt.Errorf("failed to request token: %w", err)
 	}
@@ -489,7 +512,8 @@ func (ts *UserInfoTestSuite) getRefreshToken(scope string) (string, error) {
 	}
 
 	// Step 7: Exchange code for token (this should include refresh_token)
-	tokenResult, err := testutils.RequestToken(clientID, clientSecret, code, redirectURI, "authorization_code")
+	tokenResult, err := testutils.RequestTokenWithResource(clientID, clientSecret, code, redirectURI,
+		"authorization_code", userInfoDefaultResourceServerIdentifier)
 	if err != nil {
 		return "", fmt.Errorf("failed to request token: %w", err)
 	}
@@ -554,6 +578,7 @@ func (ts *UserInfoTestSuite) getTokenExchangeToken(scope string) (string, error)
 	tokenData.Set("subject_token", subjectToken)
 	tokenData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:access_token")
 	tokenData.Set("scope", scope)
+	tokenData.Set("resource", userInfoDefaultResourceServerIdentifier)
 
 	req, err := http.NewRequest("POST", testServerURL+"/oauth2/token", bytes.NewBufferString(tokenData.Encode()))
 	if err != nil {
@@ -992,7 +1017,8 @@ func (ts *UserInfoTestSuite) getAuthorizationCodeTokenWithClient(scope, cID, cSe
 	}
 
 	// 7. Exchange
-	tokenResult, err := testutils.RequestToken(cID, cSecret, code, redirectURI, "authorization_code")
+	tokenResult, err := testutils.RequestTokenWithResource(cID, cSecret, code, redirectURI,
+		"authorization_code", userInfoDefaultResourceServerIdentifier)
 	if err != nil {
 		return "", err
 	}

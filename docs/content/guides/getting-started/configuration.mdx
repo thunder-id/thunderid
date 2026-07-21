@@ -1,5 +1,7 @@
 ---
 title: Configuration
+docType: reference
+description: Configure server, storage, security, observability, and runtime settings for {{ProductName}} deployments.
 sidebar_position: 3
 ---
 
@@ -11,8 +13,8 @@ sidebar_position: 3
 
 <ProductName /> uses a two-tier configuration system:
 
-1. **Default Configuration** — Provides sensible defaults for all settings. These are built into <ProductName />.
-2. **Deployment Configuration** — Located at `deployment.yaml` in your <ProductName /> installation directory. This file overrides specific defaults for your deployment.
+1. **Default Configuration**. Provides sensible defaults for all settings. These are built into <ProductName />.
+2. **Deployment Configuration**. Located at `deployment.yaml` in your <ProductName /> installation directory. This file overrides specific defaults for your deployment.
 
 :::note
 Only settings you want to override need to be specified in `deployment.yaml`. All other values will use the built-in defaults.
@@ -31,17 +33,20 @@ Controls the <ProductName /> server's network settings and identity.
 | `server.hostname` | `localhost` | The hostname or IP address the server binds to |
 | `server.port` | `8090` | Port the server listens on |
 | `server.http_only` | `false` | If `true`, disables HTTPS and uses HTTP only (not recommended for production) |
+| `server.public_url` | _(derived from server hostname, port and protocol)_ | The public URL clients use to reach the server, if it differs from the bind address. Derived when unset. |
 | `server.identifier` | `default-deployment` | Unique identifier for this deployment instance |
+
+When `server.public_url` is set, the `gate_client` settings below default to the corresponding hostname, port, and protocol from that URL. Most deployments only need to configure the server section.
 
 ## Gate Client Configuration
 
-Configures the connection to <ProductName /> Gate (the login UI).
+Configures the connection to <ProductName /> Gate (the login UI). Every setting is optional. By default, the `gate_client` settings are derived from `server.public_url`, so you only need to configure this section when Gate is hosted separately from the server.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `gate_client.hostname` | `localhost` | The hostname where <ProductName /> Gate is hosted |
-| `gate_client.port` | `8090` | Port where <ProductName /> Gate is accessible |
-| `gate_client.scheme` | `https` | Protocol scheme (`http` or `https`) |
+| `gate_client.hostname` | _(server's hostname)_ | The hostname where <ProductName /> Gate is hosted |
+| `gate_client.port` | _(server's port)_ | Port where <ProductName /> Gate is accessible |
+| `gate_client.scheme` | _(server's scheme)_ | Protocol scheme (`http` or `https`) |
 | `gate_client.path` | `/gate` | Base path for <ProductName /> Gate |
 
 ## TLS Configuration
@@ -55,12 +60,12 @@ Controls HTTPS/TLS settings for secure communication.
 | `tls.key_file` | `config/certs/server.key` | Path to TLS private key file |
 
 :::warning Self-Signed Certificate
-<ProductName /> ships with a self-signed certificate for local development at `config/certs/server.cert`. For production, replace it with a certificate from a trusted Certificate Authority.
+For quickstart and development, <ProductName /> generates a self-signed certificate at `config/certs/server.cert` during setup. For production, replace it with a certificate from a trusted Certificate Authority.
 :::
 
 ## Logging Configuration
 
-Controls the verbosity of server logs.
+Controls the verbosity and destination of server logs.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -73,9 +78,59 @@ log:
 
 If `log.level` is omitted, <ProductName /> defaults to `info`. An unrecognized value causes the server to exit at startup.
 
+### Log Output
+
+By default <ProductName /> writes logs to the console (stdout) only. You can additionally, or instead, write them to a file. Console and file are independent outputs: enable either, both, or neither (with neither enabled, <ProductName /> falls back to the console so logs are never silently lost).
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `log.output.console.enabled` | `true` | Write logs to stdout |
+| `log.output.file.enabled` | `false` | Write logs to a file |
+| `log.output.file.path` | `logs` | Directory for the log file. A relative path resolves under the <ProductName /> home directory; an absolute path is used as-is |
+| `log.output.file.file_name` | `thunderid.log` | Name of the active log file |
+| `log.output.file.format` | `text` | Log line format: `text` or `json` |
+| `log.output.file.rotation.size.enabled` | `false` | Roll the file over once it reaches `max_size_mb` |
+| `log.output.file.rotation.size.max_size_mb` | `10` | Size (in MB, fractional values allowed, e.g. `0.5`) at which the file is rotated |
+| `log.output.file.rotation.time.enabled` | `false` | Roll the file over on a time schedule |
+| `log.output.file.rotation.time.interval_days` | `1` | Roll the file over every N days at local midnight |
+| `log.output.file.rotation.max_backups` | `0` | Maximum number of rotated files to keep (`0` keeps all) |
+| `log.output.file.rotation.max_age_days` | `0` | Delete rotated files older than this many days (`0` disables age-based deletion) |
+| `log.output.file.rotation.compress` | `false` | Gzip-compress rotated files |
+
+```yaml
+log:
+  level: "info"
+  output:
+    console:
+      enabled: true
+    file:
+      enabled: true
+      path: "logs"
+      file_name: "thunderid.log"
+      format: "text"
+      rotation:
+        size:
+          enabled: true
+          max_size_mb: 10
+        time:
+          enabled: false
+          interval_days: 1
+        max_backups: 20
+        max_age_days: 0
+        compress: false
+```
+
+With the configuration above, logs are written to `<THUNDER_HOME>/logs/thunderid.log`. When the active file reaches the configured size limit, it is renamed with a timestamp suffix (for example `thunderid.log.2026-07-06-14-30-00`) and a fresh file is started. Older rotated files are then pruned by the configured backup count and age limit.
+
+Size and time triggers are independent and can run together: with both enabled, the file rolls whenever it exceeds the size limit **or** reaches the next time interval, whichever comes first. Time-based rotation rolls at local midnight and skips days with no log output (so idle days do not create empty files).
+
+:::note
+This is the <ProductName /> **application log** (the `INFO`/`WARN`/`ERROR` lines the server emits). It is separate from the observability event file sink described in the [Observability](../../deployment-patterns/observability) guide, which records structured domain events such as token issuance and flow execution.
+:::
+
 ## Database Configuration
 
-<ProductName /> uses three separate databases for different purposes. Each database can be configured independently.
+<ProductName /> uses four separate databases for different purposes. Each database can be configured independently.
 
 Connection parameters are grouped under a type-specific sub-key (`postgres`, `sqlite`, or `redis`). Only `type` is a top-level field; all other settings belong under the matching sub-key.
 
@@ -87,7 +142,7 @@ Stores identity provider configurations, applications, and authentication flows.
 |---------|---------|-------------|
 | `database.config.type` | `sqlite` | Database type (`sqlite` or `postgres`) |
 
-**`database.config.postgres.*`** — only read when `database.config.type: postgres`:
+**`database.config.postgres.*`** is only read when `database.config.type: postgres`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -104,7 +159,7 @@ Stores identity provider configurations, applications, and authentication flows.
 | `database.config.postgres.min_retry_backoff_ms` | `50` | Minimum delay before retrying in milliseconds |
 | `database.config.postgres.max_retry_backoff_ms` | `2000` | Maximum delay before retrying in milliseconds |
 
-**`database.config.sqlite.*`** — only read when `database.config.type: sqlite`:
+**`database.config.sqlite.*`** is only read when `database.config.type: sqlite`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -117,67 +172,67 @@ Stores identity provider configurations, applications, and authentication flows.
 | `database.config.sqlite.min_retry_backoff_ms` | `50` | Minimum delay before retrying in milliseconds |
 | `database.config.sqlite.max_retry_backoff_ms` | `2000` | Maximum delay before retrying in milliseconds |
 
-### Runtime Database
+### Runtime-transient Database
 
-Stores runtime data like sessions, tokens, and temporary data. The runtime database supports three backend types: `sqlite`, `postgres`, and `redis`.
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `database.runtime.type` | `sqlite` | Database type (`sqlite`, `postgres`, or `redis`) |
-
-**`database.runtime.postgres.*`** — only read when `database.runtime.type: postgres`:
+Stores short-lived runtime data such as authorization codes, authorization requests, PAR requests, and nonces. The runtime-transient database supports three backend types: `sqlite`, `postgres`, and `redis`.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `database.runtime.postgres.hostname` | `""` | Database server hostname |
-| `database.runtime.postgres.port` | `0` | Database server port |
-| `database.runtime.postgres.name` | `""` | Database name |
-| `database.runtime.postgres.username` | `""` | Database username |
-| `database.runtime.postgres.password` | `""` | Database password |
-| `database.runtime.postgres.sslmode` | `""` | SSL mode (`disable`, `require`, `verify-ca`, `verify-full`) |
-| `database.runtime.postgres.max_open_conns` | `500` | Maximum number of open connections |
-| `database.runtime.postgres.max_idle_conns` | `100` | Maximum number of idle connections |
-| `database.runtime.postgres.conn_max_lifetime` | `3600` | Maximum connection lifetime in seconds |
-| `database.runtime.postgres.max_retries` | `3` | Maximum retry attempts for transient errors |
-| `database.runtime.postgres.min_retry_backoff_ms` | `50` | Minimum delay before retrying in milliseconds |
-| `database.runtime.postgres.max_retry_backoff_ms` | `2000` | Maximum delay before retrying in milliseconds |
+| `database.runtime_transient.type` | `sqlite` | Database type (`sqlite`, `postgres`, or `redis`) |
 
-**`database.runtime.sqlite.*`** — only read when `database.runtime.type: sqlite`:
+**`database.runtime_transient.postgres.*`** is only read when `database.runtime_transient.type: postgres`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `database.runtime.sqlite.path` | `database/runtimedb.db` | SQLite database file path |
-| `database.runtime.sqlite.options` | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` | SQLite connection options |
-| `database.runtime.sqlite.max_open_conns` | `500` | Maximum number of open connections |
-| `database.runtime.sqlite.max_idle_conns` | `100` | Maximum number of idle connections |
-| `database.runtime.sqlite.conn_max_lifetime` | `3600` | Maximum connection lifetime in seconds |
-| `database.runtime.sqlite.max_retries` | `3` | Maximum retry attempts for transient errors |
-| `database.runtime.sqlite.min_retry_backoff_ms` | `50` | Minimum delay before retrying in milliseconds |
-| `database.runtime.sqlite.max_retry_backoff_ms` | `2000` | Maximum delay before retrying in milliseconds |
+| `database.runtime_transient.postgres.hostname` | `""` | Database server hostname |
+| `database.runtime_transient.postgres.port` | `0` | Database server port |
+| `database.runtime_transient.postgres.name` | `""` | Database name |
+| `database.runtime_transient.postgres.username` | `""` | Database username |
+| `database.runtime_transient.postgres.password` | `""` | Database password |
+| `database.runtime_transient.postgres.sslmode` | `""` | SSL mode (`disable`, `require`, `verify-ca`, `verify-full`) |
+| `database.runtime_transient.postgres.max_open_conns` | `500` | Maximum number of open connections |
+| `database.runtime_transient.postgres.max_idle_conns` | `100` | Maximum number of idle connections |
+| `database.runtime_transient.postgres.conn_max_lifetime` | `3600` | Maximum connection lifetime in seconds |
+| `database.runtime_transient.postgres.max_retries` | `3` | Maximum retry attempts for transient errors |
+| `database.runtime_transient.postgres.min_retry_backoff_ms` | `50` | Minimum delay before retrying in milliseconds |
+| `database.runtime_transient.postgres.max_retry_backoff_ms` | `2000` | Maximum delay before retrying in milliseconds |
 
-**`database.runtime.redis.*`** — only read when `database.runtime.type: redis`:
+**`database.runtime_transient.sqlite.*`** is only read when `database.runtime_transient.type: sqlite`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `database.runtime.redis.address` | `""` | Redis server address in `host:port` format, for example `localhost:6379` |
-| `database.runtime.redis.username` | `""` | Redis ACL username — leave empty if ACLs are not configured |
-| `database.runtime.redis.password` | `""` | Redis password or ACL user password |
-| `database.runtime.redis.db` | `0` | Redis logical database index (0–15) |
-| `database.runtime.redis.key_prefix` | `""` | Prefix applied to all Redis keys written by <ProductName />, for example `{{productSlug}}:` |
-| `database.runtime.redis.max_retries` | `5` | Maximum retry attempts for transient Redis network and timeout issues |
-| `database.runtime.redis.min_retry_backoff_ms` | `10` | Minimum delay before Redis retries in milliseconds |
-| `database.runtime.redis.max_retry_backoff_ms` | `100` | Maximum delay before Redis retries in milliseconds |
-| `database.runtime.redis.dial_timeout_ms` | `5000` | Redis connection (dial) timeout in milliseconds |
-| `database.runtime.redis.read_timeout_ms` | `3000` | Redis read timeout in milliseconds |
-| `database.runtime.redis.write_timeout_ms` | `3000` | Redis write timeout in milliseconds |
+| `database.runtime_transient.sqlite.path` | `database/runtime-transient.db` | SQLite database file path |
+| `database.runtime_transient.sqlite.options` | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` | SQLite connection options |
+| `database.runtime_transient.sqlite.max_open_conns` | `500` | Maximum number of open connections |
+| `database.runtime_transient.sqlite.max_idle_conns` | `100` | Maximum number of idle connections |
+| `database.runtime_transient.sqlite.conn_max_lifetime` | `3600` | Maximum connection lifetime in seconds |
+| `database.runtime_transient.sqlite.max_retries` | `3` | Maximum retry attempts for transient errors |
+| `database.runtime_transient.sqlite.min_retry_backoff_ms` | `50` | Minimum delay before retrying in milliseconds |
+| `database.runtime_transient.sqlite.max_retry_backoff_ms` | `2000` | Maximum delay before retrying in milliseconds |
+
+**`database.runtime_transient.redis.*`** is only read when `database.runtime_transient.type: redis`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `database.runtime_transient.redis.address` | `""` | Redis server address in `host:port` format, for example `localhost:6379` |
+| `database.runtime_transient.redis.username` | `""` | Redis ACL username. Leave empty if ACLs are not configured |
+| `database.runtime_transient.redis.password` | `""` | Redis password or ACL user password |
+| `database.runtime_transient.redis.db` | `0` | Redis logical database index (0 to 15) |
+| `database.runtime_transient.redis.key_prefix` | `""` | Prefix applied to all Redis keys written by <ProductName />, for example `{{productSlug}}:` |
+| `database.runtime_transient.redis.max_retries` | `5` | Maximum retry attempts for transient Redis network and timeout issues |
+| `database.runtime_transient.redis.min_retry_backoff_ms` | `10` | Minimum delay before Redis retries in milliseconds |
+| `database.runtime_transient.redis.max_retry_backoff_ms` | `100` | Maximum delay before Redis retries in milliseconds |
+| `database.runtime_transient.redis.dial_timeout_ms` | `5000` | Redis connection (dial) timeout in milliseconds |
+| `database.runtime_transient.redis.read_timeout_ms` | `3000` | Redis read timeout in milliseconds |
+| `database.runtime_transient.redis.write_timeout_ms` | `3000` | Redis write timeout in milliseconds |
 
 #### Redis Connection Requirements
 
 - <ProductName /> requires Redis 6.0 or later.
 - <ProductName /> connects to a single Redis node. Cluster mode and Sentinel mode are not currently supported.
 - The default Redis port is `6379`. Ensure the port is reachable from the <ProductName /> server.
-- <ProductName /> does not enforce TLS at the client configuration level. To encrypt traffic, place a TLS-terminating proxy in front of Redis and point `database.runtime.redis.address` at the proxy endpoint.
-- If your Redis deployment uses Access Control Lists (ACLs), create a dedicated user and grant the following commands: `GET`, `SET`, `DEL`, `EXPIRE`, `EVAL`, `EVALSHA`. Set `database.runtime.redis.username` and `database.runtime.redis.password` accordingly.
+- <ProductName /> does not enforce TLS at the client configuration level. To encrypt traffic, place a TLS-terminating proxy in front of Redis and point `database.runtime_transient.redis.address` at the proxy endpoint.
+- If your Redis deployment uses Access Control Lists (ACLs), create a dedicated user and grant the following commands: `GET`, `SET`, `DEL`, `EXPIRE`, `EVAL`, `EVALSHA`. Set `database.runtime_transient.redis.username` and `database.runtime_transient.redis.password` accordingly.
 - <ProductName /> calls `PING` at startup to verify connectivity. The process terminates if the Redis server is unreachable.
 
 #### Database Retry Behavior
@@ -189,43 +244,81 @@ Stores runtime data like sessions, tokens, and temporary data. The runtime datab
 - Write operations executed via `Execute` are not retried automatically to avoid accidental duplicate writes. If your write path is explicitly idempotent, add idempotency at the business layer (for example with deterministic IDs or upsert semantics).
 - Retry metrics are emitted through OpenTelemetry metric instruments (`{{productSlug}}_db_retry_attempts_total`, `{{productSlug}}_db_retry_backoff_seconds`, `{{productSlug}}_db_operation_seconds`), which can be exported to Prometheus via your OpenTelemetry collector pipeline.
 
-### User Database
+### Entity Database
 
 Stores user profiles and credentials.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `database.user.type` | `sqlite` | Database type (`sqlite` or `postgres`) |
+| `database.entity.type` | `sqlite` | Database type (`sqlite` or `postgres`) |
 
-**`database.user.postgres.*`** — only read when `database.user.type: postgres`:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `database.user.postgres.hostname` | `""` | Database server hostname |
-| `database.user.postgres.port` | `0` | Database server port |
-| `database.user.postgres.name` | `""` | Database name |
-| `database.user.postgres.username` | `""` | Database username |
-| `database.user.postgres.password` | `""` | Database password |
-| `database.user.postgres.sslmode` | `""` | SSL mode (`disable`, `require`, `verify-ca`, `verify-full`) |
-| `database.user.postgres.max_open_conns` | `500` | Maximum number of open connections |
-| `database.user.postgres.max_idle_conns` | `100` | Maximum number of idle connections |
-| `database.user.postgres.conn_max_lifetime` | `3600` | Maximum connection lifetime in seconds |
-| `database.user.postgres.max_retries` | `3` | Maximum retry attempts for transient errors |
-| `database.user.postgres.min_retry_backoff_ms` | `50` | Minimum delay before retrying in milliseconds |
-| `database.user.postgres.max_retry_backoff_ms` | `2000` | Maximum delay before retrying in milliseconds |
-
-**`database.user.sqlite.*`** — only read when `database.user.type: sqlite`:
+**`database.entity.postgres.*`** is only read when `database.entity.type: postgres`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `database.user.sqlite.path` | `database/userdb.db` | SQLite database file path |
-| `database.user.sqlite.options` | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` | SQLite connection options |
-| `database.user.sqlite.max_open_conns` | `500` | Maximum number of open connections |
-| `database.user.sqlite.max_idle_conns` | `100` | Maximum number of idle connections |
-| `database.user.sqlite.conn_max_lifetime` | `3600` | Maximum connection lifetime in seconds |
-| `database.user.sqlite.max_retries` | `3` | Maximum retry attempts for transient errors |
-| `database.user.sqlite.min_retry_backoff_ms` | `50` | Minimum delay before retrying in milliseconds |
-| `database.user.sqlite.max_retry_backoff_ms` | `2000` | Maximum delay before retrying in milliseconds |
+| `database.entity.postgres.hostname` | `""` | Database server hostname |
+| `database.entity.postgres.port` | `0` | Database server port |
+| `database.entity.postgres.name` | `""` | Database name |
+| `database.entity.postgres.username` | `""` | Database username |
+| `database.entity.postgres.password` | `""` | Database password |
+| `database.entity.postgres.sslmode` | `""` | SSL mode (`disable`, `require`, `verify-ca`, `verify-full`) |
+| `database.entity.postgres.max_open_conns` | `500` | Maximum number of open connections |
+| `database.entity.postgres.max_idle_conns` | `100` | Maximum number of idle connections |
+| `database.entity.postgres.conn_max_lifetime` | `3600` | Maximum connection lifetime in seconds |
+| `database.entity.postgres.max_retries` | `3` | Maximum retry attempts for transient errors |
+| `database.entity.postgres.min_retry_backoff_ms` | `50` | Minimum delay before retrying in milliseconds |
+| `database.entity.postgres.max_retry_backoff_ms` | `2000` | Maximum delay before retrying in milliseconds |
+
+**`database.entity.sqlite.*`** is only read when `database.entity.type: sqlite`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `database.entity.sqlite.path` | `database/entitydb.db` | SQLite database file path |
+| `database.entity.sqlite.options` | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` | SQLite connection options |
+| `database.entity.sqlite.max_open_conns` | `500` | Maximum number of open connections |
+| `database.entity.sqlite.max_idle_conns` | `100` | Maximum number of idle connections |
+| `database.entity.sqlite.conn_max_lifetime` | `3600` | Maximum connection lifetime in seconds |
+| `database.entity.sqlite.max_retries` | `3` | Maximum retry attempts for transient errors |
+| `database.entity.sqlite.min_retry_backoff_ms` | `50` | Minimum delay before retrying in milliseconds |
+| `database.entity.sqlite.max_retry_backoff_ms` | `2000` | Maximum delay before retrying in milliseconds |
+
+### Runtime-persistent Database
+
+Stores SSO sessions, revoked tokens, and consent records. This database is required. <ProductName /> fails to start when `database.runtime_persistent` is not configured.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `database.runtime_persistent.type` | `sqlite` | Database type (`sqlite` or `postgres`) |
+
+**`database.runtime_persistent.postgres.*`** is only read when `database.runtime_persistent.type: postgres`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `database.runtime_persistent.postgres.hostname` | `""` | Database server hostname |
+| `database.runtime_persistent.postgres.port` | `0` | Database server port |
+| `database.runtime_persistent.postgres.name` | `""` | Database name |
+| `database.runtime_persistent.postgres.username` | `""` | Database username |
+| `database.runtime_persistent.postgres.password` | `""` | Database password |
+| `database.runtime_persistent.postgres.sslmode` | `""` | SSL mode (`disable`, `require`, `verify-ca`, `verify-full`) |
+| `database.runtime_persistent.postgres.max_open_conns` | `500` | Maximum number of open connections |
+| `database.runtime_persistent.postgres.max_idle_conns` | `100` | Maximum number of idle connections |
+| `database.runtime_persistent.postgres.conn_max_lifetime` | `3600` | Maximum connection lifetime in seconds |
+| `database.runtime_persistent.postgres.max_retries` | `3` | Maximum retry attempts for transient errors |
+| `database.runtime_persistent.postgres.min_retry_backoff_ms` | `50` | Minimum delay before retrying in milliseconds |
+| `database.runtime_persistent.postgres.max_retry_backoff_ms` | `2000` | Maximum delay before retrying in milliseconds |
+
+**`database.runtime_persistent.sqlite.*`** is only read when `database.runtime_persistent.type: sqlite`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `database.runtime_persistent.sqlite.path` | `database/runtime-persistent.db` | SQLite database file path |
+| `database.runtime_persistent.sqlite.options` | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` | SQLite connection options |
+| `database.runtime_persistent.sqlite.max_open_conns` | `500` | Maximum number of open connections |
+| `database.runtime_persistent.sqlite.max_idle_conns` | `100` | Maximum number of idle connections |
+| `database.runtime_persistent.sqlite.conn_max_lifetime` | `3600` | Maximum connection lifetime in seconds |
+| `database.runtime_persistent.sqlite.max_retries` | `3` | Maximum retry attempts for transient errors |
+| `database.runtime_persistent.sqlite.min_retry_backoff_ms` | `50` | Minimum delay before retrying in milliseconds |
+| `database.runtime_persistent.sqlite.max_retry_backoff_ms` | `2000` | Maximum delay before retrying in milliseconds |
 
 ## Cache Configuration
 
@@ -339,13 +432,14 @@ OAuth 2.0 and OpenID Connect settings.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `oauth.refresh_token.renew_on_grant` | `false` | If `true`, issues a new refresh token on each access token grant |
+| `oauth.refresh_token.revoke_previous_on_renew` | `true` | If `true`, revokes the consumed refresh token after a successful renewal. Applies when `renew_on_grant` is enabled |
 | `oauth.refresh_token.validity_period` | `86400` | Refresh token validity period in seconds (24 hours) |
 | `oauth.authorization_code.validity_period` | `600` | Authorization code validity period in seconds (10 minutes) |
 | `oauth.dcr.insecure` | `false` | If `true`, allows insecure dynamic client registration (development only) |
 | `oauth.allow_wildcard_redirect_uri` | `false` | If `true`, allows wildcard patterns in registered redirect URIs: `*` and `**` in the path component, and `*` in the host component (label-internal, alphanumeric only). When `false`, only exact redirect URI matching is performed and registering a wildcard URI returns a `400 Bad Request` error. |
 
 :::note
-Enabling `oauth.allow_wildcard_redirect_uri` affects all applications in the deployment. See [Use Wildcard Redirect URIs](/docs/next/guides/guides/applications/application-settings#use-wildcard-redirect-uris) for pattern syntax and matching rules.
+Enabling `oauth.allow_wildcard_redirect_uri` affects all applications in the deployment. See [Use Wildcard Redirect URIs](../../guides/applications/application-settings#use-wildcard-redirect-uris) for pattern syntax and matching rules.
 :::
 
 ## Flow Configuration
@@ -354,8 +448,8 @@ Authentication and registration flow settings.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `flow.default_auth_flow_handle` | `default-basic-flow` | Handle of the default authentication flow |
-| `flow.user_onboarding_flow_handle` | `default-user-onboarding` | Handle of the default user onboarding flow |
+| `flow.default_auth_flow_handle` | `default-flow` | Handle of the default authentication flow |
+| `flow.user_onboarding_flow_handle` | `default-flow` | Handle of the default user onboarding flow |
 | `flow.max_version_history` | `10` | Maximum number of flow versions to retain |
 | `flow.auto_infer_registration` | `true` | If `true`, automatically infers registration from authentication flows |
 | `flow.executors` | *(all built-in executors)* | Whitelist of built-in executor names to register at startup. Omit the key or leave the list empty to register every built-in executor. When set, only the listed executors are available; flows that reference other executors fail validation at startup. Unknown names cause startup to fail. Duplicate names are ignored. |
@@ -386,7 +480,7 @@ flow:
     - InviteExecutor
 ```
 
-For the complete list of built-in executor names and configuration details, see [Executor Details and Configuration](/docs/next/guides/guides/flows/advanced-configurations#executor-details-and-configuration).
+For the complete list of built-in executor names and configuration details, see [Executor Details and Configuration](../../guides/flows/advanced-configurations#executor-details-and-configuration).
 
 ## User Configuration
 
@@ -406,7 +500,7 @@ Controls declarative configuration support.
 
 ### Resource Loading Precedence
 
-At startup, <ProductName /> resolves declarative resources using the following precedence. Only the first matching source is used — sources are not merged.
+At startup, <ProductName /> resolves declarative resources using the following precedence. Only the first matching source is used. Sources are not merged.
 
 | Priority | Source | When active |
 |----------|--------|-------------|
@@ -430,28 +524,28 @@ With environment variable substitution:
 ./start.sh resources.yml --env my.env
 ```
 
-Each document in the file must declare its type with a `# resource_type: <type>` comment at the top. Supported types:
+Each document in the file must declare its type with a `resource_type: <type>` field. Supported types:
 
-```
-application, flow, group, identity_provider, layout, notification_sender,
+```text
+application, connection, flow, group, layout,
 organization_unit, resource_server, role, theme, translation, user, user_schema
 ```
 
 Example single file:
 
 ```yaml
-# resource_type: application
+resource_type: application
 name: My App
 ouHandle: default
-authFlowHandle: default-basic-flow
+authFlowHandle: default-flow
 ---
-# resource_type: group
+resource_type: group
 name: admins
 description: Administrators
 ```
 
 :::warning
-When `--resources` is active, any files in `config/resources/` — including per-type subdirectories — are silently ignored. If you need files from the directory to be loaded, do not pass a `--resources` argument.
+When `--resources` is active, any files in `config/resources/`, including per-type subdirectories, are silently ignored. If you need files from the directory to be loaded, do not pass a `--resources` argument.
 :::
 
 ### Resources Directory (No Startup Flag)
@@ -460,15 +554,15 @@ If you do not pass a `--resources` argument, <ProductName /> automatically picks
 
 Place a multi-document YAML file in `config/resources/`:
 
-```
+```text
 repository/
   resources/
-    my-resources.yaml   ← loaded automatically at startup
-    groups/             ← used only when no root-level YAML files exist
+    my-resources.yaml   # loaded automatically at startup
+    groups/             # used only when no root-level YAML files exist
       admins.yaml
 ```
 
-The file must use the same `# resource_type: <type>` document headers as the single-file startup format. On startup, <ProductName /> scans all `*.yaml` and `*.yml` files at that root level and loads every document whose `resource_type` matches a configured declarative resource type.
+The file must use the same `resource_type: <type>` document fields as the single-file startup format. On startup, <ProductName /> scans all `*.yaml` and `*.yml` files at that root level and loads every document whose `resource_type` matches a configured declarative resource type.
 
 :::note
 If any `*.yaml` or `*.yml` file is found at the `config/resources/` root, per-type subdirectories (priority 3) are skipped entirely for that resource type.
@@ -478,11 +572,11 @@ If any `*.yaml` or `*.yml` file is found at the `config/resources/` root, per-ty
 
 For Helm deployments, this setting is managed through `declarativeResources.enabled` in the Helm values. When enabled, the chart mounts declarative resource files from either a ConfigMap or Secret into the <ProductName /> `config/resources` directory.
 
-Two mounting modes are available — use the one that fits your resource layout.
+Two mounting modes are available. Use the one that fits your resource layout.
 
 #### Combined File Mode
 
-Use `singleFile.keys` to mount one or more combined YAML files (multi-document format with `# resource_type: <type>` headers) directly under `config/resources`. Each key in your ConfigMap or Secret is mounted as `<key>.yaml` at that path. <ProductName /> scans the directory at startup and loads every document whose `resource_type` matches a configured declarative resource type.
+Use `singleFile.keys` to mount one or more combined YAML files (multi-document format with `resource_type: <type>` fields) directly under `config/resources`. Each key in your ConfigMap or Secret is mounted as `<key>.yaml` at that path. <ProductName /> scans the directory at startup and loads every document whose `resource_type` matches a configured declarative resource type.
 
 ```yaml
 declarativeResources:
@@ -520,12 +614,12 @@ declarativeResources:
   configMap:
     name: declarative-resources
     items:
-      # Format 1 — string shorthand: key and path are the same
-      - "identity_providers/google.yaml"
-      # Format 2 — explicit key/path mapping
+      # Format 1: string shorthand; key and path are the same
+      - "connections/google.yaml"
+      # Format 2: explicit key/path mapping
       - key: app1
         path: applications/application1.yaml
-      # Format 3 — per-item mountPath override (absolute path)
+      # Format 3: per-item mountPath override (absolute path)
       - key: org-default
         path: organization_units/default.yaml
         mountPath: /opt/thunderid/config/resources/organization_units/default.yaml
@@ -548,7 +642,7 @@ Authorization resource settings.
 
 ## Observability Configuration
 
-Monitoring and observability settings. <ProductName /> supports three output backends — console, file, and OpenTelemetry (OTel) — and you can enable any combination of them independently.
+Monitoring and observability settings. <ProductName /> supports three output backends: console, file, and OpenTelemetry (OTel). You can enable any combination of them independently.
 
 ### Top-Level Settings
 
@@ -714,7 +808,7 @@ External authentication provider settings.
 
 Each request is assigned a correlation ID (trace ID), which the server generates when the client does not supply one. <ProductName /> forwards this ID on outbound HTTP calls so a request can be traced across services. The REST authentication provider, the consent service, the flow HTTP request executor, and the Vonage notification provider all set the `X-Correlation-ID` header when it is missing. For the REST authentication provider, the header name is configurable via `authn_provider.rest.correlation_id_header`.
 
-**Example** — forward the correlation ID under a custom header name:
+**Example:** forward the correlation ID under a custom header name:
 ```yaml
 authn_provider:
   type: rest
@@ -756,7 +850,35 @@ Anchor every regex with `^` and `$` and escape literal dots. Unanchored patterns
 :::
 
 :::warning
-The `null` origin is shared by sandboxed iframes, `file://` and `data:` documents, and some redirects, so allowing `"null"` cannot identify the caller. List it only when you intend to trust those contexts — with credentialed responses, it lets any such page make authenticated requests.
+The `null` origin is shared by sandboxed iframes, `file://` and `data:` documents, and some redirects, so allowing `"null"` cannot identify the caller. List it only when you intend to trust those contexts. With credentialed responses, it lets any such page make authenticated requests.
+:::
+
+## Default Resource Server
+
+Sets the resource server for permission-bearing token requests that omit the `resource` parameter. It is stored in the server-config `defaultResourceServer` section, not in `deployment.yaml`. When no default is configured, a request that contains permission scopes but omits `resource` fails with `invalid_target`. OIDC-only and scopeless requests use the `client_id` audience instead.
+
+| Field | Description |
+|-------|-------------|
+| `resourceServerId` | The ID of a registered resource server. It must reference an existing resource server, otherwise the update is rejected with `SCF-1003` ("Invalid server configuration value"). |
+
+Set it in either of these ways:
+
+- **Declarative** - create `config/resources/server_configs/defaultResourceServer.yaml`, then restart:
+  ```yaml
+  name: defaultResourceServer
+  value:
+    resourceServerId: "<resource-server-id>"
+  ```
+- **Runtime** - send the new value to `PUT /server-config/defaultResourceServer`; it is applied immediately:
+  ```http
+  PUT /server-config/defaultResourceServer
+  Content-Type: application/json
+
+  { "resourceServerId": "<resource-server-id>" }
+  ```
+
+:::note
+A declarative default takes precedence and locks the setting: while `defaultResourceServer.yaml` sets a value, runtime `PUT /server-config/defaultResourceServer` requests are rejected. Remove the declarative value to manage the default at runtime.
 :::
 
 ## Passkey Configuration
@@ -781,17 +903,18 @@ Controls server-wide security behavior that is not specific to any single authen
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `server.security.jwks_cache_ttl` | `300` | JWKS cache TTL in seconds. Applies to every JWKS consumer in the server (trusted issuer validation, federated OIDC authenticators such as Google, and so on). Fetched signing keys are reused from the in-process cache for this duration before being re-fetched. Plan external-server key rotations with at least this much overlap. Set to `0` to disable caching |
-| `server.security.system_permission_prefix` | `""` (empty) | Prefix for system permission strings used in API authorization. When empty, permissions use their base names (for example, `system`, `system:ou`). When set, the prefix is prepended to every system permission (for example, `mgmt:system`, `mgmt:system:ou`). This value must match the system resource server's current handle. Changes require a server restart |
+| `server.security.system_permission_prefix` | `""` (empty) | Prefix for system permission strings used in API authorization. When empty, permissions use their base names (for example, `system`, `system:ou`). When set, the prefix is prepended to every system permission (for example, `mgmt:system`, `mgmt:system:ou`). If you set a prefix, update the Console scopes to match. Changes require a server restart |
+| `server.security.direct_auth_secret` | `""` (empty) | Secret that gates the Direct API authentication endpoints (`/auth/**` and `/register/passkey/**`) and protected AuthZEN access endpoints (`/access/**`). AuthZEN discovery (`/.well-known/authzen-configuration`) remains public. The protected endpoints are **secure by default**. While this is empty they are blocked with `401`. When set, callers must send the value in the `Direct-Auth-Secret` header; a missing or incorrect value is rejected with `401`. See [Integration Models](../../key-concepts/authentication/integration-models#direct-api) |
 
 :::tip
-If the system resource server has a custom handle, set `system_permission_prefix` to match the handle value and restart the server. You must also update the Console scopes to match the new permission strings.
+If you set a custom `system_permission_prefix`, update the Console scopes to match the new permission strings and restart the server.
 :::
 
 ## Trusted Issuer Configuration
 
 Maps to `TrustedIssuerConfig` in the backend, nested under `server.security.trusted_issuer`. Setting `server.security.trusted_issuer.issuer` activates the feature: <ProductName /> trusts access tokens issued by an external authorization server and validates them against the external server's JWKS endpoint. When `issuer` is set, `jwks_url` and `audience` are required and <ProductName /> fails to start if either is missing. This is used for federated authentication scenarios where a central <ProductName /> instance issues tokens that tenant instances accept.
 
-Enabling a trusted issuer is additive and non-breaking. <ProductName /> still accepts the tokens it issues itself, routed by the token's `iss` claim. Existing `client_credentials`, system, and console callers keep working without configuration changes. See [Self-Issued Tokens](/docs/next/guides/guides/trusted-issuer#self-issued-tokens) in the Trusted Issuer guide.
+Enabling a trusted issuer is additive and non-breaking. <ProductName /> still accepts the tokens it issues itself, routed by the token's `iss` claim. Existing `client_credentials`, system, and console callers keep working without configuration changes. See [Self-Issued Tokens](../../guides/trusted-issuer#self-issued-tokens) in the Trusted Issuer guide.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -814,5 +937,5 @@ server:
 ```
 
 :::note
-The frontend must include a matching `resource` parameter in the authorization request so the external authorization server sets the token's `aud` claim to this server's identifier. See the [Trusted Issuer](/docs/next/guides/guides/trusted-issuer) guide for the end-to-end setup.
+The frontend must include a matching `resource` parameter in the authorization request so the external authorization server sets the token's `aud` claim to this server's identifier. See the [Trusted Issuer](../../guides/trusted-issuer) guide for the end-to-end setup.
 :::

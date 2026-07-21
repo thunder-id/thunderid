@@ -1,5 +1,6 @@
 ---
 title: Release Operations
+docType: community
 description: Learn the weekly release rhythm, validation model, and release execution process for {{ProductName}}.
 sidebar_position: 3
 hide_table_of_contents: false
@@ -8,8 +9,6 @@ hide_table_of_contents: false
 # Release Operations
 
 This page explains how <ProductName /> moves changes from development to a weekly release.
-
----
 
 ## 📅 Release Cadence
 
@@ -21,8 +20,6 @@ This page explains how <ProductName /> moves changes from development to a weekl
 | Monday to Thursday | Development, pull requests, reviews, and iteration |
 | Thursday 9:30 PM UTC (Friday 3:00 AM IST) | Pre-Release Sync: release branch created (if needed) and synced from main |
 | Friday | Validate milestone changes against the draft release; fix or revert issues directly on the release branch, then release |
-
----
 
 ## Branch Model
 
@@ -43,8 +40,6 @@ Do not merge the same change into both `main` and `release` separately. Each cha
 
 :::
 
----
-
 ## 🧪 Release Validation
 
 Every change included in the milestone must be validated by someone other than the author before release.
@@ -52,8 +47,6 @@ Every change included in the milestone must be validated by someone other than t
 A **draft release** is created before the final release to allow validation of all milestone changes against real release artifacts. If any issues are found during validation, fixes should be applied directly to the `release` branch and re-validated. Development can continue on `main` as usual during this time - only release-related fixes go into the `release` branch.
 
 Alongside milestone-specific changes, **core IAM flows** - including authentication, authorization, and token management - are tested every release, regardless of what changed. This ensures baseline functionality is never silently broken between releases.
-
----
 
 ## 🔖 Release Manager Responsibilities
 
@@ -65,8 +58,6 @@ The Release Manager coordinates release readiness and final release execution.
 4. **Coordinate release validation** - confirm all milestone changes are validated against the draft release.
 5. **Trigger the Release Builder** - run the workflow manually once everything is confirmed good to release, or allow the scheduled release run.
 6. **Confirm post-release sync** - verify the release branch is merged back into main, ensure the milestone is closed and release notes are generated properly, and update stakeholders.
-
----
 
 ## 🚨 When Issues Arise
 
@@ -80,8 +71,6 @@ The Release Manager coordinates release readiness and final release execution.
 | Release validation fails and cause is unclear | Revert suspected change and investigate on main next week |
 
 A predictable release train matters more than any single feature.
-
----
 
 ## ⚙️ Automation Workflows
 

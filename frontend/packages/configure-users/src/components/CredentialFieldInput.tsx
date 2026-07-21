@@ -29,7 +29,7 @@ interface CredentialFieldInputProps {
   helperText?: string;
   color: 'error' | 'primary';
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onBlur: () => void;
+  onBlur?: () => void;
   inputRef: React.Ref<HTMLInputElement>;
   name: string;
   ariaLabel?: string;
@@ -44,7 +44,7 @@ function CredentialFieldInput({
   helperText = undefined,
   color,
   onChange,
-  onBlur,
+  onBlur = undefined,
   inputRef,
   name,
   ariaLabel = undefined,

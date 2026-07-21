@@ -35,6 +35,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 )
@@ -43,6 +44,33 @@ type mockTransactioner struct{}
 
 func (m *mockTransactioner) Transact(ctx context.Context, operation func(txCtx context.Context) error) error {
 	return operation(ctx)
+}
+
+// stubDependencyRegistry is a minimal resourcedependency.Registry for tests.
+type stubDependencyRegistry struct {
+	resp *resourcedependency.DependenciesResponse
+	err  error
+}
+
+func (r *stubDependencyRegistry) RegisterProvider(resourcedependency.Provider) {}
+
+func (r *stubDependencyRegistry) GetDependencies(
+	context.Context, string, string) (*resourcedependency.DependenciesResponse, error) {
+	return r.resp, r.err
+}
+
+func (r *stubDependencyRegistry) CascadeDelete(context.Context, string, string) (int, error) {
+	return 0, nil
+}
+
+// newNoBlockingDepsRegistry returns a registry reporting confirmed-empty dependencies, so that
+// deletion is permitted by the blocking guard.
+func newNoBlockingDepsRegistry() *stubDependencyRegistry {
+	total := 0
+	return &stubDependencyRegistry{resp: &resourcedependency.DependenciesResponse{
+		TotalResults: &total,
+		Usages:       []resourcedependency.ResourceDependency{},
+	}}
 }
 
 type IDPServiceTestSuite struct {
@@ -73,11 +101,12 @@ func (s *IDPServiceTestSuite) SetupTest() {
 	s.mockStore = newIdpStoreInterfaceMock(s.T())
 	s.mockET = entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
 	s.idpService = &idpService{
-		idpStore:          s.mockStore,
-		transactioner:     &mockTransactioner{},
-		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "IdPService")),
-		uuidGenerator:     utils.GenerateUUIDv7,
-		entityTypeService: s.mockET,
+		idpStore:           s.mockStore,
+		transactioner:      &mockTransactioner{},
+		dependencyRegistry: newNoBlockingDepsRegistry(),
+		logger:             log.GetLogger().With(log.String(log.LoggerKeyComponentName, "IdPService")),
+		uuidGenerator:      utils.GenerateUUIDv7,
+		entityTypeService:  s.mockET,
 	}
 }
 
@@ -706,6 +735,80 @@ func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_Success() {
 	s.mockStore.AssertExpectations(s.T())
 }
 
+// TestGetIDPUsages_ReturnsDependencies verifies usages are returned for an existing IDP.
+func (s *IDPServiceTestSuite) TestGetIDPUsages_ReturnsDependencies() {
+	total := 1
+	usages := &resourcedependency.DependenciesResponse{
+		TotalResults: &total,
+		Count:        1,
+		Usages: []resourcedependency.ResourceDependency{
+			{ResourceType: resourcedependency.ResourceTypeFlow, ID: "flow-1",
+				DisplayName: "Google Login", BehaviorOnDelete: resourcedependency.BehaviorRestrict},
+		},
+	}
+	s.idpService.dependencyRegistry = &stubDependencyRegistry{resp: usages}
+	s.mockStore.On("GetIdentityProvider", mock.Anything, "idp-123").
+		Return(&providers.IDPDTO{ID: "idp-123"}, nil)
+
+	result, err := s.idpService.GetIDPUsages(context.Background(), "idp-123")
+
+	s.Nil(err)
+	s.Equal(usages, result)
+	s.mockStore.AssertExpectations(s.T())
+}
+
+// TestGetIDPUsages_EmptyID validates the empty-ID guard.
+func (s *IDPServiceTestSuite) TestGetIDPUsages_EmptyID() {
+	result, err := s.idpService.GetIDPUsages(context.Background(), "")
+
+	s.Nil(result)
+	s.NotNil(err)
+	s.Equal(ErrorInvalidIDPID.Code, err.Code)
+}
+
+// TestGetIDPUsages_NotFound verifies a not-found error when the IDP does not exist.
+func (s *IDPServiceTestSuite) TestGetIDPUsages_NotFound() {
+	s.mockStore.On("GetIdentityProvider", mock.Anything, "missing").
+		Return((*providers.IDPDTO)(nil), ErrIDPNotFound)
+
+	result, err := s.idpService.GetIDPUsages(context.Background(), "missing")
+
+	s.Nil(result)
+	s.NotNil(err)
+	s.Equal(ErrorIDPNotFound.Code, err.Code)
+	s.mockStore.AssertExpectations(s.T())
+}
+
+// TestGetIDPUsages_GetStoreError verifies a store error while retrieving the IDP maps to an
+// internal server error.
+func (s *IDPServiceTestSuite) TestGetIDPUsages_GetStoreError() {
+	s.mockStore.On("GetIdentityProvider", mock.Anything, "idp-123").
+		Return((*providers.IDPDTO)(nil), errors.New("database error"))
+
+	result, err := s.idpService.GetIDPUsages(context.Background(), "idp-123")
+
+	s.Nil(result)
+	s.NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+	s.mockStore.AssertExpectations(s.T())
+}
+
+// TestGetIDPUsages_RegistryUnset returns unknown dependencies rather than failing when the
+// registry was never wired in (informational endpoint, unlike deletion which fails closed).
+func (s *IDPServiceTestSuite) TestGetIDPUsages_RegistryUnset() {
+	s.idpService.dependencyRegistry = nil
+	s.mockStore.On("GetIdentityProvider", mock.Anything, "idp-123").
+		Return(&providers.IDPDTO{ID: "idp-123"}, nil)
+
+	result, err := s.idpService.GetIDPUsages(context.Background(), "idp-123")
+
+	s.Nil(err)
+	s.Require().NotNil(result)
+	s.Nil(result.TotalResults)
+	s.Empty(result.Usages)
+	s.mockStore.AssertExpectations(s.T())
+}
+
 // TestDeleteIdentityProvider_EmptyID tests empty ID validation
 func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_EmptyID() {
 	err := s.idpService.DeleteIdentityProvider(context.Background(), "")
@@ -749,6 +852,52 @@ func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_StoreError() {
 	s.NotNil(err)
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
 	s.mockStore.AssertExpectations(s.T())
+}
+
+// TestDeleteIdentityProvider_BlockedByFlow verifies deletion is refused when a flow references the IDP.
+func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_BlockedByFlow() {
+	total := 1
+	s.idpService.dependencyRegistry = &stubDependencyRegistry{resp: &resourcedependency.DependenciesResponse{
+		TotalResults: &total,
+		Count:        1,
+		Usages: []resourcedependency.ResourceDependency{
+			{ResourceType: resourcedependency.ResourceTypeFlow, ID: "flow-1",
+				DisplayName: "Google Login", BehaviorOnDelete: resourcedependency.BehaviorRestrict},
+		},
+	}}
+
+	err := s.idpService.DeleteIdentityProvider(context.Background(), "idp-123")
+
+	s.NotNil(err)
+	s.Equal(ErrorIDPHasBlockingDependencies.Code, err.Code)
+	s.mockStore.AssertNotCalled(s.T(), "DeleteIdentityProvider", mock.Anything, mock.Anything)
+}
+
+// TestDeleteIdentityProvider_RefusedWhenDependenciesUnknown verifies deletion fails closed when a
+// provider fails to report dependency data.
+func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_RefusedWhenDependenciesUnknown() {
+	s.idpService.dependencyRegistry = &stubDependencyRegistry{resp: &resourcedependency.DependenciesResponse{
+		TotalResults: nil,
+		Usages:       []resourcedependency.ResourceDependency{},
+	}}
+
+	err := s.idpService.DeleteIdentityProvider(context.Background(), "idp-123")
+
+	s.NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+	s.mockStore.AssertNotCalled(s.T(), "DeleteIdentityProvider", mock.Anything, mock.Anything)
+}
+
+// TestDeleteIdentityProvider_RefusedWhenRegistryUnset verifies deletion fails closed when the
+// dependency registry was never wired in.
+func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_RefusedWhenRegistryUnset() {
+	s.idpService.dependencyRegistry = nil
+
+	err := s.idpService.DeleteIdentityProvider(context.Background(), "idp-123")
+
+	s.NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+	s.mockStore.AssertNotCalled(s.T(), "DeleteIdentityProvider", mock.Anything, mock.Anything)
 }
 
 // TestCreateIdentityProvider_DeclarativeModeEnabled tests creation is blocked when declarative mode is enabled
@@ -1006,6 +1155,7 @@ func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_FailsForDeclarativeIDP(
 	fileStore.On("GetIdentityProvider", context.Background(), idpID).Return(existingIDP, nil)
 
 	service := newIDPService(compositeStore, nil, &mockTransactioner{})
+	service.SetDependencyRegistry(newNoBlockingDepsRegistry())
 
 	err := service.DeleteIdentityProvider(context.Background(), idpID)
 
@@ -1043,6 +1193,7 @@ func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_SucceedsForMutableIDP()
 	dbStore.On("DeleteIdentityProvider", context.Background(), idpID).Return(nil)
 
 	service := newIDPService(compositeStore, nil, &mockTransactioner{})
+	service.SetDependencyRegistry(newNoBlockingDepsRegistry())
 
 	err := service.DeleteIdentityProvider(context.Background(), idpID)
 
@@ -1064,6 +1215,13 @@ func singleProfileMapping(userType string, mappings []providers.AttributeMapping
 func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_NilMapping_OK() {
 	svcErr := s.idpService.validateAttributeConfiguration(context.Background(), &providers.IDPDTO{})
 	s.Nil(svcErr)
+}
+
+func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_AccountLinkingOnly_NoUserTypeResolutionRequired() {
+	idp := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		AccountLinking: &providers.AccountLinking{Attributes: []string{"email"}},
+	}}
+	s.Nil(s.idpService.validateAttributeConfiguration(context.Background(), idp))
 }
 
 func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_Valid() {
@@ -1185,4 +1343,90 @@ func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_UnknownEntityTy
 	svcErr := s.idpService.validateAttributeConfiguration(context.Background(), idp)
 	s.NotNil(svcErr)
 	s.Equal(ErrorInvalidAttributeConfiguration.Code, svcErr.Code)
+}
+
+func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_DynamicResolutionValid() {
+	s.mockET.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "employee", false, true, false).
+		Return([]entitytype.AttributeInfo{{Attribute: "firstName"}}, (*tidcommon.ServiceError)(nil))
+
+	idp := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{
+			Default:           "person",
+			ExternalAttribute: "user_type",
+			ValueMapping:      map[string]string{"staff": "employee"},
+		},
+	}}
+	s.Nil(s.idpService.validateAttributeConfiguration(context.Background(), idp))
+}
+
+func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_ExternalAttributeWithoutMapping_OK() {
+	// An external attribute may be configured on its own; every identity resolves to Default until
+	// value mappings are added later.
+	idp := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{
+			Default:           "person",
+			ExternalAttribute: "user_type",
+		},
+	}}
+	s.Nil(s.idpService.validateAttributeConfiguration(context.Background(), idp))
+}
+
+func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_MappingWithoutExternalAttribute() {
+	idp := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{
+			Default:      "person",
+			ValueMapping: map[string]string{"staff": "employee"},
+		},
+	}}
+	svcErr := s.idpService.validateAttributeConfiguration(context.Background(), idp)
+	s.NotNil(svcErr)
+	s.Equal(ErrorInvalidAttributeConfiguration.Code, svcErr.Code)
+	s.Contains(svcErr.ErrorDescription.DefaultValue, "requires an external attribute")
+}
+
+func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_DynamicResolutionDefaultRequired() {
+	idp := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{
+			ExternalAttribute: "user_type",
+			ValueMapping:      map[string]string{"staff": "employee"},
+		},
+	}}
+	svcErr := s.idpService.validateAttributeConfiguration(context.Background(), idp)
+	s.NotNil(svcErr)
+	s.Equal(ErrorInvalidAttributeConfiguration.Code, svcErr.Code)
+	s.Contains(svcErr.ErrorDescription.DefaultValue, "default user type")
+}
+
+func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_DynamicResolutionEmptyMapping() {
+	idp := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{
+			Default:           "person",
+			ExternalAttribute: "user_type",
+			ValueMapping:      map[string]string{"staff": ""},
+		},
+	}}
+	svcErr := s.idpService.validateAttributeConfiguration(context.Background(), idp)
+	s.NotNil(svcErr)
+	s.Equal(ErrorInvalidAttributeConfiguration.Code, svcErr.Code)
+	s.Contains(svcErr.ErrorDescription.DefaultValue, "must not contain empty")
+}
+
+func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_DynamicResolutionInvalidTarget() {
+	s.mockET.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "ghost", false, true, false).
+		Return([]entitytype.AttributeInfo(nil), &tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType, Code: "ETS-1004",
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "user type not found"},
+		})
+
+	idp := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		UserTypeResolution: &providers.UserTypeResolution{
+			Default:           "person",
+			ExternalAttribute: "user_type",
+			ValueMapping:      map[string]string{"staff": "ghost"},
+		},
+	}}
+	svcErr := s.idpService.validateAttributeConfiguration(context.Background(), idp)
+	s.NotNil(svcErr)
+	s.Equal(ErrorInvalidAttributeConfiguration.Code, svcErr.Code)
+	s.Contains(svcErr.ErrorDescription.DefaultValue, "invalid user type")
 }

@@ -29,17 +29,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
-	testServerURL = "https://localhost:8095"
-	clientID      = "claims_test_client_123"
-	clientSecret  = "claims_test_secret_123"
-	appName       = "ClaimsParameterTestApp"
-	redirectURI   = "https://localhost:3000"
+	testServerURL      = "https://localhost:8095"
+	clientID           = "claims_test_client_123"
+	clientSecret       = "claims_test_secret_123"
+	appName            = "ClaimsParameterTestApp"
+	redirectURI        = "https://localhost:3000"
+	claimsTestResource = "https://claims-test.example.com"
 )
 
 var (
@@ -74,12 +75,13 @@ var (
 
 type ClaimsParameterTestSuite struct {
 	suite.Suite
-	flowID        string
-	applicationID string
-	entityTypeID  string
-	userID        string
-	client        *http.Client
-	ouID          string
+	flowID           string
+	applicationID    string
+	entityTypeID     string
+	userID           string
+	client           *http.Client
+	ouID             string
+	resourceServerID string
 }
 
 func TestClaimsParameterTestSuite(t *testing.T) {
@@ -109,6 +111,15 @@ func (ts *ClaimsParameterTestSuite) SetupSuite() {
 	// Create test user
 	ts.userID = ts.createTestUser()
 
+	resourceServerID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:        "Claims Test Resource Server",
+		Description: "Resource server for claims parameter integration tests",
+		Identifier:  claimsTestResource,
+		OUID:        ts.ouID,
+	}, []testutils.Action{})
+	ts.Require().NoError(err, "Failed to create claims test resource server")
+	ts.resourceServerID = resourceServerID
+
 	// Create authentication flow
 	ts.flowID = ts.createTestAuthenticationFlow()
 
@@ -126,6 +137,12 @@ func (ts *ClaimsParameterTestSuite) TearDownSuite() {
 	if ts.flowID != "" {
 		if err := testutils.DeleteFlow(ts.flowID); err != nil {
 			ts.T().Logf("Failed to delete authentication flow during teardown: %v", err)
+		}
+	}
+
+	if ts.resourceServerID != "" {
+		if err := testutils.DeleteResourceServer(ts.resourceServerID); err != nil {
+			ts.T().Logf("Failed to delete resource server during teardown: %v", err)
 		}
 	}
 
@@ -408,8 +425,9 @@ func (ts *ClaimsParameterTestSuite) getTokenWithClaims(
 	}
 
 	// Step 7: Exchange code for token
-	tokenResult, err := testutils.RequestToken(
+	tokenResult, err := testutils.RequestTokenWithResource(
 		clientID, clientSecret, code, redirectURI, "authorization_code",
+		claimsTestResource,
 	)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to request token: %w", err)
@@ -534,8 +552,9 @@ func (ts *ClaimsParameterTestSuite) getTokensWithClaims(
 	}
 
 	// Step 7: Exchange code for tokens
-	tokenResult, err := testutils.RequestToken(
+	tokenResult, err := testutils.RequestTokenWithResource(
 		clientID, clientSecret, code, redirectURI, "authorization_code",
+		claimsTestResource,
 	)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to request token: %w", err)

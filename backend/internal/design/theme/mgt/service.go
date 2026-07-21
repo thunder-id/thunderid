@@ -261,18 +261,9 @@ func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *tidcommo
 		return nil
 	}
 
-	// Check if theme is used by any applications
-	count, err := ts.themeMgtStore.GetApplicationsCountByThemeID(id)
-	if err != nil {
-		ts.logger.Error(ctx, "Failed to check applications using theme",
-			log.String("id", id), log.Error(err))
-		return &tidcommon.InternalServerError
-	}
-
-	if count > 0 {
-		return &ErrorThemeInUse
-	}
-
+	// A theme can be deleted even while applications reference it: those applications keep their
+	// reference and fall back to the system default theme at read time (see the design resolve
+	// service). References are surfaced informationally through GetThemeUsages.
 	if err := ts.themeMgtStore.DeleteTheme(id); err != nil {
 		ts.logger.Error(ctx, "Failed to delete theme", log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
@@ -340,7 +331,7 @@ func (ts *themeMgtService) GetThemeUsages(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	return result, nil
+	return resourcedependency.PaginateUsages(result, limit, offset), nil
 }
 
 // validateThemePreferences validates the theme JSON.

@@ -27,7 +27,6 @@ import type {Element as FlowElement} from '@/features/flows/models/elements';
  * Checkbox element type with properties at top level.
  */
 export type CheckboxElement = FlowElement & {
-  className?: string;
   defaultValue?: string;
   label?: string;
   required?: boolean;
@@ -58,10 +57,10 @@ function CheckboxAdapter({resource}: CheckboxAdapterPropsInterface): ReactElemen
   const checkboxElement = resource as CheckboxElement;
 
   return (
-    <div>
+    <div id={checkboxElement?.id}>
       <FormControlLabel
         control={<Checkbox defaultChecked />}
-        className={checkboxElement?.className}
+        className={checkboxElement?.classes}
         label={resolve(checkboxElement?.label, {t}) ?? checkboxElement?.label ?? ''}
         required={checkboxElement?.required}
         style={checkboxElement?.styles}

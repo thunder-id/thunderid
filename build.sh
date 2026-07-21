@@ -21,19 +21,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Check if --without-consent is passed and remove it from args
-WITHOUT_CONSENT=${WITHOUT_CONSENT:-false}
-NEW_ARGS=()
-for arg in "$@"; do
-    if [ "$arg" = "--without-consent" ]; then
-        WITHOUT_CONSENT="true"
-    else
-        NEW_ARGS+=("$arg")
-    fi
-done
-set -- "${NEW_ARGS[@]}"
-
-# --- Set Default OS and the architecture --- 
+# --- Set Default OS and the architecture ---
 # Auto-detect GO OS
 DEFAULT_OS=$(go env GOOS 2>/dev/null)
 if [ -z "$DEFAULT_OS" ]; then
@@ -168,7 +156,6 @@ read_config() {
         PORT=8090
         HTTP_ONLY="false"
         PUBLIC_HOSTNAME=""
-        CONSENT_ENABLED="true"
     else
         # Try yq first (YAML parser)
         if command -v yq >/dev/null 2>&1; then
@@ -176,7 +163,6 @@ read_config() {
             PORT=$(yq eval '.server.port // 8090' "$config_file" 2>/dev/null)
             HTTP_ONLY=$(yq eval '.server.http_only // false' "$config_file" 2>/dev/null)
             PUBLIC_HOSTNAME=$(yq eval '.server.public_hostname // ""' "$config_file" 2>/dev/null)
-            CONSENT_ENABLED=$(yq eval '.consent.enabled // true' "$config_file" 2>/dev/null)
         else
             # Fallback: basic parsing with grep/awk
             HOSTNAME=$(grep -E '^\s*hostname:' "$config_file" | awk -F':' '{gsub(/[[:space:]"'\'']/,"",$2); print $2}' | head -1)
@@ -188,13 +174,6 @@ read_config() {
                 HTTP_ONLY="true"
             else
                 HTTP_ONLY="false"
-            fi
-
-            # Check for consent.enabled (default: true)
-            if grep -A1 '^consent:' "$config_file" 2>/dev/null | grep -q 'enabled.*false'; then
-                CONSENT_ENABLED="false"
-            else
-                CONSENT_ENABLED="true"
             fi
 
             # Use defaults if not found
@@ -252,6 +231,9 @@ function clean() {
 
     echo "Removing certificates in the $BACKEND_DIR/$SECURITY_DIR"
     rm -rf "$BACKEND_DIR/$SECURITY_DIR"
+
+    echo "Removing runtime secrets in the $BACKEND_DIR/config/secrets"
+    rm -rf "$BACKEND_DIR/config/secrets"
 
     echo "Removing certificates in the $VANILLA_SAMPLE_APP_DIR"
     rm -f "$VANILLA_SAMPLE_APP_DIR/server.cert"
@@ -321,8 +303,8 @@ function initialize_databases() {
 
     mkdir -p "$REPOSITORY_DB_DIR"
 
-    db_files=("configdb.db" "runtimedb.db" "userdb.db" "operationdb.db")
-    script_paths=("configdb/sqlite.sql" "runtimedb/sqlite.sql" "userdb/sqlite.sql" "operationdb/sqlite.sql")
+    db_files=("configdb.db" "runtime-transient.db" "entitydb.db" "runtime-persistent.db")
+    script_paths=("configdb/sqlite.sql" "runtime-transient/sqlite.sql" "entitydb/sqlite.sql" "runtime-persistent/sqlite.sql")
 
     for ((i = 0; i < ${#db_files[@]}; i++)); do
         db_file="${db_files[$i]}"
@@ -492,6 +474,11 @@ function prepare_backend_for_packaging() {
     cp -r "$SERVER_SCRIPTS_DIR" "$DIST_DIR/$PRODUCT_FOLDER/"
     cp -r "$SERVER_DB_SCRIPTS_DIR" "$DIST_DIR/$PRODUCT_FOLDER/"
     mkdir -p "$DIST_DIR/$PRODUCT_FOLDER/$SECURITY_DIR"
+    # Never ship key material: strip any dev certs/keys that "cp -r config" above may have copied in.
+    rm -f "$DIST_DIR/$PRODUCT_FOLDER/$SECURITY_DIR"/*.cert "$DIST_DIR/$PRODUCT_FOLDER/$SECURITY_DIR"/*.key
+    # Never ship runtime secrets: strip the dev Direct Auth Secret that "cp -r config" may have copied in.
+    # setup.sh generates a fresh per-deployment secret.
+    rm -rf "$DIST_DIR/$PRODUCT_FOLDER/config/secrets"
 
     # Copy bootstrap directory
     echo "Copying bootstrap scripts..."
@@ -499,15 +486,7 @@ function prepare_backend_for_packaging() {
     # Never ship the dev-only CORS seed that `run` stages into the source bootstrap dir.
     rm -f "$DIST_DIR/$PRODUCT_FOLDER/bootstrap/02-server-configurations.yaml"
 
-    echo "=== Ensuring server certificates exist in the distribution ==="
-    ensure_certificates "$DIST_DIR/$PRODUCT_FOLDER/$SECURITY_DIR" "server"
-    ensure_certificates "$DIST_DIR/$PRODUCT_FOLDER/$SECURITY_DIR" "signing"
-    ensure_certificates "$DIST_DIR/$PRODUCT_FOLDER/$SECURITY_DIR" "ecdsa-signing"
-    echo "================================================================"
-
-    echo "=== Ensuring crypto file exists in the distribution ==="
-    ensure_crypto_file "$DIST_DIR/$PRODUCT_FOLDER/$SECURITY_DIR"
-    echo "================================================================"
+    # Key material is not generated into the distribution; setup.sh generates it per deployment.
 }
 
 function prepare_frontend_for_packaging() {
@@ -581,21 +560,6 @@ function package() {
         # Ensure execute permissions on Unix scripts
         chmod +x "$DIST_DIR/$PRODUCT_FOLDER/start.sh"
         chmod +x "$DIST_DIR/$PRODUCT_FOLDER/setup.sh"
-    fi
-
-    if [ "$WITHOUT_CONSENT" != "true" ]; then
-        echo "Packaging consent server..."
-        bash "$SCRIPT_DIR/scripts/package-consent-server.sh" \
-                "$GO_OS" "$GO_ARCH" "$(cd "$DIST_DIR/$PRODUCT_FOLDER" && pwd)"
-    else
-        echo "Skipping consent server packaging (--without-consent)..."
-        local target_yaml="$DIST_DIR/$PRODUCT_FOLDER/deployment.yaml"
-        if command -v yq >/dev/null 2>&1; then
-            yq eval '.consent.enabled = false' -i "$target_yaml" 2>/dev/null || sed -i.bak '/^consent:/ { n; s/enabled: true/enabled: false/; }' "$target_yaml" || true
-        else
-            sed -i.bak '/^consent:/ { n; s/enabled: true/enabled: false/; }' "$target_yaml" || true
-        fi
-        rm -f "${target_yaml}.bak" 2>/dev/null || true
     fi
 
     echo "Creating zip file..."
@@ -944,6 +908,7 @@ function ensure_certificates() {
                     -keyout "$local_key_file" \
                     -out "$local_cert_file" \
                     -subj "/O=WSO2/OU=${PRODUCT_NAME}/CN=localhost" \
+                    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" \
                     2>&1 >/dev/null
             )
         fi
@@ -1000,7 +965,43 @@ function ensure_crypto_file() {
         
         echo "Successfully generated and added new crypto key to $KEY_FILE."
     fi
-    
+
+    echo "================================================================"
+}
+
+function ensure_direct_auth_secret_file() {
+    local SECRET_DIR="$1"
+
+    # Path referenced by server.security.direct_auth_secret (file://config/secrets/direct_auth_secret)
+    # in deployment.yaml. The server reads the secret from here at load time.
+    local SECRET_FILE="$SECRET_DIR/direct_auth_secret"
+
+    echo "=== Ensuring Direct Auth Secret file exists ==="
+
+    if [ -f "$SECRET_FILE" ]; then
+        echo "Direct Auth Secret file already present in $SECRET_FILE. Skipping generation."
+    else
+        echo "Direct Auth Secret file not found. Generating new secret at $SECRET_FILE..."
+
+        # Generate 32-byte secret (64 hex characters) using openssl.
+        local NEW_SECRET
+        if ! NEW_SECRET=$(openssl rand -hex 32); then
+            echo "ERROR: Failed to generate Direct Auth Secret using openssl."
+            exit 1
+        fi
+
+        # Ensure the target directory exists.
+        mkdir -p "$SECRET_DIR"
+
+        # Write the secret without a trailing newline so it is used verbatim.
+        echo -n "$NEW_SECRET" > "$SECRET_FILE"
+
+        echo "Successfully generated and added new Direct Auth Secret to $SECRET_FILE."
+    fi
+
+    # Restrict the secret to the owner, whether newly generated or pre-existing.
+    chmod 600 "$SECRET_FILE"
+
     echo "================================================================"
 }
 
@@ -1012,11 +1013,8 @@ function run() {
         fi
         pkill -f "pnpm.*dev" 2>/dev/null
         pkill -f "vite" 2>/dev/null
-        if [ ! -z "$BACKEND_PID" ]; then 
+        if [ ! -z "$BACKEND_PID" ]; then
             kill $BACKEND_PID 2>/dev/null
-        fi
-        if [ ! -z "$CONSENT_PID" ]; then 
-            kill $CONSENT_PID 2>/dev/null
         fi
         sleep 1
         echo "✅ All servers stopped successfully."
@@ -1025,11 +1023,6 @@ function run() {
 
     echo "Running frontend apps..."
     run_frontend
-
-    if [ "$CONSENT_ENABLED" = "true" ] && [ "$WITHOUT_CONSENT" != "true" ]; then
-        echo "Running consent server..."
-        run_consent
-    fi
 
     # Ensure runtime prerequisites (certificates, crypto material, databases) so the
     # in-process bootstrap can create the default resources before the server starts.
@@ -1043,6 +1036,7 @@ function run() {
     ensure_certificates "$REACT_API_SAMPLE_APP_DIR" "server"
 
     ensure_crypto_file "$BACKEND_DIR/$SECURITY_DIR"
+    ensure_direct_auth_secret_file "$BACKEND_DIR/config/secrets"
 
     echo "Initializing databases..."
     initialize_databases
@@ -1056,7 +1050,7 @@ function run() {
     # the backend without manual configuration. Regenerated on every run and picked up by
     # the bootstrap one-shot; it is git-ignored and never packaged (see build()).
     cat > "$BACKEND_DIR/bootstrap/02-server-configurations.yaml" <<EOF
-# resource_type: server_config
+resource_type: server_config
 name: cors
 value:
   allowedOrigins:
@@ -1064,9 +1058,11 @@ value:
     - "https://localhost:$CONSOLE_APP_DEFAULT_PORT"
 EOF
 
+    # Local dev only: default to admin/admin if not supplied. This path never produces a
+    # shared or distributed artifact, so a fixed default here is acceptable.
     if ! ( cd "$BACKEND_DIR" && \
-        ADMIN_USERNAME="${ADMIN_USERNAME:-}" \
-        ADMIN_PASSWORD="${ADMIN_PASSWORD:-}" \
+        ADMIN_USERNAME="${ADMIN_USERNAME:-admin}" \
+        ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}" \
         PUBLIC_URL="$PUBLIC_URL" \
         go run . bootstrap --console-redirect-uris "https://localhost:$CONSOLE_APP_DEFAULT_PORT/console" ); then
         echo "❌ Initial data setup failed"
@@ -1108,14 +1104,10 @@ function run_backend() {
     ensure_certificates "$REACT_API_SAMPLE_APP_DIR" "server"
 
     ensure_crypto_file "$BACKEND_DIR/$SECURITY_DIR"
+    ensure_direct_auth_secret_file "$BACKEND_DIR/config/secrets"
 
     echo "Initializing databases..."
     initialize_databases
-
-    if [ "$CONSENT_ENABLED" = "true" ] && [ "$WITHOUT_CONSENT" != "true" ] && [ -z "$CONSENT_PID" ]; then
-        echo "Running consent server..."
-        run_consent
-    fi
 
     start_backend "$show_final_output" "$debug"
 }
@@ -1151,7 +1143,7 @@ function start_backend() {
         echo "👉 Backend : $BASE_URL"
         echo "Press Ctrl+C to stop."
 
-        trap 'echo -e "\n🛑 Shutting down servers..."; kill $BACKEND_PID 2>/dev/null; [ -n "$CONSENT_PID" ] && kill $CONSENT_PID 2>/dev/null; echo "✅ Servers stopped successfully."; exit 0' SIGINT
+        trap 'echo -e "\n🛑 Shutting down servers..."; kill $BACKEND_PID 2>/dev/null; echo "✅ Servers stopped successfully."; exit 0' SIGINT
 
         wait $BACKEND_PID 2>/dev/null
     fi
@@ -1172,8 +1164,10 @@ function run_frontend() {
     pnpm build:frontend
     
     echo "Starting frontend applications in the background..."
-    # Start frontend processes in background
-    pnpm -r --parallel --filter "@thunderid/console" --filter "@thunderid/gate" dev &
+    # In dev the apps are served on their own origins, so point them at the backend via
+    # THUNDERID_DEV_SERVER_URL (injected into __DEV_SERVER_URL__; applied only in dev builds).
+    THUNDERID_DEV_SERVER_URL="$PUBLIC_URL" \
+        pnpm -r --parallel --filter "@thunderid/console" --filter "@thunderid/gate" dev &
     FRONTEND_PID=$!
     
     # Return to script directory
@@ -1201,45 +1195,6 @@ function run_docs() {
     # Return to script directory
     cd "$SCRIPT_DIR" || exit 1
     echo "================================================================"
-}
-
-function run_consent() {
-    local consent_dir="$TARGET_DIR/consent"
-    local consent_port="${CONSENT_SERVER_PORT:-9090}"
-
-    if [ ! -f "$consent_dir/consent-server" ]; then
-        echo "=== Downloading consent server ==="
-        ./scripts/package-consent-server.sh "$GO_OS" "$GO_ARCH" "$TARGET_DIR"
-    fi
-
-    if [ ! -f "$consent_dir/consent-server" ]; then
-        echo "Error: Consent server binary not found at $consent_dir/consent-server"
-        exit 1
-    fi
-
-    echo "=== Starting consent server ==="
-    (cd "$consent_dir" && ./consent-server) &
-    CONSENT_PID=$!
-    CONSENT_TIMEOUT=30
-    CONSENT_ELAPSED=0
-    while [ $CONSENT_ELAPSED -lt $CONSENT_TIMEOUT ]; do
-        if ! kill -0 "$CONSENT_PID" 2>/dev/null; then
-            echo "Error: Consent server process exited unexpectedly"
-            exit 1
-        fi
-        if curl -s -f "http://localhost:${consent_port}/health/readiness" > /dev/null 2>&1; then
-            echo "Consent server is ready"
-            break
-        fi
-        sleep 1
-        CONSENT_ELAPSED=$((CONSENT_ELAPSED + 1))
-    done
-    if [ $CONSENT_ELAPSED -ge $CONSENT_TIMEOUT ]; then
-        echo "Error: Consent server failed to become ready within ${CONSENT_TIMEOUT}s"
-        exit 1
-    fi
-    
-    echo "Consent server started (PID: $CONSENT_PID)"
 }
 
 case "$1" in
@@ -1323,8 +1278,6 @@ case "$1" in
         echo "  debug_backend            - Run the ${PRODUCT_NAME} backend for development in debug mode"
         echo "  run_frontend             - Run the ${PRODUCT_NAME} frontend for development"
         echo "  run_docs                 - Run the documentation development server with live reload"
-        echo ""
-        echo "  --without-consent        - Skip packaging/running the consent server"
         exit 1
         ;;
 esac

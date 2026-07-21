@@ -1,0 +1,102 @@
+---
+title: Single Sign-On for Flows
+sidebar_position: 6
+persona: iam
+description: Add Single Sign-On (SSO) to authentication flows so users skip steps they have already completed, using the Check SSO Session and Save / Load Session nodes in the Console Flow Builder.
+---
+
+import {SsoSingleStepDiagram} from '../../../../src/components/SsoFlowDiagram';
+
+# Single Sign-On for Flows
+
+Single Sign-On (SSO) lets a user authenticate once and then reuse that authentication across applications, without repeating steps they have already completed. <ProductName /> provides SSO as a building block inside authentication flows: you add two nodes to a flow, and the flow skips authentication steps whenever a valid session already covers them.
+
+This guide explains how flow SSO works, describes the two SSO nodes, and shows how to add SSO to a flow. For the underlying session model, see [Sessions and Single Sign-On](../../key-concepts/authentication/sessions.mdx).
+
+## How Single Sign-On Works
+
+Flow SSO is **flow-centric**: a session belongs to exactly one flow. Every application that authenticates through the same flow shares that flow's session, so the second application reuses the first application's authentication instead of prompting the user again. Two different flows never share a session.
+
+A flow SSO session has three characteristics:
+
+- **Per-flow.** The flow is the grouping key. The session covers only applications that use the same flow.
+- **Browser-scoped.** <ProductName /> references the session with a per-flow cookie that the browser sends on each request. Flow SSO applies to browser-based authentication.
+- **Checkpoint-based.** A **checkpoint** is the authentication that SSO can skip. You define it with a **Check SSO Session** node and a **Save / Load Session** node, and the checkpoint covers the steps between them. On a later sign-in, the flow reuses the checkpoint instead of prompting for those steps.
+
+## Single Sign-On Nodes
+
+You build flow SSO from two executor nodes in the Console Flow Builder. You place them around each authentication step you want to make skippable.
+
+### Check SSO Session
+
+The **Check SSO Session** node decides whether the following authentication step can be skipped. Place it immediately before the step. It answers the question: *Can the following authentication be skipped by reusing the existing session?* In a flow definition, it is a `TASK_EXECUTION` step that runs the `SSOCheckExecutor`.
+
+The node has two outcomes:
+
+| Outcome | Link label | Meaning |
+|---|---|---|
+| Success | **Skip to** | A valid session already covers this step. The flow skips the step and continues from the target node. |
+| Failure | **Authenticate** | No reusable session covers this step. The flow runs the full authentication step. |
+
+### Save / Load Session
+
+The **Save / Load Session** node is the checkpoint. Place it at the point where the authentication you want to make skippable completes: the join point that both the **Skip to** and **Authenticate** paths lead to. In a flow definition, it is a `TASK_EXECUTION` step that runs the `SessionExecutor`.
+
+The node performs one of two actions automatically, based on the request:
+
+- On a fresh sign-in, it establishes the session (or attaches to the session an earlier checkpoint in the same sign-in created) and saves the checkpoint for the authentication just completed.
+- On a reused session, it loads the saved checkpoint so downstream nodes read the authenticated user without re-running the steps it covers.
+
+## Add Single Sign-On to a Flow
+
+To make a group of authentication steps skippable, wrap them with a **Check SSO Session** node before the first step and a **Save / Load Session** node at the join point where they complete. The group can be a single step or multiple steps.
+
+The following diagram shows a password step made skippable. The **Skip to** path bypasses the prompt and credential check; the **Authenticate** path runs them. Both paths converge on **Save / Load Session**.
+
+<SsoSingleStepDiagram />
+
+To build this flow:
+
+1. Open the flow in the **Console Flow Builder**.
+2. Add a **Check SSO Session** node after the entry point, before the first authentication step you want to make skippable.
+3. Connect the **Authenticate** outcome to the first node of that authentication (for example, the credentials prompt).
+4. Add a **Save / Load Session** node after the authentication steps complete.
+5. Connect the **Skip to** outcome of **Check SSO Session** directly to the **Save / Load Session** node.
+6. Connect the final node of the authentication to the same **Save / Load Session** node, so both paths converge.
+7. Continue the flow from **Save / Load Session** to the remaining nodes (for example, authorization and the Auth Assertion Generator).
+
+The first time a user signs in, the flow takes the **Authenticate** path and **Save / Load Session** establishes the session. On the next sign-in through the same flow, **Check SSO Session** finds the session and takes the **Skip to** path.
+
+## Configure Session Lifetime
+
+Two timeouts bound every flow SSO session:
+
+- **Idle timeout**: the maximum inactivity period. The idle deadline moves forward on each use of the session, so an active session stays alive. The default is 30 minutes.
+- **Absolute timeout**: the maximum total lifetime, fixed when the session is created and never extended. The default is 8 hours.
+
+A session expires when it passes either deadline. After expiry, **Check SSO Session** takes the **Authenticate** path and the user signs in again.
+
+Set the timeouts in the `session` server-config resource. In a source checkout, use `backend/cmd/server/config/resources/server_configs/session.yaml`; in a packaged distribution, use `<THUNDERID_HOME>/config/resources/server_configs/session.yaml`. Durations are in seconds. A value of `0` uses the default.
+
+```yaml
+name: session
+value:
+  idleTimeoutSeconds: 1800      # 30 minutes
+  absoluteTimeoutSeconds: 28800 # 8 hours
+```
+
+The idle timeout must not exceed the absolute timeout.
+
+## Session Cookie
+
+<ProductName /> references each flow SSO session with a per-flow cookie named `tid_sso_<hash>`, where `<hash>` is derived from the flow identifier. A separate cookie per flow keeps one flow's session from affecting another. The cookie carries only an opaque handle, never user data, and its attributes follow browser security best practices:
+
+- `HttpOnly`, so client-side scripts cannot read it.
+- `SameSite=Lax`.
+- `Secure`, when the server runs over TLS.
+
+The cookie lifetime matches the absolute session timeout.
+
+## Current Scope and Limitations
+
+- Flow SSO applies to **browser-based** authentication, because it relies on the cookies.

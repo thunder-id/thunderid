@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { getLocations } from "./api";
+import { getCachedChatAccessToken, getChatAccessToken } from "./auth/chatTokenService";
 import { AUTH_CONFIG } from "./auth/config";
 import { useAuth } from "./auth/useAuth";
 import { BookingDetailsPageWithAuth } from "./pages/BookingDetailsPageWithAuth";
@@ -344,12 +345,17 @@ function ChatWidget({ authReady }) {
 }
 
 function LiveChatWidget() {
-  const { getAccessToken, isSignedIn } = useAuth();
+  const { isSignedIn } = useAuth();
 
-  return <ChatWidgetCore getToken={isSignedIn ? getAccessToken : null} />;
+  return (
+    <ChatWidgetCore
+      getToken={isSignedIn ? () => getChatAccessToken({ interactive: true }) : null}
+      getCachedToken={isSignedIn ? getCachedChatAccessToken : null}
+    />
+  );
 }
 
-function ChatWidgetCore({ getToken }) {
+function ChatWidgetCore({ getToken, getCachedToken }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
     createChatMessage("assistant", "Hi, I can help with travel questions and booking details.")
@@ -361,21 +367,23 @@ function ChatWidgetCore({ getToken }) {
   const sessionIdRef = useRef(null);
   const pendingRetryRef = useRef(null);
   const getTokenRef = useRef(getToken);
+  const getCachedTokenRef = useRef(getCachedToken);
   const messagesEndRef = useRef(null);
 
   getTokenRef.current = getToken;
+  getCachedTokenRef.current = getCachedToken;
 
   useEffect(() => {
-    if (!isOpen || accessCheckedRef.current || !getTokenRef.current) {
+    if (!isOpen || accessCheckedRef.current || !getCachedTokenRef.current) {
       return;
     }
 
-    accessCheckedRef.current = true;
-
     async function checkAccess() {
       try {
-        const token = await getTokenRef.current();
+        const token = getCachedTokenRef.current();
         if (!token) return;
+
+        accessCheckedRef.current = true;
 
         const res = await fetch(`${AGENT_CHAT_URL}/access`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -411,8 +419,13 @@ function ChatWidgetCore({ getToken }) {
           if (token) {
             headers["Authorization"] = `Bearer ${token}`;
           }
-        } catch {
-          // Continue without token — server will reject if auth is required.
+        } catch (error) {
+          setMessages((current) => [
+            ...current,
+            createChatMessage("assistant", error.message || "Could not authorize chat access."),
+          ]);
+          setIsProcessing(false);
+          return;
         }
       }
 
@@ -721,6 +734,45 @@ function AgentCallbackRoute() {
   );
 }
 
+function ChatTokenCallbackRoute() {
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const state = params.get("state");
+    const error = params.get("error");
+    const errorDescription = params.get("error_description");
+
+    if (window.opener) {
+      window.opener.postMessage(
+        {
+          type: "wayfinder-chat-token-oauth",
+          code: code || null,
+          state: state || null,
+          error: error || null,
+          errorDescription: errorDescription || null
+        },
+        window.location.origin
+      );
+    }
+
+    const timer = window.setTimeout(() => window.close(), 100);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return (
+    <main style={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: "100vh",
+      fontFamily: "sans-serif",
+      color: "#555"
+    }}>
+      <p>Authorizing chat access...</p>
+    </main>
+  );
+}
+
 // Deep-link entry point for agent sign-in. Triggers an OAuth authorize with
 // acr_values=urn:thunder:auth:agent so the gate renders the Agent ID/Secret
 // form directly instead of the standard user credentials screen. Used by the
@@ -824,6 +876,7 @@ function AppRoutes({ authReady, criteria, locations, onSearch }) {
       <Route path="/recovery" element={authReady ? <AuthPage key="recovery" /> : <BookingsUnavailable />} />
       <Route path="/auth" element={<Navigate to="/signin" replace />} />
       {AI_FEATURES_ENABLED && <Route path="/agent-callback" element={<AgentCallbackRoute />} />}
+      {AI_FEATURES_ENABLED && <Route path="/chat-token-callback" element={<ChatTokenCallbackRoute />} />}
       {AI_FEATURES_ENABLED && (
         <Route
           path="/signin-as-agent"

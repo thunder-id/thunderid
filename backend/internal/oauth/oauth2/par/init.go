@@ -53,9 +53,9 @@ func Initialize(
 	return parSvc
 }
 
-// initializePARStore selects the PAR store implementation based on the configured runtime DB type.
+// initializePARStore selects the PAR store implementation based on the configured runtime transient DB type.
 func initializePARStore(cfg oauthconfig.Config) parStoreInterface {
-	if cfg.RuntimeDBType == provider.DataSourceTypeRedis {
+	if cfg.RuntimeTransientDBType == provider.DataSourceTypeRedis {
 		return newRedisPARRequestStore(provider.GetRedisProvider(), cfg.DeploymentID)
 	}
 	return newPARRequestStore(cfg.DeploymentID)

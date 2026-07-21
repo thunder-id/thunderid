@@ -9,6 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -176,6 +177,78 @@ func (_c *GroupServiceInterfaceMock_AddMembersToGroups_Call) Return(serviceError
 }
 
 func (_c *GroupServiceInterfaceMock_AddMembersToGroups_Call) RunAndReturn(run func(ctx context.Context, members []group.Member, groupIDs []string) *common.ServiceError) *GroupServiceInterfaceMock_AddMembersToGroups_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// CascadeDeleteDependencies provides a mock function for the type GroupServiceInterfaceMock
+func (_mock *GroupServiceInterfaceMock) CascadeDeleteDependencies(ctx context.Context, resourceType string, id string) (int, error) {
+	ret := _mock.Called(ctx, resourceType, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CascadeDeleteDependencies")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (int, error)); ok {
+		return returnFunc(ctx, resourceType, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) int); ok {
+		r0 = returnFunc(ctx, resourceType, id)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, resourceType, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// GroupServiceInterfaceMock_CascadeDeleteDependencies_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CascadeDeleteDependencies'
+type GroupServiceInterfaceMock_CascadeDeleteDependencies_Call struct {
+	*mock.Call
+}
+
+// CascadeDeleteDependencies is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceType string
+//   - id string
+func (_e *GroupServiceInterfaceMock_Expecter) CascadeDeleteDependencies(ctx interface{}, resourceType interface{}, id interface{}) *GroupServiceInterfaceMock_CascadeDeleteDependencies_Call {
+	return &GroupServiceInterfaceMock_CascadeDeleteDependencies_Call{Call: _e.mock.On("CascadeDeleteDependencies", ctx, resourceType, id)}
+}
+
+func (_c *GroupServiceInterfaceMock_CascadeDeleteDependencies_Call) Run(run func(ctx context.Context, resourceType string, id string)) *GroupServiceInterfaceMock_CascadeDeleteDependencies_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_CascadeDeleteDependencies_Call) Return(n int, err error) *GroupServiceInterfaceMock_CascadeDeleteDependencies_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_CascadeDeleteDependencies_Call) RunAndReturn(run func(ctx context.Context, resourceType string, id string) (int, error)) *GroupServiceInterfaceMock_CascadeDeleteDependencies_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -789,6 +862,80 @@ func (_c *GroupServiceInterfaceMock_GetGroupsByPath_Call) RunAndReturn(run func(
 	return _c
 }
 
+// GetResourceDependencies provides a mock function for the type GroupServiceInterfaceMock
+func (_mock *GroupServiceInterfaceMock) GetResourceDependencies(ctx context.Context, resourceType string, id string) ([]resourcedependency.ResourceDependency, error) {
+	ret := _mock.Called(ctx, resourceType, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceDependencies")
+	}
+
+	var r0 []resourcedependency.ResourceDependency
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) ([]resourcedependency.ResourceDependency, error)); ok {
+		return returnFunc(ctx, resourceType, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) []resourcedependency.ResourceDependency); ok {
+		r0 = returnFunc(ctx, resourceType, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]resourcedependency.ResourceDependency)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, resourceType, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// GroupServiceInterfaceMock_GetResourceDependencies_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceDependencies'
+type GroupServiceInterfaceMock_GetResourceDependencies_Call struct {
+	*mock.Call
+}
+
+// GetResourceDependencies is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceType string
+//   - id string
+func (_e *GroupServiceInterfaceMock_Expecter) GetResourceDependencies(ctx interface{}, resourceType interface{}, id interface{}) *GroupServiceInterfaceMock_GetResourceDependencies_Call {
+	return &GroupServiceInterfaceMock_GetResourceDependencies_Call{Call: _e.mock.On("GetResourceDependencies", ctx, resourceType, id)}
+}
+
+func (_c *GroupServiceInterfaceMock_GetResourceDependencies_Call) Run(run func(ctx context.Context, resourceType string, id string)) *GroupServiceInterfaceMock_GetResourceDependencies_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_GetResourceDependencies_Call) Return(resourceDependencys []resourcedependency.ResourceDependency, err error) *GroupServiceInterfaceMock_GetResourceDependencies_Call {
+	_c.Call.Return(resourceDependencys, err)
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_GetResourceDependencies_Call) RunAndReturn(run func(ctx context.Context, resourceType string, id string) ([]resourcedependency.ResourceDependency, error)) *GroupServiceInterfaceMock_GetResourceDependencies_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RemoveGroupMembers provides a mock function for the type GroupServiceInterfaceMock
 func (_mock *GroupServiceInterfaceMock) RemoveGroupMembers(ctx context.Context, groupID string, members []group.Member) (*group.Group, *common.ServiceError) {
 	ret := _mock.Called(ctx, groupID, members)
@@ -862,6 +1009,46 @@ func (_c *GroupServiceInterfaceMock_RemoveGroupMembers_Call) Return(group1 *grou
 
 func (_c *GroupServiceInterfaceMock_RemoveGroupMembers_Call) RunAndReturn(run func(ctx context.Context, groupID string, members []group.Member) (*group.Group, *common.ServiceError)) *GroupServiceInterfaceMock_RemoveGroupMembers_Call {
 	_c.Call.Return(run)
+	return _c
+}
+
+// SetDependencyRegistry provides a mock function for the type GroupServiceInterfaceMock
+func (_mock *GroupServiceInterfaceMock) SetDependencyRegistry(r resourcedependency.Registry) {
+	_mock.Called(r)
+	return
+}
+
+// GroupServiceInterfaceMock_SetDependencyRegistry_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetDependencyRegistry'
+type GroupServiceInterfaceMock_SetDependencyRegistry_Call struct {
+	*mock.Call
+}
+
+// SetDependencyRegistry is a helper method to define mock.On call
+//   - r resourcedependency.Registry
+func (_e *GroupServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *GroupServiceInterfaceMock_SetDependencyRegistry_Call {
+	return &GroupServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
+}
+
+func (_c *GroupServiceInterfaceMock_SetDependencyRegistry_Call) Run(run func(r resourcedependency.Registry)) *GroupServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 resourcedependency.Registry
+		if args[0] != nil {
+			arg0 = args[0].(resourcedependency.Registry)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_SetDependencyRegistry_Call) Return() *GroupServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run func(r resourcedependency.Registry)) *GroupServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Run(run)
 	return _c
 }
 

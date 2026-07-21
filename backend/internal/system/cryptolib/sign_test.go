@@ -19,6 +19,7 @@
 package cryptolib
 
 import (
+	"bytes"
 	gocrypto "crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -27,6 +28,7 @@ import (
 	"crypto/rsa"
 	"testing"
 
+	"github.com/cloudflare/circl/sign/ed448"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -390,4 +392,90 @@ func (suite *SignUtilsTestSuite) TestRSAPSSAndPKCS1v15AreNotCrossVerifiable() {
 	err = Verify(suite.testData, pkcs1Signature, RSAPSSSHA256, &suite.rsaPrivateKey.PublicKey)
 	assert.Error(suite.T(), err)
 	assert.Equal(suite.T(), ErrInvalidSignature, err)
+}
+
+func (suite *SignUtilsTestSuite) TestMLDSASignVerifyRoundTrip() {
+	data := []byte("ml-dsa signing input")
+	for _, alg := range mldsaAlgorithms {
+		signAlg, err := SignAlgorithmFor(alg)
+		suite.Require().NoError(err)
+
+		signer, err := GenerateMLDSAKey(alg)
+		suite.Require().NoError(err)
+
+		sig, err := Generate(data, signAlg, signer)
+		suite.Require().NoError(err)
+		suite.NotEmpty(sig)
+
+		suite.NoError(Verify(data, sig, signAlg, signer.Public()),
+			"valid signature must verify for %s", alg)
+
+		// Tampered signature must fail.
+		tampered := bytes.Clone(sig)
+		tampered[0] ^= 0xff
+		suite.ErrorIs(Verify(data, tampered, signAlg, signer.Public()), ErrInvalidSignature)
+
+		// Wrong message must fail.
+		suite.ErrorIs(Verify([]byte("other"), sig, signAlg, signer.Public()), ErrInvalidSignature)
+
+		// Wrong key must fail.
+		other, err := GenerateMLDSAKey(alg)
+		suite.Require().NoError(err)
+		suite.ErrorIs(Verify(data, sig, signAlg, other.Public()), ErrInvalidSignature)
+	}
+}
+
+func (suite *SignUtilsTestSuite) TestMLDSASignInvalidKeyType() {
+	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	suite.Require().NoError(err)
+	_, err = Generate([]byte("data"), MLDSA65, ecKey)
+	suite.ErrorIs(err, ErrInvalidPrivateKey)
+}
+
+func (suite *SignUtilsTestSuite) TestMLDSAVerifyInvalidKeyType() {
+	err := Verify([]byte("data"), []byte("sig"), MLDSA65, &suite.rsaPrivateKey.PublicKey)
+	suite.ErrorIs(err, ErrInvalidPublicKey)
+}
+
+// TestMLDSASignVerifyRejectNonMLDSAScheme covers a circl key that satisfies the
+// generic sign.PrivateKey/sign.PublicKey interfaces but belongs to a different
+// scheme (Ed448): it must be rejected rather than signed/verified with the
+// wrong algorithm.
+func (suite *SignUtilsTestSuite) TestMLDSASignVerifyRejectNonMLDSAScheme() {
+	pub, priv, err := ed448.Scheme().GenerateKey()
+	suite.Require().NoError(err)
+
+	_, err = Generate([]byte("data"), MLDSA65, priv)
+	suite.ErrorIs(err, ErrInvalidPrivateKey)
+
+	err = Verify([]byte("data"), []byte("sig"), MLDSA65, pub)
+	suite.ErrorIs(err, ErrInvalidPublicKey)
+}
+
+func (suite *SignUtilsTestSuite) TestSignAlgorithmForAllAlgorithms() {
+	testCases := []struct {
+		alg      Algorithm
+		expected SignAlgorithm
+	}{
+		{AlgorithmRS256, RSASHA256},
+		{AlgorithmRS512, RSASHA512},
+		{AlgorithmPS256, RSAPSSSHA256},
+		{AlgorithmES256, ECDSASHA256},
+		{AlgorithmES384, ECDSASHA384},
+		{AlgorithmES512, ECDSASHA512},
+		{AlgorithmEdDSA, ED25519},
+	}
+
+	for _, tc := range testCases {
+		suite.T().Run(string(tc.alg), func(t *testing.T) {
+			signAlg, err := SignAlgorithmFor(tc.alg)
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expected, signAlg)
+		})
+	}
+}
+
+func (suite *SignUtilsTestSuite) TestSignAlgorithmForUnsupported() {
+	_, err := SignAlgorithmFor(Algorithm("UNKNOWN"))
+	suite.ErrorIs(err, ErrUnsupportedAlgorithm)
 }

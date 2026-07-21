@@ -33,8 +33,8 @@ export default function StartCoding(): JSX.Element {
   const [showRightArrow, setShowRightArrow] = useState(false);
 
   const handleFrameworkClick = (frameworkId: string) => {
-    // Navigate to applications page with framework query parameter
-    navigate(`/applications/create?framework=${frameworkId}`)?.catch(() => undefined);
+    // Navigate to applications page with the selected type as a query parameter
+    navigate(`/applications/types?type=${frameworkId}`)?.catch(() => undefined);
   };
 
   const checkScroll = () => {

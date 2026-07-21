@@ -16,144 +16,348 @@
  * under the License.
  */
 
-// Package consent provides a pluggable consent management abstraction
 package consent
 
 import (
 	"context"
+	"errors"
+	"slices"
+	"time"
 
-	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-
-	"github.com/thunder-id/thunderid/internal/system/config"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
+
+// ConsentServiceInterface defines the business operations for managing consents and their purposes.
+type ConsentServiceInterface interface {
+	ListPurposes(ctx context.Context, filters PurposeFilter) ([]ConsentPurpose, *tidcommon.ServiceError)
+	CreateConsent(ctx context.Context, consent *ConsentRequest) (*Consent, *tidcommon.ServiceError)
+	UpdateConsent(ctx context.Context, consentID string, consent *ConsentRequest) (
+		*Consent, *tidcommon.ServiceError)
+	SearchConsents(ctx context.Context, filters ConsentFilter) ([]*Consent, *tidcommon.ServiceError)
+}
+
+// InboundClientProvider supplies the inbound client attribute data from which consent purposes are
+// derived. It is the narrow subset of the inbound client layer that consent purpose derivation
+// depends on, defined here so consent does not couple to that layer.
+type InboundClientProvider interface {
+	// GetInboundClientAttributes returns the configured user attributes for a single inbound client,
+	// or ErrInboundClientNotFound if the inbound client does not exist.
+	GetInboundClientAttributes(ctx context.Context, inboundClientID string) (
+		*inboundmodel.InboundClientAttributes, error)
+	// ListInboundClientAttributes returns the configured user attributes for all inbound clients.
+	ListInboundClientAttributes(ctx context.Context) ([]inboundmodel.InboundClientAttributes, error)
+}
 
 // consentService is the default implementation of ConsentServiceInterface.
 type consentService struct {
-	enabled bool
-	client  consentClientInterface
-	logger  *log.Logger
+	consentStore          consentStoreInterface
+	transactioner         transaction.Transactioner
+	inboundClientProvider InboundClientProvider
+	logger                *log.Logger
 }
 
-// newConsentService creates a new instance of consentService with the given client.
-func newConsentService(client consentClientInterface) ConsentServiceInterface {
-	isEnabled := config.GetServerRuntime().Config.Consent.Enabled
-	if !isEnabled {
-		// Service construction runs during application startup, outside any request.
-		log.GetLogger().Debug(context.Background(), "Consent service is disabled in the configuration")
+// newConsentService creates a new consent service backed by the database store. The inbound client
+// provider supplies the persisted inbound client data from which consent purposes are derived.
+func newConsentService(
+	inboundClientProvider InboundClientProvider,
+) (ConsentServiceInterface, error) {
+	consentStore, transactioner, err := newConsentStore()
+	if err != nil {
+		return nil, err
 	}
 
 	return &consentService{
-		enabled: isEnabled,
-		client:  client,
-		logger:  log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConsentService")),
+		consentStore:          consentStore,
+		transactioner:         transactioner,
+		inboundClientProvider: inboundClientProvider,
+		logger:                log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConsentService")),
+	}, nil
+}
+
+// ListPurposes derives the consent purposes matching the given filters.
+func (c *consentService) ListPurposes(
+	ctx context.Context, filters PurposeFilter,
+) ([]ConsentPurpose, *tidcommon.ServiceError) {
+	if filters.GroupID != "" {
+		inboundClient, err := c.inboundClientProvider.GetInboundClientAttributes(ctx, filters.GroupID)
+		if err != nil {
+			c.logger.Error(ctx, "Failed to get inbound client for consent purpose derivation",
+				log.String("inboundClientID", filters.GroupID), log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		purpose := buildAttributePurpose(inboundClient.InboundClientID, inboundClient.Attributes)
+		if purpose == nil {
+			return []ConsentPurpose{}, nil
+		}
+		return []ConsentPurpose{*purpose}, nil
 	}
-}
 
-// IsEnabled returns true if the consent service is enabled, false otherwise.
-func (s *consentService) IsEnabled() bool {
-	return s.enabled
-}
-
-// ----- Consent element operations -----
-
-// CreateConsentElements creates one or more consent elements.
-func (s *consentService) CreateConsentElements(ctx context.Context, ouID string,
-	elements []ConsentElementInput) ([]ConsentElement, *tidcommon.ServiceError) {
-	if len(elements) == 0 {
-		return nil, nil
+	inboundClients, err := c.inboundClientProvider.ListInboundClientAttributes(ctx)
+	if err != nil {
+		c.logger.Error(ctx, "Failed to list inbound clients for consent purpose derivation", log.Error(err))
+		return nil, &tidcommon.InternalServerError
 	}
-	return s.client.createConsentElements(ctx, ouID, elements)
+
+	purposes := make([]ConsentPurpose, 0, len(inboundClients))
+	for i := range inboundClients {
+		purpose := buildAttributePurpose(inboundClients[i].InboundClientID, inboundClients[i].Attributes)
+		if purpose != nil {
+			purposes = append(purposes, *purpose)
+		}
+	}
+	return purposes, nil
 }
 
-// ListConsentElements retrieves consent elements, optionally filtered by namespace and name
-func (s *consentService) ListConsentElements(ctx context.Context, ouID string, ns providers.Namespace,
-	nameFilter string) ([]ConsentElement, *tidcommon.ServiceError) {
-	return s.client.listConsentElements(ctx, ouID, ns, nameFilter)
+// Purpose-name prefixes identify the namespace a consent purpose belongs to. A purpose name is the
+// prefix concatenated with the application ID.
+const (
+	AttributePurposeNamePrefix  = "attributes:"
+	PermissionPurposeNamePrefix = "permissions:"
+)
+
+// AttributePurposeName returns the canonical name identifying the attribute consent purpose of an
+// application.
+func AttributePurposeName(appID string) string {
+	return AttributePurposeNamePrefix + appID
 }
 
-// DeleteConsentElement deletes a consent element by ID.
-// Returns nil if the element does not exist (idempotent).
-func (s *consentService) DeleteConsentElement(ctx context.Context, ouID string,
-	elementID string) *tidcommon.ServiceError {
-	svcErr := s.client.deleteConsentElement(ctx, ouID, elementID)
-	if svcErr != nil && svcErr.Code == ErrorConsentElementNotFound.Code {
-		s.logger.Debug(ctx, "Consent element not found during delete, skipping",
-			log.String("elementID", elementID))
+// PermissionPurposeName returns the canonical name identifying the permission consent purpose of an
+// application.
+func PermissionPurposeName(appID string) string {
+	return PermissionPurposeNamePrefix + appID
+}
+
+// buildAttributePurpose constructs the attribute consent purpose from an application's configured
+// user attributes. Returns nil when no attributes are configured.
+func buildAttributePurpose(appID string, attributes []string) *ConsentPurpose {
+	if len(attributes) == 0 {
 		return nil
 	}
-	return svcErr
-}
-
-// ValidateConsentElements validates a list of consent element names and returns the valid ones.
-func (s *consentService) ValidateConsentElements(ctx context.Context, ouID string, names []string) (
-	[]string, *tidcommon.ServiceError) {
-	if len(names) == 0 {
-		return []string{}, nil
+	purposeName := AttributePurposeName(appID)
+	return &ConsentPurpose{
+		ID:          purposeName,
+		Name:        purposeName,
+		Description: "Attribute consent purpose for application " + appID,
+		GroupID:     appID,
+		Elements:    attributesToPurposeElements(attributes),
 	}
-	return s.client.validateConsentElements(ctx, ouID, names)
 }
 
-// CreateConsentPurpose creates a consent purpose for a resource.
-func (s *consentService) CreateConsentPurpose(ctx context.Context, ouID string, purpose *ConsentPurposeInput) (
-	*ConsentPurpose, *tidcommon.ServiceError) {
-	if purpose == nil {
-		return nil, &ErrorInvalidRequestFormat
+// attributesToPurposeElements maps attribute names to attribute-namespace purpose elements, ordered
+// by name for stable output.
+func attributesToPurposeElements(attributes []string) []PurposeElement {
+	names := slices.Clone(attributes)
+	slices.Sort(names)
+	elements := make([]PurposeElement, 0, len(names))
+	for _, name := range names {
+		elements = append(elements, PurposeElement{
+			Name:        name,
+			Namespace:   NamespaceAttribute,
+			IsMandatory: false,
+		})
 	}
-	return s.client.createConsentPurpose(ctx, ouID, purpose)
+	return elements
 }
 
-// ListConsentPurposes retrieves consent purposes for a resource.
-func (s *consentService) ListConsentPurposes(ctx context.Context, ouID, groupID string) (
-	[]ConsentPurpose, *tidcommon.ServiceError) {
-	return s.client.listConsentPurposes(ctx, ouID, groupID)
-}
-
-// UpdateConsentPurpose updates an existing consent purpose by ID.
-func (s *consentService) UpdateConsentPurpose(ctx context.Context, ouID, purposeID string,
-	purpose *ConsentPurposeInput) (*ConsentPurpose, *tidcommon.ServiceError) {
-	if purpose == nil {
-		return nil, &ErrorInvalidRequestFormat
+// CreateConsent creates a new consent record together with its authorization records.
+func (c *consentService) CreateConsent(
+	ctx context.Context, consent *ConsentRequest,
+) (*Consent, *tidcommon.ServiceError) {
+	if svcErr := validateConsentRequest(consent); svcErr != nil {
+		return nil, svcErr
 	}
-	return s.client.updateConsentPurpose(ctx, ouID, purposeID, purpose)
-}
 
-// CreateConsent creates a new consent record.
-func (s *consentService) CreateConsent(ctx context.Context, ouID string, consent *ConsentRequest) (
-	*providers.Consent, *tidcommon.ServiceError) {
-	if consent == nil {
-		return nil, &ErrorInvalidRequestFormat
+	id, err := utils.GenerateUUIDv7()
+	if err != nil {
+		c.logger.Error(ctx, "Failed to generate consent ID", log.Error(err))
+		return nil, &tidcommon.InternalServerError
 	}
-	return s.client.createConsent(ctx, ouID, consent)
-}
 
-// SearchConsents searches consent records matching the filter.
-func (s *consentService) SearchConsents(ctx context.Context, ouID string, filter *ConsentSearchFilter) (
-	[]providers.Consent, *tidcommon.ServiceError) {
-	return s.client.searchConsents(ctx, ouID, filter)
-}
-
-// ValidateConsent validates a consent by ID and returns validation details.
-func (s *consentService) ValidateConsent(ctx context.Context, ouID, consentID string) (
-	*ConsentValidationResult, *tidcommon.ServiceError) {
-	return s.client.validateConsent(ctx, ouID, consentID)
-}
-
-// UpdateConsent updates the content of an existing consent record.
-func (s *consentService) UpdateConsent(ctx context.Context, ouID string, consentID string,
-	consent *ConsentRequest) (*providers.Consent, *tidcommon.ServiceError) {
-	if consent == nil {
-		return nil, &ErrorInvalidRequestFormat
+	authorizations, err := buildAuthorizations(consent.Authorizations)
+	if err != nil {
+		c.logger.Error(ctx, "Failed to generate consent authorization ID", log.Error(err))
+		return nil, &tidcommon.InternalServerError
 	}
-	return s.client.updateConsent(ctx, ouID, consentID, consent)
+
+	newConsent := &Consent{
+		ID:             id,
+		GroupID:        consent.GroupID,
+		Status:         ConsentStatusActive,
+		ValidityTime:   consent.ValidityTime,
+		Purposes:       consent.Purposes,
+		Authorizations: authorizations,
+	}
+
+	err = c.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		return c.consentStore.CreateConsent(txCtx, newConsent)
+	})
+	if err != nil {
+		c.logger.Error(ctx, "Failed to create consent", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	c.logger.Debug(ctx, "Successfully created consent", log.String("id", id))
+	return newConsent, nil
 }
 
-// RevokeConsent revokes an active consent record.
-func (s *consentService) RevokeConsent(ctx context.Context, ouID, consentID string,
-	payload *ConsentRevokeRequest) *tidcommon.ServiceError {
-	if payload == nil {
+// UpdateConsent updates an existing consent record and replaces its authorization records.
+func (c *consentService) UpdateConsent(
+	ctx context.Context, consentID string, consent *ConsentRequest,
+) (*Consent, *tidcommon.ServiceError) {
+	if consentID == "" {
+		return nil, &ErrorMissingConsentID
+	}
+	if svcErr := validateConsentRequest(consent); svcErr != nil {
+		return nil, svcErr
+	}
+
+	var updatedConsent *Consent
+	err := c.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		existing, err := c.consentStore.GetConsent(txCtx, consentID)
+		if err != nil {
+			return err
+		}
+
+		authorizations, err := buildAuthorizations(consent.Authorizations)
+		if err != nil {
+			return err
+		}
+
+		updatedConsent = &Consent{
+			ID:             consentID,
+			GroupID:        existing.GroupID,
+			Status:         existing.Status,
+			ValidityTime:   consent.ValidityTime,
+			Purposes:       consent.Purposes,
+			Authorizations: authorizations,
+		}
+		return c.consentStore.UpdateConsent(txCtx, updatedConsent)
+	})
+	if err != nil {
+		if errors.Is(err, errConsentNotFound) {
+			c.logger.Debug(ctx, "Consent not found", log.String("id", consentID))
+			return nil, &ErrorConsentNotFound
+		}
+		c.logger.Error(ctx, "Failed to update consent", log.String("id", consentID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	c.logger.Debug(ctx, "Successfully updated consent", log.String("id", consentID))
+	return updatedConsent, nil
+}
+
+// SearchConsents retrieves the consent records matching the given filters.
+//
+// A consent whose validity time has elapsed is expired even if its stored status has not yet been
+// updated to reflect that. Because the persisted status can therefore be stale, the status filter is
+// evaluated here against each consent's effective status rather than pushed down to the store, and
+// the returned records carry their effective status.
+func (c *consentService) SearchConsents(
+	ctx context.Context, filters ConsentFilter,
+) ([]*Consent, *tidcommon.ServiceError) {
+	if filters.ConsentStatus != "" && !filters.ConsentStatus.IsValid() {
+		c.logger.Debug(ctx, "Invalid consent status filter", log.String("status", string(filters.ConsentStatus)))
+		return nil, &ErrorInvalidConsentStatus
+	}
+
+	consents, err := c.consentStore.SearchConsents(ctx, filters)
+	if err != nil {
+		c.logger.Error(ctx, "Failed to search consents", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	now := time.Now().Unix()
+	filtered := make([]*Consent, 0, len(consents))
+	for _, consent := range consents {
+		consent.Status = effectiveStatus(consent.Status, consent.ValidityTime, now)
+		if filters.ConsentStatus != "" && consent.Status != filters.ConsentStatus {
+			continue
+		}
+		filtered = append(filtered, consent)
+	}
+
+	return filtered, nil
+}
+
+// effectiveStatus returns the status a consent presents at the given Unix time. A consent whose
+// validity time has elapsed is reported as expired even if its stored status has not been updated.
+// A non-positive validity time means the consent never expires.
+func effectiveStatus(status ConsentStatus, validityTime, now int64) ConsentStatus {
+	if validityTime <= 0 || now < validityTime {
+		return status
+	}
+	return ConsentStatusExpired
+}
+
+// validateConsentRequest validates the fields of a consent create or update request.
+func validateConsentRequest(consent *ConsentRequest) *tidcommon.ServiceError {
+	if consent == nil || consent.GroupID == "" {
 		return &ErrorInvalidRequestFormat
 	}
-	return s.client.revokeConsent(ctx, ouID, consentID, payload)
+	for _, purpose := range consent.Purposes {
+		if svcErr := validatePurposeItem(purpose); svcErr != nil {
+			return svcErr
+		}
+	}
+	for _, authorization := range consent.Authorizations {
+		if svcErr := validateAuthorizationRequest(authorization); svcErr != nil {
+			return svcErr
+		}
+	}
+	return nil
+}
+
+// validatePurposeItem validates a single purpose item and its element approvals.
+func validatePurposeItem(purpose ConsentPurposeItem) *tidcommon.ServiceError {
+	if purpose.Name == "" {
+		return &ErrorInvalidRequestFormat
+	}
+	for _, element := range purpose.Elements {
+		if element.Name == "" {
+			return &ErrorInvalidRequestFormat
+		}
+		if !element.Namespace.IsValid() {
+			return &ErrorInvalidNamespace
+		}
+	}
+	return nil
+}
+
+// validateAuthorizationRequest validates a single authorization payload of a consent request.
+func validateAuthorizationRequest(authorization ConsentAuthorizationRequest) *tidcommon.ServiceError {
+	if authorization.UserID == "" {
+		return &ErrorInvalidRequestFormat
+	}
+	if !authorization.Type.IsValid() {
+		return &ErrorInvalidAuthorizationType
+	}
+	if !authorization.Status.IsValid() {
+		return &ErrorInvalidAuthorizationStatus
+	}
+	return nil
+}
+
+// buildAuthorizations converts the authorization payloads into persistable authorization records,
+// generating an identifier and stamping the current time on each.
+func buildAuthorizations(requests []ConsentAuthorizationRequest) ([]ConsentAuthorization, error) {
+	now := time.Now().Unix()
+	authorizations := make([]ConsentAuthorization, 0, len(requests))
+	for _, request := range requests {
+		id, err := utils.GenerateUUIDv7()
+		if err != nil {
+			return nil, err
+		}
+		authorizations = append(authorizations, ConsentAuthorization{
+			ID:          id,
+			UserID:      request.UserID,
+			Type:        request.Type,
+			Status:      request.Status,
+			UpdatedTime: now,
+		})
+	}
+	return authorizations, nil
 }

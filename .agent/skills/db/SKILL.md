@@ -5,17 +5,16 @@ description: Database schema and query conventions for ThunderID. Use when chang
 
 # Database Schema Design Principles and Conventions
 
-This document explains the database schema design principles and conventions used in ThunderID. AI agents and contributors should follow these conventions when generating or modifying database schemas and queries.
-
 ## Logical Database Separation
 
-ThunderID uses three logically separated databases. Each database owns a specific category of data.
+ThunderID uses four logically separated databases. Each database owns a specific category of data.
 
-| Database     | Responsibility                                                         |
-|--------------|------------------------------------------------------------------------|
-| `configdb`   | Identity configuration data Ex: applications, authentication flows, roles, identity providers |
-| `runtimedb`  | Runtime temporal data which holds the state of the authentication flows: authorization codes, flow contexts, WebAuthn sessions |
-| `userdb`     | Identity data: users, groups, indexed user attributes                  |
+| Database (config key) | Responsibility                                                |
+|-----------------------|---------------------------------------------------------------|
+| `config`              | Identity configuration data Ex: applications, authentication flows, roles, identity providers |
+| `runtime_transient`   | Short-lived runtime state: authorization codes, authorization/PAR requests, JTI records, WebAuthn/VCI state, flow contexts |
+| `entitydb`                | Identity data: users, groups, indexed user attributes         |
+| `runtime_persistent`  | Long-lived operational state that must survive restarts: revoked tokens, SSO sessions, consent records |
 
 Although the databases are logically separated, they share consistent schema design principles documented here.
 
@@ -64,26 +63,11 @@ CREATE TABLE "ROLE_ASSIGNMENT" (
 );
 ```
 
-This approach:
-
-- Reduces index size compared to adding a separate surrogate key.
-- Aligns with the natural query patterns for many-to-many relationships.
-- Prevents duplicate association rows at the database level.
+This reduces index size, matches natural many-to-many query patterns, and prevents duplicate association rows at the database level.
 
 ## Foreign Key Strategy
 
-Foreign keys reference UUID primary keys directly. Integer-based foreign keys are not used anywhere in the schema.
-
-The system does not introduce:
-
-- `INT`-based surrogate identifiers.
-- UUID-to-integer resolution layers.
-
-This avoids unnecessary lookup overhead and architectural complexity when joining across tables or deployments.
-
-## No Auto-Increment IDs
-
-The schema does not use auto-increment integer identifiers. UUID v7 identifiers serve as the only primary key mechanism across all tables.
+Foreign keys reference UUID primary keys directly. Do not introduce `INT`-based surrogate identifiers, UUID-to-integer resolution layers, or auto-increment IDs anywhere in the schema — UUID v7 is the only primary key mechanism.
 
 ## Multi-Deployment Isolation
 
@@ -173,20 +157,7 @@ WHERE f.ID = $1 AND f.DEPLOYMENT_ID = $2
 
 ## Indexing Philosophy
 
-Indexes in ThunderID are designed to match real query patterns. The process for defining or revising indexes is:
-
-1. Review the queries associated with each table.
-2. Identify missing or inefficient indexes.
-3. Optimize existing indexes, including composite primary keys.
-4. Introduce composite indexes where they improve common query patterns.
-5. Update both the PostgreSQL and SQLite schema scripts accordingly.
-
-### Indexing Goals
-
-- Improve lookup speed for primary access patterns.
-- Optimize join performance between related tables.
-- Improve filtering performance for deployment-scoped queries.
-- Reduce full table scans.
+Indexes match real query patterns. When defining or revising indexes: review each table's queries, identify missing or inefficient indexes, optimize existing ones (including composite primary keys), add composite indexes for common patterns, and update both the PostgreSQL and SQLite schema scripts.
 
 ### Composite Indexes
 
@@ -199,15 +170,15 @@ CREATE INDEX idx_user_ou_deployment ON "USER" (DEPLOYMENT_ID, OU_ID);
 
 ### Expiry Indexes
 
-Tables in `runtimedb` that include an `EXPIRY_TIME` column should have a dedicated index on that column to support efficient cleanup queries.
+Tables in `runtime_transient` that include an `EXPIRY_TIME` column should have a dedicated index on that column to support efficient cleanup queries.
 
 ```sql
 CREATE INDEX idx_authz_code_expiry_time ON "AUTHORIZATION_CODE" (EXPIRY_TIME);
 ```
 
-## Runtime Database Expiry Handling
+## Runtime-transient Database Expiry Handling
 
-Use these rules for all temporary runtime tables in `runtimedb`.
+Use these rules for all temporary runtime tables in `runtime_transient`.
 
 ### Agent Rules
 
@@ -217,7 +188,7 @@ Use these rules for all temporary runtime tables in `runtimedb`.
 4. Cleanup jobs must delete expired rows regularly.
 5. For association tables, if the foreign key to the owning runtime record uses `ON DELETE CASCADE`, deleting an expired owner row also removes related association rows automatically.
 6. An association table does not require its own `EXPIRY_TIME` column unless the association has an independent expiry lifecycle.
-7. When runtime tables are added, removed, or renamed, update both cleanup artifacts: `backend/dbscripts/runtimedb/postgres-cleanup.sql` and `backend/scripts/cleanup_runtime_db.sh`.
+7. When runtime tables are added, removed, or renamed, update both cleanup artifacts: `backend/dbscripts/runtime-transient/postgres-cleanup.sql` and `backend/scripts/cleanup_runtime_transient_db.sh`.
 
 ### Expiry Column
 
@@ -241,13 +212,13 @@ WHERE AUTH_ID = $1 AND EXPIRY_TIME > $2 AND DEPLOYMENT_ID = $3
 
 Use the existing cleanup artifacts in this repository:
 
-- `backend/dbscripts/runtimedb/postgres-cleanup.sql`: defines the PostgreSQL stored procedure `cleanup_expired_runtimedb_data` (UTC-based cleanup).
-- `backend/scripts/cleanup_runtime_db.sh`: provides scheduled/manual cleanup support for PostgreSQL and SQLite.
+- `backend/dbscripts/runtime-transient/postgres-cleanup.sql`: defines the PostgreSQL stored procedure `cleanup_expired_runtime_transient_data` (UTC-based cleanup).
+- `backend/scripts/cleanup_runtime_transient_db.sh`: provides scheduled/manual cleanup support for PostgreSQL and SQLite.
 
 Keep these two files in sync with the current set of runtime tables.
 
 ```sql
-CREATE OR REPLACE PROCEDURE cleanup_expired_runtimedb_data()
+CREATE OR REPLACE PROCEDURE cleanup_expired_runtime_transient_data()
 LANGUAGE plpgsql
 AS $$
 DECLARE
@@ -323,6 +294,6 @@ Use a consistent prefix per store and increment the sequence number for each new
 | Query parameter order | Keep `DEPLOYMENT_ID` as the last parameter in parameterized queries. |
 | Runtime table expiry column | For runtime owner tables, require `EXPIRY_TIME TIMESTAMP NOT NULL`. |
 | Association table expiry column | Omit `EXPIRY_TIME` when lifecycle is inherited via `ON DELETE CASCADE`; add it only if association rows expire independently. |
-| Expired data cleanup | Use `backend/dbscripts/runtimedb/postgres-cleanup.sql` and `backend/scripts/cleanup_runtime_db.sh`; keep both updated when runtime tables change. |
+| Expired data cleanup | Use `backend/dbscripts/runtime-transient/postgres-cleanup.sql` and `backend/scripts/cleanup_runtime_transient_db.sh`; keep both updated when runtime tables change. |
 | Query declaration format | Define queries as `DBQuery` values with unique query IDs. |
 | Table identifier format | Use uppercase table names in double quotes in schema scripts and embedded SQL. |

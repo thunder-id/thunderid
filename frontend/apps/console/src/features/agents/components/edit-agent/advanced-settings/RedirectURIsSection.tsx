@@ -16,10 +16,20 @@
  * under the License.
  */
 
-import {SettingsCard} from '@thunderid/components';
-import {Alert, Box, Button, FormControl, IconButton, Stack, TextField, Tooltip} from '@wso2/oxygen-ui';
+import {
+  Alert,
+  Box,
+  Button,
+  FormControl,
+  FormLabel,
+  IconButton,
+  Stack,
+  TextField,
+  Tooltip,
+  Typography,
+} from '@wso2/oxygen-ui';
 import {Plus, Trash} from '@wso2/oxygen-ui-icons-react';
-import {useEffect, useRef, useState, type JSX} from 'react';
+import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {OAuth2Config} from '../../../../applications/models/oauth';
 import type {OAuthAgentConfig} from '../../../models/agent';
@@ -29,12 +39,6 @@ const REDIRECT_USING_GRANTS = ['authorization_code'];
 interface RedirectURIsSectionProps {
   oauth2Config?: OAuthAgentConfig;
   onOAuth2ConfigChange?: (updates: Partial<OAuth2Config>) => void;
-  /**
-   * Reports whether the current state has any blocking validation error. The agent edit page
-   * uses this to disable Save when the authorization-code grant is on but no valid redirect URI
-   * is configured.
-   */
-  onValidationChange?: (hasErrors: boolean) => void;
   /**
    * Whether inputs should be disabled (e.g. read-only resource).
    */
@@ -52,7 +56,6 @@ const isValidURL = (value: string): boolean => {
 export default function RedirectURIsSection({
   oauth2Config = undefined,
   onOAuth2ConfigChange = undefined,
-  onValidationChange = undefined,
   disabled = false,
 }: RedirectURIsSectionProps): JSX.Element | null {
   const {t} = useTranslation();
@@ -62,7 +65,9 @@ export default function RedirectURIsSection({
   const usesRedirect = grantTypes.some((g) => REDIRECT_USING_GRANTS.includes(g));
   const uris = oauth2Config?.redirectUris ?? [];
 
-  // The authorization-code grant cannot complete without at least one valid redirect URI.
+  // The authorization-code grant cannot complete without at least one valid redirect URI. The
+  // page-level Save guard computes this same check independently from state (see AgentEditPage),
+  // since this section unmounts when its tab isn't active.
   const hasValidUri = uris.some((u) => {
     if (!u.trim()) return false;
     try {
@@ -72,25 +77,6 @@ export default function RedirectURIsSection({
     }
   });
   const isMissingRequiredUri = usesRedirect && !hasValidUri;
-  const lastReportedRef = useRef<boolean | null>(null);
-
-  useEffect(() => {
-    if (!onValidationChange) return;
-    if (lastReportedRef.current === isMissingRequiredUri) return;
-    lastReportedRef.current = isMissingRequiredUri;
-    onValidationChange(isMissingRequiredUri);
-  }, [isMissingRequiredUri, onValidationChange]);
-
-  // Always reset the reported error state when the section unmounts (e.g. user switches grants
-  // away from authorization_code, which hides the section below).
-  useEffect(
-    () => () => {
-      if (onValidationChange && lastReportedRef.current === true) {
-        onValidationChange(false);
-      }
-    },
-    [onValidationChange],
-  );
 
   // Hide entirely when no redirect-using grant is selected — redirect URIs are meaningless then.
   if (!oauth2Config || !usesRedirect) return null;
@@ -151,20 +137,18 @@ export default function RedirectURIsSection({
   };
 
   return (
-    <SettingsCard
-      title={t('agents:edit.advanced.redirectUris.title', 'Redirect URIs')}
-      description={t(
-        'agents:edit.advanced.redirectUris.description',
-        'Allowed redirect destinations for the authorization code grant.',
-      )}
-    >
+    <Box>
+      <FormLabel>{t('agents:edit.advanced.redirectUris.title', 'Authorized redirect URIs')}</FormLabel>
+      <Typography variant="caption" color="text.secondary" sx={{display: 'block', mt: 0.5, mb: 1.5}}>
+        {t('agents:edit.advanced.redirectUris.description', 'For use with requests from a web server')}
+      </Typography>
       <FormControl fullWidth>
         <Stack spacing={2}>
           {isMissingRequiredUri && (
             <Alert severity="error" data-testid="agent-redirect-uris-required">
               {t(
                 'agents:edit.advanced.redirectUris.required',
-                'At least one valid redirect URI is required for the authorization code grant.',
+                'The Authorization Code grant requires at least one valid redirect URI.',
               )}
             </Alert>
           )}
@@ -196,12 +180,12 @@ export default function RedirectURIsSection({
           {isEditable && (
             <Box>
               <Button variant="outlined" startIcon={<Plus />} onClick={handleAdd} size="small">
-                {t('agents:edit.advanced.redirectUris.addUri', 'Add Redirect URI')}
+                {t('agents:edit.advanced.redirectUris.addUri', 'Add URI')}
               </Button>
             </Box>
           )}
         </Stack>
       </FormControl>
-    </SettingsCard>
+    </Box>
   );
 }

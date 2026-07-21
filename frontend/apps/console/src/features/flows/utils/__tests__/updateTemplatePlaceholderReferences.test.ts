@@ -77,6 +77,17 @@ describe('updateTemplatePlaceholderReferences', () => {
 
       expect(result.id).toMatch(/^ID_/);
     });
+
+    it('should use the replacer prefix for generated ids so nodes are tellable apart', () => {
+      vi.mocked(Math.random).mockReturnValue(0.5);
+
+      const obj = {id: '{{RECOVERY_CALL_STEP_ID}}'};
+      const replacers = [{key: 'RECOVERY_CALL_STEP_ID', type: 'ID', prefix: 'recovery_call'}];
+
+      const [result] = updateTemplatePlaceholderReferences(obj, replacers);
+
+      expect(result.id).toMatch(/^recovery_call_/);
+    });
   });
 
   describe('Nested Objects', () => {

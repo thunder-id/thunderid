@@ -47,6 +47,14 @@ vi.mock('../RecoveryFlowSection', () => ({
   ),
 }));
 
+vi.mock('../SignOutFlowSection', () => ({
+  default: ({application, editedApp}: {application: Application; editedApp: Partial<Application>}) => (
+    <div data-testid="signout-flow-section">
+      SignOutFlowSection - App: {application.id}, Edited Sign Out Flow: {editedApp.signOutFlowId ?? 'None'}
+    </div>
+  ),
+}));
+
 describe('EditFlowsSettings', () => {
   const mockOnFieldChange = vi.fn();
   const mockApplication: Application = {
@@ -72,6 +80,7 @@ describe('EditFlowsSettings', () => {
       expect(screen.getByTestId('auth-flow-section')).toBeInTheDocument();
       expect(screen.getByTestId('registration-flow-section')).toBeInTheDocument();
       expect(screen.getByTestId('recovery-flow-section')).toBeInTheDocument();
+      expect(screen.getByTestId('signout-flow-section')).toBeInTheDocument();
     });
 
     it('should pass application to child components', () => {
@@ -179,6 +188,7 @@ describe('EditFlowsSettings', () => {
       expect(sections[0]).toHaveAttribute('data-testid', 'auth-flow-section');
       expect(sections[1]).toHaveAttribute('data-testid', 'registration-flow-section');
       expect(sections[2]).toHaveAttribute('data-testid', 'recovery-flow-section');
+      expect(sections[3]).toHaveAttribute('data-testid', 'signout-flow-section');
     });
   });
 });

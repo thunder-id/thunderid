@@ -575,6 +575,28 @@ describe('reactFlowTransformer', () => {
         });
       });
 
+      it('should persist properties for PROMPT nodes (e.g. the user-set display name)', () => {
+        const canvasData: ReactFlowCanvasData = {
+          nodes: [
+            createNode(
+              'view-1',
+              StepTypes.View,
+              {x: 0, y: 0},
+              {
+                components: [],
+                properties: {displayName: 'Collect credentials'},
+              },
+            ),
+          ],
+          edges: [],
+        };
+
+        const result = transformReactFlow(canvasData);
+
+        const promptNode = result.nodes.find((n) => n.id === 'view-1');
+        expect(promptNode?.properties).toEqual({displayName: 'Collect credentials'});
+      });
+
       it('should use first edge target when no default edge exists (all edges have sourceHandle)', () => {
         const canvasData: ReactFlowCanvasData = {
           nodes: [
@@ -1822,6 +1844,106 @@ describe('reactFlowTransformer', () => {
 
       // Executor should be in the prompts array action
       expect(result.nodes[0].prompts?.[0].action?.executor).toEqual({name: 'TestExecutor'});
+    });
+  });
+
+  describe('CALL node transformation', () => {
+    it('should map CALL step type to CALL flow node type', () => {
+      const canvasData: ReactFlowCanvasData = {
+        nodes: [createNode('call-1', StepTypes.Call, {x: 10, y: 20})],
+        edges: [],
+      };
+
+      const result = transformReactFlow(canvasData);
+
+      expect(result.nodes[0].type).toBe('CALL');
+    });
+
+    it('should read flow.ref from data.flow', () => {
+      const canvasData: ReactFlowCanvasData = {
+        nodes: [
+          createNode('call-1', StepTypes.Call, {x: 0, y: 0}, {
+            flow: {ref: 'referenced-flow-id'},
+          } as unknown as StepData),
+        ],
+        edges: [],
+      };
+
+      const result = transformReactFlow(canvasData);
+
+      expect(result.nodes[0].flow).toEqual({ref: 'referenced-flow-id'});
+    });
+
+    it('should fall back to data.action.flow.ref when data.flow is absent', () => {
+      const canvasData: ReactFlowCanvasData = {
+        nodes: [
+          createNode('call-1', StepTypes.Call, {x: 0, y: 0}, {
+            action: {type: 'CALL', flow: {ref: 'flow-from-action'}},
+          } as unknown as StepData),
+        ],
+        edges: [],
+      };
+
+      const result = transformReactFlow(canvasData);
+
+      expect(result.nodes[0].flow).toEqual({ref: 'flow-from-action'});
+    });
+
+    it('should omit flow when neither data.flow nor data.action.flow provides a ref', () => {
+      const canvasData: ReactFlowCanvasData = {
+        nodes: [createNode('call-1', StepTypes.Call)],
+        edges: [],
+      };
+
+      const result = transformReactFlow(canvasData);
+
+      expect(result.nodes[0].flow).toBeUndefined();
+    });
+
+    it('should derive onSuccess from the next-handle edge', () => {
+      const canvasData: ReactFlowCanvasData = {
+        nodes: [createNode('call-1', StepTypes.Call), createNode('success-1', StepTypes.End)],
+        edges: [createEdge('e-success', 'call-1', 'success-1', 'call-1_NEXT')],
+      };
+
+      const result = transformReactFlow(canvasData);
+
+      const callNode = result.nodes.find((n) => n.id === 'call-1')!;
+      expect(callNode.onSuccess).toBe('success-1');
+      expect(callNode.onFailure).toBeUndefined();
+    });
+
+    it('should derive onFailure from the failure-handle edge', () => {
+      const canvasData: ReactFlowCanvasData = {
+        nodes: [createNode('call-1', StepTypes.Call), createNode('failure-1', StepTypes.End)],
+        edges: [createEdge('e-failure', 'call-1', 'failure-1', 'failure')],
+      };
+
+      const result = transformReactFlow(canvasData);
+
+      const callNode = result.nodes.find((n) => n.id === 'call-1')!;
+      expect(callNode.onFailure).toBe('failure-1');
+    });
+
+    it('should populate both onSuccess and onFailure when both edges exist', () => {
+      const canvasData: ReactFlowCanvasData = {
+        nodes: [
+          createNode('call-1', StepTypes.Call, {x: 0, y: 0}, {flow: {ref: 'ref-1'}} as unknown as StepData),
+          createNode('success-1', StepTypes.End),
+          createNode('failure-1', StepTypes.End),
+        ],
+        edges: [
+          createEdge('e-success', 'call-1', 'success-1', 'call-1_NEXT'),
+          createEdge('e-failure', 'call-1', 'failure-1', 'failure'),
+        ],
+      };
+
+      const result = transformReactFlow(canvasData);
+
+      const callNode = result.nodes.find((n) => n.id === 'call-1')!;
+      expect(callNode.flow).toEqual({ref: 'ref-1'});
+      expect(callNode.onSuccess).toBe('success-1');
+      expect(callNode.onFailure).toBe('failure-1');
     });
   });
 });

@@ -25,6 +25,18 @@ const TemplateConstants = {
    * Appended to technology template IDs when INBUILT approach is selected.
    */
   EMBEDDED_SUFFIX: '-embedded',
+
+  /**
+   * Template ID for the MCP Client application template. Used to branch the
+   * creation wizard (Name & Type step) and the edit page's MCP-native tab set.
+   */
+  MCP_CLIENT_TEMPLATE_ID: 'mcp-client',
+
+  /**
+   * Grant types offered to MCP Client applications on the Advanced tab, regardless of
+   * what the OIDC discovery document additionally advertises.
+   */
+  MCP_CLIENT_ALLOWED_GRANT_TYPES: ['authorization_code', 'refresh_token', 'client_credentials'],
 } as const;
 
 export default TemplateConstants;

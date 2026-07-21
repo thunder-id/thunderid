@@ -202,7 +202,8 @@ export default function ResourceAvatar({
         ...(onSelect ? {'&:hover': {opacity: 0.8}} : {}),
         '&:focus-visible': isInteractive ? {outline: '2px solid', outlineOffset: '2px'} : undefined,
         ...theme.applyStyles('light', {
-          backgroundColor: theme.vars?.palette.grey[400],
+          backgroundColor: theme.palette.grey[700],
+          color: theme.palette.primary.contrastText,
         }),
         ...sx,
       }}

@@ -101,6 +101,74 @@ func (f *fileBasedStore) GetRoleList(ctx context.Context, limit, offset int) ([]
 	return roles[start:end], nil
 }
 
+// GetRoleListCountByOUID returns the count of roles belonging to the given organization unit
+// in the file-based store.
+func (f *fileBasedStore) GetRoleListCountByOUID(ctx context.Context, ouID string) (int, error) {
+	roles, err := f.rolesByOUID(ctx, ouID)
+	if err != nil {
+		return 0, err
+	}
+	return len(roles), nil
+}
+
+// GetRoleListByOUID returns the list of roles belonging to the given organization unit from the
+// file-based store, with pagination.
+func (f *fileBasedStore) GetRoleListByOUID(ctx context.Context, ouID string, limit, offset int) ([]Role, error) {
+	if limit <= 0 {
+		return []Role{}, nil
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	roles, err := f.rolesByOUID(ctx, ouID)
+	if err != nil {
+		return nil, err
+	}
+
+	start := offset
+	if start >= len(roles) {
+		return []Role{}, nil
+	}
+	end := start + limit
+	if end > len(roles) {
+		end = len(roles)
+	}
+
+	return roles[start:end], nil
+}
+
+// rolesByOUID returns all roles belonging to the given organization unit from the file-based store.
+func (f *fileBasedStore) rolesByOUID(ctx context.Context, ouID string) ([]Role, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	roles := make([]Role, 0, len(list))
+	for _, item := range list {
+		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
+		if err != nil {
+			// Log warning for malformed declarative entry
+			log.GetLogger().Warn(ctx, "Skipping malformed role in rolesByOUID",
+				log.String("roleID", item.ID.ID),
+				log.Error(err))
+			continue
+		}
+		if roleData.OUID != ouID {
+			continue
+		}
+		roles = append(roles, Role{
+			ID:          roleData.ID,
+			Name:        roleData.Name,
+			Description: roleData.Description,
+			OUID:        roleData.OUID,
+		})
+	}
+
+	return roles, nil
+}
+
 // CreateRole is not supported in file-based store.
 func (f *fileBasedStore) CreateRole(ctx context.Context, id string, role RoleCreationDetail) error {
 	return errors.New("CreateRole is not supported in file-based store")
@@ -256,6 +324,13 @@ func (f *fileBasedStore) DeleteAssignmentsByRoleID(ctx context.Context, id strin
 	return errors.New("DeleteAssignmentsByRoleID is not supported in file-based store")
 }
 
+// DeleteAssignmentsByAssignee is a no-op for the file-based store: declarative roles hold no
+// mutable runtime assignments to cascade-delete, so there is nothing to remove.
+func (f *fileBasedStore) DeleteAssignmentsByAssignee(
+	_ context.Context, _, _ string) (int64, error) {
+	return 0, nil
+}
+
 // AddAssignments is not supported in file-based store.
 func (f *fileBasedStore) AddAssignments(ctx context.Context, id string, assignments []RoleAssignment) error {
 	return errors.New("AddAssignments is not supported in file-based store")
@@ -320,11 +395,13 @@ func (f *fileBasedStore) CheckRoleNameExistsExcludingID(
 	return false, nil
 }
 
-// GetAuthorizedPermissions returns permissions from roles assigned to the entity or groups in the file store.
-func (f *fileBasedStore) GetAuthorizedPermissions(
+// GetAuthorizedPermissionsByResourceServer returns permissions from roles assigned to the entity or groups in
+// the file store, scoped to a resource server when provided.
+func (f *fileBasedStore) GetAuthorizedPermissionsByResourceServer(
 	ctx context.Context,
 	entityID string,
 	groupIDs []string,
+	resourceServerID string,
 	requestPermissions []string,
 ) ([]string, error) {
 	if len(requestPermissions) == 0 {
@@ -363,6 +440,9 @@ func (f *fileBasedStore) GetAuthorizedPermissions(
 			continue
 		}
 		for _, resourcePerms := range roleData.Permissions {
+			if resourceServerID != "" && resourcePerms.ResourceServerID != resourceServerID {
+				continue
+			}
 			for _, perm := range resourcePerms.Permissions {
 				if requestedSet[perm] {
 					permitted[perm] = true

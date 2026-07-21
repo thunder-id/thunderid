@@ -243,6 +243,7 @@ func (ds *dcrService) convertDCRToApplication(request *DCRRegistrationRequest) (
 	oauthAppConfig := &providers.OAuthConfigWithSecret{
 		ClientID:                           clientID,
 		RedirectURIs:                       request.RedirectURIs,
+		PostLogoutRedirectURIs:             request.PostLogoutRedirectURIs,
 		GrantTypes:                         request.GrantTypes,
 		ResponseTypes:                      request.ResponseTypes,
 		TokenEndpointAuthMethod:            request.TokenEndpointAuthMethod,
@@ -374,6 +375,7 @@ func (ds *dcrService) convertApplicationToDCRResponse(appDTO *model.ApplicationD
 		ClientSecret:                       oauthConfig.ClientSecret,
 		ClientSecretExpiresAt:              ClientSecretExpiresAtNever,
 		RedirectURIs:                       oauthConfig.RedirectURIs,
+		PostLogoutRedirectURIs:             oauthConfig.PostLogoutRedirectURIs,
 		GrantTypes:                         oauthConfig.GrantTypes,
 		ResponseTypes:                      oauthConfig.ResponseTypes,
 		ClientName:                         clientName,

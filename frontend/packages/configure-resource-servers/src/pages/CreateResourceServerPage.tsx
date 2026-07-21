@@ -64,7 +64,7 @@ export default function CreateResourceServerPage(): JSX.Element {
   const [currentStep, setCurrentStep] = useState<ResourceServerCreateStep>(ResourceServerCreateStep.TYPE);
   const [selectedType, setSelectedType] = useState<ResourceServerType | undefined>(undefined);
   const [name, setName] = useState('');
-  const [handle, setHandle] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [delimiter, setDelimiter] = useState<PermissionDelimiter>(DEFAULT_PERMISSION_DELIMITER);
   const [ouId, setOuId] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -154,7 +154,7 @@ export default function CreateResourceServerPage(): JSX.Element {
 
     const payload = {
       name: name.trim(),
-      handle: handle.trim() || undefined,
+      identifier: identifier.trim(),
       ouId: resolvedOuId,
       type: selectedType,
       delimiter,
@@ -162,7 +162,12 @@ export default function CreateResourceServerPage(): JSX.Element {
 
     createResourceServer.mutate(payload, {
       onSuccess: (created) => {
-        showToast(t('resourceServers:create.success', 'Resource server created successfully.'), 'success');
+        showToast(
+          selectedType === 'MCP'
+            ? t('resourceServers:create.successMcp', 'MCP server created successfully.')
+            : t('resourceServers:create.success', 'Resource server created successfully.'),
+          'success',
+        );
         (async (): Promise<void> => {
           await navigate(`/resource-servers/${created.id}?tab=resources`);
         })().catch((err: unknown) => {
@@ -213,10 +218,10 @@ export default function CreateResourceServerPage(): JSX.Element {
         return (
           <ConfigureName
             name={name}
-            handle={handle}
-            delimiter={delimiter}
+            identifier={identifier}
+            selectedType={selectedType}
             onNameChange={setName}
-            onHandleChange={setHandle}
+            onIdentifierChange={setIdentifier}
             onReadyChange={handleNameReadyChange}
           />
         );
@@ -224,13 +229,19 @@ export default function CreateResourceServerPage(): JSX.Element {
         return (
           <ConfigureSeparator
             delimiter={delimiter}
-            handle={handle}
             onDelimiterChange={handleDelimiterChange}
             onReadyChange={handleSeparatorReadyChange}
           />
         );
       case ResourceServerCreateStep.ORGANIZATION_UNIT:
-        return <ConfigureOrgUnit selectedOuId={ouId} onOuIdChange={setOuId} onReadyChange={handleOuReadyChange} />;
+        return (
+          <ConfigureOrgUnit
+            selectedOuId={ouId}
+            selectedType={selectedType}
+            onOuIdChange={setOuId}
+            onReadyChange={handleOuReadyChange}
+          />
+        );
       default:
         return null;
     }
@@ -315,7 +326,9 @@ export default function CreateResourceServerPage(): JSX.Element {
                       {isLastStep
                         ? createResourceServer.isPending
                           ? t('resourceServers:create.creating', 'Creating…')
-                          : t('resourceServers:create.submit', 'Create resource server')
+                          : selectedType === 'MCP'
+                            ? t('resourceServers:create.submitMcp', 'Create MCP server')
+                            : t('resourceServers:create.submit', 'Create resource server')
                         : t('common:actions.continue', 'Continue')}
                     </Button>
                   </Box>

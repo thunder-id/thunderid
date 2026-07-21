@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -19,6 +19,7 @@
 package userinfo
 
 import (
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -107,6 +108,22 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.userinfoservice.invalid_dpop_proof_description",
 			DefaultValue: "DPoP proof verification failed",
+		},
+	}
+
+	// errorRevocationUnavailable is returned when the token revocation deny list could not be
+	// consulted. The validator fails closed, so the request is rejected with a server error rather
+	// than served from a token whose revocation status is unknown.
+	errorRevocationUnavailable = tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
+		Code: constants.ErrorServerError,
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userinfoservice.revocation_unavailable",
+			DefaultValue: "Token revocation status could not be verified",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userinfoservice.revocation_unavailable_description",
+			DefaultValue: "The token revocation status could not be verified",
 		},
 	}
 )

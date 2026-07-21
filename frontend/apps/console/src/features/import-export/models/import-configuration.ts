@@ -60,8 +60,7 @@ export interface ConfigSummaryItem {
  */
 export interface ProductConfig {
   application?: unknown[];
-  identity_provider?: unknown[];
-  notification_sender?: unknown[];
+  connection?: unknown[];
   user_type?: unknown[];
   organization_unit?: unknown[];
   user?: unknown[];

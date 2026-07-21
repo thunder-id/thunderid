@@ -24,6 +24,12 @@ interface Replacer {
   placeholder?: string;
   type?: string;
   value?: string;
+  /**
+   * Prefix for generated ids. Node ids surface as the step title on the
+   * canvas, so a purposeful prefix (e.g. `recovery_call`) keeps otherwise
+   * identical nodes tellable apart.
+   */
+  prefix?: string;
   [key: string]: unknown;
 }
 
@@ -56,7 +62,7 @@ const updateTemplatePlaceholderReferences = <T = JsonValue>(
               let replacementValue: string;
 
               if (replacer.type === 'ID') {
-                replacementValue = generateResourceId(replacer.type);
+                replacementValue = generateResourceId(replacer.prefix ?? replacer.type);
               } else {
                 replacementValue = replacer.value ?? value; // Default to original if no value
               }

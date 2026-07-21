@@ -13,8 +13,9 @@
     "react-router": "6.30.4"
   },
   "dependencies": {
-    "@thunderid/react": "0.3.0",
+    "@thunderid/react": "0.3.5",
     "lucide-react": "^0.511.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "6.30.4"

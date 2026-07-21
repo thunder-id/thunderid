@@ -59,6 +59,10 @@ vi.mock('../rich-text/RichTextWithTranslation', () => ({
   ),
 }));
 
+vi.mock('../rich-text/RichTextActionFields', () => ({
+  default: () => <div data-testid="rich-text-action-fields" />,
+}));
+
 vi.mock('../CheckboxPropertyField', () => ({
   default: ({
     resource,

@@ -276,6 +276,9 @@ func (ts *DPoPTestSuite) obtainAuthorizationCode(
 	params.Set("state", "dpop-test-state")
 	params.Set("code_challenge", challenge)
 	params.Set("code_challenge_method", "S256")
+	// Single-resource-server (RFC 8707) enforcement requires a target RS; the
+	// seeded System RS suffices since these tests don't care which RS binds.
+	params.Set("resource", testutils.SystemResourceIdentifier)
 	for k, v := range extraAuthzParams {
 		params.Set(k, v)
 	}
@@ -327,6 +330,7 @@ func (ts *DPoPTestSuite) obtainAuthorizationCodeViaPAR(
 		"state":                 "dpop-par-state",
 		"code_challenge":        challenge,
 		"code_challenge_method": "S256",
+		"resource":              testutils.SystemResourceIdentifier,
 	})
 	ts.Require().NoError(err)
 	ts.Require().Equalf(http.StatusCreated, parResult.StatusCode,

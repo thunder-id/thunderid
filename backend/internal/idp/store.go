@@ -112,12 +112,15 @@ func (s *idpStore) GetIdentityProviderList(ctx context.Context) ([]BasicIDPDTO, 
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "IdPStore"))
+
 	idpList := make([]BasicIDPDTO, 0)
 	for _, row := range results {
 		idp, err := buildIDPFromResultRow(row)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build idp from result row: %w", err)
 		}
+		idp.IDJagEnabled = idJagEnabledFromRow(ctx, logger, idp.ID, row)
 		idpList = append(idpList, *idp)
 	}
 
@@ -363,6 +366,30 @@ func buildIDPFromResultRow(row map[string]interface{}) (*BasicIDPDTO, error) {
 	}
 
 	return &idp, nil
+}
+
+// idJagEnabledFromRow extracts and parses the id_jag_enabled property from a query result row's
+// PROPERTIES column, used only by the basic listing. A malformed PROPERTIES value only drops this
+// display flag for the affected row (logged and left nil) rather than failing the whole listing.
+func idJagEnabledFromRow(ctx context.Context, logger *log.Logger, idpID string, row map[string]interface{}) *bool {
+	var propertiesJSON string
+	switch v := row["properties"].(type) {
+	case string:
+		propertiesJSON = v
+	case []byte:
+		propertiesJSON = string(v)
+	}
+	if propertiesJSON == "" {
+		return nil
+	}
+
+	properties, err := cmodels.DeserializePropertiesFromJSONObject(propertiesJSON)
+	if err != nil {
+		logger.Warn(ctx, "Failed to deserialize IDP properties; omitting idJagEnabled flag",
+			log.String("idpID", idpID), log.Error(err))
+		return nil
+	}
+	return idJagEnabledFromProperties(properties)
 }
 
 // serializeAttributeConfiguration marshals the attribute mapping to a JSON string. Returns nil when

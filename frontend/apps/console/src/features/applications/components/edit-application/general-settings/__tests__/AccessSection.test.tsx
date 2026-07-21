@@ -328,7 +328,8 @@ describe('AccessSection', () => {
         />,
       );
 
-      const addButton = screen.getByRole('button', {name: /Add URI/i});
+      // The redirect URIs "Add URI" button is the first (post-logout redirect URIs adds a second).
+      const addButton = screen.getAllByRole('button', {name: /Add URI/i})[0];
       await user.click(addButton);
 
       const inputs = screen.getAllByPlaceholderText('https://example.com/callback');
@@ -1046,9 +1047,10 @@ describe('AccessSection', () => {
       const redirectUriInput = screen.getByDisplayValue('https://example.com/callback');
       expect(redirectUriInput).toBeDisabled();
 
-      // Add URI button should be disabled
-      const addButton = screen.getByRole('button', {name: /Add URI/i});
-      expect(addButton).toBeDisabled();
+      // Both "Add URI" buttons (redirect and post-logout redirect URIs) should be disabled
+      screen.getAllByRole('button', {name: /Add URI/i}).forEach((addButton) => {
+        expect(addButton).toBeDisabled();
+      });
 
       // Delete button should be disabled
       const deleteButton = screen.getByRole('button', {name: /delete/i});
@@ -1057,6 +1059,71 @@ describe('AccessSection', () => {
       // Allowed User Types autocomplete input should be disabled
       const autocompleteInput = screen.getByLabelText('Allowed User Types');
       expect(autocompleteInput).toBeDisabled();
+    });
+  });
+
+  describe('Post-Logout Redirect URIs', () => {
+    beforeEach(() => {
+      vi.mocked(useGetUserTypes).mockReturnValue({
+        data: mockUserTypes,
+        isLoading: false,
+      } as unknown as MockedUseGetUserTypes);
+    });
+
+    it('should render existing post-logout redirect URIs', () => {
+      const oauth2Config = {...mockOAuth2Config, postLogoutRedirectUris: ['https://example.com/after-signout']};
+      render(
+        <AccessSection
+          application={mockApplication}
+          editedApp={{}}
+          oauth2Config={oauth2Config as OAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByDisplayValue('https://example.com/after-signout')).toBeInTheDocument();
+    });
+
+    it('should add a new post-logout redirect URI row', async () => {
+      const user = userEvent.setup();
+      render(
+        <AccessSection
+          application={mockApplication}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      // The post-logout "Add URI" button is the second one.
+      const addButtons = screen.getAllByRole('button', {name: /Add URI/i});
+      await user.click(addButtons[addButtons.length - 1]);
+
+      expect(screen.getAllByPlaceholderText('https://example.com/logged-out')).toHaveLength(1);
+    });
+
+    it('should commit postLogoutRedirectUris (with redirect URIs preserved) on blur', async () => {
+      const user = userEvent.setup();
+      const oauth2Config = {...mockOAuth2Config, postLogoutRedirectUris: ['']};
+      render(
+        <AccessSection
+          application={mockApplication}
+          editedApp={{}}
+          oauth2Config={oauth2Config as OAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      const input = screen.getByPlaceholderText('https://example.com/logged-out');
+      await user.type(input, 'https://example.com/after-signout');
+      await user.tab();
+
+      const call = mockOnFieldChange.mock.calls.find((c) => c[0] === 'inboundAuthConfig');
+      expect(call).toBeDefined();
+      const configs = call![1] as {type: string; config: {redirectUris: string[]; postLogoutRedirectUris: string[]}}[];
+      const oauth = configs.find((c) => c.type === 'oauth2')!;
+      expect(oauth.config.postLogoutRedirectUris).toEqual(['https://example.com/after-signout']);
+      expect(oauth.config.redirectUris).toEqual(['https://example.com/callback']);
     });
   });
 });

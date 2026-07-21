@@ -6,14 +6,16 @@
   "scripts": {
     "dev": "node scripts/seed.js && node --watch src/server.js",
     "seed": "node scripts/seed.js",
-    "start": "node scripts/seed.js && node src/server.js"
+    "start": "node scripts/seed.js && node src/server.js",
+    "test": "node --test src/*.test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.4",
+    "better-sqlite3": "^11.10.0",
     "dotenv": "^16.5.0",
     "zod": "^3.25.76"
   },
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=18.19.0"
   }
 }

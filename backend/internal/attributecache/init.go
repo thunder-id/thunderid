@@ -19,17 +19,11 @@
 package attributecache
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the attribute cache service and returns an instance of AttributeCacheServiceInterface.
-func Initialize() AttributeCacheServiceInterface {
-	var store attributeCacheStoreInterface
-	if config.GetServerRuntime().Config.Database.Runtime.Type == provider.DataSourceTypeRedis {
-		store = newRedisAttributeCacheStore(provider.GetRedisProvider())
-	} else {
-		store = newAttributeCacheStore()
-	}
+func Initialize(storeProvider providers.RuntimeStoreProvider) AttributeCacheServiceInterface {
+	store := newAttributeCacheStore(storeProvider)
 	return newAttributeCacheService(store)
 }

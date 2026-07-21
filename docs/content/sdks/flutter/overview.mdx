@@ -1,5 +1,6 @@
 ---
 title: Flutter SDK Overview
+docType: concept
 displayed_sidebar: flutterSdkSidebar
 sidebar_position: 1
 sidebar_label: Overview
@@ -10,9 +11,9 @@ description: Native Flutter SDK for {{ProductName}} authentication in cross-plat
 
 The <ProductName /> Flutter SDK provides a single Dart package for integrating authentication into your iOS and Android Flutter applications:
 
-- **`thunderid_flutter`** — Core authentication client, reactive state management, and drop-in Flutter widgets
+- **`thunderid_flutter`**: Core authentication client, reactive state management, and drop-in Flutter widgets
 
-The package targets Flutter 3.16+ and Dart 3.2+. All protocol operations (OAuth2/OIDC, PKCE, token validation, token refresh) are delegated to the native <ProductName /> iOS and Android SDKs via Flutter platform channels — no OAuth2/OIDC logic runs in Dart.
+The package targets Flutter 3.16+ and Dart 3.2+. All protocol operations (OAuth2/OIDC, PKCE, token validation, token refresh) are delegated to the native <ProductName /> iOS and Android SDKs via Flutter platform channels: no OAuth2/OIDC logic runs in Dart.
 
 ## Installation
 
@@ -27,7 +28,7 @@ flutter pub get
 
 ## Getting Started
 
-To get started quickly, follow the [Flutter Quickstart Guide](/docs/next/guides/getting-started/connect-your-application/flutter) for step-by-step setup instructions.
+To get started quickly, follow the [Flutter Quickstart Guide](../../../guides/getting-started/connect-your-application/flutter) for step-by-step setup instructions.
 
 ## Quick Example
 
@@ -127,7 +128,7 @@ class MyApp extends StatelessWidget {
 
 ## Architecture
 
-```
+```text
 Flutter (Dart)                    Native
 ┌─────────────────────┐          ┌──────────────────────┐
 │ ThunderIDClient     │          │ ThunderID iOS SDK    │

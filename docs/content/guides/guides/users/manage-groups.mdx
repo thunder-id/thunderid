@@ -1,5 +1,6 @@
 ---
 title: Groups
+docType: guide
 sidebar_position: 4
 description: Create and manage groups to organize users and simplify role assignments.
 ---
@@ -18,7 +19,7 @@ A group's OU cannot be changed after creation. If you need to move a group to a 
 1. Navigate to **Groups** in the <ProductName /> Console and click **New Group**.
 2. Enter a **Name** and an optional **Description**.
 3. Select the **Organization Unit** the group belongs to.
-4. Optionally add **Members** — search for users, applications, agents, or groups to include.
+4. Optionally add **Members**: search for users, applications, agents, or groups to include.
 5. Click **Create Group**.
 
 ## Update a Group
@@ -33,7 +34,7 @@ A group's OU cannot be changed after creation. If you need to move a group to a 
 2. Click **Delete** and confirm.
 
 :::warning
-Deleting a group is permanent. Members are not deleted — only the group itself and its role assignments are removed.
+Deleting a group is permanent. Members are not deleted, but only the group itself and its role assignments are removed.
 :::
 
 ## Manage Members
@@ -54,10 +55,10 @@ Members have a `type` field that identifies their kind. The following member typ
 | `agent` | An agent principal. |
 | `group` | A nested group. |
 
-When a group is nested inside another group, role assignments resolve transitively — members of the inner group inherit the roles assigned to the outer group.
+When a group is nested inside another group, role assignments resolve transitively: members of the inner group inherit the roles assigned to the outer group.
 
 :::note
-A group nesting chain must stay within a single source. Mixing declarative (YAML-defined) groups and runtime (UI/API-managed) groups in the same chain — for example a declarative group whose member is a runtime group, or vice versa — is not supported. Such a chain is only partially resolved, so inherited roles may not be granted as expected. Keep nested groups within the same source.
+A group nesting chain must stay within a single source. Mixing declarative (YAML-defined) groups and runtime (UI/API-managed) groups in the same chain, for example a declarative group whose member is a runtime group, or vice versa, is not supported. Such a chain is only partially resolved, so inherited roles may not be granted as expected. Keep nested groups within the same source.
 :::
 
 ### Remove Members

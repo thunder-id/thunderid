@@ -28,7 +28,6 @@ import type {Element as FlowElement} from '@/features/flows/models/elements';
  * Phone Number Input element type with properties at top level.
  */
 export type PhoneNumberInputElement = FlowElement & {
-  className?: string;
   label?: string;
   placeholder?: string;
   required?: boolean;
@@ -67,7 +66,8 @@ function PhoneNumberInputAdapter({resource}: PhoneNumberInputAdapterPropsInterfa
   return (
     <>
       <TextField
-        className={phoneElement?.className}
+        id={phoneElement?.id}
+        className={phoneElement?.classes}
         label={labelNode}
         placeholder={resolve(phoneElement?.placeholder, {t}) ?? phoneElement?.placeholder ?? ''}
         InputLabelProps={{

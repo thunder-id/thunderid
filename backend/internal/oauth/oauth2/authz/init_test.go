@@ -60,7 +60,7 @@ func (suite *InitTestSuite) SetupTest() {
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: "test.db"},
 			},
-			Runtime: config.DataSource{
+			RuntimeTransient: config.DataSource{
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: "test.db"},
 			},

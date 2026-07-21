@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type {TokenConfig} from './token';
+import type {AccessTokenConfig, TokenConfig} from './token';
 
 /**
  * OAuth2 Grant Type
@@ -31,7 +31,9 @@ export type OAuth2GrantType =
   | 'client_credentials'
   | 'password'
   | 'implicit'
-  | 'urn:openid:params:grant-type:ciba';
+  | 'urn:openid:params:grant-type:ciba'
+  | 'urn:ietf:params:oauth:grant-type:token-exchange'
+  | 'urn:ietf:params:oauth:grant-type:jwt-bearer';
 
 /**
  * OAuth2 Grant Type Constants
@@ -60,6 +62,10 @@ export const OAuth2GrantTypes = {
   IMPLICIT: 'implicit',
   /** Client-Initiated Backchannel Authentication (CIBA) - Decoupled authentication flow */
   CIBA: 'urn:openid:params:grant-type:ciba',
+  /** Token Exchange (RFC 8693) - Exchange a token for one scoped to a different resource/audience */
+  TOKEN_EXCHANGE: 'urn:ietf:params:oauth:grant-type:token-exchange',
+  /** JWT Bearer - Exchanges a signed JWT assertion for an access token */
+  JWT_BEARER: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
 } as const;
 
 /**
@@ -223,6 +229,48 @@ export interface RefreshTokenConfig {
 }
 
 /**
+ * Identity Assertion Authorization Grant (ID-JAG) Configuration
+ *
+ * Configuration for issuing signed identity assertions that external services can accept
+ * for token issuance via the token exchange grant.
+ *
+ * @public
+ * @remarks
+ * `enabled` must be true and `allowedAudiences` must be non-empty for the application to
+ * request ID-JAGs via token exchange. ID-JAG issuance requires a confidential client;
+ * it cannot be used together with `tokenEndpointAuthMethod: 'none'`.
+ *
+ * @example
+ * ```typescript
+ * const idJagConfig: IDJAGConfig = {
+ *   enabled: true,
+ *   allowedAudiences: ['https://api.example.com'],
+ *   validityPeriod: 300
+ * };
+ * ```
+ */
+export interface IDJAGConfig {
+  /**
+   * Whether ID-JAG issuance is enabled for this application
+   */
+  enabled: boolean;
+
+  /**
+   * Resource authorization server identifiers for which this application may request ID-JAGs
+   * Each issued assertion targets exactly one of these audiences
+   * @example ['https://api.example.com']
+   */
+  allowedAudiences?: string[];
+
+  /**
+   * Validity period of an issued ID-JAG in seconds
+   * @defaultValue 300
+   * @example 300
+   */
+  validityPeriod?: number;
+}
+
+/**
  * OAuth2 Token Settings
  *
  * Complete token configuration for access tokens, ID tokens, and refresh tokens.
@@ -236,8 +284,10 @@ export interface RefreshTokenConfig {
  * ```typescript
  * const tokenSettings: OAuth2Token = {
  *   accessToken: {
- *     validityPeriod: 3600,
- *     userAttributes: ['email', 'username']
+ *     userConfig: {
+ *       validityPeriod: 3600,
+ *       attributes: ['email', 'username']
+ *     }
  *   },
  *   idToken: {
  *     validityPeriod: 3600,
@@ -256,9 +306,9 @@ export interface RefreshTokenConfig {
 export interface OAuth2Token {
   /**
    * Access token configuration
-   * Defines the validity period and included user attributes for access tokens
+   * Split by token subject: userConfig (end-user grants) and clientConfig (client_credentials).
    */
-  accessToken: TokenConfig;
+  accessToken: AccessTokenConfig;
 
   /**
    * ID token configuration
@@ -271,6 +321,12 @@ export interface OAuth2Token {
    * Defines the validity period for refresh tokens
    */
   refreshToken?: RefreshTokenConfig;
+
+  /**
+   * Identity Assertion Authorization Grant (ID-JAG) configuration
+   * Defines whether and how this application may issue signed identity assertions
+   */
+  idJag?: IDJAGConfig;
 }
 
 /**
@@ -340,6 +396,13 @@ export interface OAuth2Config {
    * @example ['https://myapp.com/callback', 'https://myapp.com/oauth/callback']
    */
   redirectUris?: string[];
+
+  /**
+   * List of valid URIs the OP may redirect the user to after RP-initiated signout.
+   * A post_logout_redirect_uri supplied to the signout endpoint must match one of these.
+   * @example ['https://myapp.com', 'https://myapp.com/logged-out']
+   */
+  postLogoutRedirectUris?: string[];
 
   /**
    * Allowed OAuth2 grant types
@@ -428,6 +491,66 @@ export interface OAuth2Config {
    * @example ['urn:thunder:silver', 'urn:thunder:gold']
    */
   acrValues?: string[];
+}
+
+/**
+ * Platform attestation configuration for an application. An application configures exactly one
+ * platform: the `android` and `apple` variants are mutually exclusive, so `{}` and a config with
+ * both set are both compile-time errors.
+ */
+export type AttestationConfig =
+  | {
+      /**
+       * Google Play Integrity attestation configuration for Android clients.
+       */
+      android: AndroidAttestationConfig;
+      apple?: undefined;
+    }
+  | {
+      android?: undefined;
+      /**
+       * Apple App Attest attestation configuration for iOS clients.
+       */
+      apple: AppleAttestationConfig;
+    };
+
+/**
+ * Google Play Integrity attestation settings for an Android application.
+ */
+export interface AndroidAttestationConfig {
+  /**
+   * Android application package name that must match the attested app.
+   */
+  packageName?: string;
+
+  /**
+   * Allowed SHA-256 digests of the app signing certificate. The attested app must match one of
+   * these. Values use the URL-safe base64 (no padding) form reported by the Play Integrity API.
+   */
+  certificateSha256Digests?: string[];
+
+  /**
+   * Google Cloud service account credentials (JSON) used to call the Play Integrity API.
+   * Write-only: this is never returned by the API, so it is absent when loading an application.
+   */
+  serviceAccountCredentials?: string;
+}
+
+/**
+ * Apple App Attest attestation settings for an iOS application.
+ */
+export interface AppleAttestationConfig {
+  /**
+   * Apple Developer Team ID. Required together with bundleId: the backend needs both to verify
+   * the attested App ID.
+   */
+  teamId: string;
+
+  /**
+   * iOS application bundle identifier that must match the attested app. Required together with
+   * teamId.
+   */
+  bundleId: string;
 }
 
 /**

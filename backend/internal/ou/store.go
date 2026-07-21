@@ -72,7 +72,7 @@ type organizationUnitStore struct {
 // newOrganizationUnitStore creates a new instance of organizationUnitStore.
 func newOrganizationUnitStore() (organizationUnitStoreInterface, transaction.Transactioner, error) {
 	dbProvider := getDBProvider()
-	transactioner, err := dbProvider.GetUserDBTransactioner()
+	transactioner, err := dbProvider.GetEntityDBTransactioner()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -86,7 +86,7 @@ func newOrganizationUnitStore() (organizationUnitStoreInterface, transaction.Tra
 func (s *organizationUnitStore) GetOrganizationUnitListCount(
 	ctx context.Context, f *tidcommon.FilterGroup,
 ) (int, error) {
-	dbClient, err := s.dbProvider.GetUserDBClient()
+	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -118,7 +118,7 @@ func (s *organizationUnitStore) GetOrganizationUnitListCount(
 func (s *organizationUnitStore) GetOrganizationUnitList(
 	ctx context.Context, limit, offset int, f *tidcommon.FilterGroup,
 ) ([]providers.OrganizationUnitBasic, error) {
-	dbClient, err := s.dbProvider.GetUserDBClient()
+	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -154,7 +154,7 @@ func (s *organizationUnitStore) GetOrganizationUnitsByIDs(
 		return []providers.OrganizationUnitBasic{}, nil
 	}
 
-	dbClient, err := s.dbProvider.GetUserDBClient()
+	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -185,7 +185,7 @@ func (s *organizationUnitStore) GetOrganizationUnitsByIDs(
 
 // CreateOrganizationUnit creates a new organization unit in the database.
 func (s *organizationUnitStore) CreateOrganizationUnit(ctx context.Context, ou providers.OrganizationUnit) error {
-	dbClient, err := s.dbProvider.GetUserDBClient()
+	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -222,7 +222,7 @@ func (s *organizationUnitStore) GetOrganizationUnit(
 	ctx context.Context,
 	id string,
 ) (providers.OrganizationUnit, error) {
-	dbClient, err := s.dbProvider.GetUserDBClient()
+	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return providers.OrganizationUnit{}, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -249,7 +249,7 @@ func (s *organizationUnitStore) GetOrganizationUnit(
 func (s *organizationUnitStore) GetOrganizationUnitByHandle(
 	ctx context.Context, handle string, parent *string,
 ) (providers.OrganizationUnit, error) {
-	dbClient, err := s.dbProvider.GetUserDBClient()
+	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return providers.OrganizationUnit{}, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -290,7 +290,7 @@ func (s *organizationUnitStore) GetOrganizationUnitByPath(
 		return providers.OrganizationUnit{}, ErrOrganizationUnitNotFound
 	}
 
-	dbClient, err := s.dbProvider.GetUserDBClient()
+	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return providers.OrganizationUnit{}, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -352,7 +352,7 @@ func (s *organizationUnitStore) getOrganizationUnitByHandleWithClient(
 
 // IsOrganizationUnitExists checks if an organization unit exists by ID.
 func (s *organizationUnitStore) IsOrganizationUnitExists(ctx context.Context, id string) (bool, error) {
-	dbClient, err := s.dbProvider.GetUserDBClient()
+	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return false, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -383,7 +383,7 @@ func (s *organizationUnitStore) IsOrganizationUnitDeclarative(ctx context.Contex
 
 // UpdateOrganizationUnit updates an existing organization unit.
 func (s *organizationUnitStore) UpdateOrganizationUnit(ctx context.Context, ou providers.OrganizationUnit) error {
-	dbClient, err := s.dbProvider.GetUserDBClient()
+	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -416,7 +416,7 @@ func (s *organizationUnitStore) UpdateOrganizationUnit(ctx context.Context, ou p
 
 // DeleteOrganizationUnit deletes an organization unit.
 func (s *organizationUnitStore) DeleteOrganizationUnit(ctx context.Context, id string) error {
-	dbClient, err := s.dbProvider.GetUserDBClient()
+	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -433,7 +433,7 @@ func (s *organizationUnitStore) DeleteOrganizationUnit(ctx context.Context, id s
 func (s *organizationUnitStore) GetOrganizationUnitChildrenCount(
 	ctx context.Context, parentID string, f *tidcommon.FilterGroup,
 ) (int, error) {
-	dbClient, err := s.dbProvider.GetUserDBClient()
+	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -466,7 +466,7 @@ func (s *organizationUnitStore) GetOrganizationUnitChildrenCount(
 func (s *organizationUnitStore) GetOrganizationUnitChildrenList(ctx context.Context,
 	parentID string, limit, offset int, f *tidcommon.FilterGroup,
 ) ([]providers.OrganizationUnitBasic, error) {
-	dbClient, err := s.dbProvider.GetUserDBClient()
+	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
@@ -701,7 +701,7 @@ func (s *organizationUnitStore) checkConflict(ctx context.Context,
 	parentID *string,
 	extraArgs ...interface{},
 ) (bool, error) {
-	dbClient, err := s.dbProvider.GetUserDBClient()
+	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return false, fmt.Errorf("failed to get database client: %w", err)
 	}

@@ -34,6 +34,20 @@ vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => ({error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn()}),
 }));
 
+vi.mock('@thunderid/contexts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@thunderid/contexts')>();
+  return {
+    ...actual,
+    useConfig: () => ({
+      config: {
+        brand: {
+          product_name: 'ThunderID',
+        },
+      },
+    }),
+  };
+});
+
 vi.mock('@wso2/oxygen-ui-icons-react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@wso2/oxygen-ui-icons-react')>();
   return {
@@ -265,5 +279,74 @@ describe('ImportConfigurationUploadPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
+  });
+
+  it('accepts .yml file format (not just .yaml)', async () => {
+    const user = userEvent.setup();
+    render(<ImportConfigurationUploadPage />);
+
+    const input = document.getElementById('file-upload') as HTMLInputElement;
+    const file = new File(['key: value'], 'config.yml', {type: 'text/yaml'});
+    await user.upload(input, file);
+
+    expect(screen.getByText('config.yml')).toBeInTheDocument();
+  });
+
+  it('handles drag and drop events on config file area', () => {
+    render(<ImportConfigurationUploadPage />);
+
+    const dropZone = screen.getByText('upload.dropConfig').closest('div')?.parentElement;
+    expect(dropZone).toBeInTheDocument();
+
+    // Simulate drag enter
+    fireEvent.dragEnter(dropZone!, {
+      dataTransfer: {files: []},
+    });
+
+    // Simulate drag over
+    fireEvent.dragOver(dropZone!, {
+      dataTransfer: {files: []},
+    });
+
+    // Simulate drag leave
+    fireEvent.dragLeave(dropZone!, {
+      dataTransfer: {files: []},
+    });
+  });
+
+  it('handles drag and drop events on env file area', () => {
+    render(<ImportConfigurationUploadPage />);
+
+    const envLabel = screen.getByText('upload.env.title');
+    const dropZone = envLabel.closest('div')?.nextElementSibling;
+    expect(dropZone).toBeInTheDocument();
+
+    // Simulate drag enter
+    fireEvent.dragEnter(dropZone!, {
+      dataTransfer: {files: []},
+    });
+
+    // Simulate drag over
+    fireEvent.dragOver(dropZone!, {
+      dataTransfer: {files: []},
+    });
+
+    // Simulate drag leave
+    fireEvent.dragLeave(dropZone!, {
+      dataTransfer: {files: []},
+    });
+  });
+
+  it('accepts .yml file format via drag and drop', () => {
+    render(<ImportConfigurationUploadPage />);
+
+    const dropZone = screen.getByText('upload.dropConfig').closest('div')?.parentElement;
+    const ymlFile = new File(['key: value'], 'config.yml', {type: 'text/yaml'});
+
+    fireEvent.drop(dropZone!, {
+      dataTransfer: {files: [ymlFile]},
+    });
+
+    expect(screen.getByText('config.yml')).toBeInTheDocument();
   });
 });

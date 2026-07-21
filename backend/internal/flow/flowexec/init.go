@@ -25,7 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
-	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/flow/session"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
@@ -33,7 +33,6 @@ import (
 )
 
 // Initialize creates and configures the flow execution service components.
-// The observabilitySvc parameter is optional (can be nil) - if nil, observability events won't be published.
 func Initialize(
 	mux *http.ServeMux,
 	flowProvider providers.FlowProvider,
@@ -42,31 +41,26 @@ func Initialize(
 	interceptorRegistry interceptor.InterceptorRegistryInterface,
 	observabilitySvc providers.ObservabilityProvider,
 	cryptoSvc kmprovider.RuntimeCryptoProvider,
+	attestationVerifier providers.AttestationProvider,
 	graphBuilder graphbuilder.GraphBuilderInterface,
+	storeProvider providers.RuntimeStoreProvider,
+	transactioner transaction.Transactioner,
 	cfg flowconfig.Config,
 ) (FlowExecServiceInterface, error) {
-	var flowStore flowStoreInterface
-	var transactioner transaction.Transactioner
-
-	if cfg.RuntimeDBType == dbprovider.DataSourceTypeRedis {
-		flowStore = newRedisFlowStore(dbprovider.GetRedisProvider(), cfg.DeploymentID)
-		transactioner = transaction.NewNoOpTransactioner()
-	} else {
-		dbProvider := dbprovider.GetDBProvider()
-		var err error
-		transactioner, err = dbProvider.GetRuntimeDBTransactioner()
-		if err != nil {
-			return nil, err
-		}
-		flowStore = newFlowStore(dbProvider, cfg.DeploymentID)
-	}
+	flowStore := newFlowStore(storeProvider)
 	interceptorRunner := newInterceptorRunner(interceptorRegistry)
 	flowEngine := newFlowEngine(executorRegistry, interceptorRunner, observabilitySvc,
 		flowProvider, graphBuilder)
 	flowExecService := newFlowExecService(flowProvider, flowStore, flowEngine,
-		actorProvider, observabilitySvc, transactioner, cryptoSvc, graphBuilder, cfg)
+		actorProvider, observabilitySvc, transactioner, cryptoSvc, attestationVerifier,
+		graphBuilder, cfg)
 
-	handler := newFlowExecutionHandler(flowExecService)
+	// Mark the SSO cookie Secure unless the deployment is configured to serve over plain HTTP, and
+	// bound its lifetime to the session's configured absolute timeout (same fallback as the session
+	// executor's timeouts).
+	ssoTransport := session.NewCookieTransport(cfg.SecureCookies)
+	sessionTimeouts := session.NewTimeouts(cfg.Session.IdleTimeoutSeconds, cfg.Session.AbsoluteTimeoutSeconds)
+	handler := newFlowExecutionHandler(flowExecService, ssoTransport, sessionTimeouts.Absolute)
 	registerRoutes(mux, handler)
 
 	return flowExecService, nil

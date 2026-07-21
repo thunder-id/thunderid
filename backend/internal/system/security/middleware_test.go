@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -109,7 +109,9 @@ func (suite *MiddlewareTestSuite) TestMiddleware_AuthenticationFailure_Unauthori
 	assert.Nil(suite.T(), suite.testCtx)
 }
 
-// Test authentication failure with invalid token error
+// Test authentication failure with invalid token error. A rejected token (including a revoked one,
+// which the service surfaces as errInvalidToken) must return the RFC 6750 invalid_token challenge
+// without disclosing the specific reason.
 func (suite *MiddlewareTestSuite) TestMiddleware_AuthenticationFailure_InvalidToken() {
 	req := httptest.NewRequest(http.MethodPost, "/api/groups", nil)
 	w := httptest.NewRecorder()
@@ -119,7 +121,10 @@ func (suite *MiddlewareTestSuite) TestMiddleware_AuthenticationFailure_InvalidTo
 	handler := suite.middleware(suite.testHandler)
 	handler.ServeHTTP(w, req)
 
-	suite.assertUnauthorizedResponse(w)
+	assert.Equal(suite.T(), http.StatusUnauthorized, w.Code)
+	assert.Equal(suite.T(),
+		`Bearer error="invalid_token", error_description="The access token is invalid, expired, or malformed"`,
+		w.Header().Get("WWW-Authenticate"))
 	assert.Nil(suite.T(), suite.testCtx)
 }
 
@@ -324,7 +329,8 @@ func (suite *MiddlewareTestSuite) assertUnauthorizedResponse(w *httptest.Respons
 func (suite *MiddlewareTestSuite) assertForbiddenResponse(w *httptest.ResponseRecorder) {
 	assert.Equal(suite.T(), http.StatusForbidden, w.Code)
 	assert.Equal(suite.T(), "application/json", w.Header().Get("Content-Type"))
-	assert.Equal(suite.T(), "Bearer", w.Header().Get("WWW-Authenticate"))
+	// A 403 is an authorization failure, not an authentication challenge: no WWW-Authenticate header.
+	assert.Empty(suite.T(), w.Header().Get("WWW-Authenticate"))
 
 	var response apierror.ErrorResponse
 	err := json.NewDecoder(w.Body).Decode(&response)
@@ -340,63 +346,63 @@ func TestWriteSecurityError(t *testing.T) {
 		err                error
 		expectedStatus     int
 		expectedErrResp    apierror.ErrorResponse
-		expectedAuthHeader bool
+		expectedAuthHeader string
 	}{
 		{
 			name:               "Unauthorized error",
 			err:                errUnauthorized,
 			expectedStatus:     http.StatusUnauthorized,
 			expectedErrResp:    apierror.ErrUnauthorized,
-			expectedAuthHeader: true,
+			expectedAuthHeader: "Bearer",
 		},
 		{
 			name:               "Invalid token error",
 			err:                errInvalidToken,
 			expectedStatus:     http.StatusUnauthorized,
 			expectedErrResp:    apierror.ErrUnauthorized,
-			expectedAuthHeader: true,
+			expectedAuthHeader: wwwAuthChallengeInvalidToken,
 		},
 		{
 			name:               "Missing auth header error",
 			err:                errMissingAuthHeader,
 			expectedStatus:     http.StatusUnauthorized,
 			expectedErrResp:    apierror.ErrUnauthorized,
-			expectedAuthHeader: true,
+			expectedAuthHeader: "Bearer",
 		},
 		{
 			name:               "No handler found error",
 			err:                errNoHandlerFound,
 			expectedStatus:     http.StatusUnauthorized,
 			expectedErrResp:    apierror.ErrUnauthorized,
-			expectedAuthHeader: true,
+			expectedAuthHeader: "Bearer",
 		},
 		{
 			name:               "Forbidden error",
 			err:                errForbidden,
 			expectedStatus:     http.StatusForbidden,
 			expectedErrResp:    apierror.ErrForbidden,
-			expectedAuthHeader: true,
+			expectedAuthHeader: "",
 		},
 		{
 			name:               "Insufficient permissions error",
 			err:                errInsufficientPermissions,
 			expectedStatus:     http.StatusForbidden,
 			expectedErrResp:    apierror.ErrForbidden,
-			expectedAuthHeader: true,
+			expectedAuthHeader: "",
 		},
 		{
 			name:               "Unknown error (default case)",
 			err:                errors.New("unexpected error"),
 			expectedStatus:     http.StatusUnauthorized,
 			expectedErrResp:    apierror.ErrUnauthorized,
-			expectedAuthHeader: true,
+			expectedAuthHeader: "Bearer",
 		},
 		{
 			name:               "Nil error (edge case)",
 			err:                nil,
 			expectedStatus:     http.StatusUnauthorized,
 			expectedErrResp:    apierror.ErrUnauthorized,
-			expectedAuthHeader: true,
+			expectedAuthHeader: "Bearer",
 		},
 	}
 
@@ -408,11 +414,7 @@ func TestWriteSecurityError(t *testing.T) {
 			assert.Equal(t, tc.expectedStatus, w.Code)
 			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-			if tc.expectedAuthHeader {
-				assert.Equal(t, "Bearer", w.Header().Get("WWW-Authenticate"))
-			} else {
-				assert.Empty(t, w.Header().Get("WWW-Authenticate"))
-			}
+			assert.Equal(t, tc.expectedAuthHeader, w.Header().Get("WWW-Authenticate"))
 
 			var response apierror.ErrorResponse
 			err := json.NewDecoder(w.Body).Decode(&response)

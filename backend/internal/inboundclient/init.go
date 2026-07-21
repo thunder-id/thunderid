@@ -20,7 +20,6 @@ package inboundclient
 
 import (
 	"github.com/thunder-id/thunderid/internal/cert"
-	"github.com/thunder-id/thunderid/internal/consent"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
@@ -42,14 +41,13 @@ func Initialize(
 	layoutMgt layoutmgt.LayoutMgtServiceInterface,
 	flowMgt flowmgt.FlowMgtServiceInterface,
 	entityType entitytype.EntityTypeServiceInterface,
-	consentService consent.ConsentServiceInterface,
 ) (InboundClientServiceInterface, error) {
 	store, transactioner, err := initializeStore(cacheManager)
 	if err != nil {
 		return nil, err
 	}
 	return newInboundClientService(store, transactioner, certService, entityProvider,
-		themeMgt, layoutMgt, flowMgt, entityType, consentService), nil
+		themeMgt, layoutMgt, flowMgt, entityType), nil
 }
 
 // initializeStore always creates a composite store (DB + in-memory file store).

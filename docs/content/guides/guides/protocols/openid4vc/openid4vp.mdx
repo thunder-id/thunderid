@@ -1,133 +1,111 @@
 ---
 title: OpenID for Verifiable Presentations (OpenID4VP)
-sidebar_position: 1
-description: OpenID4VP in {{ProductName}} — request an SD-JWT VC from a digital wallet, verify the presentation response, and authenticate the holder without a password.
+docType: reference
+sidebar_position: 2
+description: OpenID4VP in {{ProductName}}, request an SD-JWT VC from a digital wallet, verify the presentation response, and authenticate the holder without a password.
 ---
 
 # OpenID for Verifiable Presentations (OpenID4VP)
 
-**OpenID for Verifiable Presentations** ([OpenID4VP](https://openid.net/specs/openid-4-verifiable-presentations-1_0.html)) lets a relying party request cryptographic proof of identity from a credential held in a user's digital wallet. Instead of supplying a username and password, the user's wallet presents a **Selective Disclosure JWT Verifiable Credential (SD-JWT VC)** — a credential signed by a trusted authority such as a government identity provider.
+**OpenID for Verifiable Presentations** ([OpenID4VP](https://openid.net/specs/openid-4-verifiable-presentations-1_0.html)) lets a relying party request cryptographic proof of identity from a credential held in a user's digital wallet. Instead of a username and password, the wallet presents a **Selective Disclosure JWT VC** (SD-JWT VC). The credential is signed by a trusted authority: a government identity provider or a <ProductName /> credential issuer.
 
 <ProductName /> acts as the **verifier**: it generates a signed authorization request, the wallet responds with an encrypted presentation, and <ProductName /> verifies the SD-JWT VC against a configured trust store. On success, it issues a signed result token to the relying party.
 
+Presentation definitions are managed resources you create through the <ProductName /> Console. The verifier engine picks them up immediately when a relying party initiates a verification transaction.
+
 ## How It Works
 
-The protocol uses a polling model with two parallel channels: a **back-channel** between <ProductName /> and the relying party, and an **out-of-band channel** to the wallet via a QR code or deep link.
+The protocol uses a polling model: a **back-channel** between <ProductName /> and the relying party, and an **out-of-band channel** to the wallet via QR code or deep link.
 
-1. The relying party calls `POST /openid4vp/initiate` and receives a transaction identifier, a wallet authorization URI, and a status polling URL.
-2. The relying party displays the wallet authorization URI as a QR code or deep link.
-3. The user scans the QR code. The wallet fetches the signed authorization request from `GET /openid4vp/request`.
-4. The wallet selects matching credentials, applies selective disclosure, and posts the encrypted response to `POST /openid4vp/response`.
-5. <ProductName /> decrypts the response, verifies the SD-JWT VC signature and key binding, and enforces the presentation policy.
-6. The relying party polls `GET /openid4vp/status/{txn_id}` until <ProductName /> returns `COMPLETED` with a signed `result_token`.
-7. The relying party validates the `result_token` to read the verified subject and claims.
+1. An operator creates a **presentation definition** in the <ProductName /> Console, specifying which credential type (`vct`) to request and which claims are mandatory or optional.
+2. The relying party calls `POST /openid4vp/initiate` with the definition `handle` and receives a `txn_id`, `wallet_url`, and `status_url`.
+3. The relying party displays `wallet_url` as a QR code or deep link.
+4. The user scans. The wallet fetches the signed authorization request from `GET /openid4vp/request`.
+5. The wallet selects matching credentials, applies selective disclosure, and posts the encrypted response to `POST /openid4vp/response`.
+6. <ProductName /> decrypts the response, verifies the SD-JWT VC, and enforces the presentation policy.
+7. The relying party polls `GET /openid4vp/status/{txn_id}` until `COMPLETED` with a signed `result_token`.
+8. The relying party validates the `result_token` to read the verified subject and claims.
 
 <details>
 <summary>How <ProductName /> Implements It</summary>
 
 | Aspect | Behavior |
 |---|---|
-| **Client identification** | The verifier's `client_id` is configured directly (e.g. `x509_hash:<thumbprint>`). The optional `client_id_scheme` field is configurable. The wallet receives the signing certificate chain in the request object's `x5c` header. |
-| **Request object (JAR)** | <ProductName /> signs the authorization request as a compact JWS and serves it at `GET /openid4vp/request?state=...` with `Content-Type: application/oauth-authz-req+jwt`. |
-| **Response encryption** | The wallet encrypts its VP token as a compact JWE using ECDH-ES with the ephemeral public key advertised in `client_metadata.jwks`. The encryption algorithm defaults to `A128GCM`. |
-| **Credential format** | SD-JWT VC (`vc+sd-jwt`). The DCQL query targets a specific `vct` (Verifiable Credential Type) and claims list. |
-| **Selective disclosure** | Only the claims listed in `requested_claims` for the matching presentation definition are accepted. The wallet may disclose fewer optional claims, but extra disclosures beyond the list fail verification. |
+| **Client identification** | The verifier's `client_id` is derived from `client_id_scheme` and the signing certificate at startup, not configured directly. Supported schemes: `x509_hash` (SHA-256 thumbprint), `x509_san_dns` (first DNS SAN), `redirect_uri` (response URI). The full certificate chain is included in the request object's `x5c` header. |
+| **Request object (JAR)** | Signed as a compact JWS and served at `GET /openid4vp/request?state=...` with `Content-Type: application/oauth-authz-req+jwt`. |
+| **Response mode** | `direct_post.jwt`. The wallet encrypts its VP token as a compact JWE using ECDH-ES key agreement with `A128GCM` content encryption (configurable via `response_enc_values`). The ephemeral public key is advertised in `client_metadata.jwks`. |
+| **Query language** | DCQL (Digital Credentials Query Language). The query targets a specific `vct` and claims list. |
+| **Credential format** | `dc+sd-jwt`. |
+| **Selective disclosure** | Disclosures beyond the combined requested claims list fail verification. Optional claims may be omitted by the wallet. |
 | **Key binding** | When `enforce_key_binding` is enabled, the wallet must include a `kb+jwt` binding the presentation to the nonce and verifier audience. |
-| **Issuer trust** | When `enforce_trusted_issuer` is enabled, <ProductName /> verifies the SD-JWT issuer signature against a pinned certificate for the issuer URL. |
-| **Result token** | On `COMPLETED`, the status endpoint issues a short-lived signed JWT containing `subject`, `verified_claims`, `txn`, and `definition_id` as claims. |
-| **State TTL** | Each transaction expires after `state_ttl_seconds` (default: 300 seconds). The status endpoint returns `EXPIRED` for past-TTL transactions. |
+| **Issuer trust** | Each definition may override the engine-level default via `enforceTrustedIssuer`. When enabled, the SD-JWT issuer is verified against a pinned certificate. A definition's `trustedAuthorities` restricts which named anchors are acceptable. Active trust anchors are listed at `GET /openid4vp/trust-anchors` (returns `name`, `subject`, `ski`, `not_after` per anchor). |
+| **Claim value constraints** | `claimValues` maps a dotted claim path to an allowed set of values. The constraint is advertised in the DCQL query and enforced at verification, but only when the claim is disclosed; undisclosed claims pass silently. |
+| **Result token** | Signed JWT issued on `COMPLETED`. Claims: `iss`, `sub`, `aud` (issuer URL), `jti`, `txn`, `definition_id`, `subject`, `verified_claims`, `verifier`. |
+| **State TTL** | Transactions expire after `state_ttl_seconds`. The status endpoint returns `EXPIRED` for past-TTL transactions. |
+| **Wallet errors** | A wallet may POST an OAuth error instead of a VP token (OpenID4VP §6.4). <ProductName /> records the error and reflects it as `FAILED` in the status response. |
 
 </details>
 
-## Endpoints
+## Presentation Definitions
 
-### RP-Facing Endpoints
+A **presentation definition** specifies the credential type to request and which claims the wallet must or may disclose. Its `handle` is the `definition_id` used when initiating a verification.
 
-These endpoints are called by the relying party application.
+Manage definitions in **Verifiable Credentials → Presentations** in the <ProductName /> Console, or declare them in YAML for file-based deployments (`resource_type: presentation_definition`).
 
-| Endpoint | Method | Description |
+| Field | Description |
+|---|---|
+| **Handle** | Unique identifier for this definition. Used as the `definition_id` in the initiate request and in flow step configuration. Required. |
+| **Credential Type (VCT)** | The `vct` URI the wallet must present to satisfy this request. Required. |
+| **Claims** | Each entry has a dotted claim path, a requirement (**Mandatory** or **Optional**), and an optional allowed-values list. Mandatory claims must be disclosed; optional claims may be withheld. When allowed values are set, the disclosed value must match one, enforced at verification. Undisclosed optional claims pass silently regardless of allowed values. |
+| **Enforce Trusted Issuer** | When enabled, the SD-JWT VC issuer certificate chain is validated against the engine-level trust anchors. |
+| **Trusted Issuers** | Restricts which named trust anchors are acceptable for this definition. Leave empty to accept any trust anchor configured at the engine level. |
+
+## Server Configurations
+
+Configure the verifier engine under the `openid4vp:` key in `deployment.yaml`. All values can be overridden there; the defaults below come from the built-in server defaults.
+
+| Key | Default | Description |
 |---|---|---|
-| `/openid4vp/initiate` | `POST` | Start a new presentation transaction. Returns `txn_id`, `wallet_url`, `status_url`, and `expires_at`. |
-| `/openid4vp/status/{txn_id}` | `GET` | Poll for transaction status. Returns `PENDING`, `FAILED`, `EXPIRED`, or `COMPLETED` with a `result_token`. |
+| `client_id_scheme` | `x509_san_dns` | How the verifier `client_id` is derived from the signing certificate: `x509_san_dns` (first DNS SAN), `x509_hash` (SHA-256 thumbprint), or `redirect_uri` (response URI). |
+| `signing_key_id` | `ecdsa-key` | Key used to sign request objects. Must be certificate-backed. |
+| `ephemeral_key_id` | `vp-enc` | Key used for ECDH-ES decryption of wallet responses. |
+| `registration_cert_file` | - | Path to a PEM file containing the signing certificate chain advertised in `client_metadata`. |
+| `trusted_anchors` | `[]` | List of `{name, cert_file}` entries. Each entry pins a root CA whose chains are accepted as SD-JWT VC issuer certificates. Empty list disables certificate-chain validation. |
+| `enforce_key_binding` | `true` | Require wallets to include a `kb+jwt` binding the presentation to the nonce and verifier. |
+| `response_enc_values` | `["A128GCM","A256GCM","A128CBC-HS256","A256CBC-HS512"]` | Supported content-encryption algorithms for the wallet's JWE response. |
+| `request_audience` | - | `aud` claim placed in the signed request object sent to the wallet. Omit for `vp_token` flows (some wallets treat a non-empty `aud` as a SIOP request). |
+| `request_validity_seconds` | `300` | How long the signed request object is valid. |
+| `state_ttl_seconds` | `300` | Verification transaction lifetime (seconds). |
+| `leeway_seconds` | `30` | Clock-skew tolerance when validating credential timestamps. |
+| `key_binding_max_age_seconds` | `300` | Maximum age of the key-binding JWT `iat`. |
+| `result_token_validity_seconds` | `300` | Lifetime of the signed result token. |
 
-### Wallet-Facing Endpoints
+`trusted_anchors` is a list of objects:
 
-These endpoints are called by the credential wallet after scanning the QR code.
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/openid4vp/request` | `GET` | Serve the signed authorization request object (JAR) to the wallet. Requires a `state` query parameter. |
-| `/openid4vp/response` | `POST` | Receive the wallet's encrypted VP token response. Accepts `state` and `response` as form parameters. |
+```yaml
+openid4vp:
+  trusted_anchors:
+    - name: my-gov-ca
+      cert_file: /path/to/ca.pem
+```
 
 ## Result Token Claims
 
-When the relying party polls the status endpoint and receives `COMPLETED`, the response includes a signed JWT `result_token`. Validate the token against the <ProductName /> JWKS before trusting its claims.
+When the status endpoint returns `COMPLETED`, the response includes a signed JWT `result_token`. Validate it against the <ProductName /> [JWKS](../../oauth-oidc/jwks) before trusting its claims.
 
 | Claim | Description |
 |---|---|
 | `iss` | The <ProductName /> instance base URL. |
-| `aud` | The relying party identifier supplied in the `POST /openid4vp/initiate` request. |
+| `sub` | The holder's stable identifier, from the credential `sub` claim, or a key-binding thumbprint URN when `sub` is absent. |
+| `aud` | The <ProductName /> issuer URL. |
+| `jti` | Unique token identifier (same value as `txn`). |
 | `txn` | The transaction identifier (`txn_id`). |
-| `definition_id` | The presentation definition identifier that was requested. |
-| `subject` | The holder's stable identifier, derived from the credential's `sub` claim or from the configured `subject_claims` hash. |
-| `verified_claims` | A map of the selectively disclosed claim values from the credential (e.g., `given_name`, `family_name`, `birthdate`). |
+| `definition_id` | The presentation definition handle that was requested. |
+| `subject` | Same as `sub`. |
+| `verified_claims` | Map of selectively disclosed claim values from the credential. |
 | `verifier` | The verifier's `client_id`. |
 
-## Presentation Definitions
-
-A **presentation definition** specifies which credential to request and which claims are mandatory or optional. Define presentation definitions in the `openid4vp.presentation_definitions` array in the server configuration.
-
-| Configuration Key | Required | Description |
-|---|---|---|
-| `id` | Yes | Unique identifier referenced by the relying party or flow executor (e.g., `eudi-pid`). |
-| `display_name` | No | Human-readable name for the credential type. |
-| `credential_id` | Yes | DCQL query credential identifier. |
-| `vct` | Yes | The expected Verifiable Credential Type URI (e.g., `urn:eudi:pid:de:1`). |
-| `mandatory_claims` | No | Claims that must be present in the presentation. Verification fails if any are absent. |
-| `optional_claims` | No | Claims the wallet may disclose. Disclosure of claims not in the combined list is rejected. |
-| `subject_claims` | No | Ordered list of claim names used to derive a stable `subject` identifier when the credential has no `sub` claim. |
-| `trusted_issuers` | No | List of `{ issuer, cert_file }` entries. Required when `enforce_trusted_issuer: true`. |
-
-**Minimal configuration example:**
-
-```json
-{
-  "openid4vp": {
-    "client_id": "x509_hash:<thumbprint>",
-    "signing_key_id": "vp-signing-key",
-    "base_url": "https://auth.example.com",
-    "ephemeral_key_id": "vp-enc-key",
-    "state_ttl_seconds": 300,
-    "enforce_trusted_issuer": true,
-    "enforce_key_binding": true,
-    "presentation_definitions": [
-      {
-        "id": "eudi-pid",
-        "display_name": "EUDI Wallet PID",
-        "credential_id": "pid-sd-jwt",
-        "vct": "urn:eudi:pid:de:1",
-        "mandatory_claims": ["given_name", "family_name"],
-        "optional_claims": ["birthdate"],
-        "subject_claims": ["family_name", "given_name", "birthdate"],
-        "trusted_issuers": [
-          {
-            "issuer": "https://pid-issuer.example.eu/c",
-            "cert_file": "config/certs/pid-issuer.cert"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
 ## Try It in <ProductName />
-
-### Prerequisites
-
-- The OpenID4VP service must be enabled and configured with at least one presentation definition.
-- A certificate-backed signing key (`signing_key_id`) and an ephemeral encryption key (`ephemeral_key_id`) must be registered in the <ProductName /> key store.
-- To enforce issuer trust, add a PEM certificate for each trusted issuer under `trusted_issuers`.
 
 ### Initiate a Presentation Transaction
 
@@ -135,56 +113,44 @@ A **presentation definition** specifies which credential to request and which cl
 POST /openid4vp/initiate
 Content-Type: application/json
 
-{
-  "definition_id": "eudi-pid",
-  "rp_id": "my-application"
-}
+{ "definition_id": "example-pid" }
 ```
 
 Response:
 
 ```json
 {
-  "txn_id": "a1b2c3...",
-  "wallet_url": "openid4vp://?client_id=x509_hash%3A...&request_uri=https%3A%2F%2Fauth.example.com%2Fopenid4vp%2Frequest%3Fstate%3Da1b2c3...",
-  "status_url": "https://auth.example.com/openid4vp/status/a1b2c3...",
+  "txn_id": "a1b2c3d4e5f6",
+  "wallet_url": "openid4vp://?client_id=x509_hash%3A...&request_uri=https%3A%2F%2Fauth.example.com%2Fopenid4vp%2Frequest%3Fstate%3Da1b2c3d4e5f6&request_uri_method=get",
+  "status_url": "/openid4vp/status/a1b2c3d4e5f6",
   "expires_at": "2026-01-01T12:05:00Z"
 }
 ```
 
-Render `wallet_url` as a QR code or as an `openid4vp://` deep link so the user can open the request in their wallet.
-
-### Poll for Status
+Display `wallet_url` as a QR code or deep link. Then poll until the wallet responds:
 
 ```http
-GET /openid4vp/status/a1b2c3...
+GET /openid4vp/status/a1b2c3d4e5f6
 ```
-
-While the wallet is presenting:
-
-```json
-{ "status": "PENDING" }
-```
-
-After successful verification:
 
 ```json
 {
   "status": "COMPLETED",
-  "result_token": "eyJhbGciOiJFUzI1NiJ9.eyJhdWQiOiJteS1hcHBsaWNhdGlvbiIsInN1YmplY3QiOiJl..."
+  "result_token": "<signed-jwt>"
 }
 ```
 
-Decode and verify the `result_token` signature against the <ProductName /> [JWKS](/docs/next/guides/guides/protocols/oauth-oidc/jwks) endpoint, then read `verified_claims` to extract the user's identity attributes.
+Verify the `result_token` signature against the <ProductName /> [JWKS](../../oauth-oidc/jwks) endpoint, then read `verified_claims`.
 
 ### Use in a Sign-In Flow
 
-To integrate OpenID4VP into an authentication flow, add the **Continue with EUDI Wallet** widget or configure the **OpenID4VP Verify** executor directly. The executor manages the initiate-and-poll lifecycle automatically.
+To integrate OpenID4VP into an authentication flow, configure the **OpenID4VP Verify** executor. It manages the initiate-and-poll lifecycle automatically, presenting the wallet QR to the user and resolving their identity on completion.
 
-See [Advanced Configurations — OpenID4VP Verify](/docs/next/guides/guides/flows/advanced-configurations#verifiable-credentials) for the executor reference.
+See [Advanced Configurations: OpenID4VP Verify](../../../flows/advanced-configurations#verifiable-credentials) for the executor reference.
 
 ## Related Guides
 
-- [Advanced Configurations](/docs/next/guides/guides/flows/advanced-configurations) — Flow executor reference, including the OpenID4VP Verify executor
-- [JWKS](/docs/next/guides/guides/protocols/oauth-oidc/jwks) — Verify the `result_token` signature against the <ProductName /> public key endpoint
-- [Flows](/docs/next/guides/guides/flows/what-are-flows) — Build authentication flows that include credential presentation steps
+- [OpenID for Verifiable Credential Issuance](../openid4vci), issue SD-JWT VCs that users can later present
+- [JWKS](../../oauth-oidc/jwks), verify the `result_token` signature against the <ProductName /> public key endpoint
+- [Flows](../../../flows/what-are-flows), build authentication flows that include credential presentation steps
+- [Advanced Configurations](../../../flows/advanced-configurations), flow executor reference including the OpenID4VP Verify executor

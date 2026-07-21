@@ -3,7 +3,7 @@
   "displayName": "Node.js",
   "description": "Backend service built with Node.js",
   "creationFlow": {
-    "steps": ["STACK", "NAME", "ORGANIZATION_UNIT", "COMPLETE"]
+    "steps": ["NAME", "ORGANIZATION_UNIT", "COMPLETE"]
   },
   "defaults": {
     "name": "Node.js Application",

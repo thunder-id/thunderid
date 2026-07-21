@@ -145,9 +145,7 @@ spec:
                   imagePullPolicy: "${parameters.runtime.imagePullPolicy}"
                   command: ["sh", "-c", "./setup.sh && touch /opt/thunderid/database/.setup-complete"]
                   env: |
-                    ${configurations.configs.envs.map(e, {"name": e.name, "value": e.value}) + [
-                      {"name": "WITH_CONSENT", "value": "false"}
-                    ]}
+                    ${configurations.configs.envs.map(e, {"name": e.name, "value": e.value})}
                   volumeMounts:
                     - name: thunderid-config
                       mountPath: /opt/thunderid/deployment.yaml
@@ -192,14 +190,18 @@ spec:
                 type: "sqlite"
                 sqlite:
                   path: "{{ "{{.DB_CONFIG_PATH}}" }}"
-              runtime:
+              runtime_transient:
                 type: "sqlite"
                 sqlite:
-                  path: "{{ "{{.DB_RUNTIME_PATH}}" }}"
-              user:
+                  path: "{{ "{{.DB_RUNTIME_TRANSIENT_PATH}}" }}"
+              entity:
                 type: "sqlite"
                 sqlite:
-                  path: "{{ "{{.DB_USER_PATH}}" }}"
+                  path: "{{ "{{.DB_ENTITY_PATH}}" }}"
+              runtime_persistent:
+                type: "sqlite"
+                sqlite:
+                  path: "{{ "{{.DB_RUNTIME_PERSISTENT_PATH}}" }}"
 
             cache:
               disabled: false
@@ -220,10 +222,6 @@ spec:
             flow:
               max_version_history: 3
               auto_infer_registration: true
-
-            consent:
-              enabled: {{ "{{.CONSENT_ENABLED}}" }}
-              base_url: "{{ "{{.CONSENT_BASE_URL}}" }}"
 
     - id: thunderid-config-pg
       includeWhen: "${parameters.runtime.dbType == 'postgres'}"
@@ -260,24 +258,33 @@ spec:
                   username: "{{ "{{.DB_CONFIG_USERNAME}}" }}"
                   password: "{{ "{{.DB_CONFIG_PASSWORD}}" }}"
                   sslmode: "{{ "{{.DB_CONFIG_SSLMODE}}" }}"
-              runtime:
+              runtime_transient:
                 type: "postgres"
                 postgres:
-                  hostname: "{{ "{{.DB_RUNTIME_HOSTNAME}}" }}"
+                  hostname: "{{ "{{.DB_RUNTIME_TRANSIENT_HOSTNAME}}" }}"
                   port: {{ "{{.DB_PORT}}" }}
-                  name: "{{ "{{.DB_RUNTIME_NAME}}" }}"
-                  username: "{{ "{{.DB_RUNTIME_USERNAME}}" }}"
-                  password: "{{ "{{.DB_RUNTIME_PASSWORD}}" }}"
-                  sslmode: "{{ "{{.DB_RUNTIME_SSLMODE}}" }}"
-              user:
+                  name: "{{ "{{.DB_RUNTIME_TRANSIENT_NAME}}" }}"
+                  username: "{{ "{{.DB_RUNTIME_TRANSIENT_USERNAME}}" }}"
+                  password: "{{ "{{.DB_RUNTIME_TRANSIENT_PASSWORD}}" }}"
+                  sslmode: "{{ "{{.DB_RUNTIME_TRANSIENT_SSLMODE}}" }}"
+              entity:
                 type: "postgres"
                 postgres:
-                  hostname: "{{ "{{.DB_USER_HOSTNAME}}" }}"
+                  hostname: "{{ "{{.DB_ENTITY_HOSTNAME}}" }}"
                   port: {{ "{{.DB_PORT}}" }}
-                  name: "{{ "{{.DB_USER_NAME}}" }}"
-                  username: "{{ "{{.DB_USER_USERNAME}}" }}"
-                  password: "{{ "{{.DB_USER_PASSWORD}}" }}"
-                  sslmode: "{{ "{{.DB_USER_SSLMODE}}" }}"
+                  name: "{{ "{{.DB_ENTITY_NAME}}" }}"
+                  username: "{{ "{{.DB_ENTITY_USERNAME}}" }}"
+                  password: "{{ "{{.DB_ENTITY_PASSWORD}}" }}"
+                  sslmode: "{{ "{{.DB_ENTITY_SSLMODE}}" }}"
+              runtime_persistent:
+                type: "postgres"
+                postgres:
+                  hostname: "{{ "{{.DB_RUNTIME_PERSISTENT_HOSTNAME}}" }}"
+                  port: {{ "{{.DB_PORT}}" }}
+                  name: "{{ "{{.DB_RUNTIME_PERSISTENT_NAME}}" }}"
+                  username: "{{ "{{.DB_RUNTIME_PERSISTENT_USERNAME}}" }}"
+                  password: "{{ "{{.DB_RUNTIME_PERSISTENT_PASSWORD}}" }}"
+                  sslmode: "{{ "{{.DB_RUNTIME_PERSISTENT_SSLMODE}}" }}"
 
             cache:
               disabled: false
@@ -298,10 +305,6 @@ spec:
             flow:
               max_version_history: 3
               auto_infer_registration: true
-
-            consent:
-              enabled: {{ "{{.CONSENT_ENABLED}}" }}
-              base_url: "{{ "{{.CONSENT_BASE_URL}}" }}"
 
     - id: gate-config
       template:
@@ -338,6 +341,11 @@ spec:
               },
               server: {
                 public_url: "${environmentConfigs.serverPublicUrl}",
+              },
+              gate_client: {
+                hostname: "${environmentConfigs.gateClientHostname}",
+                port: {{ "{{.GATE_CLIENT_PORT}}" }},
+                scheme: "{{ "{{.GATE_CLIENT_SCHEME}}" }}",
               },
             };
 

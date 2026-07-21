@@ -82,6 +82,8 @@ export default function FlowComponentRenderer({
         signUpFallbackUrl={signUpFallbackUrl}
         signInFallbackUrl={signInFallbackUrl}
         forgotPasswordFallbackUrl={forgotPasswordFallbackUrl}
+        values={values}
+        onSubmit={onSubmit}
       />
     );
   }

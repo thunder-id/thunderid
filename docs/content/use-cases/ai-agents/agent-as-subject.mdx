@@ -1,0 +1,83 @@
+---
+title: Agent as Subject
+docType: use-case
+description: Let an AI agent prove its own identity to downstream systems with its own credentials, distinct from human users and service accounts.
+sidebar_position: 4
+---
+
+# Agent as Subject: Authenticating to Systems
+
+When an agent acts as a subject, it functions as a decision-making entity that evaluates context, selects tools, and initiates actions. In this posture, it must prove its own identity to the systems it accesses.
+
+## IAM Capabilities Required
+
+**Agent-specific authentication** to prove the agent's identity to downstream systems using credentials that are distinct from both human user accounts and legacy service accounts.
+
+**Machine-native credential management** to handle programmatic, non-interactive authentication mechanisms including signed assertions, client credentials, and API keys.
+
+**User-alike authentication flows** to enable agents to participate in authentication protocols originally designed for human users, such as OIDC and session-based access, without impersonating a human account.
+
+**Credential lifecycle management** to govern the full lifecycle of agent credentials including provisioning, rotation, renewal, and revocation.
+
+## The Challenge
+
+Enterprise applications were built for two audiences: human users logging in through browsers, and machine services exchanging credentials through APIs. Agents collapse this distinction. They require the contextual, session-based access patterns of a human user but cannot complete an interactive login flow. They need the programmatic reliability of a service account but carry far more autonomy and broader access scope than any service account was designed for.
+
+Organizations that force agents into existing identity categories, whether by registering them as service accounts or issuing them human user credentials, create ungovernable gaps. Service accounts lack lifecycle governance and contextual authorization. Shared user credentials destroy auditability and violate individual accountability.
+
+## How <ProductName /> Solves It
+
+<ProductName /> provisions agents as first-class organizational identities that are distinct from both human users and legacy service accounts. Each agent is registered directly with the organization's identity infrastructure with its own identity record, its own credentials, and its own lifecycle. Agents can access existing enterprise applications the same way employees do, without impersonating a human account or being forced into a service account.
+
+<ProductName /> supports two classes of authentication mechanism for agents as subjects.
+
+### Machine-Native Authentication
+
+Machine-native authentication is purpose-built for programmatic, non-interactive access. These mechanisms are optimized for speed, scalability, and zero human intervention.
+
+- **OAuth 2.0 Client Credentials** enables the agent to authenticate directly to an authorization server using its own client ID and secret, receiving a scoped access token. This is suitable when the agent acts on its own behalf rather than as a delegate.
+- **`private_key_jwt`** allows the agent to authenticate using a signed JWT assertion, eliminating shared secrets entirely. <ProductName /> manages key provisioning, rotation schedules (for example, 90-day cycles), and revocation. This is the recommended mechanism for high-security agent authentication.
+
+### User-Alike Authentication
+
+User-alike authentication enables agents to participate in flows originally designed for human users, without impersonating a human account, but with their own credentials that are on par with humans.
+
+- **OAuth 2.0 and OpenID Connect** allow agents to authenticate through standard OIDC flows, obtaining identity and access tokens that downstream applications already understand. <ProductName /> acts as the identity provider or brokers trust with existing providers.
+
+The distinction matters because, in an agentic enterprise, agents increasingly need to access the same applications as employees, including ERP systems, CRMs, HR platforms, and internal dashboards. These systems expect authentication patterns that look like a user login. <ProductName /> enables this without creating a fake human account for each agent.
+
+## Scenarios
+
+### Customer Success Agent Accessing the Support Portal
+
+An organization deploys a customer success agent to triage incoming tickets, summarize customer histories, and draft response recommendations. The support portal is an existing enterprise application that authenticates all users through the company's SSO provider via OpenID Connect. <ProductName /> provisions the customer success agent with its own dedicated account in the organization's identity provider, distinct from any human employee account. When the agent needs to access the support portal, it authenticates through the same enterprise SSO flow that human support staff use, presenting an assertion that identifies it as the registered customer success agent. The support portal accepts the session without any modification to its authentication logic because the agent's login looks identical to any other employee login. <ProductName /> manages the agent's SSO credentials, enforces session timeouts appropriate for a non-human entity, and logs every authentication event under the agent's own identity.
+
+### Autonomous Resource Access
+
+A data-engineer agent invokes a data warehouse MCP server using its own pre-provisioned RBAC permissions. No user delegation is involved. The agent obtains a token authenticating as itself, providing `client_credentials`, and <ProductName />'s authorization policies issue a token granting it access to the specific warehouse tables its role permits. Every query is logged under the agent's own identity.
+
+### Agent-Specific Model Access
+
+An engineering agent needs access to high-quota vision models through the AI gateway, while a customer support chatbot is restricted to standard text models. <ProductName /> authenticates each agent to the gateway using `private_key_jwt` credentials tied to their respective identity profiles. The gateway evaluates the agent's identity and applies model-access policies accordingly, granting the engineering agent access to the vision model while restricting the support chatbot to text-only models.
+
+## Key Principles
+
+**Agents are a new identity class.** They are not human users and they are not service accounts. <ProductName /> provisions them as first-class organizational identities with their own credentials, their own lifecycle, and their own governance.
+
+**Identity is not the model.** Two agents built on the same foundation model but carrying different system prompts, tool grants, and context scopes are distinct identities. <ProductName /> authenticates the configured agent, not the underlying model.
+
+**No credential sharing.** Agents never share credentials with human users, other agents, or service accounts. Every agent receives its own credentials under its own lifecycle.
+
+**Machine-friendly does not mean machine-only.** Agents need both programmatic credential mechanisms and the ability to participate in authentication flows designed for humans. <ProductName /> supports both without forcing agents into one category.
+
+## Guides
+
+- [Agent Authentication](../../../guides/guides/agents/agent-authentication): Configure client credentials and `private_key_jwt` for an agent.
+- [Manage Agents](../../../guides/guides/agents/manage-agents): Register an agent and manage its credential lifecycle.
+
+## Related Use Cases
+
+- [Invoking the Agent and Authenticating Users](../invoking-the-agent)
+- [Managed Identity](../managed-agent-identity)
+- [Model Interaction Controls](../model-interaction)
+- [Accessing Internal Business Services](../internal-services)

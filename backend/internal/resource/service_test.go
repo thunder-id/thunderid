@@ -32,24 +32,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/consent"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/tests/mocks/consentmock"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
-
-// newDisabledConsentServiceMock returns a consent service mock with IsEnabled returning false,
-// suitable for resource tests that do not assert on consent sync behavior.
-func newDisabledConsentServiceMock(t interface {
-	mock.TestingT
-	Cleanup(func())
-}) *consentmock.ConsentServiceInterfaceMock {
-	m := consentmock.NewConsentServiceInterfaceMock(t)
-	m.On("IsEnabled").Return(false).Maybe()
-	return m
-}
 
 const (
 	testOriginalName    = "original-name"
@@ -69,7 +57,6 @@ func matchResourceServer(expected providers.ResourceServer) interface{} {
 	return mock.MatchedBy(func(actual providers.ResourceServer) bool {
 		return actual.Name == expected.Name &&
 			actual.Description == expected.Description &&
-			actual.Handle == expected.Handle &&
 			actual.Identifier == expected.Identifier &&
 			actual.OUID == expected.OUID &&
 			actual.Delimiter != "" // Delimiter should be set
@@ -121,7 +108,7 @@ func (suite *ResourceServiceTestSuite) SetupTest() {
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: ":memory:"},
 			},
-			Runtime: config.DataSource{
+			RuntimeTransient: config.DataSource{
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: ":memory:"},
 			},
@@ -139,9 +126,12 @@ func (suite *ResourceServiceTestSuite) SetupTest() {
 	suite.mockOU = new(oumock.OrganizationUnitServiceInterfaceMock)
 	suite.mockTransactioner = &fakeTransactioner{}
 	suite.service, err = newResourceService(
-		suite.mockOU, newDisabledConsentServiceMock(suite.T()), suite.mockStore, suite.mockTransactioner,
+		suite.mockOU, suite.mockStore, suite.mockTransactioner,
 	)
 	suite.NoError(err)
+	// The resource service is its own dependency provider: deletion consults the registry, which
+	// resolves resource/action dependents back through the service.
+	suite.service.SetDependencyRegistry(resourcedependency.Initialize(suite.service))
 }
 
 func (suite *ResourceServiceTestSuite) TearDownTest() {
@@ -159,7 +149,7 @@ func (suite *ResourceServiceTestSuite) TestNewResourceService_InvalidDelimiter()
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: ":memory:"},
 			},
-			Runtime: config.DataSource{
+			RuntimeTransient: config.DataSource{
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: ":memory:"},
 			},
@@ -178,7 +168,7 @@ func (suite *ResourceServiceTestSuite) TestNewResourceService_InvalidDelimiter()
 	mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
 
 	mockTransactioner := &fakeTransactioner{}
-	service, err := newResourceService(mockOU, newDisabledConsentServiceMock(suite.T()), mockStore, mockTransactioner)
+	service, err := newResourceService(mockOU, mockStore, mockTransactioner)
 
 	suite.Error(err)
 	suite.Nil(service)
@@ -191,7 +181,6 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_Success() {
 	rs := providers.ResourceServer{
 		Name:        "test-rs",
 		Description: "Test resource server",
-		Handle:      "test-handle",
 		Identifier:  "test-identifier",
 		OUID:        "ou-123",
 	}
@@ -200,9 +189,6 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_Success() {
 		Return(providers.OrganizationUnit{ID: "ou-123"}, nil)
 	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything,
 		"test-rs").
-		Return(false, nil)
-	suite.mockStore.On("CheckResourceServerHandleExists", mock.Anything,
-		"test-handle").
 		Return(false, nil)
 	suite.mockStore.On("CheckResourceServerIdentifierExists", mock.Anything,
 		"test-identifier").
@@ -218,7 +204,6 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_Success() {
 	suite.NotEmpty(result.ID)
 	suite.Equal("test-rs", result.Name)
 	suite.Equal("Test resource server", result.Description)
-	suite.Equal("test-handle", result.Handle)
 	suite.mockStore.AssertExpectations(suite.T())
 	suite.mockOU.AssertExpectations(suite.T())
 }
@@ -226,7 +211,6 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_Success() {
 func (suite *ResourceServiceTestSuite) TestCreateResourceServer_WithType() {
 	rs := providers.ResourceServer{
 		Name:       "test-rs",
-		Handle:     "test-handle",
 		Identifier: "test-identifier",
 		Type:       providers.ResourceServerTypeMCP,
 		OUID:       "ou-123",
@@ -235,7 +219,6 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_WithType() {
 	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
 		Return(providers.OrganizationUnit{ID: "ou-123"}, nil)
 	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "test-rs").Return(false, nil)
-	suite.mockStore.On("CheckResourceServerHandleExists", mock.Anything, "test-handle").Return(false, nil)
 	suite.mockStore.On("CheckResourceServerIdentifierExists", mock.Anything, "test-identifier").Return(false, nil)
 	suite.mockStore.On("CreateResourceServer", mock.Anything,
 		mock.AnythingOfType("string"), mock.MatchedBy(func(r providers.ResourceServer) bool {
@@ -252,15 +235,15 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_WithType() {
 
 func (suite *ResourceServiceTestSuite) TestCreateResourceServer_DefaultsToCustom() {
 	rs := providers.ResourceServer{
-		Name:   "test-rs",
-		Handle: "test-handle",
-		OUID:   "ou-123",
+		Name:       "test-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
 		Return(providers.OrganizationUnit{ID: "ou-123"}, nil)
 	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "test-rs").Return(false, nil)
-	suite.mockStore.On("CheckResourceServerHandleExists", mock.Anything, "test-handle").Return(false, nil)
+	suite.mockStore.On("CheckResourceServerIdentifierExists", mock.Anything, "test-identifier").Return(false, nil)
 	suite.mockStore.On("CreateResourceServer", mock.Anything,
 		mock.AnythingOfType("string"), mock.MatchedBy(func(r providers.ResourceServer) bool {
 			return r.Type == providers.ResourceServerTypeCustom
@@ -276,10 +259,10 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_DefaultsToCustom
 
 func (suite *ResourceServiceTestSuite) TestCreateResourceServer_InvalidType() {
 	rs := providers.ResourceServer{
-		Name:   "test-rs",
-		Handle: "test-handle",
-		Type:   providers.ResourceServerType("BOGUS"),
-		OUID:   "ou-123",
+		Name:       "test-rs",
+		Identifier: "test-identifier",
+		Type:       providers.ResourceServerType("BOGUS"),
+		OUID:       "ou-123",
 	}
 
 	result, err := suite.service.CreateResourceServer(context.Background(), rs)
@@ -297,21 +280,21 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_ValidationErrors
 	}{
 		{
 			name:           "EmptyName",
-			resourceServer: providers.ResourceServer{Name: "", Handle: "test-handle", OUID: "ou-123"},
+			resourceServer: providers.ResourceServer{Name: "", OUID: "ou-123"},
 			expectedError:  ErrorInvalidRequestFormat,
 		},
 		{
 			name:           "EmptyOU",
-			resourceServer: providers.ResourceServer{Name: "test-rs", Handle: "test-handle", OUID: ""},
+			resourceServer: providers.ResourceServer{Name: "test-rs", OUID: ""},
 			expectedError:  ErrorInvalidRequestFormat,
 		},
 		{
 			name: "InvalidDelimiter",
 			resourceServer: providers.ResourceServer{
-				Name:      "test-rs",
-				Handle:    "test-handle",
-				Delimiter: "::",
-				OUID:      "ou-123",
+				Name:       "test-rs",
+				Identifier: "test-identifier",
+				Delimiter:  "::",
+				OUID:       "ou-123",
 			},
 			expectedError: ErrorInvalidDelimiter,
 		},
@@ -330,9 +313,9 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_ValidationErrors
 
 func (suite *ResourceServiceTestSuite) TestCreateResourceServer_OUNotFound() {
 	rs := providers.ResourceServer{
-		Name:   "test-rs",
-		Handle: "test-handle",
-		OUID:   "ou-123",
+		Name:       "test-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
@@ -348,9 +331,9 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_OUNotFound() {
 
 func (suite *ResourceServiceTestSuite) TestCreateResourceServer_OUServiceError() {
 	rs := providers.ResourceServer{
-		Name:   "test-rs",
-		Handle: "test-handle",
-		OUID:   "ou-123",
+		Name:       "test-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
@@ -365,9 +348,9 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_OUServiceError()
 
 func (suite *ResourceServiceTestSuite) TestCreateResourceServer_NameConflict() {
 	rs := providers.ResourceServer{
-		Name:   "test-rs",
-		Handle: "test-handle",
-		OUID:   "ou-123",
+		Name:       "test-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
@@ -386,9 +369,8 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_NameConflict() {
 func (suite *ResourceServiceTestSuite) TestCreateResourceServer_StoreError() {
 	rs := providers.ResourceServer{
 		Name:       "test-rs",
-		Handle:     "test-handle",
 		OUID:       "ou-123",
-		Identifier: "", // Empty identifier - no need to check
+		Identifier: "test-identifier",
 	}
 
 	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
@@ -396,8 +378,8 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_StoreError() {
 	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything,
 		"test-rs").
 		Return(false, nil)
-	suite.mockStore.On("CheckResourceServerHandleExists", mock.Anything,
-		"test-handle").
+	suite.mockStore.On("CheckResourceServerIdentifierExists", mock.Anything,
+		"test-identifier").
 		Return(false, nil)
 	suite.mockStore.On("CreateResourceServer", mock.Anything,
 		mock.AnythingOfType("string"), matchResourceServer(rs)).
@@ -413,7 +395,6 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_StoreError() {
 func (suite *ResourceServiceTestSuite) TestCreateResourceServer_IdentifierConflict() {
 	rs := providers.ResourceServer{
 		Name:       "test-rs",
-		Handle:     "test-handle",
 		Identifier: "test-identifier",
 		OUID:       "ou-123",
 	}
@@ -422,9 +403,6 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_IdentifierConfli
 		Return(providers.OrganizationUnit{ID: "ou-123"}, nil)
 	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything,
 		"test-rs").
-		Return(false, nil)
-	suite.mockStore.On("CheckResourceServerHandleExists", mock.Anything,
-		"test-handle").
 		Return(false, nil)
 	suite.mockStore.On("CheckResourceServerIdentifierExists", mock.Anything,
 		"test-identifier").
@@ -439,9 +417,9 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_IdentifierConfli
 
 func (suite *ResourceServiceTestSuite) TestCreateResourceServer_CheckNameError() {
 	rs := providers.ResourceServer{
-		Name:   "test-rs",
-		Handle: "test-handle",
-		OUID:   "ou-123",
+		Name:       "test-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
@@ -460,7 +438,6 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_CheckNameError()
 func (suite *ResourceServiceTestSuite) TestCreateResourceServer_CheckIdentifierError() {
 	rs := providers.ResourceServer{
 		Name:       "test-rs",
-		Handle:     "test-handle",
 		Identifier: "test-identifier",
 		OUID:       "ou-123",
 	}
@@ -469,9 +446,6 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_CheckIdentifierE
 		Return(providers.OrganizationUnit{ID: "ou-123"}, nil)
 	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything,
 		"test-rs").
-		Return(false, nil)
-	suite.mockStore.On("CheckResourceServerHandleExists", mock.Anything,
-		"test-handle").
 		Return(false, nil)
 	suite.mockStore.On("CheckResourceServerIdentifierExists", mock.Anything,
 		"test-identifier").
@@ -482,53 +456,6 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_CheckIdentifierE
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
-}
-
-func (suite *ResourceServiceTestSuite) TestCreateResourceServer_DelimiterInHandle() {
-	rs := providers.ResourceServer{
-		Name:      "test-rs",
-		Handle:    "foo:bar",
-		Delimiter: ":",
-		OUID:      "ou-123",
-	}
-
-	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
-		Return(providers.OrganizationUnit{ID: "ou-123"}, nil)
-	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything,
-		"test-rs").
-		Return(false, nil)
-	suite.mockStore.On("CheckResourceServerHandleExists", mock.Anything,
-		"foo:bar").
-		Return(false, nil)
-
-	result, err := suite.service.CreateResourceServer(context.Background(), rs)
-
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(ErrorDelimiterInResourceServerHandle.Code, err.Code)
-}
-
-func (suite *ResourceServiceTestSuite) TestCreateResourceServer_DelimiterInRSHandleDefaultDelimiter() {
-	rs := providers.ResourceServer{
-		Name:   "test-rs",
-		Handle: "foo:bar",
-		OUID:   "ou-123",
-	}
-
-	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
-		Return(providers.OrganizationUnit{ID: "ou-123"}, nil)
-	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything,
-		"test-rs").
-		Return(false, nil)
-	suite.mockStore.On("CheckResourceServerHandleExists", mock.Anything,
-		"foo:bar").
-		Return(false, nil)
-
-	result, err := suite.service.CreateResourceServer(context.Background(), rs)
-
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(ErrorDelimiterInResourceServerHandle.Code, err.Code)
 }
 
 func (suite *ResourceServiceTestSuite) TestGetResourceServer_Success() {
@@ -583,55 +510,6 @@ func (suite *ResourceServiceTestSuite) TestGetResourceServer_StoreError() {
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
-func (suite *ResourceServiceTestSuite) TestGetResourceServerByHandle_Success() {
-	expectedRS := providers.ResourceServer{
-		ID:     "rs-123",
-		Name:   "test-rs",
-		Handle: "test-handle",
-		OUID:   "ou-123",
-	}
-
-	suite.mockStore.On("GetResourceServerByHandle", mock.Anything, "test-handle").
-		Return(expectedRS, nil)
-
-	result, err := suite.service.GetResourceServerByHandle(context.Background(), "test-handle")
-
-	suite.Nil(err)
-	suite.NotNil(result)
-	suite.Equal("rs-123", result.ID)
-	suite.Equal("test-handle", result.Handle)
-}
-
-func (suite *ResourceServiceTestSuite) TestGetResourceServerByHandle_MissingHandle() {
-	result, err := suite.service.GetResourceServerByHandle(context.Background(), "")
-
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(ErrorResourceServerNotFound.Code, err.Code)
-}
-
-func (suite *ResourceServiceTestSuite) TestGetResourceServerByHandle_NotFound() {
-	suite.mockStore.On("GetResourceServerByHandle", mock.Anything, "test-handle").
-		Return(providers.ResourceServer{}, errResourceServerNotFound)
-
-	result, err := suite.service.GetResourceServerByHandle(context.Background(), "test-handle")
-
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(ErrorResourceServerNotFound.Code, err.Code)
-}
-
-func (suite *ResourceServiceTestSuite) TestGetResourceServerByHandle_StoreError() {
-	suite.mockStore.On("GetResourceServerByHandle", mock.Anything, "test-handle").
-		Return(providers.ResourceServer{}, errors.New("database error"))
-
-	result, err := suite.service.GetResourceServerByHandle(context.Background(), "test-handle")
-
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
-}
-
 func (suite *ResourceServiceTestSuite) TestGetResourceServerList_Success() {
 	resourceServers := []providers.ResourceServer{
 		{ID: "rs-1", Name: "RS 1"},
@@ -655,7 +533,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_Success() {
 	rs := providers.ResourceServer{
 		Name:        "updated-rs",
 		Description: "Updated",
-		Handle:      "original-handler",
 		Identifier:  "new-identifier",
 		OUID:        "ou-123",
 	}
@@ -664,7 +541,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_Success() {
 		ID:          "rs-123",
 		Name:        "old-name",
 		Description: "Old",
-		Handle:      "original-handler",
 		Identifier:  "original-identifier",
 		OUID:        "ou-123",
 		Delimiter:   ":",
@@ -683,7 +559,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_Success() {
 	suite.mockStore.On("UpdateResourceServer", mock.Anything,
 		"rs-123", mock.MatchedBy(func(r providers.ResourceServer) bool {
 			return r.Name == rs.Name &&
-				r.Handle == "original-handler" &&
 				r.Identifier == "new-identifier" &&
 				r.Description == rs.Description &&
 				r.Delimiter == existingRS.Delimiter
@@ -695,7 +570,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_Success() {
 	suite.NotNil(result)
 	suite.Equal("rs-123", result.ID)
 	suite.Equal("updated-rs", result.Name)
-	suite.Equal("original-handler", result.Handle)
 	suite.Equal("new-identifier", result.Identifier)
 }
 
@@ -703,7 +577,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_PreservesType() 
 	rs := providers.ResourceServer{
 		Name:        "updated-rs",
 		Description: "Updated",
-		Handle:      "original-handler",
 		Identifier:  "original-identifier",
 		Type:        providers.ResourceServerTypeMCP, // Should be ignored; type is immutable
 		OUID:        "ou-123",
@@ -713,7 +586,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_PreservesType() 
 		ID:          "rs-123",
 		Name:        "old-name",
 		Description: "Old",
-		Handle:      "original-handler",
 		Identifier:  "original-identifier",
 		Type:        providers.ResourceServerTypeAPI,
 		OUID:        "ou-123",
@@ -740,8 +612,9 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_PreservesType() 
 
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_NotFound() {
 	rs := providers.ResourceServer{
-		Name: "test-rs",
-		OUID: "ou-123",
+		Name:       "test-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	suite.mockStore.On("GetResourceServer", mock.Anything,
@@ -794,14 +667,16 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ValidationErrors
 
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_OUNotFound() {
 	rs := providers.ResourceServer{
-		Name: "test-rs",
-		OUID: "ou-123",
+		Name:       "test-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	existingRS := providers.ResourceServer{
-		ID:   "rs-123",
-		Name: "test-rs",
-		OUID: "ou-old",
+		ID:         "rs-123",
+		Name:       "test-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-old",
 	}
 
 	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
@@ -819,14 +694,16 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_OUNotFound() {
 
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_OUServiceError() {
 	rs := providers.ResourceServer{
-		Name: "test-rs",
-		OUID: "ou-123",
+		Name:       "test-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	existingRS := providers.ResourceServer{
-		ID:   "rs-123",
-		Name: "test-rs",
-		OUID: "ou-old",
+		ID:         "rs-123",
+		Name:       "test-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-old",
 	}
 
 	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
@@ -844,14 +721,16 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_OUServiceError()
 
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_NameConflict() {
 	rs := providers.ResourceServer{
-		Name: "test-rs",
-		OUID: "ou-123",
+		Name:       "test-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	existingRS := providers.ResourceServer{
-		ID:   "rs-123",
-		Name: "old-name",
-		OUID: "ou-123",
+		ID:         "rs-123",
+		Name:       "old-name",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
@@ -872,14 +751,16 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_NameConflict() {
 
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_StoreError() {
 	rs := providers.ResourceServer{
-		Name: "test-rs",
-		OUID: "ou-123",
+		Name:       "test-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	existingRS := providers.ResourceServer{
-		ID:   "rs-123",
-		Name: "test-rs",
-		OUID: "ou-123",
+		ID:         "rs-123",
+		Name:       "test-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
@@ -900,8 +781,9 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_StoreError() {
 
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_GetResourceServerStoreError() {
 	rs := providers.ResourceServer{
-		Name: "updated-name",
-		OUID: "ou-123",
+		Name:       "updated-name",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	// Mock GetResourceServer to return generic database error (not errResourceServerNotFound)
@@ -2818,7 +2700,7 @@ func (suite *ResourceServiceTestSuite) TestCreateAction_KindHandling() {
 		suite.Run(tc.name, func() {
 			suite.SetupTest()
 			suite.mockStore.On("GetResourceServer", mock.Anything, tc.rsID).
-				Return(providers.ResourceServer{Type: tc.rsType, Handle: "h-rs", Delimiter: ":"}, nil)
+				Return(providers.ResourceServer{Type: tc.rsType, Delimiter: ":"}, nil)
 			suite.mockStore.On("CheckActionHandleExists", mock.Anything, tc.rsID, (*string)(nil), "h").
 				Return(false, nil)
 			if tc.mcpCrossEnt {
@@ -2858,7 +2740,7 @@ func (suite *ResourceServiceTestSuite) TestCreateAction_InvalidKindRejected() {
 		suite.Run(tc.name, func() {
 			suite.SetupTest()
 			suite.mockStore.On("GetResourceServer", mock.Anything, tc.rsID).
-				Return(providers.ResourceServer{Type: tc.rsType, Handle: "h-rs", Delimiter: ":"}, nil)
+				Return(providers.ResourceServer{Type: tc.rsType, Delimiter: ":"}, nil)
 
 			result, err := suite.service.CreateAction(context.Background(), tc.rsID, nil,
 				providers.Action{Name: "n", Handle: "h", Kind: providers.ActionKind("prompt")})
@@ -2872,7 +2754,7 @@ func (suite *ResourceServiceTestSuite) TestCreateAction_InvalidKindRejected() {
 
 func (suite *ResourceServiceTestSuite) TestCreateAction_MCP_ActionHandleCollidesWithGroup() {
 	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-mcp").
-		Return(providers.ResourceServer{Type: providers.ResourceServerTypeMCP, Handle: "mcp", Delimiter: ":"}, nil)
+		Return(providers.ResourceServer{Type: providers.ResourceServerTypeMCP, Delimiter: ":"}, nil)
 	suite.mockStore.On("CheckActionHandleExists", mock.Anything, "rs-mcp", (*string)(nil), "deploy").
 		Return(false, nil)
 	suite.mockStore.On("CheckResourceHandleExists", mock.Anything, "rs-mcp", "deploy", (*string)(nil)).
@@ -2888,7 +2770,7 @@ func (suite *ResourceServiceTestSuite) TestCreateAction_MCP_ActionHandleCollides
 
 func (suite *ResourceServiceTestSuite) TestCreateAction_API_NoCrossEntityCheck() {
 	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-api").
-		Return(providers.ResourceServer{Type: providers.ResourceServerTypeAPI, Handle: "api", Delimiter: ":"}, nil)
+		Return(providers.ResourceServer{Type: providers.ResourceServerTypeAPI, Delimiter: ":"}, nil)
 	suite.mockStore.On("CheckActionHandleExists", mock.Anything, "rs-api", (*string)(nil), "deploy").
 		Return(false, nil)
 	suite.mockStore.On("CreateAction", mock.Anything, mock.AnythingOfType("string"),
@@ -2908,7 +2790,7 @@ func (suite *ResourceServiceTestSuite) TestCreateAction_API_NoCrossEntityCheck()
 
 func (suite *ResourceServiceTestSuite) TestCreateResource_MCP_GroupHandleCollidesWithAction() {
 	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-mcp").
-		Return(providers.ResourceServer{Type: providers.ResourceServerTypeMCP, Handle: "mcp", Delimiter: ":"}, nil)
+		Return(providers.ResourceServer{Type: providers.ResourceServerTypeMCP, Delimiter: ":"}, nil)
 	suite.mockStore.On("CheckResourceHandleExists", mock.Anything, "rs-mcp", "deploy", (*string)(nil)).
 		Return(false, nil)
 	suite.mockStore.On("CheckActionHandleExists", mock.Anything, "rs-mcp", (*string)(nil), "deploy").
@@ -2924,7 +2806,7 @@ func (suite *ResourceServiceTestSuite) TestCreateResource_MCP_GroupHandleCollide
 
 func (suite *ResourceServiceTestSuite) TestCreateResource_API_NoCrossEntityCheck() {
 	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-api").
-		Return(providers.ResourceServer{Type: providers.ResourceServerTypeAPI, Handle: "api", Delimiter: ":"}, nil)
+		Return(providers.ResourceServer{Type: providers.ResourceServerTypeAPI, Delimiter: ":"}, nil)
 	suite.mockStore.On("CheckResourceHandleExists", mock.Anything, "rs-api", "deploy", (*string)(nil)).
 		Return(false, nil)
 	suite.mockStore.On("CreateResource", mock.Anything, mock.AnythingOfType("string"),
@@ -2954,7 +2836,7 @@ func (suite *ResourceServiceTestSuite) TestUpdateAction_KindImmutable() {
 
 	suite.mockStore.On("IsResourceServerDeclarative", "rs-mcp").Return(false)
 	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-mcp").
-		Return(providers.ResourceServer{Type: providers.ResourceServerTypeMCP, Handle: "mcp", Delimiter: ":"}, nil)
+		Return(providers.ResourceServer{Type: providers.ResourceServerTypeMCP, Delimiter: ":"}, nil)
 	suite.mockStore.On("GetResource", mock.Anything, resID, "rs-mcp").Return(providers.Resource{}, nil)
 	suite.mockStore.On("GetAction", mock.Anything, "act-1", "rs-mcp", &resID).
 		Return(currentAction, nil)
@@ -2984,7 +2866,7 @@ func (suite *ResourceServiceTestSuite) TestUpdateAction_KindChangeRejected() {
 
 	suite.mockStore.On("IsResourceServerDeclarative", "rs-mcp").Return(false)
 	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-mcp").
-		Return(providers.ResourceServer{Type: providers.ResourceServerTypeMCP, Handle: "mcp", Delimiter: ":"}, nil)
+		Return(providers.ResourceServer{Type: providers.ResourceServerTypeMCP, Delimiter: ":"}, nil)
 	suite.mockStore.On("GetResource", mock.Anything, resID, "rs-mcp").Return(providers.Resource{}, nil)
 	suite.mockStore.On("GetAction", mock.Anything, "act-1", "rs-mcp", &resID).
 		Return(currentAction, nil)
@@ -2995,25 +2877,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateAction_KindChangeRejected() {
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(ErrorInvalidRequestFormat.Code, err.Code)
-}
-
-func (suite *ResourceServiceTestSuite) TestCreateResourceServer_MCP_WithHandleSucceeds() {
-	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
-		Return(providers.OrganizationUnit{ID: "ou-123"}, nil)
-	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "x").Return(false, nil)
-	suite.mockStore.On("CheckResourceServerHandleExists", mock.Anything, "mcp").Return(false, nil)
-	suite.mockStore.On("CreateResourceServer", mock.Anything, mock.AnythingOfType("string"),
-		mock.MatchedBy(func(r providers.ResourceServer) bool {
-			return r.Type == providers.ResourceServerTypeMCP && r.Handle == "mcp"
-		})).Return(nil)
-
-	result, err := suite.service.CreateResourceServer(context.Background(),
-		providers.ResourceServer{Name: "x", OUID: "ou-123", Type: providers.ResourceServerTypeMCP, Handle: "mcp"})
-
-	suite.Nil(err)
-	suite.NotNil(result)
-	suite.Equal(providers.ResourceServerTypeMCP, result.Type)
-	suite.mockStore.AssertExpectations(suite.T())
 }
 
 func (suite *ResourceServiceTestSuite) TestGetActionAtResourceServer_Success() {
@@ -4518,25 +4381,11 @@ func (suite *ResourceServiceTestSuite) TestDerivePermission() {
 			expectedPermission: "users",
 		},
 		{
-			name:               "TopLevelResourceWithHandle",
-			resourceServer:     providers.ResourceServer{Handle: "booking-api", Delimiter: ":"},
-			parent:             nil,
-			handle:             "users",
-			expectedPermission: "booking-api:users",
-		},
-		{
 			name:               "ChildResourceWithColon",
 			resourceServer:     providers.ResourceServer{Delimiter: ":"},
 			parent:             &providers.Resource{Permission: "users"},
 			handle:             "read",
 			expectedPermission: "users:read",
-		},
-		{
-			name:               "ChildResourceWithHandleInheritsPrefix",
-			resourceServer:     providers.ResourceServer{Handle: "booking-api", Delimiter: ":"},
-			parent:             &providers.Resource{Permission: "booking-api:users"},
-			handle:             "read",
-			expectedPermission: "booking-api:users:read",
 		},
 		{
 			name:               "DeeplyNestedWithSlash",
@@ -4551,13 +4400,6 @@ func (suite *ResourceServiceTestSuite) TestDerivePermission() {
 			parent:             &providers.Resource{Permission: "admin.panel"},
 			handle:             "delete",
 			expectedPermission: "admin.panel.delete",
-		},
-		{
-			name:               "HandleWithDotDelimiter",
-			resourceServer:     providers.ResourceServer{Handle: "webapp", Delimiter: "."},
-			parent:             nil,
-			handle:             "admin",
-			expectedPermission: "webapp.admin",
 		},
 	}
 
@@ -4695,7 +4537,7 @@ func (suite *ResourceServiceTestSuite) TestValidatePermissions() {
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: ":memory:"},
 			},
-			Runtime: config.DataSource{
+			RuntimeTransient: config.DataSource{
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: ":memory:"},
 			},
@@ -4820,7 +4662,7 @@ func (suite *ResourceServiceTestSuite) TestValidatePermissions() {
 			// Create a fresh service instance with the fresh mocks
 			mockTransactioner := &fakeTransactioner{}
 			svc, err := newResourceService(
-				mockOU, newDisabledConsentServiceMock(suite.T()), mockStore, mockTransactioner,
+				mockOU, mockStore, mockTransactioner,
 			)
 			suite.Require().NoError(err)
 
@@ -4872,9 +4714,10 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ImmutableDeclara
 	// Test that updating a declarative resource server returns an immutability error
 	resourceServerID := declarativeRSID
 	updateReq := providers.ResourceServer{
-		ID:   resourceServerID,
-		Name: "Updated Name",
-		OUID: "ou-1",
+		ID:         resourceServerID,
+		Name:       "Updated Name",
+		Identifier: "test-identifier",
+		OUID:       "ou-1",
 	}
 
 	// Mock IsResourceServerDeclarative to return true
@@ -4897,17 +4740,16 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ImmutableDeclara
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_MutableResource() {
 	resourceServerID := "mutable-rs"
 	updateReq := providers.ResourceServer{
-		ID:   resourceServerID,
-		Name: "Updated Name",
-		OUID: "ou-1",
-		// Handle and Identifier omitted — should be preserved from existing
+		ID:         resourceServerID,
+		Name:       "Updated Name",
+		OUID:       "ou-1",
+		Identifier: "original-identifier",
 	}
 
 	existingRS := providers.ResourceServer{
 		ID:         resourceServerID,
 		Name:       "Original Name",
 		OUID:       "ou-1",
-		Handle:     "original-handler",
 		Identifier: "original-identifier",
 		Delimiter:  ":",
 	}
@@ -4921,7 +4763,7 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_MutableResource(
 		Return(false, nil)
 	suite.mockStore.On("UpdateResourceServer", mock.Anything, resourceServerID,
 		mock.MatchedBy(func(r providers.ResourceServer) bool {
-			return r.Handle == existingRS.Handle && r.Identifier == existingRS.Identifier
+			return r.Identifier == existingRS.Identifier
 		})).Return(nil)
 
 	result, svcErr := suite.service.UpdateResourceServer(context.Background(), resourceServerID, updateReq)
@@ -4929,7 +4771,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_MutableResource(
 	suite.Nil(svcErr)
 	suite.NotNil(result)
 	suite.Equal("Updated Name", result.Name)
-	suite.Equal("original-handler", result.Handle)
 	suite.Equal("original-identifier", result.Identifier)
 
 	suite.mockStore.AssertExpectations(suite.T())
@@ -5064,65 +4905,7 @@ func (suite *ResourceServiceTestSuite) TestDeleteAction_ImmutableDeclarativeReso
 	suite.mockStore.AssertExpectations(suite.T())
 }
 
-// UpdateResourceServer handle/identifier mutability tests
-
-func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_HandleChangedPreservesExistingWhenOmitted() {
-	rs := providers.ResourceServer{
-		Name: "updated-rs",
-		OUID: "ou-123",
-	}
-
-	existingRS := providers.ResourceServer{
-		ID:        "rs-123",
-		Name:      "old-name",
-		Handle:    "existing-handle",
-		Delimiter: ":",
-		OUID:      "ou-123",
-	}
-
-	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
-	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(existingRS, nil)
-	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
-		Return(providers.OrganizationUnit{ID: "ou-123"}, nil)
-	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "updated-rs").Return(false, nil)
-	suite.mockStore.On("UpdateResourceServer", mock.Anything, "rs-123",
-		mock.MatchedBy(func(r providers.ResourceServer) bool {
-			return r.Handle == "existing-handle"
-		})).Return(nil)
-
-	result, svcErr := suite.service.UpdateResourceServer(context.Background(), "rs-123", rs)
-
-	suite.Nil(svcErr)
-	suite.NotNil(result)
-	suite.Equal("existing-handle", result.Handle)
-	suite.mockStore.AssertExpectations(suite.T())
-}
-
-func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_HandleChange_ReturnsImmutableError() {
-	rs := providers.ResourceServer{
-		Name:   "my-rs",
-		Handle: "new-handle",
-		OUID:   "ou-123",
-	}
-
-	existingRS := providers.ResourceServer{
-		ID:        "rs-123",
-		Name:      "my-rs",
-		Handle:    "old-handle",
-		Delimiter: ":",
-		OUID:      "ou-123",
-	}
-
-	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
-	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(existingRS, nil)
-
-	result, svcErr := suite.service.UpdateResourceServer(context.Background(), "rs-123", rs)
-
-	suite.Nil(result)
-	suite.NotNil(svcErr)
-	suite.Equal(ErrorImmutableHandle.Code, svcErr.Code)
-	suite.mockStore.AssertExpectations(suite.T())
-}
+// UpdateResourceServer identifier mutability tests
 
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_IdentifierChanged() {
 	rs := providers.ResourceServer{
@@ -5134,7 +4917,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_IdentifierChange
 	existingRS := providers.ResourceServer{
 		ID:         "rs-123",
 		Name:       "my-rs",
-		Handle:     "my-handle",
 		Identifier: "https://api.example.com/old/",
 		Delimiter:  ":",
 		OUID:       "ou-123",
@@ -5169,7 +4951,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_IdentifierConfli
 	existingRS := providers.ResourceServer{
 		ID:         "rs-123",
 		Name:       "old-name",
-		Handle:     "my-handle",
 		Identifier: "https://api.example.com/original/",
 		Delimiter:  ":",
 		OUID:       "ou-123",
@@ -5198,7 +4979,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_IdentifierCheckS
 	existingRS := providers.ResourceServer{
 		ID:         "rs-123",
 		Name:       "old-name",
-		Handle:     "my-handle",
 		Identifier: "https://api.example.com/old/",
 		Delimiter:  ":",
 		OUID:       "ou-123",
@@ -5215,144 +4995,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_IdentifierCheckS
 	suite.NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 	suite.mockStore.AssertExpectations(suite.T())
-}
-
-func newSyncTestService(t *testing.T, consentSvc consent.ConsentServiceInterface) *resourceService {
-	t.Helper()
-	return &resourceService{
-		logger:         *log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
-		consentService: consentSvc,
-	}
-}
-
-func (suite *ResourceServiceTestSuite) TestSyncConsentOnPermissionCreate_CreatesElementWhenAbsent() {
-	cm := consentmock.NewConsentServiceInterfaceMock(suite.T())
-	cm.EXPECT().IsEnabled().Return(true)
-	cm.EXPECT().
-		ValidateConsentElements(mock.Anything, "default", []string{"booking:reservations:read"}).
-		Return([]string{}, nil)
-	cm.EXPECT().
-		CreateConsentElements(mock.Anything, "default", []consent.ConsentElementInput{{
-			Name:        "booking:reservations:read",
-			Description: "Read reservations",
-			Namespace:   providers.NamespacePermission,
-		}}).
-		Return([]consent.ConsentElement{{ID: "el-1"}}, nil)
-
-	svc := newSyncTestService(suite.T(), cm)
-	err := svc.syncConsentOnPermissionCreate(
-		context.Background(), "booking:reservations:read", "Read reservations",
-	)
-	require.NoError(suite.T(), err)
-}
-
-func (suite *ResourceServiceTestSuite) TestSyncConsentOnPermissionCreate_SkipsWhenElementExists() {
-	cm := consentmock.NewConsentServiceInterfaceMock(suite.T())
-	cm.EXPECT().IsEnabled().Return(true)
-	cm.EXPECT().
-		ValidateConsentElements(mock.Anything, "default", []string{"p"}).
-		Return([]string{"p"}, nil)
-
-	svc := newSyncTestService(suite.T(), cm)
-	require.NoError(suite.T(), svc.syncConsentOnPermissionCreate(context.Background(), "p", ""))
-}
-
-func (suite *ResourceServiceTestSuite) TestSyncConsentOnPermissionCreate_NoopWhenConsentDisabled() {
-	cm := consentmock.NewConsentServiceInterfaceMock(suite.T())
-	cm.EXPECT().IsEnabled().Return(false)
-
-	svc := newSyncTestService(suite.T(), cm)
-	require.NoError(suite.T(), svc.syncConsentOnPermissionCreate(context.Background(), "p", ""))
-}
-
-func (suite *ResourceServiceTestSuite) TestSyncConsentOnPermissionCreate_NoopWhenPermissionEmpty() {
-	cm := consentmock.NewConsentServiceInterfaceMock(suite.T())
-	cm.On("IsEnabled").Return(true).Maybe()
-
-	svc := newSyncTestService(suite.T(), cm)
-	require.NoError(suite.T(), svc.syncConsentOnPermissionCreate(context.Background(), "", ""))
-}
-
-func (suite *ResourceServiceTestSuite) TestSyncConsentOnPermissionCreate_WrapsConsentServiceError() {
-	cm := consentmock.NewConsentServiceInterfaceMock(suite.T())
-	cm.EXPECT().IsEnabled().Return(true)
-	se := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "CE-9999"}
-	cm.EXPECT().
-		ValidateConsentElements(mock.Anything, "default", []string{"p"}).
-		Return(nil, se)
-
-	svc := newSyncTestService(suite.T(), cm)
-	err := svc.syncConsentOnPermissionCreate(context.Background(), "p", "")
-	require.Error(suite.T(), err)
-	var ce *consentSyncError
-	require.True(suite.T(), errors.As(err, &ce))
-	require.Equal(suite.T(), se, ce.Underlying)
-}
-
-func (suite *ResourceServiceTestSuite) TestSyncConsentOnPermissionDelete_DeletesExistingElement() {
-	cm := consentmock.NewConsentServiceInterfaceMock(suite.T())
-	cm.EXPECT().IsEnabled().Return(true)
-	cm.EXPECT().
-		ListConsentElements(mock.Anything, "default", providers.NamespacePermission, "p").
-		Return([]consent.ConsentElement{{ID: "el-1", Name: "p"}}, nil)
-	cm.EXPECT().DeleteConsentElement(mock.Anything, "default", "el-1").Return(nil)
-
-	svc := newSyncTestService(suite.T(), cm)
-	require.NoError(suite.T(), svc.syncConsentOnPermissionDelete(context.Background(), "p"))
-}
-
-func (suite *ResourceServiceTestSuite) TestSyncConsentOnPermissionDelete_SuccessWhenElementAssociatedWithPurpose() {
-	cm := consentmock.NewConsentServiceInterfaceMock(suite.T())
-	cm.EXPECT().IsEnabled().Return(true)
-	cm.EXPECT().
-		ListConsentElements(mock.Anything, "default", providers.NamespacePermission, "p").
-		Return([]consent.ConsentElement{{ID: "el-1", Name: "p"}}, nil)
-	cm.EXPECT().DeleteConsentElement(mock.Anything, "default", "el-1").
-		Return(&consent.ErrorDeletingConsentElementWithAssociatedPurpose)
-
-	svc := newSyncTestService(suite.T(), cm)
-	require.NoError(suite.T(), svc.syncConsentOnPermissionDelete(context.Background(), "p"))
-}
-
-func (suite *ResourceServiceTestSuite) TestSyncConsentOnPermissionDelete_NoopWhenElementMissing() {
-	cm := consentmock.NewConsentServiceInterfaceMock(suite.T())
-	cm.EXPECT().IsEnabled().Return(true)
-	cm.EXPECT().
-		ListConsentElements(mock.Anything, "default", providers.NamespacePermission, "p").
-		Return([]consent.ConsentElement{}, nil)
-
-	svc := newSyncTestService(suite.T(), cm)
-	require.NoError(suite.T(), svc.syncConsentOnPermissionDelete(context.Background(), "p"))
-}
-
-// Ensure consentService=nil receivers are tolerated (declarative paths or partial setups).
-func (suite *ResourceServiceTestSuite) TestSyncHelpers_TolerateNilConsentService() {
-	svc := newSyncTestService(suite.T(), nil)
-	require.NoError(suite.T(), svc.syncConsentOnPermissionCreate(context.Background(), "p", ""))
-	require.NoError(suite.T(), svc.syncConsentOnPermissionDelete(context.Background(), "p"))
-}
-
-func (suite *ResourceServiceTestSuite) TestWrapConsentServiceError_NilPassthrough() {
-	svc := newSyncTestService(suite.T(), nil)
-	require.Nil(suite.T(), svc.wrapConsentServiceError(context.Background(), nil))
-}
-
-func (suite *ResourceServiceTestSuite) TestConsentSyncError_Error() {
-	empty := &consentSyncError{}
-	require.Equal(suite.T(), "consent sync failed", empty.Error())
-	withUnderlying := &consentSyncError{Underlying: &tidcommon.ServiceError{
-		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "boom"},
-	}}
-	require.Equal(suite.T(), "boom", withUnderlying.Error())
-}
-
-func (suite *ResourceServiceTestSuite) TestConsentSyncError_IsClientError() {
-	clientErr := &consentSyncError{Underlying: &tidcommon.ServiceError{Type: tidcommon.ClientErrorType}}
-	require.True(suite.T(), clientErr.IsClientError())
-	serverErr := &consentSyncError{Underlying: &tidcommon.ServiceError{Type: tidcommon.ServerErrorType}}
-	require.False(suite.T(), serverErr.IsClientError())
-	emptyErr := &consentSyncError{}
-	require.False(suite.T(), emptyErr.IsClientError())
 }
 
 // TestResolveResourceServerOUHandle_OUHandleResolved verifies that when only ou_handle is set,
@@ -5430,59 +5072,19 @@ func (suite *ResourceServiceTestSuite) TestResolveResourceServerOUHandle_NilOUSe
 
 // TestResourceServerYAML_OUHandleParsed verifies that ou_handle is parsed off the YAML
 // document into the providers.ResourceServer struct.
-// newEnabledConsentServiceMock returns a consent service mock with IsEnabled returning true.
-func (suite *ResourceServiceTestSuite) newEnabledConsentServiceMock() *consentmock.ConsentServiceInterfaceMock {
-	cm := consentmock.NewConsentServiceInterfaceMock(suite.T())
-	cm.On("IsEnabled").Return(true).Maybe()
-	return cm
-}
-
-// newServiceWithConsent builds a resource service wired to the suite's store, OU, and
-// transactioner mocks but with the supplied consent service.
-func (suite *ResourceServiceTestSuite) newServiceWithConsent(
-	cm consent.ConsentServiceInterface,
-) ResourceServiceInterface {
-	return &resourceService{
-		logger:           *log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
-		resourceStore:    suite.mockStore,
-		ouService:        suite.mockOU,
-		consentService:   cm,
-		defaultDelimiter: ":",
-		transactioner:    suite.mockTransactioner,
-	}
-}
-
-func (suite *ResourceServiceTestSuite) TestCreateResourceServer_CheckHandleError() {
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_IDConflict() {
 	rs := providers.ResourceServer{
-		Name:   "test-rs",
-		Handle: "test-handle",
-		OUID:   "ou-123",
+		ID:         "rs-existing",
+		Name:       "test-rs",
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
 		Return(providers.OrganizationUnit{ID: "ou-123"}, nil)
 	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "test-rs").
 		Return(false, nil)
-	suite.mockStore.On("CheckResourceServerHandleExists", mock.Anything, "test-handle").
-		Return(false, errors.New("database error"))
-
-	result, err := suite.service.CreateResourceServer(context.Background(), rs)
-
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
-}
-
-func (suite *ResourceServiceTestSuite) TestCreateResourceServer_IDConflict() {
-	rs := providers.ResourceServer{
-		ID:   "rs-existing",
-		Name: "test-rs",
-		OUID: "ou-123",
-	}
-
-	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
-		Return(providers.OrganizationUnit{ID: "ou-123"}, nil)
-	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "test-rs").
+	suite.mockStore.On("CheckResourceServerIdentifierExists", mock.Anything, "test-identifier").
 		Return(false, nil)
 	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-existing").
 		Return(providers.ResourceServer{ID: "rs-existing"}, nil)
@@ -5518,13 +5120,16 @@ func (suite *ResourceServiceTestSuite) TestGetResourceServerByIdentifier_StoreEr
 
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_CheckNameError() {
 	rs := providers.ResourceServer{
-		Name: testUpdatedName,
-		OUID: "ou-123",
+		Name:       testUpdatedName,
+		Identifier: "test-identifier",
+		OUID:       "ou-123",
 	}
 
 	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
 	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
-		Return(providers.ResourceServer{ID: "rs-123", Name: testOriginalName, OUID: "ou-123"}, nil)
+		Return(providers.ResourceServer{
+			ID: "rs-123", Name: testOriginalName, Identifier: "test-identifier", OUID: "ou-123",
+		}, nil)
 	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
 		Return(providers.OrganizationUnit{ID: "ou-123"}, nil)
 	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, testUpdatedName).
@@ -5533,125 +5138,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_CheckNameError()
 	result, err := suite.service.UpdateResourceServer(context.Background(), "rs-123", rs)
 
 	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
-}
-
-func (suite *ResourceServiceTestSuite) TestFindResourceServersByPermissions_StoreError() {
-	perms := []string{"booking:read"}
-	suite.mockStore.On("FindResourceServersByPermissions", mock.Anything, perms).
-		Return([]providers.ResourceServer(nil), errors.New("database error"))
-
-	result, err := suite.service.FindResourceServersByPermissions(context.Background(), perms)
-
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
-}
-
-func (suite *ResourceServiceTestSuite) TestCreateResource_ConsentSyncError() {
-	cm := suite.newEnabledConsentServiceMock()
-	serverErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "CE-9999"}
-	cm.On("ValidateConsentElements", mock.Anything, "default", mock.Anything).
-		Return([]string(nil), serverErr)
-	svc := suite.newServiceWithConsent(cm)
-
-	res := providers.Resource{Name: "test-resource", Handle: "test-handle"}
-	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
-		Return(providers.ResourceServer{ID: "rs-123"}, nil)
-	suite.mockStore.On("CheckResourceHandleExists", mock.Anything,
-		"rs-123", "test-handle", (*string)(nil)).Return(false, nil)
-	suite.mockStore.On("CreateResource", mock.Anything,
-		mock.AnythingOfType("string"), "rs-123", (*string)(nil), matchResource(res)).Return(nil)
-
-	result, err := svc.CreateResource(context.Background(), "rs-123", res)
-
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
-}
-
-func (suite *ResourceServiceTestSuite) TestDeleteResource_ConsentSyncError() {
-	cm := suite.newEnabledConsentServiceMock()
-	serverErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "CE-9999"}
-	cm.On("ListConsentElements", mock.Anything, "default", providers.NamespacePermission, "perm-x").
-		Return([]consent.ConsentElement(nil), serverErr)
-	svc := suite.newServiceWithConsent(cm)
-
-	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
-	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
-		Return(providers.ResourceServer{ID: "rs-123"}, nil)
-	suite.mockStore.On("GetResource", mock.Anything, "res-123", "rs-123").
-		Return(providers.Resource{ID: "res-123", Permission: "perm-x"}, nil)
-	suite.mockStore.On("CheckResourceHasDependencies", mock.Anything, "res-123").
-		Return(false, nil)
-	suite.mockStore.On("DeleteResource", mock.Anything, "res-123", "rs-123").Return(nil)
-
-	err := svc.DeleteResource(context.Background(), "rs-123", "res-123")
-
-	suite.NotNil(err)
-	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
-}
-
-func (suite *ResourceServiceTestSuite) TestCreateAction_ConsentSyncError() {
-	cm := suite.newEnabledConsentServiceMock()
-	serverErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "CE-9999"}
-	cm.On("ValidateConsentElements", mock.Anything, "default", mock.Anything).
-		Return([]string(nil), serverErr)
-	svc := suite.newServiceWithConsent(cm)
-
-	action := providers.Action{Name: "test-action", Handle: "test-handle"}
-	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
-		Return(providers.ResourceServer{ID: "rs-123"}, nil)
-	suite.mockStore.On("CheckActionHandleExists", mock.Anything,
-		"rs-123", (*string)(nil), "test-handle").Return(false, nil)
-	suite.mockStore.On("CreateAction", mock.Anything,
-		mock.AnythingOfType("string"), "rs-123", (*string)(nil), matchAction(action)).Return(nil)
-
-	result, err := svc.CreateAction(context.Background(), "rs-123", nil, action)
-
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
-}
-
-func (suite *ResourceServiceTestSuite) TestDeleteAction_LoadForConsentSyncError() {
-	cm := suite.newEnabledConsentServiceMock()
-	svc := suite.newServiceWithConsent(cm)
-
-	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
-	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
-		Return(providers.ResourceServer{ID: "rs-123"}, nil)
-	suite.mockStore.On("IsActionExist", mock.Anything, "action-123", "rs-123", (*string)(nil)).
-		Return(true, nil)
-	suite.mockStore.On("GetAction", mock.Anything, "action-123", "rs-123", (*string)(nil)).
-		Return(providers.Action{}, errors.New("database error"))
-
-	err := svc.DeleteAction(context.Background(), "rs-123", nil, "action-123")
-
-	suite.NotNil(err)
-	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
-}
-
-func (suite *ResourceServiceTestSuite) TestDeleteAction_ConsentSyncError() {
-	cm := suite.newEnabledConsentServiceMock()
-	serverErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "CE-9999"}
-	cm.On("ListConsentElements", mock.Anything, "default", providers.NamespacePermission, "perm-x").
-		Return([]consent.ConsentElement(nil), serverErr)
-	svc := suite.newServiceWithConsent(cm)
-
-	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
-	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
-		Return(providers.ResourceServer{ID: "rs-123"}, nil)
-	suite.mockStore.On("IsActionExist", mock.Anything, "action-123", "rs-123", (*string)(nil)).
-		Return(true, nil)
-	suite.mockStore.On("GetAction", mock.Anything, "action-123", "rs-123", (*string)(nil)).
-		Return(providers.Action{ID: "action-123", Permission: "perm-x"}, nil)
-	suite.mockStore.On("DeleteAction", mock.Anything, "action-123", "rs-123", (*string)(nil)).
-		Return(nil)
-
-	err := svc.DeleteAction(context.Background(), "rs-123", nil, "action-123")
-
 	suite.NotNil(err)
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }

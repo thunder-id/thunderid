@@ -15,7 +15,7 @@
 # under the License.
 
 {{- if .Values.setup.enabled }}
-{{- $usingSqlite := or (eq .Values.configuration.database.config.type "sqlite") (eq .Values.configuration.database.runtime.type "sqlite") (eq .Values.configuration.database.user.type "sqlite") (and .Values.configuration.consent.enabled (eq .Values.configuration.consent.database.type "sqlite")) }}
+{{- $usingSqlite := or (eq .Values.configuration.database.config.type "sqlite") (eq .Values.configuration.database.runtime_transient.type "sqlite") (eq .Values.configuration.database.entity.type "sqlite") (eq .Values.configuration.database.runtime_persistent.type "sqlite") }}
 {{- if and .Values.declarativeResources.enabled .Values.declarativeResources.configMap.name .Values.declarativeResources.secret.name }}
 {{- fail "Invalid declarativeResources configuration: set only one source, declarativeResources.configMap.name or declarativeResources.secret.name." }}
 {{- end }}
@@ -104,21 +104,6 @@ spec:
               else
                 echo "Database already initialized"
               fi
-              {{- if and .Values.configuration.consent.enabled (eq .Values.configuration.consent.database.type "sqlite") }}
-              if [ ! -f /data/consent/consentdb.db ]; then
-                echo "Copying consent database from image..."
-                mkdir -p /data/consent
-                if [ -d /opt/thunderid/consent/repository/database ]; then
-                  cp -r /opt/thunderid/consent/repository/database/* /data/consent/
-                  echo "Consent database initialization complete"
-                else
-                  echo "Error: consent database source directory not found" >&2
-                  exit 1
-                fi
-              else
-                echo "Consent database already initialized"
-              fi
-              {{- end }}
           volumeMounts:
             - name: database-storage
               mountPath: /data
@@ -140,13 +125,6 @@ spec:
             {{- if .Values.setup.debug }}
             - name: DEBUG
               value: "true"
-            {{- end }}
-            {{- if .Values.configuration.consent.enabled }}
-            - name: WITH_CONSENT
-              value: "true"
-            {{- else }}
-            - name: WITH_CONSENT
-              value: "false"
             {{- end }}
             - name: ADMIN_USERNAME
               value: {{ .Values.setup.admin.username | quote }}
@@ -194,19 +172,17 @@ spec:
             - name: database-storage
               mountPath: /opt/thunderid/database
             {{- end }}
-            {{- if and .Values.configuration.consent.enabled (eq .Values.configuration.consent.database.type "sqlite") }}
-            - name: database-storage
-              mountPath: /opt/thunderid/consent/repository/database
-              subPath: consent
-            {{- end }}
+            # Per-deployment key material is generated here by setup.sh and shared with the server.
+            - name: certs-storage
+              mountPath: /opt/thunderid/config/certs
+            # Runtime secrets (e.g. the Direct Auth Secret) are written here by setup.sh and shared with
+            # the server. Writable so setup.sh can persist the secret even though deployment.yaml is
+            # mounted read-only.
+            - name: secrets-storage
+              mountPath: /opt/thunderid/config/secrets
             - name: deployment-yaml-volume
               mountPath: /opt/thunderid/deployment.yaml
               subPath: deployment.yaml
-            {{- if .Values.configuration.consent.enabled }}
-            - name: deployment-yaml-volume
-              mountPath: /opt/thunderid/consent/repository/conf/deployment.yaml
-              subPath: consent-deployment.yaml
-            {{- end }}
             {{- /* Validate bootstrap configuration - patterns are mutually exclusive */ -}}
             {{- if and .Values.bootstrap.scripts .Values.bootstrap.configMap.name }}
             {{- fail "\n\n❌ ERROR: Invalid bootstrap configuration detected!\n\nYou cannot use both 'bootstrap.scripts' and 'bootstrap.configMap' at the same time." }}
@@ -253,6 +229,12 @@ spec:
             {{- end }}
             {{- end }}
       volumes:
+        - name: certs-storage
+          persistentVolumeClaim:
+            claimName: {{ include "thunderid.fullname" . }}-certs-pvc
+        - name: secrets-storage
+          persistentVolumeClaim:
+            claimName: {{ include "thunderid.fullname" . }}-secrets-pvc
         {{- if or .Values.persistence.enabled $usingSqlite }}
         - name: database-storage
           persistentVolumeClaim:

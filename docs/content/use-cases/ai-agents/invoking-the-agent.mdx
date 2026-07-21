@@ -1,0 +1,156 @@
+---
+title: Invoking the Agent
+docType: use-case
+description: Authenticate users, applications, and other agents that invoke an AI agent, and manage the consent and delegation they carry.
+sidebar_position: 2
+---
+
+# Invoking the Agent and Authenticating Users
+
+This interaction controls how users, applications, and other agents interact with an AI agent. The IAM system governs who can access the agent, at what assurance level (ACR), and with what delegated permissions.
+
+Authentication in the agentic era is multi-directional. An agent must authenticate its callers when invoked as a resource. It must prove its own identity when accessing downstream systems as a subject. It must also carry verifiable delegated identity when acting on behalf of a user as a client. Each direction demands distinct mechanisms, policies, and credential management.
+
+## IAM Capabilities Required
+
+**Machine-native and user-alike authentication mechanisms** for agents to support both programmatic access and flows originally designed for human users.
+
+**Authentication policy enforcement** to control agent invocation and enforce specific assurance levels based on the sensitivity of the agent's task.
+
+**Permission delegation** to allow agents to act as the actor for a subject (the user), carrying verifiable proof of who authorized the action.
+
+**Consent management** for user approval of data sharing and the specific actions an agent may take on their behalf.
+
+**Agent as a protected resource**, meaning agents can expose protected resources with unique Resource IDs and granular scopes. Just like an API endpoint, an agent must authenticate its callers and verify they are authorized before accepting any invocation.
+
+## Agent as Client: User Authentication
+
+When a human user invokes an agent, the authentication requirements depend on the sensitivity of what the agent can do. A general-purpose assistant and a financial trading agent demand very different assurance levels.
+
+### The Challenge
+
+Agents serve users across wildly different contexts: employees authenticating through corporate SSO, consumers signing in with social accounts, and users on mobile devices who need passwordless flows. The assurance level must match the risk. A low-sensitivity query can proceed with basic authentication, but a high-value action such as booking a flight, executing a trade, or accessing medical records requires step-up authentication before the agent is allowed to proceed.
+
+Traditional applications handle this with static login pages. Agents operate conversationally and continuously. The authentication decision is not a one-time gate at session start; it may need to be re-evaluated mid-task when the agent encounters a sensitive action.
+
+### How <ProductName /> Solves It
+
+<ProductName /> enforces authentication policies at the point of agent invocation and supports dynamic step-up during an active session. The assurance level required is defined per agent, per scope, and per action sensitivity rather than as a blanket policy applied at the front door.
+
+<ProductName /> supports the following user authentication mechanisms:
+
+**Enterprise (B2E) flows** enable corporate SSO via SAML or OIDC with MFA enforcement. Agents inherit the organization's existing authentication infrastructure, so an employee authenticating to an agent goes through the same identity provider they use for every other enterprise application.
+
+**Consumer (B2C) flows** support social login, email OTP, passkeys, and other passwordless mechanisms. <ProductName /> adapts the authentication challenge to the channel and the action sensitivity, enabling low-friction access for low-risk queries and stronger verification when the stakes increase.
+
+**Step-up authentication** allows <ProductName /> to trigger an additional verification challenge mid-session when an agent needs to perform a high-sensitivity action. This could be biometric verification, a hardware key, or an email OTP. The user does not need to restart the session because the step-up is scoped to the specific action.
+
+### Scenario: Employee Research Assistant (B2E)
+
+Sarah, a financial analyst, logs in through corporate SSO with MFA to access a research assistant agent. <ProductName /> defines her role-based access: she can query SEC filings (read scope) but cannot trigger trading actions (write scope). When she asks the agent to summarize a filing, <ProductName /> validates her session, confirms her role grants read access, and issues a delegated token. The agent proceeds under Sarah's authority, bounded by her permissions.
+
+### Scenario: Consumer Travel Planner (B2C)
+
+Priya uses social login to access a travel planning agent. For general searches such as browsing destinations and comparing prices, her social login session is sufficient. When she asks the agent to book a flight, <ProductName /> triggers step-up authentication via email OTP, upgrades her session's assurance level, and issues a time-bound consent grant scoping the agent to this specific booking action. The consent expires after the transaction completes.
+
+## Agent as Client: Delegated Authority
+
+When an agent acts as a client, it operates on behalf of a human user, another system, or another agent. Authentication in this posture serves two purposes: the agent must carry verifiable proof of the delegating principal's identity, and it must present its own client credentials proving it is an authorized delegate.
+
+### The Challenge
+
+Delegation creates a trust chain. A user asks an agent to perform a task. The agent calls downstream services carrying the user's authority. Every system in that chain needs answers to two questions: who is the user, and is this agent authorized to act for them?
+
+If the agent relays the user's credentials directly, it becomes a credential proxy, which is a security anti-pattern that exposes secrets across the chain. If the agent only presents its own identity without binding it to the delegating user, downstream systems cannot enforce user-specific policies and the audit trail loses attribution.
+
+### How <ProductName /> Solves It
+
+<ProductName /> separates user identity from agent client identity, ensuring both are present in every delegated interaction.
+
+**User identity in the delegation chain:** <ProductName /> uses the `act` (actor) claim pattern defined in OAuth token exchange ([RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693)). The resulting token identifies the user as the `subject` and the agent as the `actor`. Downstream systems can enforce the user's permissions while knowing exactly which agent executed the request.
+
+**Agent client authentication:** Independent of the user's identity, the agent proves it is an authorized delegate using its own credentials. <ProductName /> supports `private_key_jwt`, client certificates, and OAuth client credentials for agent client authentication. This answers the second question in the trust chain: the calling agent is not just any agent, but a specific, registered, and governed entity.
+
+**Token exchange for downstream propagation:** When the agent calls an internal API or MCP server, <ProductName /> exchanges the original delegation token for a new token that carries both identities. The downstream service validates that the user is authorized for the requested operation and that the agent is permitted to act as their delegate.
+
+### Scenario: User-Delegated API Invocation
+
+Sarah asks a research agent to pull SEC filings. <ProductName /> issues a delegated token with Sarah as the `subject` and the research agent as the `actor`. When the agent calls the SEC Filing API, the API validates two things: Sarah has access to the requested filings, and the research agent is authorized to act on Sarah's behalf for this specific scope. The agent cannot exceed Sarah's actual permissions.
+
+### Scenario: MCP On-Behalf-of User
+
+An agent uses an MCP client to pull revenue data from an internal MCP server. The MCP server validates both the user's authorization for the `get_revenue_data` tool and the agent's authorization to invoke that tool as a delegate. <ProductName />'s token carries both claims, and the MCP server enforces both checks before returning results.
+
+## Consent and Delegation Management
+
+Authentication proves who the user is. Consent defines what the agent is allowed to do on their behalf. These are separate decisions, and <ProductName /> manages them independently.
+
+### The Challenge
+
+Users rarely understand the full scope of what they are authorizing when they "allow" an agent to act on their behalf. Broad, open-ended consent grants create risk. But overly granular consent prompts create friction that drives users away. Organizations need a consent model that is specific enough to be meaningful and simple enough to be usable, with clear expiration, revocation, and auditability.
+
+Compounding this, consent must track the user's own access status. If the delegating user's permissions change because they leave the company, change roles, or lose access to a system, the agent's delegated authority must adjust immediately.
+
+### How <ProductName /> Solves It
+
+<ProductName /> manages consent as a structured, time-bound, revocable grant. When a user delegates authority to an agent, <ProductName /> records the specific scopes approved, the duration of the grant, and the conditions under which it expires or is revoked. Users can grant partial consent such as read access but not write, or access to one system but not another.
+
+Critically, <ProductName /> links the agent's delegated authority to the user's live access status. If the user's corporate permissions are modified or revoked, <ProductName /> automatically adjusts or revokes the agent's delegated grants. The agent never retains authority that the user no longer holds.
+
+### Scenario: Personal Assistant Delegation
+
+David provisions an agent to monitor his email and calendar. <ProductName /> establishes a 30-day consent grant scoped to read-only access on email and read-write on calendar events. If David's corporate access is modified, for example when he transfers to a different team and loses access to certain distribution lists, <ProductName /> automatically revokes the agent's access to those same resources. David does not need to remember to update the agent's permissions because the linkage is enforced by policy.
+
+### Scenario: Partial Consent
+
+Sarah grants the research assistant read access to SEC filings but explicitly denies write access to the trading platform. <ProductName /> records this as a structured consent decision: the delegated token the agent carries permits filing queries but will be rejected by the trading API. The consent decision is auditable, and if anyone asks what Sarah authorized, the answer is precise and timestamped.
+
+## Agent as a Protected Resource
+
+Agents expose capabilities and data that carry real consequences when invoked. Before accepting any request, an agent must control who is allowed to invoke it and what operations they can perform. An agent is not an open endpoint. It exposes protected resources with their own scopes and caller verification requirements.
+
+### The Challenge
+
+Most deployments treat agents as backend services that accept any authenticated request. This ignores a fundamental requirement: agents expose resources and actions with real consequences, and different callers should have different levels of access to the resources an agent exposes. A user with view-only scope should be able to query a knowledge-base agent but must be blocked from invoking a write action on a database management agent. An application triggering an agent via machine-to-machine flow requires different validation than a human user signing in through a browser.
+
+Without resource-level modeling, every caller gets the same access to every resource an agent exposes, and there is no mechanism to enforce that the right caller reached the right agent with the right scope.
+
+### How <ProductName /> Solves It
+
+<ProductName /> enables agents to expose protected resources with unique Resource IDs, granular invocation scopes, and authentication policies that vary by caller type. When a user, application, or another agent attempts to invoke an agent, <ProductName /> verifies three things: the caller's identity, the caller's authorization to access the specific resource the agent exposes, and the assurance level required for the requested operation.
+
+This means organizations can deploy multiple agents and enforce isolation between the resources each agent exposes. An agent is not just a function to call but a governed entity that protects its resources with access controls as rigorous as any API endpoint.
+
+### Scenario: Granular Resource Scoping
+
+An organization deploys a Knowledge Base agent and a Database Management agent. Each agent exposes distinct protected resources with their own scope definitions. <ProductName />'s IAM policy ensures that a user with a "View-Only" scope can query the resources exposed by the Knowledge Base agent but is blocked from invoking any write action on the resources exposed by the Database Management agent. This effectively isolates the two agents from one another even though both are accessible to the same user pool.
+
+### Scenario: M2M Application Invocation
+
+A CRM application triggers a lead-scoring agent over an event hook exposed by the agent. No user is involved because this is application-to-agent communication. <ProductName /> authenticates the CRM as a machine client and validates its authorization to invoke the lead-scoring agent, then issues a token for the CRM application. The CRM application presents the token to the agent, and the agent validates the entitlements and proceeds. No user involvement is required because no user delegation exists.
+
+## Key Principles
+
+**Agents expose protected resources, not open endpoints.** Every agent must verify its callers, enforce scopes on the resources it exposes, and reject unauthorized invocations just like any API.
+
+**Authentication is multi-directional.** A single agent may authenticate inbound callers (as a resource), authenticate outbound to downstream systems (as a subject), and carry delegated user identity (as a client), all within one task.
+
+**Assurance levels match action sensitivity.** Low-risk queries proceed with basic authentication. High-value actions trigger step-up verification. The decision is made per action, not per session.
+
+**Consent is structured, time-bound, and linked to the user's live access.** If the user's permissions change, the agent's delegated authority adjusts immediately.
+
+**No credential sharing.** Agents never share credentials with human users, other agents, or service accounts. Every agent receives its own credentials under its own lifecycle.
+
+**Machine-friendly does not mean machine-only.** Agents need both programmatic credential mechanisms and the ability to participate in authentication flows designed for humans. <ProductName /> supports both without forcing agents into one category.
+
+## Guides
+
+- [Manage Agents](../../../guides/guides/agents/manage-agents): Model an agent as a protected resource with its own scopes.
+- [Agent Authentication](../../../guides/guides/agents/agent-authentication): Configure delegated (on-behalf-of) token issuance and agent client authentication.
+
+## Related Use Cases
+
+- [Managed Identity](../managed-agent-identity)
+- [Accessing Internal Business Services](../internal-services)
+- [Agent as Subject](../agent-as-subject)
+- [Multi-Agent Interactions](../multi-agent)

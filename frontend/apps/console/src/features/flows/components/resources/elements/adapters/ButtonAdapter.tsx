@@ -17,15 +17,21 @@
  */
 
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
-import {Button, type ButtonProps, type SxProps, type Theme} from '@wso2/oxygen-ui';
+import {Button, useColorScheme, type ButtonProps, type SxProps, type Theme} from '@wso2/oxygen-ui';
 import {Position} from '@xyflow/react';
-import {useMemo, type ReactElement, type ReactNode} from 'react';
+import {useCallback, useMemo, type ReactElement, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import NodeHandle from './NodeHandle';
 import TemplatePlaceholder, {containsTemplateLiteral} from './TemplatePlaceholder';
 import VisualFlowConstants from '@/features/flows/constants/VisualFlowConstants';
 import {ButtonVariants, type Element as FlowElement} from '@/features/flows/models/elements';
 import resolveStaticResourcePath from '@/features/flows/utils/resolveStaticResourcePath';
+
+/**
+ * Full-color brand icons (e.g. Google) must keep their colors; every other icon
+ * in the set is monochrome-dark and needs inversion to stay visible in dark mode.
+ */
+const FULL_COLOR_ICON_PATTERN = /google\.svg$|recaptcha\.png$/;
 
 /**
  * Configuration interface for Button element.
@@ -108,30 +114,48 @@ function ButtonAdapter({resource, elementIndex = undefined}: ButtonAdapterPropsI
   // Cast resource to ButtonElement to access label and image properties
   const buttonElement = resource as ButtonElement;
 
+  const {mode, systemMode} = useColorScheme();
+  const effectiveMode = mode === 'system' ? systemMode : mode;
+
+  const renderButtonIcon = useCallback(
+    (src: string): ReactElement => (
+      <img
+        src={resolveStaticResourcePath(src)}
+        height={20}
+        alt=""
+        style={{
+          filter:
+            effectiveMode === 'dark' && !FULL_COLOR_ICON_PATTERN.test(src) ? 'brightness(0.9) invert(1)' : undefined,
+        }}
+      />
+    ),
+    [effectiveMode],
+  );
+
   const startIcon = useMemo(() => {
     // Check resource.startIcon first (new format), then resource.image for backwards compatibility,
     // then config.image, then variant default
     if (buttonElement?.startIcon && typeof buttonElement.startIcon === 'string') {
-      return <img src={resolveStaticResourcePath(buttonElement.startIcon)} height={20} alt="" />;
+      return renderButtonIcon(buttonElement.startIcon);
     }
     if (buttonElement?.image && typeof buttonElement.image === 'string') {
-      return <img src={resolveStaticResourcePath(buttonElement.image)} height={20} alt="" />;
+      return renderButtonIcon(buttonElement.image);
     }
     if (buttonConfig?.image) {
-      return <img src={resolveStaticResourcePath(buttonConfig.image)} height={20} alt="" />;
+      return renderButtonIcon(buttonConfig.image);
     }
     if (image) {
-      return <img src={resolveStaticResourcePath(image)} height={20} alt="" />;
+      return renderButtonIcon(image);
     }
     return undefined;
-  }, [buttonElement?.startIcon, buttonElement?.image, buttonConfig?.image, image]);
+  }, [buttonElement?.startIcon, buttonElement?.image, buttonConfig?.image, image, renderButtonIcon]);
 
   const endIcon = useMemo(() => {
     if (buttonElement?.endIcon && typeof buttonElement.endIcon === 'string') {
-      return <img src={resolveStaticResourcePath(buttonElement.endIcon)} height={20} alt="" />;
+      return renderButtonIcon(buttonElement.endIcon);
     }
     return undefined;
-  }, [buttonElement?.endIcon]);
+  }, [buttonElement?.endIcon, renderButtonIcon]);
 
   const rawLabel = buttonElement?.label ?? '';
   const labelNode: ReactNode = containsTemplateLiteral(rawLabel) ? (

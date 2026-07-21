@@ -65,23 +65,53 @@ function TabPanel({children = undefined, value, index}: PropsWithChildren<TabPan
 }
 
 /**
- * Get the icon for a notification type.
+ * Get the icon for a notification type, tinted with its severity color.
  *
  * @param type - Notification type.
  * @returns Icon component for the notification type.
  */
 const getNotificationIcon = (type: NotificationType): ReactElement => {
-  switch (type) {
-    case NotificationType.ERROR:
-      return <CircleXIcon size={16} />;
-    case NotificationType.INFO:
-      return <InfoIcon size={16} />;
-    case NotificationType.WARNING:
-      return <TriangleAlertIcon size={16} />;
-    default:
-      return <InfoIcon size={16} />;
-  }
+  const icon = ((): ReactElement => {
+    switch (type) {
+      case NotificationType.ERROR:
+        return <CircleXIcon size={16} />;
+      case NotificationType.INFO:
+        return <InfoIcon size={16} />;
+      case NotificationType.WARNING:
+        return <TriangleAlertIcon size={16} />;
+      default:
+        return <InfoIcon size={16} />;
+    }
+  })();
+
+  return <Box sx={{display: 'inline-flex', color: `${type}.main`}}>{icon}</Box>;
 };
+
+/**
+ * Small count pill shown next to a tab label when its list is non-empty.
+ */
+function TabCount({count}: {count: number}): ReactElement | null {
+  if (count === 0) {
+    return null;
+  }
+  return (
+    <Box
+      component="span"
+      sx={{
+        px: 0.75,
+        py: 0.1,
+        borderRadius: 999,
+        fontSize: '0.7rem',
+        fontWeight: 600,
+        lineHeight: 1.4,
+        bgcolor: 'action.selected',
+        color: 'text.primary',
+      }}
+    >
+      {count}
+    </Box>
+  );
+}
 
 export interface ValidationPanelProps {
   open?: boolean;
@@ -152,7 +182,9 @@ function ValidationPanel({open = false}: ValidationPanelProps): ReactElement {
       const targetNode = findNodeForResource(resource.id);
       if (targetNode) {
         setLastInteractedStepId(targetNode.id);
-        void fitView({nodes: [{id: targetNode.id}], padding: 0.5, duration: 400});
+        // Same focus framing as clicking a step during the flow preview — an
+        // uncapped fitView on a single node zooms in far too close.
+        void fitView({nodes: [{id: targetNode.id}], padding: 0.3, maxZoom: 1.2, duration: 400});
       }
     }
   };
@@ -178,7 +210,6 @@ function ValidationPanel({open = false}: ValidationPanelProps): ReactElement {
       <Box
         sx={{
           px: 2,
-          bgcolor: 'background.paper',
           borderBottom: '1px solid',
           borderColor: 'divider',
         }}
@@ -206,6 +237,7 @@ function ValidationPanel({open = false}: ValidationPanelProps): ReactElement {
                 <Typography variant="h6" sx={{fontSize: '0.8rem'}}>
                   {t('flows:core.notificationPanel.tabs.errors')}
                 </Typography>
+                <TabCount count={errorNotifications.length} />
               </Box>
             }
           />
@@ -216,6 +248,7 @@ function ValidationPanel({open = false}: ValidationPanelProps): ReactElement {
                 <Typography variant="h6" sx={{fontSize: '0.8rem'}}>
                   {t('flows:core.notificationPanel.tabs.warnings')}
                 </Typography>
+                <TabCount count={warningNotifications.length} />
               </Box>
             }
           />
@@ -226,6 +259,7 @@ function ValidationPanel({open = false}: ValidationPanelProps): ReactElement {
                 <Typography variant="h6" sx={{fontSize: '0.8rem'}}>
                   {t('flows:core.notificationPanel.tabs.info')}
                 </Typography>
+                <TabCount count={infoNotifications.length} />
               </Box>
             }
           />
@@ -247,27 +281,6 @@ function ValidationPanel({open = false}: ValidationPanelProps): ReactElement {
             borderRadius: '3px',
             '&:hover': {background: 'rgba(0, 0, 0, 0.3)'},
           },
-          '& .notification-item': {
-            width: '100%',
-            borderRadius: '8px',
-          },
-          '& .notification-action-button': {
-            p: 0,
-            width: 'auto',
-            textTransform: 'none',
-            fontSize: '0.8rem',
-            fontWeight: 500,
-            textDecoration: 'underline',
-            mt: '8px',
-            '&:hover': {
-              backgroundColor: 'transparent',
-              textDecoration: 'underline',
-              color: 'primary.dark',
-            },
-            '&.MuiButtonBase-root': {justifyContent: 'flex-end'},
-          },
-          '& .MuiList-root': {p: 0},
-          '& .MuiListItem-root': {py: '6px', px: 0},
         }}
       >
         <TabPanel value={currentActiveTab ?? 0} index={0}>

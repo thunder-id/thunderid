@@ -22,6 +22,7 @@ import {render, screen, waitFor, fireEvent, within} from '@thunderid/test-utils'
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import useGetApplication from '../../api/useGetApplication';
 import useUpdateApplication from '../../api/useUpdateApplication';
+import EditAdvancedSettings from '../../components/edit-application/advanced-settings/EditAdvancedSettings';
 import type {Application} from '../../models/application';
 import {getIntegrationGuideForTemplate} from '../../utils/getIntegrationGuidesForTemplate';
 import getTemplateMetadata from '../../utils/getTemplateMetadata';
@@ -53,7 +54,7 @@ vi.mock('react-i18next', () => ({
         'applications:edit.page.tabs.flows': 'Flows',
         'applications:edit.page.tabs.customization': 'Customization',
         'applications:edit.page.tabs.token': 'Token',
-        'applications:edit.page.tabs.advanced': 'Advanced',
+        'applications:edit.page.tabs.advanced': 'Advanced Settings',
         'applications:edit.page.unsavedChanges': 'You have unsaved changes',
         'applications:edit.page.reset': 'Reset',
         'applications:edit.page.save': 'Save Changes',
@@ -122,6 +123,17 @@ vi.mock('../../components/edit-application/integration-guides/IntegrationGuides'
   default: vi.fn(() => <div data-testid="integration-guides">Integration Guides</div>),
 }));
 
+vi.mock('../../components/edit-application/mcp/McpConnectTab', () => ({
+  default: vi.fn(({onValidationChange}: {onValidationChange?: (hasErrors: boolean) => void}) => (
+    <div data-testid="mcp-connect-tab">
+      Connect Tab
+      <button type="button" data-testid="mcp-connect-tab-report-invalid" onClick={() => onValidationChange?.(true)}>
+        Report invalid
+      </button>
+    </div>
+  )),
+}));
+
 vi.mock('@thunderid/components', async () => {
   const React = await import('react');
   return {
@@ -147,6 +159,7 @@ vi.mock('@thunderid/components', async () => {
         saveLabel,
         savingLabel,
         isSaving,
+        saveDisabled,
         onReset,
         onSave,
       }: {
@@ -155,6 +168,7 @@ vi.mock('@thunderid/components', async () => {
         saveLabel: string;
         savingLabel: string;
         isSaving: boolean;
+        saveDisabled?: boolean;
         onReset: () => void;
         onSave: () => void;
       }) => (
@@ -163,7 +177,7 @@ vi.mock('@thunderid/components', async () => {
           <button type="button" onClick={onReset}>
             {resetLabel}
           </button>
-          <button type="button" onClick={onSave} disabled={isSaving}>
+          <button type="button" onClick={onSave} disabled={isSaving || saveDisabled}>
             {isSaving ? savingLabel : saveLabel}
           </button>
         </div>
@@ -462,6 +476,21 @@ describe('ApplicationEditPage', () => {
       await waitFor(() => {
         expect(screen.getByTestId('edit-advanced-settings')).toBeInTheDocument();
       });
+    });
+
+    it('should not pass allowedGrantTypes to EditAdvancedSettings for non-mcp-client templates', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      const advancedTab = screen.getByRole('tab', {name: /advanced/i});
+      await user.click(advancedTab);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('edit-advanced-settings')).toBeInTheDocument();
+      });
+
+      const lastCallProps = vi.mocked(EditAdvancedSettings).mock.calls.at(-1)?.[0];
+      expect(lastCallProps?.allowedGrantTypes).toBeUndefined();
     });
   });
 
@@ -1460,6 +1489,191 @@ describe('ApplicationEditPage', () => {
       await waitFor(() => {
         expect(screen.getByText('Edited Name')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('MCP Tab Set', () => {
+    const mockMcpApplication: Application = {
+      id: 'test-mcp-app-id',
+      name: 'Test MCP Client',
+      description: 'Test MCP client description',
+      template: 'mcp-client',
+      inboundAuthConfig: [
+        {
+          type: 'oauth2',
+          config: {
+            responseTypes: ['code'],
+            clientId: 'test-mcp-client-id',
+            grantTypes: ['authorization_code', 'refresh_token'],
+            redirectUris: ['http://127.0.0.1:8080/callback'],
+            pkceRequired: true,
+            publicClient: true,
+            tokenEndpointAuthMethod: 'none',
+          },
+        },
+      ],
+    };
+
+    const mockMcpM2mApplication: Application = {
+      ...mockMcpApplication,
+      inboundAuthConfig: [
+        {
+          type: 'oauth2',
+          config: {
+            responseTypes: [],
+            clientId: 'test-mcp-m2m-client-id',
+            grantTypes: ['client_credentials'],
+            tokenEndpointAuthMethod: 'client_secret_basic',
+            publicClient: false,
+          },
+        },
+      ],
+    };
+
+    it('renders the MCP tab set for an mcp-client template application', () => {
+      mockUseGetApplication.mockReturnValue({
+        data: mockMcpApplication,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      renderComponent();
+
+      expect(screen.getByRole('tab', {name: 'General'})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Flows'})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Customization'})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Token'})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Advanced Settings'})).toBeInTheDocument();
+    });
+
+    it('renders the General tab panel by default', () => {
+      mockUseGetApplication.mockReturnValue({
+        data: mockMcpApplication,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      renderComponent();
+
+      expect(screen.getByTestId('mcp-connect-tab')).toBeInTheDocument();
+    });
+
+    it('hides the Flows and Customization tabs for a machine-to-machine client', () => {
+      mockUseGetApplication.mockReturnValue({
+        data: mockMcpM2mApplication,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      renderComponent();
+
+      expect(screen.getByRole('tab', {name: 'General'})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Token'})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Advanced Settings'})).toBeInTheDocument();
+      expect(screen.queryByRole('tab', {name: 'Flows'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', {name: 'Customization'})).not.toBeInTheDocument();
+    });
+
+    it('passes allowedGrantTypes to EditAdvancedSettings for the mcp-client Advanced tab', async () => {
+      mockUseGetApplication.mockReturnValue({
+        data: mockMcpApplication,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      const user = userEvent.setup();
+      renderComponent();
+
+      await user.click(screen.getByRole('tab', {name: 'Advanced Settings'}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('edit-advanced-settings')).toBeInTheDocument();
+      });
+
+      const lastCallProps = vi.mocked(EditAdvancedSettings).mock.calls.at(-1)?.[0];
+      expect(lastCallProps?.allowedGrantTypes).toEqual(['authorization_code', 'refresh_token', 'client_credentials']);
+    });
+
+    it('locks the PKCE constraint for a user-delegated mcp-client Advanced tab', async () => {
+      mockUseGetApplication.mockReturnValue({
+        data: mockMcpApplication,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      const user = userEvent.setup();
+      renderComponent();
+
+      await user.click(screen.getByRole('tab', {name: 'Advanced Settings'}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('edit-advanced-settings')).toBeInTheDocument();
+      });
+
+      const lastCallProps = vi.mocked(EditAdvancedSettings).mock.calls.at(-1)?.[0];
+      expect(lastCallProps?.oauth2Constraints?.pkceRequired).toEqual({readOnly: true, value: true});
+    });
+
+    it('does not lock the PKCE constraint for an M2M-only mcp-client Advanced tab', async () => {
+      mockUseGetApplication.mockReturnValue({
+        data: mockMcpM2mApplication,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      const user = userEvent.setup();
+      renderComponent();
+
+      await user.click(screen.getByRole('tab', {name: 'Advanced Settings'}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('edit-advanced-settings')).toBeInTheDocument();
+      });
+
+      const lastCallProps = vi.mocked(EditAdvancedSettings).mock.calls.at(-1)?.[0];
+      expect(lastCallProps?.oauth2Constraints).toBeUndefined();
+    });
+
+    it('keeps the generic tab set unchanged for non-mcp-client templates', () => {
+      // mockApplication (template: 'react') is the default mock from the outer describe block.
+      renderComponent();
+
+      expect(screen.getByRole('tab', {name: /general/i})).toBeInTheDocument();
+      expect(screen.queryByTestId('mcp-connect-tab')).not.toBeInTheDocument();
+    });
+
+    it('disables the Save button when the MCP access section reports invalid', async () => {
+      mockUseGetApplication.mockReturnValue({
+        data: mockMcpApplication,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      const user = userEvent.setup();
+      renderComponent();
+
+      await user.click(screen.getByTestId('mcp-connect-tab-report-invalid'));
+
+      // Trigger a change so the Save bar is rendered.
+      const nameSection = screen.getByText('Test MCP Client').closest('div');
+      const editButton = nameSection?.querySelector('button');
+      await user.click(editButton!);
+      const nameInput = screen.getByRole('textbox');
+      await user.clear(nameInput);
+      await user.type(nameInput, 'Edited MCP Client{Enter}');
+
+      await waitFor(() => {
+        expect(screen.getByTestId('unsaved-changes-bar')).toBeInTheDocument();
+      });
+
+      expect(screen.getByRole('button', {name: 'Save Changes'})).toBeDisabled();
     });
   });
 });

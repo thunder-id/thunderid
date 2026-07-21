@@ -45,7 +45,11 @@ export default function Root({children = null}: PropsWithChildren<Record<string,
       ? 'home'
       : pathname.replace(/\//g, '-').replace(/^-|-$/g, '') || 'home';
 
-    html.setAttribute('data-page', pagePath);
+    // Restrict the derived value to a known-safe character set and write it through the
+    // dataset API, which can only ever set an inert data-* attribute (read by CSS selectors).
+    const safePagePath = pagePath.replace(/[^a-z0-9-]/gi, '') || 'home';
+
+    html.dataset.page = safePagePath;
   }, [location.pathname, baseUrl]);
 
   // Restore persona selection from localStorage before first paint.

@@ -67,7 +67,7 @@ func buildGetGroupsCountByOUIDsQuery(
 ) (dbmodel.DBQuery, []interface{}) {
 	if len(ouIDs) == 0 {
 		return dbmodel.DBQuery{
-			ID:            "GRQ-GROUP_MGT-03",
+			ID:            "GRQ-GROUP_MGT-22",
 			Query:         "SELECT 0 WHERE 1=0",
 			PostgresQuery: "SELECT 0 WHERE 1=0",
 			SQLiteQuery:   "SELECT 0 WHERE 1=0",
@@ -110,7 +110,7 @@ func buildGetGroupsByOUIDsQuery(
 ) (dbmodel.DBQuery, []interface{}) {
 	if len(ouIDs) == 0 {
 		return dbmodel.DBQuery{
-			ID:            "GRQ-GROUP_MGT-04",
+			ID:            "GRQ-GROUP_MGT-23",
 			Query:         `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" WHERE 1=0`,
 			PostgresQuery: `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" WHERE 1=0`,
 			SQLiteQuery:   `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" WHERE 1=0`,
@@ -195,6 +195,14 @@ var (
 	QueryDeleteGroupMembers = dbmodel.DBQuery{
 		ID:    "GRQ-GROUP_MGT-11",
 		Query: `DELETE FROM "GROUP_MEMBER_REFERENCE" WHERE GROUP_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+
+	// QueryDeleteGroupMembershipsByMember deletes all group memberships for a given member across
+	// groups (used to cascade-delete memberships when the member principal is deleted).
+	QueryDeleteGroupMembershipsByMember = dbmodel.DBQuery{
+		ID: "GRQ-GROUP_MGT-21",
+		Query: `DELETE FROM "GROUP_MEMBER_REFERENCE" ` +
+			`WHERE MEMBER_TYPE = $1 AND MEMBER_ID = $2 AND DEPLOYMENT_ID = $3`,
 	}
 
 	// QueryAddMemberToGroup is the query to assign member to a group.

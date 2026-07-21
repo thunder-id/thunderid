@@ -366,7 +366,7 @@ func (p *defaultAuthnProvider) authenticateWithFederated(
 		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
 			"Missing IDP ID", "The federated credential must include a non-empty IDP ID")
 	}
-	if cred.Code == "" {
+	if cred.AuthorizationData.Code == "" {
 		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
 			"Missing authorization code", "The federated credential must include a non-empty authorization code")
 	}
@@ -375,7 +375,7 @@ func (p *defaultAuthnProvider) authenticateWithFederated(
 		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
 			"Unsupported IDP type", "The provided IDP type is not supported for federated authentication")
 	}
-	result, authErr := svc.Authenticate(ctx, cred.IDPID, cred.Code)
+	result, authErr := svc.Authenticate(ctx, cred.IDPID, cred.AuthorizationData)
 	if authErr != nil {
 		if authErr.Type == tidcommon.ClientErrorType {
 			return nil, newClientError(authnprovidercm.ErrorCodeAuthenticationFailed,

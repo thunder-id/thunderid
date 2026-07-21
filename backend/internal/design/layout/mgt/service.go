@@ -30,6 +30,7 @@ import (
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -43,12 +44,16 @@ type LayoutMgtServiceInterface interface {
 	UpdateLayout(ctx context.Context, id string, layout UpdateLayoutRequest) (*Layout, *tidcommon.ServiceError)
 	DeleteLayout(ctx context.Context, id string) *tidcommon.ServiceError
 	IsLayoutExist(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
+	SetDependencyRegistry(r resourcedependency.Registry)
+	GetLayoutUsages(ctx context.Context, id string, limit, offset int) (
+		*resourcedependency.DependenciesResponse, *tidcommon.ServiceError)
 }
 
 // layoutMgtService is the default implementation of the LayoutMgtServiceInterface.
 type layoutMgtService struct {
-	layoutMgtStore layoutMgtStoreInterface
-	logger         *log.Logger
+	layoutMgtStore     layoutMgtStoreInterface
+	dependencyRegistry resourcedependency.Registry
+	logger             *log.Logger
 }
 
 // newLayoutMgtService creates a new instance of LayoutMgtService with injected dependencies.
@@ -245,22 +250,9 @@ func (ls *layoutMgtService) DeleteLayout(ctx context.Context, id string) *tidcom
 		return nil
 	}
 
-	// Check if layout is used by any applications
-	count, err := ls.layoutMgtStore.GetApplicationsCountByLayoutID(id)
-	if err != nil {
-		ls.logger.Error(ctx, "Failed to check applications using layout",
-			log.String("id", id), log.Error(err))
-		return &tidcommon.InternalServerError
-	}
-
-	if count > 0 {
-		return tidcommon.CustomServiceError(ErrorLayoutInUse, tidcommon.I18nMessage{
-			Key:          "error.layoutservice.layout_in_use_description",
-			DefaultValue: "Layout is being used by {{param(count)}} application(s)",
-			Params:       map[string]string{"count": strconv.Itoa(count)},
-		})
-	}
-
+	// A layout can be deleted even while applications reference it: those applications keep their
+	// reference and fall back to the system default layout at read time (see the design resolve
+	// service). References are surfaced informationally through GetLayoutUsages.
 	if err := ls.layoutMgtStore.DeleteLayout(id); err != nil {
 		ls.logger.Error(ctx, "Failed to delete layout", log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
@@ -283,6 +275,52 @@ func (ls *layoutMgtService) IsLayoutExist(ctx context.Context, id string) (bool,
 	}
 
 	return exists, nil
+}
+
+// SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
+// provider services are initialized to avoid a cyclic import.
+func (ls *layoutMgtService) SetDependencyRegistry(r resourcedependency.Registry) {
+	ls.dependencyRegistry = r
+}
+
+// GetLayoutUsages returns the resources that reference this layout.
+func (ls *layoutMgtService) GetLayoutUsages(
+	ctx context.Context, id string, limit, offset int,
+) (*resourcedependency.DependenciesResponse, *tidcommon.ServiceError) {
+	if id == "" {
+		return nil, &ErrorInvalidLayoutID
+	}
+
+	if err := validatePaginationParams(limit, offset); err != nil {
+		return nil, err
+	}
+
+	exists, err := ls.layoutMgtStore.IsLayoutExist(id)
+	if err != nil {
+		ls.logger.Error(ctx, "Failed to check layout existence", log.String("id", id), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if !exists {
+		return nil, &ErrorLayoutNotFound
+	}
+
+	if ls.dependencyRegistry == nil {
+		ls.logger.Warn(ctx, "Dependency registry not set; returning unknown dependencies", log.String("id", id))
+		return &resourcedependency.DependenciesResponse{
+			TotalResults: nil,
+			Count:        0,
+			Summary:      nil,
+			Usages:       []resourcedependency.ResourceDependency{},
+		}, nil
+	}
+
+	result, err := ls.dependencyRegistry.GetDependencies(ctx, resourcedependency.ResourceTypeLayout, id)
+	if err != nil {
+		ls.logger.Error(ctx, "Failed to get layout usages", log.String("id", id), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	return resourcedependency.PaginateUsages(result, limit, offset), nil
 }
 
 // validateLayoutPreferences validates the layout JSON.

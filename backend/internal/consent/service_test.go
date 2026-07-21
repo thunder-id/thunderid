@@ -20,548 +20,372 @@ package consent
 
 import (
 	"context"
+	"errors"
 	"testing"
-
-	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
-
-	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"time"
 
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 type ConsentServiceTestSuite struct {
 	suite.Suite
+	mockStore          *consentStoreInterfaceMock
+	mockInboundClients *InboundClientProviderMock
+	service            *consentService
 }
 
 func TestConsentServiceTestSuite(t *testing.T) {
 	suite.Run(t, new(ConsentServiceTestSuite))
 }
 
-// initConsentRuntime initializes a minimal server runtime for service tests.
-func initConsentRuntime(t *testing.T, enabled bool, baseURL string) {
-	t.Helper()
-	cfg := &config.Config{
-		Consent: engineconfig.ConsentConfig{
-			Enabled: enabled,
-			BaseURL: baseURL,
+func (s *ConsentServiceTestSuite) SetupTest() {
+	s.mockStore = newConsentStoreInterfaceMock(s.T())
+	s.mockInboundClients = NewInboundClientProviderMock(s.T())
+	s.service = &consentService{
+		consentStore:          s.mockStore,
+		transactioner:         transaction.NewNoOpTransactioner(),
+		inboundClientProvider: s.mockInboundClients,
+		logger:                log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConsentService")),
+	}
+}
+
+// ListPurposes tests
+
+func (s *ConsentServiceTestSuite) TestListPurposes_GroupScoped() {
+	s.mockInboundClients.On("GetInboundClientAttributes", mock.Anything, "app1").
+		Return(&inboundmodel.InboundClientAttributes{
+			InboundClientID: "app1", Attributes: []string{"phone", "email"},
+		}, nil)
+
+	purposes, svcErr := s.service.ListPurposes(context.Background(), PurposeFilter{GroupID: "app1"})
+
+	s.Nil(svcErr)
+	s.Len(purposes, 1)
+	s.Equal(AttributePurposeName("app1"), purposes[0].Name)
+	s.Equal("app1", purposes[0].GroupID)
+	// Elements are sorted by name.
+	s.Len(purposes[0].Elements, 2)
+	s.Equal("email", purposes[0].Elements[0].Name)
+	s.Equal("phone", purposes[0].Elements[1].Name)
+	s.Equal(NamespaceAttribute, purposes[0].Elements[0].Namespace)
+}
+
+func (s *ConsentServiceTestSuite) TestListPurposes_GroupScoped_NoAttributes() {
+	s.mockInboundClients.On("GetInboundClientAttributes", mock.Anything, "app1").
+		Return(&inboundmodel.InboundClientAttributes{InboundClientID: "app1", Attributes: nil}, nil)
+
+	purposes, svcErr := s.service.ListPurposes(context.Background(), PurposeFilter{GroupID: "app1"})
+
+	s.Nil(svcErr)
+	s.Empty(purposes)
+}
+
+func (s *ConsentServiceTestSuite) TestListPurposes_GroupScoped_ProviderError() {
+	s.mockInboundClients.On("GetInboundClientAttributes", mock.Anything, "app1").
+		Return(nil, errors.New("boom"))
+
+	purposes, svcErr := s.service.ListPurposes(context.Background(), PurposeFilter{GroupID: "app1"})
+
+	s.Nil(purposes)
+	s.NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *ConsentServiceTestSuite) TestListPurposes_ListAll() {
+	s.mockInboundClients.On("ListInboundClientAttributes", mock.Anything).Return([]inboundmodel.InboundClientAttributes{
+		{InboundClientID: "app1", Attributes: []string{"email"}},
+		{InboundClientID: "app2", Attributes: nil}, // no attributes -> no purpose
+		{InboundClientID: "app3", Attributes: []string{"name"}},
+	}, nil)
+
+	purposes, svcErr := s.service.ListPurposes(context.Background(), PurposeFilter{})
+
+	s.Nil(svcErr)
+	s.Len(purposes, 2)
+	names := []string{purposes[0].Name, purposes[1].Name}
+	s.Contains(names, AttributePurposeName("app1"))
+	s.Contains(names, AttributePurposeName("app3"))
+}
+
+func (s *ConsentServiceTestSuite) TestPurposeNames() {
+	s.Equal("attributes:app1", AttributePurposeName("app1"))
+	s.Equal("attributes:", AttributePurposeName(""))
+	s.Equal("permissions:app1", PermissionPurposeName("app1"))
+	s.Equal("permissions:", PermissionPurposeName(""))
+}
+
+func (s *ConsentServiceTestSuite) TestListPurposes_ListAll_ProviderError() {
+	s.mockInboundClients.On("ListInboundClientAttributes", mock.Anything).Return(nil, errors.New("boom"))
+
+	purposes, svcErr := s.service.ListPurposes(context.Background(), PurposeFilter{})
+
+	s.Nil(purposes)
+	s.NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// CreateConsent tests
+
+func (s *ConsentServiceTestSuite) validCreateRequest() *ConsentRequest {
+	return &ConsentRequest{
+		GroupID:      "app1",
+		ValidityTime: 0,
+		Purposes: []ConsentPurposeItem{
+			{Name: "attributes:app1", Elements: []ConsentElementApproval{
+				{Name: "email", Namespace: NamespaceAttribute, IsUserApproved: true},
+			}},
+		},
+		Authorizations: []ConsentAuthorizationRequest{
+			{UserID: "user1", Type: AuthorizationTypeAuthorization, Status: AuthorizationStatusApproved},
 		},
 	}
-	config.ResetServerRuntime()
-	require.NoError(t, config.InitializeServerRuntime("/tmp/test", cfg))
-	t.Cleanup(config.ResetServerRuntime)
 }
-
-// newServiceWithMockClient creates a consentService with the provided mock client and config.
-func newServiceWithMockClient(t *testing.T, enabled bool, client consentClientInterface) *consentService {
-	t.Helper()
-	initConsentRuntime(t, enabled, "http://consent.example.com")
-	return &consentService{
-		enabled: enabled,
-		client:  client,
-		logger:  log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConsentService")),
-	}
-}
-
-// ----- newConsentService -----
-
-func (s *ConsentServiceTestSuite) TestNewConsentService_EnabledTrue() {
-	initConsentRuntime(s.T(), true, "http://example.com")
-	clientMock := newConsentClientInterfaceMock(s.T())
-
-	svc := newConsentService(clientMock)
-
-	s.True(svc.IsEnabled())
-}
-
-func (s *ConsentServiceTestSuite) TestNewConsentService_EnabledFalse() {
-	initConsentRuntime(s.T(), false, "")
-	clientMock := newConsentClientInterfaceMock(s.T())
-
-	svc := newConsentService(clientMock)
-
-	s.False(svc.IsEnabled())
-}
-
-// ----- IsEnabled -----
-
-func (s *ConsentServiceTestSuite) TestIsEnabled_ReturnsTrue() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	s.True(svc.IsEnabled())
-}
-
-func (s *ConsentServiceTestSuite) TestIsEnabled_ReturnsFalse() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), false, clientMock)
-
-	s.False(svc.IsEnabled())
-}
-
-// ----- CreateConsentElements -----
-
-func (s *ConsentServiceTestSuite) TestCreateConsentElements_EmptyInputReturnsNil() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	result, svcErr := svc.CreateConsentElements(context.Background(), "ou1", []ConsentElementInput{})
-
-	s.Nil(result)
-	s.Nil(svcErr)
-}
-
-func (s *ConsentServiceTestSuite) TestCreateConsentElements_DelegatesToClient() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	inputs := []ConsentElementInput{
-		{Name: "email", Namespace: providers.NamespaceAttribute},
-	}
-	expected := []ConsentElement{
-		{ID: "elem-1", Name: "email"},
-	}
-
-	clientMock.EXPECT().createConsentElements(mock.Anything, "ou1", inputs).Return(expected, nil)
-
-	result, svcErr := svc.CreateConsentElements(context.Background(), "ou1", inputs)
-
-	s.Nil(svcErr)
-	s.Equal(expected, result)
-}
-
-func (s *ConsentServiceTestSuite) TestCreateConsentElements_ClientError() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	inputs := []ConsentElementInput{{Name: "attr1"}}
-	clientErr := &ErrorInvalidConsentElementRequest
-
-	clientMock.EXPECT().createConsentElements(mock.Anything, "ou1", inputs).Return(nil, clientErr)
-
-	result, svcErr := svc.CreateConsentElements(context.Background(), "ou1", inputs)
-
-	s.Nil(result)
-	s.Equal(clientErr, svcErr)
-}
-
-// ----- ListConsentElements -----
-
-func (s *ConsentServiceTestSuite) TestListConsentElements_Success() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	expected := []ConsentElement{{ID: "elem-1", Name: "email"}}
-	clientMock.EXPECT().listConsentElements(
-		mock.Anything, "ou1", providers.NamespaceAttribute, "email").Return(expected, nil)
-
-	result, svcErr := svc.ListConsentElements(context.Background(), "ou1", providers.NamespaceAttribute, "email")
-
-	s.Nil(svcErr)
-	s.Equal(expected, result)
-}
-
-func (s *ConsentServiceTestSuite) TestListConsentElements_ClientError() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	clientMock.EXPECT().listConsentElements(mock.Anything, "ou1", providers.NamespaceAttribute, "").
-		Return(nil, &tidcommon.InternalServerError)
-
-	result, svcErr := svc.ListConsentElements(context.Background(), "ou1", providers.NamespaceAttribute, "")
-
-	s.Nil(result)
-	s.NotNil(svcErr)
-}
-
-// ----- DeleteConsentElement -----
-
-func (s *ConsentServiceTestSuite) TestDeleteConsentElement_Success() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	clientMock.EXPECT().deleteConsentElement(mock.Anything, "ou1", "elem-1").Return(
-		(*tidcommon.ServiceError)(nil))
-
-	svcErr := svc.DeleteConsentElement(context.Background(), "ou1", "elem-1")
-
-	s.Nil(svcErr)
-}
-
-func (s *ConsentServiceTestSuite) TestDeleteConsentElement_NotFoundIsIdempotent() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	clientMock.EXPECT().deleteConsentElement(mock.Anything, "ou1", "elem-missing").
-		Return(&ErrorConsentElementNotFound)
-
-	svcErr := svc.DeleteConsentElement(context.Background(), "ou1", "elem-missing")
-
-	s.Nil(svcErr)
-}
-
-func (s *ConsentServiceTestSuite) TestDeleteConsentElement_OtherErrorPropagated() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	clientMock.EXPECT().deleteConsentElement(mock.Anything, "ou1", "elem-1").
-		Return(&ErrorDeletingConsentElementWithAssociatedPurpose)
-
-	svcErr := svc.DeleteConsentElement(context.Background(), "ou1", "elem-1")
-
-	s.NotNil(svcErr)
-	s.Equal(&ErrorDeletingConsentElementWithAssociatedPurpose, svcErr)
-}
-
-// ----- ValidateConsentElements -----
-
-func (s *ConsentServiceTestSuite) TestValidateConsentElements_EmptyNamesReturnsEmpty() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	result, svcErr := svc.ValidateConsentElements(context.Background(), "ou1", []string{})
-
-	s.Nil(svcErr)
-	s.Equal([]string{}, result)
-}
-
-func (s *ConsentServiceTestSuite) TestValidateConsentElements_DelegatesToClient() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	names := []string{"email", "phone"}
-	expected := []string{"email"}
-	clientMock.EXPECT().validateConsentElements(mock.Anything, "ou1", names).Return(expected, nil)
-
-	result, svcErr := svc.ValidateConsentElements(context.Background(), "ou1", names)
-
-	s.Nil(svcErr)
-	s.Equal(expected, result)
-}
-
-func (s *ConsentServiceTestSuite) TestValidateConsentElements_ClientError() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	names := []string{"attr1"}
-	clientMock.EXPECT().validateConsentElements(mock.Anything, "ou1", names).
-		Return(nil, &tidcommon.InternalServerError)
-
-	result, svcErr := svc.ValidateConsentElements(context.Background(), "ou1", names)
-
-	s.Nil(result)
-	s.NotNil(svcErr)
-}
-
-// ----- CreateConsentPurpose -----
-
-func (s *ConsentServiceTestSuite) TestCreateConsentPurpose_Success() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	input := &ConsentPurposeInput{Name: "My Purpose", GroupID: "app-1"}
-	expected := &ConsentPurpose{ID: "purpose-1", Name: "My Purpose"}
-	clientMock.EXPECT().createConsentPurpose(mock.Anything, "ou1", input).Return(expected, nil)
-
-	result, svcErr := svc.CreateConsentPurpose(context.Background(), "ou1", input)
-
-	s.Nil(svcErr)
-	s.Equal(expected, result)
-}
-
-func (s *ConsentServiceTestSuite) TestCreateConsentPurpose_ClientError() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	input := &ConsentPurposeInput{Name: "Duplicate"}
-	clientMock.EXPECT().createConsentPurpose(mock.Anything, "ou1", input).
-		Return(nil, &ErrorConsentPurposeAlreadyExists)
-
-	result, svcErr := svc.CreateConsentPurpose(context.Background(), "ou1", input)
-
-	s.Nil(result)
-	s.Equal(&ErrorConsentPurposeAlreadyExists, svcErr)
-}
-
-func (s *ConsentServiceTestSuite) TestCreateConsentPurpose_NilInput() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	// Client should not be called when input is nil
-	result, svcErr := svc.CreateConsentPurpose(context.Background(), "ou1", nil)
-
-	s.Nil(result)
-	s.NotNil(svcErr)
-	s.Equal(&ErrorInvalidRequestFormat, svcErr)
-}
-
-// ----- ListConsentPurposes -----
-
-func (s *ConsentServiceTestSuite) TestListConsentPurposes_Success() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	expected := []ConsentPurpose{{ID: "purpose-1", Name: "Login Purpose"}}
-	clientMock.EXPECT().listConsentPurposes(mock.Anything, "ou1", "app-1").Return(expected, nil)
-
-	result, svcErr := svc.ListConsentPurposes(context.Background(), "ou1", "app-1")
-
-	s.Nil(svcErr)
-	s.Equal(expected, result)
-}
-
-func (s *ConsentServiceTestSuite) TestListConsentPurposes_ClientError() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	clientMock.EXPECT().listConsentPurposes(mock.Anything, "ou1", "").
-		Return(nil, &tidcommon.InternalServerError)
-
-	result, svcErr := svc.ListConsentPurposes(context.Background(), "ou1", "")
-
-	s.Nil(result)
-	s.NotNil(svcErr)
-}
-
-// ----- UpdateConsentPurpose -----
-
-func (s *ConsentServiceTestSuite) TestUpdateConsentPurpose_Success() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	input := &ConsentPurposeInput{Name: "Updated"}
-	expected := &ConsentPurpose{ID: "purpose-1", Name: "Updated"}
-	clientMock.EXPECT().updateConsentPurpose(mock.Anything, "ou1", "purpose-1", input).Return(expected, nil)
-
-	result, svcErr := svc.UpdateConsentPurpose(context.Background(), "ou1", "purpose-1", input)
-
-	s.Nil(svcErr)
-	s.Equal(expected, result)
-}
-
-func (s *ConsentServiceTestSuite) TestUpdateConsentPurpose_NotFound() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	input := &ConsentPurposeInput{Name: "X"}
-	clientMock.EXPECT().updateConsentPurpose(mock.Anything, "ou1", "missing", input).
-		Return(nil, &ErrorConsentPurposeNotFound)
-
-	result, svcErr := svc.UpdateConsentPurpose(context.Background(), "ou1", "missing", input)
-
-	s.Nil(result)
-	s.Equal(&ErrorConsentPurposeNotFound, svcErr)
-}
-
-func (s *ConsentServiceTestSuite) TestUpdateConsentPurpose_NilInput() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	// Client should not be called when input is nil
-	result, svcErr := svc.UpdateConsentPurpose(context.Background(), "ou1", "purpose-1", nil)
-
-	s.Nil(result)
-	s.NotNil(svcErr)
-	s.Equal(&ErrorInvalidRequestFormat, svcErr)
-}
-
-// ----- CreateConsent -----
 
 func (s *ConsentServiceTestSuite) TestCreateConsent_Success() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
+	s.mockStore.On("CreateConsent", mock.Anything, mock.AnythingOfType("*consent.Consent")).Return(nil)
 
-	req := &ConsentRequest{Type: "authentication", GroupID: "app-1"}
-	expected := &providers.Consent{ID: "consent-1", Type: "authentication"}
-	clientMock.EXPECT().createConsent(mock.Anything, "ou1", req).Return(expected, nil)
-
-	result, svcErr := svc.CreateConsent(context.Background(), "ou1", req)
+	created, svcErr := s.service.CreateConsent(context.Background(), s.validCreateRequest())
 
 	s.Nil(svcErr)
-	s.Equal(expected, result)
+	s.NotNil(created)
+	s.NotEmpty(created.ID)
+	s.Equal("app1", created.GroupID)
+	s.Equal(ConsentStatusActive, created.Status)
+	s.Len(created.Authorizations, 1)
+	s.NotEmpty(created.Authorizations[0].ID)
+	s.Equal("user1", created.Authorizations[0].UserID)
+	s.NotZero(created.Authorizations[0].UpdatedTime)
 }
 
-func (s *ConsentServiceTestSuite) TestCreateConsent_ClientError() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
+func (s *ConsentServiceTestSuite) TestCreateConsent_StoreError() {
+	s.mockStore.On("CreateConsent", mock.Anything, mock.AnythingOfType("*consent.Consent")).
+		Return(errors.New("db down"))
 
-	req := &ConsentRequest{Type: "authentication"}
-	clientMock.EXPECT().createConsent(mock.Anything, "ou1", req).
-		Return(nil, &ErrorInvalidConsentRecordRequest)
+	created, svcErr := s.service.CreateConsent(context.Background(), s.validCreateRequest())
 
-	result, svcErr := svc.CreateConsent(context.Background(), "ou1", req)
-
-	s.Nil(result)
-	s.Equal(&ErrorInvalidConsentRecordRequest, svcErr)
-}
-
-func (s *ConsentServiceTestSuite) TestCreateConsent_NilInput() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	// Client should not be called when input is nil
-	result, svcErr := svc.CreateConsent(context.Background(), "ou1", nil)
-
-	s.Nil(result)
+	s.Nil(created)
 	s.NotNil(svcErr)
-	s.Equal(&ErrorInvalidRequestFormat, svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
-// ----- SearchConsents -----
+func (s *ConsentServiceTestSuite) TestCreateConsent_ValidationErrors() {
+	cases := []struct {
+		name    string
+		request *ConsentRequest
+		code    string
+	}{
+		{"nil request", nil, ErrorInvalidRequestFormat.Code},
+		{"empty group", &ConsentRequest{GroupID: ""}, ErrorInvalidRequestFormat.Code},
+		{
+			"empty purpose name",
+			&ConsentRequest{GroupID: "app1", Purposes: []ConsentPurposeItem{{Name: ""}}},
+			ErrorInvalidRequestFormat.Code,
+		},
+		{
+			"invalid element namespace",
+			&ConsentRequest{GroupID: "app1", Purposes: []ConsentPurposeItem{
+				{Name: "p", Elements: []ConsentElementApproval{{Name: "email", Namespace: "bogus"}}},
+			}},
+			ErrorInvalidNamespace.Code,
+		},
+		{
+			"empty authorization user",
+			&ConsentRequest{GroupID: "app1", Authorizations: []ConsentAuthorizationRequest{
+				{UserID: "", Type: AuthorizationTypeAuthorization, Status: AuthorizationStatusApproved},
+			}},
+			ErrorInvalidRequestFormat.Code,
+		},
+		{
+			"invalid authorization type",
+			&ConsentRequest{GroupID: "app1", Authorizations: []ConsentAuthorizationRequest{
+				{UserID: "user1", Type: "bogus", Status: AuthorizationStatusApproved},
+			}},
+			ErrorInvalidAuthorizationType.Code,
+		},
+		{
+			"invalid authorization status",
+			&ConsentRequest{GroupID: "app1", Authorizations: []ConsentAuthorizationRequest{
+				{UserID: "user1", Type: AuthorizationTypeAuthorization, Status: "bogus"},
+			}},
+			ErrorInvalidAuthorizationStatus.Code,
+		},
+	}
 
-func (s *ConsentServiceTestSuite) TestSearchConsents_Success() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	filter := &ConsentSearchFilter{ConsentTypes: []providers.ConsentType{providers.ConsentTypeAuthentication}}
-	expected := []providers.Consent{{ID: "c1", Type: "authentication"}}
-	clientMock.EXPECT().searchConsents(mock.Anything, "ou1", filter).Return(expected, nil)
-
-	result, svcErr := svc.SearchConsents(context.Background(), "ou1", filter)
-
-	s.Nil(svcErr)
-	s.Equal(expected, result)
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			created, svcErr := s.service.CreateConsent(context.Background(), tc.request)
+			s.Nil(created)
+			s.NotNil(svcErr)
+			s.Equal(tc.code, svcErr.Code)
+		})
+	}
+	// No store call should have happened for validation failures.
+	s.mockStore.AssertNotCalled(s.T(), "CreateConsent", mock.Anything, mock.Anything)
 }
 
-func (s *ConsentServiceTestSuite) TestSearchConsents_ClientError() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
+// UpdateConsent tests
 
-	filter := &ConsentSearchFilter{}
-	clientMock.EXPECT().searchConsents(mock.Anything, "ou1", filter).
-		Return(nil, &ErrorInvalidConsentSearchFilter)
+func (s *ConsentServiceTestSuite) TestUpdateConsent_MissingID() {
+	created, svcErr := s.service.UpdateConsent(context.Background(), "", s.validCreateRequest())
 
-	result, svcErr := svc.SearchConsents(context.Background(), "ou1", filter)
-
-	s.Nil(result)
-	s.Equal(&ErrorInvalidConsentSearchFilter, svcErr)
-}
-
-// ----- ValidateConsent -----
-
-func (s *ConsentServiceTestSuite) TestValidateConsent_Valid() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	consent := &providers.Consent{ID: "c1", Status: "ACTIVE"}
-	expected := &ConsentValidationResult{IsValid: true, ConsentInformation: consent}
-	clientMock.EXPECT().validateConsent(mock.Anything, "ou1", "c1").Return(expected, nil)
-
-	result, svcErr := svc.ValidateConsent(context.Background(), "ou1", "c1")
-
-	s.Nil(svcErr)
-	s.True(result.IsValid)
-}
-
-func (s *ConsentServiceTestSuite) TestValidateConsent_Invalid() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	expected := &ConsentValidationResult{IsValid: false}
-	clientMock.EXPECT().validateConsent(mock.Anything, "ou1", "c1").Return(expected, nil)
-
-	result, svcErr := svc.ValidateConsent(context.Background(), "ou1", "c1")
-
-	s.Nil(svcErr)
-	s.False(result.IsValid)
-}
-
-func (s *ConsentServiceTestSuite) TestValidateConsent_ClientError() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	clientMock.EXPECT().validateConsent(mock.Anything, "ou1", "c1").
-		Return(nil, &ErrorInvalidConsentValidationRequest)
-
-	result, svcErr := svc.ValidateConsent(context.Background(), "ou1", "c1")
-
-	s.Nil(result)
-	s.Equal(&ErrorInvalidConsentValidationRequest, svcErr)
-}
-
-// ----- RevokeConsent -----
-
-func (s *ConsentServiceTestSuite) TestRevokeConsent_Success() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	payload := &ConsentRevokeRequest{Reason: "user requested"}
-	clientMock.EXPECT().revokeConsent(mock.Anything, "ou1", "c1", payload).Return((*tidcommon.ServiceError)(nil))
-
-	svcErr := svc.RevokeConsent(context.Background(), "ou1", "c1", payload)
-
-	s.Nil(svcErr)
-}
-
-func (s *ConsentServiceTestSuite) TestRevokeConsent_ClientError() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	payload := &ConsentRevokeRequest{}
-	clientMock.EXPECT().revokeConsent(mock.Anything, "ou1", "c1", payload).
-		Return(&ErrorInvalidConsentRevokeRequest)
-
-	svcErr := svc.RevokeConsent(context.Background(), "ou1", "c1", payload)
-
-	s.Equal(&ErrorInvalidConsentRevokeRequest, svcErr)
-}
-
-func (s *ConsentServiceTestSuite) TestRevokeConsent_NilInput() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	// Client should not be called when payload is nil
-	svcErr := svc.RevokeConsent(context.Background(), "ou1", "c1", nil)
-
+	s.Nil(created)
 	s.NotNil(svcErr)
-	s.Equal(&ErrorInvalidRequestFormat, svcErr)
+	s.Equal(ErrorMissingConsentID.Code, svcErr.Code)
 }
 
-// ----- UpdateConsent -----
+func (s *ConsentServiceTestSuite) TestUpdateConsent_NotFound() {
+	s.mockStore.On("GetConsent", mock.Anything, "c1").Return(nil, errConsentNotFound)
+
+	created, svcErr := s.service.UpdateConsent(context.Background(), "c1", s.validCreateRequest())
+
+	s.Nil(created)
+	s.NotNil(svcErr)
+	s.Equal(ErrorConsentNotFound.Code, svcErr.Code)
+}
 
 func (s *ConsentServiceTestSuite) TestUpdateConsent_Success() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	req := &ConsentRequest{Type: providers.ConsentTypeAuthentication, GroupID: "app-1"}
-	expected := &providers.Consent{
-		ID: "consent-1", Type: providers.ConsentTypeAuthentication, Status: providers.ConsentStatusActive,
+	existing := &Consent{
+		ID:      "c1",
+		GroupID: "app1",
+		Status:  ConsentStatusActive,
 	}
-	clientMock.EXPECT().updateConsent(mock.Anything, "ou1", "consent-1", req).Return(expected, nil)
+	s.mockStore.On("GetConsent", mock.Anything, "c1").Return(existing, nil)
+	s.mockStore.On("UpdateConsent", mock.Anything, mock.AnythingOfType("*consent.Consent")).Return(nil)
 
-	result, svcErr := svc.UpdateConsent(context.Background(), "ou1", "consent-1", req)
+	req := s.validCreateRequest()
+	req.ValidityTime = 999
+
+	updated, svcErr := s.service.UpdateConsent(context.Background(), "c1", req)
 
 	s.Nil(svcErr)
-	s.Equal(expected, result)
+	s.NotNil(updated)
+	s.Equal("c1", updated.ID)
+	// GroupID and Status are preserved from the existing record.
+	s.Equal("app1", updated.GroupID)
+	s.Equal(ConsentStatusActive, updated.Status)
+	s.Equal(int64(999), updated.ValidityTime)
+	s.Len(updated.Authorizations, 1)
+	s.NotEmpty(updated.Authorizations[0].ID)
 }
 
-func (s *ConsentServiceTestSuite) TestUpdateConsent_ClientError() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
+func (s *ConsentServiceTestSuite) TestUpdateConsent_StoreError() {
+	existing := &Consent{ID: "c1", GroupID: "app1", Status: ConsentStatusActive}
+	s.mockStore.On("GetConsent", mock.Anything, "c1").Return(existing, nil)
+	s.mockStore.On("UpdateConsent", mock.Anything, mock.AnythingOfType("*consent.Consent")).
+		Return(errors.New("db down"))
 
-	req := &ConsentRequest{Type: providers.ConsentTypeAuthentication}
-	clientMock.EXPECT().updateConsent(mock.Anything, "ou1", "c-missing", req).
-		Return(nil, &ErrorConsentRecordNotFound)
+	updated, svcErr := s.service.UpdateConsent(context.Background(), "c1", s.validCreateRequest())
 
-	result, svcErr := svc.UpdateConsent(context.Background(), "ou1", "c-missing", req)
-
-	s.Nil(result)
-	s.Equal(&ErrorConsentRecordNotFound, svcErr)
-}
-
-func (s *ConsentServiceTestSuite) TestUpdateConsent_NilInput() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	// Client should not be called when input is nil
-	result, svcErr := svc.UpdateConsent(context.Background(), "ou1", "consent-1", nil)
-
-	s.Nil(result)
+	s.Nil(updated)
 	s.NotNil(svcErr)
-	s.Equal(&ErrorInvalidRequestFormat, svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *ConsentServiceTestSuite) TestUpdateConsent_ValidationError() {
+	updated, svcErr := s.service.UpdateConsent(context.Background(), "c1", &ConsentRequest{GroupID: ""})
+
+	s.Nil(updated)
+	s.NotNil(svcErr)
+	s.Equal(ErrorInvalidRequestFormat.Code, svcErr.Code)
+	s.mockStore.AssertNotCalled(s.T(), "GetConsent", mock.Anything, mock.Anything)
+}
+
+// SearchConsents tests
+
+func (s *ConsentServiceTestSuite) TestSearchConsents_InvalidStatusFilter() {
+	consents, svcErr := s.service.SearchConsents(context.Background(),
+		ConsentFilter{ConsentStatus: "BOGUS"})
+
+	s.Nil(consents)
+	s.NotNil(svcErr)
+	s.Equal(ErrorInvalidConsentStatus.Code, svcErr.Code)
+}
+
+func (s *ConsentServiceTestSuite) TestSearchConsents_StoreError() {
+	s.mockStore.On("SearchConsents", mock.Anything, mock.Anything).Return(nil, errors.New("db down"))
+
+	consents, svcErr := s.service.SearchConsents(context.Background(), ConsentFilter{GroupID: "app1"})
+
+	s.Nil(consents)
+	s.NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *ConsentServiceTestSuite) TestSearchConsents_ExpiredStatusDerived() {
+	// A consent whose validity time has elapsed is reported as EXPIRED even though it is stored
+	// as ACTIVE; a consent with no validity time stays ACTIVE.
+	stored := []*Consent{
+		{ID: "expired", Status: ConsentStatusActive, ValidityTime: 1},
+		{ID: "active", Status: ConsentStatusActive, ValidityTime: 0},
+	}
+	s.mockStore.On("SearchConsents", mock.Anything, mock.Anything).Return(stored, nil)
+
+	consents, svcErr := s.service.SearchConsents(context.Background(), ConsentFilter{GroupID: "app1"})
+
+	s.Nil(svcErr)
+	s.Len(consents, 2)
+	byID := map[string]ConsentStatus{}
+	for _, c := range consents {
+		byID[c.ID] = c.Status
+	}
+	s.Equal(ConsentStatusExpired, byID["expired"])
+	s.Equal(ConsentStatusActive, byID["active"])
+}
+
+func (s *ConsentServiceTestSuite) TestSearchConsents_StatusFilterAppliesToEffectiveStatus() {
+	stored := []*Consent{
+		{ID: "expired", Status: ConsentStatusActive, ValidityTime: 1},
+		{ID: "active", Status: ConsentStatusActive, ValidityTime: 0},
+	}
+	s.mockStore.On("SearchConsents", mock.Anything, mock.Anything).Return(stored, nil)
+
+	// Filtering for ACTIVE must exclude the record that is effectively expired.
+	consents, svcErr := s.service.SearchConsents(context.Background(),
+		ConsentFilter{GroupID: "app1", ConsentStatus: ConsentStatusActive})
+
+	s.Nil(svcErr)
+	s.Len(consents, 1)
+	s.Equal("active", consents[0].ID)
+}
+
+// effectiveStatus tests
+
+func (s *ConsentServiceTestSuite) TestEffectiveStatus() {
+	const now = int64(1000)
+	cases := []struct {
+		name         string
+		status       ConsentStatus
+		validityTime int64
+		expected     ConsentStatus
+	}{
+		{"never expires", ConsentStatusActive, 0, ConsentStatusActive},
+		{"negative validity never expires", ConsentStatusActive, -5, ConsentStatusActive},
+		{"not yet expired", ConsentStatusActive, now + 1, ConsentStatusActive},
+		{"boundary equal is expired", ConsentStatusActive, now, ConsentStatusExpired},
+		{"past validity is expired", ConsentStatusActive, now - 1, ConsentStatusExpired},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.Equal(tc.expected, effectiveStatus(tc.status, tc.validityTime, now))
+		})
+	}
+}
+
+func (s *ConsentServiceTestSuite) TestBuildAuthorizations_StampsIDAndTime() {
+	before := time.Now().Unix()
+	auths, err := buildAuthorizations([]ConsentAuthorizationRequest{
+		{UserID: "user1", Type: AuthorizationTypeAuthorization, Status: AuthorizationStatusApproved},
+	})
+
+	s.NoError(err)
+	s.Len(auths, 1)
+	s.NotEmpty(auths[0].ID)
+	s.Equal("user1", auths[0].UserID)
+	s.GreaterOrEqual(auths[0].UpdatedTime, before)
 }

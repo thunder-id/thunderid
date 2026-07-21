@@ -33,7 +33,6 @@ import {
   AppBreadcrumbs,
 } from '@wso2/oxygen-ui';
 import {
-  Bell,
   Bot,
   Building,
   IdCard,
@@ -254,11 +253,11 @@ const RESOURCE_VIEWS: ResourceView[] = [
     renderDetails: (item) => (item.handle && item.name !== item.handle ? detailLine(item.handle, true) : null),
   },
   {
-    type: 'identity_provider',
-    id: 'integrations',
+    type: 'connection',
+    id: 'connections',
     icon: Layers,
-    getLabel: (t) => t('summary.labels.identityProviders'),
-    getKey: (item, idx) => item.handle ?? item.name ?? `idp-${idx}`,
+    getLabel: (t) => t('importExport:configureExport.labels.connections'),
+    getKey: (item, idx) => item.handle ?? item.name ?? `connection-${idx}`,
     getName: (item, t) => item.name ?? t('configureExport.fallback.unnamedProvider'),
     renderChip: (item) => (item.type ? smallChip(item.type) : null),
   },
@@ -270,15 +269,6 @@ const RESOURCE_VIEWS: ResourceView[] = [
     getKey: (item, idx) => item.handle ?? item.name ?? `layout-${idx}`,
     getName: (item, t) => item.name ?? item.handle ?? t('configureExport.fallback.unnamedLayout'),
     renderDetails: (item) => (item.description ? detailLine(item.description) : null),
-  },
-  {
-    type: 'notification_sender',
-    id: 'notification-senders',
-    icon: Bell,
-    getLabel: (t) => t('configureExport.labels.notificationSenders'),
-    getKey: (item, idx) => item.handle ?? item.name ?? `sender-${idx}`,
-    getName: (item, t) => item.name ?? t('configureExport.fallback.unnamedSender'),
-    renderChip: (item) => (item.type ? smallChip(item.type) : null),
   },
   {
     type: 'organization_unit',

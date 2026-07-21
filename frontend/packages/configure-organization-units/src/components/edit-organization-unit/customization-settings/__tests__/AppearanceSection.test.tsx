@@ -230,4 +230,48 @@ describe('AppearanceSection', () => {
 
     expect(screen.getByText(t('organizationUnits:edit.customization.theme.hint'))).toBeInTheDocument();
   });
+
+  it('should handle getOptionLabel with string values', async () => {
+    mockUseGetThemes.mockReturnValue({
+      data: {themes: mockThemes},
+      isLoading: false,
+    });
+
+    renderWithProviders(
+      <AppearanceSection organizationUnit={mockOrganizationUnit} editedOU={{}} onFieldChange={mockOnFieldChange} />,
+    );
+
+    const autocomplete = screen.getByRole('combobox');
+    expect(autocomplete).toBeInTheDocument();
+    // Verify the component handles both string and object option types
+    fireEvent.mouseDown(autocomplete);
+
+    await waitFor(() => {
+      expect(screen.getByText('Default Theme')).toBeInTheDocument();
+      expect(screen.getByText('Dark Theme')).toBeInTheDocument();
+      expect(screen.getByText('Light Theme')).toBeInTheDocument();
+    });
+  });
+
+  it('should handle when theme cannot be found in empty options list', () => {
+    mockUseGetThemes.mockReturnValue({
+      data: {themes: []},
+      isLoading: false,
+    });
+
+    const editedOU: Partial<OrganizationUnit> = {
+      themeId: 'non-existent-theme',
+    };
+
+    renderWithProviders(
+      <AppearanceSection
+        organizationUnit={mockOrganizationUnit}
+        editedOU={editedOU}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    const autocomplete = screen.getByPlaceholderText(t('organizationUnits:edit.customization.theme.placeholder'));
+    expect(autocomplete).toBeInTheDocument();
+  });
 });

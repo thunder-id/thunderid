@@ -19,7 +19,6 @@
 import {
   Alert,
   Box,
-  Button,
   Checkbox,
   FormControlLabel,
   FormLabel,
@@ -30,10 +29,11 @@ import {
   TextField,
   Tooltip,
 } from '@wso2/oxygen-ui';
-import {Trash} from '@wso2/oxygen-ui-icons-react';
+import {PlusIcon, Trash} from '@wso2/oxygen-ui-icons-react';
 import {memo, useCallback, useMemo, useReducer, useState, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {INPUT_TYPES} from './constants';
+import PanelActionButton from '@/features/flows/components/resource-property-panel/PanelActionButton';
 import type {FlowNodeInput} from '@/features/flows/models/responses';
 import generateResourceId from '@/features/flows/utils/generateResourceId';
 
@@ -219,9 +219,9 @@ function ExecutorInputsEditor({inputs: inputsProp, onChange}: ExecutorInputsEdit
       {inputs.map((input, index) => (
         <InputRow key={syncedIds[index]} input={input} index={index} onUpdate={handleUpdate} onRemove={handleRemove} />
       ))}
-      <Button variant="outlined" size="small" onClick={handleAdd} fullWidth>
+      <PanelActionButton startIcon={<PlusIcon size={16} />} onClick={handleAdd}>
         {t('flows:core.executions.inputs.add')}
-      </Button>
+      </PanelActionButton>
     </Stack>
   );
 }

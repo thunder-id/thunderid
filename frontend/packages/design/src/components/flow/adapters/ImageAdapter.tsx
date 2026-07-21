@@ -58,7 +58,8 @@ export default function ImageAdapter({
 
     return (
       <span
-        className={cn('Flow--image')}
+        id={component.id}
+        className={[cn('Flow--image'), component.classes].filter(Boolean).join(' ')}
         style={{
           containerType: 'size',
           display: 'inline-grid',
@@ -77,7 +78,8 @@ export default function ImageAdapter({
   return (
     <Box
       component="img"
-      className={cn('Flow--image')}
+      id={component.id}
+      className={[cn('Flow--image'), component.classes].filter(Boolean).join(' ')}
       src={resolvedSrc}
       alt={resolvedAlt}
       sx={{

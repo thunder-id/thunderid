@@ -1,0 +1,52 @@
+---
+title: What Is Import and Export?
+docType: concept
+description: Understand how import and export help you move {{ProductName}} resources across environments.
+---
+
+# What Is Import and Export?
+
+Import and export help you move <ProductName /> resources between environments without recreating them manually in the Console or through REST APIs.
+
+You can use import and export when you want to:
+
+- Set up a new <ProductName /> instance with required resources.
+- Keep identity configuration in version control.
+- Move resource definitions from development to staging or production.
+- Reuse sample application setup across multiple environments.
+- Export existing resources and import them into another environment.
+
+## Resource Definitions
+
+<ProductName /> represents importable resources as declarative YAML documents. A document describes the target resource and includes the attributes required to create or update that resource.
+
+Declarative resource attributes use camelCase, matching the REST API. For example, use `ouId`, `authFlowId`, and `clientId`.
+
+## Import
+
+Import applies declarative YAML resources to a <ProductName /> instance. You can import resources at startup from the configured resources directory, or import resources at runtime with the import API.
+
+Runtime import supports variables, dry-run validation, and per-resource results. Use runtime import when you want to validate or apply a bundle without restarting the server.
+
+See [Import Resources](../import-resources) for API details and examples.
+
+## Export
+
+Export retrieves <ProductName /> resources as declarative YAML. You can export resources as a combined YAML response or as a ZIP archive with one file per exported resource.
+
+Use export when you want to capture resource definitions from one environment and reuse those definitions in another environment.
+
+See [Export Resources](../../guides/resource-export) for API details and output formats.
+
+## Templates
+
+Templates define reusable content, such as email templates, as declarative resources. <ProductName /> loads template resources from the configured templates directory and makes them available to executors.
+
+See [Template Resources](../templates) for the template schema and supported placeholders.
+
+## Next Steps
+
+- Apply declarative YAML resources with [Import Resources](../import-resources).
+- Export existing resources with [Export Resources](../../guides/resource-export).
+- Define reusable template content with [Template Resources](../templates).
+- Configure startup resource loading in [Configure your Instance](../../getting-started/configuration#declarative-resources).

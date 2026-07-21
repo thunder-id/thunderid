@@ -116,6 +116,14 @@ var (
 		Query: `DELETE FROM "ROLE_ASSIGNMENT" WHERE ROLE_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
+	// queryDeleteRoleAssignmentsByAssignee deletes all assignments for a given assignee across roles
+	// (used to cascade-delete assignments when the assignee principal is deleted).
+	queryDeleteRoleAssignmentsByAssignee = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-25",
+		Query: `DELETE FROM "ROLE_ASSIGNMENT" ` +
+			`WHERE ASSIGNEE_TYPE = $1 AND ASSIGNEE_ID = $2 AND DEPLOYMENT_ID = $3`,
+	}
+
 	// queryCheckRoleNameExists checks if a role name already exists for a given organization unit.
 	queryCheckRoleNameExists = dbmodel.DBQuery{
 		ID:    "RLQ-ROLE_MGT-14",
@@ -148,6 +156,19 @@ var (
 		Query: `SELECT COUNT(*) as total FROM "ROLE_ASSIGNMENT"
 			WHERE ROLE_ID = $1 AND ASSIGNEE_TYPE = $3 AND DEPLOYMENT_ID = $2`,
 	}
+
+	// queryGetRoleListByOUID retrieves a list of roles belonging to an organization unit with pagination.
+	queryGetRoleListByOUID = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-23",
+		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "ROLE" ` +
+			`WHERE OU_ID = $1 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT DESC LIMIT $2 OFFSET $3`,
+	}
+
+	// queryGetRoleListCountByOUID retrieves the total count of roles belonging to an organization unit.
+	queryGetRoleListCountByOUID = dbmodel.DBQuery{
+		ID:    "RLQ-ROLE_MGT-24",
+		Query: `SELECT COUNT(*) as total FROM "ROLE" WHERE OU_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
 )
 
 // buildAuthorizedPermissionsQuery constructs a database-specific query to retrieve authorized permissions
@@ -156,6 +177,7 @@ var (
 func buildAuthorizedPermissionsQuery(
 	entityID string,
 	groupIDs []string,
+	resourceServerID string,
 	requestedPermissions []string,
 	deploymentID string,
 ) (dbmodel.DBQuery, []interface{}) {
@@ -171,6 +193,9 @@ func buildAuthorizedPermissionsQuery(
 	// Pre-allocate args slice with estimated capacity
 	argsCapacity := 1 + len(groupIDs) + len(requestedPermissions) // +1 for DEPLOYMENT_ID
 	if entityID != "" {
+		argsCapacity++
+	}
+	if resourceServerID != "" {
 		argsCapacity++
 	}
 	args := make([]interface{}, 0, argsCapacity)
@@ -207,6 +232,15 @@ func buildAuthorizedPermissionsQuery(
 		paramIndex += len(groupIDs)
 	}
 
+	var postgresScopeWhere []string
+	var sqliteScopeWhere []string
+	if resourceServerID != "" {
+		postgresScopeWhere = append(postgresScopeWhere, fmt.Sprintf("rp.RESOURCE_SERVER_ID = $%d", paramIndex))
+		sqliteScopeWhere = append(sqliteScopeWhere, "rp.RESOURCE_SERVER_ID = ?")
+		args = append(args, resourceServerID)
+		paramIndex++
+	}
+
 	// Build permission condition
 	permPlaceholdersPostgres := make([]string, len(requestedPermissions))
 	permPlaceholdersSqlite := make([]string, len(requestedPermissions))
@@ -217,17 +251,20 @@ func buildAuthorizedPermissionsQuery(
 		args = append(args, perm)
 	}
 
-	// Construct PostgreSQL query
-	postgresQuery := baseQuery +
-		"(" + strings.Join(postgresWhere, " OR ") + ") AND " +
-		fmt.Sprintf("rp.PERMISSION IN (%s)", strings.Join(permPlaceholdersPostgres, ",")) +
-		" ORDER BY rp.PERMISSION"
+	// Construct PostgreSQL query: AND together the subject block, the optional
+	// resource-server scope, and the permission block.
+	postgresConditions := []string{"(" + strings.Join(postgresWhere, " OR ") + ")"}
+	postgresConditions = append(postgresConditions, postgresScopeWhere...)
+	postgresConditions = append(postgresConditions,
+		fmt.Sprintf("rp.PERMISSION IN (%s)", strings.Join(permPlaceholdersPostgres, ",")))
+	postgresQuery := baseQuery + strings.Join(postgresConditions, " AND ") + " ORDER BY rp.PERMISSION"
 
 	// Construct SQLite query
-	sqliteQuery := baseQuery +
-		"(" + strings.Join(sqliteWhere, " OR ") + ") AND " +
-		fmt.Sprintf("rp.PERMISSION IN (%s)", strings.Join(permPlaceholdersSqlite, ",")) +
-		" ORDER BY rp.PERMISSION"
+	sqliteConditions := []string{"(" + strings.Join(sqliteWhere, " OR ") + ")"}
+	sqliteConditions = append(sqliteConditions, sqliteScopeWhere...)
+	sqliteConditions = append(sqliteConditions,
+		fmt.Sprintf("rp.PERMISSION IN (%s)", strings.Join(permPlaceholdersSqlite, ",")))
+	sqliteQuery := baseQuery + strings.Join(sqliteConditions, " AND ") + " ORDER BY rp.PERMISSION"
 
 	query := dbmodel.DBQuery{
 		ID:            "RLQ-ROLE_MGT-20",

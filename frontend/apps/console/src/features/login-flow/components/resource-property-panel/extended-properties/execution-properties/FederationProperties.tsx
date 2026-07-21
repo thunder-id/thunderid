@@ -16,29 +16,18 @@
  * under the License.
  */
 
-import {
-  Alert,
-  Checkbox,
-  FormControlLabel,
-  FormHelperText,
-  FormLabel,
-  MenuItem,
-  Select,
-  Stack,
-  Typography,
-} from '@wso2/oxygen-ui';
+import {useIdentityProviders, type IdentityProviderType} from '@thunderid/configure-connections';
+import {Alert, FormHelperText, FormLabel, MenuItem, Select, Stack} from '@wso2/oxygen-ui';
 import {useCallback, useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
+import CheckboxWithHint from './CheckboxWithHint';
 import {EXECUTOR_TO_IDP_TYPE_MAP, FEDERATED_EXECUTORS} from './constants';
 import type {CommonResourcePropertiesPropsInterface} from './types';
-import useIdentityProviders from '@/features/connections/api/useIdentityProviders';
-import type {IdentityProviderType} from '@/features/connections/models/identity-provider';
-import useValidationStatus from '@/features/flows/hooks/useValidationStatus';
+import useResourceFieldError from '@/features/flows/hooks/useResourceFieldError';
 import type {StepData} from '@/features/flows/models/steps';
 
 function FederationProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
   const {t} = useTranslation();
-  const {selectedNotification} = useValidationStatus();
   const {data: identityProviders, isLoading: isLoadingIdps} = useIdentityProviders();
 
   const executorName = useMemo(() => {
@@ -53,7 +42,7 @@ function FederationProperties({resource, onChange}: CommonResourcePropertiesProp
 
   const properties = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;
-    return (stepData?.properties ?? {}) as Record<string, unknown>;
+    return stepData?.properties ?? {};
   }, [resource]);
 
   const idpType: IdentityProviderType | null = useMemo(() => {
@@ -73,15 +62,7 @@ function FederationProperties({resource, onChange}: CommonResourcePropertiesProp
 
   const isPlaceholder = currentIdpId === '{{IDP_ID}}' || currentIdpId === '';
 
-  const errorMessage: string = useMemo(() => {
-    const key = `${resource?.id}_data.properties.idpId`;
-
-    if (selectedNotification?.hasResourceFieldNotification(key)) {
-      return selectedNotification?.getResourceFieldNotification(key);
-    }
-
-    return '';
-  }, [resource, selectedNotification]);
+  const errorMessage: string = useResourceFieldError(resource?.id, 'data.properties.idpId');
 
   const handleConnectionChange = (selectedIdpId: string): void => {
     onChange('data.properties.idpId', selectedIdpId, resource);
@@ -101,10 +82,6 @@ function FederationProperties({resource, onChange}: CommonResourcePropertiesProp
 
   return (
     <Stack gap={2}>
-      <Typography variant="body2" color="text.secondary">
-        {t('flows:core.executions.federation.connection.description')}
-      </Typography>
-
       <div>
         <FormLabel htmlFor="connection-select">{t('flows:core.executions.federation.connection.label')}</FormLabel>
         <Select
@@ -137,47 +114,41 @@ function FederationProperties({resource, onChange}: CommonResourcePropertiesProp
       )}
 
       {isFederatedExecutor && (
-        <>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={!!properties.allowAuthenticationWithoutLocalUser}
-                onChange={(e) => handleBooleanPropertyChange('allowAuthenticationWithoutLocalUser', e.target.checked)}
-                size="small"
-              />
-            }
-            label={t('flows:core.executions.federation.allowAuthenticationWithoutLocalUser.label')}
+        <Stack gap={1}>
+          <CheckboxWithHint
+            checked={!!properties.allowAuthenticationWithoutLocalUser}
+            onChange={(checked) => handleBooleanPropertyChange('allowAuthenticationWithoutLocalUser', checked)}
+            label={t(
+              'flows:core.executions.federation.allowAuthenticationWithoutLocalUser.label',
+              'Allow Authentication Without Local User',
+            )}
+            hint={t(
+              'flows:core.executions.federation.allowAuthenticationWithoutLocalUser.hint',
+              'Allow users to authenticate even when no matching local user exists.',
+            )}
           />
-          <FormHelperText>
-            {t('flows:core.executions.federation.allowAuthenticationWithoutLocalUser.hint')}
-          </FormHelperText>
-
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={!!properties.allowRegistrationWithExistingUser}
-                onChange={(e) => handleBooleanPropertyChange('allowRegistrationWithExistingUser', e.target.checked)}
-                size="small"
-              />
-            }
-            label={t('flows:core.executions.federation.allowRegistrationWithExistingUser.label')}
+          <CheckboxWithHint
+            checked={!!properties.allowRegistrationWithExistingUser}
+            onChange={(checked) => handleBooleanPropertyChange('allowRegistrationWithExistingUser', checked)}
+            label={t(
+              'flows:core.executions.federation.allowRegistrationWithExistingUser.label',
+              'Allow Registration With Existing User',
+            )}
+            hint={t(
+              'flows:core.executions.federation.allowRegistrationWithExistingUser.hint',
+              'Allow existing users to proceed through registration flows.',
+            )}
           />
-          <FormHelperText>
-            {t('flows:core.executions.federation.allowRegistrationWithExistingUser.hint')}
-          </FormHelperText>
-
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={!!properties.allowCrossOUProvisioning}
-                onChange={(e) => handleBooleanPropertyChange('allowCrossOUProvisioning', e.target.checked)}
-                size="small"
-              />
-            }
-            label={t('flows:core.executions.federation.allowCrossOUProvisioning.label')}
+          <CheckboxWithHint
+            checked={!!properties.allowCrossOUProvisioning}
+            onChange={(checked) => handleBooleanPropertyChange('allowCrossOUProvisioning', checked)}
+            label={t('flows:core.executions.federation.allowCrossOUProvisioning.label', 'Allow Cross-OU Provisioning')}
+            hint={t(
+              'flows:core.executions.federation.allowCrossOUProvisioning.hint',
+              'Allow creating a user in a different organizational unit.',
+            )}
           />
-          <FormHelperText>{t('flows:core.executions.federation.allowCrossOUProvisioning.hint')}</FormHelperText>
-        </>
+        </Stack>
       )}
     </Stack>
   );

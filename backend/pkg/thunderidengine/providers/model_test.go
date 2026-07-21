@@ -298,3 +298,89 @@ func (suite *ModelTestSuite) TestEvent_Validate() {
 		}
 	})
 }
+
+// ----- NodeContext consumed inputs -----
+
+func (suite *ModelTestSuite) TestNodeContext_ConsumeInput_RecordsAndReturnsValue() {
+	nc := &NodeContext{UserInputs: map[string]string{"captcha": "abc"}}
+
+	v, ok := nc.ConsumeInput("captcha")
+
+	assert.True(suite.T(), ok)
+	assert.Equal(suite.T(), "abc", v)
+	assert.Equal(suite.T(), []string{"captcha"}, nc.GetConsumedInputs())
+}
+
+func (suite *ModelTestSuite) TestNodeContext_ConsumeInput_MissingKeyDoesNotRecord() {
+	nc := &NodeContext{UserInputs: map[string]string{"other": "x"}}
+
+	v, ok := nc.ConsumeInput("captcha")
+
+	assert.False(suite.T(), ok)
+	assert.Equal(suite.T(), "", v)
+	assert.Empty(suite.T(), nc.GetConsumedInputs())
+}
+
+func (suite *ModelTestSuite) TestNodeContext_AppendConsumedInputs_AppendsWithoutReading() {
+	nc := &NodeContext{UserInputs: map[string]string{"a": "1"}}
+
+	nc.AppendConsumedInputs([]string{"a", "b"})
+
+	assert.Equal(suite.T(), []string{"a", "b"}, nc.GetConsumedInputs())
+	assert.Equal(suite.T(), "1", nc.UserInputs["a"], "AppendConsumedInputs must not mutate UserInputs")
+}
+
+func (suite *ModelTestSuite) TestNodeContext_AppendConsumedInputs_EmptyIsNoop() {
+	nc := &NodeContext{}
+
+	nc.AppendConsumedInputs(nil)
+	nc.AppendConsumedInputs([]string{})
+
+	assert.Empty(suite.T(), nc.GetConsumedInputs())
+}
+
+func (suite *ModelTestSuite) TestNodeContext_ConsumeInput_AccumulatesAcrossCalls() {
+	nc := &NodeContext{UserInputs: map[string]string{"a": "1", "b": "2"}}
+
+	nc.ConsumeInput("a")
+	nc.AppendConsumedInputs([]string{"c"})
+	nc.ConsumeInput("b")
+
+	assert.Equal(suite.T(), []string{"a", "c", "b"}, nc.GetConsumedInputs())
+}
+
+// ----- AttestationConfig -----
+
+func (suite *ModelTestSuite) TestAttestationConfig_WithoutCredentials_NilReceiver() {
+	var cfg *AttestationConfig
+	assert.Nil(suite.T(), cfg.WithoutCredentials())
+}
+
+func (suite *ModelTestSuite) TestAttestationConfig_WithoutCredentials_StripsAndroidSecret() {
+	cfg := &AttestationConfig{
+		Android: &AndroidAttestationConfig{
+			PackageName:               "com.example.app",
+			CertificateSha256Digests:  []string{"AA:BB"},
+			ServiceAccountCredentials: "secret",
+		},
+	}
+
+	sanitized := cfg.WithoutCredentials()
+
+	assert.Equal(suite.T(), "com.example.app", sanitized.Android.PackageName)
+	assert.Equal(suite.T(), []string{"AA:BB"}, sanitized.Android.CertificateSha256Digests)
+	assert.Empty(suite.T(), sanitized.Android.ServiceAccountCredentials)
+}
+
+func (suite *ModelTestSuite) TestAttestationConfig_WithoutCredentials_PassesApplePassThrough() {
+	cfg := &AttestationConfig{
+		Apple: &AppleAttestationConfig{TeamID: "TEAM123", BundleID: "com.example.app"},
+	}
+
+	sanitized := cfg.WithoutCredentials()
+
+	assert.NotNil(suite.T(), sanitized.Apple)
+	assert.Equal(suite.T(), "TEAM123", sanitized.Apple.TeamID)
+	assert.Equal(suite.T(), "com.example.app", sanitized.Apple.BundleID)
+	assert.Nil(suite.T(), sanitized.Android)
+}

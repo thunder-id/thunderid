@@ -22,21 +22,20 @@ import declarativeresource "github.com/thunder-id/thunderid/internal/system/decl
 
 // ExportRequest represents the request structure for exporting resources.
 type ExportRequest struct {
-	Agents              []string `json:"agents,omitempty"`
-	Applications        []string `json:"applications,omitempty"`
-	IdentityProviders   []string `json:"identityProviders,omitempty"`
-	NotificationSenders []string `json:"notificationSenders,omitempty"`
-	UserTypes           []string `json:"userTypes,omitempty"`
-	OrganizationUnits   []string `json:"organizationUnits,omitempty"`
-	Users               []string `json:"users,omitempty"`
-	Groups              []string `json:"groups,omitempty"`
-	ResourceServers     []string `json:"resourceServers,omitempty"`
-	Roles               []string `json:"roles,omitempty"`
-	Flows               []string `json:"flows,omitempty"`
-	Translations        []string `json:"translations,omitempty"`
-	Layouts             []string `json:"layouts,omitempty"`
-	Themes              []string `json:"themes,omitempty"`
-	ServerConfigs       []string `json:"serverConfigs,omitempty"`
+	Agents            []string `json:"agents,omitempty"`
+	Applications      []string `json:"applications,omitempty"`
+	Connections       []string `json:"connections,omitempty"`
+	UserTypes         []string `json:"userTypes,omitempty"`
+	OrganizationUnits []string `json:"organizationUnits,omitempty"`
+	Users             []string `json:"users,omitempty"`
+	Groups            []string `json:"groups,omitempty"`
+	ResourceServers   []string `json:"resourceServers,omitempty"`
+	Roles             []string `json:"roles,omitempty"`
+	Flows             []string `json:"flows,omitempty"`
+	Translations      []string `json:"translations,omitempty"`
+	Layouts           []string `json:"layouts,omitempty"`
+	Themes            []string `json:"themes,omitempty"`
+	ServerConfigs     []string `json:"serverConfigs,omitempty"`
 
 	Options *ExportOptions `json:"options,omitempty"`
 }

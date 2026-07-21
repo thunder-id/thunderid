@@ -31,6 +31,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -47,6 +48,9 @@ type RoleAssignmentServiceInterface interface {
 	RemoveAssignments(ctx context.Context, id string, assignments []RoleAssignment) *tidcommon.ServiceError
 	AddAssigneesToRoles(ctx context.Context, assignments []RoleAssignment,
 		roleIDs []string) *tidcommon.ServiceError
+	GetResourceDependencies(
+		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
+	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
 }
 
 // roleAssignmentService is the default implementation of RoleAssignmentServiceInterface.
@@ -594,4 +598,35 @@ func normalizeAssignments(assignments []RoleAssignment) []RoleAssignment {
 		normalized[i] = RoleAssignment{ID: a.ID, Type: t}
 	}
 	return normalized
+}
+
+// GetResourceDependencies implements resourcedependency.Provider. Role assignments are cleaned up
+// via cascade rather than surfaced as blocking usages, so no dependencies are reported here.
+func (as *roleAssignmentService) GetResourceDependencies(
+	_ context.Context, _, _ string) ([]resourcedependency.ResourceDependency, error) {
+	return []resourcedependency.ResourceDependency{}, nil
+}
+
+// CascadeDeleteDependencies implements resourcedependency.CascadeDeleter. It removes the role
+// assignments held by the given principal when that principal is deleted. Only user, app and agent
+// principals (stored as entity assignees) are handled; other resource types have no assignments.
+func (as *roleAssignmentService) CascadeDeleteDependencies(
+	ctx context.Context, resourceType, id string) (int, error) {
+	var assigneeType AssigneeType
+	switch resourceType {
+	case resourcedependency.ResourceTypeUser,
+		resourcedependency.ResourceTypeApplication,
+		resourcedependency.ResourceTypeAgent:
+		assigneeType = assigneeTypeEntity
+	case resourcedependency.ResourceTypeGroup:
+		assigneeType = AssigneeTypeGroup
+	default:
+		return 0, nil
+	}
+
+	deleted, err := as.roleStore.DeleteAssignmentsByAssignee(ctx, string(assigneeType), id)
+	if err != nil {
+		return 0, err
+	}
+	return int(deleted), nil
 }

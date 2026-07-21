@@ -59,7 +59,7 @@ paths:
                 with-env-file:
                   summary: Export that includes template variables
                   value:
-                    resources: "# File: google-idp.yaml\napiVersion: v1\nkind: IdentityProvider\n..."
+                    resources: "# File: google-idp.yaml\nresource_type: connection\ntype: google\n..."
                     environment_variables: "GOOGLE_CLIENT_ID=\nGOOGLE_CLIENT_SECRET=\n"
         "400":
           description: Bad request
@@ -238,16 +238,11 @@ components:
             type: string
           description: IDs of applications to export, or ["*"] for all.
           example: ["550e8400-e29b-41d4-a716-446655440000"]
-        identityProviders:
+        connections:
           type: array
           items:
             type: string
-          description: IDs of identity providers to export, or ["*"] for all.
-        notificationSenders:
-          type: array
-          items:
-            type: string
-          description: IDs of notification senders to export, or ["*"] for all.
+          description: IDs of connections (identity providers and notification senders) to export, or ["*"] for all.
         userTypes:
           type: array
           items:
@@ -390,7 +385,7 @@ components:
       example:
         files:
           - fileName: "google-idp.yaml"
-            content: "apiVersion: v1\nkind: IdentityProvider\n..."
+            content: "resource_type: connection\ntype: google\n..."
             size: 128
         envFile:
           fileName: ".env"
@@ -401,7 +396,7 @@ components:
           totalSizeBytes: 168
           exportedAt: "2026-04-22T10:00:00Z"
           resourceTypes:
-            identity_provider: 1
+            connection: 1
 
     JSONExportResponse:
       type: object

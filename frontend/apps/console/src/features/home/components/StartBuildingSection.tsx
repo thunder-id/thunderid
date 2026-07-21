@@ -68,7 +68,7 @@ export default function StartBuildingSection(): JSX.Element {
                     variant="contained"
                     size="small"
                     onClick={() => {
-                      navigate('/applications/create')?.catch(() => undefined);
+                      navigate('/applications/types')?.catch(() => undefined);
                     }}
                     sx={{textTransform: 'none'}}
                   >
@@ -89,7 +89,7 @@ export default function StartBuildingSection(): JSX.Element {
                   variant="contained"
                   size="small"
                   onClick={() => {
-                    navigate('/applications/create')?.catch(() => undefined);
+                    navigate('/applications/types')?.catch(() => undefined);
                   }}
                   sx={{textTransform: 'none'}}
                 >

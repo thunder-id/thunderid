@@ -1,11 +1,12 @@
 ---
 title: <SignInButton />
-description: Trigger the sign-in authentication flow
+docType: reference
+description: Trigger the sign-in authentication flow from a pre-styled button component in Vue applications.
 ---
 
 # `<SignInButton />`
 
-The `SignInButton` component initiates the sign-in flow when clicked. It automatically handles loading state and error handling, and supports custom UI via a scoped default slot. If a `signInUrl` is configured on the [`<ThunderIDProvider />`](/docs/next/sdks/vue/apis/providers/thunderid-provider), the button navigates to that URL instead of triggering the embedded flow.
+The `SignInButton` component initiates the sign-in flow when clicked. It automatically handles loading state and error handling, and supports custom UI via a scoped default slot. If a `signInUrl` is configured on the [`<ThunderIDProvider />`](../../providers/thunderid-provider), the button navigates to that URL instead of triggering the embedded flow.
 
 ## Usage
 
@@ -76,7 +77,7 @@ import { SignInButton } from '@thunderid/vue'
 
 The button includes a default vendor-prefixed class for targeting:
 
-- `.thunderid-sign-in-button` – Main sign-in button element
+- `.thunderid-sign-in-button`: Main sign-in button element
 
 ### CSS Custom Properties (CSS Variables)
 

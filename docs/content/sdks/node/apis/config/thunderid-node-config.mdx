@@ -1,6 +1,7 @@
 ---
 title: ThunderIDNodeConfig
-description: Configuration type for the {{ProductName}} Node.js SDK
+docType: reference
+description: Configuration type for ThunderIDNodeClient initialization, including client credentials and session settings.
 ---
 
 # `ThunderIDNodeConfig`
@@ -29,7 +30,7 @@ const config: ThunderIDNodeConfig = {
 
 | Property | Type | Required | Default | Description |
 | :--- | :--- | :---: | :--- | :--- |
-| `sessionCookie` | `SessionCookieConfig` | ❌ | — | Session cookie settings (expiry, httpOnly, sameSite, secure). |
+| `sessionCookie` | `SessionCookieConfig` | ❌ | - | Session cookie settings (expiry, httpOnly, sameSite, secure). |
 | `sessionCookie.expiryTime` | `number` | ❌ | `86400` (24 hours) | Session cookie lifetime in seconds. Determines how long the session cookie remains valid after sign-in. |
 
 #### Resolution Order for `sessionCookie.expiryTime`

@@ -117,15 +117,17 @@ func (drs *designResolveService) ResolveDesign(
 		themeConfig, svcErr := drs.themeMgtService.GetTheme(ctx, app.ThemeID)
 		if svcErr != nil {
 			if svcErr.Code == thememgt.ErrorThemeNotFound.Code {
-				drs.logger.Error(ctx, "Data integrity issue: application references non-existent theme",
+				// The referenced theme has been deleted; fall back to the system default by leaving
+				// the theme unset in the response.
+				drs.logger.Warn(ctx, "Application references a deleted theme; falling back to default",
 					log.String("applicationId", id),
 					log.String("themeId", app.ThemeID))
-				return nil, &tidcommon.InternalServerError
+			} else {
+				return nil, svcErr
 			}
-			return nil, svcErr
+		} else {
+			designResponse.Theme = themeConfig.Theme
 		}
-
-		designResponse.Theme = themeConfig.Theme
 	}
 
 	// Get layout configuration if available
@@ -138,15 +140,17 @@ func (drs *designResolveService) ResolveDesign(
 		layoutConfig, svcErr := drs.layoutMgtService.GetLayout(ctx, app.LayoutID)
 		if svcErr != nil {
 			if svcErr.Code == layoutmgt.ErrorLayoutNotFound.Code {
-				drs.logger.Error(ctx, "Data integrity issue: application references non-existent layout",
+				// The referenced layout has been deleted; fall back to the system default by leaving
+				// the layout unset in the response.
+				drs.logger.Warn(ctx, "Application references a deleted layout; falling back to default",
 					log.String("applicationId", id),
 					log.String("layoutId", app.LayoutID))
-				return nil, &tidcommon.InternalServerError
+			} else {
+				return nil, svcErr
 			}
-			return nil, svcErr
+		} else {
+			designResponse.Layout = layoutConfig.Layout
 		}
-
-		designResponse.Layout = layoutConfig.Layout
 	}
 
 	drs.logger.Debug(ctx, "Successfully resolved design configuration",

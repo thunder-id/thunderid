@@ -271,9 +271,10 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_ThemeNotFound() {
 	result, err := suite.service.ResolveDesign(context.Background(), providers.DesignResolveTypeAPP,
 		"00000000-0000-0000-0000-000000000001")
 
-	assert.Nil(suite.T(), result)
-	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
+	// A deleted theme falls back to the system default: no error, and the theme is left unset.
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Nil(suite.T(), result.Theme)
 }
 
 // Test ResolveDesign - Theme service error propagation
@@ -339,9 +340,10 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_LayoutNotFound() {
 	result, err := suite.service.ResolveDesign(context.Background(), providers.DesignResolveTypeAPP,
 		"00000000-0000-0000-0000-000000000001")
 
-	assert.Nil(suite.T(), result)
-	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
+	// A deleted layout falls back to the system default: no error, and the layout is left unset.
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Nil(suite.T(), result.Layout)
 }
 
 // Test ResolveDesign - Layout service error propagation

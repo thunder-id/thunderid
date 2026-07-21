@@ -134,7 +134,7 @@ describe('ResourcePropertyPanel', () => {
     it('should render delete button when resource is deletable', () => {
       render(<ResourcePropertyPanel open onComponentDelete={mockOnComponentDelete} />, {wrapper: createWrapper()});
 
-      expect(screen.getByRole('button', {name: /delete element/i, hidden: true})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Delete', hidden: true})).toBeInTheDocument();
     });
 
     it('should not render delete button when resource is not deletable', () => {
@@ -147,7 +147,7 @@ describe('ResourcePropertyPanel', () => {
         wrapper: createWrapper({}, {lastInteractedResource: nonDeletableResource}),
       });
 
-      expect(screen.queryByRole('button', {name: /delete element/i, hidden: true})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Delete', hidden: true})).not.toBeInTheDocument();
     });
   });
 
@@ -174,7 +174,7 @@ describe('ResourcePropertyPanel', () => {
         wrapper: createWrapper({}, {lastInteractedResource: stepResource}),
       });
 
-      const deleteButton = screen.getByRole('button', {name: /delete element/i, hidden: true});
+      const deleteButton = screen.getByRole('button', {name: 'Delete', hidden: true});
       fireEvent.click(deleteButton);
 
       expect(mockDeleteElements).toHaveBeenCalledWith({nodes: [{id: stepResource.id}]});
@@ -184,7 +184,7 @@ describe('ResourcePropertyPanel', () => {
     it('should call onComponentDelete when resource is not a Step', () => {
       render(<ResourcePropertyPanel open onComponentDelete={mockOnComponentDelete} />, {wrapper: createWrapper()});
 
-      const deleteButton = screen.getByRole('button', {name: /delete element/i, hidden: true});
+      const deleteButton = screen.getByRole('button', {name: 'Delete', hidden: true});
       fireEvent.click(deleteButton);
 
       expect(mockOnComponentDelete).toHaveBeenCalledWith('step-1', mockBaseResource);
@@ -196,7 +196,7 @@ describe('ResourcePropertyPanel', () => {
         wrapper: createWrapper({}, {lastInteractedResource: null as unknown as Base}),
       });
 
-      expect(screen.queryByRole('button', {name: /delete element/i, hidden: true})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Delete', hidden: true})).not.toBeInTheDocument();
     });
   });
 
@@ -230,7 +230,7 @@ describe('ResourcePropertyPanel', () => {
         wrapper: createWrapper({}, {lastInteractedResource: stepResource}),
       });
 
-      const deleteButton = screen.getByRole('button', {name: /delete element/i, hidden: true});
+      const deleteButton = screen.getByRole('button', {name: 'Delete', hidden: true});
 
       // Should not throw
       expect(() => fireEvent.click(deleteButton)).not.toThrow();

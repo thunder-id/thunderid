@@ -66,8 +66,12 @@ describe('steps models', () => {
       expect(StepTypes.End).toBe('END');
     });
 
-    it('should have exactly 4 step types', () => {
-      expect(Object.keys(StepTypes)).toHaveLength(4);
+    it('should have Call type', () => {
+      expect(StepTypes.Call).toBe('CALL');
+    });
+
+    it('should have exactly 5 step types', () => {
+      expect(Object.keys(StepTypes)).toHaveLength(5);
     });
   });
 
@@ -114,8 +118,8 @@ describe('steps models', () => {
       expect(ExecutionTypes.MagicLinkExecutor).toBe('MagicLinkExecutor');
     });
 
-    it('should have SMSOTPAuth type', () => {
-      expect(ExecutionTypes.SMSOTPAuth).toBe('SMSOTPAuthExecutor');
+    it('should have OTPExecutor type', () => {
+      expect(ExecutionTypes.OTPExecutor).toBe('OTPExecutor');
     });
 
     it('should have ConsentExecutor type', () => {

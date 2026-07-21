@@ -88,18 +88,11 @@ export default function ApplicationsList(): JSX.Element {
           const templateMetadata = getTemplateMetadata(params.row.template);
           return templateMetadata ? (
             <Chip
-              icon={
-                <Box sx={{display: 'flex', alignItems: 'center', '& > *': {width: 16, height: 16}}}>
-                  {templateMetadata.icon}
-                </Box>
-              }
               label={templateMetadata.displayName}
               size="small"
+              color="primary"
               variant="outlined"
-              sx={{
-                px: 0.5,
-                fontSize: '0.75rem',
-              }}
+              sx={{fontSize: '0.7rem'}}
             />
           ) : (
             <>-</>

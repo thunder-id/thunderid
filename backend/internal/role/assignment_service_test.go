@@ -31,6 +31,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
@@ -738,4 +739,55 @@ func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneesToRoles_MultipleRol
 		context.Background(), assignments, []string{"role1", "role2"})
 
 	suite.Nil(err)
+}
+
+// --- Cascade / dependency provider ---
+
+func (suite *RoleAssignmentServiceTestSuite) TestGetResourceDependencies_ReturnsEmpty() {
+	result, err := suite.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeUser, "user-1")
+	suite.NoError(err)
+	suite.Empty(result)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestCascadeDeleteDependencies_User_DeletesAssignments() {
+	suite.mockStore.On("DeleteAssignmentsByAssignee", mock.Anything, string(assigneeTypeEntity), "user-1").
+		Return(int64(3), nil)
+
+	deleted, err := suite.service.CascadeDeleteDependencies(
+		context.Background(), resourcedependency.ResourceTypeUser, "user-1")
+
+	suite.NoError(err)
+	suite.Equal(3, deleted)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestCascadeDeleteDependencies_UnknownType_NoOp() {
+	deleted, err := suite.service.CascadeDeleteDependencies(context.Background(), "theme", "theme-1")
+
+	suite.NoError(err)
+	suite.Equal(0, deleted)
+	suite.mockStore.AssertNotCalled(suite.T(), "DeleteAssignmentsByAssignee",
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestCascadeDeleteDependencies_StoreError() {
+	suite.mockStore.On("DeleteAssignmentsByAssignee", mock.Anything, string(assigneeTypeEntity), "user-1").
+		Return(int64(0), errors.New("db error"))
+
+	deleted, err := suite.service.CascadeDeleteDependencies(
+		context.Background(), resourcedependency.ResourceTypeUser, "user-1")
+
+	suite.Error(err)
+	suite.Equal(0, deleted)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestCascadeDeleteDependencies_Group_DeletesAssignments() {
+	suite.mockStore.On("DeleteAssignmentsByAssignee", mock.Anything, string(AssigneeTypeGroup), "group-1").
+		Return(int64(1), nil)
+
+	deleted, err := suite.service.CascadeDeleteDependencies(
+		context.Background(), resourcedependency.ResourceTypeGroup, "group-1")
+
+	suite.NoError(err)
+	suite.Equal(1, deleted)
 }

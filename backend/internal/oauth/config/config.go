@@ -26,23 +26,23 @@ import (
 
 // Config holds configuration values required by OAuth services.
 type Config struct {
-	DeploymentID  string
-	RuntimeDBType string
-	BaseURL       string
-	JWT           engineconfig.JWTConfig
-	OAuth         engineconfig.OAuthConfig
-	GateClient    engineconfig.GateClientConfig
+	DeploymentID           string
+	RuntimeTransientDBType string
+	BaseURL                string
+	JWT                    engineconfig.JWTConfig
+	OAuth                  engineconfig.OAuthConfig
+	GateClient             engineconfig.GateClientConfig
 }
 
 // FromServerRuntime builds OAuth configuration from the global server runtime.
 func FromServerRuntime() Config {
 	runtime := config.GetServerRuntime()
 	return Config{
-		DeploymentID:  runtime.Config.Server.Identifier,
-		RuntimeDBType: runtime.Config.Database.Runtime.Type,
-		BaseURL:       config.GetServerURL(&runtime.Config.Server),
-		JWT:           runtime.Config.JWT,
-		OAuth:         runtime.Config.OAuth,
-		GateClient:    runtime.Config.GateClient,
+		DeploymentID:           runtime.Config.Server.Identifier,
+		RuntimeTransientDBType: runtime.Config.Database.RuntimeTransient.Type,
+		BaseURL:                config.GetServerURL(&runtime.Config.Server),
+		JWT:                    runtime.Config.JWT,
+		OAuth:                  runtime.Config.OAuth,
+		GateClient:             runtime.Config.GateClient,
 	}
 }

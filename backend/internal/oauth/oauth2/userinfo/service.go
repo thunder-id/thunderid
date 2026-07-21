@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -22,6 +22,7 @@ package userinfo
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -32,6 +33,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jwksresolver"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
@@ -99,6 +101,9 @@ func (s *userInfoService) GetUserInfo(
 	accessTokenClaims, err := s.tokenValidator.ValidateAccessToken(ctx, accessToken)
 	if err != nil {
 		s.logger.Debug(ctx, "Failed to verify access token", log.Error(err))
+		if errors.Is(err, revocation.ErrEnforcementUnavailable) {
+			return nil, &errorRevocationUnavailable
+		}
 		return nil, &errorInvalidAccessToken
 	}
 
@@ -124,6 +129,9 @@ func (s *userInfoService) GetUserInfoForDPoP(
 	accessTokenClaims, err := s.tokenValidator.ValidateAccessToken(ctx, accessToken)
 	if err != nil {
 		s.logger.Debug(ctx, "Failed to verify access token", log.Error(err))
+		if errors.Is(err, revocation.ErrEnforcementUnavailable) {
+			return nil, &errorRevocationUnavailable
+		}
 		return nil, &errorInvalidAccessToken
 	}
 

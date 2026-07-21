@@ -41,10 +41,10 @@ func Initialize(
 	i18nService i18nmgt.I18nServiceInterface,
 	cfg oauthconfig.Config,
 ) error {
-	// Fetch runtime transactioner for OAuth services.
-	transactioner, err := provider.GetDBProvider().GetRuntimeDBTransactioner()
+	// Fetch runtime transient transactioner for OAuth services.
+	transactioner, err := provider.GetDBProvider().GetRuntimeTransientDBTransactioner()
 	if err != nil {
-		wrappedErr := fmt.Errorf("failed to get runtime DB transactioner for DCR: %w", err)
+		wrappedErr := fmt.Errorf("failed to get runtime transient DB transactioner for DCR: %w", err)
 		// Service initialization runs during application startup, outside any request.
 		log.GetLogger().Error(context.Background(),
 			"Failed to initialize DCR service", log.Error(wrappedErr))

@@ -23,6 +23,6 @@ import (
 )
 
 // Initialize initializes the OTP authentication service.
-func Initialize(otpSvc notification.OTPServiceInterface) OTPAuthnServiceInterface {
-	return newOTPAuthnService(otpSvc)
+func Initialize(notifOTPSvc notification.OTPServiceInterface) OTPAuthnServiceInterface {
+	return newOTPAuthnService(notifOTPSvc)
 }

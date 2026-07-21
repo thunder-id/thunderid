@@ -24,17 +24,15 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // openID4VPStoreInterface persists short-lived OpenID4VP request state keyed by State. The
-// production implementation (openID4VPStore) is runtime-database-backed so state
+// production implementation (openID4VPStore) is runtime-store-backed so state
 // survives restarts and is visible across replicas.
 type openID4VPStoreInterface interface {
 	SaveRequestState(ctx context.Context, st *RequestState) error
@@ -42,122 +40,127 @@ type openID4VPStoreInterface interface {
 	DeleteRequestState(ctx context.Context, state string) error
 }
 
-// openID4VPStore persists OpenID4VP request state in the runtime database so it
+// openID4VPStore persists OpenID4VP request state in the runtime store so it
 // survives restarts and is visible to every replica (the replica that receives
-// the wallet response may differ from the one that initiated the request). The
-// ephemeral response-decryption key is encrypted at rest with the server's
-// configured symmetric key.
+// the wallet response may differ from the one that initiated the request). State
+// is stored as a JSON value under the vp:state namespace with a TTL derived from
+// its expiry; the ephemeral response-decryption key is encrypted at rest with the
+// server's configured symmetric key before serialization.
 type openID4VPStore struct {
-	dbProvider   provider.DBProviderInterface
-	deploymentID string
-	crypto       kmprovider.ConfigCryptoProvider
-	logger       *log.Logger
+	store  providers.RuntimeStoreProvider
+	crypto kmprovider.ConfigCryptoProvider
+	logger *log.Logger
 }
 
-// newOpenID4VPStore constructs a database-backed request state store using the given crypto provider.
-func newOpenID4VPStore(crypto kmprovider.ConfigCryptoProvider) openID4VPStoreInterface {
+// storedRequestState is the serialized on-store form of RequestState. The ephemeral
+// key is held as an encrypted PKCS#8 blob; the transient ResultToken is not persisted.
+type storedRequestState struct {
+	State         string
+	DefinitionID  string
+	Nonce         string
+	EphemeralKey  []byte
+	ClientID      string
+	RequestURI    string
+	Status        Status
+	Result        *VerifiedPresentation
+	FailureReason string
+	ExpiresAt     time.Time
+}
+
+// newOpenID4VPStore constructs a runtime-store-backed request state store using the given crypto provider.
+func newOpenID4VPStore(
+	crypto kmprovider.ConfigCryptoProvider, store providers.RuntimeStoreProvider,
+) openID4VPStoreInterface {
 	return &openID4VPStore{
-		dbProvider:   provider.GetDBProvider(),
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
-		crypto:       crypto,
-		logger:       log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OpenID4VPStateStore")),
+		store:  store,
+		crypto: crypto,
+		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OpenID4VPStateStore")),
 	}
 }
 
-// SaveRequestState upserts the request state into the database, encrypting the ephemeral key.
+// SaveRequestState stores the request state, encrypting the ephemeral key. It overwrites
+// any existing entry for the same state, so status transitions re-save the full state.
 func (s *openID4VPStore) SaveRequestState(ctx context.Context, st *RequestState) error {
-	dbClient, err := s.dbProvider.GetRuntimeDBClient()
-	if err != nil {
-		return fmt.Errorf("failed to get runtime database client: %w", err)
+	stored := storedRequestState{
+		State:         st.State,
+		DefinitionID:  st.DefinitionID,
+		Nonce:         st.Nonce,
+		ClientID:      st.ClientID,
+		RequestURI:    st.RequestURI,
+		Status:        st.Status,
+		Result:        st.Result,
+		FailureReason: st.FailureReason,
+		ExpiresAt:     st.ExpiresAt,
 	}
 
-	var encKey []byte
 	if st.EphemeralKey != nil {
 		pkcs8, err := x509.MarshalPKCS8PrivateKey(st.EphemeralKey)
 		if err != nil {
 			return fmt.Errorf("failed to marshal ephemeral key: %w", err)
 		}
-		encKey, err = s.crypto.Encrypt(ctx, pkcs8)
+		encKey, err := s.crypto.Encrypt(ctx, pkcs8)
 		if err != nil {
 			return fmt.Errorf("failed to encrypt ephemeral key: %w", err)
 		}
+		stored.EphemeralKey = encKey
 	}
 
-	var resultJSON []byte
-	if st.Result != nil {
-		resultJSON, err = json.Marshal(st.Result)
-		if err != nil {
-			return fmt.Errorf("failed to marshal verification result: %w", err)
-		}
-	}
-
-	_, err = dbClient.ExecuteContext(ctx, queryUpsertRequestState,
-		st.State, s.deploymentID, st.DefinitionID, st.Nonce, encKey, st.ClientID,
-		st.RequestURI, string(st.Status), resultJSON, st.FailureReason, st.ExpiresAt.UTC())
+	data, err := json.Marshal(stored)
 	if err != nil {
-		return fmt.Errorf("failed to upsert request state: %w", err)
+		return fmt.Errorf("failed to marshal request state: %w", err)
+	}
+	if err := s.store.Put(ctx, providers.NamespaceVPState, st.State, data, ttlUntil(st.ExpiresAt)); err != nil {
+		return fmt.Errorf("failed to store request state: %w", err)
 	}
 	return nil
 }
 
-// GetRequestState retrieves and reconstructs the request state for the given state from the database.
+// GetRequestState retrieves and reconstructs the request state for the given state,
+// returning false if it is not found or expired.
 func (s *openID4VPStore) GetRequestState(ctx context.Context, state string) (*RequestState, bool) {
-	dbClient, err := s.dbProvider.GetRuntimeDBClient()
+	data, err := s.store.Get(ctx, providers.NamespaceVPState, state)
 	if err != nil {
-		s.logger.Error(ctx, "Failed to get runtime database client", log.Error(err))
+		s.logger.Error(ctx, "Failed to get request state from runtime store", log.Error(err))
 		return nil, false
 	}
-	results, err := dbClient.QueryContext(ctx, queryGetRequestState, state, s.deploymentID)
-	if err != nil {
-		s.logger.Error(ctx, "Failed to query request state", log.Error(err))
+	if data == nil {
 		return nil, false
 	}
-	if len(results) == 0 {
-		return nil, false
-	}
-	rs, err := s.buildRequestStateFromRow(ctx, results[0])
+	rs, err := s.decode(ctx, data)
 	if err != nil {
-		s.logger.Error(ctx, "Failed to build request state from row", log.Error(err))
+		s.logger.Error(ctx, "Failed to decode request state", log.Error(err))
 		return nil, false
 	}
 	return rs, true
 }
 
-// DeleteRequestState deletes the request state for the given state from the database.
+// DeleteRequestState deletes the request state for the given state from the runtime store.
 func (s *openID4VPStore) DeleteRequestState(ctx context.Context, state string) error {
-	dbClient, err := s.dbProvider.GetRuntimeDBClient()
-	if err != nil {
-		return fmt.Errorf("failed to get runtime database client: %w", err)
-	}
-	if _, err := dbClient.ExecuteContext(ctx, queryDeleteRequestState, state, s.deploymentID); err != nil {
-		return fmt.Errorf("failed to delete request state: %w", err)
-	}
-	return nil
+	return s.store.Delete(ctx, providers.NamespaceVPState, state)
 }
 
-// buildRequestStateFromRow reconstructs a RequestState from a result row,
-// decrypting the ephemeral key and decoding the stored result.
-func (s *openID4VPStore) buildRequestStateFromRow(
-	ctx context.Context, row map[string]interface{},
-) (*RequestState, error) {
+// decode reconstructs a RequestState from its stored JSON form, decrypting the
+// ephemeral key when present.
+func (s *openID4VPStore) decode(ctx context.Context, data []byte) (*RequestState, error) {
+	var stored storedRequestState
+	if err := json.Unmarshal(data, &stored); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal request state: %w", err)
+	}
+
 	rs := &RequestState{
-		State:         columnString(row["state"]),
-		DefinitionID:  columnString(row["definition_id"]),
-		Nonce:         columnString(row["nonce"]),
-		ClientID:      columnString(row["client_id"]),
-		RequestURI:    columnString(row["request_uri"]),
-		Status:        Status(columnString(row["status"])),
-		FailureReason: columnString(row["failure_reason"]),
+		State:         stored.State,
+		DefinitionID:  stored.DefinitionID,
+		Nonce:         stored.Nonce,
+		ClientID:      stored.ClientID,
+		RequestURI:    stored.RequestURI,
+		Status:        stored.Status,
+		Result:        stored.Result,
+		FailureReason: stored.FailureReason,
+		ExpiresAt:     stored.ExpiresAt,
 	}
 
-	expiry, err := parseStateTime(row["expiry_time"])
-	if err != nil {
-		return nil, err
-	}
-	rs.ExpiresAt = expiry
-
-	if encKey := columnBytes(row["ephemeral_key"]); len(encKey) > 0 {
-		pkcs8, err := s.crypto.Decrypt(ctx, encKey)
+	if len(stored.EphemeralKey) > 0 {
+		pkcs8, err := s.crypto.Decrypt(ctx, stored.EphemeralKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decrypt ephemeral key: %w", err)
 		}
@@ -171,63 +174,16 @@ func (s *openID4VPStore) buildRequestStateFromRow(
 		}
 		rs.EphemeralKey = ecKey
 	}
-
-	if resultBytes := columnBytes(row["result"]); len(resultBytes) > 0 {
-		var vp VerifiedPresentation
-		if err := json.Unmarshal(resultBytes, &vp); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal verification result: %w", err)
-		}
-		rs.Result = &vp
-	}
 	return rs, nil
 }
 
-// columnString coerces a result-row value to a string, tolerating string/[]byte.
-func columnString(v interface{}) string {
-	switch t := v.(type) {
-	case string:
-		return t
-	case []byte:
-		return string(t)
-	default:
-		return ""
+// ttlUntil returns the whole seconds remaining until expiresAt, rounded up, with a
+// floor of one second so the runtime store always applies a positive TTL (a
+// non-positive TTL would otherwise persist the entry without expiry).
+func ttlUntil(expiresAt time.Time) int64 {
+	remaining := time.Until(expiresAt)
+	if remaining <= 0 {
+		return 1
 	}
-}
-
-// columnBytes coerces a result-row value to bytes, tolerating []byte/string.
-func columnBytes(v interface{}) []byte {
-	switch t := v.(type) {
-	case []byte:
-		return t
-	case string:
-		return []byte(t)
-	default:
-		return nil
-	}
-}
-
-// parseStateTime parses an EXPIRY_TIME column across Postgres (time.Time) and
-// SQLite (datetime string) drivers.
-func parseStateTime(field interface{}) (time.Time, error) {
-	const layout = "2006-01-02 15:04:05.999999999"
-	switch v := field.(type) {
-	case time.Time:
-		return v, nil
-	case []byte:
-		return parseStateTime(string(v))
-	case string:
-		trimmed := v
-		if parts := strings.SplitN(v, " ", 3); len(parts) >= 2 {
-			trimmed = parts[0] + " " + parts[1]
-		}
-		if t, err := time.Parse(layout, trimmed); err == nil {
-			return t, nil
-		}
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			return t, nil
-		}
-		return time.Time{}, fmt.Errorf("error parsing expiry_time: %q", v)
-	default:
-		return time.Time{}, fmt.Errorf("unexpected type for expiry_time")
-	}
+	return int64((remaining + time.Second - 1) / time.Second)
 }

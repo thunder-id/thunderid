@@ -1,5 +1,6 @@
 ---
 title: Roles
+docType: guide
 sidebar_position: 5
 persona: iam
 description: Create and manage roles to grant permissions to users, groups, applications, and agents.
@@ -13,7 +14,7 @@ Each role:
 
 - Belongs to an **Organization Unit (OU)**, which defines the organizational scope of the role.
 - Contains a set of **permissions** drawn from one or more resource servers.
-- Has zero or more **assignments** — the users, groups, applications, or agents that hold the role.
+- Has zero or more **assignments**: the users, groups, applications, or agents that hold the role.
 
 ## Prerequisites
 
@@ -45,7 +46,7 @@ Roles created from declarative configuration are marked as read-only and cannot 
 3. Click **Save**.
 
 :::warning
-The update replaces the full set of permissions. Include every permission the role should keep — any permission omitted from the request is removed.
+The update replaces the full set of permissions. Include every permission the role should keep: any permission omitted from the request is removed.
 :::
 
 ## Delete a Role

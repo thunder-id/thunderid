@@ -695,13 +695,32 @@ func (suite *SMSOTPAuthTestSuite) sendOTPAndExtract() (string, string) {
 	return sessionToken, otp
 }
 
+// createNotificationSender creates a custom SMS sender via /connections/sms-gateway. Only the
+// "custom" provider is used by this suite; other providers aren't supported by this helper.
 func (suite *SMSOTPAuthTestSuite) createNotificationSender(sender NotificationSenderRequest) (string, error) {
-	senderJSON, err := json.Marshal(sender)
+	body := map[string]interface{}{
+		"name":        sender.Name,
+		"description": sender.Description,
+	}
+	for _, prop := range sender.Properties {
+		switch prop.Name {
+		case "url":
+			body["url"] = prop.Value
+		case "http_method":
+			body["httpMethod"] = prop.Value
+		case "http_headers":
+			body["httpHeaders"] = prop.Value
+		case "content_type":
+			body["contentType"] = prop.Value
+		}
+	}
+
+	senderJSON, err := json.Marshal(body)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal sender: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", testServerURL+"/notification-senders/message",
+	req, err := http.NewRequest("POST", testServerURL+"/connections/sms-gateway",
 		bytes.NewReader(senderJSON))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
@@ -734,7 +753,7 @@ func (suite *SMSOTPAuthTestSuite) createNotificationSender(sender NotificationSe
 }
 
 func (suite *SMSOTPAuthTestSuite) deleteNotificationSender(senderID string) error {
-	req, err := http.NewRequest("DELETE", testServerURL+"/notification-senders/message/"+senderID, nil)
+	req, err := http.NewRequest("DELETE", testServerURL+"/connections/sms-gateway/"+senderID, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create delete request: %w", err)
 	}

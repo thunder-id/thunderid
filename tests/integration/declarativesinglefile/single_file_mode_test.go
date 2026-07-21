@@ -50,49 +50,35 @@ import (
 )
 
 // resourcesYAML is the fixture loaded by the server under test. It contains:
-//   - Two identity_provider documents (one references an env var)
+//   - Two connection documents (one references an env var)
 //   - One organization_unit document
 //
 // The {{ t(...) }} expression in the GitHub IDP description verifies that
 // non-Go-template expressions inside the file are preserved as-is and do not
 // cause parse errors during env-var substitution.
-const resourcesYAML = `# resource_type: organization_unit
+const resourcesYAML = `resource_type: organization_unit
 id: sf-decl-ou-1
 handle: sf-decl-ou-1
 name: Single File Declarative OU
 description: Organization unit loaded via single-file mode
 ---
-# resource_type: identity_provider
+resource_type: connection
 id: sf-decl-idp-1
 name: Single File GitHub IDP
 description: "{{ t(idp.github.description) }}"
-type: GITHUB
-properties:
-  - name: client_id
-    value: {{.SF_TEST_GITHUB_CLIENT_ID}}
-    isSecret: false
-  - name: client_secret
-    value: sf-test-github-secret
-    isSecret: true
-  - name: redirect_uri
-    value: https://localhost:8095/callback
-    isSecret: false
+type: github
+clientId: {{.SF_TEST_GITHUB_CLIENT_ID}}
+clientSecret: sf-test-github-secret
+redirectUri: https://localhost:8095/callback
 ---
-# resource_type: identity_provider
+resource_type: connection
 id: sf-decl-idp-2
 name: Single File Google IDP
 description: IDP loaded via single-file mode
-type: GOOGLE
-properties:
-  - name: client_id
-    value: sf-test-google-client
-    isSecret: false
-  - name: client_secret
-    value: sf-test-google-secret
-    isSecret: true
-  - name: redirect_uri
-    value: https://localhost:8095/callback
-    isSecret: false
+type: google
+clientId: sf-test-google-client
+clientSecret: sf-test-google-secret
+redirectUri: https://localhost:8095/callback
 `
 
 // envVars are set in the test process before the server starts so they are inherited
@@ -195,11 +181,11 @@ func (s *SingleFileModeSuite) TestOrganizationUnitLoadedFromFile() {
 	s.Equal("Single File Declarative OU", ou["name"], "OU name should match")
 }
 
-// TestIdentityProviderWithEnvVarLoadedFromFile verifies that the IDP whose client_id
+// TestIdentityProviderWithEnvVarLoadedFromFile verifies that the IDP whose clientId
 // uses {{.SF_TEST_GITHUB_CLIENT_ID}} had the env var substituted correctly.
 func (s *SingleFileModeSuite) TestIdentityProviderWithEnvVarLoadedFromFile() {
 	client := testutils.GetHTTPClient()
-	resp, err := client.Get(fmt.Sprintf("%s/identity-providers/sf-decl-idp-1", testutils.TestServerURL))
+	resp, err := client.Get(fmt.Sprintf("%s/connections/github/sf-decl-idp-1", testutils.TestServerURL))
 	s.Require().NoError(err)
 	defer resp.Body.Close()
 
@@ -209,35 +195,21 @@ func (s *SingleFileModeSuite) TestIdentityProviderWithEnvVarLoadedFromFile() {
 	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&idp))
 	s.Equal("sf-decl-idp-1", idp["id"])
 	s.Equal("Single File GitHub IDP", idp["name"])
-	s.Equal("GITHUB", idp["type"])
+	s.Equal("github", idp["type"])
 
-	// Verify the env var was substituted in the client_id property.
-	properties, ok := idp["properties"].([]interface{})
-	s.Require().True(ok, "IDP should have properties")
-
-	clientIDFound := false
-	for _, raw := range properties {
-		prop, ok := raw.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if prop["name"] == "client_id" {
-			clientIDFound = true
-			s.Equal(
-				envVars["SF_TEST_GITHUB_CLIENT_ID"],
-				prop["value"],
-				"client_id should contain the substituted env var value",
-			)
-		}
-	}
-	s.True(clientIDFound, "client_id property should be present in IDP")
+	// Verify the env var was substituted in the typed clientId field.
+	s.Equal(
+		envVars["SF_TEST_GITHUB_CLIENT_ID"],
+		idp["clientId"],
+		"clientId should contain the substituted env var value",
+	)
 }
 
 // TestSecondIdentityProviderLoadedFromFile verifies that a second IDP in the same file
 // is also correctly loaded.
 func (s *SingleFileModeSuite) TestSecondIdentityProviderLoadedFromFile() {
 	client := testutils.GetHTTPClient()
-	resp, err := client.Get(fmt.Sprintf("%s/identity-providers/sf-decl-idp-2", testutils.TestServerURL))
+	resp, err := client.Get(fmt.Sprintf("%s/connections/google/sf-decl-idp-2", testutils.TestServerURL))
 	s.Require().NoError(err)
 	defer resp.Body.Close()
 
@@ -246,24 +218,26 @@ func (s *SingleFileModeSuite) TestSecondIdentityProviderLoadedFromFile() {
 	var idp map[string]interface{}
 	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&idp))
 	s.Equal("sf-decl-idp-2", idp["id"])
-	s.Equal("GOOGLE", idp["type"])
+	s.Equal("google", idp["type"])
 }
 
 // TestAllIDPsFromFileAppearInListing verifies that both declarative IDPs appear in the
 // collection endpoint.
 func (s *SingleFileModeSuite) TestAllIDPsFromFileAppearInListing() {
 	client := testutils.GetHTTPClient()
-	resp, err := client.Get(fmt.Sprintf("%s/identity-providers", testutils.TestServerURL))
+	resp, err := client.Get(fmt.Sprintf("%s/connections?category=identity-provider", testutils.TestServerURL))
 	s.Require().NoError(err)
 	defer resp.Body.Close()
 
 	s.Equal(http.StatusOK, resp.StatusCode)
 
-	var idps []map[string]interface{}
-	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&idps))
+	var listResp struct {
+		Connections []map[string]interface{} `json:"connections"`
+	}
+	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
 
-	idpIDs := make([]string, 0, len(idps))
-	for _, idp := range idps {
+	idpIDs := make([]string, 0, len(listResp.Connections))
+	for _, idp := range listResp.Connections {
 		if id, ok := idp["id"].(string); ok {
 			idpIDs = append(idpIDs, id)
 		}
@@ -279,7 +253,7 @@ func (s *SingleFileModeSuite) TestDeclarativeResourcesAreImmutable() {
 	client := testutils.GetHTTPClient()
 
 	req, err := http.NewRequest(http.MethodDelete,
-		fmt.Sprintf("%s/identity-providers/sf-decl-idp-1", testutils.TestServerURL), nil)
+		fmt.Sprintf("%s/connections/github/sf-decl-idp-1", testutils.TestServerURL), nil)
 	s.Require().NoError(err)
 
 	resp, err := client.Do(req)

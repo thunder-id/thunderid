@@ -35,7 +35,7 @@ const (
 // Authenticator names used in assurance
 const (
 	AuthenticatorCredentials = "CredentialsAuthenticator"
-	AuthenticatorSMSOTP      = "SMSOTPAuthenticator"
+	AuthenticatorOTP         = "OTPAuthenticator"
 )
 
 var (
@@ -65,20 +65,37 @@ var (
 						},
 						"action": map[string]interface{}{
 							"ref":      "action_001",
-							"nextNode": "sms_otp_send",
+							"nextNode": "generate_otp",
 						},
 					},
 				},
 			},
 			{
-				"id":   "sms_otp_send",
+				"id":   "generate_otp",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "OTPExecutor",
+					"mode": "generate",
+					"inputs": []map[string]interface{}{
+						{
+							"ref":        "input_001",
+							"identifier": "mobile_number",
+							"type":       "PHONE_INPUT",
+							"required":   true,
+						},
+					},
+				},
+				"onSuccess": "sms_send",
+			},
+			{
+				"id":   "sms_send",
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
-					"senderId": "placeholder-sender-id",
+					"senderId":    "placeholder-sender-id",
+					"smsTemplate": "OTP",
 				},
 				"executor": map[string]interface{}{
-					"name": "SMSOTPAuthExecutor",
-					"mode": "send",
+					"name": "SMSExecutor",
 				},
 				"onSuccess": "prompt_otp",
 			},
@@ -97,19 +114,16 @@ var (
 						},
 						"action": map[string]interface{}{
 							"ref":      "action_002",
-							"nextNode": "sms_otp_verify",
+							"nextNode": "verify_otp",
 						},
 					},
 				},
 			},
 			{
-				"id":   "sms_otp_verify",
+				"id":   "verify_otp",
 				"type": "TASK_EXECUTION",
-				"properties": map[string]interface{}{
-					"senderId": "placeholder-sender-id",
-				},
 				"executor": map[string]interface{}{
-					"name": "SMSOTPAuthExecutor",
+					"name": "OTPExecutor",
 					"mode": "verify",
 				},
 				"onSuccess": "auth_assert",
@@ -172,17 +186,26 @@ var (
 				"executor": map[string]interface{}{
 					"name": "CredentialsAuthExecutor",
 				},
-				"onSuccess": "sms_otp_send",
+				"onSuccess": "generate_otp",
 			},
 			{
-				"id":   "sms_otp_send",
+				"id":   "generate_otp",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "OTPExecutor",
+					"mode": "generate",
+				},
+				"onSuccess": "sms_send",
+			},
+			{
+				"id":   "sms_send",
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
-					"senderId": "placeholder-sender-id",
+					"senderId":    "placeholder-sender-id",
+					"smsTemplate": "OTP",
 				},
 				"executor": map[string]interface{}{
-					"name": "SMSOTPAuthExecutor",
-					"mode": "send",
+					"name": "SMSExecutor",
 				},
 				"onSuccess": "prompt_otp",
 			},
@@ -201,19 +224,16 @@ var (
 						},
 						"action": map[string]interface{}{
 							"ref":      "action_002",
-							"nextNode": "sms_otp_verify",
+							"nextNode": "verify_otp",
 						},
 					},
 				},
 			},
 			{
-				"id":   "sms_otp_verify",
+				"id":   "verify_otp",
 				"type": "TASK_EXECUTION",
-				"properties": map[string]interface{}{
-					"senderId": "placeholder-sender-id",
-				},
 				"executor": map[string]interface{}{
-					"name": "SMSOTPAuthExecutor",
+					"name": "OTPExecutor",
 					"mode": "verify",
 				},
 				"onSuccess": "auth_assert",
@@ -415,13 +435,11 @@ func (ts *AssuranceTestSuite) SetupSuite() {
 
 	// Update flow definitions with sender ID
 	smsOnlyNodes := assuranceSMSOnlyFlow.Nodes.([]map[string]interface{})
-	smsOnlyNodes[2]["properties"].(map[string]interface{})["senderId"] = senderID
-	smsOnlyNodes[4]["properties"].(map[string]interface{})["senderId"] = senderID
+	smsOnlyNodes[3]["properties"].(map[string]interface{})["senderId"] = senderID
 	assuranceSMSOnlyFlow.Nodes = smsOnlyNodes
 
 	mfaNodes := assuranceMFAFlow.Nodes.([]map[string]interface{})
-	mfaNodes[3]["properties"].(map[string]interface{})["senderId"] = senderID
-	mfaNodes[5]["properties"].(map[string]interface{})["senderId"] = senderID
+	mfaNodes[4]["properties"].(map[string]interface{})["senderId"] = senderID
 	assuranceMFAFlow.Nodes = mfaNodes
 
 	// Create flows
@@ -530,7 +548,7 @@ func (ts *AssuranceTestSuite) TestAssurance_SMSOTPOnly() {
 	err = testutils.ValidateAssurance(jwtClaims, testutils.AssuranceExpectation{
 		AAL:                    "AAL1",
 		IAL:                    "IAL1",
-		ExpectedAuthenticators: []string{AuthenticatorSMSOTP},
+		ExpectedAuthenticators: []string{AuthenticatorOTP},
 	})
 	ts.Require().NoError(err, "Assurance validation failed")
 }
@@ -586,7 +604,7 @@ func (ts *AssuranceTestSuite) TestAssurance_CredentialsPlusSMSOTP() {
 	err = testutils.ValidateAssurance(jwtClaims, testutils.AssuranceExpectation{
 		AAL:                    "AAL2",
 		IAL:                    "IAL1",
-		ExpectedAuthenticators: []string{AuthenticatorCredentials, AuthenticatorSMSOTP},
+		ExpectedAuthenticators: []string{AuthenticatorCredentials, AuthenticatorOTP},
 	})
 	ts.Require().NoError(err, "Assurance validation failed")
 }

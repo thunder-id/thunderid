@@ -22,7 +22,6 @@ import type {CreationFlow} from '../models/creation-flow';
 
 const DEFAULT_USER_FACING_FLOW: CreationFlow = {
   steps: [
-    ApplicationCreateFlowStep.STACK,
     ApplicationCreateFlowStep.NAME,
     ApplicationCreateFlowStep.ORGANIZATION_UNIT,
     ApplicationCreateFlowStep.DESIGN,

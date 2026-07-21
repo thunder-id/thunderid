@@ -1,6 +1,7 @@
 ---
 title: ThunderIDNodeClient
-description: Abstract base class for Node.js framework integrations
+docType: reference
+description: Core authentication client for Node.js applications with OAuth 2.0 flows, session, and user management.
 ---
 
 # `ThunderIDNodeClient`
@@ -9,7 +10,7 @@ description: Abstract base class for Node.js framework integrations
 
 ## Overview
 
-`ThunderIDNodeClient` inherits all methods from `ThunderIDJavaScriptClient` and applies the [`ThunderIDNodeConfig`](/docs/next/sdks/node/apis/config/thunderid-node-config) type by default. Because the class is abstract, you cannot instantiate it directly. Instead, extend it and implement any framework-specific initialization or middleware logic in the subclass.
+`ThunderIDNodeClient` inherits all methods from `ThunderIDJavaScriptClient` and applies the [`ThunderIDNodeConfig`](../../config/thunderid-node-config) type by default. Because the class is abstract, you cannot instantiate it directly. Instead, extend it and implement any framework-specific initialization or middleware logic in the subclass.
 
 ## Usage
 
@@ -31,8 +32,8 @@ export default MyFrameworkClient
 
 | Parameter | Default | Description |
 | :--- | :--- | :--- |
-| `T` | `ThunderIDNodeConfig` | Configuration type. Extend [`ThunderIDNodeConfig`](/docs/next/sdks/node/apis/config/thunderid-node-config) to add framework-specific configuration fields. |
+| `T` | `ThunderIDNodeConfig` | Configuration type. Extend [`ThunderIDNodeConfig`](../../config/thunderid-node-config) to add framework-specific configuration fields. |
 
 ## Related
 
-- [`ThunderIDNodeConfig`](/docs/next/sdks/node/apis/config/thunderid-node-config) — Configuration type for this client
+- [`ThunderIDNodeConfig`](../../config/thunderid-node-config): Configuration type for this client

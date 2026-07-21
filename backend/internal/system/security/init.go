@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -24,11 +24,13 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 )
 
-// Initialize creates and returns the security middleware with necessary authenticators.
-func Initialize(jwtService jwt.JWTServiceInterface) (func(http.Handler) http.Handler, error) {
+// Initialize creates and returns the security middleware with necessary authenticators. The
+// revocationEnforcer is consulted after authentication to reject revoked tokens.
+func Initialize(jwtService jwt.JWTServiceInterface, revocationEnforcer RevocationEnforcerInterface,
+) (func(http.Handler) http.Handler, error) {
 	jwtAuthenticator := newJWTAuthenticator(jwtService)
 	securityService, err := newSecurityService(
-		[]AuthenticatorInterface{jwtAuthenticator}, publicPaths, apiPermissionEntries)
+		[]AuthenticatorInterface{jwtAuthenticator}, revocationEnforcer, publicPaths, apiPermissionEntries)
 	if err != nil {
 		return nil, err
 	}

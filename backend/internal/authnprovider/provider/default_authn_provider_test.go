@@ -1176,8 +1176,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_MissingID
 
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
-			Code:    "auth-code",
-			IDPType: providers.IDPType("google"),
+			IDPType:           providers.IDPType("google"),
+			AuthorizationData: authncommon.AuthorizationData{Code: "auth-code"},
 		},
 	}
 
@@ -1211,9 +1211,9 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_Unsupport
 
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
-			IDPID:   "idp-1",
-			IDPType: providers.IDPType("unsupported"),
-			Code:    "auth-code",
+			IDPID:             "idp-1",
+			IDPType:           providers.IDPType("unsupported"),
+			AuthorizationData: authncommon.AuthorizationData{Code: "auth-code"},
 		},
 	}
 
@@ -1287,7 +1287,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Passkey_AuthFailed(
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_Success() {
 	fedToken := map[string]interface{}{"sub": "fed-sub-1"}
-	suite.mockFederated.On("Authenticate", mock.Anything, "idp-1", "auth-code").
+	suite.mockFederated.On("Authenticate", mock.Anything, "idp-1",
+		authncommon.AuthorizationData{Code: "auth-code"}).
 		Return(&authncommon.AuthnResult{
 			Token:               fedToken,
 			AuthenticatedClaims: map[string]interface{}{"sub": "fed-sub-1"},
@@ -1299,9 +1300,9 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_Success()
 
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
-			IDPID:   "idp-1",
-			IDPType: providers.IDPType("google"),
-			Code:    "auth-code",
+			IDPID:             "idp-1",
+			IDPType:           providers.IDPType("google"),
+			AuthorizationData: authncommon.AuthorizationData{Code: "auth-code"},
 		},
 	}
 
@@ -1327,7 +1328,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_Success()
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_ClientError() {
-	suite.mockFederated.On("Authenticate", mock.Anything, "idp-1", "auth-code").
+	suite.mockFederated.On("Authenticate", mock.Anything, "idp-1",
+		authncommon.AuthorizationData{Code: "auth-code"}).
 		Return(nil, &tidcommon.ServiceError{
 			Type:             tidcommon.ClientErrorType,
 			Code:             "FED-001",
@@ -1341,9 +1343,9 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_ClientErr
 
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
-			IDPID:   "idp-1",
-			IDPType: providers.IDPType("google"),
-			Code:    "auth-code",
+			IDPID:             "idp-1",
+			IDPType:           providers.IDPType("google"),
+			AuthorizationData: authncommon.AuthorizationData{Code: "auth-code"},
 		},
 	}
 
@@ -1355,7 +1357,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_ClientErr
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_ServerError() {
-	suite.mockFederated.On("Authenticate", mock.Anything, "idp-1", "auth-code").
+	suite.mockFederated.On("Authenticate", mock.Anything, "idp-1",
+		authncommon.AuthorizationData{Code: "auth-code"}).
 		Return(nil, &tidcommon.ServiceError{
 			Type:             tidcommon.ServerErrorType,
 			Code:             "INTERNAL",
@@ -1369,9 +1372,9 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_ServerErr
 
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
-			IDPID:   "idp-1",
-			IDPType: providers.IDPType("google"),
-			Code:    "auth-code",
+			IDPID:             "idp-1",
+			IDPType:           providers.IDPType("google"),
+			AuthorizationData: authncommon.AuthorizationData{Code: "auth-code"},
 		},
 	}
 

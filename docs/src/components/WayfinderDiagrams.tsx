@@ -264,6 +264,37 @@ export function WayfinderCast() {
 }
 
 /**
+ * Cast diagram for the Decentralized Identity (VC) Try It Out. The tryout
+ * centres on one member — John Doe — who receives the Sky Pass and presents it
+ * at the lounge. Reuses the b2c cast card styling.
+ */
+export function WayfinderVcCast() {
+  return (
+    <div className="uc-b2c-wayfinder-cast">
+      <svg
+        className="uc-b2c-wayfinder-cast__svg"
+        viewBox="0 0 960 176"
+        xmlns="http://www.w3.org/2000/svg"
+        role="img"
+        aria-label="Wayfinder cast: the Sky Pass holder"
+      >
+        <rect x="20" y="12" width="3" height="16" className="uc-b2c-wayfinder-cast__group-accent" />
+        <text x="30" y="24" className="uc-b2c-wayfinder-cast__group-label">Member</text>
+
+        <g className="uc-b2c-wayfinder-cast__card uc-b2c-wayfinder-cast__card--lead" transform="translate(20, 36)">
+          <rect width="920" height="128" rx="10" />
+          <text x="16" y="32" className="uc-b2c-wayfinder-cast__card-name">John Doe</text>
+          <text x="16" y="56" className="uc-b2c-wayfinder-cast__card-role">Wayfinder member · Gold tier</text>
+          <line x1="16" y1="69" x2="904" y2="69" className="uc-b2c-wayfinder-cast__card-divider" />
+          <text x="16" y="92" className="uc-b2c-wayfinder-cast__card-desc">Signs in to Wayfinder and adds the Sky Pass to his wallet,</text>
+          <text x="16" y="114" className="uc-b2c-wayfinder-cast__card-desc">then presents it at the Skyline Lounge for access</text>
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+/**
  * Architecture diagram. Consumers (John, Jane, Emma) sit at the top next
  * to the Wayfinder Web app; ThunderID and Wayfinder Server sit below
  * the app, symmetrically. Pattern-agnostic — the arrow labels do not
@@ -368,6 +399,157 @@ export function WayfinderArchitecture() {
           <g transform="translate(778,346)"><g transform="scale(0.65)"><PersonIcon className="uc-b2c-wayfinder-arch__icon" /></g></g>
           <text x="796" y="403" textAnchor="middle" className="uc-b2c-wayfinder-arch__cast-name">Maya</text>
         </g>
+      </svg>
+    </div>
+  );
+}
+
+/**
+ * One flow panel for the VC architecture. A dashed boundary box labelled with
+ * the trust-triangle role (Issuer / Verifier) encloses both the app and
+ * ThunderID, showing that ThunderID powers the role from the inside. The
+ * delegation arrow sits mid-box in the gap between the two inner nodes so it
+ * never touches a title or divider. External arrows connect ThunderID directly
+ * to the wallet (Holder) below the boundary.
+ *
+ * Coordinate notes (all in panel-local space, i.e. after translate(20,y)):
+ *   App box:        translate(66, 46)  w=292  h=92  → right edge x=358, bottom y=138
+ *   ThunderID box:  translate(552, 46) w=278  h=92  → left edge x=552,  bottom y=138
+ *   Gap:            x=358–552  (194 px)
+ *   Titles:         panel y=80  (base 46 + relative 34)
+ *   Subs:           panel y=118 (base 46 + relative 72)
+ *   Delegate label: panel y=90  — 10 px below title, 28 px above sub
+ *   Delegate arrow: panel y=100 — 10 px below label, 18 px above sub
+ *   Boundary:       y=34–156   (height 122)
+ *   Wallet:         translate(415, 168)
+ */
+function VcFlowPanel({
+  y,
+  sectionLabel,
+  roleLabel,
+  appTitle,
+  appSub,
+  idpSub,
+  delegateLabel,
+  edgeAppWallet,
+  edgeWalletThunder,
+}: {
+  y: number;
+  sectionLabel: string;
+  roleLabel: string;
+  appTitle: string;
+  appSub: string;
+  idpSub: string;
+  delegateLabel: string;
+  edgeAppWallet: string;
+  edgeWalletThunder: string;
+}) {
+  return (
+    <g transform={`translate(20,${y})`}>
+      {/* section header */}
+      <rect x="4" y="0" width="3" height="16" className="uc-b2c-wayfinder-cast__group-accent" />
+      <text x="14" y="13" className="uc-b2c-wayfinder-cast__group-label">{sectionLabel}</text>
+
+      {/* Role label sits just above the boundary's top-right corner */}
+      <text x="860" y="30" textAnchor="end" className="uc-vc-arch__boundary-label">{roleLabel}</text>
+
+      {/* Dashed boundary — encloses App + ThunderID as the Issuer / Verifier */}
+      <g className="uc-vc-arch__boundary">
+        <rect x="50" y="34" width="820" height="122" rx="14" />
+      </g>
+
+      {/* App node (left, inside boundary) */}
+      <g className="uc-b2c-wayfinder-arch__app" transform="translate(66,46)">
+        <rect width="292" height="92" rx="12" />
+        <text x="146" y="40" textAnchor="middle" className="uc-b2c-wayfinder-arch__app-title">{appTitle}</text>
+        <text x="146" y="60" textAnchor="middle" className="uc-b2c-wayfinder-arch__sub">{appSub}</text>
+      </g>
+
+      {/* ThunderID node (right, inside boundary) */}
+      <g className="uc-b2c-wayfinder-arch__idp" transform="translate(552,46)">
+        <rect width="278" height="92" rx="12" />
+        <text x="139" y="40" textAnchor="middle" className="uc-b2c-wayfinder-arch__idp-title">ThunderID</text>
+        <text x="139" y="60" textAnchor="middle" className="uc-b2c-wayfinder-arch__sub">{idpSub}</text>
+      </g>
+
+      {/* Delegation arrow in the gap (x 358–552) */}
+      <g className="uc-vc-arch__delegate">
+        <text x="455" y="90" textAnchor="middle" className="uc-vc-arch__delegate-label">{delegateLabel}</text>
+        <line x1="362" y1="100" x2="548" y2="100" markerEnd="url(#uc-vc-arch-arrow)" />
+      </g>
+
+      {/* Wallet / Holder (below boundary which ends at y=156) */}
+      <g className="uc-b2c-wayfinder-arch__consumers">
+        <g transform="translate(415,168)"><g transform="scale(0.72)"><PersonIcon className="uc-b2c-wayfinder-arch__icon" /></g></g>
+        <text x="435" y="234" textAnchor="middle" className="uc-b2c-wayfinder-arch__cast-name">John&apos;s wallet</text>
+        <text x="435" y="252" textAnchor="middle" className="uc-b2c-wayfinder-arch__sub">Holder</text>
+      </g>
+
+      {/* External edges */}
+      <g className="uc-b2c-wayfinder-arch__edges">
+        {/* App → Wallet (QR display) */}
+        <line x1="198" y1="138" x2="414" y2="190" markerEnd="url(#uc-vc-arch-arrow)" />
+        <text x="272" y="176" textAnchor="middle" className="uc-b2c-wayfinder-arch__edge-label">{edgeAppWallet}</text>
+        {/* ThunderID ↔ Wallet (protocol) */}
+        <line x1="456" y1="190" x2="656" y2="138" markerEnd="url(#uc-vc-arch-arrow)" markerStart="url(#uc-vc-arch-arrow)" />
+        <text x="610" y="176" textAnchor="middle" className="uc-b2c-wayfinder-arch__edge-label">{edgeWalletThunder}</text>
+      </g>
+    </g>
+  );
+}
+
+/**
+ * Architecture diagrams for the Decentralized Identity (VC) Try It Out — one
+ * trust triangle per flow (issuance, then verification). Each shows the three
+ * components and how they connect, with plain arrows and no step-by-step
+ * labels. Reuses the b2c architecture styling.
+ */
+export function WayfinderVcArchitecture() {
+  return (
+    <div className="uc-b2c-wayfinder-arch">
+      <svg
+        className="uc-b2c-wayfinder-arch__svg"
+        viewBox="0 0 960 540"
+        xmlns="http://www.w3.org/2000/svg"
+        role="img"
+        aria-label="Sky Pass issuance and verification architecture — ThunderID powers the Issuer and Verifier roles, with John's wallet as the Holder"
+      >
+        <defs>
+          <marker
+            id="uc-vc-arch-arrow"
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto-start-reverse"
+          >
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+          </marker>
+        </defs>
+
+        <VcFlowPanel
+          y={10}
+          sectionLabel="Issuance · OpenID4VCI"
+          roleLabel="Issuer"
+          appTitle="Wayfinder Web"
+          appSub="Presents offer, shows QR"
+          idpSub="Authenticates, signs, issues"
+          delegateLabel="delegates OID4VCI"
+          edgeAppWallet="Credential QR"
+          edgeWalletThunder="Claim credential"
+        />
+        <VcFlowPanel
+          y={272}
+          sectionLabel="Verification · OpenID4VP"
+          roleLabel="Verifier"
+          appTitle="Skyline Lounge"
+          appSub="Requests proof, shows QR"
+          idpSub="Validates presentation"
+          delegateLabel="delegates OID4VP"
+          edgeAppWallet="Request QR"
+          edgeWalletThunder="Present credential"
+        />
       </svg>
     </div>
   );

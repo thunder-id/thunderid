@@ -74,7 +74,11 @@ export default function AuthenticationFlowSection({
   return (
     <SettingsCard
       title={t('applications:edit.flows.labels.authFlow')}
-      description={t('applications:edit.flows.labels.authFlow.description')}
+      description={t(
+        'applications:edit.flows.labels.authFlow.description',
+        'The flow used when someone signs in through this {{entity}}.',
+        {entity: entityLabel},
+      )}
     >
       {(editedApp.authFlowId ?? application.authFlowId) && (
         <Alert severity="info" sx={{mb: 2}}>

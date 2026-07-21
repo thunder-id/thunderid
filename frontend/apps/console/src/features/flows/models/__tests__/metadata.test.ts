@@ -151,7 +151,7 @@ describe('metadata', () => {
 
     it('should allow multiple connections', () => {
       const executorConnection: ExecutorConnectionInterface = {
-        executorName: 'SMSOTPAuthExecutor',
+        executorName: 'SMSExecutor',
         connections: ['twilio-sms', 'vonage-sms', 'custom-sms'],
       };
 

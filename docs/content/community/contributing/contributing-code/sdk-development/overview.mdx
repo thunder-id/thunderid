@@ -1,5 +1,6 @@
 ---
 title: Overview
+docType: community
 description: "Overview of the {{ProductName}} SDKs and how the product integrates with them."
 sidebar_position: 1
 hide_table_of_contents: false
@@ -26,7 +27,7 @@ Visit the [thunder-id](https://github.com/thunder-id) organization for the full 
 
 The <ProductName /> product itself consumes two SDKs:
 
-- **React SDK** — provides the core authentication context, hooks (e.g. `useThunderID`), and identity state management used throughout the Gate and Console frontends.
-- **React Router SDK** — builds on the React SDK to add route-level guards and redirect helpers that protect pages requiring an authenticated session.
+- **React SDK**: provides the core authentication context, hooks (e.g. `useThunderID`), and identity state management used throughout the Gate and Console frontends.
+- **React Router SDK**: builds on the React SDK to add route-level guards and redirect helpers that protect pages requiring an authenticated session.
 
 Both SDKs are consumed as published npm packages in normal builds. Clone the SDK repositories only when you need to develop or debug the SDK itself, or test the product against unreleased SDK changes.

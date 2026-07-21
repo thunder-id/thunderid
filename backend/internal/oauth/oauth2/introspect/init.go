@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -24,6 +24,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -36,8 +37,9 @@ func Initialize(
 	actorProvider providers.ActorProvider,
 	authnProvider providers.AuthnProviderManager,
 	discoveryService discovery.DiscoveryServiceInterface,
+	tokenValidator tokenservice.TokenValidatorInterface,
 ) TokenIntrospectionServiceInterface {
-	introspectionService := newTokenIntrospectionService(jwtService)
+	introspectionService := newTokenIntrospectionService(tokenValidator)
 	introspectHandler := newTokenIntrospectionHandler(introspectionService)
 	registerRoutes(mux, introspectHandler, actorProvider, authnProvider, jwtService, discoveryService)
 	return introspectionService

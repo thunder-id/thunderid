@@ -29,6 +29,10 @@ const (
 	serverConfigURL = testServerURL + "/server-config"
 	corsConfigURL   = serverConfigURL + "/cors"
 
+	defaultResourceServerConfigURL = serverConfigURL + "/defaultResourceServer"
+
+	systemResourceServerID = "01900000-0000-7000-8000-000000000020"
+
 	// sampleOrigin / otherOrigin are valid origins used to exercise the writable layer's read/write and
 	// replace round-trips. The only registered config consumer is CORS, so stored values must be valid
 	// CORS origins.
@@ -65,4 +69,14 @@ type serverConfigLayers struct {
 	ReadOnly corsSectionValue `json:"readOnly"`
 	Writable corsSectionValue `json:"writable"`
 	Merged   corsSectionValue `json:"merged"`
+}
+
+type defaultResourceServerValue struct {
+	ResourceServerID string `json:"resourceServerId"`
+}
+
+type defaultResourceServerLayers struct {
+	ReadOnly defaultResourceServerValue `json:"readOnly"`
+	Writable defaultResourceServerValue `json:"writable"`
+	Merged   defaultResourceServerValue `json:"merged"`
 }

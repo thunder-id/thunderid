@@ -146,19 +146,6 @@ var (
 				"fewer results.",
 		},
 	}
-	// ErrorConsentSyncFailed is the error returned when entity type changes failed to sync with the consent service.
-	ErrorConsentSyncFailed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "USRS-1010",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.entitytypeservice.consent_synchronization_failed",
-			DefaultValue: "Consent synchronization failed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.entitytypeservice.consent_synchronization_failed_description",
-			DefaultValue: "Failed to synchronize consent configurations for the entity type",
-		},
-	}
 	// ErrorInvalidDisplayAttribute is the error returned when the display attribute
 	// does not reference a valid top-level attribute in the schema.
 	ErrorInvalidDisplayAttribute = tidcommon.ServiceError{

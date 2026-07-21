@@ -63,7 +63,7 @@ packages:
 
   github.com/thunder-id/thunderid/internal/system/cors:
     interfaces:
-      MergedConfigReader:
+      ServerConfigReader:
         config:
           dir: tests/mocks/corsmock
           structname: '{{.InterfaceName}}Mock'
@@ -115,6 +115,21 @@ packages:
           dir: tests/mocks/oauth/oauth2/authzmock
           structname: '{{.InterfaceName}}Mock'
           pkgname: authzmock
+          filename: "{{.InterfaceName}}_mock.go"
+
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation:
+    interfaces:
+      EnforcementServiceInterface:
+        config:
+          dir: tests/mocks/oauth/oauth2/revocationmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: revocationmock
+          filename: "{{.InterfaceName}}_mock.go"
+      RefreshTokenRevokerInterface:
+        config:
+          dir: tests/mocks/oauth/oauth2/revocationmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: revocationmock
           filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers:
@@ -368,7 +383,18 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: flowexecmock
       filename: "{{.InterfaceName}}_mock.go"
-  
+
+  github.com/thunder-id/thunderid/internal/flow/session:
+    config:
+      dir: tests/mocks/flow/sessionmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: sessionmock
+      filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      Service:
+      Resolver:
+      HandleTransport:
+
   github.com/thunder-id/thunderid/internal/flow/mgt:
     config:
       all: true
@@ -505,6 +531,15 @@ packages:
       pkgname: resourcemock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/serverconfig:
+    interfaces:
+      ServerConfigService:
+        config:
+          dir: tests/mocks/serverconfigmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: serverconfigmock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/entityprovider:
     config:
       all: true
@@ -550,6 +585,24 @@ packages:
           dir: tests/mocks/observabilityprovidermock
           structname: '{{.InterfaceName}}Mock'
           pkgname: observabilityprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      CaptchaValidationProvider:
+        config:
+          dir: tests/mocks/captchamock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: captchamock
+          filename: "{{.InterfaceName}}_mock.go"
+      Executor:
+        config:
+          dir: tests/mocks/flow/coremock
+          structname: ExecutorInterfaceMock
+          pkgname: coremock
+          filename: "ExecutorInterface_mock.go"
+      AttestationProvider:
+        config:
+          dir: tests/mocks/attestationprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: attestationprovidermock
           filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/authnprovider/provider:

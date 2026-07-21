@@ -57,7 +57,6 @@ paths:
                   - id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
                     name: "Booking System"
                     description: "Handles all booking operations"
-                    handle: "booking-system"
                     identifier: "https://api.example.com/booking"
                     type: "API"
                     ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
@@ -65,7 +64,6 @@ paths:
                   - id: "257e528f-eb24-48b6-884d-20460e190957"
                     name: "Property Management"
                     description: "Property and facility management"
-                    handle: "property-mgmt"
                     identifier: "https://api.example.com/property"
                     type: "CUSTOM"
                     ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
@@ -139,7 +137,6 @@ paths:
             example:
               name: "Booking System"
               description: "Handles all booking operations"
-              handle: "booking-system"
               identifier: "https://api.example.com/booking"
               ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
       responses:
@@ -153,7 +150,6 @@ paths:
                 id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
                 name: "Booking System"
                 description: "Handles all booking operations"
-                handle: "booking-system"
                 identifier: "https://api.example.com/booking"
                 type: "CUSTOM"
                 ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
@@ -195,16 +191,6 @@ paths:
                     description:
                       key: "error.resourceservice.invalid_delimiter_description"
                       defaultValue: "Delimiter must be a single character from: a-z A-Z 0-9 . _ : - /"
-                delimiter-in-handle:
-                  summary: Delimiter conflict in resource server handle
-                  value:
-                    code: "RES-1022"
-                    message:
-                      key: "error.resourceservice.delimiter_conflict_in_resource_server_handle"
-                      defaultValue: "Delimiter conflict in handle"
-                    description:
-                      key: "error.resourceservice.delimiter_conflict_in_resource_server_handle_description"
-                      defaultValue: "Resource server handle cannot contain the delimiter character"
         "409":
           description: Conflict
           content:
@@ -222,16 +208,6 @@ paths:
                     description:
                       key: "error.resourceservice.name_conflict_description"
                       defaultValue: "A resource server with the same name already exists"
-                handle-conflict:
-                  summary: Handle conflict
-                  value:
-                    code: "RES-1014"
-                    message:
-                      key: "error.resourceservice.handle_conflict"
-                      defaultValue: "Handle conflict"
-                    description:
-                      key: "error.resourceservice.handle_conflict_description"
-                      defaultValue: "The same handle already exists within the specified resource"
                 identifier-conflict:
                   summary: Identifier conflict
                   value:
@@ -281,7 +257,6 @@ paths:
                 id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
                 name: "Booking System"
                 description: "Handles all booking operations"
-                handle: "booking-system"
                 identifier: "https://api.example.com/booking"
                 type: "API"
                 ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
@@ -333,7 +308,7 @@ paths:
       tags:
         - Resource Servers
       summary: Update resource server
-      description: Updates resource server name, description, handle, identifier, and organization unit. If the handle is changed, all derived permission strings for resources and actions under this server are recomputed.
+      description: Updates resource server name, description, identifier, and organization unit.
       parameters:
         - in: path
           name: id
@@ -350,7 +325,6 @@ paths:
             example:
               name: "Booking System Updated"
               description: "Updated description for booking operations"
-              handle: "booking-system-v2"
               identifier: "https://api.example.com/booking/v2"
               ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
       responses:
@@ -364,7 +338,6 @@ paths:
                 id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
                 name: "Booking System Updated"
                 description: "Updated description for booking operations"
-                handle: "booking-system"
                 identifier: "https://api.example.com/booking/v2"
                 type: "API"
                 ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
@@ -416,16 +389,6 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_resource_server_description"
                       defaultValue: "Resource server is defined in declarative configuration and cannot be modified"
-                delimiter-in-handle:
-                  summary: Delimiter conflict in resource server handle
-                  value:
-                    code: "RES-1022"
-                    message:
-                      key: "error.resourceservice.delimiter_conflict_in_resource_server_handle"
-                      defaultValue: "Delimiter conflict in handle"
-                    description:
-                      key: "error.resourceservice.delimiter_conflict_in_resource_server_handle_description"
-                      defaultValue: "Resource server handle cannot contain the delimiter character"
         "404":
           description: Resource server not found
           content:
@@ -457,16 +420,6 @@ paths:
                     description:
                       key: "error.resourceservice.name_conflict_description"
                       defaultValue: "A resource server with the same name already exists"
-                handle-conflict:
-                  summary: Handle conflict
-                  value:
-                    code: "RES-1014"
-                    message:
-                      key: "error.resourceservice.handle_conflict"
-                      defaultValue: "Handle conflict"
-                    description:
-                      key: "error.resourceservice.handle_conflict_description"
-                      defaultValue: "The same handle already exists within the specified resource"
                 identifier-conflict:
                   summary: Identifier conflict
                   value:
@@ -1189,13 +1142,13 @@ paths:
                         name: "Create User"
                         description: "Creates a new user account"
                         handle: "create_user"
-                        permission: "booking-mcp:create_user"
+                        permission: "create_user"
                         kind: "tool"
                       - id: "ad7e4h1h-8f9c-4e93-c565-5e3ddf98hi6f"
                         name: "Delete User"
                         description: "Deletes a user account"
                         handle: "delete_user"
-                        permission: "booking-mcp:delete_user"
+                        permission: "delete_user"
                         kind: "tool"
                     links: []
         "400":
@@ -1739,7 +1692,7 @@ paths:
                         name: "User List"
                         description: "Read-only list of users"
                         handle: "user_list"
-                        permission: "booking-mcp:user-mgmt:user_list"
+                        permission: "user-mgmt:user_list"
                         kind: "resource"
                     links: []
         "400":
@@ -2310,7 +2263,7 @@ components:
   schemas:
     ResourceServer:
       type: object
-      required: [id, name, handle, type, ouId, delimiter]
+      required: [id, name, identifier, type, ouId, delimiter]
       properties:
         id:
           type: string
@@ -2323,13 +2276,9 @@ components:
           type: string
           nullable: true
           description: Optional description of the resource server
-        handle:
-          type: string
-          description: Immutable handle that prefixes all permission strings derived from this resource server. Must be unique.
         identifier:
           type: string
-          nullable: true
-          description: Optional identifier for this resource server. Must be unique in the system if provided. When set to an absolute URI, the resource server is used in RFC 8707 resource indicator flows and the identifier is used as the access token audience claim value.
+          description: Unique identifier for this resource server. When set to an absolute URI, the resource server is used in RFC 8707 resource indicator flows and the identifier is used as the access token audience claim value.
         type:
           type: string
           enum: [API, MCP, CUSTOM]
@@ -2347,7 +2296,7 @@ components:
 
     CreateResourceServerRequest:
       type: object
-      required: [name, ouId]
+      required: [name, ouId, identifier]
       properties:
         name:
           type: string
@@ -2355,12 +2304,9 @@ components:
         description:
           type: string
           description: Optional description of the resource server
-        handle:
-          type: string
-          description: Immutable handle that prefixes all permission strings derived from this resource server. Must be unique. Use lowercase with hyphens (e.g., "booking-api").
         identifier:
           type: string
-          description: Optional identifier for this resource server. Must be unique in the system if provided. When set to an absolute URI, the resource server is used in RFC 8707 resource indicator flows and clients can use this value in the resource parameter to request audience-restricted access tokens.
+          description: Unique identifier for this resource server. When set to an absolute URI, the resource server is used in RFC 8707 resource indicator flows and clients can use this value in the resource parameter to request audience-restricted access tokens.
         type:
           type: string
           enum: [API, MCP, CUSTOM]
@@ -2383,12 +2329,9 @@ components:
         description:
           type: string
           description: Optional description of the resource server
-        handle:
-          type: string
-          description: Handle that prefixes all permission strings derived from this resource server. If changed, all derived permission strings for resources and actions are recomputed. Must be unique.
         identifier:
           type: string
-          description: Optional identifier for this resource server. Must be unique in the system if provided. When set to an absolute URI, the resource server is used in RFC 8707 resource indicator flows.
+          description: Unique identifier for this resource server. When set to an absolute URI, the resource server is used in RFC 8707 resource indicator flows.
         ouId:
           type: string
           format: uuid

@@ -28,11 +28,16 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/corsmock"
 )
 
-// InstallMatcherEntries installs a CORS matcher for the duration of the test.
+// InstallMatcherEntries installs a CORS matcher for the duration of the test, serving the given entries as
+// the writable layer over an empty read-only layer.
 func InstallMatcherEntries(t *testing.T, entries cors.OriginEntries) {
-	reader := corsmock.NewMergedConfigReaderMock(t)
+	reader := corsmock.NewServerConfigReaderMock(t)
 	reader.EXPECT().
-		GetMergedConfig(mock.Anything, "cors").
+		GetReadOnlyConfig(mock.Anything, "cors").
+		Return(cors.OriginConfig{AllowedOrigins: cors.OriginEntries{}}, nil).
+		Maybe()
+	reader.EXPECT().
+		GetWritableConfig(mock.Anything, "cors").
 		Return(cors.OriginConfig{AllowedOrigins: entries}, nil).
 		Maybe()
 	cors.InitializeDynamicMatcher(reader)

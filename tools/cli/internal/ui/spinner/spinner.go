@@ -19,7 +19,8 @@
 package spinner
 
 import (
-	"github.com/charmbracelet/bubbles/progress"
+	"charm.land/bubbles/v2/progress"
+	"charm.land/lipgloss/v2"
 
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
 )
@@ -28,7 +29,7 @@ import (
 const DefaultWidth = 30
 
 var bar = progress.New(
-	progress.WithSolidFill(product.ColorElectricBlue),
+	progress.WithColors(lipgloss.Color(product.ColorElectricBlue)),
 	progress.WithWidth(DefaultWidth),
 	progress.WithoutPercentage(),
 )

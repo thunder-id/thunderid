@@ -3,7 +3,7 @@
   "displayName": "Backend",
   "description": "Machine-to-machine backend service",
   "creationFlow": {
-    "steps": ["STACK", "NAME", "ORGANIZATION_UNIT", "COMPLETE"]
+    "steps": ["NAME", "ORGANIZATION_UNIT", "COMPLETE"]
   },
   "defaults": {
     "name": "Backend Application",

@@ -1,3 +1,4 @@
+resource_type: user
 id: decl-user-1
 type: person
 ouId: decl-ou-1

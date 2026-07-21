@@ -26,26 +26,28 @@ import {OxygenThemeType} from '@wso2/oxygen-ui/styles/index';
  */
 export interface ServerConfig {
   /**
-   * Server hostname or IP address
+   * Server hostname or IP address. Optional — when omitted (along with public_url),
+   * the server URL is derived from the URL the app is served from (window.location.origin).
    * @example "localhost", "api.example.com", "192.168.1.100"
    */
-  hostname: string;
+  hostname?: string;
 
   /**
-   * Server port number
+   * Server port number. Optional — see hostname.
    * @example 8090, 3000, 8080
    */
-  port: number;
+  port?: number;
 
   /**
    * Whether to use HTTP only (no HTTPS). When true, connections will use HTTP protocol.
    * When false, HTTPS will be used for secure connections.
    */
-  http_only: boolean;
+  http_only?: boolean;
 
   /**
    * Optional public URL for the server. If provided, this will be used instead of
-   * constructing the URL from hostname, port, and http_only.
+   * constructing the URL from hostname, port, and http_only, or falling back to the
+   * served origin. Set this only when the external URL differs from the accessed URL.
    * @example "https://example.com", "https://api.local:8080"
    */
   public_url?: string;
@@ -84,6 +86,13 @@ export interface ClientConfig {
   scopes?: string[];
 
   /**
+   * Identifier of the resource server this client's tokens should target, sent as the
+   * RFC 8707 `resource` parameter so the tokens are bound to that resource server.
+   * @example "https://localhost:8090/mcp"
+   */
+  resource_identifier?: string;
+
+  /**
    * Server hostname or IP address
    * @example "localhost", "api.example.com", "192.168.1.100"
    */
@@ -100,6 +109,40 @@ export interface ClientConfig {
    * When false, HTTPS will be used for secure connections.
    */
   http_only?: boolean;
+}
+
+/**
+ * Gate-client configuration interface that defines where the login gate app is deployed,
+ * used to build the OAuth redirect/callback URL shown when configuring social/OIDC
+ * connections. Mirrors the backend's `gate_client` deployment config.
+ *
+ * @public
+ */
+export interface GateClientConfig {
+  /**
+   * Full public URL of the gate app. If provided, this will be used instead of
+   * constructing the URL from hostname, port, and scheme.
+   * @example "https://gate.example.com", "https://localhost:5190"
+   */
+  public_url?: string;
+
+  /**
+   * Gate app hostname or IP address. Optional — see public_url.
+   * @example "localhost", "gate.example.com"
+   */
+  hostname?: string;
+
+  /**
+   * Gate app port number. Optional — see public_url.
+   * @example 5190, 443
+   */
+  port?: number;
+
+  /**
+   * URL scheme for the gate app. Defaults to "https" when omitted.
+   * @example "https", "http"
+   */
+  scheme?: string;
 }
 
 /**
@@ -243,11 +286,21 @@ export interface ProductConfig {
   /** Client-specific configuration including authentication settings */
   client: ClientConfig;
 
-  /** Server connection configuration for API resource calls */
-  server: ServerConfig;
+  /**
+   * Server connection configuration for API resource calls. Optional — when omitted,
+   * the server URL defaults to the URL the app is served from (window.location.origin).
+   */
+  server?: ServerConfig;
 
   /** Optional trusted issuer configuration for external token validation */
   trusted_issuer?: TrustedIssuerConfig;
+
+  /**
+   * Optional gate-client configuration for the login gate app's location. When omitted,
+   * the OAuth redirect/callback URL shown in connection wizards falls back to
+   * `${getServerUrl()}/gate/callback`.
+   */
+  gate_client?: GateClientConfig;
 
   /** Optional design configuration for theming and UI customization */
   design?: DesignConfig;

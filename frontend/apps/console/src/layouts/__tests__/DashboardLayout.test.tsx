@@ -164,10 +164,9 @@ describe('DashboardLayout', () => {
     expect(screen.getByText(new RegExp(currentYear.toString()))).toBeInTheDocument();
   });
 
-  it('calls signIn after successful signOut when sign out is clicked', async () => {
+  it('does not start a second sign-in after signing out', async () => {
     const user = userEvent.setup();
     mockSignOut.mockResolvedValue(undefined);
-    mockSignIn.mockResolvedValue(undefined);
 
     render(<DashboardLayout />);
 
@@ -181,8 +180,8 @@ describe('DashboardLayout', () => {
 
     await waitFor(() => {
       expect(mockSignOut).toHaveBeenCalled();
-      expect(mockSignIn).toHaveBeenCalled();
     });
+    expect(mockSignIn).not.toHaveBeenCalled();
   });
 
   it('logs error when signOut fails', async () => {
@@ -202,7 +201,7 @@ describe('DashboardLayout', () => {
 
     await waitFor(() => {
       expect(mockSignOut).toHaveBeenCalled();
-      expect(mockLoggerError).toHaveBeenCalledWith('Sign out/in failed', {error: signOutError});
+      expect(mockLoggerError).toHaveBeenCalledWith('Sign out failed', {error: signOutError});
     });
   });
 
@@ -220,25 +219,6 @@ describe('DashboardLayout', () => {
     render(<DashboardLayout />);
 
     expect(screen.getByTestId('outlet')).toBeInTheDocument();
-  });
-
-  it('navigates to open-project page when open project button is clicked', async () => {
-    const user = userEvent.setup();
-    render(<DashboardLayout />);
-
-    const openProjectButton = screen.getByRole('button', {name: /navigation:pages\.openProject/i});
-    await user.click(openProjectButton);
-
-    expect(mockNavigate).toHaveBeenCalledWith('/import-configuration');
-  });
-
-  it('navigates to export page when export button is clicked', async () => {
-    const user = userEvent.setup();
-    render(<DashboardLayout />);
-
-    const exportButton = screen.getByText('navigation:pages.export');
-    expect(exportButton).toBeInTheDocument();
-    await user.click(exportButton);
   });
 
   it('navigates to welcome page when welcome menu item is clicked', async () => {

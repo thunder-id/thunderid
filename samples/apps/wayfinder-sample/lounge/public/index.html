@@ -1,0 +1,184 @@
+<!--
+ Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+
+ WSO2 LLC. licenses this file to you under the Apache License,
+ Version 2.0 (the "License"); you may not use this file except
+ in compliance with the License. You may obtain a copy of the License at
+ http://www.apache.org/licenses/LICENSE-2.0
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Skyline Lounge</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: #e8edf6;
+        background: radial-gradient(1400px 800px at 50% -15%, #1d3a8a 0%, #0b1020 55%, #060912 100%);
+        transition: background 600ms ease;
+        display: flex; flex-direction: column; min-height: 100%; overflow: hidden;
+      }
+      /* Whole-screen state tints, readable from across a room. */
+      body.granted { background: radial-gradient(1400px 900px at 50% -10%, #0f6b46 0%, #08130d 60%, #050a07 100%); }
+      body.denied  { background: radial-gradient(1400px 900px at 50% -10%, #7a1f24 0%, #160a0b 60%, #0a0506 100%); }
+
+      header {
+        padding: 4vmin 6vmin 0; display: flex; align-items: center; gap: 14px;
+        letter-spacing: .34em; text-transform: uppercase; font-size: clamp(.7rem, 1.4vmin, 1rem); color: #aab8d6;
+      }
+      header .dot { width: 12px; height: 12px; border-radius: 50%; background: linear-gradient(135deg,#8ec5ff,#4f8cff); box-shadow: 0 0 18px #4f8cff; }
+
+      main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 4vmin 6vmin; }
+      h1 { margin: 0 0 1vmin; font-size: clamp(2rem, 6vmin, 4.5rem); font-weight: 800; line-height: 1.05; }
+      .sub { color: #9fb0d0; margin: 0 0 5vmin; font-size: clamp(1rem, 2.2vmin, 1.6rem); }
+
+      button.primary {
+        appearance: none; border: 0; cursor: pointer; font-weight: 700;
+        font-size: clamp(1.1rem, 2.6vmin, 1.8rem); padding: clamp(16px,2.4vmin,26px) clamp(34px,6vmin,72px);
+        border-radius: 999px; color: #08122b; background: linear-gradient(135deg, #8ec5ff, #4f8cff);
+        box-shadow: 0 16px 50px rgba(79,140,255,.45);
+      }
+      button.primary:active { transform: translateY(1px); }
+
+      .qr { width: clamp(240px, 38vmin, 420px); aspect-ratio: 1; background: #fff; border-radius: 24px; padding: clamp(14px,2vmin,22px); box-shadow: 0 24px 70px rgba(0,0,0,.5); }
+      .qr img { width: 100%; height: 100%; display: block; }
+      .hint { color: #9fb0d0; font-size: clamp(.95rem, 2vmin, 1.4rem); min-height: 1.3em; margin-top: 3vmin; }
+
+      .name { font-size: clamp(2.2rem, 7vmin, 5.5rem); font-weight: 800; margin: 0 0 1vmin; }
+      .tier { color: #cfe0ff; font-size: clamp(1.1rem, 2.6vmin, 2rem); margin: 0 0 4vmin; }
+      .muted { color: #93a1c2; font-family: ui-monospace, Menlo, monospace; font-size: .85em; }
+      .badge {
+        display: inline-flex; align-items: center; gap: 12px; font-weight: 800; letter-spacing: .03em;
+        font-size: clamp(1.2rem, 3.2vmin, 2.4rem); padding: clamp(12px,1.8vmin,20px) clamp(24px,4vmin,44px); border-radius: 999px;
+      }
+      .badge .mark { font-size: 1.3em; line-height: 1; }
+      .ok { background: rgba(45,196,124,.18); color: #5bf0a0; border: 2px solid rgba(91,240,160,.5); }
+      .deny { background: rgba(248,113,113,.16); color: #ff9a9a; border: 2px solid rgba(255,154,154,.5); }
+      .err { color: #ff9a9a; font-size: clamp(1rem,2.2vmin,1.5rem); }
+
+      footer { display: flex; align-items: flex-start; justify-content: center; padding: 0 6vmin 12vmin; min-height: 10vmin; }
+      .ghost {
+        appearance: none; cursor: pointer; font-weight: 600; letter-spacing: .01em;
+        font-size: clamp(.95rem, 1.9vmin, 1.25rem); padding: clamp(11px,1.5vmin,16px) clamp(24px,3.4vmin,40px);
+        border-radius: 999px; color: #d6e3ff; background: rgba(255,255,255,.06);
+        border: 1px solid rgba(255,255,255,.18); transition: background 150ms ease, border-color 150ms ease;
+      }
+      .ghost:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.34); }
+      .ghost:active { transform: translateY(1px); }
+      .stack { display: flex; flex-direction: column; align-items: center; gap: 1vmin; }
+    </style>
+  </head>
+  <body>
+    <header><span class="dot"></span> Skyline Lounge</header>
+    <main id="main"></main>
+    <footer id="footer"></footer>
+
+    <script>
+      const main = document.getElementById("main");
+      const footer = document.getElementById("footer");
+      let pollTimer = null;
+
+      function setBody(state) { document.body.className = state || ""; }
+
+      function idle() {
+        clearInterval(pollTimer);
+        setBody("");
+        main.innerHTML =
+          '<h1>Members’ Entrance</h1>' +
+          '<p class="sub">Present your Wayfinder Sky Pass to enter the lounge.</p>' +
+          '<button class="primary" id="start">Present Sky Pass</button>';
+        footer.innerHTML = "";
+        document.getElementById("start").onclick = start;
+      }
+
+      async function start() {
+        setBody("");
+        main.innerHTML = '<p class="hint">Preparing…</p>';
+        footer.innerHTML = "";
+        try {
+          const r = await fetch("/api/verify/start", { method: "POST" });
+          const data = await r.json();
+          if (!r.ok) throw new Error(data.error || "Failed to start");
+          showQr(data.walletUrl, data.txnId);
+        } catch (e) {
+          main.innerHTML = '<p class="err">' + escapeHtml(e.message) + '</p>';
+          setTimeout(idle, 2800);
+        }
+      }
+
+      function showQr(walletUrl, txnId) {
+        main.innerHTML =
+          '<div class="stack">' +
+          '<div class="qr"><img id="qr-img" alt="Scan with your wallet" /></div>' +
+          '<p class="hint" id="hint">Scan with your wallet and approve the request…</p>' +
+          '</div>';
+        footer.innerHTML = '<button class="ghost" id="cancel">Cancel</button>';
+        document.getElementById("cancel").onclick = idle;
+        QRCode.toDataURL(walletUrl, { width: 480, margin: 1 }, function(err, url) {
+          if (err) {
+            main.innerHTML = '<p class="err">Failed to generate QR: ' + escapeHtml(err.message) + '</p>';
+            return;
+          }
+          const img = document.getElementById("qr-img");
+          if (img) img.src = url;
+        });
+        poll(txnId);
+      }
+
+      function poll(txnId, maxAttempts = 150) {
+        clearInterval(pollTimer);
+        let attempts = 0;
+        pollTimer = setInterval(async () => {
+          if (++attempts > maxAttempts) {
+            clearInterval(pollTimer);
+            const h = document.getElementById("hint");
+            if (h) { h.className = "err"; h.textContent = "Verification timed out. Please try again."; }
+            setTimeout(idle, 3500);
+            return;
+          }
+          try {
+            const r = await fetch("/api/verify/status/" + encodeURIComponent(txnId));
+            const data = await r.json();
+            if (data.status === "COMPLETED") { clearInterval(pollTimer); showResult(data); }
+            else if (data.status === "FAILED") {
+              clearInterval(pollTimer);
+              const h = document.getElementById("hint");
+              if (h) { h.className = "err"; h.textContent = data.error || "Verification failed."; }
+              setTimeout(idle, 3500);
+            }
+          } catch (_) { /* keep polling */ }
+        }, 2000);
+      }
+
+      function showResult(data) {
+        const name = data.name || "Traveler";
+        const granted = data.accessGranted;
+        setBody(granted ? "granted" : "denied");
+        main.innerHTML =
+          '<p class="name">Welcome, ' + escapeHtml(name) + '</p>' +
+          (data.tier ? '<p class="tier">' + escapeHtml(data.tier) + ' member' +
+            (data.memberId ? ' · <span class="muted">' + escapeHtml(data.memberId) + '</span>' : '') + '</p>' : '') +
+          '<div class="badge ' + (granted ? 'ok' : 'deny') + '">' +
+            '<span class="mark">' + (granted ? '✓' : '✕') + '</span>' +
+            (granted ? 'Lounge access granted' : 'Lounge access denied') + '</div>' +
+          (granted ? '' : '<p class="hint">Lounge access requires ' +
+            escapeHtml((data.allowedTiers || []).join(" or ")) + ' tier.</p>');
+        footer.innerHTML = '<button class="ghost" id="again">Scan another pass</button>';
+        document.getElementById("again").onclick = idle;
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, (c) =>
+          ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+      }
+
+      idle();
+    </script>
+  </body>
+</html>

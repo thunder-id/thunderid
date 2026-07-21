@@ -41,7 +41,7 @@ type FlowAssertionClaims struct {
 // DecodeFlowAssertionClaims decodes the common flow assertion claims from a JWT string.
 // It extracts sub (user ID), aci (attribute cache ID), completed_auth_class (completed ACR),
 // and iat (authentication time). The raw JWT payload is also returned so callers can extract
-// grant-type-specific claims (e.g. ciba_auth_req_id for CIBA, authorized_permissions for auth code).
+// grant-type-specific claims (e.g. auth_req_id for CIBA, authorized_permissions for auth code).
 func DecodeFlowAssertionClaims(assertion string) (FlowAssertionClaims, map[string]interface{}, error) {
 	claims := FlowAssertionClaims{}
 

@@ -52,7 +52,7 @@ func (s *IDPStoreTestSuite) SetupTest() {
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: ":memory:"},
 			},
-			Runtime: config.DataSource{
+			RuntimeTransient: config.DataSource{
 				Type:   "sqlite",
 				SQLite: config.SQLiteDataSource{Path: ":memory:"},
 			},
@@ -191,6 +191,86 @@ func (s *IDPStoreTestSuite) TestGetIdentityProviderList_EmptyList() {
 
 	s.NoError(err)
 	s.Len(list, 0)
+	s.mockDBProvider.AssertExpectations(s.T())
+	s.mockDBClient.AssertExpectations(s.T())
+}
+
+// TestGetIdentityProviderList_IDJagEnabled tests that the id_jag_enabled property value is
+// parsed onto the list item when present (true or false), and left nil when absent.
+func (s *IDPStoreTestSuite) TestGetIdentityProviderList_IDJagEnabled() {
+	results := []map[string]interface{}{
+		{
+			"id":          "idp-1",
+			"name":        "Trusted Issuer",
+			"description": "",
+			"type":        "OIDC",
+			"properties":  `{"id_jag_enabled":{"value":"true","isSecret":false}}`,
+		},
+		{
+			"id":          "idp-2",
+			"name":        "Disabled Issuer",
+			"description": "",
+			"type":        "OIDC",
+			"properties":  `{"id_jag_enabled":{"value":"false","isSecret":false}}`,
+		},
+		{
+			"id":          "idp-3",
+			"name":        "Plain Federation",
+			"description": "",
+			"type":        "OIDC",
+			"properties":  `{"client_id":{"value":"abc","isSecret":false}}`,
+		},
+	}
+
+	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", context.Background(), queryGetIdentityProviderList,
+		testDeploymentID).Return(results, nil)
+
+	list, err := s.store.GetIdentityProviderList(context.Background())
+
+	s.NoError(err)
+	s.Require().Len(list, 3)
+	s.Require().NotNil(list[0].IDJagEnabled)
+	s.True(*list[0].IDJagEnabled)
+	s.Require().NotNil(list[1].IDJagEnabled)
+	s.False(*list[1].IDJagEnabled)
+	s.Nil(list[2].IDJagEnabled)
+	s.mockDBProvider.AssertExpectations(s.T())
+	s.mockDBClient.AssertExpectations(s.T())
+}
+
+// TestGetIdentityProviderList_MalformedPropertiesDegradesGracefully tests that a row with
+// unparseable PROPERTIES only drops the idJagEnabled flag for that row (nil) rather than
+// failing the entire listing.
+func (s *IDPStoreTestSuite) TestGetIdentityProviderList_MalformedPropertiesDegradesGracefully() {
+	results := []map[string]interface{}{
+		{
+			"id":          "idp-1",
+			"name":        "Malformed Properties",
+			"description": "",
+			"type":        "OIDC",
+			"properties":  `{not-valid-json`,
+		},
+		{
+			"id":          "idp-2",
+			"name":        "Trusted Issuer",
+			"description": "",
+			"type":        "OIDC",
+			"properties":  `{"id_jag_enabled":{"value":"true","isSecret":false}}`,
+		},
+	}
+
+	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", context.Background(), queryGetIdentityProviderList,
+		testDeploymentID).Return(results, nil)
+
+	list, err := s.store.GetIdentityProviderList(context.Background())
+
+	s.NoError(err)
+	s.Require().Len(list, 2)
+	s.Nil(list[0].IDJagEnabled)
+	s.Require().NotNil(list[1].IDJagEnabled)
+	s.True(*list[1].IDJagEnabled)
 	s.mockDBProvider.AssertExpectations(s.T())
 	s.mockDBClient.AssertExpectations(s.T())
 }
