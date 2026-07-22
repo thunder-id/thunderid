@@ -29,7 +29,7 @@ func TestGetUser_Success(t *testing.T) {
 	mockUserService.On("GetUser", mock.Anything, "user-123", false).Return(internalUser, (*tidcommon.ServiceError)(nil))
 	mockEntityService.On(
 		"GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "employee", true, false, false,
-	).Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil))
+	).Return([]entitytype.AttributeInfo{{Attribute: "password"}}, (*tidcommon.ServiceError)(nil))
 
 	scimUser, err := service.GetUser(context.Background(), "user-123", testBaseURL)
 
@@ -62,7 +62,7 @@ func TestDeleteUser_Success(t *testing.T) {
 
 	mockUserService.On("DeleteUser", mock.Anything, "user-123").Return((*tidcommon.ServiceError)(nil))
 
-	err := service.DeleteUser(context.Background(), "user-123")
+	err := service.DeleteUser(context.Background(), "user-123", "")
 
 	require.Nil(t, err)
 }
@@ -75,7 +75,7 @@ func TestDeleteUser_NotFound(t *testing.T) {
 
 	mockUserService.On("DeleteUser", mock.Anything, "user-123").Return(&user.ErrorUserNotFound)
 
-	err := service.DeleteUser(context.Background(), "user-123")
+	err := service.DeleteUser(context.Background(), "user-123", "")
 
 	require.NotNil(t, err)
 	require.Equal(t, ErrorUserNotFound.Code, err.Code)
@@ -90,7 +90,7 @@ func TestDeleteUser_MutabilityViolation_MapsToSCIM(t *testing.T) {
 	mockUserService.On("DeleteUser", mock.Anything, "user-123").
 		Return(&user.ErrorCannotModifyDeclarativeResource)
 
-	err := service.DeleteUser(context.Background(), "user-123")
+	err := service.DeleteUser(context.Background(), "user-123", "")
 
 	require.NotNil(t, err)
 	require.Equal(t, ErrorMutabilityViolation.Code, err.Code)
@@ -436,7 +436,7 @@ func TestReplaceUser_Success(t *testing.T) {
 		"GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "employee", true, false, false,
 	).Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil))
 
-	scimUser, err := service.ReplaceUser(context.Background(), "user-123", payload, testBaseURL)
+	scimUser, err := service.ReplaceUser(context.Background(), "user-123", payload, "", testBaseURL)
 
 	require.Nil(t, err)
 	require.NotNil(t, scimUser)
@@ -459,7 +459,7 @@ func TestReplaceUser_EntityTypeNotFound_ReturnsUnknownUserType(t *testing.T) {
 	).Return(&entitytype.EntityTypeListResponse{TotalResults: 0, Types: []entitytype.EntityTypeListItem{}},
 		(*tidcommon.ServiceError)(nil))
 
-	scimUser, err := service.ReplaceUser(context.Background(), "user-123", payload, testBaseURL)
+	scimUser, err := service.ReplaceUser(context.Background(), "user-123", payload, "", testBaseURL)
 
 	require.NotNil(t, err)
 	require.Equal(t, ErrorUnknownUserType.Code, err.Code)
@@ -522,11 +522,218 @@ func TestReplaceUser_Error_Scenarios(t *testing.T) {
 					Return((*user.User)(nil), tc.mockError)
 			}
 
-			scimUser, err := service.ReplaceUser(context.Background(), tc.userID, payload, testBaseURL)
+			scimUser, err := service.ReplaceUser(context.Background(), tc.userID, payload, "", testBaseURL)
 
 			require.NotNil(t, err)
 			require.Equal(t, tc.expectedError.Code, err.Code)
 			require.Nil(t, scimUser)
 		})
 	}
+}
+
+func TestReplaceUser_IfMatch_Match(t *testing.T) {
+	mockUserService := usermock.NewUserServiceInterfaceMock(t)
+	mockEntityService := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	service := newSCIMUsersService(mockUserService, mockEntityService)
+
+	payload := &SCIMUserPayload{
+		UserTypeName:   "employee",
+		ExtensionURN:   "urn:thunderid:params:scim:schemas:employee:2.0:User",
+		ExtensionAttrs: map[string]json.RawMessage{"given_name": json.RawMessage(`"Charlie"`)},
+	}
+	existingUser := &user.User{ID: "user-123", Type: "employee", Attributes: []byte(`{"given_name":"Bob"}`)}
+	currentVersion := generateVersion(userVersionState(*existingUser))
+
+	mockEntityService.On(
+		"GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, 100, 0, false,
+	).Return(makeEntityTypeListPage(), (*tidcommon.ServiceError)(nil))
+	mockEntityService.On(
+		"GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "employee",
+	).Return(&entitytype.EntityType{Name: "employee", OUID: "ou-abc"}, (*tidcommon.ServiceError)(nil))
+	mockUserService.On("GetUser", mock.Anything, "user-123", false).
+		Return(existingUser, (*tidcommon.ServiceError)(nil))
+	mockUserService.On("UpdateUser", mock.Anything, "user-123", mock.Anything).
+		Return(&user.User{ID: "user-123", Type: "employee", Attributes: []byte(`{"given_name":"Charlie"}`)},
+			(*tidcommon.ServiceError)(nil))
+	mockEntityService.On(
+		"GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "employee", true, false, false,
+	).Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil))
+
+	scimUser, err := service.ReplaceUser(context.Background(), "user-123", payload, currentVersion, testBaseURL)
+
+	require.Nil(t, err)
+	require.NotNil(t, scimUser)
+}
+
+func TestReplaceUser_IfMatch_Mismatch(t *testing.T) {
+	mockUserService := usermock.NewUserServiceInterfaceMock(t)
+	mockEntityService := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	service := newSCIMUsersService(mockUserService, mockEntityService)
+
+	payload := &SCIMUserPayload{
+		UserTypeName:   "employee",
+		ExtensionURN:   "urn:thunderid:params:scim:schemas:employee:2.0:User",
+		ExtensionAttrs: map[string]json.RawMessage{},
+	}
+
+	mockEntityService.On(
+		"GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, 100, 0, false,
+	).Return(makeEntityTypeListPage(), (*tidcommon.ServiceError)(nil))
+	mockUserService.On("GetUser", mock.Anything, "user-123", false).
+		Return(&user.User{ID: "user-123", Type: "employee", Attributes: []byte(`{"given_name":"Bob"}`)},
+			(*tidcommon.ServiceError)(nil))
+
+	scimUser, err := service.ReplaceUser(context.Background(), "user-123", payload, `W/"stale"`, testBaseURL)
+
+	require.Nil(t, scimUser)
+	require.Equal(t, ErrorPreconditionFailed.Code, err.Code)
+	mockUserService.AssertNotCalled(t, "UpdateUser", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestDeleteUser_IfMatch_Match(t *testing.T) {
+	mockUserService := usermock.NewUserServiceInterfaceMock(t)
+	mockEntityService := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	service := newSCIMUsersService(mockUserService, mockEntityService)
+
+	existingUser := &user.User{ID: "user-123", Type: "employee", Attributes: []byte(`{"given_name":"Bob"}`)}
+	currentVersion := generateVersion(userVersionState(*existingUser))
+
+	mockUserService.On("GetUser", mock.Anything, "user-123", false).
+		Return(existingUser, (*tidcommon.ServiceError)(nil))
+	mockUserService.On("DeleteUser", mock.Anything, "user-123").Return((*tidcommon.ServiceError)(nil))
+
+	err := service.DeleteUser(context.Background(), "user-123", currentVersion)
+
+	require.Nil(t, err)
+}
+
+func TestDeleteUser_IfMatch_Mismatch(t *testing.T) {
+	mockUserService := usermock.NewUserServiceInterfaceMock(t)
+	mockEntityService := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	service := newSCIMUsersService(mockUserService, mockEntityService)
+
+	mockUserService.On("GetUser", mock.Anything, "user-123", false).
+		Return(&user.User{ID: "user-123", Type: "employee", Attributes: []byte(`{"given_name":"Bob"}`)},
+			(*tidcommon.ServiceError)(nil))
+
+	err := service.DeleteUser(context.Background(), "user-123", `W/"stale"`)
+
+	require.Equal(t, ErrorPreconditionFailed.Code, err.Code)
+	mockUserService.AssertNotCalled(t, "DeleteUser", mock.Anything, mock.Anything)
+}
+
+func TestReplaceUser_TypeMismatch(t *testing.T) {
+	mockUserService := usermock.NewUserServiceInterfaceMock(t)
+	mockEntityService := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	service := newSCIMUsersService(mockUserService, mockEntityService)
+
+	payload := &SCIMUserPayload{
+		UserTypeName: "employee",
+		ExtensionURN: "urn:thunderid:params:scim:schemas:employee:2.0:User",
+	}
+
+	mockEntityService.On(
+		"GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, 100, 0, false,
+	).Return(makeEntityTypeListPage(), (*tidcommon.ServiceError)(nil))
+
+	mockUserService.On("GetUser", mock.Anything, "user-123", false).
+		Return(&user.User{ID: "user-123", Type: "customer"}, (*tidcommon.ServiceError)(nil))
+
+	scimUser, err := service.ReplaceUser(context.Background(), "user-123", payload, "", testBaseURL)
+
+	require.Nil(t, scimUser)
+	require.Equal(t, ErrorImmutableUserType.Code, err.Code)
+}
+
+func TestReplaceUser_GetEntityTypeByNameError(t *testing.T) {
+	mockUserService := usermock.NewUserServiceInterfaceMock(t)
+	mockEntityService := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	service := newSCIMUsersService(mockUserService, mockEntityService)
+
+	payload := &SCIMUserPayload{
+		UserTypeName: "employee",
+		ExtensionURN: "urn:thunderid:params:scim:schemas:employee:2.0:User",
+	}
+
+	mockEntityService.On(
+		"GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, 100, 0, false,
+	).Return(makeEntityTypeListPage(), (*tidcommon.ServiceError)(nil))
+
+	mockUserService.On("GetUser", mock.Anything, "user-123", false).
+		Return(&user.User{ID: "user-123", Type: "employee"}, (*tidcommon.ServiceError)(nil))
+
+	mockEntityService.On(
+		"GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "employee",
+	).Return((*entitytype.EntityType)(nil), &user.ErrorEntityTypeNotFound)
+
+	scimUser, err := service.ReplaceUser(context.Background(), "user-123", payload, "", testBaseURL)
+
+	require.Nil(t, scimUser)
+	require.Equal(t, ErrorUnknownUserType.Code, err.Code)
+}
+
+func TestDeleteUser_IfMatch_GetUserError(t *testing.T) {
+	mockUserService := usermock.NewUserServiceInterfaceMock(t)
+	mockEntityService := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	service := newSCIMUsersService(mockUserService, mockEntityService)
+
+	mockUserService.On("GetUser", mock.Anything, "user-123", false).
+		Return((*user.User)(nil), &user.ErrorUserNotFound)
+
+	err := service.DeleteUser(context.Background(), "user-123", `W/"version1"`)
+
+	require.Equal(t, ErrorUserNotFound.Code, err.Code)
+}
+
+func TestCreateUser_MarshalExtensionAttrsError(t *testing.T) {
+	mockUserService := usermock.NewUserServiceInterfaceMock(t)
+	mockEntityService := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	service := newSCIMUsersService(mockUserService, mockEntityService)
+
+	payload := &SCIMUserPayload{
+		UserTypeName:   "employee",
+		ExtensionURN:   "urn:thunderid:params:scim:schemas:employee:2.0:User",
+		ExtensionAttrs: map[string]json.RawMessage{"empty": []byte("")},
+	}
+
+	mockEntityService.On(
+		"GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, 100, 0, false,
+	).Return(makeEntityTypeListPage(), (*tidcommon.ServiceError)(nil))
+
+	mockEntityService.On(
+		"GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "employee",
+	).Return(&entitytype.EntityType{Name: "employee", OUID: "ou-abc"}, (*tidcommon.ServiceError)(nil))
+
+	scimUser, err := service.CreateUser(context.Background(), payload, testBaseURL)
+
+	require.Nil(t, scimUser)
+	require.Equal(t, ErrorInvalidRequestBody.Code, err.Code)
+}
+
+func TestReplaceUser_MarshalExtensionAttrsError(t *testing.T) {
+	mockUserService := usermock.NewUserServiceInterfaceMock(t)
+	mockEntityService := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	service := newSCIMUsersService(mockUserService, mockEntityService)
+
+	payload := &SCIMUserPayload{
+		UserTypeName:   "employee",
+		ExtensionURN:   "urn:thunderid:params:scim:schemas:employee:2.0:User",
+		ExtensionAttrs: map[string]json.RawMessage{"empty": []byte("")},
+	}
+
+	mockEntityService.On(
+		"GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, 100, 0, false,
+	).Return(makeEntityTypeListPage(), (*tidcommon.ServiceError)(nil))
+
+	mockUserService.On("GetUser", mock.Anything, "user-123", false).
+		Return(&user.User{ID: "user-123", Type: "employee"}, (*tidcommon.ServiceError)(nil))
+
+	mockEntityService.On(
+		"GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "employee",
+	).Return(&entitytype.EntityType{Name: "employee", OUID: "ou-abc"}, (*tidcommon.ServiceError)(nil))
+
+	scimUser, err := service.ReplaceUser(context.Background(), "user-123", payload, "", testBaseURL)
+
+	require.Nil(t, scimUser)
+	require.Equal(t, ErrorInvalidRequestBody.Code, err.Code)
 }

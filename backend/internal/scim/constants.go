@@ -46,6 +46,12 @@ const (
 
 	// ThunderIDURNSuffix is the custom URN suffix for ThunderID SCIM user schemas.
 	ThunderIDURNSuffix = ":2.0:User"
+
+	// SCIMCoreGroupSchemaURN is the SCIM core Group schema URN.
+	SCIMCoreGroupSchemaURN = "urn:ietf:params:scim:schemas:core:2.0:Group"
+
+	// SCIMPatchOpSchemaURN is the SCIM PatchOp schema URN.
+	SCIMPatchOpSchemaURN = "urn:ietf:params:scim:api:messages:2.0:PatchOp"
 )
 
 // SCIMAttrType represents SCIM attribute data types (RFC 7643 §2.3).
@@ -93,9 +99,15 @@ const (
 	scimResourceTypeUserName     = "User"
 	scimResourceTypeUserEndpoint = "/Users"
 	scimResourceTypeUserDesc     = "User Account"
+
+	scimResourceTypeGroupID       = "Group"
+	scimResourceTypeGroupName     = "Group"
+	scimResourceTypeGroupEndpoint = "/Groups"
+	scimResourceTypeGroupDesc     = "Group"
 )
 
 // SCIM Error types
 const (
 	scimErrorTypeInvalidValue = "invalidValue"
+	scimErrorTypeInvalidPath  = "invalidPath"
 )

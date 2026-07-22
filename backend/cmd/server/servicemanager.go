@@ -192,14 +192,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize UserService")
 	exporters = append(exporters, userExporter)
 
-	// Initialize SCIM service.
-	scim.Initialize(
-		mux,
-		userService,
-		entityTypeService,
-		scimconfig.FromServerRuntime(),
-	)
-
 	groupService, ouGroupResolver, groupExporter, err := group.Initialize(
 		mux, dbprovider.GetDBProvider(), ouService, entityService, entityTypeService, ouAuthzService,
 	)
@@ -209,6 +201,15 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	resourceService, resourceExporter, err := resource.Initialize(mux, ouService)
 	fatalOnError(ctx, logger, err, "Failed to initialize Resource Service")
 	exporters = append(exporters, resourceExporter)
+
+	// Initialize SCIM service.
+	scim.Initialize(
+		mux,
+		userService,
+		entityTypeService,
+		groupService,
+		scimconfig.FromServerRuntime(),
+	)
 
 	roleService, roleAssignmentService, ouRoleResolver, roleExporter, err := role.Initialize(
 		mux, entityService, groupService, ouService, resourceService, entityTypeService,

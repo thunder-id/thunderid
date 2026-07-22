@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/group"
 	scimconfig "github.com/thunder-id/thunderid/internal/scim/config"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/user"
@@ -37,6 +38,7 @@ func Initialize(
 	mux *http.ServeMux,
 	userService user.UserServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	groupService group.GroupServiceInterface,
 	cfg scimconfig.SCIMConfig,
 ) {
 	svc := newSCIMService(userService, entityTypeService, cfg)
@@ -45,12 +47,14 @@ func Initialize(
 	uSvc := newSCIMUsersService(userService, entityTypeService)
 	uh := newSCIMUsersHandler(uSvc, cfg.PublicURL)
 
-	registerRoutes(mux, h, uh)
+	gSvc := newSCIMGroupsService(groupService)
+	gh := newSCIMGroupsHandler(gSvc, cfg.PublicURL)
+	registerRoutes(mux, h, uh, gh)
 }
 
 // registerRoutes registers all /scim/v2 routes using the same
 // middleware.WithCORS pattern as all other ThunderID modules.
-func registerRoutes(mux *http.ServeMux, h *scimHandler, uh *scimUsersHandler) {
+func registerRoutes(mux *http.ServeMux, h *scimHandler, uh *scimUsersHandler, gh *scimGroupsHandler) {
 	optsGet := middleware.CORSOptions{
 		AllowedMethods:   []string{"GET"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
@@ -58,8 +62,8 @@ func registerRoutes(mux *http.ServeMux, h *scimHandler, uh *scimUsersHandler) {
 		MaxAge:           600,
 	}
 	optsCRUD := middleware.CORSOptions{
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE"},
-		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "PATCH"},
+		AllowedHeaders:   append(append([]string{}, middleware.DefaultAllowedHeaders...), "If-Match"),
 		AllowCredentials: true,
 		MaxAge:           600,
 	}
@@ -157,13 +161,48 @@ func registerRoutes(mux *http.ServeMux, h *scimHandler, uh *scimUsersHandler) {
 		optsCRUD,
 	))
 
+	mux.HandleFunc(middleware.WithCORS(
+		"GET "+SCIMBasePath+"/Groups",
+		gh.HandleGroupsListRequest,
+		optsCRUD,
+	))
+	mux.HandleFunc(middleware.WithCORS(
+		"POST "+SCIMBasePath+"/Groups",
+		gh.HandleGroupsCreateRequest,
+		optsCRUD,
+	))
+	mux.HandleFunc(middleware.WithCORS(
+		"GET "+SCIMBasePath+"/Groups/{id}",
+		gh.HandleGroupsGetRequest,
+		optsCRUD,
+	))
+	mux.HandleFunc(middleware.WithCORS(
+		"PUT "+SCIMBasePath+"/Groups/{id}",
+		gh.HandleGroupsReplaceRequest,
+		optsCRUD,
+	))
+	mux.HandleFunc(middleware.WithCORS(
+		"PATCH "+SCIMBasePath+"/Groups/{id}",
+		gh.HandleGroupsPatchRequest,
+		optsCRUD,
+	))
+	mux.HandleFunc(middleware.WithCORS(
+		"DELETE "+SCIMBasePath+"/Groups/{id}",
+		gh.HandleGroupsDeleteRequest,
+		optsCRUD,
+	))
+	mux.HandleFunc(middleware.WithCORS(
+		"OPTIONS "+SCIMBasePath+"/Groups",
+		func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
+		optsCRUD,
+	))
+	mux.HandleFunc(middleware.WithCORS(
+		"OPTIONS "+SCIMBasePath+"/Groups/{id}",
+		func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
+		optsCRUD,
+	))
 	// Unimplemented endpoints
 	for _, pattern := range []string{
-		"GET " + SCIMBasePath + "/Groups",
-		"GET " + SCIMBasePath + "/Groups/{id}",
-		"POST " + SCIMBasePath + "/Groups",
-		"PUT " + SCIMBasePath + "/Groups",
-		"DELETE " + SCIMBasePath + "/Groups",
 		"POST " + SCIMBasePath + "/Bulk",
 		"POST " + SCIMBasePath + "/.search",
 		"PATCH " + SCIMBasePath + "/Users/{id}",

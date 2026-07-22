@@ -82,6 +82,7 @@ func (h *scimUsersHandler) HandleUsersCreateRequest(w http.ResponseWriter, r *ht
 	}
 
 	w.Header().Set("Location", created.Meta.Location)
+	w.Header().Set("ETag", created.Meta.Version)
 	writeSCIMSuccessResponse(ctx, w, http.StatusCreated, created)
 	logger.Debug(ctx, "SCIM User created", log.String("userID", created.ID))
 }
@@ -101,7 +102,7 @@ func (h *scimUsersHandler) HandleUsersGetRequest(w http.ResponseWriter, r *http.
 		h.handleSCIMError(w, r, svcErr)
 		return
 	}
-
+	w.Header().Set("ETag", scimUser.Meta.Version)
 	writeSCIMSuccessResponse(ctx, w, http.StatusOK, scimUser)
 	logger.Debug(ctx, "SCIM User GET sent", log.String("userID", userID))
 }
@@ -132,20 +133,18 @@ func (h *scimUsersHandler) HandleUsersReplaceRequest(w http.ResponseWriter, r *h
 		return
 	}
 
-	replaced, svcErr := h.svc.ReplaceUser(ctx, userID, payload, h.baseURL)
+	replaced, svcErr := h.svc.ReplaceUser(ctx, userID, payload, r.Header.Get("If-Match"), h.baseURL)
 	if svcErr != nil {
 		h.handleSCIMError(w, r, svcErr)
 		return
 	}
-
+	w.Header().Set("ETag", replaced.Meta.Version)
 	writeSCIMSuccessResponse(ctx, w, http.StatusOK, replaced)
 	logger.Debug(ctx, "SCIM User replaced", log.String("userID", userID))
 }
 
 // HandleUsersDeleteRequest handles DELETE /scim/v2/Users/{id}
-func (h *scimUsersHandler) HandleUsersDeleteRequest(
-	w http.ResponseWriter, r *http.Request,
-) {
+func (h *scimUsersHandler) HandleUsersDeleteRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
@@ -154,7 +153,7 @@ func (h *scimUsersHandler) HandleUsersDeleteRequest(
 		h.handleSCIMError(w, r, &ErrorUserNotFound)
 		return
 	}
-	svcErr := h.svc.DeleteUser(ctx, userID)
+	svcErr := h.svc.DeleteUser(ctx, userID, r.Header.Get("If-Match"))
 	if svcErr != nil {
 		h.handleSCIMError(w, r, svcErr)
 		return

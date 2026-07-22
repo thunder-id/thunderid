@@ -2,8 +2,6 @@ package scim
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -58,7 +56,7 @@ func buildSCIMUserResource(u user.User, extensionURN, baseURL string, credKeys m
 		Meta: SCIMMeta{
 			ResourceType: "User",
 			Location:     location,
-			Version:      generateVersion(u),
+			Version:      generateVersion(userVersionState(u)),
 		},
 	}
 
@@ -84,16 +82,10 @@ func buildSCIMUserListResponse(users []SCIMUser, totalResults, startIndex, items
 	}
 }
 
-func generateVersion(u user.User) string {
-	state := struct {
+func userVersionState(u user.User) any {
+	return struct {
 		Attributes json.RawMessage
 	}{
 		Attributes: u.Attributes,
 	}
-	b, err := json.Marshal(state)
-	if err != nil {
-		return `W/"0000000000000000"`
-	}
-	h := sha256.Sum256(b)
-	return fmt.Sprintf("W/%q", hex.EncodeToString(h[:8]))
 }
