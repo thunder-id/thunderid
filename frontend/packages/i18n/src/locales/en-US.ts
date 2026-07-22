@@ -754,6 +754,11 @@ const translations = {
     'updateCredentials.hint': 'Fill in only the credentials you want to update. Empty fields will be skipped.',
     'updateCredentials.success': 'Credentials updated successfully.',
     'updateCredentials.error': 'Failed to update credentials. Please try again.',
+
+    // Backend error code translations (per user service error envelope).
+    'errors.USR-1014': 'A user with the same unique attribute value already exists.',
+    'errors.USR-1019':
+      "Some attributes no longer match this user type's schema. Review the user type or the user's attributes.",
   },
 
   // ============================================================================
@@ -831,6 +836,12 @@ const translations = {
     'edit.saveError': 'Failed to save user type',
     'edit.loadError': 'Failed to load user type information',
     'edit.notFound': 'User type not found',
+    'schemaChangeWarning.title': 'Confirm schema changes',
+    'schemaChangeWarning.description':
+      'Existing users may require updates if their attributes no longer match the revised schema.',
+    'schemaChangeWarning.affected': 'Affected attributes:',
+    'schemaChangeWarning.areYouSure': 'Do you want to continue?',
+    'schemaChangeWarning.confirm': 'Continue',
     'edit.general.organizationUnit.title': 'Organization Unit',
     'edit.general.organizationUnit.description': 'The organization unit this user type belongs to.',
     'edit.general.selfRegistration.title': 'Self Registration',
@@ -947,6 +958,12 @@ const translations = {
     'edit.saveError': 'Failed to save agent type',
     'edit.loadError': 'Failed to load agent type information',
     'edit.notFound': 'Agent type not found',
+    'schemaChangeWarning.title': 'Confirm schema changes',
+    'schemaChangeWarning.description':
+      'Existing agents may require updates if their attributes no longer match the revised schema.',
+    'schemaChangeWarning.affected': 'Affected attributes:',
+    'schemaChangeWarning.areYouSure': 'Do you want to continue?',
+    'schemaChangeWarning.confirm': 'Continue',
     'edit.general.organizationUnit.title': 'Organization Unit',
     'edit.general.organizationUnit.description': 'The organization unit this agent type belongs to.',
     'edit.general.displayAttribute.title': 'Display Attribute',

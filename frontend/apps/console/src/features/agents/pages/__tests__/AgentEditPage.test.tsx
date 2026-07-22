@@ -23,12 +23,27 @@ import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import AgentEditPage from '../AgentEditPage';
 
-const {mockNavigate, mockRefetch, mockUseGetAgent, mockUseUpdateAgent, mockMutateAsync} = vi.hoisted(() => ({
+const {
+  mockNavigate,
+  mockRefetch,
+  mockUseGetAgent,
+  mockUseUpdateAgent,
+  mockMutateAsync,
+  mockUseGetAgentTypes,
+  mockUseGetAgentType,
+} = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockRefetch: vi.fn(),
   mockUseGetAgent: vi.fn(),
   mockUseUpdateAgent: vi.fn(),
   mockMutateAsync: vi.fn(),
+  mockUseGetAgentTypes: vi.fn(),
+  mockUseGetAgentType: vi.fn(),
+}));
+
+vi.mock('@thunderid/configure-agent-types', () => ({
+  useGetAgentTypes: () => mockUseGetAgentTypes(),
+  useGetAgentType: () => mockUseGetAgentType(),
 }));
 
 vi.mock('react-router', async () => {
@@ -152,6 +167,16 @@ describe('AgentEditPage', () => {
     });
     mockMutateAsync.mockResolvedValue(undefined);
     mockRefetch.mockResolvedValue({});
+    mockUseGetAgentTypes.mockReturnValue({
+      data: {types: [{id: 'default-type', name: 'default'}]},
+      isLoading: false,
+      error: null,
+    });
+    mockUseGetAgentType.mockReturnValue({
+      data: {id: 'default-type', name: 'default', schema: {}},
+      isLoading: false,
+      error: null,
+    });
   });
 
   describe('Loading and Error States', () => {
@@ -163,6 +188,14 @@ describe('AgentEditPage', () => {
         isError: false,
         refetch: mockRefetch,
       });
+
+      render(<AgentEditPage />);
+
+      expect(screen.getByRole('progressbar')).toBeInTheDocument();
+    });
+
+    it('renders a progressbar while the type schema is still resolving', () => {
+      mockUseGetAgentType.mockReturnValue({data: undefined, isLoading: true, error: null});
 
       render(<AgentEditPage />);
 
@@ -332,6 +365,53 @@ describe('AgentEditPage', () => {
 
     it('includes staged attribute edits when the page-level Save button is clicked', async () => {
       const user = userEvent.setup();
+      render(<AgentEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      await user.click(screen.getByRole('button', {name: 'Save'}));
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({attributes: {department: 'sales'}}) as Record<string, unknown>,
+          }),
+        );
+      });
+    });
+
+    it('drops an optional attribute whose value no longer matches the schema', async () => {
+      const user = userEvent.setup();
+      // department is optional and typed number, but the staged value is the string 'sales'.
+      mockUseGetAgentType.mockReturnValue({
+        data: {id: 'default-type', name: 'default', schema: {department: {type: 'number'}}},
+        isLoading: false,
+        error: null,
+      });
+
+      render(<AgentEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      await user.click(screen.getByRole('button', {name: 'Save'}));
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({attributes: {}}) as Record<string, unknown>,
+          }),
+        );
+      });
+    });
+
+    it('keeps a required attribute even when its value no longer matches the schema', async () => {
+      const user = userEvent.setup();
+      mockUseGetAgentType.mockReturnValue({
+        data: {id: 'default-type', name: 'default', schema: {department: {type: 'number', required: true}}},
+        isLoading: false,
+        error: null,
+      });
+
       render(<AgentEditPage />);
 
       await user.click(screen.getByRole('tab', {name: 'Attributes'}));

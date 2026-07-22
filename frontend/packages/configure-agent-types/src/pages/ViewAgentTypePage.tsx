@@ -17,9 +17,21 @@
  */
 
 import {PageLoadingAnimation, UnsavedChangesBar} from '@thunderid/components';
+import {getBreakingSchemaChanges} from '@thunderid/configure-user-types';
 import {useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
-import {Stack, Typography, Button, Alert, PageContent, PageTitle} from '@wso2/oxygen-ui';
+import {
+  Stack,
+  Typography,
+  Button,
+  Alert,
+  PageContent,
+  PageTitle,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+} from '@wso2/oxygen-ui';
 import {ArrowLeft} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useState, useMemo, useCallback} from 'react';
@@ -121,6 +133,10 @@ export default function ViewAgentTypePage(): JSX.Element {
   // Edited schema properties (null = no changes, non-null = user edited)
   const [editedProperties, setEditedProperties] = useState<SchemaPropertyInput[] | null>(null);
 
+  // Schema-change warning confirmation
+  const [showSchemaWarning, setShowSchemaWarning] = useState(false);
+  const [breakingAttributes, setBreakingAttributes] = useState<string[]>([]);
+
   // Base properties from server data (useMemo so they're available synchronously)
   const baseProperties = useMemo(() => (agentType ? convertSchemaToProperties(agentType.schema) : []), [agentType]);
 
@@ -146,23 +162,11 @@ export default function ViewAgentTypePage(): JSX.Element {
     updateAgentTypeMutation.reset();
   }, [updateAgentTypeMutation]);
 
-  const handleSave = useCallback(async (): Promise<void> => {
+  const performSave = useCallback(async (): Promise<void> => {
     if (!id || !agentType) return;
 
     const name = agentType.name.trim();
     const ouId = agentType.ouId.trim();
-
-    // Check for duplicate property names
-    const trimmedNames = effectiveProperties.filter((p) => p.name.trim()).map((p) => p.name.trim());
-    const duplicates = trimmedNames.filter((n, i) => trimmedNames.indexOf(n) !== i);
-    if (duplicates.length > 0) {
-      showToast(
-        t('agentTypes:validationErrors.duplicateProperties', {duplicates: [...new Set(duplicates)].join(', ')}),
-        'error',
-      );
-      return;
-    }
-
     const schema = convertPropertiesToSchema(effectiveProperties);
 
     try {
@@ -188,6 +192,40 @@ export default function ViewAgentTypePage(): JSX.Element {
       showToast(message, 'error');
     }
   }, [id, agentType, effectiveProperties, updateAgentTypeMutation, logger, showToast, t]);
+
+  const handleSave = useCallback(async (): Promise<void> => {
+    if (!id || !agentType) return;
+
+    // Check for duplicate property names
+    const trimmedNames = effectiveProperties.filter((p) => p.name.trim()).map((p) => p.name.trim());
+    const duplicates = trimmedNames.filter((n, i) => trimmedNames.indexOf(n) !== i);
+    if (duplicates.length > 0) {
+      showToast(
+        t('agentTypes:validationErrors.duplicateProperties', {duplicates: [...new Set(duplicates)].join(', ')}),
+        'error',
+      );
+      return;
+    }
+
+    // Warn only when a schema change could strand existing agents (removed/newly-required/tightened attribute).
+    const breaking = getBreakingSchemaChanges(
+      convertPropertiesToSchema(baseProperties),
+      convertPropertiesToSchema(effectiveProperties),
+    );
+
+    if (breaking.length > 0) {
+      setBreakingAttributes(breaking);
+      setShowSchemaWarning(true);
+      return;
+    }
+
+    await performSave();
+  }, [id, agentType, effectiveProperties, baseProperties, showToast, t, performSave]);
+
+  const handleConfirmSchemaChange = useCallback((): void => {
+    setShowSchemaWarning(false);
+    void performSave();
+  }, [performSave]);
 
   // Loading state
   if (isLoading) {
@@ -253,6 +291,38 @@ export default function ViewAgentTypePage(): JSX.Element {
           agentTypeName={effectiveName}
         />
       </Stack>
+
+      {/* Schema-change warning */}
+      <Dialog open={showSchemaWarning} onClose={() => setShowSchemaWarning(false)}>
+        <DialogTitle>{t('agentTypes:schemaChangeWarning.title', 'Confirm schema changes')}</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning">
+            {t(
+              'agentTypes:schemaChangeWarning.description',
+              'Existing agents may require updates if their attributes no longer match the revised schema.',
+            )}
+            <Typography variant="body2" sx={{mt: 1}}>
+              {t('agentTypes:schemaChangeWarning.affected', 'Affected attributes:')}
+            </Typography>
+            <Stack component="ul" sx={{mt: 0.5, mb: 0, pl: 2.5}}>
+              {breakingAttributes.map((name) => (
+                <Typography component="li" variant="body2" key={name}>
+                  {name}
+                </Typography>
+              ))}
+            </Stack>
+            <Typography variant="body2" sx={{mt: 1}}>
+              {t('agentTypes:schemaChangeWarning.areYouSure', 'Do you want to continue?')}
+            </Typography>
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowSchemaWarning(false)}>{t('common:actions.cancel', 'Cancel')}</Button>
+          <Button color="warning" variant="contained" onClick={handleConfirmSchemaChange}>
+            {t('agentTypes:schemaChangeWarning.confirm', 'Continue')}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Unsaved Changes Bar */}
       {hasChanges && (

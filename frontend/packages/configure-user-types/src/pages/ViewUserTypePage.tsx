@@ -31,6 +31,10 @@ import {
   Tab,
   PageContent,
   PageTitle,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
 import type {ReactNode, SyntheticEvent, JSX} from 'react';
@@ -44,6 +48,7 @@ import EditSchemaSettings from '../components/edit-user-type/schema-settings/Edi
 import UserTypeDeleteDialog from '../components/edit-user-type/UserTypeDeleteDialog';
 import useUserTypeRoutes from '../hooks/useUserTypeRoutes';
 import type {PropertyDefinition, UserTypeDefinition, PropertyType, SchemaPropertyInput} from '../types/user-types';
+import getBreakingSchemaChanges from '../utils/getBreakingSchemaChanges';
 
 interface TabPanelProps {
   children?: ReactNode;
@@ -163,6 +168,10 @@ export default function ViewUserTypePage(): JSX.Element {
   // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
+  // Schema-change warning confirmation
+  const [showSchemaWarning, setShowSchemaWarning] = useState(false);
+  const [breakingAttributes, setBreakingAttributes] = useState<string[]>([]);
+
   // Base properties from server data (useMemo so they're available synchronously)
   const baseProperties = useMemo(() => (userType ? convertSchemaToProperties(userType.schema) : []), [userType]);
 
@@ -225,30 +234,13 @@ export default function ViewUserTypePage(): JSX.Element {
     updateUserTypeMutation.reset();
   }, [updateUserTypeMutation]);
 
-  const handleSave = useCallback(async (): Promise<void> => {
+  const performSave = useCallback(async (): Promise<void> => {
     if (!id || !userType) return;
 
     const name = (editedUserType.name ?? userType.name).trim();
     const ouId = (editedUserType.ouId ?? userType.ouId).trim();
     const allowSelfRegistration = editedUserType.allowSelfRegistration ?? userType.allowSelfRegistration;
     const displayAttribute = editedUserType.displayAttribute ?? userType.systemAttributes?.display ?? '';
-
-    if (!ouId) {
-      showToast(t('userTypes:validationErrors.ouIdRequired'), 'error');
-      return;
-    }
-
-    // Check for duplicate property names
-    const trimmedNames = effectiveProperties.filter((p) => p.name.trim()).map((p) => p.name.trim());
-    const duplicates = trimmedNames.filter((n, i) => trimmedNames.indexOf(n) !== i);
-    if (duplicates.length > 0) {
-      showToast(
-        t('userTypes:validationErrors.duplicateProperties', {duplicates: [...new Set(duplicates)].join(', ')}),
-        'error',
-      );
-      return;
-    }
-
     const schema = convertPropertiesToSchema(effectiveProperties);
 
     try {
@@ -270,6 +262,45 @@ export default function ViewUserTypePage(): JSX.Element {
       showToast(message, 'error');
     }
   }, [id, userType, editedUserType, effectiveProperties, updateUserTypeMutation, logger, showToast, t]);
+
+  const handleSave = useCallback(async (): Promise<void> => {
+    if (!id || !userType) return;
+
+    const ouId = (editedUserType.ouId ?? userType.ouId).trim();
+    if (!ouId) {
+      showToast(t('userTypes:validationErrors.ouIdRequired'), 'error');
+      return;
+    }
+
+    // Check for duplicate property names
+    const trimmedNames = effectiveProperties.filter((p) => p.name.trim()).map((p) => p.name.trim());
+    const duplicates = trimmedNames.filter((n, i) => trimmedNames.indexOf(n) !== i);
+    if (duplicates.length > 0) {
+      showToast(
+        t('userTypes:validationErrors.duplicateProperties', {duplicates: [...new Set(duplicates)].join(', ')}),
+        'error',
+      );
+      return;
+    }
+
+    // Warn only when a schema change could strand existing users (removed/newly-required/tightened attribute).
+    const breaking = getBreakingSchemaChanges(
+      convertPropertiesToSchema(baseProperties),
+      convertPropertiesToSchema(effectiveProperties),
+    );
+    if (breaking.length > 0) {
+      setBreakingAttributes(breaking);
+      setShowSchemaWarning(true);
+      return;
+    }
+
+    await performSave();
+  }, [id, userType, editedUserType, effectiveProperties, baseProperties, showToast, t, performSave]);
+
+  const handleConfirmSchemaChange = useCallback((): void => {
+    setShowSchemaWarning(false);
+    void performSave();
+  }, [performSave]);
 
   const handleDeleteSuccess = (): void => {
     (async (): Promise<void> => {
@@ -434,6 +465,38 @@ export default function ViewUserTypePage(): JSX.Element {
         onClose={() => setDeleteDialogOpen(false)}
         onSuccess={handleDeleteSuccess}
       />
+
+      {/* Schema-change warning */}
+      <Dialog open={showSchemaWarning} onClose={() => setShowSchemaWarning(false)}>
+        <DialogTitle>{t('userTypes:schemaChangeWarning.title', 'Confirm schema changes')}</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning">
+            {t(
+              'userTypes:schemaChangeWarning.description',
+              'Existing users may require updates if their attributes no longer match the revised schema.',
+            )}
+            <Typography variant="body2" sx={{mt: 1}}>
+              {t('userTypes:schemaChangeWarning.affected', 'Affected attributes:')}
+            </Typography>
+            <Stack component="ul" sx={{mt: 0.5, mb: 0, pl: 2.5}}>
+              {breakingAttributes.map((name) => (
+                <Typography component="li" variant="body2" key={name}>
+                  {name}
+                </Typography>
+              ))}
+            </Stack>
+            <Typography variant="body2" sx={{mt: 1}}>
+              {t('userTypes:schemaChangeWarning.areYouSure', 'Do you want to continue?')}
+            </Typography>
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowSchemaWarning(false)}>{t('common:actions.cancel', 'Cancel')}</Button>
+          <Button color="warning" variant="contained" onClick={handleConfirmSchemaChange}>
+            {t('userTypes:schemaChangeWarning.confirm', 'Continue')}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Unsaved Changes Bar */}
       {hasChanges && (

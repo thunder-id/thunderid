@@ -27,10 +27,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/hashmock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 )
 
 type ServiceTestSuite struct {
@@ -147,6 +149,109 @@ func (s *ServiceTestSuite) TestUpdateEntity_Success() {
 	got, err := s.svc.UpdateEntity(s.ctx, e.ID, e)
 	s.NoError(err)
 	s.Equal(e.ID, got.ID)
+}
+
+func (s *ServiceTestSuite) newSvcWithEntityType() (*entityService, *entitytypemock.EntityTypeServiceInterfaceMock) {
+	ets := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+	svc := newEntityService(s.store, s.hashService, ets, nil, transaction.NewNoOpTransactioner())
+	return svc.(*entityService), ets
+}
+
+func (s *ServiceTestSuite) TestStripUndeclaredAttributes_DropsUndeclared() {
+	svc, ets := s.newSvcWithEntityType()
+	ets.On("GetAttributes", mock.Anything, mock.Anything, "employee", true, true, false).
+		Return([]entitytype.AttributeInfo{{Attribute: "username"}, {Attribute: "email"}}, nil)
+
+	out, err := svc.stripUndeclaredAttributes(s.ctx, providers.EntityCategoryUser, "employee",
+		json.RawMessage(`{"username":"a","email":"b","stale":"c"}`))
+	s.NoError(err)
+	var m map[string]interface{}
+	s.NoError(json.Unmarshal(out, &m))
+	s.Equal(map[string]interface{}{"username": "a", "email": "b"}, m)
+}
+
+func (s *ServiceTestSuite) TestStripUndeclaredAttributes_PreservesLargeIntWhileDropping() {
+	svc, ets := s.newSvcWithEntityType()
+	ets.On("GetAttributes", mock.Anything, mock.Anything, "employee", true, true, false).
+		Return([]entitytype.AttributeInfo{{Attribute: "bigId"}}, nil)
+
+	// bigId is above 2^53; decoding through float64 would round it to 9007254740992.
+	out, err := svc.stripUndeclaredAttributes(s.ctx, providers.EntityCategoryUser, "employee",
+		json.RawMessage(`{"bigId":9007199254740993,"stale":"x"}`))
+	s.NoError(err)
+	s.JSONEq(`{"bigId":9007199254740993}`, string(out))
+	s.Contains(string(out), "9007199254740993")
+}
+
+func (s *ServiceTestSuite) TestStripUndeclaredAttributes_NoDeclaredAttrs_NoOp() {
+	svc, ets := s.newSvcWithEntityType()
+	ets.On("GetAttributes", mock.Anything, mock.Anything, "employee", true, true, false).
+		Return([]entitytype.AttributeInfo{}, nil)
+
+	in := json.RawMessage(`{"anything":"x"}`)
+	out, err := svc.stripUndeclaredAttributes(s.ctx, providers.EntityCategoryUser, "employee", in)
+	s.NoError(err)
+	s.Equal(in, out)
+}
+
+func (s *ServiceTestSuite) TestStripUndeclaredAttributes_AllDeclared_NoOp() {
+	svc, ets := s.newSvcWithEntityType()
+	ets.On("GetAttributes", mock.Anything, mock.Anything, "employee", true, true, false).
+		Return([]entitytype.AttributeInfo{{Attribute: "username"}}, nil)
+
+	in := json.RawMessage(`{"username":"x"}`)
+	out, err := svc.stripUndeclaredAttributes(s.ctx, providers.EntityCategoryUser, "employee", in)
+	s.NoError(err)
+	s.Equal(in, out)
+}
+
+func (s *ServiceTestSuite) TestUpdateAttributes_DropsUndeclaredBeforeValidateAndStore() {
+	svc, ets := s.newSvcWithEntityType()
+	e := testEntity("uad1")
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	// strip: all declared attributes (username only).
+	ets.On("GetAttributes", mock.Anything, mock.Anything, e.Type, true, true, false).
+		Return([]entitytype.AttributeInfo{{Attribute: "username"}}, nil)
+	// credential extraction: no credential attributes.
+	ets.On("GetAttributes", mock.Anything, mock.Anything, e.Type, true, false, false).
+		Return([]entitytype.AttributeInfo{}, nil)
+	// Validation must receive the already-stripped payload, proving strip runs before validate.
+	cleaned := json.RawMessage(`{"username":"new"}`)
+	ets.On("ValidateEntity", mock.Anything, mock.Anything, e.Type, cleaned, true).
+		Return(true, nil)
+	ets.On("ValidateEntityUniqueness", mock.Anything, mock.Anything, e.Type, cleaned, mock.Anything).
+		Return(true, nil)
+	// The stale key is dropped before the write reaches the store.
+	s.store.On("UpdateAttributes", mock.Anything, e.ID, cleaned).Return(nil)
+
+	err := svc.UpdateAttributes(s.ctx, e.ID, json.RawMessage(`{"username":"new","stale":"x"}`))
+	s.NoError(err)
+}
+
+func (s *ServiceTestSuite) TestUpdateEntity_DropsUndeclaredBeforeValidateAndStore() {
+	svc, ets := s.newSvcWithEntityType()
+	e := testEntity("ue-strip")
+	e.Attributes = json.RawMessage(`{"username":"new","stale":"x"}`)
+	// strip: only username is declared.
+	ets.On("GetAttributes", mock.Anything, mock.Anything, e.Type, true, true, false).
+		Return([]entitytype.AttributeInfo{{Attribute: "username"}}, nil)
+	// credential extraction: no credential attributes.
+	ets.On("GetAttributes", mock.Anything, mock.Anything, e.Type, true, false, false).
+		Return([]entitytype.AttributeInfo{}, nil)
+	// Validation must receive the already-stripped payload, proving strip runs before validate.
+	cleaned := json.RawMessage(`{"username":"new"}`)
+	ets.On("ValidateEntity", mock.Anything, mock.Anything, e.Type, cleaned, true).
+		Return(true, nil)
+	ets.On("ValidateEntityUniqueness", mock.Anything, mock.Anything, e.Type, cleaned, mock.Anything).
+		Return(true, nil)
+	// The stale key is dropped before the full-object update reaches the store.
+	s.store.On("UpdateEntity", mock.Anything, mock.MatchedBy(func(ent *providers.Entity) bool {
+		return string(ent.Attributes) == string(cleaned)
+	})).Return(nil)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+
+	_, err := svc.UpdateEntity(s.ctx, e.ID, e)
+	s.NoError(err)
 }
 
 func (s *ServiceTestSuite) TestDeleteEntity_Delegates() {
