@@ -3,6 +3,7 @@ package scim
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -21,9 +22,9 @@ type SCIMUsersServiceInterface interface {
 	) (*SCIMUser, *tidcommon.ServiceError)
 	GetUser(ctx context.Context, userID, baseURL string) (*SCIMUser, *tidcommon.ServiceError)
 	ReplaceUser(
-		ctx context.Context, userID string, payload *SCIMUserPayload, baseURL string,
+		ctx context.Context, userID string, payload *SCIMUserPayload, ifMatch, baseURL string,
 	) (*SCIMUser, *tidcommon.ServiceError)
-	DeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError
+	DeleteUser(ctx context.Context, userID string, ifMatch string) *tidcommon.ServiceError
 }
 
 // scimUsersService implements SCIMUsersServiceInterface.
@@ -138,7 +139,7 @@ func (s *scimUsersService) CreateUser(
 
 // ReplaceUser performs a full PUT replace on the user.
 func (s *scimUsersService) ReplaceUser(
-	ctx context.Context, userID string, payload *SCIMUserPayload, baseURL string,
+	ctx context.Context, userID string, payload *SCIMUserPayload, ifMatch, baseURL string,
 ) (*SCIMUser, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
@@ -156,6 +157,13 @@ func (s *scimUsersService) ReplaceUser(
 			log.String("userID", userID), log.Any("error", svcErr))
 		return nil, mapUserServiceErrorToSCIM(svcErr)
 	}
+
+	if trimmed := strings.TrimSpace(ifMatch); trimmed != "" {
+		if svcErr := checkIfMatch(trimmed, generateVersion(userVersionState(*existingUser))); svcErr != nil {
+			return nil, svcErr
+		}
+	}
+
 	if existingUser.Type != canonicalName {
 		logger.Error(ctx, "SCIM ReplaceUser: user type mismatch",
 			log.String("userID", userID), log.String("existingType", existingUser.Type),
@@ -194,8 +202,20 @@ func (s *scimUsersService) ReplaceUser(
 }
 
 // DeleteUser deletes a user by ID.
-func (s *scimUsersService) DeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError {
+func (s *scimUsersService) DeleteUser(ctx context.Context, userID string, ifMatch string) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	if trimmed := strings.TrimSpace(ifMatch); trimmed != "" {
+		existingUser, svcErr := s.userService.GetUser(ctx, userID, false)
+		if svcErr != nil {
+			logger.Error(ctx, "SCIM DeleteUser: user service error",
+				log.String("userID", userID), log.Any("error", svcErr))
+			return mapUserServiceErrorToSCIM(svcErr)
+		}
+		if svcErr := checkIfMatch(trimmed, generateVersion(userVersionState(*existingUser))); svcErr != nil {
+			return svcErr
+		}
+	}
 
 	svcErr := s.userService.DeleteUser(ctx, userID)
 	if svcErr != nil {

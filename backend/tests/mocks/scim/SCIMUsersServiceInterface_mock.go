@@ -116,16 +116,16 @@ func (_c *SCIMUsersServiceInterfaceMock_CreateUser_Call) RunAndReturn(run func(c
 }
 
 // DeleteUser provides a mock function for the type SCIMUsersServiceInterfaceMock
-func (_mock *SCIMUsersServiceInterfaceMock) DeleteUser(ctx context.Context, userID string) *common.ServiceError {
-	ret := _mock.Called(ctx, userID)
+func (_mock *SCIMUsersServiceInterfaceMock) DeleteUser(ctx context.Context, userID string, ifMatch string) *common.ServiceError {
+	ret := _mock.Called(ctx, userID, ifMatch)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteUser")
 	}
 
 	var r0 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
-		r0 = returnFunc(ctx, userID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, userID, ifMatch)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*common.ServiceError)
@@ -142,11 +142,12 @@ type SCIMUsersServiceInterfaceMock_DeleteUser_Call struct {
 // DeleteUser is a helper method to define mock.On call
 //   - ctx context.Context
 //   - userID string
-func (_e *SCIMUsersServiceInterfaceMock_Expecter) DeleteUser(ctx interface{}, userID interface{}) *SCIMUsersServiceInterfaceMock_DeleteUser_Call {
-	return &SCIMUsersServiceInterfaceMock_DeleteUser_Call{Call: _e.mock.On("DeleteUser", ctx, userID)}
+//   - ifMatch string
+func (_e *SCIMUsersServiceInterfaceMock_Expecter) DeleteUser(ctx interface{}, userID interface{}, ifMatch interface{}) *SCIMUsersServiceInterfaceMock_DeleteUser_Call {
+	return &SCIMUsersServiceInterfaceMock_DeleteUser_Call{Call: _e.mock.On("DeleteUser", ctx, userID, ifMatch)}
 }
 
-func (_c *SCIMUsersServiceInterfaceMock_DeleteUser_Call) Run(run func(ctx context.Context, userID string)) *SCIMUsersServiceInterfaceMock_DeleteUser_Call {
+func (_c *SCIMUsersServiceInterfaceMock_DeleteUser_Call) Run(run func(ctx context.Context, userID string, ifMatch string)) *SCIMUsersServiceInterfaceMock_DeleteUser_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -156,9 +157,14 @@ func (_c *SCIMUsersServiceInterfaceMock_DeleteUser_Call) Run(run func(ctx contex
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -169,7 +175,7 @@ func (_c *SCIMUsersServiceInterfaceMock_DeleteUser_Call) Return(serviceError *co
 	return _c
 }
 
-func (_c *SCIMUsersServiceInterfaceMock_DeleteUser_Call) RunAndReturn(run func(ctx context.Context, userID string) *common.ServiceError) *SCIMUsersServiceInterfaceMock_DeleteUser_Call {
+func (_c *SCIMUsersServiceInterfaceMock_DeleteUser_Call) RunAndReturn(run func(ctx context.Context, userID string, ifMatch string) *common.ServiceError) *SCIMUsersServiceInterfaceMock_DeleteUser_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -331,8 +337,8 @@ func (_c *SCIMUsersServiceInterfaceMock_ListUsers_Call) RunAndReturn(run func(ct
 }
 
 // ReplaceUser provides a mock function for the type SCIMUsersServiceInterfaceMock
-func (_mock *SCIMUsersServiceInterfaceMock) ReplaceUser(ctx context.Context, userID string, payload *scim.SCIMUserPayload, baseURL string) (*scim.SCIMUser, *common.ServiceError) {
-	ret := _mock.Called(ctx, userID, payload, baseURL)
+func (_mock *SCIMUsersServiceInterfaceMock) ReplaceUser(ctx context.Context, userID string, payload *scim.SCIMUserPayload, ifMatch string, baseURL string) (*scim.SCIMUser, *common.ServiceError) {
+	ret := _mock.Called(ctx, userID, payload, ifMatch, baseURL)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ReplaceUser")
@@ -340,18 +346,18 @@ func (_mock *SCIMUsersServiceInterfaceMock) ReplaceUser(ctx context.Context, use
 
 	var r0 *scim.SCIMUser
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *scim.SCIMUserPayload, string) (*scim.SCIMUser, *common.ServiceError)); ok {
-		return returnFunc(ctx, userID, payload, baseURL)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *scim.SCIMUserPayload, string, string) (*scim.SCIMUser, *common.ServiceError)); ok {
+		return returnFunc(ctx, userID, payload, ifMatch, baseURL)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *scim.SCIMUserPayload, string) *scim.SCIMUser); ok {
-		r0 = returnFunc(ctx, userID, payload, baseURL)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *scim.SCIMUserPayload, string, string) *scim.SCIMUser); ok {
+		r0 = returnFunc(ctx, userID, payload, ifMatch, baseURL)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*scim.SCIMUser)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *scim.SCIMUserPayload, string) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, userID, payload, baseURL)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *scim.SCIMUserPayload, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, userID, payload, ifMatch, baseURL)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -369,12 +375,13 @@ type SCIMUsersServiceInterfaceMock_ReplaceUser_Call struct {
 //   - ctx context.Context
 //   - userID string
 //   - payload *scim.SCIMUserPayload
+//   - ifMatch string
 //   - baseURL string
-func (_e *SCIMUsersServiceInterfaceMock_Expecter) ReplaceUser(ctx interface{}, userID interface{}, payload interface{}, baseURL interface{}) *SCIMUsersServiceInterfaceMock_ReplaceUser_Call {
-	return &SCIMUsersServiceInterfaceMock_ReplaceUser_Call{Call: _e.mock.On("ReplaceUser", ctx, userID, payload, baseURL)}
+func (_e *SCIMUsersServiceInterfaceMock_Expecter) ReplaceUser(ctx interface{}, userID interface{}, payload interface{}, ifMatch interface{}, baseURL interface{}) *SCIMUsersServiceInterfaceMock_ReplaceUser_Call {
+	return &SCIMUsersServiceInterfaceMock_ReplaceUser_Call{Call: _e.mock.On("ReplaceUser", ctx, userID, payload, ifMatch, baseURL)}
 }
 
-func (_c *SCIMUsersServiceInterfaceMock_ReplaceUser_Call) Run(run func(ctx context.Context, userID string, payload *scim.SCIMUserPayload, baseURL string)) *SCIMUsersServiceInterfaceMock_ReplaceUser_Call {
+func (_c *SCIMUsersServiceInterfaceMock_ReplaceUser_Call) Run(run func(ctx context.Context, userID string, payload *scim.SCIMUserPayload, ifMatch string, baseURL string)) *SCIMUsersServiceInterfaceMock_ReplaceUser_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -392,11 +399,16 @@ func (_c *SCIMUsersServiceInterfaceMock_ReplaceUser_Call) Run(run func(ctx conte
 		if args[3] != nil {
 			arg3 = args[3].(string)
 		}
+		var arg4 string
+		if args[4] != nil {
+			arg4 = args[4].(string)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -407,7 +419,7 @@ func (_c *SCIMUsersServiceInterfaceMock_ReplaceUser_Call) Return(sCIMUser *scim.
 	return _c
 }
 
-func (_c *SCIMUsersServiceInterfaceMock_ReplaceUser_Call) RunAndReturn(run func(ctx context.Context, userID string, payload *scim.SCIMUserPayload, baseURL string) (*scim.SCIMUser, *common.ServiceError)) *SCIMUsersServiceInterfaceMock_ReplaceUser_Call {
+func (_c *SCIMUsersServiceInterfaceMock_ReplaceUser_Call) RunAndReturn(run func(ctx context.Context, userID string, payload *scim.SCIMUserPayload, ifMatch string, baseURL string) (*scim.SCIMUser, *common.ServiceError)) *SCIMUsersServiceInterfaceMock_ReplaceUser_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -31,7 +31,7 @@ import (
 const (
 	// PatchSupported indicates that the SCIM PATCH operation is supported
 	// per RFC 7644 §3.5.2.
-	PatchSupported = false
+	PatchSupported = true
 
 	// BulkSupported indicates that SCIM Bulk operations are not yet
 	// implemented per RFC 7644 §3.7.
@@ -47,7 +47,7 @@ const (
 
 	// FilterSupported indicates whether SCIM filtering is supported
 	// per RFC 7644 §3.4.2.2.
-	FilterSupported = true
+	FilterSupported = false
 
 	// FilterMaxResults caps the number of resources returned in a single
 	// filtered query, guarding against excessively large result sets.

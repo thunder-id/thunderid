@@ -85,3 +85,52 @@ func TestBuildSCIMUserResource(t *testing.T) {
 	require.Contains(t, scimUser.Schemas, extensionURN)
 	require.JSONEq(t, `{"name":"John"}`, string(scimUser.Attributes))
 }
+
+func TestBuildSCIMUserListResponse_NilUsers(t *testing.T) {
+	resp := buildSCIMUserListResponse(nil, 5, 1, 0)
+	require.Equal(t, []string{SCIMListResponseSchemaURN}, resp.Schemas)
+	require.Equal(t, 5, resp.TotalResults)
+	require.Equal(t, 1, resp.StartIndex)
+	require.Equal(t, 0, resp.ItemsPerPage)
+	require.NotNil(t, resp.Resources)
+	require.Empty(t, resp.Resources)
+}
+
+func TestSCIMUser_MarshalJSON(t *testing.T) {
+	// 1. Without extension attributes or extension URN
+	u1 := SCIMUser{
+		ID:      "user-1",
+		Schemas: []string{SCIMCoreUserSchemaURN},
+		Meta: SCIMMeta{
+			ResourceType: "User",
+			Location:     "https://api.example.com/scim/v2/Users/user-1",
+		},
+	}
+	b1, err := u1.MarshalJSON()
+	require.NoError(t, err)
+	var map1 map[string]interface{}
+	require.NoError(t, json.Unmarshal(b1, &map1))
+	require.Equal(t, "user-1", map1["id"])
+	require.Nil(t, map1["urn:thunderid:params:scim:schemas:employee:2.0:User"])
+
+	// 2. With extension attributes and extension URN
+	u2 := SCIMUser{
+		ID:           "user-2",
+		Schemas:      []string{SCIMCoreUserSchemaURN, "urn:thunderid:params:scim:schemas:employee:2.0:User"},
+		ExtensionURN: "urn:thunderid:params:scim:schemas:employee:2.0:User",
+		Attributes:   json.RawMessage(`{"department":"Engineering"}`),
+		Meta: SCIMMeta{
+			ResourceType: "User",
+			Location:     "https://api.example.com/scim/v2/Users/user-2",
+		},
+	}
+	b2, err := u2.MarshalJSON()
+	require.NoError(t, err)
+	var map2 map[string]interface{}
+	require.NoError(t, json.Unmarshal(b2, &map2))
+	require.Equal(t, "user-2", map2["id"])
+	require.NotNil(t, map2["urn:thunderid:params:scim:schemas:employee:2.0:User"])
+
+	ext := map2["urn:thunderid:params:scim:schemas:employee:2.0:User"].(map[string]interface{})
+	require.Equal(t, "Engineering", ext["department"])
+}

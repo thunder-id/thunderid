@@ -435,7 +435,8 @@ packages:
       dir: internal/attestation
       structname: '{{.InterfaceName}}Mock'
       pkgname: attestation
-      
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/scim:
     config:
       all: true

@@ -19,8 +19,6 @@
 package scim
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -72,7 +70,7 @@ func mapRawPropertyToSCIMAttribute(name string, def rawPropertyDef) SCIMSchemaAt
 		Name:        name,
 		Description: def.DisplayName,
 		Required:    def.Required,
-		CaseExact:   false,
+		CaseExact:   true,
 		MultiValued: false,
 		Mutability:  scimMutabilityReadWrite,
 		Returned:    scimReturnedDefault,
@@ -181,6 +179,92 @@ func coreUserAttributes() []SCIMSchemaAttribute {
 	}
 }
 
+// buildCoreGroupSchema returns the static SCIM Core Group schema (RFC 7643 §4.2).
+func buildCoreGroupSchema(baseURL string) SCIMSchema {
+	location := fmt.Sprintf("%s%s/Schemas/%s", baseURL, SCIMBasePath, SCIMCoreGroupSchemaURN)
+	return SCIMSchema{
+		Schemas:     []string{SCIMSchemaSchemaURN},
+		ID:          SCIMCoreGroupSchemaURN,
+		Name:        "Group",
+		Description: "Group",
+		Attributes:  coreGroupAttributes(),
+		Meta: SCIMMeta{
+			ResourceType: "Schema",
+			Location:     location,
+		},
+	}
+}
+
+// coreGroupAttributes returns the SCIM core Group attributes per RFC 7643 §4.2.
+func coreGroupAttributes() []SCIMSchemaAttribute {
+	return []SCIMSchemaAttribute{
+		{
+			Name:        "id",
+			Type:        scimAttrTypeString,
+			Description: "Unique identifier for the SCIM resource.",
+			Required:    false,
+			CaseExact:   true,
+			Mutability:  scimMutabilityReadOnly,
+			Returned:    scimReturnedAlways,
+			Uniqueness:  scimUniquenessServer,
+		},
+		{
+			Name:        "displayName",
+			Type:        scimAttrTypeString,
+			Description: "A human-readable name for the Group.",
+			Required:    false,
+			Mutability:  scimMutabilityReadWrite,
+			Returned:    scimReturnedDefault,
+			Uniqueness:  scimUniquenessNone,
+		},
+		{
+			Name:        "members",
+			Type:        scimAttrTypeComplex,
+			MultiValued: true,
+			Description: "A list of members of the Group.",
+			Required:    false,
+			Mutability:  scimMutabilityReadWrite,
+			Returned:    scimReturnedDefault,
+			Uniqueness:  scimUniquenessNone,
+			SubAttributes: []SCIMSchemaAttribute{
+				{
+					Name:        "value",
+					Type:        scimAttrTypeString,
+					Description: "Identifier of the member resource.",
+					Mutability:  scimMutabilityImmutable,
+					Returned:    scimReturnedDefault,
+					Uniqueness:  scimUniquenessNone,
+				},
+				{
+					Name:        "$ref",
+					Type:        scimAttrTypeString,
+					Description: "The URI of the SCIM resource.",
+					Mutability:  scimMutabilityImmutable,
+					Returned:    scimReturnedDefault,
+					Uniqueness:  scimUniquenessNone,
+				},
+				{
+					Name:            "type",
+					Type:            scimAttrTypeString,
+					Description:     "A label indicating the attribute's resource type.",
+					CanonicalValues: []string{"User", "Group"},
+					Mutability:      scimMutabilityImmutable,
+					Returned:        scimReturnedDefault,
+					Uniqueness:      scimUniquenessNone,
+				},
+				{
+					Name:        "display",
+					Type:        scimAttrTypeString,
+					Description: "A human-readable name for the member.",
+					Mutability:  scimMutabilityImmutable,
+					Returned:    scimReturnedDefault,
+					Uniqueness:  scimUniquenessNone,
+				},
+			},
+		},
+	}
+}
+
 // rawPropertyDef is the internal representation of a single property from a
 // ThunderID EntityType JSON schema. It is used only for unmarshalling during
 // SCIM schema mapping and is not exposed outside this package.
@@ -263,12 +347,5 @@ func computeSchemaVersion(et entitytype.EntityType) string {
 		Name:   et.Name,
 		Schema: et.Schema,
 	}
-	b, err := json.Marshal(state)
-	if err != nil {
-		// Unreachable: Name is a plain string and Schema is already valid JSON.
-		// Fall back to a zero hash rather than panic — schema is still usable.
-		return `W/"0000000000000000"`
-	}
-	h := sha256.Sum256(b)
-	return fmt.Sprintf("W/%q", hex.EncodeToString(h[:8]))
+	return generateVersion(state)
 }

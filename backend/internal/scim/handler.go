@@ -161,8 +161,15 @@ func mapSCIMError(svcErr *tidcommon.ServiceError) (httpStatus int, scimType stri
 		ErrorMissingCustomSchemaObject.Code,
 		ErrorUnknownUserType.Code,
 		ErrorSchemaValidationFailed.Code,
-		ErrorMutabilityViolation.Code:
+		ErrorMutabilityViolation.Code,
+		ErrorInvalidGroupMember.Code,
+		ErrorInvalidPatchOp.Code,
+		ErrorInvalidPatchValue.Code:
 		return http.StatusBadRequest, scimErrorTypeInvalidValue
+
+		// 400 invalidPath — PATCH "path" is missing, unsupported, or malformed.
+	case ErrorInvalidPatchPath.Code:
+		return http.StatusBadRequest, scimErrorTypeInvalidPath
 
 	// 400 invalidFilter — filter query parameter is not supported.
 	case ErrorFilterNotSupported.Code:
@@ -171,7 +178,8 @@ func mapSCIMError(svcErr *tidcommon.ServiceError) (httpStatus int, scimType stri
 	// 404 — resource not found.
 	case ErrorUserNotFound.Code,
 		ErrorSchemaNotFound.Code,
-		ErrorResourceTypeNotFound.Code:
+		ErrorResourceTypeNotFound.Code,
+		ErrorResourceNotFound.Code:
 		return http.StatusNotFound, ""
 
 	// 409 — uniqueness conflict.
@@ -188,6 +196,10 @@ func mapSCIMError(svcErr *tidcommon.ServiceError) (httpStatus int, scimType stri
 
 	case ErrorInternalServer.Code:
 		return http.StatusInternalServerError, ""
+
+	// 412 — If-Match precondition failed (optimistic concurrency, RFC 7644 §3.14).
+	case ErrorPreconditionFailed.Code:
+		return http.StatusPreconditionFailed, ""
 
 	default:
 		return http.StatusBadRequest, scimErrorTypeInvalidValue

@@ -22,6 +22,7 @@ func TestHandleUsersGetRequest_Success(t *testing.T) {
 		Meta: SCIMMeta{
 			ResourceType: "User",
 			Location:     testBaseURL + "/scim/v2/Users/user-123",
+			Version:      `W/"abc12345"`,
 		},
 	}
 	mockSvc.On("GetUser", mock.Anything, "user-123", testBaseURL).Return(expectedUser, (*tidcommon.ServiceError)(nil))
@@ -34,6 +35,7 @@ func TestHandleUsersGetRequest_Success(t *testing.T) {
 	h.HandleUsersGetRequest(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, expectedUser.Meta.Version, rr.Header().Get("ETag"))
 	require.Equal(t, constants.SCIMContentType, rr.Header().Get("Content-Type"))
 
 	var got SCIMUser
@@ -57,7 +59,7 @@ func TestHandleUsersGetRequest_NotFound(t *testing.T) {
 
 func TestHandleUsersDeleteRequest_Success(t *testing.T) {
 	mockSvc := NewSCIMUsersServiceInterfaceMock(t)
-	mockSvc.On("DeleteUser", mock.Anything, "user-123").Return((*tidcommon.ServiceError)(nil))
+	mockSvc.On("DeleteUser", mock.Anything, "user-123", "").Return((*tidcommon.ServiceError)(nil))
 
 	h := newSCIMUsersHandler(mockSvc, testBaseURL)
 	req := httptest.NewRequest(http.MethodDelete, "/scim/v2/Users/user-123", nil)
@@ -84,6 +86,7 @@ func TestHandleUsersCreateRequest_Success(t *testing.T) {
 		Meta: SCIMMeta{
 			ResourceType: "User",
 			Location:     testBaseURL + "/scim/v2/Users/user-123",
+			Version:      `W/"abc12345"`,
 		},
 	}
 	mockSvc.On(
@@ -98,6 +101,7 @@ func TestHandleUsersCreateRequest_Success(t *testing.T) {
 	h.HandleUsersCreateRequest(rr, req)
 
 	require.Equal(t, http.StatusCreated, rr.Code)
+	require.Equal(t, expectedUser.Meta.Version, rr.Header().Get("ETag"))
 	require.Equal(t, expectedUser.Meta.Location, rr.Header().Get("Location"))
 }
 
@@ -136,10 +140,11 @@ func TestHandleUsersReplaceRequest_Success(t *testing.T) {
 		Meta: SCIMMeta{
 			ResourceType: "User",
 			Location:     testBaseURL + "/scim/v2/Users/user-123",
+			Version:      `W/"abc12345"`,
 		},
 	}
 	mockSvc.On(
-		"ReplaceUser", mock.Anything, "user-123", mock.AnythingOfType("*scim.SCIMUserPayload"), testBaseURL,
+		"ReplaceUser", mock.Anything, "user-123", mock.AnythingOfType("*scim.SCIMUserPayload"), "", testBaseURL,
 	).Return(expectedUser, (*tidcommon.ServiceError)(nil))
 
 	h := newSCIMUsersHandler(mockSvc, testBaseURL)
@@ -149,7 +154,7 @@ func TestHandleUsersReplaceRequest_Success(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	h.HandleUsersReplaceRequest(rr, req)
-
+	require.Equal(t, expectedUser.Meta.Version, rr.Header().Get("ETag"))
 	require.Equal(t, http.StatusOK, rr.Code)
 }
 
@@ -197,7 +202,7 @@ func TestHandleUsersDeleteRequest_MissingID_Returns404(t *testing.T) {
 
 func TestHandleUsersDeleteRequest_NotFound_Returns404(t *testing.T) {
 	mockSvc := NewSCIMUsersServiceInterfaceMock(t)
-	mockSvc.On("DeleteUser", mock.Anything, "no-such").Return(&ErrorUserNotFound)
+	mockSvc.On("DeleteUser", mock.Anything, "no-such", "").Return(&ErrorUserNotFound)
 
 	h := newSCIMUsersHandler(mockSvc, testBaseURL)
 	req := httptest.NewRequest(http.MethodDelete, "/scim/v2/Users/no-such", nil)
@@ -211,7 +216,7 @@ func TestHandleUsersDeleteRequest_NotFound_Returns404(t *testing.T) {
 
 func TestHandleUsersDeleteRequest_MutabilityViolation_Returns400(t *testing.T) {
 	mockSvc := NewSCIMUsersServiceInterfaceMock(t)
-	mockSvc.On("DeleteUser", mock.Anything, "readonly").Return(&ErrorMutabilityViolation)
+	mockSvc.On("DeleteUser", mock.Anything, "readonly", "").Return(&ErrorMutabilityViolation)
 
 	h := newSCIMUsersHandler(mockSvc, testBaseURL)
 	req := httptest.NewRequest(http.MethodDelete, "/scim/v2/Users/readonly", nil)
@@ -370,7 +375,7 @@ func TestHandleUsersReplaceRequest_EmptyBody_Returns400(t *testing.T) {
 func TestHandleUsersReplaceRequest_NotFound_Returns404(t *testing.T) {
 	mockSvc := NewSCIMUsersServiceInterfaceMock(t)
 	mockSvc.On("ReplaceUser", mock.Anything, "no-such",
-		mock.AnythingOfType("*scim.SCIMUserPayload"), testBaseURL).
+		mock.AnythingOfType("*scim.SCIMUserPayload"), "", testBaseURL).
 		Return((*SCIMUser)(nil), &ErrorUserNotFound)
 
 	body := `{"schemas":["urn:thunderid:params:scim:schemas:person:2.0:User"],` +
@@ -390,7 +395,7 @@ func TestHandleUsersReplaceRequest_NotFound_Returns404(t *testing.T) {
 func TestHandleUsersReplaceRequest_MutabilityViolation_Returns400(t *testing.T) {
 	mockSvc := NewSCIMUsersServiceInterfaceMock(t)
 	mockSvc.On("ReplaceUser", mock.Anything, "readonly",
-		mock.AnythingOfType("*scim.SCIMUserPayload"), testBaseURL).
+		mock.AnythingOfType("*scim.SCIMUserPayload"), "", testBaseURL).
 		Return((*SCIMUser)(nil), &ErrorMutabilityViolation)
 
 	body := `{"schemas":["urn:thunderid:params:scim:schemas:person:2.0:User"],` +
@@ -457,4 +462,42 @@ func TestHandleUsersListRequest_CustomPagination(t *testing.T) {
 	h.HandleUsersListRequest(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
+}
+
+func TestHandleUsersReplaceRequest_PreconditionFailed(t *testing.T) {
+	mockSvc := NewSCIMUsersServiceInterfaceMock(t)
+	mockSvc.On("ReplaceUser", mock.Anything, "user-123",
+		mock.AnythingOfType("*scim.SCIMUserPayload"), `W/"stale"`, testBaseURL).
+		Return((*SCIMUser)(nil), &ErrorPreconditionFailed)
+
+	payloadBody := `{
+        "schemas": ["urn:thunderid:params:scim:schemas:person:2.0:User"],
+        "urn:thunderid:params:scim:schemas:person:2.0:User": {"given_name": "Test"}
+    }`
+	h := newSCIMUsersHandler(mockSvc, testBaseURL)
+	req := httptest.NewRequest(http.MethodPut, "/scim/v2/Users/user-123", bytes.NewBufferString(payloadBody))
+	req.SetPathValue("id", "user-123")
+	req.Header.Set("Content-Type", constants.SCIMContentType)
+	req.Header.Set("If-Match", `W/"stale"`)
+	rr := httptest.NewRecorder()
+
+	h.HandleUsersReplaceRequest(rr, req)
+
+	require.Equal(t, http.StatusPreconditionFailed, rr.Code)
+}
+
+func TestHandleUsersDeleteRequest_PreconditionFailed(t *testing.T) {
+	mockSvc := NewSCIMUsersServiceInterfaceMock(t)
+	mockSvc.On("DeleteUser", mock.Anything, "user-123", `W/"stale"`).
+		Return(&ErrorPreconditionFailed)
+
+	h := newSCIMUsersHandler(mockSvc, testBaseURL)
+	req := httptest.NewRequest(http.MethodDelete, "/scim/v2/Users/user-123", nil)
+	req.Header.Set("If-Match", `W/"stale"`)
+	req.SetPathValue("id", "user-123")
+	rr := httptest.NewRecorder()
+
+	h.HandleUsersDeleteRequest(rr, req)
+
+	require.Equal(t, http.StatusPreconditionFailed, rr.Code)
 }

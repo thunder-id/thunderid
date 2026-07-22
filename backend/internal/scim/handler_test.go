@@ -19,7 +19,9 @@
 package scim
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -300,4 +302,72 @@ func TestHandleSchemaGetRequest_ErrorCases(t *testing.T) {
 
 		require.Equal(t, http.StatusNotFound, rr.Code)
 	})
+}
+
+type marshalErrorStruct struct{}
+
+func (marshalErrorStruct) MarshalJSON() ([]byte, error) {
+	return nil, fmt.Errorf("forced encode error")
+}
+
+func TestWriteSCIMSuccessResponse_EncodeError(t *testing.T) {
+	rr := httptest.NewRecorder()
+	writeSCIMSuccessResponse(context.Background(), rr, http.StatusOK, marshalErrorStruct{})
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+}
+
+func TestWriteSCIMErrorResponse_EmptySchemas(t *testing.T) {
+	rr := httptest.NewRecorder()
+	writeSCIMErrorResponse(context.Background(), rr, http.StatusBadRequest, SCIMErrorResponse{
+		Status: "400",
+	})
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	var errResp SCIMErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+	require.Equal(t, []string{SCIMErrorSchemaURN}, errResp.Schemas)
+}
+
+func TestHandleSCIMError_ServerErrorType(t *testing.T) {
+	mockSvc := NewSCIMServiceInterfaceMock(t)
+	h := newSCIMHandler(mockSvc, testBaseURL)
+	req := httptest.NewRequest(http.MethodGet, "/scim/v2/Schemas", nil)
+	rr := httptest.NewRecorder()
+
+	svcErr := &tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
+		ErrorDescription: tidcommon.I18nMessage{
+			DefaultValue: "something went wrong internally",
+		},
+	}
+	h.handleSCIMError(rr, req, svcErr)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+	var errResp SCIMErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+	require.Equal(t, "500", errResp.Status)
+	require.Equal(t, "something went wrong internally", errResp.Detail)
+}
+
+func TestMapSCIMError_UncoveredCodes(t *testing.T) {
+	status1, scimType1 := mapSCIMError(&ErrorInvalidPatchPath)
+	require.Equal(t, http.StatusBadRequest, status1)
+	require.Equal(t, scimErrorTypeInvalidPath, scimType1)
+
+	status2, scimType2 := mapSCIMError(&ErrorInternalServer)
+	require.Equal(t, http.StatusInternalServerError, status2)
+	require.Equal(t, "", scimType2)
+
+	status3, scimType3 := mapSCIMError(&ErrorFilterNotSupported)
+	require.Equal(t, http.StatusBadRequest, status3)
+	require.Equal(t, "invalidFilter", scimType3)
+
+	status4, scimType4 := mapSCIMError(&ErrorPreconditionFailed)
+	require.Equal(t, http.StatusPreconditionFailed, status4)
+	require.Equal(t, "", scimType4)
+
+	// Default case
+	defaultErr := &tidcommon.ServiceError{Code: "BOGUS-CODE"}
+	status5, scimType5 := mapSCIMError(defaultErr)
+	require.Equal(t, http.StatusBadRequest, status5)
+	require.Equal(t, scimErrorTypeInvalidValue, scimType5)
 }

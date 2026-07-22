@@ -405,13 +405,38 @@ func TestListSchemas_IncludesExtensionSchemasForEachUserType(t *testing.T) {
 	resp, svcErr := svc.ListSchemas(context.Background(), testGenericBaseURL)
 	require.Nil(t, svcErr)
 
-	schemas := resp.Resources // ← direct access, no type assertion
-	require.Equal(t, 2, resp.TotalResults)
-	require.Len(t, schemas, 2)
+	schemas := resp.Resources
+	// User schema + Group schema + 1 entity-type extension = 3
+	require.Equal(t, 3, resp.TotalResults)
+	require.Len(t, schemas, 3)
 
-	urns := []string{schemas[0].ID, schemas[1].ID}
+	urns := make([]string, 0, len(schemas))
+	for _, s := range schemas {
+		urns = append(urns, s.ID)
+	}
 	require.Contains(t, urns, SCIMCoreUserSchemaURN)
+	require.Contains(t, urns, SCIMCoreGroupSchemaURN)
 	require.Contains(t, urns, "urn:thunderid:params:scim:schemas:customer:2.0:User")
+}
+
+func TestListSchemas_IncludesCoreGroupSchema(t *testing.T) {
+	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, mock.Anything, mock.Anything, false).
+		Return(
+			&entitytype.EntityTypeListResponse{TotalResults: 0, Types: nil},
+			(*tidcommon.ServiceError)(nil),
+		)
+
+	svc := newSCIMService(nil, mockET, scimconfig.SCIMConfig{})
+
+	resp, svcErr := svc.ListSchemas(context.Background(), testGenericBaseURL)
+	require.Nil(t, svcErr)
+
+	urns := make([]string, 0, len(resp.Resources))
+	for _, s := range resp.Resources {
+		urns = append(urns, s.ID)
+	}
+	require.Contains(t, urns, SCIMCoreGroupSchemaURN)
 }
 
 func TestListSchemas_SchemasField(t *testing.T) {
@@ -588,8 +613,11 @@ func TestListSchemas_GetEntityTypeByNameError_SkipsItem(t *testing.T) {
 
 	resp, svcErr := svc.ListSchemas(context.Background(), testGenericBaseURL)
 	require.Nil(t, svcErr)
-	require.Equal(t, 1, resp.TotalResults)
-	require.Equal(t, SCIMCoreUserSchemaURN, resp.Resources[0].ID)
+	// User schema + Group schema (entity type skipped due to error)
+	require.Equal(t, 2, resp.TotalResults)
+	urns := []string{resp.Resources[0].ID, resp.Resources[1].ID}
+	require.Contains(t, urns, SCIMCoreUserSchemaURN)
+	require.Contains(t, urns, SCIMCoreGroupSchemaURN)
 }
 
 func TestListSchemas_MalformedEntityTypeSchema_SkipsItem(t *testing.T) {
@@ -612,8 +640,11 @@ func TestListSchemas_MalformedEntityTypeSchema_SkipsItem(t *testing.T) {
 
 	resp, svcErr := svc.ListSchemas(context.Background(), testGenericBaseURL)
 	require.Nil(t, svcErr)
-	require.Equal(t, 1, resp.TotalResults)
-	require.Equal(t, SCIMCoreUserSchemaURN, resp.Resources[0].ID)
+	// User schema + Group schema (malformed entity type skipped)
+	require.Equal(t, 2, resp.TotalResults)
+	urns := []string{resp.Resources[0].ID, resp.Resources[1].ID}
+	require.Contains(t, urns, SCIMCoreUserSchemaURN)
+	require.Contains(t, urns, SCIMCoreGroupSchemaURN)
 }
 
 func TestListSchemas_PaginationFetchesSecondPage(t *testing.T) {
@@ -650,7 +681,8 @@ func TestListSchemas_PaginationFetchesSecondPage(t *testing.T) {
 
 	resp, svcErr := svc.ListSchemas(context.Background(), testGenericBaseURL)
 	require.Nil(t, svcErr)
-	require.Equal(t, 3, resp.TotalResults)
+	// User + Group static schemas + 2 entity-type extensions = 4
+	require.Equal(t, 4, resp.TotalResults)
 }
 
 // =====================================================================
@@ -694,7 +726,7 @@ func TestResolveEntityTypeName_NonAuthListError_Returns404(t *testing.T) {
 // ListResourceTypes — service-layer tests
 // =====================================================================
 
-func TestListResourceTypes_ReturnsUserResourceType(t *testing.T) {
+func TestListResourceTypes_ReturnsUserAndGroupResourceType(t *testing.T) {
 	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, mock.Anything, mock.Anything, false).
 		Return(
@@ -706,9 +738,11 @@ func TestListResourceTypes_ReturnsUserResourceType(t *testing.T) {
 
 	resp, svcErr := svc.ListResourceTypes(context.Background(), testGenericBaseURL)
 	require.Nil(t, svcErr)
-	require.Equal(t, 1, resp.TotalResults)
-	require.Len(t, resp.Resources, 1)
-	require.Equal(t, scimResourceTypeUserID, resp.Resources[0].ID)
+	require.Equal(t, 2, resp.TotalResults)
+	require.Len(t, resp.Resources, 2)
+	ids := []string{resp.Resources[0].ID, resp.Resources[1].ID}
+	require.Contains(t, ids, scimResourceTypeUserID)
+	require.Contains(t, ids, scimResourceTypeGroupID)
 }
 
 func TestListResourceTypes_SchemasField(t *testing.T) {
@@ -725,7 +759,7 @@ func TestListResourceTypes_SchemasField(t *testing.T) {
 	require.Nil(t, svcErr)
 	require.Equal(t, []string{SCIMListResponseSchemaURN}, resp.Schemas)
 	require.Equal(t, 1, resp.StartIndex)
-	require.Equal(t, 1, resp.ItemsPerPage)
+	require.Equal(t, 2, resp.ItemsPerPage)
 }
 
 func TestListResourceTypes_IncludesExtensionPerEntityType(t *testing.T) {
@@ -819,7 +853,7 @@ func TestGetResourceType_UnknownID_Returns404(t *testing.T) {
 
 	svc := newSCIMService(nil, mockET, scimconfig.SCIMConfig{})
 
-	rt, svcErr := svc.GetResourceType(context.Background(), "Group", testGenericBaseURL)
+	rt, svcErr := svc.GetResourceType(context.Background(), "Unknown", testGenericBaseURL)
 	require.Nil(t, rt)
 	require.NotNil(t, svcErr)
 	require.Equal(t, ErrorResourceTypeNotFound.Code, svcErr.Code)
@@ -844,14 +878,19 @@ func TestGetResourceType_EntityTypeListError_Propagates(t *testing.T) {
 func TestHandleResourceTypeListRequest_Success(t *testing.T) {
 	expectedResp := SCIMResourceTypeListResponse{
 		Schemas:      []string{SCIMListResponseSchemaURN},
-		TotalResults: 1,
+		TotalResults: 2,
 		StartIndex:   1,
-		ItemsPerPage: 1,
+		ItemsPerPage: 2,
 		Resources: []SCIMResourceType{
 			{
 				ID:     scimResourceTypeUserID,
 				Name:   scimResourceTypeUserName,
 				Schema: SCIMCoreUserSchemaURN,
+			},
+			{
+				ID:     scimResourceTypeGroupID,
+				Name:   scimResourceTypeGroupName,
+				Schema: SCIMCoreGroupSchemaURN,
 			},
 		},
 	}
@@ -871,8 +910,10 @@ func TestHandleResourceTypeListRequest_Success(t *testing.T) {
 
 	var got SCIMResourceTypeListResponse
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&got))
-	require.Equal(t, 1, got.TotalResults)
-	require.Equal(t, scimResourceTypeUserID, got.Resources[0].ID)
+	require.Equal(t, 2, got.TotalResults)
+	ids := []string{got.Resources[0].ID, got.Resources[1].ID}
+	require.Contains(t, ids, scimResourceTypeUserID)
+	require.Contains(t, ids, scimResourceTypeGroupID)
 }
 
 func TestHandleResourceTypeListRequest_ServiceError(t *testing.T) {
@@ -1060,4 +1101,91 @@ func TestMapRawProperty_ArrayWithEnumItems_PropagatesCanonicalValues(t *testing.
 	attr := mapRawPropertyToSCIMAttribute("tags", rawPropertyDef{Type: "array", Items: &items})
 	require.True(t, attr.MultiValued)
 	require.Equal(t, []string{"x"}, attr.CanonicalValues)
+}
+
+// =====================================================================
+// buildCoreGroupSchema
+// =====================================================================
+
+func TestBuildCoreGroupSchema_IDIsGroupURN(t *testing.T) {
+	schema := buildCoreGroupSchema(testGenericBaseURL)
+	require.Equal(t, SCIMCoreGroupSchemaURN, schema.ID)
+}
+
+func TestBuildCoreGroupSchema_MetaLocation(t *testing.T) {
+	baseURL := testBaseURL
+	schema := buildCoreGroupSchema(baseURL)
+	require.Equal(t, baseURL+"/scim/v2/Schemas/"+SCIMCoreGroupSchemaURN, schema.Meta.Location)
+	require.Equal(t, "Schema", schema.Meta.ResourceType)
+}
+
+func TestBuildCoreGroupSchema_ContainsRequiredAttributes(t *testing.T) {
+	schema := buildCoreGroupSchema(testGenericBaseURL)
+	names := make([]string, 0, len(schema.Attributes))
+	for _, a := range schema.Attributes {
+		names = append(names, a.Name)
+	}
+	require.Contains(t, names, "id")
+	require.Contains(t, names, "displayName")
+	require.Contains(t, names, "members")
+}
+
+// =====================================================================
+// GetSchema — Group URN
+// =====================================================================
+
+func TestGetSchema_CoreGroupURN_ReturnsStaticSchema(t *testing.T) {
+	svc := newSCIMService(nil, nil, scimconfig.SCIMConfig{})
+	schema, svcErr := svc.GetSchema(context.Background(), SCIMCoreGroupSchemaURN, testGenericBaseURL)
+	require.Nil(t, svcErr)
+	require.NotNil(t, schema)
+	require.Equal(t, SCIMCoreGroupSchemaURN, schema.ID)
+	require.Equal(t, "Group", schema.Name)
+}
+
+func TestGetSchema_CoreGroupURN_CaseInsensitive(t *testing.T) {
+	svc := newSCIMService(nil, nil, scimconfig.SCIMConfig{})
+	schema, svcErr := svc.GetSchema(
+		context.Background(),
+		"URN:IETF:PARAMS:SCIM:SCHEMAS:CORE:2.0:GROUP",
+		testGenericBaseURL,
+	)
+	require.Nil(t, svcErr)
+	require.NotNil(t, schema)
+	require.Equal(t, SCIMCoreGroupSchemaURN, schema.ID)
+}
+
+// =====================================================================
+// GetResourceType — Group
+// =====================================================================
+
+func TestGetResourceType_GroupID_ReturnsGroupResourceType(t *testing.T) {
+	svc := newSCIMService(nil, nil, scimconfig.SCIMConfig{})
+
+	rt, svcErr := svc.GetResourceType(context.Background(), "Group", testGenericBaseURL)
+	require.Nil(t, svcErr)
+	require.NotNil(t, rt)
+	require.Equal(t, scimResourceTypeGroupID, rt.ID)
+	require.Equal(t, scimResourceTypeGroupName, rt.Name)
+	require.Equal(t, SCIMCoreGroupSchemaURN, rt.Schema)
+	require.Empty(t, rt.SchemaExtensions)
+}
+
+func TestGetResourceType_GroupID_CaseInsensitive(t *testing.T) {
+	svc := newSCIMService(nil, nil, scimconfig.SCIMConfig{})
+
+	rt, svcErr := svc.GetResourceType(context.Background(), "group", testGenericBaseURL)
+	require.Nil(t, svcErr)
+	require.NotNil(t, rt)
+	require.Equal(t, scimResourceTypeGroupID, rt.ID)
+}
+
+func TestGetResourceType_GroupMetaLocation(t *testing.T) {
+	baseURL := testBaseURL
+	svc := newSCIMService(nil, nil, scimconfig.SCIMConfig{})
+
+	rt, svcErr := svc.GetResourceType(context.Background(), "Group", baseURL)
+	require.Nil(t, svcErr)
+	require.Contains(t, rt.Meta.Location, baseURL)
+	require.Contains(t, rt.Meta.Location, scimResourceTypeGroupID)
 }

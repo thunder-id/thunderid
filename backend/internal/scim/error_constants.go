@@ -308,4 +308,106 @@ var (
 			DefaultValue: "The user type cannot be changed via PUT; it must match the existing resource's type",
 		},
 	}
+	// ErrorResourceNotFound is returned when the requested SCIM resource does not exist.
+	ErrorResourceNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1021",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.resource_not_found",
+			DefaultValue: "Resource not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.resource_not_found_description",
+			DefaultValue: "The requested resource does not exist",
+		},
+	}
+
+	// ErrorUnsupportedMemberType is returned when a group member's type is not
+	// supported for SCIM group membership.
+	ErrorUnsupportedMemberType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1022",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.unsupported_member_type",
+			DefaultValue: "Unsupported group member type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.unsupported_member_type_description",
+			DefaultValue: "The provided member type is not supported for SCIM group membership",
+		},
+	}
+
+	// ErrorInvalidGroupMember is returned when a group member reference (user, app, or group) does not exist.
+	ErrorInvalidGroupMember = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1023",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_group_member",
+			DefaultValue: "Invalid group member",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_group_member_description",
+			DefaultValue: "One or more group members do not exist or do not match the specified type",
+		},
+	}
+
+	// ErrorInvalidPatchPath is returned when a PATCH operation's "path" is missing,
+	// unsupported, or has a malformed filter expression (RFC 7644 §3.5.2).
+	ErrorInvalidPatchPath = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1024",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_patch_path",
+			DefaultValue: "Invalid patch path",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_patch_path_description",
+			DefaultValue: "The PATCH operation path is missing, unsupported, or malformed",
+		},
+	}
+
+	// ErrorInvalidPatchOp is returned when a PATCH operation's "op" is not
+	// one of "add", "remove", or "replace".
+	ErrorInvalidPatchOp = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_patch_op",
+			DefaultValue: "Invalid patch operation",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_patch_op_description",
+			DefaultValue: `The "op" must be one of "add", "remove", or "replace"`,
+		},
+	}
+
+	// ErrorInvalidPatchValue is returned when a PATCH operation's "value" is
+	// missing or malformed for the given "op"/"path" combination.
+	ErrorInvalidPatchValue = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1026",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_patch_value",
+			DefaultValue: "Invalid patch value",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_patch_value_description",
+			DefaultValue: "The PATCH operation value is missing or malformed for the given op/path",
+		},
+	}
+
+	// ErrorPreconditionFailed is returned when an If-Match header does not match
+	// the resource's current version (RFC 7644 §3.14 optimistic concurrency control).
+	ErrorPreconditionFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1027",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.precondition_failed",
+			DefaultValue: "Precondition failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.precondition_failed_description",
+			DefaultValue: "The If-Match header does not match the current version of the resource",
+		},
+	}
 )

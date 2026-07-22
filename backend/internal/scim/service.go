@@ -162,8 +162,8 @@ func (s *scimService) GetServiceProviderConfig(_ context.Context, baseURL string
 	}
 }
 
-// ListSchemas returns all SCIM schemas: the core User schema plus one extension
-// schema per registered ThunderID user-type entity type.
+// ListSchemas returns all SCIM schemas: the core User schema, the core Group schema,
+// plus one extension schema per registered ThunderID user-type entity type.
 func (s *scimService) ListSchemas(
 	ctx context.Context, baseURL string,
 ) (SCIMSchemaListResponse, *tidcommon.ServiceError) {
@@ -175,9 +175,10 @@ func (s *scimService) ListSchemas(
 		return SCIMSchemaListResponse{}, svcErr
 	}
 
-	// --- 2. Core User schema is always first ---
-	schemas := make([]SCIMSchema, 0, 1+len(names))
+	// --- 2. Core User and Group schemas are always included ---
+	schemas := make([]SCIMSchema, 0, 2+len(names))
 	schemas = append(schemas, buildCoreUserSchema(baseURL))
+	schemas = append(schemas, buildCoreGroupSchema(baseURL))
 
 	// --- 3. One extension schema per entity type ---
 	runtimeCtx := security.WithRuntimeContext(ctx)
@@ -214,9 +215,9 @@ func (s *scimService) ListSchemas(
 }
 
 // GetSchema returns a single SCIM Schema resource by URN. It returns the static
-// core User schema for the RFC 7643 §4.1 URN, or a dynamically built extension
-// schema for a registered ThunderID user-type URN. Returns ErrorSchemaNotFound
-// if the URN does not match any known schema.
+// core User or Group schema for their RFC 7643 URNs, or a dynamically built
+// extension schema for a registered ThunderID user-type URN. Returns
+// ErrorSchemaNotFound if the URN does not match any known schema.
 func (s *scimService) GetSchema(
 	ctx context.Context, schemaURN string, baseURL string,
 ) (*SCIMSchema, *tidcommon.ServiceError) {
@@ -238,7 +239,14 @@ func (s *scimService) GetSchema(
 		return &schema, nil
 	}
 
-	// --- 2. ThunderID extension schema (dynamic, from DB) ---
+	// --- 2. Core Group schema (static, RFC 7643 §4.2) ---
+	if lowerURN == strings.ToLower(SCIMCoreGroupSchemaURN) {
+		schema := buildCoreGroupSchema(baseURL)
+		schema.Schemas = []string{SCIMSchemaSchemaURN}
+		return &schema, nil
+	}
+
+	// --- 3. ThunderID extension schema (dynamic, from DB) ---
 	userTypeName, ok := parseUserTypeFromSchemaURN(lowerURN)
 	if !ok {
 		// URN does not match any known pattern.
@@ -283,43 +291,50 @@ func (s *scimService) GetSchema(
 }
 
 // ListResourceTypes returns all SCIM resource types supported by ThunderID.
-// ThunderID only exposes a single "User" resource type. The schemaExtensions
+// ThunderID exposes "User" and "Group" resource types. The User schemaExtensions
 // array is built dynamically — one entry per registered user-type entity type.
 func (s *scimService) ListResourceTypes(
 	ctx context.Context, baseURL string,
 ) (SCIMResourceTypeListResponse, *tidcommon.ServiceError) {
-	rt, svcErr := s.buildUserResourceType(ctx, baseURL)
+	userRT, svcErr := s.buildUserResourceType(ctx, baseURL)
 	if svcErr != nil {
 		return SCIMResourceTypeListResponse{}, svcErr
 	}
 
+	groupRT := buildGroupResourceType(baseURL)
+
+	resources := []SCIMResourceType{userRT, groupRT}
 	return SCIMResourceTypeListResponse{
 		Schemas:      []string{SCIMListResponseSchemaURN},
-		TotalResults: 1,
+		TotalResults: len(resources),
 		StartIndex:   1,
-		ItemsPerPage: 1,
-		Resources:    []SCIMResourceType{rt},
+		ItemsPerPage: len(resources),
+		Resources:    resources,
 	}, nil
 }
 
 // GetResourceType returns a single SCIM resource type by ID.
-// The only supported ID is "User" (case-insensitive). All others return 404.
+// Supported IDs are "User" and "Group" (case-insensitive). All others return 404.
 func (s *scimService) GetResourceType(
 	ctx context.Context, resourceTypeID string, baseURL string,
 ) (*SCIMResourceType, *tidcommon.ServiceError) {
 	logger := s.logger
 
-	if !strings.EqualFold(strings.TrimSpace(resourceTypeID), scimResourceTypeUserID) {
+	trimmed := strings.TrimSpace(resourceTypeID)
+	switch {
+	case strings.EqualFold(trimmed, scimResourceTypeUserID):
+		rt, svcErr := s.buildUserResourceType(ctx, baseURL)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		return &rt, nil
+	case strings.EqualFold(trimmed, scimResourceTypeGroupID):
+		rt := buildGroupResourceType(baseURL)
+		return &rt, nil
+	default:
 		logger.Debug(ctx, "SCIM ResourceType not found", log.String("id", resourceTypeID))
 		return nil, &ErrorResourceTypeNotFound
 	}
-
-	rt, svcErr := s.buildUserResourceType(ctx, baseURL)
-	if svcErr != nil {
-		return nil, svcErr
-	}
-
-	return &rt, nil
 }
 
 // listUserEntityTypeNames paginates through all user-category entity types and
@@ -395,6 +410,27 @@ func (s *scimService) buildUserResourceType(
 			LastModified: scimServerStartTime,
 		},
 	}, nil
+}
+
+// buildGroupResourceType constructs the static SCIM Group ResourceType resource.
+// Groups have no dynamic schema extensions — the Group schema is the core RFC 7643 §4.2 schema.
+func buildGroupResourceType(baseURL string) SCIMResourceType {
+	location := fmt.Sprintf("%s%s/ResourceTypes/%s", baseURL, SCIMBasePath, scimResourceTypeGroupID)
+	return SCIMResourceType{
+		Schemas:          []string{SCIMResourceTypeSchemaURN},
+		ID:               scimResourceTypeGroupID,
+		Name:             scimResourceTypeGroupName,
+		Description:      scimResourceTypeGroupDesc,
+		Endpoint:         scimResourceTypeGroupEndpoint,
+		Schema:           SCIMCoreGroupSchemaURN,
+		SchemaExtensions: []SCIMResourceTypeSchemaExtension{},
+		Meta: SCIMMeta{
+			ResourceType: "ResourceType",
+			Location:     location,
+			Created:      scimServerStartTime,
+			LastModified: scimServerStartTime,
+		},
+	}
 }
 
 // resolveEntityTypeNameForSchemaURN searches all user-type entity types for one
