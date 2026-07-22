@@ -195,7 +195,7 @@ export default function ReleaseArchivePage(): React.ReactElement {
   return (
     <Layout title="Release Archive" description={`Browse every ${productName} release.`}>
       <Shell>
-        <BackLink to="/docs/next/releases">
+        <BackLink to="/releases">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M11 18l-6-6 6-6" />
           </svg>
@@ -223,7 +223,7 @@ export default function ReleaseArchivePage(): React.ReactElement {
         {releases && releases.length > 0 ? (
           <ReleaseTable>
             {releases.map((release) => (
-              <ReleaseRow key={release.id} to={`/docs/next/releases?tag=${encodeURIComponent(release.tagName)}`}>
+              <ReleaseRow key={release.id} to={`/releases?tag=${encodeURIComponent(release.tagName)}`}>
                 <ReleaseTag>{release.tagName}</ReleaseTag>
                 {release.isLatest ? <ReleaseBadge ownerState={{tone: 'latest'}}>Latest</ReleaseBadge> : null}
                 {release.isPrerelease ? <ReleaseBadge ownerState={{tone: 'prerelease'}}>Pre-release</ReleaseBadge> : null}

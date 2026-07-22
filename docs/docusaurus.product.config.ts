@@ -77,7 +77,7 @@ const DocusaurusProductConfig = {
         url: 'https://github.com/thunder-id/thunderid',
         discussionsUrl: 'https://github.com/thunder-id/thunderid/discussions',
         issuesUrl: 'https://github.com/thunder-id/thunderid/issues',
-        releasesUrl: '/docs/next/releases',
+        releasesUrl: '/releases',
         editUrls: {
           blog: 'https://github.com/thunder-id/thunderid/tree/main/blog/',
           content: 'https://github.com/thunder-id/thunderid/tree/main/docs/',

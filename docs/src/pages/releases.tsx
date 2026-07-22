@@ -837,7 +837,7 @@ export default function ReleasesPage() {
               </VersionList>
               {hasMoreReleases ? (
                 <VersionSidebarFooter>
-                  <VersionSidebarAllLink to="/docs/next/releases/archive">
+                  <VersionSidebarAllLink to="/releases/archive">
                     <span>Browse all {releases.length} releases</span>
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M5 12h14M13 6l6 6-6 6" />
