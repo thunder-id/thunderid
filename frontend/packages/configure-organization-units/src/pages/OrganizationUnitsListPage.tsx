@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import {LearnMoreLink} from '@thunderid/components';
 import {PageContent, PageTitle} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -29,7 +30,9 @@ export default function OrganizationUnitsListPage(): JSX.Element {
       {/* Header */}
       <PageTitle>
         <PageTitle.Header>{t('organizationUnits:listing.title')}</PageTitle.Header>
-        <PageTitle.SubHeader>{t('organizationUnits:listing.subtitle')}</PageTitle.SubHeader>
+        <PageTitle.SubHeader>
+          {t('organizationUnits:listing.subtitle')} <LearnMoreLink docKey="organizationUnits" />
+        </PageTitle.SubHeader>
       </PageTitle>
 
       <OrganizationUnitsTreeView />

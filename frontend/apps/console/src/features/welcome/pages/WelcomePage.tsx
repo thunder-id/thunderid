@@ -44,7 +44,7 @@ export default function WelcomePage(): JSX.Element {
   const theme = useTheme();
   const {config} = useConfig();
   const productName = config.brand.product_name;
-  const docsBaseUrl = (config.brand.documentation?.baseUrl ?? '').replace(/\/$/, '');
+  const docsBaseUrl = (config.documentation?.baseUrl ?? '').replace(/\/$/, '');
   const handleClose = useWelcomeClose();
 
   const handleCreateNewProject = (): void => {

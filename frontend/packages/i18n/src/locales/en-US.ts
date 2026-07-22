@@ -47,6 +47,7 @@ const translations = {
     'actions.yes': 'Yes',
     'actions.no': 'No',
     'actions.continue': 'Continue',
+    'actions.stay': 'Stay',
     'actions.skip': 'Skip',
     'actions.finish': 'Finish',
     'actions.done': 'Done',
@@ -132,6 +133,11 @@ const translations = {
     'messages.noResults': 'No results found',
     'messages.somethingWentWrong': 'Something went wrong',
     'messages.tryAgain': 'Please try again',
+
+    // External links
+    learnMore: 'Learn more',
+    'externalLink.title': 'You are leaving {{productName}}',
+    'externalLink.message': 'This link leads to an external site that {{productName}} does not control:',
 
     // Navigation
     'navigation.home': 'Home',

@@ -47,6 +47,19 @@ function loadConfig(): ProductConfig {
 }
 
 /**
+ * Resolves a documentation link path against the configured base URL. Absolute URLs
+ * (starting with `http`) are returned as-is.
+ *
+ * @internal
+ */
+function resolveDocumentationUrl(baseUrl: string, path: string): string {
+  if (/^https?:\/\//.test(path)) {
+    return path;
+  }
+  return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+}
+
+/**
  * Resolves the resource server URL from config, falling back to the served origin.
  *
  * @internal
@@ -191,6 +204,18 @@ export default function ConfigProvider({children}: ConfigProviderProps) {
         return config.client.scopes ?? [];
       },
       isTrustedIssuerGenericOidc: () => config.trusted_issuer?.type === 'generic',
+      getDocumentationBaseUrl: () => config.documentation?.baseUrl,
+      getReleasesUrl: () => config.documentation?.releasesUrl,
+      getDocumentationLink: (key: string) => {
+        const baseUrl = config.documentation?.baseUrl;
+        const path = config.documentation?.links?.[key];
+
+        if (!baseUrl || !path) {
+          return undefined;
+        }
+
+        return resolveDocumentationUrl(baseUrl, path);
+      },
     }),
     [config],
   );
