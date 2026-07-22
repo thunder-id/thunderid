@@ -294,7 +294,7 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
           {dirty && (
             <UnsavedChangesBar
               message={t('trustedIssuers:detail.saveBar.unsaved', 'You have unsaved changes')}
-              resetLabel={t('trustedIssuers:detail.saveBar.discard', 'Discard')}
+              resetLabel={t('trustedIssuers:detail.saveBar.reset', 'Reset')}
               saveLabel={t('trustedIssuers:detail.saveBar.save', 'Save changes')}
               savingLabel={t('common:status.saving', 'Saving...')}
               isSaving={updateMutation.isPending}

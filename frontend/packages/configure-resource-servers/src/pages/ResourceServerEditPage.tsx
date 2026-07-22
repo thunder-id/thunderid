@@ -433,7 +433,7 @@ export default function ResourceServerEditPage(): JSX.Element {
       {hasChanges && (
         <UnsavedChangesBar
           message={t('resourceServers:edit.unsavedChanges', 'You have unsaved changes.')}
-          resetLabel={t('common:discard', 'Discard')}
+          resetLabel={t('common:actions.reset', 'Reset')}
           saveLabel={t('common:save', 'Save')}
           savingLabel={t('common:saving', 'Saving…')}
           isSaving={updateRs.isPending}

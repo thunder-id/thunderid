@@ -409,7 +409,7 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
       {!isReadOnly && dirty && (
         <Box sx={{mt: 'auto', pt: 2, display: 'flex', gap: 1, justifyContent: 'flex-end'}}>
           <Button variant="outlined" size="small" onClick={resetForm} disabled={isPending}>
-            {t('common:discard', 'Discard')}
+            {t('common:actions.reset', 'Reset')}
           </Button>
           <Button variant="contained" size="small" onClick={handleSave} disabled={isPending}>
             {isPending ? t('common:saving', 'Saving…') : t('common:save', 'Save')}

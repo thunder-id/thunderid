@@ -45,7 +45,7 @@ export interface AllowedOriginsDraft {
   changeRow: (index: number, value: string) => void;
   /** Normalizes and validates the row at the given index. */
   blurRow: (index: number) => void;
-  /** Clears local edits, reverting to the saved server value (used by Discard and after a save). */
+  /** Clears local edits, reverting to the saved server value (used by Reset and after a save). */
   reset: () => void;
   /** Validates every row, sets errors, and returns whether the draft is savable. */
   validateAll: () => boolean;

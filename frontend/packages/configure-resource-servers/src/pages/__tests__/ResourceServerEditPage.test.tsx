@@ -79,14 +79,26 @@ vi.mocked(componentsModule.SettingsCard).mockImplementation(
   ),
 );
 vi.mocked(componentsModule.UnsavedChangesBar).mockImplementation(
-  ({message, onReset, onSave}: {message: string; onReset: () => void; onSave: () => void}) => (
+  ({
+    message,
+    resetLabel,
+    saveLabel,
+    onReset,
+    onSave,
+  }: {
+    message: string;
+    resetLabel: string;
+    saveLabel: string;
+    onReset: () => void;
+    onSave: () => void;
+  }) => (
     <div data-testid="unsaved-changes-bar">
       <span>{message}</span>
       <button type="button" onClick={onReset}>
-        Discard
+        {resetLabel}
       </button>
       <button type="button" onClick={onSave}>
-        Save
+        {saveLabel}
       </button>
     </div>
   ),

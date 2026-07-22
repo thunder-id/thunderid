@@ -136,9 +136,9 @@ export default function CorsSection(): JSX.Element {
       {origins.dirty && (
         <UnsavedChangesBar
           message={t('settings:cors.unsavedChanges')}
-          resetLabel={t('settings:cors.discard')}
-          saveLabel={t('settings:cors.save')}
-          savingLabel={t('settings:cors.saving')}
+          resetLabel={t('settings:cors.reset', 'Reset')}
+          saveLabel={t('settings:cors.save', 'Save changes')}
+          savingLabel={t('settings:cors.saving', 'Saving changes...')}
           isSaving={updateCors.isPending}
           saveDisabled={origins.hasErrors}
           onReset={origins.reset}
