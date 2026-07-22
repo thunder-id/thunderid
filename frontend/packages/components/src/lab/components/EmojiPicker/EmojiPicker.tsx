@@ -29,7 +29,7 @@ import {
   Hash,
   Flag,
 } from '@wso2/oxygen-ui-icons-react';
-import {useState, useCallback, useMemo, useRef, useEffect, type ComponentType, type JSX} from 'react';
+import {useState, useCallback, useMemo, useRef, useEffect, memo, type ComponentType, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import EMOJI_DATA from './emojis.json';
 
@@ -142,7 +142,7 @@ export interface EmojiPickerProps {
  *
  * @public
  */
-export default function EmojiPicker({value = '', onChange}: EmojiPickerProps): JSX.Element {
+function EmojiPicker({value = '', onChange}: EmojiPickerProps): JSX.Element {
   const {t} = useTranslation('elements');
   const [search, setSearch] = useState<string>('');
   const allCategories: EmojiCategory[] = getSupportedCategories();
@@ -361,3 +361,5 @@ export default function EmojiPicker({value = '', onChange}: EmojiPickerProps): J
     </Stack>
   );
 }
+
+export default memo(EmojiPicker);
