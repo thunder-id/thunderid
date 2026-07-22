@@ -144,7 +144,7 @@ export function createStorageInitScript(authState: AuthState): string {
 /**
  * Verify that authentication is working by checking storage and session state
  */
-export async function verifyAuthState(page: Page, debug: boolean = false): Promise<boolean> {
+export async function verifyAuthState(page: Page, baseUrl: string, debug: boolean = false): Promise<boolean> {
   const localStorage = await page.evaluate(() => {
     const items: Record<string, string> = {};
     for (let i = 0; i < window.localStorage.length; i++) {
@@ -172,6 +172,7 @@ export async function verifyAuthState(page: Page, debug: boolean = false): Promi
 
   // Check if tokens exist and are not expired
   let tokensValid = false;
+  let accessToken: string | undefined;
   const sessionDataKey = Object.keys(sessionStorage).find(key => key.includes("session_data-instance_0"));
   if (sessionDataKey) {
     try {
@@ -179,6 +180,7 @@ export async function verifyAuthState(page: Page, debug: boolean = false): Promi
       if (sessionData.access_token && sessionData.created_at && sessionData.expires_in) {
         const expirationTime = sessionData.created_at + sessionData.expires_in * 1000;
         tokensValid = Date.now() < expirationTime;
+        accessToken = sessionData.access_token;
         if (debug) {
           const timeLeft = Math.round((expirationTime - Date.now()) / 1000 / 60);
           console.log(`🔍 [DEBUG] Token expires in: ${timeLeft} minutes`);
@@ -204,7 +206,28 @@ export async function verifyAuthState(page: Page, debug: boolean = false): Promi
     `🔍 Auth verification: session active: ${isSessionActive}, has session data: ${hasSessionData}, tokens valid: ${tokensValid}`
   );
 
-  return isSessionActive && hasSessionData && tokensValid;
+  if (!isSessionActive || !hasSessionData || !tokensValid) {
+    return false;
+  }
+
+  // The checks above are all client-side and can't detect a token the server has already
+  // rejected (e.g. an in-flight request interrupted by a crashed worker leaving the session in
+  // a bad state)
+  try {
+    const response = await page.request.get(`${baseUrl}/oauth2/userinfo`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      ignoreHTTPSErrors: true,
+    });
+    if (!response.ok()) {
+      if (debug) console.log(`⚠️ [DEBUG] Server rejected stored token: ${response.status()}`);
+      return false;
+    }
+  } catch (error) {
+    if (debug) console.log("⚠️ [DEBUG] Server verification request failed:", error);
+    return false;
+  }
+
+  return true;
 }
 
 /**
@@ -279,11 +302,11 @@ export async function setupAuthentication(
     console.log("🔍 [DEBUG] Page URL after navigation:", page.url());
   }
 
-  // Small wait for app to initialize with injected tokens
-  await page.waitForTimeout(Timeouts.AUTH_INITIALIZATION);
+  // Wait for the app to settle after token injection
+  await page.waitForLoadState("networkidle");
 
   // Verify authentication is working
-  const isValid = await verifyAuthState(page, debug);
+  const isValid = await verifyAuthState(page, baseUrl, debug);
   if (!isValid) {
     console.log("⚠️ Auth verification failed, performing inline login...");
     await performInlineLogin(page, baseUrl, authPath, debug);

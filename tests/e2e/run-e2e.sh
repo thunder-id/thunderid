@@ -123,6 +123,9 @@ wait_for_url "$SERVER_URL/health/liveness" "ThunderID server"
 # 4. Obtain an admin token via OAuth2 auth code + PKCE (CONSOLE app, admin credentials).
 echo "Obtaining admin token..."
 CONSOLE_REDIRECT_URI="https://localhost:8090/console"
+# Tokens are bound to a single resource server (RFC 8707), so the CONSOLE app targets the
+# bootstrapped System resource server, mirroring the console runtime config.
+CONSOLE_RESOURCE="$SERVER_URL/mcp"
 CODE_VERIFIER=$(openssl rand -hex 32 | cut -c1-43)
 CODE_CHALLENGE=$(printf '%s' "$CODE_VERIFIER" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
 
@@ -132,6 +135,7 @@ curl -sk -o /dev/null -D /tmp/authz_headers.txt \
     --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
     --data-urlencode "scope=system" \
     --data-urlencode "response_type=code" \
+    --data-urlencode "resource=$CONSOLE_RESOURCE" \
     --data-urlencode "code_challenge=$CODE_CHALLENGE" \
     --data-urlencode "code_challenge_method=S256"
 
@@ -268,9 +272,16 @@ print(d.get('summary', {}).get('failed', 0))
     echo "Imported E2E test infrastructure resources."
 fi
 
-# Use the vanilla "Sample App" ID (stable UUID v7 from react-vanilla-sample/thunderid-config/basic).
+# Look up the vanilla "Sample App" ID dynamically (same mechanism CI uses), so a change to the
+# sample's declarative config can't silently desync this script from the real app id.
 # The vanilla sample is unaffected by MFA test setup/teardown, unlike the SDK sample.
-SAMPLE_APP_ID="019e3a5c-0500-7f3e-a66e-66fc7918c3a7"
+APPS_RESPONSE=$(curl -sk -H "Authorization: Bearer $ADMIN_TOKEN" "$SERVER_URL/applications")
+SAMPLE_APP_ID=$(echo "$APPS_RESPONSE" | jq -r '(.applications // [])[] | select(.name == "Sample App") | .id')
+
+if [ -z "$SAMPLE_APP_ID" ] || [ "$SAMPLE_APP_ID" = "null" ]; then
+    echo "ERROR: Could not find 'Sample App' in the applications list."
+    exit 1
+fi
 
 # 6. Build sample app (if not already built) and start it.
 echo "Setting up sample app..."
@@ -287,24 +298,19 @@ wait_for_url "$SAMPLE_URL" "Sample app"
 echo "Running Playwright E2E tests..."
 cd "$SCRIPT_DIR"
 
-# Auto-create .env with local defaults if not present.
+# Auto-create .env with local defaults if not present. Fixed defaults come from defaults.env
+# (the canonical source shared with CI); only the values resolved for this specific run (the
+# actual server/sample URLs and the discovered SAMPLE_APP_ID) are appended on top, overriding it.
 if [ ! -f "$SCRIPT_DIR/.env" ]; then
     echo "Creating default .env for E2E tests..."
-    cat > "$SCRIPT_DIR/.env" <<EOF
+    cp "$SCRIPT_DIR/defaults.env" "$SCRIPT_DIR/.env"
+    cat >> "$SCRIPT_DIR/.env" <<EOF
 BASE_URL=$SERVER_URL
 SERVER_URL=$SERVER_URL
-ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
-ENVIRONMENT=local
+ADMIN_USERNAME=$ADMIN_USER
+ADMIN_PASSWORD=$ADMIN_PASS
 SAMPLE_APP_URL=$SAMPLE_URL
 SAMPLE_APP_ID=$SAMPLE_APP_ID
-SAMPLE_APP_USERNAME=e2e-test-user
-SAMPLE_APP_PASSWORD=e2e-test-password
-TEST_USER_USERNAME=testuser
-TEST_USER_PASSWORD=admin
-MOCK_SMS_SERVER_PORT=8098
-AUTO_SETUP_MFA=true
-PLAYWRIGHT_WORKERS=1
 EOF
 fi
 

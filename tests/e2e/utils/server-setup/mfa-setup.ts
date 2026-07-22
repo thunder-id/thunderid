@@ -136,8 +136,13 @@ export class MFASetup {
       const userId = userResult.replace("created:", "");
 
       // Step 6: Update application with MFA flows
-      const actualAppId = await this.updateApplicationFlows(adminToken, actualAuthFlowId, actualRegFlowId);
+      const { appId: actualAppId, originalFlows } = await this.updateApplicationFlows(
+        adminToken,
+        actualAuthFlowId,
+        actualRegFlowId
+      );
       console.log(`✓ Application updated with MFA flows`);
+      cleanupFunctions.push(() => this.revertApplicationFlows(adminToken, actualAppId, originalFlows));
       console.log("=== MFA Setup Completed ===\n");
 
       return {
@@ -486,13 +491,22 @@ export class MFASetup {
   }
 
   /**
-   * Update application with MFA authentication and registration flows
+   * Update application with MFA authentication and registration flows.
+   * Returns the app id together with its prior flow bindings
    */
   private async updateApplicationFlows(
     adminToken: string,
     authFlowId: string,
     registrationFlowId: string
-  ): Promise<string> {
+  ): Promise<{
+    appId: string;
+    originalFlows: {
+      authFlowId: string;
+      registrationFlowId: string;
+      recoveryFlowId: string | null;
+      isRegistrationFlowEnabled: boolean;
+    };
+  }> {
     // First, get all applications and find the one with clientId = "REACT_SDK_SAMPLE"
     const listResponse = await this.request.get(`${this.config.serverUrl}/applications`, {
       headers: {
@@ -527,12 +541,20 @@ export class MFASetup {
     }
 
     const appData = await getResponse.json();
+    const originalFlows = {
+      authFlowId: appData.authFlowId,
+      registrationFlowId: appData.registrationFlowId,
+      recoveryFlowId: appData.recoveryFlowId ?? null,
+      isRegistrationFlowEnabled: appData.isRegistrationFlowEnabled,
+    };
 
-    // Update with new flow IDs
+    // Update with new flow IDs. recoveryFlowId is cleared to avoid conflicts 
+    // with MFA registration flow, and isRegistrationFlowEnabled is set to true.
     const updatedApp = {
       ...appData,
       authFlowId: authFlowId,
       registrationFlowId: registrationFlowId,
+      recoveryFlowId: null,
       isRegistrationFlowEnabled: true,
     };
 
@@ -549,7 +571,58 @@ export class MFASetup {
       throw new Error(`Failed to update application: ${await updateResponse.text()}`);
     }
 
-    return actualAppId;
+    return { appId: actualAppId, originalFlows };
+  }
+
+  /**
+   * Restore an application's flow bindings to what they were before MFA setup rewired them.
+   */
+  private async revertApplicationFlows(
+    adminToken: string,
+    appId: string,
+    originalFlows: {
+      authFlowId: string;
+      registrationFlowId: string;
+      recoveryFlowId: string | null;
+      isRegistrationFlowEnabled: boolean;
+    }
+  ): Promise<void> {
+    // This runs during cleanup (afterAll), where the beforeAll-scoped `this.request` fixture
+    // can no longer be used, so a fresh request context is created here (as the other cleanup
+    // methods below already do).
+    let requestContext: APIRequestContext | null = null;
+    try {
+      requestContext = await playwrightRequest.newContext({ ignoreHTTPSErrors: true });
+
+      const getResponse = await requestContext.get(`${this.config.serverUrl}/applications/${appId}`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+
+      if (!getResponse.ok()) {
+        console.log(`⚠️  Could not fetch application for revert: ${await getResponse.text()}`);
+        return;
+      }
+
+      const appData = await getResponse.json();
+      const revertedApp = { ...appData, ...originalFlows };
+
+      const updateResponse = await requestContext.put(`${this.config.serverUrl}/applications/${appId}`, {
+        data: revertedApp,
+        headers: { Authorization: `Bearer ${adminToken}`, "Content-Type": "application/json" },
+      });
+
+      if (updateResponse.ok()) {
+        console.log(`✓ Application flows reverted: ${appId}`);
+      } else {
+        console.log(`⚠️  Could not revert application flows: ${await updateResponse.text()}`);
+      }
+    } catch (error) {
+      console.log(`⚠️  Error reverting application flows: ${error}`);
+    } finally {
+      if (requestContext) {
+        await requestContext.dispose();
+      }
+    }
   }
 
   /**
@@ -563,14 +636,11 @@ export class MFASetup {
         ignoreHTTPSErrors: true,
       });
 
-      const response = await requestContext.delete(
-        `${this.config.serverUrl}/connections/sms-gateway/${senderId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${adminToken}`,
-          },
-        }
-      );
+      const response = await requestContext.delete(`${this.config.serverUrl}/connections/sms-gateway/${senderId}`, {
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+        },
+      });
 
       if (response.ok()) {
         console.log(`✓ Notification sender deleted: ${senderId}`);

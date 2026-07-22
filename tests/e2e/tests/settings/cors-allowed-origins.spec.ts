@@ -28,7 +28,6 @@
  *
  * Required environment variables:
  *   - BASE_URL: ThunderID server URL (default https://localhost:8090).
- *   - SAMPLE_APP_URL: probe origin that is NOT in the CORS baseline (default https://localhost:3000).
  */
 
 import { test, expect } from "../../fixtures/console";
@@ -37,8 +36,8 @@ import type { Page } from "@playwright/test";
 
 const BASE_URL = process.env.BASE_URL || "https://localhost:8090";
 const DISCOVERY_PATH = "/.well-known/openid-configuration";
-// Used only as an `Origin` header value; it must not be part of the CORS baseline.
-const TEST_ORIGIN = (process.env.SAMPLE_APP_URL || "https://localhost:3000").replace(/\/$/, "");
+// A fake origin dedicated to this test - it only needs to be a valid origin string
+const TEST_ORIGIN = "https://e2e-cors-probe.invalid";
 
 /**
  * Sends a GET to the CORS-wrapped discovery endpoint with `TEST_ORIGIN` as the `Origin` header and
