@@ -26,7 +26,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/thunder-id/thunderid/internal/system/constants"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -94,7 +93,7 @@ func writeSecurityError(ctx context.Context, w http.ResponseWriter, err error) {
 }
 
 func writeSCIMSecurityError(w http.ResponseWriter, status int, detail string) {
-	w.Header().Set("Content-Type", constants.SCIMContentType)
+	w.Header().Set("Content-Type", serverconst.SCIMContentType)
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"schemas": []string{"urn:ietf:params:scim:api:messages:2.0:Error"},

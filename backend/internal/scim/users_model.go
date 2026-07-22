@@ -9,11 +9,12 @@ import (
 // MarshalJSON embeds the extension attributes under the ThunderID extension URN key
 // per RFC 7644 §3.3.
 type SCIMUser struct {
-	ID           string          `json:"id"`
-	Schemas      []string        `json:"schemas"`
-	ExtensionURN string          `json:"-"`
-	Attributes   json.RawMessage `json:"-"`
-	Meta         SCIMMeta        `json:"meta"`
+	ID           string                     `json:"id"`
+	Schemas      []string                   `json:"schemas"`
+	ExtensionURN string                     `json:"-"`
+	Attributes   json.RawMessage            `json:"-"`
+	CoreAttrs    map[string]json.RawMessage `json:"-"`
+	Meta         SCIMMeta                   `json:"meta"`
 }
 
 // MarshalJSON produces the SCIM wire JSON for a User resource.
@@ -37,7 +38,9 @@ func (u SCIMUser) MarshalJSON() ([]byte, error) {
 
 	// No extension attributes — return base object as-is.
 	if len(u.Attributes) == 0 || u.ExtensionURN == "" {
-		return baseBytes, nil
+		if len(u.CoreAttrs) == 0 {
+			return baseBytes, nil
+		}
 	}
 
 	// Merge extension attributes under the URN key into the base map.
@@ -45,7 +48,13 @@ func (u SCIMUser) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(baseBytes, &baseMap); err != nil {
 		return nil, fmt.Errorf("SCIMUser.MarshalJSON: failed to unmarshal base map: %w", err)
 	}
-	baseMap[u.ExtensionURN] = u.Attributes
+	if len(u.Attributes) > 0 && u.ExtensionURN != "" {
+		baseMap[u.ExtensionURN] = u.Attributes
+	}
+	// Merge core attributes directly into the top level
+	for k, v := range u.CoreAttrs {
+		baseMap[k] = v
+	}
 
 	return json.Marshal(baseMap)
 }

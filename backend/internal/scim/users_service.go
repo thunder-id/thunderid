@@ -69,7 +69,7 @@ func (s *scimUsersService) ListUsers(ctx context.Context, startIndex, count int,
 			credKeys = s.getCredentialKeys(ctx, u.Type)
 			credKeysByType[u.Type] = credKeys
 		}
-		scimUsers = append(scimUsers, buildSCIMUserResource(u, extensionURN, baseURL, credKeys))
+		scimUsers = append(scimUsers, buildSCIMUserResource(ctx, u, extensionURN, baseURL, credKeys))
 	}
 
 	return buildSCIMUserListResponse(scimUsers, listResp.TotalResults, startIndex, len(scimUsers)), nil
@@ -90,7 +90,7 @@ func (s *scimUsersService) GetUser(
 
 	extensionURN := buildSchemaURN(u.Type)
 	credKeys := s.getCredentialKeys(ctx, u.Type)
-	scimUser := buildSCIMUserResource(*u, extensionURN, baseURL, credKeys)
+	scimUser := buildSCIMUserResource(ctx, *u, extensionURN, baseURL, credKeys)
 	return &scimUser, nil
 }
 
@@ -115,6 +115,15 @@ func (s *scimUsersService) CreateUser(
 			log.String("userTypeName", canonicalName), log.Any("error", svcErr))
 		return nil, &ErrorUnknownUserType
 	}
+
+	if len(payload.CoreAttrs) > 0 {
+		reverseMapped := reverseMapCoreAttrsForSchema(payload.CoreAttrs, et.Schema)
+		for k, v := range reverseMapped {
+			if _, exists := payload.ExtensionAttrs[k]; !exists {
+				payload.ExtensionAttrs[k] = v
+			}
+		}
+	}
 	attrsJSON, err := json.Marshal(payload.ExtensionAttrs)
 	if err != nil {
 		logger.Error(ctx, "SCIM CreateUser: failed to marshal extension attrs", log.Error(err))
@@ -133,7 +142,7 @@ func (s *scimUsersService) CreateUser(
 	}
 	extensionURN := buildSchemaURN(created.Type)
 	credKeys := s.getCredentialKeys(ctx, canonicalName)
-	scimUser := buildSCIMUserResource(*created, extensionURN, baseURL, credKeys)
+	scimUser := buildSCIMUserResource(ctx, *created, extensionURN, baseURL, credKeys)
 	return &scimUser, nil
 }
 
@@ -177,6 +186,14 @@ func (s *scimUsersService) ReplaceUser(
 			log.String("userTypeName", canonicalName), log.Any("error", svcErr))
 		return nil, &ErrorUnknownUserType
 	}
+	if len(payload.CoreAttrs) > 0 {
+		reverseMapped := reverseMapCoreAttrsForSchema(payload.CoreAttrs, et.Schema)
+		for k, v := range reverseMapped {
+			if _, exists := payload.ExtensionAttrs[k]; !exists {
+				payload.ExtensionAttrs[k] = v
+			}
+		}
+	}
 	attrsJSON, err := json.Marshal(payload.ExtensionAttrs)
 	if err != nil {
 		logger.Error(ctx, "SCIM ReplaceUser: failed to marshal extension attrs", log.Error(err))
@@ -197,7 +214,7 @@ func (s *scimUsersService) ReplaceUser(
 
 	extensionURN := buildSchemaURN(result.Type)
 	credKeys := s.getCredentialKeys(ctx, canonicalName)
-	scimUser := buildSCIMUserResource(*result, extensionURN, baseURL, credKeys)
+	scimUser := buildSCIMUserResource(ctx, *result, extensionURN, baseURL, credKeys)
 	return &scimUser, nil
 }
 
