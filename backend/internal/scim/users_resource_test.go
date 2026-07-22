@@ -1,6 +1,7 @@
 package scim
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -62,7 +63,7 @@ func TestStripCredentialFields(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := stripCredentialFields(tc.attributes, tc.credKeys)
+			result := stripCredentialFields(context.Background(), tc.attributes, tc.credKeys)
 			require.JSONEq(t, string(tc.expected), string(result))
 		})
 	}
@@ -78,7 +79,7 @@ func TestBuildSCIMUserResource(t *testing.T) {
 	extensionURN := "urn:thunderid:params:scim:schemas:person:2.0:User"
 	credKeys := map[string]struct{}{"password": {}}
 
-	scimUser := buildSCIMUserResource(u, extensionURN, baseURL, credKeys)
+	scimUser := buildSCIMUserResource(context.Background(), u, extensionURN, baseURL, credKeys)
 
 	require.Equal(t, "user123", scimUser.ID)
 	require.Contains(t, scimUser.Schemas, SCIMCoreUserSchemaURN)

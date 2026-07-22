@@ -93,6 +93,13 @@ const (
 	scimUniquenessGlobal SCIMUniqueness = "global"
 )
 
+// Raw entity-type schema property type strings, compared case-insensitively
+// against rawPropertyDef.Type / rawPropertyDef.Items.Type.
+const (
+	rawPropertyTypeArray  = "array"
+	rawPropertyTypeObject = "object"
+)
+
 // Resource type metadata.
 const (
 	scimResourceTypeUserID       = "User"
