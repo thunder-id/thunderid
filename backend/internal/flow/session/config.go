@@ -29,6 +29,12 @@ import (
 type Config struct {
 	IdleTimeoutSeconds     int64 `json:"idleTimeoutSeconds"     yaml:"idleTimeoutSeconds"`
 	AbsoluteTimeoutSeconds int64 `json:"absoluteTimeoutSeconds" yaml:"absoluteTimeoutSeconds"`
+	// ActivityRefreshIntervalSeconds is the minimum spacing between persisted activity refreshes: a
+	// session reuse within this window of the last persisted activity refresh skips the idle-slide
+	// write, cutting write load on the hot path. It is honored as configured and must be less than
+	// idleTimeoutSeconds (enforced by Validate), so an active session is never skipped past its idle
+	// deadline.
+	ActivityRefreshIntervalSeconds int64 `json:"activityRefreshIntervalSeconds" yaml:"activityRefreshIntervalSeconds"`
 }
 
 // Validate ensures the configured session timeouts are coherent. Unset (zero) values are allowed
@@ -43,6 +49,13 @@ func (c Config) Validate() error {
 	if c.IdleTimeoutSeconds > 0 && c.AbsoluteTimeoutSeconds > 0 &&
 		c.IdleTimeoutSeconds > c.AbsoluteTimeoutSeconds {
 		return fmt.Errorf("session.idleTimeoutSeconds must not exceed absoluteTimeoutSeconds")
+	}
+	if c.ActivityRefreshIntervalSeconds < 0 {
+		return fmt.Errorf("session.activityRefreshIntervalSeconds must be greater than or equal to 0")
+	}
+	if c.ActivityRefreshIntervalSeconds > 0 && c.IdleTimeoutSeconds > 0 &&
+		c.ActivityRefreshIntervalSeconds >= c.IdleTimeoutSeconds {
+		return fmt.Errorf("session.activityRefreshIntervalSeconds must be less than idleTimeoutSeconds")
 	}
 	return nil
 }
@@ -81,6 +94,9 @@ func (ConfigHandler) Merge(readOnly, writable any) any {
 	}
 	if wr.AbsoluteTimeoutSeconds > 0 {
 		merged.AbsoluteTimeoutSeconds = wr.AbsoluteTimeoutSeconds
+	}
+	if wr.ActivityRefreshIntervalSeconds > 0 {
+		merged.ActivityRefreshIntervalSeconds = wr.ActivityRefreshIntervalSeconds
 	}
 	return merged
 }

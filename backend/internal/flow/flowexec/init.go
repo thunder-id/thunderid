@@ -59,7 +59,8 @@ func Initialize(
 	// bound its lifetime to the session's configured absolute timeout (same fallback as the session
 	// executor's timeouts).
 	ssoTransport := session.NewCookieTransport(cfg.SecureCookies)
-	sessionTimeouts := session.NewTimeouts(cfg.Session.IdleTimeoutSeconds, cfg.Session.AbsoluteTimeoutSeconds)
+	sessionTimeouts := session.NewTimeouts(cfg.Session.IdleTimeoutSeconds, cfg.Session.AbsoluteTimeoutSeconds,
+		cfg.Session.ActivityRefreshIntervalSeconds)
 	handler := newFlowExecutionHandler(flowExecService, ssoTransport, sessionTimeouts.Absolute)
 	registerRoutes(mux, handler)
 
