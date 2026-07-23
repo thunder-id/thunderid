@@ -29,6 +29,7 @@ import JavaScriptLogo from './icons/JavaScriptLogo';
 import NextLogo from './icons/NextLogo';
 import NodeLogo from './icons/NodeLogo';
 import NuxtLogo from './icons/NuxtLogo';
+import PythonLogo from './icons/PythonLogo';
 import ReactLogo from './icons/ReactLogo';
 import VueLogo from './icons/VueLogo';
 import {CONNECT_TYPE_STORAGE_KEY, applyConnectType, toConnectType} from '../utils/connectType';
@@ -48,10 +49,14 @@ const ALL_FRAMEWORKS = [
   {Logo: FlutterLogo,    href: '/docs/next/getting-started/connect-your-application/flutter', label: 'Flutter'},
 ];
 
+const MCP_FRAMEWORKS = [
+  {Logo: PythonLogo, href: '/docs/next/getting-started/connect-your-mcp/python', label: 'Python'},
+];
+
 const CATEGORIES: {id: ConnectType; icon: React.ReactElement; label: string; description: string; comingSoon: boolean}[] = [
   {id: 'app',   icon: <MonitorSmartphone size={20} />, label: 'Application', description: 'Web, mobile and desktop apps.', comingSoon: false},
   {id: 'agent', icon: <Bot size={20} />,               label: 'AI Agent',    description: 'LLM-powered agents.',            comingSoon: true},
-  {id: 'mcp',   icon: <Server size={20} />,            label: 'MCP Server',  description: 'Model Context Protocol servers.', comingSoon: true},
+  {id: 'mcp',   icon: <Server size={20} />,            label: 'MCP',         description: 'Model Context Protocol servers and clients.', comingSoon: false},
 ];
 
 function selectCategory(type: ConnectType): void {
@@ -253,13 +258,16 @@ export default function DeveloperShortcut({
       {/* Quickstart links */}
       <Box sx={{px: {xs: 2.5, md: 3.5}, pb: 3}}>
 
-        {selected === 'app' ? (
+        {selected === 'app' || selected === 'mcp' ? (
           <Box>
             <Typography sx={{color: 'text.disabled', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em', mb: 1, textTransform: 'uppercase'}}>
               Popular quickstarts
             </Typography>
             <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 0.875, mb: 2}}>
-              {ALL_FRAMEWORKS.filter(f => ['React','Next.js','Express','Vue'].includes(f.label)).map(({Logo, href, label}) => (
+              {(selected === 'app'
+                ? ALL_FRAMEWORKS.filter(f => ['React','Next.js','Express','Vue'].includes(f.label))
+                : MCP_FRAMEWORKS
+              ).map(({Logo, href, label}) => (
                 <Box
                   key={label}
                   component={Link}
@@ -294,7 +302,9 @@ export default function DeveloperShortcut({
               ))}
             </Box>
             <Typography sx={{color: 'text.secondary', fontSize: '0.8rem'}}>
-              All application quickstarts are available in the sidebar.
+              {selected === 'app'
+                ? 'All application quickstarts are available in the sidebar.'
+                : 'All MCP quickstarts are available in the sidebar.'}
             </Typography>
           </Box>
         ) : (

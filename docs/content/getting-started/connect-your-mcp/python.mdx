@@ -1,0 +1,319 @@
+---
+toc_progress: quickstart
+title: Secure Your MCP Server
+docType: quickstart
+sidebar_position: 1
+persona: app
+description: Protect a Python MCP server with {{ProductName}} OAuth scopes and validate tokens offline via JWKS.
+---
+
+import {
+  ShieldCheck,
+  KeyRound,
+  ListChecks,
+  Clock,
+  Terminal,
+  Server,
+  FileCode,
+} from '@wso2/oxygen-ui-icons-react';
+
+# Secure Your MCP Server
+
+Use this guide to build a Python MCP server whose tools are each protected by a <ProductName /> OAuth scope, using FastMCP, then verify the setup end to end with MCP Inspector.
+
+<TutorialHero>
+
+## What You Will Learn
+
+<TutorialHeroItem icon={<ShieldCheck />}>Turn an MCP server into an OAuth 2.0 resource server that answers unauthenticated calls with a <code>401</code> and RFC 9728 protected-resource metadata</TutorialHeroItem>
+<TutorialHeroItem icon={<KeyRound />}>Validate <ProductName /> JWTs offline (signature, issuer, audience, and expiry) against the JWKS endpoint</TutorialHeroItem>
+<TutorialHeroItem icon={<ListChecks />}>Protect each tool with its own scope, so a token missing a scope cannot see or call that tool</TutorialHeroItem>
+
+## Prerequisites
+
+<TutorialHeroItem icon={<Clock />}>About 10 minutes</TutorialHeroItem>
+<TutorialHeroItem icon={<Terminal />}><code>uv</code>, which manages Python and dependencies automatically</TutorialHeroItem>
+<TutorialHeroItem icon={<Server />}>Node.js 20+ (for MCP Inspector)</TutorialHeroItem>
+<TutorialHeroItem icon={<FileCode />}>Your preferred code editor</TutorialHeroItem>
+
+</TutorialHero>
+
+<Stepper stepNode="h2" as="h2">
+
+## Run <ProductName />
+
+Start a local <ProductName /> instance. Pick the method that works best for you:
+
+<RunThunderID />
+
+Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
+
+## Register the MCP Resource and Scopes
+
+1. Sign in to the Console.
+
+    :::info Test User
+    If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
+    :::
+
+2. Navigate to **Resource Servers** and click **Add resource server**.
+3. On the **Type** step, select **MCP**.
+4. On the **Name** step, enter:
+   - **MCP Server Name**: `Calculator MCP`
+   - **Identifier**: `http://localhost:8000/mcp`
+5. On the **Permission Delimiter** step, keep the default colon (`:`) and click **Create MCP server**. If your deployment has multiple organization units, click **Continue** instead, select one, then click **Create MCP server**.
+
+Now add each of the four calculator tools as a tool permission:
+
+6. On the **Capabilities** tab, the server has no capabilities yet. Click **Add tool permission**.
+7. Repeat for the remaining three tools: click the **+** icon in the panel header, then select **Add tool permission** from the menu.
+8. For each tool, enter the **Name**. <ProductName /> generates the **Handle** automatically from the name (lowercased), so confirm it matches the table below before clicking **Add**: the handle becomes the exact scope `require_scopes(...)` checks for in `server.py`.
+
+   | Name | Handle | Generated permission |
+   | --- | --- | --- |
+   | Add | `add` | `add` |
+   | Subtract | `subtract` | `subtract` |
+   | Multiply | `multiply` | `multiply` |
+   | Divide | `divide` | `divide` |
+
+## Create a Role for the Calculator Permissions
+
+Registering the permissions in the previous step only defines them. <ProductName /> puts a scope into an access token only when the signing-in user actually holds the matching permission through a role, and scopes the user doesn't hold are silently dropped from the token. A token missing a tool's scope means that tool never appears in the tool list, so before you connect Inspector, create a role that grants the four calculator permissions and assign it to the user you'll sign in with.
+
+1. Navigate to **Roles** and click **Add Role**.
+2. On the **Create a Role** step, enter a name (for example, `Calculator`) and click **Continue**. If prompted, select an organization unit and click **Continue** again.
+3. On the **Permissions** step, expand **Calculator MCP** and check **add**, **subtract**, **multiply**, and **divide** under **Tools**.
+4. Click **Continue** to create the role.
+5. Open the role from the **Roles** list, select the **Assignments** tab, and click **Add**.
+6. In the **Add Assignment** dialog, on the **Users** tab, select `admin` and click **Add Selected**.
+
+## Create the Server
+
+The whole server lives in a single file. Create `server.py`.
+
+FastMCP's `RemoteAuthProvider` turns the server into an OAuth 2.0 resource server: it publishes RFC 9728 protected-resource metadata and rejects requests without a valid token before any tool runs. The `JWTVerifier` validates each token offline, with no call back to <ProductName /> per request, by checking the signature against the JWKS endpoint, the issuer, the audience, and the expiry:
+
+```python title="server.py" {25-30,32-40} showLineNumbers
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["fastmcp>=3.4,<4", "python-dotenv>=1"]
+# ///
+"""Scope-protected calculator MCP server backed by ThunderID."""
+
+import os
+
+import httpx
+from dotenv import load_dotenv
+from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
+from fastmcp.server.auth import RemoteAuthProvider, require_scopes
+from fastmcp.server.auth.providers.jwt import JWTVerifier
+
+load_dotenv(override=True)
+
+ISSUER = os.environ["THUNDERID_ISSUER"]
+JWKS_URI = os.environ["THUNDERID_JWKS_URI"]
+AUDIENCE = os.environ["MCP_AUDIENCE"]
+CA_CERT = os.environ.get("THUNDERID_CA_CERT")
+
+SCOPES = ["add", "subtract", "multiply", "divide"]
+
+verifier = JWTVerifier(
+    jwks_uri=JWKS_URI,
+    issuer=ISSUER,
+    audience=AUDIENCE,
+    http_client=httpx.AsyncClient(verify=CA_CERT) if CA_CERT else None,
+)
+
+mcp = FastMCP(
+    "Calculator",
+    auth=RemoteAuthProvider(
+        token_verifier=verifier,
+        authorization_servers=[ISSUER],
+        base_url="http://localhost:8000",
+        scopes_supported=SCOPES,
+    ),
+)
+```
+
+:::note No install step
+The `# /// script` header at the top of the file is inline script metadata (PEP 723). `uv run server.py` reads it and resolves `fastmcp` and `python-dotenv` automatically, in an isolated environment, so there's no separate `pip install` step.
+:::
+
+Append the four tools below the auth setup, still in the same `server.py` file. Each tool declares the single scope it needs with `require_scopes(...)`. A token that doesn't carry that scope can't see the tool in `tools/list` and can't call it:
+
+```python title="server.py" {1,7,13,19}
+@mcp.tool(auth=require_scopes("add"))
+def add(a: float, b: float) -> float:
+    """Add two numbers."""
+    return a + b
+
+
+@mcp.tool(auth=require_scopes("subtract"))
+def subtract(a: float, b: float) -> float:
+    """Subtract b from a."""
+    return a - b
+
+
+@mcp.tool(auth=require_scopes("multiply"))
+def multiply(a: float, b: float) -> float:
+    """Multiply two numbers."""
+    return a * b
+
+
+@mcp.tool(auth=require_scopes("divide"))
+def divide(a: float, b: float) -> float:
+    """Divide a by b."""
+    if b == 0:
+        raise ToolError("Cannot divide by zero.")
+    return a / b
+
+
+if __name__ == "__main__":
+    mcp.run(transport="http", host="localhost", port=8000)
+```
+
+## Configure the Environment
+
+A local <ProductName /> instance uses a self-signed certificate, so the server needs that certificate exported to verify the JWKS endpoint over HTTPS. With <ProductName /> running, run this from the same directory as `server.py`:
+
+```bash
+openssl s_client -connect localhost:8090 -showcerts </dev/null 2>/dev/null | openssl x509 > thunderid.cert
+```
+
+Create a `.env` file next to `server.py`:
+
+```bash title=".env"
+THUNDERID_ISSUER=https://localhost:8090
+THUNDERID_JWKS_URI=https://localhost:8090/oauth2/jwks
+MCP_AUDIENCE=http://localhost:8000/mcp
+THUNDERID_CA_CERT=./thunderid.cert
+```
+
+| Variable | Description |
+| --- | --- |
+| `THUNDERID_ISSUER` | Must exactly match the `iss` claim <ProductName /> puts in every access token. |
+| `THUNDERID_JWKS_URI` | Where the server fetches <ProductName />'s public signing keys to verify token signatures. |
+| `MCP_AUDIENCE` | The resource server identifier you registered in the previous step. `JWTVerifier` rejects tokens whose `aud` claim doesn't match. |
+| `THUNDERID_CA_CERT` | Path to the certificate you just exported. Must point to the actual file location; a relative path like `./thunderid.cert` is resolved from the directory you start the server in. |
+
+Both the issuer and the JWKS URI are discoverable from [https://localhost:8090/.well-known/openid-configuration](https://localhost:8090/.well-known/openid-configuration) if you're pointing at a non-default host or port.
+
+:::note Certificate not found at startup
+If the server fails at startup with a `FileNotFoundError`, `THUNDERID_CA_CERT` doesn't point to the exported file. Check the path, or re-export the certificate. The export only writes a local file, nothing is added to your system trust store, and it regenerates whenever <ProductName /> is reinstalled or rebuilt, so re-export after a rebuild.
+:::
+
+## Run and Verify Protection
+
+Start the server:
+
+```bash
+uv run server.py
+```
+
+It serves the MCP endpoint at `http://localhost:8000/mcp`.
+
+With no token, the server rejects the request:
+
+```bash
+curl -si -X POST http://localhost:8000/mcp
+```
+
+```text
+HTTP/1.1 401 Unauthorized
+www-authenticate: Bearer resource_metadata="http://localhost:8000/.well-known/oauth-protected-resource/mcp"
+```
+
+Fetch that metadata directly:
+
+```bash
+curl -s http://localhost:8000/.well-known/oauth-protected-resource/mcp
+```
+
+The response names <ProductName /> as the authorization server and lists the four scopes:
+
+```json
+{
+  "resource": "http://localhost:8000/mcp",
+  "authorization_servers": ["https://localhost:8090/"],
+  "scopes_supported": ["add", "subtract", "multiply", "divide"],
+  "bearer_methods_supported": ["header"]
+}
+```
+
+## Connect with MCP Inspector
+
+### Register an MCP Client for Inspector
+
+<ProductName /> has a dedicated application type for MCP clients like Inspector. In the Console:
+
+1. Go to **Applications** and click **Add Application**.
+2. Select **MCP Client**.
+3. Enter a name (for example, `Calculator Inspector`).
+4. If prompted, select an organization unit.
+5. On the **Client type** step, select **On behalf of a user**. This configures the Authorization Code flow with PKCE as a public client.
+6. Under **Redirect URIs**, add `http://localhost:6274/oauth/callback`.
+7. Click **Finish**.
+8. From the completion screen, copy the **Client ID**. No client secret is required because this is a public client.
+
+### Allow the MCP Inspector Origin
+
+MCP Inspector runs in the browser at `http://localhost:6274` and calls <ProductName /> cross-origin, so its origin must be allowed in the CORS configuration.
+
+Create or update `config/resources/server_configs/cors.yaml` in your <ProductName /> distribution, or use `PUT /server-config/cors` after startup:
+
+```yaml
+name: cors
+value:
+  allowedOrigins:
+    - "http://localhost:6274"
+```
+
+If the file already exists, append the origin to the existing `allowedOrigins` list instead of replacing it. Restart <ProductName /> after editing the file.
+
+### Launch and Connect
+
+Inspector's proxy runs on Node.js and must also trust the self-signed <ProductName /> certificate to discover the OAuth endpoints, so reuse the certificate you exported earlier. Run this from the same directory as `server.py`:
+
+```bash
+NODE_EXTRA_CA_CERTS=./thunderid.cert npx @modelcontextprotocol/inspector
+```
+
+Inspector opens in your browser at `http://localhost:6274`.
+
+1. Set **Transport Type** to **Streamable HTTP** and **URL** to `http://localhost:8000/mcp`.
+2. Expand the **Authentication** section and select **OAuth**.
+3. Enter the **Client ID** you copied earlier. Leave **Client Secret** empty.
+4. Click **Connect**. Inspector reads your server's protected-resource metadata, discovers <ProductName /> as the authorization server, and requests all four scopes by default.
+5. A browser tab opens with <ProductName />'s sign-in page. Sign in with your test user and approve the request.
+6. You're redirected back to Inspector, now connected.
+7. Open the **Tools** tab and click **List Tools**. You see `add`, `subtract`, `multiply`, and `divide`.
+
+:::note Sign-in page never appears
+If the browser shows "Cannot GET /authorize" instead of the sign-in page, first confirm **Transport Type** is set to **Streamable HTTP**, since the deprecated SSE transport probes without a token and misroutes the authorize request to Inspector's own proxy. If Transport Type is already correct, Inspector was launched without `NODE_EXTRA_CA_CERTS` or the path is wrong, so it couldn't fetch <ProductName />'s OAuth discovery metadata. Relaunch with the variable pointing at the exported certificate.
+:::
+
+:::tip Success
+The tools you see in Inspector are exactly the ones your token's scopes allow. Try it: click **Disconnect**, edit the **Scope** field in the Auth panel to remove `divide`, then **Connect** again. Sign in once more and list the tools. `divide` is gone, because the token Inspector obtained this time never carries that scope, and `require_scopes("divide")` hides the tool from anyone without it.
+:::
+
+</Stepper>
+
+## What's Next
+
+<div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginTop: '1.5rem'}}>
+  <a href="../../../use-cases/ai-agents/mcp-authorization/overview" style={{textDecoration: 'none', color: 'inherit'}}>
+    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
+      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Securing MCP</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Authorization patterns for MCP servers, audience binding, and AuthZEN policy decisions.</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>MCP Authorization →</div>
+    </div>
+  </a>
+  <a href="../../../working-with-ai/mcp-server" style={{textDecoration: 'none', color: 'inherit'}}>
+    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
+      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}><ProductName /> MCP Server</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Manage <ProductName /> itself, applications, flows, and users, from AI tools.</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>MCP Server Guide →</div>
+    </div>
+  </a>
+</div>

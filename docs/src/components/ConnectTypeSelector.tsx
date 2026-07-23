@@ -24,7 +24,7 @@ import {CONNECT_TYPE_STORAGE_KEY, applyConnectType, toConnectType} from '../util
 const OPTIONS = [
   {Icon: MonitorSmartphone, description: 'Web, mobile & desktop apps', label: 'Application', value: 'app', comingSoon: false},
   {Icon: Bot, description: 'LLM-powered AI agents', label: 'AI Agent', value: 'agent', comingSoon: true},
-  {Icon: Server, description: 'Model Context Protocol servers', label: 'MCP Server', value: 'mcp', comingSoon: true},
+  {Icon: Server, description: 'Model Context Protocol servers and clients', label: 'MCP', value: 'mcp', comingSoon: false},
 ] as const;
 
 type ConnectType = (typeof OPTIONS)[number]['value'];
