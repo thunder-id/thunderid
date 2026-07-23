@@ -1,0 +1,560 @@
+# This workflow smoke-tests the installation paths documented in
+# guides/getting-started/get-thunderid: Helm on Kubernetes, and Docker Compose
+# (install/quick-start). It builds the Docker image and Helm chart from this
+# branch's own source (not the published ghcr.io artifacts), so it reflects
+# what's actually on main. It intentionally does not work around known issues
+# in either path (e.g. it does not relax readOnlyRootFilesystem, and it does not
+# add a volume for config/secrets in the Compose file) so a regression, or an
+# already-known bug that hasn't been fixed yet, fails the corresponding job
+# rather than being silently masked.
+#
+# Triggers:
+#   - On demand (workflow_dispatch), with a checkbox per installation path to run
+#   - Daily at 12:00 AM IST/SL time (18:30 UTC of the previous day)
+
+name: 🧪 Nightly Installation Smoke Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_helm:
+        description: 'Run the Helm installation test'
+        required: false
+        default: true
+        type: boolean
+      run_docker_compose:
+        description: 'Run the Docker Compose installation test'
+        required: false
+        default: true
+        type: boolean
+      run_openchoreo:
+        description: 'Run the OpenChoreo installation test'
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    - cron: '30 18 * * *'
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_NAME: thunderid
+  POSTGRES_RELEASE_NAME: postgresql
+  DB_USERNAME: dbuser
+  DB_PASSWORD: dbpassword
+  IMAGE_REGISTRY: ghcr.io/thunder-id
+  IMAGE_REPOSITORY: thunderid
+  CHART_VERSION: 0.0.0-ci
+  KIND_CLUSTER_NAME: thunderid-installation-test
+
+jobs:
+  build:
+    name: 🔨 Build Image & Chart from Source
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tag.outputs.image_tag }}
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: 🏷️ Set Image Tag
+        id: tag
+        run: echo "image_tag=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: 🐳 Build Docker Image from Source
+        run: docker build -t "$IMAGE_REGISTRY/$IMAGE_REPOSITORY:${{ steps.tag.outputs.image_tag }}" .
+
+      - name: 💾 Save Docker Image
+        run: docker save -o thunderid-image.tar "$IMAGE_REGISTRY/$IMAGE_REPOSITORY:${{ steps.tag.outputs.image_tag }}"
+
+      - name: ⚙️ Set up Helm
+        uses: azure/setup-helm@5119fcb9089d432beecbf79bb2c7915207344b78 # v3
+        with:
+          version: 'v3.12.3'
+
+      - name: 📦 Package Helm Chart from Source
+        run: |
+          mkdir -p target/dist
+          helm package install/helm --version "$CHART_VERSION" --app-version "$CHART_VERSION" --destination target/dist/
+
+      - name: 📤 Upload Docker Image Artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: thunderid-image
+          path: thunderid-image.tar
+          retention-days: 1
+
+      - name: 📤 Upload Helm Chart Artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: thunderid-chart
+          path: target/dist/thunderid-${{ env.CHART_VERSION }}.tgz
+          retention-days: 1
+
+  helm-installation:
+    name: 🧪 Helm Installation Smoke Test
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.run_helm == 'true' }}
+    env:
+      IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
+    steps:
+      - name: 📥 Download Docker Image Artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: thunderid-image
+
+      - name: 📥 Download Helm Chart Artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: thunderid-chart
+          path: target/dist
+
+      - name: 🐳 Load Docker Image
+        run: docker load -i thunderid-image.tar
+
+      - name: ⚙️ Set up Helm
+        uses: azure/setup-helm@5119fcb9089d432beecbf79bb2c7915207344b78 # v3
+        with:
+          version: 'v3.12.3'
+
+      - name: 🎡 Create Kind Cluster
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
+        with:
+          cluster_name: ${{ env.KIND_CLUSTER_NAME }}
+
+      - name: 📤 Load Image into Kind
+        run: kind load docker-image "$IMAGE_REGISTRY/$IMAGE_REPOSITORY:$IMAGE_TAG" --name "$KIND_CLUSTER_NAME"
+
+      - name: 🐘 Set Up the Database
+        run: |
+          helm install "$POSTGRES_RELEASE_NAME" oci://registry-1.docker.io/bitnamicharts/postgresql \
+            --set auth.username="$DB_USERNAME" \
+            --set auth.password="$DB_PASSWORD" \
+            --set auth.postgresPassword="$DB_PASSWORD" \
+            --set-file primary.initdb.scripts.setup\\.sql=<(cat <<'SQL'
+          CREATE DATABASE configdb;
+          CREATE DATABASE runtime_transient;
+          CREATE DATABASE entitydb;
+          CREATE DATABASE runtime_persistent;
+          GRANT ALL PRIVILEGES ON DATABASE configdb TO dbuser;
+          GRANT ALL PRIVILEGES ON DATABASE runtime_transient TO dbuser;
+          GRANT ALL PRIVILEGES ON DATABASE entitydb TO dbuser;
+          GRANT ALL PRIVILEGES ON DATABASE runtime_persistent TO dbuser;
+          SQL
+          )
+
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=postgresql --timeout=120s
+
+      - name: 📜 Apply the Database Schemas
+        run: |
+          kubectl run thunderid-dbinit \
+            --image="$IMAGE_REGISTRY/$IMAGE_REPOSITORY:$IMAGE_TAG" --image-pull-policy=Never \
+            --restart=Never --command -- sleep 300
+          kubectl wait --for=condition=ready pod/thunderid-dbinit --timeout=60s
+
+          for db in configdb runtime_transient entitydb runtime_persistent; do
+            kubectl exec thunderid-dbinit -- cat "/opt/thunderid/dbscripts/$db/postgres.sql" | \
+              kubectl exec -i "$POSTGRES_RELEASE_NAME-0" -- env PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USERNAME" -d "$db"
+          done
+
+          kubectl delete pod thunderid-dbinit --wait
+
+      - name: 🚀 Install ThunderID (Helm, from Source)
+        run: |
+          helm install "$RELEASE_NAME" "target/dist/thunderid-$CHART_VERSION.tgz" \
+            --timeout 5m \
+            --set deployment.image.registry="$IMAGE_REGISTRY" \
+            --set deployment.image.repository="$IMAGE_REPOSITORY" \
+            --set deployment.image.tag="$IMAGE_TAG" \
+            --set deployment.image.pullPolicy=Never \
+            --set configuration.database.config.postgres.hostname="$POSTGRES_RELEASE_NAME" \
+            --set configuration.database.config.postgres.sslmode=disable \
+            --set configuration.database.runtime_transient.postgres.hostname="$POSTGRES_RELEASE_NAME" \
+            --set configuration.database.runtime_transient.postgres.sslmode=disable \
+            --set configuration.database.entity.postgres.hostname="$POSTGRES_RELEASE_NAME" \
+            --set configuration.database.entity.postgres.sslmode=disable \
+            --set configuration.database.runtime_persistent.postgres.hostname="$POSTGRES_RELEASE_NAME" \
+            --set configuration.database.runtime_persistent.postgres.sslmode=disable \
+            --set configuration.server.publicUrl=https://localhost:8090 \
+            --set configuration.gateClient.hostname=localhost \
+            --set configuration.gateClient.port=8090
+
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=thunderid --timeout=120s
+
+      - name: 🩺 Check Server Health
+        run: |
+          kubectl port-forward svc/thunderid-service 8090:8090 &
+          PORT_FORWARD_PID=$!
+          trap 'kill $PORT_FORWARD_PID' EXIT
+
+          READY=""
+          for i in $(seq 1 30); do
+            if curl -fsSk -o /dev/null https://localhost:8090/health/readiness; then
+              READY="true"
+              break
+            fi
+            echo "Waiting for the health endpoint to respond... ($i/30)"
+            sleep 2
+          done
+
+          if [ -z "$READY" ]; then
+            echo "❌ Server never became reachable on /health/readiness"
+            exit 1
+          fi
+
+          READINESS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -k https://localhost:8090/health/readiness)
+          LIVENESS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -k https://localhost:8090/health/liveness)
+          echo "Readiness: $READINESS_STATUS, Liveness: $LIVENESS_STATUS"
+
+          if [ "$READINESS_STATUS" != "200" ] || [ "$LIVENESS_STATUS" != "200" ]; then
+            echo "❌ Health check failed"
+            exit 1
+          fi
+
+          echo "✅ Server is healthy"
+
+      - name: 🔍 Collect Diagnostics
+        if: failure()
+        run: |
+          echo "## Jobs" && kubectl get jobs -A
+          echo "## Pods" && kubectl get pods -A
+          echo "## Setup Job Pod Describe" && kubectl describe pod -l app.kubernetes.io/component=setup || true
+          echo "## Setup Job Logs" && kubectl logs -l app.kubernetes.io/component=setup --all-containers --tail=500 || true
+          echo "## Server Pod Describe" && kubectl describe pod -l app.kubernetes.io/name=thunderid || true
+          echo "## Server Pod Logs" && kubectl logs -l app.kubernetes.io/name=thunderid --all-containers --tail=500 || true
+
+  docker-compose-installation:
+    name: 🧪 Docker Compose Installation Smoke Test
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.run_docker_compose == 'true' }}
+    env:
+      IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: 📥 Download Docker Image Artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: thunderid-image
+
+      - name: 🐳 Load Docker Image
+        run: |
+          docker load -i thunderid-image.tar
+          # install/quick-start/docker-compose.yml hardcodes the :latest tag; retagging the
+          # freshly built image lets it run unmodified against this branch's own build.
+          docker tag "$IMAGE_REGISTRY/$IMAGE_REPOSITORY:$IMAGE_TAG" "$IMAGE_REGISTRY/$IMAGE_REPOSITORY:latest"
+
+      - name: 🚀 Start the Docker Compose Stack
+        run: docker compose -f install/quick-start/docker-compose.yml up -d
+
+      - name: 🩺 Check Server Health
+        run: |
+          READY=""
+          for i in $(seq 1 30); do
+            if curl -fsSk -o /dev/null https://localhost:8090/health/readiness; then
+              READY="true"
+              break
+            fi
+            echo "Waiting for the health endpoint to respond... ($i/30)"
+            sleep 2
+          done
+
+          if [ -z "$READY" ]; then
+            echo "❌ Server never became reachable on /health/readiness"
+            exit 1
+          fi
+
+          READINESS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -k https://localhost:8090/health/readiness)
+          LIVENESS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -k https://localhost:8090/health/liveness)
+          echo "Readiness: $READINESS_STATUS, Liveness: $LIVENESS_STATUS"
+
+          if [ "$READINESS_STATUS" != "200" ] || [ "$LIVENESS_STATUS" != "200" ]; then
+            echo "❌ Health check failed"
+            exit 1
+          fi
+
+          echo "✅ Server is healthy"
+
+      - name: 🔍 Collect Diagnostics
+        if: failure()
+        run: |
+          echo "## Compose Services" && docker compose -f install/quick-start/docker-compose.yml ps
+          echo "## Compose Logs" && docker compose -f install/quick-start/docker-compose.yml logs
+
+      - name: 🧹 Tear Down the Stack
+        if: always()
+        run: docker compose -f install/quick-start/docker-compose.yml down -v
+
+  openchoreo-installation:
+    name: 🧪 OpenChoreo Installation Smoke Test
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.run_openchoreo == 'true' }}
+    env:
+      IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
+      RESOURCETYPE_CHART_VERSION: 0.0.0-ci
+      # OpenChoreo's Resource/ResourceType/ResourceRelease/ResourceReleaseBinding CRDs (which
+      # this ResourceType chart depends on) were introduced in v1.1.0 and don't exist before it.
+      OPENCHOREO_REF: refs/tags/v1.1.2
+      OPENCHOREO_CHART_VERSION: 1.1.2
+      K3D_VERSION: v5.9.0
+      KUBECTL_VERSION: v1.33.13
+      GATEWAY_API_VERSION: v1.4.1
+      CERT_MANAGER_VERSION: v1.19.4
+      ESO_VERSION: 2.0.1
+      KGATEWAY_VERSION: v2.2.1
+      THUNDER_VERSION: 0.28.0
+      RESOURCE_NAMESPACE: default
+      RESOURCE_NAME: thunderid
+      BINDING_NAME: thunderid-development
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: 📥 Download Docker Image Artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: thunderid-image
+
+      - name: 🐳 Load Docker Image
+        run: docker load -i thunderid-image.tar
+
+      - name: ⚙️ Set up Helm
+        uses: azure/setup-helm@5119fcb9089d432beecbf79bb2c7915207344b78 # v3
+        with:
+          version: 'v3.12.3'
+
+      - name: ⚙️ Set up kubectl
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
+        with:
+          version: '${{ env.KUBECTL_VERSION }}'
+
+      - name: ⚙️ Install k3d
+        run: curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG="$K3D_VERSION" bash
+
+      - name: 🎡 Create the k3d Cluster
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/openchoreo/openchoreo/$OPENCHOREO_REF/install/k3d/single-cluster/config.yaml" \
+            | k3d cluster create --config=-
+
+          # OpenSearch (pulled in as a control-plane dependency) requires a machine-id;
+          # k3d nodes don't set one by default.
+          docker exec k3d-openchoreo-server-0 sh -c \
+            "cat /proc/sys/kernel/random/uuid | tr -d '-' > /etc/machine-id"
+
+      - name: 📤 Load Image into k3d
+        run: k3d image import "$IMAGE_REGISTRY/$IMAGE_REPOSITORY:$IMAGE_TAG" -c openchoreo
+
+      - name: 🧩 Install Prerequisites (Gateway API, cert-manager, ESO, kgateway)
+        run: |
+          kubectl apply --server-side \
+            -f "https://github.com/kubernetes-sigs/gateway-api/releases/download/$GATEWAY_API_VERSION/experimental-install.yaml"
+
+          helm upgrade --install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+            --namespace cert-manager --create-namespace --version "$CERT_MANAGER_VERSION" \
+            --set crds.enabled=true
+          kubectl wait --for=condition=Available deployment/cert-manager -n cert-manager --timeout=180s
+
+          helm upgrade --install external-secrets oci://ghcr.io/external-secrets/charts/external-secrets \
+            --namespace external-secrets --create-namespace --version "$ESO_VERSION" \
+            --set installCRDs=true
+          kubectl wait --for=condition=Available deployment/external-secrets -n external-secrets --timeout=180s
+
+          helm upgrade --install kgateway-crds oci://cr.kgateway.dev/kgateway-dev/charts/kgateway-crds \
+            --create-namespace --namespace openchoreo-control-plane --version "$KGATEWAY_VERSION"
+          helm upgrade --install kgateway oci://cr.kgateway.dev/kgateway-dev/charts/kgateway \
+            --namespace openchoreo-control-plane --create-namespace --version "$KGATEWAY_VERSION" \
+            --set controller.extraEnv.KGW_ENABLE_GATEWAY_API_EXPERIMENTAL_FEATURES=true
+
+      - name: 🎛️ Install the Control Plane
+        run: |
+          # OpenChoreo bundles its own identity provider, also named "Thunder" (WSO2/Asgardeo
+          # project). It is unrelated to the ThunderID product under test here.
+          helm upgrade --install thunder oci://ghcr.io/asgardeo/helm-charts/thunder \
+            --namespace thunder --create-namespace --version "$THUNDER_VERSION" \
+            --values "https://raw.githubusercontent.com/openchoreo/openchoreo/$OPENCHOREO_REF/install/k3d/common/values-thunder.yaml"
+
+          kubectl apply -f "https://raw.githubusercontent.com/openchoreo/openchoreo/$OPENCHOREO_REF/install/k3d/common/coredns-custom.yaml"
+
+          kubectl create namespace openchoreo-control-plane --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic backstage-secrets \
+            -n openchoreo-control-plane \
+            --from-literal=backend-secret="$(head -c 32 /dev/urandom | base64)" \
+            --from-literal=client-secret="backstage-portal-secret" \
+            --from-literal=jenkins-api-key="placeholder-not-in-use" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          helm upgrade --install openchoreo-control-plane oci://ghcr.io/openchoreo/helm-charts/openchoreo-control-plane \
+            --version "$OPENCHOREO_CHART_VERSION" --namespace openchoreo-control-plane --create-namespace \
+            --values "https://raw.githubusercontent.com/openchoreo/openchoreo/$OPENCHOREO_REF/install/k3d/single-cluster/values-cp.yaml"
+
+          kubectl wait -n openchoreo-control-plane --for=condition=available --timeout=300s deployment --all
+
+          kubectl wait -n openchoreo-control-plane \
+            --for=condition=Ready certificate/cluster-gateway-ca --timeout=120s
+          kubectl get secret cluster-gateway-ca -n openchoreo-control-plane \
+            -o jsonpath='{.data.ca\.crt}' | base64 -d | \
+            kubectl create configmap cluster-gateway-ca \
+              --from-file=ca.crt=/dev/stdin -n openchoreo-control-plane \
+              --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: 📋 Install Default Platform Resources
+        run: |
+          kubectl apply -f "https://raw.githubusercontent.com/openchoreo/openchoreo/$OPENCHOREO_REF/samples/getting-started/all.yaml"
+          kubectl label namespace default openchoreo.dev/control-plane=true --overwrite
+
+      - name: 🗄️ Install the Data Plane
+        run: |
+          kubectl create namespace openchoreo-data-plane --dry-run=client -o yaml | kubectl apply -f -
+
+          CA_CRT=$(kubectl get configmap cluster-gateway-ca -n openchoreo-control-plane -o jsonpath='{.data.ca\.crt}')
+          kubectl create configmap cluster-gateway-ca --from-literal=ca.crt="$CA_CRT" \
+            -n openchoreo-data-plane --dry-run=client -o yaml | kubectl apply -f -
+
+          curl -fsSL "https://raw.githubusercontent.com/openchoreo/openchoreo/$OPENCHOREO_REF/install/prerequisites/openbao/setup.sh" \
+            | bash -s -- --dev --seed-dev-secrets
+
+          helm upgrade --install openchoreo-data-plane oci://ghcr.io/openchoreo/helm-charts/openchoreo-data-plane \
+            --version "$OPENCHOREO_CHART_VERSION" --namespace openchoreo-data-plane --create-namespace \
+            --values "https://raw.githubusercontent.com/openchoreo/openchoreo/$OPENCHOREO_REF/install/k3d/single-cluster/values-dp.yaml"
+
+          AGENT_CA=$(kubectl get secret cluster-agent-tls -n openchoreo-data-plane -o jsonpath='{.data.ca\.crt}' | base64 -d)
+          kubectl apply -f - <<EOF
+          apiVersion: openchoreo.dev/v1alpha1
+          kind: ClusterDataPlane
+          metadata:
+            name: default
+          spec:
+            planeID: default
+            clusterAgent:
+              clientCA:
+                value: |
+          $(echo "$AGENT_CA" | sed 's/^/        /')
+            secretStoreRef:
+              name: default
+            gateway:
+              ingress:
+                external:
+                  http:
+                    host: openchoreoapis.localhost
+                    listenerName: http
+                    port: 19080
+                  name: gateway-default
+                  namespace: openchoreo-data-plane
+          EOF
+
+      - name: 📦 Install the ThunderID ResourceType Chart from Source
+        run: |
+          helm package install/openchoreo/thunderid-oc-resourcetype \
+            --version "$RESOURCETYPE_CHART_VERSION" --destination target/dist/
+          helm install thunderid-type "target/dist/thunderid-oc-resourcetype-$RESOURCETYPE_CHART_VERSION.tgz"
+
+      - name: 🔑 Push Environment Secrets
+        run: |
+          CRYPTO_ENCRYPTION_KEY=$(openssl rand -hex 32)
+          ADMIN_PASSWORD=$(openssl rand -hex 16)
+          echo "::add-mask::$ADMIN_PASSWORD"
+
+          kubectl exec -n openbao openbao-0 -- env BAO_TOKEN=root bao kv put secret/thunderid/dev \
+            CRYPTO_ENCRYPTION_KEY="$CRYPTO_ENCRYPTION_KEY" ADMIN_PASSWORD="$ADMIN_PASSWORD"
+
+      - name: 🚀 Apply the ThunderID Resource
+        run: |
+          FULL_IMAGE_REF="$IMAGE_REGISTRY/$IMAGE_REPOSITORY:$IMAGE_TAG"
+          cp install/openchoreo/thunderid-oc-resourcetype/samples/resource.yaml /tmp/thunderid-resource.yaml
+
+          # <SERVER_PUBLIC_URL>/<GATEWAY_HOSTNAME> appear both as ordinary fields and nested
+          # inside the declarativeResources block scalar's own embedded YAML — sed reaches
+          # both; a structural yq edit can't reach inside an opaque block scalar.
+          sed -i \
+            -e "s#<SERVER_PUBLIC_URL>#http://localhost:8090#g" \
+            -e "s#<GATEWAY_HOSTNAME>#openchoreoapis.localhost#g" \
+            /tmp/thunderid-resource.yaml
+
+          # parameters.image / runtime.imagePullPolicy are genuine structured fields, so set
+          # them structurally instead of by text substitution.
+          FULL_IMAGE_REF="$FULL_IMAGE_REF" yq eval-all --inplace '
+            (select(.kind == "Resource").spec.parameters.image) = strenv(FULL_IMAGE_REF) |
+            (select(.kind == "Resource").spec.parameters.runtime.imagePullPolicy) = "Never"
+          ' /tmp/thunderid-resource.yaml
+
+          kubectl apply -f /tmp/thunderid-resource.yaml
+
+      - name: ⏳ Pin the ResourceReleaseBinding
+        run: |
+          kubectl wait --for=jsonpath='{.status.latestRelease.name}' \
+            "resource/$RESOURCE_NAME" -n "$RESOURCE_NAMESPACE" --timeout=60s
+          RELEASE_NAME=$(kubectl get "resource/$RESOURCE_NAME" -n "$RESOURCE_NAMESPACE" \
+            -o jsonpath='{.status.latestRelease.name}')
+          echo "Cut release: $RELEASE_NAME"
+
+          kubectl patch resourcereleasebinding "$BINDING_NAME" -n "$RESOURCE_NAMESPACE" \
+            --type=merge -p "{\"spec\":{\"resourceRelease\":\"$RELEASE_NAME\"}}"
+
+          kubectl wait --for=condition=Ready \
+            "resourcereleasebinding/$BINDING_NAME" -n "$RESOURCE_NAMESPACE" --timeout=180s
+
+      - name: 🩺 Check Server Health
+        run: |
+          SERVICE_HOST=$(kubectl get "resourcereleasebinding/$BINDING_NAME" -n "$RESOURCE_NAMESPACE" \
+            -o jsonpath='{.status.outputs[?(@.name=="host")].value}')
+          SERVICE_PORT=$(kubectl get "resourcereleasebinding/$BINDING_NAME" -n "$RESOURCE_NAMESPACE" \
+            -o jsonpath='{.status.outputs[?(@.name=="port")].value}')
+
+          # SERVICE_HOST is an in-cluster DNS name (<service>.<namespace>.svc...); the
+          # namespace is the second dot-separated label.
+          SERVICE_NAME="${SERVICE_HOST%%.*}"
+          REST="${SERVICE_HOST#*.}"
+          SERVICE_NAMESPACE="${REST%%.*}"
+          echo "Rendered service: $SERVICE_NAME.$SERVICE_NAMESPACE (port $SERVICE_PORT)"
+
+          kubectl wait --for=condition=available "deployment/$SERVICE_NAME" -n "$SERVICE_NAMESPACE" --timeout=180s
+
+          kubectl port-forward -n "$SERVICE_NAMESPACE" "svc/$SERVICE_NAME" "8090:$SERVICE_PORT" &
+          PORT_FORWARD_PID=$!
+          trap 'kill $PORT_FORWARD_PID' EXIT
+
+          READY=""
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://localhost:8090/health/readiness; then
+              READY="true"
+              break
+            fi
+            echo "Waiting for the health endpoint to respond... ($i/30)"
+            sleep 2
+          done
+
+          if [ -z "$READY" ]; then
+            echo "❌ Server never became reachable on /health/readiness"
+            exit 1
+          fi
+
+          READINESS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/health/readiness)
+          LIVENESS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/health/liveness)
+          echo "Readiness: $READINESS_STATUS, Liveness: $LIVENESS_STATUS"
+
+          if [ "$READINESS_STATUS" != "200" ] || [ "$LIVENESS_STATUS" != "200" ]; then
+            echo "❌ Health check failed"
+            exit 1
+          fi
+
+          echo "✅ Server is healthy"
+
+      - name: 🔍 Collect Diagnostics
+        if: failure()
+        run: |
+          echo "## Resource/Release/Binding" && kubectl get resource,resourcerelease,resourcereleasebinding -n "$RESOURCE_NAMESPACE" -o wide
+          echo "## Binding Conditions" && kubectl get "resourcereleasebinding/$BINDING_NAME" -n "$RESOURCE_NAMESPACE" \
+            -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.message}{"\n"}{end}' || true
+          echo "## ExternalSecrets (all namespaces)" && kubectl get externalsecret -A || true
+          echo "## Control-plane Pods" && kubectl get pods -n openchoreo-control-plane || true
+          echo "## Data-plane Pods" && kubectl get pods -n openchoreo-data-plane || true
+          echo "## Prerequisite Pods" && kubectl get pods -n cert-manager -n external-secrets -n openbao -n thunder || true
+
+      - name: 🧹 Tear Down the Cluster
+        if: always()
+        run: k3d cluster delete openchoreo

@@ -88,6 +88,12 @@ kubectl get ingress -n thunderid
 
 If you are using a cloud provider, the load balancer assigns the external IP automatically.
 
+The setup job generates a random admin password and stores it in the `{{productSlug}}-admin-credentials` Secret. Retrieve it to sign in to the Console as `admin`:
+
+```bash
+kubectl get secret {{productSlug}}-admin-credentials -n thunderid -o jsonpath="{.data.admin-password}" | base64 -d; echo
+```
+
 ## Installation Options
 
 ### Option 1: Inline Value Overrides
@@ -101,8 +107,7 @@ helm install thunderid oci://ghcr.io/thunder-id/helm-charts/thunderid \
   --set configuration.database.config.type=sqlite \
   --set configuration.database.runtime_transient.type=sqlite \
   --set configuration.database.entity.type=sqlite \
-  --set configuration.database.runtime_persistent.type=sqlite \
-  --set deployment.securityContext.readOnlyRootFilesystem=false
+  --set configuration.database.runtime_persistent.type=sqlite
 ```
 
 :::warning
@@ -297,8 +302,6 @@ persistence:
   accessMode: ReadWriteOnce
   size: 1Gi
 ```
-
-Also set `deployment.securityContext.readOnlyRootFilesystem: false` when using SQLite. The chart defaults it to `true`, which blocks the setup job and server from writing to the container filesystem, including the temporary files created during initialization.
 
 Set `replicaCount: 1` when using SQLite: multiple replicas writing to the same SQLite files will corrupt the database.
 

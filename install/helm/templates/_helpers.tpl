@@ -81,6 +81,19 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Returns "true" when the admin password is auto-generated, i.e. the setup job is enabled
+and neither an existing Secret nor an inline password is supplied. Used to gate the
+generated -admin-credentials Secret and the retrieval instructions in NOTES.txt.
+*/}}
+{{- define "thunderid.adminPasswordGenerated" -}}
+{{- $admin := default dict .Values.setup.admin -}}
+{{- $passwordRef := default dict $admin.passwordRef -}}
+{{- if and .Values.setup.enabled (not $passwordRef.name) (not $admin.password) -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
 Check if auto-generated database credentials Secret should be included in checksum annotation.
 Returns true if any database password is set without a passwordRef.key.
 This is used to trigger pod restarts when auto-generated Secrets change.

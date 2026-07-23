@@ -126,23 +126,46 @@ spec:
             - name: DEBUG
               value: "true"
             {{- end }}
-            - name: ADMIN_USERNAME
-              value: {{ .Values.setup.admin.username | quote }}
-            {{- if and .Values.setup.admin.passwordRef.key (not .Values.setup.admin.passwordRef.name) }}
-            {{- fail "setup.admin.passwordRef.name is required when setup.admin.passwordRef.key is set" }}
+            {{- $admin := default dict .Values.setup.admin }}
+            {{- $usernameRef := default dict $admin.usernameRef }}
+            {{- $passwordRef := default dict $admin.passwordRef }}
+            {{- if and $usernameRef.name (not $usernameRef.key) }}
+            {{- fail "setup.admin.usernameRef.key is required when setup.admin.usernameRef.name is set" }}
             {{- end }}
-            {{- if .Values.setup.admin.passwordRef.name }}
-            {{- if not .Values.setup.admin.passwordRef.key }}
+            {{- if and $usernameRef.key (not $usernameRef.name) }}
+            {{- fail "setup.admin.usernameRef.name is required when setup.admin.usernameRef.key is set" }}
+            {{- end }}
+            {{- if and $passwordRef.name (not $passwordRef.key) }}
             {{- fail "setup.admin.passwordRef.key is required when setup.admin.passwordRef.name is set" }}
             {{- end }}
+            {{- if and $passwordRef.key (not $passwordRef.name) }}
+            {{- fail "setup.admin.passwordRef.name is required when setup.admin.passwordRef.key is set" }}
+            {{- end }}
+            {{- if $usernameRef.name }}
+            - name: ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $usernameRef.name | quote }}
+                  key: {{ $usernameRef.key | quote }}
+            {{- else }}
+            - name: ADMIN_USERNAME
+              value: {{ $admin.username | quote }}
+            {{- end }}
+            {{- if $passwordRef.name }}
             - name: ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.setup.admin.passwordRef.name | quote }}
-                  key: {{ .Values.setup.admin.passwordRef.key | quote }}
+                  name: {{ $passwordRef.name | quote }}
+                  key: {{ $passwordRef.key | quote }}
+            {{- else if $admin.password }}
+            - name: ADMIN_PASSWORD
+              value: {{ $admin.password | quote }}
             {{- else }}
             - name: ADMIN_PASSWORD
-              value: {{ .Values.setup.admin.password | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ printf "%s-admin-credentials" (include "thunderid.fullname" .) | quote }}
+                  key: admin-password
             {{- end }}
             {{- include "thunderid.databasePasswordEnvVars" . | nindent 12 }}
             {{- include "thunderid.secretEnvVars" (dict "secretEnv" .Values.setup.secretEnv) | nindent 12 }}
@@ -168,6 +191,9 @@ spec:
               drop:
                 - all
           volumeMounts:
+            # Writable scratch space so setup.sh can use mktemp under a read-only root filesystem.
+            - name: tmp
+              mountPath: /tmp
             {{- if or .Values.persistence.enabled $usingSqlite }}
             - name: database-storage
               mountPath: /opt/thunderid/database
@@ -229,6 +255,8 @@ spec:
             {{- end }}
             {{- end }}
       volumes:
+        - name: tmp
+          emptyDir: {}
         - name: certs-storage
           persistentVolumeClaim:
             claimName: {{ include "thunderid.fullname" . }}-certs-pvc

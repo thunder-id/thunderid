@@ -234,8 +234,7 @@ helm install {{productSlug}} oci://ghcr.io/thunder-id/helm-charts/{{productSlug}
   --set configuration.database.runtime_persistent.postgres.sslmode=disable \
   --set configuration.server.publicUrl=https://localhost:8090 \
   --set configuration.gateClient.hostname=localhost \
-  --set configuration.gateClient.port=8090 \
-  --set deployment.securityContext.readOnlyRootFilesystem=false
+  --set configuration.gateClient.port=8090
 ```
 
 Wait for <ProductName /> to be ready:
@@ -251,6 +250,14 @@ Forward the service port to your local machine:
 ```bash
 kubectl port-forward svc/{{productSlug}}-service 8090:8090
 ```
+
+The setup job generates a random admin password and stores it in the `{{productSlug}}-admin-credentials` Secret. Retrieve it to sign in to the Console:
+
+```bash
+kubectl get secret {{productSlug}}-admin-credentials -o jsonpath="{.data.admin-password}" | base64 -d; echo
+```
+
+Open `https://localhost:8090/console` and sign in as `admin` with that password.
 
 :::tip Success
 Access <ProductName /> on **https://localhost:8090/console**
