@@ -1554,7 +1554,7 @@ function Run {
     # the backend without manual configuration. Regenerated on every run and picked up by
     # the bootstrap one-shot; it is git-ignored and never packaged (see Build).
     $devServerConfig = @"
-# resource_type: server_config
+resource_type: server_config
 name: cors
 value:
   allowedOrigins:
@@ -1563,7 +1563,11 @@ value:
 "@
     Set-Content -Path (Join-Path $BACKEND_DIR "bootstrap/02-server-configurations.yaml") -Value $devServerConfig
 
+    # Local dev only: default to admin/admin if not supplied. This path never produces a
+    # shared or distributed artifact, so a fixed default here is acceptable.
     $env:PUBLIC_URL = $PUBLIC_URL
+    $env:ADMIN_USERNAME = if ($env:ADMIN_USERNAME) { $env:ADMIN_USERNAME } else { "admin" }
+    $env:ADMIN_PASSWORD = if ($env:ADMIN_PASSWORD) { $env:ADMIN_PASSWORD } else { "admin" }
     Push-Location $BACKEND_DIR
     try {
         & go run . bootstrap --console-redirect-uris "https://localhost:${CONSOLE_APP_DEFAULT_PORT}/console"
