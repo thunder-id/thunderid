@@ -21,11 +21,14 @@ package security
 import (
 	"net/http"
 
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 )
 
 // Initialize creates and returns the security middleware with necessary authenticators. The
-// revocationEnforcer is consulted after authentication to reject revoked tokens.
+// revocationEnforcer is consulted after authentication to reject revoked tokens. The instance mode
+// (cp/dp/hybrid) gates the management surface: on a single-plane instance the other plane's
+// management routes are rejected with 404.
 func Initialize(jwtService jwt.JWTServiceInterface, revocationEnforcer RevocationEnforcerInterface,
 ) (func(http.Handler) http.Handler, error) {
 	jwtAuthenticator := newJWTAuthenticator(jwtService)
@@ -34,5 +37,6 @@ func Initialize(jwtService jwt.JWTServiceInterface, revocationEnforcer Revocatio
 	if err != nil {
 		return nil, err
 	}
+	securityService.mode = ParsePlane(config.GetServerRuntime().Config.Server.Mode)
 	return middleware(securityService)
 }

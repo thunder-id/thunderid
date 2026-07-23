@@ -57,4 +57,18 @@ var (
 			DefaultValue: "You do not have sufficient permissions to access this resource",
 		},
 	}
+
+	// ErrNotFound is returned when the requested resource or endpoint is not available on this
+	// instance (HTTP 404), for example a management route on a data-plane instance.
+	ErrNotFound = ErrorResponse{
+		Code: "AUTH-4040",
+		Message: tidcommon.I18nMessage{
+			Key:          "error.auth.not_found",
+			DefaultValue: "Not Found",
+		},
+		Description: tidcommon.I18nMessage{
+			Key:          "error.auth.not_found_description",
+			DefaultValue: "The requested endpoint is not available on this instance",
+		},
+	}
 )

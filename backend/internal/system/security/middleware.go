@@ -59,6 +59,13 @@ func middleware(service SecurityServiceInterface) (func(http.Handler) http.Handl
 // writeSecurityError writes an appropriate HTTP error response based on the security error, including
 // the RFC 6750 WWW-Authenticate challenge.
 func writeSecurityError(ctx context.Context, w http.ResponseWriter, err error) {
+	// A management route on a data-plane instance is reported as 404: the endpoint is simply not
+	// available here, and no authentication challenge is appropriate.
+	if errors.Is(err, errManagementDisabled) {
+		utils.WriteErrorResponse(ctx, w, http.StatusNotFound, apierror.ErrNotFound)
+		return
+	}
+
 	// A 403 is an authorization failure: the caller authenticated successfully but lacks the required
 	// permission. It is not an authentication challenge, so no WWW-Authenticate header is emitted.
 	// (A future change may add the RFC 6750 insufficient_scope challenge here.)
