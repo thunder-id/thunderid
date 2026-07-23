@@ -25,6 +25,7 @@ import ExpressLogo from '@site/src/components/icons/ExpressLogo';
 import FlutterLogo from '@site/src/components/icons/FlutterLogo';
 import IOSLogo from '@site/src/components/icons/IOSLogo';
 import JavaScriptLogo from '@site/src/components/icons/JavaScriptLogo';
+import LangChainLogo from '@site/src/components/icons/LangChainLogo';
 import NextLogo from '@site/src/components/icons/NextLogo';
 import NodeLogo from '@site/src/components/icons/NodeLogo';
 import NuxtLogo from '@site/src/components/icons/NuxtLogo';
@@ -59,6 +60,7 @@ const TECH_LOGOS: Record<string, React.ReactElement> = {
   nuxt: <NuxtLogo size={20} />,
   react: <ReactLogo size={20} />,
   vue: <VueLogo size={20} />,
+  langchain: <LangChainLogo size={20} />,
 };
 
 export default function DocSidebarItemLink({item, ...rest}: OriginalProps): React.ReactElement {

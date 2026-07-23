@@ -20,18 +20,19 @@ import Link from '@docusaurus/Link';
 import {useWindowSize} from '@docusaurus/theme-common';
 import {Box, Chip, Typography} from '@wso2/oxygen-ui';
 import {Bot, Check, Download, MonitorSmartphone, Server, Zap} from '@wso2/oxygen-ui-icons-react';
-import React, {useCallback, useState} from 'react';
+import React, {useCallback} from 'react';
 import AndroidLogo from './icons/AndroidLogo';
 import ExpressLogo from './icons/ExpressLogo';
 import FlutterLogo from './icons/FlutterLogo';
 import IOSLogo from './icons/IOSLogo';
 import JavaScriptLogo from './icons/JavaScriptLogo';
+import LangChainLogo from './icons/LangChainLogo';
 import NextLogo from './icons/NextLogo';
 import NodeLogo from './icons/NodeLogo';
 import NuxtLogo from './icons/NuxtLogo';
 import ReactLogo from './icons/ReactLogo';
 import VueLogo from './icons/VueLogo';
-import {CONNECT_TYPE_STORAGE_KEY, applyConnectType, toConnectType} from '../utils/connectType';
+import {applyConnectType, useConnectType} from '../utils/connectType';
 
 type ConnectType = 'app' | 'agent' | 'mcp';
 
@@ -48,9 +49,13 @@ const ALL_FRAMEWORKS = [
   {Logo: FlutterLogo,    href: '/docs/next/guides/getting-started/connect-your-application/flutter', label: 'Flutter'},
 ];
 
+const AGENT_QUICKSTARTS = [
+  {Logo: LangChainLogo, href: '/docs/next/guides/getting-started/connect-your-agent/langchain', label: 'LangChain'},
+];
+
 const CATEGORIES: {id: ConnectType; icon: React.ReactElement; label: string; description: string; comingSoon: boolean}[] = [
   {id: 'app',   icon: <MonitorSmartphone size={20} />, label: 'Application', description: 'Web, mobile and desktop apps.', comingSoon: false},
-  {id: 'agent', icon: <Bot size={20} />,               label: 'AI Agent',    description: 'LLM-powered agents.',            comingSoon: true},
+  {id: 'agent', icon: <Bot size={20} />,               label: 'AI Agent',    description: 'LLM-powered agents.',            comingSoon: false},
   {id: 'mcp',   icon: <Server size={20} />,            label: 'MCP Server',  description: 'Model Context Protocol servers.', comingSoon: true},
 ];
 
@@ -90,16 +95,10 @@ export default function DeveloperShortcut({
   const windowSize = useWindowSize();
   const isMobile = windowSize === 'mobile';
 
-  const [selected, setSelected] = useState<ConnectType>(() => {
-    if (typeof window !== 'undefined') {
-      return toConnectType(localStorage.getItem(CONNECT_TYPE_STORAGE_KEY));
-    }
-    return 'app';
-  });
+  const selected = useConnectType();
 
   const handleSelect = useCallback((type: ConnectType, comingSoon: boolean) => {
     if (comingSoon) return;
-    setSelected(type);
     if (isMobile) {
       openMobileSidebar(type);
     } else {
@@ -156,6 +155,17 @@ export default function DeveloperShortcut({
 
   // ─── Full mode (used on docs home page) ──────────────────────────────────
   const selectedCategory = CATEGORIES.find(c => c.id === selected)!;
+
+  const quickstartChips =
+    selected === 'app'
+      ? ALL_FRAMEWORKS.filter(f => ['React', 'Next.js', 'Express', 'Vue'].includes(f.label))
+      : selected === 'agent'
+        ? AGENT_QUICKSTARTS
+        : null;
+  const quickstartFooter =
+    selected === 'app'
+      ? 'All application quickstarts are available in the sidebar.'
+      : 'More agent frameworks are coming soon.';
 
   return (
     <Box
@@ -253,13 +263,13 @@ export default function DeveloperShortcut({
       {/* Quickstart links */}
       <Box sx={{px: {xs: 2.5, md: 3.5}, pb: 3}}>
 
-        {selected === 'app' ? (
+        {quickstartChips ? (
           <Box>
             <Typography sx={{color: 'text.disabled', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em', mb: 1, textTransform: 'uppercase'}}>
               Popular quickstarts
             </Typography>
             <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 0.875, mb: 2}}>
-              {ALL_FRAMEWORKS.filter(f => ['React','Next.js','Express','Vue'].includes(f.label)).map(({Logo, href, label}) => (
+              {quickstartChips.map(({Logo, href, label}) => (
                 <Box
                   key={label}
                   component={Link}
@@ -294,7 +304,7 @@ export default function DeveloperShortcut({
               ))}
             </Box>
             <Typography sx={{color: 'text.secondary', fontSize: '0.8rem'}}>
-              All application quickstarts are available in the sidebar.
+              {quickstartFooter}
             </Typography>
           </Box>
         ) : (

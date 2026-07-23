@@ -69,13 +69,12 @@ const sidebars: SidebarsConfig = {
       className: 'sidebar-section',
       items: [
         {type: 'doc', id: 'guides/getting-started/get-thunderid', label: 'Get ThunderID'},
-        {type: 'html', value: '<!-- connect-type-selector -->', className: 'connect-type-selector-wrapper'},
+        {type: 'html', value: '<div style="color:var(--ifm-color-content-secondary);font-size:0.72rem;font-weight:500;letter-spacing:0.03em;margin-top:0.75rem;padding:0 var(--ifm-menu-link-padding-horizontal,0.75rem) 0.3rem;text-transform:uppercase">What are you building?</div>'},
         {
           type: 'category',
           label: 'Application',
           className: 'connect-section connect-section--app',
-          collapsed: false,
-          collapsible: false,
+          collapsible: true,
           items: [
             {type: 'doc', id: 'guides/getting-started/connect-your-application/react', label: 'React', customProps: {icon: 'react'}},
             {type: 'doc', id: 'guides/getting-started/connect-your-application/nextjs', label: 'Next.js', customProps: {icon: 'next'}},
@@ -88,6 +87,25 @@ const sidebars: SidebarsConfig = {
             {type: 'doc', id: 'guides/getting-started/connect-your-application/android', label: 'Android', customProps: {icon: 'android'}},
             {type: 'doc', id: 'guides/getting-started/connect-your-application/flutter', label: 'Flutter', customProps: {icon: 'flutter'}},
           ],
+        },
+        {
+          type: 'category',
+          label: 'AI Agent',
+          className: 'connect-section connect-section--agent',
+          collapsible: true,
+          items: [
+            {type: 'doc', id: 'guides/getting-started/connect-your-agent/langchain', label: 'LangChain', customProps: {icon: 'langchain'}},
+            {type: 'html', className: 'menu__list-item', value: '<div class="sidebar-coming-soon"><span class="sidebar-cs-icon"><img src="/assets/images/agent/google-adk.svg" alt="" aria-hidden="true" /></span>Google ADK<span class="sidebar-coming-soon-badge">Soon</span></div>'},
+            {type: 'html', className: 'menu__list-item', value: '<div class="sidebar-coming-soon"><span class="sidebar-cs-icon"><svg viewBox="0 0 512 512" fill="currentColor" aria-hidden="true"><path d="M256 48 496 464H16Z"/></svg></span>Vercel AI SDK<span class="sidebar-coming-soon-badge">Soon</span></div>'},
+            {type: 'html', className: 'menu__list-item', value: '<div class="sidebar-coming-soon"><span class="sidebar-cs-icon"><img src="/assets/images/agent/crewai.svg" alt="" aria-hidden="true" /></span>CrewAI<span class="sidebar-coming-soon-badge">Soon</span></div>'},
+          ],
+        },
+        {
+          type: 'category',
+          label: 'MCP Server',
+          className: 'connect-section connect-section--mcp',
+          collapsible: true,
+          items: [{type: 'html', value: '<span aria-hidden="true"></span>'}],
         },
       ],
     },

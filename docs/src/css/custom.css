@@ -1352,83 +1352,48 @@ aside.theme-doc-sidebar-container {
   display: none !important;
 }
 
-/* ─── Connect type selector ──────────────────────────────────────────────── */
-.connect-type-selector-item {
-  list-style: none;
-}
-
-/* Panel entrance — referenced by name in sx */
-@keyframes connect-panel-enter {
-  from {
-    opacity: 0;
-    transform: translateY(-6px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-/* Show/hide connect sections based on selected type */
-html:not([data-connect-type]) .connect-section--agent,
-html:not([data-connect-type]) .connect-section--mcp,
-html[data-connect-type='app'] .connect-section--agent,
-html[data-connect-type='app'] .connect-section--mcp {
-  display: none;
-}
-
-html[data-connect-type='agent'] .connect-section--app,
-html[data-connect-type='agent'] .connect-section--mcp {
-  display: none;
-}
-
-html[data-connect-type='mcp'] .connect-section--app,
-html[data-connect-type='mcp'] .connect-section--agent {
-  display: none;
-}
-
-/* Hide the auto-generated category label — keep only the items list */
-.connect-section > *:not(.menu__list) {
-  display: none !important;
-}
-
-/* Animate sidebar items into view when a connect section becomes visible */
-@keyframes connect-item-enter {
-  from {
-    opacity: 0;
-    transform: translateX(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.connect-section > .menu__list > li {
-  animation: connect-item-enter 0.22s ease both 0.05s;
-}
-
-/* Vertical accent line next to the tech list */
-.connect-section > .menu__list {
-  border-left: 2px solid color-mix(in srgb, var(--ifm-color-primary) 25%, transparent);
-  margin-left: 1.5rem;
-  padding-left: 0;
-}
-
-.connect-section > .menu__list .menu__link {
-  padding-bottom: 0.3rem;
-  padding-left: 0.75rem;
-  padding-top: 0.3rem;
-}
-
-/* Coming soon placeholder */
+/* Coming soon placeholder — matches the technology quickstart items
+   (same icon box, gap, and text size), just muted with a "Soon" badge. */
 .sidebar-coming-soon {
+  align-items: center;
   color: var(--ifm-color-content-secondary);
-  display: block;
-  font-size: 0.78rem;
-  font-style: italic;
-  padding: 0.3rem 0.75rem;
+  display: flex;
+  font-size: 0.875rem;
+  font-weight: 400;
+  gap: 1rem;
+  padding: 0.45rem 0.75rem;
 }
+
+.sidebar-coming-soon-badge {
+  background: var(--ifm-color-emphasis-200);
+  border-radius: 999px;
+  color: var(--ifm-color-content-secondary);
+  font-size: 0.6rem;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-left: auto;
+  padding: 0.1rem 0.4rem;
+  text-transform: uppercase;
+}
+
+.sidebar-cs-icon {
+  align-items: center;
+  display: inline-flex;
+  filter: grayscale(1) opacity(0.75);
+  flex-shrink: 0;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.sidebar-cs-icon svg,
+.sidebar-cs-icon img {
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
 
 
 /* ─── Technology quickstart sidebar items ────────────────────────────────── */
