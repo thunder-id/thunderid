@@ -15,7 +15,8 @@ import (
 // SCIMUsersServiceInterface defines the Users CRUD operations exposed to the users handler.
 type SCIMUsersServiceInterface interface {
 	ListUsers(
-		ctx context.Context, startIndex, count int, baseURL string,
+		ctx context.Context, startIndex, count int,
+		filters map[string]interface{}, baseURL string,
 	) (SCIMUserListResponse, *tidcommon.ServiceError)
 	CreateUser(
 		ctx context.Context, payload *SCIMUserPayload, baseURL string,
@@ -45,7 +46,7 @@ func newSCIMUsersService(
 }
 
 func (s *scimUsersService) ListUsers(ctx context.Context, startIndex, count int,
-	baseURL string) (SCIMUserListResponse, *tidcommon.ServiceError) {
+	filters map[string]interface{}, baseURL string) (SCIMUserListResponse, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
 	if startIndex < 1 {
@@ -55,7 +56,7 @@ func (s *scimUsersService) ListUsers(ctx context.Context, startIndex, count int,
 		count = 20
 	}
 	offset := startIndex - 1
-	listResp, svcErr := s.userService.GetUserList(ctx, count, offset, nil, false)
+	listResp, svcErr := s.userService.GetUserList(ctx, count, offset, filters, false)
 	if svcErr != nil {
 		logger.Error(ctx, "SCIM ListUsers: failed to get user list", log.Any("error", svcErr))
 		return SCIMUserListResponse{}, mapUserServiceErrorToSCIM(svcErr)

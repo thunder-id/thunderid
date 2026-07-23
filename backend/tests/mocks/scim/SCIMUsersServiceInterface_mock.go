@@ -257,8 +257,8 @@ func (_c *SCIMUsersServiceInterfaceMock_GetUser_Call) RunAndReturn(run func(ctx 
 }
 
 // ListUsers provides a mock function for the type SCIMUsersServiceInterfaceMock
-func (_mock *SCIMUsersServiceInterfaceMock) ListUsers(ctx context.Context, startIndex int, count int, baseURL string) (scim.SCIMUserListResponse, *common.ServiceError) {
-	ret := _mock.Called(ctx, startIndex, count, baseURL)
+func (_mock *SCIMUsersServiceInterfaceMock) ListUsers(ctx context.Context, startIndex int, count int, filters map[string]interface{}, baseURL string) (scim.SCIMUserListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, startIndex, count, filters, baseURL)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListUsers")
@@ -266,16 +266,16 @@ func (_mock *SCIMUsersServiceInterfaceMock) ListUsers(ctx context.Context, start
 
 	var r0 scim.SCIMUserListResponse
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, string) (scim.SCIMUserListResponse, *common.ServiceError)); ok {
-		return returnFunc(ctx, startIndex, count, baseURL)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, map[string]interface{}, string) (scim.SCIMUserListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, startIndex, count, filters, baseURL)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, string) scim.SCIMUserListResponse); ok {
-		r0 = returnFunc(ctx, startIndex, count, baseURL)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, map[string]interface{}, string) scim.SCIMUserListResponse); ok {
+		r0 = returnFunc(ctx, startIndex, count, filters, baseURL)
 	} else {
 		r0 = ret.Get(0).(scim.SCIMUserListResponse)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int, string) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, startIndex, count, baseURL)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int, map[string]interface{}, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, startIndex, count, filters, baseURL)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -293,12 +293,13 @@ type SCIMUsersServiceInterfaceMock_ListUsers_Call struct {
 //   - ctx context.Context
 //   - startIndex int
 //   - count int
+//   - filters map[string]interface{}
 //   - baseURL string
-func (_e *SCIMUsersServiceInterfaceMock_Expecter) ListUsers(ctx interface{}, startIndex interface{}, count interface{}, baseURL interface{}) *SCIMUsersServiceInterfaceMock_ListUsers_Call {
-	return &SCIMUsersServiceInterfaceMock_ListUsers_Call{Call: _e.mock.On("ListUsers", ctx, startIndex, count, baseURL)}
+func (_e *SCIMUsersServiceInterfaceMock_Expecter) ListUsers(ctx interface{}, startIndex interface{}, count interface{}, filters interface{}, baseURL interface{}) *SCIMUsersServiceInterfaceMock_ListUsers_Call {
+	return &SCIMUsersServiceInterfaceMock_ListUsers_Call{Call: _e.mock.On("ListUsers", ctx, startIndex, count, filters, baseURL)}
 }
 
-func (_c *SCIMUsersServiceInterfaceMock_ListUsers_Call) Run(run func(ctx context.Context, startIndex int, count int, baseURL string)) *SCIMUsersServiceInterfaceMock_ListUsers_Call {
+func (_c *SCIMUsersServiceInterfaceMock_ListUsers_Call) Run(run func(ctx context.Context, startIndex int, count int, filters map[string]interface{}, baseURL string)) *SCIMUsersServiceInterfaceMock_ListUsers_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -312,15 +313,20 @@ func (_c *SCIMUsersServiceInterfaceMock_ListUsers_Call) Run(run func(ctx context
 		if args[2] != nil {
 			arg2 = args[2].(int)
 		}
-		var arg3 string
+		var arg3 map[string]interface{}
 		if args[3] != nil {
-			arg3 = args[3].(string)
+			arg3 = args[3].(map[string]interface{})
+		}
+		var arg4 string
+		if args[4] != nil {
+			arg4 = args[4].(string)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -331,7 +337,7 @@ func (_c *SCIMUsersServiceInterfaceMock_ListUsers_Call) Return(sCIMUserListRespo
 	return _c
 }
 
-func (_c *SCIMUsersServiceInterfaceMock_ListUsers_Call) RunAndReturn(run func(ctx context.Context, startIndex int, count int, baseURL string) (scim.SCIMUserListResponse, *common.ServiceError)) *SCIMUsersServiceInterfaceMock_ListUsers_Call {
+func (_c *SCIMUsersServiceInterfaceMock_ListUsers_Call) RunAndReturn(run func(ctx context.Context, startIndex int, count int, filters map[string]interface{}, baseURL string) (scim.SCIMUserListResponse, *common.ServiceError)) *SCIMUsersServiceInterfaceMock_ListUsers_Call {
 	_c.Call.Return(run)
 	return _c
 }

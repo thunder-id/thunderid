@@ -148,7 +148,7 @@ func TestListUsers_Success(t *testing.T) {
 		"GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "employee", true, false, false,
 	).Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil))
 
-	resp, err := service.ListUsers(context.Background(), 1, 20, testBaseURL)
+	resp, err := service.ListUsers(context.Background(), 1, 20, nil, testBaseURL)
 
 	require.Nil(t, err)
 	require.Equal(t, 1, resp.TotalResults)
@@ -165,7 +165,7 @@ func TestListUsers_ServiceError(t *testing.T) {
 	mockUserService.On("GetUserList", mock.Anything, 20, 0, (map[string]interface{})(nil), false).
 		Return((*user.UserListResponse)(nil), &user.ErrorUserNotFound)
 
-	resp, err := service.ListUsers(context.Background(), 1, 20, testBaseURL)
+	resp, err := service.ListUsers(context.Background(), 1, 20, nil, testBaseURL)
 
 	require.NotNil(t, err)
 	require.Equal(t, ErrorUserNotFound.Code, err.Code)
@@ -181,7 +181,7 @@ func TestListUsers_DefaultsInvalidPagination(t *testing.T) {
 	mockUserService.On("GetUserList", mock.Anything, 20, 0, (map[string]interface{})(nil), false).
 		Return(&user.UserListResponse{TotalResults: 0, Users: []user.User{}}, (*tidcommon.ServiceError)(nil))
 
-	resp, err := service.ListUsers(context.Background(), 0, 0, testBaseURL)
+	resp, err := service.ListUsers(context.Background(), 0, 0, nil, testBaseURL)
 
 	require.Nil(t, err)
 	require.Equal(t, 0, resp.TotalResults)
