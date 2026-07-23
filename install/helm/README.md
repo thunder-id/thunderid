@@ -728,22 +728,37 @@ The setup job runs `setup.sh` as a one-time Helm pre-install hook to initialize 
 | `setup.resources.requests.memory`      | Memory request for setup job                                    | `50Mi`                       |
 | `setup.resources.limits.cpu`           | CPU limit for setup job                                         | `200m`                       |
 | `setup.resources.limits.memory`        | Memory limit for setup job                                      | `100Mi`                      |
-| `setup.admin.username`                 | Username for the default admin user                             | `admin`                      |
-| `setup.admin.password`                 | Password for the default admin user. Ignored when `setup.admin.passwordRef.name` is set | `admin` |
-| `setup.admin.passwordRef.name`         | Existing Kubernetes Secret name containing the admin password. Must be set together with `passwordRef.key` | `""` |
-| `setup.admin.passwordRef.key`          | Key in the Secret whose value is used as the admin password. Must be set together with `passwordRef.name` | `""` |
+| `setup.admin.username`                 | Username for the admin user. Ignored when `usernameRef` is set                | `admin`    |
+| `setup.admin.usernameRef.name`         | Existing Secret holding the username. Set together with `usernameRef.key`; takes precedence over inline username | `""` |
+| `setup.admin.usernameRef.key`          | Key in the Secret holding the username. Set together with `usernameRef.name`  | `""`         |
+| `setup.admin.password`                 | Inline password for the admin user. Leave empty to generate one. Ignored when `passwordRef` is set | `""` |
+| `setup.admin.passwordRef.name`         | Existing Secret holding the password. Set together with `passwordRef.key`; takes precedence over inline password and generation | `""` |
+| `setup.admin.passwordRef.key`          | Key in the Secret holding the password. Set together with `passwordRef.name`  | `""`         |
 | `setup.extraVolumeMounts`              | Additional volume mounts for setup job                          | `[]`                         |
 | `setup.extraVolumes`                   | Additional volumes for setup job                                | `[]`                         |
 
 ### Admin Credentials
 
-The setup job seeds a default admin user during first install. The password can be supplied as a plain value (for development) or sourced from an existing Kubernetes Secret (recommended for production).
+The setup job seeds an admin user during first install (only when `setup.enabled=true`). No default password is shipped. The password is resolved in the following order of precedence:
 
-#### Security Warning
+1. **`passwordRef`** — sourced from an existing Kubernetes Secret.
+2. **`password`** — the inline value in `values.yaml`.
+3. **generated** — a random password is generated and stored in the `<release>-admin-credentials` Secret.
 
-⚠️ **The default `admin`/`admin` credentials must be changed before any non-development deployment.** When defaults are used, the credentials are printed in the setup completion summary. Always set explicit credentials for any non-development environment.
+The username is resolved independently: **`usernameRef`** (existing Secret) if set, otherwise the inline **`username`** (default `admin`).
 
-#### Pattern 1: Plain value (Development / Quick-start)
+#### Pattern 1: Generated password (default)
+
+Leave `setup.admin.password` and `setup.admin.passwordRef` unset. A random password is generated during install and stored in a Kubernetes Secret. Retrieve it with:
+
+```bash
+kubectl get secret --namespace <namespace> <release>-admin-credentials \
+  -o jsonpath="{.data.admin-password}" | base64 -d; echo
+```
+
+The exact command is printed in the post-install notes.
+
+#### Pattern 2: Inline value (Development / Quick-start)
 
 ```yaml
 setup:
@@ -760,29 +775,32 @@ helm install my-thunderid oci://ghcr.io/thunder-id/helm-charts/thunderid \
   --set setup.admin.password='MyP@ssw0rd!'
 ```
 
-#### Pattern 2: External Kubernetes Secret (Production — Recommended)
+#### Pattern 3: Existing Kubernetes Secret (Production — Recommended)
 
-**Step 1:** Create the Secret:
+**Step 1:** Create a Secret holding the credentials:
 
 ```bash
 kubectl create secret generic thunderid-admin-credentials \
+  --from-literal=username='myAdmin' \
   --from-literal=password='MyP@ssw0rd!'
 ```
 
-**Step 2:** Reference it in your values:
+**Step 2:** Reference it in your values. Point both refs at the same Secret name with different keys (or at different Secrets):
 
 ```yaml
 setup:
   admin:
-    username: "myAdmin"
+    usernameRef:              # optional; falls back to setup.admin.username
+      name: "thunderid-admin-credentials"
+      key: "username"
     passwordRef:
       name: "thunderid-admin-credentials"
       key: "password"
 ```
 
-When `passwordRef.name` and `passwordRef.key` are both set, the `password` field is ignored and the admin password is injected directly from the Secret — no plaintext appears in the rendered Job manifest.
+When `passwordRef` is set it takes precedence over the inline password and over generation; likewise `usernameRef` over the inline username. Credentials are injected directly from the Secret via `secretKeyRef`, so no plaintext appears in the rendered Job manifest.
 
-**Validation:** The chart fails at render time if only one of `passwordRef.name` / `passwordRef.key` is provided. Both must be set together or both must be left empty.
+**Validation:** The chart fails at render time if either ref has only one of `name`/`key` set. Provide both or neither.
 
 Environment variable item structure for plain value environment variables in `deployment.env` and `setup.env`:
 

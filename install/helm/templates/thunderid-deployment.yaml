@@ -145,6 +145,9 @@ spec:
             - containerPort: {{ .Values.deployment.container.port }}
               protocol: TCP
           volumeMounts:
+            # Writable scratch space (/tmp) so the server can write temp files under a read-only root filesystem.
+            - name: tmp
+              mountPath: /tmp
             {{- if or .Values.persistence.enabled $usingSqlite }}
             - name: database-storage
               mountPath: /opt/thunderid/database
@@ -182,6 +185,8 @@ spec:
             {{- end }}
             {{- end }}
       volumes:
+        - name: tmp
+          emptyDir: {}
         {{- if .Values.setup.enabled }}
         - name: certs-storage
           persistentVolumeClaim:

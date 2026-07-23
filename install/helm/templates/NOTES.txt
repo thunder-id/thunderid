@@ -1,0 +1,13 @@
+{{- if eq (include "thunderid.adminPasswordGenerated" .) "true" }}
+{{- $admin := default dict .Values.setup.admin }}
+
+Admin credentials
+=================
+
+A random admin password was generated and stored in a Kubernetes Secret.
+Retrieve it with:
+
+  kubectl get secret --namespace {{ .Release.Namespace }} {{ include "thunderid.fullname" . }}-admin-credentials -o jsonpath="{.data.admin-password}" | base64 -d; echo
+
+  Username: {{ $admin.username }}
+{{- end }}

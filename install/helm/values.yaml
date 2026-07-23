@@ -21,7 +21,7 @@ deployment:
       maxSurge: 1
       maxUnavailable: 0
   securityContext:
-    readOnlyRootFilesystem: true # This must be false if sqlite is used as the database
+    readOnlyRootFilesystem: true
     enableRunAsUser: true
     runAsUser: 10001
     enableRunAsGroup: true
@@ -615,13 +615,31 @@ setup:
   ttlSecondsAfterFinished: 86400  # 24 hours
   # Enable debug mode for setup
   debug: false
-  # Default admin user credentials seeded by the setup job.
-  # WARNING: Replace the default password before deploying to any non-development environment.
+  # Admin user credentials seeded by the setup job (only when setup.enabled=true).
+  #
+  # Password resolution order (highest precedence first):
+  #   1. passwordRef  - sourced from an existing Kubernetes Secret
+  #   2. password     - the inline value below
+  #   3. generated    - a random password is stored in the "<release>-admin-credentials"
+  #                     Secret. Retrieve it with the command printed after installation.
+  # Username resolution: usernameRef if set, otherwise the inline username below.
+  # No default password is shipped: leaving everything unset generates one securely.
   admin:
     username: "admin"
-    password: "admin"
-    # Optional: source the admin password from an existing Kubernetes Secret.
-    # When `passwordRef.name` is set, it takes precedence over the plain `password` above.
+    # Source the admin username from an existing Kubernetes Secret. When
+    # usernameRef.name and usernameRef.key are both set, it takes precedence over
+    # the inline username above. name and key must be set together.
+    usernameRef:
+      name: ""
+      key: ""
+    # Inline admin password. Leave empty to generate a random one.
+    # Ignored when passwordRef is set.
+    password: ""
+    # Source the admin password from an existing Kubernetes Secret. When
+    # passwordRef.name and passwordRef.key are both set, it takes precedence over
+    # the inline password above and over generation. name and key must be set
+    # together. Point usernameRef and passwordRef at the same Secret name with
+    # different keys to source both credentials from one Secret.
     passwordRef:
       name: ""
       key: ""
